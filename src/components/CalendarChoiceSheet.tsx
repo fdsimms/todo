@@ -107,8 +107,8 @@ export function CalendarChoiceSheet({ visible, title, selectedId, onSelect, onCl
           {state === 'denied' && (
             <>
               <EmptyNote icon="lock-closed-outline">
-                This app can&apos;t reach your calendars. Turn calendar access on for it in the
-                Settings app, then try again.
+                Calendar access is off. Turn it on in
+                Settings, then try again.
               </EmptyNote>
               <View style={styles.deniedAction}>
                 <InlineAction
@@ -122,8 +122,8 @@ export function CalendarChoiceSheet({ visible, title, selectedId, onSelect, onCl
 
           {state === 'ready' && calendars.length === 0 && (
             <EmptyNote icon="calendar-outline">
-              Every calendar on this device is read-only. Add or unlock one you can edit in the
-              Settings app under Calendar › Accounts.
+              Every calendar on this device is read-only. Add or unlock one in
+              Settings under Calendar › Accounts.
             </EmptyNote>
           )}
 
@@ -154,7 +154,7 @@ export function CalendarChoiceSheet({ visible, title, selectedId, onSelect, onCl
                   activeOpacity={interaction.activeOpacity}
                   onPress={() => pick(null)}
                   accessibilityRole="button"
-                  accessibilityLabel="Don't write to any calendar"
+                  accessibilityLabel="Don’t write to any calendar"
                 >
                   <Text style={[styles.rowTitle, styles.rowOff]}>Off</Text>
                 </TouchableOpacity>
@@ -163,8 +163,8 @@ export function CalendarChoiceSheet({ visible, title, selectedId, onSelect, onCl
           )}
 
           <Text style={styles.hint}>
-            This is the calendar every task writes to, so picking one here also sets it for the
-            rest of the app. Settings › Calendar has the same choice.
+            Every task writes to this calendar. Changing it here also changes it in
+            Settings › Calendar.
           </Text>
         </ScrollView>
       </View>

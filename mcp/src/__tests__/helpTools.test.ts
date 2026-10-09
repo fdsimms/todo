@@ -38,8 +38,8 @@ describe('isFixNote', () => {
 });
 
 describe('appHelp', () => {
-  const settingsHit: SettingsHit = { label: 'Morning', path: 'Settings › Day & time › When the day turns over › Morning' };
-  const other: SettingsHit = { label: 'Evening starts', path: 'Settings › Day & time › When the day turns over › Evening starts' };
+  const settingsHit: SettingsHit = { label: 'Morning', path: 'Settings › Day and time › When the day turns over › Morning' };
+  const other: SettingsHit = { label: 'Evening starts', path: 'Settings › Day and time › When the day turns over › Evening starts' };
   const searchSettings = jest.fn((q: string) => (q === 'midnight' || q === 'morning' ? [settingsHit] : q === 'start' ? [other, settingsHit] : []));
   const replica = { searchSettings } as unknown as Replica;
 

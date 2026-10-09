@@ -29,7 +29,7 @@ export function AboutSettings() {
           entryId="patchNotes"
           icon="gift-outline"
           iconColor={colors.accent}
-          label="What's New"
+          label="What’s New"
           chevron
           onPress={() => setShowPatchNotes(true)}
         />

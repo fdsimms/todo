@@ -1295,7 +1295,7 @@ export function displayTitleFor(task: Task): string {
 }
 
 // True when the task's category has opted out of being flagged "new" — no
-// row dot, no entry in the "new todos" banner. Mirrors isCategoryHiddenOnVacation.
+// row dot, no entry in the "new tasks" banner. Mirrors isCategoryHiddenOnVacation.
 function isCategoryExcludedFromNewTasksBanner(category: string | null): boolean {
   if (!category) return false;
   const cat = useCategoryStore.getState().getCategoryByName(category);

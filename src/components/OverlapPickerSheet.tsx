@@ -214,7 +214,7 @@ export function OverlapPickerSheet({
           {matches.length === 0 ? (
             <View style={styles.notePad}>
               <EmptyNote icon="git-merge-outline">
-                Add a few more recipes and this will find the ones you could shop for together.
+                Add a few more recipes to find ones you can shop for together.
               </EmptyNote>
             </View>
           ) : (

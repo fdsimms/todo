@@ -1,4 +1,4 @@
 {
-  "message": "Every Backfill field now has the redo button in its header, not just tasks, so you can walk through categories, projects, people, items and recipes again, including ones that already have a value",
+  "message": "The Backfill redo button in the header is now on every field, including categories, projects, people, items and recipes, so you can go through them again even when they already have a value.",
   "date": "2026-10-08"
 }

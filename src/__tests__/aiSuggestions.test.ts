@@ -757,9 +757,9 @@ describe('suggestGroceryAisles on the on-device model', () => {
   // must not tell someone to check a connection nothing used.
   it('describes its own failures without mentioning the network', async () => {
     expect(describeAIError(new Error('On-device model unavailable')))
-      .toBe('On-device suggestions aren\'t available on this device.');
+      .toBe('On-device suggestions aren’t available on this device.');
     expect(describeAIError(new Error('On-device model returned malformed output')))
-      .toBe('Nothing came back that could be used. Try again.');
+      .toBe('Nothing usable came back. Try again.');
   });
 
   it('asks for nothing when the list is empty, on either route', async () => {

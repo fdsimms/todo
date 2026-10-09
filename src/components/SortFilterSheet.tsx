@@ -45,7 +45,7 @@ const SORT_OPTIONS: { value: SortOption; label: string; icon: string }[] = [
   { value: 'effort-asc', label: 'Quick wins first', icon: 'barbell' },
   { value: 'effort-desc', label: 'Big tasks first', icon: 'barbell' },
   { value: 'due-date', label: 'Due soonest', icon: 'calendar' },
-  { value: 'streak', label: 'Hottest streak', icon: 'flame' },
+  { value: 'streak', label: 'Longest streak', icon: 'flame' },
 ];
 
 function toggle<T>(arr: T[], item: T): T[] {
@@ -122,7 +122,7 @@ export function SortFilterSheet({
           </View>
 
           <View style={styles.sheetHeader}>
-            <Text style={styles.sheetTitle}>Sort & Filter</Text>
+            <Text style={styles.sheetTitle}>Sort and filter</Text>
             <View style={styles.headerRight}>
               {activeCount > 0 && (
                 <TouchableOpacity onPress={reset} style={styles.resetBtn}>

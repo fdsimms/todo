@@ -364,7 +364,7 @@ export const GroceryRow = React.memo(function GroceryRow({
         .items.find(i => i.id !== item.id && i.nameKey === key);
       setNameError(
         collision
-          ? `That's the same as ${collision.name}. Open the item to merge them.`
+          ? `That’s the same as ${collision.name}. Open the item to merge them.`
           : 'Another item already has that name.',
       );
       refusedName.current = trimmed;

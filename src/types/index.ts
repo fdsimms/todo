@@ -101,7 +101,7 @@ export interface Category {
   // but bad company for whatever else lands in a shortlist.
   excludeFromSuggestions: boolean;
   // Keep tasks in this category from counting as "new" — no entry in the
-  // "you have X new todos" banner, and no dot on their own row (see
+  // "you have X new tasks" banner, and no dot on their own row (see
   // isTaskNew). Both read the same signal, so this turns it off at the
   // source rather than hiding it from only one of the two places it shows.
   // For categories that surface tasks constantly (routines, recurring
@@ -7822,7 +7822,7 @@ export interface EventPeopleLink {
  * **The third kind is why the mechanism was worth having.** The kitchen's front
  * door is the list the user already reads every day, not a screen they have to
  * go to: everything the groceries/meals area knows sits behind More →
- * Groceries & meals → a pill, and a bag of spinach nobody navigates to is a bag
+ * Groceries and meals → a pill, and a bag of spinach nobody navigates to is a bag
  * of spinach that rots. A context row is the opposite — the knowledge arrives
  * where the attention already is.
  *

@@ -173,7 +173,7 @@ function JournalLogScreen({ kind }: { kind: JournalKind }) {
       uri = writeExportFile(journalExportCsv(entries, kind), journalExportFileName(kind, new Date()));
       await shareCsvFile(uri, shareTitle);
     } catch {
-      Alert.alert('Export failed', 'The file could not be written. Try again.');
+      Alert.alert('Export failed', 'Couldn’t write the file. Try again.');
     } finally {
       if (uri) discardBackupFile(uri);
       setSharing(false);

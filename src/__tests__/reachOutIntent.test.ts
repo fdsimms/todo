@@ -141,11 +141,11 @@ describe('copy', () => {
   // to be the title that actually gets saved.
   it('quotes the entry it would write, with its time', () => {
     const message = reachOutPromptMessage('call', 'Sarah', new Date(2026, 8, 15, 15, 42));
-    expect(message).toBe('"Called Sarah", 3:42 PM');
+    expect(message).toBe('“Called Sarah”, 3:42 PM');
   });
 
   it('says nothing about the person beyond their name', () => {
     const message = reachOutPromptMessage('text', 'Mom', new Date(2026, 8, 15, 9, 5));
-    expect(message).toBe('"Texted Mom", 9:05 AM');
+    expect(message).toBe('“Texted Mom”, 9:05 AM');
   });
 });

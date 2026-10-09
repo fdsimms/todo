@@ -105,14 +105,14 @@ describe('bulkDeletePrompt', () => {
       kind: 'missable',
       missableIds: ['r'],
       restIds: [],
-      message: 'This task repeats. Mark just this one missed, or delete it and stop it repeating?',
+      message: 'This task repeats. Mark this one missed, or delete it and stop it repeating?',
       deleteLabel: 'Delete and stop repeating',
     });
   });
 
   it('pluralises for several repeating tasks and still offers to end the series', () => {
     expect(bulkDeletePrompt(['r1', 'r2'], [recurring('r1'), recurring('r2')])).toMatchObject({
-      message: 'These tasks repeat. Mark them missed instead, or delete them and stop them repeating?',
+      message: 'These tasks repeat. Mark them missed, or delete them and stop them repeating?',
       deleteLabel: 'Delete and stop repeating',
     });
   });
@@ -122,7 +122,7 @@ describe('bulkDeletePrompt', () => {
       kind: 'missable',
       missableIds: ['r'],
       restIds: ['p'],
-      message: 'This task repeats. Mark just this one missed, or delete it and stop it repeating?',
+      message: 'This task repeats. Mark this one missed, or delete it and stop it repeating?',
       deleteLabel: 'Delete anyway',
     });
   });
@@ -132,13 +132,13 @@ describe('bulkDeletePrompt', () => {
       kind: 'missable',
       missableIds: ['m'],
       restIds: [],
-      message: 'This came from your meal plan. Mark it missed to keep a record, or delete it outright?',
+      message: 'This came from your meal plan. Mark it missed to keep a record, or delete it?',
       deleteLabel: 'Delete',
     });
     expect(bulkDeletePrompt(['m1', 'm2', 'p'], [meal('m1'), meal('m2'), plain('p')])).toMatchObject({
       missableIds: ['m1', 'm2'],
       restIds: ['p'],
-      message: 'These came from your meal plan. Mark them missed to keep a record, or delete them outright?',
+      message: 'These came from your meal plan. Mark them missed to keep a record, or delete them?',
       deleteLabel: 'Delete anyway',
     });
   });
@@ -148,7 +148,7 @@ describe('bulkDeletePrompt', () => {
       kind: 'missable',
       missableIds: ['r', 'm'],
       restIds: [],
-      message: 'Some selected tasks repeat or came from your meal plan. Mark those missed, or delete your whole selection anyway?',
+      message: 'Some selected tasks repeat or came from your meal plan. Mark those missed, or delete the whole selection?',
       deleteLabel: 'Delete anyway',
     });
   });

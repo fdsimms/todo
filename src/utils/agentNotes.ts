@@ -12,7 +12,7 @@ import { generateId } from './id';
  * conversation starts with, and an agent adds one when the person says to
  * remember something (`remember` / `forget`). They live in the app rather than
  * in any one assistant's memory so the person can read and edit exactly what
- * is being kept, here, in Settings › Data & reset › Sync.
+ * is being kept, here, in Settings › Data and reset › Sync.
  *
  * **One JSON setting, and it syncs**, the `savedPlaces` shape: a short list of
  * plain text that means the same on every device, listed in

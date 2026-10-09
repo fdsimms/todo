@@ -32,7 +32,7 @@ export interface CalendarLineInput {
 export function calendarStatusLine(input: CalendarLineInput): string | undefined {
   if (input.hiddenForVacation) return 'Hidden during vacation';
   if (input.readFailed || !input.status) return undefined;
-  if (!input.status.ok) return "Couldn't read";
+  if (!input.status.ok) return "Couldn’t read";
   const days = `in the next ${input.windowDays} days`;
   if (input.liveCount === 0) return `No events ${days}`;
   return `${input.liveCount} event${input.liveCount === 1 ? '' : 's'} ${days}`;
@@ -44,7 +44,7 @@ export function calendarStatusLine(input: CalendarLineInput): string | undefined
  * hidden for vacation doesn't make "all of them failed" read as "some did".
  */
 export function failedCalendarsLabel(failedCount: number, readCount: number): string {
-  if (failedCount >= readCount) return 'None of your calendars could be read just now';
+  if (failedCount >= readCount) return 'None of your calendars could be read';
   return `${failedCount} calendar${failedCount === 1 ? '' : 's'} couldn’t be read just now`;
 }
 

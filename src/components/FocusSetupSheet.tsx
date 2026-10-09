@@ -298,7 +298,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
   const openSettings = () => {
     haptics.tap();
     // Lands on the group these settings actually live in ("Focus sessions"
-    // inside Tasks & projects), not the Settings index. The sheet's own
+    // inside Tasks and projects), not the Settings index. The sheet's own
     // dismiss animation runs same as Cancel; the pushed screen is behind it
     // and shows once the sheet is gone.
     (navigation as never as { navigate: (n: string, p: object) => void })
@@ -738,7 +738,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
             <View style={styles.windowLabelWrap}>
               <Text style={styles.windowLabel}>Hide timer</Text>
               <Text style={styles.windowHint}>
-                {hideTimersEnabled ? 'No countdown for this session' : 'Shows a countdown, same as usual'}
+                {hideTimersEnabled ? 'No countdown for this session' : 'Shows a countdown'}
               </Text>
             </View>
             <View style={[styles.toggle, hideTimersEnabled && styles.toggleOn]}>
@@ -798,7 +798,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
               {endsAt !== null && (
                 <Text style={styles.summarySub}>
                   {windowMinutes === null
-                    ? `Ends around ${endsAt} if it all runs to time`
+                    ? `Ends around ${endsAt} if it all runs on schedule`
                     : spare === 0
                       ? `Fills your ${formatClockDuration(windowMinutes)}. Ends around ${endsAt}`
                       : `${formatClockDuration(spare)} of your ${formatClockDuration(windowMinutes)} left over. Ends around ${endsAt}`}

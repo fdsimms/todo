@@ -59,7 +59,7 @@ export function agentRevertPlan(entry: UnattendedEntry, task: Task | null): Agen
     if (task) return { kind: 'none', reason: 'Restored since' };
     return { kind: 'restoreDeletedTask', snapshot: entry.revert.before.deletedTask as DeletedTaskSnapshot };
   }
-  if (!task) return { kind: 'none', reason: 'Since removed' };
+  if (!task) return { kind: 'none', reason: 'Removed since' };
 
   switch (entry.action) {
     case 'created':

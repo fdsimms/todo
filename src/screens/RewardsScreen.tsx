@@ -253,7 +253,7 @@ export function RewardsScreen() {
   const confirmWithdraw = (task: Task) => {
     Alert.alert(
       'Withdraw bounty?',
-      `The bounty on "${task.title}" ends, and it can't be posted on this task again.`,
+      `The bounty on “${task.title}” ends and can’t be posted on this task again.`,
       [
         { text: 'Keep it', style: 'cancel' },
         { text: 'Withdraw', style: 'destructive', onPress: () => { haptics.tap(); withdrawBounty(task.id); } },
@@ -393,10 +393,10 @@ export function RewardsScreen() {
 
   const remove = useCallback((reward: Reward, title: string) => {
     Alert.alert(
-      `Delete "${title}"?`,
+      `Delete “${title}”?`,
       reward.taskId
-        ? 'Coins already spent on it stay spent. The item stays on your list.'
-        : 'Coins already spent on it stay spent.',
+        ? 'Coins already spent on it aren’t refunded. The item stays on your list.'
+        : 'Coins already spent on it aren’t refunded.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -459,7 +459,7 @@ export function RewardsScreen() {
         <View>
           <Text style={styles.rewardTitle}>{draftItem.title}</Text>
           <Text style={styles.hint}>
-            {`From ${list?.title ?? 'your list'}. Its title, notes and link are the reward's, and claiming it checks it off.`}
+            {`From ${list?.title ?? 'your list'}. The reward takes the item’s title, notes and link. Claiming it checks it off.`}
           </Text>
         </View>
       ) : (
@@ -478,7 +478,7 @@ export function RewardsScreen() {
       {!draftOneTime && <Text style={styles.fieldLabel}>How often do you want it?</Text>}
       {draftOneTime ? null : rate === null ? (
         <Text style={styles.hint}>
-          After a week of completed tasks, this can suggest a price from how fast you earn coins.
+          Price suggestions start after a week of completed tasks.
         </Text>
       ) : (
         <>
@@ -519,7 +519,7 @@ export function RewardsScreen() {
             emptyLabel="Custom"
             format={n => `Every ${n}`}
             label="Custom reward frequency"
-            describeValue={n => (n === null ? 'Not set' : `Every ${n} ${customUnit}`)}
+            describeValue={n => (n === null ? 'Not set' : `Every ${n} ${n === 1 ? customUnit.replace(/s$/, '') : customUnit}`)}
           />
           <View style={styles.customUnit}>
             <SegmentedControl
@@ -791,7 +791,7 @@ export function RewardsScreen() {
           <View style={styles.rulesCard}>
             <Text style={styles.rulesTitle}>How coins work</Text>
             <Text style={styles.rulesBody}>
-              {`A task earns 1 to 12 coins depending on how long it takes. Hard tasks earn double and easy ones half. It also earns 1 for every ${STREAK_BONUS_EVERY} in a row on its streak (up to ${STREAK_BONUS_CAP} extra). Marking a task missed or logging a slip costs what it would earn, but never more than the time amount, so a hard task costs no more to miss. Unchecking a task takes its coins back.`}
+              {`A task earns 1 to 12 coins depending on how long it takes. Hard tasks earn double and easy ones half. It also earns 1 for every ${STREAK_BONUS_EVERY} in a row on its streak (up to ${STREAK_BONUS_CAP} extra). Marking a task missed or logging a slip costs what it would earn, capped at the time amount, so a hard task costs no more to miss. Unchecking a task takes its coins back.`}
             </Text>
           </View>
         </CardSheet>
@@ -820,7 +820,7 @@ export function RewardsScreen() {
 
         <Text style={styles.sectionHeader}>Exchange rate</Text>
         <Text style={styles.sectionHint}>
-          Set what you would spend on rewards in a week. Rewards priced in dollars convert at your weekly earning divided by that amount, and update as your earning changes.
+          Set what you would spend on rewards in a week. Dollar prices convert at your weekly earning divided by that amount and update as it changes.
         </Text>
         <View style={styles.bountyLimit}>
           <Text style={styles.historyLabel}>Weekly reward budget</Text>
@@ -844,7 +844,7 @@ export function RewardsScreen() {
           <Text style={styles.sectionHint}>
             {exchange !== null
               ? describeExchangeRate(exchange, currencySymbol)
-              : 'After a week of completed tasks, this can set the rate from how fast you earn coins.'}
+              : 'The rate is set after a week of completed tasks.'}
           </Text>
         )}
 
@@ -853,7 +853,7 @@ export function RewardsScreen() {
             <Text style={styles.sectionHeader}>Ideas</Text>
             {rate === null && (
               <Text style={styles.sectionHint}>
-                {`Prices assume about ${DEFAULT_EARN_RATE_PER_DAY} coins a day until there's a week of completed tasks to go on.`}
+                {`Prices assume about ${DEFAULT_EARN_RATE_PER_DAY} coins a day until you have a week of completed tasks.`}
               </Text>
             )}
             <View style={styles.historyCard}>
@@ -877,7 +877,7 @@ export function RewardsScreen() {
 
         <Text style={styles.sectionHeader}>Bounties</Text>
         <Text style={styles.sectionHint}>
-          Extra coins for a task you keep putting off. Turn on Bounty in the task's editor. It pays the most if you do the task before moving it to a later day, and gets smaller each time you do.
+          Extra coins for a task you keep putting off. Turn on Bounty in the task’s editor. It pays the most if you never move the task to a later day, and less each time you do.
         </Text>
         {bounties.length === 0 ? (
           <>
@@ -993,7 +993,7 @@ export function RewardsScreen() {
         <Text style={styles.sectionHeader}>History</Text>
         {history.length === 0 ? (
           <View style={styles.emptyNote}>
-            <EmptyNote icon="time-outline">Nothing yet. Complete a task to earn your first coins.</EmptyNote>
+            <EmptyNote icon="time-outline">No coins yet. Complete a task to earn some.</EmptyNote>
           </View>
         ) : (
           <View style={styles.historyCard}>

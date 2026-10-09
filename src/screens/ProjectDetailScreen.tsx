@@ -1954,7 +1954,7 @@ export function ProjectDetailScreen() {
                             haptics.tap();
                             navigateToTab('Logbook', { projectId, openProjectHistory: Date.now() });
                           }}
-                          accessibilityLabel="Open this project's history"
+                          accessibilityLabel="Open this project’s history"
                         />
                       </View>
                     )}
@@ -1992,7 +1992,7 @@ export function ProjectDetailScreen() {
                         {tripAhead && (
                           <InlineAction
                             icon="calendar-outline"
-                            label="What's due before you leave"
+                            label="What’s due before you leave"
                             variant="neutral"
                             onPress={() => { haptics.tap(); setLookAheadOpen(true); }}
                           />
@@ -2074,7 +2074,7 @@ export function ProjectDetailScreen() {
                       label="Sort A to Z"
                       variant="neutral"
                       onPress={sortListAToZ}
-                      accessibilityLabel="Sort this list's items from A to Z"
+                      accessibilityLabel="Sort this list’s items from A to Z"
                     />
                   </View>
                 )}
@@ -2188,7 +2188,7 @@ export function ProjectDetailScreen() {
                         <View style={styles.emptyStackRow}>
                           <Text style={styles.emptyStackText}>{isList ? 'No items in this section yet' : group.checklist ? 'No lines in this section yet' : 'No tasks in this section yet'}</Text>
                           <InlineAction
-                            label={isList ? 'Add an item' : group.checklist ? 'Add a line' : 'Add task'}
+                            label={isList ? 'Add an item' : group.checklist ? 'Add a line' : 'Add a task'}
                             icon="add"
                             onPress={() => openAddToSection(group)}
                             accessibilityLabel={group.title.trim() ? `Add ${isList ? 'an item' : group.checklist ? 'a line' : 'a task'} to the ${group.title.trim()} section` : `Add ${isList ? 'an item' : group.checklist ? 'a line' : 'a task'} to this section`}
@@ -2243,7 +2243,7 @@ export function ProjectDetailScreen() {
                         {!selectionMode && sectionLine?.groupId !== group.id && (
                           <View style={styles.sectionAddRow}>
                             <InlineAction
-                              label={isList ? 'Add an item' : group.checklist ? 'Add a line' : 'Add task'}
+                              label={isList ? 'Add an item' : group.checklist ? 'Add a line' : 'Add a task'}
                               icon="add"
                               variant="neutral"
                               surface="tray"
@@ -2289,7 +2289,7 @@ export function ProjectDetailScreen() {
                 <EmptyState
                   icon={isList ? 'list-outline' : 'briefcase-outline'}
                   title={isList ? 'Nothing on this list yet' : 'No tasks yet'}
-                  subtitle={isList ? 'Add an item above. Paste several at once to add them all' : "Add a new task, or pull in one you've already written down"}
+                  subtitle={isList ? 'Add an item above, or paste several at once.' : "Add a new task, or add an existing one."}
                   actionLabel={isList ? 'Add an item' : 'New task'}
                   onAction={() => isList ? setTopLineOpen(v => v ?? 0) : openTaskLine()}
                 />
@@ -2546,7 +2546,7 @@ export function ProjectDetailScreen() {
                 );
               }}
               ListEmptyComponent={
-                <EmptyState icon="search" title="No matching tasks" subtitle="Tasks already in a project, or completed, won't show here" />
+                <EmptyState icon="search" title="No matching tasks" subtitle="Completed tasks and tasks already in a project aren’t listed." />
               }
             />
           </View>
@@ -2561,8 +2561,8 @@ export function ProjectDetailScreen() {
             accessibilityLabel={isList ? 'Add to this list' : 'Add task to project'}
             drag={fabDrag}
             dragHint={isList
-              ? 'Drag onto the list to add an item at that spot. Drop it on a section to add it there, or back on the button to cancel.'
-              : 'Drag onto the list to add a task at that spot. Drop it on a section to add it there, or back on the button to cancel.'}
+              ? 'Drop on the list to add an item at that spot. Drop on a section to add it there. Drop on the button to cancel.'
+              : 'Drop on the list to add a task at that spot. Drop on a section to add it there. Drop on the button to cancel.'}
           />
         )}
 

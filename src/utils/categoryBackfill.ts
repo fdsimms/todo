@@ -28,7 +28,7 @@ export const CATEGORY_BACKFILL_FIELDS: CategoryBackfillFieldDef[] = [
   {
     id: 'vacation',
     label: 'Hide on vacation',
-    hint: 'Tucks tasks in this category away while vacation mode is on.',
+    hint: 'Hides tasks in this category while vacation mode is on.',
   },
   {
     id: 'suggestions',
@@ -37,8 +37,8 @@ export const CATEGORY_BACKFILL_FIELDS: CategoryBackfillFieldDef[] = [
   },
   {
     id: 'newBanner',
-    label: 'Skip in new todos banner',
-    hint: 'Keeps tasks in this category off the new todos banner and the new dot on their row.',
+    label: 'Skip in new tasks banner',
+    hint: 'Keeps tasks in this category off the new tasks banner and the new dot on their row.',
   },
 ];
 

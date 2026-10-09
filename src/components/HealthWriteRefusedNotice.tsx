@@ -48,7 +48,7 @@ export function HealthWriteRefusedNotice() {
 
     Alert.alert(
       'Your meals are not reaching Health',
-      'Health is not allowing this app to write nutrition, so the meals you log are being kept here only. Open Health, find this app under Sharing, and allow it to write nutrition.',
+      'Health is not allowing this app to write nutrition, so logged meals stay here only. Open Health, find this app under Sharing, and allow it to write nutrition.',
       [
         { text: 'Not now', style: 'cancel', onPress: () => { showing.current = false; } },
         {

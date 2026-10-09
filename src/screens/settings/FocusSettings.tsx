@@ -21,7 +21,7 @@ import { alertPermissionOff } from '../../utils/permissionAlert';
 
 /**
  * Focus sessions, the apps that stay blocked around them, and the timers' Lock
- * Screen activity. Split out of Tasks & projects, which held 36 settings across
+ * Screen activity. Split out of Tasks and projects, which held 36 settings across
  * ten sections with this one alone at sixteen rows: a group named for what it
  * is about, rather than the rows' being found by scrolling past everything else.
  * Every row keeps its entry id, so search and the screen gears resolve unchanged.
@@ -101,7 +101,7 @@ export function FocusSettings() {
     if (status !== 'approved') {
       alertPermissionOff(
         'Screen Time access needed',
-        'Blocking apps during a focus session needs Screen Time access. You can grant it in Settings, under Screen Time.',
+        'Blocking apps during a focus session needs Screen Time access. Grant it in Settings, under Screen Time.',
       );
       return;
     }
@@ -137,7 +137,7 @@ export function FocusSettings() {
     if (status !== 'approved') {
       alertPermissionOff(
         'Screen Time access needed',
-        'Blocking apps until a task is done needs Screen Time access. You can grant it in Settings, under Screen Time.',
+        'Blocking apps until a task is done needs Screen Time access. Grant it in Settings, under Screen Time.',
       );
       return;
     }
@@ -162,7 +162,7 @@ export function FocusSettings() {
     if (status !== 'approved') {
       alertPermissionOff(
         'Screen Time access needed',
-        'Blocking apps when you fail a task needs Screen Time access. You can grant it in Settings, under Screen Time.',
+        'Blocking apps when you fail a task needs Screen Time access. Grant it in Settings, under Screen Time.',
       );
       return;
     }
@@ -176,8 +176,8 @@ export function FocusSettings() {
       <SettingsSection
         label="Focus sessions"
         footer={`${noBreaks
-          ? 'Breaks are off, so a session runs straight through with no breaks in it.'
-          : 'Both triggers run at once and whichever comes first inserts the break. Start a session from Today’s … menu.'}${
+          ? 'Breaks are off, so sessions run straight through.'
+          : 'Breaks are added after the set work time or task count, whichever comes first. Start a session from Today’s … menu.'}${
           Platform.OS === 'ios' ? ' The Lock Screen activity requires iOS 17.' : ''}`}
       >
         <SettingsRow
@@ -237,7 +237,7 @@ export function FocusSettings() {
           entryId="focusRestAfterMinutes"
           icon="time-outline"
           label="Break after this much work"
-          hint="Minutes of work before a break is added. Set to off to never break on elapsed time."
+          hint="Minutes of work before a break is added. Set to Off to skip time-based breaks."
           tight
         />
         <View style={styles.cadenceRow}>
@@ -259,7 +259,7 @@ export function FocusSettings() {
           entryId="focusRestAfterTasks"
           icon="list-outline"
           label="Break after this many tasks"
-          hint="Tasks finished before a break is added. Set to off to never break on a task count."
+          hint="Tasks finished before a break is added. Set to Off to skip task-based breaks."
           tight
         />
         <View style={styles.cadenceRow}>
@@ -302,7 +302,7 @@ export function FocusSettings() {
               entryId="focusLongRestEvery"
               icon="bed-outline"
               label="Long break every"
-              hint="Makes every nth break a longer one. Set to off to keep every break the same length."
+              hint="Makes every nth break longer. Set to Off to keep every break the same length."
               tight
             />
             <View style={styles.cadenceRow}>
@@ -351,8 +351,8 @@ export function FocusSettings() {
           iconColor={focusHideTimers ? colors.accent : undefined}
           label="Hide timers while focusing"
           hint={focusHideTimers
-            ? 'By default, the countdown is hidden everywhere a session shows one: the running session screen, the strip on Today, and the Lock Screen. The step still ends and chimes on schedule. Change it for a single session from the start screen.'
-            : 'By default, the countdown shows everywhere a session runs. Change it for a single session from the start screen.'}
+            ? 'The countdown is hidden on the running session screen, the strip on Today, and the Lock Screen. Steps still end and chime on schedule. Change it per session from the start screen.'
+            : 'The countdown shows everywhere a session runs. Change it per session from the start screen.'}
           toggle={focusHideTimers}
           onPress={() => setFocusHideTimers(!focusHideTimers)}
         />
@@ -402,7 +402,7 @@ export function FocusSettings() {
                   entryId="focusShieldApps"
                   icon="apps-outline"
                   label="Apps to block"
-                  hint="Chosen in the system picker. iOS doesn’t tell the app which ones you picked, so only the count shows here."
+                  hint="Chosen in the system picker. iOS doesn’t share which apps you picked, so only the count shows here."
                   value={shieldSelectionLabel}
                   onPress={handleChooseApps}
                 />
@@ -441,7 +441,7 @@ export function FocusSettings() {
                       entryId="penaltyShieldApps"
                       icon="apps-outline"
                       label="Apps to block"
-                      hint="The same set the focus shield uses. iOS doesn’t tell the app which ones you picked, so only the count shows here."
+                      hint="The same apps blocked during a focus session. iOS doesn’t share which apps you picked, so only the count shows here."
                       value={shieldSelectionLabel}
                       onPress={handleChooseApps}
                     />
@@ -455,7 +455,7 @@ export function FocusSettings() {
                       icon="time-outline"
                       iconColor={colors.accent}
                       label="Blocked until"
-                      hint="Turning this setting off is the only way to end it early."
+                      hint="To end this early, turn off “Block apps when you fail a task.”"
                       value={penaltyUntilLabel}
                     />
                   </>
@@ -470,7 +470,7 @@ export function FocusSettings() {
       {Platform.OS === 'ios' && (
         <SettingsSection
           label="Timers"
-          footer="Requires iOS 17. Ends the moment you pause, stop, or (for a task) complete it, or dismiss a completion timer's own reminder. Resuming a timer starts a fresh one."
+          footer="Requires iOS 17. Ends when you pause, stop, or (for a task) complete it, or dismiss a completion timer’s own reminder. Resuming a timer starts a new one."
         >
           <SettingsRow
             entryId="timerLiveActivity"

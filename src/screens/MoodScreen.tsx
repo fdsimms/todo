@@ -449,7 +449,7 @@ export function MoodScreen() {
           {
             icon: 'add-circle-outline' as const,
             onPress: openNew,
-            accessibilityLabel: 'Log how you\'re feeling',
+            accessibilityLabel: 'Log how you’re feeling',
           },
         ], screenSettings.action)}
       />
@@ -460,8 +460,8 @@ export function MoodScreen() {
         <EmptyState
           icon="happy-outline"
           title="Nothing logged yet"
-          subtitle="Record how you're feeling and anything you want to keep track of. Once there are a couple of weeks of it, this screen shows how it lines up with what you get done."
-          actionLabel="Log how you're doing"
+          subtitle="Log how you’re feeling and anything else you want to track. After a couple of weeks, it’s compared with what you get done."
+          actionLabel="Log how you’re doing"
           onAction={openNew}
         />
       ) : (
@@ -563,7 +563,7 @@ export function MoodScreen() {
               <Text style={styles.pending}>
                 {daysToGo > 0
                   ? `Keep logging. After ${daysToGo} more ${daysToGo === 1 ? 'day' : 'days'} with a mood on ${daysToGo === 1 ? 'it' : 'them'}, this compares your mood against what you got done.`
-                  : 'Not enough variation yet to compare. This fills in once your days differ a little more.'}
+                  : 'Not enough variation yet to compare. This fills in once your days differ more.'}
               </Text>
             ) : completion.strength === 'none' ? (
               <Text style={styles.finding}>
@@ -598,9 +598,9 @@ export function MoodScreen() {
             {clippedDays > 0 && (
               <Text style={styles.chartCaption}>
                 {clippedDays} earlier logged {clippedDays === 1 ? 'day is' : 'days are'} left out
-                here. Completed tasks are only kept for
-                {' '}{retentionLabel(settings.completedRetentionDays).toLowerCase()}, so there is
-                nothing left to compare those days against. Your entries are still there.
+                here. Completed tasks are kept for
+                {' '}{retentionLabel(settings.completedRetentionDays).toLowerCase()}, so those days have
+                nothing to compare against. Your entries are still there.
               </Text>
             )}
           </View>
@@ -637,7 +637,7 @@ export function MoodScreen() {
                 )}
                 <Text style={styles.chartCaption}>
                   From Apple Health, over the last {HEALTH_HISTORY_DAYS} days, counting only the
-                  {' '}days you logged. These are patterns between two numbers, not causes.
+                  {' '}days you logged. These patterns don’t show cause and effect.
                 </Text>
               </View>
             </>
@@ -674,11 +674,11 @@ export function MoodScreen() {
                     does this say fewer days than my food log does". */}
                 <Text style={styles.chartCaption}>
                   From your food log, over the last {FOOD_INSIGHT_DAYS} days, counting only the days
-                  {' '}you logged at least two meals. A day logged more thinly says less about what
-                  {' '}you ate than it looks like it does.
+                  {' '}you logged at least two meals. A day with fewer says less about what
+                  {' '}you ate.
                   {(averageCalories !== null || averageProtein !== null)
                     && ' The daily averages leave out today, which is still in progress.'}
-                  {' '}These are patterns between two numbers, not causes.
+                  {' '}These patterns don’t show cause and effect.
                 </Text>
               </View>
             </>
@@ -699,7 +699,7 @@ export function MoodScreen() {
                     withoutFraction={moodBarFraction(row.moodWithout)}
                     withText={row.moodWith.toFixed(1)}
                     withoutText={row.moodWithout.toFixed(1)}
-                    accessibilityLabel={`${row.label}, average mood ${row.moodWith.toFixed(1)} on days you had it, ${row.moodWithout.toFixed(1)} on days you didn't`}
+                    accessibilityLabel={`${row.label}, average mood ${row.moodWith.toFixed(1)} on days you had it, ${row.moodWithout.toFixed(1)} on days you didn’t`}
                   />
                 ))}
                 <Text style={styles.chartCaption}>
@@ -728,11 +728,11 @@ export function MoodScreen() {
                     // "1.8 vs 3.9" says nothing about what is being compared,
                     // and the caption carrying that is a separate element three
                     // rows down. Each row states its own comparison instead.
-                    accessibilityLabel={`${row.label}, average mood ${row.moodWith.toFixed(1)} on days you finished something in that category, ${row.moodWithout.toFixed(1)} on days you didn't`}
+                    accessibilityLabel={`${row.label}, average mood ${row.moodWith.toFixed(1)} on days you finished something in that category, ${row.moodWithout.toFixed(1)} on days you didn’t`}
                   />
                 ))}
                 <Text style={styles.chartCaption}>
-                  Your average mood on days you finished something in that category, against days you didn't.
+                  Your average mood on days you finished something in that category, against days you didn’t.
                 </Text>
               </View>
             </>
@@ -753,12 +753,12 @@ export function MoodScreen() {
                     withoutFraction={moodBarFraction(row.moodWithout)}
                     withText={row.moodWith.toFixed(1)}
                     withoutText={row.moodWithout.toFixed(1)}
-                    accessibilityLabel={`${row.label}, average mood ${row.moodWith.toFixed(1)} on the ${row.withDays} days you finished it, ${row.moodWithout.toFixed(1)} on the ${row.withoutDays} days you didn't`}
+                    accessibilityLabel={`${row.label}, average mood ${row.moodWith.toFixed(1)} on the ${row.withDays} days you finished it, ${row.moodWithout.toFixed(1)} on the ${row.withoutDays} days you didn’t`}
                   />
                 ))}
                 <Text style={styles.chartCaption}>
                   Your average mood on days you finished a repeating task, against days you
-                  didn't. Two averages side by side, not a cause.
+                  didn’t. This doesn’t show cause and effect.
                 </Text>
               </View>
             </>
@@ -783,11 +783,11 @@ export function MoodScreen() {
                       haptics.tap();
                       navigation.navigate('SymptomDetail', { symptomKey: row.key });
                     }}
-                    accessibilityLabel={`${row.label}, average mood ${row.moodWith.toFixed(1)} on days you logged it, ${row.moodWithout.toFixed(1)} on days you didn't`}
+                    accessibilityLabel={`${row.label}, average mood ${row.moodWith.toFixed(1)} on days you logged it, ${row.moodWithout.toFixed(1)} on days you didn’t`}
                   />
                 ))}
                 <Text style={styles.chartCaption}>
-                  Your average mood on days you logged it, against days you didn't.
+                  Your average mood on days you logged it, against days you didn’t.
                 </Text>
               </View>
             </>
@@ -808,11 +808,11 @@ export function MoodScreen() {
                     withoutFraction={moodBarFraction(row.moodWithout)}
                     withText={row.moodWith.toFixed(1)}
                     withoutText={row.moodWithout.toFixed(1)}
-                    accessibilityLabel={`${row.label}, average mood ${row.moodWith.toFixed(1)} on days it applied, ${row.moodWithout.toFixed(1)} on days it didn't`}
+                    accessibilityLabel={`${row.label}, average mood ${row.moodWith.toFixed(1)} on days it applied, ${row.moodWithout.toFixed(1)} on days it didn’t`}
                   />
                 ))}
                 <Text style={styles.chartCaption}>
-                  Your average mood on days a tag applied, against days it didn't.
+                  Your average mood on days a tag applied, against days it didn’t.
                 </Text>
               </View>
             </>
@@ -845,7 +845,7 @@ export function MoodScreen() {
           {symptomList.length === 0 ? (
             <View style={styles.card}>
               <Text style={styles.pending}>
-                Nothing logged yet. Add a symptom to an entry and it gets its own page here,
+                No symptoms yet. Add one to an entry and it gets its own page here,
                 with how often it happens and how bad it gets.
               </Text>
             </View>
@@ -928,7 +928,7 @@ export function MoodScreen() {
             />
             {milestoneRows.some(r => r.contrast) && (
               <Text style={styles.chartCaption}>
-                Average mood before a milestone's date, against on and after it.
+                Average mood before a milestone’s date, against on and after it.
               </Text>
             )}
           </View>
@@ -966,8 +966,8 @@ export function MoodScreen() {
       <CsvExportSheet
         visible={exportOpen}
         onClose={() => setExportOpen(false)}
-        hint={'A spreadsheet file of your entries: the day, the time, your mood, any symptoms and '
-          + 'their severity, your context tags and your notes. Nothing else from the app is included.'}
+        hint={'A spreadsheet of your entries: day, time, mood, any symptoms and '
+          + 'their severity, context tags and notes.'}
         dialogTitle="Share your mood log"
         select={from => (from === null ? logs : logsInDayRange(logs, from, null))}
         toCsv={moodExportCsv}

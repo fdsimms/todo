@@ -736,7 +736,7 @@ export function taskFieldsPatch(
           const text = formatSunAnchor(anchor);
           const clock = deps.sunClockFor?.(text, dueDate) ?? null;
           if (!clock) {
-            errors.push(`window.${key} can't follow the sun yet: no location is saved for sunrise and sunset times on that day. The person sets one in Settings, Day & time.`);
+            errors.push(`window.${key} can't follow the sun yet: no location is saved for sunrise and sunset times on that day. The person sets one in Settings, Day and time.`);
             continue;
           }
           patch[clockKey] = clock;

@@ -46,10 +46,10 @@ export function useProjectActions(project: Project | null, options: Options = {}
   const confirmDelete = () => {
     if (!project) return;
     Alert.alert(
-      `Delete "${displayTitle()}"?`,
+      `Delete “${displayTitle()}”?`,
       isList
-        ? 'Its items can stay as tasks without a list, or be deleted with it.'
-        : 'Its tasks can stay in your list without a project, or be deleted with it.',
+        ? 'Keep its items as tasks without a list, or delete them with it.'
+        : 'Keep its tasks without a project, or delete them with it.',
       [
         { text: 'Cancel', style: 'cancel' },
         { text: isList ? 'Delete list only' : 'Delete project only', onPress: () => { deleteProject(project.id, { cascade: false }); onDeleted?.(); } },
@@ -81,7 +81,7 @@ export function useProjectActions(project: Project | null, options: Options = {}
       return;
     }
     Alert.alert(
-      `Complete "${displayTitle()}"?`,
+      `Complete “${displayTitle()}”?`,
       `It still has ${remaining.length} open ${remaining.length === 1 ? 'task' : 'tasks'}.`,
       [
         { text: 'Cancel', style: 'cancel' },
@@ -129,9 +129,9 @@ export function useProjectActions(project: Project | null, options: Options = {}
     haptics.success();
     Alert.alert(
       'Saved as a template',
-      `"${draft.name}" is in Templates with its ${draft.items.length} ${draft.items.length === 1 ? 'task' : 'tasks'}${
+      `“${draft.name}” is in Templates with its ${draft.items.length} ${draft.items.length === 1 ? 'task' : 'tasks'}${
         saved.awayStart ? ', dated from the day you leave' : saved.eventDate ? ', dated from the event date' : saved.deadline ? ', dated from the deadline' : ''
-      }. Apply it from any project's add button, or from Templates.`,
+      }. Apply it from any project’s add button, or from Templates.`,
     );
   };
 
@@ -140,8 +140,8 @@ export function useProjectActions(project: Project | null, options: Options = {}
     Alert.alert(
       'Start a fresh copy?',
       isList
-        ? 'Makes a new list with the same items, all unchecked. This one stays as it is.'
-        : 'Makes a new project with the same tasks and sections, all open again and with no dates. This one stays as it is.',
+        ? 'Makes a new list with the same items, all unchecked. The original isn’t changed.'
+        : 'Makes a new project with the same tasks and sections, all open and undated. The original isn’t changed.',
       [
         { text: 'Cancel', style: 'cancel' },
         {

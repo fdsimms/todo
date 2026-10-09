@@ -433,9 +433,9 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
             {lookBack !== null && (
               <InlineAction
                 icon="close"
-                label="Don't ask later"
+                label="Don’t ask later"
                 variant="neutral"
-                accessibilityLabel="Don't add a task asking how this turned out"
+                accessibilityLabel="Don’t add a task asking how this turned out"
                 onPress={() => { haptics.tap(); setLookBack(null); }}
               />
             )}

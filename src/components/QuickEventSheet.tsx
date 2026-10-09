@@ -380,12 +380,12 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   const loadForEdit = async (target: QuickEventEditTarget) => {
     const event = await readEventForEdit(target.eventId, target.occurrenceStart);
     if (!event) {
-      Alert.alert("This event isn't on your calendar any more", 'It may have been deleted in another app.');
+      Alert.alert("This event isn’t on your calendar anymore", 'It may have been deleted in another app.');
       dismiss();
       return;
     }
     if (!event.editable) {
-      Alert.alert("This event can't be changed here", "Its calendar is read-only. Edit it in the app it came from.");
+      Alert.alert("This event can’t be changed here", "Its calendar is read-only. Edit it in the app it came from.");
       dismiss();
       return;
     }
@@ -738,7 +738,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     const suggested = typed && typed.length <= 24 && typed.toLowerCase() !== text.toLowerCase() ? typed : '';
     Alert.prompt(
       'Save place',
-      'Name it to type the name instead of the address, like "home" or "gym".',
+      'Give it a name you can type instead of the address, like “home” or “gym”.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -856,8 +856,8 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     if (!saved && isDemoModeActive()) return;
     if (!saved) {
       Alert.alert(
-        "Couldn't add the event",
-        'Check that this app can add events to your calendar in the Settings app, then try again. The event is still here.'
+        "Couldn’t add the event",
+        'Check that calendar access is on in Settings, then try again. The event is still here.'
       );
       return;
     }
@@ -934,8 +934,8 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     if (!id) {
       if (isDemoModeActive()) return;
       Alert.alert(
-        "Couldn't save the event",
-        'Check that this app can edit your calendar in the Settings app, then try again. Your changes are still here.'
+        "Couldn’t save the event",
+        'Check that calendar access is on in Settings, then try again. Your changes are still here.'
       );
       return;
     }
@@ -965,7 +965,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
               title: original.title,
             });
             if (!deleted) {
-              Alert.alert("Couldn't delete the event", 'Check that this app can edit your calendar in the Settings app, then try again.');
+              Alert.alert("Couldn’t delete the event", 'Check that calendar access is on in Settings, then try again.');
               return;
             }
             onDeleted?.();
@@ -1263,7 +1263,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
                   onPress={() => { haptics.tap(); animateLayout(); setSavedDismissedKey(savedPlaceKey(savedInUse.name)); }}
                   hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                   accessibilityRole="button"
-                  accessibilityLabel={`Use "${savedInUse.name}" as typed`}
+                  accessibilityLabel={`Use “${savedInUse.name}” as typed`}
                 >
                   <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
                 </TouchableOpacity>
@@ -1329,7 +1329,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
                     onPress={() => { haptics.tap(); animateLayout(); setRepeatPick(null); }}
                     hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                     accessibilityRole="button"
-                    accessibilityLabel="Don't repeat"
+                    accessibilityLabel="Don’t repeat"
                   >
                     <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
                   </TouchableOpacity>
@@ -1498,7 +1498,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
                   onPress={() => { haptics.tap(); animateLayout(); setMemoryDismissedKey(memoryKey); }}
                   hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                   accessibilityRole="button"
-                  accessibilityLabel="Don't fill in from last time"
+                  accessibilityLabel="Don’t fill in from last time"
                 >
                   <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
                 </TouchableOpacity>
@@ -1533,7 +1533,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
         visible={pickerVisible}
         value={rawStart}
         mode={allDay ? 'date' : 'datetime'}
-        title={allDay ? 'Date' : 'Date & time'}
+        title={allDay ? 'Date' : 'Date and time'}
         onConfirm={pickStart}
         onCancel={() => setPickerVisible(false)}
       />
@@ -1542,7 +1542,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
         title="Calendar"
         options={calendarOptions}
         selectedKey={effectiveCalendar?.id ?? null}
-        emptyText="No calendar on this device can be added to. Turn on calendar access, or add a calendar you can edit, in the Settings app."
+        emptyText="No calendar on this device can take new events. Turn on calendar access or add an editable calendar in Settings."
         onSelect={id => {
           setCalendarPick(id);
         }}

@@ -104,20 +104,20 @@ describe('gateShieldWanted', () => {
 describe('gateSubtitle', () => {
   it('names the task and where to finish it', () => {
     expect(gateSubtitle(['Morning walk']))
-      .toBe("Morning walk isn't done yet. Finish it in dundundun to unblock.");
+      .toBe("Morning walk isn’t done yet. Finish it in dundundun to unblock.");
   });
 
   it('switches to the plural verb for more than one', () => {
     // The reason this sentence is built here rather than in the extension:
-    // "isn't" against "are still to do" is what would quietly go wrong in a
+    // "isn’t" against "aren’t done yet" is what would quietly go wrong in a
     // Swift file no test can reach.
     expect(gateSubtitle(['Morning walk', 'Make bed']))
-      .toBe('Morning walk and 1 more task are still to do. Finish them in dundundun to unblock.');
+      .toBe('Morning walk and 1 more task aren’t done yet. Finish them in dundundun to unblock.');
   });
 
   it('counts the others rather than listing them', () => {
     expect(gateSubtitle(['Morning walk', 'Make bed', 'Take pills']))
-      .toBe('Morning walk and 2 more tasks are still to do. Finish them in dundundun to unblock.');
+      .toBe('Morning walk and 2 more tasks aren’t done yet. Finish them in dundundun to unblock.');
   });
 
   it('is null when there is nothing to name', () => {
@@ -126,7 +126,7 @@ describe('gateSubtitle', () => {
 
   it('ignores a blank title rather than naming an empty task', () => {
     expect(gateSubtitle(['   ', 'Make bed']))
-      .toBe("Make bed isn't done yet. Finish it in dundundun to unblock.");
+      .toBe("Make bed isn’t done yet. Finish it in dundundun to unblock.");
   });
 });
 

@@ -81,13 +81,13 @@ export function TripPlannerSheet({ visible, people, onPickPerson, onClose }: Pro
           <EmptyState
             icon="airplane-outline"
             title="Search a place"
-            subtitle="Type a city or region to see who you know there, based on the location saved on each person."
+            subtitle="Type a city or region to find people whose saved location mentions it."
           />
         ) : matches.length === 0 ? (
           <EmptyState
             icon="airplane-outline"
             title="Nobody matches"
-            subtitle="Nobody's location mentions that. Add one from a person's own page."
+            subtitle="No saved location mentions that. Add one on a person’s page."
           />
         ) : (
           <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">

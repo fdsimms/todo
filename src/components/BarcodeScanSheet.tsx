@@ -216,7 +216,7 @@ const CONTEXT_COPY: Record<ScanContext, {
     // something on the list. The title stays short so the header's longer
     // confirm doesn't crowd it.
     title: 'Scan groceries',
-    emptySubtitle: 'Point the camera at a barcode as you unpack, then mark it all as bought. Anything without one, type below.',
+    emptySubtitle: 'Scan barcodes as you unpack, then mark everything as bought. Type anything without a barcode below.',
     confirmLabel: 'Mark as bought',
     freezer: true,
     matched: name => `On your list as ${name}`,
@@ -227,7 +227,7 @@ const CONTEXT_COPY: Record<ScanContext, {
   },
   pantry: {
     title: 'Scan into pantry',
-    emptySubtitle: 'Point the camera at a barcode to add it to the pantry. Anything without one, type below.',
+    emptySubtitle: 'Scan a barcode to add it to the pantry. Type anything without a barcode below.',
     confirmLabel: 'Add',
     freezer: true,
     matched: name => `Matches \u201C${name}\u201D in your pantry`,
@@ -238,7 +238,7 @@ const CONTEXT_COPY: Record<ScanContext, {
   },
   log: {
     title: 'Scan to log',
-    emptySubtitle: 'Point the camera at a barcode to log what you ate. Anything without one, type below.',
+    emptySubtitle: 'Scan a barcode to log what you ate. Type anything without a barcode below.',
     confirmLabel: 'Next',
     // A log has no fridge and no freezer: it records that something was eaten,
     // which is the opposite of where a thing is being kept.
@@ -1316,7 +1316,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                           setPicking(null);
                           if (product) patchRow(row.key, { pickedProductId: product.id });
                         }}
-                        label={resolvedName ? `WHICH ${resolvedName.toUpperCase()}` : 'WHICH BOX'}
+                        label={resolvedName ? `WHICH ${resolvedName.toUpperCase()}` : 'WHICH PRODUCT'}
                       />
                     </View>
                   )}

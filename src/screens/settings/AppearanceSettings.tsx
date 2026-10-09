@@ -87,7 +87,7 @@ export function AppearanceSettings() {
           icon="add-circle-outline"
           iconColor={colors.accent}
           label="Add button"
-          hint="Which corner the + button rests in, on every list."
+          hint="Which corner the + button appears in on every list."
           tight
         />
         <SettingsSegments
@@ -104,8 +104,8 @@ export function AppearanceSettings() {
         entryId="typeface"
         footer={
           appFontRandomize
-            ? 'Picks one of the checked fonts at random each time you close and reopen the app.'
-            : 'Changes every screen at once. These are bundled with the app, so nothing downloads.'
+            ? 'Picks a random checked font each time you reopen the app.'
+            : 'Applies to every screen. The fonts are bundled with the app, so nothing downloads.'
         }
       >
         <SettingsRow
@@ -115,7 +115,7 @@ export function AppearanceSettings() {
           label="Randomize"
           hint={
             appFontRandomize
-              ? 'Switches to a random checked font below each time you close and reopen the app'
+              ? 'Picks a random checked font each time you reopen the app'
               : 'Always use the font selected below'
           }
           toggle={appFontRandomize}
@@ -199,7 +199,7 @@ export function AppearanceSettings() {
           iconColor={mirroringMode ? colors.accent : undefined}
           label="iPhone Mirroring"
           hint={mirroringMode
-            ? "Rows show buttons for what their swipes do, every change offers Undo, Return accepts a suggestion found in a task's title, and keyboard shortcuts are on (⌘/ lists them)"
+            ? "Shows buttons for swipe actions, offers Undo after every change, lets Return accept a suggestion found in a task’s title, and turns on keyboard shortcuts (⌘/ lists them)"
             : 'For using the app from a Mac, where you can click but not shake the phone'}
           toggle={mirroringMode}
           onPress={() => setMirroringMode(!mirroringMode)}
@@ -210,7 +210,7 @@ export function AppearanceSettings() {
           icon="musical-notes-outline"
           iconColor={beatSoundEnabled ? colors.accent : undefined}
           label="Sound when Today is clear"
-          hint="Play three notes when you finish the last task on Today. Follows the silent switch"
+          hint="Plays three notes when you finish the last task on Today. Follows the silent switch"
           toggle={beatSoundEnabled}
           onPress={() => setBeatSoundEnabled(!beatSoundEnabled)}
         />

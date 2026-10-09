@@ -127,12 +127,12 @@ export function TemplateEditor({ visible, template: liveTemplate, onClose }: Pro
     if (!template) return;
     haptics.warning();
     const referencing = findTemplatesReferencing(templates, template.id);
-    const base = `Delete "${template.name}"? Tasks already created from it are unaffected. You can shake to undo this right after.`;
+    const base = `Delete “${template.name}”? Tasks already created from it are unaffected. Shake your phone right after to undo.`;
     const message = referencing.length === 0
       ? base
       : referencing.length === 1
-        ? `${base} It's used inside "${referencing[0].name}", which will show a warning until you remove or replace the reference.`
-        : `${base} It's used inside ${referencing.length} other templates (${referencing.map(t => t.name).join(', ')}), which will show a warning until you remove or replace the reference.`;
+        ? `${base} It’s used inside “${referencing[0].name}”, which will show a warning until you remove or replace the reference.`
+        : `${base} It’s used inside ${referencing.length} other templates (${referencing.map(t => t.name).join(', ')}), which will show a warning until you remove or replace the reference.`;
     confirmDelete({
       title: 'Delete template',
       message,
@@ -263,14 +263,14 @@ export function TemplateEditor({ visible, template: liveTemplate, onClose }: Pro
           <Text style={styles.containerNote}>{CONTAINER_NOTES[container]}</Text>
           {container === 'stack' && template.itemGroups.length > 0 && (
             <Text style={styles.containerNote}>
-              This template has item groups, which already become stacks. A named run of it
-              will use a project instead, so the groups have somewhere to sit.
+              This template’s item groups already become stacks. A named run of it
+              uses a project instead to hold them.
             </Text>
           )}
           {container === 'task' && template.itemGroups.length > 0 && (
             <Text style={styles.containerNote}>
-              This template has item groups, but every item becomes a subtask here, so the
-              groups won't form stacks of their own.
+              Every item becomes a subtask here, so this template’s
+              item groups won’t form stacks.
             </Text>
           )}
         </CollapsibleField>
@@ -298,8 +298,8 @@ export function TemplateEditor({ visible, template: liveTemplate, onClose }: Pro
             <Text style={styles.optionLabel}>These dates are days away from home</Text>
             <Text style={styles.optionHint}>
               {anchorsAreAway
-                ? "A run asks for Leaving and Coming back, and the project it creates keeps them as its away dates."
-                : 'A run asks for a start and end date, and the project it creates keeps the end date as its deadline.'}
+                ? "A run asks for Leaving and Coming back, which become the project’s away dates."
+                : 'A run asks for a start and end date. The end date becomes the project’s deadline.'}
             </Text>
           </View>
           <View style={[styles.toggle, anchorsAreAway && styles.toggleOn]}>
@@ -316,7 +316,7 @@ export function TemplateEditor({ visible, template: liveTemplate, onClose }: Pro
         <CollapsibleField
           label="Applies itself"
           summary={describeTemplateSchedule(schedule, use24HourTime)}
-          hint="Create this template's tasks on a schedule. Nothing runs while the app is closed, so a run starts the next time you open the app on or after its day."
+          hint="Creates this template’s tasks on a schedule. A run starts when you next open the app on or after its day."
           expanded={scheduleOpen}
           onToggle={() => setScheduleOpen(v => !v)}
         >
@@ -370,7 +370,7 @@ export function TemplateEditor({ visible, template: liveTemplate, onClose }: Pro
                 format={n => ordinal(n)}
               />
               <Text style={styles.containerNote}>
-                A day later than a month has runs on that month's last day.
+                A day later than a month has runs on that month’s last day.
               </Text>
             </View>
           )}
@@ -417,15 +417,15 @@ export function TemplateEditor({ visible, template: liveTemplate, onClose }: Pro
                   label="Run length"
                 />
                 <Text style={styles.containerNote}>
-                  Sets the run's end date, which items can count back from and questions can
+                  Sets the run’s end date, which items can count back from and questions can
                   read as a number of nights or days.
                 </Text>
               </View>
 
               <Text style={styles.containerNote}>
-                Questions are answered with their own defaults, and optional items stay
-                unchecked, the same as opening this template and applying it without
-                changing anything.
+                Questions use their default answers, and optional items stay unchecked,
+                the same as applying this template without changing
+                anything.
               </Text>
             </>
           )}
@@ -440,7 +440,7 @@ export function TemplateEditor({ visible, template: liveTemplate, onClose }: Pro
         <Text style={styles.questionsLabel}>QUESTIONS</Text>
         <Text style={styles.containerNote}>
           Asked when you apply this template. An answer fills the blank of the same name in item
-          titles, and items can be set to be included only for some answers.
+          titles, and items can be included only for certain answers.
         </Text>
         {liveQuestions.map(question => (
           <TouchableOpacity
@@ -526,7 +526,7 @@ const CONTAINER_LABELS: Record<TemplateContainer, string> = {
 const CONTAINER_NOTES: Record<TemplateContainer, string> = {
   none: 'Tasks are added loose, and the run name only fills in {blanks}.',
   stack: 'Tasks are headed by a stack named after the run. Best for most templates.',
-  project: 'Tasks go in a project named after the run, dated from the start and end dates you give it. Best for long, multi-week ones.',
+  project: 'Tasks go in a project named after the run, dated from the start and end dates you give it. Best for multi-week templates.',
   task: 'Tasks become subtasks of one task named after the run. Best for a routine you want a single checkbox for.',
 };
 

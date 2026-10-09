@@ -46,9 +46,9 @@ struct MedicationWidgetEntryView: View {
 
     private var emptyStateMessage: String {
         switch entry.result {
-        case .noAppGroupAccess: return "Can't access shared data (App Group)"
+        case .noAppGroupAccess: return "Can’t access shared data (App Group)"
         case .noSnapshotYet: return "Open the app to get started"
-        case .decodeFailed: return "Couldn't read medication data"
+        case .decodeFailed: return "Couldn’t read medication data"
         case .success(let snapshot):
             return snapshot.medications == nil
                 ? "Open the app to get started"

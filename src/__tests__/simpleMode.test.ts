@@ -330,8 +330,8 @@ describe('hiddenResultsNote', () => {
   });
 
   it('names the Groceries & meals switch for settings and screens', () => {
-    expect(hiddenResultsNote(off, 'settings')).toContain('Groceries & meals is off');
-    expect(hiddenResultsNote(off, 'screens')).toContain('Groceries & meals is off');
+    expect(hiddenResultsNote(off, 'settings')).toContain('Groceries and meals is off');
+    expect(hiddenResultsNote(off, 'screens')).toContain('Groceries and meals is off');
   });
 
   it('ignores the Groceries & meals switch for editor fields', () => {
@@ -343,6 +343,6 @@ describe('hiddenResultsNote', () => {
   it('names both when both are hiding something', () => {
     const both = hiddenResultsNote({ simpleMode: true, kitchenEnabled: false }, 'settings');
     expect(both).toContain('Simplified mode');
-    expect(both).toContain('Groceries & meals');
+    expect(both).toContain('Groceries and meals');
   });
 });

@@ -101,7 +101,7 @@ export function TipsScreen() {
     haptics.tap();
     Alert.alert(
       'Show all tips again',
-      'Every tip becomes unread, and the app will start offering them on their screens again, one a day.',
+      'Every tip becomes unread and shows again on its screen, one a day.',
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Show again', onPress: () => resetTips() },
@@ -167,7 +167,7 @@ export function TipsScreen() {
         <EmptyState
           icon="bulb-outline"
           title="Nothing matches"
-          subtitle={`No tip mentions "${query}". Try one word instead of two.`}
+          subtitle={`No tip mentions “${query}”. Try one word instead of two.`}
           bottomOffset={tabBarHeight}
         />
       ) : (

@@ -160,15 +160,15 @@ export function parseBackup(text: string): ParseResult {
   try {
     raw = JSON.parse(text);
   } catch {
-    return { ok: false, error: "That file isn't valid JSON, so it isn't a backup this app wrote." };
+    return { ok: false, error: "That file isn’t valid JSON, so it isn’t a dundundun backup." };
   }
 
   if (!isPlainObject(raw)) {
-    return { ok: false, error: "That file doesn't look like a backup." };
+    return { ok: false, error: "That file doesn’t look like a backup." };
   }
 
   if (typeof raw.format !== 'number' || !Number.isInteger(raw.format)) {
-    return { ok: false, error: "That file doesn't look like a backup. It has no format version." };
+    return { ok: false, error: "That file doesn’t look like a backup. It has no format version." };
   }
 
   // Refusing a newer file is the whole point of carrying a version: a future
@@ -188,11 +188,11 @@ export function parseBackup(text: string): ParseResult {
   const tables: Record<string, BackupRow[]> = {};
   for (const [table, rows] of Object.entries(raw.tables)) {
     if (!Array.isArray(rows)) {
-      return { ok: false, error: `That backup's "${table}" data is damaged.` };
+      return { ok: false, error: `That backup’s “${table}” data is damaged.` };
     }
     for (const row of rows) {
       if (!isPlainObject(row) || !Object.values(row).every(isCellValue)) {
-        return { ok: false, error: `That backup's "${table}" data is damaged.` };
+        return { ok: false, error: `That backup’s “${table}” data is damaged.` };
       }
     }
     tables[table] = rows as BackupRow[];
@@ -203,7 +203,7 @@ export function parseBackup(text: string): ParseResult {
   let images: Record<string, string> = {};
   if (raw.images !== undefined) {
     if (!isPlainObject(raw.images) || !Object.values(raw.images).every(v => typeof v === 'string')) {
-      return { ok: false, error: 'That backup\'s image data is damaged.' };
+      return { ok: false, error: 'That backup’s image data is damaged.' };
     }
     images = raw.images as Record<string, string>;
   }

@@ -41,7 +41,7 @@ describe('the row itself', () => {
     // This row shows up on the widget, in Search and in the Logbook, none of
     // which render a meta line — "Pantry" alone would read as a task to go and
     // do something to the pantry.
-    expect(PANTRY_REVIEW_TITLE).toBe("Review what's in the pantry");
+    expect(PANTRY_REVIEW_TITLE).toBe("Review what’s in the pantry");
   });
 
   it('links to the pantry with the deck asked for', () => {

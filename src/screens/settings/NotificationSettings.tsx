@@ -164,7 +164,7 @@ export function NotificationSettings() {
       refreshNotifPermission();
       alertPermissionOff(
         'Notifications are turned off',
-        'The daily agenda needs notification permission. Turn it on for this app in the Settings app, then try again.',
+        'The daily agenda needs notification permission. Turn it on in Settings, then try again.',
       );
       return;
     }
@@ -189,7 +189,7 @@ export function NotificationSettings() {
       refreshNotifPermission();
       alertPermissionOff(
         'Notifications are turned off',
-        'The trip reminder needs notification permission. Turn it on for this app in the Settings app, then try again.',
+        'The trip reminder needs notification permission. Turn it on in Settings, then try again.',
       );
       return;
     }
@@ -205,7 +205,7 @@ export function NotificationSettings() {
     <>
     <SettingsSection
       label="Notifications"
-      footer="Reminders and the agenda are delivered by the system, so they need its permission. The agenda counts what's due, carried over from earlier days, and deadlined for that day. Nothing is sent on a day with none of those. An empty summary isn't worth a notification. It's rebuilt each time you open the app, so leaving the app closed for days pauses it rather than sending a stale count."
+      footer="Reminders and the daily agenda need notification permission. The agenda counts tasks due that day, carried over from earlier days, or with a deadline that day, and isn’t sent when there are none. It pauses if you don’t open the app for days."
     >
       {/* Nothing surfaced the permission before, so a declined prompt
           just looked like reminders were broken. */}
@@ -219,9 +219,9 @@ export function NotificationSettings() {
         }
         label="Reminders"
         hint={
-          notifPermission === 'granted' ? 'Allowed. Reminders will arrive'
-          : notifPermission === 'denied' ? 'Blocked. Reminders you set will never arrive until you turn them back on for this app.'
-          : notifPermission === 'undetermined' ? 'Not enabled yet. Reminders you set won’t arrive until you allow them'
+          notifPermission === 'granted' ? 'Allowed'
+          : notifPermission === 'denied' ? 'Blocked. Reminders won’t arrive until you allow notifications in Settings'
+          : notifPermission === 'undetermined' ? 'Not enabled yet. Reminders won’t arrive until you allow them'
           : notifPermission === 'unsupported' ? 'Not available on this platform'
           : 'Checking…'
         }
@@ -237,7 +237,7 @@ export function NotificationSettings() {
         }
         accessibilityLabel={
           notifPermission === 'granted' ? 'Reminders are allowed'
-          : notifPermission === 'denied' ? 'Reminders are blocked. Opens the system Settings app.'
+          : notifPermission === 'denied' ? 'Reminders are blocked. Opens Settings.'
           : notifPermission === 'undetermined' ? 'Reminders not enabled yet. Double tap to allow.'
           : 'Reminder permission'
         }
@@ -300,7 +300,7 @@ export function NotificationSettings() {
             iconColor={dailyAgendaSpoken ? colors.accent : undefined}
             label="Read it aloud"
             hint={dailyAgendaSpoken
-              ? 'Tapping the notification reads the agenda out'
+              ? 'Tapping the notification reads the agenda aloud'
               : 'Tapping the notification opens the app without sound'}
             toggle={dailyAgendaSpoken}
             onPress={() => setDailyAgendaSpoken(!dailyAgendaSpoken)}
@@ -332,8 +332,8 @@ export function NotificationSettings() {
         iconColor={quietHoursEnabled ? colors.accent : undefined}
         label="Quiet hours"
         hint={quietHoursEnabled
-          ? 'A reminder or daily agenda in this window waits until it ends; a timer alarm in it is skipped'
-          : 'Reminders, the daily agenda and timer alarms can arrive at any hour'}
+          ? 'Reminders and the daily agenda wait until this window ends. Timer alarms in it are skipped'
+          : 'Reminders, the daily agenda and timer alarms arrive at any hour'}
         toggle={quietHoursEnabled}
         onPress={() => onToggleQuietHours(!quietHoursEnabled)}
       />
@@ -379,7 +379,7 @@ export function NotificationSettings() {
             entryId="quietHoursFromAwake"
             icon="speedometer-outline"
             label="Set from awake hours"
-            hint="Sets quiet hours to the inverse of your awake hours, as set in Day & time."
+            hint="Sets quiet hours to the hours outside your awake hours in Day and time."
             onPress={matchAwakeHours}
           />
         </>
@@ -389,7 +389,7 @@ export function NotificationSettings() {
 
     <SettingsSection
         label="Default reminder"
-        footer="Only applies when a task has an actual start time, not just a due date or a morning, afternoon or evening setting. A reminder before the day has even started isn't useful. It never overrides a reminder you set or cleared yourself."
+        footer="Applies to tasks with a start time. Tasks with only a due date or a time of day get no default reminder. A reminder you set or cleared yourself is left as is."
       >
         <SettingsRow
           entryId="defaultReminderLead"
@@ -397,7 +397,7 @@ export function NotificationSettings() {
           iconColor={defaultReminderLeadMinutes === null ? undefined : colors.accent}
           label="Remind me before"
           hint={defaultReminderLeadMinutes === null
-            ? 'Off. Set Remind Me by hand on each task'
+            ? 'Off. Set a reminder on each task yourself'
             : `New start times get a reminder ${DEFAULT_REMINDER_LEAD_OPTIONS.find(o => o.value === defaultReminderLeadMinutes)?.label.toLowerCase() ?? ''} early`}
           tight
         />

@@ -61,7 +61,7 @@ export function SavedPlacesRows() {
         icon="bookmark-outline"
         iconColor={places.length > 0 ? colors.accent : undefined}
         label="Saved places"
-        hint="Type a name in a new event's location to fill in its address."
+        hint="Type a name in a new event’s location to fill in its address."
         value={places.length > 0 ? String(places.length) : undefined}
         expanded={open}
         onPress={() => { animateLayout(); setOpen(v => !v); }}

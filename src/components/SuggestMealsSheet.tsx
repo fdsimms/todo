@@ -492,9 +492,9 @@ export function SuggestMealsSheet({
           dayIndex += 1;
         } catch (e) {
           const message = e instanceof Error && e.message === 'IDEA_NAME_EMPTY'
-            ? 'That name didn’t survive. Try regenerating.'
+            ? 'The meal name was empty. Try again.'
             : e instanceof Error && e.message === 'IDEA_SAVE_FAILED'
-              ? 'Couldn’t save that to your recipe box.'
+              ? 'Couldn’t save to your recipe box. Try again.'
               : describeAIError(e);
           errors.set(item.key, message);
         }
@@ -601,7 +601,7 @@ export function SuggestMealsSheet({
     const caption = landedDay
       ? `Planned for ${format(landedDay, 'EEEE')}${late ? ' · past its use-by' : ''}`
       : isSelected && previewDay
-        ? `Selected, will land on ${format(previewDay, 'EEEE')}${late ? ' · past its use-by' : ''}`
+        ? `Selected for ${format(previewDay, 'EEEE')}${late ? ' · past its use-by' : ''}`
         : describeLeftover(leftover);
     const disabled = saving || !!landedDay || (!isSelected && capacityFull);
     return (
@@ -663,7 +663,7 @@ export function SuggestMealsSheet({
             {landedDay
               ? `Planned for ${format(landedDay, 'EEEE')}`
               : isSelected && previewDay
-                ? `Selected, will land on ${format(previewDay, 'EEEE')}`
+                ? `Selected for ${format(previewDay, 'EEEE')}`
                 : describeRecipe(recipe, null, { sharedName: sharedNames.has(recipe.nameKey) })}
           </Text>
           {!landedDay && (pantryLabel || cookHistory) && (
@@ -733,8 +733,8 @@ export function SuggestMealsSheet({
             {landedDay
               ? `Planned for ${format(landedDay, 'EEEE')} · saved to your recipe box`
               : isSelected && previewDay
-                ? `Selected, will land on ${format(previewDay, 'EEEE')} and save to your recipe box`
-                : (idea.blurb || 'A new idea. Accepting it adds it to your recipe box.')}
+                ? `Selected for ${format(previewDay, 'EEEE')} · saves to your recipe box`
+                : (idea.blurb || 'A new idea. Saving adds it to your recipe box.')}
           </Text>
           {!landedDay && (
             <View style={styles.signalRow}>
@@ -786,8 +786,8 @@ export function SuggestMealsSheet({
         {ideas.length === 0 && !generateError && (
           <Text style={styles.sectionHint}>
             {recipes.length === 0
-              ? 'Nothing in your recipe box fits this week, so Claude can invent a few meals instead. Picking one saves it as a real recipe when you Save.'
-              : 'Want something you haven’t made before? Claude can invent a few. Picking one saves it as a real recipe when you Save.'}
+              ? 'Nothing in your recipe box fits this week, but Claude can suggest meals. Picks are saved as recipes when you Save.'
+              : 'Claude can suggest meals you haven’t made before. Picks are saved as recipes when you Save.'}
           </Text>
         )}
 
@@ -916,7 +916,7 @@ export function SuggestMealsSheet({
             <EmptyState
               icon="restaurant-outline"
               title="Nothing to suggest"
-              subtitle="None of your recipes share enough with what's in your grocery catalog yet."
+              subtitle="None of your recipes share enough with what’s in your grocery catalog yet."
             />
           </View>
         ) : nothingForFilter ? (
@@ -960,7 +960,7 @@ export function SuggestMealsSheet({
               </View>
             )}
             {noOpenNights ? (
-              <Text style={styles.intro}>There's no open night left this week.</Text>
+              <Text style={styles.intro}>There’s no open night left this week.</Text>
             ) : capacityFull ? (
               // Says why the rows have gone quiet. Reachable two ways: every
               // open night already has a pick, or a partial Save landed the
@@ -970,7 +970,7 @@ export function SuggestMealsSheet({
               </Text>
             ) : filteredRecipes.length > 0 && (
               <Text style={styles.intro}>
-                Made from what's already in your grocery catalog. Tap to pick, then Save to plan them.
+                Made from what’s already in your grocery catalog. Tap to pick, then Save to plan them.
               </Text>
             )}
             {suggestions.map((item: MealSuggestion) => (

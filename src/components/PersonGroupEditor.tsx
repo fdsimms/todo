@@ -72,7 +72,7 @@ export function PersonGroupEditor({ visible, person, onClose }: Props) {
     if (!currentGroup) return;
     Alert.alert(
       `Delete ${currentGroup.name}?`,
-      'Nobody in it is deleted. They just stop sharing one reminder and one tag.',
+      'Nobody in it is deleted. They stop sharing one reminder and one tag.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -170,7 +170,7 @@ export function PersonGroupEditor({ visible, person, onClose }: Props) {
           </TouchableOpacity>
         </View>
         <Text style={styles.sectionFooter}>
-          Everyone here can be tagged together with a single "@" mention. Reminders still only apply to people who have a reminder cadence set.
+          One “@” mention tags everyone here. Reminders apply only to people who have a reminder cadence set.
         </Text>
       </EditorSheet>
     );
@@ -218,7 +218,7 @@ export function PersonGroupEditor({ visible, person, onClose }: Props) {
         accessibilityRole="button"
         accessibilityLabel={`Add ${displayNameOf(person)} to a new group`}
       >
-        <Text style={styles.createButtonText}>Create & add {displayNameOf(person)}</Text>
+        <Text style={styles.createButtonText}>Create and add {displayNameOf(person)}</Text>
       </TouchableOpacity>
 
       {groups.length > 0 && (

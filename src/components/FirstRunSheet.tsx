@@ -70,7 +70,7 @@ export function FirstRunSheet({ visible, onClose, rerun = false }: Props) {
     if ((await getNotificationPermission()) === 'denied') {
       alertPermissionOff(
         'Notifications are turned off',
-        'Reminders need notification permission. Turn it on for this app in the Settings app, then try again.',
+        'Reminders need notification permission. Turn it on in Settings, then try again.',
       );
       return;
     }
@@ -108,11 +108,11 @@ export function FirstRunSheet({ visible, onClose, rerun = false }: Props) {
         </View>
         <View style={styles.body}>
           <Text style={styles.hint}>
-            Three questions to start from. You can change any of them later in Settings.
+            Three setup questions. You can change any answer later in Settings.
           </Text>
 
           <View style={styles.question}>
-            <Text style={styles.label}>Groceries & meals</Text>
+            <Text style={styles.label}>Groceries and meals</Text>
             <Text style={styles.help}>A shopping list, recipes and a meal plan.</Text>
             <SegmentedControl
               label="Groceries and meals"
@@ -137,7 +137,7 @@ export function FirstRunSheet({ visible, onClose, rerun = false }: Props) {
 
           <View style={styles.question}>
             <Text style={styles.label}>Reminders</Text>
-            <Text style={styles.help}>Lets the app send a notification when a task has a reminder.</Text>
+            <Text style={styles.help}>Sends a notification when a task has a reminder.</Text>
             <SegmentedControl
               label="Reminders"
               options={YES_NO}

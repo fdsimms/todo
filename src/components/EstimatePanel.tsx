@@ -672,7 +672,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
       if (grams !== null && grams !== amount.baseline) change = { grams };
     }
 
-    const unmeasured = { error: 'That amount can\'t be measured for this food, so nothing was logged.' };
+    const unmeasured = { error: 'That amount can’t be measured for this food, so nothing was logged.' };
     if (staged.kind === 'recall') return recalledHelping(staged.food, change, at) ?? unmeasured;
 
     const food = staged.food;
@@ -774,7 +774,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
         mealPlanEntryId: mealPlanEntryId ?? null,
         at,
       });
-    if (!written) { haptics.error(); return 'Couldn\'t log this. Try again.'; }
+    if (!written) { haptics.error(); return 'Couldn’t log this. Try again.'; }
 
     haptics.success();
     Keyboard.dismiss();
@@ -1040,7 +1040,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
             ask.kind === 'none'
               // Nothing to change, so the line says why rather than showing a
               // field that would be ignored.
-              ? `Logs ${preview.quantity}. Its figures can't be measured at another weight.`
+              ? `Logs ${preview.quantity}. Its figures can’t be measured at another weight.`
               : `${kcal !== undefined ? `${Math.round(kcal).toLocaleString()} cal` : 'No calories stated'}, ${preview.quantity}`
           )}
           error={pendingError}
@@ -1095,7 +1095,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
 
           {hasOffers && !estimate && (
             <>
-              <Text style={styles.label}>YOU'VE HAD THIS BEFORE</Text>
+              <Text style={styles.label}>YOU’VE HAD THIS BEFORE</Text>
               <View style={styles.offerList}>
                 {staged.map(renderStagedRow)}
                 {/* A recipe is logged in servings, a question this sheet
@@ -1160,8 +1160,8 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
 
           {!trimmed && !estimate && (
             <Text style={styles.listHint}>
-              Type what you ate in the search field. Anything you've logged before shows up
-              here, and anything new can be estimated.
+              Type what you ate. Foods you’ve logged before show up here, and new ones
+              can be estimated.
             </Text>
           )}
 
@@ -1256,7 +1256,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
                   <Text style={styles.hint}>
                     {shown.length === NUTRIENT_KEYS.length
                       ? 'Every nutrient stated.'
-                      : `${shown.length} of ${NUTRIENT_KEYS.length} nutrients stated. The rest are unknown rather than zero.`}
+                      : `${shown.length} of ${NUTRIENT_KEYS.length} nutrients stated. The rest are unknown.`}
                   </Text>
                   {/* The same total, split into pieces small enough to check
                       against what you'd guess yourself rather than taken whole. */}
@@ -1272,7 +1272,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
               )}
 
               {savedRecipeId ? (
-                <Text style={styles.hint}>Saved to your recipe box, so you can log this again later.</Text>
+                <Text style={styles.hint}>Saved to your recipe box. You can log it again.</Text>
               ) : (
                 <InlineAction
                   label="Save as a recipe"

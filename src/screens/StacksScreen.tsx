@@ -158,8 +158,8 @@ export function StacksScreen() {
     // members anywhere in the selection, offering a cascade choice would ask
     // the user to weigh a consequence that doesn't exist.
     const anyMembers = ids.some(id => (rostersByGroupId.get(id)?.length ?? 0) > 0);
-    const stackWord = ids.length === 1 ? 'Stack' : 'Stacks';
-    const possessive = ids.length === 1 ? 'Its' : 'Their';
+    const stackWord = ids.length === 1 ? 'stack' : 'stacks';
+    const possessive = ids.length === 1 ? 'its' : 'their';
     haptics.warning();
     const deleteThenClose = (cascade: boolean) => () => {
       animateLayout();
@@ -168,13 +168,13 @@ export function StacksScreen() {
     };
     Alert.alert(
       `Delete ${ids.length} ${stackWord}?`,
-      `You're about to delete ${ids.length} ${ids.length === 1 ? 'stack' : 'stacks'}. You can undo this by shaking your phone right after.`,
+      `This deletes ${ids.length} ${ids.length === 1 ? 'stack' : 'stacks'}. Shake your phone right after to undo.`,
       anyMembers
         ? [
             { text: 'Cancel', style: 'cancel' },
-            { text: `Delete ${stackWord} Only`, onPress: deleteThenClose(false) },
+            { text: `Delete ${stackWord} only`, onPress: deleteThenClose(false) },
             {
-              text: `Delete ${stackWord} and All ${possessive} Tasks`,
+              text: `Delete ${stackWord} and all ${possessive} tasks`,
               style: 'destructive',
               onPress: deleteThenClose(true),
             },
@@ -215,7 +215,7 @@ export function StacksScreen() {
         <EmptyState
           icon="layers-outline"
           title="No stacks yet"
-          subtitle="Group tasks that belong together, like a morning routine or a trip to pack for. Each one keeps its own schedule, but they show up together on Today."
+          subtitle="Group tasks that belong together, like a morning routine. Each task keeps its own schedule, and they show up together on Today."
           actionLabel="New stack"
           onAction={startNaming}
           bottomOffset={tabBarHeight}

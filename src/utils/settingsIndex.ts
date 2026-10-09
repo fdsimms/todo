@@ -75,7 +75,7 @@ export interface SettingsGroup {
    *
    * A whole group appearing and disappearing is a much plainer account of what
    * the master switch does than the previous arrangement, where a third of the
-   * Tasks & projects screen silently changed length. It also means the rows
+   * Tasks and projects screen silently changed length. It also means the rows
    * inside need no `kitchen` flag of their own: the group gate drops them, so
    * flagging them again would be a second copy of one answer.
    *
@@ -97,15 +97,15 @@ export interface SettingsGroup {
 }
 
 export const SETTINGS_GROUPS: SettingsGroup[] = [
-  // First, not filed under Tasks & projects where it used to sit: these two
+  // First, not filed under Tasks and projects where it used to sit: these two
   // switches decide what the rest of the app even shows (a tab, a drawer hub,
   // every SIMPLE_FEATURES row), so they want to be found before the group
   // whose size they were adding to, not after eleven other sections of it.
-  // Purple because they were split out of Tasks & projects, which keeps it —
+  // Purple because they were split out of Tasks and projects, which keeps it —
   // the two groups aren't adjacent, so the reuse doesn't read as an accident.
   { id: 'featureAreas', title: 'Feature areas', icon: 'apps-outline', tint: 'purple' },
   { id: 'appearance', title: 'Appearance', icon: 'color-palette-outline', tint: 'accent' },
-  { id: 'dayTime', title: 'Day & time', icon: 'sunny-outline', tint: 'orange' },
+  { id: 'dayTime', title: 'Day and time', icon: 'sunny-outline', tint: 'orange' },
   { id: 'notifications', title: 'Notifications', icon: 'notifications-outline', tint: 'red' },
   // The two EventKit integrations were one group of 31 settings, with seven
   // sections between them. They are two subjects (what comes in from Reminders
@@ -113,13 +113,13 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
   // still share a framework, a platform gate and the same caveat (no change
   // notification, so both refresh on foreground), so they sit side by side.
   // The id stays `capture`: it is what a saved route or link already names.
-  { id: 'capture', title: 'Reminders & Siri', icon: 'download-outline', tint: 'green', iosOnly: true },
+  { id: 'capture', title: 'Reminders and Siri', icon: 'download-outline', tint: 'green', iosOnly: true },
   { id: 'calendar', title: 'Calendar', icon: 'calendar-outline', tint: 'orange', iosOnly: true },
-  { id: 'tasksProjects', title: 'Tasks & projects', icon: 'checkbox-outline', tint: 'purple' },
+  { id: 'tasksProjects', title: 'Tasks and projects', icon: 'checkbox-outline', tint: 'purple' },
   // Focus sessions, app blocking and the timers' Lock Screen activity: 17 rows
-  // that were the biggest section of Tasks & projects.
-  { id: 'focus', title: 'Focus & app blocking', icon: 'timer-outline', tint: 'accent' },
-  // Its own group rather than one section of fourteen inside Tasks & projects,
+  // that were the biggest section of Tasks and projects.
+  { id: 'focus', title: 'Focus and app blocking', icon: 'timer-outline', tint: 'accent' },
+  // Its own group rather than one section of fourteen inside Tasks and projects,
   // which is where half that screen's rows were. It answers the question people
   // actually have about these (*what writes tasks into my list*), and it grows
   // every time a generator ships. It is also no longer in Settings at all: it
@@ -139,12 +139,12 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
   // Red repeats Notifications', three groups up in the list Settings draws, and
   // the rule is only that a repeat never lands next to its own other instance.
   { id: 'health', title: 'Apple Health', icon: 'heart-outline', tint: 'red', iosOnly: true },
-  { id: 'kitchen', title: 'Groceries & meals', icon: 'cart-outline', tint: 'orange', kitchenOnly: true },
+  { id: 'kitchen', title: 'Groceries and meals', icon: 'cart-outline', tint: 'orange', kitchenOnly: true },
   // Neutral from here down: the tinted groups are things you configure, the grey
   // ones are housekeeping. There are only five tints and six tinted groups in
   // Settings' own list, so one repeats, and so does red — the rule is that a repeat never lands *next to* its own other
   // instance, since adjacency is what reads as an accident rather than as a
-  // category. Day & time and Groceries & meals are four rows apart.
+  // category. Day and time and Groceries and meals are four rows apart.
   //
   // Permissions is read-only accounting rather than a thing you configure —
   // every row here is a status and a link to fix it elsewhere (this app's own
@@ -152,8 +152,8 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
   // rest), never a switch of its own — which is what puts it here rather than
   // beside Health above.
   { id: 'permissions', title: 'App permissions', icon: 'shield-checkmark-outline', tint: 'neutral' },
-  { id: 'privacyAi', title: 'Privacy & AI', icon: 'lock-closed-outline', tint: 'neutral' },
-  { id: 'dataReset', title: 'Data & reset', icon: 'archive-outline', tint: 'neutral' },
+  { id: 'privacyAi', title: 'Privacy and AI', icon: 'lock-closed-outline', tint: 'neutral' },
+  { id: 'dataReset', title: 'Data and reset', icon: 'archive-outline', tint: 'neutral' },
   { id: 'about', title: 'About', icon: 'information-circle-outline', tint: 'neutral' },
 ];
 
@@ -451,7 +451,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'tipsEnabled', groupId: 'appearance', label: 'Tips', section: 'Feedback',
     keywords: ['tutorial', 'onboarding', 'learn', 'discover', 'banner', 'suggestion', 'help'] },
 
-  // Day & time
+  // Day and time
   { id: 'dayReset', groupId: 'dayTime', label: 'Day starts', section: 'When the day turns over',
     keywords: ['morning', 'day reset', 'rollover', 'today', 'streaks', 'midnight'] },
   { id: 'afternoon', groupId: 'dayTime', label: 'Afternoon starts', section: 'When the day turns over' },
@@ -500,7 +500,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // The meal-plan nudge used to sit here, on the grounds that it fires on a
   // schedule. It writes a *task*, though, not a notification, which is the
   // thing it has in common with the other three generators — so it moved to
-  // "Automatic tasks" in Tasks & projects (#1524).
+  // "Automatic tasks" in Tasks and projects (#1524).
 
   // Capture from Reminders (iOS)
   { id: 'remindersImport', groupId: 'capture', label: 'Import from Reminders', section: 'Apple Reminders',
@@ -627,7 +627,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'permNotifications', groupId: 'permissions', label: 'Notifications', section: 'App permissions',
     keywords: ['permission', 'alerts', 'reminders', 'badges', 'reset'] },
 
-  // ── Tasks & projects ──────────────────────────────────────────────────────
+  // ── Tasks and projects ──────────────────────────────────────────────────────
   // In the order the screen renders them, which the registry's own comment
   // promises ("equal-scoring rows come back in the order you'd scroll past
   // them") and had stopped keeping: New tasks and Projects were written here
@@ -772,8 +772,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // The master switch for the groceries/recipes/meal plan area. Unflagged, and
   // has to stay that way — a row that hid itself when switched off would be a
   // setting with no way back, which is now also why it can't live in the
-  // Groceries & meals group its rows moved to.
-  { id: 'kitchenEnabled', groupId: 'featureAreas', label: 'Groceries & meals', section: 'Feature areas',
+  // Groceries and meals group its rows moved to.
+  { id: 'kitchenEnabled', groupId: 'featureAreas', label: 'Groceries and meals', section: 'Feature areas',
     keywords: ['grocery', 'recipes', 'meal plan', 'shopping', 'food', 'cooking',
       'hide', 'remove', 'disable', 'turn off', 'menu', 'drawer', 'tab bar'] },
   // The first-launch questions again. Unflagged like its neighbours: it is the
@@ -840,7 +840,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['meal plan', 'away', 'trip', 'pause'], kitchen: true },
   { id: 'mealPlanNudgeSlots', requires: 'gen:mealPlanNudge', groupId: 'generated', label: 'Meals to plan for', section: 'Plan meals for the week',
     keywords: ['meal plan', 'breakfast', 'lunch', 'dinner', 'snack', 'which meals', 'only dinner'], kitchen: true },
-  { id: 'calendarReviewTimeSegment', requires: 'gen:calendarReview', groupId: 'generated', label: 'Show the task', section: 'Review tomorrow\'s calendar',
+  { id: 'calendarReviewTimeSegment', requires: 'gen:calendarReview', groupId: 'generated', label: 'Show the task', section: 'Review tomorrow’s calendar',
     keywords: ['morning', 'afternoon', 'evening', 'night', 'time of day', 'hold back', 'when'] },
   { id: 'moodLogTimeSegments', requires: 'gen:moodLog', groupId: 'generated', label: 'Show the task', section: 'Daily mood check-in',
     keywords: ['morning', 'afternoon', 'evening', 'night', 'time of day', 'hold back', 'when',
@@ -886,11 +886,11 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'clearGtinLookups', requires: 'productLookupEnabled', groupId: 'privacyAi', label: 'Forget saved barcodes', section: 'Barcode lookups',
     keywords: ['cache', 'clear', 'reset', 'wrong name', 'upc', 'gtin', 'scan again'], kitchen: true, simple: true },
 
-  // ── Groceries & meals ─────────────────────────────────────────────────────
+  // ── Groceries and meals ─────────────────────────────────────────────────────
   // No `kitchen` flags below: the group itself is `kitchenOnly`, so the group
   // gate drops every one of these and flagging them again would be a second
   // copy of one answer. `simple` still applies — that's a different switch.
-  { id: 'mealsOnToday', groupId: 'kitchen', label: 'Show the day\'s meals', section: 'Meals on Today',
+  { id: 'mealsOnToday', groupId: 'kitchen', label: 'Show the day’s meals', section: 'Meals on Today',
     keywords: ['meal plan', 'dinner', 'menu', 'today', 'hide meals', 'leftovers', 'takeaway'] },
   { id: 'cookRecapEnabled', groupId: 'kitchen', label: 'Ask after cooking', section: 'Meals on Today',
     keywords: ['rate', 'rating', 'review', 'leftovers', 'used up', 'out of', 'sheet', 'prompt', 'cooked'] },
@@ -911,9 +911,9 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     simple: true },
   { id: 'runningLowAddsToList', groupId: 'kitchen', label: 'Running low adds to the list', section: 'Pantry',
     keywords: ['nearly out', 'almost out', 'shopping list', 'pantry', 'buy', 'automatic', 'grocery'] },
-  { id: 'unitSystem', groupId: 'kitchen', label: 'Units', section: 'Recipe & grocery amounts',
+  { id: 'unitSystem', groupId: 'kitchen', label: 'Units', section: 'Recipe and grocery amounts',
     keywords: ['metric', 'imperial', 'convert', 'grams', 'ounces', 'pounds', 'cups', 'millilitres', 'measurement'] },
-  { id: 'currencySymbol', groupId: 'kitchen', label: 'Currency', section: 'Recipe & grocery amounts',
+  { id: 'currencySymbol', groupId: 'kitchen', label: 'Currency', section: 'Recipe and grocery amounts',
     keywords: ['price', 'cost', 'money', 'symbol', 'dollar', 'pound', 'euro', 'yen', 'grocery'] },
   // The row is a count and a way in; the rules themselves live on the links.
   // Keyworded for what someone would actually type when a recipe surprised
@@ -933,7 +933,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['ai', 'claude', 'suggestions'] },
   ...AI_FEATURE_ENTRIES,
 
-  // Data & reset
+  // Data and reset
   { id: 'syncEnabled', groupId: 'dataReset', label: 'Sync with iCloud', section: 'Sync',
     keywords: ['devices', 'mac', 'laptop', 'phone', 'across', 'same'] },
   { id: 'syncNow', requires: ['syncEnabled', 'syncServerToken'], groupId: 'dataReset', label: 'Sync now', section: 'Sync',
@@ -963,7 +963,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
 
   // About
   { id: 'version', groupId: 'about', label: 'Version', section: 'About', keywords: ['build'] },
-  { id: 'patchNotes', groupId: 'about', label: "What's New", section: 'About',
+  { id: 'patchNotes', groupId: 'about', label: "What’s New", section: 'About',
     keywords: ['changelog', 'patch notes', 'updates', 'release'] },
   { id: 'tabDiagnostics', groupId: 'about', label: 'Show tab diagnostics', section: 'About',
     keywords: ['debug', 'blank screen'] },

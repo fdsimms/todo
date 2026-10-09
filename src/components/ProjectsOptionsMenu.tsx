@@ -116,7 +116,7 @@ export function ProjectsOptionsMenu({
             <View style={styles.optionContent}>
               <Text style={[styles.optionLabel, filter === 'completed' && styles.optionLabelActive]}>Completed projects</Text>
               <Text style={styles.optionHint}>
-                {completedCount > 0 ? `${completedCount} completed` : 'None marked complete yet'}
+                {completedCount > 0 ? `${completedCount} completed` : 'None completed yet'}
               </Text>
             </View>
             {filter === 'completed' && <Ionicons name="checkmark" size={18} color={colors.accent} />}
@@ -196,7 +196,7 @@ export function ProjectsOptionsMenu({
               <Text style={styles.optionHint}>
                 {categoryCount > 0
                   ? `Rename, reorder or delete the ${categoryCount === 1 ? 'one you have' : `${categoryCount} you have`}`
-                  : 'Group projects under headings of your own'}
+                  : 'Group projects under your own headings'}
               </Text>
             </View>
             <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />

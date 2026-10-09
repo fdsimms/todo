@@ -120,7 +120,7 @@ import { alertPermissionOff } from '../../utils/permissionAlert';
  * Every task the app writes without being asked, in one section.
  *
  * These used to be four unrelated rows in four places — "Meals on Today",
- * "Use-up reminders" and "Leftovers" in Tasks & projects, and "Meal planning"
+ * "Use-up reminders" and "Leftovers" in Tasks and projects, and "Meal planning"
  * over in Notifications — each with its own header, its own footer paragraph
  * and its own copy of the same on/off + "file them under" pair. Nowhere did the
  * app answer the one question a person actually has about them, which is *what
@@ -190,7 +190,7 @@ export function GeneratedTasksSection() {
   const calendarsById = useCalendarStore(state => state.calendarsById);
 
   // Built here rather than handed down, now that this is a screen of its own
-  // rather than a section inside Tasks & projects. Not a segmented control: the
+  // rather than a section inside Tasks and projects. Not a segmented control: the
   // categories are the user's own and there can be fifteen, which is
   // `PillGroup`'s job (it caps and filters) and not a track's. `None` is
   // `pinned` — the option meaning "no choice" is never buried behind "N more".
@@ -215,7 +215,7 @@ export function GeneratedTasksSection() {
   // ==== listing ====
   // The kitchen's generators go with the area, the way every other kitchen row
   // does — but the other six stay, which is the whole point of the flag living
-  // on the registry. This section used to sit inside Tasks & projects' own
+  // on the registry. This section used to sit inside Tasks and projects' own
   // `{kitchenEnabled && …}` block, so switching the area off took all twelve
   // rows away while six of the generators behind them kept writing tasks.
   const listed = useMemo(() => listedGeneratedKinds(s.kitchenEnabled), [s.kitchenEnabled]);
@@ -436,15 +436,15 @@ export function GeneratedTasksSection() {
       return `A stack appears ${WEEKDAY_NAMES[s.mealPlanNudgeWeekday]} at ${formatHHMM(s.mealPlanNudgeTime)}, with a task for each day of that week to plan its meals`;
     }
     if (spec.kind === 'calendarReview' && s.calendarReviewTimeSegment) {
-      return `Adds a task each day, held back until ${s.calendarReviewTimeSegment}, to review tomorrow's events`;
+      return `Adds a task each day, held back until ${s.calendarReviewTimeSegment}, to review tomorrow’s events`;
     }
     if (spec.kind === 'moodLog' && s.moodLogTimeSegments.length > 0) {
       const segmentNames = s.moodLogTimeSegments.map(seg =>
         timeSegmentChoices.find(o => o.value === seg)?.label.toLowerCase() ?? seg
       );
       return s.moodLogTimeSegments.length === 1
-        ? `Adds one task a day, held back until ${segmentNames[0]}, to log how you're feeling`
-        : `Adds a task each of these times a day, to log how you're feeling: ${segmentNames.join(', ')}`;
+        ? `Adds one task a day, held back until ${segmentNames[0]}, to log how you’re feeling`
+        : `Adds a task at each of these times to log how you’re feeling: ${segmentNames.join(', ')}`;
     }
     if (spec.kind === 'journalLog' && s.journalLogTimeSegments.length > 0) {
       const segmentNames = s.journalLogTimeSegments.map(seg =>
@@ -452,7 +452,7 @@ export function GeneratedTasksSection() {
       );
       return s.journalLogTimeSegments.length === 1
         ? `Adds one task a day, held back until ${segmentNames[0]}, to write in your journal`
-        : `Adds a task each of these times a day, to write in your journal: ${segmentNames.join(', ')}`;
+        : `Adds a task at each of these times to write in your journal: ${segmentNames.join(', ')}`;
     }
     return spec.onHint;
   };
@@ -479,7 +479,7 @@ export function GeneratedTasksSection() {
         entryId={entryId}
         icon="time-outline"
         label="Show the task"
-        hint="Held back until this part of the day arrives, same as a task's own Time of day field."
+        hint="Held back until this part of the day arrives, like a task’s Time of day field."
         value={timeSegmentChoices.find(o => o.value === value)?.label ?? 'Any time'}
         tight
       />
@@ -688,7 +688,7 @@ export function GeneratedTasksSection() {
             entryId="weekendNudgePlanThreshold"
             icon="checkmark-done-outline"
             label="How much counts as open"
-            hint="How many things can already be on Friday evening, Saturday or Sunday and the weekend still counts as open."
+            hint="How many things can already be planned for Friday evening, Saturday or Sunday while the weekend still counts as open."
             value={describeWeekendNudgePlanThreshold(s.weekendNudgePlanThreshold)}
             tight
           />
@@ -714,7 +714,7 @@ export function GeneratedTasksSection() {
             entryId="weighInEveryDays"
             icon="calendar-outline"
             label="Ask after"
-            hint="How long with nothing recorded in Apple Health before the task appears. It never appears on a day you have already recorded one."
+            hint="How long without a weight in Apple Health before the task appears. It doesn’t appear on a day you’ve already recorded one."
             value={s.weighInEveryDays === 1 ? '1 day' : `${s.weighInEveryDays} days`}
             tight
           />
@@ -825,8 +825,8 @@ export function GeneratedTasksSection() {
             label="Meals you eat"
             hint={
               s.mealSlotsEnabled.length === 0
-                ? "No meals picked, so no tasks are added. A planned meal can still show as a plain row, with Show the day's meals under Groceries & meals"
-                : "A task each day for each of these, whether or not a meal is planned. Any other planned meal can still show as a plain row, with Show the day's meals under Groceries & meals"
+                ? "No meals picked, so no tasks are added. Planned meals still show as plain rows if Show the day’s meals is on under Groceries and meals."
+                : "A task each day for each of these, planned or not. Other planned meals still show as plain rows if Show the day’s meals is on under Groceries and meals."
             }
             tight
           />
@@ -905,7 +905,7 @@ export function GeneratedTasksSection() {
             icon="airplane-outline"
             iconColor={s.mealPlanNudgeIgnoresVacation ? colors.accent : undefined}
             label="Also during vacation"
-            hint="Vacation mode normally pauses this along with the app's other automatic tasks. Turn this on to keep adding the weekly task anyway."
+            hint="Vacation mode pauses this along with other automatic tasks. Turn this on to keep adding the weekly task."
             toggle={s.mealPlanNudgeIgnoresVacation}
             onPress={() => s.setMealPlanNudgeIgnoresVacation(!s.mealPlanNudgeIgnoresVacation)}
           />
@@ -918,7 +918,7 @@ export function GeneratedTasksSection() {
             hint={
               s.mealPlanNudgeSlots.length === 0
                 ? 'No meals picked, so a day never reads as fully planned.'
-                : "Each day's task counts down against these. Planning only these meals is enough to mark the day done."
+                : "Each day’s task counts down against these. Planning only these meals is enough to mark the day done."
             }
             tight
           />
@@ -952,7 +952,7 @@ export function GeneratedTasksSection() {
 
     if (kind === 'moodLog') {
       return multiSegmentExtra('moodLogTimeSegments', s.moodLogTimeSegments, s.setMoodLogTimeSegments,
-        'Held back until each part of the day arrives. Pick more than one for several check-ins a day. An earlier one still unanswered is cleared once the next arrives.',
+        'Held back until each part of the day arrives. Pick more than one for several check-ins a day, and an unanswered one is cleared when the next arrives.',
       );
     }
 
@@ -964,7 +964,7 @@ export function GeneratedTasksSection() {
             entryId="moodNudgeAfterDays"
             icon="trending-down-outline"
             label="Low days before the task"
-            hint="How many low-mood days in a row before the task is offered. It is offered at most once a week."
+            hint="How many low-mood days in a row before the task is offered, at most once a week."
             value={describeLowDays(s.moodNudgeAfterDays)}
             tight
           />
@@ -985,7 +985,7 @@ export function GeneratedTasksSection() {
 
     if (kind === 'journalLog') {
       return multiSegmentExtra('journalLogTimeSegments', s.journalLogTimeSegments, s.setJournalLogTimeSegments,
-        'Any time means one task a day. Pick parts of the day to get a task in each. An earlier one still unanswered is cleared once the next arrives.',
+        'Any time means one task a day. Pick parts of the day to get a task in each, and an unanswered one is cleared when the next arrives.',
       );
     }
 
@@ -1019,7 +1019,7 @@ export function GeneratedTasksSection() {
             icon="list-outline"
             iconColor={activeEventRuleCount > 0 ? colors.accent : undefined}
             label="Rules"
-            hint="Which word in an event's title adds which task, and how far ahead."
+            hint="Which word in an event’s title adds which task, and how far ahead."
             value={
               activeEventRuleCount === 0
                 ? 'None'
@@ -1041,8 +1041,8 @@ export function GeneratedTasksSection() {
             icon="time-outline"
             label="Remind me"
             hint={s.travelEstimates
-              ? "Used for any event Apple Maps couldn't estimate a trip to."
-              : 'How long before the event the reminder goes off. Set it to how long the trip usually takes you.'}
+              ? "Used for events where Apple Maps can’t estimate the trip."
+              : 'How long before the event the reminder goes off. Set it to how long the trip takes.'}
             value={`${s.travelLeadMinutes} min before`}
             tight
           />
@@ -1065,7 +1065,7 @@ export function GeneratedTasksSection() {
             iconColor={s.travelEstimates ? colors.accent : undefined}
             label="Estimate travel time"
             hint={s.travelEstimates
-              ? "Sets each reminder from Apple Maps' estimate of the trip, plus 5 minutes. Sends the event's address and where the trip starts to Apple while the app is open."
+              ? "Sets each reminder from Apple Maps’ estimate of the trip, plus 5 minutes. Sends the event’s address and where the trip starts to Apple while the app is open."
               : 'Reminders use the time above. Nothing is sent anywhere.'}
             toggle={s.travelEstimates}
             onPress={async () => {
@@ -1078,7 +1078,7 @@ export function GeneratedTasksSection() {
               }
               alertPermissionOff(
                 'Location access is off',
-                'Estimating the trip needs to know where you are. Turn on location access for this app in the Settings app, then try again.',
+                'Estimating the trip needs your location. Turn on location access in Settings, then try again.',
               );
             }}
             tight={s.travelEstimates}
@@ -1100,8 +1100,8 @@ export function GeneratedTasksSection() {
                 icon="home-outline"
                 label="Start from"
                 hint={travelOrigin
-                  ? `Estimates the trip from ${travelOrigin.name}, whatever time the app checks. Sends that place's coordinates to Apple.`
-                  : "Estimates the trip from where your phone is when the app checks, which may not be where you'll leave from."}
+                  ? `Estimates the trip from ${travelOrigin.name}, whatever time the app checks. Sends that place’s coordinates to Apple.`
+                  : "Estimates the trip from where your phone is when the app checks, which may not be where you’ll leave from."}
                 value={travelOrigin?.name ?? 'Where I am'}
                 tight
               />
@@ -1116,7 +1116,7 @@ export function GeneratedTasksSection() {
                     if (!(await requestLocationPermission())) {
                       alertPermissionOff(
                         'Location access is off',
-                        'Estimating from where you are needs location access. Turn it on for this app in the Settings app, then try again.',
+                        'Estimating from where you are needs location access. Turn it on in Settings, then try again.',
                       );
                       return;
                     }
@@ -1200,7 +1200,7 @@ export function GeneratedTasksSection() {
             entryId="transitAlerts"
             icon="subway-outline"
             label="Subway alerts"
-            hint="Adds MTA delays and planned work on your lines to the task, like “L delayed”. Reads the MTA's service alerts over the internet while the app is open."
+            hint="Adds MTA delays and planned work on your lines to the task, like “L delayed”. Reads the MTA’s service alerts over the internet while the app is open."
             toggle={s.transitAlerts}
             onPress={() => s.setTransitAlerts(!s.transitAlerts)}
           />
@@ -1290,7 +1290,7 @@ export function GeneratedTasksSection() {
     <SettingsSection
       // No label: this is the whole of the screen, so its own header is
       // already saying "Automations" directly above it.
-      footer="These are the only things that put a task in your list without you typing it. Each one can be turned off here, and deleting a task the app added tells it not to add that one again: the grocery item or the leftover it came from remembers your answer, and a meal task stays gone for the rest of the day. Activity shows what each one added."
+      footer="Deleting an added task stops it from being added again, except meal tasks, which stay gone for the rest of the day. Activity shows what each one added."
     >
       {/* Above the generators rather than inside any one of them, because it
           applies to all of them at once: it changes when the whole list below
@@ -1300,7 +1300,7 @@ export function GeneratedTasksSection() {
         icon="moon-outline"
         iconColor={s.backgroundRefreshEnabled ? colors.accent : undefined}
         label="Add tasks while the app is closed"
-        hint="Lets iOS wake the app in the background to add the tasks below, top up reminders and update the widget, so they're ready when you next open it. iOS decides when this happens and can skip it entirely. Everything below still runs when you open the app."
+        hint="iOS can wake the app in the background to add the tasks below, refresh reminders and update the widget, but iOS chooses the timing and can skip it. Everything below still runs when you open the app."
         toggle={s.backgroundRefreshEnabled}
         onPress={() => s.setBackgroundRefreshEnabled(!s.backgroundRefreshEnabled)}
       />
@@ -1354,7 +1354,7 @@ export function GeneratedTasksSection() {
                   entryId={`gen:${spec.kind}:defaults`}
                   icon="options-outline"
                   label="Task defaults"
-                  hint="Priority, difficulty and time estimate these tasks start with, so they don't come up in Backfill. Not set uses your app-wide default, and anything still unanswered shows up in Backfill."
+                  hint="Priority, difficulty and time estimate these tasks start with. Not set uses your app-wide default, and anything still unanswered shows up in Backfill."
                   value={describeTaskFieldDefaults(s.generatedTaskDefaults[spec.kind]) ?? 'Not set'}
                   tight
                 />
@@ -1374,7 +1374,7 @@ export function GeneratedTasksSection() {
                   entryId={`gen:${spec.kind}:category`}
                   icon="pricetag-outline"
                   label="File them under"
-                  hint="With none, they sit loose at the top of Today above your categories."
+                  hint="With none, they appear at the top of Today, above your categories."
                   value={categoryOptions.find(o => o.value === categoryOf(spec.kind))?.label ?? 'None'}
                   tight
                 />

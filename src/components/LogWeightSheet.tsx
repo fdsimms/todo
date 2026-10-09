@@ -124,7 +124,7 @@ export function LogWeightSheet({ visible, onClose }: Props) {
       // closes first: it is full screen, and Settings would arrive behind it.
       Alert.alert(
         'Logging to Health is off',
-        'Turn on "Log to Health" in Settings before recording a weight.',
+        'Turn on “Log to Health” in Settings to record a weight.',
         [
           { text: 'Not now', style: 'cancel' },
           { text: 'Open Settings', onPress: openWriteSetting },
@@ -134,11 +134,11 @@ export function LogWeightSheet({ visible, onClose }: Props) {
     }
     if (result === 'refused') {
       Alert.alert(
-        'Health would not accept it',
+        'Health didn’t accept the weight',
         'Open the Health app, find this app under Sharing, and allow it to write weight.',
         [
           { text: 'Not now', style: 'cancel' },
-          { text: 'Open Settings', onPress: () => { void openHealthApp(); } },
+          { text: 'Open Health', onPress: () => { void openHealthApp(); } },
         ],
       );
       return;
@@ -151,10 +151,10 @@ export function LogWeightSheet({ visible, onClose }: Props) {
     // logWeightToHealth), so "this device cannot" would blame the phone for a
     // refusal that is ours.
     if (isDemoModeActive()) {
-      Alert.alert('Not available in demo mode', 'Demo mode does not read or write Apple Health, so a weight cannot be saved here.');
+      Alert.alert('Not available in demo mode', 'Demo mode doesn’t use Apple Health, so a weight can’t be saved here.');
       return;
     }
-    Alert.alert('Health is not available', 'This device cannot record a weight.');
+    Alert.alert('Health isn’t available', 'This device can’t record a weight.');
   };
 
   return (
@@ -196,15 +196,15 @@ export function LogWeightSheet({ visible, onClose }: Props) {
       {demoActive ? (
         <View style={[styles.card, styles.notice]}>
           <Text style={styles.noticeText}>
-            Weight is not available in demo mode. Demo mode does not read or write
-            Apple Health, so a weight cannot be saved here.
+            Demo mode doesn’t use Apple Health, so a weight
+            can’t be saved here.
           </Text>
         </View>
       ) : !healthWriteEnabled ? (
         <View style={[styles.card, styles.notice]}>
           <Text style={styles.noticeText}>
-            Log to Health is off, so a weight cannot be saved until you turn it on
-            in Settings.
+            Log to Health is off. Turn it on in Settings to
+            save a weight.
           </Text>
           <InlineAction
             label="Open Settings"
@@ -247,8 +247,8 @@ export function LogWeightSheet({ visible, onClose }: Props) {
       </View>
 
       <Text style={styles.footnote}>
-        Saved to Apple Health. This app keeps no copy of it, so editing or
-        removing a weight is done in the Health app.
+        Saved to Apple Health. Edit or delete it
+        in the Health app.
       </Text>
       <NumberPadAccessory />
     </EditorSheet>

@@ -445,8 +445,8 @@ export function LogbookScreen() {
   const handleClearLogbook = () => {
     haptics.warning();
     confirmDelete({
-      title: 'Clear Logbook',
-      message: `Delete all ${completedTasks.length} completed task${completedTasks.length === 1 ? '' : 's'} from the Logbook? You can shake to undo this right after.`,
+      title: 'Clear Logbook?',
+      message: `This deletes all ${completedTasks.length} completed task${completedTasks.length === 1 ? '' : 's'}. Shake your phone right after to undo.`,
       confirmLabel: 'Clear',
       onConfirm: () => {
         animateLayout();
@@ -460,8 +460,8 @@ export function LogbookScreen() {
   const handleDeleteEntry = (task: Task) => {
     haptics.warning();
     confirmDelete({
-      title: 'Delete Entry',
-      message: `Delete "${displayTitleFor(task)}" from the Logbook? You can undo this by shaking your phone right after.`,
+      title: 'Delete entry?',
+      message: `“${displayTitleFor(task)}” will be deleted from the Logbook. Shake your phone right after to undo.`,
       onConfirm: () => {
         animateLayout();
         // skipGeneratedOptOut: deleting a logbook entry is deleting history,
@@ -762,7 +762,7 @@ export function LogbookScreen() {
               <EmptyState
                 icon="search-outline"
                 title="No matches"
-                subtitle="Nothing you've cooked matches your search"
+                subtitle="Nothing you’ve cooked matches your search"
                 bottomOffset={tabBarHeight}
               />
             ) : (
@@ -854,7 +854,7 @@ export function LogbookScreen() {
         <SimpleBulkBar
           selectedCount={selectedIds.size}
           // Counted against what's on screen, not the whole logbook — with a
-          // filter applied, "Select All" can only mean the rows it left.
+          // filter applied, "Select all" can only mean the rows it left.
           totalCount={filteredTasks.length}
           primary={{
             icon: 'arrow-undo',

@@ -165,7 +165,7 @@ export function PersonNoteSheet({ visible, personId, personName, note, initialKi
         onPress={() => { haptics.tap(); setShowDatePicker(true); }}
       />
       <Text style={styles.hint}>
-        The day this note is about. It's shown quieter once that day has passed, and never deleted.
+        The day this note is about. It’s dimmed after that day, but never deleted.
       </Text>
     </EditorSheet>
   );

@@ -545,7 +545,7 @@ export interface DoseInput {
 /** One Settings row, located the way a person would have to walk to it. */
 export interface SettingsHit {
   label: string;
-  /** "Settings › Day & time › When the day turns over › Day starts". */
+  /** "Settings › Day and time › When the day turns over › Day starts". */
   path: string;
   /** Why it matched when the label did not: a keyword or the section name. */
   matchedVia?: string;

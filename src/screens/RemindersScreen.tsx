@@ -100,7 +100,7 @@ export function RemindersScreen() {
           <EmptyState
             icon="alarm-outline"
             title="No reminders set"
-            subtitle="Tasks with a reminder or alarm show up here, soonest first, whatever day they're on."
+            subtitle="Tasks with a reminder or alarm, soonest first."
             bottomOffset={tabBarHeight}
           />
         }

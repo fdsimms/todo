@@ -18,7 +18,7 @@ import { generatedSourceOf } from './generatedTasks';
  */
 
 /** The row's title. Never varies — there's exactly one question this asks. */
-export const CALENDAR_REVIEW_TITLE = 'Review tomorrow\'s calendar';
+export const CALENDAR_REVIEW_TITLE = 'Review tomorrow’s calendar';
 
 /**
  * The day key a review task is asking about, or null for any other task.

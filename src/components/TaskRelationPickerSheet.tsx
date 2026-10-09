@@ -82,7 +82,7 @@ const COPY: Record<TaskRelation, {
     title: 'Waiting on',
     hint: 'This task stays out of your lists until the tasks you pick are done.',
     emptyTitle: 'Nothing to wait on',
-    emptySub: 'Tasks that would end up waiting on each other are left out.',
+    emptySub: 'Tasks that would wait on each other are left out.',
     action: title => `Wait on ${title}`,
   },
   blocks: {
@@ -92,12 +92,12 @@ const COPY: Record<TaskRelation, {
     // Says why the list is short rather than leaving it a mystery: a task
     // waits on one thing at a time, so anything already waiting on another
     // task is set from that task's own editor instead.
-    emptySub: 'Tasks that would end up waiting on each other are left out.',
+    emptySub: 'Tasks that would wait on each other are left out.',
     action: title => `Block ${title}`,
   },
   answer: {
     title: 'Only if',
-    hint: 'Pick a task that asks a question. You choose which answers show this task next.',
+    hint: 'Pick a task that asks a question, then choose which answers show this task.',
     emptyTitle: 'No questions to pick',
     emptySub: 'Only tasks that ask Yes/No or Pick one when completed are listed.',
     action: title => `Only if ${title}`,

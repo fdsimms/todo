@@ -400,7 +400,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
       // On the device path there is no fallback and no second opinion: the
       // reading is the whole answer, or there isn't one.
       if (receiptRoute === 'onDevice' && !ocr) {
-        setError('That photo could not be read on this device. Try again with the whole receipt in frame and more light on it.');
+        setError('Couldn’t read that photo on this device. Try again with the whole receipt in frame and more light.');
         return;
       }
       const offline = receiptRoute === 'onDevice';
@@ -747,8 +747,8 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
                 // Ticked into the cart *and* only a guessed match by name: the
                 // row is going through either way, so the question worth
                 // asking is about the number, not about whether it came home.
-                ? 'Not sure this is the same thing. Check the price is for this row.'
-                : 'Not sure this is the same thing. Check before you accept it.'}
+                ? 'Not sure this is the same item. Check the price is for this row.'
+                : 'Not sure this is the same item. Check before you accept it.'}
             </Text>
           )}
           {/* Says why a line nothing could have matched by name is sitting on a
@@ -798,7 +798,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
         {receipt?.storeName
           ? `The receipt says “${receipt.storeName}”.`
           : 'The receipt doesn’t name a store.'}{' '}
-        Naming a store is what lets you see which store has which items later.
+        Naming a store lets you see later which store has which items.
       </Text>
 
       <View style={styles.pills}>
@@ -832,7 +832,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
           have just photographed the thing and are looking at what came back. */}
       {!!shopId && (
         <View style={styles.styleSection}>
-          <Text style={styles.label}>WHAT THIS STORE'S RECEIPTS SHOW</Text>
+          <Text style={styles.label}>WHAT THIS STORE’S RECEIPTS SHOW</Text>
           <SegmentedControl
             options={RECEIPT_STYLE_OPTIONS}
             value={receiptStyleOf(shopId)}
@@ -840,7 +840,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
               haptics.tap();
               setShopReceiptStyle(shopId, value);
             }}
-            label="What this store's receipts show"
+            label="What this store’s receipts show"
             surface="page"
           />
         </View>
@@ -852,8 +852,8 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
     <>
       <Text style={styles.label}>WHEN DID YOU SHOP?</Text>
       <Text style={styles.hint}>
-        Everything checked gets dated when the trip actually happened, and any use-by day it
-        starts is calculated from there.
+        Checked items get the trip date, and any use-by day
+        counts from it.
       </Text>
       <View style={styles.dateSection}>
         <TouchableOpacity
@@ -892,11 +892,11 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
           <RecipeSourcePicker
             intro={
               pantry
-                ? 'Photograph your receipt and dundundun will put what you bought in the pantry and record what it cost.'
-                : 'Photograph your receipt and dundundun will check the items off your list, record what they cost, and file the trip against the store.'
+                ? 'Photograph your receipt to add what you bought to the pantry and record prices.'
+                : 'Photograph your receipt to check items off your list, record prices, and file the trip under the store.'
             }
             photoOnly
-            photoHint="Lay it flat and get the whole receipt in the frame. A long one is fine folded, as long as the item lines are readable."
+            photoHint="Lay it flat with the whole receipt in frame. Fold a long one if the item lines stay readable."
             mode="photo"
             onChangeMode={() => {}}
             text=""
@@ -922,8 +922,8 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
         <View style={styles.empty}>
           <EmptyState
             icon="receipt-outline"
-            title="Nothing readable on that one"
-            subtitle={`Try again with the whole receipt in frame and more light on it. Nothing has been changed ${pantry ? 'in your pantry' : 'on your list'}.`}
+            title="Nothing readable in that photo"
+            subtitle={`Try again with the whole receipt in frame and more light. Nothing was changed ${pantry ? 'in your pantry' : 'on your list'}.`}
             actionLabel="Try another photo"
             onAction={reset}
           />
@@ -939,8 +939,8 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
         <>
           {storePicker()}
           <Text style={styles.hint}>
-            You've said this store's receipts have nothing readable on them, so there's nothing
-            here to name what you bought. Pick a different store above, or change what its
+            This store’s receipts are marked “Nothing readable”, so they have no item
+            names. Pick another store above, or change what its
             receipts show.
           </Text>
         </>
@@ -962,9 +962,9 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
             stands for. */}
         {readOffline && (
           <Text style={styles.hint}>
-            Read on this device without an API key, so each line shows the receipt's own
-            shorthand instead of what it stands for. Match anything it missed by hand, or add
-            an API key in Settings to have the abbreviations read for you.
+            Read on this device without an API key, so each line shows the receipt’s own
+            shorthand. Match anything it missed by hand, or add
+            an API key in Settings to expand the abbreviations.
           </Text>
         )}
 
@@ -1004,7 +1004,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
             <Text style={styles.hint}>
               {pantry
                 ? claimed.length > 0
-                  ? 'These didn’t match anything you’ve bought before, or the receipt printed two of the same thing. Check one to add it, or match it to an item you already have.'
+                  ? 'These didn’t match anything you’ve bought before, or the receipt lists the same item twice. Check one to add it, or match it to an item you already have.'
                   : 'None of these matched anything you’ve bought before. Check one to add it, or match it to an item you already have.'
                 : claimed.length > 0
                   ? 'These didn’t match anything on your list, or your list only asked for one. Check one to add it as bought, or match it to an item you already have.'
@@ -1052,7 +1052,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
                               </Text>
                               <Text style={styles.rowRemembered}>
                                 {shopId
-                                  ? 'Matched by hand. Receipts from this store will match it the same way next time.'
+                                  ? 'Matched by hand. Future receipts from this store will match it the same way.'
                                   : 'Matched by hand.'}
                               </Text>
                             </>

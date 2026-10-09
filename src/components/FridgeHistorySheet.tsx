@@ -144,8 +144,8 @@ export function FridgeHistorySheet({ visible, leftovers, weekStartsOn, onOpen, o
             <View style={styles.emptyWrap}>
               <EmptyState
                 icon="time-outline"
-                title="Nothing closed out yet"
-                subtitle="Once you finish or throw out a leftover, it turns up here."
+                title="No finished leftovers yet"
+                subtitle="Leftovers you finish or throw out show up here."
               />
             </View>
           ) : (

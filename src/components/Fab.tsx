@@ -514,7 +514,7 @@ interface FabMenuProps {
  */
 export function FabMenu({
   items, onSelect, accessibilityLabel = 'Add', size = FAB_SIZE, disabled, opacity,
-  drag, dragHint = 'Drag onto the list to add a task there, or back to the button to cancel',
+  drag, dragHint = 'Drop on the list to add a task there. Drop on the button to cancel.',
   dragLabel,
 }: FabMenuProps) {
   const bottom = useFabBottom();

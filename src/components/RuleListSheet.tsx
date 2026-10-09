@@ -184,7 +184,7 @@ export function RuleListSheet<T extends EditableRule>({
     haptics.warning();
     confirmDelete({
       title: 'Delete rule',
-      message: `"${rule.title || 'Untitled rule'}" is removed. This can't be undone.`,
+      message: `“${rule.title || 'Untitled rule'}” will be deleted. This can’t be undone.`,
       onConfirm: () => {
         animateLayout();
         onChange(rules.filter(r => r.id !== rule.id));
@@ -345,8 +345,8 @@ export function RuleListSheet<T extends EditableRule>({
                                 {categoryOf(rule)
                                   ? 'Only this rule files here.'
                                   : categoryFallback
-                                    ? `Uses the "File them under" setting: ${categoryFallback}.`
-                                    : 'Uses the "File them under" setting, which is None.'}
+                                    ? `Uses the “File them under” setting: ${categoryFallback}.`
+                                    : 'Uses the “File them under” setting: None.'}
                               </Text>
                             )}
                           </>

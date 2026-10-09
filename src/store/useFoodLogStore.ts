@@ -726,7 +726,7 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
 
     if (opts?.undoable !== false) {
       get().setLastAction({
-        label: `Logged "${entry.label}"`,
+        label: `Logged “${entry.label}”`,
         // removeEntry also retracts what was written to Health.
         undo: () => get().removeEntry(entry.id),
         redo: () => { get().addEntry(draft); },
@@ -767,7 +767,7 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     if (patch.slot !== undefined) useTaskStore.getState().syncLoggedMealSlotTasks();
     const before = priorFields(entry, patch);
     get().setLastAction({
-      label: `Edited "${entry.label}"`,
+      label: `Edited “${entry.label}”`,
       undo: () => get().updateEntry(id, before),
       redo: () => get().updateEntry(id, patch),
     });
@@ -789,7 +789,7 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
 
     const before = priorFields(current, patch);
     get().setLastAction({
-      label: `Edited "${current.label}"`,
+      label: `Edited “${current.label}”`,
       // Through reviseEntry again, so Health is retracted and rewritten to the
       // figures being restored rather than left stating the edit.
       undo: () => get().reviseEntry(id, before),
@@ -919,7 +919,7 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     if (removed) syncWaterQuotaTasksIfToday(removed.dayKey);
     if (removed && opts?.undoable !== false) {
       get().setLastAction({
-        label: `Deleted "${removed.label}"`,
+        label: `Deleted “${removed.label}”`,
         destructive: true,
         undo: () => restoreEntries([removed], get, set),
         redo: () => get().removeEntry(id),
@@ -953,7 +953,7 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     }
     if (removed.length > 0) {
       get().setLastAction({
-        label: removed.length === 1 ? `Deleted "${removed[0].label}"` : `${removed.length} entries deleted`,
+        label: removed.length === 1 ? `Deleted “${removed[0].label}”` : `${removed.length} entries deleted`,
         destructive: true,
         undo: () => restoreEntries(removed, get, set),
         redo: () => get().removeEntries(ids),
@@ -1040,7 +1040,7 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     // id and drops the re-dated copy; redoing runs the move again from it.
     if (moved) {
       get().setLastAction({
-        label: `Moved "${current.label}"`,
+        label: `Moved “${current.label}”`,
         undo: () => {
           get().removeEntry(moved.id);
           restoreEntries([current], get, set);

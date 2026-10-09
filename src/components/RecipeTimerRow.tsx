@@ -88,7 +88,7 @@ export function RecipeTimerRow({
   const idleLabel = hasTarget ? `${verb} for ${formatDuration(targetMinutes!)}` : idleText;
   const spoken = !reading
     ? idleLabel
-    : ready ? `Time's up, ${reading.clock} over` : `${reading.clock} ${reading.state}`;
+    : ready ? `Time’s up, ${reading.clock} over` : `${reading.clock} ${reading.state}`;
   const noun = verb.toLowerCase();
 
   // Asks while there's time on it to lose, which is always once it's shown.

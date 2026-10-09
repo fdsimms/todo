@@ -18,7 +18,7 @@ import { SettingsRow } from './SettingsRow';
 import { makeSettingsStyles } from './settingsStyles';
 
 /**
- * What Claude is asked to keep in mind, in Settings › Data & reset › Sync,
+ * What Claude is asked to keep in mind, in Settings › Data and reset › Sync,
  * beside the server it reads them from. Claude adds notes when told to remember
  * something; this is where they are read, edited and removed, so nothing it
  * keeps about the person is out of their sight.
@@ -44,7 +44,7 @@ export function AgentNotesRows() {
   const add = () => {
     Alert.prompt(
       'Add a note for Claude',
-      'Something Claude should keep in mind whenever it works with your list.',
+      'Something for Claude to keep in mind when it works with your list.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -105,7 +105,7 @@ export function AgentNotesRows() {
         iconColor={notes.length > 0 ? colors.accent : undefined}
         label="Notes for Claude"
         hint={notes.length === 0
-          ? 'Things for Claude to keep in mind when it works with your list through the sync server, like "errands happen on Saturdays". Claude adds them when you ask it to remember something.'
+          ? 'Things for Claude to keep in mind when it works with your list through the sync server, like “errands happen on Saturdays”. Claude adds them when you ask it to remember something.'
           : 'Claude reads these every time it starts working with your list.'}
         value={notes.length > 0 ? String(notes.length) : undefined}
         expanded={notes.length > 0 ? open : undefined}

@@ -86,8 +86,8 @@ export function MorningCheckInSheet({ visible, onClose, tasks }: Props) {
           <Text style={styles.title}>Morning check-in</Text>
           <Text style={styles.subtitle}>
             {total === 0
-              ? "You're all caught up."
-              : "A few repeating tasks from yesterday are still unanswered. Did you get to them?"}
+              ? "You’re all caught up."
+              : "Repeating tasks from yesterday are still unanswered. Did you get to them?"}
           </Text>
         </View>
 
@@ -113,7 +113,7 @@ export function MorningCheckInSheet({ visible, onClose, tasks }: Props) {
                             activeOpacity={interaction.activeOpacity}
                             onPress={() => answerNo(task)}
                             accessibilityRole="button"
-                            accessibilityLabel={`Didn't do ${task.title}`}
+                            accessibilityLabel={`Didn’t do ${task.title}`}
                           >
                             <Ionicons name="close" size={iconSize.sm} color={colors.red} />
                           </TouchableOpacity>

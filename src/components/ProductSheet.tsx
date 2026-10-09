@@ -256,7 +256,7 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
     // it "Never again" keeps exactly the memory that deleting throws away.
     Alert.alert(
       `Forget ${describeProduct(editing) ?? 'this one'}?`,
-      'This also forgets how it was rated and how often you bought it. To remember not to buy it again, mark it "Never again" instead.',
+      'This also forgets its rating and how often you bought it. To avoid buying it again, mark it “Never again” instead.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -322,8 +322,8 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
           />
           <Chips values={variantChips} onPick={v => { setVariant(v); setClash(false); }} noun="variant" styles={styles} />
           <Text style={styles.hint}>
-            Either one on its own is fine. Together they name one thing on the
-            shelf, and that’s what the list shows under the item’s name.
+            Either field is enough. The list shows them under the
+            item’s name.
           </Text>
 
           {clash && (
@@ -376,8 +376,8 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
             <>
               <Text style={[styles.label, styles.labelSpaced]}>PANTRY</Text>
               <Text style={styles.hint}>
-                Tracked for this one on its own, so another {item.name.toLowerCase()} can
-                be somewhere else.
+                Tracked separately for this one, so another {item.name.toLowerCase()} can
+                be in a different state.
               </Text>
               <PillGroup options={pantryOptions} noun="state" />
             </>
@@ -396,7 +396,7 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
               <Text style={[styles.label, styles.labelSpaced]}>NUTRITION</Text>
               <Text style={styles.hint}>
                 {describeFoodPanel(editing.nutrition)
-                  ?? `Nothing recorded for this one, so ${item.name.toLowerCase()}'s own figures are used instead.`}
+                  ?? `Nothing recorded for this one, so ${item.name.toLowerCase()}’s figures are used.`}
               </Text>
               <View style={styles.actions}>
                 <TouchableOpacity
@@ -416,7 +416,7 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
                     activeOpacity={interaction.activeOpacity}
                     onPress={() => { haptics.tap(); setProductNutrition(editing.id, null); }}
                     accessibilityRole="button"
-                    accessibilityLabel="Clear this box's nutrition"
+                    accessibilityLabel="Clear this product’s nutrition"
                   >
                     <Text style={styles.actionText}>Clear these figures</Text>
                   </TouchableOpacity>

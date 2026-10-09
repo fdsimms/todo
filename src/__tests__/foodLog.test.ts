@@ -1153,7 +1153,7 @@ const bare = (o: Partial<FoodNutrition> = {}) => panel({ amounts: {}, ...o });
 describe('amountHint / amountExample', () => {
   it('says a weight and the food\'s own portions, for a per-100g panel', () => {
     expect(amountHint(bare())).toBe(
-      'A weight (like 100g), or one of this food\'s stated portions: 1 cup.',
+      'A weight (like 100g), or one of this food’s stated portions: 1 cup.',
     );
     expect(amountExample(bare())).toBe('1 cup');
   });
@@ -1183,7 +1183,7 @@ describe('amountHint / amountExample', () => {
 
   it('asks for a serving count from a perServing panel with no serving weight', () => {
     expect(amountHint(bare({ basis: 'perServing', servingGrams: null, portions: [] })))
-      .toBe('A number of servings, like 1 serving. This food states no weight per serving to measure anything else against.');
+      .toBe('A number of servings, like 1 serving. This food has no weight per serving, so nothing else can be entered.');
     expect(amountExample(bare({ basis: 'perServing', servingGrams: null, portions: [] })))
       .toBe('1 serving');
   });
@@ -1195,7 +1195,7 @@ describe('amountHint / amountExample', () => {
 
   it('mentions servings too, once a per-100g panel states a serving weight', () => {
     expect(amountHint(bare({ servingGrams: 25 }))).toBe(
-      'A weight (like 100g), or one of this food\'s stated portions: 1 cup, or a number of servings.',
+      'A weight (like 100g), or one of this food’s stated portions: 1 cup, or a number of servings.',
     );
     expect(amountHint(bare({ servingGrams: 25, portions: [] }))).toBe(
       'A weight, like 100g, or a number of servings.',

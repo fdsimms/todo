@@ -1330,7 +1330,7 @@ export function GroceryScreen() {
   const confirmClear = useCallback(() => {
     confirmDelete({
       title: 'Clear the list?',
-      message: 'Everything comes off the list without being marked as bought. Anything you\u2019ve bought before, or recorded anything about, stays in your grocery catalog. Names you only typed for this list are removed.',
+      message: 'Everything comes off the list without being marked as bought. Items you’ve bought before or added details to stay in your grocery catalog. Names you only typed for this list are removed.',
       confirmLabel: 'Clear',
       onConfirm: () => {
         animateLayout();
@@ -1769,8 +1769,8 @@ export function GroceryScreen() {
             title="Nothing on the list"
             subtitle={
               catalogCount > 0
-                ? 'Everything in your catalog is a tap away, or start typing and it’ll come up.'
-                : 'Tap + to add what you need. Paste a whole list and each line becomes an item.'
+                ? 'Browse your catalog, or start typing to find an item.'
+                : 'Tap + to add an item. Paste a list to add one item per line.'
             }
             actionLabel={catalogCount > 0 ? 'Browse catalog' : 'Add an item'}
             onAction={catalogCount > 0 ? () => setCatalogOpen(true) : () => setAddOpen(true)}
@@ -1790,7 +1790,7 @@ export function GroceryScreen() {
           onSelect={handleAddMenuSelect}
           accessibilityLabel="Add groceries"
           drag={fabDrag}
-          dragHint="Drag onto the list to add an item there, or back to the button to cancel"
+          dragHint="Drop on the list to add an item there. Drop on the button to cancel."
         />
       )}
 
@@ -1799,7 +1799,7 @@ export function GroceryScreen() {
           selectedCount={selectedIds.size}
           totalCount={selectableItemIds.length}
           category={{
-            title: 'Move to Aisle',
+            title: 'Move to aisle',
             noun: 'an aisle',
             options: aisleOrder,
             onSet: handleBulkSetAisle,

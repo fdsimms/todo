@@ -14,9 +14,9 @@ import { SettingsRow } from './SettingsRow';
 import { makeSettingsStyles } from './settingsStyles';
 
 /**
- * Vacation mode and the destination forecast, rendered at the end of Day & time.
+ * Vacation mode and the destination forecast, rendered at the end of Day and time.
  * Vacation is a span of days the app behaves differently on, which is the
- * subject of that group; it used to sit in Tasks & projects between expiry and
+ * subject of that group; it used to sit in Tasks and projects between expiry and
  * the forecast. Every row keeps its entry id, so search and the screen gears
  * resolve unchanged.
  */
@@ -50,7 +50,7 @@ export function VacationTripsSettings() {
       {(!simpleMode || vacationMode) && (
       <SettingsSection
         label="Vacation"
-        footer={`${vacationMode && vacationStart ? `On since ${format(new Date(vacationStart), 'MMM d')}. ` : ''}While on, tasks with "vacation pause" enabled are hidden everywhere and their streaks are protected. You can also hide whole categories on vacation from the Categories screen. Turn it off when you return and streaks will be forgiven automatically, or set an end date to have it happen for you.`}
+        footer={`${vacationMode && vacationStart ? `On since ${format(new Date(vacationStart), 'MMM d')}. ` : ''}While on, tasks with “Vacation pause” turned on are hidden everywhere and their streaks are protected. Tasks in categories set to “Hide on vacation” are hidden too. Turning it off, manually or on the end date, forgives streaks.`}
       >
         <SettingsRow
           entryId="vacationMode"
@@ -104,14 +104,14 @@ export function VacationTripsSettings() {
 
       <SettingsSection
         label="Trips"
-        footer="A project with away dates can carry where you're going. With this on, that place is sent to Open-Meteo to look up its coordinates and the forecast for your dates, and the project shows a line with the temperature range and whether rain or snow is expected. Nothing is stored, and it's only ever asked about a project that has both a destination and a departure date. Off means nothing leaves the app."
+        footer="With this on, a project’s destination is sent to Open-Meteo to look up its coordinates and the forecast for your dates. The project shows the temperature range and whether rain or snow is expected. Only projects with a destination and a departure date are looked up. Nothing is stored. Off means nothing leaves the app."
       >
         <SettingsRow
           entryId="destinationForecastEnabled"
           icon="partly-sunny-outline"
           iconColor={destinationForecastEnabled ? colors.accent : undefined}
           label="Destination forecast"
-          hint="Looks up the weather where you're going."
+          hint="Looks up the weather where you’re going."
           toggle={destinationForecastEnabled}
           onPress={() => setDestinationForecastEnabled(!destinationForecastEnabled)}
         />

@@ -373,7 +373,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
           <Text style={styles.sheetHint}>
             {planned.length > 0
               ? `${planned[planned.length - 1].title} added. Pick another, or tap Done.`
-              : 'Pick a recipe, or type whatever it is. “Leftovers” is a plan too.'}
+              : 'Pick a recipe or type what you’re having. “Leftovers” works too.'}
           </Text>
 
           <View style={styles.segment}>
@@ -413,7 +413,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
                 </View>
                 <View style={styles.rowInfo}>
                   <Text style={styles.rowName} numberOfLines={1}>{typed}</Text>
-                  <Text style={styles.rowHint}>Just this, not a recipe</Text>
+                  <Text style={styles.rowHint}>Name only, no recipe</Text>
                 </View>
                 <Ionicons name="add" size={16} color={colors.textTertiary} />
               </TouchableOpacity>
@@ -471,7 +471,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
                   title={query.trim() ? 'No matches' : 'No recipes yet'}
                   subtitle={query.trim()
                     ? 'Nothing in your recipe box is called that.'
-                    : 'Type what you’re having. You don’t need a recipe to plan a night.'}
+                    : 'Type what you’re having. You don’t need a recipe.'}
                 />
               </View>
             ) : (

@@ -143,7 +143,7 @@ export function ArchivedScreen() {
     haptics.warning();
     Alert.alert(
       `Delete ${ids.length} ${plural}?`,
-      `This removes ${ids.length === 1 ? 'it' : 'them'} for good, along with the history. You can undo by shaking your phone right after.`,
+      `This deletes ${ids.length === 1 ? 'it' : 'them'} along with the history. Shake your phone right after to undo.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -259,14 +259,14 @@ export function ArchivedScreen() {
               <EmptyState
                 icon="search-outline"
                 title="No matches"
-                subtitle={`Nothing archived matches "${query.trim()}".`}
+                subtitle={`Nothing archived matches “${query.trim()}”.`}
                 bottomOffset={tabBarHeight}
               />
             ) : (
               <EmptyState
                 icon="archive-outline"
                 title="No archived tasks"
-                subtitle="Pause a recurring task without losing its history. Archive it from the task editor and pick back up any time."
+                subtitle="Archive a recurring task from its editor to pause it and keep its history. Restore it later."
                 bottomOffset={tabBarHeight}
               />
             )

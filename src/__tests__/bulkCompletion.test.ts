@@ -169,7 +169,7 @@ describe('unansweredCompletionCopy', () => {
   it('reads as a sentence in the singular', () => {
     const { title, message } = unansweredCompletionCopy(1);
     expect(title).toBe('1 task asks a question');
-    expect(message).toContain('answer it now');
+    expect(message).toContain('Answer it now');
   });
 
   it('reads as a sentence in the plural', () => {

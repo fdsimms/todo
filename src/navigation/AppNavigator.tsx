@@ -358,7 +358,7 @@ const MainTabs = React.memo(function MainTabs({
           tabBarAccessibilityLabel: cookingRecipeId
             ? 'More, a cook timer is running, opens cook mode'
             : timerRunning
-              ? 'More, opens menu, a prep timer is running'
+              ? 'More, a prep timer is running, opens menu'
               : 'More, opens menu',
           tabBarIcon: ({ color, focused }) => (
             <TabIconPlate focused={focused}>

@@ -92,7 +92,7 @@ function line(...parts: (string | false | null | undefined)[]): string {
 export function settingsSummaries(s: SettingsSummaryInput): Record<IndexedSettingsGroupId, string> {
   return {
     featureAreas: line(
-      !s.kitchenEnabled && 'Groceries & meals hidden',
+      !s.kitchenEnabled && 'Groceries and meals hidden',
       s.simpleMode && 'Simplified mode on',
     ) || 'Everything on',
 

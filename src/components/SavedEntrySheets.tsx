@@ -119,7 +119,7 @@ export function SavedPlaceSheet({ visible, subject: liveSubject, places, onSave,
 
   const save = () => {
     if (!name.trim() || !text.trim()) {
-      Alert.alert('Name and address needed', 'Give the place a name to type, and the address it stands for.');
+      Alert.alert('Name and address needed', 'Enter a name and the address it stands for.');
       return;
     }
     const input = { name, text, place: pin };
@@ -169,7 +169,7 @@ export function SavedPlaceSheet({ visible, subject: liveSubject, places, onSave,
           placeholder="Search or type an address"
           accessibilityLabel="Place address"
         />
-        <Text style={styles.hint}>Typing the name in a new event's location fills in this address.</Text>
+        <Text style={styles.hint}>Typing the name in a new event’s location fills in this address.</Text>
       </View>
     </CardSheet>
   );
@@ -230,7 +230,7 @@ export function SavedEventSheet({ visible, subject: liveSubject, events, onSave,
 
   const save = () => {
     if (!title.trim()) {
-      Alert.alert('Title needed', 'Give the event a title to pick it by.');
+      Alert.alert('Title needed', 'Enter a title to identify this event.');
       return;
     }
     const next = editSavedEvent(events, isNew ? null : subject.title, {

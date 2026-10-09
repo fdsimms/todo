@@ -29,7 +29,7 @@ import { useFilterField } from '../hooks/useFilterField';
 import { hiddenResultsNote } from '../utils/simpleMode';
 
 /**
- * How the Groceries & meals line names the unit setting. Null for `asWritten`,
+ * How the Groceries and meals line names the unit setting. Null for `asWritten`,
  * which is the default and so says nothing — the summaries name what's *on*.
  */
 const UNIT_SYSTEM_SUMMARY: Record<string, string | null> = {
@@ -200,7 +200,7 @@ export function SettingsScreen() {
                 headers. Derived from the tint rather than a slice index, because
                 that is the line the tint already draws (see SETTINGS_GROUPS):
                 with a fixed `slice(0, 4)` every group added had to remember to
-                move the number, and Tasks & projects was already on the wrong
+                move the number, and Tasks and projects was already on the wrong
                 side of it. A group added now files itself. */}
             <View style={styles.card}>{configureGroups.map(groupRow)}</View>
             <View style={styles.card}>{housekeepingGroups.map(groupRow)}</View>

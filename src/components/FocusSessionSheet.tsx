@@ -305,7 +305,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
     const taskAction = useTaskStore.getState().lastAction;
     setPendingUndo({
       taskId: currentTask.id,
-      label: `Marked "${displayTitleFor(currentTask)}" done`,
+      label: `Marked “${displayTitleFor(currentTask)}” done`,
       sessionBefore,
       taskUndo: taskAction
         ? () => {
@@ -366,7 +366,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
     const taskId = step.taskId;
     const sessionBefore = session;
     skipTask(taskId);
-    setPendingUndo({ taskId, label: `Skipped "${titleOf(taskId)}"`, sessionBefore, taskUndo: null });
+    setPendingUndo({ taskId, label: `Skipped “${titleOf(taskId)}”`, sessionBefore, taskUndo: null });
   };
 
   const handleFinishForNow = () => {
@@ -377,7 +377,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
     finishForNow(taskId);
     setPendingUndo({
       taskId,
-      label: `Marked "${titleOf(taskId)}" done for now`,
+      label: `Marked “${titleOf(taskId)}” done for now`,
       sessionBefore,
       taskUndo: null,
     });
@@ -403,7 +403,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
     haptics.tap();
     // Closes the sheet rather than ending the session — same as the chevron,
     // the session keeps running behind FocusBar. Lands on the group these
-    // settings actually live in ("Focus sessions" inside Tasks & projects),
+    // settings actually live in ("Focus sessions" inside Tasks and projects),
     // not the Settings index.
     handleClose();
     (navigation as never as { navigate: (n: string, p: object) => void })
@@ -550,7 +550,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
 
           {stepDone && (
             <Text style={styles.doneNote}>
-              {isRest ? 'Break’s over whenever you are.' : 'Time’s up for this step. Nothing moves until you say so.'}
+              {isRest ? 'Break’s over. The session waits for you.' : 'Time’s up for this step. The session waits for you.'}
             </Text>
           )}
         </View>

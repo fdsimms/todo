@@ -209,7 +209,7 @@ export function InventRecipeSheet({ visible, onClose, onCreated }: Props) {
     } catch (e) {
       setCreatingKey(null);
       const message = e instanceof Error && e.message === 'IDEA_NAME_EMPTY'
-        ? 'That name didn’t survive. Try regenerating.'
+        ? 'That idea has no usable name. Tap More ideas to try again.'
         : e instanceof Error && e.message === 'IDEA_SAVE_FAILED'
           ? 'Couldn’t save that to your recipe box.'
           : describeAIError(e);
@@ -255,7 +255,7 @@ export function InventRecipeSheet({ visible, onClose, onCreated }: Props) {
             <Text style={styles.name} numberOfLines={1}>{idea.title}</Text>
           </View>
           <Text style={styles.meta} numberOfLines={2}>
-            {idea.blurb || 'A new idea, invented from scratch.'}
+            {idea.blurb || 'A new recipe idea.'}
           </Text>
           {!!error && <Text style={styles.ideaError}>{error}</Text>}
         </View>
@@ -288,7 +288,7 @@ export function InventRecipeSheet({ visible, onClose, onCreated }: Props) {
     <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <SheetHeader
-          title="Invent a recipe"
+          title="Suggest recipes"
           icon="sparkles"
           left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />}
           right={<View style={styles.headerSpacer} />}
@@ -302,8 +302,8 @@ export function InventRecipeSheet({ visible, onClose, onCreated }: Props) {
         >
           {ideas.length === 0 && !generateError && (
             <Text style={styles.intro}>
-              Describe what you're after and Claude will invent a few dishes. Tap one to add it
-              to your recipe box, fully stocked with ingredients and a method.
+              Describe what you want and Claude suggests dishes. Tap one to add it
+              to your recipe box with ingredients and a method.
             </Text>
           )}
 
@@ -317,7 +317,7 @@ export function InventRecipeSheet({ visible, onClose, onCreated }: Props) {
               placeholderTextColor={colors.textTertiary}
               returnKeyType="done"
               onSubmitEditing={() => { if (!generating) generate(); }}
-              accessibilityLabel="What kind of recipe to invent"
+              accessibilityLabel="What kind of recipe to suggest"
             />
           )}
 
@@ -335,19 +335,19 @@ export function InventRecipeSheet({ visible, onClose, onCreated }: Props) {
                 variant="neutral"
                 surface="page"
                 onPress={() => { haptics.tap(); generate(); }}
-                accessibilityLabel="Try generating recipe ideas again"
+                accessibilityLabel="Suggest recipe ideas again"
               />
             </View>
           ) : (
             <View style={styles.ideaCta}>
               <InlineAction
-                label={ideas.length > 0 ? 'More ideas' : 'Invent recipes'}
+                label={ideas.length > 0 ? 'More ideas' : 'Suggest recipes'}
                 icon={ideas.length > 0 ? 'refresh' : 'sparkles-outline'}
                 tint={colors.purpleText}
                 onPress={() => { haptics.tap(); generate(); }}
                 accessibilityLabel={ideas.length > 0
-                  ? 'Generate more recipe ideas'
-                  : 'Invent recipe ideas with Claude'}
+                  ? 'Suggest more recipe ideas'
+                  : 'Suggest recipe ideas with Claude'}
               />
             </View>
           )}

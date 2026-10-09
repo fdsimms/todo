@@ -267,8 +267,8 @@ export function SuggestedPinsSheet({ visible, tasks, pinnedTasks, onClose, onCon
 
           {slots.length === 0 ? (
             <Text style={styles.emptyHint}>
-              Nothing to suggest: everything on today is pinned already or sits in a category
-              you've excluded.
+              Nothing to suggest. Everything on Today is already pinned or in a category
+              you’ve excluded.
             </Text>
           ) : (
             <Text style={styles.hint}>Tap to include or skip, or swap a row for the next best task.</Text>

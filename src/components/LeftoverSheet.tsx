@@ -385,7 +385,7 @@ export function LeftoverSheet({
     haptics.warning();
     confirmDelete({
       title: `Delete ${leftover?.title ?? 'this leftover'}?`,
-      message: 'This takes it out of the fridge and out of the history. It can\'t be undone.',
+      message: 'This removes it from the fridge and the history. This can’t be undone.',
       onConfirm: () => dismiss(onDelete),
     });
   };
@@ -459,7 +459,7 @@ export function LeftoverSheet({
 
           {choosing ? (
             <>
-              <Text style={styles.label}>What's left</Text>
+              <Text style={styles.label}>What’s left</Text>
               <Text style={styles.hintBlock}>
                 Each one becomes its own container.
               </Text>
@@ -497,7 +497,7 @@ export function LeftoverSheet({
               onChangeText={setTitle}
               onBlur={editing ? commitRename : undefined}
               onSubmitEditing={editing ? commitRename : commit}
-              placeholder="What's in the container?"
+              placeholder="What’s in the container?"
               placeholderTextColor={colors.textTertiary}
               // Only when logging fresh with nothing to start from — a seeded
               // title (from "Log leftovers" on a planned meal) is already a
@@ -544,7 +544,7 @@ export function LeftoverSheet({
               running, this one says where the container starts. */}
           {!editing && (
             <>
-              <Text style={styles.label}>Where it's going</Text>
+              <Text style={styles.label}>Where it’s going</Text>
               <View style={styles.destination}>
                 <SegmentedControl
                   options={DESTINATIONS.map(d => ({
@@ -554,7 +554,7 @@ export function LeftoverSheet({
                   }))}
                   value={destination}
                   onChange={setDestination}
-                  label="Where it's going"
+                  label="Where it’s going"
                 />
               </View>
               {destination === 'both' && (
@@ -576,7 +576,7 @@ export function LeftoverSheet({
                     from today and that's the half worth naming. */}
                 {frozen || (!editing && destination === 'freezer')
                   ? 'How long it keeps once it comes out of the freezer'
-                  : 'How long before it should be used or tossed'}
+                  : 'How long before it should be used or thrown out'}
               </Text>
             </View>
             <CountStepper
@@ -601,7 +601,7 @@ export function LeftoverSheet({
               <View style={styles.keepText}>
                 <Text style={styles.keepLabel}>Weighs</Text>
                 <Text style={styles.hintInline}>
-                  Eating it then logs as what it weighed, rather than as a serving
+                  Eating it logs by weight instead of by serving
                 </Text>
               </View>
               <View style={styles.weightField}>
@@ -652,8 +652,8 @@ export function LeftoverSheet({
                 onPress={() => { haptics.success(); dismiss(() => onSplit()); }}
                 accessibilityLabel={
                   frozen
-                    ? 'Split this leftover, keeping the original in the freezer and putting a copy in the fridge'
-                    : 'Split this leftover, keeping the original in the fridge and putting a copy in the freezer'
+                    ? 'Split this leftover: original stays in the freezer, copy goes in the fridge'
+                    : 'Split this leftover: original stays in the fridge, copy goes in the freezer'
                 }
               />
 

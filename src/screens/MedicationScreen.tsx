@@ -182,7 +182,7 @@ export function MedicationScreen() {
       uri = writeExportFile(medicationExportCsv(logs), medicationExportFileName(new Date()));
       await shareCsvFile(uri, 'Share your medication log');
     } catch {
-      Alert.alert('Export failed', 'The file could not be written. Try again.');
+      Alert.alert('Export failed', 'Couldn’t write the file. Try again.');
     } finally {
       // Deleted the moment the share sheet closes, exactly as the mood export
       // and the backup do: a health record accumulating in the app's own
@@ -310,7 +310,7 @@ export function MedicationScreen() {
         <EmptyState
           icon="medkit-outline"
           title="Nothing recorded yet"
-          subtitle="Anything you take on a schedule is best kept as a repeating task, which records the dose when you check it off. Record something here when you take it as needed instead."
+          subtitle="Use a repeating task for anything you take on a schedule: checking it off records the dose. Record doses you take as needed here."
           actionLabel="Record a dose"
           onAction={openNew}
           bottomOffset={tabBarHeight}
@@ -616,7 +616,7 @@ function MedicationRow({
         )}
         {trend && (
           <Text style={[styles.medTrend, { color: colors.textSecondary }]}>
-            {trend.recent} in the last {trend.days} days, against {trend.previous} the {trend.days} before.
+            {trend.recent} in the last {trend.days} days, against {trend.previous} in the {trend.days} days before.
           </Text>
         )}
       </TouchableOpacity>

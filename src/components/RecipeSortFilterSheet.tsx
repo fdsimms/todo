@@ -30,7 +30,7 @@ interface Props {
 
 const SORT_OPTIONS: { value: RecipeSortOption; label: string; icon: string }[] = [
   { value: 'default', label: 'Loved first', icon: 'thumbs-up' },
-  { value: 'name', label: 'Name (A–Z)', icon: 'text' },
+  { value: 'name', label: 'Name (A to Z)', icon: 'text' },
   { value: 'cooked-recent', label: 'Recently cooked', icon: 'time' },
   { value: 'cooked-oldest', label: 'Not cooked in a while', icon: 'hourglass' },
   { value: 'ingredients-asc', label: 'Fewest ingredients', icon: 'remove-circle-outline' },
@@ -116,7 +116,7 @@ export function RecipeSortFilterSheet({
           </View>
 
           <View style={styles.sheetHeader}>
-            <Text style={styles.sheetTitle}>Sort & filter</Text>
+            <Text style={styles.sheetTitle}>Sort and filter</Text>
             <View style={styles.headerRight}>
               {activeCount > 0 && (
                 <TouchableOpacity onPress={reset} style={styles.resetBtn}>

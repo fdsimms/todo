@@ -267,8 +267,8 @@ export function MedicationLogSheet({ visible, log, initialName, onClose }: Props
           onChange={value => { haptics.tap(); setAsNeeded(value); }}
         />
         <Text style={styles.hint}>
-          Something you take on a schedule is better kept as a repeating task,
-          which records the dose when you check it off.
+          Use a repeating task for anything you take on a schedule.
+          Checking it off records the dose.
         </Text>
       </View>
 

@@ -547,7 +547,7 @@ describe('finishLeftover', () => {
     useLeftoverStore.getState().finishLeftover('lo-a', 'eaten');
 
     const action = useLeftoverStore.getState().lastAction;
-    expect(action?.label).toBe('Finished "Chilli"');
+    expect(action?.label).toBe('Finished “Chilli”');
     expect(action?.destructive).toBeUndefined();
 
     action!.undo();
@@ -558,7 +558,7 @@ describe('finishLeftover', () => {
   it('labels a bin differently from a finish', () => {
     seed([makeLeftover({ id: 'lo-a', title: 'Chilli' })]);
     useLeftoverStore.getState().finishLeftover('lo-a', 'tossed');
-    expect(useLeftoverStore.getState().lastAction?.label).toBe('Threw out "Chilli"');
+    expect(useLeftoverStore.getState().lastAction?.label).toBe('Threw out “Chilli”');
   });
 });
 
@@ -759,7 +759,7 @@ describe('deleteLeftover', () => {
     useLeftoverStore.getState().deleteLeftover('lo-a');
 
     const action = useLeftoverStore.getState().lastAction;
-    expect(action?.label).toBe('Deleted "Chilli"');
+    expect(action?.label).toBe('Deleted “Chilli”');
     expect(action?.destructive).toBe(true);
 
     action!.undo();

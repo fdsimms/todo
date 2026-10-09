@@ -136,7 +136,7 @@ export function renameRows(
   if (!key) return { refusal: 'An item needs a name.' };
   const clash = renameClash(items, id, trimmed);
   if (clash) {
-    return { refusal: `There is already an item called "${clash.name}". Merging two items is done in the app.` };
+    return { refusal: `There is already an item called “${clash.name}”. Merging two items is done in the app.` };
   }
   const renamed: GroceryItem = {
     ...item,
@@ -277,8 +277,8 @@ export function listNameProblem(name: string, lists: readonly GroceryList[], ign
   const trimmed = name.trim();
   if (!trimmed) return 'A list needs a name.';
   const same = (n: string) => n.trim().toLowerCase() === trimmed.toLowerCase();
-  if (same(HOME_LIST_NAME)) return `"${HOME_LIST_NAME}" is the list at home.`;
-  if (lists.some(l => l.id !== ignoreId && same(l.name))) return `There is already a list called "${trimmed}".`;
+  if (same(HOME_LIST_NAME)) return `“${HOME_LIST_NAME}” is the list at home.`;
+  if (lists.some(l => l.id !== ignoreId && same(l.name))) return `There is already a list called “${trimmed}”.`;
   return null;
 }
 

@@ -186,7 +186,7 @@ export function TodayOptionsMenu({
             <View style={styles.optionContent}>
               <Text style={styles.optionLabel}>Pull from projects</Text>
               <Text style={styles.optionHint}>
-                Bring the next thing from a quiet project into today
+                Bring the next task from a quiet project into today
               </Text>
             </View>
             <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
@@ -250,7 +250,7 @@ export function TodayOptionsMenu({
               }}
               activeOpacity={interaction.activeOpacity}
               accessibilityRole="button"
-              accessibilityLabel="Today's events"
+              accessibilityLabel="Today’s events"
             >
               <Ionicons name="calendar-outline" size={18} color={colors.textSecondary} />
               <View style={styles.optionContent}>
@@ -275,7 +275,7 @@ export function TodayOptionsMenu({
             activeOpacity={interaction.activeOpacity}
             accessibilityRole="switch"
             accessibilityState={{ checked: hideCategories }}
-            accessibilityLabel="Hide category headers"
+            accessibilityLabel="Hide categories"
           >
             <Ionicons
               name="eye-off-outline"

@@ -203,7 +203,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
   const handleDelete = () => {
     Alert.alert(
       `Delete ${person.name}?`,
-      'Anything you wrote about them is deleted. Tasks that name them are kept, and stop showing their name.',
+      'Anything you wrote about them is deleted. Tasks that name them are kept without the name.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -392,11 +392,11 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
       <View style={styles.sectionCard}>
         <View style={styles.optionRow}>
           <View style={styles.optionContent}>
-            <Text style={styles.optionLabel}>Remind me if we haven't talked in a while</Text>
+            <Text style={styles.optionLabel}>Remind me if we haven’t talked in a while</Text>
             <Text style={styles.optionHint}>
               {cadenceDays > 0
                 ? `Adds a task when it has been ${describeCadence(cadenceDays).toLowerCase()}.`
-                : 'Off. Nothing about them shows up unless you ask for it.'}
+                : 'Off. No reminders to catch up with them.'}
             </Text>
           </View>
         </View>
@@ -440,7 +440,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
             onPress={() => { haptics.tap(); animateLayout(); setCadenceDays(observed); }}
             activeOpacity={interaction.activeOpacity}
             accessibilityRole="button"
-            accessibilityLabel={`Use every ${observed} days`}
+            accessibilityLabel={`Use every ${observed} ${observed === 1 ? 'day' : 'days'}`}
           >
             <Ionicons name="sparkles-outline" size={14} color={colors.accent} />
             <Text style={styles.offerText}>
@@ -460,7 +460,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
           />
         </View>
         <Text style={styles.cardFooter}>
-          When this is filled in, the reminder says to ask about it instead of just saying to catch up.
+          If filled in, the reminder asks about it instead of saying to catch up.
         </Text>
       </View>
       </>
@@ -472,7 +472,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
           icon="people-circle-outline"
           label="Group"
           value={group?.name}
-          hint="People you always catch up with together, like a couple or a household, share one reminder and one tag."
+          hint="People you catch up with together, like a couple or household, share one reminder and one tag."
           onPress={() => setShowGroupEditor(true)}
         />
       </View>
@@ -530,10 +530,10 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
         </View>
       )}
       <Text style={styles.sectionFooter}>
-        Where they live. Used to find them when you're planning a trip somewhere.
+        Where they live. Used to find them when you’re planning a trip somewhere.
       </Text>
 
-      <Text style={styles.groupLabel}>GETTING HOLD OF THEM</Text>
+      <Text style={styles.groupLabel}>CONTACT</Text>
       <View style={styles.sectionCard}>
         <View style={styles.fieldRow}>
           <Text style={styles.fieldLabel}>Phone</Text>
@@ -600,7 +600,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
         />
       </View>
       <Text style={styles.sectionFooter}>
-        A birthday task carries their number, so you can call or text from the task itself. Filling from Contacts only fills fields that are empty.
+        A birthday task carries their number, so you can call or text from the task. Filling from Contacts only fills empty fields.
       </Text>
 
       <Text style={styles.groupLabel}>MORE</Text>

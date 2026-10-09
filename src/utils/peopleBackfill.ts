@@ -61,25 +61,25 @@ export const PERSON_BACKFILL_FIELDS: PersonBackfillFieldDef[] = [
     id: 'birthday',
     label: 'Birthday',
     shortLabel: 'Birthday',
-    hint: 'The month and day they were born, so a reminder can arrive before it comes around.',
+    hint: 'The month and day they were born, so a reminder can arrive ahead of time.',
   },
   {
     id: 'cadence',
-    label: "Remind me if we haven't talked in a while",
+    label: "Remind me if we haven’t talked in a while",
     shortLabel: 'Catch-up reminder',
-    hint: 'How long with nothing on file before the app adds a catch-up task. Off for everyone until you set one.',
+    hint: 'How long with nothing on file before a catch-up task is added. Off until you set one.',
   },
   {
     id: 'askAbout',
     label: 'Ask about',
     shortLabel: 'Ask about',
-    hint: 'Something to ask them about next time, so that reminder names a reason instead of just saying to catch up.',
+    hint: 'Something to ask them about, so the catch-up reminder names a reason.',
   },
   {
     id: 'location',
     label: 'Location',
     shortLabel: 'Location',
-    hint: 'Where they live, so you can find them when planning a trip somewhere.',
+    hint: 'Where they live, so you can find them when planning a trip.',
   },
 ];
 

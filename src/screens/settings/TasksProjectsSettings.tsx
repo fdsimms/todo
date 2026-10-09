@@ -126,10 +126,10 @@ export function TasksProjectsSettings() {
           is a reason to meet them after the rest, not before it. */}
       <SettingsSection
         label="New tasks"
-        footer="What a fresh task starts with, and where quick add files it before you type anything. A project's own defaults come first, and none of these override a value you actually pick. The task editor shows the default on a row you haven't touched. Typing a date in quick add still wins over the destination below."
+        footer="What a new task starts with, and where quick add files it. A project’s own defaults come first, and none of these override a value you pick. A date typed in quick add overrides the destination below."
       >
         <SettingsRow
-  entryId="newTaskCategory" icon="pricetag-outline" label="Category" hint="Applied to every new task that doesn't get one of its own." value={newTaskCategoryOptions.find(o => o.value === newTaskDefaults.category)?.label ?? 'None'} tight />
+  entryId="newTaskCategory" icon="pricetag-outline" label="Category" hint="Applied to every new task that doesn’t get one of its own." value={newTaskCategoryOptions.find(o => o.value === newTaskDefaults.category)?.label ?? 'None'} tight />
         <View style={styles.pillGroupRow}>
           <PillGroup
             noun="category"
@@ -163,7 +163,7 @@ export function TasksProjectsSettings() {
         />
         <View style={styles.sep} />
         <SettingsRow
-  entryId="newTaskDifficulty" icon="barbell-outline" label="Difficulty" hint="How hard a new task is to make yourself do. Only matters when rewards are on: hard tasks earn double coins and easy ones half." tight />
+  entryId="newTaskDifficulty" icon="barbell-outline" label="Difficulty" hint="How hard a new task is to make yourself do. With rewards on, hard tasks earn double coins and easy ones half." tight />
         <SettingsSegments
           attached
           options={NEW_TASK_DIFFICULTY_OPTIONS}
@@ -199,8 +199,8 @@ export function TasksProjectsSettings() {
           iconColor={newTaskDefaults.openEditorAfterQuickAdd ? colors.accent : undefined}
           label="Open editor after quick add"
           hint={newTaskDefaults.openEditorAfterQuickAdd
-            ? 'The full editor opens on a task right after you create it'
-            : 'A quick-added task just files itself and the sheet closes'}
+            ? 'The full editor opens right after you create a task'
+            : 'A quick-added task is filed and the sheet closes'}
           toggle={newTaskDefaults.openEditorAfterQuickAdd}
           onPress={() => setNewTaskDefaults({ openEditorAfterQuickAdd: !newTaskDefaults.openEditorAfterQuickAdd })}
         />
@@ -224,7 +224,7 @@ export function TasksProjectsSettings() {
 
       <SettingsSection
         label="Task form"
-        footer="Nothing is removed. The other fields sit behind “more” in quick add and in the editor's sections, and the editor's field search still finds all of them. A task created either way is the same task."
+        footer="The other fields sit behind “more” in quick add and in the editor’s sections. The editor’s field search still finds them."
       >
         <SettingsRow
           entryId="simpleTaskForm"
@@ -241,7 +241,7 @@ export function TasksProjectsSettings() {
 
       <SettingsSection
         label="Today"
-        footer="Also available from Today's … menu."
+        footer="Also available from Today’s … menu."
       >
         <SettingsRow
           entryId="hideCategories"
@@ -284,7 +284,7 @@ export function TasksProjectsSettings() {
           icon="notifications-outline"
           iconColor={defaultProjectNudgeCadenceDays > 0 ? colors.accent : undefined}
           label="Bring new projects up every"
-          hint="What a new project's “Bring this up” starts at. By default a new project shows up in Pull from projects when you open it, and never brings itself up. Pick a length and new projects add a review task once they've gone that long with nothing scheduled. This doesn't touch projects you've already created, and each one can still be changed on its own."
+          hint="The starting “Bring this up” value for new projects. By default a new project only shows up in Pull from projects. Pick a length and new projects add a review task after that long with nothing scheduled. Existing projects aren’t changed."
           value={defaultProjectNudgeCadenceDays > 0 ? describeCadence(defaultProjectNudgeCadenceDays) : 'When I ask'}
           tight
         />
@@ -327,7 +327,7 @@ export function TasksProjectsSettings() {
 
       <SettingsSection
         label="Rescheduling"
-        footer="Counted per task, and the count resets as soon as you pull one back to today. You can also silence the prompt for a single task from the reminder itself."
+        footer="Counted per task and reset when you pull a task back to today. You can also silence the prompt for one task from the reminder."
       >
         <SettingsRow
           entryId="postponeCheck"
@@ -335,8 +335,8 @@ export function TasksProjectsSettings() {
           iconColor={postponeCheckEnabled ? colors.accent : undefined}
           label="Suggest an action after repeated reschedules"
           hint={postponeCheckEnabled
-            ? `Shows a suggestion once you've moved a task ${postponeCheckThreshold} times`
-            : 'Off. Reschedule a task as many times as you like with no prompt'}
+            ? `Shows a suggestion once you’ve moved a task ${postponeCheckThreshold} times`
+            : 'Off. No suggestion, however many times you reschedule a task'}
           toggle={postponeCheckEnabled}
           onPress={() => setPostponeCheckEnabled(!postponeCheckEnabled)}
         />
@@ -375,7 +375,7 @@ export function TasksProjectsSettings() {
       {(!simpleMode || autoRemoveExpiredTasks !== null) && (
       <SettingsSection
         label="Time-limited tasks"
-        footer={'A task with a time window (like "farmers market, 8am–1pm") moves to Expired once its window closes, whether or not it repeats.'}
+        footer={'A task with a time window (like “farmers market, 8am to 1pm”) moves to Expired once its window closes, whether or not it repeats.'}
       >
         <SettingsRow
           entryId="autoRemoveExpired"
