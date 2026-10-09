@@ -584,6 +584,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['permission', 'allow', 'authorize', 'grant'] },
   { id: 'healthToday', requires: 'healthRead', groupId: 'health', label: 'Steps today', section: 'Apple Health',
     keywords: ['count', 'reading', 'walked'] },
+  { id: 'stepGoal', requires: 'healthRead', groupId: 'health', label: 'Daily step goal', section: 'Apple Health',
+    keywords: ['steps', 'target', 'walking', 'progress', 'bar'] },
   { id: 'healthCategory', requires: 'healthRead', groupId: 'health', label: 'Show Health readings under', section: 'Apple Health',
     keywords: ['category', 'section', 'today', 'where', 'hide', 'nowhere', 'steps', 'rings', 'calories', 'activity'] },
   { id: 'healthWrite', groupId: 'health', label: 'Log to Health', section: 'Log to Health',

@@ -6,6 +6,8 @@ import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, lineHeight, fontWeight, border, iconSize, interaction, checkboxRadius, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { SpotlightScrim } from './SpotlightOverlay';
+import { ActivityRingsGlyph, ringColor } from './ActivityRingsCard';
+import { RING_ORDER, describeRing } from '../utils/activityRings';
 import type { CardPosition } from '../utils/contextCards';
 
 interface Props {
@@ -146,11 +148,45 @@ export function DayContextRow({ row, onPress, onMarkCooked, cardPosition }: Prop
   const hasMeta = row.caption !== '' || !!row.calendarTag || !!row.movedNote;
   const a11yLabel = [row.title, row.caption, row.movedNote].filter(Boolean).join(', ');
 
+  const visual = row.visual;
+  const ringLines = visual?.type === 'rings'
+    ? RING_ORDER.filter(id => (visual.rings[id].value ?? 0) > 0)
+    : [];
+  // A limit's bar takes the row's tone (violet while within, orange when near,
+  // red once over); the Move bar is the Move ring's red so the two read as the
+  // same thing.
+  const barColor = visual?.type === 'bar'
+    ? visual.hue === 'move' ? colors.red
+      : row.tone === 'over' ? colors.red
+        : row.tone === 'near' ? colors.orange
+          : colors.accent
+    : colors.accent;
+
   const body = (
     <>
-      <Text style={[styles.title, row.now && styles.titleNow, row.tone === 'over' && styles.titleOver]} numberOfLines={1}>
-        {row.title}
-      </Text>
+      {visual?.type === 'rings' ? (
+        // The legend stands in for the title, which stays the same sentence for
+        // a screen reader and a collapsed section.
+        <View style={styles.legend}>
+          {ringLines.map(id => (
+            <View key={id} style={styles.legendRow}>
+              <View style={[styles.legendDot, { backgroundColor: ringColor(id, colors) }]} />
+              <Text style={styles.title} numberOfLines={1}>
+                {describeRing(id, visual.rings[id])}
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : (
+        <Text style={[styles.title, row.now && styles.titleNow, row.tone === 'over' && styles.titleOver]} numberOfLines={1}>
+          {row.title}
+        </Text>
+      )}
+      {visual?.type === 'bar' && (
+        <View style={styles.barTrack} importantForAccessibility="no-hide-descendants">
+          <View style={[styles.barFill, { width: `${Math.round(visual.fraction * 100)}%`, backgroundColor: barColor }]} />
+        </View>
+      )}
       {/* One meta chip, shaped like TaskItem's. Every caption these rows can
           carry says *when* — "4:15 PM", "All day", "Now", "Lunch", "Use by
           today" — so one clock covers all of them, and it's the glyph the
@@ -244,6 +280,9 @@ export function DayContextRow({ row, onPress, onMarkCooked, cardPosition }: Prop
               {body}
             </View>
           )}
+          {visual?.type === 'rings' && (
+            <ActivityRingsGlyph rings={visual.rings} size={RINGS_SIZE} stroke={6} gap={2} />
+          )}
           {/* The next event's countdown, on that one row only. */}
           {row.startsIn ? (
             <Text style={styles.startsIn} numberOfLines={1}>{row.startsIn}</Text>
@@ -273,6 +312,10 @@ export function DayContextRow({ row, onPress, onMarkCooked, cardPosition }: Prop
  */
 const GLYPH_BOX_SIZE = 22;
 const GLYPH_SIZE = 13;
+
+/** The Activity rings at the row's trailing edge: three 6pt arcs, 2pt apart. */
+const RINGS_SIZE = 52;
+const BAR_HEIGHT = 6;
 
 // Every number below is TaskItem's, and that's the point — they're duplicated
 // rather than exported because this row is *shaped like* a task rather than
@@ -351,6 +394,31 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   titleOver: { color: colors.redText },
   titleNow: {
     fontWeight: fontWeight.medium,
+  },
+  // The progress bar under a limit's or the Move goal's figure.
+  barTrack: {
+    height: BAR_HEIGHT,
+    borderRadius: radius.full,
+    backgroundColor: colors.bgTertiary,
+    overflow: 'hidden',
+    marginTop: spacing.xxs,
+  },
+  barFill: {
+    height: BAR_HEIGHT,
+    borderRadius: radius.full,
+  },
+  legend: {
+    gap: spacing.xxs,
+  },
+  legendRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  legendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: radius.full,
   },
   metaRow: {
     flexDirection: 'row',

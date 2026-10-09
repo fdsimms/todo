@@ -531,6 +531,8 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'nutritionLimits',
   'limitWarnPercent',
   'limitsTodayCategory',
+  // The steps row's goal on Today. A typed-in preference.
+  'stepGoal',
   // The limit tasks deleted for good, and the slips the app logged on them.
   'limitWarningDeclined',
   'limitWarningAutoSlips',

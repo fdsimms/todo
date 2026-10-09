@@ -37,6 +37,7 @@ import {
 import { DEFAULT_APP_FONT, isAppFont, pickRandomAppFont, type AppFont } from '../theme/fonts';
 import { parseGeneratorEstimates, type GeneratorEstimates } from '../utils/ruleEstimate';
 import type { SortOption, RecipeSortOption, ProjectSortOption, Priority, Effort, Difficulty, GeneratedKind, TaskFieldDefaults, MealSlot, TimeOfDay, TitleRule, WeatherRule, EventTaskRule, ScreenTimeRule, HealthRule, NutrientKey, ReminderCapture } from '../types';
+import { clampStepGoal, parseStepGoal } from '../utils/stepGoal';
 import {
   parseNutritionTargets,
   serializeNutritionTargets,
@@ -1206,6 +1207,9 @@ interface SettingsStore {
   // the calendar's own "Nowhere" gives, and one setting rather than two that
   // could contradict each other.
   healthCategory: string | null;
+  // The steps row's goal, or null for none (the default). Apple Health holds no
+  // step goal an app can read, so this is typed in; see `src/utils/stepGoal.ts`.
+  stepGoal: number | null;
 
   // The `health` generator: whether it runs, where its tasks file, and the
   // rules themselves. Separate from `healthReadEnabled` above because they are
@@ -1991,6 +1995,7 @@ interface SettingsStore {
    */
   syncWeightGoalCalorieTarget: (currentKg: number | null) => void;
   setHealthCategory: (category: string | null) => void;
+  setStepGoal: (goal: number | null) => void;
   setHealthTasks: (on: boolean) => void;
   setHealthTaskCategory: (category: string | null) => void;
   setHealthRules: (rules: HealthRule[]) => void;
@@ -2739,6 +2744,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   activeEnergyBoost: null,
   bodyProfile: { ...EMPTY_BODY_PROFILE },
   healthCategory: null,
+  stepGoal: null,
   healthTasks: false,
   healthTaskCategory: null,
   healthRules: [],
@@ -3125,6 +3131,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // creates the category from here — see ensureHealthCategory, which runs
     // once the categories themselves have loaded.
     const healthCategory = dbGetSetting('healthCategory') || null;
+    const stepGoal = parseStepGoal(dbGetSetting('stepGoal'));
     const healthTasks = dbGetSetting('healthTasks') === 'true';
     const healthTaskCategory = dbGetSetting('healthTaskCategory') || null;
     // Absent means never answered, so the shipped defaults apply; a stored but
@@ -3639,6 +3646,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       snackNudgeTaskCategory,
       snackNudgeTasks,
       sortOption,
+      stepGoal,
       sunLocation,
       supplyReorderTaskCategory,
       supplyReorderTasks,
@@ -5138,6 +5146,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setHealthCategory(category: string | null) {
     dbSetSetting('healthCategory', category ?? '');
     set({ healthCategory: category });
+  },
+
+  setStepGoal(goal: number | null) {
+    const next = goal === null ? null : clampStepGoal(goal);
+    dbSetSetting('stepGoal', next === null ? '' : String(next));
+    set({ stepGoal: next });
   },
 
   setHealthTasks(on: boolean) {
