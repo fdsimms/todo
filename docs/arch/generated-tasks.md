@@ -732,13 +732,14 @@ one. Those three rules and the reasoning behind them are in
 
 ## A generated row links back to where it is defined
 
-Every row with a `generatedKind` carries a sparkles button that opens its generator on the
+Every row with a `generatedKind` carries a sparkles button in its expanded panel (beside duplicate, not on the collapsed row) that opens its generator on the
 Automations screen (`automationEntryIdFor` in `generatedTasks.ts`, opened with
 `navigateToSettingsEntry`). The four rule generators (weather, Screen Time, Health, calendar
 events) open at their rule list instead of the switch, since the rule is what wrote the row. It
 is separate from the row's own link on purpose: that one points at the task's subject (Apple
 Weather, the pantry), this one at the setting. A new generator needs no wiring as long as it has a
-`gen:<kind>` settings entry; `generatedTasks.test.ts` fails if a kind resolves to nothing.
+`gen:<kind>` settings entry; `generatedTasks.test.ts` fails if a kind resolves to nothing. A `notice` row has no action bar,
+so it has no button either.
 
 ## An estimate set on one is kept on its generator
 

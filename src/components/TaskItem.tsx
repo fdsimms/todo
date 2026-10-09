@@ -3610,27 +3610,6 @@ export const TaskItem = React.memo(function TaskItem({
         </TouchableOpacity>
       )}
 
-      {/* Back to where the app was told to write this: the generator's row on
-          Automations, or its rule list. Its own button for the people-page
-          button's reason, since the row's link is usually the task's subject
-          (Apple Weather, the pantry) and this is a different place. */}
-      {!selectionMode && showActions && task.generatedKind && !task.completed && (
-        <TouchableOpacity
-          onPress={() => {
-            haptics.tap();
-            // `null`: Automations is a tab screen, which openSettingsTarget
-            // reaches through navigateToTab and so needs no navigation object.
-            navigateToSettingsEntry(null, automationEntryIdFor(task.generatedKind!));
-          }}
-          hitSlop={8}
-          style={styles.linkBtn}
-          accessibilityRole="button"
-          accessibilityLabel={`Open automation settings for ${task.title}`}
-        >
-          <Ionicons name="sparkles-outline" size={iconSize.sm} color={colors.accent} />
-        </TouchableOpacity>
-      )}
-
       {/* One button for both, because they're one fact about the task — a
           number you can reach someone on — and the row was spending two of its
           few action slots on the same phone number. Which of call or text you
@@ -4506,6 +4485,26 @@ export const TaskItem = React.memo(function TaskItem({
                   >
                     <Ionicons name="duplicate-outline" size={iconSize.sm} color={colors.textSecondary} />
                   </PressableScale>
+                  {/* Back to where the app was told to write this: the
+                      generator's row on Automations, or its rule list. In the
+                      panel rather than on the collapsed row, which is already
+                      spending its width on the row's own link and the pin. */}
+                  {task.generatedKind && !task.completed && (
+                    <PressableScale
+                      style={styles.iconActionBtn}
+                      onPress={async () => {
+                        await haptics.tap();
+                        // `null`: Automations is a tab screen, which
+                        // openSettingsTarget reaches through navigateToTab and
+                        // so needs no navigation object.
+                        navigateToSettingsEntry(null, automationEntryIdFor(task.generatedKind!));
+                      }}
+                      hitSlop={8}
+                      accessibilityLabel={`Open automation settings for ${task.title}`}
+                    >
+                      <Ionicons name="sparkles-outline" size={iconSize.sm} color={colors.textSecondary} />
+                    </PressableScale>
+                  )}
                   <PressableScale
                     style={[styles.iconActionBtn, styles.iconActionBtnAccent]}
                     onPress={() => onEdit(task.id)}
