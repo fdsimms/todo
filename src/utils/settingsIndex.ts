@@ -580,6 +580,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['steps', 'target', 'walking', 'progress', 'bar'] },
   { id: 'healthCategory', requires: 'healthRead', groupId: 'health', label: 'Show Health readings under', section: 'Apple Health',
     keywords: ['category', 'section', 'today', 'where', 'hide', 'nowhere', 'steps', 'rings', 'calories', 'activity'] },
+  { id: 'healthTodayRows', requires: 'healthRead', groupId: 'health', label: 'Readings shown', section: 'Apple Health',
+    keywords: ['hide', 'choose', 'active calories', 'activity'] },
   { id: 'healthWrite', groupId: 'health', label: 'Log to Health', section: 'Log to Health',
     keywords: ['hydration', 'drink', 'water', 'weight', 'write', 'healthkit', 'food', 'meal', 'nutrition'] },
   { id: 'healthWriteAccess', requires: 'healthWrite', groupId: 'health', label: 'Water-write access', section: 'Log to Health',
@@ -595,6 +597,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['kg', 'kilograms', 'lb', 'pounds', 'scale', 'body', 'mass', 'metric', 'imperial'] },
   { id: 'sleepGoal', groupId: 'health', label: 'Sleep goal', section: 'Sleep',
     keywords: ['hours', 'asleep', 'bedtime', 'night', 'rest', 'target'] },
+  { id: 'journalWordGoal', groupId: 'health', label: 'Word goal', section: 'Journal',
+    keywords: ['journal', 'diary', 'writing', 'words', 'word count', 'target', 'daily', 'length'] },
 
   // App permissions — one row per system permission the app ever asks for,
   // read-only status plus a link to fix it. Health, Calendar and Notifications
@@ -851,6 +855,14 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['sat fat', 'sugar', 'sodium', 'nutrition', 'food log', 'health', 'budget', 'left'], kitchen: true },
   { id: 'limitsTodayCategory', groupId: 'generated', label: 'Show them under', section: 'Stay under limits on Today',
     keywords: ['category', 'where', 'section', 'limit', 'health'], kitchen: true },
+  { id: 'goalsToday', groupId: 'generated', label: 'Nutrient goals on Today', section: 'Automations',
+    keywords: ['protein', 'fiber', 'calories', 'target', 'food log', 'nutrition', 'reach', 'left'], kitchen: true },
+  { id: 'goalsTodayCategory', groupId: 'generated', label: 'Show goals under', section: 'Nutrient goals on Today',
+    keywords: ['category', 'where', 'section', 'health'], kitchen: true },
+  { id: 'goalsTodayNutrients', groupId: 'generated', label: 'Goals shown', section: 'Nutrient goals on Today',
+    keywords: ['choose', 'hide', 'protein', 'fiber', 'calories', 'nutrient'], kitchen: true },
+  { id: 'limitsTodayNutrients', groupId: 'generated', label: 'Nutrients shown', section: 'Stay under limits on Today',
+    keywords: ['choose', 'hide', 'sat fat', 'sodium', 'sugar', 'caffeine', 'cholesterol', 'limit'], kitchen: true },
 
   // `kitchen`-gated to match the row itself, which is hidden with the
   // groceries area: the only feature routed on-device today lives there, so a

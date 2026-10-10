@@ -9,6 +9,7 @@
 import { format } from 'date-fns/format';
 import type { JournalEntry, JournalKind, TaskDraft } from '../types';
 import { textMatchesQuery } from './moodHistory';
+import { parseJournalMarkdown } from './journalMarkdown';
 
 /**
  * Whether a note to your future self is still sealed on `todayKey`, the
@@ -148,6 +149,69 @@ export function journalStats(entries: readonly JournalEntry[], monthPrefix: stri
     dayCountInMonth: days.filter(k => k.startsWith(monthPrefix)).length,
     lastDayKey: days.length > 0 ? days[days.length - 1] : null,
   };
+}
+
+/**
+ * How many words an entry holds. The formatting markers are not words (a
+ * bullet, a `#`, the `**` round bold), so the count is taken from the text as
+ * `JournalText` draws it. A word is a run of characters between spaces.
+ */
+export function countWords(text: string): number {
+  let total = 0;
+  for (const block of parseJournalMarkdown(text)) {
+    const line = block.spans.map(s => s.text).join('').trim();
+    if (line) total += line.split(/\s+/).length;
+  }
+  return total;
+}
+
+/**
+ * Words written under one day by one kind, every snippet of it. The caller
+ * passes open entries only (`openEntries`), so a sealed note adds nothing
+ * before its day.
+ */
+export function wordsOnDay(entries: readonly JournalEntry[], kind: JournalKind, dayKey: string): number {
+  return entriesOnDay(entries, kind, dayKey).reduce((sum, e) => sum + countWords(e.text), 0);
+}
+
+/** "1 word", "312 words". */
+export function formatWordCount(count: number): string {
+  return `${count.toLocaleString('en-US')} ${count === 1 ? 'word' : 'words'}`;
+}
+
+/**
+ * The bounds the daily word goal stepper moves within. An absurdity check, not
+ * advice, the shape of `SLEEP_GOAL_RANGE`.
+ */
+export const JOURNAL_WORD_GOAL_RANGE = { min: 25, max: 5000, step: 25, start: 250 } as const;
+
+/** The stored setting back to a word count, or null when unset or unreadable. */
+export function parseJournalWordGoal(raw: string | null | undefined): number | null {
+  if (!raw) return null;
+  const value = Number(raw);
+  if (!Number.isInteger(value)) return null;
+  if (value < JOURNAL_WORD_GOAL_RANGE.min || value > JOURNAL_WORD_GOAL_RANGE.max) return null;
+  return value;
+}
+
+/**
+ * Days with at least `goal` words written, among those in `monthPrefix`
+ * (`2026-10`) when one is given. A day that fell short is simply not counted:
+ * nothing here says a day was missed.
+ */
+export function daysReachingWordGoal(
+  entries: readonly JournalEntry[],
+  goal: number,
+  monthPrefix?: string,
+): number {
+  const perDay = new Map<string, number>();
+  for (const e of entries) {
+    if (monthPrefix && !e.dayKey.startsWith(monthPrefix)) continue;
+    perDay.set(e.dayKey, (perDay.get(e.dayKey) ?? 0) + countWords(e.text));
+  }
+  let days = 0;
+  for (const words of perDay.values()) if (words >= goal) days++;
+  return days;
 }
 
 /**

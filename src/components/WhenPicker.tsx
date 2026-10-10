@@ -37,7 +37,8 @@ import { useCalendarStore } from '../store/useCalendarStore';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { computeSnoozeSuggestion } from '../utils/snoozeEngine';
 import { buildDayBuckets } from '../utils/calendarMonth';
-import { assumedMinutesFor, buildDayLoads, describeDayWeight, weightFor, type DayLoad } from '../utils/dayLoad';
+import { assumedMinutesFor, buildDayLoads, describeDayShade, shadeFor, type DayLoad } from '../utils/dayLoad';
+import { dayShadeBackground } from '../theme/dayShade';
 import { liveAwaySpans } from '../utils/awayDates';
 import { useProjectStore } from '../store/useProjectStore';
 import { useShallow } from 'zustand/react/shallow';
@@ -855,7 +856,13 @@ export function WhenPicker({
                 const key = todayDay ? 'today' : dayKeyOf(day);
                 const isPending = pendingKey === key && pendingRef.current;
                 const isSuggested = suggestion?.key === dayKeyOf(day);
-                const weight = weightFor(dayLoads.get(dayKeyOf(day)));
+                const load = dayLoads.get(dayKeyOf(day));
+                // The calendar's shade, so a day reads the same in both grids.
+                // Away has no band to say it here, so it keeps its dashes.
+                const shade = outOfRange ? 0 : shadeFor(load);
+                const away = !outOfRange && !!load?.away;
+                const tint = isSelected || isPending ? null : dayShadeBackground(shade, colors);
+                const spoken = [shade >= 2 ? describeDayShade(shade) : '', away ? 'away' : ''].filter(Boolean).join(', ');
                 const dateLabel = todayDay ? `Today, ${format(day, 'EEEE, MMMM d')}` : format(day, 'EEEE, MMMM d');
 
                 return (
@@ -866,12 +873,13 @@ export function WhenPicker({
                     disabled={outOfRange}
                     activeOpacity={interaction.activeOpacity}
                     accessibilityRole="button"
-                    accessibilityLabel={weight && !outOfRange ? `${dateLabel}, ${describeDayWeight(weight)}` : dateLabel}
+                    accessibilityLabel={spoken ? `${dateLabel}, ${spoken}` : dateLabel}
                     accessibilityState={{ selected: isSelected, disabled: outOfRange }}
                   >
                     <View style={styles.dayStack}>
                       <Animated.View style={[
                         styles.dayCircle,
+                        tint !== null && { backgroundColor: tint },
                         // A refused day gets none of the marked treatments,
                         // including the accent fill for the current value: a
                         // floor can only ever exclude a value the picker was
@@ -900,28 +908,17 @@ export function WhenPicker({
                           </Text>
                         )}
                       </Animated.View>
-                      {/* The slot is reserved on every cell, marked or not, so a
-                          bar can't nudge its own circle out of line with its
-                          neighbours' — most days carry nothing here. */}
+                      {/* Reserved on every cell, marked or not, so the dashes
+                          can't nudge their own circle out of line. */}
                       <View style={styles.weightSlot}>
-                        {weight && !outOfRange && (
-                          weight === 'away' ? (
-                            // Two segments with a gap rather than a third bar
-                            // width: away is not a heavier `full`, and a run of
-                            // them reads across the row as the stretch of days
-                            // it is. Same greys as the other two — the cue is
-                            // weight, not alarm, and a coloured dot here would
-                            // read as an event marker.
-                            <View style={styles.weightAway}>
-                              <View style={styles.weightAwayDash} />
-                              <View style={styles.weightAwayDash} />
-                            </View>
-                          ) : (
-                            <View style={[
-                              styles.weightBar,
-                              weight === 'full' ? styles.weightBarFull : styles.weightBarBusy,
-                            ]} />
-                          )
+                        {away && (
+                          // Two segments with a gap: a run of them reads across
+                          // the row as the stretch of days it is. Grey, since a
+                          // coloured dot here would read as an event marker.
+                          <View style={styles.weightAway}>
+                            <View style={styles.weightAwayDash} />
+                            <View style={styles.weightAwayDash} />
+                          </View>
                         )}
                       </View>
                     </View>
@@ -1202,26 +1199,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // Weight, not alarm: a full day is often exactly the day you meant to pick,
-  // so the cue is drawn in the greys the app already uses for "quieter than
-  // the row it sits under" rather than in red or orange.
   weightSlot: {
     height: 3,
     marginTop: 1,
     justifyContent: 'center',
-  },
-  weightBar: {
-    height: 2.5,
-    borderRadius: 1.5,
-  },
-  weightBarBusy: {
-    width: 11,
-    backgroundColor: colors.textTertiary,
-  },
-  weightBarFull: {
-    width: 21,
-    height: 3,
-    backgroundColor: colors.textSecondary,
   },
   weightAway: {
     flexDirection: 'row',
@@ -1273,7 +1254,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     opacity: 0.55,
   },
   dayTextToday: {
-    color: colors.accent,
+    color: colors.accentText,
     fontWeight: fontWeight.semibold,
   },
   dayTextSuggested: {

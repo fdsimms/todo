@@ -1115,6 +1115,19 @@ export function generatedTaskCounts(
 }
 
 /**
+ * Whether a piece of the Automations screen matches what was typed in its
+ * search field. Every word has to appear somewhere in the text (case blind),
+ * so "meal task" finds Meal tasks and "weather sunscreen" needs both. A blank
+ * query matches everything.
+ */
+export function matchesAutomationQuery(query: string, ...texts: string[]): boolean {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return true;
+  const haystack = texts.join(' ').toLowerCase();
+  return words.every(w => haystack.includes(w));
+}
+
+/**
  * The Automations screen's subtitle, from `generatedTaskCounts`.
  *
  * A count rather than a list of names: two dozen generators won't fit on a

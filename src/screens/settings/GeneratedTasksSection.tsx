@@ -9,12 +9,15 @@ import { useCalendarStore } from '../../store/useCalendarStore';
 import { HEALTH_CATEGORY, useCategoryStore } from '../../store/useCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { categoryLabel } from '../../utils/categoryLabel';
+import { LIMIT_ROW_NAME, activeLimits, targetedNutrients } from '../../utils/nutritionTargets';
+import { NUTRIENT_LABEL } from '../../utils/foodNutrition';
 import { haptics } from '../../utils/haptics';
 import {
   CALENDAR_READ_KINDS,
   GENERATED_KIND_SPECS,
   generatorSwitchedOn,
   listedGeneratedKinds,
+  matchesAutomationQuery,
   type GeneratedKind,
   type GeneratedKindSpec,
 } from '../../utils/generatedTasks';
@@ -102,6 +105,7 @@ import { WeatherRulesSheet } from '../../components/WeatherRulesSheet';
 import { EventRulesSheet } from '../../components/EventRulesSheet';
 import { ScreenTimeRulesSheet } from '../../components/ScreenTimeRulesSheet';
 import { HealthRulesSheet } from '../../components/HealthRulesSheet';
+import { EmptyNote } from '../../components/EmptyNote';
 import { PillGroup, type PillGroupOption } from '../../components/PillGroup';
 import { type SegmentOption } from '../../components/SegmentedControl';
 import { makeSettingsStyles } from './settingsStyles';
@@ -178,7 +182,7 @@ function weekdayOptions(weekStartsOn: WeekStart): SegmentOption<number>[] {
   });
 }
 
-export function GeneratedTasksSection() {
+export function GeneratedTasksSection({ query = '' }: { query?: string }) {
   // ==== state ====
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
@@ -251,6 +255,17 @@ export function GeneratedTasksSection() {
     useCategoryStore.getState().addCategory(category);
     s.setLimitsTodayCategory(category);
   };
+  const toggleGoalsOnToday = () => {
+    haptics.tap();
+    if (s.goalsTodayCategory !== null) { s.setGoalsTodayCategory(null); return; }
+    const category = s.healthCategory ?? HEALTH_CATEGORY;
+    useCategoryStore.getState().addCategory(category);
+    s.setGoalsTodayCategory(category);
+  };
+  // Targets that are figures to reach: every target that isn't a limit, water aside.
+  const goalNutrients = targetedNutrients(s.nutritionTargets).filter(
+    key => key !== 'waterMl' && !s.nutritionLimits.includes(key),
+  );
   const [timePickerOpen, setTimePickerOpen] = useState(false);
   // The saved places a leave-by trip can start from. A plain setting read on
   // focus, as SavedPlacesRows does: places are added from the new-event card.
@@ -1301,17 +1316,31 @@ export function GeneratedTasksSection() {
     return null;
   };
 
+  // ==== search ====
+  // The generators narrow by name and by what they say they do. The three rows
+  // that aren't generators are matched on their own label and hint.
+  const shown = listed.filter(spec => matchesAutomationQuery(query, spec.label, spec.onHint, spec.offHint));
+  const showBackground = matchesAutomationQuery(
+    query, 'Add tasks while the app is closed', 'background refresh reminders widget',
+  );
+  const showUseUpCap = (s.groceryUseUpTasks || s.leftoverUseUpTasks)
+    && matchesAutomationQuery(query, 'Limit use-up tasks', 'at most use-up tasks at a time');
+  const showLimits = s.kitchenEnabled
+    && matchesAutomationQuery(query, 'Stay under limits on Today', 'how much of each limit is used so far today');
+  const nothingMatches = !showBackground && shown.length === 0 && !showUseUpCap && !showLimits;
+
   // ==== render ====
   return (
     <>
     <SettingsSection
       // No label: this is the whole of the screen, so its own header is
-      // already saying "Automations" directly above it.
-      footer="Deleting an added task stops it from being added again, except meal tasks, which stay gone for the rest of the day. Activity shows what each one added."
+      // already saying "Automations" directly above it. No footer either: a
+      // paragraph under thirty rows is one nobody scrolls far enough to read.
     >
       {/* Above the generators rather than inside any one of them, because it
           applies to all of them at once: it changes when the whole list below
           gets a chance to run, not what any of them do. */}
+      {showBackground && (<>
       <SettingsRow
         entryId="backgroundRefreshEnabled"
         icon="moon-outline"
@@ -1321,8 +1350,10 @@ export function GeneratedTasksSection() {
         toggle={s.backgroundRefreshEnabled}
         onPress={() => s.setBackgroundRefreshEnabled(!s.backgroundRefreshEnabled)}
       />
-      <View style={sectionStyles.groupBreak} />
-      {listed.map((spec, i) => {
+      {shown.length > 0 && <View style={sectionStyles.groupBreak} />}
+      </>)}
+      {nothingMatches && <EmptyNote icon="search-outline">{`No automations match “${query.trim()}”.`}</EmptyNote>}
+      {shown.map((spec, i) => {
         const on = enabledOf(spec.kind);
         const open = on && isOpen(spec.kind);
         return (
@@ -1388,7 +1419,7 @@ export function GeneratedTasksSection() {
           </React.Fragment>
         );
       })}
-      {(s.groceryUseUpTasks || s.leftoverUseUpTasks) && (
+      {showUseUpCap && (
         <>
           {/* Spans both use-up generators, so it sits below the loop rather
               than inside either generator's own extras — see useUpTaskCap. */}
@@ -1418,7 +1449,7 @@ export function GeneratedTasksSection() {
           </View>
         </>
       )}
-      {s.kitchenEnabled && (
+      {showLimits && (
         <>
           {/* Not a generator: these are read-only rows computed from the food
               log, so they have no registry entry and no task defaults. They
@@ -1459,6 +1490,109 @@ export function GeneratedTasksSection() {
                   ).filter(o => !o.pinned)}
                 />
               </View>
+              {activeLimits(s.nutritionTargets, s.nutritionLimits).length > 0 && (
+                <>
+                  <View style={styles.sep} />
+                  <SettingsRow
+                    entryId="limitsTodayNutrients"
+                    icon="list-outline"
+                    label="Nutrients shown"
+                    hint="Turn off a nutrient to leave its row off Today. Its limit still applies everywhere else."
+                    tight
+                  />
+                  <View style={styles.pillGroupRow}>
+                    <PillGroup
+                      noun="nutrient"
+                      options={activeLimits(s.nutritionTargets, s.nutritionLimits).map(key => {
+                        const label = LIMIT_ROW_NAME[key] ?? NUTRIENT_LABEL[key].label;
+                        const shown = !s.limitsTodayHidden.includes(key);
+                        return {
+                          key,
+                          label,
+                          selected: shown,
+                          accessibilityLabel: `${label} on Today: ${shown ? 'shown' : 'hidden'}`,
+                          onPress: () => {
+                            haptics.tap();
+                            s.setLimitsTodayHidden(
+                              shown ? [...s.limitsTodayHidden, key] : s.limitsTodayHidden.filter(k => k !== key),
+                            );
+                          },
+                        };
+                      })}
+                    />
+                  </View>
+                </>
+              )}
+            </>
+          )}
+          {goalNutrients.length > 0 && (
+            <>
+              <View style={sectionStyles.groupBreak} />
+              <SettingsRow
+                entryId="goalsToday"
+                icon="trending-up-outline"
+                iconColor={s.goalsTodayCategory !== null ? colors.accent : undefined}
+                label="Nutrient goals on Today"
+                hint={
+                  s.goalsTodayCategory !== null
+                    ? 'Shows how much of each nutrient goal is reached so far today.'
+                    : 'Shows nothing on Today for nutrient goals.'
+                }
+                toggle={s.goalsTodayCategory !== null}
+                onPress={toggleGoalsOnToday}
+              />
+              {s.goalsTodayCategory !== null && (
+                <>
+                  <View style={styles.sep} />
+                  <SettingsRow
+                    entryId="goalsTodayCategory"
+                    icon="pricetag-outline"
+                    label="Show goals under"
+                    hint="The category these rows sit in on Today."
+                    value={categoryOptions.find(o => o.value === s.goalsTodayCategory)?.label ?? s.goalsTodayCategory}
+                    tight
+                  />
+                  <View style={styles.pillGroupRow}>
+                    <PillGroup
+                      noun="category"
+                      options={categoryPills(
+                        s.goalsTodayCategory,
+                        category => { if (category !== null) s.setGoalsTodayCategory(category); },
+                        label => `Nutrient goals category: ${label}`,
+                      ).filter(o => !o.pinned)}
+                    />
+                  </View>
+                  <View style={styles.sep} />
+                  <SettingsRow
+                    entryId="goalsTodayNutrients"
+                    icon="list-outline"
+                    label="Goals shown"
+                    hint="Turn off a nutrient to leave its row off Today."
+                    tight
+                  />
+                  <View style={styles.pillGroupRow}>
+                    <PillGroup
+                      noun="nutrient"
+                      options={goalNutrients.map(key => {
+                        const label = LIMIT_ROW_NAME[key] ?? NUTRIENT_LABEL[key].label;
+                        const shown = !s.goalsTodayHidden.includes(key);
+                        return {
+                          key,
+                          label,
+                          selected: shown,
+                          accessibilityLabel: `${label} goal on Today: ${shown ? 'shown' : 'hidden'}`,
+                          onPress: () => {
+                            haptics.tap();
+                            s.setGoalsTodayHidden(
+                              shown ? [...s.goalsTodayHidden, key] : s.goalsTodayHidden.filter(k => k !== key),
+                            );
+                          },
+                        };
+                      })}
+                    />
+                  </View>
+                </>
+              )}
             </>
           )}
         </>

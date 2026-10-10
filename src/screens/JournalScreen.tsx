@@ -6,6 +6,7 @@ import { useRoute } from '@react-navigation/native';
 import { format } from 'date-fns/format';
 import type { JournalEntry, JournalKind } from '../types';
 import { useJournalStore } from '../store/useJournalStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -13,10 +14,13 @@ import { haptics } from '../utils/haptics';
 import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
 import {
   JOURNAL_KIND_COPY,
+  countWords,
+  daysReachingWordGoal,
   entriesOfKind,
   groupJournalByDay,
   journalStats,
   justOpened,
+  formatWordCount,
   openEntries,
   searchJournal,
   sealedEntries,
@@ -37,6 +41,7 @@ import { EmptyState } from '../components/EmptyState';
 import { SearchField } from '../components/SearchField';
 import { JournalEntrySheet } from '../components/JournalEntrySheet';
 import { JournalText } from '../components/JournalText';
+import { JournalWordGoalSheet } from '../components/JournalWordGoalSheet';
 import { journalPlainText } from '../utils/journalMarkdown';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
@@ -76,6 +81,19 @@ function JournalLogScreen({ kind }: { kind: JournalKind }) {
     [entries, search.query],
   );
   const stats = useMemo(() => journalStats(entries, todayKey.slice(0, 7)), [entries, todayKey]);
+  // Only the journal has a goal: a dream is written down as it is remembered.
+  const wordGoal = useSettingsStore(s => (kind === 'journal' ? s.journalWordGoal : null));
+  const [goalOpen, setGoalOpen] = useState(false);
+  // Every snippet of a day, not just the ones a search leaves showing.
+  const wordsByDay = useMemo(() => {
+    const byDay = new Map<string, number>();
+    for (const e of entries) byDay.set(e.dayKey, (byDay.get(e.dayKey) ?? 0) + countWords(e.text));
+    return byDay;
+  }, [entries]);
+  const goalDays = useMemo(
+    () => (wordGoal === null ? 0 : daysReachingWordGoal(entries, wordGoal)),
+    [entries, wordGoal],
+  );
   const keyboardScroll = useKeyboardInsetScroll<FlatList<JournalDay>>({ refreshing: pullSearch.pulling });
   const scrollTop = useListScrollToTop(keyboardScroll);
 
@@ -181,7 +199,16 @@ function JournalLogScreen({ kind }: { kind: JournalKind }) {
   };
 
   const subtitle = stats.dayCount === 0 ? undefined
-    : `${stats.dayCount} ${stats.dayCount === 1 ? 'day' : 'days'} · ${stats.dayCountInMonth} this month`;
+    : `${stats.dayCount} ${stats.dayCount === 1 ? 'day' : 'days'} · ${stats.dayCountInMonth} this month`
+      + (wordGoal === null ? '' : ` · ${goalDays} reached ${wordGoal.toLocaleString('en-US')} words`);
+
+  /** A day's heading: its words, set against the goal when there is one. */
+  const dayWordsLabel = (dayKey: string): string => {
+    const words = wordsByDay.get(dayKey) ?? 0;
+    return wordGoal === null
+      ? formatWordCount(words)
+      : `${words.toLocaleString('en-US')} of ${wordGoal.toLocaleString('en-US')} words`;
+  };
 
   const header = (
     <>
@@ -196,6 +223,12 @@ function JournalLogScreen({ kind }: { kind: JournalKind }) {
             loading: sharing,
             accessibilityLabel: shareTitle,
           }] : []),
+          ...(kind === 'journal' ? [{
+            icon: 'target' as const,
+            onPress: () => { haptics.tap(); setGoalOpen(true); },
+            active: wordGoal !== null,
+            accessibilityLabel: wordGoal === null ? 'Set a word goal' : 'Edit your word goal',
+          }] : []),
           {
             icon: 'add-circle-outline' as const,
             onPress: openNew,
@@ -204,6 +237,7 @@ function JournalLogScreen({ kind }: { kind: JournalKind }) {
         ], screenSettings.action)}
       />
       <ScreenSettingsSheet {...screenSettings.sheet} />
+      <JournalWordGoalSheet visible={goalOpen} onClose={() => setGoalOpen(false)} />
       <HubPills hub="health" active={route} />
     </>
   );
@@ -302,7 +336,7 @@ function JournalLogScreen({ kind }: { kind: JournalKind }) {
         renderItem={({ item: day }) => (
           <View>
             <Text style={styles.dayLabel}>
-              {format(new Date(`${day.dayKey}T00:00:00`), 'EEEE, MMMM d, yyyy').toUpperCase()}
+              {`${format(new Date(`${day.dayKey}T00:00:00`), 'EEEE, MMMM d, yyyy')} · ${dayWordsLabel(day.dayKey)}`.toUpperCase()}
             </Text>
             <View style={styles.card}>
               {day.entries.map((entry, index) => (

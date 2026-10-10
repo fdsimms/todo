@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { useStableCallback } from '../hooks/useStableCallback';
-import { Animated, View, Text, ScrollView, StyleSheet, Dimensions, TouchableOpacity, PanResponder } from 'react-native';
+import { Animated, View, Text, ScrollView, StyleSheet, Dimensions, TouchableOpacity, PanResponder, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -29,26 +29,27 @@ import { cellAt, isMoveDrop, type CellRect } from '../utils/calendarDrag';
 import { confirmBulkSetWhen } from '../utils/scheduleMovePrompt';
 import { spacing, font, fontWeight, radius, interaction, flattenOverlay, type Colors, textScale } from '../theme';
 import { useTextScale } from '../hooks/useTextScale';
+import { dayShadeBackground } from '../theme/dayShade';
 import { haptics } from '../utils/haptics';
 import { resetToMealPlan } from '../navigation/navigationRef';
 import { buildCalendarGrid, buildWeekDays, weekdayHeaders } from '../utils/calendarGrid';
+import { activeWeekDay, type WeekSection } from '../utils/weekScrollSpy';
 import { dateToHHMM, dayKeyOf, dayKeyToDate, formatTimeOfDay, getDayStart, getLogicalToday, hhmmToDate } from '../utils/dateUtils';
 import {
   buildDayBuckets,
   dayDetail,
   dayRows,
+  hasOpenDeadline,
   summarizeDay,
   type DayBucket,
-  type DayMarkKind,
-  type DotState,
 } from '../utils/calendarMonth';
 import {
   assumedMinutesFor,
   buildDayLoads,
   describeDayLoad,
-  describeDayWeight,
-  weightFor,
-  type DayWeight,
+  describeDayShade,
+  shadeFor,
+  type DayShade,
 } from '../utils/dayLoad';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { sameMealPlanEntries, useMealPlanStore } from '../store/useMealPlanStore';
@@ -82,13 +83,11 @@ const CELL_SIZE = Math.floor((SCREEN_WIDTH - spacing.md * 2) / 7);
 // columns across the screen, but with the dots beside the circle instead of
 // in their own row below it, the cell's content no longer needs a square box
 // to fit in.
-const CELL_HEIGHT = CELL_SIZE - 12;
-const DOT_SIZE = 6;
-// The weight bar's line under a day's circle, reserved on every cell. Small
-// enough to sit inside the slack a 33pt circle leaves in a 39pt cell, so the
-// grid keeps the height #1746 gave it.
-const WEIGHT_SLOT_HEIGHT = 3;
-const WEIGHT_SLOT_GAP = 2;
+const CELL_HEIGHT = CELL_SIZE - 10;
+// The red dot under a date with an open deadline, and the slot reserved for
+// it on every cell so a marked circle sits in line with its neighbours.
+const DEADLINE_DOT = 5;
+const DEADLINE_DOT_GAP = 2;
 
 // One shared empty array for a task with no subtasks — a fresh `[]` per row per
 // render is exactly the identity churn the grouping below exists to avoid.
@@ -386,9 +385,12 @@ export function CalendarScreen() {
   // ==== the week: the selected day's week, one section per day ====
   // Every day of it resolves against the month grid's buckets: the selected
   // day is always in the displayed month, so its whole week is in the grid.
+  // Keyed on the week rather than the selected day, so marking another day of
+  // the same week (a tap, or scrolling the list) doesn't rebuild the seven.
+  const weekStartKey = dayKeyOf(buildWeekDays(dayKeyToDate(selectedKey), weekStartsOn)[0]);
   const weekDays = useMemo(
-    () => buildWeekDays(dayKeyToDate(selectedKey), weekStartsOn),
-    [selectedKey, weekStartsOn],
+    () => buildWeekDays(dayKeyToDate(weekStartKey), weekStartsOn),
+    [weekStartKey, weekStartsOn],
   );
   const weekDetails = useMemo(
     () => weekDays.map(day => {
@@ -412,6 +414,50 @@ export function CalendarScreen() {
   // arriving at a week (switching to it, or paging), so the list opens on the
   // day you had selected rather than on the week's first day.
   const pendingWeekScroll = useRef<string | null>(null);
+  // Scrolling the list marks the day you've scrolled to (activeWeekDay). Only
+  // a scroll the reader started counts: the list's own scrollTo, to a day
+  // tapped in the strip, passes over the days between and may stop short of
+  // the tapped one at the end of the list, and neither should move the mark.
+  const weekSpyLive = useRef(false);
+  const weekViewportHeight = useRef(0);
+  const weekContentHeight = useRef(0);
+  const selectedKeyRef = useRef(selectedKey);
+  selectedKeyRef.current = selectedKey;
+  // The section map keeps the weeks paged past, so the spy reads only this one.
+  const weekKeysRef = useRef<string[]>([]);
+  weekKeysRef.current = weekDays.map(dayKeyOf);
+  const onWeekScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (!weekSpyLive.current || viewModeRef.current !== 'week') return;
+    const sections: WeekSection[] = [];
+    for (const key of weekKeysRef.current) {
+      const y = weekSectionY.current.get(key);
+      if (y !== undefined) sections.push({ key, y });
+    }
+    const key = activeWeekDay(
+      sections,
+      e.nativeEvent.contentOffset.y,
+      weekViewportHeight.current,
+      weekContentHeight.current,
+    );
+    if (key !== null && key !== selectedKeyRef.current) {
+      selectedKeyRef.current = key;
+      setSelectedKey(key);
+    }
+  }, []);
+  // Which days have their Completed rows open. Session-only, and shut by
+  // default: a past day's completions are often a dozen habits, and mounting
+  // a full row for each of them, on every day of the week at once, is what
+  // made the week slow to open.
+  const [weekCompletedOpen, setWeekCompletedOpen] = useState<ReadonlySet<string>>(() => new Set());
+  const toggleWeekCompleted = useCallback((key: string) => {
+    haptics.tap();
+    setWeekCompletedOpen(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
 
   // ==== the selected day's empty state and the month's totals ====
   // A day holding an event or a meal is not an empty day, even with no task on
@@ -452,6 +498,7 @@ export function CalendarScreen() {
   // carries the displayed month along when the week crosses into another.
   const stepWeek = (delta: number) => {
     setExpandedTaskId(null);
+    weekSpyLive.current = false;
     pendingWeekScroll.current = dayKeyOf(addDays(dayKeyToDate(selectedKey), delta * 7));
     stepDay(delta * 7);
   };
@@ -486,6 +533,7 @@ export function CalendarScreen() {
     // The week's strip doesn't change the list under it, only where you are
     // in it. Read through refs so this stays one stable callback.
     if (viewModeRef.current === 'week') {
+      weekSpyLive.current = false;
       const y = weekSectionY.current.get(key);
       if (y !== undefined) detailScrollRef.current?.scrollTo({ y, animated: true });
     }
@@ -496,7 +544,10 @@ export function CalendarScreen() {
     // The expanded row is keyed per view (the week keys it by day as well as
     // task), so one carried across would either expand nothing or the wrong row.
     setExpandedTaskId(null);
-    if (mode === 'week') pendingWeekScroll.current = selectedKey;
+    if (mode === 'week') {
+      pendingWeekScroll.current = selectedKey;
+      weekSpyLive.current = false;
+    }
     setViewMode(mode);
   };
 
@@ -945,6 +996,7 @@ export function CalendarScreen() {
       const daySummary = summarizeDay(dayInfo);
       const dayLoad = describeDayLoad(dayLoads.get(key));
       const isToday = key === todayKey;
+      const completedOpen = weekCompletedOpen.has(key);
       return (
         <View
           key={key}
@@ -975,8 +1027,24 @@ export function CalendarScreen() {
               {renderExpected(dayInfo.expected)}
               {completed.length > 0 && (
                 <>
-                  <Text style={[styles.sectionLabel, styles.weekCompletedLabel]}>Completed</Text>
-                  {completed.map(renderWeekRow)}
+                  <TouchableOpacity
+                    activeOpacity={interaction.activeOpacity}
+                    onPress={() => toggleWeekCompleted(key)}
+                    style={styles.weekCompletedToggle}
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: completedOpen }}
+                    accessibilityLabel={`${completedOpen ? 'Hide' : 'Show'} ${completed.length} completed on ${format(day, 'EEEE')}`}
+                  >
+                    <Text style={[styles.sectionLabel, styles.weekCompletedLabel]}>
+                      Completed · {completed.length}
+                    </Text>
+                    <Ionicons
+                      name={completedOpen ? 'chevron-up' : 'chevron-down'}
+                      size={14}
+                      color={colors.textSecondary}
+                    />
+                  </TouchableOpacity>
+                  {completedOpen && completed.map(renderWeekRow)}
                 </>
               )}
             </View>
@@ -1124,8 +1192,7 @@ export function CalendarScreen() {
                       dayKey={key}
                       day={day}
                       bucket={buckets.get(key)}
-                      weight={weightFor(dayLoads.get(key))}
-                      hasMeal={(extras.get(key)?.meals.length ?? 0) > 0}
+                      shade={shadeFor(dayLoads.get(key))}
                       registerRef={registerCell}
                       dropChannel={dropChannel}
                       inMonth={isSameMonth(day, displayMonth)}
@@ -1163,8 +1230,7 @@ export function CalendarScreen() {
                 dayKey={key}
                 day={day}
                 bucket={buckets.get(key)}
-                weight={weightFor(dayLoads.get(key))}
-                hasMeal={(extras.get(key)?.meals.length ?? 0) > 0}
+                shade={shadeFor(dayLoads.get(key))}
                 registerRef={registerCell}
                 dropChannel={dropChannel}
                 // A week is read whole: a day across the month line is not a
@@ -1203,6 +1269,11 @@ export function CalendarScreen() {
         ref={detailScrollRef}
         style={[styles.detail, viewMode === 'week' && styles.weekList]}
         scrollEnabled={!draggingSubtask && draggingTask === null}
+        onScroll={viewMode === 'week' ? onWeekScroll : undefined}
+        scrollEventThrottle={viewMode === 'week' ? 32 : undefined}
+        onScrollBeginDrag={() => { weekSpyLive.current = true; }}
+        onLayout={e => { weekViewportHeight.current = e.nativeEvent.layout.height; }}
+        onContentSizeChange={(_, h) => { weekContentHeight.current = h; }}
         contentContainerStyle={
           viewMode !== 'week' && (viewMode === 'day' ? dayEmpty : monthEmpty)
             ? { flexGrow: 1, paddingBottom: tabBarHeight + spacing.xl }
@@ -1322,19 +1393,6 @@ export function CalendarScreen() {
 }
 
 /**
- * One hue per kind, and the same three everywhere they're named: due takes the
- * accent every date control in the app already uses, a deadline takes the red
- * the countdown chip does, and a deferred task's return takes purple — the one
- * of the three that isn't work landing on you, so it shouldn't borrow either
- * of the other two's meanings.
- */
-function dotColor(kind: DayMarkKind, colors: Colors): string {
-  if (kind === 'due') return colors.accent;
-  if (kind === 'deadline') return colors.red;
-  return colors.purple;
-}
-
-/**
  * Memoized, and it takes its day key rather than a closure over it.
  *
  * Forty-two of these are mounted at once and the grid re-renders on every
@@ -1346,14 +1404,13 @@ function dotColor(kind: DayMarkKind, colors: Colors): string {
  * Today.
  */
 const DayCell = React.memo(function DayCell({
-  dayKey, day, bucket, weight, hasMeal, inMonth, isToday, isSelected, colors, styles, onSelect, registerRef, dropChannel,
+  dayKey, day, bucket, shade, inMonth, isToday, isSelected, colors, styles, onSelect, registerRef, dropChannel,
 }: {
   dayKey: string;
   day: Date;
   bucket: DayBucket | undefined;
-  weight: DayWeight | null;
-  /** A planned meal on the day: one more dot, after the task kinds. */
-  hasMeal: boolean;
+  /** How much is on the day, drawn as the tint behind its date. See `shadeFor`. */
+  shade: DayShade;
   inMonth: boolean;
   isToday: boolean;
   isSelected: boolean;
@@ -1367,7 +1424,7 @@ const DayCell = React.memo(function DayCell({
 }) {
   const onPress = () => onSelect(dayKey);
   const aimed = useDropTargetAimed(dropChannel, dayKey);
-  const dots = bucket?.dots ?? [];
+  const tint = isSelected ? null : dayShadeBackground(shade, colors);
   return (
     <TouchableOpacity
       ref={view => registerRef(dayKey, view as unknown as View | null)}
@@ -1376,83 +1433,38 @@ const DayCell = React.memo(function DayCell({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityState={{ selected: isSelected }}
-      accessibilityLabel={cellLabel(day, bucket, weight, hasMeal)}
+      accessibilityLabel={cellLabel(day, bucket, shade)}
     >
-      <View style={styles.inlineWrap}>
-        <View style={styles.dayStack}>
-          <View style={[
-            styles.dayCircle,
-            isSelected && styles.dayCircleSelected,
-            !isSelected && isToday && styles.dayCircleToday,
-          ]}>
-            <Text maxFontSizeMultiplier={textScale.badge} style={[
-              styles.dayText,
-              !inMonth && styles.dayTextOtherMonth,
-              isSelected && styles.dayTextSelected,
-              !isSelected && isToday && styles.dayTextToday,
-            ]}>
-              {day.getDate()}
-            </Text>
-          </View>
-          {/* Reserved on every cell, marked or not: a bar that only some cells
-              carried would sit their circles a couple of points higher than
-              their neighbours', and a grid is read by its rows. */}
-          <View style={styles.weightSlot}>
-            {/* An away day draws nothing here: the trip's named band under
-                the row says it, where WhenPicker's cell (no room for a band)
-                still uses its two dashes. */}
-            {weight && weight !== 'away' && (
-              <View style={[
-                styles.weightBar,
-                weight === 'full' ? styles.weightBarFull : styles.weightBarBusy,
-              ]} />
-            )}
-          </View>
-        </View>
-        {(dots.length > 0 || hasMeal) && (
-          <View style={styles.dotColumn}>
-            {dots.map(dot => (
-              <View
-                key={dot.kind}
-                style={[
-                  styles.dot,
-                  dotStyle(dot.state, dotColor(dot.kind, colors)),
-                ]}
-              />
-            ))}
-            {/* Green, the kitchen's colour, and always solid: a meal isn't
-                work, so it has no done or projected state to show. */}
-            {hasMeal && <View style={[styles.dot, { backgroundColor: colors.green }]} />}
-          </View>
-        )}
+      <View style={[
+        styles.dayCircle,
+        tint !== null && { backgroundColor: tint },
+        isSelected && styles.dayCircleSelected,
+        !isSelected && isToday && styles.dayCircleToday,
+      ]}>
+        <Text maxFontSizeMultiplier={textScale.badge} style={[
+          styles.dayText,
+          !inMonth && styles.dayTextOtherMonth,
+          isSelected && styles.dayTextSelected,
+          !isSelected && isToday && styles.dayTextToday,
+        ]}>
+          {day.getDate()}
+        </Text>
+      </View>
+      <View style={styles.deadlineSlot}>
+        {hasOpenDeadline(bucket) && <View style={styles.deadlineDot} />}
       </View>
     </TouchableOpacity>
   );
 });
 
-/**
- * Filled for real work, faded once it's all ticked, hollow for a projection.
- *
- * Written as a style rather than three tokens because the *colour* is the
- * kind — filling and outlining the same hue is what keeps the legend to three
- * entries instead of nine.
- */
-function dotStyle(state: DotState, color: string) {
-  if (state === 'solid') return { backgroundColor: color };
-  // 0.45 rather than the third or so a "faded" dot wants on paper: a 6pt dot
-  // is small enough that against the pure-black theme background anything
-  // dimmer stops being a dot you can find and becomes one you only see once
-  // you know it's there.
-  if (state === 'done') return { backgroundColor: color, opacity: 0.45 };
-  return { borderWidth: 1, borderColor: color };
-}
-
-function cellLabel(day: Date, bucket: DayBucket | undefined, weight: DayWeight | null, hasMeal: boolean): string {
+function cellLabel(day: Date, bucket: DayBucket | undefined, shade: DayShade): string {
   const date = format(day, 'MMMM d');
-  // The cue is drawn, so it has to be spoken — and it can be the only thing a
-  // cell carries, since a day made heavy by meetings alone has no dots.
-  const suffix = (hasMeal ? ', meal planned' : '') + (weight ? `, ${describeDayWeight(weight)}` : '');
-  if (!bucket || bucket.marks.length === 0) return `${date}${suffix}`;
+  // The shade is drawn, so it has to be spoken. The kinds below aren't drawn
+  // any more, but they're what the tint stands for, and a list of them is
+  // short enough to say.
+  const spoken = describeDayShade(shade);
+  const suffix = shade >= 2 ? `, ${spoken}` : '';
+  if (!bucket || bucket.marks.length === 0) return shade > 0 ? `${date}, ${spoken}` : date;
   const parts = bucket.dots.map(dot => {
     const noun = dot.kind === 'due' ? 'due' : dot.kind === 'deadline' ? 'deadline' : 'returning';
     if (dot.state === 'projected') {
@@ -1602,19 +1614,6 @@ function makeStyles(colors: Colors, textScaleFactor = 1) {
       fontSize: font.md,
       fontWeight: fontWeight.medium,
     },
-    // Dots stack beside the circle rather than sitting under it (#1746), so
-    // this row's own height never has to grow the cell — up to three stacked
-    // dots (~19pt) stay well under the circle's own height (33pt) either way.
-    inlineWrap: {
-      flexDirection: 'row',
-      alignItems: 'center',
-    },
-    // The weight bar goes under the circle, not under the circle-and-dots
-    // pair: centred on the pair it reads as an underline for both, and which
-    // way it slid would depend on how many dots the day happened to have.
-    dayStack: {
-      alignItems: 'center',
-    },
     dayCircle: {
       width: CELL_SIZE - 18,
       height: CELL_SIZE - 18,
@@ -1622,27 +1621,16 @@ function makeStyles(colors: Colors, textScaleFactor = 1) {
       alignItems: 'center',
       justifyContent: 'center',
     },
-    // Weight, not alarm: a full day is often exactly the day you meant to
-    // pick, so the cue takes the app's greys rather than red or orange. The
-    // slot fits inside the cell's existing slack (33pt circle in a 39pt cell),
-    // so nothing here grows the grid — #1746 shortened it on purpose.
-    weightSlot: {
-      height: WEIGHT_SLOT_HEIGHT,
-      marginTop: WEIGHT_SLOT_GAP,
+    deadlineSlot: {
+      height: DEADLINE_DOT,
+      marginTop: DEADLINE_DOT_GAP,
       justifyContent: 'center',
     },
-    weightBar: {
-      height: 2.5,
-      borderRadius: 1.5,
-    },
-    weightBarBusy: {
-      width: 11,
-      backgroundColor: colors.textTertiary,
-    },
-    weightBarFull: {
-      width: 21,
-      height: 3,
-      backgroundColor: colors.textSecondary,
+    deadlineDot: {
+      width: DEADLINE_DOT,
+      height: DEADLINE_DOT,
+      borderRadius: DEADLINE_DOT / 2,
+      backgroundColor: colors.red,
     },
     dayCircleSelected: {
       backgroundColor: colors.accentFill,
@@ -1663,21 +1651,8 @@ function makeStyles(colors: Colors, textScaleFactor = 1) {
       fontWeight: fontWeight.semibold,
     },
     dayTextToday: {
-      color: colors.accent,
+      color: colors.accentText,
       fontWeight: fontWeight.semibold,
-    },
-    dotColumn: {
-      flexDirection: 'column',
-      gap: spacing.xxs,
-      marginLeft: 3,
-      // Offsets the weight slot the circle now stands on, so the dots stay
-      // centred on the circle rather than on the taller stack beside them.
-      marginBottom: WEIGHT_SLOT_HEIGHT + WEIGHT_SLOT_GAP,
-    },
-    dot: {
-      width: DOT_SIZE,
-      height: DOT_SIZE,
-      borderRadius: DOT_SIZE / 2,
     },
     // Both sides: the grid sits directly above and the scrolling detail
     // directly below, and neither carries a margin of its own. The margins
@@ -1786,7 +1761,17 @@ function makeStyles(colors: Colors, textScaleFactor = 1) {
       fontSize: font.md,
     },
     weekCompletedLabel: {
+      marginBottom: 0,
+      marginRight: 0,
+    },
+    // The label's own inset, with the chevron after it, and tall enough to tap.
+    weekCompletedToggle: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+      minHeight: 32,
       marginTop: spacing.sm,
+      marginBottom: spacing.xs,
     },
     expectedCard: {
       marginHorizontal: spacing.md,

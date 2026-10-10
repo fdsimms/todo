@@ -535,8 +535,16 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'nutritionLimits',
   'limitWarnPercent',
   'limitsTodayCategory',
+  'limitsTodayHidden',
+  'goalsTodayCategory',
+  'goalsTodayHidden',
   // The steps row's goal on Today. A typed-in preference.
   'stepGoal',
+  // Which Health readings Today draws a row for.
+  'healthTodayHidden',
+  // The journal's daily word goal. A typed-in preference, and a count of words
+  // rather than anything written, so it needs no switch of its own.
+  'journalWordGoal',
   // The limit tasks deleted for good, and the slips the app logged on them.
   'limitWarningDeclined',
   'limitWarningAutoSlips',
@@ -696,6 +704,8 @@ export const HEALTH_SYNC_SETTING_KEYS: readonly string[] = [
   'medication_archived', 'medication_settings', 'medication_summary_last',
   'medication_milestone_dismissed', 'nutritionTargets', 'nutritionLimits', 'limitWarnPercent',
   'limitWarningAutoSlips',
+  // A typed-in goal that sleep is read against; it travels with the record it is read against.
+  'sleepGoalMinutes',
 ];
 
 /**

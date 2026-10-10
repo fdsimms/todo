@@ -10,6 +10,7 @@ import { useCategoryStore, ensureHealthCategory } from '../../store/useCategoryS
 import { categoryLabel } from '../../utils/categoryLabel';
 import { PillGroup } from '../../components/PillGroup';
 import { CountStepper } from '../../components/CountStepper';
+import { HEALTH_ROW_KEYS, HEALTH_ROW_LABELS } from '../../utils/dayContextRows';
 import { STEP_GOAL_DEFAULT, STEP_GOAL_MAX, STEP_GOAL_MIN, STEP_GOAL_STEP } from '../../utils/stepGoal';
 import { ActivityRingsCard } from '../../components/ActivityRingsCard';
 import { HEALTH_WRITABLE_NUTRIENTS } from '../../types';
@@ -21,6 +22,8 @@ import { formatWeight } from '../../utils/weightLog';
 import { goalDirection } from '../../utils/weightGoal';
 import { formatSleepDuration } from '../../utils/sleepLog';
 import { SleepGoalSheet } from '../../components/SleepGoalSheet';
+import { JournalWordGoalSheet } from '../../components/JournalWordGoalSheet';
+import { formatWordCount } from '../../utils/journal';
 import { resetToWeightGoal } from '../../navigation/navigationRef';
 import { useColors } from '../../theme/ThemeContext';
 import { SettingsSection } from './SettingsSection';
@@ -101,11 +104,15 @@ export function HealthSettings() {
   const stepGoal = useSettingsStore(s => s.stepGoal);
   const setStepGoal = useSettingsStore(s => s.setStepGoal);
   const setHealthCategory = useSettingsStore(s => s.setHealthCategory);
+  const healthTodayHidden = useSettingsStore(s => s.healthTodayHidden);
+  const setHealthTodayHidden = useSettingsStore(s => s.setHealthTodayHidden);
   const weightUnit = useSettingsStore(s => s.weightUnit);
   const weightGoal = useSettingsStore(useShallow(s => s.weightGoal));
   const setWeightUnit = useSettingsStore(s => s.setWeightUnit);
   const sleepGoalMinutes = useSettingsStore(s => s.sleepGoalMinutes);
   const [sleepGoalOpen, setSleepGoalOpen] = useState(false);
+  const journalWordGoal = useSettingsStore(s => s.journalWordGoal);
+  const [wordGoalOpen, setWordGoalOpen] = useState(false);
   const categories = useCategoryStore(s => s.categories);
   const today = useHealthStore(s => s.today);
   const refreshing = useHealthStore(s => s.refreshing);
@@ -431,6 +438,39 @@ export function HealthSettings() {
               }))}
             />
           </View>
+          {healthCategory && (
+            <>
+              <View style={styles.sep} />
+              <SettingsRow
+                entryId="healthTodayRows"
+                icon="list-outline"
+                label="Readings shown"
+                hint="Turn off a reading to leave its row off Today."
+                tight
+              />
+              <View style={styles.pillGroupRow}>
+                <PillGroup
+                  noun="reading"
+                  options={HEALTH_ROW_KEYS.map(key => {
+                    const label = HEALTH_ROW_LABELS[key];
+                    const shown = !healthTodayHidden.includes(key);
+                    return {
+                      key,
+                      label,
+                      selected: shown,
+                      accessibilityLabel: `${label} on Today: ${shown ? 'shown' : 'hidden'}`,
+                      onPress: () => {
+                        haptics.tap();
+                        setHealthTodayHidden(
+                          shown ? [...healthTodayHidden, key] : healthTodayHidden.filter(k => k !== key),
+                        );
+                      },
+                    };
+                  })}
+                />
+              </View>
+            </>
+          )}
         </>
       )}
     </SettingsSection>
@@ -567,6 +607,22 @@ export function HealthSettings() {
     {/* The sheet the Sleep screen's own target icon opens, not a second
         stepper for the same number. */}
     <SleepGoalSheet visible={sleepGoalOpen} onClose={() => setSleepGoalOpen(false)} />
+
+    <SettingsSection
+      label="Journal"
+      footer="The Journal shows each day's word count against this and counts the days that reach it."
+    >
+      <SettingsRow
+        entryId="journalWordGoal"
+        icon="create-outline"
+        iconColor={journalWordGoal !== null ? colors.accent : undefined}
+        label="Word goal"
+        hint="Words you want each journal day to reach."
+        value={journalWordGoal === null ? 'None' : formatWordCount(journalWordGoal)}
+        onPress={() => { haptics.tap(); setWordGoalOpen(true); }}
+      />
+    </SettingsSection>
+    <JournalWordGoalSheet visible={wordGoalOpen} onClose={() => setWordGoalOpen(false)} />
     </>
   );
 }

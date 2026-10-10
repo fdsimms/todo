@@ -68,6 +68,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     projects: () => [],
     projectProgress: () => ({ done: 0, total: 0 }),
     projectDecisions: () => [],
+    journalWordGoal: () => null,
     categories: () => [],
     groceryItems: () => [],
     groceryListEntries: () => [],

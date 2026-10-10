@@ -2,6 +2,7 @@ import React, { useRef } from 'react';
 import {
   Animated,
   Pressable,
+  StyleSheet,
   type GestureResponderEvent,
   type PressableProps,
   type StyleProp,
@@ -81,10 +82,16 @@ export function PressableScale({
     onPress?.(e);
   };
 
+  // The press dip owns `opacity`, and it is applied after the caller's style,
+  // so a caller's own opacity (a disabled button's dim) was overwritten and
+  // never showed. Fold it in as a multiplier instead.
+  const baseOpacity = StyleSheet.flatten(style)?.opacity;
+  const animatedOpacity = typeof baseOpacity === 'number' ? Animated.multiply(opacity, baseOpacity) : opacity;
+
   return (
     <AnimatedPressable
       accessibilityRole="button"
-      style={[style, { transform: [{ scale }], opacity }]}
+      style={[style, { transform: [{ scale }], opacity: animatedOpacity }]}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       onPress={handlePress}

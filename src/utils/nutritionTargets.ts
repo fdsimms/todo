@@ -309,6 +309,14 @@ export function activeLimits(targets: NutritionTargets, limits: readonly Nutrien
   return NUTRIENT_KEYS.filter(key => isActiveLimit(key, targets, limits));
 }
 
+/** The limits Today draws a row for: every limit except the ones the person hid there. */
+export function limitsShownOnToday(
+  limits: readonly NutrientKey[],
+  hidden: readonly NutrientKey[],
+): NutrientKey[] {
+  return limits.filter(key => !hidden.includes(key));
+}
+
 /**
  * Where a day sits against a limit. `'near'` starts at `warnShare` of it (the
  * limit warning's own setting, `DEFAULT_LIMIT_WARN_PERCENT` by default), so the
