@@ -30,7 +30,7 @@ jest.mock('../utils/dateUtils', () => ({
 
 beforeEach(() => {
   jest.clearAllMocks();
-  useMedicationStore.setState({ logs: [], archived: [], initialized: false });
+  useMedicationStore.setState({ logs: [], archived: [], settings: {}, milestoneDismissed: [], initialized: false });
 });
 
 const state = () => useMedicationStore.getState();
@@ -296,5 +296,50 @@ describe('limits and supply', () => {
     state().markSummaryShared(new Date('2026-09-10T12:00:00.000Z'));
     expect(state().lastSummaryAt).toBe('2026-09-10T12:00:00.000Z');
     expect(dbSetSetting).toHaveBeenCalledWith('medication_summary_last', '2026-09-10T12:00:00.000Z');
+  });
+});
+
+describe('renameMedication', () => {
+  const dose = (id: string, name: string, amount: number | null = null) => ({
+    id, name, takenAt: '2026-09-01T09:00:00.000Z', dayKey: '2026-09-01',
+    amount, unit: amount === null ? null : 'mg', asNeeded: true, taskId: null, note: null,
+  });
+
+  it('renames the doses, persists each, and fills a strength', () => {
+    useMedicationStore.setState({ logs: [dose('a', 'Ibuprofen 200'), dose('b', 'Ibuprofen 200', 400)] });
+    expect(state().renameMedication('ibuprofen 200', 'Ibuprofen', { amount: 200, unit: 'mg' })).toBe(2);
+    expect(state().logs.map(l => [l.name, l.amount])).toEqual([['Ibuprofen', 200], ['Ibuprofen', 400]]);
+    expect(dbUpdateMedicationLog).toHaveBeenCalledTimes(2);
+  });
+
+  it('refuses a blank name or an unknown medication', () => {
+    useMedicationStore.setState({ logs: [dose('a', 'Ibuprofen')] });
+    expect(state().renameMedication('Ibuprofen', '  ')).toBeNull();
+    expect(state().renameMedication('Nothing', 'X')).toBeNull();
+  });
+
+  it('moves the archived key with the doses', () => {
+    useMedicationStore.setState({ logs: [dose('a', 'Old')], archived: ['old'] });
+    state().renameMedication('Old', 'New');
+    expect(state().archived).toEqual(['new']);
+  });
+
+  it('un-archives a target that live doses are folded into', () => {
+    useMedicationStore.setState({ logs: [dose('a', 'Old'), dose('b', 'New')], archived: ['new'] });
+    state().renameMedication('Old', 'New');
+    expect(state().archived).toEqual([]);
+  });
+
+  it('keeps the target archived when both were', () => {
+    useMedicationStore.setState({ logs: [dose('a', 'Old'), dose('b', 'New')], archived: ['old', 'new'] });
+    state().renameMedication('Old', 'New');
+    expect(state().archived).toEqual(['new']);
+  });
+
+  it('moves the limit to the new key', () => {
+    const limit = { minHours: 6, maxPer24h: null, notify: false, since: '2026-01-01T00:00:00.000Z' };
+    useMedicationStore.setState({ logs: [dose('a', 'Old')], settings: { old: { limit, supply: null } } });
+    state().renameMedication('Old', 'New');
+    expect(state().settings).toEqual({ new: { limit, supply: null } });
   });
 });

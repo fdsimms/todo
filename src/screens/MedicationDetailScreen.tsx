@@ -34,6 +34,7 @@ import { CountStepper } from '../components/CountStepper';
 import { SegmentedControl } from '../components/SegmentedControl';
 import { InlineAction } from '../components/InlineAction';
 import { MedicationLogSheet } from '../components/MedicationLogSheet';
+import { MedicationRenameSheet } from '../components/MedicationRenameSheet';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
 
@@ -59,7 +60,7 @@ const BAR_HEIGHT = 60;
  * doses rather than stored as a number that goes down.
  */
 export function MedicationDetailScreen() {
-  const navigation = useNavigation<{ goBack: () => void }>();
+  const navigation = useNavigation<{ goBack: () => void; setParams: (params: { medicationKey: string }) => void }>();
   const route = useRoute<RouteProp<RootStackParamList, 'MedicationDetail'>>();
   const key = route.params.medicationKey;
   const insets = useSafeAreaInsets();
@@ -81,6 +82,7 @@ export function MedicationDetailScreen() {
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<MedicationLog | null>(null);
+  const [renameOpen, setRenameOpen] = useState(false);
 
   const stat = useMemo(() => medicationStats(logs).find(s => s.key === key) ?? null, [logs, key]);
   const entries = useMemo(() => logs.filter(l => medicationKey(l.name) === key), [logs, key]);
@@ -219,6 +221,13 @@ export function MedicationDetailScreen() {
 
         <View style={styles.actionsRow}>
           <InlineAction label="Record a dose" icon="add" onPress={openNew} surface="page" />
+          <InlineAction
+            label="Rename"
+            icon="create-outline"
+            variant="neutral"
+            onPress={() => { haptics.tap(); setRenameOpen(true); }}
+            surface="page"
+          />
         </View>
 
         <Text style={styles.sectionTitle}>THE LAST TWO WEEKS</Text>
@@ -425,6 +434,13 @@ export function MedicationDetailScreen() {
         initialName={name}
         onClose={() => { setSheetOpen(false); setEditing(null); }}
       />
+      <MedicationRenameSheet
+        visible={renameOpen}
+        name={name}
+        onClose={() => setRenameOpen(false)}
+        // This page is keyed by the old name, which no longer has any doses.
+        onRenamed={newName => navigation.setParams({ medicationKey: medicationKey(newName) })}
+      />
       <ScrollToTopButton {...scrollTop.buttonProps} />
     </View>
   );
@@ -445,7 +461,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   statValue: { fontSize: font.lg, fontWeight: fontWeight.bold, color: colors.text },
   statLabel: { fontSize: font.xs, color: colors.textSecondary, marginTop: spacing.xxs, textAlign: 'center' },
-  actionsRow: { flexDirection: 'row', justifyContent: 'flex-start', marginBottom: spacing.lg },
+  actionsRow: { flexDirection: 'row', justifyContent: 'flex-start', gap: spacing.sm, marginBottom: spacing.lg },
   sectionTitle: {
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,
