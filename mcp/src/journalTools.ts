@@ -36,12 +36,19 @@ function row(entry: JournalEntry): JournalRow {
 export function listJournalEntries(
   replica: Replica,
   input: LogRangeInput & { kind?: JournalKind } = {},
-): { range: DayRange; entries: JournalRow[]; sealedNotes?: number } {
+): { range: DayRange; entries: JournalRow[]; sealedNotes?: number; wordGoal?: number } {
   const range = resolveRange(replica, input);
   const all = replica.journalEntries(range.from, range.to, input.kind);
   const open = openEntries(all, replica.todayKey());
   const sealed = all.length - open.length;
-  return { range, entries: open.map(row), ...(sealed > 0 ? { sealedNotes: sealed } : {}) };
+  const goal = replica.journalWordGoal();
+  return {
+    range,
+    entries: open.map(row),
+    ...(sealed > 0 ? { sealedNotes: sealed } : {}),
+    // A day's goal, in words, for the journal only. Never said of a dream.
+    ...(goal !== null && input.kind !== 'dream' ? { wordGoal: goal } : {}),
+  };
 }
 
 function refuseSealed(replica: Replica, id: string): void {

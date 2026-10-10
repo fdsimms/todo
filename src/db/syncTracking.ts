@@ -536,6 +536,9 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'limitsTodayCategory',
   // The steps row's goal on Today. A typed-in preference.
   'stepGoal',
+  // The journal's daily word goal. A typed-in preference, and a count of words
+  // rather than anything written, so it needs no switch of its own.
+  'journalWordGoal',
   // The limit tasks deleted for good, and the slips the app logged on them.
   'limitWarningDeclined',
   'limitWarningAutoSlips',
