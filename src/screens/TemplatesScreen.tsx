@@ -265,7 +265,7 @@ export function TemplatesScreen() {
     haptics.warning();
     confirmDelete({
       title: `Delete ${ids.length} ${plural}?`,
-      message: `You're about to delete ${ids.length} ${plural}. You can undo this by shaking your phone right after.`,
+      message: `This deletes ${ids.length} ${plural}. Shake your phone right after to undo.`,
       onConfirm: () => {
         animateLayout();
         bulkDeleteTemplates(ids);
@@ -320,7 +320,7 @@ export function TemplatesScreen() {
           <EmptyState
             icon="copy-outline"
             title="No templates yet"
-            subtitle="Create a reusable stack of tasks (like a pre-vacation checklist) and add them all in one tap"
+            subtitle="Create a reusable set of tasks, like a pre-vacation checklist, and add them all in one tap."
             actionLabel="Create template"
             onAction={() => setQuickAddVisible(true)}
             bottomOffset={tabBarHeight}
@@ -376,7 +376,7 @@ export function TemplatesScreen() {
           onPress={() => setQuickAddVisible(true)}
           accessibilityLabel="Add template"
           drag={fabDrag}
-          dragHint="Drag onto the list to add a template there, or back to the button to cancel"
+          dragHint="Drop on the list to add a template there. Drop on the button to cancel."
         />
       )}
 
@@ -385,7 +385,7 @@ export function TemplatesScreen() {
           selectedCount={selectedIds.size}
           totalCount={templates.length}
           category={{
-            title: 'Move to Category',
+            title: 'Move to category',
             options: bulkCategoryOptions,
             onSet: handleBulkSetCategory,
             onCreate: name => addTemplateCategory(name),

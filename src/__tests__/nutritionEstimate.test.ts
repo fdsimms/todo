@@ -215,14 +215,14 @@ describe('describeEstimate', () => {
     // The two are different claims and rendering them identically is the
     // overclaim this whole tree is arranged against.
     expect(describeEstimate(estimate({ basis: 'typical', confidence: 'high' })))
-      .toBe('Typical for this dish rather than a specific recipe.');
+      .toBe('Typical figures for this dish.');
   });
 
   it('says the weaker claim out loud rather than hiding it', () => {
     expect(describeEstimate(estimate({ basis: 'typical', confidence: 'medium' })))
-      .toBe('Typical for this dish rather than a specific recipe. Close, not exact.');
+      .toBe('Typical figures for this dish. Close, not exact.');
     expect(describeEstimate(estimate({ basis: 'typical', confidence: 'low' })))
-      .toBe('Typical for this dish rather than a specific recipe. A rough guess.');
+      .toBe('Typical figures for this dish. A rough guess.');
   });
 
   it('says when the figures leaned on the user\'s own records', () => {

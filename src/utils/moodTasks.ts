@@ -42,7 +42,7 @@ import { lowMoodRun, type MoodDay } from './moodInsights';
  */
 
 /** The daily task's title. Never varies. */
-export const MOOD_LOG_TITLE = 'Log how you\'re feeling';
+export const MOOD_LOG_TITLE = 'Log how you’re feeling';
 
 /**
  * The nudge's title.
@@ -180,7 +180,7 @@ export function daysBetweenKeys(fromKey: string, toKey: string): number {
  */
 export function lowMoodDeloadNote(run: number, afterDays: number): string | null {
   if (run < Math.max(1, afterDays)) return null;
-  return `You've logged a low mood ${run} days running.`;
+  return `You’ve logged a low mood ${run} days running.`;
 }
 
 /**
@@ -191,5 +191,5 @@ export function lowMoodDeloadNote(run: number, afterDays: number): string | null
  * suggestion about what it might mean.
  */
 export function moodNudgeNotes(run: number): string {
-  return `You've logged a low mood ${run} days running.`;
+  return `You’ve logged a low mood ${run} days running.`;
 }

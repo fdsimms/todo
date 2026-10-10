@@ -70,7 +70,7 @@ export async function allowOkAgainNotification(): Promise<boolean> {
   if (!granted) {
     Alert.alert(
       'Notifications are off',
-      'Turn on notifications for dundundun in the Settings app to be told when the next dose is within your limit.',
+      'Turn on notifications for dundundun in Settings to be told when the next dose is within your limit.',
     );
   }
   return granted;

@@ -65,7 +65,7 @@ export function FeatureAreasSettings() {
     <>
     <SettingsSection
       label="Feature areas"
-      footer="None of these switches deletes anything. Your tasks, lists, recipes, planned meals and coin history are kept exactly as they are, and turning one back on returns every feature as you left it. A task or item that already uses a hidden feature keeps showing it, so nothing you have set can go missing."
+      footer="Turning a switch off deletes nothing, and turning it back on restores every feature as you left it. A task or item that already uses a hidden feature keeps showing it."
     >
       <SettingsRow
         entryId="kitchenEnabled"
@@ -130,7 +130,7 @@ export function FeatureAreasSettings() {
         the menu reaches can be one; see normalizeTabRoutes for the rules. */}
     <SettingsSection
       label="Tab bar"
-      footer="Three screens, plus an optional fourth and fifth, beside More in the bar along the bottom. More always opens the menu, and every screen stays in the menu whether or not it has a tab."
+      footer="Choose three to five screens to show beside More in the bottom bar. More opens the menu, which lists every screen."
     >
       <SettingsRow entryId="tabRoutes" {...slotRow(0)} />
       <View style={styles.sep} />

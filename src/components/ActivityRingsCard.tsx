@@ -136,7 +136,7 @@ export function ActivityRingsCard({ rings }: { rings: ActivityRings }) {
       </View>
       {rings.moveByTime && (
         <Text style={styles.note}>
-          Your Move ring counts Move Time rather than calories, so it isn't shown here.
+          Your Move ring counts Move Time rather than calories, so it isn’t shown here.
         </Text>
       )}
     </View>

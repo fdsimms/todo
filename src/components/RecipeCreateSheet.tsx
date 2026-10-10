@@ -385,7 +385,7 @@ export function RecipeCreateSheet({
       if (!result) {
         if (visibleRef.current) {
           setError(
-            'This page doesn’t list its recipe in a format the app can read on its own. '
+            'This page doesn’t list its recipe in a standard format. '
             + 'Add an Anthropic API key in Settings to import it.',
           );
           setCanRetry(false);
@@ -773,7 +773,7 @@ export function RecipeCreateSheet({
       <>
         <Text style={styles.groupLabel}>OTHER RECIPES THIS ONE USES</Text>
         <Text style={styles.groupHint}>
-          Link the ones you already have, or photograph the page for the ones you don't.
+          Link the ones you already have, or photograph the page for the ones you don’t.
         </Text>
         {/* Its own bottom margin: the ingredient rows below have none of their
             own, and a 2pt gap would read as one continuous list. */}
@@ -815,7 +815,7 @@ export function RecipeCreateSheet({
         <View style={styles.centered}>
           <EmptyState
             icon="alert-circle-outline"
-            title="That didn’t work"
+            title="Couldn’t import that recipe"
             subtitle={error}
             actionLabel={canRetry ? 'Try again' : backLabel}
             onAction={canRetry ? run : goBack}
@@ -834,8 +834,8 @@ export function RecipeCreateSheet({
         >
           <RecipeSourcePicker
             intro={keyless
-              ? 'Open a recipe link and it’ll be added to your recipe box. Without an Anthropic API key this works for pages that list the recipe in a standard format, which most recipe sites do.'
-              : 'Open a recipe link, photograph a cookbook page, or paste a recipe, and it’ll be added to your recipe box: name, servings and all.'}
+              ? 'Open a recipe link to add it to your recipe box. Without an Anthropic API key, this works for pages that list the recipe in a standard format, which most recipe sites do.'
+              : 'Open a recipe link, photograph a cookbook page, or paste a recipe to add it to your recipe box.'}
             linkOnly={keyless}
             mode={input.mode}
             onChangeMode={input.setMode}
@@ -872,10 +872,10 @@ export function RecipeCreateSheet({
             icon="search-outline"
             title="Nothing found"
             subtitle={input.usingPhoto
-              ? `Nothing readable turned up in ${input.photos.length > 1 ? 'those photos' : 'that photo'}. Try again in better light, or paste the text instead.`
+              ? `Nothing readable in ${input.photos.length > 1 ? 'those photos' : 'that photo'}. Try again in better light, or paste the text instead.`
               : input.usingLink
-              ? 'No recipe turned up on that page. Copy the recipe from it and paste it instead.'
-              : 'No recipe turned up in that text.'}
+              ? 'No recipe found on that page. Copy the recipe and paste it instead.'
+              : 'No recipe found in that text.'}
             actionLabel={input.usingPhoto ? 'Try another photo' : backLabel}
             onAction={input.usingPhoto ? () => { setExtracted(null); input.clearPhoto(); } : goBack}
           />
@@ -941,7 +941,7 @@ export function RecipeCreateSheet({
         </View>
 
         <Text style={styles.intro}>
-          Uncheck anything you don't want added. Tap any line to change it before it's saved.
+          Uncheck anything you don’t want added. Tap a line to edit it before saving.
         </Text>
 
         {foundDetails && (

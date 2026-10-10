@@ -254,7 +254,7 @@ describe('describePriceContext', () => {
 
 describe('describePriceStanding', () => {
   it('never shows the baseline number, only the verdict', () => {
-    expect(describePriceStanding('lowest')).toBe("The lowest you've paid");
+    expect(describePriceStanding('lowest')).toBe("The lowest you’ve paid");
     expect(describePriceStanding('low')).toBe('Less than you usually pay');
     expect(describePriceStanding('usual')).toBe('About what you usually pay');
     expect(describePriceStanding('high')).toBe('More than usual');

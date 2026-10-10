@@ -120,7 +120,7 @@ export function CategoryOrderSheet({ visible, onClose }: Props) {
           <EmptyState
             icon="folder-open-outline"
             title="No categories yet"
-            subtitle="Give a task a category and its section will show up here, ready to be moved."
+            subtitle="Once a task has a category, you can reorder its section here."
           />
         ) : (
           <ScrollView
@@ -130,12 +130,12 @@ export function CategoryOrderSheet({ visible, onClose }: Props) {
           >
             <View style={styles.introWrap}>
               <Text style={styles.intro}>
-                Today’s sections follow this order. A category with nothing on it today is
-                skipped, but keeps its place here.
+                Today’s sections follow this order. Categories with nothing today are
+                skipped but keep their place.
               </Text>
               <View style={styles.introActions}>
                 <InlineAction
-                  label="Sort A–Z"
+                  label="Sort A to Z"
                   icon="swap-vertical"
                   variant="neutral"
                   onPress={sortAlphabetically}

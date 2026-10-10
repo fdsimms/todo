@@ -418,7 +418,7 @@ export function LookAheadSheet({ visible, onClose, tripProjectId = null }: Props
             ? `Taken from the away dates on ${backSource}.`
             : backOn
             ? 'Anything falling before then is listed separately below.'
-            : 'Set this to see what falls due while you are gone.'}
+            : 'Set this to see what falls due while you are away.'}
       </Text>
 
       <View style={styles.summaryCard}>
@@ -474,8 +474,8 @@ export function LookAheadSheet({ visible, onClose, tripProjectId = null }: Props
         <View>
           {renderSectionHeader('Due while you are away', la.away.length)}
           <Text style={styles.band}>
-            Vacation mode hides these and holds their reminders, so nothing will raise them
-            while you are gone.
+            Vacation mode hides these and holds their reminders
+            while you are away.
           </Text>
           {renderCapped(
             'away',

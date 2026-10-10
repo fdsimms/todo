@@ -94,7 +94,7 @@ export function MealCalendarSettings() {
       refreshState();
       alertPermissionOff(
         'Calendar access is off',
-        'This needs permission to write to your calendar. Turn it on for this app in the Settings app, then try again.',
+        'Writing to your calendar needs permission. Turn it on in Settings, then try again.',
       );
       return;
     }
@@ -104,7 +104,7 @@ export function MealCalendarSettings() {
     if (list.length === 0 && !mealCalendarId) {
       Alert.alert(
         'No calendar you can write to',
-        'Every calendar on this device is read-only. Add or unlock one you can edit in the Settings app under Calendar › Accounts.',
+        'Every calendar on this device is read-only. Add or unlock one in Settings under Calendar › Accounts.',
       );
       return;
     }
@@ -115,7 +115,7 @@ export function MealCalendarSettings() {
   return (
     <SettingsSection
       label="Meals on your calendar"
-      footer="Adds an all-day event for each planned meal to the calendar you pick here, named for its slot, e.g. “Dinner: Lemon garlic salmon”. Meals planned from now on, not the ones already in the plan. If you pick a different calendar, a meal's event moves to it the next time that meal changes. The meal plan is always the one that's right; moving or deleting the event on the device doesn't change it."
+      footer="Adds an all-day event to the calendar you pick for each meal you plan from now on, named for its slot, e.g. “Dinner: Lemon garlic salmon”. If you pick a different calendar, a meal’s event moves there the next time that meal changes. Moving or deleting the event doesn’t change the meal plan."
     >
       <SettingsRow
         entryId="mealCalendar"
@@ -139,10 +139,10 @@ export function MealCalendarSettings() {
               icon="lock-closed-outline"
               iconColor={colors.warningText}
               label="Calendar access"
-              hint="Blocked. Nothing can be written until you turn it back on for this app."
+              hint="Blocked. Nothing can be written until you turn it back on in Settings."
               value="Open Settings"
               onPress={() => Linking.openSettings()}
-              accessibilityLabel="Calendar access is blocked. Opens the system Settings app."
+              accessibilityLabel="Calendar access is blocked. Opens Settings."
             />
           ) : (
             <SettingsChoiceTray
@@ -153,7 +153,7 @@ export function MealCalendarSettings() {
                 setMealCalendarId(option.id || null);
                 togglePicker();
               }}
-              emptyText="Every calendar on this device is read-only. Add or unlock one you can edit in the Settings app under Calendar › Accounts."
+              emptyText="Every calendar on this device is read-only. Add or unlock one in Settings under Calendar › Accounts."
               accessibilityLabelFor={option => (option.id ? `Write to ${option.title}` : 'Off')}
             />
           )}

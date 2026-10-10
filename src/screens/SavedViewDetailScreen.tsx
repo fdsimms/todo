@@ -303,7 +303,7 @@ export function SavedViewDetailScreen() {
               <EmptyState
                 icon="bookmark-outline"
                 title="Nothing matches"
-                subtitle="This view filters every task that isn't done or archived. Edit it from the button in the header."
+                subtitle="This view filters every task that isn’t done or archived. Edit it from the button in the header."
               />
             }
           />

@@ -331,7 +331,7 @@ export function RecipeNutritionSheet({ visible, reading, recipeName, servings, o
   const countLine =
     gaps.total === 0
       ? null
-      : `Counted from ${gaps.covered} of ${gaps.total} ingredients.`;
+      : `Counted from ${gaps.covered} of ${gaps.total} ${gaps.total === 1 ? 'ingredient' : 'ingredients'}.`;
 
   return (
     <EditorSheet
@@ -408,16 +408,16 @@ export function RecipeNutritionSheet({ visible, reading, recipeName, servings, o
             ))}
           </View>
           <Text style={styles.hint}>
-            Added up from the ingredients' own labels, so these are as good as those
-            labels are. A nutrient too few of them state is left out rather than counted
-            as zero.
+            Added up from the ingredients’ own labels. A nutrient too few ingredients
+            state is left out instead of
+            counted as zero.
           </Text>
         </>
       ) : (
         <View style={styles.card}>
           <Text style={styles.emptyTotal}>
-            Too few of these ingredients have figures to total the dish yet. Fill some in
-            below and the panel appears here.
+            Too few ingredients have figures to total this dish. Fill some in below
+            to see the nutrition panel here.
           </Text>
           {recipeNutritionEstimateAvailable() && (
             <View style={styles.estimateBlock}>
@@ -454,7 +454,7 @@ export function RecipeNutritionSheet({ visible, reading, recipeName, servings, o
                     icon="sparkles"
                     onPress={runEstimate}
                     disabled={estimating}
-                    accessibilityLabel="Estimate this recipe's nutrition with AI"
+                    accessibilityLabel="Estimate this recipe’s nutrition with AI"
                   />
                   {estimating && <ActivityIndicator color={colors.textSecondary} />}
                 </View>
@@ -537,8 +537,8 @@ export function RecipeNutritionSheet({ visible, reading, recipeName, servings, o
                     : weighing
                       ? `No weight recorded for ${weighing.text}.`
                       : unfixable === 'noAmount'
-                        ? "This amount doesn't have a number in it, so there's nothing to relate to a weight. Edit the ingredient in the recipe to give it one, like \"3 cloves\" instead of \"several\"."
-                        : "This amount can't be matched to its figures. Check the serving size on them."}
+                        ? "This amount has no number, so it can’t be converted to a weight. Edit the ingredient to add one, like “3 cloves” instead of “several”."
+                        : "This amount can’t be matched to its figures. Check their serving size."}
                 </Text>
 
                 {weighingId === line.id && weighing ? (
@@ -593,7 +593,7 @@ export function RecipeNutritionSheet({ visible, reading, recipeName, servings, o
                         icon="create-outline"
                         variant="neutral"
                         onPress={() => { haptics.tap(); setEditingLine(line); }}
-                        accessibilityLabel={`Edit ${line.name}'s amount in the recipe`}
+                        accessibilityLabel={`Edit ${line.name}’s amount in the recipe`}
                       />
                     ) : (
                       <InlineAction
@@ -603,18 +603,18 @@ export function RecipeNutritionSheet({ visible, reading, recipeName, servings, o
                       />
                     )}
                     <InlineAction
-                      label="Don't count this"
+                      label="Don’t count this"
                       variant="neutral"
                       onPress={() => excludeLine(line)}
-                      accessibilityLabel={`Leave ${line.name} out of this recipe's nutrition total`}
+                      accessibilityLabel={`Leave ${line.name} out of this recipe’s nutrition total`}
                     />
                   </View>
                 )}
               </View>
             ))}
             <Text style={styles.hint}>
-              Figures are saved against the food in your grocery catalog, so filling one in
-              here also fills it in for every other recipe that calls for it.
+              Figures are saved to the food in your grocery catalog and apply
+              to every recipe that uses it.
             </Text>
           </View>
         </>
@@ -638,18 +638,18 @@ export function RecipeNutritionSheet({ visible, reading, recipeName, servings, o
                     accessibilityLabel={`Add ${line.name} to your grocery catalog`}
                   />
                   <InlineAction
-                    label="Don't count this"
+                    label="Don’t count this"
                     variant="neutral"
                     onPress={() => excludeLine(line)}
-                    accessibilityLabel={`Leave ${line.name} out of this recipe's nutrition total`}
+                    accessibilityLabel={`Leave ${line.name} out of this recipe’s nutrition total`}
                   />
                 </View>
               </View>
             ))}
             <Text style={styles.hint}>
-              These lines don't match anything in your grocery catalog, so there's nowhere
-              to keep figures for them yet. Adding one lets you set a brand, a price or
-              figures for it. Most one-off ingredients are fine left as they are.
+              These lines don’t match anything in your grocery catalog, so figures can’t be
+              saved for them. Add one to set a brand, price or figures.
+              One-off ingredients can stay as they are.
             </Text>
           </View>
         </>
@@ -664,17 +664,17 @@ export function RecipeNutritionSheet({ visible, reading, recipeName, servings, o
                 <Text style={styles.gapName} numberOfLines={1}>{line.name}</Text>
                 <View style={styles.gapActions}>
                   <InlineAction
-                    label="Count it after all"
+                    label="Count this"
                     variant="neutral"
                     onPress={() => includeLine(line)}
-                    accessibilityLabel={`Count ${line.name} in this recipe's nutrition total again`}
+                    accessibilityLabel={`Count ${line.name} in this recipe’s nutrition total again`}
                   />
                 </View>
               </View>
             ))}
             <Text style={styles.hint}>
-              Marked "don't count this", so it's left out of the total above rather than missing
-              any figures.
+              Marked “Don’t count this”, so these are left out of the total above and don’t
+              count as missing figures.
             </Text>
           </View>
         </>

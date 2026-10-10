@@ -67,7 +67,7 @@ export function SunBoundPanel({
         {!hasLocation ? (
           <>
             <Text style={styles.note}>
-              Sunrise and sunset are worked out on this phone from a location you save once. It isn't sent anywhere.
+              Sunrise and sunset are worked out on this phone from a location you save once. It isn’t sent anywhere.
             </Text>
             <InlineAction
               icon="locate-outline"
@@ -78,13 +78,13 @@ export function SunBoundPanel({
             />
             {locationStatus === 'failed' && (
               <Text style={styles.note}>
-                Couldn't read your location. Allow Location for dundundun in the Settings app, then try again.
+                Couldn’t read your location. Allow Location for dundundun in Settings, then try again.
               </Text>
             )}
           </>
         ) : unavailable ? (
           <Text style={styles.note}>
-            The sun doesn't {event === 'sunrise' ? 'rise' : 'set'} at your saved location on that day, so there's no time to follow.
+            The sun doesn’t {event === 'sunrise' ? 'rise' : 'set'} at your saved location on that day, so there’s no time to follow.
           </Text>
         ) : (
           <>
@@ -108,7 +108,7 @@ export function SunBoundPanel({
             )}
             {anchor && resolved && (
               <Text style={styles.note}>
-                {dayLabel} that's {formatHHMM(resolved)}, and it moves with {eventName} each day.
+                {dayLabel} that’s {formatHHMM(resolved)}, and it moves with {eventName} each day.
               </Text>
             )}
           </>

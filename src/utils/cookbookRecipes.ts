@@ -196,7 +196,7 @@ export function cookbookLinkPrompt(
       : '';
     return {
       title: `Move to ${target.title}?`,
-      message: `Linking "${recipeName}" to ${target.title} takes it out of ${effect.from.title}.${pageNote}`,
+      message: `Linking “${recipeName}” to ${target.title} takes it out of ${effect.from.title}.${pageNote}`,
       confirm: 'Move',
     };
   }
@@ -204,7 +204,7 @@ export function cookbookLinkPrompt(
     const replaces = `replaces its current source (${effect.attribution})`;
     return {
       title: 'Replace the source?',
-      message: `Linking "${recipeName}" to ${target.title} ${page ? `${replaces} and clears its page number` : replaces}.`,
+      message: `Linking “${recipeName}” to ${target.title} ${page ? `${replaces} and clears its page number` : replaces}.`,
       confirm: 'Link',
     };
   }

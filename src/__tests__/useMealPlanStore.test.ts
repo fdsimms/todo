@@ -828,7 +828,7 @@ describe('planMeal', () => {
       date: '2026-08-05', slot: 'dinner', title: 'Roast',
     })!;
 
-    expect(useMealPlanStore.getState().lastAction?.label).toBe('Planned "Roast"');
+    expect(useMealPlanStore.getState().lastAction?.label).toBe('Planned “Roast”');
     useMealPlanStore.getState().undoLastAction();
 
     expect(dbDeleteMealPlanEntry).toHaveBeenCalledWith(planned.id);
@@ -902,7 +902,7 @@ describe('moveEntry', () => {
     loadWeek([dinner]);
 
     useMealPlanStore.getState().moveEntry(dinner.id, { date: '2026-08-07', slot: 'lunch' });
-    expect(useMealPlanStore.getState().lastAction?.label).toBe(`Moved "${dinner.title}"`);
+    expect(useMealPlanStore.getState().lastAction?.label).toBe(`Moved “${dinner.title}”`);
     useMealPlanStore.getState().undoLastAction();
 
     expect(dbUpdateMealPlanEntry).toHaveBeenLastCalledWith(dinner);
@@ -926,7 +926,7 @@ describe('removeEntry', () => {
     loadWeek([dinner]);
 
     useMealPlanStore.getState().removeEntry(dinner.id);
-    expect(useMealPlanStore.getState().lastAction?.label).toBe(`Removed "${dinner.title}"`);
+    expect(useMealPlanStore.getState().lastAction?.label).toBe(`Removed “${dinner.title}”`);
     useMealPlanStore.getState().undoLastAction();
 
     expect(dbInsertMealPlanEntry).toHaveBeenCalledWith(dinner);
@@ -3171,7 +3171,7 @@ describe('finishCookForRecipe', () => {
 
     useMealPlanStore.getState().finishCookForRecipe('r1');
     const action = useMealPlanStore.getState().lastAction!;
-    expect(action.label).toBe('Cooked "Ragu"');
+    expect(action.label).toBe('Cooked “Ragu”');
 
     action.undo();
 
@@ -3184,7 +3184,7 @@ describe('finishCookForRecipe', () => {
   it('registers an undo for the off-plan cooking too', () => {
     useMealPlanStore.getState().finishCookForRecipe('r1');
     const action = useMealPlanStore.getState().lastAction!;
-    expect(action.label).toBe('Cooked "Ragu"');
+    expect(action.label).toBe('Cooked “Ragu”');
 
     action.undo();
 

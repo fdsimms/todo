@@ -2063,8 +2063,8 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     const saved = await useEventPeopleStore.getState().saveEvent(quickEventSaveFields(input), draft.personIds);
     if (!saved) {
       Alert.alert(
-        "Couldn't add the event",
-        'Check that this app can add events to your calendar in the Settings app, then try again. The event is still here.'
+        "Couldn’t add the event",
+        'Check that calendar access is on in Settings, then try again. The event is still here.'
       );
       return;
     }
@@ -2128,7 +2128,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     if (archivedMatch) {
       Alert.alert(
         'Resume archived task?',
-        `You archived "${archivedMatch.title}" a while ago. Resume it instead of creating a new one? History and stats carry over, but the streak restarts.`,
+        `You archived “${archivedMatch.title}”. Resume it instead of creating a new one? History and stats carry over, but the streak restarts.`,
         [
           { text: 'Create new', onPress: () => createTask(finalTitle) },
           {
@@ -2916,7 +2916,7 @@ parsed
                 onPress={() => { haptics.tap(); setRulesOptedOut(true); }}
                 hitSlop={8}
                 accessibilityRole="button"
-                accessibilityLabel="Don't use title rules on this task"
+                accessibilityLabel="Don’t use title rules on this task"
               >
                 <Ionicons name="close-circle" size={15} color={colors.textTertiary} />
               </TouchableOpacity>
@@ -3021,7 +3021,7 @@ parsed
               </View>
               {firstWeekCount !== null && (
                 <Text style={[styles.targetStepperCaption, styles.firstWeekCaption]}>
-                  {`${[firstWeekCount, normalizeTargetUnit(targetUnit)].filter(Boolean).join(' ')} this week, since ${firstWeekDaysLeft === 1 ? '1 day is' : `${firstWeekDaysLeft} days are`} left in it.`}
+                  {`${[firstWeekCount, normalizeTargetUnit(targetUnit)].filter(Boolean).join(' ')} this week, since ${firstWeekDaysLeft === 1 ? '1 day is' : `${firstWeekDaysLeft} days are`} left.`}
                 </Text>
               )}
             </View>
@@ -3363,7 +3363,7 @@ parsed
               <Text style={styles.targetStepperCaption}>
                 {supplyCount === null
                   ? 'One is used each time this is done'
-                  : `One used per repeat. More details for the rest.`}
+                  : `One is used per repeat. Set the rest in More details.`}
               </Text>
             </View>
           )}

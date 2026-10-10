@@ -254,7 +254,7 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
   const renameTag = (name: string) => {
     Alert.prompt(
       'Rename tag',
-      `Changes every entry that has "${name}".`,
+      `Changes every entry that has “${name}”.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -408,7 +408,7 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
           label="Mood"
         />
         <Text style={styles.moodCaption}>
-          {mood === null ? 'Optional. Leave it blank if you\'d rather not say.' : moodLabel(mood)}
+          {mood === null ? 'Optional. Leave blank to skip.' : moodLabel(mood)}
         </Text>
       </View>
 
@@ -449,7 +449,7 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
       <View style={styles.card}>
         <Text style={styles.groupLabel}>CONTEXT</Text>
         <Text style={styles.hint}>
-          Anything going on today that isn't a symptom but might explain how you feel.
+          Anything else going on today that might explain how you feel.
         </Text>
         <PillGroup
           noun="tag"
@@ -477,12 +477,12 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
               style={styles.noteInput}
               value={note}
               onChangeText={setNote}
-              placeholder="e.g. What's behind how you feel"
+              placeholder="e.g. What’s behind how you feel"
               placeholderTextColor={colors.textTertiary}
               maxLength={NOTE_MAX_LENGTH}
               multiline
               autoFocus={!editing?.note}
-              accessibilityLabel="Note about how you're doing"
+              accessibilityLabel="Note about how you’re doing"
             />
           </>
         ) : (

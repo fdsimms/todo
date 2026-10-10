@@ -239,7 +239,7 @@ export function ScanToLogFlow({
         'No nutrition on it yet',
         `${unpanelled.length > 1 ? 'These foods have' : 'This food has'} no nutrition facts yet, so there is nothing to log.${
           first ? ` Add them from the package label for ${first.name}${
-            rest > 0 ? `, then the other ${rest === 1 ? 'one' : `${rest}`} the same way` : ' to log it'
+            rest > 0 ? `, then the other ${rest === 1 ? 'one' : `${rest}`}` : ' to log it'
           }.` : ''
         }`,
         first

@@ -366,7 +366,7 @@ export function observedCadenceDays(entries: readonly HistoryEntry[]): number | 
  */
 export function describeObservedCadence(days: number | null): string | null {
   if (days === null) return null;
-  if (days <= 10) return `You two usually get together about every ${days} days`;
+  if (days <= 10) return `You two usually get together about every ${days} ${days === 1 ? 'day' : 'days'}`;
   if (days <= 24) return 'You two usually get together about every couple of weeks';
   if (days <= 45) return 'You two usually get together about once a month';
   if (days <= 100) return 'You two usually get together every couple of months';

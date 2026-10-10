@@ -323,7 +323,7 @@ export function MealEntrySheet({
               activeOpacity={interaction.activeOpacity}
               accessibilityRole="button"
               accessibilityLabel={`Rename ${title}`}
-              accessibilityHint="Opens a text field to edit this meal's title"
+              accessibilityHint="Opens a text field to edit this meal’s title"
             >
               <Text style={[styles.sheetTitle, styles.sheetTitleEditable]} numberOfLines={2}>{title}</Text>
               <Ionicons name="create-outline" size={iconSize.sm} color={colors.textSecondary} />
@@ -516,7 +516,7 @@ export function MealEntrySheet({
                 color={colors.accent}
                 label="View in food log"
                 onPress={() => { haptics.tap(); dismiss(onViewFoodLogEntry); }}
-                accessibilityLabel="View this meal's food log entry"
+                accessibilityLabel="View this meal’s food log entry"
               />
             </>
           )}
@@ -562,7 +562,7 @@ export function MealEntrySheet({
                 color={colors.accent}
                 label="Add ingredients to list"
                 onPress={() => { haptics.tap(); dismiss(onAddToList); }}
-                accessibilityLabel="Add this meal's ingredients to the grocery list"
+                accessibilityLabel="Add this meal’s ingredients to the grocery list"
               />
             </>
           )}
@@ -644,7 +644,7 @@ export function MealEntrySheet({
                 accessibilityLabel="Meal task on Today"
                 accessibilityHint={hasCookTask
                   ? 'Removes the task for this meal'
-                  : 'Adds a task for this meal on the day it\'s planned for'}
+                  : 'Adds a task for this meal on its planned day'}
               />
             </>
           )}

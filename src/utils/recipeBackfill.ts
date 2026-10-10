@@ -56,12 +56,12 @@ export const RECIPE_BACKFILL_FIELDS: RecipeBackfillFieldDef[] = [
   {
     id: 'servings',
     label: 'Servings',
-    hint: 'How many the recipe makes, so a helping of it can be logged and its nutrition read per serving.',
+    hint: 'How many the recipe makes, so you can log a helping and see nutrition per serving.',
   },
   {
     id: 'cookTime',
     label: 'Cook time',
-    hint: 'How long the cooking itself takes, once anything that needed chopping is chopped.',
+    hint: 'How long the cooking takes once the prep is done.',
   },
   {
     id: 'prepTime',
@@ -74,7 +74,7 @@ export const RECIPE_BACKFILL_FIELDS: RecipeBackfillFieldDef[] = [
   {
     id: 'cookedWeight',
     label: 'Cooked weight',
-    hint: 'What the whole finished dish weighs, so a plate of it can be logged by weight instead of by servings.',
+    hint: 'What the whole finished dish weighs, so you can log a plate of it by weight.',
   },
 ];
 

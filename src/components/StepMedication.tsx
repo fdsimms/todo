@@ -37,7 +37,7 @@ export function StepMedication({ step, taskMedicationName, onPress }: Props) {
   const label = own
     ? `Dose for ${step.title}, ${own}`
     : taskMedicationName
-      ? `Dose for ${step.title}, currently the task's ${taskMedicationName}`
+      ? `Dose for ${step.title}, currently the task’s ${taskMedicationName}`
       : `Record a dose when ${step.title} is completed`;
 
   return (

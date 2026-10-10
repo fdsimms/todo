@@ -132,7 +132,7 @@ export function ChainStepMedicationSheet({
           />
           <Text style={styles.hint}>
             {taskMedicationName
-              ? `Leave it empty and this step records the task's ${taskMedicationName}.`
+              ? `Leave it empty and this step records the task’s ${taskMedicationName}.`
               : 'Leave it empty and this step records nothing.'}
           </Text>
 

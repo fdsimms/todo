@@ -217,8 +217,8 @@ export function QuickAddProjectModal({
       Alert.alert(
         wasArchived ? 'Restore archived project?' : 'Reopen finished project?',
         wasArchived
-          ? `You archived "${archivedMatch.title}" a while ago. Restore it as it was, or start a fresh copy with the same tasks, all open and undated?`
-          : `You finished "${archivedMatch.title}" already. Reopen it as it was, or start a fresh copy with the same tasks, all open and undated?`,
+          ? `You archived “${archivedMatch.title}”. Restore it as it was, or start a fresh copy with the same tasks, all open and undated?`
+          : `You finished “${archivedMatch.title}”. Reopen it as it was, or start a fresh copy with the same tasks, all open and undated?`,
         [
           // The match is fuzzy, so a wrong guess has to be escapable without
           // either answer: Cancel leaves the typed name in the field.

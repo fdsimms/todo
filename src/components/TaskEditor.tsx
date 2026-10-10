@@ -1690,7 +1690,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       if (archivedMatch) {
         Alert.alert(
           'Resume archived task?',
-          `You archived "${archivedMatch.title}" a while ago. Resume it instead of creating a new one? History and stats carry over, but the streak restarts.`,
+          `You archived “${archivedMatch.title}”. Resume it instead of creating a new one? History and stats carry over, but the streak restarts.`,
           [
             { text: 'Create new', onPress: () => proceedWithSave(effectiveChainItems, effectiveDraftSubtasks) },
             {
@@ -2065,8 +2065,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         Alert.alert(
           isSeries ? 'Update task on several dates' : 'Update recurring task',
           isSeries
-            ? 'This task falls on more than one date. Apply this change to just this date, or to this and its later dates?'
-            : 'This task repeats. Apply this change to just this task, or to it and every future repeat?',
+            ? 'Apply this change to this date only, or to this and later dates?'
+            : 'Apply this change to this task only, or to it and every future repeat?',
           [
             { text: 'Cancel', style: 'cancel' },
             { text: isSeries ? 'This date' : 'This task', onPress: () => commitSave('occurrence') },
@@ -2113,7 +2113,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       clamped === 0 ? 'Reset streak?' : `Set streak to ${clamped} day${clamped === 1 ? '' : 's'}?`,
       clamped === 0
         ? 'This clears the current streak count and history.'
-        : `This manually ${increasing ? 'credits' : 'reduces'} the streak, as if it had been ${increasing ? 'completed' : 'not completed'} on schedule. Only do this to fix a task you actually completed but forgot to mark done.`,
+        : `This ${increasing ? 'adds to' : 'reduces'} the streak as if the task ${increasing ? 'had been' : 'had not been'} completed on schedule. Use this only to fix a task you completed but forgot to check off.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -2772,7 +2772,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
     if (task.recurrenceType !== 'none') {
       Alert.alert(
         'Delete recurring task',
-        'This task repeats. Mark just this one missed, or delete it and stop it repeating?',
+        'This task repeats. Mark this one missed, or delete it and stop it repeating?',
         [
           { text: 'Cancel', style: 'cancel' },
           {
@@ -2801,7 +2801,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
     if (isMissableMealPlanTask(task)) {
       Alert.alert(
         'Delete meal task',
-        'This came from your meal plan. Mark it missed to keep a record, or delete it outright?',
+        'This came from your meal plan. Mark it missed to keep a record, or delete it?',
         [
           { text: 'Cancel', style: 'cancel' },
           {
@@ -2843,7 +2843,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
     if (seriesId && remaining > 1) {
       Alert.alert(
         'Delete task on several dates',
-        `This task falls on ${remaining} remaining dates. Delete just this one, or all of them?`,
+        `This task has ${remaining} dates left. Delete this date only, or all of them?`,
         [
           { text: 'Cancel', style: 'cancel' },
           {
@@ -2876,7 +2876,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
     }
     confirmDelete({
       title: 'Delete task?',
-      message: `Delete "${task.title}"?`,
+      message: `Delete “${task.title}”?`,
       onConfirm: () => {
         haptics.success();
         deleteTask(task.id);
@@ -2991,7 +2991,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const timeWindowSummary = polarity === 'negative'
     ? (windowBoundLabel(windowEnd, windowEndSun) ?? undefined)
     : (windowStart || windowEnd)
-    ? `${windowBoundLabel(windowStart, windowStartSun) ?? 'Any'}–${windowBoundLabel(windowEnd, windowEndSun) ?? 'Any'}`
+    ? `${windowBoundLabel(windowStart, windowStartSun) ?? 'Any'} to ${windowBoundLabel(windowEnd, windowEndSun) ?? 'Any'}`
     : undefined;
   // Says what happens and when, because the two halves are set separately and
   // a bare "2h" on the collapsed row reads as how long the task takes.
@@ -3741,7 +3741,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                 />
                 <Text style={styles.kindHint}>
                   {polarity === 'negative'
-                    ? 'Never completed. It stays on Today every day and counts the days you get through without it. Tap its shield to record a slip, which resets the count, or long press it to count today early or log a slip.'
+                    ? 'Never completed. Stays on Today every day and counts the days you go without it. Tap the shield to record a slip, which resets the count. Long press it to count today early or log a slip.'
                     : 'Completed when you do it, like any other task.'}
                 </Text>
                 {polarity === 'negative' && (
@@ -3760,7 +3760,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                     <Text style={styles.kindHint}>
                       {slipAllowance === null
                         ? 'The first slip of a day resets the count.'
-                        : 'Slips up to this number are recorded but keep the count, and block no apps. The next one resets it.'}
+                        : 'Slips up to this number are recorded but don’t reset the count or block apps. The next one resets it.'}
                     </Text>
                   </View>
                 )}
@@ -3785,8 +3785,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
               emptySummary="Untimed"
               hint={
                 durationSegments.length > 0
-                  ? "Counts down on the task's row while you work, passing through each subtask's minutes in turn."
-                  : "Counts down on the task's row while you work. When it runs out the task is marked ready to complete."
+                  ? "Counts down on the task’s row while you work, passing through each subtask’s minutes in turn."
+                  : "Counts down on the task’s row while you work, then marks the task ready to complete."
               }
               expanded={fieldOpen('duration')}
               onToggle={toggleDuration}
@@ -3809,7 +3809,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                     <Text style={styles.splitTotalValue}>{formatDuration(timedMinutes ?? 0)}</Text>
                   </View>
                   <Text style={styles.splitNote}>
-                    Set each stretch on the subtask rows below. Clear all of them to set one duration here instead.
+                    Set each subtask’s time on its row below. Clear all of them to set one duration here.
                   </Text>
                 </View>
               ) : (<>
@@ -3886,8 +3886,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                 icon="speedometer-outline"
                 label={quotaPeriod === 'week' ? 'Weekly target' : 'Daily target'}
                 hint={quotaPeriod === 'week'
-                  ? "Log it several times a week, on whichever days work. The task hides while you're on pace and comes back when you fall behind."
-                  : "Log it several times a day. The task hides while you're on pace and comes back when you fall behind."}
+                  ? "Log it several times a week, on any days. The task hides while you’re on pace and comes back when you fall behind."
+                  : "Log it several times a day. The task hides while you’re on pace and comes back when you fall behind."}
                 value={targetCount !== null
                   ? (loggedProgress !== null ? formatQuotaProgress(loggedProgress, targetCount, targetUnit) : formatQuotaTarget(targetCount, targetUnit))
                   : undefined}
@@ -4013,7 +4013,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                       />
                       <Text style={styles.targetStepperCaption}>
                         {quotaPeriod === 'week'
-                          ? 'Any days of the week. The count resets when the week does.'
+                          ? 'Any days of the week. The count resets each week.'
                           : 'The count resets each day.'}
                       </Text>
                       <View style={styles.sep} />
@@ -4039,7 +4039,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                       </View>
                       <Text style={styles.targetStepperCaption}>
                         {timedMinutes === null
-                          ? 'Optional countdown timer for each unit, such as 10 minutes per round. Off means no timer.'
+                          ? 'Optional countdown timer for each unit, such as 10 minutes per round.'
                           : `A ${formatDuration(timedMinutes)} countdown timer for each unit. It restarts when you log a unit.`}
                       </Text>
                     </>
@@ -4083,7 +4083,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                           emptyLabel="Off"
                           format={n => `${n} min`}
                           label="How often one falls due"
-                          describeValue={n => (n === null ? 'off' : `every ${n} minutes`)}
+                          describeValue={n => (n === null ? 'off' : `every ${n} ${n === 1 ? 'minute' : 'minutes'}`)}
                         />
                       </View>
                       <Text style={styles.targetStepperCaption}>
@@ -4103,7 +4103,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                         <Ionicons name="notifications-outline" size={18} color={quotaReminders ? colors.accent : colors.textSecondary} />
                         <View style={styles.optionContent}>
                           <Text style={styles.optionLabel}>Notify me when each one is due</Text>
-                          <Text style={styles.optionHint}>Send a notification at each one, instead of only showing the task on Today</Text>
+                          <Text style={styles.optionHint}>Send a notification at each one, as well as showing the task on Today</Text>
                         </View>
                         <View style={[styles.toggle, quotaReminders && styles.toggleOn]}>
                           <View style={[styles.toggleKnob, quotaReminders && styles.toggleKnobOn]} />
@@ -4129,7 +4129,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                       <Ionicons name="trending-up-outline" size={18} color={allowOvershoot ? colors.accent : colors.textSecondary} />
                       <View style={styles.optionContent}>
                         <Text style={styles.optionLabel}>Allow going past target</Text>
-                        <Text style={styles.optionHint}>Keep logging past {targetCount}×. It stays on Today and completes at day's end with whatever count you reached</Text>
+                        <Text style={styles.optionHint}>Keep logging past {targetCount}×. It stays on Today and completes at day’s end with the count you reached</Text>
                       </View>
                       <View style={[styles.toggle, allowOvershoot && styles.toggleOn]}>
                         <View style={[styles.toggleKnob, allowOvershoot && styles.toggleKnobOn]} />
@@ -4188,7 +4188,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                       <Text style={styles.targetStepperCaption}>
                         {describeQuotaRamp({ quotaRampStep, quotaRampEvery, quotaRampGoal, quotaPeriod })
                           ?? 'Ramp up: raise the target as you keep hitting it.'}
-                        {quotaRampStep !== null ? `. A missed or short ${quotaPeriod === 'week' ? 'week' : 'day'} doesn't count and doesn't reset it.` : ''}
+                        {quotaRampStep !== null ? `. A missed or short ${quotaPeriod === 'week' ? 'week' : 'day'} doesn’t count or reset it.` : ''}
                       </Text>
                     </>
                   )}
@@ -4206,8 +4206,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                         <Text style={styles.optionLabel}>Stay visible even when on pace</Text>
                         <Text style={styles.optionHint}>
                           {quotaPeriod === 'week'
-                            ? "Keep showing this on Today every day, instead of hiding it while you're keeping up with it"
-                            : "Keep showing this on Today all day, instead of hiding it while you're keeping up with it"}
+                            ? "Keep this on Today every day, even while you’re on pace"
+                            : "Keep this on Today all day, even while you’re on pace"}
                         </Text>
                       </View>
                       <View style={[styles.toggle, quotaAlwaysVisible && styles.toggleOn]}>
@@ -4229,7 +4229,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                 // Says what it will and will not do, in that order, because the
                 // second half is the part somebody would otherwise assume. This
                 // hint is the only in-app documentation the kind has.
-                hint="The task reads as ready once Apple Health reaches this today. It is never checked off for you."
+                hint="The task shows as ready once Apple Health reaches this today. You still check it off."
                 value={healthTarget !== null && healthMetric !== null
                   ? (followsRingGoal(healthMetric) && healthFollowGoal
                     ? 'Your Fitness goal'
@@ -4287,7 +4287,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                       <View style={styles.optionContent}>
                         <Text style={styles.optionLabel}>Follow my Fitness goal</Text>
                         <Text style={styles.optionHint}>
-                          Uses the goal you set for this ring in Fitness. The number above is used until that goal has been read.
+                          Uses the goal you set for this ring in Fitness. Until it’s read, the number above applies.
                         </Text>
                       </View>
                       <View style={[styles.toggle, healthFollowGoal && styles.toggleOn]}>
@@ -4313,8 +4313,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                         : 'Nothing in the set yet'
                   }
                   hint={
-                    'A set of things to get through each week, in any order. Each one has its own number of times a week. '
-                    + 'Checking the task off asks which one you did, and it stays on Today until every one is done. Reschedule it on a day you don\'t want to do one.'
+                    'A set of things to do each week, in any order, each with its own weekly target. '
+                    + 'Checking the task off asks which one you did. It stays on Today until every one is done. To skip a day, reschedule it.'
                   }
                   expanded={fieldOpen('rotationSet', true)}
                   onToggle={() => toggleField('rotationSet', true)}
@@ -4425,7 +4425,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                     )}
                     {rotationItems.length > 1 && (
                       <Text style={styles.chainCurrentHint}>
-                        Drag to reorder. This is the order the picker lists them in, and nothing ever re-ranks it.
+                        Drag to reorder. The picker lists them in this order.
                       </Text>
                     )}
                   </View>
@@ -4613,7 +4613,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                     )}
                     {chainItems.length > 0 && (
                       <Text style={styles.chainCurrentHint}>
-                        Times are per step; a step left blank uses the task's own estimate.
+                        Times are per step. A step left blank uses the task’s estimate.
                       </Text>
                     )}
                     {chainItems.length > 1 && (
@@ -4638,10 +4638,10 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                         />
                         <Text style={styles.chainCurrentHint}>
                           {recurrenceType === 'none'
-                            ? 'Steps follow each other as you finish them. Add a repeat to spread them over days instead.'
+                            ? 'Steps follow each other as you finish them. Add a repeat to spread them over days.'
                             : chainStepOnSchedule
-                              ? 'One step per repeat. The chain rotates through its steps rather than running straight through.'
-                              : 'Finishing a step brings up the next one immediately; the repeat starts the whole chain over.'}
+                              ? 'One step per repeat. The chain rotates through its steps.'
+                              : 'Finishing a step brings up the next one immediately. The repeat starts the whole chain over.'}
                         </Text>
                       </View>
                     )}
@@ -4656,7 +4656,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                           const prefix = 'Tap a number to set the current position.';
                           if (chainIndex === chainItems.length - 1) {
                             return recurrenceType === 'none'
-                              ? `${prefix} This is the last step. The chain ends here.`
+                              ? `${prefix} Last step. The chain ends here.`
                               : `${prefix} Last step. The chain starts over on the next repeat.`;
                           }
                           return `${prefix} Next up: ${chainItems[(chainIndex + 1) % chainItems.length]?.title}`;
@@ -4722,8 +4722,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                 />
                 <Text style={styles.seriesRepeatHint}>
                   {weatherTasksOn
-                    ? 'Shows up on the first day the forecast matches, within the next 14 days. If the task has a Date, it looks from that day on.'
-                    : 'Turn on Weather-based tasks in Settings, with location access, so the app can read the forecast. Until then this task is not held.'}
+                    ? 'Shows up on the first day the forecast matches, within the next 14 days. If the task has a Date, the search starts on that day.'
+                    : 'Turn on Weather-based tasks in Settings, with location access. Until then, this task isn’t held.'}
                 </Text>
               </>
             )}
@@ -4738,7 +4738,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="speedometer-outline"
               label="Due by usage"
-              hint="Due at a meter reading, not a date."
+              hint="Due at a meter reading."
               value={meterFields.meterName
                 ? (meterFields.meterEvery !== null
                     ? `Every ${formatMeterAmount(meterFields.meterEvery, meterFields.meterUnit)}`
@@ -4756,7 +4756,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
               <>
                 {!meterAllowed && (
                   <Text style={styles.supplyFieldHint}>
-                    Only a task that doesn't repeat, isn't a chain and has one date can be due by usage. This one won't be held.
+                    Only a task that doesn’t repeat, isn’t a chain and has one date can be due by usage. This one won’t be held.
                   </Text>
                 )}
                 <View style={styles.supplyFieldRow}>
@@ -4828,8 +4828,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                     <Text style={styles.supplyFieldHint}>
                       {meterSetupGap(meterFields)
                         ?? (meterInput.dueText.trim()
-                          ? 'Checking it off sets the next one this far on.'
-                          : `Left empty, it's the last reading plus the interval: ${formatMeterAmount(meterFields.meterDueAt!, meterFields.meterUnit)}.`)}
+                          ? 'Checking it off sets the next due reading this far ahead.'
+                          : `Left empty, it’s the last reading plus the interval: ${formatMeterAmount(meterFields.meterDueAt!, meterFields.meterUnit)}.`)}
                     </Text>
                     <View style={styles.supplyFieldRow}>
                       <Text style={styles.supplyFieldLabel}>Or after</Text>
@@ -4842,7 +4842,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                         emptyLabel="No limit"
                         format={n => `${n} mo`}
                         label="Time limit in months"
-                        describeValue={n => (n === null ? 'no time limit' : `${n} months`)}
+                        describeValue={n => (n === null ? 'no time limit' : `${n} ${n === 1 ? 'month' : 'months'}`)}
                       />
                     </View>
                     <Text style={styles.supplyFieldHint}>
@@ -4877,7 +4877,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                     </View>
                     <Text style={styles.supplyFieldHint}>
                       {describeLatestReading(meterReadings, meterInput.name, meterFields.meterUnit)
-                        ?? 'No readings yet. Two a week or more apart let the app estimate when it\'s due.'}
+                        ?? 'No readings yet. Two readings at least a week apart estimate when it’s due.'}
                     </Text>
                   </>
                 )}
@@ -4894,7 +4894,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="calendar-number-outline"
               label="More dates"
-              hint="The same task on several set days, each checked off separately. For a schedule that keeps going, use Repeat."
+              hint="The same task on several set days, each checked off separately. For an ongoing schedule, use Repeat."
               value={
                 extraDates.length > 0
                   ? `${extraDates.length + (dueDate ? 1 : 0)} dates · ${extraDates.map(d => format(d, 'MMM d')).join(', ')}`
@@ -4929,7 +4929,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
               <Text style={styles.seriesRepeatHint}>
                 {`Comes back on the ${seriesMonthDaysFrom([...(dueDate ? [dueDate] : []), ...extraDates])
                   .map(d => (d === -1 ? 'last day' : ordinal(d)))
-                  .join(' and ')} of every month, once all of this month's are done.`}
+                  .join(' and ')} of every month, once all of this month’s are done.`}
               </Text>
             )}
               </>
@@ -4943,7 +4943,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="flag-outline"
               label="Deadline"
-              hint={deadlineOffsetDays === null && deadlineMonthDay === null ? 'The date it needs to be done by, separate from the Date it first appears on Today' : undefined}
+              hint={deadlineOffsetDays === null && deadlineMonthDay === null ? 'The date it needs to be done by. Date is the day it first appears on Today' : undefined}
               value={
                 deadlineOffsetDays !== null
                   ? (deadline ? `${formatDeadlineLabel(deadline.toISOString(), deadlineTime)} (${describeDeadlineOffset(deadlineOffsetDays)})` : 'Set a Date first')
@@ -5210,10 +5210,10 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="timer-outline"
               label="Time window"
-              hint="Only on the list between two clock times, then it expires. Removing expired tasks is set in Settings."
+              hint="Shows the task only between two clock times, then it expires. Removing expired tasks is set in Settings."
               value={timeWindowSummary}
               caption={windowStartMeeting
-                ? `Starts during ${windowStartMeeting.title ? `"${windowStartMeeting.title}"` : 'a calendar event'}, which runs until ${formatTimeOfDay(windowStartMeeting.until, use24HourTime)}`
+                ? `Starts during ${windowStartMeeting.title ? `“${windowStartMeeting.title}”` : 'a calendar event'}, which runs until ${formatTimeOfDay(windowStartMeeting.until, use24HourTime)}`
                 : undefined}
               expanded={showTimeWindow}
               onPress={() => { animateLayout(); setShowTimeWindow(v => !v); }}
@@ -5316,7 +5316,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                 <View style={styles.optionContent}>
                   <Text style={styles.optionLabel}>Block apps until this is done</Text>
                   <Text style={styles.optionHint}>
-                    The apps you picked in Settings stay blocked while this is on Today and not done. Finishing it, or moving it to another day, unblocks them.
+                    Blocks the apps you picked in Settings while this task is on Today. Finishing it or moving it to another day unblocks them.
                   </Text>
                 </View>
                 <View style={[styles.toggle, gatesApps && styles.toggleOn]}>
@@ -5336,8 +5336,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                   icon="lock-closed-outline"
                   label={polarity === 'negative' ? 'Block apps on a slip' : 'Block apps if missed'}
                   hint={polarity === 'negative'
-                    ? 'Blocks the apps you picked in Settings as soon as you log one.'
-                    : 'Blocks the apps you picked in Settings if this is still undone at the cutoff.'}
+                    ? 'Blocks the apps you picked in Settings as soon as you log a slip.'
+                    : 'Blocks the apps you picked in Settings if this isn’t done by the cutoff.'}
                   value={penaltySummary}
                   expanded={showPenalty}
                   onPress={() => { animateLayout(); setShowPenalty(v => !v); }}
@@ -5473,7 +5473,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                   : undefined
               }
               caption={reminderNudge
-                ? `Actually sends at ${formatTimeOfDay(reminderNudge.time, use24HourTime)}, moved past ${reminderNudge.meetingTitle ? `"${reminderNudge.meetingTitle}"` : 'a calendar event'}`
+                ? `Sends at ${formatTimeOfDay(reminderNudge.time, use24HourTime)}, moved past ${reminderNudge.meetingTitle ? `“${reminderNudge.meetingTitle}”` : 'a calendar event'}`
                 : undefined}
               onPress={() => openPicker('reminder')}
               onClear={reminderTime ? () => { setReminderTime(null); setReminderKind('notification'); setReminderOffsetDays(null); setReminderTracksVisibility(false); setReminderTimeAnchor('wallClock'); setReminderTouched(true); } : undefined}
@@ -5491,7 +5491,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
               summary={completionTimerMinutes !== null
                 ? [`${formatDuration(completionTimerMinutes)} after completing`, completionTimerNote || null].filter(Boolean).join(': ')
                 : undefined}
-              hint="Asks to set a reminder this long after you complete the task, e.g. a two-hour wait before eating after a medication."
+              hint="Offers to set a reminder this long after you complete the task, such as a two-hour wait before eating."
               expanded={fieldOpen('completionTimer')}
               onToggle={() => toggleField('completionTimer')}
             >
@@ -5512,7 +5512,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                   style={[styles.fieldBox, styles.completionTimerNoteInput]}
                   value={completionTimerNote ?? ''}
                   onChangeText={text => setCompletionTimerNote(text || null)}
-                  placeholder="e.g. Don't eat for 2 hours"
+                  placeholder="e.g. Don’t eat for 2 hours"
                   placeholderTextColor={colors.textTertiary}
                   maxLength={COMPLETION_TIMER_NOTE_MAX_LENGTH}
                   returnKeyType="done"
@@ -5713,7 +5713,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                         <Text style={styles.supplyFieldHint}>
                           {supplyPreview?.orderBy
                             ? `How long it takes to arrive, so the order goes in by ${format(supplyPreview.orderBy, 'MMM d')}.`
-                            : 'How long it takes to arrive, so the order goes in early enough to get here in time.'}
+                            : 'How long it takes to arrive, so the order is placed in time.'}
                         </Text>
 
                         {kitchenEnabled && (
@@ -5792,7 +5792,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
               <CollapsibleField
                 label="Stack"
                 summary={selectedGroup ? selectedGroup.title : undefined}
-                hint="Groups this task with others you do together. The stack sets the shared category for everything in it."
+                hint="Groups this task with others you do together. The stack sets the category for everything in it."
                 expanded={fieldOpen('stack')}
                 onToggle={() => toggleField('stack')}
               >
@@ -5864,7 +5864,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
               <CollapsibleField
                 label="Project"
                 summary={projects.find(p => p.id === project)?.title}
-                hint="Files the task under a project so it counts toward that project's progress."
+                hint="Files the task under a project so it counts toward that project’s progress."
                 expanded={fieldOpen('project')}
                 onToggle={() => toggleField('project')}
               >
@@ -6006,7 +6006,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="location-outline"
               label="Location"
-              hint="Where this task happens, like an appointment's address or a venue."
+              hint="Where this task happens, like an appointment’s address or a venue."
               value={location ?? undefined}
               expanded={showLocationField}
               onPress={() => {
@@ -6053,7 +6053,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
               <Ionicons name="airplane-outline" size={18} color={vacationShown ? colors.accent : colors.textSecondary} />
               <View style={styles.optionContent}>
                 <Text style={styles.optionLabel}>Vacation pause</Text>
-                <Text style={styles.optionHint}>Hide and protect streak during vacation mode. Vacation mode is turned on in Settings.</Text>
+                <Text style={styles.optionHint}>Hide the task and keep its streak during vacation mode, which you turn on in Settings.</Text>
               </View>
               <View style={[styles.toggle, vacationShown && styles.toggleOn]}>
                 <View style={[styles.toggleKnob, vacationShown && styles.toggleKnobOn]} />
@@ -6231,7 +6231,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             label="Effort"
             summary={effortSummary}
             emptySummary={defaultEffortLabel ?? 'Not set'}
-            hint="Roughly how long this takes, so a day's list can be sized realistically. It does not run a timer."
+            hint="Roughly how long this takes, used to size a day’s list. It doesn’t run a timer."
             expanded={fieldOpen('effort')}
             onToggle={() => toggleField('effort')}
           >
@@ -6337,7 +6337,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
               <PinIcon filled={pinned} size={18} color={pinned ? colors.orangeText : colors.textSecondary} />
               <View style={styles.optionContent}>
                 <Text style={styles.optionLabel}>Pin to Today</Text>
-                <Text style={styles.optionHint}>Hoist this to the top of Today, above everything else</Text>
+                <Text style={styles.optionHint}>Show this at the top of Today, above everything else</Text>
               </View>
               <View style={[styles.toggle, pinned && styles.toggleOn]}>
                 <View style={[styles.toggleKnob, pinned && styles.toggleKnobOn]} />
@@ -6401,7 +6401,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                   {bounty && isBountyLive(task)
                     ? describeBounty(task)
                     : bounty
-                      ? `+${formatCoins(bountyCoinsFor({ ...task, bountyPushes: 0 }))} extra when done. Each time it's moved to a later day, the bounty gets smaller.`
+                      ? `+${formatCoins(bountyCoinsFor({ ...task, bountyPushes: 0 }))} extra when done. Each time it’s moved to a later day, the bounty gets smaller.`
                       : 'Extra coins for a task you keep putting off. Worth the most if you do it before moving it again.'}
                 </Text>
               </View>
@@ -6521,7 +6521,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                     <View style={styles.optionContent}>
                       <Text style={styles.optionLabel}>Wait until it ends</Text>
                       <Text style={styles.optionHint}>
-                        Stay hidden until the last repeat of a repeating task is done, not just the next one. A task that repeats with no end never releases this one.
+                        Stay hidden until every repeat of the repeating task is done. A task that repeats with no end never releases this one.
                       </Text>
                     </View>
                     <View style={[styles.toggle, waitForSeriesEnd && styles.toggleOn]}>
@@ -6545,7 +6545,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="git-branch-outline"
               label="Only if"
-              hint="Show this task only if another task's question gets one of the answers you pick. Any other answer marks it not needed."
+              hint="Show this task only if another task’s question gets one of the answers you pick. Any other answer marks it not needed."
               value={answerGate
                 ? `${gateQuestion ? displayTitleFor(gateQuestion) : 'Task no longer exists'}${answerGate.answers.length > 0 ? `: ${answerGate.answers.join(' or ')}` : ''}`
                 : undefined}
@@ -6619,7 +6619,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
               <CollapsibleField
                 label="Waiting on someone"
                 summary={waitingPerson ? displayNameOf(waitingPerson) : undefined}
-                hint="Stay hidden until they come back to you. Nothing clears this on its own."
+                hint="Stay hidden until they come back to you. You clear this yourself."
                 expanded={fieldOpen('waitingOnPerson')}
                 onToggle={() => toggleField('waitingOnPerson')}
               >
@@ -6660,7 +6660,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                   label="Follow up on"
                   hint={followUpOn
                     ? undefined
-                    : 'Adds a task to follow up with them on this day. Without one, the follow-up comes after a week if that is on in Automations'}
+                    : 'Adds a task to follow up with them on this day. Without a date, the follow-up comes after a week if that is on in Automations'}
                   value={followUpOn ? formatDeadlineDate(followUpOn.toISOString()) : undefined}
                   onPress={() => setShowFollowUpPicker(true)}
                   onClear={followUpOn ? () => setFollowUpOn(null) : undefined}
@@ -6906,7 +6906,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="sparkles-outline"
               label="Follow-up frequency"
-              hint={`How often "${displayTitleFor(followUpSourceParent)}" adds a task like this one.`}
+              hint={`How often “${displayTitleFor(followUpSourceParent)}” adds a task like this one.`}
               value={followUpTaskSummary(followUpSourceParent.followUpTaskEveryN)}
               expanded={showFollowUpSource}
               onPress={() => { animateLayout(); setShowFollowUpSource(v => !v); }}
@@ -6979,7 +6979,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                 hint={
                   deliverableKind
                     ? deliverableMeta(deliverableKind).hint
-                    : 'Asks you to record an answer when you complete the task, and keeps it in the Logbook.'
+                    : 'Asks for an answer when you complete the task and keeps it in the Logbook.'
                 }
                 expanded={fieldOpen('deliverable')}
                 onToggle={() => toggleField('deliverable')}
@@ -7017,7 +7017,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                   activeOpacity={interaction.activeOpacity}
                   accessibilityRole="switch"
                   accessibilityState={{ checked: deliverableSetsAway }}
-                  accessibilityLabel="Use the answer as the project's leaving date"
+                  accessibilityLabel="Use the answer as the project’s leaving date"
                 >
                   <Ionicons
                     name="airplane-outline"
@@ -7027,7 +7027,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                   <View style={styles.optionContent}>
                     <Text style={styles.optionLabel}>Sets the leaving date</Text>
                     <Text style={styles.optionHint}>
-                      The date you answer becomes the project's Leaving date, if it doesn't have one yet
+                      The date you answer becomes the project’s Leaving date, if it doesn’t have one yet
                     </Text>
                   </View>
                   <View style={[styles.toggle, deliverableSetsAway && styles.toggleOn]}>
@@ -7059,7 +7059,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                 }}
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole={completionCalendarId ? 'switch' : 'button'}
-                accessibilityLabel="Log this task's completion to your calendar"
+                accessibilityLabel="Log this task’s completion to your calendar"
                 accessibilityState={completionCalendarId ? { checked: logCompletionToCalendar } : {}}
               >
                 <Ionicons
@@ -7117,8 +7117,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                   hint={
                     healthWriteEnabled
                       ? targetCount !== null
-                        ? `Adds to today’s ${isWater ? 'water' : NUTRIENT_LABEL[logHealthMetric ?? 'waterMl'].label.toLowerCase()} in the food log, and writes it to Apple Health, each time you log a unit toward the daily target.`
-                        : `Adds to today’s ${isWater ? 'water' : NUTRIENT_LABEL[logHealthMetric ?? 'waterMl'].label.toLowerCase()} in the food log, and writes it to Apple Health, each time you complete this task.`
+                        ? `Adds to today’s ${isWater ? 'water' : NUTRIENT_LABEL[logHealthMetric ?? 'waterMl'].label.toLowerCase()} in the food log and Apple Health each time you log a unit.`
+                        : `Adds to today’s ${isWater ? 'water' : NUTRIENT_LABEL[logHealthMetric ?? 'waterMl'].label.toLowerCase()} in the food log and Apple Health each time you complete this task.`
                       : 'Turn on writing to Health in Settings › Health first'
                   }
                   expanded={healthWriteEnabled && fieldOpen('logHealthValue')}
@@ -7137,7 +7137,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                       }}
                       hitSlop={8}
                       accessibilityRole="button"
-                      accessibilityLabel="Clear log to health"
+                      accessibilityLabel="Clear log to Health"
                     >
                       <Ionicons name="close-circle" size={16} color={colors.textSecondary} />
                     </TouchableOpacity>
@@ -7251,7 +7251,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                         .filter(Boolean).join(', ')
                     : undefined
                 }
-                hint="Records a dose in your medication log each time you complete this task. Unchecking it takes the dose back."
+                hint="Records a dose in your medication log each time you complete this task. Unchecking it removes the dose."
                 expanded={fieldOpen('medication')}
                 onToggle={() => toggleField('medication')}
               >
@@ -7315,7 +7315,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
               <CollapsibleField
                 label="Log to food log"
                 summary={logMealSlot ? `Offers to log ${MEAL_SLOT_LABELS[logMealSlot].toLowerCase()} when completed` : undefined}
-                hint="Offers to add an entry to your food log, for the slot below, each time you complete this task."
+                hint="Offers to add a food log entry for the meal below each time you complete this task."
                 expanded={fieldOpen('logMealSlot')}
                 onToggle={() => toggleField('logMealSlot')}
                 right={logMealSlot !== null ? (
@@ -7427,7 +7427,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="call-outline"
               label="Phone"
-              hint="Call or text this number straight from the task row."
+              hint="Call or text this number from the task row."
               value={phoneNumber ?? undefined}
               expanded={showPhoneField}
               onPress={() => {
@@ -7481,7 +7481,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="mail-outline"
               label="Email"
-              hint="Compose an email to this address straight from the task row."
+              hint="Compose an email to this address from the task row."
               value={emailAddress ?? undefined}
               expanded={showEmailField}
               onPress={() => {
@@ -7600,7 +7600,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                   <Ionicons name="flame" size={18} color={streakShown ? colors.orangeText : colors.textSecondary} />
                   <View style={styles.optionContent}>
                     <Text style={styles.optionLabel}>Show streak on row</Text>
-                    <Text style={styles.optionHint}>Keep the streak count visible on the task itself, not just in here</Text>
+                    <Text style={styles.optionHint}>Show the streak count on the task row</Text>
                   </View>
                   <View style={[styles.toggle, streakShown && styles.toggleOn]}>
                     <View style={[styles.toggleKnob, streakShown && styles.toggleKnobOn]} />
@@ -7632,7 +7632,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                   <Ionicons name="alarm-outline" size={18} color={streakRequiresWindow ? colors.orangeText : colors.textSecondary} />
                   <View style={styles.optionContent}>
                     <Text style={styles.optionLabel}>Streak requires on-time completion</Text>
-                    <Text style={styles.optionHint}>Completing outside this task's time window still counts as done, but restarts the streak instead of continuing it</Text>
+                    <Text style={styles.optionHint}>Completing outside this task’s time window still counts as done, but restarts the streak</Text>
                   </View>
                   <View style={[styles.toggle, streakRequiresWindow && styles.toggleOn]}>
                     <View style={[styles.toggleKnob, streakRequiresWindow && styles.toggleKnobOn]} />
@@ -7673,7 +7673,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                     <Text style={styles.optionHint}>
                       {task.archived
                         ? 'Hidden from every list. Resuming resets your streak'
-                        : 'Hide indefinitely, keeping history. Find it later in Archived'}
+                        : 'Hide the task and keep its history. Find it later in Archived'}
                     </Text>
                   </View>
                   <View style={[styles.toggle, task.archived && styles.toggleOn]}>
@@ -7684,7 +7684,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
           <TouchableOpacity style={styles.optionRow} onPress={handleDelete} activeOpacity={interaction.activeOpacity}>
             <Ionicons name="trash-outline" size={18} color={colors.red} />
             <View style={styles.optionContent}>
-              <Text style={[styles.optionLabel, { color: colors.redText }]}>Delete Task</Text>
+              <Text style={[styles.optionLabel, { color: colors.redText }]}>Delete task</Text>
             </View>
           </TouchableOpacity>
         </View>

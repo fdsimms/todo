@@ -579,7 +579,7 @@ export function MealPlanScreen() {
         return `${NUTRIENT_LABEL[k].label} ${amount.toLocaleString()} of ${nutritionTargets[k]!.toLocaleString()}${unit === 'cal' ? ' cal' : unit}`;
       });
       const over = keys.some(k => (totals[k] ?? 0) > nutritionTargets[k]!);
-      const note = uncounted > 0 ? ` (${uncounted} ${uncounted === 1 ? 'meal' : 'meals'} with no figures left out)` : '';
+      const note = uncounted > 0 ? ` (${uncounted} ${uncounted === 1 ? 'meal' : 'meals'} without figures not counted)` : '';
       out.set(key, { text: `Planned: ${parts.join(' · ')}${note}`, over });
     }
     return out;
@@ -1069,7 +1069,7 @@ export function MealPlanScreen() {
 
   // A selection is scoped to the week on screen — the store's bulk methods
   // would still reach an off-screen id fine, but the bar's counts and
-  // "Select All" wouldn't, so paging away closes the selection rather than
+  // "Select all" wouldn't, so paging away closes the selection rather than
   // carrying stale ids into a week that doesn't render them.
   // useCallback so headerActions can depend on it honestly: the memo below
   // reads `page`, and listing an inline function there would rebuild the
@@ -1174,7 +1174,7 @@ export function MealPlanScreen() {
     cooked ? haptics.success() : haptics.tap();
 
     setLastAction({
-      label: cooked ? `Cooked "${entry.title}"` : `Un-cooked "${entry.title}"`,
+      label: cooked ? `Marked “${entry.title}” as cooked` : `Marked “${entry.title}” as not cooked`,
       undo: () => {
         setEntryCooked(entry.id, !cooked);
         if (recipe && before) restoreCookStats(recipe.id, before);
@@ -1325,7 +1325,7 @@ export function MealPlanScreen() {
     haptics.warning();
     confirmDelete({
       title: `Remove ${count} ${plural}?`,
-      message: `You're about to take ${count} ${plural} off the plan. This can't be undone.`,
+      message: `${count} ${plural} will be removed from the plan. This can’t be undone.`,
       confirmLabel: 'Remove',
       onConfirm: () => {
         const before = entries.filter(e => selectedIds.has(e.id));
@@ -1538,7 +1538,7 @@ export function MealPlanScreen() {
                           activeOpacity={interaction.activeOpacity}
                           hitSlop={{ top: 10, bottom: 10, left: 10, right: 8 }}
                           accessibilityRole="button"
-                          accessibilityLabel={`Add ${dayLabel}'s ingredients to the grocery list`}
+                          accessibilityLabel={`Add ${dayLabel}’s ingredients to the grocery list`}
                         >
                           <Ionicons name="cart-outline" size={iconSize.md} color={colors.textSecondary} />
                         </TouchableOpacity>
@@ -1724,7 +1724,7 @@ export function MealPlanScreen() {
     );
     setOverlap({
       matches,
-      seedLabel: "this week's meals",
+      seedLabel: "this week’s meals",
       days: openDinnerDays,
       initialSelected: matches.filter(m => keep.has(m.recipe.id)).map(m => m.recipe.id),
     });
@@ -2224,7 +2224,7 @@ export function MealPlanScreen() {
                           title: 'Add week to list',
                           stampWeekKey: range.startKey,
                         })}
-                        accessibilityLabel="Add this week's ingredients to the grocery list"
+                        accessibilityLabel="Add this week’s ingredients to the grocery list"
                       />
                     )}
                     {canSuggestMeals && (
@@ -2255,7 +2255,7 @@ export function MealPlanScreen() {
                           haptics.tap();
                           openOverlap();
                         }}
-                        accessibilityLabel="Find recipes that share ingredients with this week's meals"
+                        accessibilityLabel="Find recipes that share ingredients with this week’s meals"
                       />
                     )}
                   </View>
@@ -2389,7 +2389,7 @@ export function MealPlanScreen() {
           hint={replacing
             ? isTypedEntry(replacing)
               ? `Pick the recipe for ${replacing.title}, or type a new name.`
-              : `Pick a recipe, or type a new name, to have instead of ${titleForEntry(replacing, recipesById)}.`
+              : `Pick a recipe, or type a new name, to replace ${titleForEntry(replacing, recipesById)}.`
             : undefined}
           onReplace={replacement => {
             if (replacingId) replaceOne(replacingId, replacement);
@@ -2610,7 +2610,7 @@ export function MealPlanScreen() {
         <OverlapPickerSheet
           visible={overlap !== null}
           matches={overlap?.matches ?? []}
-          seedLabel={overlap?.seedLabel ?? "this week's meals"}
+          seedLabel={overlap?.seedLabel ?? "this week’s meals"}
           openDays={overlap?.days ?? []}
           initialSelected={overlap?.initialSelected}
           onPlan={planSuggestion}

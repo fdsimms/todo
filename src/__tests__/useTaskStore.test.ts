@@ -2413,7 +2413,7 @@ describe('completeTask', () => {
     useTaskStore.setState({ tasks: [task] });
     useTaskStore.getState().completeTask('last-one');
     const entry = useTaskStore.getState().lastAction!;
-    expect(entry.label).toBe("Last one, this won't repeat again");
+    expect(entry.label).toBe("Last one, so it won’t repeat again");
     expect(entry.destructive).toBe(true);
   });
 
@@ -5133,7 +5133,7 @@ describe('checkPantryReviewTasks', () => {
     useTaskStore.getState().checkPantryReviewTasks();
 
     const [review] = reviewTasks();
-    expect(review.title).toBe("Review what's in the pantry");
+    expect(review.title).toBe("Review what’s in the pantry");
     expect(review.linkUrl).toBe('dundundun://kitchen?review=1');
     expect(review.category).toBe('Groceries');
     expect(review.dueDate).not.toBeNull();
@@ -5428,7 +5428,7 @@ describe('checkWaitingFollowUpTasks', () => {
   it('writes a follow-up task once a wait has gone on long enough', () => {
     useTaskStore.getState().checkWaitingFollowUpTasks();
     expect(followUps()).toHaveLength(1);
-    expect(followUps()[0].title).toBe('Follow up with Gideon about "Get the quote back"');
+    expect(followUps()[0].title).toBe('Follow up with Gideon about “Get the quote back”');
   });
 
   it('does nothing while the wait is younger than the threshold', () => {
@@ -5567,7 +5567,7 @@ describe('checkCalendarReviewTasks', () => {
     useTaskStore.getState().checkCalendarReviewTasks();
 
     const [review] = reviewTasks();
-    expect(review.title).toBe('Review tomorrow\'s calendar');
+    expect(review.title).toBe('Review tomorrow’s calendar');
     expect(review.generatedSourceId).toBe('2026-08-26');
     expect(review.category).toBe('Calendar Events');
     expect(review.dueDate).not.toBeNull();
@@ -6782,7 +6782,7 @@ describe('checkMoodTasks', () => {
       useTaskStore.getState().checkMoodTasks();
 
       const [check] = tasksOfKind('moodLog');
-      expect(check.title).toBe('Log how you\'re feeling');
+      expect(check.title).toBe('Log how you’re feeling');
       expect(check.generatedSourceId).toBe(TODAY);
       expect(check.category).toBe('Health');
       // Without the link the only thing to do with the row is tick it, which
@@ -7481,7 +7481,7 @@ describe('checkMealPlanNudge', () => {
 
     const groups = useTaskGroupStore.getState().groups;
     expect(groups).toHaveLength(1);
-    expect(groups[0].title).toBe("Plan this week's meals");
+    expect(groups[0].title).toBe("Plan this week’s meals");
     // A stack that appears unattended showing "0 of 7 done today" and no rows
     // hides the whole week behind a chevron nobody was told to tap.
     expect(groups[0].collapsed).toBe(false);
@@ -7512,7 +7512,7 @@ describe('checkMealPlanNudge', () => {
 
     expect(useTaskGroupStore.getState().groups).toHaveLength(1);
     expect(useTaskGroupStore.getState().groups[0].id).toBe(groupId);
-    expect(useTaskGroupStore.getState().groups[0].title).toBe("Plan this week's meals");
+    expect(useTaskGroupStore.getState().groups[0].title).toBe("Plan this week’s meals");
   });
 
   it('makes a new stack when the remembered one has been deleted', () => {

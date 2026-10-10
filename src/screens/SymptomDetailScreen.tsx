@@ -230,7 +230,7 @@ export function SymptomDetailScreen() {
             ))}
           </View>
           <Text style={styles.caption}>
-            How bad it got each day. A day with no bar is a day you didn't log it.
+            How bad it got each day. No bar means you didn’t log it.
           </Text>
         </View>
 
@@ -263,7 +263,7 @@ export function SymptomDetailScreen() {
                 <View
                   style={styles.splitCell}
                   accessible
-                  accessibilityLabel={`Average mood ${contrast.moodWith.toFixed(1)} across ${contrast.withDays} days with it`}
+                  accessibilityLabel={`Average mood ${contrast.moodWith.toFixed(1)} across ${contrast.withDays} ${contrast.withDays === 1 ? 'day' : 'days'} with it`}
                 >
                   <Text style={styles.splitValue}>{contrast.moodWith.toFixed(1)}</Text>
                   <Text style={styles.splitLabel}>With it ({contrast.withDays})</Text>
@@ -271,15 +271,15 @@ export function SymptomDetailScreen() {
                 <View
                   style={styles.splitCell}
                   accessible
-                  accessibilityLabel={`Average mood ${contrast.moodWithout.toFixed(1)} across ${contrast.withoutDays} days without it`}
+                  accessibilityLabel={`Average mood ${contrast.moodWithout.toFixed(1)} across ${contrast.withoutDays} ${contrast.withoutDays === 1 ? 'day' : 'days'} without it`}
                 >
                   <Text style={styles.splitValue}>{contrast.moodWithout.toFixed(1)}</Text>
                   <Text style={styles.splitLabel}>Without it ({contrast.withoutDays})</Text>
                 </View>
               </View>
               <Text style={styles.caption}>
-                Your average mood on days you logged it, against days you didn't. This is a
-                comparison of two averages, not a cause.
+                Your average mood on days you logged it and on days you didn’t. This compares two
+                averages and doesn’t show a cause.
               </Text>
             </View>
           </>
@@ -291,7 +291,7 @@ export function SymptomDetailScreen() {
             <View style={styles.card}>
               {foodRows.map((row, i) => {
                 const name = foodNames.get(row.label) ?? row.label;
-                const spoken = `${name}: logged on ${row.withHits} of the ${row.withDays} days you had it, and ${row.withoutHits} of the ${row.withoutDays} days you didn't`;
+                const spoken = `${name}: logged on ${row.withHits} of the ${row.withDays} days you had it, and ${row.withoutHits} of the ${row.withoutDays} days you didn’t`;
                 const bars = (
                   <ContrastBars
                     first={i === 0}
@@ -325,9 +325,9 @@ export function SymptomDetailScreen() {
                 );
               })}
               <Text style={styles.caption}>
-                How often you logged {stat.name.toLowerCase()} on the days you had that food,
-                against the days you logged food without it. This counts days. It cannot tell a
-                food apart from everything else about the days you had it.
+                How often you logged {stat.name.toLowerCase()} on days you had that food, and on
+                days you logged food without it. This counts days, so it can’t tell a food apart
+                from everything else about those days.
               </Text>
             </View>
           </>

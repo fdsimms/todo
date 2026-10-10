@@ -1214,7 +1214,7 @@ export function CalendarScreen() {
           <EmptyState
             icon="calendar-clear-outline"
             title="Nothing on this day"
-            subtitle="Tasks land here from a due date, a deadline, or the day a task moved to Later comes back."
+            subtitle="Tasks appear here on their due date, their deadline, or the day they return from Later."
             bottomOffset={tabBarHeight}
             actionLabel="Add a task"
             onAction={() => setQuickAddVisible(true)}

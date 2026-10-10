@@ -328,7 +328,7 @@ export function RecipesScreen() {
   // offered a sheet that can only say the feature is off.
   const addMenuItems = useMemo<FabMenuItem[]>(() => {
     const list: FabMenuItem[] = [];
-    if (canInvent) list.push({ key: 'invent', label: 'Invent a recipe', icon: 'sparkles-outline' });
+    if (canInvent) list.push({ key: 'invent', label: 'Suggest a recipe', icon: 'sparkles-outline' });
     if (canImport) {
       list.push(
         { key: 'paste', label: 'Paste text', icon: 'clipboard-outline' },
@@ -602,12 +602,12 @@ export function RecipesScreen() {
     const componentNote = usedBy.length === 0
       ? ''
       : usedBy.length === 1
-        ? ` ${count === 1 ? 'It\'s' : 'Some are'} used as a component of “${usedBy[0].name}”, which will show ${count === 1 ? 'it' : 'them'} as missing until you remove ${count === 1 ? 'it' : 'them'} there.`
-        : ` ${count === 1 ? 'It\'s' : 'Some are'} used as components of ${usedBy.length} other recipes (${usedBy.map(r => r.name).join(', ')}), which will show ${count === 1 ? 'it' : 'them'} as missing until you remove ${count === 1 ? 'it' : 'them'} there.`;
+        ? ` ${count === 1 ? 'It’s' : 'Some are'} used as a component of “${usedBy[0].name}”, which will show ${count === 1 ? 'it' : 'them'} as missing until you remove ${count === 1 ? 'it' : 'them'} there.`
+        : ` ${count === 1 ? 'It’s' : 'Some are'} used as components of ${usedBy.length} other recipes (${usedBy.map(r => r.name).join(', ')}), which will show ${count === 1 ? 'it' : 'them'} as missing until you remove ${count === 1 ? 'it' : 'them'} there.`;
     haptics.warning();
     confirmDelete({
       title: `Delete ${count} ${plural}?`,
-      message: `You're about to delete ${count} ${plural}. Anything already on your grocery list stays there.${componentNote} This can't be undone.`,
+      message: `Anything already on your grocery list stays there.${componentNote} This can’t be undone.`,
       onConfirm: () => {
         animateLayout();
         bulkDeleteRecipes(ids);
@@ -801,7 +801,7 @@ export function RecipesScreen() {
         <EmptyState
           icon="restaurant-outline"
           title="No recipes yet"
-          subtitle="Keep what you cook here, with what it takes to shop for it. Then put a whole recipe on the grocery list in one tap"
+          subtitle="Save recipes with their ingredients, then add a whole recipe to the grocery list in one tap"
           actionLabel="New recipe"
           onAction={() => setAddVisible(true)}
           bottomOffset={tabBarHeight}
@@ -1000,7 +1000,7 @@ export function RecipesScreen() {
           onSelect={handleAddMenuSelect}
           accessibilityLabel="Add recipe"
           drag={fabDrag}
-          dragHint="Drag onto a section to add a recipe there, or back to the button to cancel"
+          dragHint="Drop on a section to add a recipe there. Drop on the button to cancel."
         />
       )}
 
@@ -1009,7 +1009,7 @@ export function RecipesScreen() {
           selectedCount={selectedIds.size}
           totalCount={visible.length}
           category={{
-            title: 'Move to Meal Type',
+            title: 'Move to meal type',
             noun: 'a meal type',
             options: RECIPE_MEAL_TYPES.map(t => RECIPE_MEAL_TYPE_LABELS[t]),
             onSet: handleBulkSetMealType,
@@ -1200,7 +1200,7 @@ const RecipeRow = React.memo(function RecipeRow({
       accessibilityRole={selectionMode ? 'checkbox' : 'button'}
       accessibilityState={selectionMode ? { checked: selected } : undefined}
       accessibilityLabel={`${recipe.name}. ${description}`}
-      accessibilityHint={selectionMode ? 'Double tap to select recipe' : 'Double tap to open this recipe.'}
+      accessibilityHint={selectionMode ? 'Double tap to select recipe' : 'Double tap to open recipe'}
     >
       {/* The photo or tile stays put while selecting. Selection is the
           SelectionDot at the other end of the row, the split every other

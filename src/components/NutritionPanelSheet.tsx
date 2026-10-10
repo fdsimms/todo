@@ -239,7 +239,7 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
     if (picked.status === 'denied') {
       Alert.alert(
         source === 'camera' ? 'Camera access is off' : 'Photo access is off',
-        'Turn it on in Settings to read a label from a photo. You can always type the figures in by hand.',
+        'Turn it on in Settings to read a label from a photo, or type the figures in.',
       );
       return;
     }
@@ -275,8 +275,8 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
         haptics.warning();
         setLabel(null);
         setPhotoError(aiFailure
-          ? `Claude couldn't read that photo either: ${aiFailure}`
-          : "That photo didn't read as a nutrition panel. Try again with the whole panel in frame and more light on it, or type the figures in below.");
+          ? `Claude couldn’t read that photo either: ${aiFailure}`
+          : "Couldn’t read a nutrition panel in that photo. Try again with the whole panel in frame and more light, or type the figures in below.");
         return;
       }
       haptics.success();
@@ -333,7 +333,7 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
   const startPhoto = useCallback(() => {
     Alert.alert(
       'Read the label',
-      'Photograph the nutrition panel and the figures on it will fill in the fields below.',
+      'Photograph the nutrition panel to fill in the fields below.',
       [
         { text: 'Take a photo', onPress: () => { void handlePhoto('camera'); } },
         { text: 'Choose a photo', onPress: () => { void handlePhoto('library'); } },
@@ -480,7 +480,7 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
           >
             <Text style={styles.intro}>
               Copy the numbers off the package label. Leave a field blank if the label
-              doesn't list it. Blank means unknown, which is not the same as zero.
+              doesn’t list it. Blank means unknown.
             </Text>
 
             <View style={styles.photoRow}>
@@ -518,9 +518,9 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
                       surface="page"
                     />
                     <Text style={styles.photoNote}>
-                      This label prints more than one column. They're the same food against
-                      different portions, so they don't agree. Pick the one you want, then
-                      double-check a figure or two against the label before saving.
+                      This label has more than one column, each for a different portion.
+                      Pick the one you want, then check a figure against the
+                      label before saving.
                     </Text>
                   </>
                 ) : (
@@ -571,8 +571,8 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
                   </View>
                 </View>
                 <Text style={styles.hint}>
-                  The number to compute with. A product sold by volume has none, and that
-                  is fine. A label printed in ounces converts to grams on its own.
+                  The weight used for calculations. Leave it blank for a product sold by
+                  volume. A label in ounces is converted to grams.
                 </Text>
               </View>
 
@@ -584,8 +584,8 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
                 surface="card"
               />
               <Text style={styles.hint}>
-                Most labels outside the US print per 100g. Pick "per serving" only if the
-                panel's own column says so. If you typed the figures under the wrong one,
+                Most labels outside the US print per 100g. Pick “per serving” only if the
+                panel’s own column says so. If you typed the figures under the wrong one,
                 recalculate them here using the serving weight.
               </Text>
               {!!basisConvertTarget && (
@@ -621,16 +621,16 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
               />
             </View>
             <Text style={styles.hint}>
-              If the label only gives whole-package totals, type the totals into the figures
-              below, enter how many servings the package has, then divide.
+              If the label only gives whole-package totals, type them into the figures
+              below, enter the servings per container, then divide.
             </Text>
             <NutrientFieldsCard amounts={form.amounts} bad={bad} onChange={setAmount} />
 
             {bad.length > 0 && (
               <Text style={styles.error}>
-                {bad.length === 1 ? 'One field' : `${bad.length} fields`} couldn't be read as a
-                number. Fix or clear {bad.length === 1 ? 'it' : 'them'}, so nothing is stored
-                that the label didn't say.
+                {bad.length === 1 ? 'One field' : `${bad.length} fields`} couldn’t be read as a
+                number. Fix or clear {bad.length === 1 ? 'it' : 'them'} before
+                saving.
               </Text>
             )}
           </ScrollView>

@@ -61,13 +61,13 @@ export function EventCreatedToast() {
       pointerEvents="box-none"
     >
       <View style={[styles.bar, shadows.fab]} accessibilityLiveRegion="polite">
-        <Text style={styles.label}>{justSaved ? 'Saved for next time' : 'Added to Calendar'}</Text>
+        <Text style={styles.label}>{justSaved ? 'Added to saved events' : 'Added to Calendar'}</Text>
         {saveAs && !justSaved && (
           <TouchableOpacity
             onPress={save}
             activeOpacity={interaction.activeOpacity}
             accessibilityRole="button"
-            accessibilityLabel={`Save ${saveAs.title} to add again quickly`}
+            accessibilityLabel={`Save ${saveAs.title} as a saved event`}
             hitSlop={{ top: spacing.sm, bottom: spacing.sm, left: spacing.sm, right: spacing.sm }}
           >
             <Text style={styles.action}>Save</Text>

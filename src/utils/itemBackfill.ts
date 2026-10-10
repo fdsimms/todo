@@ -60,17 +60,17 @@ export const ITEM_BACKFILL_FIELDS: ItemBackfillFieldDef[] = [
   {
     id: 'scannedName',
     label: 'Scanned name',
-    hint: 'Rename items that still have the name a barcode lookup gave them, like "Great Value 2% Reduced Fat Milk".',
+    hint: 'Rename items still named by a barcode lookup, like “Great Value 2% Reduced Fat Milk”.',
   },
   {
     id: 'substitutes',
     label: 'Substitutes',
-    hint: 'What you’d use instead if there’s none of this. It’s saved on the item, so every recipe calling for it can use it.',
+    hint: 'What you’d use if there’s none of this. Every recipe that calls for the item can use it.',
   },
   {
     id: 'variety',
     label: 'Counts as',
-    hint: 'The general ingredient this item counts as, like white onion for onion, so a recipe naming the general ingredient accepts it.',
+    hint: 'The general ingredient this item counts as, like white onion for onion. Recipes that name the general ingredient accept it.',
   },
   {
     id: 'nutrition',
@@ -80,7 +80,7 @@ export const ITEM_BACKFILL_FIELDS: ItemBackfillFieldDef[] = [
   {
     id: 'nutritionDetail',
     label: 'Fat and sugar detail',
-    hint: 'Foods whose figures were saved before trans fat, cholesterol and added sugars were recorded. Add them from the label, or say there are none to add.',
+    hint: 'Foods saved before trans fat, cholesterol and added sugars were recorded. Add them from the label, or say there are none.',
   },
 ];
 

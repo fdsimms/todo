@@ -38,8 +38,8 @@ describe('plannedMealLabel', () => {
   const today = '2026-10-04'; // a Sunday
 
   it('says today and tomorrow in words', () => {
-    expect(plannedMealLabel(entry('a', '2026-10-04', 'dinner'), today)).toBe("Today's dinner");
-    expect(plannedMealLabel(entry('a', '2026-10-05', 'lunch'), today)).toBe("Tomorrow's lunch");
+    expect(plannedMealLabel(entry('a', '2026-10-04', 'dinner'), today)).toBe("Today’s dinner");
+    expect(plannedMealLabel(entry('a', '2026-10-05', 'lunch'), today)).toBe("Tomorrow’s lunch");
   });
 
   it('names the weekday within the week ahead, and the date past it', () => {

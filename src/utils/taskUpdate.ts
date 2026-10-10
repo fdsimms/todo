@@ -486,7 +486,7 @@ export function mergeTaskUpdate(t: Task, patch: Partial<Task>, ctx: TaskUpdateCo
   // seenAt, because both the banner's OK and TaskItem's mark-on-tap only
   // fire for a row already showing as new. So its seenAt keeps whatever
   // stale value it had, and the first move into a category that doesn't
-  // suppress hands the user a week-old task in the "you have N new todos"
+  // suppress hands the user a week-old task in the "you have N new tasks"
   // banner. Stamping seenAt on that transition is the honest answer: they
   // are holding the task right now, so they have seen it.
   //

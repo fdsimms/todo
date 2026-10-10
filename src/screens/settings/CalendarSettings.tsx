@@ -248,7 +248,7 @@ export function CalendarSettings() {
       refreshState();
       alertPermissionOff(
         'Calendar access is off',
-        'This needs permission to read your calendars. Turn it on for this app in the Settings app, then try again.',
+        'Reading your calendars needs permission. Turn it on in Settings, then try again.',
       );
       return;
     }
@@ -261,7 +261,7 @@ export function CalendarSettings() {
       // the device. There is nothing to pick, and no other screen will say why.
       Alert.alert(
         'No calendars on this device',
-        'To read a Google calendar here, add the account in the Settings app under Calendar › Accounts. Calendars from any account you add there show up in the list.',
+        'To read a Google calendar, add the account in Settings under Calendar › Accounts. Its calendars then appear in the list.',
       );
       return;
     }
@@ -281,7 +281,7 @@ export function CalendarSettings() {
     <>
     <SettingsSection
       label="Calendar"
-      footer="Reads the calendars you pick, so the app knows what else is on a day. Nothing is added, changed or deleted. This is read-only. A Google calendar shows up here once the account is added in the Settings app under Calendar › Accounts; it's read the same way as any other calendar. An event marked Free, and anything lasting all day, doesn't count as time taken."
+      footer="Reads the calendars you pick to see what else is on a day, and never adds, changes or deletes events. Events marked Free and all-day events don’t count as time taken."
     >
       <SettingsRow
         entryId="calendarRead"
@@ -312,7 +312,7 @@ export function CalendarSettings() {
             label="Calendar access"
             hint={
               permission === 'granted' ? 'Allowed. This app can read the calendars below'
-              : permission === 'denied' ? 'Blocked. Nothing can be read until you turn it back on for this app.'
+              : permission === 'denied' ? 'Blocked. Nothing can be read until you turn it back on.'
               : permission === 'undetermined' ? 'Not enabled yet. Nothing can be read until you allow it'
               : permission === 'unsupported' ? 'Not available on this platform'
               : 'Checking…'
@@ -332,7 +332,7 @@ export function CalendarSettings() {
             }
             accessibilityLabel={
               permission === 'granted' ? 'Calendar access is allowed'
-              : permission === 'denied' ? 'Calendar access is blocked. Opens the system Settings app.'
+              : permission === 'denied' ? 'Calendar access is blocked. Opens Settings.'
               : permission === 'undetermined' ? 'Calendar access not enabled yet. Double tap to allow.'
               : 'Calendar access'
             }
@@ -363,7 +363,7 @@ export function CalendarSettings() {
                 const match = (calendars ?? []).find(c => c.id === option.id);
                 if (match) toggleCalendar(match);
               }}
-              emptyText="There are no calendars on this device. Add an account in the Settings app under Calendar › Accounts."
+              emptyText="No calendars on this device. Add an account in Settings under Calendar › Accounts."
               subtitleFor={option => calendarStatusSubtitle(option.id)}
               accessibilityLabelFor={option => {
                 const subtitle = calendarStatusSubtitle(option.id);
@@ -386,7 +386,7 @@ export function CalendarSettings() {
             iconColor={vacationHiddenCount > 0 ? colors.accent : undefined}
             label="Hide during vacation"
             hint={vacationMode
-              ? 'Left out of the read while vacation mode is on'
+              ? 'Not read while vacation mode is on'
               : 'Takes effect once vacation mode is turned on'}
             value={vacationHiddenSummary}
             expanded={vacationPickerOpen}
@@ -435,7 +435,7 @@ export function CalendarSettings() {
             icon="alert-circle-outline"
             iconColor={colors.warningText}
             label={failedCalendarsLabel(failedIds.length, readCount)}
-            hint="Often temporary. Try again later, or check the account in the Settings app under Calendar › Accounts."
+            hint="Try again later, or check the account in Settings under Calendar › Accounts."
           />
         </>
       )}
@@ -479,8 +479,8 @@ export function CalendarSettings() {
             iconColor={calendarEventCategory ? colors.accent : undefined}
             label="Show events on Today"
             hint={calendarEventCategory
-              ? "Today's events show as rows in the list"
-              : "Events don't show on Today"}
+              ? "Today’s events show as rows in the list"
+              : "Events don’t show on Today"}
             toggle={!!calendarEventCategory}
             onPress={() => {
               // Off is the cleared category (see ensureCalendarEventCategory);
@@ -497,7 +497,7 @@ export function CalendarSettings() {
                 entryId="calendarEventCategory"
                 icon="pricetag-outline"
                 label="Show events under"
-                hint="Today's events show as rows in this category"
+                hint="Today’s events show as rows in this category"
                 value={categoryLabel(calendarEventCategory, categories)}
                 tight
               />
@@ -545,7 +545,7 @@ export function CalendarSettings() {
             iconColor={calendarPeopleHistory ? colors.accent : undefined}
             label="Match events to people"
             hint={calendarPeopleHistory
-              ? "A person's screen lists past events with their name in the title"
+              ? "A person’s screen lists past events with their name in the title"
               : 'Past events are never matched to the people you track'}
             toggle={calendarPeopleHistory}
             onPress={() => setCalendarPeopleHistory(!calendarPeopleHistory)}
@@ -563,14 +563,14 @@ export function CalendarSettings() {
         one run of eighteen. */}
     <SettingsSection
       label="Adding events and directions"
-      footer="What the app uses when you add an event from it or tap directions on an event or task."
+      footer="Used when you add an event or tap directions on an event or task."
     >
       <SettingsRow
         entryId="mapsApp"
         icon="navigate-outline"
         iconColor={colors.accent}
         label="Directions"
-        hint="Which app opens when you tap directions on an event or a task."
+        hint="Which app opens when you tap directions on an event or task."
         tight
       />
       <SettingsSegments
@@ -587,8 +587,8 @@ export function CalendarSettings() {
         iconColor={placeSuggestionsEnabled ? colors.accent : undefined}
         label="Suggest places"
         hint={placeSuggestionsEnabled
-          ? "Typing a new event's location looks it up in Apple Maps. What you type is sent to Apple."
-          : "A new event's location is saved as you type it. Nothing is looked up."}
+          ? "Typing a new event’s location looks it up in Apple Maps. What you type is sent to Apple."
+          : "A new event’s location is saved as you type it. Nothing is looked up."}
         toggle={placeSuggestionsEnabled}
         onPress={() => setPlaceSuggestionsEnabled(!placeSuggestionsEnabled)}
         accessibilityLabel="Suggest places"

@@ -26,14 +26,14 @@ export function confirmDeleteGenerated(task: Task, onDeleted?: () => void): void
   if (!spec) {
     confirmDelete({
       title: 'Delete task?',
-      message: `Delete "${task.title}"?`,
+      message: `Delete “${task.title}”?`,
       onConfirm: () => run(false),
     });
     return;
   }
   Alert.alert(
-    'Delete task',
-    `“${task.title}” was added automatically by “${spec.label}”. Delete just this one, or delete it and turn that off? You can turn it back on in Settings.`,
+    'Delete task?',
+    `“${task.title}” was added automatically by “${spec.label}”. Delete this one, or delete it and turn that off? You can turn it back on in Settings.`,
     [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete this one', onPress: () => run(false) },

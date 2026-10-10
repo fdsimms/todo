@@ -569,7 +569,7 @@ describe('addEntry undo', () => {
     state().loadRange('2026-04-02', '2026-04-02');
     const entry = state().addEntry(draft({ label: 'Porridge' }))!;
     const action = state().lastAction;
-    expect(action?.label).toBe('Logged "Porridge"');
+    expect(action?.label).toBe('Logged “Porridge”');
     expect(action?.destructive).toBeUndefined();
 
     state().undoLastAction();
@@ -597,7 +597,7 @@ describe('addEntry undo', () => {
     (dbGetFoodLogEntry as jest.Mock).mockImplementation((id: string) => mockGetRow(id) ?? (id === original.id ? original : null));
     const moved = state().moveEntry(original.id, new Date(2026, 3, 1, 9, 0))!;
     expect(state().undoStack).toHaveLength(1);
-    expect(state().lastAction?.label).toBe('Moved "Porridge"');
+    expect(state().lastAction?.label).toBe('Moved “Porridge”');
 
     // The mock database keeps rows a real delete would drop.
     mockRows.length = 0;
@@ -616,7 +616,7 @@ describe('removeEntry undo', () => {
     state().setLastAction(null);
     state().removeEntry(entry.id);
     expect(state().lastAction?.destructive).toBe(true);
-    expect(state().lastAction?.label).toBe('Deleted "Porridge"');
+    expect(state().lastAction?.label).toBe('Deleted “Porridge”');
     expect(state().entries).toHaveLength(0);
 
     // The mock database keeps rows, so drop it as the real delete would.
@@ -648,7 +648,7 @@ describe('edit undo', () => {
     state().setLastAction(null);
     state().reviseEntry(entry.id, { label: 'Oatmeal' });
     expect(state().entries[0].label).toBe('Oatmeal');
-    expect(state().lastAction?.label).toBe('Edited "Porridge"');
+    expect(state().lastAction?.label).toBe('Edited “Porridge”');
     state().undoLastAction();
     expect(state().entries[0].label).toBe('Porridge');
     state().redoLastUndone();

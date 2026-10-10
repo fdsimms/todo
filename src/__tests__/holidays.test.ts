@@ -7,9 +7,9 @@ const keys = (year: number) => holidaysInYear('us', year).map(h => h.dayKey);
 describe('US federal holidays', () => {
   it('lands every rule-based date in 2026', () => {
     expect(holidaysInYear('us', 2026)).toEqual([
-      { dayKey: '2026-01-01', name: "New Year's Day" },
+      { dayKey: '2026-01-01', name: "New Year’s Day" },
       { dayKey: '2026-01-19', name: 'Martin Luther King Jr. Day' },
-      { dayKey: '2026-02-16', name: "Presidents' Day" },
+      { dayKey: '2026-02-16', name: "Presidents’ Day" },
       { dayKey: '2026-05-25', name: 'Memorial Day' },
       { dayKey: '2026-06-19', name: 'Juneteenth' },
       { dayKey: '2026-07-03', name: 'Independence Day (observed)' },
@@ -67,7 +67,7 @@ describe('holidayOn', () => {
 
   it('finds the next one, across a year end', () => {
     expect(nextHoliday('2026-11-12', us)).toEqual({ dayKey: '2026-11-26', name: 'Thanksgiving' });
-    expect(nextHoliday('2026-12-26', { set: 'us', custom: [] })).toEqual({ dayKey: '2027-01-01', name: "New Year's Day" });
+    expect(nextHoliday('2026-12-26', { set: 'us', custom: [] })).toEqual({ dayKey: '2027-01-01', name: "New Year’s Day" });
     expect(nextHoliday('2026-12-26', { set: 'none', custom: [] })).toBeNull();
   });
 });

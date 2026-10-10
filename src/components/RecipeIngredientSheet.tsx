@@ -497,7 +497,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
             activeOpacity={interaction.activeOpacity}
             onPress={() => { haptics.tap(); setName(catalogSuggestion); }}
             accessibilityRole="button"
-            accessibilityLabel={`Use "${catalogSuggestion}" instead, it's already in your grocery catalog`}
+            accessibilityLabel={`Use “${catalogSuggestion}” instead. It’s already in your grocery catalog`}
           >
             <Ionicons name="sparkles-outline" size={iconSize.sm} color={colors.accent} />
             <View style={styles.suggestionBody}>
@@ -546,7 +546,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
               </Text>
               <Text style={styles.suggestionDetail}>
                 From “such as {exampleOffer}” on this line. Adds it to your groceries if it isn’t
-                there yet, and any {exampleOffer.toLowerCase()} you have will count for this.
+                there yet, and any {exampleOffer.toLowerCase()} you have counts for it.
               </Text>
             </View>
           </TouchableOpacity>
@@ -590,7 +590,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
           accessibilityLabel="Quantity"
         />
         <Text style={styles.hint}>
-          What this recipe needs, not what you'd normally buy. That's set separately, on
+          The amount this recipe needs. What you normally buy is set on
           the item itself.
         </Text>
 
@@ -606,7 +606,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
           maxLength={PREP_MAX_LENGTH}
           accessibilityLabel="Prep instructions"
         />
-        <Text style={styles.hint}>What to do to it. Shown on the recipe, never on your list.</Text>
+        <Text style={styles.hint}>What to do to it. Shown on the recipe only.</Text>
 
         <View style={styles.separator} />
 
@@ -621,7 +621,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
           accessibilityLabel="Purpose"
         />
         <Text style={styles.hint}>
-          Why it's on the list, when the same ingredient does two jobs: “flour, for gideong”.
+          Why it’s on the list, when the same ingredient does two jobs: “flour, for gideong”.
         </Text>
 
         <View style={styles.separator} />
@@ -642,9 +642,9 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
           <View style={styles.toggleBody}>
             <Text style={styles.toggleLabel}>Optional</Text>
             <Text style={styles.hint}>
-              A garnish or serving suggestion rather than something the dish needs. Starts
-              unchecked when this recipe's ingredients go on your list, but still there to
-              check off by hand.
+              For a garnish or serving suggestion. Starts unchecked when this
+              recipe’s ingredients go on your list, and you can still check it
+              off by hand.
             </Text>
           </View>
         </TouchableOpacity>
@@ -657,7 +657,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
           onPress={() => { haptics.tap(); setExcludeFromNutrition(v => !v); }}
           accessibilityRole="switch"
           accessibilityState={{ checked: excludeFromNutrition }}
-          accessibilityLabel="Don't count toward nutrition"
+          accessibilityLabel="Don’t count toward nutrition"
         >
           <Ionicons
             name={excludeFromNutrition ? 'checkbox' : 'square-outline'}
@@ -665,9 +665,9 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
             color={excludeFromNutrition ? colors.accent : colors.textSecondary}
           />
           <View style={styles.toggleBody}>
-            <Text style={styles.toggleLabel}>Don't count toward nutrition</Text>
+            <Text style={styles.toggleLabel}>Don’t count toward nutrition</Text>
             <Text style={styles.hint}>
-              Leaves this line out of the recipe's nutrition total. For an amount too small
+              Leaves this line out of the recipe’s nutrition total. For an amount too small
               to matter, like a garnish.
             </Text>
           </View>
@@ -681,7 +681,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
           onPress={() => { haptics.tap(); setExcludeFromShoppingList(v => !v); }}
           accessibilityRole="switch"
           accessibilityState={{ checked: excludeFromShoppingList }}
-          accessibilityLabel="Don't add to shopping list"
+          accessibilityLabel="Don’t add to shopping list"
         >
           <Ionicons
             name={excludeFromShoppingList ? 'checkbox' : 'square-outline'}
@@ -689,10 +689,10 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
             color={excludeFromShoppingList ? colors.accent : colors.textSecondary}
           />
           <View style={styles.toggleBody}>
-            <Text style={styles.toggleLabel}>Don't add to shopping list</Text>
+            <Text style={styles.toggleLabel}>Don’t add to shopping list</Text>
             <Text style={styles.hint}>
-              A staple you'd already have, like water at a stated amount. Stays on the
-              recipe; just never offered as something to buy.
+              A staple you already have, like water. Stays on the
+              recipe, but isn’t added to your shopping list.
             </Text>
           </View>
         </TouchableOpacity>
@@ -724,7 +724,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
           <>
             <Text style={styles.hint}>
               Not in your grocery catalog yet. Add it to give it a brand, a store, a price
-              or what you'd accept instead. This doesn't put it on your shopping list.
+              or substitutes. This doesn’t put it on your shopping list.
             </Text>
             <InlineAction
               label="Add to catalog"
@@ -757,8 +757,8 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
                 <Text style={styles.toggleLabel}>Keep as written</Text>
                 <Text style={styles.hint}>
                   {standingSwap
-                    ? `You use ${standingSwap.to.name.toLowerCase()} instead of ${standingSwap.from.name.toLowerCase()}. Check this to leave this one line alone.`
-                    : 'This line is left alone by any standing swap for it.'}
+                    ? `You use ${standingSwap.to.name.toLowerCase()} instead of ${standingSwap.from.name.toLowerCase()}. Check this to skip the swap for this line.`
+                    : 'Check this to skip any standing swap for this line.'}
                 </Text>
               </View>
             </TouchableOpacity>
@@ -914,8 +914,8 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
         )}
         <Text style={styles.hint}>
           {siblingNames.length > 0
-            ? 'Either/or: you’ll buy one of these, never both.'
-            : 'You haven’t listed any alternatives. Pick another ingredient to make this an either/or, decided at the store.'}
+            ? 'Either/or: you’ll buy only one of these.'
+            : 'No alternatives yet. Pick another ingredient to make this an either/or, decided at the store.'}
         </Text>
         {siblingNames.length > 0 && (
           <View style={styles.siblingChipRow}>
@@ -939,7 +939,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
               <Text style={styles.suggestionTitle}>Merge back into one line?</Text>
               <Text style={styles.suggestionDetail}>{mergePreviewName}</Text>
               <Text style={styles.suggestionDetail}>
-                Combines these into one line. You won't choose between them anymore.
+                Combines these into one line. You won’t choose between them anymore.
               </Text>
             </View>
           </TouchableOpacity>
@@ -987,8 +987,8 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
           ]}
         />
         <Text style={styles.hint}>
-          Puts this under a heading on the recipe, like “For the cake” or “For the frosting”. It
-          changes nothing about your shopping list.
+          Puts this under a heading on the recipe, like “For the cake”. It
+          doesn’t affect your shopping list.
         </Text>
       </View>
 
@@ -1020,9 +1020,9 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
           ]}
         />
         <Text style={styles.hint}>
-          Only used the next time this lands on your grocery list, and only if you haven’t
-          already told the app where it goes. If it’s already in your grocery catalog with
-          an aisle set, this doesn’t change it.
+          Used when this goes on your grocery list,
+          unless the item already has an aisle in
+          your grocery catalog.
         </Text>
       </View>
 

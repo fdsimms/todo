@@ -220,7 +220,7 @@ export function RecipeSourcePicker({
           <Text style={badUrl ? styles.linkBad : styles.linkHint}>
             {badUrl
               ? 'That doesn’t look like a web address yet.'
-              : 'Works on most recipe sites. Some build their page in the browser. For those, copy the recipe and paste it instead.'}
+              : 'Works on most recipe sites. If a link doesn’t work, copy the recipe and use the Paste tab.'}
           </Text>
         </View>
       ) : maxPhotos <= 1 ? (
@@ -259,7 +259,7 @@ export function RecipeSourcePicker({
                 {renderPhotoButton('clipboard', 'Paste image', 'copy-outline')}
                 <Text style={styles.photoHint}>
                   {photoHint
-                    ?? 'Works on a cookbook page, a recipe card, a clipping: anything with the ingredients readable.'}
+                    ?? 'Works on a cookbook page, recipe card or clipping if the ingredients are readable.'}
                 </Text>
               </>
             )}
@@ -326,7 +326,7 @@ export function RecipeSourcePicker({
                     {photos.length > 0
                       ? 'Add another photo if the recipe continues onto another page.'
                       : (photoHint
-                        ?? 'Works on a cookbook page, a recipe card, a clipping: anything with the ingredients readable.')}
+                        ?? 'Works on a cookbook page, recipe card or clipping if the ingredients are readable.')}
                   </Text>
                 </>
               )}
@@ -339,10 +339,10 @@ export function RecipeSourcePicker({
         <View style={styles.warning}>
           <Ionicons name="link-outline" size={iconSize.sm} color={colors.warningText} />
           <View style={styles.warningBody}>
-            <Text style={styles.warningTitle}>That's a link</Text>
+            <Text style={styles.warningTitle}>That’s a link</Text>
             <Text style={styles.warningDetail}>
-              The Link tab opens the page and reads the recipe off it. Pasted here it's only
-              an address, with no ingredients in it.
+              The Link tab opens the page and reads the recipe. Pasted here, it’s
+              an address with no ingredients.
             </Text>
             <InlineAction
               label="Use the Link tab"

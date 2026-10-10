@@ -215,7 +215,7 @@ type EntityKind = 'task' | 'category' | 'project' | 'person' | 'item' | 'recipe'
 const entityKindColumns = (count: number) => (count > 4 ? 3 : 2);
 // The two pools that belong to the groceries/recipes/meal plan area, and so
 // leave with it — the same drop the Groceries tab and the drawer's own
-// "Groceries & Meals" row already make. A queue walking the grocery catalog of
+// "Groceries & meals" row already make. A queue walking the grocery catalog of
 // an area you switched off is work the app is asking for on its own behalf.
 const KITCHEN_ENTITY_KINDS: ReadonlySet<EntityKind> = new Set<EntityKind>(['item', 'recipe']);
 const ENTITY_KIND_SEGMENTS = [
@@ -895,7 +895,7 @@ export function BackfillScreen() {
       : 'recipe';
     Alert.alert(
       `Redo ${label.toLowerCase()} from scratch?`,
-      `Walks through every ${noun} again, one at a time, including ones that already have this set. Each ${noun} keeps its current value until you change it, so nothing is cleared upfront.`,
+      `Goes through every ${noun} again, including ones that already have this set. Each ${noun} keeps its current value until you change it.`,
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Start over', onPress: startOver },
@@ -1116,7 +1116,7 @@ export function BackfillScreen() {
     const name = groupLabel ?? 'this group';
     Alert.alert(
       `Use this for new tasks in ${name}?`,
-      'New tasks there will start with this answer, so they will not come up here. You can change it later in the project editor or in Settings.',
+      'New tasks there start with this answer, so they won’t come up here. Change it later in the project editor or Settings.',
       [
         { text: 'Not now', style: 'cancel' },
         {
@@ -1186,7 +1186,7 @@ export function BackfillScreen() {
         // place, and every task in a small batch being unplaceable is a real
         // answer. Said in the error slot because it is the only slot that says
         // anything, and saying nothing would read as a button that did nothing.
-        setSuggestError('Nothing here could be suggested. Fill these in yourself.');
+        setSuggestError('No suggestions for these. Fill them in yourself.');
       } else {
         haptics.success();
       }
@@ -1273,7 +1273,7 @@ export function BackfillScreen() {
     const label = BACKFILL_FIELDS.find(f => f.id === active.id)!.label.toLowerCase();
     Alert.alert(
       `Apply ${count} ${count === 1 ? 'suggestion' : 'suggestions'}?`,
-      `Sets the suggested ${label} on ${count} ${count === 1 ? 'task' : 'tasks'} at once. Each one is listed with its own Undo when the queue finishes, and a shake takes the whole batch back.`,
+      `Sets the suggested ${label} on ${count} ${count === 1 ? 'task' : 'tasks'}. Each one gets its own Undo when the queue finishes, and a shake undoes the whole batch.`,
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Apply all', onPress: applyAllSuggestions },
@@ -1725,8 +1725,8 @@ export function BackfillScreen() {
     const clash = groceryItems.find(i => i.id !== itemId && i.nameKey === key);
     if (clash) {
       Alert.alert(
-        `Merge into "${clash.name}"?`,
-        `You already have an item called "${clash.name}". Merging keeps that one and folds this row's history, boxes and stores into it.`,
+        `Merge into “${clash.name}”?`,
+        `You already have an item called “${clash.name}”. Merging keeps that one and adds this item’s history, boxes and stores to it.`,
         [
           { text: 'Cancel', style: 'cancel' },
           {
@@ -1747,7 +1747,7 @@ export function BackfillScreen() {
               logSession({
                 itemId,
                 title,
-                valueText: `Merged into "${clash.name}"`,
+                valueText: `Merged into “${clash.name}”`,
                 undo: () => revert?.(),
               });
             },
@@ -1911,7 +1911,7 @@ export function BackfillScreen() {
                   onPress={() => chooseCategoryField(field.id)}
                   activeOpacity={interaction.activeOpacity}
                   accessibilityRole="button"
-                  accessibilityLabel={`${field.label}, ${count === 0 ? 'every category already has this on' : `${count} ${count === 1 ? "category hasn't" : "categories haven't"} turned this on`}`}
+                  accessibilityLabel={`${field.label}, ${count === 0 ? 'every category already has this on' : `${count} ${count === 1 ? "category hasn’t" : "categories haven’t"} turned this on`}`}
                 >
                   <View style={styles.fieldIcon}>
                     <Ionicons name={CATEGORY_FIELD_ICONS[field.id].row} size={iconSize.md} color={colors.accent} />
@@ -1920,7 +1920,7 @@ export function BackfillScreen() {
                     <Text style={styles.fieldLabel}>{field.label}</Text>
                     <Text style={styles.fieldHint}>{field.hint}</Text>
                     <Text style={count === 0 ? styles.fieldCountDone : styles.fieldCount}>
-                      {count === 0 ? 'Every category already has this on' : `${count} ${count === 1 ? "category hasn't" : "categories haven't"} turned this on`}
+                      {count === 0 ? 'Every category already has this on' : `${count} ${count === 1 ? "category hasn’t" : "categories haven’t"} turned this on`}
                     </Text>
                   </View>
                   <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
@@ -1940,7 +1940,7 @@ export function BackfillScreen() {
                   onPress={() => chooseProjectField(field.id)}
                   activeOpacity={interaction.activeOpacity}
                   accessibilityRole="button"
-                  accessibilityLabel={`${field.label}, ${count === 0 ? 'every project already has this set' : `${count} ${count === 1 ? "project hasn't" : "projects haven't"} set this`}`}
+                  accessibilityLabel={`${field.label}, ${count === 0 ? 'every project already has this set' : `${count} ${count === 1 ? "project hasn’t" : "projects haven’t"} set this`}`}
                 >
                   <View style={styles.fieldIcon}>
                     <Ionicons name={PROJECT_FIELD_ICONS[field.id]} size={iconSize.md} color={colors.accent} />
@@ -1949,7 +1949,7 @@ export function BackfillScreen() {
                     <Text style={styles.fieldLabel}>{field.label}</Text>
                     <Text style={styles.fieldHint}>{field.hint}</Text>
                     <Text style={count === 0 ? styles.fieldCountDone : styles.fieldCount}>
-                      {count === 0 ? 'Every project already has this set' : `${count} ${count === 1 ? "project hasn't" : "projects haven't"} set this`}
+                      {count === 0 ? 'Every project already has this set' : `${count} ${count === 1 ? "project hasn’t" : "projects haven’t"} set this`}
                     </Text>
                   </View>
                   <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
@@ -2001,8 +2001,8 @@ export function BackfillScreen() {
             // prompt to start filing your friends, which is the failure mode.
             <EmptyState
               icon="people-outline"
-              title="Nobody added yet"
-              subtitle="People you add on the People screen show up here, so you can fill in birthdays and reminders for them a few at a time."
+              title="No people yet"
+              subtitle="People you add on the People screen show up here, so you can fill in their birthdays and reminders."
               bottomOffset={tabBarHeight}
             />
           )
@@ -2042,7 +2042,7 @@ export function BackfillScreen() {
             <EmptyState
               icon="basket-outline"
               title="Nothing in your catalog yet"
-              subtitle="Items you add on the Groceries screen show up here, so you can fill in varieties, substitutes and nutrition for them a few at a time."
+              subtitle="Items you add on the Groceries screen show up here, so you can fill in varieties, substitutes and nutrition."
               bottomOffset={tabBarHeight}
             />
           )
@@ -2083,7 +2083,7 @@ export function BackfillScreen() {
             <EmptyState
               icon="restaurant-outline"
               title="No recipes yet"
-              subtitle="Recipes you save show up here, so you can fill in how many they serve and how long they take a few at a time."
+              subtitle="Recipes you save show up here, so you can fill in how many they serve and how long they take."
               bottomOffset={tabBarHeight}
             />
           )
@@ -2158,7 +2158,7 @@ export function BackfillScreen() {
                 <Text style={styles.groupApplyHint}>
                   {batchAnswers
                     ? `Leaving it unset also applies to all ${count}. A shake undoes it.`
-                    : `Applies to all ${count} when you tap "${active ? dismissLabelFor(active) : ''}". A shake undoes it.`}
+                    : `Applies to all ${count} when you tap “${active ? dismissLabelFor(active) : ''}”. A shake undoes it.`}
                 </Text>
               )}
             </View>
@@ -2291,7 +2291,7 @@ export function BackfillScreen() {
                 style={styles.skipButton}
                 onPress={dismiss}
                 accessibilityRole="button"
-                accessibilityLabel={`${dismissLabel} for this task, and don't ask again`}
+                accessibilityLabel={`${dismissLabel} for this task, and don’t ask again`}
               >
                 <Text style={styles.skipText}>{dismissLabel}</Text>
               </PressableScale>
@@ -2312,7 +2312,7 @@ export function BackfillScreen() {
           <EmptyState
             icon="checkmark-circle-outline"
             title="All caught up"
-            subtitle={`Every task has a ${field.label.toLowerCase()} now. Pick another field to keep going.`}
+            subtitle={`Every task has a ${field.label.toLowerCase()} now. Pick another field.`}
             actionLabel="Choose another field"
             onAction={backToFields}
             bottomOffset={tabBarHeight}
@@ -2426,7 +2426,7 @@ export function BackfillScreen() {
                 style={styles.skipButton}
                 onPress={dismiss}
                 accessibilityRole="button"
-                accessibilityLabel={`${dismissLabelFor(active)} for this category, and don't ask again`}
+                accessibilityLabel={`${dismissLabelFor(active)} for this category, and don’t ask again`}
               >
                 <Text style={styles.skipText}>{dismissLabelFor(active)}</Text>
               </PressableScale>
@@ -2447,7 +2447,7 @@ export function BackfillScreen() {
           <EmptyState
             icon="checkmark-circle-outline"
             title="All caught up"
-            subtitle="Every category already has this set. Pick another field to keep going."
+            subtitle="Every category already has this set. Pick another field."
             actionLabel="Choose another field"
             onAction={backToFields}
             bottomOffset={tabBarHeight}
@@ -2593,7 +2593,7 @@ export function BackfillScreen() {
                     onPress={() => { haptics.tap(); animateLayout(); setPersonCadenceDraft(toCadenceParts(observedCadence)); }}
                     activeOpacity={interaction.activeOpacity}
                     accessibilityRole="button"
-                    accessibilityLabel={`Use every ${observedCadence} days`}
+                    accessibilityLabel={`Use every ${observedCadence} ${observedCadence === 1 ? 'day' : 'days'}`}
                   >
                     <Ionicons name="sparkles-outline" size={14} color={colors.accent} />
                     <Text style={styles.offerText}>{describeObservedCadence(observedCadence)}. Use that?</Text>
@@ -2650,7 +2650,7 @@ export function BackfillScreen() {
                     ? `Set a reminder for every ${describeCadence(cadenceDays).toLowerCase()}${applyCadenceToGroup && currentGroupmates.length > 0
                       ? `, also for ${currentGroupmates.map(displayNameOf).join(' and ')}`
                       : ''}`
-                    : 'Pick how long before a reminder first'}
+                    : 'Set the time before a reminder first'}
                 >
                   <Ionicons name="notifications" size={iconSize.md} color={colors.onAccent} />
                   <Text style={styles.toggleButtonText}>Set reminder</Text>
@@ -2726,7 +2726,7 @@ export function BackfillScreen() {
                 style={styles.skipButton}
                 onPress={dismiss}
                 accessibilityRole="button"
-                accessibilityLabel={`${dismissLabelFor(active)} for this person, and don't ask again`}
+                accessibilityLabel={`${dismissLabelFor(active)} for this person, and don’t ask again`}
               >
                 <Text style={styles.skipText}>{dismissLabelFor(active)}</Text>
               </PressableScale>
@@ -2747,7 +2747,7 @@ export function BackfillScreen() {
           <EmptyState
             icon="checkmark-circle-outline"
             title="All caught up"
-            subtitle="Nothing left to fill in for this field. Pick another to keep going."
+            subtitle="Nothing left to fill in for this field. Pick another field."
             actionLabel="Choose another field"
             onAction={backToFields}
             bottomOffset={tabBarHeight}
@@ -2881,8 +2881,8 @@ export function BackfillScreen() {
                   onPress={applyWeekendSource}
                   accessibilityRole="button"
                   accessibilityLabel={currentProject.weekendSource
-                    ? `Stop letting the weekend task name "${currentProject.title}"`
-                    : `Let the weekend task name "${currentProject.title}"`}
+                    ? `Stop letting the weekend task name “${currentProject.title}”`
+                    : `Let the weekend task name “${currentProject.title}”`}
                 >
                   <Ionicons name="sunny" size={iconSize.md} color={colors.onAccent} />
                   <Text style={styles.toggleButtonText}>
@@ -2897,7 +2897,7 @@ export function BackfillScreen() {
                 style={styles.skipButton}
                 onPress={dismiss}
                 accessibilityRole="button"
-                accessibilityLabel={`${dismissLabelFor(active)} for this project, and don't ask again`}
+                accessibilityLabel={`${dismissLabelFor(active)} for this project, and don’t ask again`}
               >
                 <Text style={styles.skipText}>{dismissLabelFor(active)}</Text>
               </PressableScale>
@@ -2918,7 +2918,7 @@ export function BackfillScreen() {
           <EmptyState
             icon="checkmark-circle-outline"
             title="All caught up"
-            subtitle="Every project already has this set. Pick another field to keep going."
+            subtitle="Every project already has this set. Pick another field."
             actionLabel="Choose another field"
             onAction={backToFields}
             bottomOffset={tabBarHeight}
@@ -3048,7 +3048,7 @@ export function BackfillScreen() {
                 style={styles.skipButton}
                 onPress={dismiss}
                 accessibilityRole="button"
-                accessibilityLabel={`${dismissLabelFor(active)} for this recipe, and don't ask again`}
+                accessibilityLabel={`${dismissLabelFor(active)} for this recipe, and don’t ask again`}
               >
                 <Text style={styles.skipText}>{dismissLabelFor(active)}</Text>
               </PressableScale>
@@ -3069,7 +3069,7 @@ export function BackfillScreen() {
           <EmptyState
             icon="checkmark-circle-outline"
             title="All caught up"
-            subtitle="Nothing left to fill in for this field. Pick another to keep going."
+            subtitle="Nothing left to fill in for this field. Pick another field."
             actionLabel="Choose another field"
             onAction={backToFields}
             bottomOffset={tabBarHeight}
@@ -3231,7 +3231,7 @@ export function BackfillScreen() {
           {active.id === 'nutrition' && (
             <View style={styles.nutritionField}>
               <Text style={styles.renameHint}>
-                Look the food up, or copy the figures off the package. Either way you
+                Look up the food or copy the figures from the package. You
                 confirm what gets saved.
               </Text>
               <PressableScale
@@ -3262,7 +3262,7 @@ export function BackfillScreen() {
           {active.id === 'nutritionDetail' && (
             <View style={styles.nutritionField}>
               <Text style={styles.renameHint}>
-                The saved figures stay as they are. Open the panel and add trans fat,
+                Saved figures stay as they are. Open the panel to add trans fat,
                 cholesterol or added sugars from the label. A food with none of them
                 stays in this list until you choose Nothing more to add.
               </Text>
@@ -3295,8 +3295,8 @@ export function BackfillScreen() {
               accessibilityRole="button"
               accessibilityLabel={
                 active.id === 'scannedName'
-                  ? `Keep the name "${currentItem.name}" and don't ask again`
-                  : `${dismissLabelFor(active)} for ${currentItem.name}, and don't ask again`
+                  ? `Keep the name “${currentItem.name}” and don’t ask again`
+                  : `${dismissLabelFor(active)} for ${currentItem.name}, and don’t ask again`
               }
             >
               <Text style={styles.skipText}>{dismissLabelFor(active)}</Text>
@@ -3318,7 +3318,7 @@ export function BackfillScreen() {
         <EmptyState
           icon="checkmark-circle-outline"
           title="All caught up"
-          subtitle="Nothing left to fill in for this field. Pick another to keep going."
+          subtitle="Nothing left to fill in for this field. Pick another field."
           actionLabel="Choose another field"
           onAction={backToFields}
           bottomOffset={tabBarHeight}
@@ -3406,7 +3406,7 @@ function SessionReview({
               onPress={() => onUndo(item)}
               hitSlop={8}
               accessibilityRole="button"
-              accessibilityLabel={`Undo "${item.valueText}" for ${item.title}`}
+              accessibilityLabel={`Undo “${item.valueText}” for ${item.title}`}
             >
               <Text style={styles.reviewUndoText}>Undo</Text>
             </TouchableOpacity>

@@ -304,7 +304,7 @@ export function PeopleScreen() {
           // docs/arch/people.md for why there is no import.
           subtitle={showArchived
             ? 'People you archive will show up here'
-            : 'Add the people you want to keep up with. Put their birthday on and it will remind you, and you can attach anyone to a task you are planning together.'}
+            : 'Add the people you want to keep up with. Add their birthday to get a reminder, and attach anyone to a task you’re planning together.'}
           actionLabel={showArchived ? undefined : 'Add someone'}
           onAction={showArchived ? undefined : () => setQuickAddVisible(true)}
           bottomOffset={tabBarHeight}
@@ -394,7 +394,7 @@ export function PeopleScreen() {
           onPress={() => { pendingDropRef.current = null; setQuickAddVisible(true); }}
           accessibilityLabel="Add person"
           drag={fabDrag}
-          dragHint="Drag onto the list to add a person there, or back to the button to cancel"
+          dragHint="Drop on the list to add a person there. Drop on the button to cancel."
         />
       )}
 

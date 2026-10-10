@@ -206,8 +206,8 @@ export function ComponentChoiceSheet({ visible, recipe, component: liveComponent
           </>
         ) : (
           <Text style={styles.hint}>
-            Every component is included unless it's one of a choice. Two components in the
-            same group mean a meal cooks one of them, picked when it's planned.
+            Every component is included unless it’s one of a choice. Two components in the
+            same group mean a meal cooks one of them, picked when it’s planned.
           </Text>
         )}
       </View>
@@ -243,7 +243,7 @@ export function ComponentChoiceSheet({ visible, recipe, component: liveComponent
           )}
           <Text style={styles.hint}>
             {defaultIngredientName
-              ? `An ingredient sharing this group is always the default. Pick ${name} for a specific meal from the plan instead.`
+              ? `An ingredient sharing this group is always the default. Pick ${name} for one meal in the plan.`
               : 'What a planned meal uses until you pick something else for that night.'}
           </Text>
         </View>

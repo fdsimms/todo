@@ -47,9 +47,9 @@ struct LimitsWidgetEntryView: View {
 
     private var emptyStateMessage: String {
         switch entry.result {
-        case .noAppGroupAccess: return "Can't access shared data (App Group)"
+        case .noAppGroupAccess: return "Can’t access shared data (App Group)"
         case .noSnapshotYet: return "Open the app to get started"
-        case .decodeFailed: return "Couldn't read food log data"
+        case .decodeFailed: return "Couldn’t read food log data"
         case .success(let snapshot):
             if snapshot.limits == nil { return "Open the app to get started" }
             if snapshot.isLaterDay(at: entry.date) { return "Open the app to see today" }
@@ -68,7 +68,7 @@ struct LimitsWidgetEntryView: View {
             title: "Limits",
             countLabel: nil,
             actionURL: nil,
-            actionLabel: "Open the food log"
+            actionLabel: "Open food log"
         )
 
         return WidgetFrame(header: header, holdsTop: !shown.isEmpty) {
@@ -157,7 +157,7 @@ struct TodoLimitsWidget: Widget {
                 }
         }
         .configurationDisplayName("Limits")
-        .description("Today's food log against the nutrients you set to Stay under.")
+        .description("Today’s food log against the nutrients you set to Stay under.")
         .supportedFamilies([.systemSmall, .systemMedium])
         .contentMarginsDisabled()
     }

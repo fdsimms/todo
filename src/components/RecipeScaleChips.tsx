@@ -167,7 +167,7 @@ export function RecipeScaleChips({
               describeValue={n => `${n} servings`}
             />
           </View>
-          {!!rangeLabel && <Text style={styles.servingsHint}>Recipe says serves {rangeLabel}</Text>}
+          {!!rangeLabel && <Text style={styles.servingsHint}>Recipe serves {rangeLabel}</Text>}
         </View>
       )}
     </View>

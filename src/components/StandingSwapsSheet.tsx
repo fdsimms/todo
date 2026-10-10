@@ -62,7 +62,7 @@ export function StandingSwapsSheet({ visible, onClose }: Props) {
             <EmptyState
               icon="swap-horizontal-outline"
               title="No standing swaps"
-              subtitle="Add a substitute to an item and check “Always use this instead” to have every recipe calling for it shop for what you actually use."
+              subtitle="Add a substitute to an item and check “Always use this instead” so recipes that call for the item show and shop for the substitute."
             />
           </View>
         ) : (
@@ -104,8 +104,8 @@ export function StandingSwapsSheet({ visible, onClose }: Props) {
               ))}
             </View>
             <Text style={styles.footnote}>
-              Turning one off keeps it as a substitute: the recipes it was rewriting go back to
-              their own words. A single line can opt out on its own from the recipe, under
+              Turning one off keeps it as a substitute, and recipes go back to their own
+              wording. A single recipe line can also opt out under
               “Keep as written”.
             </Text>
           </ScrollView>

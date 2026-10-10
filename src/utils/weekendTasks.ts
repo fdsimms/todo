@@ -470,7 +470,7 @@ function joinTitles(titles: readonly string[]): string {
 export function weekendNudgeNotes(planTitles: readonly string[], suggestion: WeekendSuggestion | null): string {
   const bare = planTitles.length === 0
     ? 'Nothing is on your list for Friday evening, Saturday or Sunday.'
-    : `${joinTitles(planTitles)} ${planTitles.length === 1 ? 'is' : 'are'} on your list for Friday evening, Saturday or Sunday. There's still room to plan more.`;
+    : `${joinTitles(planTitles)} ${planTitles.length === 1 ? 'is' : 'are'} on your list for Friday evening, Saturday or Sunday. There’s still room to plan more.`;
   if (!suggestion) return bare;
   if (!suggestion.candidateTitle) {
     return `${bare} You marked ${suggestion.projectTitle} as somewhere to look for weekend plans.`;

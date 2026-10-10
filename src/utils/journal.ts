@@ -162,10 +162,10 @@ export const JOURNAL_PROMPTS: readonly string[] = [
   'What took up the most space in your head?',
   'What are you looking forward to?',
   'What do you want to remember about today?',
-  'What did you get done that you\'re glad about?',
+  'What did you get done that you’re glad about?',
   'What was hard today, and what helped?',
   'Who did you talk to today?',
-  'What would make tomorrow a bit easier?',
+  'What would make tomorrow easier?',
   'What did you notice about your body today?',
   'What are you grateful for right now?',
 ];
@@ -194,7 +194,7 @@ export const JOURNAL_KIND_COPY: Record<JournalKind, {
     hint: null,
     continuePlaceholder: 'e.g. What has happened since then',
     emptyTitle: 'Nothing written yet',
-    emptySubtitle: 'Write about your day, as often as you like.',
+    emptySubtitle: 'Write about your day.',
   },
   dream: {
     title: 'Dreams',

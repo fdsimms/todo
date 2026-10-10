@@ -97,13 +97,13 @@ const waitingTask = (o: Partial<Task> = {}) => makeTask({
 describe('the title', () => {
   it('names the person and the task in one sentence', () => {
     expect(waitingFollowUpTitle(person(), waitingTask())).toBe(
-      'Follow up with Gideon about "Get the quote back"'
+      'Follow up with Gideon about “Get the quote back”'
     );
   });
 
   it('prefers what you actually call them', () => {
     expect(waitingFollowUpTitle(person({ name: 'Gideon Ridley', nickname: 'Gid' }), waitingTask()))
-      .toBe('Follow up with Gid about "Get the quote back"');
+      .toBe('Follow up with Gid about “Get the quote back”');
   });
 });
 
@@ -122,7 +122,7 @@ describe('wantedWaitingFollowUps', () => {
     const wants = wantedWaitingFollowUps([task], [person()], TODAY);
     expect(wants).toEqual([{
       taskId: 't1', personId: 'p1',
-      title: 'Follow up with Gideon about "Get the quote back"',
+      title: 'Follow up with Gideon about “Get the quote back”',
       phoneNumber: null,
       projectId: null,
     }]);

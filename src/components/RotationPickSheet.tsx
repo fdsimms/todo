@@ -156,7 +156,7 @@ export function RotationPickSheet({ visible, task, onPick, onCancel, onPlan }: P
           style={styles.linkButton}
           accessibilityRole="button"
           accessibilityLabel={isPlanned
-            ? `Remove ${member.item.title} from today's plan`
+            ? `Remove ${member.item.title} from today’s plan`
             : `Plan ${member.item.title} for today`}
         >
           <Ionicons

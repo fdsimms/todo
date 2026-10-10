@@ -963,7 +963,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     reconcileMealSlot(get, entry);
     reconcileMealEvent(entry);
     get().setLastAction({
-      label: `Planned "${entry.title}"`,
+      label: `Planned “${entry.title}”`,
       undo: () => {
         dropCookTask(entry.id);
         dropMealEvent(entry.id);
@@ -1005,7 +1005,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     reconcileMealSlot(get, entry);
     reconcileMealEvent(moved);
     get().setLastAction({
-      label: `Moved "${entry.title}"`,
+      label: `Moved “${entry.title}”`,
       redo: () => get().moveEntry(id, to),
       undo: () => {
         dbUpdateMealPlanEntry(entry);
@@ -1030,7 +1030,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     if (entry) reconcileMealSlot(get, entry);
     if (entry) {
       get().setLastAction({
-        label: `Removed "${entry.title}"`,
+        label: `Removed “${entry.title}”`,
         destructive: true,
         redo: () => get().removeEntry(id),
         undo: () => {
@@ -1068,7 +1068,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     reconcileMealEvent(renamed);
     // The only single-entry mutation here that used to write without one.
     get().setLastAction({
-      label: `Renamed "${entry.title}"`,
+      label: `Renamed “${entry.title}”`,
       undo: () => {
         dbUpdateMealPlanEntry(entry);
         set(s => ({ entries: s.entries.map(e => e.id === id ? entry : e) }));
@@ -1208,7 +1208,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
       // aren't cooked yet — but the pairing owns that rule, not this.
       if (undo) {
         get().setLastAction({
-          label: `Cooked "${titleForEntry(entry, recipeIndex(recipes))}"`,
+          label: `Cooked “${titleForEntry(entry, recipeIndex(recipes))}”`,
           redo: () => get().finishCookForRecipe(recipeId),
           undo,
         });
@@ -1224,7 +1224,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     const before = useRecipeStore.getState().markCooked(recipeId);
     if (!before) return;
     get().setLastAction({
-      label: `Cooked "${recipe.name}"`,
+      label: `Cooked “${recipe.name}”`,
       redo: () => get().finishCookForRecipe(recipeId),
       undo: () => useRecipeStore.getState().restoreCookStats(recipeId, before),
     });
@@ -1467,7 +1467,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     const created = drafts.map(copyRow);
     return writeCopies(
       set, get, created,
-      `Copied "${source.title}" to ${created.length} day${created.length === 1 ? '' : 's'}`,
+      `Copied “${source.title}” to ${created.length} day${created.length === 1 ? '' : 's'}`,
     );
   },
 

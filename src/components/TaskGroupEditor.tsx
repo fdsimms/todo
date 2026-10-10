@@ -338,7 +338,7 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
       onClose();
     };
     Alert.alert(
-      `Delete "${group.title}"?`,
+      `Delete “${group.title}”?`,
       members.length === 0
         ? undefined
         : `Its tasks can stay in your list un${sectionWord}ed, or be deleted with it.`,
@@ -482,7 +482,7 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
               <Text style={styles.optionLabel}>Checklist</Text>
               <Text style={styles.optionHint}>
                 {checklist
-                  ? "Its tasks are checked off, not scheduled. Rows hide their dates and Pull doesn't offer them. A task that already has a date still shows on Today that day"
+                  ? "Its tasks are checked off with no schedule. Rows hide their dates and Pull doesn’t offer them. A task that already has a date still shows on Today that day"
                   : 'Its tasks are scheduled like the rest of the project'}
               </Text>
             </View>
@@ -550,7 +550,7 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
             <CollapsibleField
               label="Project"
               summary={projects.find(p => p.id === homeProjectId)?.title}
-              hint="Keeps the stack on that project's page even while it has no tasks in it. Doesn't move the tasks it already has."
+              hint="Keeps the stack on the project’s page even when it has no tasks. Doesn’t move its existing tasks."
               expanded={fieldOpen('project')}
               onToggle={() => toggleField('project')}
             >
@@ -678,7 +678,7 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
               ))}
               {eligibleForAdd.length === 0 && (
                 <Text style={styles.existingEmpty}>
-                  {filingProjectId ? 'No matching tasks with no section or project yet' : 'No matching unstacked tasks'}
+                  {filingProjectId ? 'No matching tasks without a section or project' : 'No matching unstacked tasks'}
                 </Text>
             )}
               {eligibleMatches.length > EXISTING_TASK_PICKER_LIMIT && (
@@ -703,7 +703,7 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
             <View style={styles.addRow}>
               <InlineAction
                 icon="checkmark-done-outline"
-                label={openToday.length === 1 ? "Complete today's task" : `Complete today's ${openToday.length} tasks`}
+                label={openToday.length === 1 ? "Complete today’s task" : `Complete today’s ${openToday.length} tasks`}
                 variant="neutral"
                 onPress={() => {
                   const ids = openToday.map(t => t.id);

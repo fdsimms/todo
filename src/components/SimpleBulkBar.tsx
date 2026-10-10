@@ -73,7 +73,7 @@ export function SimpleBulkBar({
           style={styles.selectAllBtn}
           onPress={() => { haptics.tap(); allSelected ? onDeselectAll() : onSelectAll(); }}
         >
-          <Text style={styles.selectAllText}>{allSelected ? 'Deselect All' : 'Select All'}</Text>
+          <Text style={styles.selectAllText}>{allSelected ? 'Deselect all' : 'Select all'}</Text>
         </TouchableOpacity>
         <Text style={styles.countText}>{selectedCount} selected</Text>
         <TouchableOpacity style={styles.cancelBtn} onPress={onCancel} hitSlop={8} accessibilityRole="button" accessibilityLabel="Cancel selection">

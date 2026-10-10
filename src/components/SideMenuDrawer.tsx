@@ -275,7 +275,7 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
           />
           <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.backdrop }]} />
         </Animated.View>
-        <SheetScrim onPress={onClose} label="Close the menu" />
+        <SheetScrim onPress={onClose} label="Close menu" />
 
         <Animated.View
           style={[

@@ -235,7 +235,7 @@ export function seedDemoData(): void {
   // --- Today ---------------------------------------------------------------
   const roadmap = addTask({
     title: 'Send the Q3 roadmap to Priya',
-    notes: 'Draft is in the shared folder, just needs the headcount slide.',
+    notes: 'Draft is in the shared folder. Needs the headcount slide.',
     category: 'Work',
     priority: 4,
     effort: 2,
@@ -274,7 +274,7 @@ export function seedDemoData(): void {
   });
 
   addTask({
-    title: 'Pay the electricity bill',
+    title: 'Pay the electric bill',
     category: 'Home',
     priority: 3,
     effort: 1,
@@ -284,7 +284,7 @@ export function seedDemoData(): void {
 
   const standup = addTask({
     title: 'Morning standup',
-    notes: "Fifteen minutes, camera optional. The streak only counts if it's actually done in the morning.",
+    notes: "Fifteen minutes, camera optional. The streak counts only if it’s done in the morning.",
     category: 'Work',
     recurrenceType: 'weekly',
     recurrenceDays: [1, 2, 3, 4, 5],
@@ -302,7 +302,7 @@ export function seedDemoData(): void {
   // one arriving back in the Pinned block rather than dropping out of it.
   addTask({
     title: 'Plan tomorrow',
-    notes: 'Repeats daily and stays pinned: each new occurrence starts out pinned to Today.',
+    notes: 'Repeats daily. Each new occurrence is pinned to Today.',
     category: 'Work',
     recurrenceType: 'daily',
     dueDate: today.toISOString(),
@@ -333,7 +333,7 @@ export function seedDemoData(): void {
   // is not a state the seed can reach by tapping.
   const noPhone = addTask({
     title: 'No phone in bed',
-    notes: 'Never completed. It stays here every day and counts the nights you get through. Tap the shield to record a slip.',
+    notes: 'It can’t be completed. It counts the nights you get through. Tap the shield to record a slip.',
     category: 'Health',
     polarity: 'negative',
     effort: 1,
@@ -344,7 +344,7 @@ export function seedDemoData(): void {
 
   const noSnacking = addTask({
     title: 'No snacking after dinner',
-    notes: 'Slipped today, so the shield is red and the count is back to nothing. It stays on the list either way.',
+    notes: 'Slipped today, so the shield is red and the count is back to 0. It stays on the list.',
     category: 'Health',
     polarity: 'negative',
     effort: 1,
@@ -359,7 +359,7 @@ export function seedDemoData(): void {
   // so the row shows the count against the limit while the streak is intact.
   const fewerSweets = addTask({
     title: 'Sweets only twice a day',
-    notes: 'Two slips a day are allowed. They are counted but keep the streak. The third one resets it.',
+    notes: 'Two slips a day are counted and keep the streak. The third one resets it.',
     category: 'Health',
     polarity: 'negative',
     slipAllowance: 2,
@@ -380,7 +380,7 @@ export function seedDemoData(): void {
   useSettingsStore.getState().setGateShieldEnabled(true);
   addTask({
     title: 'Morning walk',
-    notes: 'Holds your apps two ways. The ones you picked in Settings stay blocked until this is done, and if 8am passes with it still undone they stay blocked for two hours on top of that. Doing it late takes what is left of that block back off.',
+    notes: 'Apps you picked in Settings stay blocked until this is done. If it’s still undone at 8 AM, they’re blocked for two hours as well. Doing it late lifts what’s left of that block.',
     gatesApps: true,
     category: 'Health',
     dueDate: today.toISOString(),
@@ -450,7 +450,7 @@ export function seedDemoData(): void {
   // see without knowing to look for it.
   const naproxen = addTask({
     title: 'Take naproxen',
-    notes: 'For the back. Not sooner than every 8 hours.',
+    notes: 'For the back. At least 8 hours between doses.',
     category: 'Health',
     recurrenceType: 'hours',
     recurrenceInterval: 8,
@@ -489,7 +489,7 @@ export function seedDemoData(): void {
   // row — and so the ranking is visible: fewer moves, and a more recent start.
   const gutters = addTask({
     title: 'Clear the gutters',
-    notes: 'Before the fall rain, ideally.',
+    notes: 'Before the fall rain.',
     category: 'Home',
     dueDate: today.toISOString(),
     priority: 1,
@@ -506,7 +506,7 @@ export function seedDemoData(): void {
   // due date otherwise falls in.
   addTask({
     title: 'Renew passport',
-    notes: 'Expires in June. Starting the paperwork in April keeps it well ahead of any trip.',
+    notes: 'Expires in June. Start the paperwork in April.',
     category: 'Errands',
     dueDate: new Date(today.getFullYear(), 3, 15).toISOString(),
     recurrenceType: 'yearly',
@@ -519,7 +519,7 @@ export function seedDemoData(): void {
 
   addTask({
     title: 'Swing by the farmers market',
-    notes: 'Only worth doing between 8 and 1, after that the good stalls are gone.',
+    notes: 'Go between 8 and 1, before the good stalls are gone.',
     category: 'Errands',
     dueDate: today.toISOString(),
     windowStart: '08:00',
@@ -529,7 +529,7 @@ export function seedDemoData(): void {
 
   const morningRoutine = addTask({
     title: 'Morning routine',
-    notes: 'A chain: finishing one step immediately hands you the next.',
+    notes: 'A chain: finishing a step creates the next one.',
     category: 'Health',
     chainEnabled: true,
     chainIndex: 0,
@@ -594,7 +594,7 @@ export function seedDemoData(): void {
   // that day rather than today.
   addTask({
     title: 'Haircut',
-    notes: 'Booking it is a step of its own. The date you give lands on the next step.',
+    notes: 'Booking is its own step. The date you enter sets the next step’s date.',
     category: 'Errands',
     dueDate: today.toISOString(),
     chainEnabled: true,
@@ -685,7 +685,7 @@ export function seedDemoData(): void {
 
   const water = addTask({
     title: 'Drink a glass of water',
-    notes: 'A daily target: log it through the day, and it only surfaces when you fall behind.',
+    notes: 'A daily target: log it through the day. It shows only when you fall behind.',
     category: 'Health',
     dueDate: today.toISOString(),
     targetCount: 6,
@@ -722,7 +722,7 @@ export function seedDemoData(): void {
   // until something is actually spacing itself out across a working day.
   const eyes = addTask({
     title: 'Look 20 feet away',
-    notes: 'Rest your eyes for 20 seconds. Every 20 minutes while you are working.',
+    notes: 'Rest your eyes for 20 seconds every 20 minutes while you work.',
     category: 'Health',
     dueDate: today.toISOString(),
     // Eight hours at 20 minutes. Stored as the interval, so the count follows
@@ -763,7 +763,7 @@ export function seedDemoData(): void {
   // demonstrated is that it stays on Today anyway.
   const stretch = addTask({
     title: 'Stretch',
-    notes: 'Whenever, no particular time. Stays on Today all day instead of hiding while you keep up with it.',
+    notes: 'No set time. Stays on Today all day, even when you’re on track.',
     category: 'Health',
     dueDate: today.toISOString(),
     targetCount: 3,
@@ -779,7 +779,7 @@ export function seedDemoData(): void {
   // other target; the ramp shows up as the count growing when a day is closed.
   addTask({
     title: 'Push-ups',
-    notes: 'Starts at 10 a day and adds 2 after every 3 days you hit it, up to 30. A missed day waits instead of resetting it.',
+    notes: 'Starts at 10 a day and adds 2 after every 3 days you hit it, up to 30. A missed day doesn’t reset it.',
     category: 'Health',
     dueDate: today.toISOString(),
     targetCount: 10,
@@ -812,7 +812,7 @@ export function seedDemoData(): void {
   // would be indistinguishable from a daily target nobody has started today.
   const runs = addTask({
     title: 'Go for a run',
-    notes: 'Three times a week, whichever days work. The count resets when the week does, not overnight.',
+    notes: 'Three times a week, on any days. The count resets when the week starts.',
     category: 'Health',
     dueDate: today.toISOString(),
     targetCount: 3,
@@ -885,7 +885,7 @@ export function seedDemoData(): void {
   const ride = { id: generateId(), title: 'Peloton ride', linkUrl: null };
   const workouts = addTask({
     title: 'Workouts',
-    notes: 'Three runs and one ride a week, in whatever order works.',
+    notes: 'Three runs and one ride a week, in any order.',
     category: 'Health',
     dueDate: today.toISOString(),
     rotationEnabled: true,
@@ -976,7 +976,7 @@ export function seedDemoData(): void {
   // Waits for the whole six-week series rather than the first class.
   addTask({
     title: 'Book the pool party',
-    notes: 'Held back until the last swim class is done, not just the next one.',
+    notes: 'Held back until the last swim class is done.',
     category: 'Health',
     effort: 1,
     blockedById: swimClass.id,
@@ -1062,7 +1062,7 @@ export function seedDemoData(): void {
   updateTask(iron.id, {
     dueDate: today.toISOString(),
     completionTimerMinutes: 120,
-    completionTimerNote: "Don't eat for 2 hours",
+    completionTimerNote: "Don’t eat for 2 hours",
   });
   // Pinned as a whole via the stack editor's pin button, so the Pinned Tasks
   // block shows a copy of all three alongside the lone pinned task above.
@@ -1071,7 +1071,7 @@ export function seedDemoData(): void {
   // --- Later (deferred / future-dated) -------------------------------------
   addTask({
     title: 'Renew the passport',
-    notes: 'Six weeks of processing time, so this needs starting well before the trip.',
+    notes: 'Processing takes six weeks, so start well before the trip.',
     category: 'Errands',
     priority: 4,
     effort: 3,
@@ -1136,7 +1136,7 @@ export function seedDemoData(): void {
   // about to schedule onto, not the one you're standing in.
   addTask({
     title: 'Prep the offsite deck',
-    notes: 'Needs a clear couple of hours, not the gaps between things.',
+    notes: 'Needs a couple of clear hours.',
     category: 'Work',
     priority: 3,
     dueDate: addDays(today, 2).toISOString(),
@@ -1144,7 +1144,7 @@ export function seedDemoData(): void {
   });
 
   addTask({
-    title: 'Dentist at 2:40pm',
+    title: 'Dentist at 2:40 PM',
     category: 'Health',
     dueDate: addDays(today, 5).toISOString(),
     reminderTime: setHours(addDays(today, 5), 13).toISOString(),
@@ -1158,7 +1158,7 @@ export function seedDemoData(): void {
   // reads correctly, it just falls back to one notification.
   addTask({
     title: 'Take antibiotics',
-    notes: 'Set to keep ringing until it is checked off.',
+    notes: 'Keeps ringing until it’s checked off.',
     category: 'Health',
     dueDate: addDays(today, 1).toISOString(),
     reminderTime: setHours(addDays(today, 1), 8).toISOString(),
@@ -1174,7 +1174,7 @@ export function seedDemoData(): void {
   // on Later: a date that already happened is history, not schedule.
   addTaskSeries(
     {
-      title: "Feed the neighbors' cat",
+      title: "Feed the neighbors’ cat",
       notes: 'Key is under the blue pot. Half a can, and refill the water bowl.',
       category: 'Home',
       effort: 1,
@@ -1208,7 +1208,7 @@ export function seedDemoData(): void {
   // coins are switched on, like the miss above, though it pays nothing either way.
   const trash = addTask({
     title: 'Take out the trash',
-    notes: 'Bins go to the curb the night before pickup.',
+    notes: 'Trash cans go to the curb the night before pickup.',
     category: 'Home',
     recurrenceType: 'weekly',
     recurrenceDays: [subDays(today, 1).getDay()],
@@ -1305,7 +1305,7 @@ export function seedDemoData(): void {
   // --- Unscheduled (organized, but no date) --------------------------------
   addTask({
     title: 'Deep clean the garage',
-    notes: 'Effort is a size, not a time estimate. This one is an XL.',
+    notes: 'Effort is a size. This one is an XL.',
     category: 'Home',
     effort: 6,
     priority: 1,
@@ -1450,7 +1450,7 @@ export function seedDemoData(): void {
   // never offers to mark itself complete or shows up in "Pull from projects".
   const giftIdeas = createProject('Gift ideas', { kind: 'list' });
   updateProject(giftIdeas.id, { category: 'Ideas' });
-  ['Something for Mom\'s birthday', 'Housewarming idea for the Chens', 'Stocking stuffers'].forEach(title => {
+  ['Something for Mom’s birthday', 'Housewarming idea for the Chens', 'Stocking stuffers'].forEach(title => {
     const t = addTask({ title });
     addExistingToProject(t.id, giftIdeas.id);
   });
@@ -1459,7 +1459,7 @@ export function seedDemoData(): void {
   // nothing added here reaches Backfill. Set after the three above so they stay
   // the "still to fill in" example.
   updateProject(giftIdeas.id, { taskDefaults: { priority: 0, difficulty: 'easy', effort: 2, showStreak: null, vacationPause: null, excludeFromSuggestions: true } });
-  addTask({ title: 'Something for Dad\'s birthday', projectId: giftIdeas.id });
+  addTask({ title: 'Something for Dad’s birthday', projectId: giftIdeas.id });
   // The same idea for a kind of task the app writes itself.
   useSettingsStore.getState().setGeneratedTaskDefaults('birthdayGift', { priority: 2, difficulty: null, effort: 3, showStreak: null, vacationPause: null, excludeFromSuggestions: null });
 
@@ -2044,7 +2044,7 @@ export function seedDemoData(): void {
   // --- Subtasks ------------------------------------------------------------
   const trip = addTask({
     title: 'Plan the Japan trip',
-    notes: 'Subtasks track their own progress count without cluttering Today.',
+    notes: 'Subtasks show a progress count on this task and stay off Today.',
     category: 'Errands',
     effort: 4,
     deferUntil: addDays(today, 2).toISOString(),
@@ -2158,7 +2158,7 @@ export function seedDemoData(): void {
   // half that does the work would read as something the app can't do.
   const waterFilter = addTask({
     title: 'Change the water filter',
-    notes: 'A supply: one filter goes every time this is done, and the app asks for more before the box runs out.',
+    notes: 'A supply: each completion uses one filter, and you’re asked to order more before the box runs out.',
     category: 'Home',
     dueDate: addDays(today, 3).toISOString(),
     recurrenceType: 'monthly',
@@ -2249,7 +2249,7 @@ export function seedDemoData(): void {
   // action in the app to make one.
   writeAgentNotes([
     { id: 'demo-note-errands', text: 'Errands happen on Saturdays.', at: today.toISOString() },
-    { id: 'demo-note-evenings', text: "Don't schedule work after 6pm.", at: today.toISOString() },
+    { id: 'demo-note-evenings', text: "Don’t schedule work after 6 PM.", at: today.toISOString() },
   ]);
 }
 
@@ -2833,10 +2833,10 @@ function seedPeople(today: Date): void {
   // able to go stale actually looks like.
   const { addNote } = usePersonNoteStore.getState();
   addNote(gideon.id, 'gift', 'The bouldering gym membership');
-  addNote(gideon.id, 'gift', 'A proper chalk bag');
+  addNote(gideon.id, 'gift', 'A good chalk bag');
   addNote(gideon.id, 'food', 'No shellfish');
-  addNote(tessa.id, 'note', 'Starts the new job in September, ask how it went', addDays(today, 16).toISOString());
-  addNote(tessa.id, 'food', "Doesn't drink");
+  addNote(tessa.id, 'note', 'Starts the new job in September. Ask how it went.', addDays(today, 16).toISOString());
+  addNote(tessa.id, 'food', "Doesn’t drink");
   addNote(mom.id, 'food', 'No shellfish');
   // Its day has been and gone, which is the other half of the treatment: shown
   // quieter, sunk below the live ones, and never deleted by the app.
@@ -3143,7 +3143,7 @@ function seedRewards(today: Date): void {
   // progress to draw.
   const takeout = rewards.addReward('Takeout dinner', 120, {
     linkUrl: 'ubereats://',
-    note: 'The Thai place on 5th, get the pad see ew',
+    note: 'The Thai place on 5th. Get the pad see ew.',
   });
   rewards.addReward('A new book', 300, { oneTime: true });
   if (takeout) useSettingsStore.getState().setRewardGoalId(takeout.id);
@@ -3362,7 +3362,7 @@ function seedTemplates(): void {
   // is on screen where it's answered. It conditions nothing: the forecast only
   // states, and the answer stays the person's.
   addQuestion(template.id, {
-    prompt: "What's the weather like?",
+    prompt: "What’s the weather like?",
     name: 'weather',
     kind: 'choice',
     options: ['Mild', 'Warm', 'Cold', 'Rainy'],
@@ -3371,7 +3371,7 @@ function seedTemplates(): void {
   });
   // No options, no name, no default to seed — a 'people' question has none of
   // those, its answer set is read live off the People screen at apply time.
-  addQuestion(template.id, { prompt: "Who's coming?", kind: 'people' });
+  addQuestion(template.id, { prompt: "Who’s coming?", kind: 'people' });
   // Minted here so the flights item can wait on it.
   const pickDatesId = generateId();
   const ITEMS: Partial<TemplateItem>[] = [
@@ -3697,7 +3697,7 @@ function seedRecipes(): DemoRecipes {
   const sandwich = newRecipe('Turkey and avocado sandwich');
   addIngredientsFromText(
     sandwich.id,
-    ['2 slices sourdough', '4 slices sliced turkey', '1 avocado', '1 tbsp mayonnaise', '1 cup spinach'].join('\n')
+    ['2 slices sourdough', '4 slices turkey', '1 avocado', '1 tbsp mayonnaise', '1 cup spinach'].join('\n')
   );
   setMealType(sandwich.id, 'lunch');
   setTags(sandwich.id, ['quick', 'no cook']);
@@ -3974,7 +3974,7 @@ function seedRecipes(): DemoRecipes {
   [
     'Heat the oven to 425°F and pat the fillets dry.',
     'Toss the asparagus with olive oil and spread it on a sheet pan.',
-    'Sit the salmon on top, dot with butter and the sliced garlic, and squeeze over half the lemon.',
+    'Set the salmon on top, dot with butter and the sliced garlic, and squeeze over half the lemon.',
     'Roast for 12 minutes, until the salmon flakes. Serve with the rest of the lemon.',
   ].forEach(text => addStep(salmon.id, text));
   const defrost = addPrepTask(salmon.id, 'Move the salmon to the fridge to defrost');
@@ -4062,7 +4062,7 @@ function seedRecipes(): DemoRecipes {
   setNotes(
     steak.id,
     [
-      'Get a cast iron pan screaming hot and salt the steak on both sides.',
+      'Get a cast iron pan very hot and salt the steak on both sides.',
       'Sear three minutes a side, then add the butter and thyme and baste.',
       'Rest it as long as it cooked before slicing against the grain.',
     ].join('\n')
@@ -4937,7 +4937,7 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   addToPantry('Dishwasher pods');
   addTask({
     title: 'Run the dishwasher',
-    notes: 'A supply stocked from the shopping list: one tablet a run, and the tablets go on the list when they get low.',
+    notes: 'Uses one tablet per run. Tablets go on the shopping list when they run low.',
     category: 'Home',
     dueDate: today.toISOString(),
     recurrenceType: 'daily',

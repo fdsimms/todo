@@ -441,7 +441,7 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
     // markCooked, gets to un-happen) and already re-reconciles the use-up
     // task dropped above.
     get().setLastAction({
-      label: outcome === 'tossed' ? `Threw out "${leftover.title}"` : `Finished "${leftover.title}"`,
+      label: outcome === 'tossed' ? `Threw out “${leftover.title}”` : `Finished “${leftover.title}”`,
       redo: () => get().finishLeftover(id, outcome),
       undo: () => get().reopenLeftover(id),
     });
@@ -471,7 +471,7 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
     dropLeftoverTask(id);
     if (leftover) {
       get().setLastAction({
-        label: `Deleted "${leftover.title}"`,
+        label: `Deleted “${leftover.title}”`,
         destructive: true,
         redo: () => get().deleteLeftover(id),
         undo: () => {

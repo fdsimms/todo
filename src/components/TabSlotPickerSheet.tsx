@@ -49,7 +49,7 @@ export function TabSlotPickerSheet({ visible, onClose, slot, tabRoutes, onSelect
           <Text style={styles.hint}>
             {empty
               ? 'Screens that are already a tab can be changed from their own slot.'
-              : "Picking a screen that's already a tab swaps the two."}
+              : "Picking a screen that’s already a tab swaps the two."}
           </Text>
           {optional && (
             <TouchableOpacity

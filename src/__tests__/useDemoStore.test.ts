@@ -4283,7 +4283,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
 
     const review = tasks.find(t => t.generatedKind === 'pantryReview');
     expect(review).toBeDefined();
-    expect(review!.title).toBe("Review what's in the pantry");
+    expect(review!.title).toBe("Review what’s in the pantry");
     // Tapping it lands on the Pantry screen with the deck already up.
     expect(review!.linkUrl).toBe('dundundun://kitchen?review=1');
     expect(review!.category).toBe('Groceries');
@@ -4438,7 +4438,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
 
     const review = tasks.find(t => t.generatedKind === 'calendarReview');
     expect(review).toBeDefined();
-    expect(review!.title).toBe('Review tomorrow\'s calendar');
+    expect(review!.title).toBe('Review tomorrow’s calendar');
     // Filed under the day's own events category — this generator has no
     // category setting of its own (see GeneratedKindSpec.categorized).
     expect(review!.category).toBe('Calendar Events');
@@ -4539,7 +4539,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const { tasks } = useTaskStore.getState();
     const gift = useProjectStore.getState().projects.find(p => p.title === 'Gift ideas');
     expect(gift?.taskDefaults).toEqual({ priority: 0, difficulty: 'easy', effort: 2, showStreak: null, vacationPause: null, excludeFromSuggestions: true });
-    const dad = tasks.find(t => t.title === 'Something for Dad\'s birthday');
+    const dad = tasks.find(t => t.title === 'Something for Dad’s birthday');
     expect(dad).toBeDefined();
     expect(dad!.difficulty).toBe('easy');
     expect(dad!.estimatedMinutes).toBe(15);
@@ -4848,7 +4848,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(groupIds.size).toBe(1);
     const group = groups.find(g => g.id === nudgeTasks[0].groupId);
     expect(group).toBeDefined();
-    expect(group!.title).toBe("Plan this week's meals");
+    expect(group!.title).toBe("Plan this week’s meals");
     // A stack that arrives unattended opens itself; nothing else would show
     // the seven rows this feature is.
     expect(group!.collapsed).toBe(false);

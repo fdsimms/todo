@@ -161,18 +161,18 @@ export function AwayShiftSheet({ visible, tasks, from, to, projectTitle, onClose
             <Text style={styles.sheetTitle} numberOfLines={1}>{projectTitle}</Text>
           </View>
           <Text style={styles.hint}>
-            {describeAwayShift(plan)}. Tap to include or skip anything that shouldn't move.
+            {describeAwayShift(plan)}. Tap to include or skip anything that shouldn’t move.
           </Text>
           {hasAnchoredMember(plan) && (
             <Text style={styles.hint}>
-              A repeating task moves this one time. Its schedule stays where it is.
+              A repeating task moves this one time. Its schedule doesn’t change.
             </Text>
           )}
           {/* The undated ones aren't in the list at all, which read as them
               being forgotten rather than having no date to move. */}
           {undatedCount > 0 && (
             <Text style={styles.hint}>
-              {undatedCount === 1 ? '1 task has' : `${undatedCount} tasks have`} no date, so {undatedCount === 1 ? "it isn't" : "they aren't"} listed and won't move.
+              {undatedCount === 1 ? '1 task has' : `${undatedCount} tasks have`} no date, so {undatedCount === 1 ? "it isn’t" : "they aren’t"} listed and won’t move.
             </Text>
           )}
 
@@ -231,7 +231,7 @@ export function AwayShiftSheet({ visible, tasks, from, to, projectTitle, onClose
         </View>
 
         <TouchableOpacity style={styles.cancelCard} onPress={dismiss} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
-          <Text style={styles.cancelLabel}>Leave them where they are</Text>
+          <Text style={styles.cancelLabel}>Don’t move</Text>
         </TouchableOpacity>
       </Animated.View>
     </SheetModal>

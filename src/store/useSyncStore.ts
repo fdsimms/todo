@@ -346,7 +346,7 @@ async function syncOnce(state: SyncConfig): Promise<SyncSummary | null> {
           // Last, and only when the rows went: a photo that didn't send is
           // retried on its own, so this names it without calling the sync failed.
           ?? (summary.imageProblem
-            ? `Some recipe photos didn't send (${summary.imageProblem}). They go again with the next sync.`
+            ? `Some recipe photos didn’t send (${summary.imageProblem}). They’ll retry on the next sync.`
             : null),
         lastSummary: describeApply(summary.applied),
       });

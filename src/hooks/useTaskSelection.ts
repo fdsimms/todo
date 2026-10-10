@@ -32,7 +32,7 @@ export function useTaskSelection(allTasks: Task[]) {
     if (prompt.kind === 'delete') {
       confirmDelete({
         title: `Delete ${count} ${plural}?`,
-        message: `You're about to delete ${count} ${plural}. You can undo this by shaking your phone right after.`,
+        message: `This deletes ${count} ${plural}. Shake your phone right after to undo.`,
         onConfirm: () => {
           bulkDeleteTasks(ids);
           exitSelection();
@@ -44,7 +44,7 @@ export function useTaskSelection(allTasks: Task[]) {
 
     Alert.alert(
       `Delete ${count} ${plural}?`,
-      `${message} You can undo this by shaking your phone right after.`,
+      `${message} Shake your phone right after to undo.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {

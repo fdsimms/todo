@@ -873,7 +873,7 @@ export function SearchScreen() {
             key="no-results"
             icon="search-outline"
             title="No results"
-            subtitle={`Nothing matches "${query}"`}
+            subtitle={`Nothing matches “${query}”`}
             actionLabel="New task"
             onAction={() => setQuickAddVisible(true)}
             bottomOffset={tabBarHeight}

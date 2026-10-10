@@ -1,4 +1,4 @@
 {
-  "message": "Long pickers are lighter. A medication's dose unit sits in the amount field as a chip with a menu, and the nutrient for \"Log to Health\" and a Health rule's reading are each one row that opens a grouped menu. A project's review cadence unit (days, weeks, months) is now a single track",
+  "message": "A medication’s dose unit sits in the amount field as a chip with a menu, and the nutrient for “Log to Health” and a Health rule’s reading are each one row that opens a grouped menu. A project’s review cadence unit (days, weeks, months) is now one row of options.",
   "date": "2026-10-07"
 }

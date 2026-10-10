@@ -132,7 +132,7 @@ export function IngredientCatalogMatchSheet({
         <EmptyState
           icon="basket-outline"
           title="Every ingredient is linked"
-          subtitle="Each line here matches an item in your grocery catalog, so a brand, a store or a substitute set on either one reaches the other."
+          subtitle="A brand, store or substitute set on an ingredient or its grocery catalog item applies to both."
         />
       ) : null}
 
@@ -170,8 +170,8 @@ export function IngredientCatalogMatchSheet({
             </View>
           ))}
           <Text style={styles.hint}>
-            Linking renames the line to match the item in your grocery catalog. It
-            doesn't add anything to your shopping list.
+            Linking renames the line to match the grocery catalog item. Your shopping list
+            isn’t changed.
           </Text>
         </View>
       )}
@@ -194,9 +194,9 @@ export function IngredientCatalogMatchSheet({
             </TouchableOpacity>
           ))}
           <Text style={styles.hint}>
-            These aren't in your grocery catalog. Adding one lets you set a brand, a
-            store, a price or a substitute for it. Most ingredients are bought once and
-            don't need that.
+            These aren’t in your grocery catalog. Add one to set a brand, store, price
+            or substitute. One-off ingredients
+            don’t need that.
           </Text>
         </View>
       )}

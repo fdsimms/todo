@@ -4140,7 +4140,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       label: missed
         ? 'Task marked missed'
         : finishedRecurrence
-          ? 'Last one, this won\'t repeat again'
+          ? 'Last one, so it won’t repeat again'
           : 'Task completed',
       redo: () => get().completeTask(id, options),
       undo: () => {
@@ -8929,7 +8929,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       projects: s.projects.map(p => (p.category === name ? { ...p, category: null } : p)),
     }));
     get().setLastAction({
-      label: `Category "${name}" deleted`,
+      label: `Category “${name}” deleted`,
       destructive: true,
       redo: () => get().deleteProjectCategory(name),
       undo: () => {
@@ -9945,7 +9945,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     }));
 
     get().setLastAction({
-      label: `Deleted tag "${tag}"`,
+      label: `Deleted tag “${tag}”`,
       destructive: true,
       undo: () => {
         if (wasRegistered) {

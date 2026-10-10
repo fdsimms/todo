@@ -298,7 +298,7 @@ export function WeightScreen() {
         <EmptyState
           icon="scale-outline"
           title="Not available in demo mode"
-          subtitle="Weight comes from Apple Health, which demo mode does not read or write. Leave demo mode to see your own weigh-ins."
+          subtitle="Demo mode doesn’t read or write Apple Health. Leave demo mode to see your own weigh-ins."
           bottomOffset={tabBarHeight}
         />
       </View>
@@ -317,7 +317,7 @@ export function WeightScreen() {
         <EmptyState
           icon="scale-outline"
           title="Apple Health is off"
-          subtitle="Turn on reading Apple Health in Settings to see your weight here. Anything you have already recorded, on a scale or in another app, shows up straight away."
+          subtitle="Turn on Read Apple Health in Settings to see your weight here. Weigh-ins already in Health show up right away."
           actionLabel="Open Settings"
           onAction={() => { haptics.tap(); navigateToSettingsEntry(navigationRef, 'healthRead'); }}
           bottomOffset={tabBarHeight}
@@ -338,7 +338,7 @@ export function WeightScreen() {
           // the copy has to cover both without claiming either.
           subtitle={loadingWeight
             ? undefined
-            : `Nothing recorded in the last ${WEIGHT_HISTORY_DAYS} days, or Health is not sharing weight with this app. Record one and it is saved straight to Health.`}
+            : `Nothing recorded in the last ${WEIGHT_HISTORY_DAYS} days, or Health isn’t sharing weight. Record one and it’s saved to Health.`}
           actionLabel={loadingWeight ? undefined : 'Record a weight'}
           onAction={loadingWeight ? undefined : openLog}
           bottomOffset={tabBarHeight}
@@ -434,7 +434,7 @@ export function WeightScreen() {
               {progress === null ? (
                 <Text style={styles.finding}>
                   Nothing recorded since you set this goal. Record a weight to see
-                  how it is going.
+                  your progress.
                 </Text>
               ) : (
                 <>
@@ -526,7 +526,7 @@ export function WeightScreen() {
                 Each dot is a day you weighed in. The line breaks where more than
                 two weeks passed without one. The fainter line is a 7-day average.
                 {goal !== null && ' The dashed lines are your target and the pace you set.'}
-                {' '}Touch and drag along the line to see a day's exact reading.
+                {' '}Touch and drag along the line to see a day’s exact reading.
               </Text>
             </>
           )}
@@ -534,7 +534,7 @@ export function WeightScreen() {
 
         {change !== null && (
           <>
-            <Text style={styles.sectionTitle}>ACROSS THIS WINDOW</Text>
+            <Text style={styles.sectionTitle}>ACROSS THIS RANGE</Text>
             <View style={styles.card}>
               {/* Two readings and the distance between them, with the sample
                   size stated. Not a trend line, and not a verdict: see the

@@ -102,7 +102,7 @@ export function StepTimerRow({ timer, now, hideRecipeName, onToggle, onAddTime, 
         <Text
           style={styles.labels}
           numberOfLines={1}
-          accessibilityLabel={ready ? `Time's up, ${clock} over` : `${clock} ${state}`}
+          accessibilityLabel={ready ? `Time’s up, ${clock} over` : `${clock} ${state}`}
         >
           <Text style={[styles.clock, ready && styles.clockReady]}>{clock}</Text>
           <Text style={[styles.clockState, ready && styles.clockStateReady]}> {state}</Text>
@@ -164,7 +164,7 @@ export function StepTimerRow({ timer, now, hideRecipeName, onToggle, onAddTime, 
           the words are what say which pan this is, so they get the row. */}
       {(ready || !!context) && (
         <Text style={styles.context} numberOfLines={1}>
-          {ready && <Text style={styles.contextReady}>Time's up{context ? ' · ' : ''}</Text>}
+          {ready && <Text style={styles.contextReady}>Time’s up{context ? ' · ' : ''}</Text>}
           {context}
         </Text>
       )}

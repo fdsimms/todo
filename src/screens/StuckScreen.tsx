@@ -321,7 +321,7 @@ export function StuckScreen() {
           haptics.warning();
           Alert.alert(
             'Archive this task?',
-            `"${displayTitleFor(task)}" moves to Archived. Nothing is deleted, and you can restore it from there whenever you like.`,
+            `“${displayTitleFor(task)}” moves to Archived. Nothing is deleted. You can restore it from there.`,
             [
               { text: 'Cancel', style: 'cancel' },
               {
@@ -559,7 +559,7 @@ export function StuckScreen() {
             // Says why it can be empty on an install that has been rescheduling
             // things for years: the drift counting only starts when it starts,
             // and a blank screen otherwise reads as broken rather than as clean.
-            subtitle={`Tasks waiting on another task or on somebody show up here, and so do tasks you have moved to a later day ${threshold} or more times. Counting starts from when a task is first moved, so this stays empty for a while on an existing list.`}
+            subtitle={`Tasks waiting on another task or a person appear here, and so do tasks moved to a later day ${threshold} or more times. Counting starts at a task’s first move, so this stays empty for a while.`}
             bottomOffset={tabBarHeight}
           />
         }

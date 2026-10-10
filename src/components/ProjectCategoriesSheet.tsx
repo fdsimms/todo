@@ -162,7 +162,7 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
       // arrived after the text it was about had already been thrown away.
       committedRef.current = false;
       setDraft(trimmed);
-      Alert.alert('That name is taken', `A project category named "${trimmed}" already exists.`);
+      Alert.alert('That name is taken', `A project category named “${trimmed}” already exists.`);
       return;
     }
     setEditingName(null);
@@ -176,8 +176,8 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
     confirmDelete({
       title: 'Delete project category',
       message: count > 0
-        ? `Remove "${name}" from ${count} ${count === 1 ? 'project' : 'projects'}? They'll go back to being ungrouped, and keep all of their tasks. You can shake to undo this right after.`
-        : `Delete "${name}"? You can shake to undo this right after.`,
+        ? `Remove “${name}” from ${count} ${count === 1 ? 'project' : 'projects'}? Projects become ungrouped and keep all their tasks. Shake your phone right after to undo.`
+        : `Delete “${name}”? Shake your phone right after to undo.`,
       onConfirm: () => { animateLayout(); deleteProjectCategory(name); },
     });
   };
@@ -191,7 +191,7 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
     // looked like the tap doing nothing at all.
     const taken = categories.find(c => c.name.toLocaleLowerCase() === trimmed.toLocaleLowerCase());
     if (taken) {
-      Alert.alert('That name is taken', `A project category named "${taken.name}" already exists.`);
+      Alert.alert('That name is taken', `A project category named “${taken.name}” already exists.`);
       return;
     }
     animateLayout();
@@ -232,13 +232,13 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
             <EmptyState
               icon="folder-open-outline"
               title="No project categories yet"
-              subtitle="Group projects under headings like Travel or Around the house. Add one below, then file a project into it from its editor."
+              subtitle="Group projects under headings like Travel or Around the house. Add one below, then choose it in a project’s editor."
             />
           ) : (
             <>
               <Text style={styles.intro}>
-                The Projects page groups projects under these, in this order. A category with no
-                projects in it is skipped there, but keeps its place here.
+                The Projects page groups projects under these, in this order. Empty categories
+                are skipped there but keep their place here.
               </Text>
 
               <SortableList<Row>

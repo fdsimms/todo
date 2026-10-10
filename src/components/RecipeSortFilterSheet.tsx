@@ -30,7 +30,7 @@ interface Props {
 
 const SORT_OPTIONS: { value: RecipeSortOption; label: string; icon: string }[] = [
   { value: 'default', label: 'Loved first', icon: 'thumbs-up' },
-  { value: 'name', label: 'Name (A–Z)', icon: 'text' },
+  { value: 'name', label: 'Name (A to Z)', icon: 'text' },
   { value: 'cooked-recent', label: 'Recently cooked', icon: 'time' },
   { value: 'cooked-oldest', label: 'Not cooked in a while', icon: 'hourglass' },
   { value: 'ingredients-asc', label: 'Fewest ingredients', icon: 'remove-circle-outline' },

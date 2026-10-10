@@ -1,4 +1,4 @@
 {
-  "message": "Describing a meal, scanning a barcode and logging a saved meal from the food log now respect \"Add another\": with it on, the food sheet stays open after each one is logged, ready for the next.",
+  "message": "Describing a meal, scanning a barcode and logging a saved meal from the food log now follow “Add another”: with it on, the food sheet stays open after each one is logged.",
   "date": "2026-10-07"
 }

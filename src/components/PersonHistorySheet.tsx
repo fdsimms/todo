@@ -80,8 +80,8 @@ export function PersonHistorySheet({ visible, personName, entry, onSave, onDelet
   const handleDelete = () => {
     if (!entry) return;
     confirmDelete({
-      title: 'Delete Entry',
-      message: `Delete "${entry.title}" from ${personName}'s history? You can undo this by shaking your phone right after.`,
+      title: 'Delete entry',
+      message: `Delete “${entry.title}” from ${personName}’s history? Shake your phone right after to undo.`,
       onConfirm: () => onDelete(entry.taskId),
     });
   };
@@ -145,7 +145,7 @@ export function PersonHistorySheet({ visible, personName, entry, onSave, onDelet
           accessibilityLabel="Delete entry"
         >
           <Ionicons name="trash-outline" size={18} color={colors.red} />
-          <Text style={styles.deleteLabel}>Delete Entry</Text>
+          <Text style={styles.deleteLabel}>Delete entry</Text>
         </TouchableOpacity>
       )}
     </EditorSheet>

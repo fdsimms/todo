@@ -208,11 +208,11 @@ export function MedicationDetailScreen() {
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + spacing.xl }]}
       >
         <View style={styles.statRow}>
-          <View style={styles.statCell} accessible accessibilityLabel={`${stat.doses} doses recorded`}>
+          <View style={styles.statCell} accessible accessibilityLabel={`${stat.doses} ${stat.doses === 1 ? 'dose' : 'doses'} recorded`}>
             <Text style={styles.statValue}>{stat.doses}</Text>
             <Text style={styles.statLabel}>{stat.doses === 1 ? 'Dose' : 'Doses'}</Text>
           </View>
-          <View style={styles.statCell} accessible accessibilityLabel={`On ${stat.days} days`}>
+          <View style={styles.statCell} accessible accessibilityLabel={`On ${stat.days} ${stat.days === 1 ? 'day' : 'days'}`}>
             <Text style={styles.statValue}>{stat.days}</Text>
             <Text style={styles.statLabel}>{stat.days === 1 ? 'Day' : 'Days'}</Text>
           </View>
@@ -241,7 +241,7 @@ export function MedicationDetailScreen() {
             ))}
           </View>
           <Text style={styles.caption}>
-            Doses recorded each day. A day with no bar is a day nothing was recorded.
+            Doses recorded each day. A day with no bar had no doses recorded.
           </Text>
         </View>
 
@@ -290,11 +290,11 @@ export function MedicationDetailScreen() {
               describeValue={n => (n === null ? 'off' : `${n} doses`)}
             />
           </View>
-          <Text style={styles.fieldHint}>Counted over any 24 hours, not per day.</Text>
+          <Text style={styles.fieldHint}>Counted over any 24-hour period, not by calendar day.</Text>
           {limit && (
             <>
               <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>Notify me when it's OK</Text>
+                <Text style={styles.fieldLabel}>Notify me when it’s OK</Text>
                 <Switch
                   value={limit.notify}
                   onValueChange={async next => {
@@ -314,7 +314,7 @@ export function MedicationDetailScreen() {
             </>
           )}
           <Text style={styles.fieldNote}>
-            A limit you set yourself, used to warn you before a dose that goes past it. Copy it from the label or what your doctor told you.
+            Warns you before a dose goes past this limit. Copy it from the label or what your doctor told you.
           </Text>
         </View>
 
@@ -322,7 +322,7 @@ export function MedicationDetailScreen() {
         <View style={[styles.card, styles.formCard]}>
           {supplyTask ? (
             <Text style={styles.fieldNote}>
-              {describeSupply(supplyTask)}. Counted on the task "{supplyTask.title}": checking it off or recording a dose here uses one. Change the count in that task's editor.
+              {describeSupply(supplyTask)}. Counted on the task “{supplyTask.title}”: checking it off or recording a dose here uses one. Change the count in that task’s editor.
             </Text>
           ) : (
             <>
@@ -381,7 +381,7 @@ export function MedicationDetailScreen() {
                     />
                   </View>
                   <Text style={styles.fieldHint}>
-                    When a dose takes it this low, the app offers to add a refill task.
+                    Offers to add a refill task once a dose takes the count this low.
                   </Text>
                   <View style={styles.supplyFooter}>
                     <Text style={styles.supplyLeft}>{describeSupplyLeft(remaining, supply.unit)}</Text>

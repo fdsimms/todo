@@ -230,7 +230,7 @@ export function TagsScreen() {
     haptics.warning();
     confirmDelete({
       title: 'Delete tag',
-      message: `Remove "${tag}" from all tasks?`,
+      message: `Remove “${tag}” from all tasks?`,
       onConfirm: () => {
         animateLayout();
         deleteTag(tag);
@@ -263,7 +263,7 @@ export function TagsScreen() {
             <EmptyState
               icon="pricetag"
               title="No tags yet"
-              subtitle="Tags cut across categories. One task can carry as many as you like"
+              subtitle="Tags work across categories. A task can have as many as you like."
               actionLabel="New tag"
               onAction={() => setQuickAddVisible(true)}
               bottomOffset={tabBarHeight}
@@ -395,7 +395,7 @@ export function TagsScreen() {
                 }
                 ListFooterComponentStyle={tagTasks.length === 0 ? undefined : styles.listFooterCell}
                 ListEmptyComponent={
-                  <EmptyState icon="pricetag-outline" title="No active tasks" subtitle="Tasks carrying this tag show up here. Completed ones are in the Logbook." />
+                  <EmptyState icon="pricetag-outline" title="No active tasks" subtitle="Tasks with this tag show up here. Completed ones are in the Logbook." />
                 }
               />
             </PaintSelectionProvider>

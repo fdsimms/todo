@@ -270,7 +270,7 @@ export function StackDetailScreen() {
               <EmptyState
                 icon="layers-outline"
                 title="No tasks in this stack"
-                subtitle="Add tasks to this stack from the stack's editor or by dragging them onto it on Today."
+                subtitle="Add tasks from the stack’s editor, or drag them onto it on Today."
               />
             }
           />

@@ -1,4 +1,4 @@
 {
-  "message": "Backfill can now walk foods whose nutrition was saved before trans fat, cholesterol and added sugars were recorded, so you can add them from the label.",
+  "message": "Backfill now asks about foods whose nutrition was saved before trans fat, cholesterol and added sugars were recorded, so you can add them from the label.",
   "date": "2026-10-09"
 }

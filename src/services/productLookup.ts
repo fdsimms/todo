@@ -113,8 +113,8 @@ export function describeLookupError(error: unknown): string {
   if (message === 'Request timed out') return 'The lookup took too long. Type the name instead.';
   if (message === 'Lookups are off') return 'Barcode lookups are off. Turn them on in Settings, or type the name.';
   if (message === DEMO_LOOKUP_REFUSAL) return 'Barcode lookups are off in demo mode. Type the name instead.';
-  if (message.startsWith('Lookup failed')) return 'Couldn\'t reach the barcode database. Type the name instead.';
-  return 'Couldn\'t look that barcode up. Type the name instead.';
+  if (message.startsWith('Lookup failed')) return 'Couldn’t reach the barcode database. Type the name instead.';
+  return 'Couldn’t look up that barcode. Type the name instead.';
 }
 
 function trimField(value: unknown, max: number): string {

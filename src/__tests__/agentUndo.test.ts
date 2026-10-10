@@ -38,7 +38,7 @@ describe('agentRecordPlan', () => {
       .toEqual({ kind: 'restoreProject', id: 'p1', patch: { title: 'Old' } });
     expect(agentRecordPlan(e, state({ project: () => project('Mine') }))).toEqual({ kind: 'none', reason: 'Changed since' });
     expect(agentRecordPlan(e, state({ project: () => project('Old') }))).toEqual({ kind: 'none', reason: 'Undone' });
-    expect(agentRecordPlan(e, state())).toEqual({ kind: 'none', reason: 'Since removed' });
+    expect(agentRecordPlan(e, state())).toEqual({ kind: 'none', reason: 'Removed since' });
   });
 
   it('takes an added grocery item back off the list unless it has been checked off since', () => {

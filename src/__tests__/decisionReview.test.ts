@@ -46,7 +46,7 @@ describe('when to look back', () => {
     });
     const draft = reviewTaskDraft(chained, '2w', new Date(2026, 2, 10));
     expect(draft.title).toBe('How did it turn out? Pick a tile');
-    expect(draft.notes).toBe('You answered "Matte white" on Mar 10, 2026.');
+    expect(draft.notes).toBe('You answered “Matte white” on Mar 10, 2026.');
     expect(draft.reviewOfTaskId).toBe('c');
   });
 });

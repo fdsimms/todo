@@ -138,7 +138,7 @@ export function UnattendedLogScreen() {
     if (!batchId) return;
     Alert.alert(
       `Undo ${count} changes?`,
-      'Puts back everything Claude changed in this request. Anything you changed since is left as it is.',
+      'Puts back everything Claude changed in this request, except anything you changed since.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -298,14 +298,14 @@ export function UnattendedLogScreen() {
             <EmptyState
               icon="funnel-outline"
               title="Nothing from this source"
-              subtitle="Nothing has been added or cleared by it in the window this list covers."
+              subtitle="This source hasn’t added or cleared anything in the days shown."
               bottomOffset={tabBarHeight}
             />
           ) : (
             <EmptyState
               icon="time-outline"
               title="Nothing yet"
-              subtitle="When the app adds a task on its own or clears one it added, it shows up here with the setting that did it. So does anything Claude changes through your sync server."
+              subtitle="Tasks the app adds or clears on its own, with the setting that did it. Includes changes Claude makes through your sync server."
               bottomOffset={tabBarHeight}
             />
           )
@@ -339,7 +339,7 @@ function undoCopy(entry: UnattendedEntry, plan: Exclude<AgentUndo, { kind: 'none
     case 'restoreCatalogItem': return { title: 'Undo this change?', message: `Puts ${t} back the way it was before Claude changed it.`, destructive: false };
     case 'restoreDeletedProject': return { title: 'Restore this project?', message: `Claude deleted the project ${t}. This puts it back with its tasks and sections.`, destructive: false };
     case 'restoreDeletedStack': return { title: 'Restore this stack?', message: `Claude deleted the stack ${t}. This puts it back with its tasks.`, destructive: false };
-    case 'restoreDeletedPerson': return { title: 'Restore this person?', message: `Claude deleted ${t}. This puts them back with the notes, gift ideas and food notes you had for them.`, destructive: false };
+    case 'restoreDeletedPerson': return { title: 'Restore this person?', message: `Claude deleted ${t}. This puts them back with their notes, gift ideas and food notes.`, destructive: false };
     case 'restoreDeletedItem': return { title: 'Restore this item?', message: `Claude deleted ${t} from your grocery catalog. This puts it back with its aisle, brands, prices, stores, substitutes and receipt names.`, destructive: false };
     case 'restoreLeftover': return { title: 'Undo this change?', message: `Puts the leftover ${t} back the way it was before Claude changed it.`, destructive: false };
     case 'removeLeftover': return { title: 'Remove this leftover?', message: `Claude logged ${t}. Removing it deletes it, including anything you changed on it since.`, destructive: true };

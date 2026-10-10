@@ -75,7 +75,7 @@ export function reviewTaskDraft(answered: Task, after: ReviewAfter, decidedDaySt
   const answer = formatTaskDeliverable(answered) ?? answered.deliverableValue ?? '';
   return {
     title: `How did it turn out? ${questionOf(answered)}`,
-    notes: `You answered "${answer}" on ${format(decidedDayStart, 'MMM d, yyyy')}.`,
+    notes: `You answered “${answer}” on ${format(decidedDayStart, 'MMM d, yyyy')}.`,
     dueDate: reviewDueDay(decidedDayStart, after).toISOString(),
     category: answered.category,
     projectId: answered.projectId,

@@ -212,19 +212,19 @@ describe('cookbookLinkPrompt', () => {
   it('asks before a move and before replacing a source, and not otherwise', () => {
     expect(cookbookLinkPrompt('Salad', jerusalem, { kind: 'move', from: plenty })).toEqual({
       title: 'Move to Jerusalem?',
-      message: 'Linking "Salad" to Jerusalem takes it out of Plenty.',
+      message: 'Linking “Salad” to Jerusalem takes it out of Plenty.',
       confirm: 'Move',
     });
     expect(cookbookLinkPrompt('Tacos', jerusalem, { kind: 'replace', attribution: 'NYT Cooking' })?.message)
-      .toBe('Linking "Tacos" to Jerusalem replaces its current source (NYT Cooking).');
+      .toBe('Linking “Tacos” to Jerusalem replaces its current source (NYT Cooking).');
     expect(cookbookLinkPrompt('Plain', jerusalem, { kind: 'none' })).toBeNull();
   });
 
   it('says the page number goes when the recipe has one', () => {
     expect(cookbookLinkPrompt('Salad', jerusalem, { kind: 'move', from: plenty }, '42')?.message)
-      .toBe('Linking "Salad" to Jerusalem takes it out of Plenty. Its page number (p. 42) is cleared, since that was a page of Plenty.');
+      .toBe('Linking “Salad” to Jerusalem takes it out of Plenty. Its page number (p. 42) is cleared, since that was a page of Plenty.');
     expect(cookbookLinkPrompt('Salad', jerusalem, { kind: 'replace', attribution: 'Plenty, p. 42' }, '42')?.message)
-      .toBe('Linking "Salad" to Jerusalem replaces its current source (Plenty, p. 42) and clears its page number.');
+      .toBe('Linking “Salad” to Jerusalem replaces its current source (Plenty, p. 42) and clears its page number.');
     expect(cookbookLinkPrompt('Plain', jerusalem, { kind: 'none' }, '42')).toBeNull();
   });
 });
