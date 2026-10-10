@@ -5109,14 +5109,21 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => StyleSheet.create({
   // level (rather than sitting above it) is what makes the gap to the fill
   // read as "how far behind" instead of "how far until the next tick". Grey
   // rather than an alert colour — it's a ruler mark, not a warning, and the
-  // gap it sets up to read is the signal, not the line itself.
+  // gap it sets up to read is the signal, not the line itself. The 1pt edges
+  // are the card's own colour: a bare grey line over the accent fill had almost
+  // no contrast with it in any theme (the accent is deep in Light and pale in
+  // Dark/Black, and textSecondary lands near it either way), so the edges are
+  // what separate the line from the fill, and melt into the card above it.
   quotaPaceMark: {
     position: 'absolute',
     left: -border.md,
     right: -border.md,
-    height: 2,
-    marginBottom: -1,
-    backgroundColor: colors.textSecondary,
+    height: 4,
+    marginBottom: -2,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: colors.bgSecondary,
+    backgroundColor: colors.text,
   },
   content: {
     flex: 1,
