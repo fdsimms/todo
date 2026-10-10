@@ -16,6 +16,8 @@ import {
 } from '../utils/generatedTasks';
 import { GeneratedTasksSection } from './settings/GeneratedTasksSection';
 import { SettingsFocusProvider, useSettingsFocusScroll } from './settings/SettingsFocus';
+import { SearchField } from '../components/SearchField';
+import { useFilterField } from '../hooks/useFilterField';
 import { usePullToSearch } from '../hooks/usePullToSearch';
 
 type AutomationsParams = {
@@ -49,6 +51,7 @@ export function AutomationsScreen() {
   const route = useRoute<RouteProp<AutomationsParams, 'Automations'>>();
   const entryId = route.params?.entryId;
   const focusStamp = route.params?.focusStamp;
+  const searchFilter = useFilterField();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -84,10 +87,17 @@ export function AutomationsScreen() {
           accessibilityLabel: 'Activity',
         }]}
       />
+      <SearchField
+        style={styles.search}
+        placeholder="Search automations"
+        field={searchFilter}
+        accessibilityLabel="Search automations"
+      />
       <ScrollView
         refreshControl={pullSearch.refreshControl}
         ref={scrollRef}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         contentContainerStyle={{ paddingBottom: tabBarHeight + spacing.xl }}
         {...scrollProps}
       >
@@ -95,7 +105,7 @@ export function AutomationsScreen() {
             the list, which is what replays the row's highlight. */}
         <View ref={contentRef} collapsable={false} key={focusStamp ?? 'list'}>
           <SettingsFocusProvider focusedEntryId={entryId ?? null} reportRow={reportRow}>
-            <GeneratedTasksSection />
+            <GeneratedTasksSection query={searchFilter.query} />
           </SettingsFocusProvider>
         </View>
       </ScrollView>
@@ -106,4 +116,5 @@ export function AutomationsScreen() {
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
+  search: { marginHorizontal: spacing.md, marginTop: spacing.sm, marginBottom: spacing.sm },
 });

@@ -146,7 +146,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/foodSearchMatch.ts` — FoodCandidate, FoodMatchTier, RankedFood, rankFoodCandidates, unambiguousFood
 - `src/utils/freshness.ts` — daysUntilDay, freshnessFor, FRESHNESS_ORDER, freshnessRank, isUseUpSoon, describeUseBy, liveUseBy, describeOpenedOn, describeFrozenSince
 - `src/utils/fuzzySearch.ts` — SearchResult, fuzzySearch, ranksAsActive, ProjectSearchResult, searchProjects, GroupSearchResult, searchGroups
-- `src/utils/generatedTasks.ts` — GENERATED_KINDS, GeneratedEnabledKey, GeneratedKindSpec, GENERATED_KIND_SPECS, GENERATED_KIND_LIST, listedGeneratedKinds, generatedTaskCounts, describeGeneratedCounts, GeneratedEnabledFlags, CALENDAR_READ_KINDS, +14 more
+- `src/utils/generatedTasks.ts` — GENERATED_KINDS, GeneratedEnabledKey, GeneratedKindSpec, GENERATED_KIND_SPECS, GENERATED_KIND_LIST, listedGeneratedKinds, generatedTaskCounts, matchesAutomationQuery, describeGeneratedCounts, GeneratedEnabledFlags, +15 more
 - `src/utils/groceryAdd.ts` — nextSortOrder, ensureProductFor, newItemRow, GroceryAddOverride, GroceryAddContext, GroceryAddPlan, planGroceryAdd, reAddNotice
 - `src/utils/groceryAisles.ts` — DEFAULT_AISLES, OTHER_AISLE, isNonFoodAisle, AISLE_LEXICON, aisleForName, rememberAisles, remapRememberedAisle, forgetRememberedAisle, renameRememberedAisle, normalizeAisleOrder, +2 more
 - `src/utils/groceryExpiry.ts` — wantsUseUpTask, useUpTaskTitle, clampUseUpLeadDays, useUpTaskFields, useUpTaskDraft, useUpTaskDrift, useUpDeadlineDay, finishedUseUpFor
