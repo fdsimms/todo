@@ -172,6 +172,7 @@ import { QuickEventSheet, type QuickEventSeed } from '../components/QuickEventSh
 import { useEventTaskLinkStore } from '../store/useEventTaskLinkStore';
 import { eventTaskKey, movedEventContextRows, movedEventNote, movedLinkedEvents } from '../utils/eventTaskLinks';
 import { morningCheckInTasks } from '../utils/morningCheckIn';
+import { reportMorningCheckIn } from '../components/FreezeWhenBlurred';
 import { addDays } from 'date-fns/addDays';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { useHealthStore } from '../store/useHealthStore';
@@ -1760,8 +1761,14 @@ export function TodayScreen() {
   );
   useEffect(() => {
     const todayKey = getLogicalDayKey(new Date(), dayResetTime);
-    if (morningCheckInLastDayKey === todayKey) return;
-    if (morningCheckInCandidates.length === 0) return;
+    const opens = morningCheckInLastDayKey !== todayKey && morningCheckInCandidates.length > 0;
+    reportMorningCheckIn({
+      opened: opens,
+      storedKey: morningCheckInLastDayKey,
+      todayKey,
+      titles: morningCheckInCandidates.map(t => t.title),
+    });
+    if (!opens) return;
     setMorningCheckInVisible(true);
     setMorningCheckInLastDayKey(todayKey);
     // Only the day-key gate belongs here — re-running this effect as tasks
