@@ -1,4 +1,5 @@
-import type { MedicationLog } from '../types';
+import type { MedicationLog, NutrientKey } from '../types';
+import { NUTRIENT_KEYS } from '../types';
 import { DOSE_UNITS, medicationKey } from './medicationLog';
 
 /**
@@ -72,9 +73,38 @@ export interface MedicationSupply {
   declinedAt: number | null;
 }
 
+/**
+ * What one serving of a supplement contains, as its label prints it.
+ *
+ * **Typed by the person, once, from the bottle.** Nothing here is looked up or
+ * guessed, and an absent key is unknown rather than zero (the rule
+ * `FoodNutrition.amounts` states), so a multivitamin that doesn't list
+ * chromium adds no chromium to the day.
+ *
+ * `servingAmount` of `servingUnit` is the serving the figures are *for*: "2
+ * tablets" when the label says "serving size 2 tablets", so a dose of 1 tablet
+ * adds half of what is stated. `supplementServings` (`supplementDose.ts`) holds
+ * the rule for a dose in any other unit, which is the supply's rule too: a
+ * dose recorded in this unit counts that many, any other dose counts one.
+ *
+ * Changing the panel affects the doses recorded after it. Each dose writes its
+ * own food log entry as a snapshot, the same call a food entry makes, so
+ * correcting a label doesn't rewrite what a past dose added to a past day.
+ */
+export interface SupplementPanel {
+  /** How much of `servingUnit` the figures are for. Positive. */
+  servingAmount: number;
+  /** One of `SUPPLY_UNITS` other than 'dose': the unit a dose is recorded in. */
+  servingUnit: string;
+  /** The stated figures, in each key's own unit. At least one. */
+  amounts: Partial<Record<NutrientKey, number>>;
+}
+
 export interface MedicationPrefs {
   limit: MedicationLimit | null;
   supply: MedicationSupply | null;
+  /** What a serving contains, or null when none was entered. Optional so a map written before it reads unchanged. */
+  nutrition?: SupplementPanel | null;
 }
 
 export type MedicationSettingsMap = Record<string, MedicationPrefs>;
@@ -127,6 +157,35 @@ function parseSupply(raw: unknown): MedicationSupply | null {
   };
 }
 
+/**
+ * The units a panel can be per: the ones a supplement's serving is printed in.
+ * Narrower than the dose units on purpose. A panel "per 5 mg" would be a
+ * statement about a strength rather than a serving, and a puff or a unit has no
+ * label panel to copy.
+ */
+export const PANEL_UNITS: readonly string[] = ['tablet', 'capsule', 'drop', 'spray', 'ml', 'g'];
+
+function parseSupplementPanel(raw: unknown): SupplementPanel | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const servingAmount = positiveOrNull(r.servingAmount, 999);
+  if (servingAmount === null) return null;
+  const servingUnit = typeof r.servingUnit === 'string' && PANEL_UNITS.includes(r.servingUnit) ? r.servingUnit : null;
+  if (!servingUnit) return null;
+  if (!r.amounts || typeof r.amounts !== 'object' || Array.isArray(r.amounts)) return null;
+  const given = r.amounts as Record<string, unknown>;
+  const amounts: Partial<Record<NutrientKey, number>> = {};
+  // Unknown keys are dropped: this build has no unit for a nutrient it doesn't
+  // know, the rule `readAmounts` in `foodNutrition.ts` states. A negative or
+  // non-finite figure is a broken row, not a small one.
+  for (const key of NUTRIENT_KEYS) {
+    const v = given[key];
+    if (typeof v === 'number' && Number.isFinite(v) && v >= 0) amounts[key] = v;
+  }
+  if (Object.keys(amounts).length === 0) return null;
+  return { servingAmount, servingUnit, amounts };
+}
+
 /** Read the stored map back, dropping anything that isn't a well-formed entry. */
 export function parseMedicationSettings(raw: string | null): MedicationSettingsMap {
   if (!raw) return {};
@@ -141,8 +200,15 @@ export function parseMedicationSettings(raw: string | null): MedicationSettingsM
   for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
     if (!key || !value || typeof value !== 'object') continue;
     const v = value as Record<string, unknown>;
-    const prefs = { limit: parseLimit(v.limit), supply: parseSupply(v.supply) };
-    if (prefs.limit || prefs.supply) out[key] = prefs;
+    const nutrition = parseSupplementPanel(v.nutrition);
+    // Only when present, so a map with no panel reads exactly as it did before
+    // the field existed.
+    const prefs: MedicationPrefs = {
+      limit: parseLimit(v.limit),
+      supply: parseSupply(v.supply),
+      ...(nutrition ? { nutrition } : {}),
+    };
+    if (prefs.limit || prefs.supply || prefs.nutrition) out[key] = prefs;
   }
   return out;
 }
@@ -161,7 +227,7 @@ export function withPrefs(
   const key = medicationKey(name);
   const next = { ...map };
   if (!key) return next;
-  if (!prefs.limit && !prefs.supply) delete next[key];
+  if (!prefs.limit && !prefs.supply && !prefs.nutrition) delete next[key];
   else next[key] = prefs;
   return next;
 }

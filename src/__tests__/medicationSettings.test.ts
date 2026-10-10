@@ -244,3 +244,41 @@ describe('supply', () => {
     expect(describeSupplyLeft(0, 'tablet')).toBe('None left');
   });
 });
+
+describe('a supplement panel', () => {
+  const panel = { servingAmount: 2, servingUnit: 'tablet', amounts: { vitaminCMg: 90, zincMg: 0 } };
+
+  it('round-trips through the stored map, a stated zero included', () => {
+    const map = withPrefs({}, 'Multivitamin', { limit: null, supply: null, nutrition: panel });
+    const back = parseMedicationSettings(JSON.stringify(map));
+    expect(prefsFor(back, 'multivitamin').nutrition).toEqual(panel);
+  });
+
+  it('is enough on its own to keep an entry', () => {
+    const map = withPrefs({}, 'Multivitamin', { limit: null, supply: null, nutrition: panel });
+    expect(Object.keys(map)).toEqual(['multivitamin']);
+    expect(withPrefs(map, 'Multivitamin', { limit: null, supply: null, nutrition: null })).toEqual({});
+  });
+
+  it('leaves the key off a map that has none, so older maps read unchanged', () => {
+    const raw = JSON.stringify({ ibuprofen: { limit: { minHours: 6, maxPer24h: null, notify: false, since: '2026-09-01T00:00:00.000Z' } } });
+    expect(parseMedicationSettings(raw).ibuprofen).not.toHaveProperty('nutrition');
+  });
+
+  it('drops a panel that cannot be read whole', () => {
+    const bad = (nutrition: unknown) =>
+      parseMedicationSettings(JSON.stringify({ x: { nutrition } }));
+    expect(bad({ servingAmount: 0, servingUnit: 'tablet', amounts: { zincMg: 1 } })).toEqual({});
+    expect(bad({ servingAmount: 1, servingUnit: 'mg', amounts: { zincMg: 1 } })).toEqual({});
+    expect(bad({ servingAmount: 1, servingUnit: 'tablet', amounts: {} })).toEqual({});
+    expect(bad({ servingAmount: 1, servingUnit: 'tablet', amounts: { zincMg: -1, omega3G: 3 } })).toEqual({});
+    expect(bad('lots')).toEqual({});
+  });
+
+  it('keeps the readable figures and drops the rest', () => {
+    const back = parseMedicationSettings(JSON.stringify({
+      x: { nutrition: { servingAmount: 1, servingUnit: 'capsule', amounts: { zincMg: 5, ironMg: -2, omega3G: 1, copperMg: 'x' } } },
+    }));
+    expect(prefsFor(back, 'x').nutrition?.amounts).toEqual({ zincMg: 5 });
+  });
+});

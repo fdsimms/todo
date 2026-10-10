@@ -217,7 +217,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/medicationExport.ts` — MEDICATION_EXPORT_COLUMNS, medicationExportCsv, medicationExportFileName, medicationExportSummary
 - `src/utils/medicationIndex.ts` — MedicationIndexEntry, MAX_MEDICATION_INDEX_ENTRIES, buildMedicationIndex, QueuedDose, parseQueuedDoses, resolveQueuedDoseName
 - `src/utils/medicationLog.ts` — DOSE_UNITS, MIN_TREND_DOSES, MedicationDose, MedicationSource, medicationFor, medicationKey, medicationVocabulary, ARCHIVED_MEDICATIONS_SETTING_KEY, parseArchivedMedications, logsOnDay, +15 more
-- `src/utils/medicationSettings.ts` — MEDICATION_SETTINGS_KEY, MedicationLimit, MedicationSupply, MedicationPrefs, MedicationSettingsMap, SUPPLY_UNITS, parseMedicationSettings, prefsFor, withPrefs, formatHours, +11 more
+- `src/utils/medicationSettings.ts` — MEDICATION_SETTINGS_KEY, MedicationLimit, MedicationSupply, SupplementPanel, MedicationPrefs, MedicationSettingsMap, SUPPLY_UNITS, PANEL_UNITS, parseMedicationSettings, prefsFor, +13 more
 - `src/utils/medicationSummary.ts` — SummaryPreset, SummaryRange, summaryRange, rangeDays, describeRange, SummaryCandidate, summaryCandidates, missedCountsByMedication, DoseAmount, DoseRun, +15 more
 - `src/utils/meters.ts` — METER_CHECK_IN_DAYS, METER_RATE_MIN_DAYS, METER_RATE_WINDOW_DAYS, METER_NAME_MAX_LENGTH, meterKey, canFollowMeter, hasMeter, NO_METER, readingsFor, latestReading, +23 more
 - `src/utils/missed.ts` — isMissed, isRealCompletion, isDoneByOther, isResolvedAsDone, MostMissedGroup, mostMissed
@@ -394,6 +394,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/streakRecord.ts` — nextStreakRecord, bestStreakOf, isStreakAtRecord, streakHint
 - `src/utils/substituteSuggestions.ts` — MAX_SUGGESTED_SUBSTITUTES, SuggestedSubstitute, RawSuggestedSubstitute, dedupeSuggestedSubstitutes
 - `src/utils/sunTimes.ts` — SunEvent, SunAnchor, SunLocation, SUN_OFFSET_LIMIT, SUN_OFFSET_STEP, parseSunAnchor, formatSunAnchor, clampSunOffset, describeSunAnchor, shortSunAnchor, +12 more
+- `src/utils/supplementDose.ts` — DOSE_SOURCE_PREFIX, doseSourceId, supplementDoseIdOf, isSupplementEntry, supplementServings, SupplementHelping, supplementHelping, entryForDose, SupplementForm, emptySupplementForm, +8 more
+- `src/utils/supplementDoseSync.ts` — installSupplementDoseEffects
 - `src/utils/supply.ts` — MAX_SUPPLY_COUNT, DEFAULT_SUPPLY_REORDER_AT, MAX_SUPPLY_REORDER_TASKS, clampSupplyCount, clampSupplyReorderAt, clampSupplyLeadDays, clampSupplyRefillCount, SupplySource, isSupplyTask, canHoldSupply, +20 more
 - `src/utils/syncEngine.ts` — SyncTransport, SyncImageStore, SyncWithholding, withholdChanges, pushCursorKey, PullResult, SyncLocal, IMAGE_PAYLOAD_BUDGET_CHARS, imagesSentKey, imagesKnownKey, +9 more
 - `src/utils/syncIds.ts` — derivedId, isDerivedId, spawnSeed
@@ -490,7 +492,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useJournalStore.ts` — useJournalStore
 - `src/store/useLeftoverStore.ts` — useLeftoverStore
 - `src/store/useMealPlanStore.ts` — MealPlanDraft, CookRecap, sameMealPlanEntries, useMealPlanStore
-- `src/store/useMedicationStore.ts` — SUMMARY_LAST_SETTING_KEY, MILESTONE_DISMISSED_SETTING_KEY, DoseInput, MedicationLogPatch, useMedicationStore
+- `src/store/useMedicationStore.ts` — SUMMARY_LAST_SETTING_KEY, MILESTONE_DISMISSED_SETTING_KEY, DoseInput, DoseEffects, setDoseEffects, MedicationLogPatch, useMedicationStore
 - `src/store/useMeterReadingStore.ts` — useMeterReadingStore
 - `src/store/useMilestoneStore.ts` — MilestonePatch, useMilestoneStore
 - `src/store/useMoodStore.ts` — MoodLogPatch, useMoodStore

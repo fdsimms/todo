@@ -164,6 +164,7 @@ import {
   BOUNTY_WITHDRAWN,
 } from '../utils/rewards';
 import { medicationFor } from '../utils/medicationLog';
+import { installSupplementDoseEffects } from '../utils/supplementDoseSync';
 import { eventsIn } from '../utils/calendarBusy';
 import { isDemoModeActive } from '../utils/demoState';
 import type { Category, JournalKind, MealSlot, Project, TaskGroup, WeatherCondition, WeatherRule, NutrientKey } from '../types';
@@ -2797,6 +2798,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // report a demo session's invented doses as a real person's record of what
     // they have taken.
     useMedicationStore.getState().initialize();
+    // What a supplement dose adds to the food log. Here because this is where
+    // the app's stores come up together, and the medication store can't import
+    // the food log's itself (see `DoseEffects`).
+    installSupplementDoseEffects();
     // The coin ledger. Same fan-out, so a demo session's invented coins never
     // sit on top of a real balance.
     useRewardStore.getState().initialize();

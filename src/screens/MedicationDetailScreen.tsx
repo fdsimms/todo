@@ -34,6 +34,8 @@ import { CountStepper } from '../components/CountStepper';
 import { SegmentedControl } from '../components/SegmentedControl';
 import { InlineAction } from '../components/InlineAction';
 import { MedicationLogSheet } from '../components/MedicationLogSheet';
+import { SupplementPanelSheet } from '../components/SupplementPanelSheet';
+import { describeSupplementPanel } from '../utils/supplementDose';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
 
@@ -72,6 +74,7 @@ export function MedicationDetailScreen() {
   const settings = useMedicationStore(s => s.settings);
   const setLimit = useMedicationStore(s => s.setLimit);
   const setSupply = useMedicationStore(s => s.setSupply);
+  const setSupplementPanel = useMedicationStore(s => s.setSupplementPanel);
   const refillSupply = useMedicationStore(s => s.refillSupply);
   const archiveMedication = useMedicationStore(s => s.archiveMedication);
   const unarchiveMedication = useMedicationStore(s => s.unarchiveMedication);
@@ -80,6 +83,7 @@ export function MedicationDetailScreen() {
   const supplyTask = useTaskStore(s => taskSupplyFor(s.tasks, key));
 
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
   const [editing, setEditing] = useState<MedicationLog | null>(null);
 
   const stat = useMemo(() => medicationStats(logs).find(s => s.key === key) ?? null, [logs, key]);
@@ -122,7 +126,8 @@ export function MedicationDetailScreen() {
 
   const name = stat.name;
   const isArchived = archived.includes(key);
-  const { limit, supply } = prefsFor(settings, name);
+  const { limit, supply, nutrition: supplementPanel = null } = prefsFor(settings, name);
+  const panelSummary = supplementPanel ? describeSupplementPanel(supplementPanel) : null;
   const status = limitStatus(logs, name, limit, new Date());
   const remaining = supplyRemaining(logs, name, supply);
 
@@ -388,6 +393,30 @@ export function MedicationDetailScreen() {
           )}
         </View>
 
+        <Text style={styles.sectionTitle}>NUTRIENTS</Text>
+        <View style={[styles.card, styles.formCard]}>
+          {panelSummary ? (
+            <>
+              <Text style={styles.fieldLabel}>{panelSummary.heading}</Text>
+              <Text style={styles.fieldHint}>{panelSummary.detail}</Text>
+            </>
+          ) : (
+            <Text style={styles.fieldHint}>
+              No nutrients entered. Enter what one serving contains from the label, such as a multivitamin's vitamins and minerals.
+            </Text>
+          )}
+          <Text style={styles.fieldNote}>
+            Each dose you record adds these to the day's nutrient totals in the food log, and to Apple Health if you write nutrients there. Past doses keep what they added.
+          </Text>
+          <View style={styles.panelActions}>
+            <InlineAction
+              label={supplementPanel ? 'Edit nutrients' : 'Add nutrients'}
+              icon={supplementPanel ? 'create-outline' : 'add'}
+              onPress={() => { haptics.tap(); setPanelOpen(true); }}
+            />
+          </View>
+        </View>
+
         <Text style={styles.sectionTitle}>EVERY DOSE</Text>
         <View style={[styles.card, styles.listCard]}>
           {entries.map((log, index) => (
@@ -419,6 +448,13 @@ export function MedicationDetailScreen() {
           />
         </View>
       </ScrollView>
+      <SupplementPanelSheet
+        visible={panelOpen}
+        name={name}
+        panel={supplementPanel}
+        onClose={() => setPanelOpen(false)}
+        onSave={panel => setSupplementPanel(name, panel)}
+      />
       <MedicationLogSheet
         visible={sheetOpen}
         log={editing}
@@ -446,6 +482,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   statValue: { fontSize: font.lg, fontWeight: fontWeight.bold, color: colors.text },
   statLabel: { fontSize: font.xs, color: colors.textSecondary, marginTop: spacing.xxs, textAlign: 'center' },
   actionsRow: { flexDirection: 'row', justifyContent: 'flex-start', marginBottom: spacing.lg },
+  panelActions: { flexDirection: 'row', justifyContent: 'flex-start' },
   sectionTitle: {
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,

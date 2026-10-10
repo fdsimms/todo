@@ -4683,6 +4683,35 @@ export interface GroceryListEntry {
 }
 
 /**
+ * The vitamins and minerals a supplement panel can state. Part of `NutrientKey`;
+ * split out so the panel form can group them and the barcode parsers can say
+ * (by not listing any) that none of them is read from a source.
+ *
+ * Each has an Apple Health dietary type, which is the list's other constraint:
+ * a key with no write type would be a nutrient the food log records and the
+ * Health record can never hold.
+ */
+export type MicronutrientKey =
+  | 'vitaminAMcg' | 'vitaminCMg' | 'vitaminDMcg' | 'vitaminEMg' | 'vitaminKMcg'
+  | 'thiaminMg' | 'riboflavinMg' | 'niacinMg' | 'vitaminB6Mg' | 'folateMcg'
+  | 'vitaminB12Mcg' | 'biotinMcg' | 'pantothenicAcidMg'
+  | 'magnesiumMg' | 'zincMg' | 'phosphorusMg' | 'seleniumMcg' | 'copperMg'
+  | 'manganeseMg' | 'chromiumMcg' | 'molybdenumMcg' | 'iodineMcg' | 'chlorideMg';
+
+/** The vitamins, in the order a supplement panel prints them. */
+export const VITAMIN_KEYS: readonly MicronutrientKey[] = [
+  'vitaminAMcg', 'vitaminCMg', 'vitaminDMcg', 'vitaminEMg', 'vitaminKMcg',
+  'thiaminMg', 'riboflavinMg', 'niacinMg', 'vitaminB6Mg', 'folateMcg',
+  'vitaminB12Mcg', 'biotinMcg', 'pantothenicAcidMg',
+];
+
+/** The minerals, in the order a supplement panel prints them. */
+export const MINERAL_KEYS: readonly MicronutrientKey[] = [
+  'magnesiumMg', 'zincMg', 'phosphorusMg', 'seleniumMcg', 'copperMg',
+  'manganeseMg', 'chromiumMcg', 'molybdenumMcg', 'iodineMcg', 'chlorideMg',
+];
+
+/**
  * The nutrients a food can be recorded as holding, keyed the way the
  * health rules already key theirs.
  *
@@ -4717,16 +4746,19 @@ export interface GroceryListEntry {
  * panel is not, which is a decision about the data rather than about the
  * design.
  *
- * **Vitamin D is the fourth mandatory one and is deliberately absent.** It is
- * present on 57% of that sample and above zero on 16%, so 41% of products
- * state an explicit zero — the shape of a bulk-defaulted field rather than a
- * measurement. It cannot be filtered the way `OFF_UNINFORMATIVE_ZERO` filters
- * choline either, because that rule earns its refusal by the field never once
- * carrying a real value, and vitamin D does carry one 16% of the time. A zero
- * that is sometimes true and usually a default is a figure this app cannot
- * read honestly, and a wrong zero written to a health record is the failure
- * `docs/arch/health-data.md` is entirely about. So it waits for a source that
- * states it properly.
+ * **The vitamins and minerals after `caffeineMg` and `waterMl` are typed by
+ * hand, or read off a photographed label, and that is what lets them in.** The measurement above is why the barcode
+ * sources can't fill them, not a reason to keep them out: a supplement's panel
+ * is typed once, by someone holding the bottle, and then every dose of it
+ * adds the same figures (`supplementDose.ts`). A photographed label is print
+ * the person checks against the bottle before saving, so it may fill them too
+ * (`PRINTED_NUTRIENT_KEYS`). `nutritionParse.ts` maps none of them, so a scanned or searched food never states a figure it can't vouch
+ * for. Vitamin D is the clearest case: 41% of products state an explicit zero,
+ * the shape of a bulk-defaulted field, and a wrong zero written to a health
+ * record is the failure `docs/arch/health-data.md` is entirely about. A typed
+ * 25 mcg off a bottle is a different claim from that, and an absent key is
+ * still unknown, never zero, so a day's vitamin D total counts only the
+ * entries that stated it.
  *
  * **The three are written to Health and never read from it**, which is
  * `carbsG` and `fatG`'s arrangement rather than a new one: a rule metric costs
@@ -4753,21 +4785,46 @@ export type NutrientKey =
   | 'calorieKcal' | 'proteinG' | 'carbsG' | 'fatG' | 'satFatG' | 'transFatG'
   | 'cholesterolMg' | 'fiberG' | 'sugarG' | 'addedSugarG' | 'sodiumMg'
   | 'calciumMg' | 'ironMg' | 'potassiumMg'
-  | 'caffeineMg' | 'waterMl';
+  | 'caffeineMg' | 'waterMl'
+  | MicronutrientKey;
 
 /**
  * Every `NutrientKey`, in the order a nutrition label prints them (trans fat
  * and cholesterol under saturated fat, added sugars under total sugars), which is
  * why the three minerals sit together after sodium, where a US panel prints
- * its own mineral block, and why caffeine and water trail the lot: no label
- * prints either.
+ * its own mineral block. Caffeine and water follow, since no label prints either,
+ * and the manual-only vitamins and minerals (`MicronutrientKey`) come last.
  */
 export const NUTRIENT_KEYS: readonly NutrientKey[] = [
   'calorieKcal', 'fatG', 'satFatG', 'transFatG', 'cholesterolMg',
   'carbsG', 'fiberG', 'sugarG', 'addedSugarG', 'proteinG', 'sodiumMg',
   'calciumMg', 'ironMg', 'potassiumMg',
   'caffeineMg', 'waterMl',
+  ...VITAMIN_KEYS, ...MINERAL_KEYS,
 ];
+
+/**
+ * The nutrients asked for from a source that states a default or a model that
+ * estimates: a barcode source, a model's estimate of a meal or a recipe. Every
+ * `NutrientKey` except the vitamins and minerals (see the note on
+ * `NutrientKey`). A model asked to estimate a restaurant meal's selenium would
+ * produce a confident figure with nothing behind it, and it would be written to
+ * a health record, so the request never names them and a reply that does is
+ * read past.
+ *
+ * A photographed label is the exception, and reads `PRINTED_NUTRIENT_KEYS`.
+ */
+export const EXTERNAL_NUTRIENT_KEYS: readonly NutrientKey[] = NUTRIENT_KEYS.filter(
+  key => !(VITAMIN_KEYS as readonly string[]).includes(key) && !(MINERAL_KEYS as readonly string[]).includes(key),
+);
+
+/**
+ * The nutrients a photographed label can state: all of them. A label photo is a
+ * transcription of print, not an estimate and not a source's default, so a
+ * supplement's vitamin rows are read like any other and the person checks the
+ * fields against the bottle before saving.
+ */
+export const PRINTED_NUTRIENT_KEYS: readonly NutrientKey[] = NUTRIENT_KEYS;
 
 /**
  * The nutrients a logged meal can carry into Apple Health: one per row of the

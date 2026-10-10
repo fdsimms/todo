@@ -1,5 +1,5 @@
 import type { NutrientKey } from '../types';
-import { NUTRIENT_KEYS } from '../types';
+import { EXTERNAL_NUTRIENT_KEYS } from '../types';
 
 /**
  * A model's estimate of what a whole recipe contains, read from its own
@@ -86,7 +86,7 @@ export function readRecipeNutritionEstimate(
   if (typeof source !== 'object' || source === null || Array.isArray(source)) return null;
 
   const amounts: Partial<Record<NutrientKey, number>> = {};
-  for (const key of NUTRIENT_KEYS) {
+  for (const key of EXTERNAL_NUTRIENT_KEYS) {
     const value = amount(source[key]);
     if (value !== undefined) amounts[key] = value;
   }
