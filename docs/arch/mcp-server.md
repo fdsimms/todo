@@ -1338,7 +1338,7 @@ all. They are on the list now. `nutritionTargets` syncs with the health record
 
 `archive_medication` is the medicines list's own archive (`medication_archived`, which already
 synced with the health record), and `rename_mood_tag` renames a context tag across every mood
-entry that carries it, through the mood store's own `renameContextTag`, as the Mood screen does. Gates and penalties stay read-only: they decide what the phone blocks, and that is the
+entry that carries it, through the mood store's own `renameContextTag`, as the Mood screen does. `rename_medication` is the medication page's Rename (`useMedicationStore.renameMedication`, rules in `docs/arch/mood-log.md`), with the tasks and templates that record the medicine rewritten through `db` as the rest of the replica writes; naming an existing medicine combines the two. Gates and penalties stay read-only: they decide what the phone blocks, and that is the
 person's to set on the phone.
 
 ### Copy flags: temporary dev tooling

@@ -102,7 +102,7 @@ import { forget, remember } from './memoryTools';
 import { deleteRule, listAutomations, saveRule, setAutomation, RULE_TYPES } from './automationTools';
 import { deleteCategory, reorderCategories, updateCategory } from './categoryTools';
 import { cancelCalendarRequest, changeCalendarEvent, listCalendarRequests, requestCalendarEvent } from './calendarTools';
-import { NUTRIENT_KEY_LIST, atFrom, deleteSavedMeal, duplicateFoodEntry, listSavedMeals, logSavedMeal, moveFoodEntry, saveMealFromEntries, setNutritionTargets, renameMoodTag, setMedicationArchived, logFood, logMedication, logMood, logWater, updateRecipe, deleteRecipe, updateFoodEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
+import { NUTRIENT_KEY_LIST, atFrom, deleteSavedMeal, duplicateFoodEntry, listSavedMeals, logSavedMeal, moveFoodEntry, saveMealFromEntries, setNutritionTargets, renameMedication, renameMoodTag, setMedicationArchived, logFood, logMedication, logMood, logWater, updateRecipe, deleteRecipe, updateFoodEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
 import { DEFAULT_PATTERN_DAYS, focusHistory, habitPatterns, moodInsights } from './patternTools';
 import { addMilestone, deleteMilestone, listMilestones, updateMilestone } from './milestoneTools';
 import { listCopyFlags, resolveCopyFlag } from './copyFlagTools';
@@ -2345,6 +2345,24 @@ function registerWriteTools(
         return json(await withWrite(() => setMedicationArchived(replica, name, archived ?? true)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not archive it.' });
+      }
+    }
+  );
+
+  server.tool(
+    'rename_medication',
+    'Rename a medicine on every dose, and in its limit, supply, archive state and the tasks and templates that record it, as the Rename on its page in the app does. If `to` is already another medicine, the two are combined (that one keeps its own limit and supply): use it to turn "Ibuprofen 200" and "Ibuprofen 400" into one "Ibuprofen". Doses keep their own amounts. fillAmount and fillUnit (together) record an amount on the doses that have none, e.g. 200 and mg when the old name carried the strength. Only on the person\'s word: it changes their record of what they took.',
+    {
+      from: z.string().min(1),
+      to: z.string().min(1),
+      fillAmount: z.number().positive().optional(),
+      fillUnit: z.string().optional(),
+    },
+    async ({ from, to, fillAmount, fillUnit }) => {
+      try {
+        return json(await withWrite(() => renameMedication(replica, from, to, { amount: fillAmount, unit: fillUnit })));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not rename it.' });
       }
     }
   );
