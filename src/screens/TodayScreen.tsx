@@ -1797,6 +1797,7 @@ export function TodayScreen() {
   const healthReadEnabled = useSettingsStore(s => s.healthReadEnabled);
   const healthCategory = useSettingsStore(s => s.healthCategory);
   const stepGoal = useSettingsStore(s => s.stepGoal);
+  const healthTodayHidden = useSettingsStore(s => s.healthTodayHidden);
   const healthToday = useHealthStore(s => s.today);
   const limitsTodayCategory = useSettingsStore(s => s.limitsTodayCategory);
   const limitsTodayHidden = useSettingsStore(s => s.limitsTodayHidden);
@@ -2626,6 +2627,7 @@ export function TodayScreen() {
       todayKey: getLogicalDayKey(new Date(), dayResetTime),
         category: healthCategory,
         stepGoal,
+        hidden: healthTodayHidden,
       }));
     }
     // A row per Stay under limit, read off today's food log. Off until the
@@ -2681,7 +2683,7 @@ export function TodayScreen() {
     todayCalendarEvents, calendarEventCategory, use24HourTime, eventCalendarTags,
     isEventHidden, movedEventNotes, movedEvents, liveTaskIds,
     mealsOnToday, todayMealEntries, recipesById, mealCookTaskCategory, allTasks,
-    healthToday, healthCategory, stepGoal, dayResetTime,
+    healthToday, healthCategory, stepGoal, healthTodayHidden, dayResetTime,
     limitsTodayCategory, limitsTodayHidden, nutritionTargets, nutritionLimits, limitWarnPercent,
     recentFoodEntries, foodLogCount, foodLogWindow,
     minuteTick,

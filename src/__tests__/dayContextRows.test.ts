@@ -6,6 +6,7 @@ import {
   startsInLabel,
   mealContextRows,
   healthContextRows,
+  parseHealthRowKeys,
   limitContextRows,
   insertContextRows,
   withoutContextRows,
@@ -276,6 +277,17 @@ describe('healthContextRows', () => {
   // point of this function is that the two are judged independently.
   const reading = (steps: number | null, activeEnergyKcal: number | null) =>
     ({ dayKey: TODAY, steps, activeEnergyKcal });
+
+  it('leaves off a reading the person hid, and keeps the others', () => {
+    const rows = healthContextRows(reading(4120, 300), { ...opts, hidden: ['steps'] });
+    expect(rows.map(r => r.id)).toEqual(['health-activeEnergy']);
+  });
+
+  it('reads a stored hidden list back in order and drops anything unknown', () => {
+    expect(parseHealthRowKeys('["rings","bogus","steps"]')).toEqual(['steps', 'rings']);
+    expect(parseHealthRowKeys('nope')).toEqual([]);
+    expect(parseHealthRowKeys(null)).toEqual([]);
+  });
 
   it('says the count, with no caption', () => {
     const rows = healthContextRows(reading(4120, null), opts);

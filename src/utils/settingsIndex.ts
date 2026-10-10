@@ -588,6 +588,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['steps', 'target', 'walking', 'progress', 'bar'] },
   { id: 'healthCategory', requires: 'healthRead', groupId: 'health', label: 'Show Health readings under', section: 'Apple Health',
     keywords: ['category', 'section', 'today', 'where', 'hide', 'nowhere', 'steps', 'rings', 'calories', 'activity'] },
+  { id: 'healthTodayRows', requires: 'healthRead', groupId: 'health', label: 'Readings shown', section: 'Apple Health',
+    keywords: ['hide', 'choose', 'active calories', 'activity'] },
   { id: 'healthWrite', groupId: 'health', label: 'Log to Health', section: 'Log to Health',
     keywords: ['hydration', 'drink', 'water', 'weight', 'write', 'healthkit', 'food', 'meal', 'nutrition'] },
   { id: 'healthWriteAccess', requires: 'healthWrite', groupId: 'health', label: 'Water-write access', section: 'Log to Health',

@@ -537,6 +537,8 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'limitsTodayHidden',
   // The steps row's goal on Today. A typed-in preference.
   'stepGoal',
+  // Which Health readings Today draws a row for.
+  'healthTodayHidden',
   // The limit tasks deleted for good, and the slips the app logged on them.
   'limitWarningDeclined',
   'limitWarningAutoSlips',

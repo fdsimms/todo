@@ -38,6 +38,7 @@ import { DEFAULT_APP_FONT, isAppFont, pickRandomAppFont, type AppFont } from '..
 import { parseGeneratorEstimates, type GeneratorEstimates } from '../utils/ruleEstimate';
 import type { SortOption, RecipeSortOption, ProjectSortOption, Priority, Effort, Difficulty, GeneratedKind, TaskFieldDefaults, MealSlot, TimeOfDay, TitleRule, WeatherRule, EventTaskRule, ScreenTimeRule, HealthRule, NutrientKey, ReminderCapture } from '../types';
 import { clampStepGoal, parseStepGoal } from '../utils/stepGoal';
+import { parseHealthRowKeys, serializeHealthRowKeys, type HealthRowKey } from '../utils/dayContextRows';
 import {
   parseNutritionTargets,
   serializeNutritionTargets,
@@ -1210,6 +1211,8 @@ interface SettingsStore {
   // The steps row's goal, or null for none (the default). Apple Health holds no
   // step goal an app can read, so this is typed in; see `src/utils/stepGoal.ts`.
   stepGoal: number | null;
+  // Health readings left off Today's rows. Hidden list, so none is off by default.
+  healthTodayHidden: HealthRowKey[];
 
   // The `health` generator: whether it runs, where its tasks file, and the
   // rules themselves. Separate from `healthReadEnabled` above because they are
@@ -1998,6 +2001,8 @@ interface SettingsStore {
    */
   syncWeightGoalCalorieTarget: (currentKg: number | null) => void;
   setHealthCategory: (category: string | null) => void;
+  /** Replaces the whole set of Health readings left off Today's rows. */
+  setHealthTodayHidden: (keys: HealthRowKey[]) => void;
   setStepGoal: (goal: number | null) => void;
   setHealthTasks: (on: boolean) => void;
   setHealthTaskCategory: (category: string | null) => void;
@@ -2751,6 +2756,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   bodyProfile: { ...EMPTY_BODY_PROFILE },
   healthCategory: null,
   stepGoal: null,
+  healthTodayHidden: [],
   healthTasks: false,
   healthTaskCategory: null,
   healthRules: [],
@@ -3138,6 +3144,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // once the categories themselves have loaded.
     const healthCategory = dbGetSetting('healthCategory') || null;
     const stepGoal = parseStepGoal(dbGetSetting('stepGoal'));
+    const healthTodayHidden = parseHealthRowKeys(dbGetSetting('healthTodayHidden'));
     const healthTasks = dbGetSetting('healthTasks') === 'true';
     const healthTaskCategory = dbGetSetting('healthTaskCategory') || null;
     // Absent means never answered, so the shipped defaults apply; a stored but
@@ -3538,6 +3545,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       healthRules,
       healthTaskCategory,
       healthTasks,
+      healthTodayHidden,
       healthWriteEnabled,
       healthWriteNutrients,
       hideCategories,
@@ -5159,6 +5167,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setHealthCategory(category: string | null) {
     dbSetSetting('healthCategory', category ?? '');
     set({ healthCategory: category });
+  },
+
+  setHealthTodayHidden(keys: HealthRowKey[]) {
+    dbSetSetting('healthTodayHidden', serializeHealthRowKeys(keys));
+    set({ healthTodayHidden: parseHealthRowKeys(serializeHealthRowKeys(keys)) });
   },
 
   setStepGoal(goal: number | null) {

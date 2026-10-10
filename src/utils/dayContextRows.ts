@@ -11,6 +11,30 @@ import type { NutrientKey } from '../types';
 import { NUTRIENT_LABEL } from './foodNutrition';
 import { LIMIT_ROW_NAME, activeLimits, describeLimit, limitStatus, type NutritionTargets } from './nutritionTargets';
 
+/** The readings Today can draw a row for, which the person can each turn off. */
+export type HealthRowKey = 'steps' | 'activeEnergy' | 'rings';
+export const HEALTH_ROW_KEYS: readonly HealthRowKey[] = ['steps', 'activeEnergy', 'rings'];
+export const HEALTH_ROW_LABELS: Record<HealthRowKey, string> = {
+  steps: 'Steps',
+  activeEnergy: 'Active calories',
+  rings: 'Activity rings',
+};
+
+export function parseHealthRowKeys(raw: string | null | undefined): HealthRowKey[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return HEALTH_ROW_KEYS.filter(key => parsed.includes(key));
+  } catch {
+    return [];
+  }
+}
+
+export function serializeHealthRowKeys(keys: readonly HealthRowKey[]): string {
+  return JSON.stringify(keys);
+}
+
 /**
  * The day's calendar events and planned meals, as rows in the task list
  * (#1571).
@@ -257,14 +281,15 @@ export function healthContextRows(
     /** Optional so a reading without the Activity rings still satisfies this. */
     rings?: ActivityRings | null;
   } | null,
-  opts: { todayKey: string; category: string | null; stepGoal?: number | null },
+  opts: { todayKey: string; category: string | null; stepGoal?: number | null; hidden?: readonly HealthRowKey[] },
 ): ContextRow[] {
   if (!reading) return [];
   if (reading.dayKey !== opts.todayKey) return [];
   const { steps, activeEnergyKcal, rings } = reading;
   const rows: ContextRow[] = [];
+  const hidden = opts.hidden ?? [];
 
-  if (steps !== null && steps > 0) {
+  if (!hidden.includes('steps') && steps !== null && steps > 0) {
     rows.push({
       // One row, one day, so a fixed key. No source id: the reading is about a
       // day rather than a row, and there is no record in this app to point at.
@@ -288,7 +313,7 @@ export function healthContextRows(
     });
   }
 
-  if (activeEnergyKcal !== null && activeEnergyKcal > 0) {
+  if (!hidden.includes('activeEnergy') && activeEnergyKcal !== null && activeEnergyKcal > 0) {
     // A bar against the Move goal the person set in Fitness, when there is one.
     // No goal (or a Move ring counting minutes) means no bar: a fraction of
     // nothing is not a number.
@@ -311,7 +336,7 @@ export function healthContextRows(
   // The rings' own line, in Fitness's wording, once any ring has moved. No row
   // for a null summary or one with every ring at zero, for the reason steps
   // gives above: both are what a day looks like before anything has landed.
-  const ringsLine = rings ? ringsSummaryLine(rings) : null;
+  const ringsLine = rings && !hidden.includes('rings') ? ringsSummaryLine(rings) : null;
   if (ringsLine !== null) {
     rows.push({
       id: 'health-rings',
