@@ -1834,6 +1834,16 @@ function makeStyles(colors: Colors) {
     entryNutrientRow: { flexDirection: 'row', justifyContent: 'space-between' },
     entryNutrientLabel: { color: colors.textSecondary, fontSize: font.sm },
     entryNutrientValue: { color: colors.text, fontSize: font.sm },
+    entryBreakdown: { marginTop: spacing.smd, gap: spacing.xxs },
+    entryBreakdownHeader: {
+      color: colors.textSecondary,
+      fontSize: font.xs,
+      fontWeight: fontWeight.semibold,
+      letterSpacing: 0.8,
+      marginBottom: spacing.xs,
+    },
+    // A component's name can be long, so it takes the row and the figure stays short.
+    entryBreakdownLabel: { flex: 1, marginRight: spacing.md },
     entryEdit: { alignSelf: 'flex-start', marginTop: spacing.sm },
     dropSlot: { borderRadius: radius.md, backgroundColor: colors.bgTertiary, marginBottom: spacing.sm },
   });
@@ -1911,6 +1921,7 @@ const FoodLogRow = React.memo(function FoodLogRow({
   // An entry that stated nothing has no panel to expand, so its tap opens
   // the menu rather than buzzing and doing nothing visible.
   const canExpand = statedKeys.length > 0;
+  const breakdown = entry.nutrition.breakdown ?? [];
   const openMenu = () => onOpenMenu(entry);
   const meta = describeFoodLogEntry(entry, waterEntryQuantity(entry, waterUnit));
   // Shared by the swipe and the iPhone Mirroring button.
@@ -1971,6 +1982,22 @@ const FoodLogRow = React.memo(function FoodLogRow({
                 </Text>
               </View>
             ))}
+            {breakdown.length > 0 && (
+              <View style={styles.entryBreakdown} accessibilityLabel="Made of">
+                <Text style={styles.entryBreakdownHeader}>MADE OF</Text>
+                {breakdown.map((line, index) => {
+                  const kcal = line.amounts.calorieKcal;
+                  return (
+                    <View key={`${index}-${line.label}`} style={styles.entryNutrientRow}>
+                      <Text style={[styles.entryNutrientLabel, styles.entryBreakdownLabel]}>{line.label}</Text>
+                      {kcal !== undefined && (
+                        <Text style={styles.entryNutrientValue}>{Math.round(kcal).toLocaleString()} cal</Text>
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+            )}
             <InlineAction
               label="Edit"
               icon="create-outline"

@@ -278,6 +278,18 @@ describe('estimateToPanel', () => {
     expect(one.amounts.calorieKcal).toBe(1250);
   });
 
+  it('keeps the breakdown on the panel, as a copy', () => {
+    const lines = [{ label: 'baguette', amounts: { calorieKcal: 40 } }];
+    const panel = estimateToPanel(estimate({ breakdown: lines }))!;
+    expect(panel.breakdown).toEqual(lines);
+    panel.breakdown![0].amounts.calorieKcal = 1;
+    expect(lines[0].amounts.calorieKcal).toBe(40);
+  });
+
+  it('adds no breakdown key for a single-item estimate', () => {
+    expect('breakdown' in estimateToPanel(estimate({ breakdown: [] }))!).toBe(false);
+  });
+
   it('refuses an estimate with nothing in it', () => {
     expect(estimateToPanel(estimate({ amounts: {} }))).toBeNull();
   });

@@ -1,4 +1,4 @@
-import type { NutrientKey, FoodNutrition } from '../types';
+import type { NutrientKey, FoodNutrition, FoodBreakdownLine } from '../types';
 import { EXTERNAL_NUTRIENT_KEYS } from '../types';
 
 /**
@@ -45,6 +45,11 @@ import { EXTERNAL_NUTRIENT_KEYS } from '../types';
  * graded is still the meal's, and a per-line confidence would let the
  * breakdown read as independently verified when it is the same estimate
  * split apart.
+ *
+ * **The breakdown is kept on the logged entry** (`FoodNutrition.breakdown`), so
+ * the split somebody checked before logging is still there when they open the
+ * row. Keeping it adds no claim: it is the same estimate, and it rides the
+ * panel for the same reason `source: 'estimated'` does.
  */
 
 /** What somebody can type as a description of what they ate. */
@@ -142,11 +147,7 @@ export interface EstimateQuestion {
  * and letting each row grade itself would let a breakdown read as more
  * separately-verified than it is.
  */
-export interface EstimateIngredient {
-  /** The ingredient in the model's own words, e.g. "salted butter". */
-  label: string;
-  amounts: Partial<Record<NutrientKey, number>>;
-}
+export type EstimateIngredient = FoodBreakdownLine;
 
 /** A proposal, not an entry. Nothing is stored until somebody confirms it. */
 export interface NutritionEstimate {
@@ -368,6 +369,11 @@ export function estimateToPanel(estimate: NutritionEstimate, now: Date = new Dat
     sourceId: null,
     portions: [],
     recordedAt: now.toISOString(),
+    // Only when the model split the meal, so a single-item estimate stores
+    // exactly what it did before.
+    ...(estimate.breakdown.length > 0
+      ? { breakdown: estimate.breakdown.map(line => ({ label: line.label, amounts: { ...line.amounts } })) }
+      : {}),
   };
 }
 

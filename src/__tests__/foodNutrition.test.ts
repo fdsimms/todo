@@ -56,6 +56,31 @@ describe('parseFoodNutrition', () => {
     expect('foodCategory' in without!).toBe(false);
   });
 
+  it('keeps an estimate\'s breakdown through a round trip, and adds no key when there is none', () => {
+    const lines = [
+      { label: 'Birch beer', amounts: { calorieKcal: 250, sugarG: 60 } },
+      { label: 'Soft pretzel', amounts: { calorieKcal: 300 } },
+    ];
+    const withLines = nutrition({ source: 'estimated', breakdown: lines });
+    expect(parseFoodNutrition(serializeFoodNutrition(withLines))?.breakdown).toEqual(lines);
+    const without = parseFoodNutrition(serializeFoodNutrition(nutrition({})));
+    expect('breakdown' in without!).toBe(false);
+  });
+
+  it('drops an unreadable breakdown line rather than failing the record', () => {
+    const parsed = parseFoodNutrition(stored({
+      ...nutrition({}),
+      breakdown: [
+        { label: '  ', amounts: { calorieKcal: 10 } },
+        { label: 'No figures', amounts: {} },
+        { label: 'Kept', amounts: { calorieKcal: 10, fatG: -1 } },
+        'nonsense',
+      ],
+    }));
+    expect(parsed?.breakdown).toEqual([{ label: 'Kept', amounts: { calorieKcal: 10 } }]);
+    expect('breakdown' in parseFoodNutrition(stored({ ...nutrition({}), breakdown: [{ label: 'x', amounts: {} }] }))!).toBe(false);
+  });
+
   it('answers null for an empty column, which is every row predating the migration', () => {
     expect(parseFoodNutrition(null)).toBeNull();
     expect(parseFoodNutrition(undefined)).toBeNull();

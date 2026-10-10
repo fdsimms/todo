@@ -2504,7 +2504,7 @@ export async function estimateMealNutrition(
         type: 'object',
         properties: {
           label: { type: 'string', description: 'What to call this in a food diary, e.g. "Cheeseburger and fries, Five Guys"' },
-          quantity: { type: 'string', description: 'The amount these figures are for. Always a concrete, checkable amount: a weight or volume, plus a household measure where one fits, e.g. "150 g (about 1/3 block)" or "1 burger and a regular fries (about 450 g)". Never a bare "1 serving". When the description states an amount, use exactly that.' },
+          quantity: { type: 'string', description: 'The amount these figures are for. Always a concrete, checkable amount: a weight or volume, plus a household measure where one fits, e.g. "150 g (about 1/3 block)" or "1 burger and a regular fries (about 450 g)". Never a bare "1 serving". Keep it to one short phrase: never list the components or their calories here, the breakdown carries those. When the description states an amount, use exactly that.' },
           amounts: ESTIMATE_AMOUNTS_SCHEMA,
           basis: {
             type: 'string',
