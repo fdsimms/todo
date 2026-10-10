@@ -70,8 +70,8 @@ export function SettingsScreen() {
   })));
 
   const groups = useMemo(
-    () => settingsIndexGroups(Platform.OS, settings.kitchenEnabled),
-    [settings.kitchenEnabled]
+    () => settingsIndexGroups(Platform.OS, settings.kitchenEnabled, settings.simpleMode),
+    [settings.kitchenEnabled, settings.simpleMode]
   );
   // Search must not turn up a row that isn't rendered — see
   // searchableSettingsEntries, which the app-wide search reads too.

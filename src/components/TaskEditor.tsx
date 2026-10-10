@@ -61,6 +61,7 @@ import { confirmDelete } from '../utils/confirmDelete';
 import { confirmDeleteGenerated } from '../utils/confirmDeleteGenerated';
 import { stoppableGenerator } from '../utils/generatedTasks';
 import { animateLayout } from '../utils/layoutAnimation';
+import { moreOptionsLabel } from '../utils/editorFold';
 import { formatPhoneInput } from '../utils/phone';
 import {
   bakedFields, taskKindOf, DEFAULT_TARGET_COUNT, DEFAULT_TIMED_MINUTES,
@@ -549,6 +550,17 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const reportMatches = useCallback((groupKey: string, count: number) => {
     setMatchCounts(prev => (prev[groupKey] === count ? prev : { ...prev, [groupKey]: count }));
   }, []);
+
+  // "More options": the rows tagged `fold` in the groups below stay hidden on
+  // a task that holds nothing for them. See `src/utils/editorFold.ts`.
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [foldEpoch, setFoldEpoch] = useState(0);
+  const [foldCounts, setFoldCounts] = useState<Record<string, number>>({});
+  const reportFold = useCallback((groupKey: string, count: number) => {
+    setFoldCounts(prev => (prev[groupKey] === count ? prev : { ...prev, [groupKey]: count }));
+  }, []);
+  const foldProps = { moreOpen, foldEpoch, onFoldCount: reportFold };
+  const foldedTotal = Object.values(foldCounts).reduce((sum, n) => sum + n, 0);
 
   const totalMatches = useMemo(() => {
     if (!searching) return 0;
@@ -1051,6 +1063,10 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
     // A search belongs to the trip you made to find one field, not to the
     // sheet — reopening the editor on a filtered form would look broken.
     setSearchOpen(false);
+    // More options starts closed for each task, and the rows that were
+    // showing because they held a value are forgotten.
+    setMoreOpen(false);
+    setFoldEpoch(e => e + 1);
     // Same for a dismissed schedule phrase — belongs to this trip through
     // the title, not to the sheet.
     setDismissedScheduleSignature(null);
@@ -3738,6 +3754,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             variant="neutral"
             surface="page"
             onPress={() => {
+              setMoreOpen(true);
               if (showPhoneNudge) {
                 setPhoneText(phoneNumber ?? '');
                 setShowPhoneField(true);
@@ -3766,6 +3783,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         divider="full"
         searchTerms={searchTerms}
         onMatchCount={reportMatches}
+        {...foldProps}
         rows={[
           {
             key: 'kind', label: 'Kind', set: kind !== 'task',
@@ -3791,7 +3809,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
           // something, and an avoid-task is never completed (see applyKind,
           // which resets this when the kind moves away).
           ...(kind === 'task' ? [{
-            key: 'polarity', label: 'Goal', set: polarity === 'negative',
+            key: 'polarity', label: 'Goal', set: polarity === 'negative', fold: true,
             keywords: ['avoid', 'negative', 'quit', 'stop', 'habit', 'dont', 'abstain', 'streak'],
             node: (
               <View style={styles.kindBlock}>
@@ -4767,6 +4785,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         label="Schedule"
         searchTerms={searchTerms}
         onMatchCount={reportMatches}
+        {...foldProps}
         rows={[
           {
             key: 'date', label: 'Date',
@@ -5507,7 +5526,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             ),
           },
           {
-            key: 'completionTimer', label: 'Completion timer', set: completionTimerMinutes !== null,
+            key: 'completionTimer', label: 'Completion timer', set: completionTimerMinutes !== null, fold: true,
             keywords: ['timer', 'alarm', 'after', 'later', 'reminder', 'wait', 'note', 'context', 'purpose', 'why'],
             node: (
               <>
@@ -5806,6 +5825,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         divider="full"
         searchTerms={searchTerms}
         onMatchCount={reportMatches}
+        {...foldProps}
         rows={[
           // Only when there is something to pick. An empty picker would teach
           // nothing — stacks are created from the + menu on Today, not here.
@@ -6220,6 +6240,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         divider="full"
         searchTerms={searchTerms}
         onMatchCount={reportMatches}
+        {...foldProps}
         rows={[
           {
             key: 'priority', label: 'Priority',
@@ -6438,7 +6459,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             ),
           }] : []),
           {
-            key: 'excludeFromSuggestions', label: 'Skip in suggestions',
+            key: 'excludeFromSuggestions', label: 'Skip in suggestions', set: excludeFromSuggestions, fold: true,
             keywords: ['pin', 'focus', 'suggest', 'exclude', 'hide', 'shortlist'],
             node: (
               <>
@@ -6479,6 +6500,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         label="Relationships"
         searchTerms={searchTerms}
         onMatchCount={reportMatches}
+        {...foldProps}
         rows={[
           {
             key: 'waitingOn', label: 'Waiting on', set: blockerIds.length > 0,
@@ -6563,7 +6585,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
           // Beside "Waiting on" because until the question is answered it is
           // exactly that; see Task.answerGate for what happens after.
           {
-            key: 'answerGate', label: 'Only if', set: !!answerGate,
+            key: 'answerGate', label: 'Only if', set: !!answerGate, fold: true,
             keywords: ['answer', 'branch', 'decision', 'question', 'condition', 'if', 'choice', 'not needed'],
             node: (
               <>
@@ -6637,7 +6659,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
           // Only once somebody has been added, like the People field: a picker
           // with nothing in it is a prompt to start filing your friends.
           ...(people.length > 0 ? [{
-            key: 'waitingOnPerson', label: 'Waiting on someone', set: !!waitingOnPersonId,
+            key: 'waitingOnPerson', label: 'Waiting on someone', set: !!waitingOnPersonId, fold: true,
             keywords: ['blocked', 'person', 'friend', 'owes', 'chase', 'reply', 'follow up', 'nudge'],
             node: (
               <>
@@ -6985,6 +7007,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         label="On completion"
         searchTerms={searchTerms}
         onMatchCount={reportMatches}
+        {...foldProps}
         rows={[
           // Not one of the four kinds, and deliberately a row of its own below
           // them: the kinds are exclusive (bakedFields clears the other three)
@@ -7068,7 +7091,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
           // completion itself, not to a deadline the way the calendar toggle
           // in the Schedule group does.
           {
-            key: 'logCompletionToCalendar', label: 'Log to calendar',
+            key: 'logCompletionToCalendar', label: 'Log to calendar', set: logCompletionToCalendar, fold: true,
             keywords: ['calendar', 'event', 'log', 'history', 'record'],
             node: (
               <TouchableOpacity
@@ -7119,7 +7142,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
           // to bake in — this used to log dietary water only.
           {
             key: 'logHealthValue', label: 'Log to Health',
-            set: logHealthMetric !== null && logHealthAmount !== null,
+            set: logHealthMetric !== null && logHealthAmount !== null, fold: true,
             keywords: ['water', 'hydration', 'drink', 'health', 'apple health', 'nutrient', 'protein', 'sodium', 'calories', 'sugar', 'fiber', 'fat', 'carbs', 'caffeine'],
             node: (() => {
               // Water is the one nutrient with a second unit worth offering —
@@ -7265,7 +7288,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
           // again would be recording the same fact twice. See
           // docs/arch/mood-log.md.
           {
-            key: 'medication', label: 'Log a dose', set: medicationName !== null,
+            key: 'medication', label: 'Log a dose', set: medicationName !== null, fold: true,
             keywords: ['medication', 'medicine', 'pill', 'tablet', 'dose', 'drug', 'supplement', 'vitamin', 'mg', 'prescription'],
             node: (
               <CollapsibleField
@@ -7334,7 +7357,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
           // reason the medication row above doesn't: picking a slot here is
           // itself the opt-in.
           {
-            key: 'logMealSlot', label: 'Log to food log', set: logMealSlot !== null,
+            key: 'logMealSlot', label: 'Log to food log', set: logMealSlot !== null, fold: true,
             keywords: ['food', 'meal', 'eat', 'nutrition', 'breakfast', 'lunch', 'dinner', 'snack', 'diet'],
             node: (
               <CollapsibleField
@@ -7379,9 +7402,10 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         label="Task actions"
         searchTerms={searchTerms}
         onMatchCount={reportMatches}
+        {...foldProps}
         rows={[
           {
-            key: 'link', label: 'Link',
+            key: 'link', label: 'Link', set: !!linkUrl || showLinkPicker, fold: true,
             keywords: ['url', 'website', 'open', 'app', 'address'],
             node: (
               <>
@@ -7445,7 +7469,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             ),
           },
           {
-            key: 'phone', label: 'Phone',
+            key: 'phone', label: 'Phone', set: !!phoneNumber || showPhoneField, fold: true,
             keywords: ['call', 'text', 'number', 'sms', 'contact'],
             node: (
               <>
@@ -7499,7 +7523,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             ),
           },
           {
-            key: 'email', label: 'Email',
+            key: 'email', label: 'Email', set: !!emailAddress || showEmailField, fold: true,
             keywords: ['mail', 'contact', 'compose', 'address'],
             node: (
               <>
@@ -7543,6 +7567,26 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         ]}
       />
 
+      {/* More options — reveals the rows tagged `fold` above (completion logging,
+          link/phone/email, Goal, Only if, and the like). Hidden while searching,
+          since a search already shows every match wherever it lives. Below the
+          last group rather than at the top so someone looking for a rarely used
+          field finds it where the form ends. */}
+      {!searching && (foldedTotal > 0 || moreOpen) && (
+        <View style={styles.moreOptionsRow}>
+          <InlineAction
+            icon={moreOpen ? 'chevron-up' : 'chevron-down'}
+            label={moreOptionsLabel(foldedTotal, moreOpen)}
+            variant="neutral"
+            surface="page"
+            onPress={() => {
+              animateLayout();
+              setMoreOpen(open => !open);
+            }}
+          />
+        </View>
+      )}
+
       {/* Streaks — a task that repeats, once it has one. Vacation pause used to sit here because
           keeping a streak alive through a week away is what it is for, but it applies to every task, so it
           is in Organize now. */}
@@ -7550,6 +7594,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         label="Streaks"
         searchTerms={searchTerms}
         onMatchCount={reportMatches}
+        {...foldProps}
         rows={[
           ...(task && task.recurrenceType !== 'none' ? [{
             key: 'streak', label: 'Streak', set: liveStreakTask!.streakCount > 0,
@@ -7782,6 +7827,11 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     paddingVertical: 7,
     borderRadius: radius.md,
     backgroundColor: colors.accentFill,
+  },
+  moreOptionsRow: {
+    alignItems: 'center',
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.lg,
   },
   scheduleBannerText: {
     color: colors.onAccent,

@@ -135,7 +135,9 @@ export function settingsSummaries(s: SettingsSummaryInput): Record<IndexedSettin
       s.autoCompleteProjectsOnDone && 'Projects auto-complete',
     ) || 'New task defaults, rescheduling, projects',
 
-    focus: s.appBlocking ? 'Blocking apps' : 'Work stretches, breaks, blocking apps',
+    // Simplified mode hides every focus and blocking row, which leaves only the
+    // timer's Live Activity; the usual line would name things that are gone.
+    focus: s.simpleMode ? 'Timers' : s.appBlocking ? 'Blocking apps' : 'Work stretches, breaks, blocking apps',
 
     // The switch alone, with no reading named beside it. The number this group
     // shows is a step count that changes by the minute and is often absent

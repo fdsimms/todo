@@ -171,6 +171,24 @@ describe('settings index', () => {
       expect(visibleSettingsGroups('ios')).toHaveLength(SETTINGS_GROUPS.length);
     });
 
+    it('drops a group simplified mode leaves with no rows, and only that group', () => {
+      // On Android the only Focus row left in simplified mode is the timer's
+      // Live Activity, which is iOS-only, so the group would open onto nothing.
+      const android = visibleSettingsGroups('android', true, true).map(g => g.id);
+      expect(android).not.toContain('focus');
+      // On iOS that one row survives, so the group stays.
+      const ios = visibleSettingsGroups('ios', true, true).map(g => g.id);
+      expect(ios).toContain('focus');
+      // Off by default: a caller that doesn't pass the mode gets every group.
+      expect(visibleSettingsGroups('android').map(g => g.id)).toContain('focus');
+      // Every group it keeps has at least one row it will draw.
+      for (const id of ios) {
+        const group = SETTINGS_GROUPS.find(g => g.id === id)!;
+        if (group.screen) continue;
+        expect(visibleSettingsEntries('ios', true, true).some(e => e.groupId === id)).toBe(true);
+      }
+    });
+
     it('takes the hidden groups’ entries with them', () => {
       const android = visibleSettingsEntries('android');
       for (const group of SETTINGS_GROUPS.filter(g => g.iosOnly)) {

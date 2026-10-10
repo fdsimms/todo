@@ -111,6 +111,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/demoState.ts` — isDemoModeActive, setDemoModeActive
 - `src/utils/deviceTimeZone.ts` — DEVICE_TIME_ZONE_KEY, isValidTimeZone, currentTimeZone, recordDeviceTimeZone
 - `src/utils/doseRecording.ts` — syncOkAgainNotification, allowOkAgainNotification, confirmWithinLimit, recordDose, unrecordDose
+- `src/utils/editorFold.ts` — FoldableRow, FoldState, isRowFolded, foldedRowCount, moreOptionsLabel
 - `src/utils/editorSearch.ts` — EditorSearchable, editorSearchTerms, matchesEditorQuery, filterEditorRows
 - `src/utils/effort.ts` — MeasuredTimeUpdate, applyMeasuredTime, formatStopwatch, EFFORT_MINUTES, effortToMinutes, minutesToEffort, EstimateSource, estimatedMinutesFor, measuredTimeAppliesTo, SuggestionCarrier, +7 more
 - `src/utils/email.ts` — mailtoUrl, isEmailable

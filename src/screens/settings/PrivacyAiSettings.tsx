@@ -9,6 +9,7 @@ import { authenticateForAppLock, getAppLockSupport, type AppLockSupport } from '
 import { useColors } from '../../theme/ThemeContext';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
+import { SettingsDisclosure } from './SettingsDisclosure';
 import { SettingsSegments } from './SettingsSegments';
 import { useSettingsFocusFlash } from './SettingsFocus';
 import { type SegmentOption } from '../../components/SegmentedControl';
@@ -57,6 +58,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
   const goUpcApiKey = useSettingsStore(s => s.goUpcApiKey);
   const setGoUpcApiKey = useSettingsStore(s => s.setGoUpcApiKey);
   const aiFeatureConfig = useSettingsStore(s => s.aiFeatureConfig);
+  const aiFeatureList = useMemo(() => aiFeaturesFor(kitchenEnabled, simpleMode), [kitchenEnabled, simpleMode]);
   const setAiFeatureConfig = useSettingsStore(s => s.setAiFeatureConfig);
   const onDeviceAiEnabled = useSettingsStore(s => s.onDeviceAiEnabled);
   const setOnDeviceAiEnabled = useSettingsStore(s => s.setOnDeviceAiEnabled);
@@ -251,7 +253,13 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
         label="AI features"
         footer="Turn off any feature you don’t want sending requests to Anthropic. Pick a model for each: faster and cheaper for quick suggestions, or stronger where it’s worth the cost."
       >
-        {aiFeaturesFor(kitchenEnabled, simpleMode).map((feature, i) => {
+        <SettingsDisclosure
+          icon="options-outline"
+          label="Individual features"
+          value={`${aiFeatureList.filter(f => aiFeatureConfig[f.id].enabled).length} of ${aiFeatureList.length} on`}
+          entryIds={aiFeatureList.map(f => `ai:${f.id}`)}
+        >
+        {aiFeatureList.map((feature, i) => {
           const config = aiFeatureConfig[feature.id];
           return (
             <React.Fragment key={feature.id}>
@@ -283,6 +291,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
             </React.Fragment>
           );
         })}
+        </SettingsDisclosure>
       </SettingsSection>
 
       {/* Its own section for the same reason barcode lookups get one below: no
