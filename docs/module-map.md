@@ -312,6 +312,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/recipeBackfill.ts` — RecipeBackfillFieldId, RecipeBackfillFieldDef, RECIPE_BACKFILL_FIELDS, isRecipeFieldMissing, isRecipeBackfillDismissed, recipeBackfillCandidates, recipeBackfillFieldCounts, dismissRecipeBackfillField
 - `src/utils/recipeComponents.ts` — parseRecipeComponents, normalizeComponent, parseRecipeChoices, makeComponent, ChoiceResolution, choiceGroupKey, activeComponents, activeIngredients, recipeMap, ResolvedComponent, +21 more
 - `src/utils/recipeCost.ts` — CostEstimate, estimateRecipeCost, estimateWeekCost, describeRecipeCost, describeWeekCost
+- `src/utils/recipeEstimateQueue.ts` — PendingRecipeEstimateStatus, PendingRecipeEstimate, liveFor, awaitingRecipeEstimate
 - `src/utils/recipeImageSync.ts` — recipeImageNames, readRecipeImageForSync, hasRecipeImageForSync, writeRecipeImageFromSync, recipeIdsIn, unreferencedImageNames, applyWithRecipeImages
 - `src/utils/recipeImportComponents.ts` — ReferenceCandidate, referencePageNumber, importableReferences, coveredIngredients, ComponentImportState, seededComponentKeys, nextComponentPhotos, coveringComponentKeys, ComponentCommit, componentCommitFor
 - `src/utils/recipeImportPreview.ts` — ImportPreviewLine, methodRowMeta, prepTasksRowMeta, methodPreviewLines, prepTaskPreviewLines, previewToggleLabel
@@ -502,6 +503,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useMilestoneStore.ts` — MilestonePatch, useMilestoneStore
 - `src/store/useMoodStore.ts` — MoodLogPatch, useMoodStore
 - `src/store/usePendingEstimateStore.ts` — PendingEstimateDraft, EnqueueResult, usePendingEstimateStore
+- `src/store/usePendingRecipeEstimateStore.ts` — PendingRecipeEstimateDraft, usePendingRecipeEstimateStore
 - `src/store/usePersonGroupStore.ts` — usePersonGroupStore
 - `src/store/usePersonNoteStore.ts` — PersonNotePatch, usePersonNoteStore
 - `src/store/usePersonStore.ts` — blankPerson, displayNameOf, PersonPatch, usePersonStore
@@ -592,7 +594,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 
 ## `src/db`
 
-- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, isSyncableDatabase, +256 more
+- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, isSyncableDatabase, +259 more
 - `src/db/syncTracking.ts` — SyncTable, KEY_SEPARATOR, SYNC_TRACKED_TABLES, SYNC_DEVICE_LOCAL_COLUMNS, isDeviceLocalColumn, withoutDeviceLocalColumns, SYNC_EXCLUDED_TABLES, SYNCED_SETTING_KEYS, isSyncedSettingKey, HEALTH_SYNC_TABLES, +13 more
 
 ## `src/services`

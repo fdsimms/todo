@@ -77,6 +77,7 @@ import { HEALTH_TARGET_METRICS } from '../utils/healthTarget';
 import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, NUTRIENT_KEYS, PERSON_NOTE_KINDS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES, isReceiptStyle } from '../types';
 import { generateId } from '../utils/id';
 import type { PendingEstimate } from '../utils/estimateQueue';
+import type { PendingRecipeEstimate } from '../utils/recipeEstimateQueue';
 import { parseTaskFieldDefaults, serializeTaskFieldDefaults } from '../utils/taskFieldDefaults';
 import { appendPriceObservation, parsePriceHistory } from '../utils/priceHistory';
 import { nextPurchaseIntervalDays } from '../utils/purchaseInterval';
@@ -631,6 +632,22 @@ export function initDatabase(): void {
       status TEXT NOT NULL DEFAULT 'waiting',
       estimate TEXT,
       estimated_at TEXT,
+      error TEXT,
+      created_at TEXT NOT NULL
+    );
+
+    -- A recipe's nutrition estimate asked for with no connection — see
+    -- utils/recipeEstimateQueue.ts. One row per recipe, device-local like
+    -- pending_estimates. estimate_key is the sheet's fingerprint of what was
+    -- asked about, and the row is believed only while it still matches.
+    CREATE TABLE IF NOT EXISTS pending_recipe_estimates (
+      recipe_id TEXT PRIMARY KEY NOT NULL,
+      estimate_key TEXT NOT NULL,
+      title TEXT NOT NULL,
+      servings REAL,
+      lines TEXT NOT NULL DEFAULT '[]',
+      status TEXT NOT NULL DEFAULT 'waiting',
+      estimate TEXT,
       error TEXT,
       created_at TEXT NOT NULL
     );
@@ -2568,6 +2585,10 @@ export const BACKUP_EXCLUDED_TABLES = [
   // on. Restore replaces the food log wholesale; a stale queue would sit beside
   // it offering to log entries into a day that has been rewritten.
   'pending_estimates',
+  // The recipe counterpart, excluded for the same reason and one more: its
+  // rows are believed only against a fingerprint of ingredient lines that a
+  // restore is about to rewrite.
+  'pending_recipe_estimates',
 ] as const;
 
 /** The live column names of a table, straight from the schema. */
@@ -7604,6 +7625,81 @@ export function dbSavePendingEstimate(p: PendingEstimate): void {
 
 export function dbDeletePendingEstimate(id: string): void {
   db.runSync('DELETE FROM pending_estimates WHERE id = ?', [id]);
+}
+
+// ─── Pending recipe estimates ────────────────────────────────────────────────
+
+/**
+ * A queued recipe estimate back out of its row. A `ready` row whose estimate
+ * won't parse reads as `waiting` again, the call `rowToPendingEstimate` makes.
+ */
+function rowToPendingRecipeEstimate(row: Record<string, unknown>): PendingRecipeEstimate | null {
+  const recipeId = typeof row.recipe_id === 'string' ? row.recipe_id : '';
+  const estimateKey = typeof row.estimate_key === 'string' ? row.estimate_key : '';
+  const title = typeof row.title === 'string' ? row.title : '';
+  if (!recipeId || !estimateKey) return null;
+
+  let lines: string[] = [];
+  try {
+    const parsed = JSON.parse((row.lines as string) ?? '[]');
+    if (Array.isArray(parsed)) lines = parsed.filter((l): l is string => typeof l === 'string');
+  } catch {
+    // Fall through: no lines cannot be asked about.
+  }
+  if (lines.length === 0) return null;
+
+  let estimate: PendingRecipeEstimate['estimate'] = null;
+  if (typeof row.estimate === 'string' && row.estimate) {
+    try {
+      const parsed = JSON.parse(row.estimate);
+      if (parsed && typeof parsed === 'object' && parsed.amounts && typeof parsed.amounts === 'object') estimate = parsed;
+    } catch {
+      // Falls through to the status check below.
+    }
+  }
+  let status: PendingRecipeEstimate['status'] = row.status === 'ready' || row.status === 'failed' ? row.status : 'waiting';
+  if (status === 'ready' && !estimate) status = 'waiting';
+
+  return {
+    recipeId,
+    estimateKey,
+    title,
+    servings: typeof row.servings === 'number' && Number.isFinite(row.servings) ? row.servings : null,
+    lines,
+    status,
+    estimate: status === 'ready' ? estimate : null,
+    error: typeof row.error === 'string' ? row.error : null,
+    createdAt: row.created_at as string,
+  };
+}
+
+export function dbGetPendingRecipeEstimates(): PendingRecipeEstimate[] {
+  const rows = db.getAllSync<Record<string, unknown>>('SELECT * FROM pending_recipe_estimates ORDER BY created_at ASC');
+  return rows.map(rowToPendingRecipeEstimate).filter((p): p is PendingRecipeEstimate => p !== null);
+}
+
+/** Inserts a row, or replaces the recipe's existing one. */
+export function dbSavePendingRecipeEstimate(p: PendingRecipeEstimate): void {
+  db.runSync(
+    `INSERT OR REPLACE INTO pending_recipe_estimates
+       (recipe_id, estimate_key, title, servings, lines, status, estimate, error, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      p.recipeId,
+      p.estimateKey,
+      p.title,
+      p.servings,
+      JSON.stringify(p.lines),
+      p.status,
+      p.estimate ? JSON.stringify(p.estimate) : null,
+      p.error,
+      p.createdAt,
+    ]
+  );
+}
+
+export function dbDeletePendingRecipeEstimate(recipeId: string): void {
+  db.runSync('DELETE FROM pending_recipe_estimates WHERE recipe_id = ?', [recipeId]);
 }
 
 export function dbGetMealPlanEntry(id: string): MealPlanEntry | null {

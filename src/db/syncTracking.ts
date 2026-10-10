@@ -312,6 +312,10 @@ export const SYNC_EXCLUDED_TABLES = [
   // time on a day the first phone may already have logged by hand. It also
   // holds a typed description that was never confirmed as a record of anything.
   'pending_estimates',
+  // The recipe counterpart: a request that belongs to the phone that lost its
+  // signal, and a cache believed only against a fingerprint of ingredient
+  // lines (utils/recipeEstimateQueue.ts) that another device may have edited.
+  'pending_recipe_estimates',
 ] as const;
 
 /**

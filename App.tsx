@@ -50,6 +50,7 @@ import { animation } from './src/theme';
 import { AppState, View } from 'react-native';
 import { runPendingHealthFoodWrites } from './src/utils/pendingHealthFoodWrites';
 import { usePendingEstimateStore } from './src/store/usePendingEstimateStore';
+import { usePendingRecipeEstimateStore } from './src/store/usePendingRecipeEstimateStore';
 
 // Held open until `AppGate` below knows which font to render in and has it
 // loaded, so the first frame the user ever sees is already in the right
@@ -194,6 +195,9 @@ function AppRoot() {
       // connection. They are only estimated here, never logged: a person
       // confirms each one on the Food log screen.
       ['estimate meals saved offline', () => { void usePendingEstimateStore.getState().drain(); }],
+      // And the recipe estimates saved offline, which only the recipe's own
+      // sheet shows (utils/recipeEstimateQueue.ts).
+      ['estimate recipes saved offline', () => { void usePendingRecipeEstimateStore.getState().drain(); }],
       // Read back any cooking step timer that was still counting down when the
       // app was last closed, and re-arm its alarm (#1712). After useSettingsStore.initialize,
       // which opens the database this reads from; before the permission
@@ -220,6 +224,7 @@ function AppRoot() {
       if (state === 'active') {
         runPendingHealthFoodWrites();
         void usePendingEstimateStore.getState().drain();
+        void usePendingRecipeEstimateStore.getState().drain();
       }
     });
     return () => sub.remove();

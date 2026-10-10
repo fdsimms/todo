@@ -127,6 +127,9 @@ import {
   dbGetPendingEstimates,
   dbSavePendingEstimate,
   dbDeletePendingEstimate,
+  dbGetPendingRecipeEstimates,
+  dbSavePendingRecipeEstimate,
+  dbDeletePendingRecipeEstimate,
   dbUpdateFoodLogEntry,
   dbGetDeviceId,
   dbGetSyncCursor,
@@ -5911,5 +5914,57 @@ describe('pending estimates (the offline food log queue)', () => {
   it('stays out of a backup, since a request belongs to the phone that lost its signal', () => {
     dbSavePendingEstimate(waiting);
     expect(Object.keys(dbExportTables())).not.toContain('pending_estimates');
+  });
+});
+
+describe('pending recipe estimates (the offline recipe queue)', () => {
+  const waiting = {
+    recipeId: 'r1',
+    estimateKey: 'Stew\n4\n1 lb beef|beef|',
+    title: 'Stew',
+    servings: 4,
+    lines: ['1 lb beef', '2 cups stock'],
+    status: 'waiting' as const,
+    estimate: null,
+    error: null,
+    createdAt: '2026-04-01T16:31:00.000Z',
+  };
+
+  it('round-trips a waiting row, fingerprint and lines included', () => {
+    dbSavePendingRecipeEstimate(waiting);
+    expect(dbGetPendingRecipeEstimates()).toEqual([waiting]);
+  });
+
+  it('round-trips a ready row with its estimate', () => {
+    const ready = { ...waiting, status: 'ready' as const, estimate: { amounts: { calorieKcal: 2400 }, confidence: 'medium' as const } };
+    dbSavePendingRecipeEstimate(ready);
+    expect(dbGetPendingRecipeEstimates()).toEqual([ready]);
+  });
+
+  it('keeps one row per recipe', () => {
+    dbSavePendingRecipeEstimate(waiting);
+    dbSavePendingRecipeEstimate({ ...waiting, estimateKey: 'newer' });
+    const rows = dbGetPendingRecipeEstimates();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].estimateKey).toBe('newer');
+  });
+
+  it('reads a ready row whose estimate will not parse as waiting again', () => {
+    dbSavePendingRecipeEstimate({ ...waiting, status: 'ready', estimate: { amounts: { calorieKcal: 1 }, confidence: 'low' } });
+    mockRawDb.exec("UPDATE pending_recipe_estimates SET estimate = '{nope'");
+    expect(dbGetPendingRecipeEstimates()[0]).toMatchObject({ status: 'waiting', estimate: null });
+  });
+
+  it('drops a row with no lines, which could not be asked about', () => {
+    dbSavePendingRecipeEstimate(waiting);
+    mockRawDb.exec("UPDATE pending_recipe_estimates SET lines = '[]'");
+    expect(dbGetPendingRecipeEstimates()).toEqual([]);
+  });
+
+  it('deletes one row, and stays out of a backup', () => {
+    dbSavePendingRecipeEstimate(waiting);
+    expect(Object.keys(dbExportTables())).not.toContain('pending_recipe_estimates');
+    dbDeletePendingRecipeEstimate('r1');
+    expect(dbGetPendingRecipeEstimates()).toEqual([]);
   });
 });

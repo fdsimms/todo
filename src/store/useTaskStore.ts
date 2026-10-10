@@ -147,6 +147,7 @@ import { hasLogOnDay, hasLoggedSince } from '../utils/moodLog';
 import { useFoodLogStore } from './useFoodLogStore';
 import { useSavedMealsStore } from './useSavedMealsStore';
 import { usePendingEstimateStore } from './usePendingEstimateStore';
+import { usePendingRecipeEstimateStore } from './usePendingRecipeEstimateStore';
 import { useMoodStore } from './useMoodStore';
 import { useJournalStore } from './useJournalStore';
 import { useMilestoneStore } from './useMilestoneStore';
@@ -2823,6 +2824,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // read from the live database, so a demo session never shows the real queue
     // and the real queue never reaches the scratch file.
     usePendingEstimateStore.getState().initialize();
+    // The recipe counterpart, for the same demo-mode reason.
+    usePendingRecipeEstimateStore.getState().initialize();
     // On the same fan-out for the plainest version of the reason: the ledger is
     // an account of what the app did to *this* database, so one left pointed at
     // the previous one would report a demo session's invented generators against

@@ -21,6 +21,9 @@ import {
   describeRecipeNutritionEstimate, type RecipeNutritionEstimate,
 } from '../utils/recipeNutritionEstimate';
 import { describeAIError, estimateRecipeNutrition, recipeNutritionEstimateAvailable } from '../services/aiSuggestions';
+import { usePendingRecipeEstimateStore } from '../store/usePendingRecipeEstimateStore';
+import { isQueueableFailure } from '../utils/estimateQueue';
+import { liveFor } from '../utils/recipeEstimateQueue';
 import { EditorSheet } from './EditorSheet';
 import { GroceryItemSheet } from './GroceryItemSheet';
 import { InlineAction } from './InlineAction';
@@ -115,6 +118,11 @@ interface Props {
    * catalog write because the screen's memo watches the same store.
    */
   reading: RecipeNutritionReading;
+  /**
+   * Which recipe this is, for the offline queue only: an estimate saved for later
+   * is filed under it (`utils/recipeEstimateQueue.ts`).
+   */
+  recipeId: string;
   /** For the AI estimate's prompt only — see `runEstimate` below. */
   recipeName: string;
   /** Scaled to whatever the page's scale chips currently say. */
@@ -128,7 +136,7 @@ function formatAmount(key: NutrientKey, amount: number): string {
   return String(Math.round(amount * 10) / 10);
 }
 
-export function RecipeNutritionSheet({ visible, reading, recipeName, servings, onClose }: Props) {
+export function RecipeNutritionSheet({ visible, reading, recipeId, recipeName, servings, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation();
@@ -172,6 +180,8 @@ export function RecipeNutritionSheet({ visible, reading, recipeName, servings, o
   const [estimate, setEstimate] = useState<RecipeNutritionEstimate | null>(null);
   const [estimating, setEstimating] = useState(false);
   const [estimateError, setEstimateError] = useState<string | null>(null);
+  /** Whether the failure on screen is one waiting can fix, so Save for later is offered. */
+  const [queueable, setQueueable] = useState(false);
 
   const { nutrition, gaps, excluded } = reading;
 
@@ -192,7 +202,17 @@ export function RecipeNutritionSheet({ visible, reading, recipeName, servings, o
   useEffect(() => {
     setEstimate(null);
     setEstimateError(null);
+    setQueueable(false);
   }, [estimateKey]);
+
+  // An estimate saved while offline, believed only while its fingerprint is the
+  // one on screen: `liveFor` is the one place that comparison is made, so a row
+  // for an edited or rescaled recipe is simply not shown.
+  const queuedRows = usePendingRecipeEstimateStore(s => s.pending);
+  const queuedRow = useMemo(() => liveFor(queuedRows, recipeId, estimateKey), [queuedRows, recipeId, estimateKey]);
+  // What an estimate asked now would send, and what a saved one sent.
+  const askedLines = () => reading.lines.map(line =>
+    line.prep ? `${line.quantity} ${line.name}, ${line.prep}` : `${line.quantity} ${line.name}`);
   // What the request in flight was asked about, read back after the await:
   // the reset above clears a guess when the recipe changes, but a reply
   // already on its way landed after it, so one recipe's estimate sat under
@@ -207,20 +227,23 @@ export function RecipeNutritionSheet({ visible, reading, recipeName, servings, o
     haptics.tap();
     setEstimating(true);
     setEstimateError(null);
+    setQueueable(false);
     const askedFor = estimateKey;
     const stillHere = () => visibleRef.current && estimateKeyRef.current === askedFor;
     try {
-      const lines = reading.lines.map(line =>
-        line.prep ? `${line.quantity} ${line.name}, ${line.prep}` : `${line.quantity} ${line.name}`);
-      const next = await estimateRecipeNutrition(recipeName, servings, lines);
+      const next = await estimateRecipeNutrition(recipeName, servings, askedLines());
       if (!stillHere()) return;
       setEstimate(next);
+      // An estimate made now answers a saved one for this same reading, which
+      // would otherwise sit behind it asking again at the next launch.
+      if (queuedRow) usePendingRecipeEstimateStore.getState().discard(recipeId);
       haptics.success();
     } catch (e) {
       if (!stillHere()) return;
       // The reason, not a blanket "try again": no key, demo mode and a
       // reply with nothing usable in it are not fixed by waiting.
       setEstimateError(describeAIError(e));
+      setQueueable(isQueueableFailure(e));
       haptics.error();
     } finally {
       // Cleared whichever way it went: the spinner belongs to this sheet, not
@@ -228,6 +251,28 @@ export function RecipeNutritionSheet({ visible, reading, recipeName, servings, o
       setEstimating(false);
     }
   };
+
+  /**
+   * Keeps this reading's estimate to be made when there is a connection. The
+   * sheet shows the result the next time it opens on the same reading.
+   */
+  const saveForLater = () => {
+    haptics.success();
+    usePendingRecipeEstimateStore.getState().enqueue({
+      recipeId,
+      estimateKey,
+      title: recipeName,
+      servings,
+      lines: askedLines(),
+    });
+    setEstimateError(null);
+    setQueueable(false);
+  };
+
+  // What is on screen: one made just now, else one saved while offline that is
+  // ready for this exact reading.
+  const savedEstimate = !estimate && queuedRow?.status === 'ready' ? queuedRow.estimate : null;
+  const shownEstimate = estimate ?? savedEstimate;
 
   // Per serving where the recipe said how many it makes, and the whole dish
   // where it didn't — the same choice `describeNutrition` makes, so the sheet
@@ -421,22 +466,25 @@ export function RecipeNutritionSheet({ visible, reading, recipeName, servings, o
           </Text>
           {recipeNutritionEstimateAvailable() && (
             <View style={styles.estimateBlock}>
-              {estimate ? (
+              {shownEstimate ? (
                 <>
                   {/* Said outright because the real panel above this reads
                       per serving whenever the recipe says how many it makes,
                       and the model is asked for the whole dish: unlabeled,
                       a four-serving stew's estimate read as one bowl. */}
                   <Text style={styles.estimateLabel}>WHOLE RECIPE, ESTIMATED</Text>
-                  {NUTRIENT_KEYS.filter(key => estimate.amounts[key] !== undefined).map(key => (
+                  {NUTRIENT_KEYS.filter(key => shownEstimate.amounts[key] !== undefined).map(key => (
                     <View key={key} style={styles.nutrientRow}>
                       <Text style={styles.nutrientLabel}>{NUTRIENT_LABEL[key].label}</Text>
                       <Text style={styles.nutrientAmount}>
-                        {formatAmount(key, estimate.amounts[key] as number)} {NUTRIENT_LABEL[key].unit}
+                        {formatAmount(key, shownEstimate.amounts[key] as number)} {NUTRIENT_LABEL[key].unit}
                       </Text>
                     </View>
                   ))}
-                  <Text style={styles.hint}>{describeRecipeNutritionEstimate(estimate)}</Text>
+                  <Text style={styles.hint}>
+                    {describeRecipeNutritionEstimate(shownEstimate)}
+                    {savedEstimate ? ' Estimated while you were offline.' : ''}
+                  </Text>
                   <View style={styles.gapActions}>
                     <InlineAction
                       label="Estimate again"
@@ -460,6 +508,49 @@ export function RecipeNutritionSheet({ visible, reading, recipeName, servings, o
                 </View>
               )}
               {!!estimateError && <Text style={styles.gapReason}>{estimateError}</Text>}
+              {queueable && !queuedRow && !estimating && (
+                <View style={styles.gapActions}>
+                  <InlineAction
+                    label="Save for later"
+                    icon="time-outline"
+                    onPress={saveForLater}
+                    accessibilityLabel="Save this recipe's estimate to make later"
+                  />
+                  <Text style={styles.gapReason}>
+                    It is estimated when you open the app online. Reopen this sheet to see it.
+                  </Text>
+                </View>
+              )}
+              {queuedRow?.status === 'waiting' && !shownEstimate && (
+                <View style={styles.gapActions}>
+                  <Text style={styles.gapReason}>
+                    Waiting for a connection. It is estimated when you open the app online.
+                  </Text>
+                  <InlineAction
+                    label="Cancel"
+                    variant="neutral"
+                    onPress={() => { haptics.tap(); usePendingRecipeEstimateStore.getState().discard(recipeId); }}
+                    accessibilityLabel="Cancel the saved estimate"
+                  />
+                </View>
+              )}
+              {queuedRow?.status === 'failed' && !shownEstimate && (
+                <View style={styles.gapActions}>
+                  <Text style={styles.gapReason}>{queuedRow.error ?? 'This could not be estimated.'}</Text>
+                  <InlineAction
+                    label="Try again"
+                    icon="refresh-outline"
+                    onPress={() => { haptics.tap(); void usePendingRecipeEstimateStore.getState().retry(recipeId); }}
+                    accessibilityLabel="Try the saved estimate again"
+                  />
+                  <InlineAction
+                    label="Remove"
+                    variant="neutral"
+                    onPress={() => { haptics.tap(); usePendingRecipeEstimateStore.getState().discard(recipeId); }}
+                    accessibilityLabel="Remove the saved estimate"
+                  />
+                </View>
+              )}
             </View>
           )}
         </View>

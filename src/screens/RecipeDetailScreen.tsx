@@ -2674,6 +2674,7 @@ export function RecipeDetailScreen() {
         <RecipeNutritionSheet
           visible={nutritionSheetOpen}
           reading={nutritionReading}
+          recipeId={recipe.id}
           recipeName={recipe.name}
           servings={recipe.servings === null ? null : recipe.servings * normalizeScale(scale)}
           onClose={() => setNutritionSheetOpen(false)}

@@ -1006,6 +1006,18 @@ kept, and asked about again each time the app comes to the front.
   and syncing one would have a second phone estimate and offer to log the same
   meal. It is not exposed over MCP for the same reason.
 
+The recipe nutrition estimate has the same offline failure and a **fingerprinted
+counterpart** (`utils/recipeEstimateQueue.ts`, `usePendingRecipeEstimateStore`,
+shown only in `RecipeNutritionSheet`). It differs because that estimate is
+display-only and documented as never stored: there is nothing to confirm into,
+so there is no card and no Log, only a row per recipe that the sheet believes
+while its `estimateKey` (name, servings and every ingredient line) still matches
+what is on screen. `liveFor` is the one place that comparison is made. A recipe
+edit or a different scale hides the row rather than deleting it, so scaling back
+shows it again; a newer ask for the recipe replaces it. It is still never written
+to the recipe or the catalog, and it is not seeded in demo mode because the
+sheet builds the key from live catalog data.
+
 ## The Activity rings
 
 Move, Exercise and Stand are a reading like steps is, and every rule above
