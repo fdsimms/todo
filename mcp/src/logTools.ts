@@ -70,6 +70,8 @@ export interface LogFoodInput {
   label: string;
   quantity?: string;
   amounts: Record<string, number>;
+  /** The total split across what the description named. Optional, and each line is checked as the total is. */
+  breakdown?: { label: string; amounts: Record<string, number> }[];
   slot?: MealSlot | null;
   at?: string;
   apply?: boolean;
@@ -85,6 +87,10 @@ export interface LogFoodResult {
   amounts: Partial<Record<NutrientKey, number>>;
   /** Keys that were given but are not nutrients the app records. */
   ignored?: string[];
+  /** The parts as the app read them, when any survived. */
+  breakdown?: { label: string; amounts: Partial<Record<NutrientKey, number>> }[];
+  /** How many given parts were dropped (no name, no readable figures, or past the limit). */
+  breakdownDropped?: number;
   id?: string;
   note: string;
 }
@@ -92,7 +98,7 @@ export interface LogFoodResult {
 export function logFood(replica: Replica, input: LogFoodInput): LogFoodResult {
   const at = atFrom(input.at);
   const read = replica.lib().nutritionEstimate.readNutritionEstimate({
-    label: input.label, quantity: input.quantity ?? '', amounts: input.amounts, basis: 'typical', confidence: 'medium',
+    label: input.label, quantity: input.quantity ?? '', amounts: input.amounts, breakdown: input.breakdown, basis: 'typical', confidence: 'medium',
   });
   if (!read) throw new Error(`A food entry needs a name and at least one amount, keyed by ${ESTIMATE_KEY_LIST.join(', ')}.`);
   // Water is one entry a day, stepped (waterLog.ts), and an entry stating only
@@ -104,6 +110,11 @@ export function logFood(replica: Replica, input: LogFoodInput): LogFoodResult {
   if (stated.length === 1 && stated[0] === 'waterMl') {
     throw new Error('Water is one entry a day, stepped up a glass at a time: use log_water for it rather than log_food.');
   }
+  // Refused rather than trimmed: the model is the one who can fix its own
+  // arithmetic, and a split that does not add up must not reach the entry.
+  const given = replica.lib().nutritionEstimate.readBreakdown(input.breakdown);
+  const mismatch = replica.lib().nutritionEstimate.breakdownMismatch(read.amounts, given);
+  if (mismatch) throw new Error(`The breakdown has to add up to the total. ${mismatch}. Fix the parts or the total and try again.`);
   const ignored = Object.keys(input.amounts ?? {}).filter(k => !(ESTIMATE_KEY_LIST as readonly string[]).includes(k));
   const base = {
     label: read.label,
@@ -111,6 +122,12 @@ export function logFood(replica: Replica, input: LogFoodInput): LogFoodResult {
     ...(input.slot ? { slot: input.slot } : {}),
     amounts: read.amounts,
     ...(ignored.length > 0 ? { ignored } : {}),
+    ...(read.breakdown.length > 0 ? { breakdown: read.breakdown } : {}),
+    // Said rather than silently shortened, so a part that did not take is not
+    // assumed to be on the entry.
+    ...((input.breakdown?.length ?? 0) > read.breakdown.length
+      ? { breakdownDropped: (input.breakdown?.length ?? 0) - read.breakdown.length }
+      : {}),
   };
   if (!input.apply) {
     return {
@@ -119,7 +136,7 @@ export function logFood(replica: Replica, input: LogFoodInput): LogFoodResult {
       note: 'A preview. Show the person these estimated figures; log it with apply: true once they agree. It will be marked as estimated, and the phone will write it to Apple Health the next time the app is opened (if Health writing is on there).',
     };
   }
-  const entry = replica.logFood({ label: input.label, quantity: input.quantity, amounts: input.amounts, slot: input.slot ?? null, at });
+  const entry = replica.logFood({ label: input.label, quantity: input.quantity, amounts: input.amounts, breakdown: input.breakdown, slot: input.slot ?? null, at });
   return {
     applied: true,
     ...base,
@@ -217,7 +234,7 @@ export function logMedication(
 export function updateFoodEntry(
   replica: Replica,
   id: string,
-  patch: { label?: string; quantity?: string; amounts?: Record<string, number>; slot?: MealSlot | null; grams?: number },
+  patch: { label?: string; quantity?: string; amounts?: Record<string, number>; breakdown?: { label: string; amounts: Record<string, number> }[]; slot?: MealSlot | null; grams?: number },
 ) {
   const entry = replica.updateFoodEntry(id, patch);
   // A re-measured entry says what it came to, so the preview and the person

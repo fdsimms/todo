@@ -69,6 +69,62 @@ describe('logFood', () => {
     expect(logged.note).toMatch(/Apple Health/);
   });
 
+  it('keeps a breakdown on the entry, previews it, and says when a part was dropped', () => {
+    const parts: { label: string; amounts: Record<string, number> }[] = [
+      { label: 'Birch beer', amounts: { calorieKcal: 250, vibes: 1 } },
+      { label: 'Soft pretzel', amounts: { calorieKcal: 300 } },
+      { label: '   ', amounts: { calorieKcal: 5 } },
+    ];
+    const preview = logFood(replica, { label: 'Lunch', amounts: { calorieKcal: 550 }, breakdown: parts });
+    expect(preview.breakdown).toEqual([
+      { label: 'Birch beer', amounts: { calorieKcal: 250 } },
+      { label: 'Soft pretzel', amounts: { calorieKcal: 300 } },
+    ]);
+    expect(preview.breakdownDropped).toBe(1);
+    expect(replica.foodLogEntries('2000-01-01', '2100-01-01')).toHaveLength(0);
+
+    const logged = logFood(replica, { label: 'Lunch', amounts: { calorieKcal: 550 }, breakdown: parts, apply: true });
+    const entry = replica.foodLogEntries('2000-01-01', '2100-01-01').find(e => e.id === logged.id)!;
+    expect(entry.nutrition.breakdown).toHaveLength(2);
+    expect(entry.nutrition.source).toBe('estimated');
+  });
+
+  it('refuses a breakdown that does not add up to the total, on log and on update', () => {
+    const off = [{ label: 'Birch beer', amounts: { calorieKcal: 250 } }, { label: 'Pretzel', amounts: { calorieKcal: 400 } }];
+    expect(() => logFood(replica, { label: 'Lunch', amounts: { calorieKcal: 550 }, breakdown: off, apply: true }))
+      .toThrow(/has to add up.*calorieKcal: the parts add up to 650 but the total is 550/);
+    // A preview refuses too, so the person is never shown a split that is wrong.
+    expect(() => logFood(replica, { label: 'Lunch', amounts: { calorieKcal: 550 }, breakdown: off })).toThrow(/has to add up/);
+    expect(replica.foodLogEntries('2000-01-01', '2100-01-01')).toHaveLength(0);
+    // Rounding is allowed for; a real gap is not.
+    expect(logFood(replica, {
+      label: 'Lunch', amounts: { calorieKcal: 550 }, apply: true,
+      breakdown: [{ label: 'Birch beer', amounts: { calorieKcal: 250.4 } }, { label: 'Pretzel', amounts: { calorieKcal: 299.8 } }],
+    }).applied).toBe(true);
+    const logged = logFood(replica, { label: 'Tea', amounts: { calorieKcal: 10 }, apply: true });
+    expect(() => updateFoodEntry(replica, logged.id!, { amounts: { calorieKcal: 900 }, breakdown: [{ label: 'Rice', amounts: { calorieKcal: 500 } }] }))
+      .toThrow(/has to add up/);
+    expect(() => updateFoodEntry(replica, logged.id!, { breakdown: [{ label: 'Rice', amounts: { calorieKcal: 10 } }] }))
+      .toThrow(/give the amounts/);
+  });
+
+  it('logs with no breakdown key when none was given', () => {
+    const logged = logFood(replica, { label: 'Tea', amounts: { calorieKcal: 2 }, apply: true });
+    const entry = replica.foodLogEntries('2000-01-01', '2100-01-01').find(e => e.id === logged.id)!;
+    expect('breakdown' in entry.nutrition).toBe(false);
+    expect(logged.breakdownDropped).toBeUndefined();
+  });
+
+  it('takes a new breakdown with restated amounts on an estimated entry', () => {
+    const logged = logFood(replica, { label: 'Lunch', amounts: { calorieKcal: 600 }, apply: true });
+    updateFoodEntry(replica, logged.id!, {
+      amounts: { calorieKcal: 900 },
+      breakdown: [{ label: 'Rice', amounts: { calorieKcal: 900 } }],
+    });
+    const entry = replica.foodLogEntries('2000-01-01', '2100-01-01').find(e => e.id === logged.id)!;
+    expect(entry.nutrition.breakdown).toEqual([{ label: 'Rice', amounts: { calorieKcal: 900 } }]);
+  });
+
   it('refuses an entry with no figures', () => {
     expect(() => logFood(replica, { label: 'Tea', amounts: {} })).toThrow(/at least one amount/);
   });
@@ -309,6 +365,23 @@ describe('changing the amount of a measured food entry', () => {
     expect(() => updateFoodEntry(replica, synced.id, { grams: 23 })).toThrow(/Apple Health/);
     const bare = logMeasured(10, { sourcePanel: null });
     expect(() => updateFoodEntry(replica, bare.id, { grams: 23 })).toThrow(/no food record/);
+  });
+
+  it('drops an estimate\'s breakdown when its figures are restated, since the lines no longer add up', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const db = require('../../../src/db/database') as typeof import('../../../src/db/database');
+    const logged = logFood(replica, { label: 'Lunch', quantity: '1 plate', amounts: { calorieKcal: 600 }, apply: true });
+    const row = all().find(e => e.id === logged.id)!;
+    db.dbUpdateFoodLogEntry({
+      ...row,
+      nutrition: { ...row.nutrition, breakdown: [{ label: 'Rice', amounts: { calorieKcal: 600 } }] },
+    });
+    replica.refresh();
+    // A new amount text alone leaves the figures, and so the lines, as they were.
+    updateFoodEntry(replica, row.id, { quantity: '1 big plate' });
+    expect(all().find(e => e.id === row.id)!.nutrition.breakdown).toHaveLength(1);
+    updateFoodEntry(replica, row.id, { amounts: { calorieKcal: 900 } });
+    expect(all().find(e => e.id === row.id)!.nutrition.breakdown).toBeUndefined();
   });
 
   it('leaves estimated entries as they were: quantity and amounts still restate, grams is refused', () => {
