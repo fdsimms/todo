@@ -10,6 +10,7 @@ import { useCategoryStore, ensureHealthCategory } from '../../store/useCategoryS
 import { categoryLabel } from '../../utils/categoryLabel';
 import { PillGroup } from '../../components/PillGroup';
 import { CountStepper } from '../../components/CountStepper';
+import { HEALTH_ROW_KEYS, HEALTH_ROW_LABELS } from '../../utils/dayContextRows';
 import { STEP_GOAL_DEFAULT, STEP_GOAL_MAX, STEP_GOAL_MIN, STEP_GOAL_STEP } from '../../utils/stepGoal';
 import { ActivityRingsCard } from '../../components/ActivityRingsCard';
 import { HEALTH_WRITABLE_NUTRIENTS } from '../../types';
@@ -103,6 +104,8 @@ export function HealthSettings() {
   const stepGoal = useSettingsStore(s => s.stepGoal);
   const setStepGoal = useSettingsStore(s => s.setStepGoal);
   const setHealthCategory = useSettingsStore(s => s.setHealthCategory);
+  const healthTodayHidden = useSettingsStore(s => s.healthTodayHidden);
+  const setHealthTodayHidden = useSettingsStore(s => s.setHealthTodayHidden);
   const weightUnit = useSettingsStore(s => s.weightUnit);
   const weightGoal = useSettingsStore(useShallow(s => s.weightGoal));
   const setWeightUnit = useSettingsStore(s => s.setWeightUnit);
@@ -435,6 +438,39 @@ export function HealthSettings() {
               }))}
             />
           </View>
+          {healthCategory && (
+            <>
+              <View style={styles.sep} />
+              <SettingsRow
+                entryId="healthTodayRows"
+                icon="list-outline"
+                label="Readings shown"
+                hint="Turn off a reading to leave its row off Today."
+                tight
+              />
+              <View style={styles.pillGroupRow}>
+                <PillGroup
+                  noun="reading"
+                  options={HEALTH_ROW_KEYS.map(key => {
+                    const label = HEALTH_ROW_LABELS[key];
+                    const shown = !healthTodayHidden.includes(key);
+                    return {
+                      key,
+                      label,
+                      selected: shown,
+                      accessibilityLabel: `${label} on Today: ${shown ? 'shown' : 'hidden'}`,
+                      onPress: () => {
+                        haptics.tap();
+                        setHealthTodayHidden(
+                          shown ? [...healthTodayHidden, key] : healthTodayHidden.filter(k => k !== key),
+                        );
+                      },
+                    };
+                  })}
+                />
+              </View>
+            </>
+          )}
         </>
       )}
     </SettingsSection>

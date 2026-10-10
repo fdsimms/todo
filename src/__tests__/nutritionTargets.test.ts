@@ -8,6 +8,7 @@ import {
   describeLimitImpact,
   limitImpact,
   limitStatus,
+  limitsShownOnToday,
   parseNutritionLimits,
   serializeNutritionLimits,
   parseFoodLogPinnedNutrients,
@@ -304,5 +305,19 @@ describe('limitImpact', () => {
   it('reads plainly below the limit', () => {
     const [impact] = limitImpact({ sugarG: 10 }, { sugarG: 5 }, targets, [...limits]);
     expect(describeLimitImpact(impact)).toBe('Puts you at 15 of 35g total sugars');
+  });
+});
+
+describe('limitsShownOnToday', () => {
+  it('drops the hidden limits and keeps the order of the rest', () => {
+    expect(limitsShownOnToday(['satFatG', 'sodiumMg', 'sugarG'], ['sodiumMg'])).toEqual(['satFatG', 'sugarG']);
+  });
+
+  it('shows every limit when none is hidden', () => {
+    expect(limitsShownOnToday(['satFatG', 'sodiumMg'], [])).toEqual(['satFatG', 'sodiumMg']);
+  });
+
+  it('ignores a hidden nutrient that is not a limit', () => {
+    expect(limitsShownOnToday(['satFatG'], ['sodiumMg'])).toEqual(['satFatG']);
   });
 });

@@ -5,7 +5,9 @@ import {
   eventContextRows,
   startsInLabel,
   mealContextRows,
+  goalContextRows,
   healthContextRows,
+  parseHealthRowKeys,
   limitContextRows,
   insertContextRows,
   withoutContextRows,
@@ -277,6 +279,17 @@ describe('healthContextRows', () => {
   const reading = (steps: number | null, activeEnergyKcal: number | null) =>
     ({ dayKey: TODAY, steps, activeEnergyKcal });
 
+  it('leaves off a reading the person hid, and keeps the others', () => {
+    const rows = healthContextRows(reading(4120, 300), { ...opts, hidden: ['steps'] });
+    expect(rows.map(r => r.id)).toEqual(['health-activeEnergy']);
+  });
+
+  it('reads a stored hidden list back in order and drops anything unknown', () => {
+    expect(parseHealthRowKeys('["rings","bogus","steps"]')).toEqual(['steps', 'rings']);
+    expect(parseHealthRowKeys('nope')).toEqual([]);
+    expect(parseHealthRowKeys(null)).toEqual([]);
+  });
+
   it('says the count, with no caption', () => {
     const rows = healthContextRows(reading(4120, null), opts);
     expect(rows.map(r => [r.kind, r.title, r.caption]))
@@ -479,5 +492,25 @@ describe('health row visuals', () => {
     expect(healthContextRows({ dayKey: TODAY, steps: null, activeEnergyKcal: 250, rings: noGoal }, opts)[0].visual).toBeUndefined();
     expect(healthContextRows({ dayKey: TODAY, steps: null, activeEnergyKcal: 250, rings: { ...rings, moveByTime: true } }, opts)[0].visual).toBeUndefined();
     expect(healthContextRows({ dayKey: TODAY, steps: null, activeEnergyKcal: 250 }, opts)[0].visual).toBeUndefined();
+  });
+});
+
+describe('goalContextRows', () => {
+  const targets = { proteinG: 120, sodiumMg: 2000, fiberG: 30, waterMl: 2000 };
+  const opts = { category: 'Health' };
+
+  it('draws a row per target that is not a limit, with a bar and no tone', () => {
+    const rows = goalContextRows({ proteinG: 60, fiberG: 45 }, targets, ['sodiumMg'], opts);
+    expect(rows.map(r => r.id)).toEqual(['goal-fiberG', 'goal-proteinG']);
+    const protein = rows.find(r => r.id === 'goal-proteinG')!;
+    expect(protein.title).toBe('Protein 60 of 120g');
+    expect(protein.tone).toBeUndefined();
+    expect(protein.visual).toEqual({ type: 'bar', fraction: 0.5 });
+    expect(rows.find(r => r.id === 'goal-fiberG')!.visual).toEqual({ type: 'bar', fraction: 1 });
+  });
+
+  it('leaves out water and the nutrients the person hid', () => {
+    const rows = goalContextRows({}, targets, [], { ...opts, hidden: ['fiberG'] });
+    expect(rows.map(r => r.id)).toEqual(['goal-proteinG', 'goal-sodiumMg']);
   });
 });

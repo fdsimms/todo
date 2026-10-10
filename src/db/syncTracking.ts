@@ -534,8 +534,13 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'nutritionLimits',
   'limitWarnPercent',
   'limitsTodayCategory',
+  'limitsTodayHidden',
+  'goalsTodayCategory',
+  'goalsTodayHidden',
   // The steps row's goal on Today. A typed-in preference.
   'stepGoal',
+  // Which Health readings Today draws a row for.
+  'healthTodayHidden',
   // The journal's daily word goal. A typed-in preference, and a count of words
   // rather than anything written, so it needs no switch of its own.
   'journalWordGoal',
