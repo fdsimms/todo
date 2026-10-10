@@ -153,6 +153,7 @@ export const WRITE_TOOLS: Record<string, { title: string; destructive: boolean; 
   delete_task: { title: 'Delete tasks', destructive: true, idempotent: false },
   update_settings: { title: 'Change settings', destructive: true, idempotent: true },
   archive_medication: { title: 'Archive a medicine', destructive: false, idempotent: true },
+  rename_medication: { title: 'Rename or combine a medicine', destructive: true, idempotent: false },
   set_supplement_nutrients: { title: 'Set what a supplement contains', destructive: true, idempotent: true },
   rename_mood_tag: { title: 'Rename a mood tag', destructive: true, idempotent: true },
   skip_occurrence: { title: 'Skip an occurrence', destructive: false, idempotent: false },

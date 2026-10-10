@@ -217,6 +217,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/medicationExport.ts` — MEDICATION_EXPORT_COLUMNS, medicationExportCsv, medicationExportFileName, medicationExportSummary
 - `src/utils/medicationIndex.ts` — MedicationIndexEntry, MAX_MEDICATION_INDEX_ENTRIES, buildMedicationIndex, QueuedDose, parseQueuedDoses, resolveQueuedDoseName
 - `src/utils/medicationLog.ts` — DOSE_UNITS, MIN_TREND_DOSES, MedicationDose, MedicationSource, medicationFor, medicationKey, medicationVocabulary, ARCHIVED_MEDICATIONS_SETTING_KEY, parseArchivedMedications, logsOnDay, +15 more
+- `src/utils/medicationRename.ts` — DoseFill, renamedLogs, renamedSettings, renamedKeys, renamedChain, renamedTask, renamedTemplateItem, splitStrength
+- `src/utils/medicationRenameApply.ts` — renameMedicationEverywhere
 - `src/utils/medicationSettings.ts` — MEDICATION_SETTINGS_KEY, MedicationLimit, MedicationSupply, SupplementPanel, MedicationPrefs, MedicationSettingsMap, SUPPLY_UNITS, PANEL_UNITS, parseMedicationSettings, prefsFor, +13 more
 - `src/utils/medicationSummary.ts` — SummaryPreset, SummaryRange, summaryRange, rangeDays, describeRange, SummaryCandidate, summaryCandidates, missedCountsByMedication, DoseAmount, DoseRun, +15 more
 - `src/utils/meters.ts` — METER_CHECK_IN_DAYS, METER_RATE_MIN_DAYS, METER_RATE_WINDOW_DAYS, METER_NAME_MAX_LENGTH, meterKey, canFollowMeter, hasMeter, NO_METER, readingsFor, latestReading, +23 more

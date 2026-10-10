@@ -457,6 +457,17 @@ task that keeps completing can't leave a medicine archived while it is still
 being logged. Don't add a separate restore step to any other write path: it
 goes through `addLog`.
 
+### Renaming a medication, and folding two into one
+
+`medicationKey` never folds names on its own, so "Ibuprofen 200" and "Ibuprofen 400"
+are two medications until a person renames one onto the other (the Rename action on
+the medication's page). Because a medication is only a name, the rename is a rewrite of
+every place the name is written: the doses, `medication_settings`, the archived and
+milestone-dismissed key lists, and the tasks, chain steps and template items that
+record a dose (`renameMedicationEverywhere`). Folding keeps the **target's** limit and
+supply, and a dose keeps its own `amount`/`unit`; the sheet can stamp a strength onto
+doses that recorded none, so combining doesn't lose what the old name was carrying.
+
 ### A supplement's nutrients
 
 A medication can carry what one serving contains (`MedicationPrefs.nutrition`, a

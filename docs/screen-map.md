@@ -36,7 +36,7 @@ components below.
 - `src/screens/KitchenScreen.tsx` — ActiveTripBanner, BarcodeScanSheet, CookWithSheet, EmptyState, GroceryItemSheet, HubPills, InlineAction, ItemDisposalOffer, LazySheet, LeftoverSheet, PantryReviewSheet, PressableScale, +5 more
 - `src/screens/LogbookScreen.tsx` — CardSheet, DeliverablePromptSheet, EmptyState, HighlightedText, HubPills, LogbookEntryMenu, LogbookFilterSheet, PaintSelection, RotationWeekSheet, ScreenHeader, ScreenSettingsSheet, ScrollToTopButton, +6 more
 - `src/screens/MealPlanScreen.tsx` — ActiveTripBanner, AddMealsToListSheet, FabDropZones, FridgeHistorySheet, HubPills, InlineAction, LazySheet, LeftoverSheet, LeftoversCard, ListBulkBar, MealEntrySheet, MealReplaceItemSheet, +13 more
-- `src/screens/MedicationDetailScreen.tsx` — CountStepper, DetailHeader, EmptyState, InlineAction, MedicationLogSheet, ScrollToTopButton, SegmentedControl, SupplementPanelSheet
+- `src/screens/MedicationDetailScreen.tsx` — CountStepper, DetailHeader, EmptyState, InlineAction, MedicationLogSheet, MedicationRenameSheet, ScrollToTopButton, SegmentedControl, SupplementPanelSheet
 - `src/screens/MedicationScreen.tsx` — DeliverablePromptQueue, EmptyState, HubPills, InlineAction, MedicationLogSheet, MedicationSummarySheet, PressableScale, ScreenHeader, ScrollToTopButton, SheetUndoBar
 - `src/screens/MetersScreen.tsx` — EmptyState, HubPills, InlineAction, MeterReadingSheet, ScreenHeader, TaskEditor
 - `src/screens/MoodDayScreen.tsx` — DetailHeader, EmptyState, JournalEntrySheet, JournalText, MoodLogSheet
@@ -202,6 +202,7 @@ Where each component can appear.
 - `src/components/MealReplaceItemSheet.tsx` — on MealPlanScreen
 - `src/components/MealSlotRow.tsx` — on MealPlanScreen
 - `src/components/MedicationLogSheet.tsx` — on MedicationDetailScreen, MedicationScreen
+- `src/components/MedicationRenameSheet.tsx` — on MedicationDetailScreen
 - `src/components/MedicationSummarySheet.tsx` — on MedicationScreen
 - `src/components/MergeItemSheet.tsx` — on GroceryScreen, KitchenScreen, RecipeDetailScreen
 - `src/components/MeterReadingSheet.tsx` — on CalendarScreen, CategoryDetailScreen, MetersScreen, ProjectDetailScreen, SavedViewDetailScreen, StackDetailScreen, TagsScreen, TodayScreen

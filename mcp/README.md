@@ -107,7 +107,7 @@ only the fallback until the first sync.
 | `log_food` | **Write.** Something eaten, with estimated nutrition. Previews unless `apply: true`; marked estimated; written to Apple Health by the phone on its next foreground, not by the server. Refuses water, which is `log_water`'s. |
 | `log_water` | **Write.** A glass of water, in ml or fl oz, added onto the day's single water entry the way the app's stepper does. Reports the day's total in the person's own unit. Written to Apple Health by the phone on its next foreground, not by the server. |
 | `log_mood` / `log_medication` | **Write.** A mood check-in, or a dose taken, in the spellings already in the log. |
-| `archive_medication` / `rename_mood_tag` | **Write.** Archive or restore a medicine in the medicines list; rename a mood context tag on every check-in that has it. |
+| `archive_medication` / `rename_medication` / `rename_mood_tag` | **Write.** Archive or restore a medicine in the medicines list; rename a medicine on every dose and in its limit, supply and tasks (naming an existing medicine combines the two); rename a mood context tag on every check-in that has it. |
 | `set_supplement_nutrients` | **Write.** What one serving of a supplement contains, from its label (or cleared). Each later dose adds those vitamins and minerals to the day's food log. |
 | `list_automations` | Every automation, whether it is on and what it needs on the phone, and every rule written for them. |
 | `get_settings` / `update_settings` | Read and **Write.** The person's preferences that sync (the day, task defaults, feature areas, rewards, kitchen, automation parameters), each with what it does. Device-local settings are changed on the device. |

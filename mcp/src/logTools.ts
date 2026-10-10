@@ -397,6 +397,21 @@ export function setMedicationArchived(replica: Replica, name: string, archived: 
   return { medicine: replica.setMedicationArchived(name, archived), archived };
 }
 
+/** Rename a medicine everywhere, or combine it into another. See `Replica.renameMedication`. */
+export function renameMedication(
+  replica: Replica,
+  from: string,
+  to: string,
+  fill?: { amount?: number; unit?: string },
+): { from: string; to: string; doses: number } {
+  const hasAmount = fill?.amount !== undefined;
+  const hasUnit = !!fill?.unit?.trim();
+  if (hasAmount !== hasUnit) throw new Error('Give fillAmount and fillUnit together ("200" and "mg"), or neither.');
+  if (hasAmount && !(Number.isFinite(fill!.amount) && fill!.amount! > 0)) throw new Error('fillAmount must be a number greater than 0.');
+  const out = replica.renameMedication(from, to, hasAmount ? { amount: fill!.amount!, unit: fill!.unit!.trim() } : null);
+  return { from: out.from, to: to.trim(), doses: out.doses };
+}
+
 /** Correct a mood context tag everywhere it was logged. */
 export function renameMoodTag(replica: Replica, from: string, to: string): { from: string; to: string; checkIns: number } {
   return { from, to: to.trim(), checkIns: replica.renameMoodTag(from, to) };

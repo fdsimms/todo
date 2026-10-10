@@ -208,6 +208,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     setMedicationArchived: () => { throw new Error('not stubbed'); },
     setSupplementPanel: () => { throw new Error('not stubbed'); },
     renameMoodTag: () => { throw new Error('not stubbed'); },
+    renameMedication: () => { throw new Error('not stubbed'); },
     settingValues: () => ({}),
     applySettings: () => { throw new Error('not stubbed'); },
     activeTrip: () => null,
