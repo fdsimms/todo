@@ -24,6 +24,12 @@ import { EXTERNAL_NUTRIENT_KEYS } from '../types';
  * only way to keep it current, which is the same trade a stored one would
  * have forced onto every other reader instead.
  *
+ * **One bounded exception: an estimate asked for with no connection** is kept
+ * until one can be made (`recipeEstimateQueue.ts`). It is a cache the sheet
+ * declines to believe unless its fingerprint (`estimateKey`) still matches what
+ * is on screen, so it is still display-only, still never a total anything else
+ * reads, and still gone from view the moment the recipe changes.
+ *
  * **No basis, no attribution.** `NutritionEstimate` (a restaurant meal) draws
  * a real distinction between a chain's published figures and the model's own
  * guess. A home recipe has no menu to publish for the *specific ingredients

@@ -124,6 +124,12 @@ import {
   dbGetFoodLogEntry,
   dbInsertSavedMeal,
   dbGetSavedMeals,
+  dbGetPendingEstimates,
+  dbSavePendingEstimate,
+  dbDeletePendingEstimate,
+  dbGetPendingRecipeEstimates,
+  dbSavePendingRecipeEstimate,
+  dbDeletePendingRecipeEstimate,
   dbUpdateFoodLogEntry,
   dbGetDeviceId,
   dbGetSyncCursor,
@@ -5840,5 +5846,125 @@ describe('a saved meal item\'s kept panel', () => {
     mockRawDb.exec('DELETE FROM saved_meals;');
     dbReplaceAllData(parsed.backup.tables);
     expect(dbGetSavedMeals()[0].items[0].sourcePanel).toEqual(chicken);
+  });
+});
+
+describe('pending estimates (the offline food log queue)', () => {
+  const waiting = {
+    id: 'p1',
+    description: 'cheeseburger and fries',
+    slot: 'lunch' as const,
+    atISO: '2026-04-01T16:30:00.000Z',
+    mealPlanEntryId: null,
+    context: [{ label: 'My chili', quantity: '1 bowl', amounts: { calorieKcal: 400 } }],
+    status: 'waiting' as const,
+    estimate: null,
+    estimatedAtISO: null,
+    error: null,
+    createdAt: '2026-04-01T16:31:00.000Z',
+  };
+  const estimate = {
+    label: 'Cheeseburger and fries',
+    quantity: '1 burger and a regular fries',
+    amounts: { calorieKcal: 1100 },
+    basis: 'typical' as const,
+    confidence: 'medium' as const,
+    attribution: null,
+    questions: [],
+    breakdown: [],
+  };
+
+  it('round-trips a waiting meal with its context', () => {
+    dbSavePendingEstimate(waiting);
+    expect(dbGetPendingEstimates()).toEqual([waiting]);
+  });
+
+  it('round-trips a ready meal with its estimate', () => {
+    const ready = { ...waiting, status: 'ready' as const, estimate, estimatedAtISO: '2026-04-01T20:00:00.000Z' };
+    dbSavePendingEstimate(ready);
+    expect(dbGetPendingEstimates()).toEqual([ready]);
+  });
+
+  it('rewrites a meal in place when its id is saved again', () => {
+    dbSavePendingEstimate(waiting);
+    dbSavePendingEstimate({ ...waiting, status: 'failed', error: 'Check your API key in Settings.' });
+    const rows = dbGetPendingEstimates();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ status: 'failed', error: 'Check your API key in Settings.' });
+  });
+
+  it('reads a ready meal whose estimate will not parse as waiting again, not lost', () => {
+    dbSavePendingEstimate({ ...waiting, status: 'ready', estimate, estimatedAtISO: '2026-04-01T20:00:00.000Z' });
+    mockRawDb.exec("UPDATE pending_estimates SET estimate = '{not json'");
+    expect(dbGetPendingEstimates()[0]).toMatchObject({ status: 'waiting', estimate: null, estimatedAtISO: null });
+  });
+
+  it('lists them in the order the meals were eaten', () => {
+    dbSavePendingEstimate({ ...waiting, id: 'dinner', atISO: '2026-04-01T23:00:00.000Z' });
+    dbSavePendingEstimate({ ...waiting, id: 'lunch' });
+    expect(dbGetPendingEstimates().map(p => p.id)).toEqual(['lunch', 'dinner']);
+  });
+
+  it('deletes one meal', () => {
+    dbSavePendingEstimate(waiting);
+    dbDeletePendingEstimate('p1');
+    expect(dbGetPendingEstimates()).toEqual([]);
+  });
+
+  it('stays out of a backup, since a request belongs to the phone that lost its signal', () => {
+    dbSavePendingEstimate(waiting);
+    expect(Object.keys(dbExportTables())).not.toContain('pending_estimates');
+  });
+});
+
+describe('pending recipe estimates (the offline recipe queue)', () => {
+  const waiting = {
+    recipeId: 'r1',
+    estimateKey: 'Stew\n4\n1 lb beef|beef|',
+    title: 'Stew',
+    servings: 4,
+    lines: ['1 lb beef', '2 cups stock'],
+    status: 'waiting' as const,
+    estimate: null,
+    error: null,
+    createdAt: '2026-04-01T16:31:00.000Z',
+  };
+
+  it('round-trips a waiting row, fingerprint and lines included', () => {
+    dbSavePendingRecipeEstimate(waiting);
+    expect(dbGetPendingRecipeEstimates()).toEqual([waiting]);
+  });
+
+  it('round-trips a ready row with its estimate', () => {
+    const ready = { ...waiting, status: 'ready' as const, estimate: { amounts: { calorieKcal: 2400 }, confidence: 'medium' as const } };
+    dbSavePendingRecipeEstimate(ready);
+    expect(dbGetPendingRecipeEstimates()).toEqual([ready]);
+  });
+
+  it('keeps one row per recipe', () => {
+    dbSavePendingRecipeEstimate(waiting);
+    dbSavePendingRecipeEstimate({ ...waiting, estimateKey: 'newer' });
+    const rows = dbGetPendingRecipeEstimates();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].estimateKey).toBe('newer');
+  });
+
+  it('reads a ready row whose estimate will not parse as waiting again', () => {
+    dbSavePendingRecipeEstimate({ ...waiting, status: 'ready', estimate: { amounts: { calorieKcal: 1 }, confidence: 'low' } });
+    mockRawDb.exec("UPDATE pending_recipe_estimates SET estimate = '{nope'");
+    expect(dbGetPendingRecipeEstimates()[0]).toMatchObject({ status: 'waiting', estimate: null });
+  });
+
+  it('drops a row with no lines, which could not be asked about', () => {
+    dbSavePendingRecipeEstimate(waiting);
+    mockRawDb.exec("UPDATE pending_recipe_estimates SET lines = '[]'");
+    expect(dbGetPendingRecipeEstimates()).toEqual([]);
+  });
+
+  it('deletes one row, and stays out of a backup', () => {
+    dbSavePendingRecipeEstimate(waiting);
+    expect(Object.keys(dbExportTables())).not.toContain('pending_recipe_estimates');
+    dbDeletePendingRecipeEstimate('r1');
+    expect(dbGetPendingRecipeEstimates()).toEqual([]);
   });
 });

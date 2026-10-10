@@ -964,6 +964,60 @@ migration is partial.** Log half of Tuesday here and half in Cronometer and
 Tuesday reads as whichever half was larger, not as the day. That is the safe
 direction and it is not an obvious one.
 
+### A meal described with no signal waits as a description, never as an entry
+
+`utils/estimateQueue.ts`, `usePendingEstimateStore`, `PendingEstimatesCard`. When
+the estimate request fails for a reason waiting can fix (no connection, a
+timeout, a rate limit, a 5xx), the panel offers **Save for later**. The meal is
+kept, and asked about again each time the app comes to the front.
+
+- **The queue holds descriptions and the estimates that come back for them,
+  never a food log entry.** The estimate rule above (a figure exists because a
+  person confirmed it) is why: a queued meal that logged itself when the signal
+  returned would be an estimate stored unconfirmed. So a drain only moves a meal
+  from *waiting* to *ready*, and Log on the Food log screen's card is the
+  confirmation. Until then it is in no day's totals and nothing reaches Health.
+- **It keeps when the meal was eaten.** `atISO` is the moment being logged for,
+  so confirming at bedtime still files it under lunch, and `log` passes it to
+  `addEntry` as `at`.
+- **Only a failure waiting can fix is queued** (`isQueueableFailure`, which
+  mirrors `describeAIError`'s order). A rejected key (401), a missing key, a
+  switched-off feature, demo mode, any other 4xx and an unreadable description
+  would fail identically on every retry, so they show inline as before. A meal
+  that reaches the API and is refused for one of those during a drain is marked
+  *failed* with the reason and left for Try again or Remove.
+- **Nothing is deleted on the app's behalf.** What somebody typed is their
+  input, so there is no expiry; the queue is capped at 20 and refuses past it.
+- **A drain stops at the first failure waiting can fix**, since the rest would
+  fail the same way, so an offline phone costs one request per return to the app.
+  It runs at launch and on foreground only, and is a no-op in demo mode.
+- **A ready meal can be refined before it is logged.** Log on the card writes
+  the figures as returned. Refine opens the same `EstimatePanel` inside the add
+  sheet, already on the saved estimate with its questions, using the meal's own
+  slot and moment rather than the day being viewed (`reviewing` on
+  `FoodLogEntrySheet` and `EstimatePanel`). An answer or a typed amount re-asks
+  the model as it does for a fresh estimate, so it needs the connection the
+  queue was waiting for; a refinement that fails keeps the estimate and its Log
+  button. Logging from the panel removes the queued row, and dismissing the
+  panel leaves it. Save for later is offered only for a first ask, never for a
+  refinement, so answers are never folded into a saved description twice.
+- **Device-local.** `pending_estimates` is in both `BACKUP_EXCLUDED_TABLES` and
+  `SYNC_EXCLUDED_TABLES`: a request belongs to the phone that lost its signal,
+  and syncing one would have a second phone estimate and offer to log the same
+  meal. It is not exposed over MCP for the same reason.
+
+The recipe nutrition estimate has the same offline failure and a **fingerprinted
+counterpart** (`utils/recipeEstimateQueue.ts`, `usePendingRecipeEstimateStore`,
+shown only in `RecipeNutritionSheet`). It differs because that estimate is
+display-only and documented as never stored: there is nothing to confirm into,
+so there is no card and no Log, only a row per recipe that the sheet believes
+while its `estimateKey` (name, servings and every ingredient line) still matches
+what is on screen. `liveFor` is the one place that comparison is made. A recipe
+edit or a different scale hides the row rather than deleting it, so scaling back
+shows it again; a newer ask for the recipe replaces it. It is still never written
+to the recipe or the catalog, and it is not seeded in demo mode because the
+sheet builds the key from live catalog data.
+
 ## The Activity rings
 
 Move, Exercise and Stand are a reading like steps is, and every rule above
