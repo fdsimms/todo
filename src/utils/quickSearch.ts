@@ -8,6 +8,7 @@ import {
   type GroupSearchResult,
   type ProjectSearchResult,
 } from './fuzzySearch';
+import { isTaskVisible } from './visibilityUtils';
 import { collapseOccurrences, type CollapsedOccurrence } from './searchCollapse';
 
 /**
@@ -45,6 +46,9 @@ export interface QuickSearchOutcome {
  * my packing list" is a navigational lookup, not a task search) — the budget is
  * spent on them first and tasks take whatever's left. A query that hits only
  * tasks behaves exactly as it always did.
+ *
+ * Tasks that are visible on Today lead those held for later (deferred,
+ * future-dated or undated), which lead completed ones.
  *
  * Completed tasks stay in (finding something you already ticked is half of
  * why you search) but sort behind the active ones: the card has no
@@ -88,8 +92,13 @@ export function quickSearch(
   );
 
   const active = (r: SearchResult) => ranksAsActive(r.task, heldIds);
+  // Live work splits again: what is on Today right now leads what is
+  // scheduled for later or has no date, since a habit due today is far more
+  // likely the one being looked for than the same words on a future task.
+  const onToday = (r: SearchResult) => active(r) && (heldIds.has(r.task.id) || isTaskVisible(r.task));
   const orderedTasks = [
-    ...taskMatches.filter(active),
+    ...taskMatches.filter(onToday),
+    ...taskMatches.filter(r => active(r) && !onToday(r)),
     ...taskMatches.filter(r => !active(r)),
   ];
 

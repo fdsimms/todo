@@ -261,6 +261,16 @@ describe('quickSearch', () => {
     });
   });
 
+  describe('tasks held for later', () => {
+    it('sorts them behind tasks on Today even when they score higher', () => {
+      const tasks = [
+        makeTask({ id: 'later', title: 'Water', deferUntil: '2999-01-01T00:00:00.000Z' }),
+        makeTask({ id: 'today', title: 'Drink the water', dueDate: new Date(2020, 0, 1).toISOString() }),
+      ];
+      expect(quickSearch(tasks, 'water').results.map(r => r.task.id)).toEqual(['today', 'later']);
+    });
+  });
+
   describe('holding a task ticked from the card', () => {
     it('leaves a held task exactly where it sat before it was ticked', () => {
       // The whole point of the hold: ticking a row must not move it. A held
