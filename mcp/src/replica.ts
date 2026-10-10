@@ -870,6 +870,10 @@ export interface MedicationSettingsView {
   dosesInLast24h?: number;
   /** When the next dose is within the limit, if it isn't now. */
   withinLimitAgainAt?: string;
+  /** "Per 2 tablets: 15 nutrients", what a serving of a supplement contains, as the person typed it. */
+  nutrients?: string;
+  /** "Vitamin C 90 mg, Magnesium 100 mg, and 3 more". */
+  nutrientsDetail?: string;
   /** "9 doses left". */
   supplyLeft?: string;
 }
@@ -1224,6 +1228,12 @@ export interface Replica {
   updateMedicationLog(id: string, patch: DosePatch): MedicationLog;
   /** Move a medicine out of "what you take", or back. Deletes no doses. Returns the name as the log spells it. */
   setMedicationArchived(name: string, archived: boolean): string;
+  /**
+   * Set (or, with null, clear) what one serving of a medicine contains. Doses
+   * recorded after it add those nutrients to the food log; earlier doses keep
+   * what they added. Returns the name in the spelling already in the log.
+   */
+  setSupplementPanel(name: string, panel: import('../../src/utils/medicationSettings').SupplementPanel | null): string;
   /** Correct a mood context tag's text on every check-in that has it, as the app's rename does. Returns how many changed. */
   renameMoodTag(from: string, to: string): number;
   deleteMedicationLog(id: string): MedicationLog;
@@ -1984,6 +1994,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const moodHistory = require('../../src/utils/moodHistory') as MoodHistoryModule;
   const medication = require('../../src/utils/medicationLog') as MedicationModule;
   const medicationSettings = require('../../src/utils/medicationSettings') as MedicationSettingsModule;
+  const supplementDose = require('../../src/utils/supplementDose') as typeof import('../../src/utils/supplementDose'); // eslint-disable-line @typescript-eslint/no-require-imports
   const rewards = require('../../src/utils/rewards') as RewardsModule;
   const negativeHabits = require('../../src/utils/negativeHabits') as NegativeHabitsModule;
   const rewardGuard = require('../../src/utils/rewardGuard') as RewardGuardModule;
@@ -2595,7 +2606,71 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     });
     return { items, itemGroups, questions };
   }
-  const { useMedicationStore } = require('../../src/store/useMedicationStore') as typeof import('../../src/store/useMedicationStore');
+  const { useMedicationStore, setDoseEffects } = require('../../src/store/useMedicationStore') as typeof import('../../src/store/useMedicationStore');
+
+  // ---- supplement doses ---------------------------------------------------
+
+  /**
+   * What a supplement dose adds to the food log, for a dose recorded here.
+   *
+   * The app installs the food log store's version of this (`supplementDoseSync.ts`);
+   * this process can't load that store, so it writes the same entry through
+   * `buildFood`, flagged for the phone to write to Apple Health. Editing or
+   * removing a dose follows the rule `deleteFoodEntry` keeps: an entry already
+   * in Health is left alone, because only the phone can take its samples back
+   * out. The dose changes and the entry stays, until it is deleted in the app.
+   */
+  {
+    const supplement = supplementDose;
+    const entryOf = (log: MedicationLog): FoodLogEntry | null => {
+      const keys = new Set([dates.getLogicalDayKey(new Date(log.takenAt)), log.dayKey]);
+      for (const key of keys) {
+        const hit = supplement.entryForDose(db.dbGetFoodLogEntries(key, key), log.id);
+        if (hit) return hit;
+      }
+      return null;
+    };
+    const write = (log: MedicationLog): void => {
+      // From the database rather than the store: this process never loads the
+      // store's settings, and a panel set from the phone arrives by sync.
+      const map = medicationSettings.parseMedicationSettings(db.dbGetSetting(medicationSettings.MEDICATION_SETTINGS_KEY));
+      const panel = medicationSettings.prefsFor(map, log.name).nutrition;
+      if (!panel) return;
+      const helping = supplement.supplementHelping(panel, log);
+      if (!helping) return;
+      buildFood({
+        label: helping.label,
+        quantity: helping.quantity,
+        grams: null,
+        nutrition: helping.nutrition,
+        slot: null,
+        recipeId: null,
+        itemId: null,
+        productId: null,
+        mealPlanEntryId: null,
+        at: new Date(log.takenAt),
+      });
+    };
+    const drop = (entry: FoodLogEntry): boolean => {
+      if (entry.healthSampleIds.length > 0) return false;
+      db.dbDeleteFoodLogEntry(entry.id);
+      return true;
+    };
+    setDoseEffects({
+      added: write,
+      updated(before, after) {
+        if (before.name === after.name && before.amount === after.amount && before.unit === after.unit) return;
+        const existing = entryOf(before);
+        if (existing && drop(existing)) write(after);
+      },
+      removed(logs) {
+        for (const log of logs) {
+          const existing = entryOf(log);
+          if (existing) drop(existing);
+        }
+      },
+    });
+  }
   const { useRewardStore } = require('../../src/store/useRewardStore') as typeof import('../../src/store/useRewardStore');
   const { registerTaskSource } = require('../../src/utils/blockerRegistry') as typeof import('../../src/utils/blockerRegistry');
   const { registerPersonSource } = require('../../src/utils/peopleRegistry') as typeof import('../../src/utils/peopleRegistry');
@@ -3399,6 +3474,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           dosesInLast24h: prefs.limit ? status.inLast24h : undefined,
           withinLimitAgainAt: status.nextOkAt ? status.nextOkAt.toISOString() : undefined,
           supplyLeft: left === null || !prefs.supply ? undefined : medicationSettings.describeSupplyLeft(left, prefs.supply.unit),
+          ...(prefs.nutrition ? (() => {
+            const d = supplementDose.describeSupplementPanel(prefs.nutrition);
+            return { nutrients: d.heading, nutrientsDetail: d.detail };
+          })() : {}),
         };
       });
     },
@@ -4353,6 +4432,20 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (!existing) throw new Error(`No mood check-in with id ${id}.`);
       useMoodStore.getState().removeLog(id);
       return existing;
+    },
+
+    setSupplementPanel(name, panel) {
+      const { useMedicationStore: meds } = require('../../src/store/useMedicationStore') as typeof import('../../src/store/useMedicationStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+      // Loaded first: the store holds the whole settings map and writes it back
+      // whole, so setting one medicine's panel from a store that never read the
+      // others would replace them.
+      meds.getState().initialize();
+      const key = medication.medicationKey(name);
+      if (!key) throw new Error('A medicine needs a name.');
+      const known = medication.medicationVocabulary(db.dbGetAllMedicationLogs(), []);
+      const spelled = known.find(n => medication.medicationKey(n) === key) ?? name.trim();
+      meds.getState().setSupplementPanel(spelled, panel);
+      return spelled;
     },
 
     setMedicationArchived(name: string, archived: boolean): string {

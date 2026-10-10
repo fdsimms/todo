@@ -19,6 +19,7 @@ import { useMilestoneStore } from '../store/useMilestoneStore';
 import { useMeterReadingStore } from '../store/useMeterReadingStore';
 import { useJournalStore } from '../store/useJournalStore';
 import { useMedicationStore } from '../store/useMedicationStore';
+import { installSupplementDoseEffects } from './supplementDoseSync';
 import { useRewardStore } from '../store/useRewardStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useSavedViewStore } from '../store/useSavedViewStore';
@@ -3214,6 +3215,32 @@ function seedAsNeededDoses(today: Date): void {
   const meds = useMedicationStore.getState();
   meds.setLimit('Ibuprofen', { minHours: 6, maxPer24h: 3, notify: false });
   meds.setSupply('Ibuprofen', { count: 9, unit: 'dose', refillCount: 24, reorderAt: 3 });
+
+  // A multivitamin with its label typed in, and a few days of doses, so the
+  // Nutrients card on its page is filled in and the food log has vitamins and
+  // minerals in it. The doses go through `addLog` like the rest, which writes
+  // each one's food log entry; the effects are installed first because in the
+  // app that happens at launch, and a seed running before it would otherwise
+  // leave a panel that adds nothing.
+  installSupplementDoseEffects();
+  meds.setSupplementPanel('Multivitamin', {
+    servingAmount: 1,
+    servingUnit: 'tablet',
+    amounts: {
+      vitaminAMcg: 900, vitaminCMg: 90, vitaminDMcg: 25, vitaminEMg: 13.5, vitaminKMcg: 80,
+      thiaminMg: 1.2, riboflavinMg: 1.3, niacinMg: 16, vitaminB6Mg: 1.7, folateMcg: 400,
+      vitaminB12Mcg: 2.4, calciumMg: 200, magnesiumMg: 50, zincMg: 11, seleniumMcg: 55,
+    },
+  });
+  for (const back of [4, 3, 2, 1]) {
+    addLog({
+      name: 'Multivitamin',
+      amount: 1,
+      unit: 'tablet',
+      asNeeded: false,
+      at: setHours(subDays(today, back), 8),
+    });
+  }
 
   // Something started a few days ago with no milestone for it, so the
   // Medications screen shows its "mark the day you started" offer.

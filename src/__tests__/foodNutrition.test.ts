@@ -164,7 +164,7 @@ describe('parseFoodNutrition', () => {
 
     it('drops a nutrient this build has no unit for', () => {
       const parsed = parseFoodNutrition(
-        stored(nutrition({ amounts: { calorieKcal: 52, vitaminDMcg: 2.4 } as never }))
+        stored(nutrition({ amounts: { calorieKcal: 52, omega3G: 2.4 } as never }))
       );
       expect(parsed!.amounts).toEqual({ calorieKcal: 52 });
     });

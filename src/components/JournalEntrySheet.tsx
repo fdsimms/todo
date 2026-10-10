@@ -219,14 +219,15 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
           {canSeal && (
             <EditorRow
               icon="lock-closed-outline"
-              label="Open on"
-              value={openOn ? format(openOn, 'EEE, MMM d, yyyy') : 'Now'}
+              label="Hide until"
+              hint="Save this as a note to your future self"
+              value={openOn ? format(openOn, 'EEE, MMM d, yyyy') : 'Not hidden'}
               onPress={() => { haptics.tap(); setOpenOnPickerOpen(true); }}
             />
           )}
           {canSeal && openOn && (
             <Text style={styles.sealHint}>
-              A note to your future self. It stays hidden until that day, when a task reminds you to read it.
+              You won't be able to read this until that day. A task will remind you to open it. You can also open it early from the Journal.
             </Text>
           )}
         </View>
@@ -318,7 +319,7 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
       <WhenPicker
         visible={openOnPickerOpen}
         value={openOn}
-        title="Open on which day?"
+        title="Hide until which day?"
         allowPast={false}
         showTimeOfDay={false}
         showSuggest={false}

@@ -93,6 +93,33 @@ export const NUTRITION_TARGET_RANGES: Record<
   potassiumMg: { min: 0, max: 8000, step: 100, default: 4700 },
   caffeineMg: { min: 0, max: 1000, step: 10, default: 400 },
   waterMl: { min: 0, max: 6000, step: 250, default: 2000 },
+  // The vitamins and minerals open on the same Daily Value a packet prints
+  // (the argument above for the three minerals applies unchanged). Ceilings
+  // are generous multiples of it, because a supplement's panel is routinely
+  // well past 100%.
+  vitaminAMcg: { min: 0, max: 5000, step: 50, default: 900 },
+  vitaminCMg: { min: 0, max: 2000, step: 10, default: 90 },
+  vitaminDMcg: { min: 0, max: 250, step: 1, default: 20 },
+  vitaminEMg: { min: 0, max: 1000, step: 1, default: 15 },
+  vitaminKMcg: { min: 0, max: 1000, step: 5, default: 120 },
+  thiaminMg: { min: 0, max: 100, step: 0.1, default: 1.2 },
+  riboflavinMg: { min: 0, max: 100, step: 0.1, default: 1.3 },
+  niacinMg: { min: 0, max: 200, step: 1, default: 16 },
+  vitaminB6Mg: { min: 0, max: 100, step: 0.1, default: 1.7 },
+  folateMcg: { min: 0, max: 2000, step: 10, default: 400 },
+  vitaminB12Mcg: { min: 0, max: 5000, step: 1, default: 2.4 },
+  biotinMcg: { min: 0, max: 10000, step: 5, default: 30 },
+  pantothenicAcidMg: { min: 0, max: 200, step: 0.5, default: 5 },
+  magnesiumMg: { min: 0, max: 1500, step: 10, default: 420 },
+  zincMg: { min: 0, max: 100, step: 1, default: 11 },
+  phosphorusMg: { min: 0, max: 3000, step: 25, default: 1250 },
+  seleniumMcg: { min: 0, max: 800, step: 5, default: 55 },
+  copperMg: { min: 0, max: 20, step: 0.1, default: 0.9 },
+  manganeseMg: { min: 0, max: 20, step: 0.1, default: 2.3 },
+  chromiumMcg: { min: 0, max: 1000, step: 5, default: 35 },
+  molybdenumMcg: { min: 0, max: 1000, step: 5, default: 45 },
+  iodineMcg: { min: 0, max: 1100, step: 5, default: 150 },
+  chlorideMg: { min: 0, max: 6000, step: 50, default: 2300 },
 };
 
 /**

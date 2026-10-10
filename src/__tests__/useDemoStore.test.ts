@@ -43,6 +43,8 @@ import { shopWalkOrder } from '../utils/groceryShops';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { findWithPantry, pantryIngredients } from '../utils/cookbookIndex';
 import { useFoodLogStore } from '../store/useFoodLogStore';
+import { isNutrientOnlyEntry } from '../utils/nutrientLog';
+import { supplementDoseIdOf } from '../utils/supplementDose';
 import { useSavedMealsStore } from '../store/useSavedMealsStore';
 import { currentEstimateFactor, describeFoodLogEntry, foodLogEntryEdit, foodLogTotals, recallAmount, scalePanelToAmount, wholeEstimate } from '../utils/foodLog';
 import { foodLastAmounts, helpingAgain, recentUnlinkedHelpings } from '../utils/foodLogRecents';
@@ -2314,6 +2316,23 @@ describe('demo seed — people', () => {
     expect(supplyRemaining(logs, 'Ibuprofen', supply)).toBe(9);
   });
 
+  it('seeds a supplement with its label typed in, whose doses reach the food log', () => {
+    const { logs, settings } = useMedicationStore.getState();
+    const panel = prefsFor(settings, 'Multivitamin').nutrition;
+    expect(panel).toMatchObject({ servingAmount: 1, servingUnit: 'tablet' });
+    expect(panel!.amounts.magnesiumMg).toBe(50);
+    const doses = logs.filter(l => l.name === 'Multivitamin');
+    expect(doses.length).toBeGreaterThanOrEqual(3);
+
+    // One entry per dose, each linked to it, none of them a meal.
+    const entries = useFoodLogStore.getState().recentEntries('0000-01-01', '9999-12-31')
+      .filter(e => e.label === 'Multivitamin');
+    expect(entries).toHaveLength(doses.length);
+    expect(new Set(entries.map(supplementDoseIdOf))).toEqual(new Set(doses.map(d => d.id)));
+    expect(entries.every(e => e.slot === null && isNutrientOnlyEntry(e))).toBe(true);
+    expect(entries[0].nutrition.amounts.vitaminDMcg).toBe(25);
+  });
+
   it('seeds a medication started recently enough to offer a milestone', () => {
     const logs = useMedicationStore.getState().logs;
     const labels = useMilestoneStore.getState().milestones.map(m => m.label);
@@ -2617,7 +2636,7 @@ describe('demo seed — people', () => {
    * and `foodDayInputs` refuses a day logged this thinly, so no average ever
    * sees it.
    */
-  const seededFood = () => useFoodLogStore.getState().windowEntries.filter(e => !isWaterEntry(e));
+  const seededFood = () => useFoodLogStore.getState().windowEntries.filter(e => !isWaterEntry(e) && !isNutrientOnlyEntry(e));
 
   it('leaves today out of the seeded food log, so nothing averages a partial day', () => {
     const window = cookingWindow(getLogicalToday(), 30);
@@ -2796,7 +2815,8 @@ describe('demo seed — people', () => {
     // and not others. Without that the coverage clause never renders.
     const yesterdayKey = dayKeyOf(subDays(getCurrentDayStart(), 1));
     useFoodLogStore.getState().loadRange(yesterdayKey, yesterdayKey);
-    const totals = foodLogTotals(useFoodLogStore.getState().entries);
+    // Foods only: the seeded multivitamin states vitamins and no calories, and is not a meal.
+    const totals = foodLogTotals(useFoodLogStore.getState().entries.filter(e => !isNutrientOnlyEntry(e)));
     expect(totals.reported.calorieKcal).toBe(totals.entries);
     expect(totals.reported.fiberG).toBeGreaterThan(0);
     expect(totals.reported.fiberG! < totals.entries).toBe(true);

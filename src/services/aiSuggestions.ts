@@ -11,7 +11,8 @@ import {
   RECIPE_SOURCE_TYPES,
   SHOP_NAME_MAX_LENGTH,
   PREP_MAX_LENGTH,
-  NUTRIENT_KEYS,
+  EXTERNAL_NUTRIENT_KEYS,
+  PRINTED_NUTRIENT_KEYS,
 } from '../types';
 import { groceryNameKey } from '../utils/groceryParse';
 import { parsePriceInput } from '../utils/groceryPrice';
@@ -2371,7 +2372,7 @@ function parseExtractedCalendarEvents(raw: unknown): ExtractedCalendarEvent[] {
  * doesn't. Water is the exception: it isn't a figure anybody reads off a meal,
  * and a guessed one would land in the day's water.
  */
-const ESTIMATE_REQUIRED_KEYS = NUTRIENT_KEYS.filter(key => key !== 'waterMl');
+const ESTIMATE_REQUIRED_KEYS = EXTERNAL_NUTRIENT_KEYS.filter(key => key !== 'waterMl');
 
 const ESTIMATE_AMOUNTS_SCHEMA = {
   type: 'object' as const,
@@ -2694,11 +2695,11 @@ export async function readLabelPhotoWithAi(image: RecipeImage): Promise<LabelRea
     'A panel sometimes prints more than one column of figures side by side, typically "per 100g" and "per serving". Read every column it prints, left to right, and give what that column\'s own heading states — per100g, per100ml, or perServing. Leave a column\'s basis empty only when the panel genuinely does not head it.',
     'The serving line, when printed, states a size ("2 cookies", "1 oz (28g)") — give it verbatim in servingText, and the gram weight separately in servingGrams if it states one in parentheses.',
     'Ignore the %DV column entirely; it is not a figure to report. Ignore "Calories from Fat" — this app has no field for it. Read "Trans Fat", "Cholesterol" and the "Includes Ng Added Sugars" line into their own fields, never into total fat or total sugars.',
-    'The mineral rows at the foot of a US panel are read: give calcium, iron and potassium as printed, in the amount column and never the %DV one. Ignore every other vitamin and mineral row, vitamin D included — this app has no field for those.',
+    'Read every vitamin and mineral row too, as printed, in the amount column and never the %DV one: calcium, iron, potassium, vitamins A, C, D, E and K, the B vitamins, folate, biotin, magnesium, zinc and the rest. Give the amount with its unit. If a row is printed only in IU, leave it empty rather than converting it: this app does not convert IU.',
     'If the photo does not show a nutrition panel at all, or is too illegible to make out real figures, return an empty columns array rather than guessing.',
   ].join('\n\n');
 
-  const nutrientProperties = Object.fromEntries(NUTRIENT_KEYS.map(key => [key, {
+  const nutrientProperties = Object.fromEntries(PRINTED_NUTRIENT_KEYS.map(key => [key, {
     type: 'string',
     description: `${NUTRIENT_LABEL[key].label}, exactly as printed with its unit. Empty string if the panel does not print this nutrient.`,
   }]));
@@ -2736,7 +2737,7 @@ export async function readLabelPhotoWithAi(image: RecipeImage): Promise<LabelRea
                   description: 'The salt figure, exactly as printed with its unit, for a panel that states salt rather than sodium. Empty string otherwise.',
                 },
               },
-              required: [...NUTRIENT_KEYS],
+              required: [...PRINTED_NUTRIENT_KEYS],
             },
           },
         },
@@ -2765,7 +2766,7 @@ export async function readLabelPhotoWithAi(image: RecipeImage): Promise<LabelRea
     const fields = raw as Record<string, unknown>;
 
     const amounts: Partial<Record<NutrientKey, number>> = {};
-    for (const key of NUTRIENT_KEYS) {
+    for (const key of PRINTED_NUTRIENT_KEYS) {
       const printed = fields[key];
       if (typeof printed !== 'string') continue;
       const amount = amountFromPrintedText(key, printed);

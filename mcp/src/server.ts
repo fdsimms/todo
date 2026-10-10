@@ -102,7 +102,7 @@ import { forget, remember } from './memoryTools';
 import { deleteRule, listAutomations, saveRule, setAutomation, RULE_TYPES } from './automationTools';
 import { deleteCategory, reorderCategories, updateCategory } from './categoryTools';
 import { cancelCalendarRequest, changeCalendarEvent, listCalendarRequests, requestCalendarEvent } from './calendarTools';
-import { NUTRIENT_KEY_LIST, atFrom, deleteSavedMeal, duplicateFoodEntry, listSavedMeals, logSavedMeal, moveFoodEntry, saveMealFromEntries, setNutritionTargets, renameMoodTag, setMedicationArchived, logFood, logMedication, logMood, logWater, updateRecipe, deleteRecipe, updateFoodEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
+import { ESTIMATE_KEY_LIST, NUTRIENT_KEY_LIST, atFrom, deleteSavedMeal, duplicateFoodEntry, listSavedMeals, logSavedMeal, moveFoodEntry, saveMealFromEntries, setNutritionTargets, renameMoodTag, setMedicationArchived, logFood, logMedication, setSupplementNutrients, logMood, logWater, updateRecipe, deleteRecipe, updateFoodEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
 import { DEFAULT_PATTERN_DAYS, focusHistory, habitPatterns, moodInsights } from './patternTools';
 import { addMilestone, deleteMilestone, listMilestones, updateMilestone } from './milestoneTools';
 import { listCopyFlags, resolveCopyFlag } from './copyFlagTools';
@@ -1449,7 +1449,7 @@ function registerWriteTools(
 
   server.tool(
     'log_food',
-    `Log something the person ate, with your estimate of its nutrition for the whole amount eaten. Amounts are keyed ${NUTRIENT_KEY_LIST.join(', ')}; leave out any you cannot estimate (absent is not zero). Without apply: true it only shows the figures as the app read them: show the person, and log it once they agree, since the app never stores an estimate nobody looked at. The entry is marked as estimated. It is not in Apple Health when this returns: the phone writes it there the next time the app is opened, if Health writing is on there, so never say it is already in Health.`,
+    `Log something the person ate, with your estimate of its nutrition for the whole amount eaten. Amounts are keyed ${ESTIMATE_KEY_LIST.join(', ')}; leave out any you cannot estimate (absent is not zero). Vitamins and minerals are not estimated: a supplement's come from its label (set_supplement_nutrients). Without apply: true it only shows the figures as the app read them: show the person, and log it once they agree, since the app never stores an estimate nobody looked at. The entry is marked as estimated. It is not in Apple Health when this returns: the phone writes it there the next time the app is opened, if Health writing is on there, so never say it is already in Health.`,
     {
       label: z.string().min(1),
       quantity: z.string().optional().describe('How much, in words: "1 bowl", "2 slices".'),
@@ -1595,7 +1595,7 @@ function registerWriteTools(
 
   server.tool(
     'log_medication',
-    'Record a dose taken: the medication, the amount and unit together (or neither), whether it was as-needed, and when. The name is matched to the spelling already in their log, but never folded into a different medicine or strength.',
+    'Record a dose taken: the medication, the amount and unit together (or neither), whether it was as-needed, and when. The name is matched to the spelling already in their log, but never folded into a different medicine or strength. If the medicine has a nutrient panel (set_supplement_nutrients), the dose also adds those nutrients to that day\'s food log.',
     {
       name: z.string().min(1),
       amount: z.number().positive().nullable().optional(),
@@ -2332,6 +2332,25 @@ function registerWriteTools(
         return json(await withWrite(() => updateSettings(replica, changes)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not change the settings.' });
+      }
+    }
+  );
+
+  server.tool(
+    'set_supplement_nutrients',
+    'Set what one serving of a supplement contains, from its label, or clear it with clear: true. Every dose of that medicine recorded afterwards (here or on the phone) adds those vitamins and minerals to the day\'s food log, and the phone writes them to Apple Health if that is on; earlier doses keep what they added. servingAmount and servingUnit are the serving the label\'s figures are for (serving size 2 tablets: 2 and "tablet"); a dose recorded in that unit counts that many servings and any other dose counts one. amounts are keyed by nutrient name, each in the unit its name states (vitaminDMcg is micrograms, magnesiumMg milligrams). Leave out any nutrient the label does not list: a blank is unknown, and a 0 says the label stated none. Only from a label the person gave you, never estimated.',
+    {
+      name: z.string().min(1),
+      servingAmount: z.number().positive().optional(),
+      servingUnit: z.string().optional().describe('tablet, capsule, drop, spray, ml or g.'),
+      amounts: z.record(z.number()).optional().describe(`Nutrient names to amounts. Names: ${NUTRIENT_KEY_LIST.join(', ')}.`),
+      clear: z.literal(true).optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => setSupplementNutrients(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not set the nutrients.' });
       }
     }
   );

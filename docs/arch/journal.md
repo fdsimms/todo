@@ -134,7 +134,7 @@ bottom of a long entry above the bar rather than behind it.
 
 ## Notes to your future self
 
-A new journal entry written for today can be sealed until a later day ("Open on" in the sheet,
+A new journal entry written for today can be sealed until a later day ("Hide until" in the sheet, reading "Not hidden" until a day is picked,
 `JournalEntry.openOn`). Until then it is kept, synced and counts as a day written, but nobody reads
 its words: the Journal shows only "2 notes for later" and the next date, and the other readers
 leave it out.
