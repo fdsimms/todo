@@ -3020,7 +3020,7 @@ export const TaskItem = React.memo(function TaskItem({
             dismissLabel={activeTitleOffer.kind === 'filed' ? 'Hide suggestion' : 'Not a date'}
           />
         )}
-        {(markersOnMeta || isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || showStreakChip || isDrifting || bountyCoins > 0 || guardTitle !== null || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || meterText !== null || reminderTimeLabel !== null || travelNote !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0) && (
+        {(markersOnMeta || isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || showStreakChip || isDrifting || bountyCoins > 0 || guardTitle !== null || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || meterText !== null || reminderTimeLabel !== null || travelNote !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.generatedKind === 'calendarReview') && (
           <View style={styles.metaRow}>
             {markersOnMeta && hasNotes && (
               <View style={styles.metaChip} accessibilityLabel="Has notes">
@@ -3139,6 +3139,23 @@ export const TaskItem = React.memo(function TaskItem({
               >
                 <Ionicons name="list-outline" size={9} color={colors.textSecondary} />
                 <Text style={styles.subtaskBadgeText} numberOfLines={1}>{subtaskDoneCount}/{subtaskCount}</Text>
+              </View>
+            )}
+            {task.generatedKind === 'calendarReview' && (
+              // The row's only sign that it opens: the panel holds the events
+              // themselves, and a bare checkbox gives no hint of that. Shown
+              // at zero too, since the panel still carries "Sync now".
+              <View
+                style={styles.metaChip}
+                accessibilityLabel={`${calendarReviewEvents.length === 0 ? 'No events' : `${calendarReviewEvents.length} ${calendarReviewEvents.length === 1 ? 'event' : 'events'}`}, tap to expand`}
+              >
+                <Ionicons name="calendar-outline" size={9} color={colors.textSecondary} />
+                <Text style={styles.subtaskBadgeText} numberOfLines={1}>
+                  {calendarReviewEvents.length === 0
+                    ? 'No events'
+                    : `${calendarReviewEvents.length} ${calendarReviewEvents.length === 1 ? 'event' : 'events'}`}
+                </Text>
+                <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={9} color={colors.textSecondary} />
               </View>
             )}
             {supplyLabel !== null && (
