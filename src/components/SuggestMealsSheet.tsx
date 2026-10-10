@@ -27,7 +27,7 @@ import { onHandNameKeys } from '../utils/grocerySuggest';
 import { describeLeftover, isPlannedPastKeepUntil, liveFreshnessOf } from '../utils/leftovers';
 import { convertQuantity } from '../utils/unitConvert';
 import {
-  mergeMealSuggestions, mealIdeaRecipeDraft,
+  assignPickDays, mergeMealSuggestions, mealIdeaRecipeDraft,
   type MealIdea, type MealSuggestion,
 } from '../utils/mealIdeas';
 import { suggestMealIdeas, draftMealRecipe, describeAIError } from '../services/aiSuggestions';
@@ -140,9 +140,9 @@ interface Props {
  * pick state (and a picked row can be tapped again to drop it) — nothing
  * touches the week until "Save" is pressed. That's deliberate: a suggestion
  * list is for browsing, and a single tap silently rewriting the week gave the
- * user no room to change their mind mid-scroll. Save walks the picks in list
- * order and lands each on the next day in `openDays`, same assignment as
- * before, just deferred to one commit instead of one tap.
+ * user no room to change their mind mid-scroll. Each pick shows the night it
+ * would land on, the next open one in list order unless the user chose
+ * another by tapping it (`assignPickDays`), and Save lands each there.
  *
  * **A meal-type filter narrows the list, it never hides anything by default.**
  * Every recipe (dinners, sides, condiments, desserts, …) is shown regardless
@@ -239,6 +239,8 @@ export function SuggestMealsSheet({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   /** Successfully saved this session — the day it landed on, keyed the same as `selected`. */
   const [landedOn, setLandedOn] = useState<Map<string, Date>>(new Map());
+  /** A night a pick was given by hand, as a day key; see `assignPickDays`. */
+  const [chosenDays, setChosenDays] = useState<Map<string, string>>(new Map());
   const [saving, setSaving] = useState(false);
   /** Which idea Save is drafting right now, for its row's spinner. */
   const [savingKey, setSavingKey] = useState<string | null>(null);
@@ -257,6 +259,7 @@ export function SuggestMealsSheet({
     setPreviewRecipe(null);
     setSelected(new Set());
     setLandedOn(new Map());
+    setChosenDays(new Map());
     setSaving(false);
     setSavingKey(null);
     setSaveErrors(new Map());
@@ -318,17 +321,59 @@ export function SuggestMealsSheet({
   const noOpenNights = openDays.length === 0;
   const capacityFull = landedOn.size + selected.size >= openDays.length;
 
-  /** The day each current pick would land on if Save were pressed now. */
+  /**
+   * The day each current pick would land on if Save were pressed now: the
+   * night it was given by hand, or else the next one free in list order.
+   */
   const dayByKey = useMemo(() => {
+    const byDayKey = new Map(openDays.map(day => [dayKeyOf(day), day]));
+    const taken = new Set([...landedOn.values()].map(dayKeyOf));
+    const picked = allSuggestions.filter(s => selected.has(s.key)).map(s => s.key);
+    const assigned = assignPickDays(picked, [...byDayKey.keys()], taken, chosenDays);
     const map = new Map<string, Date>();
-    const offset = landedOn.size;
-    const picked = allSuggestions.filter(s => selected.has(s.key));
-    picked.forEach((item, i) => {
-      const day = openDays[offset + i];
-      if (day) map.set(item.key, day);
-    });
+    for (const [key, dayKey] of assigned) {
+      const day = byDayKey.get(dayKey);
+      if (day) map.set(key, day);
+    }
     return map;
-  }, [allSuggestions, selected, openDays, landedOn]);
+  }, [allSuggestions, selected, openDays, landedOn, chosenDays]);
+
+  /** Asks which open night a pick goes on. */
+  const chooseDay = (key: string, name: string) => {
+    if (saving) return;
+    haptics.tap();
+    const taken = new Set([...landedOn.values()].map(dayKeyOf));
+    const current = dayByKey.get(key);
+    Alert.alert(`Which night for ${name}?`, undefined, [
+      ...openDays
+        .filter(day => !taken.has(dayKeyOf(day)))
+        .map(day => ({
+          text: `${format(day, 'EEEE')}${current && dayKeyOf(current) === dayKeyOf(day) ? ' (current)' : ''}`,
+          onPress: () => setChosenDays(prev => new Map(prev).set(key, dayKeyOf(day))),
+        })),
+      { text: 'Cancel', style: 'cancel' as const },
+    ]);
+  };
+
+  /**
+   * "Selected for Tuesday", tappable to choose another night. Rendered in
+   * place of the plain caption only while a pick is selected and unsaved.
+   */
+  const renderPickedDay = (key: string, name: string, day: Date, suffix = '') => (
+    <TouchableOpacity
+      style={styles.pickedDay}
+      onPress={() => chooseDay(key, name)}
+      activeOpacity={interaction.activeOpacity}
+      hitSlop={6}
+      accessibilityRole="button"
+      accessibilityLabel={`${name} is selected for ${format(day, 'EEEE')}. Choose another night`}
+    >
+      <Text style={[styles.meta, styles.pickedDayText]} numberOfLines={1}>
+        {`Selected for ${format(day, 'EEEE')}${suffix}`}
+      </Text>
+      <Ionicons name="chevron-down" size={iconSize.xs} color={colors.accentText} />
+    </TouchableOpacity>
+  );
 
   const toggleSelect = (key: string) => {
     if (saving || landedOn.has(key)) return;
@@ -456,8 +501,8 @@ export function SuggestMealsSheet({
 
   /**
    * Commits every current pick: containers and recipes plan straight away,
-   * ideas draft and save first. Walked in list order against `openDays` so the assignment
-   * matches the preview `dayByKey` was already showing. A failed idea keeps
+   * ideas draft and save first. Each lands on the day `dayByKey` was already
+   * showing for it. A failed idea keeps
    * its pick (so Save can be pressed again to retry) and doesn't consume a
    * day; the sheet only closes once nothing is left failing.
    */
@@ -469,27 +514,23 @@ export function SuggestMealsSheet({
     const toSave = allSuggestions.filter(s => selected.has(s.key));
     const errors = new Map<string, string>();
     const newlyLanded = new Map<string, Date>();
-    let dayIndex = landedOn.size;
     for (const item of toSave) {
-      const day = openDays[dayIndex];
-      if (!day) break;
+      const day = dayByKey.get(item.key);
+      if (!day) continue;
       if (item.kind === 'leftover') {
         // Guarded rather than asserted: the rows only exist when the callback
         // does (see `fridge`), so this is the type narrowing, not a fallback.
         onPlanLeftover?.(item.leftover, dayKeyOf(day));
         newlyLanded.set(item.key, day);
-        dayIndex += 1;
       } else if (item.kind === 'recipe') {
         onPlan(item.recipe, dayKeyOf(day));
         newlyLanded.set(item.key, day);
-        dayIndex += 1;
       } else {
         setSavingKey(item.key);
         try {
           const recipe = await saveIdeaAsRecipe(item.idea);
           onPlan(recipe, dayKeyOf(day));
           newlyLanded.set(item.key, day);
-          dayIndex += 1;
         } catch (e) {
           const message = e instanceof Error && e.message === 'IDEA_NAME_EMPTY'
             ? 'The meal name was empty. Try again.'
@@ -621,7 +662,9 @@ export function SuggestMealsSheet({
         <View style={[styles.dot, { backgroundColor: tint }]} />
         <View style={styles.body}>
           <Text style={styles.name} numberOfLines={1}>{leftover.title}</Text>
-          <Text style={[styles.meta, { color: captionTint }]} numberOfLines={1}>{caption}</Text>
+          {isSelected && !landedDay && previewDay
+            ? renderPickedDay(key, leftover.title, previewDay, late ? ' · past its use-by' : '')
+            : <Text style={[styles.meta, { color: captionTint }]} numberOfLines={1}>{caption}</Text>}
         </View>
         <Ionicons
           name={landedDay || isSelected ? 'checkmark-circle' : 'add-circle-outline'}
@@ -659,13 +702,13 @@ export function SuggestMealsSheet({
       >
         <View style={styles.body}>
           <Text style={styles.name} numberOfLines={1}>{recipe.name}</Text>
-          <Text style={styles.meta} numberOfLines={1}>
-            {landedDay
-              ? `Planned for ${format(landedDay, 'EEEE')}`
-              : isSelected && previewDay
-                ? `Selected for ${format(previewDay, 'EEEE')}`
+          {isSelected && !landedDay && previewDay ? renderPickedDay(key, recipe.name, previewDay) : (
+            <Text style={styles.meta} numberOfLines={1}>
+              {landedDay
+                ? `Planned for ${format(landedDay, 'EEEE')}`
                 : describeRecipe(recipe, null, { sharedName: sharedNames.has(recipe.nameKey) })}
-          </Text>
+            </Text>
+          )}
           {!landedDay && (pantryLabel || cookHistory) && (
             <View style={styles.signalRow}>
               {pantryLabel && (
@@ -729,13 +772,15 @@ export function SuggestMealsSheet({
             <Ionicons name="sparkles" size={iconSize.xs} color={colors.purple} />
             <Text style={styles.name} numberOfLines={1}>{idea.title}</Text>
           </View>
-          <Text style={styles.meta} numberOfLines={2}>
-            {landedDay
-              ? `Planned for ${format(landedDay, 'EEEE')} · saved to your recipe box`
-              : isSelected && previewDay
-                ? `Selected for ${format(previewDay, 'EEEE')} · saves to your recipe box`
-                : (idea.blurb || 'A new idea. Saving adds it to your recipe box.')}
-          </Text>
+          {isSelected && !landedDay && previewDay
+            ? renderPickedDay(key, idea.title, previewDay, ' · saves to your recipe box')
+            : (
+              <Text style={styles.meta} numberOfLines={2}>
+                {landedDay
+                  ? `Planned for ${format(landedDay, 'EEEE')} · saved to your recipe box`
+                  : (idea.blurb || 'A new idea. Saving adds it to your recipe box.')}
+              </Text>
+            )}
           {!landedDay && (
             <View style={styles.signalRow}>
               <View style={styles.ideaTag}>
@@ -1115,6 +1160,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   body: { flex: 1, gap: spacing.xxs },
   name: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
   meta: { fontSize: font.xs, color: colors.textTertiary, lineHeight: lineHeight.xs },
+  // Accent, because it's a control: the night a pick lands on, tap to change.
+  pickedDay: { flexDirection: 'row', alignItems: 'center', gap: spacing.xxs, alignSelf: 'flex-start' },
+  pickedDayText: { color: colors.accentText, flexShrink: 1 },
   signalRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: spacing.xxs },
   pantryBadge: {
     borderRadius: radius.full,

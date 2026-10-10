@@ -110,6 +110,7 @@ import {
   dayKeyRange,
   describeAddedToList,
   describeWeekPlan,
+  describeDinnerCoverage,
   describeWeekRange,
   earliestUnplannedSlot,
   entriesForDay,
@@ -2054,7 +2055,9 @@ export function MealPlanScreen() {
   // five buttons and made this header taller than the other hub pages'.
   // Left off for an empty week: the hint under the header already says
   // "Nothing planned this week", and the two read as one line said twice.
-  const subtitle = entries.length === 0 ? undefined : describeWeekPlan(entries) || undefined;
+  const subtitle = entries.length === 0
+    ? undefined
+    : [describeWeekPlan(entries), describeDinnerCoverage(entries, days.map(dayKeyOf))].filter(Boolean).join(' · ');
   const overline = [
     describeWeekCost(weekCost, currencySymbol, new Date()),
     describeWeekNutrition(weekNutritionEstimate),

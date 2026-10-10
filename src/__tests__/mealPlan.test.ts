@@ -7,6 +7,7 @@ import {
   daysWithoutMeal,
   describeAddedToList,
   describeWeekPlan,
+  describeDinnerCoverage,
   describeWeekRange,
   earliestUnplannedSlot,
   entriesForDay,
@@ -827,6 +828,27 @@ describe('describeWeekPlan', () => {
       entry('2026-08-05', 'dinner', { recipeId: 'r1' }),
       entry('2026-08-06', 'dinner', { recipeId: null, title: 'Leftovers' }),
     ])).toBe('2 meals planned');
+  });
+});
+
+describe('describeDinnerCoverage', () => {
+  const week = ['2026-08-03', '2026-08-04', '2026-08-05', '2026-08-06', '2026-08-07', '2026-08-08', '2026-08-09'];
+
+  it('counts nights with a dinner, not dinners', () => {
+    expect(describeDinnerCoverage([
+      entry('2026-08-05', 'dinner'),
+      entry('2026-08-05', 'dinner', { title: 'Salad' }),
+      entry('2026-08-06', 'dinner'),
+      entry('2026-08-06', 'lunch'),
+    ], week)).toBe('2 of 7 dinners');
+  });
+
+  it('says nothing for a week with no dinners planned', () => {
+    expect(describeDinnerCoverage([entry('2026-08-05', 'lunch')], week)).toBeNull();
+  });
+
+  it('ignores a dinner outside the week', () => {
+    expect(describeDinnerCoverage([entry('2026-08-12', 'dinner')], week)).toBeNull();
   });
 });
 

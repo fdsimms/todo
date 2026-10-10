@@ -623,6 +623,24 @@ export function describeWeekPlan(entries: readonly MealPlanEntry[]): string {
 }
 
 /**
+ * "4 of 7 dinners": how many of the week's nights have a dinner, for the
+ * header beside the meal count. A count of meals can't say whether the week
+ * is covered (six meals can be six dinners or three lunches and three
+ * snacks), and dinner is the slot a week is usually planned around. Null
+ * while no dinner is planned at all, since "0 of 7 dinners" on a week of
+ * lunches reads as a complaint about a slot the user isn't planning.
+ */
+export function describeDinnerCoverage(
+  entries: readonly MealPlanEntry[],
+  dayKeys: readonly string[],
+): string | null {
+  const inWeek = new Set(dayKeys);
+  const nights = new Set(entries.filter(e => e.slot === 'dinner' && inWeek.has(e.date)).map(e => e.date));
+  if (nights.size === 0) return null;
+  return `${nights.size} of ${dayKeys.length} dinners`;
+}
+
+/**
  * The day key before which an entry is old enough to purge.
  *
  * Anchored to the calendar day rather than to a clock instant — the rows it
