@@ -698,6 +698,8 @@ export const HEALTH_SYNC_SETTING_KEYS: readonly string[] = [
   'medication_archived', 'medication_settings', 'medication_summary_last',
   'medication_milestone_dismissed', 'nutritionTargets', 'nutritionLimits', 'limitWarnPercent',
   'limitWarningAutoSlips',
+  // A typed-in goal that sleep is read against; it travels with the record it is read against.
+  'sleepGoalMinutes',
 ];
 
 /**
