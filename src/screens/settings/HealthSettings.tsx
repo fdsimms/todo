@@ -22,6 +22,8 @@ import { formatWeight } from '../../utils/weightLog';
 import { goalDirection } from '../../utils/weightGoal';
 import { formatSleepDuration } from '../../utils/sleepLog';
 import { SleepGoalSheet } from '../../components/SleepGoalSheet';
+import { JournalWordGoalSheet } from '../../components/JournalWordGoalSheet';
+import { formatWordCount } from '../../utils/journal';
 import { resetToWeightGoal } from '../../navigation/navigationRef';
 import { useColors } from '../../theme/ThemeContext';
 import { SettingsSection } from './SettingsSection';
@@ -109,6 +111,8 @@ export function HealthSettings() {
   const setWeightUnit = useSettingsStore(s => s.setWeightUnit);
   const sleepGoalMinutes = useSettingsStore(s => s.sleepGoalMinutes);
   const [sleepGoalOpen, setSleepGoalOpen] = useState(false);
+  const journalWordGoal = useSettingsStore(s => s.journalWordGoal);
+  const [wordGoalOpen, setWordGoalOpen] = useState(false);
   const categories = useCategoryStore(s => s.categories);
   const today = useHealthStore(s => s.today);
   const refreshing = useHealthStore(s => s.refreshing);
@@ -603,6 +607,22 @@ export function HealthSettings() {
     {/* The sheet the Sleep screen's own target icon opens, not a second
         stepper for the same number. */}
     <SleepGoalSheet visible={sleepGoalOpen} onClose={() => setSleepGoalOpen(false)} />
+
+    <SettingsSection
+      label="Journal"
+      footer="The Journal shows each day's word count against this and counts the days that reach it."
+    >
+      <SettingsRow
+        entryId="journalWordGoal"
+        icon="create-outline"
+        iconColor={journalWordGoal !== null ? colors.accent : undefined}
+        label="Word goal"
+        hint="Words you want each journal day to reach."
+        value={journalWordGoal === null ? 'None' : formatWordCount(journalWordGoal)}
+        onPress={() => { haptics.tap(); setWordGoalOpen(true); }}
+      />
+    </SettingsSection>
+    <JournalWordGoalSheet visible={wordGoalOpen} onClose={() => setWordGoalOpen(false)} />
     </>
   );
 }

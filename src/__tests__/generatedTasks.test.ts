@@ -2,6 +2,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import {
   automationEntryIdFor,
+  matchesAutomationQuery,
   GENERATED_KINDS,
   GENERATED_KIND_LIST,
   GENERATED_KIND_SPECS,
@@ -556,5 +557,21 @@ describe('automationEntryIdFor', () => {
   it('sends the retired mealCook kind to the meal tasks row', () => {
     expect(automationEntryIdFor('mealCook')).toBe('gen:mealSlot');
     expect(automationEntryIdFor('groceryUseUp')).toBe('gen:groceryUseUp');
+  });
+});
+
+describe('matchesAutomationQuery', () => {
+  it('matches everything on a blank query', () => {
+    expect(matchesAutomationQuery('', 'Meal tasks')).toBe(true);
+    expect(matchesAutomationQuery('   ', 'Meal tasks')).toBe(true);
+  });
+
+  it('needs every word, in any order, ignoring case', () => {
+    expect(matchesAutomationQuery('TASKS meal', 'Meal tasks', 'what to make')).toBe(true);
+    expect(matchesAutomationQuery('meal weather', 'Meal tasks', 'what to make')).toBe(false);
+  });
+
+  it('looks across all the text it is given', () => {
+    expect(matchesAutomationQuery('shelf life', 'Pantry checks', 'once its usual shelf life has passed')).toBe(true);
   });
 });

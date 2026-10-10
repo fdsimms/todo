@@ -36,6 +36,24 @@ describe('the journal tools', () => {
     expect(listJournalEntries(replica, { kind: 'dream' }).entries.map(e => e.text)).toEqual(['Flying']);
   });
 
+  it('gives each entry its word count, without formatting markers', () => {
+    const { entry } = logJournalEntry(replica, { kind: 'journal', text: '# Title\n- one two\nthree' });
+    expect(entry.words).toBe(4);
+    expect(listJournalEntries(replica).entries[0].words).toBe(4);
+  });
+
+  it('reports the word goal for the journal and never for dreams', () => {
+    const { useSettingsStore } = require('../../../src/store/useSettingsStore') as typeof import('../../../src/store/useSettingsStore');
+    useSettingsStore.getState().setJournalWordGoal(300);
+    try {
+      expect(listJournalEntries(replica).wordGoal).toBe(300);
+      expect(listJournalEntries(replica, { kind: 'dream' }).wordGoal).toBeUndefined();
+    } finally {
+      useSettingsStore.getState().setJournalWordGoal(null);
+    }
+    expect(listJournalEntries(replica).wordGoal).toBeUndefined();
+  });
+
   it('files a backdated entry on the day named', () => {
     const { entry } = logJournalEntry(replica, { kind: 'dream', text: 'A corridor', at: '2026-09-01' });
     expect(entry.day).toBe('2026-09-01');

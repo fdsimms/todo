@@ -7,7 +7,7 @@
 import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
 import { useMedicationStore } from '../../../src/store/useMedicationStore';
-import { atFrom, deleteMedicationLog, deleteSavedMeal, setSupplementNutrients, duplicateFoodEntry, listSavedMeals, logFood, logMedication, logMood, logSavedMeal, logWater, moveFoodEntry, renameMoodTag, saveMealFromEntries, saveRecipe, setMedicationArchived, setNutritionTargets, updateFoodEntry, updateMoodLog } from '../logTools';
+import { atFrom, deleteMedicationLog, deleteSavedMeal, setSupplementNutrients, duplicateFoodEntry, listSavedMeals, logFood, logMedication, logMood, logSavedMeal, logWater, moveFoodEntry, renameMedication, renameMoodTag, saveMealFromEntries, saveRecipe, setMedicationArchived, setNutritionTargets, updateFoodEntry, updateMoodLog } from '../logTools';
 
 let mockRaw: ShimDatabase;
 
@@ -193,6 +193,17 @@ describe('archive_medication and rename_mood_tag', () => {
     expect(setMedicationArchived(replica, 'ibuprofen', true)).toEqual({ medicine: 'Ibuprofen', archived: true });
     expect(setMedicationArchived(replica, 'Ibuprofen', false).archived).toBe(false);
     expect(() => setMedicationArchived(replica, 'Nothing', true)).toThrow(/No medicine called/);
+  });
+
+  it('renames a medicine, fills a strength, and combines into an existing one', () => {
+    logMedication(replica, { name: 'Naproxen 200' });
+    logMedication(replica, { name: 'Naproxen', amount: 400, unit: 'mg' });
+    const out = renameMedication(replica, 'naproxen 200', 'naproxen', { amount: 200, unit: 'mg' });
+    expect(out).toEqual({ from: 'Naproxen 200', to: 'naproxen', doses: 1 });
+    const doses = replica.medicationLogs('2000-01-01', '2100-01-01').filter(l => l.name === 'Naproxen');
+    expect(doses.map(l => l.amount).sort()).toEqual([200, 400]);
+    expect(() => renameMedication(replica, 'Nothing', 'X')).toThrow(/No medicine called/);
+    expect(() => renameMedication(replica, 'Naproxen', 'X', { amount: 5 })).toThrow(/together/);
   });
 
   it('renames a context tag on every check-in that has it', () => {

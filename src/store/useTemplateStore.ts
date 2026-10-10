@@ -28,6 +28,7 @@ import {
 import { blockerFields } from '../utils/blocking';
 import { applyTemplateRun } from '../utils/templateApply';
 import { medicationVocabulary } from '../utils/medicationLog';
+import { renamedTemplateItem } from '../utils/medicationRename';
 import { useMedicationStore } from './useMedicationStore';
 import { dueTemplateRun, schedulesEqual } from '../utils/templateSchedule';
 import { useSettingsStore } from './useSettingsStore';
@@ -104,6 +105,8 @@ interface TemplateStore {
    * which a rename has no business creating.
    */
   renameItemCategory: (from: string, to: string) => void;
+  /** Rename the medication items record, following a medication rename. */
+  renameItemMedication: (fromKey: string, to: string) => void;
   /** The stored item, or null if `templateId` names no template — see the note on the implementation. */
   addItem: (templateId: string, item: Partial<TemplateItem>) => TemplateItem | null;
   updateItem: (templateId: string, itemId: string, updates: Partial<TemplateItem>) => void;
@@ -274,6 +277,26 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
         ...t,
         items: t.items.map(i => (i.category === from ? { ...i, category: to } : i)),
       };
+      touched.push(updated);
+      return updated;
+    });
+    if (touched.length === 0) return;
+    touched.forEach(t => dbUpdateTemplate(t));
+    set(() => ({ templates: next }));
+  },
+
+  renameItemMedication(fromKey, to) {
+    const touched: TaskTemplate[] = [];
+    const next = get().templates.map(t => {
+      let changed = false;
+      const items = t.items.map(i => {
+        const renamed = renamedTemplateItem(i, fromKey, to);
+        if (!renamed) return i;
+        changed = true;
+        return renamed;
+      });
+      if (!changed) return t;
+      const updated = { ...t, items };
       touched.push(updated);
       return updated;
     });

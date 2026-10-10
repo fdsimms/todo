@@ -1076,6 +1076,8 @@ export interface Replica {
    */
   logMeterReading(name: string, value: number, readAt: Date): MeterReading;
   deleteMeterReading(id: string): MeterReading;
+  /** The daily word goal for the journal, or null when none is set. */
+  journalWordGoal(): number | null;
   /** Journal and dream entries between two day keys, inclusive, newest first. */
   journalEntries(fromDayKey: string, toDayKey: string, kind?: JournalKind): JournalEntry[];
   /**
@@ -1234,6 +1236,14 @@ export interface Replica {
   setSupplementPanel(name: string, panel: import('../../src/utils/medicationSettings').SupplementPanel | null): string;
   /** Correct a mood context tag's text on every check-in that has it, as the app's rename does. Returns how many changed. */
   renameMoodTag(from: string, to: string): number;
+  /**
+   * Rename a medicine on every dose, and in its limit, supply, archive state and
+   * the tasks, chain steps and templates that record it, as the app's Rename
+   * does (`useMedicationStore.renameMedication`). A `to` that is already another
+   * medicine combines the two. `fill` records an amount on doses that have none.
+   * Returns the medicine's name as the log spelled it, and how many doses changed.
+   */
+  renameMedication(from: string, to: string, fill: { amount: number; unit: string } | null): { from: string; doses: number };
   deleteMedicationLog(id: string): MedicationLog;
   /** Every calendar request, oldest first (`CalendarRequest`). */
   calendarRequests(): CalendarRequest[];
@@ -3697,6 +3707,9 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       store.removeReading(id);
       return reading;
     },
+    journalWordGoal(): number | null {
+      return useSettingsStore.getState().journalWordGoal;
+    },
     journalEntries(fromDayKey: string, toDayKey: string, kind?: JournalKind): JournalEntry[] {
       return db.dbGetAllJournalEntries()
         .filter(e => e.dayKey >= fromDayKey && e.dayKey <= toDayKey && (!kind || e.kind === kind));
@@ -4453,6 +4466,43 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (archived) meds.getState().archiveMedication(spelled);
       else meds.getState().unarchiveMedication(spelled);
       return spelled;
+    },
+
+    renameMedication(from: string, to: string, fill: { amount: number; unit: string } | null): { from: string; doses: number } {
+      const { useMedicationStore: meds } = require('../../src/store/useMedicationStore') as typeof import('../../src/store/useMedicationStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const rename = require('../../src/utils/medicationRename') as typeof import('../../src/utils/medicationRename');
+      meds.getState().initialize();
+      const target = to.trim();
+      if (!target) throw new Error('A medicine needs a name.');
+      const fromKey = medication.medicationKey(from);
+      const spelled = medication.medicationVocabulary(db.dbGetAllMedicationLogs(), [])
+        .find(n => medication.medicationKey(n) === fromKey)
+        ?? meds.getState().logs.find(l => medication.medicationKey(l.name) === fromKey)?.name;
+      if (!spelled) throw new Error(`No medicine called "${from}" in the log. list_medication_logs shows them.`);
+      // Spelled as the log already has it when the target is an existing medicine.
+      const toKey = medication.medicationKey(target);
+      const existing = meds.getState().logs.find(l => medication.medicationKey(l.name) === toKey && toKey !== fromKey);
+      const name = existing ? existing.name.trim() : target;
+      const doses = meds.getState().renameMedication(spelled, name, fill);
+      if (doses === null) throw new Error('Could not rename it.');
+      // Written through db, not the stores, as the rest of this file is (see createTemplate).
+      for (const t of db.dbGetAllTasks()) {
+        const next = rename.renamedTask(t, fromKey, name);
+        if (next) db.dbUpdateTask(next);
+      }
+      for (const template of db.dbGetAllTemplates()) {
+        let changed = false;
+        const items = template.items.map(i => {
+          const next = rename.renamedTemplateItem(i, fromKey, name);
+          if (!next) return i;
+          changed = true;
+          return next;
+        });
+        if (changed) db.dbUpdateTemplate({ ...template, items });
+      }
+      refresh();
+      return { from: spelled, doses };
     },
 
     renameMoodTag(from: string, to: string): number {

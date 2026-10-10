@@ -13,6 +13,12 @@ import {
   justOpened,
   journalEntryLink,
   sealedNoteTaskDraft,
+  countWords,
+  wordsOnDay,
+  formatWordCount,
+  parseJournalWordGoal,
+  daysReachingWordGoal,
+  JOURNAL_WORD_GOAL_RANGE,
 } from '../utils/journal';
 
 let n = 0;
@@ -143,5 +149,57 @@ describe('notes to your future self', () => {
     expect(draft.linkUrl).toBe(journalEntryLink('n 1'));
     expect(journalEntryLink('n 1')).toBe('dundundun://journal?entry=n%201');
     expect(sealedNoteTaskDraft({ id: 'x', dayKey: today, openOn: null })).toBeNull();
+  });
+});
+
+describe('word counts', () => {
+  it('counts words split on any whitespace', () => {
+    expect(countWords('')).toBe(0);
+    expect(countWords('   \n ')).toBe(0);
+    expect(countWords('One two  three\nfour')).toBe(4);
+  });
+
+  it('does not count formatting markers as words', () => {
+    expect(countWords('# Slow Saturday\nSlept in, then a **long** walk.\n- Call Mom\n1. Read\n> quote here')).toBe(13);
+    expect(countWords('- ')).toBe(0);
+  });
+
+  it('adds every snippet of one kind on one day, and nothing else', () => {
+    const list = [
+      entry({ dayKey: '2026-10-02', text: 'one two three' }),
+      entry({ dayKey: '2026-10-02', text: 'four five' }),
+      entry({ dayKey: '2026-10-03', text: 'six' }),
+      entry({ dayKey: '2026-10-02', kind: 'dream', text: 'a dream of many words' }),
+    ];
+    expect(wordsOnDay(list, 'journal', '2026-10-02')).toBe(5);
+    expect(wordsOnDay(list, 'journal', '2026-10-09')).toBe(0);
+  });
+
+  it('formats a count with a singular and a thousands separator', () => {
+    expect(formatWordCount(1)).toBe('1 word');
+    expect(formatWordCount(0)).toBe('0 words');
+    expect(formatWordCount(1250)).toBe('1,250 words');
+  });
+
+  it('reads a stored goal back, and treats anything unusable as no goal', () => {
+    expect(parseJournalWordGoal('500')).toBe(500);
+    expect(parseJournalWordGoal('')).toBeNull();
+    expect(parseJournalWordGoal(null)).toBeNull();
+    expect(parseJournalWordGoal('12.5')).toBeNull();
+    expect(parseJournalWordGoal('abc')).toBeNull();
+    expect(parseJournalWordGoal(String(JOURNAL_WORD_GOAL_RANGE.min - 1))).toBeNull();
+    expect(parseJournalWordGoal(String(JOURNAL_WORD_GOAL_RANGE.max + 1))).toBeNull();
+  });
+
+  it('counts days that reach the goal across snippets, optionally within a month', () => {
+    const list = [
+      entry({ dayKey: '2026-10-02', text: 'a b c' }),
+      entry({ dayKey: '2026-10-02', text: 'd e' }),
+      entry({ dayKey: '2026-10-03', text: 'a b c d' }),
+      entry({ dayKey: '2026-09-28', text: 'a b c d e f' }),
+    ];
+    expect(daysReachingWordGoal(list, 5)).toBe(2);
+    expect(daysReachingWordGoal(list, 5, '2026-10')).toBe(1);
+    expect(daysReachingWordGoal(list, 7)).toBe(0);
   });
 });

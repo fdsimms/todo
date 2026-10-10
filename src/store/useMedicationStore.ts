@@ -17,6 +17,12 @@ import {
   parseArchivedMedications,
 } from '../utils/medicationLog';
 import {
+  renamedKeys,
+  renamedLogs,
+  renamedSettings,
+  type DoseFill,
+} from '../utils/medicationRename';
+import {
   MEDICATION_SETTINGS_KEY,
   parseMedicationSettings,
   prefsFor,
@@ -164,6 +170,14 @@ interface MedicationStore {
   archiveMedication: (name: string) => void;
   /** Put an archived medication back. */
   unarchiveMedication: (name: string) => void;
+  /**
+   * Rename every dose of a medication, moving its limit, supply, archived and
+   * milestone state with it. A `to` that is already another medication folds
+   * the two together and keeps the target's own limit and supply. `fill`
+   * stamps a strength onto doses that recorded none. Returns the number of
+   * doses rewritten, or null when `to` is blank or `from` has no doses.
+   */
+  renameMedication: (from: string, to: string, fill?: DoseFill | null) => number | null;
   addLog: (input: DoseInput) => MedicationLog | null;
   updateLog: (id: string, patch: MedicationLogPatch) => void;
   removeLog: (id: string) => void;
@@ -278,6 +292,47 @@ export const useMedicationStore = create<MedicationStore>((set, get) => ({
     const key = medicationKey(name);
     if (!get().archived.includes(key)) return;
     writeArchived(set, get().archived.filter(k => k !== key));
+  },
+
+  renameMedication(from, to, fill = null) {
+    const fromKey = medicationKey(from);
+    const name = to.trim();
+    const toKey = medicationKey(name);
+    if (!fromKey || !toKey) return null;
+    const { logs } = get();
+    if (!logs.some(l => medicationKey(l.name) === fromKey)) return null;
+    const cleanFill = fill && Number.isFinite(fill.amount) && fill.amount > 0 && fill.unit.trim()
+      ? { amount: fill.amount, unit: fill.unit.trim() }
+      : null;
+
+    const changed = renamedLogs(logs, fromKey, name, cleanFill);
+    const byId = new Map(changed.map(l => [l.id, l]));
+    changed.forEach(dbUpdateMedicationLog);
+    set({ logs: logs.map(l => byId.get(l.id) ?? l) });
+    // A supplement dose's food log entry carries the medication's name and
+    // scales with the dose, so a renamed or re-filled dose updates it too.
+    const before = new Map(logs.map(l => [l.id, l]));
+    changed.forEach(after => runEffect(fx => fx.updated(before.get(after.id)!, after)));
+
+    if (fromKey === toKey) return changed.length;
+
+    const { settings, archived, milestoneDismissed } = get();
+    // Archived follows the doses: the target stays archived only if it already
+    // was, or had no doses of its own for the renamed ones to un-archive.
+    const targetHadDoses = logs.some(l => medicationKey(l.name) === toKey);
+    const carryArchived = archived.includes(toKey) || !targetHadDoses;
+    const nextSettings = renamedSettings(settings, fromKey, toKey);
+    if (nextSettings !== settings) writeSettings(set, nextSettings);
+    if (archived.includes(fromKey)) writeArchived(set, renamedKeys(archived, fromKey, toKey, carryArchived));
+    // Doses of a live medication landing on an archived one is recording it
+    // again, the same rule `updateLog` applies to a single renamed dose.
+    else get().unarchiveMedication(name);
+    if (milestoneDismissed.includes(fromKey)) {
+      const next = renamedKeys(milestoneDismissed, fromKey, toKey, true);
+      dbSetSetting(MILESTONE_DISMISSED_SETTING_KEY, JSON.stringify(next));
+      set({ milestoneDismissed: next });
+    }
+    return changed.length;
   },
 
   addLog(input) {

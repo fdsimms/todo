@@ -1,0 +1,1 @@
+{ "message": "You can now rename a medication from its page. Renaming one to the name of another combines them, so \"Ibuprofen 200\" and \"Ibuprofen 400\" can become one \"Ibuprofen\". Doses keep their own amounts, and you can fill in an amount on doses that have none.", "date": "2026-10-10" }

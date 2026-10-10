@@ -106,7 +106,7 @@ import { followedWaterTaskDoneOn, WATER_SHORTFALL_NOTES, waterShortfallTitle } f
 import { isMissed, isRealCompletion, mostMissed } from '../utils/missed';
 import { goalDirection } from '../utils/weightGoal';
 import { lookBacks } from '../utils/moodHistory';
-import { entriesOfKind, journalStats } from '../utils/journal';
+import { daysReachingWordGoal, entriesOfKind, journalStats } from '../utils/journal';
 import { parseJournalMarkdown } from '../utils/journalMarkdown';
 import { isStaleNote } from '../utils/personNotes';
 import { personBackfillFieldCounts, PERSON_BACKFILL_FIELDS } from '../utils/peopleBackfill';
@@ -4736,6 +4736,15 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(goal!.rateKgPerWeek).toBeGreaterThan(0);
     expect(goal!.startDayKey < dayKeyOf(getCurrentDayStart())).toBe(true);
     expect(settings.sleepGoalMinutes).toBe(450);
+  });
+
+  it('seeds a journal word goal that some of the seeded days reach', () => {
+    const goal = useSettingsStore.getState().journalWordGoal;
+    expect(goal).toBe(25);
+    const entries = useJournalStore.getState().entries.filter(e => e.kind === 'journal' && !e.openOn);
+    const reached = daysReachingWordGoal(entries, goal!);
+    expect(reached).toBeGreaterThan(0);
+    expect(reached).toBeLessThan(new Set(entries.map(e => e.dayKey)).size);
   });
 
   it('seeds a health-target task, the fifth kind', () => {
