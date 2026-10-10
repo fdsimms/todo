@@ -279,6 +279,18 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
                     accessibilityLabelFor={o => `${feature.label} model: ${o.label}`}
                   />
                 )}
+                {feature.id === 'nutritionEstimate' && config.enabled && (
+                  <SettingsRow
+                    entryId="ai:nutritionEstimate:webSearch"
+                    icon="globe-outline"
+                    iconColor={config.webSearch ? colors.purple : undefined}
+                    label="Search the web for brand figures"
+                    hint="Looks up a chain’s or brand’s published nutrition when the description names one. Each search is billed to your API key. Results still need your confirmation."
+                    toggle={!!config.webSearch}
+                    onPress={() => setAiFeatureConfig('nutritionEstimate', { webSearch: !config.webSearch })}
+                    accessibilityLabel="Search the web for brand nutrition figures"
+                  />
+                )}
               </AiFeatureBlock>
             </React.Fragment>
           );

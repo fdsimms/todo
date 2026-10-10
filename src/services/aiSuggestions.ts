@@ -84,7 +84,7 @@ const LONG_REPLY_TIMEOUT_MS = 40_000;
 
 interface AnthropicResponse {
   stop_reason?: string;
-  content?: Array<{ type: string; input?: unknown }>;
+  content?: Array<{ type: string; name?: string; input?: unknown }>;
 }
 
 /**
@@ -2398,8 +2398,18 @@ const ESTIMATE_AMOUNTS_SCHEMA = {
   required: ESTIMATE_REQUIRED_KEYS,
 };
 
+/** A search turn runs several round trips server-side, so it gets longer than a plain call. */
+const WEB_SEARCH_TIMEOUT_MS = 60_000;
+
 /**
  * Reads a description of a meal into nutrition figures to confirm (#2426).
+ *
+ * **Brand lookup is opt-in.** With `aiFeatureConfig.nutritionEstimate.webSearch`
+ * on (off by default, billed per search), the request carries Anthropic's
+ * server-side web search so a named chain or brand is read off its published
+ * page rather than recalled. The result is unchanged in kind: still
+ * `estimated`, still confirmed on screen, with `basis: 'published'` and the
+ * source in `attribution`.
  *
  * **The case no database answers.** FoodData Central holds branded packaged
  * goods and Open Food Facts holds barcodes; neither holds menus, and eating
@@ -2479,10 +2489,15 @@ export async function estimateMealNutrition(
     .map(food => `- "${food.label}" (${food.quantity}): ${JSON.stringify(food.amounts)}`)
     .join('\n');
 
-  const data = await callAnthropic({
-    max_tokens: 2000,
+  const useWebSearch = !!useSettingsStore.getState().aiFeatureConfig.nutritionEstimate.webSearch;
+
+  const ask = (search: boolean) => callAnthropic({
+    max_tokens: search ? 4000 : 2000,
     system: [
       'You estimate what one described meal contains, for somebody writing it down in a food diary.',
+      ...(search ? [
+        'You may search the web, but only when the description names a specific chain, restaurant or packaged brand whose published nutrition you are not sure of. Prefer the brand\'s own nutrition page. Do not search for a generic dish. When you find figures, use them, set basis to "published" and name the source in attribution. When the search finds nothing usable, estimate as usual with basis "typical". Always finish by calling estimate_meal.',
+      ] : []),
       'Give figures for the whole thing described, as one helping. Do not give per-100g figures.',
       'A line reading "Amount eaten: ..." is the amount the person actually had. Base every figure on exactly that amount and state it in quantity.',
       'Give a figure for every nutrient in the schema, saturated fat, trans fat, cholesterol, added sugars and sodium included. Every one is required: when you are unsure, give your best approximation for a typical version of the food rather than leaving it out. A zero reads as a statement that the food contains essentially none, so use it only when that is true.',
@@ -2540,17 +2555,31 @@ export async function estimateMealNutrition(
         },
         required: ['label', 'quantity', 'amounts', 'basis', 'confidence'],
       },
-    }],
-    tool_choice: { type: 'tool', name: 'estimate_meal' },
+    }, ...(search ? [{ type: 'web_search_20250305', name: 'web_search', max_uses: 2 }] : [])],
+    // Forcing the tool would stop the model searching first, so a search run
+    // lets it choose and the prompt tells it to finish on estimate_meal.
+    tool_choice: search ? { type: 'auto' } : { type: 'tool', name: 'estimate_meal' },
     messages: [{
       role: 'user',
       content: known
         ? `The meal:\n${asked}\n\nFigures the user already has:\n${known}`
         : `The meal:\n${asked}`,
     }],
-  }, apiKey, model);
+  }, apiKey, model, search ? WEB_SEARCH_TIMEOUT_MS : undefined);
 
-  const toolUse = data.content?.find(c => c.type === 'tool_use');
+  const estimateCall = (data: AnthropicResponse | null) =>
+    data?.content?.find(c => c.type === 'tool_use' && c.name === 'estimate_meal');
+
+  let toolUse: ReturnType<typeof estimateCall>;
+  if (useWebSearch) {
+    // Search is a bonus, never a reason to lose the estimate: a failed search
+    // request, a turn that paused mid-search or one that ended without calling
+    // the tool all fall back to the plain forced call.
+    toolUse = estimateCall(await ask(true).catch(() => null));
+    if (!toolUse) toolUse = estimateCall(await ask(false));
+  } else {
+    toolUse = estimateCall(await ask(false));
+  }
   const estimate = readNutritionEstimate(
     toolUse?.input as RawNutritionEstimate | undefined,
     offered.length > 0,

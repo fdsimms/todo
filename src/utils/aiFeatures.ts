@@ -178,6 +178,13 @@ export interface AiFeatureConfig {
    * anywhere to expose a switch for it. Grocery aisle sorting is the first.
    */
   preferOnDevice?: boolean;
+  /**
+   * Lets the feature search the web for a brand's or chain's published figures
+   * (Anthropic's server-side search, billed per search on the user's key).
+   * Off unless set, so a request reaches the open web only when the user asked
+   * for it. `nutritionEstimate` is the only feature that reads it.
+   */
+  webSearch?: boolean;
 }
 
 export type AiFeatureConfigMap = Record<AiFeatureId, AiFeatureConfig>;

@@ -883,6 +883,11 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['claude', 'model', 'on device', 'grocery', 'offline', 'foundation models',
       'apple intelligence'] },
 
+  { id: 'ai:nutritionEstimate:webSearch', groupId: 'privacyAi', label: 'Search the web for brand figures',
+    section: 'Meal estimates', kitchen: true, simple: true, requires: 'ai:nutritionEstimate',
+    keywords: ['claude', 'web search', 'internet', 'chain', 'restaurant', 'menu', 'nutrition', 'calories',
+      'published', 'network', 'privacy'] },
+
   { id: 'productLookupEnabled', groupId: 'privacyAi', label: 'Look up food databases', section: 'Barcode lookups',
     keywords: ['upc', 'ean', 'gtin', 'open food facts', 'pantry', 'unpack', 'network', 'privacy',
       'nutrition', 'calories', 'usda', 'food data central', 'search food'],
