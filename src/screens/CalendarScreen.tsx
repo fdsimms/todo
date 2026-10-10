@@ -29,6 +29,7 @@ import { cellAt, isMoveDrop, type CellRect } from '../utils/calendarDrag';
 import { confirmBulkSetWhen } from '../utils/scheduleMovePrompt';
 import { spacing, font, fontWeight, radius, interaction, flattenOverlay, type Colors, textScale } from '../theme';
 import { useTextScale } from '../hooks/useTextScale';
+import { dayShadeBackground } from '../theme/dayShade';
 import { haptics } from '../utils/haptics';
 import { resetToMealPlan } from '../navigation/navigationRef';
 import { buildCalendarGrid, buildWeekDays, weekdayHeaders } from '../utils/calendarGrid';
@@ -37,6 +38,7 @@ import {
   buildDayBuckets,
   dayDetail,
   dayRows,
+  hasOpenDeadline,
   summarizeDay,
   type DayBucket,
 } from '../utils/calendarMonth';
@@ -80,11 +82,11 @@ const CELL_SIZE = Math.floor((SCREEN_WIDTH - spacing.md * 2) / 7);
 // columns across the screen, but with the dots beside the circle instead of
 // in their own row below it, the cell's content no longer needs a square box
 // to fit in.
-const CELL_HEIGHT = CELL_SIZE - 12;
-// The tint behind a day's date for each step of `shadeFor`, as an alpha over
-// the page. One hue in steps rather than a mark per kind of thing: the grid
-// is read for which days are heavy, and the day's list says what's on them.
-const SHADE_STYLE = [null, 'dayShade1', 'dayShade2', 'dayShade3'] as const;
+const CELL_HEIGHT = CELL_SIZE - 10;
+// The red dot under a date with an open deadline, and the slot reserved for
+// it on every cell so a marked circle sits in line with its neighbours.
+const DEADLINE_DOT = 5;
+const DEADLINE_DOT_GAP = 2;
 
 // One shared empty array for a task with no subtasks — a fresh `[]` per row per
 // render is exactly the identity churn the grouping below exists to avoid.
@@ -1347,6 +1349,7 @@ const DayCell = React.memo(function DayCell({
 }) {
   const onPress = () => onSelect(dayKey);
   const aimed = useDropTargetAimed(dropChannel, dayKey);
+  const tint = isSelected ? null : dayShadeBackground(shade, colors);
   return (
     <TouchableOpacity
       ref={view => registerRef(dayKey, view as unknown as View | null)}
@@ -1359,7 +1362,7 @@ const DayCell = React.memo(function DayCell({
     >
       <View style={[
         styles.dayCircle,
-        !isSelected && shade > 0 && styles[SHADE_STYLE[shade]!],
+        tint !== null && { backgroundColor: tint },
         isSelected && styles.dayCircleSelected,
         !isSelected && isToday && styles.dayCircleToday,
       ]}>
@@ -1371,6 +1374,9 @@ const DayCell = React.memo(function DayCell({
         ]}>
           {day.getDate()}
         </Text>
+      </View>
+      <View style={styles.deadlineSlot}>
+        {hasOpenDeadline(bucket) && <View style={styles.deadlineDot} />}
       </View>
     </TouchableOpacity>
   );
@@ -1540,17 +1546,16 @@ function makeStyles(colors: Colors, textScaleFactor = 1) {
       alignItems: 'center',
       justifyContent: 'center',
     },
-    // One hue in three steps (`shadeFor`), flattened onto the page so the
-    // tint is the same colour wherever the grid sits. Light enough at the top
-    // step that the date stays plain text on it, today's included.
-    dayShade1: {
-      backgroundColor: flattenOverlay(colors.accent + '2E', colors.bg),
+    deadlineSlot: {
+      height: DEADLINE_DOT,
+      marginTop: DEADLINE_DOT_GAP,
+      justifyContent: 'center',
     },
-    dayShade2: {
-      backgroundColor: flattenOverlay(colors.accent + '52', colors.bg),
-    },
-    dayShade3: {
-      backgroundColor: flattenOverlay(colors.accent + '80', colors.bg),
+    deadlineDot: {
+      width: DEADLINE_DOT,
+      height: DEADLINE_DOT,
+      borderRadius: DEADLINE_DOT / 2,
+      backgroundColor: colors.red,
     },
     dayCircleSelected: {
       backgroundColor: colors.accentFill,

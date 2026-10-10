@@ -64,7 +64,12 @@ exist, which is why the whole feature is a util plus a screen.
   It replaced a dot per mark kind in three states, a meal dot and a weight bar, up to fourteen
   symbols with no legend, which read as noise. The grid is looked at for which days are heavy; the
   day's list says what's on them. Don't add a second mark back to a cell without a reason that
-  outweighs that. `dotsFor` still runs, but only for the cell's spoken label.
+  outweighs that. The one exception is a small red dot under a date holding an open deadline
+  (`hasOpenDeadline`): a deadline isn't work landing on the day, so `buildDayLoads` skips it and a
+  deadline-only day would otherwise look empty. `WhenPicker` draws the same shade
+  (`dayShadeBackground` in `src/theme/dayShade.ts`), so a day reads the same in both grids, and
+  keeps its away dashes because it has no trip band. `dotsFor` still runs, for `hasOpenDeadline`
+  and the cell's spoken label.
 - **Its own route, not a fifth Today lens** — see the Navigation note in `CLAUDE.md`. And paging months carries
   the selection with it: a detail pane naming a day outside the grid renders "Nothing on this day"
   about a day that simply isn't in range.
@@ -86,7 +91,7 @@ Meal Plan last opened), birthdays, project deadlines, and what was completed tha
 - **Kept out of the task buckets.** A bucket's marks are read as work by the shade, the outstanding
   counts and `dayLoad`. None of these is work landing on the day, so they live in their own map and
   touch none of those.
-- **The trip band asks `isAwayDay`**, the same as the away cue `WhenPicker` draws, so the return
+- **The trip band asks `isAwayDay`**, the same as the away dashes `WhenPicker` draws, so the return
   day is never covered and a trip with no return date covers its departure only. Being away doesn't
   shade a cell; the band says it.
 - **Completions file on their logical day**, the way Logbook groups them, and a task the day already
