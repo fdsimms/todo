@@ -294,6 +294,38 @@ export function weightFor(load: DayLoad | undefined): DayWeight | null {
   return null;
 }
 
+/**
+ * How dark the calendar grid shades a day: 0 for nothing on it, then 1 for
+ * something, 2 for busy and 3 for full.
+ *
+ * The month grid's only mark. It replaced a dot per kind of mark in three
+ * states, a meal dot and a weight bar, which together made up to fourteen
+ * symbols nobody could read without a legend. One scale answers the question
+ * the grid is looked at for ("which days are heavy"), and the day's list says
+ * what is on it.
+ *
+ * The steps above 1 are `weightFor`'s own thresholds, so the shade and the
+ * picker's busy cue can't disagree about a day. Away is deliberately not a
+ * step: the trip band says it, and a day away can still have work on it.
+ */
+export type DayShade = 0 | 1 | 2 | 3;
+
+export function shadeFor(load: DayLoad | undefined): DayShade {
+  if (!load) return 0;
+  if (load.busyAllDay || load.rankedMinutes >= FULL_DAY_MINUTES) return 3;
+  if (load.rankedMinutes >= BUSY_DAY_MINUTES) return 2;
+  if (load.taskCount > 0 || load.projected > 0 || load.busyMinutes > 0) return 1;
+  return 0;
+}
+
+/** How a shade is spoken, for VoiceOver on a grid cell. Empty for no shade. */
+export function describeDayShade(shade: DayShade): string {
+  if (shade === 3) return 'full';
+  if (shade === 2) return 'busy';
+  if (shade === 1) return 'something planned';
+  return '';
+}
+
 /** How a cue is spoken, for the cells that draw one. */
 export function describeDayWeight(weight: DayWeight): string {
   if (weight === 'away') return 'away';

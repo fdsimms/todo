@@ -390,6 +390,18 @@ export function dotsFor(marks: readonly DayMark[]): DayDot[] {
   return dots;
 }
 
+/**
+ * Whether a day holds a deadline still to hit: a real row, not ticked off.
+ *
+ * The one mark the calendar draws besides its shade, because the shade counts
+ * work landing on the day and a deadline isn't any (`buildDayLoads` skips it),
+ * so a day with only a deadline would otherwise look empty. A projected one
+ * doesn't count: it's a guess about a row that doesn't exist yet.
+ */
+export function hasOpenDeadline(bucket: DayBucket | undefined): boolean {
+  return bucket?.dots.some(dot => dot.kind === 'deadline' && dot.state === 'solid') ?? false;
+}
+
 export interface DayDetail {
   key: string;
   /** Real rows, by kind — these are tappable, completable, editable tasks. */

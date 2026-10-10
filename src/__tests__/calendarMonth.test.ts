@@ -8,6 +8,7 @@ import {
   dayDetail,
   dayRows,
   dotsFor,
+  hasOpenDeadline,
   nthOccurrence,
   projectOccurrences,
   projectedDeadlineFor,
@@ -471,6 +472,30 @@ describe('buildDayBuckets with projection', () => {
     const buckets = buildDayBuckets([done, live], GRID);
     // The 17th is one occurrence, not one per completion in the chain's history.
     expect(buckets.get('2026-08-17')!.marks).toHaveLength(1);
+  });
+});
+
+describe('hasOpenDeadline', () => {
+  const bucketOf = (marks: Parameters<typeof dotsFor>[0]): DayBucket =>
+    ({ dots: dotsFor(marks) } as DayBucket);
+  const mark = (over: Partial<Parameters<typeof dotsFor>[0][number]>) => ({
+    kind: 'deadline' as const,
+    taskId: 'task-1',
+    title: 'Test',
+    projected: false,
+    completed: false,
+    ...over,
+  });
+
+  it('is true for a real deadline still open', () => {
+    expect(hasOpenDeadline(bucketOf([mark({})]))).toBe(true);
+  });
+
+  it('is false for a met, projected or missing deadline', () => {
+    expect(hasOpenDeadline(bucketOf([mark({ completed: true })]))).toBe(false);
+    expect(hasOpenDeadline(bucketOf([mark({ projected: true })]))).toBe(false);
+    expect(hasOpenDeadline(bucketOf([mark({ kind: 'due' })]))).toBe(false);
+    expect(hasOpenDeadline(undefined)).toBe(false);
   });
 });
 

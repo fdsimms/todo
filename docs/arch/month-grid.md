@@ -59,9 +59,17 @@ exist, which is why the whole feature is a util plus a screen.
   puts the rule's own day on the cursor as `recurrenceAnchorDate`. Cleared instead, as every
   other step clears it, the projection would step from the moved day and drift a day per holiday,
   so the grid would disagree with the rows the app actually writes.
-- **Three dot states, not two.** `solid` (real work outstanding), `done` (rows here, all ticked),
-  `projected` (hollow). Collapsing `done` into `projected` makes a finished Tuesday read as a
-  guess; collapsing it into `solid` makes a month you've cleared look untouched.
+- **A cell draws one thing: a shade.** The tint behind a day's date steps up with how much is on
+  it (`shadeFor` in `dayLoad.ts`: something, busy, full, the last two at `weightFor`'s thresholds).
+  It replaced a dot per mark kind in three states, a meal dot and a weight bar, up to fourteen
+  symbols with no legend, which read as noise. The grid is looked at for which days are heavy; the
+  day's list says what's on them. Don't add a second mark back to a cell without a reason that
+  outweighs that. The one exception is a small red dot under a date holding an open deadline
+  (`hasOpenDeadline`): a deadline isn't work landing on the day, so `buildDayLoads` skips it and a
+  deadline-only day would otherwise look empty. `WhenPicker` draws the same shade
+  (`dayShadeBackground` in `src/theme/dayShade.ts`), so a day reads the same in both grids, and
+  keeps its away dashes because it has no trip band. `dotsFor` still runs, for `hasOpenDeadline`
+  and the cell's spoken label.
 - **Its own route, not a fifth Today lens** — see the Navigation note in `CLAUDE.md`. And paging months carries
   the selection with it: a detail pane naming a day outside the grid renders "Nothing on this day"
   about a day that simply isn't in range.
@@ -81,16 +89,16 @@ exist, which is why the whole feature is a util plus a screen.
 ## What else the grid shows about a day
 
 `calendarExtras.ts` buckets the things the app already knows about a date that aren't a task's own
-date: a project's away span (drawn as a named band under the week row), planned meals (a green dot,
-and read through `entriesInRangeLive`, never the meal store's loaded window, which is only the week
+date: a project's away span (drawn as a named band under the week row), planned meals (listed under
+the day, not marked on the cell, and read through `entriesInRangeLive`, never the meal store's loaded window, which is only the week
 Meal Plan last opened), birthdays, project deadlines, and what was completed that logical day.
 
-- **Kept out of the task buckets.** A bucket's marks are read as work by the dots, the outstanding
+- **Kept out of the task buckets.** A bucket's marks are read as work by the shade, the outstanding
   counts and `dayLoad`. None of these is work landing on the day, so they live in their own map and
   touch none of those.
-- **A trip band and the weight cue agree by construction.** Both ask `isAwayDay`, so the return day
-  is never covered and a trip with no return date covers its departure only. On an away day the cell
-  draws no dashes; the band says it.
+- **The trip band asks `isAwayDay`**, the same as the away dashes `WhenPicker` draws, so the return
+  day is never covered and a trip with no return date covers its departure only. Being away doesn't
+  shade a cell; the band says it.
 - **Completions file on their logical day**, the way Logbook groups them, and a task the day already
   lists (due and ticked the same day) is not listed again under Completed. Missed rows stay out.
 

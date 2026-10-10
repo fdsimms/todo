@@ -8,7 +8,9 @@ import {
   FULL_DAY_MINUTES,
   buildDayLoads,
   describeDayLoad,
+  describeDayShade,
   describeDayWeight,
+  shadeFor,
   weightFor,
 } from '../utils/dayLoad';
 
@@ -449,6 +451,65 @@ describe('weightFor', () => {
   it('speaks a cue plainly', () => {
     expect(describeDayWeight('busy')).toBe('already busy');
     expect(describeDayWeight('full')).toBe('already full');
+  });
+});
+
+describe('shadeFor', () => {
+  const load = (over: Partial<ReturnType<typeof base>> = {}) => ({ ...base(), ...over });
+  const base = () => ({
+    key: '2026-08-12',
+    taskCount: 0,
+    taskMinutes: 0,
+    unestimated: 0,
+    projected: 0,
+    busyKnown: false,
+    busyMinutes: 0,
+    busyAllDay: false,
+    rankedMinutes: 0,
+    away: false,
+  });
+
+  it('leaves an empty day unshaded', () => {
+    expect(shadeFor(undefined)).toBe(0);
+    expect(shadeFor(load())).toBe(0);
+  });
+
+  it('shades a day with anything on it at the lightest step', () => {
+    expect(shadeFor(load({ taskCount: 1, rankedMinutes: 30 }))).toBe(1);
+    expect(shadeFor(load({ projected: 1, rankedMinutes: 30 }))).toBe(1);
+    expect(shadeFor(load({ busyMinutes: 60, rankedMinutes: 60 }))).toBe(1);
+  });
+
+  it('uses the busy and full thresholds for the darker steps', () => {
+    expect(shadeFor(load({ taskCount: 1, rankedMinutes: BUSY_DAY_MINUTES }))).toBe(2);
+    expect(shadeFor(load({ taskCount: 1, rankedMinutes: FULL_DAY_MINUTES }))).toBe(3);
+    expect(shadeFor(load({ busyAllDay: true }))).toBe(3);
+  });
+
+  it('agrees with weightFor on every day it marks', () => {
+    expect(weightFor(load({ rankedMinutes: BUSY_DAY_MINUTES }))).toBe('busy');
+    expect(weightFor(load({ rankedMinutes: FULL_DAY_MINUTES }))).toBe('full');
+  });
+
+  it('ignores being away, which the trip band says', () => {
+    expect(shadeFor(load({ away: true }))).toBe(0);
+    expect(shadeFor(load({ away: true, taskCount: 1, rankedMinutes: 30 }))).toBe(1);
+  });
+
+  it('leaves out completed rows and deadlines, as the load does', () => {
+    const loads = loadsFor([
+      makeTask({ dueDate: iso(2026, 8, 12), completed: true, completedAt: iso(2026, 8, 12) }),
+      makeTask({ deadline: iso(2026, 8, 13) }),
+    ]);
+    expect(shadeFor(loads.get('2026-08-12'))).toBe(0);
+    expect(shadeFor(loads.get('2026-08-13'))).toBe(0);
+  });
+
+  it('speaks a shade plainly', () => {
+    expect(describeDayShade(0)).toBe('');
+    expect(describeDayShade(1)).toBe('something planned');
+    expect(describeDayShade(2)).toBe('busy');
+    expect(describeDayShade(3)).toBe('full');
   });
 });
 

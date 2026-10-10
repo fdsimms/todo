@@ -62,7 +62,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/calendarGrid.ts` — weekdayHeaders, buildWeekDays, buildCalendarGrid, isDayBefore, clampMonthToEarliest, canPageToPreviousMonth, isDayAfter, clampMonthToLatest, canPageToNextMonth
 - `src/utils/calendarHistory.ts` — PAST_CALENDAR_WINDOW_DAYS, MIN_CALENDAR_NAME_LENGTH, PastCalendarGate, shouldReadPastCalendar, PersonName, HistorySuggestion, HandledHistoryEvents, pastWindowStart, historyEventKey, peopleNamedInTitle, +4 more
 - `src/utils/calendarIdBackfill.ts` — CALENDAR_ID_BACKFILL_KEY, backfillCalendarExternalIds
-- `src/utils/calendarMonth.ts` — DayMarkKind, MARK_KINDS, DayMark, DotState, DayDot, DayBucket, MAX_PROJECTION_STEPS, canProject, projectOccurrences, nthOccurrence, +8 more
+- `src/utils/calendarMonth.ts` — DayMarkKind, MARK_KINDS, DayMark, DotState, DayDot, DayBucket, MAX_PROJECTION_STEPS, canProject, projectOccurrences, nthOccurrence, +9 more
 - `src/utils/calendarReadSummary.ts` — CalendarLineInput, calendarStatusLine, failedCalendarsLabel, todayFallback
 - `src/utils/calendarRequestDrain.ts` — drainCalendarRequests
 - `src/utils/calendarRequests.ts` — CALENDAR_REQUEST_RETENTION_DAYS, CALENDAR_REQUEST_PAST_REASON, CALENDAR_REQUEST_REFUSED_REASON, isCalendarRequestWriter, CalendarRequestDrainPlan, planCalendarRequestDrain, eventFieldsForRequest, CALENDAR_CHANGE_NO_EVENT_REASON, changeRequestProblem, eventFieldsForChange
@@ -98,7 +98,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/dailyAgendaSync.ts` — useDailyAgendaSync
 - `src/utils/dateUtils.ts` — getDayStart, getCurrentDayStart, getLogicalDayKey, dayKeyOf, dayKeyToDate, deadlineInstant, getTaskDayStart, formatHHMM, formatTimeOfDay, hoursUnlockLabel, +34 more
 - `src/utils/dayContextRows.ts` — HealthRowKey, HEALTH_ROW_KEYS, HEALTH_ROW_LABELS, parseHealthRowKeys, serializeHealthRowKeys, ALL_DAY_CAPTION, startsInLabel, eventContextRows, mealContextRows, healthContextRows, +4 more
-- `src/utils/dayLoad.ts` — BUSY_DAY_MINUTES, FULL_DAY_MINUTES, ASSUMED_TASK_MINUTES, assumedMinutesFor, DayWeight, DayLoad, BuildDayLoadsOptions, buildDayLoads, weightFor, describeDayWeight, +1 more
+- `src/utils/dayLoad.ts` — BUSY_DAY_MINUTES, FULL_DAY_MINUTES, ASSUMED_TASK_MINUTES, assumedMinutesFor, DayWeight, DayLoad, BuildDayLoadsOptions, buildDayLoads, weightFor, DayShade, +4 more
 - `src/utils/daySegments.ts` — DAY_SEGMENT_KEYS, DaySegmentKey, DaySegmentTimes, applyDaySegmentTime, daySegmentsInOrder
 - `src/utils/dayTimeline.ts` — MINUTES_IN_DAY, DEFAULT_FIRST_HOUR, DEFAULT_LAST_HOUR, TimelineEntry, DayTimeline, DayTimelineInput, clockToDayMinutes, instantToDayMinutes, buildDayTimeline, SLOT_STEP_MINUTES, +1 more
 - `src/utils/deadlineCalendarSync.ts` — syncDeadlineEvent, deadlineEventLink, deleteDeadlineEvent, TaskEventSyncPlan, taskEventsAfterSync
