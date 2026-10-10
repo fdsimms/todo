@@ -36,6 +36,8 @@ export interface ListBulkCategoryPanel {
   onCreate?: (name: string) => void;
   /** Off for a field that always holds a value — an aisle, say — where "None" isn't a real choice. Defaults to true. */
   allowNone?: boolean;
+  /** What the no-value chip says, where a list calls its empty group something else ("Other"). Defaults to "None". */
+  noneLabel?: string;
   /**
    * What one option is called, with its article, for the find field: "an
    * aisle", "a meal type". Defaults to "a category", which is what the field
@@ -222,7 +224,7 @@ export function ListBulkBar({
           >
             {!query && category.allowNone !== false && (
               <TouchableOpacity style={styles.categoryChip} onPress={() => handleSetCategory(null)}>
-                <Text style={styles.categoryChipText}>None</Text>
+                <Text style={styles.categoryChipText}>{category.noneLabel ?? 'None'}</Text>
               </TouchableOpacity>
             )}
             {filtered.map(name => (

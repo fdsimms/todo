@@ -661,6 +661,25 @@ export function FoodLogEntrySheet({
    * an old amount the food can no longer measure opens on the default above
    * rather than on a refusal.
    */
+  /**
+   * Back from the amount step to the list, keeping what was typed. Picking
+   * the wrong row used to mean Cancel, which closed the whole sheet, and a
+   * retyped search. Only for a new entry: a correction's food is the entry
+   * itself (see `foodLogEntryEdit`), so it has nothing to go back to.
+   */
+  const changeFood = () => {
+    haptics.tap();
+    searchFilter.seed(query);
+    setPicked(null);
+    setAmount('');
+    setAmountUnit(null);
+    setAmountNumber('');
+    setRecalledAmount(null);
+    setVaryingAmounts({});
+    setPantryAnswer(null);
+    setCatalogPickOpen(false);
+  };
+
   const choose = (candidate: Candidate) => {
     setPicked(candidate);
     const weigh = candidate.kind === 'dish' && candidate.cookedGrams !== null;
@@ -1571,7 +1590,9 @@ export function FoodLogEntrySheet({
       <View style={styles.root}>
         <View style={styles.header}>
           <View style={styles.headerRow}>
-            <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />
+            {picked && !editing
+              ? <SheetHeaderButton label="Back" role="cancel" onPress={changeFood} minWidth={64} />
+              : <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />}
             {!picked && (
               <Text style={styles.headerTitle} numberOfLines={1}>
                 {editing ? 'What was it?' : 'What did you eat?'}
@@ -1857,7 +1878,7 @@ export function FoodLogEntrySheet({
             <SegmentedControl<MealSlot | null>
               options={[
                 ...MEAL_SLOTS.map(s => ({ value: s as MealSlot | null, label: MEAL_SLOT_LABELS[s] })),
-                { value: null, label: 'None' },
+                { value: null, label: 'Other' },
               ]}
               value={chosenSlot}
               onChange={setChosenSlot}

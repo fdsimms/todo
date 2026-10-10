@@ -332,6 +332,48 @@ export function MealEntrySheet({
             <Text style={styles.sheetTitle} numberOfLines={2}>{title}</Text>
           )}
 
+          {/* What the sheet is usually opened for once the meal's day comes,
+              so it sits under the title rather than below two rows of day
+              chips. Kept in this order: cooked, then logged. */}
+          {(!!onSetCooked || !!onViewFoodLogEntry || !!onLogMeal) && (
+            <View style={styles.closeOut}>
+              {!!onSetCooked && (
+                <SheetActionRow
+                  icon={cooked ? 'close-circle-outline' : 'checkmark-circle-outline'}
+                  color={colors.accent}
+                  label={cooked ? 'Mark not cooked' : 'Mark cooked'}
+                  onPress={() => {
+                    const next = !cooked;
+                    next ? haptics.success() : haptics.tap();
+                    dismiss(() => onSetCooked(next));
+                  }}
+                  accessibilityLabel={cooked ? 'Mark this meal not cooked' : 'Mark this meal cooked'}
+                />
+              )}
+              {!!onSetCooked && (!!onViewFoodLogEntry || !!onLogMeal) && <View style={styles.sep} />}
+              {!!onViewFoodLogEntry && (
+                <SheetActionRow
+                  icon="journal-outline"
+                  color={colors.accent}
+                  label="View in food log"
+                  onPress={() => { haptics.tap(); dismiss(onViewFoodLogEntry); }}
+                  accessibilityLabel="View this meal’s food log entry"
+                />
+              )}
+              {!!onViewFoodLogEntry && !!onLogMeal && <View style={styles.sep} />}
+              {!!onLogMeal && (
+                <SheetActionRow
+                  icon="journal-outline"
+                  color={colors.accent}
+                  label="Log this meal"
+                  onPress={() => { haptics.tap(); dismiss(onLogMeal); }}
+                  accessibilityLabel="Log this meal in the food log"
+                />
+              )}
+              <View style={styles.sep} />
+            </View>
+          )}
+
           {/* Alongside the choice chips, above "Move to", for the same reason
               they are: both change what gets cooked and bought rather than where
               the meal sits. Only for a meal backed by a recipe — a night that
@@ -488,49 +530,6 @@ export function MealEntrySheet({
               <Text style={styles.copyHint}>
                 Tap a day to plan this {slotLabel(entry?.slot ?? 'dinner').toLowerCase()} there too.
               </Text>
-            </>
-          )}
-
-          {!!onSetCooked && (
-            <>
-              <View style={styles.sep} />
-              <SheetActionRow
-                icon={cooked ? 'close-circle-outline' : 'checkmark-circle-outline'}
-                color={colors.accent}
-                label={cooked ? 'Mark not cooked' : 'Mark cooked'}
-                onPress={() => {
-                  const next = !cooked;
-                  next ? haptics.success() : haptics.tap();
-                  dismiss(() => onSetCooked(next));
-                }}
-                accessibilityLabel={cooked ? 'Mark this meal not cooked' : 'Mark this meal cooked'}
-              />
-            </>
-          )}
-
-          {!!onViewFoodLogEntry && (
-            <>
-              <View style={styles.sep} />
-              <SheetActionRow
-                icon="journal-outline"
-                color={colors.accent}
-                label="View in food log"
-                onPress={() => { haptics.tap(); dismiss(onViewFoodLogEntry); }}
-                accessibilityLabel="View this meal’s food log entry"
-              />
-            </>
-          )}
-
-          {!!onLogMeal && (
-            <>
-              <View style={styles.sep} />
-              <SheetActionRow
-                icon="journal-outline"
-                color={colors.accent}
-                label="Log this meal"
-                onPress={() => { haptics.tap(); dismiss(onLogMeal); }}
-                accessibilityLabel="Log this meal in the food log"
-              />
             </>
           )}
 
@@ -801,6 +800,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
   },
+  closeOut: { marginTop: spacing.sm },
   scaleBlock: { paddingBottom: spacing.xs },
   scaleChips: { paddingHorizontal: spacing.md },
   chips: {
