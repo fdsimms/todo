@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Keyboard, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SheetModal } from './SheetModal';
 import { SheetHeader } from './SheetHeader';
@@ -13,13 +13,21 @@ import { border, font, fontWeight, radius, spacing, type Colors } from '../theme
 import type { NutrientKey } from '../types';
 import { PANEL_UNITS, type SupplementPanel } from '../utils/medicationSettings';
 import {
+  applyLabelToSupplementForm,
   buildSupplementPanel,
   invalidSupplementFields,
+  servingFromLabelText,
   supplementFormDirty,
   supplementFormFrom,
   type SupplementForm,
 } from '../utils/supplementDose';
 import { haptics } from '../utils/haptics';
+import { canReadTextOnDevice } from '../utils/receiptOcr';
+import { readLabelPhoto } from '../utils/labelOcr';
+import { pickRecipePhoto } from '../utils/recipePhoto';
+import {
+  describeAIError, nutritionLabelPhotoAiAvailable, readLabelPhotoWithAi,
+} from '../services/aiSuggestions';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 
 /**
@@ -59,6 +67,18 @@ export function SupplementPanelSheet({ visible, name, panel, onClose, onSave }: 
   // What the sheet opened saying, so the discard guard compares against the
   // panel as it was rather than against a blank form.
   const baseline = useRef<SupplementPanel | null>(panel);
+  // Resolved once: whether Vision is linked can't change while the app runs.
+  const canPhotograph = useMemo(() => canReadTextOnDevice(), []);
+  const [reading, setReading] = useState(false);
+  const [photoNote, setPhotoNote] = useState<string | null>(null);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  // Which opening a photo read belongs to, so a read that lands after the sheet
+  // closed or reopened on another medication is dropped (see
+  // `NutritionPanelSheet`'s `openingRef`).
+  const openingRef = useRef(0);
+  useEffect(() => { openingRef.current += 1; }, [visible, name]);
+  const formRef = useRef(form);
+  useEffect(() => { formRef.current = form; }, [form]);
 
   useEffect(() => {
     if (!visible) return;
@@ -66,8 +86,79 @@ export function SupplementPanelSheet({ visible, name, panel, onClose, onSave }: 
     baseline.current = panel;
     setBad([]);
     setEmpty(false);
+    setReading(false);
+    setPhotoNote(null);
+    setPhotoError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
+
+  const handlePhoto = useCallback(async (source: 'camera' | 'library') => {
+    const opening = openingRef.current;
+    const stillHere = () => openingRef.current === opening;
+    const picked = await pickRecipePhoto(source);
+    if (!stillHere() || picked.status === 'canceled') return;
+    if (picked.status === 'denied') {
+      Alert.alert(
+        source === 'camera' ? 'Camera access is off' : 'Photo access is off',
+        'Turn it on in Settings to read a label from a photo, or type the figures in.',
+      );
+      return;
+    }
+    if (picked.status === 'failed') {
+      setPhotoError(picked.message);
+      return;
+    }
+    setReading(true);
+    setPhotoError(null);
+    try {
+      let read = await readLabelPhoto(picked.photo.sourceUri);
+      if (!stillHere()) return;
+      let aiFailure: string | null = null;
+      if (!read && nutritionLabelPhotoAiAvailable()) {
+        try {
+          read = await readLabelPhotoWithAi(picked.photo);
+        } catch (e) {
+          aiFailure = describeAIError(e);
+        }
+        if (!stillHere()) return;
+      }
+      if (!read) {
+        haptics.warning();
+        setPhotoNote(null);
+        setPhotoError(aiFailure
+          ? `Claude couldn’t read that photo either: ${aiFailure}`
+          : 'Couldn’t read a supplement facts panel in that photo. Try again with the whole panel in frame and more light, or type the figures in below.');
+        return;
+      }
+      haptics.success();
+      const next = applyLabelToSupplementForm(formRef.current, read);
+      setForm(next);
+      setBad([]);
+      setEmpty(false);
+      const filled = Object.keys(read.columns[0].amounts).length;
+      const servingRead = servingFromLabelText(read.servingText) !== null;
+      setPhotoNote(
+        `Filled in ${filled} ${filled === 1 ? 'figure' : 'figures'}`
+        + `${servingRead ? ' and the serving' : ''}. Check them against the bottle before saving.`
+        + `${servingRead ? '' : ' The serving size wasn\u2019t read, so check it too.'}`
+        + `${read.columns.length > 1 ? ' This label prints more than one column. The first was used.' : ''}`,
+      );
+    } finally {
+      if (stillHere()) setReading(false);
+    }
+  }, []);
+
+  const startPhoto = () => {
+    Alert.alert(
+      'Read the label',
+      'Photograph the supplement facts and the figures on it will fill in the fields below.',
+      [
+        { text: 'Take a photo', onPress: () => { void handlePhoto('camera'); } },
+        { text: 'Choose a photo', onPress: () => { void handlePhoto('library'); } },
+        { text: 'Cancel', style: 'cancel' },
+      ],
+    );
+  };
 
   const setAmount = (key: NutrientKey, text: string) => {
     setForm(f => ({ ...f, amounts: { ...f.amounts, [key]: text } }));
@@ -144,6 +235,19 @@ export function SupplementPanelSheet({ visible, name, panel, onClose, onSave }: 
               Copy the figures from the supplement facts on the label. Leave a field blank if
               the label doesn't list it. Blank means unknown, which is not the same as zero.
             </Text>
+
+            {canPhotograph && (
+              <View style={styles.photoRow}>
+                <InlineAction
+                  label={reading ? 'Reading the label…' : 'Read from a photo'}
+                  icon="camera-outline"
+                  onPress={startPhoto}
+                  disabled={reading}
+                />
+              </View>
+            )}
+            {!!photoError && <Text style={styles.photoError}>{photoError}</Text>}
+            {!!photoNote && <Text style={styles.hint}>{photoNote}</Text>}
 
             <Text style={styles.groupLabel}>SERVING</Text>
             <View style={styles.card}>
@@ -243,5 +347,7 @@ function makeStyles(colors: Colors) {
     hint: { color: colors.textSecondary, fontSize: font.xs, lineHeight: 16 },
     error: { color: colors.redText, fontSize: font.sm, lineHeight: 18, marginTop: spacing.md },
     removeRow: { marginTop: spacing.md, alignItems: 'flex-start' },
+    photoRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.sm },
+    photoError: { color: colors.redText, fontSize: font.xs, lineHeight: 16, marginBottom: spacing.sm },
   });
 }

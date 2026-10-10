@@ -5,6 +5,7 @@ import { NUTRIENT_LABEL } from './foodNutrition';
 import type { SupplementPanel } from './medicationSettings';
 import { PANEL_UNITS } from './medicationSettings';
 import { readPanelNumber } from './nutritionPanelForm';
+import type { LabelReading } from './labelOcr';
 
 /**
  * A supplement dose adding its nutrients to the day.
@@ -219,5 +220,55 @@ export function describeSupplementPanel(panel: SupplementPanel): { heading: stri
   return {
     heading: `Per ${panel.servingAmount} ${unit}: ${stated.length} ${stated.length === 1 ? 'nutrient' : 'nutrients'}`,
     detail: more > 0 ? `${shown.join(', ')}, and ${more} more` : shown.join(', '),
+  };
+}
+
+// ==== A photographed label ====
+
+/** How a label words a serving, mapped onto the units a panel can be per. */
+const SERVING_WORDS: readonly { pattern: RegExp; unit: string }[] = [
+  { pattern: /^(tablets?|caplets?)\b/, unit: 'tablet' },
+  { pattern: /^(capsules?|softgels?|soft\s*gels?|veggie\s*caps?|caps)\b/, unit: 'capsule' },
+  { pattern: /^(drops?)\b/, unit: 'drop' },
+  { pattern: /^(sprays?)\b/, unit: 'spray' },
+  { pattern: /^(ml|milliliters?)\b/, unit: 'ml' },
+  { pattern: /^(g|grams?)\b/, unit: 'g' },
+];
+
+/**
+ * The serving a label's "Serving Size 2 tablets" line states, or null when it
+ * is in words this can't map ("1 gummy", "1 scoop"). Null leaves the sheet's
+ * own serving fields alone rather than guessing a unit, and the sheet says the
+ * serving needs checking.
+ */
+export function servingFromLabelText(text: string | null): { amount: number; unit: string } | null {
+  if (!text) return null;
+  const match = /^\s*(\d+(?:[.,]\d+)?)\s*(.*)$/.exec(text.toLowerCase());
+  if (!match) return null;
+  const amount = Number(match[1].replace(',', '.'));
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  const rest = match[2].trim();
+  const hit = SERVING_WORDS.find(({ pattern }) => pattern.test(rest));
+  return hit ? { amount, unit: hit.unit } : null;
+}
+
+/**
+ * The form with a photographed label's first column laid over it. A figure the
+ * label didn't state leaves its field as it was; the serving is replaced only
+ * when its words map onto a unit (`servingFromLabelText`).
+ */
+export function applyLabelToSupplementForm(form: SupplementForm, reading: LabelReading): SupplementForm {
+  const column = reading.columns[0];
+  if (!column) return form;
+  const amounts = { ...form.amounts };
+  for (const key of NUTRIENT_KEYS) {
+    const amount = column.amounts[key];
+    if (amount !== undefined) amounts[key] = String(amount);
+  }
+  const serving = servingFromLabelText(reading.servingText);
+  return {
+    servingAmount: serving ? String(serving.amount) : form.servingAmount,
+    servingUnit: serving ? serving.unit : form.servingUnit,
+    amounts,
   };
 }

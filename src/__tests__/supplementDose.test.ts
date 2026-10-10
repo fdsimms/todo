@@ -1,6 +1,8 @@
 import type { FoodLogEntry, MedicationLog } from '../types';
 import type { SupplementPanel } from '../utils/medicationSettings';
+import type { LabelReading } from '../utils/labelOcr';
 import {
+  applyLabelToSupplementForm,
   buildSupplementPanel,
   describeSupplementPanel,
   doseSourceId,
@@ -8,6 +10,7 @@ import {
   entryForDose,
   invalidSupplementFields,
   isSupplementEntry,
+  servingFromLabelText,
   supplementDoseIdOf,
   supplementFieldCount,
   supplementFormDirty,
@@ -216,5 +219,50 @@ describe('describeSupplementPanel', () => {
     const d = describeSupplementPanel(big);
     expect(d.heading).toBe('Per 1 capsule: 6 nutrients');
     expect(d.detail.endsWith('and 2 more')).toBe(true);
+  });
+});
+
+describe('servingFromLabelText', () => {
+  it('maps the wordings a supplement label uses onto a panel unit', () => {
+    expect(servingFromLabelText('2 tablets')).toEqual({ amount: 2, unit: 'tablet' });
+    expect(servingFromLabelText('1 Softgel')).toEqual({ amount: 1, unit: 'capsule' });
+    expect(servingFromLabelText('1 capsule (500 mg)')).toEqual({ amount: 1, unit: 'capsule' });
+    expect(servingFromLabelText('1,5 caplets')).toEqual({ amount: 1.5, unit: 'tablet' });
+    expect(servingFromLabelText('5 ml')).toEqual({ amount: 5, unit: 'ml' });
+  });
+
+  it('refuses wording it cannot map rather than guessing a unit', () => {
+    expect(servingFromLabelText('1 gummy')).toBeNull();
+    expect(servingFromLabelText('1 scoop (30 g)')).toBeNull();
+    expect(servingFromLabelText('Tablets')).toBeNull();
+    expect(servingFromLabelText(null)).toBeNull();
+  });
+});
+
+describe('applyLabelToSupplementForm', () => {
+  const reading = (servingText: string | null, amounts: LabelReading['columns'][number]['amounts']): LabelReading => ({
+    servingText,
+    servingGrams: null,
+    columns: [{ basis: null, amounts }],
+  });
+
+  it('fills the stated figures and the serving, leaving the rest as they were', () => {
+    const form = supplementFormFrom(null);
+    form.amounts.zincMg = '5';
+    const next = applyLabelToSupplementForm(form, reading('2 tablets', { vitaminCMg: 90, magnesiumMg: 100 }));
+    expect(next.servingAmount).toBe('2');
+    expect(next.servingUnit).toBe('tablet');
+    expect(next.amounts.vitaminCMg).toBe('90');
+    expect(next.amounts.magnesiumMg).toBe('100');
+    expect(next.amounts.zincMg).toBe('5');
+    expect(next.amounts.ironMg).toBe('');
+  });
+
+  it('keeps the serving fields when the serving wording cannot be mapped', () => {
+    const form = { ...supplementFormFrom(null), servingAmount: '3', servingUnit: 'capsule' };
+    const next = applyLabelToSupplementForm(form, reading('1 gummy', { zincMg: 11 }));
+    expect(next.servingAmount).toBe('3');
+    expect(next.servingUnit).toBe('capsule');
+    expect(next.amounts.zincMg).toBe('11');
   });
 });

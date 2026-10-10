@@ -7,7 +7,7 @@
 import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
 import { useMedicationStore } from '../../../src/store/useMedicationStore';
-import { atFrom, deleteMedicationLog, deleteSavedMeal, duplicateFoodEntry, listSavedMeals, logFood, logMedication, logMood, logSavedMeal, logWater, moveFoodEntry, renameMoodTag, saveMealFromEntries, saveRecipe, setMedicationArchived, setNutritionTargets, updateFoodEntry, updateMoodLog } from '../logTools';
+import { atFrom, deleteMedicationLog, deleteSavedMeal, setSupplementNutrients, duplicateFoodEntry, listSavedMeals, logFood, logMedication, logMood, logSavedMeal, logWater, moveFoodEntry, renameMoodTag, saveMealFromEntries, saveRecipe, setMedicationArchived, setNutritionTargets, updateFoodEntry, updateMoodLog } from '../logTools';
 
 let mockRaw: ShimDatabase;
 
@@ -338,5 +338,45 @@ describe('changing the amount of a measured food entry', () => {
     const est = logFood(replica, { label: 'Soup', amounts: { calorieKcal: 300 }, at: '2030-03-10', apply: true });
     expect(() => duplicateFoodEntry(replica, est.id!, '2030-03-11', { grams: 100 })).toThrow(/no food record/);
     expect(() => duplicateFoodEntry(replica, entry.id, '2030-03-11', { grams: 5, quantity: '6 g' })).toThrow(/grams or as quantity/);
+  });
+});
+
+describe('log_food and the vitamins and minerals', () => {
+  it('reports a vitamin figure as ignored: a meal\'s figures are estimates and these are read off a label', () => {
+    const preview = logFood(replica, { label: 'Fortified cereal', amounts: { calorieKcal: 120, vitaminDMcg: 2, magnesiumMg: 40 } });
+    expect(preview.amounts).toEqual({ calorieKcal: 120 });
+    expect(preview.ignored).toEqual(['vitaminDMcg', 'magnesiumMg']);
+  });
+});
+
+describe('set_supplement_nutrients', () => {
+  const entries = () => replica.foodLogEntries('2000-01-01', '2100-01-01');
+  afterEach(() => useMedicationStore.getState().setSupplementPanel('Multivitamin', null));
+
+  it('sets a panel that later doses use, and reports it beside the limit and supply', () => {
+    const set = setSupplementNutrients(replica, {
+      name: 'multivitamin', servingAmount: 2, servingUnit: 'tablet', amounts: { vitaminCMg: 90, zincMg: 11, omega3G: 1 },
+    });
+    expect(set).toMatchObject({ nutrients: 'Per 2 tablets: 2 nutrients', ignored: ['omega3G'] });
+    logMedication(replica, { name: 'Multivitamin', amount: 2, unit: 'tablet' });
+    expect(entries()[0].nutrition.amounts).toEqual({ vitaminCMg: 90, zincMg: 11 });
+    expect(replica.medicationSettings().find(m => m.name === 'Multivitamin')).toMatchObject({ nutrients: 'Per 2 tablets: 2 nutrients' });
+  });
+
+  it('refuses what the app\'s sheet refuses', () => {
+    expect(() => setSupplementNutrients(replica, { name: 'Multivitamin', servingUnit: 'tablet', amounts: { zincMg: 1 } })).toThrow(/servingAmount/);
+    expect(() => setSupplementNutrients(replica, { name: 'Multivitamin', servingAmount: 1, servingUnit: 'mg', amounts: { zincMg: 1 } })).toThrow(/servingUnit/);
+    expect(() => setSupplementNutrients(replica, { name: 'Multivitamin', servingAmount: 1, servingUnit: 'tablet', amounts: { zincMg: -1 } })).toThrow(/zero or more/);
+    expect(() => setSupplementNutrients(replica, { name: 'Multivitamin', servingAmount: 1, servingUnit: 'tablet', amounts: {} })).toThrow(/at least one/);
+  });
+
+  it('clears a panel without touching another medicine\'s', () => {
+    setSupplementNutrients(replica, { name: 'Multivitamin', servingAmount: 1, servingUnit: 'tablet', amounts: { zincMg: 11 } });
+    setSupplementNutrients(replica, { name: 'Fish oil', servingAmount: 1, servingUnit: 'capsule', amounts: { vitaminEMg: 2 } });
+    setSupplementNutrients(replica, { name: 'Multivitamin', clear: true });
+    const names = replica.medicationSettings().map(m => m.name);
+    expect(names).toContain('fish oil');
+    expect(names).not.toContain('Multivitamin');
+    setSupplementNutrients(replica, { name: 'Fish oil', clear: true });
   });
 });

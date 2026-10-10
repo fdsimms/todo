@@ -7,7 +7,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
-import { EXTERNAL_NUTRIENT_KEYS, MINERAL_KEYS, NUTRIENT_KEYS, VITAMIN_KEYS, type NutrientKey } from '../types';
+import { EXTERNAL_NUTRIENT_KEYS, MINERAL_KEYS, VITAMIN_KEYS, type NutrientKey } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import {
   DEFAULT_LIMIT_WARN_PERCENT,
@@ -48,7 +48,7 @@ import { SegmentedControl } from './SegmentedControl';
 const MICRO_KEYS = [...VITAMIN_KEYS, ...MINERAL_KEYS];
 
 /** Every nutrient the Food log's own card can show — water has its own card. */
-const PINNABLE_NUTRIENTS = NUTRIENT_KEYS.filter(k => k !== 'waterMl');
+const PINNABLE_MAIN = EXTERNAL_NUTRIENT_KEYS.filter(k => k !== 'waterMl');
 
 /**
  * A daily figure to aim at, per nutrient.
@@ -248,6 +248,33 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
     setFoodLogPinnedNutrients(next);
   };
 
+  // Same fold as the daily targets below: the vitamins and minerals stay behind
+  // one row until asked for, or until one is already shown on the Food log.
+  const [pinMicroOpen, setPinMicroOpen] = useState(false);
+  const pinMicroShown = pinMicroOpen || MICRO_KEYS.some(key => pinnedNutrients.includes(key));
+
+  const renderPinnedRow = (key: NutrientKey, last: boolean) => {
+    const pinned = pinnedNutrients.includes(key);
+    return (
+      <TouchableOpacity
+        key={key}
+        style={[styles.pinnedRow, last && styles.pinnedRowLast]}
+        activeOpacity={interaction.activeOpacity}
+        onPress={() => togglePinned(key)}
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: pinned }}
+        accessibilityLabel={`Show ${NUTRIENT_LABEL[key].label} on the Food log`}
+      >
+        <Ionicons
+          name={pinned ? 'checkmark-circle' : 'ellipse-outline'}
+          size={iconSize.md}
+          color={pinned ? colors.accent : colors.textTertiary}
+        />
+        <Text style={styles.pinnedRowLabel}>{NUTRIENT_LABEL[key].label}</Text>
+      </TouchableOpacity>
+    );
+  };
+
   const renderTarget = (key: NutrientKey) => {
         // Water's target is stored in ml regardless (like every other
         // water figure — see waterLogUnit's note in TaskEditor), but the
@@ -346,28 +373,28 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
               Nutrients the totals card shows until you tap “Show every nutrient”.
             </Text>
             <View style={styles.pinnedCard}>
-              {PINNABLE_NUTRIENTS.map((key, i) => {
-                const pinned = pinnedNutrients.includes(key);
-                return (
-                  <TouchableOpacity
-                    key={key}
-                    style={[styles.pinnedRow, i === PINNABLE_NUTRIENTS.length - 1 && styles.pinnedRowLast]}
-                    activeOpacity={interaction.activeOpacity}
-                    onPress={() => togglePinned(key)}
-                    accessibilityRole="checkbox"
-                    accessibilityState={{ checked: pinned }}
-                    accessibilityLabel={`Show ${NUTRIENT_LABEL[key].label} on the Food log`}
-                  >
-                    <Ionicons
-                      name={pinned ? 'checkmark-circle' : 'ellipse-outline'}
-                      size={iconSize.md}
-                      color={pinned ? colors.accent : colors.textTertiary}
-                    />
-                    <Text style={styles.pinnedRowLabel}>{NUTRIENT_LABEL[key].label}</Text>
-                  </TouchableOpacity>
-                );
-              })}
+              {PINNABLE_MAIN.map((key, i) => renderPinnedRow(key, i === PINNABLE_MAIN.length - 1))}
             </View>
+            <TouchableOpacity
+              style={[styles.microDisclosure, styles.pinnedMicroDisclosure]}
+              activeOpacity={interaction.activeOpacity}
+              onPress={() => { haptics.tap(); setPinMicroOpen(open => !open); }}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: pinMicroShown }}
+              accessibilityLabel="Vitamins and minerals to show on the Food log"
+            >
+              <Text style={styles.rowLabel}>Vitamins and minerals</Text>
+              <Ionicons
+                name={pinMicroShown ? 'chevron-up' : 'chevron-down'}
+                size={iconSize.sm}
+                color={colors.textTertiary}
+              />
+            </TouchableOpacity>
+            {pinMicroShown && (
+              <View style={styles.pinnedCard}>
+                {MICRO_KEYS.map((key, i) => renderPinnedRow(key, i === MICRO_KEYS.length - 1))}
+              </View>
+            )}
           </View>
 
           <Text style={styles.sectionLabel}>Daily targets</Text>
@@ -747,6 +774,7 @@ function makeStyles(colors: Colors) {
       paddingVertical: spacing.smd,
       minHeight: 44,
     },
+    pinnedMicroDisclosure: { marginTop: spacing.sm, marginBottom: spacing.sm },
     row: {
       backgroundColor: colors.bgSecondary,
       borderRadius: radius.md,

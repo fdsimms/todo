@@ -522,13 +522,20 @@ never claims a magnesium figure and vitamin D's bulk-default zeros still never
 reach a record. A supplement's panel is typed once by someone holding the
 bottle, and that is a different claim from a source's default.
 
-**Only a typed panel states them.** `EXTERNAL_NUTRIENT_KEYS` (every key except
-these) is what a barcode source, a photographed label and a model's estimate are
+**Only a typed or photographed panel states them.** `EXTERNAL_NUTRIENT_KEYS`
+(every key except these) is what a barcode source and a model's estimate are
 asked for. A model asked to estimate a restaurant meal's selenium would give a
 confident number with nothing behind it, and that number would be written to
 somebody's medical record, so the request never names them and a reply that
-does is read past. The label photo's prompt still says to ignore these rows for
-the same reason.
+does is read past (`log_food` over MCP reports one as ignored).
+
+**A photographed label is the exception, and reads `PRINTED_NUTRIENT_KEYS`.** A
+photo is a transcription of print, not an estimate and not a source's default,
+and the figures land in the form for the person to check against the bottle
+before saving. Two rules keep it honest (`labelOcr.ts`): a figure printed in IU
+is never a figure (the factor differs per vitamin, and read without its unit it
+would land 40 times too high), and "Vitamin B-6" is glued to its digit before
+the value reader runs, or the 6 is read as the row's amount.
 
 **Where the figures come from is `MedicationPrefs.nutrition`**, a
 `SupplementPanel` kept with a medication's other settings and entered on its

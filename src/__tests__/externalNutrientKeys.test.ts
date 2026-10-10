@@ -3,8 +3,9 @@ import { join } from 'path';
 import { EXTERNAL_NUTRIENT_KEYS, MINERAL_KEYS, NUTRIENT_KEYS, VITAMIN_KEYS } from '../types';
 
 /**
- * The vitamins and minerals are typed by hand from a bottle and never asked of
- * a barcode source, a label photo or a model (`EXTERNAL_NUTRIENT_KEYS`). A
+ * The vitamins and minerals are typed by hand from a bottle (or read off a
+ * photographed label, `PRINTED_NUTRIENT_KEYS`) and never asked of a barcode
+ * source or a model (`EXTERNAL_NUTRIENT_KEYS`). A
  * reader that loops `NUTRIENT_KEYS` instead would ask a model to estimate a
  * restaurant meal's selenium, and the confident number would be written to a
  * health record. Nothing behaviourally distinguishes the two loops in a test

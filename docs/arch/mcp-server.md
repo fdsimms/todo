@@ -370,8 +370,12 @@ reaches the food log only through `DoseEffects` (`useMedicationStore.ts`), which
 in with the same entry written through `buildFood`, flagged `healthWritePending` for the phone.
 Editing or deleting such a dose follows `delete_food_entry`'s rule: an entry the phone has already
 written to Apple Health is left alone, because only the phone can take its samples back out. The
-panel itself is set in the app (the server has no tool for it), and `supplementDose.ts` holds the
-rules both sides share.
+panel is set with `set_supplement_nutrients` (the app's `SupplementPanelSheet` checks the same
+figures), and `list_medication_logs` reports it beside the limit and supply. `supplementDose.ts`
+holds the rules both sides share. The replica reads the panel from the settings row rather than the
+store, which this process never loads, and `setSupplementPanel` initializes the store first because
+it writes the whole settings map back. `log_food` never takes vitamins or minerals
+(`ESTIMATE_KEY_LIST`): an agent's meal figures are estimates, and these are read off a label.
 
 Two rules from the food log shape `log_food`. **The model proposes and a person confirms**
 (`nutritionEstimate.ts`), so it previews until `apply: true`, and the entry is

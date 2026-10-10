@@ -368,20 +368,79 @@ describe('readNutritionLabel', () => {
       });
     });
 
-    it('drops the vitamin rows, vitamin D included, which a photo is not read for', () => {
-      // The keys exist now, but only a typed panel states them: a US panel prints
-      // vitamin D beside the three minerals and the sources state it as a default
-      // zero far more often than as a reading. See the note on `NutrientKey`.
+    it('reads the vitamin and mineral rows off a food label, as printed', () => {
+      // The barcode sources never state these (their vitamin D is a bulk-default
+      // zero), but a photograph is print, and the person checks it before saving.
       const reading = readNutritionLabel(panel([
         ['Calories', '140'],
         ['Total Fat', '6g'],
         ['Protein', '1g'],
-        ['Vitamin D', '2mcg'],
+        ['Vitamin D', '2mcg 10%'],
         ['Vitamin A', '90mcg'],
         ['Calcium', '20mg'],
       ]))!;
       expect(reading.columns[0].amounts).toEqual({
-        calorieKcal: 140, fatG: 6, proteinG: 1, calciumMg: 20,
+        calorieKcal: 140, fatG: 6, proteinG: 1, calciumMg: 20, vitaminDMcg: 2, vitaminAMcg: 90,
+      });
+    });
+
+    describe('a supplement facts panel', () => {
+      const supplement = [
+        ['Serving Size 2 tablets'],
+        ['Amount Per Serving', '% Daily Value'],
+        ['Vitamin A (as beta-carotene)', '900 mcg RAE', '100%'],
+        ['Vitamin C (as ascorbic acid)', '90 mg', '100%'],
+        ['Vitamin D3 (cholecalciferol)', '25 mcg (1000 IU)', '125%'],
+        ['Vitamin E', '30 IU', '200%'],
+        ['Vitamin B-6', '1.7 mg', '100%'],
+        ['Vitamin B12', '6 mcg', '250%'],
+        ['Folate', '400 mcg DFE', '100%'],
+        ['Biotin', '30 mcg', '100%'],
+        ['Magnesium', '100 mg', '25%'],
+        ['Zinc', '11 mg', '100%'],
+      ];
+
+      it('reads each vitamin and mineral into its own key and unit', () => {
+        const reading = readNutritionLabel(panel(supplement))!;
+        expect(reading.columns).toHaveLength(1);
+        expect(reading.columns[0].amounts).toMatchObject({
+          vitaminAMcg: 900, vitaminCMg: 90, vitaminDMcg: 25, vitaminB6Mg: 1.7,
+          vitaminB12Mcg: 6, folateMcg: 400, biotinMcg: 30, magnesiumMg: 100, zincMg: 11,
+        });
+      });
+
+      it('never reads a figure printed in IU, which differs per vitamin', () => {
+        const reading = readNutritionLabel(panel(supplement))!;
+        // "Vitamin E 30 IU" has no mg figure, so vitamin E stays unstated
+        // rather than filing 30 as milligrams.
+        expect(reading.columns[0].amounts.vitaminEMg).toBeUndefined();
+        // And the (1000 IU) beside the mcg figure is not a second one.
+        expect(reading.columns[0].amounts.vitaminDMcg).toBe(25);
+      });
+
+      it('keeps B12 apart from B1 and B6', () => {
+        const reading = readNutritionLabel(panel([
+          ['Vitamin B1 (thiamin)', '1.2 mg'],
+          ['Vitamin B12', '2.4 mcg'],
+          ['Vitamin B-6', '1.7 mg'],
+          ['Niacin', '16 mg NE'],
+          ['Riboflavin', '1.3 mg'],
+        ]))!;
+        expect(reading.columns[0].amounts).toEqual({
+          thiaminMg: 1.2, vitaminB12Mcg: 2.4, vitaminB6Mg: 1.7, niacinMg: 16, riboflavinMg: 1.3,
+        });
+      });
+
+      it('converts a milligram figure printed for a microgram nutrient', () => {
+        const reading = readNutritionLabel(panel([
+          ['Selenium', '0.055 mg'],
+          ['Iodine', '150 mcg'],
+          ['Chromium', '35 mcg'],
+          ['Copper', '0.9 mg'],
+        ]))!;
+        expect(reading.columns[0].amounts).toEqual({
+          seleniumMcg: 55, iodineMcg: 150, chromiumMcg: 35, copperMg: 0.9,
+        });
       });
     });
 

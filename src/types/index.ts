@@ -4746,12 +4746,13 @@ export const MINERAL_KEYS: readonly MicronutrientKey[] = [
  * panel is not, which is a decision about the data rather than about the
  * design.
  *
- * **The vitamins and minerals after `caffeineMg` and `waterMl` are manual-only,
- * and that is what lets them in.** The measurement above is why the barcode
+ * **The vitamins and minerals after `caffeineMg` and `waterMl` are typed by
+ * hand, or read off a photographed label, and that is what lets them in.** The measurement above is why the barcode
  * sources can't fill them, not a reason to keep them out: a supplement's panel
  * is typed once, by someone holding the bottle, and then every dose of it
- * adds the same figures (`supplementDose.ts`). `nutritionParse.ts` maps none of
- * them, so a scanned or searched food never states a figure it can't vouch
+ * adds the same figures (`supplementDose.ts`). A photographed label is print
+ * the person checks against the bottle before saving, so it may fill them too
+ * (`PRINTED_NUTRIENT_KEYS`). `nutritionParse.ts` maps none of them, so a scanned or searched food never states a figure it can't vouch
  * for. Vitamin D is the clearest case: 41% of products state an explicit zero,
  * the shape of a bulk-defaulted field, and a wrong zero written to a health
  * record is the failure `docs/arch/health-data.md` is entirely about. A typed
@@ -4803,17 +4804,27 @@ export const NUTRIENT_KEYS: readonly NutrientKey[] = [
 ];
 
 /**
- * The nutrients asked for from outside the app: a barcode source, a photographed
- * label, a model's estimate of a meal or a recipe. Every `NutrientKey` except the
- * vitamins and minerals, which are typed by hand from a bottle (see the note on
+ * The nutrients asked for from a source that states a default or a model that
+ * estimates: a barcode source, a model's estimate of a meal or a recipe. Every
+ * `NutrientKey` except the vitamins and minerals (see the note on
  * `NutrientKey`). A model asked to estimate a restaurant meal's selenium would
  * produce a confident figure with nothing behind it, and it would be written to
  * a health record, so the request never names them and a reply that does is
  * read past.
+ *
+ * A photographed label is the exception, and reads `PRINTED_NUTRIENT_KEYS`.
  */
 export const EXTERNAL_NUTRIENT_KEYS: readonly NutrientKey[] = NUTRIENT_KEYS.filter(
   key => !(VITAMIN_KEYS as readonly string[]).includes(key) && !(MINERAL_KEYS as readonly string[]).includes(key),
 );
+
+/**
+ * The nutrients a photographed label can state: all of them. A label photo is a
+ * transcription of print, not an estimate and not a source's default, so a
+ * supplement's vitamin rows are read like any other and the person checks the
+ * fields against the bottle before saving.
+ */
+export const PRINTED_NUTRIENT_KEYS: readonly NutrientKey[] = NUTRIENT_KEYS;
 
 /**
  * The nutrients a logged meal can carry into Apple Health: one per row of the
