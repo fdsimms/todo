@@ -36,6 +36,8 @@ import {
   scalePanelToAmount,
   wholeEstimate,
   type FoodLogListItem,
+  isDescriptionDraft,
+  totalCoverageNote,
 } from '../utils/foodLog';
 import type { FoodLogEntry, FoodNutrition, MealPlanEntry, NutrientKey, SavedMealItem } from '../types';
 import { packageChoices } from '../utils/scanPortion';
@@ -1449,5 +1451,41 @@ describe('remeasureEntry', () => {
   it('never keeps an estimate\'s whole as a record to measure against', () => {
     const estimate = entry({ quantity: '1 bowl', sourcePanel: panel({ source: 'estimated', basis: 'perServing' }) });
     expect(remeasureEntry(estimate, null, '200 g', NOW).ok).toBe(false);
+  });
+});
+
+describe('isDescriptionDraft', () => {
+  it('treats a food name as cheap to retype', () => {
+    expect(isDescriptionDraft('')).toBe(false);
+    expect(isDescriptionDraft('  egg ')).toBe(false);
+    expect(isDescriptionDraft('oat milk')).toBe(false);
+  });
+
+  it('treats a meal description as a draft worth keeping', () => {
+    expect(isDescriptionDraft('chicken burrito with rice')).toBe(true);
+    expect(isDescriptionDraft('pad  thai   takeout')).toBe(true);
+  });
+});
+
+describe('totalCoverageNote', () => {
+  const water = () => entry({ nutrition: panel({ source: 'manual', amounts: { waterMl: 500 } }) });
+  const withFiber = () => entry({ nutrition: panel({ basis: 'perServing', amounts: { calorieKcal: 100, fiberG: 3 } }) });
+
+  it('says nothing when every entry stated the nutrient', () => {
+    expect(totalCoverageNote([entry(), entry()], 'calorieKcal')).toBeNull();
+  });
+
+  it('names how many of the entries a partial total came from', () => {
+    expect(totalCoverageNote([withFiber(), entry(), entry()], 'fiberG')).toBe('from 1 of 3 entries');
+  });
+
+  it('leaves water rows out of the count', () => {
+    expect(totalCoverageNote([entry(), water()], 'calorieKcal')).toBeNull();
+    expect(totalCoverageNote([withFiber(), entry(), water()], 'fiberG')).toBe('from 1 of 2 entries');
+    expect(totalCoverageNote([entry(), water()], 'waterMl')).toBeNull();
+  });
+
+  it('says nothing when no entry stated it', () => {
+    expect(totalCoverageNote([entry()], 'fiberG')).toBeNull();
   });
 });

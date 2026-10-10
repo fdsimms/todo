@@ -1988,6 +1988,7 @@ export function MealPlanScreen() {
     animateLayout();
     const n = copyWeek(copySourceKey, range.startKey);
     if (n > 0) haptics.success();
+    else Alert.alert('Nothing copied', 'Meals on days that have already passed, and leftover nights, are left out of a copy.');
   };
 
   /**
@@ -2019,6 +2020,7 @@ export function MealPlanScreen() {
     animateLayout();
     const n = copySlotFromWeek(copyFromKey, range.startKey, slot);
     if (n > 0) haptics.success();
+    else Alert.alert('Nothing copied', 'Meals on days that have already passed, and leftover nights, are left out of a copy.');
   };
 
   const addedStamp = range ? addedToListAt[range.startKey] : undefined;

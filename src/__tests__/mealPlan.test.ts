@@ -32,6 +32,8 @@ import {
   titleForEntry,
   upcomingDays,
   weekCopyDrafts,
+  withoutPastDays,
+  copiedLabel,
   buildMealPlanEntry,
 } from '../utils/mealPlan';
 import { recipeNameKey } from '../utils/recipeUtils';
@@ -950,5 +952,29 @@ describe('replacedMealEntry', () => {
     // As written names no head count, so the new recipe starts at the household's.
     const plain = entry('2026-03-02', 'dinner', { recipeId: 'a' });
     expect(replacedMealEntry(plain, { recipeId: 'b', title: 'B' }, recipes, 4).recipeScale).toBe(2);
+  });
+});
+
+describe('withoutPastDays', () => {
+  const drafts = ['2026-10-05', '2026-10-08', '2026-10-10', '2026-10-11'].map(date => ({ date }));
+
+  it('drops the days before today from the week in progress', () => {
+    const { kept, skipped } = withoutPastDays(drafts, '2026-10-10', '2026-10-11');
+    expect(kept.map(d => d.date)).toEqual(['2026-10-10', '2026-10-11']);
+    expect(skipped).toBe(2);
+  });
+
+  it('keeps every day of a week that is entirely past', () => {
+    const { kept, skipped } = withoutPastDays(drafts, '2026-10-20', '2026-10-11');
+    expect(kept).toHaveLength(4);
+    expect(skipped).toBe(0);
+  });
+});
+
+describe('copiedLabel', () => {
+  it('names the meals left out, and only when there were some', () => {
+    expect(copiedLabel('Copied 4 meals', 0)).toBe('Copied 4 meals');
+    expect(copiedLabel('Copied 4 meals', 1)).toBe('Copied 4 meals, 1 on a day already past left out');
+    expect(copiedLabel('Copied 4 meals', 3)).toBe('Copied 4 meals, 3 on days already past left out');
   });
 });

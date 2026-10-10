@@ -142,8 +142,10 @@ const mockTaskState = {
     mockTaskState.tasks = mockTaskState.tasks.map(t => (t.id === id ? { ...t, completed: false } : t));
   }),
 };
+const mockOfferMealLog = jest.fn();
 jest.mock('../store/useTaskStore', () => ({
   useTaskStore: { getState: () => mockTaskState },
+  offerMealLog: (...args: unknown[]) => mockOfferMealLog(...args),
 }));
 
 const mockRecipeNameKey = (name: string): string =>
@@ -1147,6 +1149,21 @@ describe('setCooked', () => {
     const updated = getEntries().find(e => e.id === dinner.id)!;
     expect(updated.cookedAt).not.toBeNull();
     expect(dbUpdateMealPlanEntry).toHaveBeenCalledWith(expect.objectContaining({ id: dinner.id, cookedAt: expect.any(String) }));
+  });
+
+  // A snack, or a slot whose task is switched off, has no task to complete,
+  // so the offer the task path raises has to come from the tick itself.
+  it('offers to log the meal it cooked, and not on un-cooking', () => {
+    mockOfferMealLog.mockClear();
+    const dinner = entry('2026-08-05', 'dinner');
+    loadWeek([dinner]);
+
+    useMealPlanStore.getState().setCooked(dinner.id, true);
+    expect(mockOfferMealLog).toHaveBeenCalledWith(expect.objectContaining({ id: dinner.id }));
+
+    mockOfferMealLog.mockClear();
+    useMealPlanStore.getState().setCooked(dinner.id, false);
+    expect(mockOfferMealLog).not.toHaveBeenCalled();
   });
 
   // The half that used not to exist: a row could be ticked and never un-ticked

@@ -920,8 +920,13 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
  * the meal's own name so finding it is a tap rather than a retype. Both
  * check the same per-meal "no" first, because both are the same offer with
  * two different ways of answering "how much".
+ *
+ * Exported for the meal plan's own tick (`setCooked`), which is the third
+ * moment: a meal with no cook or meal task behind it (a snack, or a slot
+ * whose task is switched off) finishes without any task completing, and used
+ * to end with no offer at all.
  */
-function offerMealLog(loggable: MealPlanEntry, asked = false): void {
+export function offerMealLog(loggable: MealPlanEntry, asked = false): void {
   if (!wantsMealLogPrompt(loggable, useSettingsStore.getState().mealLogPrompt)) return;
   // Already logged, so there is nothing to offer. The meal's own square is not
   // the only way food gets into that slot (`mealLogCoverage.ts` says why the

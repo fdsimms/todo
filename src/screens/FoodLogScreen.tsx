@@ -29,6 +29,7 @@ import {
   foodLogTotals,
   logInstantFor,
   resolveFoodLogDrop,
+  totalCoverageNote,
   wholeEstimate,
   type FoodLogListItem,
 } from '../utils/foodLog';
@@ -1052,7 +1053,15 @@ export function FoodLogScreen() {
           accessibilityRole="button"
           accessibilityLabel={`See which entries contributed to ${NUTRIENT_LABEL[key].label.toLowerCase()}`}
         >
-          <Text style={styles.totalLabel}>{NUTRIENT_LABEL[key].label}</Text>
+          <View style={styles.totalLabelCol}>
+            <Text style={styles.totalLabel}>{NUTRIENT_LABEL[key].label}</Text>
+            {/* Partial coverage said on the row it qualifies: a total summed
+                from some of the day's entries isn't the day's figure. */}
+            {(() => {
+              const note = totalCoverageNote(dayEntries, key);
+              return note ? <Text style={styles.totalCoverage}>{note}</Text> : null;
+            })()}
+          </View>
           <View style={styles.totalRight}>
             {/* The target, when there is one, and nothing suggested
                 when there isn't — see nutritionTargets.ts. Reported
@@ -1733,7 +1742,9 @@ function makeStyles(colors: Colors) {
     totalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     targetTrack: { height: 4, borderRadius: 2, backgroundColor: colors.separator, overflow: 'hidden' },
     targetFill: { height: '100%', borderRadius: 2, backgroundColor: colors.accent },
+    totalLabelCol: { flexShrink: 1 },
     totalLabel: { color: colors.text, fontSize: font.sm },
+    totalCoverage: { color: colors.textSecondary, fontSize: font.xs, marginTop: 2 },
     totalRight: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm },
     totalValue: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
     sectionHeader: {

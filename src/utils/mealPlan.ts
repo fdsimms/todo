@@ -249,6 +249,32 @@ export function weekCopyDrafts(
 }
 
 /**
+ * A copy's drafts with the days already gone taken out, when the copy lands
+ * on the week in progress. Copying last week into this one on a Thursday
+ * otherwise filled Monday to Wednesday with meals nobody was going to cook,
+ * uncooked and asking to be logged. A week that is entirely past keeps every
+ * day: copying into one is filling in a record on purpose, and that week's
+ * own offer is the only way to reach it.
+ *
+ * `skipped` is how many meals were left out, for the undo bar to say so.
+ */
+export function withoutPastDays<T extends { date: string }>(
+  drafts: readonly T[],
+  todayKey: string,
+  targetEndKey: string,
+): { kept: T[]; skipped: number } {
+  if (targetEndKey < todayKey) return { kept: [...drafts], skipped: 0 };
+  const kept = drafts.filter(d => d.date >= todayKey);
+  return { kept, skipped: drafts.length - kept.length };
+}
+
+/** "Copied 4 meals", plus ", 3 on days already past left out" when some were. */
+export function copiedLabel(copied: string, skipped: number): string {
+  if (skipped === 0) return copied;
+  return `${copied}, ${skipped} on ${skipped === 1 ? 'a day' : 'days'} already past left out`;
+}
+
+/**
  * One entry copied onto `date`, carrying exactly what `weekCopyDrafts` carries
  * (that doc comment is the rule; this is the one place it's written), or null
  * for a meal eating a tracked leftover, for the reason given there.

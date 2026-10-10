@@ -47,6 +47,7 @@ import {
   foodLogEntryEdit,
   foodUnitOptionsFor,
   helpingNutrition,
+  isDescriptionDraft,
   keptDatabasePanel,
   panelToKeep,
   wholeEstimate,
@@ -1297,7 +1298,7 @@ export function FoodLogEntrySheet({
         || answeredExtra
       : picked
         ? amount.trim() !== pickedAmountRef.current.trim() || answeredExtra
-        : !!amount.trim() || estimateOpen;
+        : !!amount.trim() || estimateOpen || isDescriptionDraft(query);
     if (!dirty) { Keyboard.dismiss(); onClosed(); return; }
     Alert.alert(
       'Discard changes?',
