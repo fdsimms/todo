@@ -21,6 +21,8 @@ import {
   Keyboard,
   LayoutChangeEvent,
   Linking,
+  type NativeSyntheticEvent,
+  type TextLayoutEventData,
 } from 'react-native';
 import Reanimated, {
   useSharedValue,
@@ -339,6 +341,15 @@ function filedOfferLabel(parsed: ParsedCategoryAndTags, categories: Parameters<t
  * the compare silently: the row still works, it just goes back to re-rendering
  * every time.
  */
+// Whether a title plus its notes/deadline markers fit on the two lines the row
+// gives a title, remembered by the text that decided it. A row that remounts
+// (a list re-render, a tab return) starts from the last answer instead of
+// from "fits", so a long title doesn't flash its markers inline for a frame
+// before they move to the meta line again. The measurement still runs every
+// time and overwrites this, so a changed width corrects it.
+const markerFitCache = new Map<string, boolean>();
+const NBSP = '\u00A0';
+
 export const TaskItem = React.memo(function TaskItem({
   task,
   onPress,
@@ -580,6 +591,10 @@ export const TaskItem = React.memo(function TaskItem({
   // ==== local state (expansion, completion animation, inline editing) ====
   const [showWhenPicker, setShowWhenPicker] = useState(false);
   const [showBreakdown, setShowBreakdown] = useState(false);
+  // What the hidden measurer last reported for this title and its markers
+  // (see `measuresMarkers`). Keyed so an answer about an old title never
+  // applies to a new one.
+  const [markerMeasure, setMarkerMeasure] = useState<{ key: string; fits: boolean } | null>(null);
   // The pin glyph flips on the tap, ahead of the store write: the write
   // re-renders the whole Today screen, and the glyph used to wait for that.
   // `pinWritesPending` counts taps whose write hasn't run, so a double tap
@@ -1789,6 +1804,60 @@ export const TaskItem = React.memo(function TaskItem({
     [displayTitle, task.personIds]
   );
 
+  // ==== the notes and deadline markers that trail the title ====
+  // They sit inside the title's own Text, so they follow its last word
+  // wherever that wraps. Two edges that follows from:
+  //  - The last word and the first marker are joined by a no-break space, or
+  //    a marker could land alone at the start of line two.
+  //  - The title clamps at two lines with a tail ellipsis, which would cut the
+  //    markers off first, and the deadline is the one that matters. So a hidden
+  //    copy of the title with its markers is measured (`measuresMarkers`); when
+  //    that needs a third line, the markers move to the meta row instead.
+  const hasNotes = task.notes.length > 0;
+  const hasTitleMarkers = hasNotes || deadlineDays !== null;
+  // A list line is never clamped, so its markers always fit; an edited title
+  // has none.
+  const measuresMarkers = hasTitleMarkers && !listRow && !isEditingTitle;
+  const markerKey = `${displayTitle}\u0000${hasNotes ? 1 : 0}\u0000${deadlineLabel}`;
+  const markersFit = !measuresMarkers
+    ? true
+    : markerMeasure?.key === markerKey
+      ? markerMeasure.fits
+      : (markerFitCache.get(markerKey) ?? true);
+  const markersOnMeta = hasTitleMarkers && !markersFit;
+  const markerNodes = hasTitleMarkers ? (
+    <>
+      {hasNotes && (
+        <>
+          {NBSP}
+          <Ionicons name="document-text-outline" size={14} color={colors.textSecondary} />
+        </>
+      )}
+      {deadlineDays !== null && (
+        <>
+          {NBSP}
+          <Text style={[styles.deadlineBadgeText, { color: deadlineColor }]}>
+            <Ionicons name="flag" size={9} color={deadlineColor} />
+            {NBSP}
+            {deadlineLabel.replace(/ /g, NBSP)}
+          </Text>
+        </>
+      )}
+    </>
+  ) : null;
+  const handleMarkerLayout = (e: NativeSyntheticEvent<TextLayoutEventData>) => {
+    const fits = e.nativeEvent.lines.length <= 2;
+    if (markerFitCache.size > 500) markerFitCache.clear();
+    markerFitCache.set(markerKey, fits);
+    setMarkerMeasure((m) => (m && m.key === markerKey && m.fits === fits ? m : { key: markerKey, fits }));
+  };
+  // The content touchable's label replaces its children's, so the markers
+  // have to be said here or a screen reader never hears them.
+  const markerA11y = [
+    hasNotes ? 'has notes' : null,
+    deadlineDays !== null ? (deadlineClosed ? `deadline was ${deadlineLabel}` : `deadline ${deadlineLabel}`) : null,
+  ].filter(Boolean).join(', ');
+
   // The stamp outlives the date it explains — that's what lets the drip read a
   // cleared one as "not today" (see Task.autoScheduledAt) — so the chip asks
   // for both. A stamp with no date is a refusal, not a provenance note, and a
@@ -2838,7 +2907,7 @@ export const TaskItem = React.memo(function TaskItem({
         accessibilityState={
           selectionMode ? { checked: selected } : expandable ? { expanded } : {}
         }
-        accessibilityLabel={displayTitle}
+        accessibilityLabel={markerA11y ? `${displayTitle}, ${markerA11y}` : displayTitle}
         accessibilityHint={
           selectionMode || !expandable
             ? undefined
@@ -2847,6 +2916,25 @@ export const TaskItem = React.memo(function TaskItem({
               : 'Double tap to expand details'
         }
       >
+        {measuresMarkers && (
+          // Lays the title out with its markers at the width the real one gets,
+          // only to count lines. Absolute and invisible, so it takes no space.
+          <View
+            pointerEvents="none"
+            style={[styles.markerMeasure, isNew && styles.markerMeasureNew]}
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+          >
+            <HighlightedText
+              text={displayTitle}
+              ranges={titleMentionRanges}
+              style={styles.title}
+              highlightStyle={styles.titleMention}
+              trailing={markerNodes}
+              onTextLayout={handleMarkerLayout}
+            />
+          </View>
+        )}
         {isEditingTitle ? (
           <TextField
             ref={titleInputRef}
@@ -2893,6 +2981,7 @@ export const TaskItem = React.memo(function TaskItem({
                     // Open, a list line shows all of itself: the editor was
                     // otherwise the only place a long question could be read.
                     numberOfLines={listRow ? undefined : 2}
+                    trailing={markersFit ? markerNodes : null}
                   />
                 </Animated.View>
               </TouchableOpacity>
@@ -2905,23 +2994,9 @@ export const TaskItem = React.memo(function TaskItem({
                   highlightStyle={styles.titleMention}
                   numberOfLines={2}
                   ellipsizeMode="tail"
+                  trailing={markersFit ? markerNodes : null}
                 />
               </Animated.View>
-            )}
-            {deadlineDays !== null && (
-              <View
-                style={styles.deadlineBadge}
-                accessibilityLabel={
-                  deadlineClosed
-                    ? `Deadline was ${deadlineLabel}`
-                    : `Deadline ${deadlineLabel}`
-                }
-              >
-                <Ionicons name="flag" size={9} color={deadlineColor} />
-                <Text style={[styles.deadlineBadgeText, { color: deadlineColor }]} numberOfLines={1}>
-                  {deadlineLabel}
-                </Text>
-              </View>
             )}
           </View>
         )}
@@ -2945,8 +3020,24 @@ export const TaskItem = React.memo(function TaskItem({
             dismissLabel={activeTitleOffer.kind === 'filed' ? 'Hide suggestion' : 'Not a date'}
           />
         )}
-        {(isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || showStreakChip || isDrifting || bountyCoins > 0 || guardTitle !== null || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || meterText !== null || reminderTimeLabel !== null || travelNote !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0) && (
+        {(markersOnMeta || isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || showStreakChip || isDrifting || bountyCoins > 0 || guardTitle !== null || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || meterText !== null || reminderTimeLabel !== null || travelNote !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.generatedKind === 'calendarReview') && (
           <View style={styles.metaRow}>
+            {markersOnMeta && hasNotes && (
+              <View style={styles.metaChip} accessibilityLabel="Has notes">
+                <Ionicons name="document-text-outline" size={iconSize.xs} color={colors.textSecondary} />
+              </View>
+            )}
+            {markersOnMeta && deadlineDays !== null && (
+              <View
+                style={styles.metaChip}
+                accessibilityLabel={deadlineClosed ? `Deadline was ${deadlineLabel}` : `Deadline ${deadlineLabel}`}
+              >
+                <Ionicons name="flag" size={9} color={deadlineColor} />
+                <Text style={[styles.deadlineBadgeText, { color: deadlineColor }]} numberOfLines={1}>
+                  {deadlineLabel}
+                </Text>
+              </View>
+            )}
             {showCategory && task.category && (
               onOpenCategory ? (
                 <PressableScale
@@ -3048,6 +3139,23 @@ export const TaskItem = React.memo(function TaskItem({
               >
                 <Ionicons name="list-outline" size={9} color={colors.textSecondary} />
                 <Text style={styles.subtaskBadgeText} numberOfLines={1}>{subtaskDoneCount}/{subtaskCount}</Text>
+              </View>
+            )}
+            {task.generatedKind === 'calendarReview' && (
+              // The row's only sign that it opens: the panel holds the events
+              // themselves, and a bare checkbox gives no hint of that. Shown
+              // at zero too, since the panel still carries "Sync now".
+              <View
+                style={styles.metaChip}
+                accessibilityLabel={`${calendarReviewEvents.length === 0 ? 'No events' : `${calendarReviewEvents.length} ${calendarReviewEvents.length === 1 ? 'event' : 'events'}`}, tap to expand`}
+              >
+                <Ionicons name="calendar-outline" size={9} color={colors.textSecondary} />
+                <Text style={styles.subtaskBadgeText} numberOfLines={1}>
+                  {calendarReviewEvents.length === 0
+                    ? 'No events'
+                    : `${calendarReviewEvents.length} ${calendarReviewEvents.length === 1 ? 'event' : 'events'}`}
+                </Text>
+                <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={9} color={colors.textSecondary} />
               </View>
             )}
             {supplyLabel !== null && (
@@ -3561,19 +3669,6 @@ export const TaskItem = React.memo(function TaskItem({
           <Animated.Text style={[styles.chainBadgeText, { opacity: chainStepOpacity, transform: [{ scale: chainStepAnim }] }]}>
             {chainPosition}
           </Animated.Text>
-        </View>
-      )}
-
-      {/* Notes only render once a row is expanded, so the collapsed row
-          otherwise gives no hint they exist. Icon-only, no text: the quiet
-          option (vs. a truncated preview line). It is a sibling of the
-          trailing buttons for the same reason the chain badge is: inside the
-          title row it sat at the title's own line, off the row's centre, and
-          at a smaller size than the glyphs beside it. Same size and padding as
-          they have, so the cluster reads as one line. */}
-      {task.notes.length > 0 && (
-        <View style={styles.notesMark} accessibilityLabel="Has notes">
-          <Ionicons name="document-text-outline" size={iconSize.sm} color={colors.textSecondary} />
         </View>
       )}
 
@@ -5060,9 +5155,18 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => StyleSheet.create({
   titleFlex: {
     flexShrink: 1,
   },
-  notesMark: {
-    flexShrink: 0,
-    padding: 4,
+  // The hidden copy of the title that counts its lines (`measuresMarkers`).
+  // The left inset is the unread dot and its gap, which the real title row
+  // gives up and `content` doesn't.
+  markerMeasure: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    opacity: 0,
+  },
+  markerMeasureNew: {
+    paddingLeft: 12,
   },
   newDot: {
     width: 6,
@@ -5574,13 +5678,6 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => StyleSheet.create({
     color: colors.textSecondary,
     fontSize: font.xxs,
     flexShrink: 1,
-  },
-  deadlineBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xxs,
-    flexShrink: 1,
-    maxWidth: 140,
   },
   deadlineBadgeText: {
     fontSize: font.xxs,

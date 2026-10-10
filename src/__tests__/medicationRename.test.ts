@@ -65,6 +65,12 @@ describe('renamedSettings', () => {
     expect(out.a).toBeUndefined();
   });
 
+  it('carries a supplement panel to the new key', () => {
+    const nutrition = { per: 'tablet', amounts: { vitaminCMg: 90 } } as never;
+    const out = renamedSettings({ a: { limit: null, supply: null, nutrition } }, 'a', 'b');
+    expect(out.b.nutrition).toBe(nutrition);
+  });
+
   it('returns the same map when there is nothing to move', () => {
     const map = { b: { limit, supply: null } };
     expect(renamedSettings(map, 'a', 'b')).toBe(map);

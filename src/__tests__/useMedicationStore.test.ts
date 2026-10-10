@@ -1,4 +1,4 @@
-import { useMedicationStore } from '../store/useMedicationStore';
+import { useMedicationStore, setDoseEffects } from '../store/useMedicationStore';
 import {
   dbGetAllMedicationLogs,
   dbInsertMedicationLog,
@@ -341,5 +341,16 @@ describe('renameMedication', () => {
     useMedicationStore.setState({ logs: [dose('a', 'Old')], settings: { old: { limit, supply: null } } });
     state().renameMedication('Old', 'New');
     expect(state().settings).toEqual({ new: { limit, supply: null } });
+  });
+
+  it('tells the dose effects about each renamed dose', () => {
+    const updated = jest.fn();
+    setDoseEffects({ added: jest.fn(), updated, removed: jest.fn() });
+    useMedicationStore.setState({ logs: [dose('a', 'Old')] });
+    state().renameMedication('Old', 'New');
+    setDoseEffects(null);
+    expect(updated).toHaveBeenCalledTimes(1);
+    expect(updated.mock.calls[0][0].name).toBe('Old');
+    expect(updated.mock.calls[0][1].name).toBe('New');
   });
 });

@@ -1,4 +1,4 @@
-import type { FoodNutrition, FoodPortion, NutrientKey } from '../types';
+import type { FoodNutrition, FoodPortion, MicronutrientKey, NutrientKey } from '../types';
 
 /**
  * Reading a nutrition panel out of the two product databases `productLookup.ts`
@@ -54,6 +54,29 @@ export const NUTRIENT_STORED_UNIT: Record<NutrientKey, NutrientSourceUnit> = {
   potassiumMg: 'mg',
   caffeineMg: 'mg',
   waterMl: 'ml',
+  vitaminAMcg: 'ug',
+  vitaminCMg: 'mg',
+  vitaminDMcg: 'ug',
+  vitaminEMg: 'mg',
+  vitaminKMcg: 'ug',
+  thiaminMg: 'mg',
+  riboflavinMg: 'mg',
+  niacinMg: 'mg',
+  vitaminB6Mg: 'mg',
+  folateMcg: 'ug',
+  vitaminB12Mcg: 'ug',
+  biotinMcg: 'ug',
+  pantothenicAcidMg: 'mg',
+  magnesiumMg: 'mg',
+  zincMg: 'mg',
+  phosphorusMg: 'mg',
+  seleniumMcg: 'ug',
+  copperMg: 'mg',
+  manganeseMg: 'mg',
+  chromiumMcg: 'ug',
+  molybdenumMcg: 'ug',
+  iodineMcg: 'ug',
+  chlorideMg: 'mg',
 };
 
 /** Grams in one of each mass unit. */
@@ -120,6 +143,32 @@ const PER_100_CEILING: Record<NutrientKey, number> = {
   potassiumMg: 100_000,
   caffeineMg: 100_000,
   waterMl: 100,
+  // A bound on the impossible, in each key's stored unit: 100 g is 100,000 mg
+  // or 100,000,000 mcg. Nothing reads a micronutrient off a source (see
+  // `OFF_FIELDS`), so this only keeps the table total.
+  vitaminAMcg: 100_000_000,
+  vitaminCMg: 100_000,
+  vitaminDMcg: 100_000_000,
+  vitaminEMg: 100_000,
+  vitaminKMcg: 100_000_000,
+  thiaminMg: 100_000,
+  riboflavinMg: 100_000,
+  niacinMg: 100_000,
+  vitaminB6Mg: 100_000,
+  folateMcg: 100_000_000,
+  vitaminB12Mcg: 100_000_000,
+  biotinMcg: 100_000_000,
+  pantothenicAcidMg: 100_000,
+  magnesiumMg: 100_000,
+  zincMg: 100_000,
+  phosphorusMg: 100_000,
+  seleniumMcg: 100_000_000,
+  copperMg: 100_000,
+  manganeseMg: 100_000,
+  chromiumMcg: 100_000_000,
+  molybdenumMcg: 100_000_000,
+  iodineMcg: 100_000_000,
+  chlorideMg: 100_000,
 };
 
 /**
@@ -235,7 +284,7 @@ export function convertNutrientAmount(
     return factor === undefined ? null : roundAmount(value * factor);
   }
 
-  if (to === 'g' || to === 'mg') {
+  if (to === 'g' || to === 'mg' || to === 'ug') {
     const grams = GRAMS_PER[from];
     if (grams === undefined) return null;
     return roundAmount((value * grams) / GRAMS_PER[to]!);
@@ -329,7 +378,7 @@ const OFF_UNINFORMATIVE_ZERO: ReadonlySet<NutrientKey> = new Set<NutrientKey>(['
  * `sodiumMg` is deliberately absent and handled below.
  */
 
-const OFF_FIELDS: Record<Exclude<NutrientKey, 'sodiumMg'>, { field: string; unit: NutrientSourceUnit }> = {
+const OFF_FIELDS: Record<Exclude<NutrientKey, 'sodiumMg' | MicronutrientKey>, { field: string; unit: NutrientSourceUnit }> = {
   calorieKcal: { field: 'energy-kcal_100g', unit: 'kcal' },
   proteinG: { field: 'proteins_100g', unit: 'g' },
   carbsG: { field: 'carbohydrates_100g', unit: 'g' },
@@ -421,7 +470,7 @@ export function readOffNutrition(
   const nutriments = raw as Record<string, unknown>;
 
   const amounts: Partial<Record<NutrientKey, number>> = {};
-  for (const key of Object.keys(OFF_FIELDS) as Array<Exclude<NutrientKey, 'sodiumMg'>>) {
+  for (const key of Object.keys(OFF_FIELDS) as Array<Exclude<NutrientKey, 'sodiumMg' | MicronutrientKey>>) {
     const { field, unit } = OFF_FIELDS[key];
     const value = readSourceNumber(nutriments[field]);
     if (value === null) continue;

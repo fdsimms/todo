@@ -16,13 +16,15 @@
  * Health from here, since a Node process has no HealthKit: the entry is flagged
  * (`healthWritePending`) and the phone writes it on its next foreground.
  */
-import { NUTRIENT_KEYS, type FoodLogEntry, type MealSlot, type NutrientKey } from '../../src/types';
+import { EXTERNAL_NUTRIENT_KEYS, NUTRIENT_KEYS, type FoodLogEntry, type MealSlot, type NutrientKey } from '../../src/types';
 import type { RecipeInput, RecipePatch, Replica } from './replica';
 import { getRecipe, type RecipeDetail } from './kitchenTools';
 // Pure over its arguments (types, the target ranges and the unit maths), so
 // safe to import for its value here; the replica loads the same module for the
 // write.
 import { describeWater, waterToMl, type WaterUnit } from '../../src/utils/waterLog';
+import { PANEL_UNITS } from '../../src/utils/medicationSettings';
+import { describeSupplementPanel } from '../../src/utils/supplementDose';
 
 /** A bare date as noon that day (the app's anchor for a backdated entry), else the instant given; now when absent. */
 export function atFrom(value: string | undefined): Date | undefined {
@@ -34,6 +36,13 @@ export function atFrom(value: string | undefined): Date | undefined {
 }
 
 export const NUTRIENT_KEY_LIST = NUTRIENT_KEYS as readonly NutrientKey[];
+
+/**
+ * What an agent may estimate for a meal: not the vitamins and minerals, which
+ * are read off a label and never guessed (`EXTERNAL_NUTRIENT_KEYS`). A figure
+ * for one of those is reported back as ignored rather than silently dropped.
+ */
+export const ESTIMATE_KEY_LIST = EXTERNAL_NUTRIENT_KEYS;
 
 // ---------------------------------------------------------------------------
 // save_recipe
@@ -85,7 +94,7 @@ export function logFood(replica: Replica, input: LogFoodInput): LogFoodResult {
   const read = replica.lib().nutritionEstimate.readNutritionEstimate({
     label: input.label, quantity: input.quantity ?? '', amounts: input.amounts, basis: 'typical', confidence: 'medium',
   });
-  if (!read) throw new Error(`A food entry needs a name and at least one amount, keyed by ${NUTRIENT_KEY_LIST.join(', ')}.`);
+  if (!read) throw new Error(`A food entry needs a name and at least one amount, keyed by ${ESTIMATE_KEY_LIST.join(', ')}.`);
   // Water is one entry a day, stepped (waterLog.ts), and an entry stating only
   // waterMl is what the app reads as that entry (isWaterEntry). Logged here it
   // would be a second water row beside the day's, so it is sent to the tool
@@ -95,7 +104,7 @@ export function logFood(replica: Replica, input: LogFoodInput): LogFoodResult {
   if (stated.length === 1 && stated[0] === 'waterMl') {
     throw new Error('Water is one entry a day, stepped up a glass at a time: use log_water for it rather than log_food.');
   }
-  const ignored = Object.keys(input.amounts ?? {}).filter(k => !(NUTRIENT_KEY_LIST as readonly string[]).includes(k));
+  const ignored = Object.keys(input.amounts ?? {}).filter(k => !(ESTIMATE_KEY_LIST as readonly string[]).includes(k));
   const base = {
     label: read.label,
     ...(input.quantity ? { quantity: input.quantity } : {}),
@@ -329,6 +338,57 @@ export function deleteRecipe(replica: Replica, id: string) {
     ...(plannedMeals > 0
       ? { note: `${plannedMeals} planned ${plannedMeals === 1 ? 'meal' : 'meals'} made from it keep their title and no longer link to a recipe.` }
       : {}),
+  };
+}
+
+/**
+ * Set, replace or clear what one serving of a supplement contains.
+ *
+ * The figures are checked the way the app's own sheet checks them
+ * (`buildSupplementPanel`): a key this build has no unit for is reported and
+ * left out, a negative or non-numeric figure is refused rather than dropped,
+ * and a blank is not a zero. The unit in each key's name is the unit given
+ * (`vitaminDMcg` is micrograms, `magnesiumMg` milligrams).
+ */
+export function setSupplementNutrients(
+  replica: Replica,
+  input: { name: string; servingAmount?: number; servingUnit?: string; amounts?: Record<string, number>; clear?: boolean },
+) {
+  if (input.clear) {
+    const medicine = replica.setSupplementPanel(input.name, null);
+    return { medicine, cleared: true, note: 'Doses already recorded keep what they added.' };
+  }
+  const amount = input.servingAmount;
+  if (amount === undefined || !Number.isFinite(amount) || amount <= 0) {
+    throw new Error('servingAmount is the serving the label\'s figures are for, a positive number (for "serving size 2 tablets": 2).');
+  }
+  if (!PANEL_UNITS.includes(input.servingUnit ?? '')) {
+    throw new Error(`servingUnit is one of ${PANEL_UNITS.join(', ')}.`);
+  }
+  const given = input.amounts ?? {};
+  const known = new Set<string>(NUTRIENT_KEYS);
+  const ignored = Object.keys(given).filter(k => !known.has(k));
+  const amounts: Partial<Record<NutrientKey, number>> = {};
+  for (const key of NUTRIENT_KEYS) {
+    const value = given[key];
+    if (value === undefined) continue;
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+      throw new Error(`${key} is a number of zero or more, in the unit its name states. Leave a nutrient out if the label does not list it.`);
+    }
+    amounts[key] = value;
+  }
+  if (Object.keys(amounts).length === 0) {
+    throw new Error(`Give at least one nutrient in amounts, keyed by name: ${NUTRIENT_KEYS.join(', ')}.`);
+  }
+  const panel = { servingAmount: amount, servingUnit: input.servingUnit as string, amounts };
+  const medicine = replica.setSupplementPanel(input.name, panel);
+  const described = describeSupplementPanel(panel);
+  return {
+    medicine,
+    nutrients: described.heading,
+    detail: described.detail,
+    ...(ignored.length > 0 ? { ignored } : {}),
+    note: 'Doses recorded from now on add these to the day\'s food log, and the phone writes them to Apple Health if that is on. Earlier doses are unchanged.',
   };
 }
 

@@ -206,6 +206,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     logCookTime: () => { throw new Error('not stubbed'); },
     requestCalendarChange: () => { throw new Error('not stubbed'); },
     setMedicationArchived: () => { throw new Error('not stubbed'); },
+    setSupplementPanel: () => { throw new Error('not stubbed'); },
     renameMoodTag: () => { throw new Error('not stubbed'); },
     renameMedication: () => { throw new Error('not stubbed'); },
     settingValues: () => ({}),

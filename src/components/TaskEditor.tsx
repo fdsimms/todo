@@ -48,7 +48,7 @@ import { subDays } from 'date-fns/subDays';
 import { subMinutes } from 'date-fns/subMinutes';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { Task, Priority, Effort, FollowUpTaskDraft, RecurrenceType, HolidayRule, ChainItem, RotationItem, DeliverableKind, TimeOfDay, ReminderKind, Polarity, Difficulty, QuotaPeriod, WeatherCondition, NutrientKey, MealSlot, AnswerGate } from '../types';
-import { PRIORITY_LABELS, EFFORT_LABELS, TITLE_MAX_LENGTH, HEALTH_WRITABLE_NUTRIENTS, MEAL_SLOTS, MEAL_SLOT_LABELS } from '../types';
+import { PRIORITY_LABELS, EFFORT_LABELS, TITLE_MAX_LENGTH, HEALTH_WRITABLE_NUTRIENTS, MINERAL_KEYS, VITAMIN_KEYS, MEAL_SLOTS, MEAL_SLOT_LABELS } from '../types';
 import { NUTRIENT_LABEL, mlToFlOz, flOzToMl } from '../utils/foodNutrition';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, border, interaction, animation, checkboxRadius, iconSize, type Colors, textScale } from '../theme';
@@ -366,6 +366,29 @@ const LOG_HEALTH_VALUE_STEPS: Record<NutrientKey, { step: number; max: number }>
   potassiumMg: { step: 50, max: 2000 },
   caffeineMg: { step: 10, max: 500 },
   waterMl: { step: 50, max: 1000 },
+  vitaminAMcg: { step: 50, max: 3000 },
+  vitaminCMg: { step: 10, max: 2000 },
+  vitaminDMcg: { step: 5, max: 250 },
+  vitaminEMg: { step: 1, max: 1000 },
+  vitaminKMcg: { step: 5, max: 1000 },
+  thiaminMg: { step: 0.5, max: 100 },
+  riboflavinMg: { step: 0.5, max: 100 },
+  niacinMg: { step: 1, max: 200 },
+  vitaminB6Mg: { step: 0.5, max: 100 },
+  folateMcg: { step: 50, max: 2000 },
+  vitaminB12Mcg: { step: 1, max: 1000 },
+  biotinMcg: { step: 5, max: 10000 },
+  pantothenicAcidMg: { step: 1, max: 200 },
+  magnesiumMg: { step: 10, max: 1000 },
+  zincMg: { step: 1, max: 100 },
+  phosphorusMg: { step: 25, max: 1500 },
+  seleniumMcg: { step: 5, max: 400 },
+  copperMg: { step: 0.1, max: 10 },
+  manganeseMg: { step: 0.1, max: 10 },
+  chromiumMcg: { step: 5, max: 1000 },
+  molybdenumMcg: { step: 5, max: 1000 },
+  iodineMcg: { step: 5, max: 1100 },
+  chlorideMg: { step: 50, max: 3000 },
 };
 
 // The nutrient menu's sections, over what a completion can write to Health
@@ -374,7 +397,8 @@ const LOG_HEALTH_VALUE_STEPS: Record<NutrientKey, { step: number; max: number }>
 // offered here rather than silently missing.
 const LOG_NUTRIENT_SECTIONS: Array<{ heading: string; keys: NutrientKey[] }> = [
   { heading: 'MACROS', keys: ['calorieKcal', 'proteinG', 'carbsG', 'fatG', 'satFatG', 'fiberG', 'sugarG'] },
-  { heading: 'MINERALS', keys: ['sodiumMg', 'calciumMg', 'ironMg', 'potassiumMg'] },
+  { heading: 'MINERALS', keys: ['sodiumMg', 'calciumMg', 'ironMg', 'potassiumMg', ...MINERAL_KEYS] },
+  { heading: 'VITAMINS', keys: [...VITAMIN_KEYS] },
   { heading: 'DRINKS', keys: ['caffeineMg', 'waterMl'] },
 ];
 const LOG_NUTRIENT_GROUPS: ChoiceGroup[] = (() => {

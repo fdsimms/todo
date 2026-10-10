@@ -139,12 +139,10 @@ const MIN_LABEL_ROWS = 3;
  * this list for keys of their own, claimed first in `ROW_TARGETS` for the same
  * reason; an "Includes" row is still dropped unless it is the added sugars one.
  *
- * The vitamin rows are here rather than unmatched because the rest of a
- * micronutrient panel is the next widening of `NutrientKey` that could happen,
- * and a rule that quietly starts matching them would be a surprise rather than
- * a feature. Calcium, iron and potassium have since left this list for
- * `ROW_TARGETS`, which is what #2430 decided; vitamin D stays ignored, and the
- * note on `NutrientKey` says why it is the one mandatory row with no field.
+ * The vitamin rows used to be here, back when `NutrientKey` had no field for
+ * them. The vitamins and minerals have since left this list for `ROW_TARGETS`
+ * (a supplement's label states them all), and an unmatched "Vitamin" row now
+ * simply matches nothing.
  */
 const IGNORED_ROW: readonly RegExp[] = [
   /\bincludes\b(?!.*\badded\b)/,
@@ -152,7 +150,6 @@ const IGNORED_ROW: readonly RegExp[] = [
   /\bpoly-?\s*unsaturated\b/,
   /\bsugar\s*alcohols?\b/,
   /\bcalories\s*from\b/,
-  /\bvitamin\b/,
   /\bdaily\s*values?\b/,
   /\bservings?\s*per\s*(container|pack)/,
 ];
@@ -192,6 +189,37 @@ const ROW_TARGETS: readonly { target: NutrientKey | 'salt'; pattern: RegExp }[] 
   { target: 'potassiumMg', pattern: /\bpotassium\b/ },
   { target: 'caffeineMg', pattern: /\bcaffeine\b/ },
   { target: 'waterMl', pattern: /\bwater\b/ },
+  // The vitamins and minerals, which a supplement's label states in full. The
+  // hyphen in "Vitamin B-6" has become a space by the time these run
+  // (`normalizeRow`), so the digit patterns allow one, and B12 is claimed
+  // before B1 for the reason the fat rows are claimed before total fat.
+  // Each unit beside the figure is read like any other row's: a row printed
+  // only in IU has no figure at all (see `PRINTED_VALUE`), so the nutrient
+  // stays unstated rather than being converted by a factor that differs per
+  // vitamin.
+  { target: 'vitaminB12Mcg', pattern: /\bvitamin\s*b\s*12\b|\bcobalamin\b/ },
+  { target: 'vitaminB6Mg', pattern: /\bvitamin\s*b\s*6\b|\bpyridox/ },
+  { target: 'thiaminMg', pattern: /\bthiamine?\b|\bvitamin\s*b\s*1\b/ },
+  { target: 'riboflavinMg', pattern: /\briboflavin\b|\bvitamin\s*b\s*2\b/ },
+  { target: 'niacinMg', pattern: /\bniacin\b|\bvitamin\s*b\s*3\b/ },
+  { target: 'pantothenicAcidMg', pattern: /\bpantothen|\bvitamin\s*b\s*5\b/ },
+  { target: 'folateMcg', pattern: /\bfolate\b|\bfolic\s*acid\b|\bvitamin\s*b\s*9\b/ },
+  { target: 'biotinMcg', pattern: /\bbiotin\b/ },
+  { target: 'vitaminAMcg', pattern: /\bvitamin\s*a\b/ },
+  { target: 'vitaminCMg', pattern: /\bvitamin\s*c\b|\bascorbic\b/ },
+  { target: 'vitaminDMcg', pattern: /\bvitamin\s*d\s*\d?\b/ },
+  { target: 'vitaminEMg', pattern: /\bvitamin\s*e\b/ },
+  { target: 'vitaminKMcg', pattern: /\bvitamin\s*k\s*\d?\b/ },
+  { target: 'magnesiumMg', pattern: /\bmagnesium\b/ },
+  { target: 'zincMg', pattern: /\bzinc\b/ },
+  { target: 'phosphorusMg', pattern: /\bphosphorus\b/ },
+  { target: 'seleniumMcg', pattern: /\bselenium\b/ },
+  { target: 'copperMg', pattern: /\bcopper\b/ },
+  { target: 'manganeseMg', pattern: /\bmanganese\b/ },
+  { target: 'chromiumMcg', pattern: /\bchromium\b/ },
+  { target: 'molybdenumMcg', pattern: /\bmolybdenum\b/ },
+  { target: 'iodineMcg', pattern: /\biodine\b|\biodide\b/ },
+  { target: 'chlorideMg', pattern: /\bchloride\b/ },
 ];
 
 /**
@@ -209,8 +237,15 @@ const ROW_TARGETS: readonly { target: NutrientKey | 'salt'; pattern: RegExp }[] 
  * second column that is not a portion at all — and on a row whose own figure
  * came through unlabelled it could be taken as the figure. The `%` is left in
  * by `normalizeRow` for exactly this lookahead to find.
+ *
+ * **A figure in IU is refused the same way.** A supplement prints "Vitamin D3
+ * 25 mcg (1000 IU)" and, on an older label, only "1000 IU". The IU is a
+ * different quantity per vitamin (40 per mcg of D, about 1.5 per mg of E) and
+ * read without its unit it would land in the field as 1000 mcg, forty times too
+ * much, so it is never a figure. A row with nothing else on it yields none and
+ * the nutrient stays unstated.
  */
-const PRINTED_VALUE = /(?:^|\s|<)(\d+(?:[.,]\d+)?)\s*(kcal|kj|mg|mcg|µg|ug|ml|g|l)?\b(?!\s*%)/gi;
+const PRINTED_VALUE = /(?:^|\s|<)(\d+(?:[.,]\d+)?)\s*(kcal|kj|mg|mcg|µg|ug|ml|g|l)?\b(?!\s*(?:%|iu\b))/gi;
 
 /** A gram weight in parentheses on the serving line: "2 cookies (30g)". */
 const PAREN_GRAMS = /\((\d+(?:[.,]\d+)?)\s*g\)/i;
@@ -241,7 +276,15 @@ function basisOfPhrase(phrase: string): FoodNutrition['basis'] {
  * against this same text.
  */
 function normalizeRow(text: string): string {
-  return text.toLowerCase().replace(/[^a-z0-9.,<%\s]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return text
+    .toLowerCase()
+    // "Vitamin B-6" and "Vitamin B 12" would otherwise leave a bare 6 or 12 in
+    // the row, which the value reader takes for the row's figure. The digits
+    // are glued to the letter so they are part of the name.
+    .replace(/\bvitamin\s*b[\s-]*(\d{1,2})\b/g, 'vitamin b$1')
+    .replace(/[^a-z0-9.,<%\s]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /** Every figure printed on a row, left to right. */

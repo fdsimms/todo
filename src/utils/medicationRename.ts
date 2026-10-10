@@ -53,7 +53,7 @@ export function renamedLogs(
 
 /**
  * The settings map after `fromKey` becomes `toKey`. When both have a limit (or
- * a supply) the target's wins, because it is the one the person kept, and the
+ * a supply or panel) the target's wins, because it is the one the person kept, and the
  * source's would otherwise overwrite a figure they typed for the medication
  * they are keeping.
  */
@@ -70,6 +70,8 @@ export function renamedSettings(
   next[toKey] = {
     limit: target?.limit ?? source.limit,
     supply: target?.supply ?? source.supply,
+    // The supplement panel follows the same rule as the limit and supply.
+    ...((target?.nutrition ?? source.nutrition) ? { nutrition: target?.nutrition ?? source.nutrition } : {}),
   };
   return next;
 }
