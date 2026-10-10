@@ -378,6 +378,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // when a generator's switch is missing from this list.
   'titleRules',
   'generatedTaskDefaults',
+  'generatedTaskExtras',
   'weatherRules',
   'eventRules',
   'healthRules',

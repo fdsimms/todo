@@ -37,6 +37,7 @@
 
 import { AI_FEATURES, type AiFeatureId } from './aiFeatures';
 import { GENERATED_KIND_LIST, type GeneratedKind } from './generatedTasks';
+import { hasTaskSettingsSheet } from './generatedTaskSettings';
 
 export type SettingsGroupId =
   | 'featureAreas'
@@ -405,15 +406,25 @@ const GENERATED_ENTRIES: SettingsEntry[] = GENERATED_KIND_LIST.flatMap(spec => {
       section: 'Automations',
       keywords: GENERATED_KEYWORDS[spec.kind],
     },
-    {
+    // A kind with a Task settings sheet has one row where the others have
+    // two: its defaults and category moved into the sheet.
+    ...(hasTaskSettingsSheet(spec.kind) ? [{
+      ...shared,
+      id: `gen:${spec.kind}:taskSettings`,
+      label: 'Task settings',
+      section: spec.label,
+      keywords: ['priority', 'difficulty', 'estimate', 'category', 'tags', 'time of day', 'ask on completion', 'backfill'],
+      requires: `gen:${spec.kind}`,
+    }] : []),
+    ...(hasTaskSettingsSheet(spec.kind) ? [] : [{
       ...shared,
       id: `gen:${spec.kind}:defaults`,
       label: 'Task defaults',
       section: spec.label,
       keywords: ['priority', 'difficulty', 'estimate', 'time', 'backfill'],
       requires: `gen:${spec.kind}`,
-    },
-    ...(spec.categorized ? [{
+    }]),
+    ...(spec.categorized && !hasTaskSettingsSheet(spec.kind) ? [{
       ...shared,
       id: `gen:${spec.kind}:category`,
       label: 'File them under',

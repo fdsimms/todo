@@ -27,6 +27,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { resolveFieldDefaults, seedTaskFields } from './taskFieldDefaults';
+import { generatedExtrasFill } from './generatedTaskSettings';
 import { resolveTitleRules } from './titleRules';
 import { taskKindOf, MIN_TARGET_COUNT, MAX_TARGET_COUNT } from './taskKinds';
 import {
@@ -174,6 +175,13 @@ export function newTaskFromDraft(
   id?: string,
   skipCategoryDefault = false,
 ): Task {
+  // A kind of generated task's tags, time of day and question (its "Task
+  // settings"), beneath whatever the generator's own draft names. Folded into
+  // the draft up front so every line below reads one draft.
+  if (draft.generatedKind) {
+    const extras = useSettingsStore.getState().generatedTaskExtras?.[draft.generatedKind];
+    if (extras) draft = { ...draft, ...generatedExtrasFill(draft, extras) };
+  }
   const defaults = useSettingsStore.getState().newTaskDefaults;
   // A project's own default (Project.defaultTaskCategory) outranks Settings'
   // global one, but only when nothing more specific already named a category

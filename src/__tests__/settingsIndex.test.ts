@@ -9,6 +9,7 @@ import {
   visibleSettingsEntries,
 } from '../utils/settingsIndex';
 import { AI_FEATURES } from '../utils/aiFeatures';
+import { hasTaskSettingsSheet } from '../utils/generatedTaskSettings';
 import {
   GENERATED_KIND_LIST,
   generatedTaskCounts,
@@ -97,7 +98,7 @@ describe('settings index', () => {
     // a generator added to GENERATED_KINDS grows a row on its own and only the
     // index has to be remembered separately. Comparing the two lists is what
     // makes that unrepresentable.
-    const toggleEntries = SETTINGS_ENTRIES.filter(e => e.id.startsWith('gen:') && !e.id.endsWith(':category') && !e.id.endsWith(':defaults'));
+    const toggleEntries = SETTINGS_ENTRIES.filter(e => e.id.startsWith('gen:') && !e.id.endsWith(':category') && !e.id.endsWith(':defaults') && !e.id.endsWith(':taskSettings'));
 
     it('indexes every generator that gets a row, in order, and nothing else', () => {
       expect(toggleEntries.map(e => e.label)).toEqual(GENERATED_KIND_LIST.map(s => s.label));
@@ -131,11 +132,22 @@ describe('settings index', () => {
 
     it('gives a "File them under" row only to a generator that has one', () => {
       // Nine rows share that label, so the entry is worthless without its
-      // section naming which generator it belongs to.
+      // section naming which generator it belongs to. A kind with a Task
+      // settings sheet picks its category there instead.
       for (const spec of GENERATED_KIND_LIST) {
         const entry = SETTINGS_ENTRIES.find(e => e.id === `gen:${spec.kind}:category`);
-        expect(entry !== undefined).toBe(spec.categorized);
+        expect(entry !== undefined).toBe(spec.categorized && !hasTaskSettingsSheet(spec.kind));
         if (entry) expect(entry.section).toBe(spec.label);
+      }
+    });
+
+    it('gives a kind with a Task settings sheet that row in place of its defaults row', () => {
+      for (const spec of GENERATED_KIND_LIST) {
+        const sheet = SETTINGS_ENTRIES.find(e => e.id === `gen:${spec.kind}:taskSettings`);
+        const defaults = SETTINGS_ENTRIES.find(e => e.id === `gen:${spec.kind}:defaults`);
+        expect(sheet !== undefined).toBe(hasTaskSettingsSheet(spec.kind));
+        expect(defaults !== undefined).toBe(!hasTaskSettingsSheet(spec.kind));
+        if (sheet) expect(sheet.section).toBe(spec.label);
       }
     });
 

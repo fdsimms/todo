@@ -12,6 +12,7 @@ import { categoryLabel } from '../../utils/categoryLabel';
 import { haptics } from '../../utils/haptics';
 import {
   CALENDAR_READ_KINDS,
+  GENERATED_KIND_SPECS,
   generatorSwitchedOn,
   listedGeneratedKinds,
   type GeneratedKind,
@@ -82,6 +83,9 @@ import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
 import { TaskFieldDefaultsFields } from '../../components/TaskFieldDefaultsFields';
 import { describeTaskFieldDefaults } from '../../utils/taskFieldDefaults';
+import { TASK_SETTINGS_SPECS, describeGeneratedTaskSettings, hasTaskSettingsSheet } from '../../utils/generatedTaskSettings';
+import { GeneratedTaskSettingsSheet } from '../../components/GeneratedTaskSettingsSheet';
+import { useSheetSubject } from '../../hooks/useSheetSubject';
 import { SettingsSegments } from './SettingsSegments';
 import { InlineTimePicker } from './InlineTimePicker';
 import { requestLocationPermission } from '../../utils/weatherLocation';
@@ -188,6 +192,10 @@ export function GeneratedTasksSection() {
   // Names for the per-calendar leave-by rows. Filled by the calendar read, so a
   // picked calendar it hasn't reached yet shows a plain fallback.
   const calendarsById = useCalendarStore(state => state.calendarsById);
+  // The kind whose Task settings sheet is open, and the last one there was so
+  // the sheet still has a kind to draw while it closes.
+  const [taskSettingsKind, setTaskSettingsKind] = useState<GeneratedKind | null>(null);
+  const shownTaskSettingsKind = useSheetSubject(taskSettingsKind);
 
   // Built here rather than handed down, now that this is a screen of its own
   // rather than a section inside Tasks & projects. Not a segmented control: the
@@ -1358,7 +1366,28 @@ export function GeneratedTasksSection() {
               ) : undefined}
             />
             {open && extrasFor(spec.kind)}
-            {open && (
+            {/* A kind with a Task settings sheet keeps its defaults and
+                category there instead, beside the fields it can't change. */}
+            {open && hasTaskSettingsSheet(spec.kind) && (
+              <>
+                <View style={styles.sep} />
+                <SettingsRow
+                  entryId={`gen:${spec.kind}:taskSettings`}
+                  icon="create-outline"
+                  label="Task settings"
+                  hint={describeGeneratedTaskSettings(
+                    categoryOptions.find(o => o.value === categoryOf(spec.kind))?.label ?? null,
+                    s.generatedTaskDefaults[spec.kind],
+                    s.generatedTaskExtras[spec.kind],
+                  ) ?? 'Category, tags, priority and more for the tasks this adds'}
+                  alwaysShowHint
+                  chevron
+                  tight
+                  onPress={() => setTaskSettingsKind(spec.kind)}
+                />
+              </>
+            )}
+            {open && !hasTaskSettingsSheet(spec.kind) && (
               <>
                 <View style={styles.sep} />
                 <SettingsRow
@@ -1378,7 +1407,7 @@ export function GeneratedTasksSection() {
                 </View>
               </>
             )}
-            {open && spec.categorized && (
+            {open && spec.categorized && !hasTaskSettingsSheet(spec.kind) && (
               <>
                 <View style={styles.sep} />
                 <SettingsRow
@@ -1481,6 +1510,17 @@ export function GeneratedTasksSection() {
       )}
     </SettingsSection>
     <WeatherRulesSheet visible={weatherRulesVisible} onClose={() => setWeatherRulesVisible(false)} />
+    {shownTaskSettingsKind && TASK_SETTINGS_SPECS[shownTaskSettingsKind] && (
+      <GeneratedTaskSettingsSheet
+        visible={taskSettingsKind !== null}
+        kind={shownTaskSettingsKind}
+        spec={TASK_SETTINGS_SPECS[shownTaskSettingsKind]!}
+        generatorLabel={GENERATED_KIND_SPECS[shownTaskSettingsKind].label}
+        category={categoryOf(shownTaskSettingsKind)}
+        onSetCategory={category => setCategory(shownTaskSettingsKind, category)}
+        onClose={() => setTaskSettingsKind(null)}
+      />
+    )}
     <EventRulesSheet visible={eventRulesVisible} onClose={() => setEventRulesVisible(false)} />
     <ScreenTimeRulesSheet visible={screenTimeRulesVisible} onClose={() => setScreenTimeRulesVisible(false)} />
     <HealthRulesSheet visible={healthRulesVisible} onClose={() => setHealthRulesVisible(false)} />

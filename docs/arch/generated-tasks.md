@@ -763,6 +763,28 @@ The write-back compares values, not the patch's keys, because an undo snapshot
 names both fields without changing them. Only a draft with no estimate of its
 own is ever filled, and a task somebody typed never is.
 
+## Task settings: a kind's task, field by field
+
+A kind can have a **Task settings** sheet in Settings (`GeneratedTaskSettingsSheet`, rules in
+`src/utils/generatedTaskSettings.ts`): its task laid out like a task, with the fields its generator
+writes shown locked and saying where each comes from, and the rest editable. It exists so the
+person can see how the automation works, not only switch it on.
+
+- **It is not a task row.** A hidden "prototype" `Task` would have to be excluded from every list,
+  sync, Search, Backfill, retention and the MCP replica, and missing one shows a phantom task.
+  What the sheet edits is three settings: the kind's own category setting, `generatedTaskDefaults`
+  (shared with Backfill), and `generatedTaskExtras` (tags, time of day, a question on completion).
+- **A setting fills a field the generator left alone and never overrides one it wrote.** The
+  extras are folded into the draft at the top of `newTaskFromDraft` (`generatedExtrasFill`); tags
+  add to the draft's, the rest only fill an empty slot. The locked rows are exactly the fields the
+  generator writes, several of which its drift rewrites, which is why they can't be offered.
+- **Changes apply to tasks created afterwards**, the rule the defaults already had: a live task
+  may have been edited, and rewriting it would undo that.
+- **Not every kind has one yet.** `TASK_SETTINGS_SPECS` lists the kinds that do, with their owned
+  fields; the rest keep the older "Task defaults" and "File them under" rows. Adding a kind is an
+  entry there, its owned fields read off its draft builder.
+- **The MCP server doesn't expose these**, as it doesn't expose `generatedTaskDefaults`.
+
 ## Vacation mode: which of them stand down
 
 `GeneratedKindSpec.pausedOnVacation` is every generator's answer, required the way `kitchen` is
