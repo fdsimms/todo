@@ -2769,6 +2769,11 @@ describe('demo seed — people', () => {
     // the whole until the amount is changed.
     expect(wholeEstimate(eatenOut[0])).not.toBeNull();
     expect(currentEstimateFactor(eatenOut[0])).toBe(1);
+    // The split the estimate showed is kept on the entry, and adds up to it.
+    const lines = eatenOut[0].nutrition.breakdown ?? [];
+    expect(lines.length).toBeGreaterThan(1);
+    expect(lines.reduce((sum, l) => sum + (l.amounts.calorieKcal ?? 0), 0))
+      .toBe(eatenOut[0].nutrition.amounts.calorieKcal);
   });
 
   it('seeds figures from more than one source, so the provenance stat has content', () => {

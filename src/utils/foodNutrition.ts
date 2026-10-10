@@ -1,4 +1,5 @@
 import type {
+  FoodBreakdownLine,
   FoodNutrition,
   FoodNutritionSource,
   FoodPortion,
@@ -73,6 +74,27 @@ function readAmounts(value: unknown): Partial<Record<NutrientKey, number>> {
     if (amount !== null) amounts[key] = amount;
   }
   return amounts;
+}
+
+/**
+ * The component lines an estimated record carries, or nothing at all.
+ *
+ * A line with no label or no readable figures is dropped, and an estimate left
+ * with no lines reads as one that never had a breakdown rather than as an
+ * empty one.
+ */
+function readBreakdownField(value: unknown): { breakdown: FoodBreakdownLine[] } | Record<string, never> {
+  if (!Array.isArray(value)) return {};
+  const lines: FoodBreakdownLine[] = [];
+  for (const raw of value) {
+    const row = raw as { label?: unknown; amounts?: unknown } | null;
+    const label = typeof row?.label === 'string' ? row.label.trim() : '';
+    if (!label) continue;
+    const amounts = readAmounts(row?.amounts);
+    if (Object.keys(amounts).length === 0) continue;
+    lines.push({ label, amounts });
+  }
+  return lines.length > 0 ? { breakdown: lines } : {};
 }
 
 /**
@@ -155,6 +177,7 @@ export function parseFoodNutrition(raw: string | null | undefined): FoodNutritio
       ...(typeof parsed.foodCategory === 'string' && parsed.foodCategory !== ''
         ? { foodCategory: parsed.foodCategory }
         : {}),
+      ...readBreakdownField(parsed.breakdown),
     };
   } catch {
     return null;

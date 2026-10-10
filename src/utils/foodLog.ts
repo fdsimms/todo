@@ -1405,10 +1405,26 @@ export function estimateAmountPatch(entry: EstimatedHelping, factor: number): Es
   }
   const quantity = estimateAmountWords(base, factor);
   const grams = whole.servingGrams !== null ? Math.round(whole.servingGrams * factor) : null;
+  // The lines are scaled by the same number as the total they split, so they
+  // still add up to it. `whole` keeps the unscaled lines for the next change.
+  const breakdown = whole.breakdown?.map(line => {
+    const lineAmounts: Partial<Record<NutrientKey, number>> = {};
+    for (const key of NUTRIENT_KEYS) {
+      const amount = line.amounts[key];
+      if (amount !== undefined) lineAmounts[key] = round(amount * factor);
+    }
+    return { label: line.label, amounts: lineAmounts };
+  });
   return {
     quantity,
     grams,
-    nutrition: { ...whole, servingText: quantity, servingGrams: grams, amounts },
+    nutrition: {
+      ...whole,
+      servingText: quantity,
+      servingGrams: grams,
+      amounts,
+      ...(breakdown ? { breakdown } : {}),
+    },
     sourcePanel: whole,
   };
 }
