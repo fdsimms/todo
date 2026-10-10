@@ -89,6 +89,8 @@ import type {
   TaskDraft,
   TaskGroup,
   TimeOfDay,
+  TaskFieldDefaults,
+  GeneratedTaskExtras,
 } from '../../src/types';
 import { parseTaskFieldDefaults } from '../../src/utils/taskFieldDefaults';
 import { rotationItemFromInput, rotationMemberTitle, rotationMembers } from '../../src/utils/rotation';
@@ -294,6 +296,9 @@ export interface ReplicaLib {
   agentNotes: typeof import('../../src/utils/agentNotes');
   nutritionEstimate: typeof import('../../src/utils/nutritionEstimate');
   generatedTasks: typeof import('../../src/utils/generatedTasks');
+  generatedTaskSettings: typeof import('../../src/utils/generatedTaskSettings');
+  taskFieldDefaults: typeof import('../../src/utils/taskFieldDefaults');
+  deliverables: typeof import('../../src/utils/deliverables');
   titleRules: typeof import('../../src/utils/titleRules');
   weatherTasks: typeof import('../../src/utils/weatherTasks');
   eventTasks: typeof import('../../src/utils/eventTasks');
@@ -1276,6 +1281,19 @@ export interface Replica {
    * The name is not checked here; the tool refuses one that isn't a category.
    */
   setGeneratorCategory(kind: GeneratedKind, category: string | null): void;
+  /**
+   * The rest of a generator's "Task settings": the defaults Backfill shares
+   * (`generatedTaskDefaults`) and the tags, time of day and question
+   * (`generatedTaskExtras`), each null when nothing is set.
+   */
+  generatorTaskSettings(kind: GeneratedKind): { defaults: TaskFieldDefaults | null; extras: GeneratedTaskExtras | null };
+  /** Replace either half through the settings store's own setter; undefined leaves that half alone. */
+  setGeneratorTaskSettings(
+    kind: GeneratedKind,
+    change: { defaults?: TaskFieldDefaults | null; extras?: GeneratedTaskExtras | null },
+  ): void;
+  /** The lead-day settings a generator's locked fields are described with. */
+  taskSettingsContext(): import('../../src/utils/generatedTaskSettings').TaskSettingsContext;
   /**
    * Delete a category: its tasks and stacks move to `moveTo` (or become
    * uncategorized), every setting that filed something under it is re-pointed
@@ -3619,6 +3637,9 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         agentNotes: require('../../src/utils/agentNotes'),
         nutritionEstimate: require('../../src/utils/nutritionEstimate'),
         generatedTasks: require('../../src/utils/generatedTasks'),
+        generatedTaskSettings: require('../../src/utils/generatedTaskSettings'),
+        taskFieldDefaults: require('../../src/utils/taskFieldDefaults'),
+        deliverables: require('../../src/utils/deliverables'),
         titleRules: require('../../src/utils/titleRules'),
         weatherTasks: require('../../src/utils/weatherTasks'),
         eventTasks: require('../../src/utils/eventTasks'),
@@ -4580,6 +4601,28 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     setGeneratorCategory(kind: GeneratedKind, category: string | null) {
       categoryStore.setGeneratedCategory(kind, category);
       refresh();
+    },
+
+    generatorTaskSettings(kind: GeneratedKind) {
+      const s = useSettingsStore.getState();
+      return { defaults: s.generatedTaskDefaults[kind] ?? null, extras: s.generatedTaskExtras[kind] ?? null };
+    },
+
+    setGeneratorTaskSettings(kind, change) {
+      const s = useSettingsStore.getState();
+      if (change.defaults !== undefined) s.setGeneratedTaskDefaults(kind, change.defaults);
+      if (change.extras !== undefined) s.setGeneratedTaskExtras(kind, change.extras);
+      refresh();
+    },
+
+    taskSettingsContext() {
+      const s = useSettingsStore.getState();
+      return {
+        groceryUseUpLeadDays: s.groceryUseUpLeadDays,
+        birthdayLeadDays: s.birthdayLeadDays,
+        birthdayGiftLeadDays: s.birthdayGiftLeadDays,
+        mealShortfallLeadDays: s.mealShortfallLeadDays,
+      };
     },
 
     deleteCategory(name: string, moveTo: string | null): DeletedCategory {

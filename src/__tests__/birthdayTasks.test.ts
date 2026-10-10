@@ -389,6 +389,10 @@ describe('the gift task', () => {
         .toEqual([]);
     });
 
+    it('offers nothing for a business, like the reminder', () => {
+      expect(wantedBirthdayGiftTasks([person({ kind: 'business' })], lead, noon(2026, 3, 6))).toEqual([]);
+    });
+
     it('honours its own, narrower opt-out', () => {
       expect(wantedBirthdayGiftTasks([person({ birthdayGiftTaskOptOut: true })], lead, noon(2026, 3, 6)))
         .toEqual([]);

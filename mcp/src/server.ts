@@ -758,7 +758,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'list_automations',
-    "Everything that adds tasks on its own: each automation (birthdays, weather, calendar events, Health, Screen Time, meal and pantry tasks, and the rest), whether it is on, what it does, and what it needs on the phone. Also every rule the person wrote for the ones that take rules, plus title rules, which file a new task by a word in its title. Use it before suggesting or changing an automation.",
+    "Everything that adds tasks on its own: each automation (birthdays, weather, calendar events, Health, Screen Time, meal and pantry tasks, and the rest), whether it is on, what it does, what it needs on the phone, what each new task of its kind starts with (taskSettings), and which fields the automation writes itself (setByApp). Also every rule the person wrote for the ones that take rules, plus title rules, which file a new task by a word in its title. Use it before suggesting or changing an automation.",
     {},
     async () => json(await withFresh(() => listAutomations(replica)))
   );
@@ -1964,15 +1964,27 @@ function registerWriteTools(
 
   server.tool(
     'set_automation',
-    'Turn an automation on or off, and/or choose the category its tasks file under (its "File them under" setting, shown as category in list_automations). Pass on, category or both. category: null files its tasks under none, which puts them in the loose block at the top of Today; prefer a real category. Applies on every synced device. Say what it will do (its "does" line) and anything it needs on the phone before turning it on.',
+    'Turn an automation on or off, choose the category its tasks file under (its "File them under" setting, shown as category in list_automations), and/or change what each new task of its kind starts with (taskSettings). Pass any of the three. category: null files its tasks under none, which puts them in the loose block at the top of Today; prefer a real category. taskSettings only fills fields the automation itself leaves alone (setByApp in list_automations names the ones it writes, which can\'t be changed), applies to tasks it adds from now on, and leaves tasks already added as they are. Applies on every synced device. Say what it will do (its "does" line) and anything it needs on the phone before turning it on.',
     {
       kind: z.string().min(1),
       on: z.boolean().optional(),
       category: z.string().nullable().optional().describe('A task category by name, from list_categories. It must already exist; null for none.'),
+      taskSettings: z.object({
+        priority: z.number().int().min(0).max(4).nullable().optional().describe('0 none, 1 low to 4 urgent; 0 is an answer ("no priority, don\'t ask"), null clears it.'),
+        effort: z.number().int().min(0).max(6).nullable().optional().describe('An estimate bucket 1-6, or 0 for "no estimate, don\'t ask"; null clears it.'),
+        difficulty: z.enum(['easy', 'normal', 'hard']).nullable().optional().describe('Only read when rewards are on.'),
+        skipInSuggestions: z.boolean().nullable().optional(),
+        tags: z.array(z.string()).nullable().optional().describe('Added to every new task of this kind. Replaces the list; null or [] clears it.'),
+        timeOfDay: z.enum(['morning', 'afternoon', 'evening', 'night']).nullable().optional().describe('Keeps these tasks off Today until that part of the day.'),
+        askOnCompletion: z.object({
+          kind: z.enum(['text', 'date', 'number', 'yesno', 'choice']),
+          options: z.array(z.string()).optional().describe('For choice: at least two.'),
+        }).nullable().optional().describe('A question to answer when one of these tasks is completed; null for none.'),
+      }).optional().describe('Fields left out stay as they are; null clears one.'),
     },
-    async ({ kind, on, category }) => {
+    async ({ kind, on, category, taskSettings }) => {
       try {
-        return json(await withWrite(() => setAutomation(replica, kind, { on, category })));
+        return json(await withWrite(() => setAutomation(replica, kind, { on, category, taskSettings })));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not change that automation.' });
       }

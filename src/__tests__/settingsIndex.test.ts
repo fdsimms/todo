@@ -97,7 +97,7 @@ describe('settings index', () => {
     // a generator added to GENERATED_KINDS grows a row on its own and only the
     // index has to be remembered separately. Comparing the two lists is what
     // makes that unrepresentable.
-    const toggleEntries = SETTINGS_ENTRIES.filter(e => e.id.startsWith('gen:') && !e.id.endsWith(':category') && !e.id.endsWith(':defaults'));
+    const toggleEntries = SETTINGS_ENTRIES.filter(e => e.id.startsWith('gen:') && !e.id.endsWith(':category') && !e.id.endsWith(':defaults') && !e.id.endsWith(':taskSettings'));
 
     it('indexes every generator that gets a row, in order, and nothing else', () => {
       expect(toggleEntries.map(e => e.label)).toEqual(GENERATED_KIND_LIST.map(s => s.label));
@@ -129,13 +129,13 @@ describe('settings index', () => {
       }
     });
 
-    it('gives a "File them under" row only to a generator that has one', () => {
-      // Nine rows share that label, so the entry is worthless without its
-      // section naming which generator it belongs to.
+    it('gives every generator one Task settings row, filed under its own name', () => {
+      // Its category and defaults are in that sheet, so the two rows that held
+      // them are gone.
       for (const spec of GENERATED_KIND_LIST) {
-        const entry = SETTINGS_ENTRIES.find(e => e.id === `gen:${spec.kind}:category`);
-        expect(entry !== undefined).toBe(spec.categorized);
-        if (entry) expect(entry.section).toBe(spec.label);
+        const entry = SETTINGS_ENTRIES.find(e => e.id === `gen:${spec.kind}:taskSettings`);
+        expect(entry?.section).toBe(spec.label);
+        expect(SETTINGS_ENTRIES.some(e => e.id === `gen:${spec.kind}:category` || e.id === `gen:${spec.kind}:defaults`)).toBe(false);
       }
     });
 
@@ -273,13 +273,13 @@ describe('settings index', () => {
       expect(SETTINGS_ENTRIES.filter(e => e.requires).length).toBeGreaterThan(0);
     });
 
-    // The screen renders "File them under" inside `on && spec.categorized`, so
-    // every derived category row is gated on its own generator's toggle.
-    it('gates every generator category row on its own generator', () => {
-      const categoryRows = SETTINGS_ENTRIES.filter(e => e.id.endsWith(':category'));
-      expect(categoryRows.length).toBeGreaterThan(0);
-      for (const row of categoryRows) {
-        expect(row.requires).toBe(row.id.replace(/:category$/, ''));
+    // The screen renders "Task settings" inside the generator's open options,
+    // so every derived row is gated on its own generator's toggle.
+    it('gates every generator Task settings row on its own generator', () => {
+      const rows = SETTINGS_ENTRIES.filter(e => e.id.endsWith(':taskSettings'));
+      expect(rows.length).toBeGreaterThan(0);
+      for (const row of rows) {
+        expect(row.requires).toBe(row.id.replace(/:taskSettings$/, ''));
       }
     });
 

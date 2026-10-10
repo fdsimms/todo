@@ -394,7 +394,9 @@ export function wantedBirthdayGiftTasks(
   const lead = clampBirthdayGiftLeadDays(leadDays);
   const wants: BirthdayGiftWant[] = [];
   for (const person of people) {
-    if (person.archived || person.birthdayTaskOptOut || person.birthdayGiftTaskOptOut) continue;
+    // A business is skipped for the reason wantedBirthdayTasks gives: it has
+    // no birthday field to edit, so a leftover date can't be switched off.
+    if (person.archived || person.birthdayTaskOptOut || person.birthdayGiftTaskOptOut || person.kind === 'business') continue;
     const date = nextBirthday(person, today);
     if (!date) continue;
     const away = differenceInCalendarDays(date, today);

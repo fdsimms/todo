@@ -37,7 +37,7 @@ import {
 } from '../utils/snackNudgeTasks';
 import { DEFAULT_APP_FONT, isAppFont, pickRandomAppFont, type AppFont } from '../theme/fonts';
 import { parseGeneratorEstimates, type GeneratorEstimates } from '../utils/ruleEstimate';
-import type { SortOption, RecipeSortOption, ProjectSortOption, Priority, Effort, Difficulty, GeneratedKind, TaskFieldDefaults, MealSlot, TimeOfDay, TitleRule, WeatherRule, EventTaskRule, ScreenTimeRule, HealthRule, NutrientKey, ReminderCapture } from '../types';
+import type { SortOption, RecipeSortOption, ProjectSortOption, Priority, Effort, Difficulty, GeneratedKind, GeneratedTaskExtras, TaskFieldDefaults, MealSlot, TimeOfDay, TitleRule, WeatherRule, EventTaskRule, ScreenTimeRule, HealthRule, NutrientKey, ReminderCapture } from '../types';
 import { clampStepGoal, parseStepGoal } from '../utils/stepGoal';
 import { parseHealthRowKeys, serializeHealthRowKeys, type HealthRowKey } from '../utils/dayContextRows';
 import {
@@ -114,6 +114,7 @@ import { UNIT_SYSTEMS, type UnitSystem } from '../utils/unitConvert';
 import { MAX_HOUSEHOLD_SERVINGS } from '../utils/recipeScale';
 import { parseTitleRules } from '../utils/titleRules';
 import { parseGeneratedTaskDefaults, hasTaskFieldDefaults } from '../utils/taskFieldDefaults';
+import { hasGeneratedTaskExtras, parseGeneratedTaskExtras } from '../utils/generatedTaskSettings';
 import { parseWeatherRules, defaultWeatherRules } from '../utils/weatherTasks';
 import { parseSunLocation, roundSunLocation, type SunLocation } from '../utils/sunTimes';
 import { parseCustomHolidays, parseHolidaySet, type HolidaySet } from '../utils/holidays';
@@ -1847,6 +1848,12 @@ interface SettingsStore {
   // utils/taskFieldDefaults.ts. Kept out of DEFAULT_SETTINGS/resetToDefaults
   // for the reason titleRules is (a record doesn't round-trip through String).
   generatedTaskDefaults: Record<string, TaskFieldDefaults>;
+  // Tags, time of day and an on-completion question each kind of generated
+  // task starts with, keyed by kind: the half of a kind's "Task settings" that
+  // no generator writes. Same contract and same reason to sit outside
+  // DEFAULT_SETTINGS as generatedTaskDefaults. See
+  // utils/generatedTaskSettings.ts.
+  generatedTaskExtras: Record<string, GeneratedTaskExtras>;
   // The top-level screen (a bottom-tab or drawer route name — see
   // RESTORABLE_SCREENS in AppNavigator.tsx) the app was on when it last left
   // the foreground. State, not a preference — kept out of DEFAULT_SETTINGS/
@@ -2164,6 +2171,8 @@ interface SettingsStore {
   setNewTaskDefaults: (patch: Partial<NewTaskDefaults>) => void;
   /** Null clears the kind's defaults. */
   setGeneratedTaskDefaults: (kind: GeneratedKind, defaults: TaskFieldDefaults | null) => void;
+  /** Null clears the kind's extras. */
+  setGeneratedTaskExtras: (kind: GeneratedKind, extras: GeneratedTaskExtras | null) => void;
   pushRecentSearch: (query: string) => void;
   clearRecentSearches: () => void;
   setTitleRules: (rules: TitleRule[]) => void;
@@ -2633,6 +2642,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   projectSortOption: 'manual',
   titleRules: [],
   generatedTaskDefaults: {},
+  generatedTaskExtras: {},
   dailyAgendaEnabled: false,
   dailyAgendaTime: '08:00',
   dailyAgendaSpoken: false,
@@ -3450,6 +3460,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const titleRules = parseTitleRules(dbGetSetting('titleRules'));
     const generatedTaskDefaults = parseGeneratedTaskDefaults(dbGetSetting('generatedTaskDefaults'));
+    const generatedTaskExtras = parseGeneratedTaskExtras(dbGetSetting('generatedTaskExtras'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
     const recentScreens = parseRecentScreens(dbGetSetting('recentScreens'));
     // One field per line and sorted by field name, deliberately. Not to be
@@ -3545,6 +3556,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       foodLogPinnedNutrients,
       gateShieldEnabled,
       generatedTaskDefaults,
+      generatedTaskExtras,
       generatorEstimates,
       goalsTodayCategory,
       goalsTodayHidden,
@@ -5424,6 +5436,15 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       if (hasTaskFieldDefaults(defaults)) next[kind] = defaults; else delete next[kind];
       dbSetSetting('generatedTaskDefaults', JSON.stringify(next));
       return { generatedTaskDefaults: next };
+    });
+  },
+
+  setGeneratedTaskExtras(kind: GeneratedKind, extras: GeneratedTaskExtras | null) {
+    set(state => {
+      const next = { ...state.generatedTaskExtras };
+      if (hasGeneratedTaskExtras(extras)) next[kind] = extras; else delete next[kind];
+      dbSetSetting('generatedTaskExtras', JSON.stringify(next));
+      return { generatedTaskExtras: next };
     });
   },
 

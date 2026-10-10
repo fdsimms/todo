@@ -37,6 +37,7 @@
 
 import { AI_FEATURES, type AiFeatureId } from './aiFeatures';
 import { GENERATED_KIND_LIST, type GeneratedKind } from './generatedTasks';
+import { hasTaskSettingsSheet } from './generatedTaskSettings';
 
 export type SettingsGroupId =
   | 'featureAreas'
@@ -405,22 +406,13 @@ const GENERATED_ENTRIES: SettingsEntry[] = GENERATED_KIND_LIST.flatMap(spec => {
       section: 'Automations',
       keywords: GENERATED_KEYWORDS[spec.kind],
     },
-    {
+    // Its category and defaults live in the Task settings sheet.
+    ...(hasTaskSettingsSheet(spec.kind) ? [{
       ...shared,
-      id: `gen:${spec.kind}:defaults`,
-      label: 'Task defaults',
+      id: `gen:${spec.kind}:taskSettings`,
+      label: 'Task settings',
       section: spec.label,
-      keywords: ['priority', 'difficulty', 'estimate', 'time', 'backfill'],
-      requires: `gen:${spec.kind}`,
-    },
-    ...(spec.categorized ? [{
-      ...shared,
-      id: `gen:${spec.kind}:category`,
-      label: 'File them under',
-      section: spec.label,
-      keywords: ['category', 'where', 'section'],
-      // Rendered only under a generator that's switched on, the same way the
-      // screen renders it — see SettingsEntry.requires.
+      keywords: ['priority', 'difficulty', 'estimate', 'category', 'file them under', 'tags', 'time of day', 'ask on completion', 'backfill'],
       requires: `gen:${spec.kind}`,
     }] : []),
   ];
@@ -663,7 +655,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['keyword', 'expense', 'automatic', 'auto file', 'category', 'project', 'tag',
       'starts with', 'parse', 'shortcut', 'prefix', 'why did this', 'link', 'url', 'app'] },
   // Sits under the generator's own section, beside gen:weather and
-  // gen:weather:category (see GENERATED_ENTRIES) — this is the row that opens
+  // gen:weather:taskSettings (see GENERATED_ENTRIES) — this is the row that opens
   // the rule editor those two can't.
   { id: 'weatherRules', requires: 'gen:weather', groupId: 'generated', label: 'Rules', section: 'Weather-based tasks',
     keywords: ['sunny', 'rainy', 'snowy', 'cold', 'hot', 'sunscreen', 'umbrella', 'coat',

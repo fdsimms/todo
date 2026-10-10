@@ -17,6 +17,12 @@ interface Props {
   onChange: (next: TaskFieldDefaults | null) => void;
   /** Whether to ask for a difficulty. Off with rewards, which are all that read one. */
   showDifficulty: boolean;
+  /**
+   * Leave out the two answers that only apply to a repeating task (streak
+   * chip, vacation pause), for a group that never repeats: a kind of
+   * generated task is always a one-off.
+   */
+  oneOffOnly?: boolean;
 }
 
 // `null` in a segmented control can't be a "no answer" the way a missing field
@@ -63,7 +69,7 @@ const SUGGESTION_OPTIONS = yesNoOptions('Skip', 'Allow');
  * kind of generated task in Settings. One component for both so the two can't
  * word or order them differently.
  */
-export function TaskFieldDefaultsFields({ value, onChange, showDifficulty }: Props) {
+export function TaskFieldDefaultsFields({ value, onChange, showDifficulty, oneOffOnly = false }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const simpleMode = useSettingsStore(st => st.simpleMode);
@@ -102,7 +108,7 @@ export function TaskFieldDefaultsFields({ value, onChange, showDifficulty }: Pro
         columns={3}
         options={ESTIMATE_OPTIONS}
       />
-      {!featureHidden('streakOptions', simpleMode) && (
+      {!oneOffOnly && !featureHidden('streakOptions', simpleMode) && (
         <>
           <Text style={styles.label}>Streak chip (repeating tasks)</Text>
           <SegmentedControl<boolean | null>
@@ -114,7 +120,7 @@ export function TaskFieldDefaultsFields({ value, onChange, showDifficulty }: Pro
           />
         </>
       )}
-      {!featureHidden('vacationPause', simpleMode) && (
+      {!oneOffOnly && !featureHidden('vacationPause', simpleMode) && (
         <>
           <Text style={styles.label}>Vacation pause (repeating tasks)</Text>
           <SegmentedControl<boolean | null>

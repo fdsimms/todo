@@ -763,6 +763,32 @@ The write-back compares values, not the patch's keys, because an undo snapshot
 names both fields without changing them. Only a draft with no estimate of its
 own is ever filled, and a task somebody typed never is.
 
+## Task settings: a kind's task, field by field
+
+Every kind has a **Task settings** sheet in Settings (`GeneratedTaskSettingsSheet`, rules in
+`src/utils/generatedTaskSettings.ts`): its task laid out like a task, with the fields its generator
+writes shown locked and saying where each comes from, and the rest editable. It exists so the
+person can see how the automation works, not only switch it on.
+
+- **It is not a task row.** A hidden "prototype" `Task` would have to be excluded from every list,
+  sync, Search, Backfill, retention and the MCP replica, and missing one shows a phantom task.
+  What the sheet edits is three settings: the kind's own category setting, `generatedTaskDefaults`
+  (shared with Backfill), and `generatedTaskExtras` (tags, time of day, a question on completion).
+- **A setting fills a field the generator left alone and never overrides one it wrote.** The
+  extras are folded into the draft at the top of `newTaskFromDraft` (`generatedExtrasFill`); tags
+  add to the draft's, the rest only fill an empty slot. The locked rows are exactly the fields the
+  generator writes, several of which its drift rewrites, which is why they can't be offered.
+- **Changes apply to tasks created afterwards**, the rule the defaults already had: a live task
+  may have been edited, and rewriting it would undo that.
+- **A new generator needs an entry in `TASK_SETTINGS_SPECS`**, its owned fields read off its draft
+  builder; `generatedTaskSettings.test.ts` fails until every listed kind has one. A generator that
+  writes a time of day or a question itself (or whose task is never completed) lists it in `locks`,
+  and the sheet and the MCP server both leave that row out.
+- **Rule kinds' category is a fallback.** A rule can name its own category, which wins; the sheet's
+  hint says so (`categoryHint`).
+- **The MCP server reads and writes all of it** through `set_automation`'s `taskSettings` (see
+  `docs/arch/mcp-server.md`).
+
 ## Vacation mode: which of them stand down
 
 `GeneratedKindSpec.pausedOnVacation` is every generator's answer, required the way `kitchen` is

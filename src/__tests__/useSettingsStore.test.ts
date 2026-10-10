@@ -2080,3 +2080,23 @@ describe('postpone check settings', () => {
     expect(useSettingsStore.getState().postponeCheckThreshold).toBe(3);
   });
 });
+
+describe('generatedTaskExtras', () => {
+  const extras = { tags: ['cooking'], timeSegments: ['evening' as const], deliverableKind: null, deliverableOptions: [] };
+
+  it('stores a kind\'s extras and clears them when nothing is left', () => {
+    useSettingsStore.getState().setGeneratedTaskExtras('groceryUseUp', extras);
+    expect(useSettingsStore.getState().generatedTaskExtras.groceryUseUp).toEqual(extras);
+    expect(dbSetSetting).toHaveBeenCalledWith('generatedTaskExtras', JSON.stringify({ groceryUseUp: extras }));
+    useSettingsStore.getState().setGeneratedTaskExtras('groceryUseUp', { ...extras, tags: [], timeSegments: [] });
+    expect(useSettingsStore.getState().generatedTaskExtras.groceryUseUp).toBeUndefined();
+  });
+
+  it('reads them back on initialize', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'generatedTaskExtras' ? JSON.stringify({ birthday: extras }) : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().generatedTaskExtras).toEqual({ birthday: extras });
+  });
+});

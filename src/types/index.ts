@@ -72,6 +72,24 @@ export interface TaskFieldDefaults {
 }
 
 /**
+ * The rest of a kind of generated task's "Task settings", beside its
+ * `TaskFieldDefaults` and its own category setting: fields the generator never
+ * writes, applied to each new task beneath whatever the generator's draft
+ * names (see `generatedExtrasFill` in `src/utils/generatedTaskSettings.ts`).
+ * Empty arrays and a null kind mean "nothing set".
+ */
+export interface GeneratedTaskExtras {
+  /** Added to the draft's own tags, never replacing them. */
+  tags: string[];
+  /** Used only when the draft names no time of day. */
+  timeSegments: TimeOfDay[];
+  /** `Task.deliverableKind`, used only when the draft asks nothing. */
+  deliverableKind: DeliverableKind | null;
+  /** `Task.deliverableOptions`, for a `'choice'` kind only. */
+  deliverableOptions: string[];
+}
+
+/**
  * Which direction a task's success runs in — see `Task.polarity`.
  *
  * 'positive' is every task that has ever existed here: something to do, and

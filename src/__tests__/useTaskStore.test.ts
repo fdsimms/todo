@@ -1384,6 +1384,22 @@ describe('newTaskFromDraft: newTaskDefaults', () => {
       expect(gift).toMatchObject({ priority: 3, difficulty: 'easy' });
     });
 
+    it('adds a generated kind\'s tags, time of day and question beneath its draft', () => {
+      useSettingsStore.getState.mockReturnValue({
+        dayResetTime: '00:00', autoCompleteProjectsOnDone: false, activeHoursStart: '08:00', activeHoursEnd: '22:00', weekStartsOn: 0,
+        newTaskDefaults: { category: null, priority: null, effort: null, difficulty: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+        generatedTaskDefaults: {},
+        generatedTaskExtras: { groceryUseUp: { tags: ['cooking'], timeSegments: ['evening'], deliverableKind: 'yesno', deliverableOptions: [] } },
+      });
+      const useUp = useTaskStore.getState().addTask({ title: 'Use up spinach', tags: ['fridge'], generatedKind: 'groceryUseUp', generatedSourceId: 'g1' });
+      expect(useUp).toMatchObject({ tags: ['fridge', 'cooking'], timeSegments: ['evening'], deliverableKind: 'yesno' });
+      // Another kind, and a task nobody generated, are untouched.
+      const other = useTaskStore.getState().addTask({ title: 'Sam\'s birthday', generatedKind: 'birthday', generatedSourceId: 'p1#2026' });
+      expect(other).toMatchObject({ tags: [], timeSegments: [], deliverableKind: null });
+      const typed = useTaskStore.getState().addTask({ title: 'Use up spinach' });
+      expect(typed).toMatchObject({ tags: [], deliverableKind: null });
+    });
+
     it('skipCategoryDefault bypasses the project default too', () => {
       useProjectStore.setState({ projects: [makeProject({ id: 'proj1', defaultTaskCategory: 'Renovation' })] });
       const task = useTaskStore.getState().addTask(

@@ -45,8 +45,8 @@ const TEMPLATED: { test: (id: string) => boolean; template: (id: string) => stri
     template: () => 'entryId={key}',
   },
   {
-    test: id => id.startsWith('gen:') && id.endsWith(':category'),
-    template: () => 'entryId={`gen:${spec.kind}:category`}',
+    test: id => id.startsWith('gen:') && id.endsWith(':taskSettings'),
+    template: () => 'entryId={`gen:${spec.kind}:taskSettings`}',
   },
   { test: id => id.startsWith('gen:'), template: () => 'entryId={`gen:${spec.kind}`}' },
   // The two generators that hold their task back until a part of the day share

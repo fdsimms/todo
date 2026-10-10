@@ -14,6 +14,7 @@ import { NUTRIENT_LABEL } from '../../utils/foodNutrition';
 import { haptics } from '../../utils/haptics';
 import {
   CALENDAR_READ_KINDS,
+  GENERATED_KIND_SPECS,
   generatorSwitchedOn,
   listedGeneratedKinds,
   matchesAutomationQuery,
@@ -83,8 +84,9 @@ import { readSavedPlaces, savedPlaceKey, type SavedPlace } from '../../utils/sav
 import { TRANSIT_LINES } from '../../utils/transitAlerts';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
-import { TaskFieldDefaultsFields } from '../../components/TaskFieldDefaultsFields';
-import { describeTaskFieldDefaults } from '../../utils/taskFieldDefaults';
+import { TASK_SETTINGS_SPECS, describeGeneratedTaskSettings, hasTaskSettingsSheet } from '../../utils/generatedTaskSettings';
+import { GeneratedTaskSettingsSheet } from '../../components/GeneratedTaskSettingsSheet';
+import { useSheetSubject } from '../../hooks/useSheetSubject';
 import { SettingsSegments } from './SettingsSegments';
 import { InlineTimePicker } from './InlineTimePicker';
 import { requestLocationPermission } from '../../utils/weatherLocation';
@@ -192,6 +194,10 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
   // Names for the per-calendar leave-by rows. Filled by the calendar read, so a
   // picked calendar it hasn't reached yet shows a plain fallback.
   const calendarsById = useCalendarStore(state => state.calendarsById);
+  // The kind whose Task settings sheet is open, and the last one there was so
+  // the sheet still has a kind to draw while it closes.
+  const [taskSettingsKind, setTaskSettingsKind] = useState<GeneratedKind | null>(null);
+  const shownTaskSettingsKind = useSheetSubject(taskSettingsKind);
 
   // Built here rather than handed down, now that this is a screen of its own
   // rather than a section inside Tasks & projects. Not a segmented control: the
@@ -1389,47 +1395,25 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
               ) : undefined}
             />
             {open && extrasFor(spec.kind)}
-            {open && (
+            {/* Its category, defaults and the rest of what each task starts
+                with, beside the fields the generator writes itself. */}
+            {open && hasTaskSettingsSheet(spec.kind) && (
               <>
                 <View style={styles.sep} />
                 <SettingsRow
-                  entryId={`gen:${spec.kind}:defaults`}
-                  icon="options-outline"
-                  label="Task defaults"
-                  hint="Priority, difficulty and time estimate these tasks start with. Not set uses your app-wide default, and anything still unanswered shows up in Backfill."
-                  value={describeTaskFieldDefaults(s.generatedTaskDefaults[spec.kind]) ?? 'Not set'}
+                  entryId={`gen:${spec.kind}:taskSettings`}
+                  icon="create-outline"
+                  label="Task settings"
+                  hint={describeGeneratedTaskSettings(
+                    categoryOptions.find(o => o.value === categoryOf(spec.kind))?.label ?? null,
+                    s.generatedTaskDefaults[spec.kind],
+                    s.generatedTaskExtras[spec.kind],
+                  ) ?? 'Category, tags, priority and more for the tasks this adds'}
+                  alwaysShowHint
+                  chevron
                   tight
+                  onPress={() => setTaskSettingsKind(spec.kind)}
                 />
-                <View style={styles.pillGroupRow}>
-                  <TaskFieldDefaultsFields
-                    value={s.generatedTaskDefaults[spec.kind]}
-                    onChange={next => s.setGeneratedTaskDefaults(spec.kind, next)}
-                    showDifficulty={s.rewardsEnabled}
-                  />
-                </View>
-              </>
-            )}
-            {open && spec.categorized && (
-              <>
-                <View style={styles.sep} />
-                <SettingsRow
-                  entryId={`gen:${spec.kind}:category`}
-                  icon="pricetag-outline"
-                  label="File them under"
-                  hint="With none, they appear at the top of Today, above your categories."
-                  value={categoryOptions.find(o => o.value === categoryOf(spec.kind))?.label ?? 'None'}
-                  tight
-                />
-                <View style={styles.pillGroupRow}>
-                  <PillGroup
-                    noun="category"
-                    options={categoryPills(
-                      categoryOf(spec.kind),
-                      category => setCategory(spec.kind, category),
-                      label => `${spec.label} category: ${label}`,
-                    )}
-                  />
-                </View>
               </>
             )}
           </React.Fragment>
@@ -1615,6 +1599,17 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
       )}
     </SettingsSection>
     <WeatherRulesSheet visible={weatherRulesVisible} onClose={() => setWeatherRulesVisible(false)} />
+    {shownTaskSettingsKind && TASK_SETTINGS_SPECS[shownTaskSettingsKind] && (
+      <GeneratedTaskSettingsSheet
+        visible={taskSettingsKind !== null}
+        kind={shownTaskSettingsKind}
+        spec={TASK_SETTINGS_SPECS[shownTaskSettingsKind]!}
+        generatorLabel={GENERATED_KIND_SPECS[shownTaskSettingsKind].label}
+        category={categoryOf(shownTaskSettingsKind)}
+        onSetCategory={category => setCategory(shownTaskSettingsKind, category)}
+        onClose={() => setTaskSettingsKind(null)}
+      />
+    )}
     <EventRulesSheet visible={eventRulesVisible} onClose={() => setEventRulesVisible(false)} />
     <ScreenTimeRulesSheet visible={screenTimeRulesVisible} onClose={() => setScreenTimeRulesVisible(false)} />
     <HealthRulesSheet visible={healthRulesVisible} onClose={() => setHealthRulesVisible(false)} />

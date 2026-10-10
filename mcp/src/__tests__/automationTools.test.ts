@@ -143,3 +143,42 @@ describe('automations', () => {
 function categoryNamed(kind: string): string | null {
   return listAutomations(replica).automations.find(a => a.kind === kind)!.category;
 }
+
+describe('task settings', () => {
+  it('sets what each new task of a kind starts with, and reads it back', () => {
+    const result = setAutomation(replica, 'groceryUseUp', {
+      taskSettings: { priority: 2, tags: ['cooking', ' cooking '], timeOfDay: 'evening', askOnCompletion: { kind: 'choice', options: ['Ate it', 'Froze it'] } },
+    });
+    expect(result.taskSettings).toEqual({
+      priority: 2, tags: ['cooking'], timeOfDay: 'evening', askOnCompletion: { kind: 'choice', options: ['Ate it', 'Froze it'] },
+    });
+    replica.refresh();
+    const again = listAutomations(replica).automations.find(a => a.kind === 'groceryUseUp')!;
+    expect(again.taskSettings).toMatchObject({ priority: 2, tags: ['cooking'] });
+    // Says what the automation writes itself, with the lead the person set.
+    expect(again.setByApp).toContain('Deadline: The use-by date');
+  });
+
+  it('leaves out fields not named and clears one set to null', () => {
+    setAutomation(replica, 'birthday', { taskSettings: { priority: 3, tags: ['people'] } });
+    const result = setAutomation(replica, 'birthday', { taskSettings: { tags: null } });
+    expect(result.taskSettings).toEqual({ priority: 3 });
+    expect(setAutomation(replica, 'birthday', { taskSettings: { priority: null } }).taskSettings).toBeUndefined();
+  });
+
+  it('refuses a choice question with fewer than two options, and writes nothing', () => {
+    const before = listAutomations(replica).automations.find(a => a.kind === 'birthday')!.on;
+    expect(() => setAutomation(replica, 'birthday', { on: !before, taskSettings: { askOnCompletion: { kind: 'choice', options: ['Only'] } } }))
+      .toThrow(/two options/);
+    expect(listAutomations(replica).automations.find(a => a.kind === 'birthday')!.on).toBe(before);
+  });
+});
+
+describe('task settings an automation writes itself', () => {
+  it('refuses a time of day for one that sets its own, and a question for one never completed', () => {
+    expect(() => setAutomation(replica, 'moodLog', { taskSettings: { timeOfDay: 'evening' } })).toThrow(/time of day itself/);
+    expect(() => setAutomation(replica, 'limitWarning', { taskSettings: { askOnCompletion: { kind: 'yesno' } } })).toThrow(/question/);
+    // Clearing is always allowed.
+    expect(() => setAutomation(replica, 'moodLog', { taskSettings: { timeOfDay: null } })).not.toThrow();
+  });
+});

@@ -109,9 +109,9 @@ only the fallback until the first sync.
 | `log_mood` / `log_medication` | **Write.** A mood check-in, or a dose taken, in the spellings already in the log. |
 | `archive_medication` / `rename_medication` / `rename_mood_tag` | **Write.** Archive or restore a medicine in the medicines list; rename a medicine on every dose and in its limit, supply and tasks (naming an existing medicine combines the two); rename a mood context tag on every check-in that has it. |
 | `set_supplement_nutrients` | **Write.** What one serving of a supplement contains, from its label (or cleared). Each later dose adds those vitamins and minerals to the day's food log. |
-| `list_automations` | Every automation, whether it is on and what it needs on the phone, and every rule written for them. |
+| `list_automations` | Every automation, whether it is on, what it needs on the phone, what its tasks start with and which fields it writes itself, and every rule written for them. |
 | `get_settings` / `update_settings` | Read and **Write.** The person's preferences that sync (the day, task defaults, feature areas, rewards, kitchen, automation parameters), each with what it does. Device-local settings are changed on the device. |
-| `set_automation` / `save_rule` / `delete_rule` | **Write.** Turn an automation on or off and choose the category its tasks file under; add, change or delete a weather, calendar event, Health, Screen Time or title rule. |
+| `set_automation` / `save_rule` / `delete_rule` | **Write.** Turn an automation on or off, choose the category its tasks file under, and set what each new task of its kind starts with (priority, estimate, tags, time of day, a question on completion); add, change or delete a weather, calendar event, Health, Screen Time or title rule. |
 | `delete_category` | **Write.** Delete a task category. Its tasks and stacks move to `moveTo` (or `uncategorize: true`), and every automation that filed under it is re-pointed. Previews unless `apply: true`; not undoable from here. |
 | `remember` / `forget` | **Write.** Add or remove a note the person wants every conversation to start with. They are in the app under Settings › Data & reset › Sync. |
 | `batch_update_tasks` | **Write.** Edit, complete or reschedule up to 100 tasks. Previews unless `apply: true`; one refused change refuses the batch. |
