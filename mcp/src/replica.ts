@@ -1076,6 +1076,8 @@ export interface Replica {
    */
   logMeterReading(name: string, value: number, readAt: Date): MeterReading;
   deleteMeterReading(id: string): MeterReading;
+  /** The daily word goal for the journal, or null when none is set. */
+  journalWordGoal(): number | null;
   /** Journal and dream entries between two day keys, inclusive, newest first. */
   journalEntries(fromDayKey: string, toDayKey: string, kind?: JournalKind): JournalEntry[];
   /**
@@ -3704,6 +3706,9 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (!reading) throw new Error(`No meter reading with id ${id}. list_meter_readings names them.`);
       store.removeReading(id);
       return reading;
+    },
+    journalWordGoal(): number | null {
+      return useSettingsStore.getState().journalWordGoal;
     },
     journalEntries(fromDayKey: string, toDayKey: string, kind?: JournalKind): JournalEntry[] {
       return db.dbGetAllJournalEntries()

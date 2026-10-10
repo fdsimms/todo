@@ -8,11 +8,12 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { dayKeyOf, getLogicalToday } from '../utils/dateUtils';
-import { JOURNAL_KIND_COPY, entriesOnDay, journalPromptAt, openEntries } from '../utils/journal';
+import { JOURNAL_KIND_COPY, countWords, entriesOnDay, formatWordCount, journalPromptAt, openEntries, wordsOnDay } from '../utils/journal';
 import { addSealedNoteReminder, dropSealedNoteReminder } from '../utils/sealedNoteTasks';
 import { journalPlainText, toggleLinePrefix, toggleWrap } from '../utils/journalMarkdown';
 import { useJournalStore } from '../store/useJournalStore';
 import { useTaskStore } from '../store/useTaskStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { EditorSheet } from './EditorSheet';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -66,6 +67,7 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
   const removeEntry = useJournalStore(s => s.removeEntry);
   const allEntries = useJournalStore(s => s.entries);
   const completeJournalTaskForToday = useTaskStore(s => s.completeJournalTaskForToday);
+  const wordGoal = useSettingsStore(s => s.journalWordGoal);
 
   const [text, setText] = useState('');
   const [day, setDay] = useState<Date>(() => getLogicalToday());
@@ -118,6 +120,20 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
   const soFarLabel = isSameDay(day, getLogicalToday())
     ? 'SO FAR TODAY'
     : `ALREADY WRITTEN ON ${format(day, 'EEE, MMM d').toUpperCase()}`;
+
+  // The day's words, this entry's included as it is typed: the goal is a day's,
+  // so the other snippets on the page count toward it. Never a sealed note.
+  const wordsDay = editing ? editing.dayKey : dayKeyOf(day);
+  const otherWords = useMemo(() => {
+    const open = openEntries(allEntries, dayKeyOf(getLogicalToday())).filter(e => e.id !== editing?.id);
+    return wordsOnDay(open, kind, wordsDay);
+  }, [allEntries, editing, kind, wordsDay]);
+  const dayWords = otherWords + countWords(text);
+  const entryWords = countWords(text);
+  const goal = kind === 'journal' ? wordGoal : null;
+  const wordsLine = goal === null
+    ? formatWordCount(entryWords)
+    : `${dayWords.toLocaleString('en-US')} of ${goal.toLocaleString('en-US')} words${dayWords >= goal ? ' · Goal reached' : ''}`;
 
   const canSave = text.trim().length > 0 && (!editing || text.trim() !== editing.text);
   // Sealing is for a page written now: a backdated entry is filling in a day
@@ -253,6 +269,7 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
           autoFocus={!editing}
           accessibilityLabel={kind === 'dream' ? 'A dream you remember' : 'Journal entry'}
         />
+        <Text style={styles.wordCount}>{wordsLine}</Text>
         {kind === 'journal' && promptIndex !== null && (
           <Text style={styles.prompt}>{journalPromptAt(promptIndex)}</Text>
         )}
@@ -367,6 +384,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.text,
     minHeight: 220,
     textAlignVertical: 'top',
+  },
+  wordCount: {
+    fontSize: font.xs,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
   },
   prompt: {
     fontSize: font.sm,

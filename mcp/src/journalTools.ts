@@ -11,7 +11,7 @@ import type { JournalEntry, JournalKind } from '../../src/types';
 import type { Replica } from './replica';
 import { atFrom } from './logTools';
 import { resolveRange, type DayRange, type LogRangeInput } from './tools';
-import { isSealed, openEntries } from '../../src/utils/journal';
+import { countWords, isSealed, openEntries } from '../../src/utils/journal';
 
 export interface JournalRow {
   id: string;
@@ -20,10 +20,12 @@ export interface JournalRow {
   day: string;
   loggedAt: string;
   text: string;
+  /** Words in the text, not counting formatting markers. */
+  words: number;
 }
 
 function row(entry: JournalEntry): JournalRow {
-  return { id: entry.id, kind: entry.kind, day: entry.dayKey, loggedAt: entry.loggedAt, text: entry.text };
+  return { id: entry.id, kind: entry.kind, day: entry.dayKey, loggedAt: entry.loggedAt, text: entry.text, words: countWords(entry.text) };
 }
 
 /**
@@ -34,12 +36,19 @@ function row(entry: JournalEntry): JournalRow {
 export function listJournalEntries(
   replica: Replica,
   input: LogRangeInput & { kind?: JournalKind } = {},
-): { range: DayRange; entries: JournalRow[]; sealedNotes?: number } {
+): { range: DayRange; entries: JournalRow[]; sealedNotes?: number; wordGoal?: number } {
   const range = resolveRange(replica, input);
   const all = replica.journalEntries(range.from, range.to, input.kind);
   const open = openEntries(all, replica.todayKey());
   const sealed = all.length - open.length;
-  return { range, entries: open.map(row), ...(sealed > 0 ? { sealedNotes: sealed } : {}) };
+  const goal = replica.journalWordGoal();
+  return {
+    range,
+    entries: open.map(row),
+    ...(sealed > 0 ? { sealedNotes: sealed } : {}),
+    // A day's goal, in words, for the journal only. Never said of a dream.
+    ...(goal !== null && input.kind !== 'dream' ? { wordGoal: goal } : {}),
+  };
 }
 
 function refuseSealed(replica: Replica, id: string): void {

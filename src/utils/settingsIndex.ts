@@ -603,6 +603,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['kg', 'kilograms', 'lb', 'pounds', 'scale', 'body', 'mass', 'metric', 'imperial'] },
   { id: 'sleepGoal', groupId: 'health', label: 'Sleep goal', section: 'Sleep',
     keywords: ['hours', 'asleep', 'bedtime', 'night', 'rest', 'target'] },
+  { id: 'journalWordGoal', groupId: 'health', label: 'Word goal', section: 'Journal',
+    keywords: ['journal', 'diary', 'writing', 'words', 'word count', 'target', 'daily', 'length'] },
 
   // App permissions — one row per system permission the app ever asks for,
   // read-only status plus a link to fix it. Health, Calendar and Notifications

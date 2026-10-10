@@ -153,3 +153,27 @@ leave it out.
 - **Only a page written now can be sealed.** A backdated entry is filling in a day that has gone,
   and a dream is about last night, so the row shows for neither. Opening early is the only change
   to `openOn` after it's written, and it only ever clears it.
+
+## Word counts and a word goal
+
+`countWords` (`journal.ts`) counts the words as `JournalText` draws them, so a
+bullet, a `#` or the `**` round bold is never a word. The entry sheet shows the
+count under the field as it is typed, the screen shows each day's total in its
+heading, and `journalWordGoal` (a setting, journal only) turns both into "312 of
+500 words" with the days that reached it in the subtitle.
+
+- **The goal is a day's, so the day's other snippets count toward it**, in the
+  sheet and on the screen alike. A search filters entries, never the total.
+- **A sealed note adds nothing before its day**, like every other reader
+  (`openEntries`).
+- **It is a goal the person typed in, and nothing is said about a day that
+  fell short.** A day under the goal is not counted, never "missed", and
+  `JOURNAL_WORD_GOAL_RANGE` is an absurdity check, not advice. Dreams have no
+  goal: a dream is written down as it is remembered.
+- **It is set from the Journal's target icon** (`JournalWordGoalSheet`) and
+  from Settings › Health.
+- **The goal syncs** (`journalWordGoal` is on the synced-settings allowlist, with
+  `stepGoal`), so Claude sees it as `wordGoal` beside each entry's `words` in
+  `list_journal_entries`.
+- **`GoalStepperSheet` is the one goal sheet.** `JournalWordGoalSheet` and
+  `SleepGoalSheet` only supply their setting, range and wording.
