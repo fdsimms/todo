@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { useStableCallback } from '../hooks/useStableCallback';
-import { Animated, View, Text, ScrollView, StyleSheet, Dimensions, TouchableOpacity, PanResponder } from 'react-native';
+import { Animated, View, Text, ScrollView, StyleSheet, Dimensions, TouchableOpacity, PanResponder, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -32,6 +32,7 @@ import { useTextScale } from '../hooks/useTextScale';
 import { haptics } from '../utils/haptics';
 import { resetToMealPlan } from '../navigation/navigationRef';
 import { buildCalendarGrid, buildWeekDays, weekdayHeaders } from '../utils/calendarGrid';
+import { activeWeekDay, type WeekSection } from '../utils/weekScrollSpy';
 import { dateToHHMM, dayKeyOf, dayKeyToDate, formatTimeOfDay, getDayStart, getLogicalToday, hhmmToDate } from '../utils/dateUtils';
 import {
   buildDayBuckets,
@@ -386,9 +387,12 @@ export function CalendarScreen() {
   // ==== the week: the selected day's week, one section per day ====
   // Every day of it resolves against the month grid's buckets: the selected
   // day is always in the displayed month, so its whole week is in the grid.
+  // Keyed on the week rather than the selected day, so marking another day of
+  // the same week (a tap, or scrolling the list) doesn't rebuild the seven.
+  const weekStartKey = dayKeyOf(buildWeekDays(dayKeyToDate(selectedKey), weekStartsOn)[0]);
   const weekDays = useMemo(
-    () => buildWeekDays(dayKeyToDate(selectedKey), weekStartsOn),
-    [selectedKey, weekStartsOn],
+    () => buildWeekDays(dayKeyToDate(weekStartKey), weekStartsOn),
+    [weekStartKey, weekStartsOn],
   );
   const weekDetails = useMemo(
     () => weekDays.map(day => {
@@ -412,6 +416,50 @@ export function CalendarScreen() {
   // arriving at a week (switching to it, or paging), so the list opens on the
   // day you had selected rather than on the week's first day.
   const pendingWeekScroll = useRef<string | null>(null);
+  // Scrolling the list marks the day you've scrolled to (activeWeekDay). Only
+  // a scroll the reader started counts: the list's own scrollTo, to a day
+  // tapped in the strip, passes over the days between and may stop short of
+  // the tapped one at the end of the list, and neither should move the mark.
+  const weekSpyLive = useRef(false);
+  const weekViewportHeight = useRef(0);
+  const weekContentHeight = useRef(0);
+  const selectedKeyRef = useRef(selectedKey);
+  selectedKeyRef.current = selectedKey;
+  // The section map keeps the weeks paged past, so the spy reads only this one.
+  const weekKeysRef = useRef<string[]>([]);
+  weekKeysRef.current = weekDays.map(dayKeyOf);
+  const onWeekScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (!weekSpyLive.current || viewModeRef.current !== 'week') return;
+    const sections: WeekSection[] = [];
+    for (const key of weekKeysRef.current) {
+      const y = weekSectionY.current.get(key);
+      if (y !== undefined) sections.push({ key, y });
+    }
+    const key = activeWeekDay(
+      sections,
+      e.nativeEvent.contentOffset.y,
+      weekViewportHeight.current,
+      weekContentHeight.current,
+    );
+    if (key !== null && key !== selectedKeyRef.current) {
+      selectedKeyRef.current = key;
+      setSelectedKey(key);
+    }
+  }, []);
+  // Which days have their Completed rows open. Session-only, and shut by
+  // default: a past day's completions are often a dozen habits, and mounting
+  // a full row for each of them, on every day of the week at once, is what
+  // made the week slow to open.
+  const [weekCompletedOpen, setWeekCompletedOpen] = useState<ReadonlySet<string>>(() => new Set());
+  const toggleWeekCompleted = useCallback((key: string) => {
+    haptics.tap();
+    setWeekCompletedOpen(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
 
   // ==== the selected day's empty state and the month's totals ====
   // A day holding an event or a meal is not an empty day, even with no task on
@@ -452,6 +500,7 @@ export function CalendarScreen() {
   // carries the displayed month along when the week crosses into another.
   const stepWeek = (delta: number) => {
     setExpandedTaskId(null);
+    weekSpyLive.current = false;
     pendingWeekScroll.current = dayKeyOf(addDays(dayKeyToDate(selectedKey), delta * 7));
     stepDay(delta * 7);
   };
@@ -486,6 +535,7 @@ export function CalendarScreen() {
     // The week's strip doesn't change the list under it, only where you are
     // in it. Read through refs so this stays one stable callback.
     if (viewModeRef.current === 'week') {
+      weekSpyLive.current = false;
       const y = weekSectionY.current.get(key);
       if (y !== undefined) detailScrollRef.current?.scrollTo({ y, animated: true });
     }
@@ -496,7 +546,10 @@ export function CalendarScreen() {
     // The expanded row is keyed per view (the week keys it by day as well as
     // task), so one carried across would either expand nothing or the wrong row.
     setExpandedTaskId(null);
-    if (mode === 'week') pendingWeekScroll.current = selectedKey;
+    if (mode === 'week') {
+      pendingWeekScroll.current = selectedKey;
+      weekSpyLive.current = false;
+    }
     setViewMode(mode);
   };
 
@@ -945,6 +998,7 @@ export function CalendarScreen() {
       const daySummary = summarizeDay(dayInfo);
       const dayLoad = describeDayLoad(dayLoads.get(key));
       const isToday = key === todayKey;
+      const completedOpen = weekCompletedOpen.has(key);
       return (
         <View
           key={key}
@@ -975,8 +1029,24 @@ export function CalendarScreen() {
               {renderExpected(dayInfo.expected)}
               {completed.length > 0 && (
                 <>
-                  <Text style={[styles.sectionLabel, styles.weekCompletedLabel]}>Completed</Text>
-                  {completed.map(renderWeekRow)}
+                  <TouchableOpacity
+                    activeOpacity={interaction.activeOpacity}
+                    onPress={() => toggleWeekCompleted(key)}
+                    style={styles.weekCompletedToggle}
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: completedOpen }}
+                    accessibilityLabel={`${completedOpen ? 'Hide' : 'Show'} ${completed.length} completed on ${format(day, 'EEEE')}`}
+                  >
+                    <Text style={[styles.sectionLabel, styles.weekCompletedLabel]}>
+                      Completed · {completed.length}
+                    </Text>
+                    <Ionicons
+                      name={completedOpen ? 'chevron-up' : 'chevron-down'}
+                      size={14}
+                      color={colors.textSecondary}
+                    />
+                  </TouchableOpacity>
+                  {completedOpen && completed.map(renderWeekRow)}
                 </>
               )}
             </View>
@@ -1203,6 +1273,11 @@ export function CalendarScreen() {
         ref={detailScrollRef}
         style={[styles.detail, viewMode === 'week' && styles.weekList]}
         scrollEnabled={!draggingSubtask && draggingTask === null}
+        onScroll={viewMode === 'week' ? onWeekScroll : undefined}
+        scrollEventThrottle={viewMode === 'week' ? 32 : undefined}
+        onScrollBeginDrag={() => { weekSpyLive.current = true; }}
+        onLayout={e => { weekViewportHeight.current = e.nativeEvent.layout.height; }}
+        onContentSizeChange={(_, h) => { weekContentHeight.current = h; }}
         contentContainerStyle={
           viewMode !== 'week' && (viewMode === 'day' ? dayEmpty : monthEmpty)
             ? { flexGrow: 1, paddingBottom: tabBarHeight + spacing.xl }
@@ -1786,7 +1861,17 @@ function makeStyles(colors: Colors, textScaleFactor = 1) {
       fontSize: font.md,
     },
     weekCompletedLabel: {
+      marginBottom: 0,
+      marginRight: 0,
+    },
+    // The label's own inset, with the chevron after it, and tall enough to tap.
+    weekCompletedToggle: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+      minHeight: 32,
       marginTop: spacing.sm,
+      marginBottom: spacing.xs,
     },
     expectedCard: {
       marginHorizontal: spacing.md,
