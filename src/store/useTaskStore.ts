@@ -10106,6 +10106,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (settings.calendarEventCategory === name) settings.setCalendarEventCategory(trimmed);
     if (settings.healthCategory === name) settings.setHealthCategory(trimmed);
     if (settings.limitsTodayCategory === name) settings.setLimitsTodayCategory(trimmed);
+    if (settings.goalsTodayCategory === name) settings.setGoalsTodayCategory(trimmed);
     if (settings.newTaskDefaults.category === name) settings.setNewTaskDefaults({ category: trimmed });
     const titleRules = renameInTitleRules(settings.titleRules, name, trimmed);
     if (titleRules !== settings.titleRules) settings.setTitleRules(titleRules);

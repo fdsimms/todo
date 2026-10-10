@@ -9,7 +9,10 @@ import { titleForEntry } from './mealPlan';
 import { ringsSummaryLine, type ActivityRings } from './activityRings';
 import type { NutrientKey } from '../types';
 import { NUTRIENT_LABEL } from './foodNutrition';
-import { LIMIT_ROW_NAME, activeLimits, describeLimit, limitStatus, type NutritionTargets } from './nutritionTargets';
+import {
+  LIMIT_ROW_NAME, activeLimits, describeAgainstTarget, describeLimit, limitStatus, targetProgress, targetedNutrients,
+  type NutritionTargets,
+} from './nutritionTargets';
 
 /** The readings Today can draw a row for, which the person can each turn off. */
 export type HealthRowKey = 'steps' | 'activeEnergy' | 'rings';
@@ -394,6 +397,42 @@ export function limitContextRows(
       visual: { type: 'bar' as const, fraction: target > 0 ? clampFraction(total / target) : total > 0 ? 1 : 0 },
     };
   });
+}
+
+/**
+ * Today's food log against each nutrient target that is a figure to reach, one
+ * row per nutrient: "Protein 42 of 120g".
+ *
+ * The sibling of `limitContextRows`, for the targets that are not Stay under.
+ * **No tone and no red**: whether passing a target is good is not something the
+ * app is told (see `targetStatus`), so the bar fills and nothing says "over".
+ * Water is left out because it already has its own task and unit. The category
+ * is the person's (`goalsTodayCategory`), which is also the off switch.
+ */
+export function goalContextRows(
+  totals: Partial<Record<NutrientKey, number>>,
+  targets: NutritionTargets,
+  limits: readonly NutrientKey[],
+  opts: { category: string | null; hidden?: readonly NutrientKey[] },
+): ContextRow[] {
+  const hidden = opts.hidden ?? [];
+  return targetedNutrients(targets)
+    .filter(key => key !== 'waterMl' && !limits.includes(key) && !hidden.includes(key))
+    .map(key => {
+      const total = totals[key] ?? 0;
+      const name = LIMIT_ROW_NAME[key] ?? NUTRIENT_LABEL[key].label;
+      return {
+        id: `goal-${key}`,
+        sourceId: '',
+        kind: 'health' as const,
+        title: `${name} ${describeAgainstTarget(key, total, targets)!}`,
+        caption: '',
+        category: opts.category,
+        now: false,
+        calendarTag: null,
+        visual: { type: 'bar' as const, fraction: targetProgress(key, total, targets) },
+      };
+    });
 }
 
 /**

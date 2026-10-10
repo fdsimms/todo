@@ -5,6 +5,7 @@ import {
   eventContextRows,
   startsInLabel,
   mealContextRows,
+  goalContextRows,
   healthContextRows,
   parseHealthRowKeys,
   limitContextRows,
@@ -491,5 +492,25 @@ describe('health row visuals', () => {
     expect(healthContextRows({ dayKey: TODAY, steps: null, activeEnergyKcal: 250, rings: noGoal }, opts)[0].visual).toBeUndefined();
     expect(healthContextRows({ dayKey: TODAY, steps: null, activeEnergyKcal: 250, rings: { ...rings, moveByTime: true } }, opts)[0].visual).toBeUndefined();
     expect(healthContextRows({ dayKey: TODAY, steps: null, activeEnergyKcal: 250 }, opts)[0].visual).toBeUndefined();
+  });
+});
+
+describe('goalContextRows', () => {
+  const targets = { proteinG: 120, sodiumMg: 2000, fiberG: 30, waterMl: 2000 };
+  const opts = { category: 'Health' };
+
+  it('draws a row per target that is not a limit, with a bar and no tone', () => {
+    const rows = goalContextRows({ proteinG: 60, fiberG: 45 }, targets, ['sodiumMg'], opts);
+    expect(rows.map(r => r.id)).toEqual(['goal-fiberG', 'goal-proteinG']);
+    const protein = rows.find(r => r.id === 'goal-proteinG')!;
+    expect(protein.title).toBe('Protein 60 of 120g');
+    expect(protein.tone).toBeUndefined();
+    expect(protein.visual).toEqual({ type: 'bar', fraction: 0.5 });
+    expect(rows.find(r => r.id === 'goal-fiberG')!.visual).toEqual({ type: 'bar', fraction: 1 });
+  });
+
+  it('leaves out water and the nutrients the person hid', () => {
+    const rows = goalContextRows({}, targets, [], { ...opts, hidden: ['fiberG'] });
+    expect(rows.map(r => r.id)).toEqual(['goal-proteinG', 'goal-sodiumMg']);
   });
 });

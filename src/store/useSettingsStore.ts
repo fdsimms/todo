@@ -1396,6 +1396,10 @@ interface SettingsStore {
   // Limits left off Today's rows. A hidden list rather than a shown one, so a
   // nutrient set to Stay under later appears there until it's turned off.
   limitsTodayHidden: NutrientKey[];
+  // Today's rows for nutrient targets that are not Stay under, filed under this
+  // category (null = no rows), and the ones left off.
+  goalsTodayCategory: string | null;
+  goalsTodayHidden: NutrientKey[];
   // Opt-in, off by default: a task the first time a day's food log passes
   // limitWarnPercent of a limit. See src/utils/limitWarningTasks.ts.
   limitWarningTasks: boolean;
@@ -2057,6 +2061,8 @@ interface SettingsStore {
   setLimitsTodayCategory: (category: string | null) => void;
   /** Replaces the whole set of limits left off Today's rows. */
   setLimitsTodayHidden: (keys: NutrientKey[]) => void;
+  setGoalsTodayCategory: (category: string | null) => void;
+  setGoalsTodayHidden: (keys: NutrientKey[]) => void;
   setLimitWarningTasks: (on: boolean) => void;
   setLimitWarningTaskCategory: (category: string | null) => void;
   setLimitWarningDeclined: (keys: NutrientKey[]) => void;
@@ -2707,6 +2713,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   limitWarnPercent: DEFAULT_LIMIT_WARN_PERCENT,
   limitsTodayCategory: null,
   limitsTodayHidden: [],
+  goalsTodayCategory: null,
+  goalsTodayHidden: [],
   limitWarningTasks: false,
   limitWarningTaskCategory: null,
   limitWarningDeclined: [],
@@ -3193,6 +3201,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const limitWarningTasks = dbGetSetting('limitWarningTasks') === 'true';
     const limitsTodayCategory = dbGetSetting('limitsTodayCategory') || null;
     const limitsTodayHidden = parseNutritionLimits(dbGetSetting('limitsTodayHidden'));
+    const goalsTodayCategory = dbGetSetting('goalsTodayCategory') || null;
+    const goalsTodayHidden = parseNutritionLimits(dbGetSetting('goalsTodayHidden'));
     const limitWarningTaskCategory = dbGetSetting('limitWarningTaskCategory') || null;
     const limitWarningDeclined = parseNutritionLimits(dbGetSetting('limitWarningDeclined'));
     const limitWarningAutoSlips = parseAutoSlips(dbGetSetting('limitWarningAutoSlips'));
@@ -3530,6 +3540,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       gateShieldEnabled,
       generatedTaskDefaults,
       generatorEstimates,
+      goalsTodayCategory,
+      goalsTodayHidden,
       groceryImportConfirmedListId,
       groceryImportDelete,
       groceryImportEnabled,
@@ -4146,6 +4158,16 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setLimitsTodayCategory(category: string | null) {
     dbSetSetting('limitsTodayCategory', category ?? '');
     set({ limitsTodayCategory: category });
+  },
+
+  setGoalsTodayCategory(category: string | null) {
+    dbSetSetting('goalsTodayCategory', category ?? '');
+    set({ goalsTodayCategory: category });
+  },
+
+  setGoalsTodayHidden(keys: NutrientKey[]) {
+    dbSetSetting('goalsTodayHidden', serializeNutritionLimits(keys));
+    set({ goalsTodayHidden: parseNutritionLimits(serializeNutritionLimits(keys)) });
   },
 
   setLimitsTodayHidden(keys: NutrientKey[]) {

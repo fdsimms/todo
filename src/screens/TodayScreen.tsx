@@ -66,6 +66,7 @@ import {
   eventContextRows,
   mealContextRows,
   healthContextRows,
+  goalContextRows,
   limitContextRows,
   insertContextRows,
   withoutContextRows,
@@ -1801,6 +1802,8 @@ export function TodayScreen() {
   const healthToday = useHealthStore(s => s.today);
   const limitsTodayCategory = useSettingsStore(s => s.limitsTodayCategory);
   const limitsTodayHidden = useSettingsStore(s => s.limitsTodayHidden);
+  const goalsTodayCategory = useSettingsStore(s => s.goalsTodayCategory);
+  const goalsTodayHidden = useSettingsStore(s => s.goalsTodayHidden);
   const nutritionTargets = useSettingsStore(useShallow(s => s.nutritionTargets));
   const nutritionLimits = useSettingsStore(useShallow(s => s.nutritionLimits));
   const limitWarnPercent = useSettingsStore(s => s.limitWarnPercent);
@@ -2643,6 +2646,16 @@ export function TodayScreen() {
         { category: limitsTodayCategory, warnPercent: limitWarnPercent },
       ));
     }
+    // Targets that are figures to reach, under their own switch.
+    if (goalsTodayCategory) {
+      const todayFoodKey = getLogicalDayKey(new Date(), dayResetTime);
+      rows.push(...goalContextRows(
+        foodLogTotals(recentFoodEntries(todayFoodKey, todayFoodKey)).total,
+        nutritionTargets,
+        nutritionLimits,
+        { category: goalsTodayCategory, hidden: goalsTodayHidden },
+      ));
+    }
     // No category means nowhere to put them — see ensureCalendarEventCategory
     // for why a cleared setting is a real answer rather than a missing one.
     if (calendarEventCategory) {
@@ -2684,7 +2697,7 @@ export function TodayScreen() {
     isEventHidden, movedEventNotes, movedEvents, liveTaskIds,
     mealsOnToday, todayMealEntries, recipesById, mealCookTaskCategory, allTasks,
     healthToday, healthCategory, stepGoal, healthTodayHidden, dayResetTime,
-    limitsTodayCategory, limitsTodayHidden, nutritionTargets, nutritionLimits, limitWarnPercent,
+    limitsTodayCategory, limitsTodayHidden, goalsTodayCategory, goalsTodayHidden, nutritionTargets, nutritionLimits, limitWarnPercent,
     recentFoodEntries, foodLogCount, foodLogWindow,
     minuteTick,
   ]);

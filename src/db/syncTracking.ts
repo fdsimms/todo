@@ -535,6 +535,8 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'limitWarnPercent',
   'limitsTodayCategory',
   'limitsTodayHidden',
+  'goalsTodayCategory',
+  'goalsTodayHidden',
   // The steps row's goal on Today. A typed-in preference.
   'stepGoal',
   // Which Health readings Today draws a row for.
