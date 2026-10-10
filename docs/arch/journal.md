@@ -172,3 +172,8 @@ heading, and `journalWordGoal` (a setting, journal only) turns both into "312 of
   goal: a dream is written down as it is remembered.
 - **It is set from the Journal's target icon** (`JournalWordGoalSheet`) and
   from Settings › Health, the sleep goal's arrangement.
+- **Claude gets each entry's `words`, not the goal.** The goal is a setting that
+  stays on the phone (the sleep goal's arrangement), so the MCP replica cannot
+  read it; the count is derived from the text it already has.
+- **`GoalStepperSheet` is the one goal sheet.** `JournalWordGoalSheet` and
+  `SleepGoalSheet` only supply their setting, range and wording.

@@ -36,6 +36,12 @@ describe('the journal tools', () => {
     expect(listJournalEntries(replica, { kind: 'dream' }).entries.map(e => e.text)).toEqual(['Flying']);
   });
 
+  it('gives each entry its word count, without formatting markers', () => {
+    const { entry } = logJournalEntry(replica, { kind: 'journal', text: '# Title\n- one two\nthree' });
+    expect(entry.words).toBe(4);
+    expect(listJournalEntries(replica).entries[0].words).toBe(4);
+  });
+
   it('files a backdated entry on the day named', () => {
     const { entry } = logJournalEntry(replica, { kind: 'dream', text: 'A corridor', at: '2026-09-01' });
     expect(entry.day).toBe('2026-09-01');
