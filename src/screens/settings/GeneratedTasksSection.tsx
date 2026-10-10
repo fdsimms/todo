@@ -14,6 +14,7 @@ import {
   CALENDAR_READ_KINDS,
   generatorSwitchedOn,
   listedGeneratedKinds,
+  matchesAutomationQuery,
   type GeneratedKind,
   type GeneratedKindSpec,
 } from '../../utils/generatedTasks';
@@ -100,6 +101,7 @@ import { WeatherRulesSheet } from '../../components/WeatherRulesSheet';
 import { EventRulesSheet } from '../../components/EventRulesSheet';
 import { ScreenTimeRulesSheet } from '../../components/ScreenTimeRulesSheet';
 import { HealthRulesSheet } from '../../components/HealthRulesSheet';
+import { EmptyNote } from '../../components/EmptyNote';
 import { PillGroup, type PillGroupOption } from '../../components/PillGroup';
 import { type SegmentOption } from '../../components/SegmentedControl';
 import { makeSettingsStyles } from './settingsStyles';
@@ -176,7 +178,7 @@ function weekdayOptions(weekStartsOn: WeekStart): SegmentOption<number>[] {
   });
 }
 
-export function GeneratedTasksSection() {
+export function GeneratedTasksSection({ query = '' }: { query?: string }) {
   // ==== state ====
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
@@ -1295,6 +1297,19 @@ export function GeneratedTasksSection() {
     return null;
   };
 
+  // ==== search ====
+  // The generators narrow by name and by what they say they do. The three rows
+  // that aren't generators are matched on their own label and hint.
+  const shown = listed.filter(spec => matchesAutomationQuery(query, spec.label, spec.onHint, spec.offHint));
+  const showBackground = matchesAutomationQuery(
+    query, 'Add tasks while the app is closed', 'background refresh reminders widget',
+  );
+  const showUseUpCap = (s.groceryUseUpTasks || s.leftoverUseUpTasks)
+    && matchesAutomationQuery(query, 'Limit use-up tasks', 'at most use-up tasks at a time');
+  const showLimits = s.kitchenEnabled
+    && matchesAutomationQuery(query, 'Stay under limits on Today', 'how much of each limit is used so far today');
+  const nothingMatches = !showBackground && shown.length === 0 && !showUseUpCap && !showLimits;
+
   // ==== render ====
   return (
     <>
@@ -1306,6 +1321,7 @@ export function GeneratedTasksSection() {
       {/* Above the generators rather than inside any one of them, because it
           applies to all of them at once: it changes when the whole list below
           gets a chance to run, not what any of them do. */}
+      {showBackground && (<>
       <SettingsRow
         entryId="backgroundRefreshEnabled"
         icon="moon-outline"
@@ -1315,8 +1331,10 @@ export function GeneratedTasksSection() {
         toggle={s.backgroundRefreshEnabled}
         onPress={() => s.setBackgroundRefreshEnabled(!s.backgroundRefreshEnabled)}
       />
-      <View style={sectionStyles.groupBreak} />
-      {listed.map((spec, i) => {
+      {shown.length > 0 && <View style={sectionStyles.groupBreak} />}
+      </>)}
+      {nothingMatches && <EmptyNote icon="search-outline">{`No automations match “${query.trim()}”.`}</EmptyNote>}
+      {shown.map((spec, i) => {
         const on = enabledOf(spec.kind);
         const open = on && isOpen(spec.kind);
         return (
@@ -1404,7 +1422,7 @@ export function GeneratedTasksSection() {
           </React.Fragment>
         );
       })}
-      {(s.groceryUseUpTasks || s.leftoverUseUpTasks) && (
+      {showUseUpCap && (
         <>
           {/* Spans both use-up generators, so it sits below the loop rather
               than inside either generator's own extras — see useUpTaskCap. */}
@@ -1434,7 +1452,7 @@ export function GeneratedTasksSection() {
           </View>
         </>
       )}
-      {s.kitchenEnabled && (
+      {showLimits && (
         <>
           {/* Not a generator: these are read-only rows computed from the food
               log, so they have no registry entry and no task defaults. They

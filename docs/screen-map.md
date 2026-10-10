@@ -23,7 +23,7 @@ the sections SettingsGroupScreen composes, so those are listed as
 components below.
 
 - `src/screens/ArchivedScreen.tsx` — EmptyState, HubPills, PaintSelection, ScreenHeader, ScrollToTopButton, SearchField, SelectionDot, SimpleBulkBar, TaskEditor
-- `src/screens/AutomationsScreen.tsx` — GeneratedTasksSection, ScreenHeader, SettingsFocus
+- `src/screens/AutomationsScreen.tsx` — GeneratedTasksSection, ScreenHeader, SearchField, SettingsFocus
 - `src/screens/BackfillScreen.tsx` — BirthdayPicker, CategoryPicker, CountStepper, DetailHeader, EmptyState, InlineAction, NumberPadAccessory, NutritionPanelSheet, NutritionSearchSheet, PillGroup, PressableScale, RemindMePicker, +4 more
 - `src/screens/CalendarScreen.tsx` — DayTimeline, EmptyState, Fab, LazySheet, PeriodNav, QuickAddModal, QuickEventSheet, ScreenHeader, ScreenSettingsSheet, TaskEditor, TaskItem, TimeSlotMenu, +1 more
 - `src/screens/CategoriesScreen.tsx` — CategoryEditor, EmptyState, Fab, HubPills, QuickAddNameSheet, ReorderableList, ScreenHeader, ScreenSettingsSheet
@@ -136,7 +136,7 @@ Where each component can appear.
 - `src/components/EditorRow.tsx` — on ArchivedScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, JournalScreen, MedicationDetailScreen, MedicationScreen, MetersScreen, MoodDayScreen, MoodHistoryScreen, MoodScreen, PeopleScreen, +16 more
 - `src/components/EditorSheet.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, JournalScreen, MedicationDetailScreen, MedicationScreen, MetersScreen, MoodDayScreen, MoodHistoryScreen, MoodScreen, PeopleScreen, PersonDetailScreen, +16 more
 - `src/components/EmojiPickerSheet.tsx` — on CategoriesScreen, PeopleScreen, RecipesScreen, TagsScreen, TemplatesScreen
-- `src/components/EmptyNote.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, CookbookDetailScreen, CookbooksScreen, FoodLogScreen, GroceryScreen, KitchenScreen, MealPlanScreen, MetersScreen, PersonDetailScreen, ProjectDetailScreen, +11 more
+- `src/components/EmptyNote.tsx` — on ArchivedScreen, AutomationsScreen, CalendarScreen, CategoryDetailScreen, CookbookDetailScreen, CookbooksScreen, FoodLogScreen, GroceryScreen, KitchenScreen, MealPlanScreen, MetersScreen, PersonDetailScreen, +12 more
 - `src/components/EmptyState.tsx` — on ArchivedScreen, AutomationsScreen, BackfillScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, CookbookDetailScreen, CookbooksScreen, FoodLogScreen, GroceryScreen, JournalScreen, KitchenScreen, +34 more
 - `src/components/ErrorBoundary.tsx` — on app shell
 - `src/components/EstimateAmountSheet.tsx` — on FoodLogScreen, app shell
@@ -291,7 +291,7 @@ Where each component can appear.
 - `src/components/ScrollEdgeFade.tsx` — on ArchivedScreen, AutomationsScreen, BackfillScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, GroceryScreen, KitchenScreen, LogbookScreen, MealPlanScreen, MetersScreen, MoodHistoryScreen, +17 more
 - `src/components/ScrollToTopButton.tsx` — on ArchivedScreen, CategoriesScreen, CategoryDetailScreen, CookbookDetailScreen, CookbooksScreen, FoodLogScreen, GroceryScreen, JournalScreen, KitchenScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, +27 more
 - `src/components/SearchActionRow.tsx` — on SearchScreen, TodayScreen
-- `src/components/SearchField.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, CookbookDetailScreen, GroceryScreen, JournalScreen, KitchenScreen, LogbookScreen, MetersScreen, MoodHistoryScreen, PersonDetailScreen, ProjectDetailScreen, +13 more
+- `src/components/SearchField.tsx` — on ArchivedScreen, AutomationsScreen, CalendarScreen, CategoryDetailScreen, CookbookDetailScreen, GroceryScreen, JournalScreen, KitchenScreen, LogbookScreen, MetersScreen, MoodHistoryScreen, PersonDetailScreen, +14 more
 - `src/components/SegmentedControl.tsx` — on ArchivedScreen, AutomationsScreen, BackfillScreen, CalendarScreen, CategoryDetailScreen, CookbooksScreen, FoodLogScreen, GroceryScreen, KitchenScreen, LogbookScreen, MealPlanScreen, MedicationDetailScreen, +29 more
 - `src/components/SelectionDot.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, GroceryScreen, LogbookScreen, MealPlanScreen, PeopleScreen, ProjectDetailScreen, ProjectsScreen, RecipeDetailScreen, RecipesScreen, +7 more
 - `src/components/SharedLinkBanner.tsx` — on RecipesScreen
