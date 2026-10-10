@@ -134,7 +134,7 @@ only the fallback until the first sync.
 | `get_pantry_item` | One item's whole pantry state (on hand and why, use-by, opened, frozen, running low, staple, shelf life, waste history, boxes). `unknown` means the app has no opinion, not that it is out. |
 | `pantry_review` | The app's review deck: items whose "probably have it" has lapsed or gone stale. |
 | `use_up_recipes` | What is at or past its use-by day, and the recipes that would use it. |
-| `list_food_log` | Logged food over a day range, with summed nutrients and the person's daily targets. |
+| `list_food_log` | Logged food over a day range, with summed nutrients and the person's daily targets. An estimated meal shows its `breakdown` (the same estimate split across what it named). |
 | `list_saved_meals` | Foods the person logs together under one name. |
 | `move_food_entry` / `duplicate_food_entry` | **Write.** Moves an entry to another day (not once it is in Apple Health), or logs it again; the copy can take `grams` or `quantity` and is re-measured from the food's record. |
 | `save_meal_from_entries` / `log_saved_meal` / `delete_saved_meal` | **Write.** Saves entries as a meal, logs a saved meal in one go, or deletes one. |

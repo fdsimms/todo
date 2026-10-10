@@ -139,7 +139,8 @@ in `mcp/src/tools.ts` and take a replica as an argument, which is what makes the
 an SDK or a socket.
 
 Three more read the day-keyed logs: `list_food_log` (with the day's summed nutrients),
-`list_mood_logs` and `list_medication_logs`. They share one range convention rather than three,
+`list_mood_logs` and `list_medication_logs`. A food entry's rows carry an estimate's `breakdown` when it has one,
+read off `FoodNutrition.breakdown` and never added to the totals, which already count the whole. They share one range convention rather than three,
 because all three tables grow without bound and none has a useful "everything" answer: `days`
 counts back from the logical today and an explicit `from`/`to` overrides it. "Today" goes through
 `getLogicalToday`, so a read at 1am under a 2am `dayResetTime` answers about the day the user would

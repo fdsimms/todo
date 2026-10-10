@@ -716,6 +716,28 @@ describe('listFoodLog', () => {
     ]);
   });
 
+  it('shows what an estimated entry was made of, and nothing for one that was not split', () => {
+    const lines = [
+      { label: 'Birch beer', amounts: { calorieKcal: 250 } },
+      { label: 'Soft pretzel', amounts: { calorieKcal: 300 } },
+    ];
+    const nutrition = (breakdown?: typeof lines) => ({
+      basis: 'perServing', servingGrams: null, servingText: null, amounts: { calorieKcal: 550 },
+      source: 'estimated', sourceId: null, portions: [], recordedAt: '2026-09-11T08:00:00.000Z',
+      ...(breakdown ? { breakdown } : {}),
+    }) as FoodLogEntry['nutrition'];
+    const result = listFoodLog(
+      stubReplica({
+        foodLogEntries: () => [
+          entry({ id: 'f1', label: 'Lunch', nutrition: nutrition(lines) }),
+          entry({ id: 'f2', label: 'Toast', nutrition: nutrition() }),
+        ],
+      })
+    );
+    expect(result.entries[0].breakdown).toEqual(lines);
+    expect('breakdown' in result.entries[1] && result.entries[1].breakdown).toBeFalsy();
+  });
+
   it('estimates vegetable and fruit servings per day, and says what it could not weigh', () => {
     const result = listFoodLog(
       stubReplica({

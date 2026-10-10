@@ -311,6 +311,23 @@ describe('changing the amount of a measured food entry', () => {
     expect(() => updateFoodEntry(replica, bare.id, { grams: 23 })).toThrow(/no food record/);
   });
 
+  it('drops an estimate\'s breakdown when its figures are restated, since the lines no longer add up', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const db = require('../../../src/db/database') as typeof import('../../../src/db/database');
+    const logged = logFood(replica, { label: 'Lunch', quantity: '1 plate', amounts: { calorieKcal: 600 }, apply: true });
+    const row = all().find(e => e.id === logged.id)!;
+    db.dbUpdateFoodLogEntry({
+      ...row,
+      nutrition: { ...row.nutrition, breakdown: [{ label: 'Rice', amounts: { calorieKcal: 600 } }] },
+    });
+    replica.refresh();
+    // A new amount text alone leaves the figures, and so the lines, as they were.
+    updateFoodEntry(replica, row.id, { quantity: '1 big plate' });
+    expect(all().find(e => e.id === row.id)!.nutrition.breakdown).toHaveLength(1);
+    updateFoodEntry(replica, row.id, { amounts: { calorieKcal: 900 } });
+    expect(all().find(e => e.id === row.id)!.nutrition.breakdown).toBeUndefined();
+  });
+
   it('leaves estimated entries as they were: quantity and amounts still restate, grams is refused', () => {
     const logged = logFood(replica, { label: 'Burrito', quantity: '1', amounts: { calorieKcal: 600 }, at: '2030-03-10', apply: true });
     expect(updateFoodEntry(replica, logged.id!, { quantity: '2', amounts: { calorieKcal: 1200 } })).toEqual(

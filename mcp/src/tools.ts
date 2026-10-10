@@ -660,6 +660,13 @@ export interface SerializedFoodEntry {
   quantity?: string;
   grams?: number;
   recipeId?: string;
+  /**
+   * What an estimated meal's total was made of, one line per thing it named.
+   * Absent for an entry that was measured or that the model did not split.
+   * The lines are the same estimate split apart and add up to the entry's own
+   * figures, so they are never a second source to sum beside them.
+   */
+  breakdown?: { label: string; amounts: Record<string, number> }[];
 }
 
 export interface FoodLogResult {
@@ -709,6 +716,7 @@ export function listFoodLog(replica: Replica, input: LogRangeInput = {}): FoodLo
       quantity: e.quantity || undefined,
       grams: e.grams ?? undefined,
       recipeId: e.recipeId ?? undefined,
+      breakdown: e.nutrition?.breakdown?.length ? e.nutrition.breakdown : undefined,
     })),
     totals: {
       total: totals.total as Record<string, number>,
