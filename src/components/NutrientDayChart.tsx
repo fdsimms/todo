@@ -1,9 +1,10 @@
-import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, type LayoutChangeEvent } from 'react-native';
+import React, { useMemo, useRef, useState } from 'react';
+import { View, Text, StyleSheet, PanResponder, type GestureResponderEvent, type LayoutChangeEvent } from 'react-native';
 import Svg, { Line, Rect } from 'react-native-svg';
 import { format } from 'date-fns/format';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, type Colors } from '../theme';
+import { haptics } from '../utils/haptics';
 import { dayKeyToDate } from '../utils/dateUtils';
 import { niceAxis, type NutrientDay } from '../utils/nutritionStats';
 
@@ -25,6 +26,13 @@ import { niceAxis, type NutrientDay } from '../utils/nutritionStats';
  *
  * One accessibility element with a spoken summary rather than a bar each, for
  * the reason `WeightChart` gives.
+ *
+ * **Touch-and-drag reads out a day.** A finger over the plot snaps to the
+ * nearest day that has a bar and shows its date and total: the number already
+ * drawn, said for one day. Nothing more (no target, no verdict). The scrub is
+ * a `PanResponder` on a childless overlay exactly over the plot, so
+ * `locationX` is relative to the plot rather than to whichever child was hit;
+ * it adds no accessibility element, so the spoken summary stays the only one.
  */
 
 const CHART_HEIGHT = 150;
@@ -32,6 +40,9 @@ const CHART_HEIGHT = 150;
 const AXIS_WIDTH = 44;
 const BAR_FILL = 0.6;
 const MIN_BAR_WIDTH = 2;
+/** Fixed rather than measured, so the tooltip doesn't reflow as it appears. */
+const TOOLTIP_WIDTH = 120;
+const TOOLTIP_HEIGHT = 24;
 
 interface Props {
   /** One entry per day, oldest first (`nutrientDailySeries`). */
@@ -47,18 +58,60 @@ export function NutrientDayChart({ days, label, unit }: Props) {
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [width, setWidth] = useState(0);
 
+  const [scrubIndex, setScrubIndex] = useState<number | null>(null);
+  const scrubIndexRef = useRef<number | null>(null);
+  const plotWidth = Math.max(0, width - AXIS_WIDTH);
+  const slot = days.length > 0 ? plotWidth / days.length : 0;
+
+  const scrubTo = (event: GestureResponderEvent) => {
+    if (slot === 0) return;
+    const x = event.nativeEvent.locationX;
+    let nearest: number | null = null;
+    let nearestDistance = Infinity;
+    for (let i = 0; i < days.length; i++) {
+      if (days[i].amount === null) continue;
+      const distance = Math.abs((i + 0.5) * slot - x);
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearest = i;
+      }
+    }
+    if (nearest !== scrubIndexRef.current) haptics.dragTick();
+    scrubIndexRef.current = nearest;
+    setScrubIndex(nearest);
+  };
+
+  const endScrub = () => {
+    scrubIndexRef.current = null;
+    setScrubIndex(null);
+  };
+
+  const panResponder = useMemo(() => PanResponder.create({
+    // Claimed on touch-down so a plain tap shows a day, the trade
+    // `WeightChart` documents: a scroll that starts on the plot becomes a scrub.
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: () => true,
+    onPanResponderGrant: scrubTo,
+    onPanResponderMove: scrubTo,
+    onPanResponderRelease: endScrub,
+    onPanResponderTerminate: endScrub,
+    onPanResponderTerminationRequest: () => false,
+  }), [days, slot]);
+
   const stated = days.filter(d => d.amount !== null);
   if (stated.length === 0) return null;
 
   const most = Math.max(...stated.map(d => d.amount as number));
   const { top, step } = niceAxis(most);
-  const plotWidth = Math.max(0, width - AXIS_WIDTH);
-  const slot = plotWidth / days.length;
   const barWidth = Math.max(MIN_BAR_WIDTH, slot * BAR_FILL);
   const y = (amount: number) => CHART_HEIGHT - (amount / top) * CHART_HEIGHT;
   const ticks: number[] = [];
   for (let t = 0; t <= top + step / 2; t += step) ticks.push(t);
 
+  const scrubbed = scrubIndex !== null ? days[scrubIndex] : null;
+  const tooltipLeft = scrubIndex !== null
+    ? AXIS_WIDTH + Math.min(Math.max((scrubIndex + 0.5) * slot - TOOLTIP_WIDTH / 2, 0), Math.max(plotWidth - TOOLTIP_WIDTH, 0))
+    : 0;
   const suffix = unit === 'cal' ? ' cal' : unit;
   const summary = `${label} for ${stated.length} of the last ${days.length} days, `
     + `from ${Math.round(Math.min(...stated.map(d => d.amount as number))).toLocaleString()}${suffix} `
@@ -90,7 +143,28 @@ export function NutrientDayChart({ days, label, unit }: Props) {
                 />
               );
             })}
+            {scrubbed && (
+              <Line
+                x1={(scrubIndex as number + 0.5) * slot}
+                x2={(scrubIndex as number + 0.5) * slot}
+                y1={0}
+                y2={CHART_HEIGHT}
+                stroke={colors.textTertiary}
+                strokeWidth={1}
+              />
+            )}
           </Svg>
+        )}
+        <View style={styles.touch} {...panResponder.panHandlers} />
+        {scrubbed && (
+          <View
+            style={[styles.tooltip, { left: tooltipLeft, top: Math.max(0, y(scrubbed.amount as number) - TOOLTIP_HEIGHT - spacing.xs) }]}
+            pointerEvents="none"
+          >
+            <Text style={styles.tooltipText}>
+              {format(dayKeyToDate(scrubbed.dayKey), 'MMM d')} · {Math.round(scrubbed.amount as number).toLocaleString()}{suffix}
+            </Text>
+          </View>
         )}
       </View>
       <View style={styles.dayAxis}>
@@ -104,6 +178,22 @@ export function NutrientDayChart({ days, label, unit }: Props) {
 const makeStyles = (colors: Colors) => StyleSheet.create({
   // Room for the top axis label, which is centered on the top gridline.
   wrap: { paddingTop: spacing.sm },
+  touch: { position: 'absolute', left: AXIS_WIDTH, right: 0, top: 0, bottom: 0 },
+  tooltip: {
+    position: 'absolute',
+    width: TOOLTIP_WIDTH,
+    height: TOOLTIP_HEIGHT,
+    backgroundColor: colors.bgTertiary,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.xs,
+    justifyContent: 'center',
+  },
+  tooltipText: {
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    color: colors.text,
+    textAlign: 'center',
+  },
   svg: { position: 'absolute', left: AXIS_WIDTH, top: 0 },
   axisLabel: {
     position: 'absolute',
