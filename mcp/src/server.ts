@@ -1451,11 +1451,11 @@ function registerWriteTools(
   const breakdownSchema = z
     .array(z.object({ label: z.string().min(1), amounts: z.record(z.number().nonnegative()) }))
     .max(12)
-    .describe('The total split across what the description named, one line per thing, each with its own amounts. Skip for a single item.');
+    .describe('The total split across what the description named, one line per thing, each with its own amounts. For every nutrient the lines must add up to the total. Skip for a single item.');
 
   server.tool(
     'log_food',
-    `Log something the person ate, with your estimate of its nutrition for the whole amount eaten. Amounts are keyed ${ESTIMATE_KEY_LIST.join(', ')}; leave out any you cannot estimate (absent is not zero). Vitamins and minerals are not estimated: a supplement's come from its label (set_supplement_nutrients). Without apply: true it only shows the figures as the app read them: show the person, and log it once they agree, since the app never stores an estimate nobody looked at. When the description names more than one thing (a drink, a pretzel and a dessert), also give a breakdown: one line per thing, each with its own amounts, adding up to the total. It is kept on the entry so the person can see what each part contributed; skip it for a single item. The entry is marked as estimated. It is not in Apple Health when this returns: the phone writes it there the next time the app is opened, if Health writing is on there, so never say it is already in Health.`,
+    `Log something the person ate, with your estimate of its nutrition for the whole amount eaten. Amounts are keyed ${ESTIMATE_KEY_LIST.join(', ')}; leave out any you cannot estimate (absent is not zero). Vitamins and minerals are not estimated: a supplement's come from its label (set_supplement_nutrients). Without apply: true it only shows the figures as the app read them: show the person, and log it once they agree, since the app never stores an estimate nobody looked at. When the description names more than one thing (a drink, a pretzel and a dessert), also give a breakdown: one line per thing, each with its own amounts, adding up to the total for every nutrient (a breakdown that does not add up is refused). It is kept on the entry so the person can see what each part contributed; skip it for a single item. The entry is marked as estimated. It is not in Apple Health when this returns: the phone writes it there the next time the app is opened, if Health writing is on there, so never say it is already in Health.`,
     {
       label: z.string().min(1),
       quantity: z.string().optional().describe('How much, in words: "1 bowl", "2 slices".'),

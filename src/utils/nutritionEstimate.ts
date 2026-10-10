@@ -46,6 +46,8 @@ import { EXTERNAL_NUTRIENT_KEYS } from '../types';
  * breakdown read as independently verified when it is the same estimate
  * split apart.
  *
+ * **The breakdown has to add up to the total** (`breakdownMismatch`), or it is not kept.
+ *
  * **The breakdown is kept on the logged entry** (`FoodNutrition.breakdown`), so
  * the split somebody checked before logging is still there when they open the
  * row. Keeping it adds no claim: it is the same estimate, and it rides the
@@ -238,7 +240,7 @@ function readQuestions(value: unknown): EstimateQuestion[] {
  * rule the total obeys, so a line can't claim a figure the total itself
  * would have refused.
  */
-function readBreakdown(value: unknown): EstimateIngredient[] {
+export function readBreakdown(value: unknown): EstimateIngredient[] {
   if (!Array.isArray(value)) return [];
   const out: EstimateIngredient[] = [];
   for (const raw of value) {
@@ -257,6 +259,52 @@ function readBreakdown(value: unknown): EstimateIngredient[] {
     out.push({ label, amounts });
   }
   return out;
+}
+
+/**
+ * How far a nutrient's lines may sit from its total and still be said to add
+ * up: a unit, or 2% for a large figure. It is for the rounding every figure
+ * here goes through (tenths, per line, up to twelve lines), not for a model's
+ * arithmetic, so a split that is off by a real amount does not pass.
+ */
+function breakdownTolerance(total: number): number {
+  return Math.max(1, total * 0.02);
+}
+
+/**
+ * Why a breakdown does not add up to its total, or null when it does.
+ *
+ * **A breakdown is the total split apart, so lines that disagree with it are a
+ * false claim about the meal**, not a rougher one: somebody reads "250 for the
+ * beer" and trusts the 790 above it for exactly that reason. Checked per
+ * nutrient the lines state: the lines that state it must sum to the total
+ * (within `breakdownTolerance`), and a total that states a nutrient no line
+ * does is left alone, since a line that says nothing about fibre has said
+ * nothing about it (absent is not zero). A line stating a nutrient the total
+ * does not is a mismatch.
+ *
+ * Returns the first failing nutrient in words, so a caller that can say why
+ * (the MCP tool) does, and one that cannot (the in-app reader) drops the split.
+ */
+export function breakdownMismatch(
+  amounts: Partial<Record<NutrientKey, number>>,
+  lines: readonly EstimateIngredient[],
+): string | null {
+  if (lines.length === 0) return null;
+  const keys = new Set<NutrientKey>();
+  for (const line of lines) for (const key of Object.keys(line.amounts) as NutrientKey[]) keys.add(key);
+  for (const key of keys) {
+    const sum = lines.reduce((acc, line) => acc + (line.amounts[key] ?? 0), 0);
+    const total = amounts[key];
+    if (total === undefined) {
+      if (sum > 0) return `${key}: the parts state ${Math.round(sum * 10) / 10} but the total states none`;
+      continue;
+    }
+    if (Math.abs(sum - total) > breakdownTolerance(total)) {
+      return `${key}: the parts add up to ${Math.round(sum * 10) / 10} but the total is ${total}`;
+    }
+  }
+  return null;
 }
 
 /**
@@ -311,7 +359,9 @@ export function readNutritionEstimate(
     // model admits are generic would attribute a guess to somebody.
     attribution: raw.basis === 'published' ? text(raw.attribution) : null,
     questions: readQuestions(raw.questions),
-    breakdown: readBreakdown(raw.breakdown),
+    // A split that does not add up to the total is dropped whole rather than
+    // shown: the total stands on its own (see `breakdown` on the type).
+    breakdown: ((lines) => (breakdownMismatch(amounts, lines) === null ? lines : []))(readBreakdown(raw.breakdown)),
   };
 }
 

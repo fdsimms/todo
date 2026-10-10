@@ -142,7 +142,9 @@ Three more read the day-keyed logs: `list_food_log` (with the day's summed nutri
 `list_mood_logs` and `list_medication_logs`. A food entry's rows carry an estimate's `breakdown` when it has one,
 read off `FoodNutrition.breakdown` and never added to the totals, which already count the whole.
 `log_food` and `update_food_entry` (with `amounts`) take one too, read by the app's own `readBreakdown`
-and reported back with a count of the lines it dropped. They share one range convention rather than three,
+and reported back with a count of the lines it dropped. A breakdown has to add up to the total for every
+nutrient its lines state (`breakdownMismatch`): the tools refuse one that does not, with the nutrient named,
+and the in-app estimator drops a split that does not add up rather than showing it. They share one range convention rather than three,
 because all three tables grow without bound and none has a useful "everything" answer: `days`
 counts back from the logical today and an explicit `from`/`to` overrides it. "Today" goes through
 `getLogicalToday`, so a read at 1am under a 2am `dayResetTime` answers about the day the user would

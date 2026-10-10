@@ -4207,6 +4207,9 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (remeasures && patch.amounts !== undefined) {
         throw new Error('A measured entry\'s figures come from its food record, so give a new amount (grams or quantity) or new amounts, not both.');
       }
+      if (patch.breakdown !== undefined && patch.amounts === undefined) {
+        throw new Error('A breakdown has to add up to the total, so give the amounts it splits with it.');
+      }
       const touchesFigures = patch.amounts !== undefined || patch.quantity !== undefined;
       if (touchesFigures && !estimated && !remeasures) {
         throw new Error('Only an estimated entry has figures to restate. This one was measured against a food\'s own label or database record, so correct it in the app, which re-measures it.');
@@ -4224,6 +4227,9 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       } else if (patch.amounts !== undefined) {
         const estimate = require('../../src/utils/nutritionEstimate') as typeof import('../../src/utils/nutritionEstimate'); // eslint-disable-line @typescript-eslint/no-require-imports
         const read = estimate.readNutritionEstimate({ label: patch.label ?? entry.label, quantity: patch.quantity ?? entry.quantity, amounts: patch.amounts, breakdown: patch.breakdown, basis: 'typical', confidence: 'medium' });
+        // Refused rather than trimmed: see `breakdownMismatch`.
+        const mismatch = read && patch.breakdown ? estimate.breakdownMismatch(read.amounts, estimate.readBreakdown(patch.breakdown)) : null;
+        if (mismatch) throw new Error(`The breakdown has to add up to the total. ${mismatch}. Fix the parts or the total and try again.`);
         const panel = read && estimate.estimateToPanel(read);
         if (!panel) throw new Error('A food entry needs at least one nutrient amount.');
         nutrition = panel;

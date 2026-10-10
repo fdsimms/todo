@@ -3,6 +3,7 @@ import {
   ESTIMATE_REQUEST_MAX_LENGTH,
   describeEstimate,
   estimateToPanel,
+  breakdownMismatch,
   readNutritionEstimate,
   refineDescription,
   type NutritionEstimate,
@@ -159,6 +160,7 @@ describe('readNutritionEstimate questions', () => {
 describe('readNutritionEstimate breakdown', () => {
   it('keeps a component with figures', () => {
     const read = readNutritionEstimate(reply({
+      amounts: { calorieKcal: 51, carbsG: 6, fatG: 1 },
       breakdown: [
         { label: 'baguette', amounts: { calorieKcal: 40, carbsG: 6 } },
         { label: 'salted butter', amounts: { calorieKcal: 11, fatG: 1 } },
@@ -168,6 +170,18 @@ describe('readNutritionEstimate breakdown', () => {
       { label: 'baguette', amounts: { calorieKcal: 40, carbsG: 6 } },
       { label: 'salted butter', amounts: { calorieKcal: 11, fatG: 1 } },
     ]);
+  });
+
+  it('drops a breakdown that does not add up to the total, keeping the total', () => {
+    const read = readNutritionEstimate(reply({
+      amounts: { calorieKcal: 51 },
+      breakdown: [
+        { label: 'baguette', amounts: { calorieKcal: 40 } },
+        { label: 'butter', amounts: { calorieKcal: 30 } },
+      ],
+    }));
+    expect(read?.breakdown).toEqual([]);
+    expect(read?.amounts.calorieKcal).toBe(51);
   });
 
   it('drops a component with nothing to call it', () => {
@@ -184,6 +198,7 @@ describe('readNutritionEstimate breakdown', () => {
 
   it('applies the same absent/negative rules a top-level amount does', () => {
     const read = readNutritionEstimate(reply({
+      amounts: { calorieKcal: 40 },
       breakdown: [{ label: 'baguette', amounts: { calorieKcal: 40, fatG: -3, carbsG: Infinity } }],
     }));
     expect(read?.breakdown).toEqual([{ label: 'baguette', amounts: { calorieKcal: 40 } }]);
@@ -197,6 +212,32 @@ describe('readNutritionEstimate breakdown', () => {
   it('caps how many components it keeps', () => {
     const many = Array.from({ length: 20 }, (_, i) => ({ label: `item ${i}`, amounts: { calorieKcal: 1 } }));
     expect(readNutritionEstimate(reply({ breakdown: many }))?.breakdown.length).toBeLessThan(20);
+  });
+});
+
+describe('breakdownMismatch', () => {
+  const total = { calorieKcal: 790, proteinG: 10 };
+  const line = (label: string, amounts: Record<string, number>) => ({ label, amounts });
+
+  it('passes parts that add up, within rounding', () => {
+    expect(breakdownMismatch(total, [line('a', { calorieKcal: 250.4, proteinG: 4 }), line('b', { calorieKcal: 540, proteinG: 6 })])).toBeNull();
+  });
+
+  it('names the nutrient that does not add up', () => {
+    expect(breakdownMismatch(total, [line('a', { calorieKcal: 250 }), line('b', { calorieKcal: 400 })]))
+      .toBe('calorieKcal: the parts add up to 650 but the total is 790');
+  });
+
+  it('leaves a nutrient no line states alone, since absent is not zero', () => {
+    expect(breakdownMismatch(total, [line('a', { calorieKcal: 300 }), line('b', { calorieKcal: 490 })])).toBeNull();
+  });
+
+  it('flags a part stating what the total does not', () => {
+    expect(breakdownMismatch({ calorieKcal: 100 }, [line('a', { calorieKcal: 100, fatG: 5 })])).toMatch(/fatG/);
+  });
+
+  it('has nothing to check without parts', () => {
+    expect(breakdownMismatch(total, [])).toBeNull();
   });
 });
 

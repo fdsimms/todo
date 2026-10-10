@@ -89,6 +89,25 @@ describe('logFood', () => {
     expect(entry.nutrition.source).toBe('estimated');
   });
 
+  it('refuses a breakdown that does not add up to the total, on log and on update', () => {
+    const off = [{ label: 'Birch beer', amounts: { calorieKcal: 250 } }, { label: 'Pretzel', amounts: { calorieKcal: 400 } }];
+    expect(() => logFood(replica, { label: 'Lunch', amounts: { calorieKcal: 550 }, breakdown: off, apply: true }))
+      .toThrow(/has to add up.*calorieKcal: the parts add up to 650 but the total is 550/);
+    // A preview refuses too, so the person is never shown a split that is wrong.
+    expect(() => logFood(replica, { label: 'Lunch', amounts: { calorieKcal: 550 }, breakdown: off })).toThrow(/has to add up/);
+    expect(replica.foodLogEntries('2000-01-01', '2100-01-01')).toHaveLength(0);
+    // Rounding is allowed for; a real gap is not.
+    expect(logFood(replica, {
+      label: 'Lunch', amounts: { calorieKcal: 550 }, apply: true,
+      breakdown: [{ label: 'Birch beer', amounts: { calorieKcal: 250.4 } }, { label: 'Pretzel', amounts: { calorieKcal: 299.8 } }],
+    }).applied).toBe(true);
+    const logged = logFood(replica, { label: 'Tea', amounts: { calorieKcal: 10 }, apply: true });
+    expect(() => updateFoodEntry(replica, logged.id!, { amounts: { calorieKcal: 900 }, breakdown: [{ label: 'Rice', amounts: { calorieKcal: 500 } }] }))
+      .toThrow(/has to add up/);
+    expect(() => updateFoodEntry(replica, logged.id!, { breakdown: [{ label: 'Rice', amounts: { calorieKcal: 10 } }] }))
+      .toThrow(/give the amounts/);
+  });
+
   it('logs with no breakdown key when none was given', () => {
     const logged = logFood(replica, { label: 'Tea', amounts: { calorieKcal: 2 }, apply: true });
     const entry = replica.foodLogEntries('2000-01-01', '2100-01-01').find(e => e.id === logged.id)!;

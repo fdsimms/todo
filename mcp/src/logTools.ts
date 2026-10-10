@@ -110,6 +110,11 @@ export function logFood(replica: Replica, input: LogFoodInput): LogFoodResult {
   if (stated.length === 1 && stated[0] === 'waterMl') {
     throw new Error('Water is one entry a day, stepped up a glass at a time: use log_water for it rather than log_food.');
   }
+  // Refused rather than trimmed: the model is the one who can fix its own
+  // arithmetic, and a split that does not add up must not reach the entry.
+  const given = replica.lib().nutritionEstimate.readBreakdown(input.breakdown);
+  const mismatch = replica.lib().nutritionEstimate.breakdownMismatch(read.amounts, given);
+  if (mismatch) throw new Error(`The breakdown has to add up to the total. ${mismatch}. Fix the parts or the total and try again.`);
   const ignored = Object.keys(input.amounts ?? {}).filter(k => !(ESTIMATE_KEY_LIST as readonly string[]).includes(k));
   const base = {
     label: read.label,
