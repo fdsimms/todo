@@ -13,7 +13,7 @@ import { displayTitleFor } from '../utils/visibilityUtils';
 import { haptics } from '../utils/haptics';
 import { openInAppUrl } from '../utils/deepLinks';
 import { plannedRotationItem, rotationLastDoneLabel, rotationMembers } from '../utils/rotation';
-import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, iconSize, interaction, sheetBottomInset, type Colors } from '../theme';
 import type { Task } from '../types';
 
 interface Props {
@@ -238,7 +238,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     right: 0,
     bottom: 0,
     paddingHorizontal: spacing.md,
-    paddingBottom: 34,
+    paddingBottom: sheetBottomInset,
   },
   card: {
     backgroundColor: colors.bgSecondary,
