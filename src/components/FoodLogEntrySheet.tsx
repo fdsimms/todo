@@ -536,6 +536,7 @@ export function FoodLogEntrySheet({
     setEstimateOpen(false);
     setCatalogPickOpen(false);
     setBurstAdded([]);
+    quickLogKey.current = null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, slot]);
 
@@ -680,16 +681,22 @@ export function FoodLogEntrySheet({
     setCatalogPickOpen(false);
   };
 
-  const choose = (candidate: Candidate) => {
-    setPicked(candidate);
+  /** The amount a food was last logged in, re-measured against what it has now. */
+  const recallFor = (candidate: Candidate) => {
     const weigh = candidate.kind === 'dish' && candidate.cookedGrams !== null;
-    const options = candidate.kind === 'food' && candidate.panel ? foodUnitOptionsFor(candidate.panel) : [];
-    const recalled = recallAmount(
+    return recallAmount(
       lastAmounts.get(candidate.key),
       candidate.kind === 'food' && candidate.panel
         ? { kind: 'food', panel: candidate.panel, name: candidate.label }
         : { kind: 'dish', weighed: weigh, served: !!candidate.servingPanel },
     );
+  };
+
+  const choose = (candidate: Candidate) => {
+    setPicked(candidate);
+    const weigh = candidate.kind === 'dish' && candidate.cookedGrams !== null;
+    const options = candidate.kind === 'food' && candidate.panel ? foodUnitOptionsFor(candidate.panel) : [];
+    const recalled = recallFor(candidate);
     setRecalledAmount(recalled?.amount ?? null);
     pickedAmountRef.current = recalled ? recalled.amount : (candidate.kind === 'dish' && !weigh ? '1' : '');
     if (recalled) {
@@ -1404,22 +1411,80 @@ export function FoodLogEntrySheet({
     );
   };
 
+  /**
+   * The + on a food logged before: the same pick the row's body makes, then
+   * the same Save the amount step's Add makes, at the amount it was last
+   * logged in. Nothing is measured here, so a quick log can't disagree with
+   * a typed one: `choose` sets the amount, `built` measures it, and the
+   * effect below saves once both have committed. When the result needs
+   * something only the amount step can ask (an amount-varies line, or an
+   * amount the food can no longer measure), it stops on that step instead
+   * of logging without it.
+   */
+  const quickLogKey = useRef<string | null>(null);
+  const quickLog = (candidate: Candidate) => {
+    haptics.tap();
+    quickLogKey.current = candidate.key;
+    choose(candidate);
+  };
+  useEffect(() => {
+    const key = quickLogKey.current;
+    if (!key || picked?.key !== key) return;
+    quickLogKey.current = null;
+    if (built && varyingLines.length === 0) handleSave();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [picked, built, varyingLines]);
+
   // ==== render. Everything below is JSX ====
-  const renderRow = ({ item }: { item: Candidate }) => (
-    <TouchableOpacity
-      style={styles.row}
-      activeOpacity={interaction.activeOpacity}
-      onPress={() => { haptics.tap(); choose(item); }}
-      accessibilityRole="button"
-      accessibilityLabel={`Log ${item.label}`}
-    >
-      <View style={styles.rowText}>
-        <Text style={styles.rowTitle}>{item.label}</Text>
-        {!!item.detail && <Text style={styles.rowMeta}>{item.detail}</Text>}
+  const renderRow = ({ item }: { item: Candidate }) => {
+    const recalled = editing ? null : recallFor(item);
+    const body = (
+      <>
+        <View style={styles.rowText}>
+          <Text style={styles.rowTitle}>{item.label}</Text>
+          {!!item.detail && <Text style={styles.rowMeta}>{item.detail}</Text>}
+        </View>
+        {!recalled && <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />}
+      </>
+    );
+    if (!recalled) {
+      return (
+        <TouchableOpacity
+          style={styles.row}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => { haptics.tap(); choose(item); }}
+          accessibilityRole="button"
+          accessibilityLabel={`Log ${item.label}`}
+        >
+          {body}
+        </TouchableOpacity>
+      );
+    }
+    // Laid out like an earlier helping's row: the body opens the amount, the
+    // plus logs it at last time's amount.
+    return (
+      <View style={[styles.row, styles.helpingRow]}>
+        <TouchableOpacity
+          style={[styles.helpingBody, styles.quickBody]}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => { haptics.tap(); choose(item); }}
+          accessibilityRole="button"
+          accessibilityLabel={`Log ${item.label}`}
+        >
+          {body}
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.helpingAdd}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => quickLog(item)}
+          accessibilityRole="button"
+          accessibilityLabel={`Log ${item.label} again, ${recalled.amount}`}
+        >
+          <Ionicons name="add-circle-outline" size={iconSize.md} color={colors.accent} />
+        </TouchableOpacity>
       </View>
-      <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
-    </TouchableOpacity>
-  );
+    );
+  };
 
   // While searching, what matches the catalog comes first and the earlier
   // helpings follow it: someone typing "oat milk" wants the food, not the
@@ -2409,6 +2474,7 @@ function makeStyles(colors: Colors) {
     helpingRow: { paddingHorizontal: 0, paddingVertical: 0, gap: 0, alignItems: 'stretch' },
     helpingBody: { flex: 1, justifyContent: 'center', paddingLeft: spacing.md, paddingVertical: spacing.md },
     helpingAdd: { justifyContent: 'center', paddingHorizontal: spacing.md },
+    quickBody: { flexDirection: 'row', alignItems: 'center' },
     helpingsLabel: { marginBottom: spacing.sm },
     listLabel: { marginTop: spacing.md, marginBottom: spacing.sm },
   });
