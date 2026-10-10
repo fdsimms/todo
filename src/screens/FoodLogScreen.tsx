@@ -1776,7 +1776,7 @@ function makeStyles(colors: Colors) {
     targetFill: { height: '100%', borderRadius: 2, backgroundColor: colors.accent },
     totalLabelCol: { flexShrink: 1 },
     totalLabel: { color: colors.text, fontSize: font.sm },
-    totalCoverage: { color: colors.textSecondary, fontSize: font.xs, marginTop: 2 },
+    totalCoverage: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xxs },
     totalRight: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm },
     totalValue: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
     sectionHeader: {

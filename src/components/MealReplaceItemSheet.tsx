@@ -18,7 +18,7 @@ import { SafeBlurView } from './SafeBlurView';
 import { SheetScrim } from './SheetScrim';
 import { EmptyState } from './EmptyState';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, border, animation, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, border, animation, interaction, sheetBottomInset, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { rankRecipes, describeRecipe, cleanRecipeName, sharedRecipeNameKeys, sortRecipesForDisplay } from '../utils/recipeUtils';
@@ -272,7 +272,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     right: 0,
     bottom: 0,
     paddingHorizontal: spacing.md,
-    paddingBottom: 34,
+    paddingBottom: sheetBottomInset,
   },
   handleArea: {
     alignItems: 'center',

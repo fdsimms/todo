@@ -27,7 +27,7 @@ import { SafeBlurView } from './SafeBlurView';
 import { SheetScrim } from './SheetScrim';
 import { InlineAction } from './InlineAction';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, iconSize, animation, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, iconSize, animation, interaction, sheetBottomInset, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { useSheetMotion } from '../hooks/useSheetMotion';
@@ -310,7 +310,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   backdropDim: { backgroundColor: colors.backdrop },
   sheetOuter: {
     position: 'absolute', left: 0, right: 0, bottom: 0,
-    paddingHorizontal: spacing.md, paddingBottom: 34,
+    paddingHorizontal: spacing.md, paddingBottom: sheetBottomInset,
   },
   handleArea: { alignItems: 'center', paddingTop: spacing.sm, paddingBottom: spacing.sm },
   handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.bgQuaternary },

@@ -415,6 +415,13 @@ export const spacing = {
   xl: 32,
 };
 
+/**
+ * The gap a floating bottom sheet's card stack keeps above the screen's bottom
+ * edge, clearing the home indicator. A sheet that floats as cards (rather than
+ * docking to the edge) sets it as `sheetOuter`'s `paddingBottom`.
+ */
+export const sheetBottomInset = 34;
+
 export const radius = {
   sm: 8,
   md: 12,

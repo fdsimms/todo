@@ -14,7 +14,7 @@ import { SheetScrim } from './SheetScrim';
 import { EmptyState } from './EmptyState';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, interaction, sheetBottomInset, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useShallow } from 'zustand/react/shallow';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -161,7 +161,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     right: 0,
     bottom: 0,
     paddingHorizontal: spacing.md,
-    paddingBottom: 34,
+    paddingBottom: sheetBottomInset,
   },
   handleArea: {
     alignItems: 'center',
