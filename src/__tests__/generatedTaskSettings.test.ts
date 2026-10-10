@@ -9,7 +9,7 @@ import {
   parseGeneratedTaskExtras,
   parseGeneratedTaskExtrasValue,
 } from '../utils/generatedTaskSettings';
-import { GENERATED_KINDS } from '../utils/generatedTasks';
+import { GENERATED_KINDS, GENERATED_KIND_LIST } from '../utils/generatedTasks';
 import type { GeneratedTaskExtras } from '../types';
 
 const extras = (patch: Partial<GeneratedTaskExtras>): GeneratedTaskExtras => ({ ...NO_GENERATED_TASK_EXTRAS, ...patch });
@@ -86,32 +86,46 @@ describe('generatedExtrasFill', () => {
   });
 });
 
+const CTX = { groceryUseUpLeadDays: 2, birthdayLeadDays: 3, birthdayGiftLeadDays: 10, mealShortfallLeadDays: 2 };
+const CTX0 = { groceryUseUpLeadDays: 3, birthdayLeadDays: 0, birthdayGiftLeadDays: 0, mealShortfallLeadDays: 0 };
+
 describe('TASK_SETTINGS_SPECS', () => {
   it('names only real kinds', () => {
     for (const kind of Object.keys(TASK_SETTINGS_SPECS)) expect(GENERATED_KINDS).toContain(kind);
   });
 
-  it('opens the sheet for the use-up and birthday kinds', () => {
-    expect(hasTaskSettingsSheet('groceryUseUp')).toBe(true);
-    expect(hasTaskSettingsSheet('birthday')).toBe(true);
-    expect(hasTaskSettingsSheet('pantryCheck')).toBe(false);
+  it('has an entry for every generator Settings lists', () => {
+    for (const spec of GENERATED_KIND_LIST) expect(hasTaskSettingsSheet(spec.kind)).toBe(true);
   });
 
   it('describes the date with the lead the person set', () => {
-    const owned = TASK_SETTINGS_SPECS.groceryUseUp!.owned({ groceryUseUpLeadDays: 3, birthdayLeadDays: 0 });
+    const owned = TASK_SETTINGS_SPECS.groceryUseUp!.owned(CTX0);
     expect(owned.find(f => f.key === 'date')?.summary).toBe('3 days before the use-by date');
-    const birthday = TASK_SETTINGS_SPECS.birthday!.owned({ groceryUseUpLeadDays: 3, birthdayLeadDays: 0 });
+    const birthday = TASK_SETTINGS_SPECS.birthday!.owned(CTX0);
     expect(birthday.find(f => f.key === 'date')?.summary).toBe('On the birthday');
+    const gift = TASK_SETTINGS_SPECS.birthdayGift!.owned(CTX);
+    expect(gift.find(f => f.key === 'date')?.summary).toBe('When the birthday is 10 days away');
   });
 
-  it('never offers a field it also locks', () => {
-    // The sheet edits category, tags, time of day, the defaults and a question;
-    // a generator that wrote one of those would have its owned row contradict
-    // the editable one.
-    const editable = ['category', 'tags', 'time', 'priority', 'effort', 'difficulty', 'deliverable'];
+  it('locks the editable row for every field the generator owns that the sheet also edits', () => {
+    // A generator that writes a time of day or a question would have its
+    // owned row contradict the editable one, and the fill would never apply.
     for (const spec of Object.values(TASK_SETTINGS_SPECS)) {
-      for (const field of spec!.owned({ groceryUseUpLeadDays: 2, birthdayLeadDays: 3 })) {
-        expect(editable).not.toContain(field.key);
+      const keys = spec!.owned(CTX).map(f => f.key);
+      for (const lockable of ['time', 'ask'] as const) {
+        if (keys.includes(lockable)) expect(spec!.locks ?? []).toContain(lockable);
+      }
+      // And it never claims the fields the sheet always edits.
+      for (const always of ['category', 'tags', 'priority', 'effort', 'difficulty']) expect(keys).not.toContain(always);
+    }
+  });
+
+  it('describes every owned field in plain copy', () => {
+    for (const spec of Object.values(TASK_SETTINGS_SPECS)) {
+      for (const field of spec!.owned(CTX)) {
+        expect(`${field.summary} ${field.hint}`).not.toMatch(/—/);
+        expect(field.summary.length).toBeGreaterThan(0);
+        expect(field.hint.length).toBeGreaterThan(0);
       }
     }
   });

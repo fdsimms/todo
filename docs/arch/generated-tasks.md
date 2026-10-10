@@ -765,7 +765,7 @@ own is ever filled, and a task somebody typed never is.
 
 ## Task settings: a kind's task, field by field
 
-A kind can have a **Task settings** sheet in Settings (`GeneratedTaskSettingsSheet`, rules in
+Every kind has a **Task settings** sheet in Settings (`GeneratedTaskSettingsSheet`, rules in
 `src/utils/generatedTaskSettings.ts`): its task laid out like a task, with the fields its generator
 writes shown locked and saying where each comes from, and the rest editable. It exists so the
 person can see how the automation works, not only switch it on.
@@ -780,10 +780,14 @@ person can see how the automation works, not only switch it on.
   generator writes, several of which its drift rewrites, which is why they can't be offered.
 - **Changes apply to tasks created afterwards**, the rule the defaults already had: a live task
   may have been edited, and rewriting it would undo that.
-- **Not every kind has one yet.** `TASK_SETTINGS_SPECS` lists the kinds that do, with their owned
-  fields; the rest keep the older "Task defaults" and "File them under" rows. Adding a kind is an
-  entry there, its owned fields read off its draft builder.
-- **The MCP server doesn't expose these**, as it doesn't expose `generatedTaskDefaults`.
+- **A new generator needs an entry in `TASK_SETTINGS_SPECS`**, its owned fields read off its draft
+  builder; `generatedTaskSettings.test.ts` fails until every listed kind has one. A generator that
+  writes a time of day or a question itself (or whose task is never completed) lists it in `locks`,
+  and the sheet and the MCP server both leave that row out.
+- **Rule kinds' category is a fallback.** A rule can name its own category, which wins; the sheet's
+  hint says so (`categoryHint`).
+- **The MCP server reads and writes all of it** through `set_automation`'s `taskSettings` (see
+  `docs/arch/mcp-server.md`).
 
 ## Vacation mode: which of them stand down
 

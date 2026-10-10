@@ -74,6 +74,8 @@ export function GeneratedTaskSettingsSheet({ visible, kind, spec, generatorLabel
   const storedExtras = useSettingsStore(s => s.generatedTaskExtras[kind]);
   const groceryUseUpLeadDays = useSettingsStore(s => s.groceryUseUpLeadDays);
   const birthdayLeadDays = useSettingsStore(s => s.birthdayLeadDays);
+  const birthdayGiftLeadDays = useSettingsStore(s => s.birthdayGiftLeadDays);
+  const mealShortfallLeadDays = useSettingsStore(s => s.mealShortfallLeadDays);
   const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
   const setGeneratedTaskDefaults = useSettingsStore(s => s.setGeneratedTaskDefaults);
   const setGeneratedTaskExtras = useSettingsStore(s => s.setGeneratedTaskExtras);
@@ -120,9 +122,14 @@ export function GeneratedTaskSettingsSheet({ visible, kind, spec, generatorLabel
   };
 
   const handleSave = () => {
+    // A locked row's field is the generator's, so nothing stays stored for it.
+    const askLocked = (spec.locks ?? []).includes('ask');
+    const deliverableKind = askLocked ? null : extras.deliverableKind;
     const finalExtras: GeneratedTaskExtras = {
       ...extras,
-      deliverableOptions: extras.deliverableKind === 'choice' ? parseDeliverableOptions(optionsText) : [],
+      timeSegments: (spec.locks ?? []).includes('time') ? [] : extras.timeSegments,
+      deliverableKind,
+      deliverableOptions: deliverableKind === 'choice' ? parseDeliverableOptions(optionsText) : [],
     };
     if (draftCategory !== category) onSetCategory(draftCategory);
     setGeneratedTaskDefaults(kind, defaults);
@@ -132,7 +139,8 @@ export function GeneratedTaskSettingsSheet({ visible, kind, spec, generatorLabel
   };
 
   const toggle = (key: FieldKey) => setOpen(prev => (prev === key ? null : key));
-  const owned = spec.owned({ groceryUseUpLeadDays, birthdayLeadDays });
+  const locks = spec.locks ?? [];
+  const owned = spec.owned({ groceryUseUpLeadDays, birthdayLeadDays, birthdayGiftLeadDays, mealShortfallLeadDays });
   const categoryName = draftCategory ? categoryLabel(draftCategory, categories) : null;
   const timeSummary = describeTimeSegments(extras.timeSegments);
   const defaultsSummary = describeTaskFieldDefaults(defaults);
@@ -210,7 +218,7 @@ export function GeneratedTaskSettingsSheet({ visible, kind, spec, generatorLabel
             <CollapsibleField
               label="Category"
               summary={categoryName ?? undefined}
-              hint="With none, these tasks appear at the top of Today, above your categories."
+              hint={spec.categoryHint ?? 'With none, these tasks appear at the top of Today, above your categories.'}
               expanded={open === 'category'}
               onToggle={() => toggle('category')}
             >
@@ -246,8 +254,8 @@ export function GeneratedTaskSettingsSheet({ visible, kind, spec, generatorLabel
             </CollapsibleField>
           </View>
 
-          <Text style={styles.groupLabel}>Schedule</Text>
-          <View style={styles.card}>
+          {!locks.includes('time') && <Text style={styles.groupLabel}>Schedule</Text>}
+          {!locks.includes('time') && <View style={styles.card}>
             <CollapsibleField
               label="Time of day"
               summary={timeSummary ?? undefined}
@@ -264,7 +272,7 @@ export function GeneratedTaskSettingsSheet({ visible, kind, spec, generatorLabel
                 options={TIME_OPTIONS}
               />
             </CollapsibleField>
-          </View>
+          </View>}
 
           <Text style={styles.groupLabel}>Priority & effort</Text>
           <View style={styles.card}>
@@ -285,8 +293,8 @@ export function GeneratedTaskSettingsSheet({ visible, kind, spec, generatorLabel
             </CollapsibleField>
           </View>
 
-          <Text style={styles.groupLabel}>More</Text>
-          <View style={styles.card}>
+          {!locks.includes('ask') && <Text style={styles.groupLabel}>More</Text>}
+          {!locks.includes('ask') && <View style={styles.card}>
             <CollapsibleField
               label="Ask on completion"
               summary={extras.deliverableKind ? deliverableMeta(extras.deliverableKind).label : undefined}
@@ -322,13 +330,13 @@ export function GeneratedTaskSettingsSheet({ visible, kind, spec, generatorLabel
                 )}
               </>
             )}
-          </View>
+          </View>}
 
           <View style={styles.footnote}>
             <Ionicons name="information-circle-outline" size={16} color={colors.textSecondary} />
             <Text style={styles.footnoteText}>
-              Repeat, chains, targets and waiting on another task aren’t offered here. Each of these tasks
-              is a one-off that the app places on its own date.
+              Repeat, chains, targets and waiting on another task aren’t offered here, because the app
+              decides when each of these tasks appears.
             </Text>
           </View>
         </ScrollView>

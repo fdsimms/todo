@@ -81,8 +81,6 @@ import { readSavedPlaces, savedPlaceKey, type SavedPlace } from '../../utils/sav
 import { TRANSIT_LINES } from '../../utils/transitAlerts';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
-import { TaskFieldDefaultsFields } from '../../components/TaskFieldDefaultsFields';
-import { describeTaskFieldDefaults } from '../../utils/taskFieldDefaults';
 import { TASK_SETTINGS_SPECS, describeGeneratedTaskSettings, hasTaskSettingsSheet } from '../../utils/generatedTaskSettings';
 import { GeneratedTaskSettingsSheet } from '../../components/GeneratedTaskSettingsSheet';
 import { useSheetSubject } from '../../hooks/useSheetSubject';
@@ -1366,8 +1364,8 @@ export function GeneratedTasksSection() {
               ) : undefined}
             />
             {open && extrasFor(spec.kind)}
-            {/* A kind with a Task settings sheet keeps its defaults and
-                category there instead, beside the fields it can't change. */}
+            {/* Its category, defaults and the rest of what each task starts
+                with, beside the fields the generator writes itself. */}
             {open && hasTaskSettingsSheet(spec.kind) && (
               <>
                 <View style={styles.sep} />
@@ -1385,49 +1383,6 @@ export function GeneratedTasksSection() {
                   tight
                   onPress={() => setTaskSettingsKind(spec.kind)}
                 />
-              </>
-            )}
-            {open && !hasTaskSettingsSheet(spec.kind) && (
-              <>
-                <View style={styles.sep} />
-                <SettingsRow
-                  entryId={`gen:${spec.kind}:defaults`}
-                  icon="options-outline"
-                  label="Task defaults"
-                  hint="Priority, difficulty and time estimate these tasks start with. Not set uses your app-wide default, and anything still unanswered shows up in Backfill."
-                  value={describeTaskFieldDefaults(s.generatedTaskDefaults[spec.kind]) ?? 'Not set'}
-                  tight
-                />
-                <View style={styles.pillGroupRow}>
-                  <TaskFieldDefaultsFields
-                    value={s.generatedTaskDefaults[spec.kind]}
-                    onChange={next => s.setGeneratedTaskDefaults(spec.kind, next)}
-                    showDifficulty={s.rewardsEnabled}
-                  />
-                </View>
-              </>
-            )}
-            {open && spec.categorized && !hasTaskSettingsSheet(spec.kind) && (
-              <>
-                <View style={styles.sep} />
-                <SettingsRow
-                  entryId={`gen:${spec.kind}:category`}
-                  icon="pricetag-outline"
-                  label="File them under"
-                  hint="With none, they appear at the top of Today, above your categories."
-                  value={categoryOptions.find(o => o.value === categoryOf(spec.kind))?.label ?? 'None'}
-                  tight
-                />
-                <View style={styles.pillGroupRow}>
-                  <PillGroup
-                    noun="category"
-                    options={categoryPills(
-                      categoryOf(spec.kind),
-                      category => setCategory(spec.kind, category),
-                      label => `${spec.label} category: ${label}`,
-                    )}
-                  />
-                </View>
               </>
             )}
           </React.Fragment>

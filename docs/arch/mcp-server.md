@@ -431,6 +431,14 @@ answer the Settings row writes (`setGeneratedCategory` in `useCategoryStore`), s
 `ensureGeneratedTaskCategory` leaves it alone. The name must already be a category; `null` files
 under none and the result says that puts the tasks in the loose block above every section of Today.
 
+It also takes `taskSettings`, the rest of a generator's Task settings sheet: priority, estimate,
+difficulty and skip-in-suggestions (`generatedTaskDefaults`) and tags, time of day and a question on
+completion (`generatedTaskExtras`). A patch, field by field, with `null` clearing one. It refuses
+what the sheet locks for that kind (`TaskSettingsSpec.locks`): a time of day for a generator that
+sets its own, a question on one whose tasks are never completed. `list_automations` returns each
+kind's `taskSettings` and `setByApp`, the sheet's locked rows as text, so an agent can say what the
+automation writes before suggesting a change to the rest.
+
 `delete_category` (`mcp/src/categoryTools.ts`) is the app's delete without its shake-to-undo, and it
 asks where the tasks go: `moveTo`, or `uncategorize: true`, and a category holding open work with
 neither is refused. It re-points **every** generator's category setting (`clearGeneratedCategorySettings`,
