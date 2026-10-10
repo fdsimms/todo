@@ -89,6 +89,7 @@ import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
 import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
 import { FoodLogEntrySheet, type FoodLogEntrySheetHandle } from '../components/FoodLogEntrySheet';
 import { SavedMealsSheet } from '../components/SavedMealsSheet';
+import { PendingEstimatesCard } from '../components/PendingEstimatesCard';
 import { NutrientContributorsSheet } from '../components/NutrientContributorsSheet';
 import { NutritionTargetsSheet } from '../components/NutritionTargetsSheet';
 import { CsvExportSheet } from '../components/CsvExportSheet';
@@ -1325,6 +1326,7 @@ export function FoodLogScreen() {
                 {`Nothing logged ${isToday ? 'today' : 'on this day'} yet. Tap + to add what you ate.`}
               </EmptyNote>
             </View>
+            <PendingEstimatesCard />
             {plannedCard}
             {totalsCard}
             {produceCard}
@@ -1354,6 +1356,7 @@ export function FoodLogScreen() {
             onReorder={handleReorder}
             ListHeaderComponent={
               <>
+              <PendingEstimatesCard />
               {plannedCard}
               {totalsCard}
               {produceCard}

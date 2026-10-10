@@ -46,6 +46,7 @@ import { useFoodLogStore } from '../store/useFoodLogStore';
 import { isNutrientOnlyEntry } from '../utils/nutrientLog';
 import { supplementDoseIdOf } from '../utils/supplementDose';
 import { useSavedMealsStore } from '../store/useSavedMealsStore';
+import { usePendingEstimateStore } from '../store/usePendingEstimateStore';
 import { currentEstimateFactor, describeFoodLogEntry, foodLogEntryEdit, foodLogTotals, recallAmount, scalePanelToAmount, wholeEstimate } from '../utils/foodLog';
 import { foodLastAmounts, helpingAgain, recentUnlinkedHelpings } from '../utils/foodLogRecents';
 import { isWaterEntry } from '../utils/waterLog';
@@ -2456,6 +2457,13 @@ describe('demo seed — people', () => {
     expect(meal).toBeDefined();
     expect(meal?.items.length).toBeGreaterThan(0);
     expect(meal?.items.every(i => Object.keys(i.nutrition.amounts).length > 0)).toBe(true);
+  });
+
+  it('seeds a meal waiting for a connection, so the offline queue reads as a feature the app has', () => {
+    const pending = usePendingEstimateStore.getState().pending;
+    expect(pending).toHaveLength(1);
+    expect(pending[0].status).toBe('waiting');
+    expect(pending[0].estimate).toBeNull();
   });
 
   it('seeds a food that is in the catalog only because it was eaten', () => {

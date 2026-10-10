@@ -155,6 +155,7 @@ jest.mock('../db/database', () => ({
   dbInsertFoodLogEntry: jest.fn(),
   dbUpdateFoodLogEntry: jest.fn(),
   dbGetSavedMeals: jest.fn().mockReturnValue([]),
+  dbGetPendingEstimates: jest.fn().mockReturnValue([]),
   dbInsertSavedMeal: jest.fn(),
   dbDeleteSavedMeal: jest.fn(),
   dbDeleteFoodLogEntry: jest.fn(),

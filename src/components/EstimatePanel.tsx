@@ -12,6 +12,8 @@ import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { MEAL_SLOTS, MEAL_SLOT_LABELS, EXTERNAL_NUTRIENT_KEYS, type FoodLogEntry, type FoodNutrition, type MealSlot, type NutrientKey } from '../types';
 import { useFoodLogStore } from '../store/useFoodLogStore';
+import { usePendingEstimateStore } from '../store/usePendingEstimateStore';
+import { MAX_PENDING_ESTIMATES, isQueueableFailure } from '../utils/estimateQueue';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { describeAIError, estimateMealNutrition } from '../services/aiSuggestions';
 import {
@@ -201,6 +203,12 @@ interface Props {
    * what follows: close, or with "Add another" on, reset for the next food.
    */
   onLogged: (label: string) => void;
+  /**
+   * After the described meal was saved for later because the request could not
+   * be made (`usePendingEstimateStore`). Nothing was logged, so the host closes
+   * or resets without the "added" bookkeeping `onLogged` carries.
+   */
+  onQueued: () => void;
   /** The × in the panel's own header. */
   onDismiss: () => void;
   /**
@@ -220,7 +228,7 @@ export interface EstimateLogAction {
   run: () => void;
 }
 
-export function EstimatePanel({ description: rawDescription, onDescriptionChange, slot, at, mealPlanEntryId, onPickRecipe, onLogged, onDismiss, onLogAction }: Props) {
+export function EstimatePanel({ description: rawDescription, onDescriptionChange, slot, at, mealPlanEntryId, onPickRecipe, onLogged, onQueued, onDismiss, onLogAction }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -246,6 +254,12 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * The text of the request that just failed for a reason waiting can fix, or
+   * null. Set only alongside `error`, and it is the refined text a re-ask would
+   * have sent, so a meal saved for later keeps the answers and amount given.
+   */
+  const [queueableText, setQueueableText] = useState<string | null>(null);
   const [chosenSlot, setChosenSlot] = useState<MealSlot | null>(slot);
   // Which recipe this estimate was just filed as, so the button can turn into
   // a confirmation instead of offering to file the same thing twice. Reset
@@ -444,6 +458,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
     const token = ++runTokenRef.current;
     setLoading(true);
     setError(null);
+    setQueueableText(null);
     setSavedRecipeId(null);
     try {
       const result = await estimateMealNutrition(text, context);
@@ -459,6 +474,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
       // than the whole card going blank over one bad request.
       if (fresh) setEstimate(null);
       setError(describeAIError(e));
+      setQueueableText(isQueueableFailure(e) ? text : null);
       return false;
     } finally {
       if (token === runTokenRef.current) setLoading(false);
@@ -533,6 +549,31 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
     void run(refinedText(estimatedFor, answers, next), false).then(ok => {
       if (ok === false) setAmount(previous);
     });
+  };
+
+  /**
+   * Keeps the meal that could not be estimated, to be asked about when there is
+   * a connection and confirmed from the Food log screen. Writes nothing to the
+   * log: see `utils/estimateQueue.ts`.
+   */
+  const handleSaveForLater = () => {
+    if (queueableText == null) return;
+    const result = usePendingEstimateStore.getState().enqueue({
+      description: queueableText,
+      slot: chosenSlot,
+      at,
+      mealPlanEntryId: mealPlanEntryId ?? null,
+      context,
+    });
+    if (result === 'full') {
+      haptics.error();
+      setError(`You already have ${MAX_PENDING_ESTIMATES} meals waiting. Log or remove some on the Food log screen first.`);
+      setQueueableText(null);
+      return;
+    }
+    haptics.success();
+    Keyboard.dismiss();
+    onQueued();
   };
 
   const handleLog = () => {
@@ -1197,6 +1238,19 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
           )}
 
           {!!error && <Text style={styles.error}>{error}</Text>}
+          {queueableText != null && !loading && (
+            <View style={styles.queueRow}>
+              <InlineAction
+                label="Save for later"
+                icon="time-outline"
+                onPress={handleSaveForLater}
+                accessibilityLabel="Save this meal to estimate later"
+              />
+              <Text style={styles.queueHint}>
+                It is estimated when you are back online. Nothing is logged until you confirm it on the Food log screen.
+              </Text>
+            </View>
+          )}
 
           {estimate && (
             <View style={[styles.card, loading && styles.cardBusy]}>
@@ -1650,5 +1704,7 @@ function makeStyles(colors: Colors) {
     confirmPreview: { color: colors.textSecondary, fontSize: font.sm },
     confirmActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
     error: { color: colors.redText, fontSize: font.sm, lineHeight: 18 },
+    queueRow: { gap: spacing.xsm, alignItems: 'flex-start', marginTop: spacing.xsm },
+    queueHint: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 18 },
   });
 }

@@ -306,6 +306,12 @@ export const SYNC_EXCLUDED_TABLES = [
   // has, and syncing the row would create it: whichever device wrote last
   // would move the other one's cursor mid-stretch.
   'focus_sessions',
+  // Meals described with no connection (utils/estimateQueue.ts). A request
+  // belongs to the phone that lost its signal, and syncing one would have a
+  // second phone with a connection estimate it, then offer to log it a second
+  // time on a day the first phone may already have logged by hand. It also
+  // holds a typed description that was never confirmed as a record of anything.
+  'pending_estimates',
 ] as const;
 
 /**

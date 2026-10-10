@@ -1180,6 +1180,23 @@ export function FoodLogEntrySheet({
     onClose();
   };
 
+  /**
+   * A described meal saved for later instead of logged. Nothing went in the
+   * log, so it skips `afterSave`'s "added" list; with "Add another" on it only
+   * resets the field for the next food.
+   */
+  const afterQueue = () => {
+    haptics.success();
+    if (burstMode) {
+      searchFilter.seed(initialQuery ?? '');
+      closeDatabase();
+      setEstimateOpen(false);
+      return;
+    }
+    Keyboard.dismiss();
+    onClose();
+  };
+
   // A food logged from a sheet raised over this one (a scan, a saved meal). It is
   // the same save as one made here, so it takes the same path: stay open for
   // the next food with "Add another" on, and the caller closes this sheet only
@@ -1564,6 +1581,7 @@ export function FoodLogEntrySheet({
             if (dish) choose(dish);
           }}
           onLogged={label => { setEstimateOpen(false); afterSave(label); }}
+          onQueued={afterQueue}
           onDismiss={() => setEstimateOpen(false)}
           onLogAction={setEstimateLog}
         />

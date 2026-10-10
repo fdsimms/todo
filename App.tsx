@@ -49,6 +49,7 @@ import { preloadAppFont, preloadBrandFonts } from './src/theme/AppFont';
 import { animation } from './src/theme';
 import { AppState, View } from 'react-native';
 import { runPendingHealthFoodWrites } from './src/utils/pendingHealthFoodWrites';
+import { usePendingEstimateStore } from './src/store/usePendingEstimateStore';
 
 // Held open until `AppGate` below knows which font to render in and has it
 // loaded, so the first frame the user ever sees is already in the right
@@ -189,6 +190,10 @@ function AppRoot() {
       // Health. Async and not awaited, idempotent, and a no-op with the switch
       // off. See pendingHealthFoodWrites.ts.
       ['write pending Health meals', runPendingHealthFoodWrites],
+      // Meals described offline get their estimate now there may be a
+      // connection. They are only estimated here, never logged: a person
+      // confirms each one on the Food log screen.
+      ['estimate meals saved offline', () => { void usePendingEstimateStore.getState().drain(); }],
       // Read back any cooking step timer that was still counting down when the
       // app was last closed, and re-arm its alarm (#1712). After useSettingsStore.initialize,
       // which opens the database this reads from; before the permission
@@ -207,9 +212,15 @@ function AppRoot() {
 
   // The launch step above covers a cold start; this covers the app coming back
   // to the front, where a meal an agent logged in the meantime has since synced.
+  // It is also when a meal saved offline is asked about again: the drain stops
+  // at the first request that fails for want of a connection, so a phone that
+  // is still offline costs one request per return to the app.
   useEffect(() => {
     const sub = AppState.addEventListener('change', state => {
-      if (state === 'active') runPendingHealthFoodWrites();
+      if (state === 'active') {
+        runPendingHealthFoodWrites();
+        void usePendingEstimateStore.getState().drain();
+      }
     });
     return () => sub.remove();
   }, []);

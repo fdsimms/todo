@@ -76,6 +76,7 @@ import type {
 import { HEALTH_TARGET_METRICS } from '../utils/healthTarget';
 import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, NUTRIENT_KEYS, PERSON_NOTE_KINDS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES, isReceiptStyle } from '../types';
 import { generateId } from '../utils/id';
+import type { PendingEstimate } from '../utils/estimateQueue';
 import { parseTaskFieldDefaults, serializeTaskFieldDefaults } from '../utils/taskFieldDefaults';
 import { appendPriceObservation, parsePriceHistory } from '../utils/priceHistory';
 import { nextPurchaseIntervalDays } from '../utils/purchaseInterval';
@@ -612,6 +613,25 @@ export function initDatabase(): void {
       id TEXT PRIMARY KEY NOT NULL,
       name TEXT NOT NULL,
       items TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    -- Meals described with no connection, waiting for an estimate and then
+    -- for a person to log it — see utils/estimateQueue.ts. Device-local: a
+    -- request belongs to the phone that lost its signal, so it is neither
+    -- synced nor backed up (BACKUP_EXCLUDED_TABLES). context and estimate are
+    -- JSON blobs read and written whole, the saved_meals call.
+    CREATE TABLE IF NOT EXISTS pending_estimates (
+      id TEXT PRIMARY KEY NOT NULL,
+      description TEXT NOT NULL,
+      slot TEXT,
+      at_iso TEXT NOT NULL,
+      meal_plan_entry_id TEXT,
+      context TEXT NOT NULL DEFAULT '[]',
+      status TEXT NOT NULL DEFAULT 'waiting',
+      estimate TEXT,
+      estimated_at TEXT,
+      error TEXT,
       created_at TEXT NOT NULL
     );
 
@@ -2542,6 +2562,12 @@ export const BACKUP_EXCLUDED_TABLES = [
   // from another day (or another phone) over a task list that has since moved
   // on; there is nothing here a user would miss having back.
   'focus_sessions',
+  // Meals waiting for an estimate (see utils/estimateQueue.ts). A request
+  // belongs to the phone that lost its signal, and restoring one onto another
+  // phone, or days later, would ask the model about a meal nobody is waiting
+  // on. Restore replaces the food log wholesale; a stale queue would sit beside
+  // it offering to log entries into a day that has been rewritten.
+  'pending_estimates',
 ] as const;
 
 /** The live column names of a table, straight from the schema. */
@@ -7495,6 +7521,89 @@ export function dbInsertSavedMeal(meal: SavedMeal): void {
 
 export function dbDeleteSavedMeal(id: string): void {
   db.runSync('DELETE FROM saved_meals WHERE id = ?', [id]);
+}
+
+// ─── Pending estimates (the offline food log queue) ──────────────────────────
+
+/**
+ * One queued row back into a `PendingEstimate`, resolve-or-shrug like the
+ * other JSON columns here. A `ready` row whose estimate won't parse reads as
+ * `waiting` again, so the figures are asked for afresh rather than the meal
+ * being lost.
+ */
+function rowToPendingEstimate(row: Record<string, unknown>): PendingEstimate | null {
+  const description = typeof row.description === 'string' ? row.description : '';
+  const atISO = typeof row.at_iso === 'string' ? row.at_iso : '';
+  if (!description || !atISO) return null;
+
+  let context: PendingEstimate['context'] = [];
+  try {
+    const parsed = JSON.parse((row.context as string) ?? '[]');
+    if (Array.isArray(parsed)) context = parsed;
+  } catch {
+    // No context is a valid, weaker request.
+  }
+
+  let estimate: PendingEstimate['estimate'] = null;
+  if (typeof row.estimate === 'string' && row.estimate) {
+    try {
+      const parsed = JSON.parse(row.estimate);
+      if (parsed && typeof parsed === 'object' && parsed.amounts && typeof parsed.label === 'string') estimate = parsed;
+    } catch {
+      // Falls through to the status check below.
+    }
+  }
+
+  let status: PendingEstimate['status'] = row.status === 'ready' || row.status === 'failed' ? row.status : 'waiting';
+  if (status === 'ready' && !estimate) status = 'waiting';
+
+  return {
+    id: row.id as string,
+    description,
+    slot: (MEAL_SLOTS as readonly string[]).includes(row.slot as string) ? (row.slot as MealSlot) : null,
+    atISO,
+    mealPlanEntryId: typeof row.meal_plan_entry_id === 'string' ? row.meal_plan_entry_id : null,
+    context,
+    status,
+    estimate: status === 'ready' ? estimate : null,
+    estimatedAtISO: status === 'ready' && typeof row.estimated_at === 'string' ? row.estimated_at : null,
+    error: typeof row.error === 'string' ? row.error : null,
+    createdAt: row.created_at as string,
+  };
+}
+
+/** Every queued meal, in the order they were eaten. */
+export function dbGetPendingEstimates(): PendingEstimate[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    'SELECT * FROM pending_estimates ORDER BY at_iso ASC, created_at ASC'
+  );
+  return rows.map(rowToPendingEstimate).filter((p): p is PendingEstimate => p !== null);
+}
+
+/** Inserts a row, or rewrites it in place when the id is already queued. */
+export function dbSavePendingEstimate(p: PendingEstimate): void {
+  db.runSync(
+    `INSERT OR REPLACE INTO pending_estimates
+       (id, description, slot, at_iso, meal_plan_entry_id, context, status, estimate, estimated_at, error, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      p.id,
+      p.description,
+      p.slot,
+      p.atISO,
+      p.mealPlanEntryId,
+      JSON.stringify(p.context),
+      p.status,
+      p.estimate ? JSON.stringify(p.estimate) : null,
+      p.estimatedAtISO,
+      p.error,
+      p.createdAt,
+    ]
+  );
+}
+
+export function dbDeletePendingEstimate(id: string): void {
+  db.runSync('DELETE FROM pending_estimates WHERE id = ?', [id]);
 }
 
 export function dbGetMealPlanEntry(id: string): MealPlanEntry | null {
