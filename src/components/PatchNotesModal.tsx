@@ -19,7 +19,7 @@ import { format } from 'date-fns/format';
 import { parseISO } from 'date-fns/parseISO';
 import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, lineHeight, border, animation, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, lineHeight, border, animation, interaction, sheetBottomInset, type Colors } from '../theme';
 import { patchNotes } from '../utils/patchNotes';
 import { useSettingsStore, type PatchNoteQaStatus } from '../store/useSettingsStore';
 import { haptics } from '../utils/haptics';
@@ -233,7 +233,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   sheetOuter: {
     paddingHorizontal: spacing.md,
-    paddingBottom: 34,
+    paddingBottom: sheetBottomInset,
   },
   handleArea: {
     alignItems: 'center',

@@ -1022,6 +1022,23 @@ describe('changing an estimate\'s amount (#2914)', () => {
     expect(patch.sourcePanel.amounts.calorieKcal).toBe(600);
   });
 
+  it('scales an estimate\'s breakdown with its total and keeps the unscaled lines in the whole', () => {
+    const row = pizza();
+    row.nutrition.breakdown = [
+      { label: 'Crust', amounts: { calorieKcal: 400 } },
+      { label: 'Pepperoni', amounts: { calorieKcal: 200, fatG: 15 } },
+    ];
+    const patch = estimateAmountPatch(row, 3 / 2)!;
+    expect(patch.nutrition.breakdown).toEqual([
+      { label: 'Crust', amounts: { calorieKcal: 600 } },
+      { label: 'Pepperoni', amounts: { calorieKcal: 300, fatG: 22.5 } },
+    ]);
+    expect(patch.sourcePanel.breakdown?.[0].amounts.calorieKcal).toBe(400);
+    // Choosing the original amount again puts the lines back exactly.
+    const back = estimateAmountPatch({ ...row, nutrition: patch.nutrition, sourcePanel: patch.sourcePanel }, 1)!;
+    expect(back.nutrition.breakdown?.[0].amounts.calorieKcal).toBe(400);
+  });
+
   it('scales it down the same way', () => {
     const patch = estimateAmountPatch(pizza(), 1 / 2)!;
     expect(patch.nutrition.amounts.calorieKcal).toBe(300);

@@ -1594,7 +1594,7 @@ function makeStyles(colors: Colors) {
     offerAdd: {
       width: 32,
       height: 32,
-      borderRadius: 16,
+      borderRadius: radius.full,
       backgroundColor: colors.accentSubtle,
       alignItems: 'center',
       justifyContent: 'center',
@@ -1615,7 +1615,7 @@ function makeStyles(colors: Colors) {
     estimateIcon: {
       width: 32,
       height: 32,
-      borderRadius: 16,
+      borderRadius: radius.full,
       backgroundColor: colors.accentSubtle,
       alignItems: 'center',
       justifyContent: 'center',

@@ -5056,6 +5056,25 @@ export interface FoodNutrition {
    * Absent for every source that states no category, which is the ordinary case.
    */
   foodCategory?: string | null;
+  /**
+   * What an estimated meal's total was made of, one line per thing the
+   * description named ("birch beer", "soft pretzel"), kept so the split the
+   * person saw before logging is still there on the row afterwards.
+   *
+   * Only an `estimated` panel carries one, and only when the model split the
+   * meal. Each line states figures and nothing else: no source and no
+   * confidence, since the claim is still the meal's (`nutritionEstimate.ts`).
+   * It scales with the total in `estimateAmountPatch` and is dropped by every
+   * path that builds a panel from more than one food (`combineFoodNutrition`),
+   * because that panel is no longer the estimate the lines were split from.
+   */
+  breakdown?: FoodBreakdownLine[];
+}
+
+/** One component of an estimated meal. See `FoodNutrition.breakdown`. */
+export interface FoodBreakdownLine {
+  label: string;
+  amounts: Partial<Record<NutrientKey, number>>;
 }
 
 /**

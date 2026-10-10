@@ -122,6 +122,7 @@ Where each component can appear.
 - `src/components/CountStepper.tsx` — on ArchivedScreen, AutomationsScreen, BackfillScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, GroceryScreen, JournalScreen, KitchenScreen, MealPlanScreen, MedicationDetailScreen, MetersScreen, +22 more
 - `src/components/CreatedTaskToast.tsx` — on TodayScreen
 - `src/components/CsvExportSheet.tsx` — on FoodLogScreen, MoodScreen
+- `src/components/DayChipRow.tsx` — on MealPlanScreen, RecipeDetailScreen, RecipesScreen
 - `src/components/DayContextRow.tsx` — on TodayScreen
 - `src/components/DayTimeline.tsx` — on CalendarScreen
 - `src/components/DeliverableKindPicker.tsx` — on ArchivedScreen, AutomationsScreen, CalendarScreen, CategoryDetailScreen, MetersScreen, PersonDetailScreen, ProjectDetailScreen, RemindersScreen, SavedViewDetailScreen, SearchScreen, StackDetailScreen, StacksScreen, +4 more

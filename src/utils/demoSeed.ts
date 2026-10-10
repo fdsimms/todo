@@ -2518,6 +2518,18 @@ function seedFoodLog(today: Date): void {
         sourceId: null,
         portions: [],
         recordedAt: subDays(today, 3).toISOString(),
+        // The split the estimate showed before it was logged, which the
+        // expanded row lists under "Made of". The lines add up to the total.
+        breakdown: [
+          {
+            label: 'Cheeseburger',
+            amounts: { calorieKcal: 840, fatG: 43, satFatG: 16, carbsG: 40, proteinG: 40, sodiumMg: 1000 },
+          },
+          {
+            label: 'Regular fries',
+            amounts: { calorieKcal: 410, fatG: 25, satFatG: 6, carbsG: 68, proteinG: 5, sodiumMg: 470 },
+          },
+        ],
       },
       slot: 'lunch',
       at,

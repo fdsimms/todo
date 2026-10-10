@@ -27,8 +27,7 @@ import {
   lineHeight,
   border,
   interaction,
-  type Colors,
-} from '../theme';
+  type Colors, sheetBottomInset,} from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { estimatedMinutesFor, formatDuration } from '../utils/effort';
@@ -738,7 +737,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     top: 0,
     bottom: 0,
     paddingHorizontal: spacing.md,
-    paddingBottom: 34,
+    paddingBottom: sheetBottomInset,
   },
   card: {
     flex: 1,
