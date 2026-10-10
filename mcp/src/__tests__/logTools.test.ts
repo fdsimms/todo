@@ -69,6 +69,43 @@ describe('logFood', () => {
     expect(logged.note).toMatch(/Apple Health/);
   });
 
+  it('keeps a breakdown on the entry, previews it, and says when a part was dropped', () => {
+    const parts: { label: string; amounts: Record<string, number> }[] = [
+      { label: 'Birch beer', amounts: { calorieKcal: 250, vibes: 1 } },
+      { label: 'Soft pretzel', amounts: { calorieKcal: 300 } },
+      { label: '   ', amounts: { calorieKcal: 5 } },
+    ];
+    const preview = logFood(replica, { label: 'Lunch', amounts: { calorieKcal: 550 }, breakdown: parts });
+    expect(preview.breakdown).toEqual([
+      { label: 'Birch beer', amounts: { calorieKcal: 250 } },
+      { label: 'Soft pretzel', amounts: { calorieKcal: 300 } },
+    ]);
+    expect(preview.breakdownDropped).toBe(1);
+    expect(replica.foodLogEntries('2000-01-01', '2100-01-01')).toHaveLength(0);
+
+    const logged = logFood(replica, { label: 'Lunch', amounts: { calorieKcal: 550 }, breakdown: parts, apply: true });
+    const entry = replica.foodLogEntries('2000-01-01', '2100-01-01').find(e => e.id === logged.id)!;
+    expect(entry.nutrition.breakdown).toHaveLength(2);
+    expect(entry.nutrition.source).toBe('estimated');
+  });
+
+  it('logs with no breakdown key when none was given', () => {
+    const logged = logFood(replica, { label: 'Tea', amounts: { calorieKcal: 2 }, apply: true });
+    const entry = replica.foodLogEntries('2000-01-01', '2100-01-01').find(e => e.id === logged.id)!;
+    expect('breakdown' in entry.nutrition).toBe(false);
+    expect(logged.breakdownDropped).toBeUndefined();
+  });
+
+  it('takes a new breakdown with restated amounts on an estimated entry', () => {
+    const logged = logFood(replica, { label: 'Lunch', amounts: { calorieKcal: 600 }, apply: true });
+    updateFoodEntry(replica, logged.id!, {
+      amounts: { calorieKcal: 900 },
+      breakdown: [{ label: 'Rice', amounts: { calorieKcal: 900 } }],
+    });
+    const entry = replica.foodLogEntries('2000-01-01', '2100-01-01').find(e => e.id === logged.id)!;
+    expect(entry.nutrition.breakdown).toEqual([{ label: 'Rice', amounts: { calorieKcal: 900 } }]);
+  });
+
   it('refuses an entry with no figures', () => {
     expect(() => logFood(replica, { label: 'Tea', amounts: {} })).toThrow(/at least one amount/);
   });

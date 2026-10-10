@@ -1447,13 +1447,20 @@ function registerWriteTools(
     }
   );
 
+  /** The parts of an estimated meal. The app reads each one as it reads the total, and drops what it cannot. */
+  const breakdownSchema = z
+    .array(z.object({ label: z.string().min(1), amounts: z.record(z.number().nonnegative()) }))
+    .max(12)
+    .describe('The total split across what the description named, one line per thing, each with its own amounts. Skip for a single item.');
+
   server.tool(
     'log_food',
-    `Log something the person ate, with your estimate of its nutrition for the whole amount eaten. Amounts are keyed ${ESTIMATE_KEY_LIST.join(', ')}; leave out any you cannot estimate (absent is not zero). Vitamins and minerals are not estimated: a supplement's come from its label (set_supplement_nutrients). Without apply: true it only shows the figures as the app read them: show the person, and log it once they agree, since the app never stores an estimate nobody looked at. The entry is marked as estimated. It is not in Apple Health when this returns: the phone writes it there the next time the app is opened, if Health writing is on there, so never say it is already in Health.`,
+    `Log something the person ate, with your estimate of its nutrition for the whole amount eaten. Amounts are keyed ${ESTIMATE_KEY_LIST.join(', ')}; leave out any you cannot estimate (absent is not zero). Vitamins and minerals are not estimated: a supplement's come from its label (set_supplement_nutrients). Without apply: true it only shows the figures as the app read them: show the person, and log it once they agree, since the app never stores an estimate nobody looked at. When the description names more than one thing (a drink, a pretzel and a dessert), also give a breakdown: one line per thing, each with its own amounts, adding up to the total. It is kept on the entry so the person can see what each part contributed; skip it for a single item. The entry is marked as estimated. It is not in Apple Health when this returns: the phone writes it there the next time the app is opened, if Health writing is on there, so never say it is already in Health.`,
     {
       label: z.string().min(1),
       quantity: z.string().optional().describe('How much, in words: "1 bowl", "2 slices".'),
       amounts: z.record(z.number().nonnegative()),
+      breakdown: breakdownSchema.optional(),
       slot: z.enum(KITCHEN_MEAL_SLOTS as unknown as [MealSlot, ...MealSlot[]]).nullable().optional(),
       at: z.string().optional().describe('When it was eaten: an ISO date-time, or YYYY-MM-DD. Default now.'),
       apply: z.boolean().optional(),
@@ -1650,13 +1657,14 @@ function registerWriteTools(
 
   server.tool(
     'update_food_entry',
-    'Correct a food log entry: its name, its meal slot, and its amount. Two kinds of entry take an amount differently, so check list_food_log first. An entry that was estimated takes quantity and amounts (amounts replaces every figure, so give the full set, and drops its breakdown, since the lines would no longer add up). An entry measured against a food\'s own label or database record (it has grams and a database-style label) takes grams, or quantity such as "2 servings", and its nutrients are re-measured from that record, as changing the amount in the app does; do not restate its amounts. A dish logged from a recipe, and an entry whose record is gone, are changed in the app. One already written to Apple Health is changed only on the phone. To log a different amount as a new entry instead of changing this one, use duplicate_food_entry with grams.' + dayNote,
+    'Correct a food log entry: its name, its meal slot, and its amount. Two kinds of entry take an amount differently, so check list_food_log first. An entry that was estimated takes quantity and amounts (amounts replaces every figure, so give the full set; the old breakdown is dropped, since its lines would no longer add up, so give a new breakdown with it when the meal has parts). An entry measured against a food\'s own label or database record (it has grams and a database-style label) takes grams, or quantity such as "2 servings", and its nutrients are re-measured from that record, as changing the amount in the app does; do not restate its amounts. A dish logged from a recipe, and an entry whose record is gone, are changed in the app. One already written to Apple Health is changed only on the phone. To log a different amount as a new entry instead of changing this one, use duplicate_food_entry with grams.' + dayNote,
     {
       id: entryId,
       label: z.string().min(1).optional(),
       quantity: z.string().optional().describe('Estimated entry: the amount in words. Measured entry: the new amount to re-measure ("2 servings").'),
       grams: z.number().positive().optional().describe('Measured entry only: the new weight in grams. The nutrients are re-scaled from its food record.'),
       amounts: z.record(z.number().nonnegative()).optional(),
+      breakdown: breakdownSchema.optional(),
       slot: z.enum(KITCHEN_MEAL_SLOTS as unknown as [MealSlot, ...MealSlot[]]).nullable().optional(),
     },
     async ({ id, ...patch }) => {
