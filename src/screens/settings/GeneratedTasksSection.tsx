@@ -1315,8 +1315,8 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
     <>
     <SettingsSection
       // No label: this is the whole of the screen, so its own header is
-      // already saying "Automations" directly above it.
-      footer="Deleting an added task stops it from being added again, except meal tasks, which stay gone for the rest of the day. Activity shows what each one added."
+      // already saying "Automations" directly above it. No footer either: a
+      // paragraph under thirty rows is one nobody scrolls far enough to read.
     >
       {/* Above the generators rather than inside any one of them, because it
           applies to all of them at once: it changes when the whole list below
