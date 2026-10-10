@@ -855,6 +855,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const [openFields, setOpenFields] = useState<Partial<Record<FieldKey, boolean>>>({});
   const [showTimeOfDay, setShowTimeOfDay] = useState(false);
   const [showTimeWindow, setShowTimeWindow] = useState(false);
+  const [showPaceWindow, setShowPaceWindow] = useState(false);
 
   const [newTag, setNewTag] = useState('');
   const [addingTag, setAddingTag] = useState(false);
@@ -3193,6 +3194,76 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   };
 
   // ==== render. Everything below is JSX; grep `label="…"` for a card ====
+  // The Start / End pills and their pickers, shared by the Time window row and
+  // a daily target's Pace window row: both edit the same windowStart/windowEnd.
+  const windowControls = (
+      <>
+        <View style={styles.windowPillRow}>
+          {polarity !== 'negative' && (
+          <TouchableOpacity
+            style={[
+              styles.timePill, styles.windowPill,
+              !!windowStart && styles.timePillActive,
+              windowPickerMode === 'start' && styles.timePillEditing,
+            ]}
+            onPress={() => openWindowPicker('start')}
+          >
+            <Text style={[styles.timePillText, !!windowStart && styles.timePillTextActive]}>
+              {windowBoundLabel(windowStart, windowStartSun) ?? 'Start'}
+            </Text>
+          </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            style={[
+              styles.timePill, styles.windowPill,
+              !!windowEnd && styles.timePillActive,
+              windowPickerMode === 'end' && styles.timePillEditing,
+            ]}
+            onPress={() => openWindowPicker('end')}
+          >
+            <Text style={[styles.timePillText, !!windowEnd && styles.timePillTextActive]}>
+              {windowBoundLabel(windowEnd, windowEndSun) ?? 'End'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+        {windowPickerMode !== 'none' && (
+          <View style={styles.windowKindRow}>
+            <SegmentedControl
+              options={WINDOW_KIND_OPTIONS}
+              value={windowPickerKind}
+              onChange={chooseWindowKind}
+              label={windowPickerMode === 'start' ? 'Start at' : 'End at'}
+            />
+          </View>
+        )}
+        {windowPickerMode !== 'none' && windowPickerKind === 'time' && (
+          <InlineTimePicker
+            value={windowPickerDate}
+            onChange={setWindowPickerDate}
+            onCancel={() => setWindowPickerMode('none')}
+            onConfirm={confirmWindowPicker}
+          />
+        )}
+        {windowPickerMode !== 'none' && windowPickerKind !== 'time' && (
+          <SunBoundPanel
+            event={windowPickerKind}
+            anchor={parseSunAnchor(windowSunOf(windowPickerMode))}
+            resolved={windowPickerMode === 'start' ? windowStart : windowEnd}
+            dayLabel={dueDate && getTaskDayStart(dueDate, dayResetTime).getTime() !== getCurrentDayStart().getTime()
+              ? `On ${format(dueDate, 'MMM d')}`
+              : 'Today'}
+            hasLocation={!!daySunLocation}
+            locationStatus={sunLocationStatus}
+            unavailable={sunUnavailable}
+            onSide={setWindowSunSide}
+            onMinutes={setWindowSunMinutes}
+            onUseLocation={saveCurrentLocationForSun}
+            onDone={() => setWindowPickerMode('none')}
+          />
+        )}
+      </>
+  );
+
   return (
     <EditorSheet
       visible={visible}
@@ -3880,7 +3951,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
           }] : []),
           ...(kind === 'target' ? [{
             key: 'dailyTarget', label: quotaPeriod === 'week' ? 'Weekly target' : 'Daily target', set: true,
-            keywords: ['quota', 'goal', 'times a day', 'times a week', 'weekly', 'prorate', 'this week', 'fewer', 'count', 'interval', 'cadence', 'every', 'minutes', 'nudge', 'notify', 'break', 'pace'],
+            keywords: ['quota', 'goal', 'times a day', 'times a week', 'weekly', 'prorate', 'this week', 'fewer', 'count', 'interval', 'cadence', 'every', 'minutes', 'nudge', 'notify', 'break', 'pace', 'window', 'hours', 'between', 'start', 'end'],
             node: (<>
               <EditorRow
                 icon="speedometer-outline"
@@ -4017,6 +4088,26 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                           : 'The count resets each day.'}
                       </Text>
                       <View style={styles.sep} />
+                      {quotaPeriod === 'day' && (
+                        <>
+                          {/* The same windowStart/windowEnd as the Time window
+                              row under Schedule, surfaced here because it is
+                              what the daily pace is measured across. */}
+                          <EditorRow
+                            icon="timer-outline"
+                            label="Pace window"
+                            hint="The hours the target is spread across. Without one, your active hours are used. The task also expires when the window ends."
+                            value={timeWindowSummary ?? `Active hours, ${formatHHMM(activeHoursStart, use24HourTime)} to ${formatHHMM(activeHoursEnd, use24HourTime)}`}
+                            expanded={showPaceWindow}
+                            onPress={() => { animateLayout(); setShowPaceWindow(v => !v); }}
+                            onClear={(windowStart || windowEnd)
+                              ? () => { setWindowStart(null); setWindowEnd(null); setWindowStartSun(null); setWindowEndSun(null); setWindowPickerMode('none'); applyDerivedTargetCount({ windowStart: null, windowEnd: null }); }
+                              : undefined}
+                          />
+                          {showPaceWindow && windowControls}
+                          <View style={styles.sep} />
+                        </>
+                      )}
                       {/* A countdown for each unit, kept in `timedMinutes`. It
                           restarts every time a unit is logged and never blocks
                           logging one early. */}
@@ -4089,7 +4180,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                       <Text style={styles.targetStepperCaption}>
                         {quotaIntervalMinutes === null
                           ? 'Set this to space them evenly instead of picking a number.'
-                          : 'Set a time window under Schedule to say when the day starts and ends.'}
+                          : 'Set a pace window above to say when the day starts and ends.'}
                       </Text>
                       <View style={styles.sep} />
                       <TouchableOpacity
@@ -5221,73 +5312,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                 ? () => { setWindowStart(null); setWindowEnd(null); setWindowStartSun(null); setWindowEndSun(null); setWindowPickerMode('none'); applyDerivedTargetCount({ windowStart: null, windowEnd: null }); }
                 : undefined}
             />
-            {showTimeWindow && (
-              <>
-                <View style={styles.windowPillRow}>
-                  {polarity !== 'negative' && (
-                  <TouchableOpacity
-                    style={[
-                      styles.timePill, styles.windowPill,
-                      !!windowStart && styles.timePillActive,
-                      windowPickerMode === 'start' && styles.timePillEditing,
-                    ]}
-                    onPress={() => openWindowPicker('start')}
-                  >
-                    <Text style={[styles.timePillText, !!windowStart && styles.timePillTextActive]}>
-                      {windowBoundLabel(windowStart, windowStartSun) ?? 'Start'}
-                    </Text>
-                  </TouchableOpacity>
-                  )}
-                  <TouchableOpacity
-                    style={[
-                      styles.timePill, styles.windowPill,
-                      !!windowEnd && styles.timePillActive,
-                      windowPickerMode === 'end' && styles.timePillEditing,
-                    ]}
-                    onPress={() => openWindowPicker('end')}
-                  >
-                    <Text style={[styles.timePillText, !!windowEnd && styles.timePillTextActive]}>
-                      {windowBoundLabel(windowEnd, windowEndSun) ?? 'End'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-                {windowPickerMode !== 'none' && (
-                  <View style={styles.windowKindRow}>
-                    <SegmentedControl
-                      options={WINDOW_KIND_OPTIONS}
-                      value={windowPickerKind}
-                      onChange={chooseWindowKind}
-                      label={windowPickerMode === 'start' ? 'Start at' : 'End at'}
-                    />
-                  </View>
-                )}
-                {windowPickerMode !== 'none' && windowPickerKind === 'time' && (
-                  <InlineTimePicker
-                    value={windowPickerDate}
-                    onChange={setWindowPickerDate}
-                    onCancel={() => setWindowPickerMode('none')}
-                    onConfirm={confirmWindowPicker}
-                  />
-                )}
-                {windowPickerMode !== 'none' && windowPickerKind !== 'time' && (
-                  <SunBoundPanel
-                    event={windowPickerKind}
-                    anchor={parseSunAnchor(windowSunOf(windowPickerMode))}
-                    resolved={windowPickerMode === 'start' ? windowStart : windowEnd}
-                    dayLabel={dueDate && getTaskDayStart(dueDate, dayResetTime).getTime() !== getCurrentDayStart().getTime()
-                      ? `On ${format(dueDate, 'MMM d')}`
-                      : 'Today'}
-                    hasLocation={!!daySunLocation}
-                    locationStatus={sunLocationStatus}
-                    unavailable={sunUnavailable}
-                    onSide={setWindowSunSide}
-                    onMinutes={setWindowSunMinutes}
-                    onUseLocation={saveCurrentLocationForSun}
-                    onDone={() => setWindowPickerMode('none')}
-                  />
-                )}
-              </>
-            )}
+            {showTimeWindow && windowControls}
               </>
             ),
           },
