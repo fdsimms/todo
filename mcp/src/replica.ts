@@ -445,8 +445,16 @@ export interface FoodInput {
   quantity?: string;
   /** Estimated amounts for the whole of what was eaten, by nutrient key. */
   amounts: Record<string, number>;
+  /** The estimate split across what it named, each line stating its own figures. */
+  breakdown?: FoodBreakdownInput[];
   slot?: MealSlot | null;
   at?: Date;
+}
+
+/** One component of an estimated meal, as an agent states it. Read by `readNutritionEstimate`. */
+export interface FoodBreakdownInput {
+  label: string;
+  amounts: Record<string, number>;
 }
 
 export interface MoodInput {
@@ -521,6 +529,8 @@ export interface FoodPatch {
   quantity?: string;
   /** Replaces every figure. Only an estimated entry has figures an agent may restate. */
   amounts?: Record<string, number>;
+  /** With `amounts`: the parts of the restated total. Without it the restated entry has none. */
+  breakdown?: FoodBreakdownInput[];
   slot?: MealSlot | null;
   /**
    * A new weight for an entry measured against a food record. The figures are
@@ -4081,7 +4091,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       /* eslint-enable @typescript-eslint/no-require-imports */
       // The app's own reader for a model's estimate: unknown keys dropped, a
       // figure nobody stated left absent rather than zero.
-      const read = estimate.readNutritionEstimate({ label: input.label, quantity: input.quantity ?? '', amounts: input.amounts, basis: 'typical', confidence: 'medium' });
+      const read = estimate.readNutritionEstimate({ label: input.label, quantity: input.quantity ?? '', amounts: input.amounts, breakdown: input.breakdown, basis: 'typical', confidence: 'medium' });
       if (!read) throw new Error('A food entry needs a name and at least one nutrient amount (calorieKcal, proteinG, carbsG, fatG, ...).');
       const panel = estimate.estimateToPanel(read);
       if (!panel) throw new Error('A food entry needs at least one nutrient amount.');
@@ -4197,6 +4207,9 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (remeasures && patch.amounts !== undefined) {
         throw new Error('A measured entry\'s figures come from its food record, so give a new amount (grams or quantity) or new amounts, not both.');
       }
+      if (patch.breakdown !== undefined && patch.amounts === undefined) {
+        throw new Error('A breakdown has to add up to the total, so give the amounts it splits with it.');
+      }
       const touchesFigures = patch.amounts !== undefined || patch.quantity !== undefined;
       if (touchesFigures && !estimated && !remeasures) {
         throw new Error('Only an estimated entry has figures to restate. This one was measured against a food\'s own label or database record, so correct it in the app, which re-measures it.');
@@ -4213,7 +4226,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         nutrition = measured.nutrition!;
       } else if (patch.amounts !== undefined) {
         const estimate = require('../../src/utils/nutritionEstimate') as typeof import('../../src/utils/nutritionEstimate'); // eslint-disable-line @typescript-eslint/no-require-imports
-        const read = estimate.readNutritionEstimate({ label: patch.label ?? entry.label, quantity: patch.quantity ?? entry.quantity, amounts: patch.amounts, basis: 'typical', confidence: 'medium' });
+        const read = estimate.readNutritionEstimate({ label: patch.label ?? entry.label, quantity: patch.quantity ?? entry.quantity, amounts: patch.amounts, breakdown: patch.breakdown, basis: 'typical', confidence: 'medium' });
+        // Refused rather than trimmed: see `breakdownMismatch`.
+        const mismatch = read && patch.breakdown ? estimate.breakdownMismatch(read.amounts, estimate.readBreakdown(patch.breakdown)) : null;
+        if (mismatch) throw new Error(`The breakdown has to add up to the total. ${mismatch}. Fix the parts or the total and try again.`);
         const panel = read && estimate.estimateToPanel(read);
         if (!panel) throw new Error('A food entry needs at least one nutrient amount.');
         nutrition = panel;

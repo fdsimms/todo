@@ -282,6 +282,16 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel
                   the figures are what the choice is being made on. A
                   count already says its amount in the row above. */}
               {!counted && !!patch.quantity && <Text style={styles.amount}>{patch.quantity}</Text>}
+              {/* The parts scale with the total, so the choice can be checked
+                  against what each one comes to. */}
+              {(patch.nutrition.breakdown ?? []).map((line, index) => (
+                <View key={`${index}-${line.label}`} style={styles.partRow}>
+                  <Text style={[styles.amount, styles.partLabel]}>{line.label}</Text>
+                  {line.amounts.calorieKcal !== undefined && (
+                    <Text style={styles.amount}>{Math.round(line.amounts.calorieKcal).toLocaleString()} cal</Text>
+                  )}
+                </View>
+              ))}
             </View>
           )}
           <Text style={styles.hint}>
@@ -361,5 +371,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   previewBlock: { gap: spacing.xxs, marginTop: spacing.xs },
   preview: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold },
   amount: { color: colors.textSecondary, fontSize: font.sm },
+  partRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  partLabel: { flex: 1, marginRight: spacing.md },
   hint: { color: colors.textSecondary, fontSize: font.xs, lineHeight: 16 },
 });
