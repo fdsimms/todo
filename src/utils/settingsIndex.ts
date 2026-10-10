@@ -859,6 +859,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['sat fat', 'sugar', 'sodium', 'nutrition', 'food log', 'health', 'budget', 'left'], kitchen: true },
   { id: 'limitsTodayCategory', groupId: 'generated', label: 'Show them under', section: 'Stay under limits on Today',
     keywords: ['category', 'where', 'section', 'limit', 'health'], kitchen: true },
+  { id: 'limitsTodayNutrients', groupId: 'generated', label: 'Nutrients shown', section: 'Stay under limits on Today',
+    keywords: ['choose', 'hide', 'sat fat', 'sodium', 'sugar', 'caffeine', 'cholesterol', 'limit'], kitchen: true },
 
   // `kitchen`-gated to match the row itself, which is hidden with the
   // groceries area: the only feature routed on-device today lives there, so a

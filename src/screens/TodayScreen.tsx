@@ -177,7 +177,7 @@ import { useCalendarStore } from '../store/useCalendarStore';
 import { useHealthStore } from '../store/useHealthStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { foodLogTotals } from '../utils/foodLog';
-import { activeLimits } from '../utils/nutritionTargets';
+import { activeLimits, limitsShownOnToday } from '../utils/nutritionTargets';
 import { useWeatherStore } from '../store/useWeatherStore';
 import { weatherConditionAdjective, weatherIconFor } from '../utils/weatherCondition';
 import { capitalize } from '../utils/capitalize';
@@ -1799,6 +1799,7 @@ export function TodayScreen() {
   const stepGoal = useSettingsStore(s => s.stepGoal);
   const healthToday = useHealthStore(s => s.today);
   const limitsTodayCategory = useSettingsStore(s => s.limitsTodayCategory);
+  const limitsTodayHidden = useSettingsStore(s => s.limitsTodayHidden);
   const nutritionTargets = useSettingsStore(useShallow(s => s.nutritionTargets));
   const nutritionLimits = useSettingsStore(useShallow(s => s.nutritionLimits));
   const limitWarnPercent = useSettingsStore(s => s.limitWarnPercent);
@@ -2630,12 +2631,13 @@ export function TodayScreen() {
     // A row per Stay under limit, read off today's food log. Off until the
     // Nutrition sheet's "Show on Today" files them under a category, for the
     // reason Health's rows are gated on theirs.
-    if (limitsTodayCategory && activeLimits(nutritionTargets, nutritionLimits).length > 0) {
+    const todayLimits = limitsShownOnToday(nutritionLimits, limitsTodayHidden);
+    if (limitsTodayCategory && activeLimits(nutritionTargets, todayLimits).length > 0) {
       const todayFoodKey = getLogicalDayKey(new Date(), dayResetTime);
       rows.push(...limitContextRows(
         foodLogTotals(recentFoodEntries(todayFoodKey, todayFoodKey)).total,
         nutritionTargets,
-        nutritionLimits,
+        todayLimits,
         { category: limitsTodayCategory, warnPercent: limitWarnPercent },
       ));
     }
@@ -2680,7 +2682,7 @@ export function TodayScreen() {
     isEventHidden, movedEventNotes, movedEvents, liveTaskIds,
     mealsOnToday, todayMealEntries, recipesById, mealCookTaskCategory, allTasks,
     healthToday, healthCategory, stepGoal, dayResetTime,
-    limitsTodayCategory, nutritionTargets, nutritionLimits, limitWarnPercent,
+    limitsTodayCategory, limitsTodayHidden, nutritionTargets, nutritionLimits, limitWarnPercent,
     recentFoodEntries, foodLogCount, foodLogWindow,
     minuteTick,
   ]);

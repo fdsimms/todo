@@ -9,6 +9,8 @@ import { useCalendarStore } from '../../store/useCalendarStore';
 import { HEALTH_CATEGORY, useCategoryStore } from '../../store/useCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { categoryLabel } from '../../utils/categoryLabel';
+import { LIMIT_ROW_NAME, activeLimits } from '../../utils/nutritionTargets';
+import { NUTRIENT_LABEL } from '../../utils/foodNutrition';
 import { haptics } from '../../utils/haptics';
 import {
   CALENDAR_READ_KINDS,
@@ -1475,6 +1477,39 @@ export function GeneratedTasksSection() {
                   ).filter(o => !o.pinned)}
                 />
               </View>
+              {activeLimits(s.nutritionTargets, s.nutritionLimits).length > 0 && (
+                <>
+                  <View style={styles.sep} />
+                  <SettingsRow
+                    entryId="limitsTodayNutrients"
+                    icon="list-outline"
+                    label="Nutrients shown"
+                    hint="Turn off a nutrient to leave its row off Today. Its limit still applies everywhere else."
+                    tight
+                  />
+                  <View style={styles.pillGroupRow}>
+                    <PillGroup
+                      noun="nutrient"
+                      options={activeLimits(s.nutritionTargets, s.nutritionLimits).map(key => {
+                        const label = LIMIT_ROW_NAME[key] ?? NUTRIENT_LABEL[key].label;
+                        const shown = !s.limitsTodayHidden.includes(key);
+                        return {
+                          key,
+                          label,
+                          selected: shown,
+                          accessibilityLabel: `${label} on Today: ${shown ? 'shown' : 'hidden'}`,
+                          onPress: () => {
+                            haptics.tap();
+                            s.setLimitsTodayHidden(
+                              shown ? [...s.limitsTodayHidden, key] : s.limitsTodayHidden.filter(k => k !== key),
+                            );
+                          },
+                        };
+                      })}
+                    />
+                  </View>
+                </>
+              )}
             </>
           )}
         </>
