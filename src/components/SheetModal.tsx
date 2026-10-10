@@ -17,6 +17,9 @@ import {
   type PresentationLevel,
 } from '../utils/sheetModal';
 
+// How long a sheet may stay registered before development builds warn about it.
+const STUCK_SHEET_WARN_MS = 5 * 60 * 1000;
+
 type Props = React.ComponentProps<typeof Modal> & {
   /**
    * What to call this sheet when the sibling-Modal check below reports it.
@@ -321,7 +324,21 @@ export function SheetModal({ visible = true, children, name, preempts = false, .
     // For the Escape shortcut (`closeTopmostSheet`). The lock screen is exempt
     // for the same reason it is exempt from dismiss-all above.
     const untrack = preempts ? null : trackOpenSheet(id, () => onRequestCloseRef.current?.({} as never));
+    // A sheet that never lets go of its place keeps `FreezeWhenBlurred` from
+    // freezing any tab for the rest of the session (`shouldFreezeTab`), so every
+    // visited tab re-renders on each store write and tab switches slow down.
+    // Nothing else reports it, so name the sheet once it has been up this long.
+    const stuckTimer = __DEV__
+      ? setTimeout(() => {
+          console.warn(
+            `SheetModal: "${name ?? rest.testID ?? 'an unnamed sheet'}" has been presented for ` +
+              `${STUCK_SHEET_WARN_MS / 60000} minutes. If nobody is looking at it, it is stuck, ` +
+              'and while it is registered no blurred tab freezes.',
+          );
+        }, STUCK_SHEET_WARN_MS)
+      : null;
     return () => {
+      if (stuckTimer) clearTimeout(stuckTimer);
       untrack?.();
       releasePresentation(parentLevel, id);
     };
