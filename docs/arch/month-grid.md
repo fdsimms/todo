@@ -72,6 +72,11 @@ exist, which is why the whole feature is a util plus a screen.
   a week goes through `stepDay`, which moves the month along when the week crosses into the next.
   A task can land on two days of one week (due Monday, deadline Friday), so its rows are keyed by
   day and task, the same per-row expansion the pinned copy on Today uses.
+- **Scrolling the week marks the day you're on** (`activeWeekDay`, `src/utils/weekScrollSpy.ts`),
+  but only for a scroll the reader started: the list's own `scrollTo` to a tapped day passes the
+  days between and can stop short of the tapped one at the end of the list.
+- **A week day's Completed rows start folded behind a count.** Every past day's completions are
+  full `TaskItem`s, and mounting them for seven days at once is what made the week slow to open.
 
 ## What else the grid shows about a day
 
