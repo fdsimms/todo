@@ -4642,33 +4642,17 @@ export function TodayScreen() {
       badge: activeFilterCount,
       accessibilityLabel: 'Sort and filter',
     }] : []),
-    ...(viewMode === 'today' && !featureHidden('suggestedPins', simpleMode)
-      && pinnedTasks.length < MAX_SUGGESTED_PINS && visibleTasks.length > 0
-      ? [{
-          icon: 'color-wand' as const,
-          onPress: () => setSuggestedPinsVisible(true),
-          active: pinnedTasks.length === 0,
-          tint: 'orange' as const,
-          accessibilityLabel: 'Suggest tasks to pin',
-        }]
-      : []),
-    // A focus session outlives the switch being flipped, so the way back into a
-    // running one stays whatever the mode says — same call the recipe-timer dot
-    // on the More tab makes about `kitchenEnabled`. Only starting a new one goes.
-    ...(viewMode === 'today' && (!featureHidden('focusSessions', simpleMode) || focusSession)
+    // Suggested pins and starting a focus session live in the "…" menu now (two
+    // more icon-only buttons on a screen whose job is the list). A *running*
+    // focus session keeps its header button whatever the mode says, the same
+    // call the recipe-timer dot on the More tab makes about `kitchenEnabled`:
+    // only starting a new one is tucked away.
+    ...(viewMode === 'today' && focusSession
       ? [{
           icon: 'hourglass-outline' as const,
-          onPress: () => {
-            if (focusSession) {
-              setFocusSessionVisible(true);
-              return;
-            }
-            setFocusFromPinned(false);
-            setFocusFromReachOuts(false);
-            setFocusSetupVisible(true);
-          },
-          active: focusSession !== null,
-          accessibilityLabel: focusSession ? 'Focus session running' : 'Start a focus session',
+          onPress: () => setFocusSessionVisible(true),
+          active: true,
+          accessibilityLabel: 'Focus session running',
         }]
       : []),
     ...(viewMode === 'today'
@@ -5511,6 +5495,17 @@ export function TodayScreen() {
             onLightenDay={visibleTasks.length > 0 && !featureHidden('deload', simpleMode) ? () => {
               setOptionsMenuVisible(false);
               setDeloadVisible(true);
+            } : undefined}
+            onStartFocus={!focusSession && !featureHidden('focusSessions', simpleMode) ? () => {
+              setOptionsMenuVisible(false);
+              setFocusFromPinned(false);
+              setFocusFromReachOuts(false);
+              setFocusSetupVisible(true);
+            } : undefined}
+            onSuggestPins={!featureHidden('suggestedPins', simpleMode)
+              && pinnedTasks.length < MAX_SUGGESTED_PINS && visibleTasks.length > 0 ? () => {
+              setOptionsMenuVisible(false);
+              setSuggestedPinsVisible(true);
             } : undefined}
             plannedLabel={plannedLabel}
             lightenNote={deloadNotes[0] ?? null}

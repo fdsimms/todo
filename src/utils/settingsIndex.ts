@@ -989,10 +989,25 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
  * `visibleSettingsEntries`: a caller that doesn't care (a test, a platform
  * check) gets the whole list, the way it did before the setting existed.
  */
-export function visibleSettingsGroups(platformOS: string, kitchenEnabled = true): SettingsGroup[] {
+export function visibleSettingsGroups(
+  platformOS: string,
+  kitchenEnabled = true,
+  /**
+   * Simplified mode drops a group whose every row it hides. Omitted means the
+   * mode is off, so a caller with no store to read gets the whole list. Only
+   * the index list passes it: `visibleSettingsEntries` needs the groups the
+   * rows live in, and a hidden group's rows are already filtered by `simple`.
+   */
+  simpleMode = false,
+): SettingsGroup[] {
   return SETTINGS_GROUPS.filter(g =>
     (!g.iosOnly || platformOS === 'ios')
-    && (!g.kitchenOnly || kitchenEnabled));
+    && (!g.kitchenOnly || kitchenEnabled)
+    && (!simpleMode || g.screen || SETTINGS_ENTRIES.some(e =>
+      e.groupId === g.id
+      && !e.simple
+      && (kitchenEnabled || !e.kitchen)
+      && (!e.iosOnly || platformOS === 'ios'))));
 }
 
 /**
@@ -1043,8 +1058,8 @@ export function settingsGroup(id: SettingsGroupId): SettingsGroup | undefined {
 export type IndexedSettingsGroup = SettingsGroup & { id: IndexedSettingsGroupId };
 export type IndexedSettingsGroupId = Exclude<SettingsGroupId, 'generated'>;
 
-export function settingsIndexGroups(platformOS: string, kitchenEnabled = true): IndexedSettingsGroup[] {
-  return visibleSettingsGroups(platformOS, kitchenEnabled)
+export function settingsIndexGroups(platformOS: string, kitchenEnabled = true, simpleMode = false): IndexedSettingsGroup[] {
+  return visibleSettingsGroups(platformOS, kitchenEnabled, simpleMode)
     .filter((g): g is IndexedSettingsGroup => !g.screen);
 }
 

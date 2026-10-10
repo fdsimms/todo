@@ -109,6 +109,8 @@ describe('settingsSummaries', () => {
       expect(summarise({ autoRemoveExpiredTasks: 7 }).tasksProjects)
         .toBe('Expired tasks removed after 7 days');
       expect(summarise({ appBlocking: true }).focus).toBe('Blocking apps');
+      expect(summarise({ simpleMode: true }).focus).toBe('Timers');
+      expect(summarise({ simpleMode: true, appBlocking: true }).focus).toBe('Timers');
       expect(summarise({ vacationMode: true }).dayTime).toContain('Vacation on');
       expect(summarise({ appLockEnabled: true, hasApiKey: true }).privacyAi)
         .toBe('App lock on · API key set');

@@ -72,6 +72,15 @@ interface Props {
   onManageEvents?: () => void;
   /** How many events are on today, shown as the action's hint. */
   eventCount?: number;
+  /**
+   * Opens the focus session setup. These two rows used to be icons in Today's
+   * header, which left four icon-only buttons on a screen whose job is the
+   * list. Omitted by simplified mode, which takes both away. A *running*
+   * session keeps its header button, so there is no way to lose one.
+   */
+  onStartFocus?: () => void;
+  /** Opens the suggested pins sheet. Omitted when there is nothing to suggest or it is hidden. */
+  onSuggestPins?: () => void;
   /** Where the "…" was tapped, so the menu opens from it. See `CardSheet`. */
   anchor?: CardAnchor | null;
 }
@@ -100,6 +109,8 @@ export function TodayOptionsMenu({
   anchor,
   onOpenSettings,
   settingsHint,
+  onStartFocus,
+  onSuggestPins,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -115,6 +126,54 @@ export function TodayOptionsMenu({
     >
       <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
         <View style={styles.optionsCard}>
+          {onStartFocus && (
+            <>
+              <TouchableOpacity
+                style={styles.optionRow}
+                onPress={() => {
+                  haptics.tap();
+                  onStartFocus();
+                }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel="Start a focus session"
+              >
+                <Ionicons name="hourglass-outline" size={18} color={colors.textSecondary} />
+                <View style={styles.optionContent}>
+                  <Text style={styles.optionLabel}>Focus session</Text>
+                  <Text style={styles.optionHint}>
+                    Work through a queue of tasks with timed breaks
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+              </TouchableOpacity>
+              <View style={styles.optionSep} />
+            </>
+          )}
+          {onSuggestPins && (
+            <>
+              <TouchableOpacity
+                style={styles.optionRow}
+                onPress={() => {
+                  haptics.tap();
+                  onSuggestPins();
+                }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel="Suggest tasks to pin"
+              >
+                <Ionicons name="color-wand-outline" size={18} color={colors.textSecondary} />
+                <View style={styles.optionContent}>
+                  <Text style={styles.optionLabel}>Suggest tasks to pin</Text>
+                  <Text style={styles.optionHint}>
+                    Pick a few tasks to keep at the top of Today
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+              </TouchableOpacity>
+              <View style={styles.optionSep} />
+            </>
+          )}
           {onLightenDay && (
             <>
               <TouchableOpacity

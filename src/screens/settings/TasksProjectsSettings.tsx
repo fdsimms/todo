@@ -224,7 +224,7 @@ export function TasksProjectsSettings() {
 
       <SettingsSection
         label="Task form"
-        footer="The other fields sit behind “more” in quick add and in the editor’s sections. The editor’s field search still finds them."
+        footer="This only changes quick add, where the other fields sit behind “more”. The task editor always keeps its rarely used fields under “More options” until a task uses them, and its field search still finds them."
       >
         <SettingsRow
           entryId="simpleTaskForm"
