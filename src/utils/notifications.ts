@@ -330,7 +330,7 @@ export async function scheduleCompletionTimer(task: Task, completedAt: Date = ne
     identifier: completionTimerNotificationId(task.id),
     content: {
       title: displayTitleFor(task) || 'Task timer',
-      body: task.completionTimerNote || `It's time. You completed "${displayTitleFor(task) || task.title}" a while ago.`,
+      body: task.completionTimerNote || `“${displayTitleFor(task) || task.title}” timer is up.`,
       data: { taskId: task.id, completionTimer: true },
       sound: true,
       interruptionLevel: REMINDER_INTERRUPTION_LEVEL,
@@ -819,9 +819,9 @@ export async function scheduleFocusStepAlarm(session: FocusSession | null): Prom
     content: {
       title: isRest ? 'Break’s over' : 'Time’s up',
       body: isRest
-        ? 'Back to it when you’re ready.'
+        ? 'Back to it.'
         : nextIsRest
-          ? 'That stretch is done. Take your break when you’re ready.'
+          ? 'That stretch is done. Take your break.'
           : 'That stretch is done.',
       data: { focusSessionId: session.id },
       sound: true,
@@ -870,7 +870,7 @@ export async function scheduleFocusMeetingHeadsUp(session: FocusSession | null):
     identifier: FOCUS_MEETING_ID,
     content: {
       title: 'Meeting soon',
-      body: headsUp.title ? `"${headsUp.title}" starts at ${time}.` : `A calendar event starts at ${time}.`,
+      body: headsUp.title ? `“${headsUp.title}” starts at ${time}.` : `A calendar event starts at ${time}.`,
       data: { focusSessionId: session.id },
       sound: true,
       interruptionLevel: REMINDER_INTERRUPTION_LEVEL,
@@ -1183,7 +1183,7 @@ export async function scheduleTripReminder(shopName: string, startedAt: string):
     identifier: TRIP_REMINDER_ID,
     content: {
       title: 'Still shopping?',
-      body: `Tap to wrap up your trip at ${shopName}`,
+      body: `Tap to finish your trip at ${shopName}.`,
       data: { activeTripReminder: true },
       sound: true,
       // A gentle backstop two hours in, not a moment the user set — see

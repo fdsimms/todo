@@ -323,7 +323,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
   };
 
   const clear = () => {
-    Alert.alert('Remove this goal?', 'Your weigh-ins stay in Apple Health either way.', [
+    Alert.alert('Remove this goal?', 'Your weigh-ins stay in Apple Health.', [
       { text: 'Keep it', style: 'cancel' },
       {
         text: 'Remove',
@@ -397,8 +397,8 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
       {startKg === null ? (
         <>
           <Text style={styles.footnote}>
-            Record a weight first. A goal is measured from where you started, so
-            there is nothing to set one against yet.
+            Record a weight first. A goal is measured from your
+            starting weight.
           </Text>
           {onLogWeight && (
             <InlineAction
@@ -482,8 +482,8 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
           <Text style={styles.sectionTitle}>FOR THE CALORIE ESTIMATE</Text>
           <View style={styles.card}>
             <Text style={styles.help}>
-              Used only to calculate the figure below. Nothing else in the app reads
-              these, and they are never sent anywhere or written to Apple Health.
+              Used only to calculate the figure below. They are never sent anywhere or
+              written to Apple Health.
             </Text>
 
             <View style={styles.field}>
@@ -556,8 +556,8 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                 label="Sex"
               />
               <Text style={styles.help}>
-                The calorie equation has two forms, and this picks which one is
-                used. It is not stored for any other purpose.
+                Picks which of the calorie equation’s two forms to
+                use. It isn’t used for anything else.
               </Text>
             </View>
 
@@ -608,7 +608,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                     />
                     <Text style={styles.help}>
                       {measuredBasis
-                        ? `Your resting rate plus ${(typicalActiveKcal ?? 0).toLocaleString()} cal, the active calories in a typical recent day of yours, plus about ${Math.round(budget.maintenanceKcal * DIGESTION_SHARE).toLocaleString()} cal for digesting food (about a tenth of what you eat). To also add a day when you move more than usual, turn on Add active calories under Daily targets.`
+                        ? `Your resting rate plus ${(typicalActiveKcal ?? 0).toLocaleString()} cal of activity on a typical recent day, plus about ${Math.round(budget.maintenanceKcal * DIGESTION_SHARE).toLocaleString()} cal for digesting food (about a tenth of what you eat). To raise the target on days you move more than usual, turn on Add active calories under Daily targets.`
                         : `The activity level you picked above, as a multiplier on your resting rate.`}
                     </Text>
                   </View>
@@ -632,16 +632,16 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                 {budget.raisedToFloor && (
                   <Text style={styles.warning}>
                     The arithmetic came to {budget.arithmeticKcal.toLocaleString()} cal.
-                    This app will not suggest below {budget.floorKcal.toLocaleString()},
-                    so that is the figure shown. You can still set any target you
-                    want under Daily targets.
+                    Suggestions don’t go below {budget.floorKcal.toLocaleString()},
+                    so that is the figure shown. You can still set any target
+                    under Daily targets.
                   </Text>
                 )}
 
                 <Text style={styles.help}>
                   {measuredBasis
-                    ? 'Still an estimate: the resting rate comes from a population formula (Mifflin-St Jeor), digestion is a rule of thumb, and only the activity is measured. Treat it as a starting point and adjust it against what the scale actually does.'
-                    : 'An estimate from a population formula (Mifflin-St Jeor), not a measurement of you. Treat it as a starting point and adjust it against what the scale actually does.'}
+                    ? 'Still an estimate: the resting rate comes from a population formula (Mifflin-St Jeor), digestion is a rule of thumb, and only the activity is measured. Adjust it based on what the scale shows.'
+                    : 'An estimate from a population formula (Mifflin-St Jeor). Adjust it based on what the scale shows.'}
                 </Text>
 
                 {alreadyApplied ? (
@@ -663,8 +663,8 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                     (autoCalorieTargetKcal), so say so here rather than let a
                     typed target change with nobody told why. */}
                 <Text style={styles.help}>
-                  Saving this goal also sets your calorie target to this figure. It is
-                  worked out again each time the Weight screen reads your weight.
+                  Saving this goal also sets your calorie target to this figure. It’s
+                  recalculated each time the Weight screen reads your weight.
                 </Text>
               </>
             )}
@@ -675,9 +675,9 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
               <Text style={styles.sectionTitle}>MACROS</Text>
               <View style={styles.card}>
                 <Text style={styles.help}>
-                  Optional, and nothing is picked for you. Each of these is a common
-                  way to divide a day's calories, not a recommendation. Pick one to
-                  see what it comes out to, or choose Custom to set your own split.
+                  Optional. These are common ways to divide a day’s calories,
+                  and none is recommended. Pick one to
+                  see the amounts, or choose Custom to set your own split.
                 </Text>
 
                 <SegmentedControl
@@ -745,7 +745,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                       onPress={applyMacroTargets}
                     />
                     <Text style={styles.help}>
-                      Sets calories as well, so the four numbers agree with each other.
+                      Also sets calories, so the four numbers agree.
                     </Text>
                   </>
                 )}

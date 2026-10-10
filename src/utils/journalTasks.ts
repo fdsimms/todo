@@ -18,7 +18,7 @@ export const JOURNAL_LOG_TITLE = 'Write in your journal';
  * The journal reminder's title while it fires once per part of the day: each
  * one asks for a snippet of the same day's page rather than a fresh entry.
  */
-export const JOURNAL_SNIPPET_TITLE = "Add to today's journal";
+export const JOURNAL_SNIPPET_TITLE = "Add to today’s journal";
 export const DREAM_LOG_TITLE = 'Write down your dream';
 
 /** The journal reminder's title for a given set of parts of the day. */

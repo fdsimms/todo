@@ -220,7 +220,7 @@ export function CategoryPickerList({
             onPress={() => clearQuery()}
             hitSlop={8}
             accessibilityRole="button"
-            accessibilityLabel="Clear the search"
+            accessibilityLabel="Clear search"
           >
             <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
           </TouchableOpacity>

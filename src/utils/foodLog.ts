@@ -341,12 +341,12 @@ function baseAmountHint(panel: FoodNutrition): string {
       : `A volume, like 250 ml or 1 cup${weight}.`;
   }
   if (panel.basis === 'perServing' && panel.servingGrams === null) {
-    return 'A number of servings, like 1 serving. This food states no weight per serving to measure anything else against.';
+    return 'A number of servings, like 1 serving. This food has no weight per serving, so nothing else can be entered.';
   }
   const servings = panel.basis !== 'perServing' && panel.servingGrams !== null;
   const examples = portionExamples(panel);
   if (examples.length > 0) {
-    return `A weight (like 100g), or one of this food's stated portions: ${examples.join(', ')}${servings ? ', or a number of servings' : ''}.`;
+    return `A weight (like 100g), or one of this food’s stated portions: ${examples.join(', ')}${servings ? ', or a number of servings' : ''}.`;
   }
   return servings
     ? 'A weight, like 100g, or a number of servings.'
@@ -1044,7 +1044,7 @@ export function remeasureEntry(
   if (!panel) return { ok: false, reason: 'The food record this entry was measured against is no longer there. Change it in the app.' };
   const typed = amount.trim();
   const scaled = typed ? scalePanelToAmount(panel, typed, null, now, entry.label) : null;
-  if (!scaled) return { ok: false, reason: `"${typed}" cannot be measured against this food's record. Try grams, or a portion it lists.` };
+  if (!scaled) return { ok: false, reason: `"${typed}" cannot be measured against this food’s record. Try grams, or a portion it lists.` };
   return {
     ok: true,
     fields: { quantity: typed, grams: scaled.grams, nutrition: scaled.nutrition, sourcePanel: panelToKeep(panel, linked) },

@@ -52,7 +52,7 @@ export const UNATTENDED_ACTION_SPECS: Record<UnattendedAction, UnattendedActionS
   created: { action: 'created', verb: 'Added', icon: 'add-circle-outline', adds: true },
   cleared: { action: 'cleared', verb: 'Cleared', icon: 'close-circle-outline', adds: false },
   expired: { action: 'expired', verb: 'Expired', icon: 'hourglass-outline', adds: false },
-  purged: { action: 'purged', verb: 'Purged', icon: 'trash-outline', adds: false },
+  purged: { action: 'purged', verb: 'Deleted', icon: 'trash-outline', adds: false },
   // Only an agent writes these, but for one: the rain skip writes `moved` (see
   // UnattendedActor). An edit or a move neither adds nor takes away, so
   // neither is drawn as news.

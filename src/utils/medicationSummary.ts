@@ -364,7 +364,7 @@ export function buildMedicationSummary(
 // ==== Wording, shared by both renderings ====
 
 export const SUMMARY_CAVEAT =
-  'A day with nothing recorded may be a day it wasn\'t taken or a day it wasn\'t written down.';
+  'A day with nothing recorded may mean the medication wasn’t taken or wasn’t written down.';
 export const SUMMARY_FOOTER = 'Recorded by the patient in dundundun. Not a prescription.';
 
 export interface SummaryLine { label: string; value: string }

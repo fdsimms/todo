@@ -1,4 +1,4 @@
 {
-  "message": "A deadline can now have a time. Add one under Deadline in the task editor, and it shows on the task row (like \"Today 5:00 PM\") and turns red once that time passes",
+  "message": "A deadline can now have a time. Add one under Deadline in the task editor, and it shows on the task row (like “Today 5:00 PM”) and turns red once that time passes.",
   "date": "2026-10-08"
 }

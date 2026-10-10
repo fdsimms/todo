@@ -68,12 +68,12 @@ export const AI_FEATURES: AiFeatureMeta[] = [
     // from a closed set — see `backfillSuggest.ts` for why the other five task
     // fields and the whole People pool are deliberately not offered here.
     label: 'Backfill suggestions',
-    hint: 'Proposes a category and a time estimate for the tasks the Backfill screen is asking about',
+    hint: 'Suggests a category and a time estimate for tasks on the Backfill screen',
   },
   {
     id: 'groceryAisles',
     label: 'Grocery aisle sorting',
-    hint: 'Files grocery items the offline list didn\'t recognize into an aisle',
+    hint: 'Sorts items the offline list doesn’t recognize into grocery aisles',
     kitchen: true,
   },
   {
@@ -91,13 +91,13 @@ export const AI_FEATURES: AiFeatureMeta[] = [
     // and drafting its shopping list are one action from where the user
     // stands, and a key that can do the first but not the second would offer
     // an idea it can't then save as a recipe.
-    hint: 'Invents new meals for empty nights, and drafts a shopping list for one you accept',
+    hint: 'Suggests meals for empty nights and drafts a shopping list for one you accept',
     kitchen: true,
   },
   {
     id: 'substitutes',
     label: 'Substitute suggestions',
-    hint: 'Proposes what to use instead of a grocery item when you ask',
+    hint: 'Suggests a substitute for a grocery item when you ask',
     kitchen: true,
     simple: true,
   },
@@ -111,7 +111,7 @@ export const AI_FEATURES: AiFeatureMeta[] = [
   {
     id: 'cookHelp',
     label: 'Cook mode help',
-    hint: 'Answers a question about the recipe step you\'re on while cooking',
+    hint: 'Answers a question about the recipe step you’re on while cooking',
     kitchen: true,
     // Cook mode is itself one of the things simplified mode takes away
     // (`cookMode` in simpleMode.ts), so the surface this configures is already
@@ -121,7 +121,7 @@ export const AI_FEATURES: AiFeatureMeta[] = [
   {
     id: 'nutritionEstimate',
     label: 'Estimate what a meal contained',
-    hint: 'Reads a description of a restaurant meal into nutrition figures for you to confirm',
+    hint: 'Turns a description of a restaurant meal into nutrition figures for you to confirm',
     kitchen: true,
     // The food log is itself one of the things simplified mode takes away
     // (`foodLogScreen` in simpleMode.ts), so the only surface this configures
@@ -141,15 +141,15 @@ export const AI_FEATURES: AiFeatureMeta[] = [
     // Reached from `NutritionPanelSheet`'s own "Read from a photo" button, only
     // once the on-device Vision read of the same photo has already come back
     // with nothing — a curved tub, a steep angle, glare on the wrap.
-    hint: 'Falls back to Claude to read a nutrition panel photo the on-device reading could not',
+    hint: 'Uses Claude to read a nutrition label photo when on-device reading can’t',
   },
   {
     id: 'recipeNutritionEstimate',
-    label: 'Estimate a recipe\'s nutrition',
+    label: 'Estimate a recipe’s nutrition',
     // Offered on the recipe's own nutrition sheet only once the ingredient
     // rollup has come back with too little to total — see
     // `recipeNutritionEstimate.ts`.
-    hint: 'Reads a recipe\'s ingredient list into nutrition figures when too few of them have catalog data yet',
+    hint: 'Estimates a recipe’s nutrition from its ingredient list when too few ingredients have catalog data',
     kitchen: true,
   },
 ];

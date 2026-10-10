@@ -201,11 +201,11 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     return templateItems.filter(i => i.id !== item?.id && !i.refTemplateId && !waitsOnThis(i));
   }, [templateItems, item?.id]);
   const waitsOnSummary = blockedByItemIds.length > 0
-    ? blockedByItemIds.map(id => templateItems.find(i => i.id === id)?.title || 'An item no longer here').join(', ')
+    ? blockedByItemIds.map(id => templateItems.find(i => i.id === id)?.title || 'Missing item').join(', ')
     : null;
   const gateItem = answerGate ? templateItems.find(i => i.id === answerGate.itemId) ?? null : null;
   const gateSummary = answerGate && answerGate.answers.length > 0
-    ? `${gateItem?.title || 'An item no longer here'}: ${answerGate.answers.join(' or ')}`
+    ? `${gateItem?.title || 'Missing item'}: ${answerGate.answers.join(' or ')}`
     : null;
   const toggleGateAnswer = (itemId: string, option: string) => {
     haptics.tap();
@@ -746,7 +746,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
         haptics.error();
         Alert.alert(
           'Couldn’t add that item',
-          'This template couldn’t be found, so nothing was saved. Go back to Templates and open it again, then retry.',
+          'This template couldn’t be found, so nothing was saved. Reopen it from Templates and try again.',
         );
         return;
       }
@@ -808,7 +808,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     ? timeSegments.map(capitalize).join(', ')
     : undefined;
   const timeWindowSummary = (windowStart || windowEnd)
-    ? `${windowBoundLabel(windowStart, windowStartSun) ?? 'Any'}–${windowBoundLabel(windowEnd, windowEndSun) ?? 'Any'}`
+    ? `${windowBoundLabel(windowStart, windowStartSun) ?? 'Any'} to ${windowBoundLabel(windowEnd, windowEndSun) ?? 'Any'}`
     : undefined;
 
   // ==== render. Everything below is JSX ====
@@ -914,7 +914,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
         <CollapsibleField
           label="Blanks"
           summary={blanks.length > 0 ? blanks.map(n => `{${n}}`).join(' ') : undefined}
-          hint={`Type {a name in braces} in the title, notes, a subtask or a chain step. Applying the template asks for each one and puts what you enter in its place. {${RUN_PLACEHOLDER}} is filled in with the name you give the run.`}
+          hint={`Type {a name in braces} in the title, notes, a subtask or a chain step. Applying the template asks for each one. {${RUN_PLACEHOLDER}} becomes the name you give the run.`}
           expanded={fieldOpen('blanks', blanks.length > 0)}
           onToggle={() => toggleField('blanks', blanks.length > 0)}
         >
@@ -964,7 +964,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             label="Checked by default for"
             summary={conditionSummary ?? undefined}
             emptySummary="Every run"
-            hint="Arrives pre-checked when the run's answer is one of these, or inside the range for a number. Everything stays on the list either way, so you can still check or uncheck it when you apply the template."
+            hint="Starts checked when the run’s answer is one of these, or within the range for a number. You can still check or uncheck it when you apply the template."
             expanded={fieldOpen('conditions', conditionSummary !== null)}
             onToggle={() => toggleField('conditions', conditionSummary !== null)}
           >
@@ -1040,7 +1040,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             label="Different text for"
             summary={variantSummary ?? undefined}
             emptySummary="Same for every answer"
-            hint="Replaces the title or notes above when the run's answer is the one named. Leave a field empty to keep the text above. Blanks work in it too."
+            hint="Replaces the title or notes above when the run’s answer matches. An empty field keeps the text above. Blanks work here too."
             expanded={fieldOpen('variants', variantSummary !== null)}
             onToggle={() => toggleField('variants', variantSummary !== null)}
           >
@@ -1123,7 +1123,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
         <OffsetRow
           icon="flag-outline"
           label="Deadline"
-          hint="A hard cut-off, shown separately from the due date."
+          hint="A hard cutoff, shown separately from the due date."
           offset={deadlineOffsetDays}
           anchor={anchor}
           away={tripTemplate}
@@ -1190,7 +1190,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
         <EditorRow
           icon="time-outline"
           label="Time of day"
-          hint="Hold it back until a part of the day."
+          hint="Keeps the task off Today until a part of the day."
           value={timeOfDaySummary}
           expanded={showTimeOfDay}
           onPress={() => { animateLayout(); setShowTimeOfDay(v => !v); }}
@@ -1317,7 +1317,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             {dueOffsetDays === null ? (
               <Text style={styles.optionHint}>Set a due date first</Text>
             ) : reminderOffsetMinutes === null ? (
-              <Text style={styles.optionHint}>Minutes before the resolved due date</Text>
+              <Text style={styles.optionHint}>Minutes before the due date</Text>
             ) : null}
           </View>
           {dueOffsetDays !== null && (
@@ -1432,7 +1432,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           <Ionicons name="help-circle-outline" size={18} color={optional ? colors.accent : colors.textSecondary} />
           <View style={styles.optionContent}>
             <Text style={styles.optionLabel}>Optional</Text>
-            <Text style={styles.optionHint}>Starts unchecked in the apply sheet, so it's skipped by default</Text>
+            <Text style={styles.optionHint}>Starts unchecked when the template is applied, so it’s skipped by default</Text>
           </View>
           <View style={[styles.toggle, optional && styles.toggleOn]}>
             <View style={[styles.toggleKnob, optional && styles.toggleKnobOn]} />
@@ -1470,7 +1470,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               <PinIcon filled={pinEachOccurrence} size={18} color={pinEachOccurrence ? colors.orangeText : colors.textSecondary} />
               <View style={styles.optionContent}>
                 <Text style={styles.optionLabel}>Pin every occurrence</Text>
-                <Text style={styles.optionHint}>Each occurrence of tasks created from this item starts out pinned to Today</Text>
+                <Text style={styles.optionHint}>Each occurrence of a task made from this item starts pinned to Today</Text>
               </View>
               <View style={[styles.toggle, pinEachOccurrence && styles.toggleOn]}>
                 <View style={[styles.toggleKnob, pinEachOccurrence && styles.toggleKnobOn]} />
@@ -1490,7 +1490,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           <Ionicons name="color-wand-outline" size={18} color={excludeFromSuggestions ? colors.accent : colors.textSecondary} />
           <View style={styles.optionContent}>
             <Text style={styles.optionLabel}>Skip in suggestions</Text>
-            <Text style={styles.optionHint}>Keeps tasks created from this item out of suggested pins and focus sessions</Text>
+            <Text style={styles.optionHint}>Keeps tasks made from this item out of suggested pins and focus sessions</Text>
           </View>
           <View style={[styles.toggle, excludeFromSuggestions && styles.toggleOn]}>
             <View style={[styles.toggleKnob, excludeFromSuggestions && styles.toggleKnobOn]} />
@@ -1505,7 +1505,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               emptySummary="Off"
               hint={weatherTasksOn
                 ? 'Holds tasks made from this item until the first day in the next 14 with this forecast.'
-                : 'Turn on Weather-based tasks in Settings, with location access, so the app can read the forecast. Until then these tasks are not held.'}
+                : 'Turn on Weather-based tasks in Settings, with location access. Until then, these tasks aren’t held.'}
               expanded={fieldOpen('weatherWait')}
               onToggle={() => toggleField('weatherWait')}
             >
@@ -1524,7 +1524,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           summary={completionTimerMinutes !== null
             ? [`${formatDuration(completionTimerMinutes)} after completing`, completionTimerNote || null].filter(Boolean).join(': ')
             : undefined}
-          hint="Asks to set a reminder this long after a task made from this item is completed, e.g. a two-hour wait before eating after a medication."
+          hint="Offers to set a reminder this long after a task made from this item is completed, such as a two-hour wait before eating."
           expanded={fieldOpen('completionTimer')}
           onToggle={() => toggleField('completionTimer')}
         >
@@ -1545,7 +1545,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               style={[styles.fieldBox, styles.medicationAmountInput]}
               value={completionTimerNote ?? ''}
               onChangeText={text => setCompletionTimerNote(text || null)}
-              placeholder="e.g. Don't eat for 2 hours"
+              placeholder="e.g. Don’t eat for 2 hours"
               placeholderTextColor={colors.textTertiary}
               maxLength={COMPLETION_TIMER_NOTE_MAX_LENGTH}
               returnKeyType="done"
@@ -1566,7 +1566,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   .filter(Boolean).join(', ')
               : undefined
           }
-          hint="Tasks made from this item record a dose in your medication log each time they're completed."
+          hint="Tasks made from this item record a dose in your medication log when completed."
           expanded={fieldOpen('medication')}
           onToggle={() => toggleField('medication')}
         >
@@ -1627,7 +1627,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
         <CollapsibleField
           label="Log to food log"
           summary={logMealSlot ? `Offers to log ${MEAL_SLOT_LABELS[logMealSlot].toLowerCase()} when completed` : undefined}
-          hint="Tasks made from this item offer to add an entry to your food log, for the slot below, each time they're completed."
+          hint="Tasks made from this item offer to add a food log entry for the meal below when completed."
           expanded={fieldOpen('logMealSlot')}
           onToggle={() => toggleField('logMealSlot')}
         >
@@ -1651,7 +1651,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
         >
           <View style={styles.optionContent}>
             <Text style={styles.optionLabel}>Block apps until done</Text>
-            <Text style={styles.optionHint}>Tasks made from this item hold the apps you picked in Settings until they're done</Text>
+            <Text style={styles.optionHint}>Blocks the apps you picked in Settings until tasks made from this item are done</Text>
           </View>
           <View style={[styles.toggle, gatesApps && styles.toggleOn]}>
             <View style={[styles.toggleKnob, gatesApps && styles.toggleKnobOn]} />
@@ -1667,7 +1667,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               : penaltyCutoffTime
                 ? `${formatDuration(penaltyMinutes)} after ${formatHHMM(penaltyCutoffTime)}`
                 : `${formatDuration(penaltyMinutes)} if not done that day`}
-          hint="Seeds the cost on tasks made from this item. Needs the setting switched on in Settings before anything is actually blocked."
+          hint="Sets how long apps are blocked for tasks made from this item. Nothing is blocked until “Block apps when you fail a task” is turned on in Settings."
           expanded={fieldOpen('penalty')}
           onToggle={() => toggleField('penalty')}
         >
@@ -1786,7 +1786,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             ? `${targetCount}${normalizeTargetUnit(targetUnitText) ? ` ${normalizeTargetUnit(targetUnitText)}` : '×'} a ${quotaPeriod}`
             : undefined}
           emptySummary="None"
-          hint="Count it several times instead of ticking it once, like 8 glasses a day or 3 runs a week."
+          hint="Count it several times instead of checking it off once, like 8 glasses a day or 3 runs a week."
           expanded={fieldOpen('target', targetCount !== null)}
           onToggle={() => toggleField('target', targetCount !== null)}
         >
@@ -1834,7 +1834,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                 <Ionicons name="notifications-outline" size={18} color={quotaReminders ? colors.accent : colors.textSecondary} />
                 <View style={styles.optionContent}>
                   <Text style={styles.optionLabel}>Notify me when each one is due</Text>
-                  <Text style={styles.optionHint}>Send a notification at each one, instead of only showing the task on Today</Text>
+                  <Text style={styles.optionHint}>Send a notification at each one, as well as showing the task on Today</Text>
                 </View>
                 <View style={[styles.toggle, quotaReminders && styles.toggleOn]}>
                   <View style={[styles.toggleKnob, quotaReminders && styles.toggleKnobOn]} />
@@ -2091,7 +2091,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               )}
               {chainItems.length > 0 && (
                 <Text style={styles.optionHint}>
-                  Times are per step; a step left blank uses the item's own estimate.
+                  Times are per step; a step left blank uses the item’s own estimate.
                 </Text>
               )}
               {chainItems.length > 1 && (
@@ -2115,10 +2115,10 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   />
                   <Text style={styles.optionHint}>
                     {recurrenceType === 'none'
-                      ? 'Steps follow each other as you finish them. Add a repeat to spread them over days instead.'
+                      ? 'Steps follow each other as you finish them. Add a repeat to spread them over days.'
                       : chainStepOnSchedule
-                        ? 'One step per repeat. The chain rotates through its steps rather than running straight through.'
-                        : 'Finishing a step brings up the next one immediately; the repeat starts the whole chain over.'}
+                        ? 'One step per repeat. The chain rotates through its steps.'
+                        : 'Finishing a step brings up the next one immediately. The repeat starts the whole chain over.'}
                   </Text>
                 </View>
               )}
@@ -2143,7 +2143,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               : undefined
           }
           emptySummary="Off"
-          hint="A set of things to get through each week, in any order, each with its own number of times a week. Checking the task off asks which one you did."
+          hint="A set of things to do each week, in any order, each with its own weekly target. Checking the task off asks which one you did."
           expanded={fieldOpen('rotationSet', rotationEnabled)}
           onToggle={() => toggleField('rotationSet', rotationEnabled)}
           right={
@@ -2270,7 +2270,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           hint={
             deliverableKind
               ? deliverableMeta(deliverableKind).hint
-              : 'Asks you to record an answer when the task is completed, and keeps it in the Logbook.'
+              : 'Asks for an answer when the task is completed and keeps it in the Logbook.'
           }
           expanded={fieldOpen('deliverable')}
           onToggle={() => toggleField('deliverable')}
@@ -2307,13 +2307,13 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             onPress={() => { haptics.tap(); setDeliverableSetsAway(!deliverableSetsAway); }}
             activeOpacity={interaction.activeOpacity}
             accessibilityRole="switch"
-            accessibilityLabel="Use the answer as the trip's leaving date"
+            accessibilityLabel="Use the answer as the trip’s leaving date"
             accessibilityState={{ checked: deliverableSetsAway }}
           >
             <Ionicons name="airplane-outline" size={18} color={deliverableSetsAway ? colors.accent : colors.textSecondary} />
             <View style={styles.optionContent}>
               <Text style={styles.optionLabel}>Sets the leaving date</Text>
-              <Text style={styles.optionHint}>The date you answer becomes the trip's Leaving date, if it doesn't have one yet</Text>
+              <Text style={styles.optionHint}>The date you answer becomes the trip’s Leaving date, if it doesn’t have one yet</Text>
             </View>
             <View style={[styles.toggle, deliverableSetsAway && styles.toggleOn]}>
               <View style={[styles.toggleKnob, deliverableSetsAway && styles.toggleKnobOn]} />
@@ -2331,7 +2331,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             label="Only if"
             summary={gateSummary ?? undefined}
             emptySummary="Always"
-            hint="Waits for another item's question to be answered, then shows only for the answers you pick. Any other answer marks it not needed."
+            hint="Waits for another item’s question, then shows only for the answers you pick. Any other answer marks it not needed."
             expanded={fieldOpen('answerGate', gateSummary !== null)}
             onToggle={() => toggleField('answerGate', gateSummary !== null)}
           >
@@ -2371,7 +2371,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             label="Waits on"
             summary={waitsOnSummary ?? undefined}
             emptySummary="Nothing"
-            hint="Holds the task back until these items' tasks are done. An item left unticked when the template is applied is skipped."
+            hint="Holds the task back until these items’ tasks are done. An item left unchecked when the template is applied is skipped."
             expanded={fieldOpen('waitsOn', waitsOnSummary !== null)}
             onToggle={() => toggleField('waitsOn', waitsOnSummary !== null)}
           >
@@ -2407,10 +2407,10 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
         <CollapsibleField
           label="Subtasks"
           summary={[
-            subtasks.length > 0 ? `${subtasks.length} step${subtasks.length === 1 ? '' : 's'}` : null,
+            subtasks.length > 0 ? `${subtasks.length} subtask${subtasks.length === 1 ? '' : 's'}` : null,
             medicationChecklist ? 'Your medicines' : null,
           ].filter(Boolean).join(' + ') || undefined}
-          hint="Checklist items created alongside the task when the template is applied."
+          hint="Subtasks created with the task when the template is applied."
           expanded={fieldOpen('subtasks', true)}
           onToggle={() => toggleField('subtasks', true)}
         >
@@ -2607,7 +2607,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           />
           {/* Said here rather than dropped on save without a word. */}
           {linkText.trim() !== '' && !parseLabelledLink(linkText) && (
-            <Text style={styles.choiceOptionsHint}>That isn't a link yet, so it won't be saved.</Text>
+            <Text style={styles.choiceOptionsHint}>That isn’t a link yet, so it won’t be saved.</Text>
           )}
         </CollapsibleField>
 
@@ -2616,7 +2616,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
         <CollapsibleField
           label="Location"
           summary={locationText.trim() || undefined}
-          hint="Where each task made from this item happens, like an appointment's address or a venue."
+          hint="Where each task made from this item happens, like an appointment’s address or a venue."
           expanded={fieldOpen('location')}
           onToggle={() => toggleField('location')}
         >
@@ -2702,7 +2702,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           label="Effort"
           summary={estimatedMinutes !== null ? `${estimatedMinutes} min` : effort > 0 ? EFFORT_LABELS[effort] : undefined}
           emptySummary="Not set"
-          hint="Roughly how long this takes, so a day's list can be sized realistically."
+          hint="Roughly how long this takes, so a day’s list can be sized realistically."
           expanded={fieldOpen('effort')}
           onToggle={() => toggleField('effort')}
         >

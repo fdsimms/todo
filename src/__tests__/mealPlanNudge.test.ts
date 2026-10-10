@@ -94,7 +94,7 @@ describe('dueMealPlanNudge', () => {
 
   it('titles the stack with a fixed name rather than a date range', () => {
     const due = dueMealPlanNudge(SUN_AUG_3(9, 0), 0, 0, '09:00', null);
-    expect(due!.title).toBe("Plan this week's meals");
+    expect(due!.title).toBe("Plan this week’s meals");
   });
 
   it('names all seven days of the target week, in week order', () => {

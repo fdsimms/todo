@@ -840,7 +840,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['meal plan', 'away', 'trip', 'pause'], kitchen: true },
   { id: 'mealPlanNudgeSlots', requires: 'gen:mealPlanNudge', groupId: 'generated', label: 'Meals to plan for', section: 'Plan meals for the week',
     keywords: ['meal plan', 'breakfast', 'lunch', 'dinner', 'snack', 'which meals', 'only dinner'], kitchen: true },
-  { id: 'calendarReviewTimeSegment', requires: 'gen:calendarReview', groupId: 'generated', label: 'Show the task', section: 'Review tomorrow\'s calendar',
+  { id: 'calendarReviewTimeSegment', requires: 'gen:calendarReview', groupId: 'generated', label: 'Show the task', section: 'Review tomorrow’s calendar',
     keywords: ['morning', 'afternoon', 'evening', 'night', 'time of day', 'hold back', 'when'] },
   { id: 'moodLogTimeSegments', requires: 'gen:moodLog', groupId: 'generated', label: 'Show the task', section: 'Daily mood check-in',
     keywords: ['morning', 'afternoon', 'evening', 'night', 'time of day', 'hold back', 'when',
@@ -897,7 +897,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // No `kitchen` flags below: the group itself is `kitchenOnly`, so the group
   // gate drops every one of these and flagging them again would be a second
   // copy of one answer. `simple` still applies — that's a different switch.
-  { id: 'mealsOnToday', groupId: 'kitchen', label: 'Show the day\'s meals', section: 'Meals on Today',
+  { id: 'mealsOnToday', groupId: 'kitchen', label: 'Show the day’s meals', section: 'Meals on Today',
     keywords: ['meal plan', 'dinner', 'menu', 'today', 'hide meals', 'leftovers', 'takeaway'] },
   { id: 'cookRecapEnabled', groupId: 'kitchen', label: 'Ask after cooking', section: 'Meals on Today',
     keywords: ['rate', 'rating', 'review', 'leftovers', 'used up', 'out of', 'sheet', 'prompt', 'cooked'] },
@@ -970,7 +970,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
 
   // About
   { id: 'version', groupId: 'about', label: 'Version', section: 'About', keywords: ['build'] },
-  { id: 'patchNotes', groupId: 'about', label: "What's New", section: 'About',
+  { id: 'patchNotes', groupId: 'about', label: "What’s New", section: 'About',
     keywords: ['changelog', 'patch notes', 'updates', 'release'] },
   { id: 'tabDiagnostics', groupId: 'about', label: 'Show tab diagnostics', section: 'About',
     keywords: ['debug', 'blank screen'] },

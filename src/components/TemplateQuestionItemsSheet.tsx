@@ -62,7 +62,7 @@ export function TemplateQuestionItemsSheet({ visible, templateId, question, onCl
             <EmptyState
               icon="checkbox-outline"
               title="No items yet"
-              subtitle="Add items to the template first, then come back here to set which ones include each answer."
+              subtitle="Add items to the template first, then choose which ones each answer includes."
             />
           </View>
         ) : (

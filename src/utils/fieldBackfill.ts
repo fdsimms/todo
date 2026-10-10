@@ -18,7 +18,7 @@ export const BACKFILL_FIELDS: BackfillFieldDef[] = [
   {
     id: 'estimate',
     label: 'Time estimate',
-    hint: 'Roughly how long each task takes, so a day’s list can be sized realistically.',
+    hint: 'How long each task takes, so a day’s list can be sized realistically.',
   },
   {
     id: 'priority',
@@ -38,12 +38,12 @@ export const BACKFILL_FIELDS: BackfillFieldDef[] = [
   {
     id: 'streak',
     label: 'Streak chip',
-    hint: 'Whether a recurring task’s streak count also shows as a chip on the row, not just in its editor.',
+    hint: 'Whether a repeating task’s streak count also shows as a chip on its row.',
   },
   {
     id: 'vacation',
     label: 'Vacation pause',
-    hint: 'Whether a recurring task hides (and keeps its streak safe) while vacation mode is on.',
+    hint: 'Whether a repeating task hides while vacation mode is on. Its streak is kept.',
   },
   {
     id: 'holidays',

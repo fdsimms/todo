@@ -259,9 +259,9 @@ struct TodoTodayWidgetEntryView: View {
 
     private var emptyStateMessage: String {
         switch entry.result {
-        case .noAppGroupAccess: return "Can't access shared data (App Group)"
+        case .noAppGroupAccess: return "Can’t access shared data (App Group)"
         case .noSnapshotYet: return "Open the app to get started"
-        case .decodeFailed: return "Couldn't read task data"
+        case .decodeFailed: return "Couldn’t read task data"
         case .success:
             if isStale { return staleMessage }
             return entry.configuration.categoryFilter == nil ? "All clear" : "Nothing in this list"

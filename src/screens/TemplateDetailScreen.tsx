@@ -248,7 +248,7 @@ export function TemplateDetailScreen() {
         haptics.error();
         Alert.alert(
           'Couldn’t nest that template',
-          'This template couldn’t be found, so nothing was saved. Go back to Templates and open it again, then retry.',
+          'This template couldn’t be found, so nothing was saved. Go back to Templates, reopen it, and try again.',
         );
       }
     }
@@ -324,7 +324,7 @@ export function TemplateDetailScreen() {
     haptics.warning();
     confirmDelete({
       title: 'Ungroup',
-      message: `Remove the "${title}" group? Its items stay in the template.`,
+      message: `Remove the “${title}” group? Its items stay in the template.`,
       confirmLabel: 'Ungroup',
       onConfirm: () => {
         if (!templateId) return;
@@ -511,7 +511,7 @@ export function TemplateDetailScreen() {
           <EmptyState
             icon="list-outline"
             title="No items yet"
-            subtitle="Tap + to add a task. Then tap it in the list to set dates, tags and more"
+            subtitle="Tap + to add a task, then tap it to set dates, tags and more"
             actionLabel={anthropicApiKey ? 'Suggest tasks with AI' : undefined}
             onAction={anthropicApiKey ? () => { haptics.tap(); setSuggestVisible(true); } : undefined}
           />
@@ -526,7 +526,7 @@ export function TemplateDetailScreen() {
           onPress={() => openQuickAdd(null)}
           accessibilityLabel="Add item"
           drag={fabDrag}
-          dragHint="Drag onto the list to add an item there, or back to the button to cancel"
+          dragHint="Drop on the list to add an item there. Drop on the button to cancel."
         />
       )}
 
@@ -701,7 +701,7 @@ const TemplateItemRow = React.memo(function TemplateItemRow({
       accessibilityState={selectionMode ? { checked: selected } : undefined}
       accessibilityLabel={
         broken
-          ? `${refTitle} was deleted, remove or replace this`
+          ? `${refTitle} was deleted. Remove or replace this.`
           : isRef
             ? `Nested template ${refTitle}, ${refCount} item${refCount === 1 ? '' : 's'}`
             // The warning is its own Text node, but a label set on the row

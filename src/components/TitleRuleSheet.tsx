@@ -219,9 +219,9 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
             />
           </View>
           <Text style={styles.keywordHint}>
-            Fires when the title contains any one of these words, matched whole word, upper
-            or lower case, so “expense” never fires on “expensive”. Plurals and other forms
-            are separate words, so add “expenses” too if you type it. At least{' '}
+            Matches whole words, ignoring capitals.
+            “expense” doesn’t match “expensive” or “expenses”, so add each form you need.
+            Each word needs at least{' '}
             {MIN_KEYWORD_LENGTH} letters.
           </Text>
         </View>
@@ -265,7 +265,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
               label="Project"
               summary={projects.find(p => p.id === draft.projectId)?.title}
               emptySummary="Not set"
-              hint="Which project a matching task counts toward, when you add it from quick add, so it's filed as you type without picking the project each time. A task captured somewhere with nothing on screen to show it, like a dictated reminder, is left out of the project so it still lands in your Inbox."
+              hint="Matching tasks added in quick add go into this project. Tasks captured without a screen, like dictated reminders, go to your Inbox instead."
               expanded={fieldOpen('project')}
               onToggle={() => toggleField('project')}
             >
@@ -296,7 +296,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
           label="Tags"
           summary={draft.tags.length > 0 ? draft.tags.join(', ') : undefined}
           emptySummary="Not set"
-          hint="Added to whatever tags the task already has, rather than replacing them."
+          hint="Added to the task’s existing tags."
           expanded={fieldOpen('tags')}
           onToggle={() => toggleField('tags')}
         >
@@ -371,7 +371,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
           label="Effort"
           summary={draft.effort > 0 ? effortTimeLabel(draft.effort, EFFORT_LABELS[draft.effort]) : undefined}
           emptySummary="Not set"
-          hint="Roughly how big a matching task is, so the day it lands on can be sized realistically."
+          hint="How long matching tasks take, used to size the day’s list."
           expanded={fieldOpen('effort')}
           onToggle={() => toggleField('effort')}
         >
@@ -389,8 +389,8 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
         <CollapsibleField
           label="Link"
           summary={draft.linkUrl ? linkAppLabel(draft.linkUrl) : undefined}
-          emptySummary="Says nothing"
-          hint="Opens an app or link from a matching task's row, the same as the task editor's own Link field."
+          emptySummary="Not set"
+          hint="Matching tasks get a link to an app or page, like the task editor’s Link field."
           expanded={fieldOpen('link')}
           onToggle={() => {
             if (!fieldOpen('link') && draft.linkUrl && !KNOWN_LINK_APPS.some(app => app.scheme === draft.linkUrl)) {
@@ -404,7 +404,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
               style={[styles.pill, !draft.linkUrl && styles.pillActive]}
               onPress={() => { haptics.tap(); patch({ linkUrl: null }); setCustomLinkText(''); closeField('link'); }}
             >
-              <Text style={[styles.pillText, !draft.linkUrl && styles.pillTextActive]}>Says nothing</Text>
+              <Text style={[styles.pillText, !draft.linkUrl && styles.pillTextActive]}>Not set</Text>
             </TouchableOpacity>
             {linkAppsFor(kitchenEnabled).map(app => (
               <TouchableOpacity
@@ -463,7 +463,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
             <Text style={styles.optionHint}>
               {strippedExample
                 ? `“${strippedExample.from}” is saved as “${strippedExample.to}”`
-                : 'The matched word is taken out of the task name. A title left empty by this is kept as typed.'}
+                : 'The matched word is removed from the title, unless that would leave it empty.'}
             </Text>
           </View>
           <View style={[styles.toggle, draft.stripKeyword && styles.toggleOn]}>
@@ -489,7 +489,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
             <Text style={styles.optionHint}>
               {draft.enabled
                 ? 'Applied to new tasks as you type them'
-                : 'Kept in the list, but nothing is filed by it'}
+                : 'Kept in the list but not applied to new tasks'}
             </Text>
           </View>
           <View style={[styles.toggle, draft.enabled && styles.toggleOn]}>

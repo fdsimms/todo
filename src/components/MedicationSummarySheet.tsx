@@ -133,7 +133,7 @@ export function MedicationSummarySheet({ visible, onClose }: Props) {
       markSummaryShared(summary.preparedAt);
       onClose();
     } catch {
-      Alert.alert('Export failed', 'The summary could not be made. Try again.');
+      Alert.alert('Export failed', 'Couldn’t create the summary. Try again.');
     } finally {
       // Deleted once the share sheet closes, like the CSV: a health record
       // left in the app's own storage would be a second copy nobody asked for.

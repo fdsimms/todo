@@ -93,7 +93,7 @@ export function CookbookIndexEntrySheet({ visible, cookbookId, entryId, onClose 
       // name in this book's index.
       Alert.alert(
         'Already in the index',
-        `${cookbook?.title ?? 'This book'}'s index already has a dish called “${title.trim()}”.`,
+        `${cookbook?.title ?? 'This book'}’s index already has a dish called “${title.trim()}”.`,
       );
       return;
     }
@@ -106,7 +106,7 @@ export function CookbookIndexEntrySheet({ visible, cookbookId, entryId, onClose 
     haptics.warning();
     confirmDelete({
       title: 'Delete from index',
-      message: `Remove “${entry.title}” from ${cookbook?.title ?? 'this book'}'s index?`,
+      message: `Remove “${entry.title}” from ${cookbook?.title ?? 'this book'}’s index?`,
       onConfirm: () => { deleteIndexEntry(entryId); onClose(); },
     });
   };
@@ -174,7 +174,7 @@ export function CookbookIndexEntrySheet({ visible, cookbookId, entryId, onClose 
           <Text style={styles.hint}>
             {words.length > 0
               ? `Found by searching for ${words.join(', ')} in Cook with…`
-              : 'The ingredients the index lists this dish under, separated by commas. Cook with… finds it by these and by its name.'}
+              : 'The ingredients the index lists this dish under, separated by commas. Cook with… searches these and the dish name.'}
           </Text>
 
           {entryId && (

@@ -84,12 +84,12 @@ export function CompletionOptionsMenu({ visible, anchor, onSkip, onMiss, onSomeo
         onPress={() => choose(haptics.tap, onSomeoneElse)}
         activeOpacity={interaction.activeOpacity}
         accessibilityRole="button"
-        accessibilityLabel="Someone else did it. Shows as done in your history with no coins. Your streak stays as it is."
+        accessibilityLabel="Someone else did it. Shows as done in your history, with no coins. Your streak is unchanged."
       >
         <Ionicons name="people-outline" size={iconSize.md} color={colors.accent} style={styles.icon} />
         <View style={styles.text}>
           <Text style={styles.label}>Someone else did it</Text>
-          <Text style={styles.detail}>Shows as done in your history, with no coins. Your streak stays as it is.</Text>
+          <Text style={styles.detail}>Shows as done in your history, with no coins. Your streak is unchanged.</Text>
         </View>
       </TouchableOpacity>
     </CardSheet>

@@ -473,7 +473,7 @@ export function WhenPicker({
       setDisplayMonth(startOfMonth(res.date));
       haptics.success();
     } catch (e) {
-      setSuggestError(e instanceof Error ? e.message : 'Could not suggest a date.');
+      setSuggestError(e instanceof Error ? e.message : 'Couldn’t suggest a date.');
       haptics.error();
     }
   };
@@ -542,7 +542,7 @@ export function WhenPicker({
         haptics.warning();
         Alert.alert(
           'Archive this task?',
-          `"${postponeTask.title}" moves to Archived. Nothing is deleted, and you can restore it from there whenever you like.`,
+          `“${postponeTask.title}” moves to Archived. Nothing is deleted. You can restore it from there.`,
           [
             { text: 'Cancel', style: 'cancel' },
             {
@@ -621,7 +621,7 @@ export function WhenPicker({
                   value={nlText}
                   onChangeText={onNlChange}
                   onSubmitEditing={onNlSubmit}
-                  placeholder='e.g. "next monday", "in 3 days"'
+                  placeholder='e.g. “next monday”, “in 3 days”'
                   placeholderTextColor={colors.textTertiary}
                   returnKeyType="done"
                   autoCapitalize="none"

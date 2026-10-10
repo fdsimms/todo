@@ -411,9 +411,9 @@ export function anchorLabel(anchor: TemplateAnchor, away = false): string {
  */
 export function formatOffsetWithAnchor(offsetDays: number | null, anchor: TemplateAnchor, away = false): string {
   if (offsetDays === null) return 'No date';
-  if (away && offsetDays === 0) return anchor === 'end' ? "The day you're back" : 'The day you leave';
+  if (away && offsetDays === 0) return anchor === 'end' ? "The day you’re back" : 'The day you leave';
   const name = away
-    ? (anchor === 'end' ? "you're back" : 'leaving')
+    ? (anchor === 'end' ? "you’re back" : 'leaving')
     : (anchor === 'end' ? 'end date' : 'start date');
   if (offsetDays === 0) return `On ${name}`;
   const n = Math.abs(offsetDays);

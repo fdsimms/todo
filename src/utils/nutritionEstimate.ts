@@ -336,7 +336,7 @@ export function describeEstimate(estimate: NutritionEstimate): string {
       : 'Published figures for this dish.'
     : estimate.basis === 'own'
       ? 'Worked out from figures already in your own records.'
-      : 'Typical for this dish rather than a specific recipe.';
+      : 'Typical figures for this dish.';
   const sure = estimate.confidence === 'high'
     ? ''
     : estimate.confidence === 'medium'

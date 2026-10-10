@@ -1072,7 +1072,7 @@ export function RecipeDetailScreen() {
       } else if (result.status === 'denied') {
         const what = source === 'camera' ? 'the camera' : 'your photos';
         Alert.alert(
-          `dundundun can't reach ${what}`,
+          `dundundun can’t reach ${what}`,
           result.canAskAgain
             ? `Allow access to ${what} to attach a photo to this recipe.`
             : `Turn on access to ${what} in Settings to attach a photo to this recipe.`,
@@ -1080,7 +1080,7 @@ export function RecipeDetailScreen() {
             ? [{ text: 'OK' }]
             : [
                 { text: 'Not now', style: 'cancel' },
-                { text: 'Open settings', onPress: () => Linking.openSettings() },
+                { text: 'Open Settings', onPress: () => Linking.openSettings() },
               ],
         );
       } else if (result.status === 'failed') {
@@ -1337,7 +1337,7 @@ export function RecipeDetailScreen() {
                   haptic
                   onPress={() => setEditingIngredient(ingredient)}
                   accessibilityLabel={
-                    `Did you mean ${catalogSuggestion.suggestedName}? It's in your grocery catalog.`
+                    `Did you mean ${catalogSuggestion.suggestedName}? It’s in your grocery catalog.`
                   }
                   accessibilityHint="Double tap to review the match"
                 >
@@ -1444,13 +1444,13 @@ export function RecipeDetailScreen() {
           }}
           accessibilityRole="button"
           accessibilityLabel={`${row.name}, no ingredients yet`}
-          accessibilityHint="Double tap to start adding ingredients under this heading, or drag a row here"
+          accessibilityHint="Double tap to start adding ingredients under this heading, or drag an ingredient here"
         >
           <Text style={[styles.emptySectionTitle, isTarget && styles.emptySectionTitleTarget]}>
             {row.name}
           </Text>
           <Text style={[styles.emptySectionHint, isTarget && styles.emptySectionHintTarget]}>
-            {isTarget ? 'Drop here' : 'Nothing here yet. Drag a row here'}
+            {isTarget ? 'Drop here' : 'Drag an ingredient here'}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -1716,7 +1716,7 @@ export function RecipeDetailScreen() {
             {row.name}
           </Text>
           <Text style={[styles.emptySectionHint, isTarget && styles.emptySectionHintTarget]}>
-            {isTarget ? 'Drop here' : 'Nothing here yet. Drag a step here'}
+            {isTarget ? 'Drop here' : 'Drag a step here'}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -1869,11 +1869,11 @@ export function RecipeDetailScreen() {
             activeOpacity={interaction.activeOpacity}
             onPress={openImagePicker}
             accessibilityRole="button"
-            accessibilityLabel="Recipe photo isn't on this device"
+            accessibilityLabel="Recipe photo isn’t on this device"
             accessibilityHint="Double tap to replace or remove it."
           >
             <Ionicons name="image-outline" size={iconSize.md} color={colors.textTertiary} />
-            <Text style={styles.heroMissingTitle}>Photo isn't on this device</Text>
+            <Text style={styles.heroMissingTitle}>Photo isn’t on this device</Text>
             <Text style={styles.heroMissingText}>It comes over when the device that took it syncs.</Text>
           </TouchableOpacity>
         ) : pickingImage ? (
@@ -2119,8 +2119,8 @@ export function RecipeDetailScreen() {
         )}
         {cookedWeightOpen && (
           <Text style={styles.inputHint}>
-            What the whole dish weighs, as written. Logging a plate of it is then measured from
-            what your plate weighs instead of from servings.
+            The weight of the whole dish, as entered. A plate of it is logged from
+            what your plate weighs, not from servings.
           </Text>
         )}
         {/* The one summary here that opens onto something. Its coverage clause
@@ -2135,7 +2135,7 @@ export function RecipeDetailScreen() {
             onPress={() => { haptics.tap(); setNutritionSheetOpen(true); }}
             accessibilityRole="button"
             accessibilityLabel={nutritionLine ?? 'Nutrition'}
-            accessibilityHint="Double tap for the whole panel, and to fill in the ingredients it couldn't count"
+            accessibilityHint="Double tap to open the full panel and fill in the ingredients it couldn’t count"
           >
             <Ionicons name="nutrition-outline" size={iconSize.sm} color={colors.textSecondary} />
             <Text style={styles.matchSummaryText}>{nutritionLine}</Text>
@@ -2158,7 +2158,7 @@ export function RecipeDetailScreen() {
             accessibilityLabel={
               `${catalogSummary.linked} of ${catalogSummary.total} ingredients are in your grocery catalog`
             }
-            accessibilityHint="Double tap to review the ones that aren't"
+            accessibilityHint="Double tap to review the ones that aren’t"
           >
             <Ionicons name="basket-outline" size={iconSize.sm} color={colors.textSecondary} />
             <Text style={styles.matchSummaryText}>
@@ -2171,7 +2171,7 @@ export function RecipeDetailScreen() {
         {mergedIngredientRows.length === 0 && components.length === 0 ? (
           <Text style={styles.hint}>
             Type one ingredient at a time, or paste a whole list. “2 lb chicken thighs”
-            keeps the quantity out of the name so the list stays tidy.
+            saves the quantity separately from the name.
           </Text>
         ) : (
           <View style={styles.card}>
@@ -2214,7 +2214,7 @@ export function RecipeDetailScreen() {
               </Text>
               <Text style={styles.pasteBannerDetail}>
                 {pasteResult.unresolved}{' '}
-                {pasteResult.unresolved === 1 ? "isn't" : "aren't"} in your grocery catalog.
+                {pasteResult.unresolved === 1 ? "isn’t" : "aren’t"} in your grocery catalog.
               </Text>
             </View>
             <TouchableOpacity
@@ -2225,7 +2225,7 @@ export function RecipeDetailScreen() {
               }}
               hitSlop={8}
               accessibilityRole="button"
-              accessibilityLabel="Review the ingredients that aren't in your grocery catalog"
+              accessibilityLabel="Review the ingredients that aren’t in your grocery catalog"
             >
               <Text style={styles.pasteBannerAction}>Review</Text>
             </TouchableOpacity>
@@ -2342,9 +2342,9 @@ export function RecipeDetailScreen() {
 
         {mergedStepRows.length === 0 ? (
           <Text style={styles.hint}>
-            Write the method as steps instead of one block of notes, and it stays legible
-            when the recipe's scaled or shown in a different unit. The notes field still works if you'd
-            rather leave it as one block.
+            Write the method as steps, and it stays legible when the recipe is
+            scaled or shown in a different unit. The notes field still works
+            if you’d rather leave it as one block.
           </Text>
         ) : (
           <View style={styles.card}>
@@ -2502,10 +2502,10 @@ export function RecipeDetailScreen() {
 
         {components.length === 0 ? (
           <Text style={styles.hint}>
-            Use another recipe as part of this one, like the mashed potatoes that go with both
+            Use another recipe as part of this one, like mashed potatoes with both
             the steak and the salmon. Its ingredients and prep tasks come along, and editing
-            it once updates every meal that uses it. Long press a component to make it an
-            either/or alternative, like mashed potatoes or roast potatoes.
+            it updates every meal that uses it. Long press a component to make it an
+            either/or alternative.
           </Text>
         ) : (
           <View style={styles.card}>
@@ -2527,8 +2527,8 @@ export function RecipeDetailScreen() {
 
         {recipe.prepTasks.length === 0 ? (
           <Text style={styles.hint}>
-            Add a reminder for anything that needs doing ahead of the meal (“Marinate the
-            chicken” a day before, say) and it'll turn into a Task once this recipe is
+            Add a prep task for anything that needs doing ahead of the meal, like “Marinate the
+            chicken” a day before. It becomes a task once this recipe is
             planned for a date.
           </Text>
         ) : (
@@ -2624,7 +2624,7 @@ export function RecipeDetailScreen() {
           selectedCount={selectedIds.size}
           totalCount={recipe.ingredients.length}
           category={{
-            title: 'Move to Aisle',
+            title: 'Move to aisle',
             noun: 'an aisle',
             options: aisleOrder,
             onSet: handleBulkSetAisle,

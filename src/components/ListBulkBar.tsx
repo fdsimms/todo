@@ -21,7 +21,7 @@ export interface ListBulkAction {
 
 export interface ListBulkCategoryPanel {
   /**
-   * Sub-panel heading, e.g. "Move to Category" — also what the Move action
+   * Sub-panel heading, e.g. "Move to category" — also what the Move action
    * announces to a screen reader, since the button itself is one word.
    */
   title: string;
@@ -147,7 +147,7 @@ export function ListBulkBar({
               style={styles.selectAllBtn}
               onPress={() => { haptics.tap(); allSelected ? onDeselectAll() : onSelectAll(); }}
             >
-              <Text style={styles.selectAllText}>{allSelected ? 'Deselect All' : 'Select All'}</Text>
+              <Text style={styles.selectAllText}>{allSelected ? 'Deselect all' : 'Select all'}</Text>
             </TouchableOpacity>
             <Text style={styles.countText}>{selectedCount} selected</Text>
             <TouchableOpacity style={styles.cancelBtn} onPress={onCancel} hitSlop={8} accessibilityRole="button" accessibilityLabel="Cancel selection">

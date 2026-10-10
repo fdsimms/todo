@@ -82,7 +82,7 @@ export const LIMIT_WARNING_LINK = 'dundundun://foodlog';
 export const LIMIT_WARNING_TOP_FOODS = 3;
 
 export const LIMIT_WARNING_NOTES =
-  'From the food log, against the Stay under limit set in Nutrition. Going past it logs a slip for you; deleting the entry that did takes it back.';
+  'From the food log, against the Stay under limit set in Nutrition. Going past it logs a slip. Deleting the entry that did removes the slip.';
 
 /**
  * "Most of it: Ice cream (18g), Chocolate chip cookies (9g), Oat milk (4g)."

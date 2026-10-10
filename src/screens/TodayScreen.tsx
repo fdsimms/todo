@@ -2496,7 +2496,7 @@ export function TodayScreen() {
     const undo = setMealCookedPaired(entryId, true);
     if (!undo) return;
     animateLayout();
-    setMealLastAction({ label: `Cooked "${title}"`, undo });
+    setMealLastAction({ label: `Cooked “${title}”`, undo });
   }, [setMealCookedPaired, setMealLastAction]);
   // Resolved rather than read straight through: with the groceries/meals area
   // off, Today shows no meals whatever this is set to, but the setting itself
@@ -3996,7 +3996,7 @@ export function TodayScreen() {
                 if (pinnedTasks.length === 1) { clearAllPins(); return; }
                 Alert.alert(
                   'Unpin all tasks?',
-                  'This removes every task from the Pinned Tasks block. Their own rows are unaffected.',
+                  'This removes every task from the Pinned Tasks block. The tasks aren’t changed.',
                   [
                     { text: 'Cancel', style: 'cancel' },
                     { text: 'Unpin all', style: 'destructive', onPress: clearAllPins },
@@ -4227,8 +4227,8 @@ export function TodayScreen() {
   const emptyComponent = !restVisible || projectBands.bands.length > 0 ? null : isEmptyDatabase ? (
     <EmptyState
       icon="rocket-outline"
-      title="Welcome to your list"
-      subtitle="Add your first task to get started"
+      title="No tasks yet"
+      subtitle="Add your first task."
       actionLabel="New task"
       onAction={() => setQuickAddVisible(true)}
       bottomOffset={tabBarHeight}
@@ -4883,8 +4883,8 @@ export function TodayScreen() {
               isEmptyDatabase ? (
                 <EmptyState
                   icon="rocket-outline"
-                  title="Welcome to your list"
-                  subtitle="Add your first task to get started"
+                  title="No tasks yet"
+                  subtitle="Add your first task."
                   actionLabel="New task"
                   onAction={() => setQuickAddVisible(true)}
                   bottomOffset={tabBarHeight}
@@ -5095,7 +5095,7 @@ export function TodayScreen() {
               if (recategorizedRecurring) {
                 Alert.alert(
                   'Update recurring task',
-                  'This task repeats. Apply this category change to just this task, or to it and every future repeat?',
+                  'This task repeats. Apply this category change to this task, or to this and future tasks?',
                   [
                     { text: 'Cancel', style: 'cancel' },
                     { text: 'This task', onPress: () => commitDrop('occurrence') },
@@ -5191,8 +5191,8 @@ export function TodayScreen() {
               isEmptyDatabase ? (
                 <EmptyState
                   icon="rocket-outline"
-                  title="Welcome to your list"
-                  subtitle="Add your first task to get started"
+                  title="No tasks yet"
+                  subtitle="Add your first task."
                   actionLabel="New task"
                   onAction={() => setQuickAddVisible(true)}
                   bottomOffset={tabBarHeight}
@@ -5274,8 +5274,8 @@ export function TodayScreen() {
               isEmptyDatabase ? (
                 <EmptyState
                   icon="rocket-outline"
-                  title="Welcome to your list"
-                  subtitle="Add your first task to get started"
+                  title="No tasks yet"
+                  subtitle="Add your first task."
                   actionLabel="New task"
                   onAction={() => setQuickAddVisible(true)}
                   bottomOffset={tabBarHeight}

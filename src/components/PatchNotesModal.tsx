@@ -81,7 +81,7 @@ export function PatchNotesModal({ visible, onDismiss }: Props) {
             onPress={() => toggleQaStatus(note.id, 'pass')}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             accessibilityRole="checkbox"
-            accessibilityLabel={`Mark "${note.message}" as passed`}
+            accessibilityLabel={`Mark “${note.message}” as passed`}
             accessibilityState={{ checked: qaStatus === 'pass' }}
           >
             <Ionicons
@@ -96,7 +96,7 @@ export function PatchNotesModal({ visible, onDismiss }: Props) {
             onPress={() => toggleQaStatus(note.id, 'fail')}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             accessibilityRole="checkbox"
-            accessibilityLabel={`Mark "${note.message}" as failed`}
+            accessibilityLabel={`Mark “${note.message}” as failed`}
             accessibilityState={{ checked: qaStatus === 'fail' }}
           >
             <Ionicons
@@ -173,7 +173,7 @@ export function PatchNotesModal({ visible, onDismiss }: Props) {
           <View style={styles.card}>
             <View style={styles.titleRow}>
               <Ionicons name="gift-outline" size={20} color={colors.accent} />
-              <Text style={styles.title}>What's New</Text>
+              <Text style={styles.title}>What’s New</Text>
               <View style={styles.titleSpacer} />
               <TouchableOpacity
                 style={styles.hideReviewedButton}

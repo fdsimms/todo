@@ -339,13 +339,13 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
 
           <ScrollView contentContainerStyle={styles.body}>
             <Text style={styles.intro}>
-              Check off what you can get at {correctingShop.name}. It’s filed against the store for next
-              time, and this trip’s numbers update as soon as you save.
+              Check off what you can get at {correctingShop.name}. Saving records it for the
+              store and updates this trip’s numbers.
             </Text>
             {known > 0 && (
               <Text style={styles.hint}>
                 {known} {known === 1 ? 'item is' : 'items are'} already recorded there, so{' '}
-                {known === 1 ? "it isn't" : "they aren't"} listed here.
+                {known === 1 ? "it isn’t" : "they aren’t"} listed here.
               </Text>
             )}
 
@@ -372,9 +372,9 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
             </View>
 
             <Text style={styles.footerNote}>
-              This records that the store has them, not that you’ve bought them there, so it
-              counts toward what a trip covers but isn’t recorded as a purchase. To take one back
-              off, open the item and use its store list.
+              This records that the store has them. It counts toward what a trip covers but
+              isn’t recorded as a purchase. To remove one, open the item and use its store
+              list.
             </Text>
           </ScrollView>
         </View>
@@ -404,10 +404,10 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
               : `${total} ${total === 1 ? 'item' : 'items'} on your list.`}
             {' '}
             {selected.length > 1
-              ? `You'll get one task per store: ${selectedNames}.`
+              ? `You’ll get one task per store: ${selectedNames}.`
               : startNow
                 ? 'Sets the store you’re at.'
-                : 'You’ll get a task on Today that opens straight back here.'}
+                : 'You’ll get a task on Today that reopens this sheet.'}
           </Text>
 
           {next.length > 0 && (
@@ -533,7 +533,7 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
               styles={styles}
               colors={colors}
               title="No store"
-              subtitle="Just “Get groceries”"
+              subtitle="One “Get groceries” task"
               selected={selected.length === 0}
               onPress={() => {
                 haptics.tap();
@@ -566,8 +566,8 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
             <>
               <Text style={styles.label}>SHOPPING NOW?</Text>
               <Text style={styles.hint}>
-                Sets the store you’re at. Your list will say when something isn’t one you
-                usually get there.
+                Sets the store you’re at. Your list flags items you don’t usually
+                buy there.
               </Text>
               <InlineAction
                 label={`Start shopping at ${startable.name}`}
@@ -610,7 +610,7 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
               {summary.unknown.length > 0 && (
                 <Text style={styles.footerNote}>
                   Nothing’s on record about {namesFor(summary.unknown)} anywhere, so no store here
-                  gets credit for {summary.unknown.length === 1 ? 'it' : 'them'}.
+                  is counted as having {summary.unknown.length === 1 ? 'it' : 'them'}.
                 </Text>
               )}
               {/* The reply to "at least", sitting directly under it. A hedge
@@ -629,15 +629,15 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
                 />
               )}
               <Text style={styles.footerNote}>
-                These counts are only what you’ve bought or noted. A store may carry more.
+                These counts come from what you’ve bought or noted. A store may carry more.
               </Text>
             </View>
           )}
 
           {shops.length === 0 && (
             <EmptyNote icon="storefront-outline">
-              No stores yet. Name one when you finish a trip and this starts telling you which of
-              them has what.
+              No stores yet. Name one when you finish a trip to see which store has
+              what.
             </EmptyNote>
           )}
         </ScrollView>

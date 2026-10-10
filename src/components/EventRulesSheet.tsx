@@ -117,8 +117,8 @@ export function EventRulesSheet({ visible, onClose }: Props) {
       onClose={onClose}
       title="Event rules"
       caption={
-        'A rule adds its task when an event on your calendar has one of the words you pick in its title. '
-        + 'It reads the title only, never who was invited.'
+        'A rule adds its task when an event on your calendar has one of its keywords in the title. '
+        + 'Invitees aren’t checked.'
       }
       rules={rules}
       categoryFallback={fallbackCategory}
@@ -132,7 +132,7 @@ export function EventRulesSheet({ visible, onClose }: Props) {
       })}
       describeRule={describeEventRule}
       rowNote={rowNote}
-      editorLabel="When an event's title has"
+      editorLabel="When an event’s title has"
       renderEditor={(rule, update) => (
         <>
           <MatchEditor
@@ -140,8 +140,8 @@ export function EventRulesSheet({ visible, onClose }: Props) {
             onChange={matches => update({ matches })}
           />
           <Text style={styles.hint}>
-            {`At least ${EVENT_MATCH_MIN_LENGTH} letters each, matched as a whole word. "Gym" finds `
-            + '"Gym class" but not "Gymnastics". The rule fires if any of them appears.'}
+            {`At least ${EVENT_MATCH_MIN_LENGTH} letters each. Matches whole words, so “Gym” matches `
+            + '“Gym class” but not “Gymnastics”. Any one keyword is enough.'}
           </Text>
           <Text style={[styles.editorLabel, styles.editorLabelSpaced]}>Add the task</Text>
           <SegmentedControl<RuleTiming>
@@ -158,7 +158,7 @@ export function EventRulesSheet({ visible, onClose }: Props) {
           {rule.afterEvent ? (
             <>
               <Text style={styles.hint}>
-                The task appears once the event is over, so nothing shows up beforehand.
+                The task appears after the event ends.
               </Text>
               <Text style={[styles.editorLabel, styles.editorLabelSpaced]}>If another event matches</Text>
               <SegmentedControl<FollowUpMode>
@@ -169,7 +169,7 @@ export function EventRulesSheet({ visible, onClose }: Props) {
                 surface="card"
               />
               <Text style={styles.hint}>
-                {'"Only if none is booked" skips the task while another matching event is on your '
+                {'“Only if none is booked” skips the task while another matching event is on your '
                 + 'calendar in the next 6 months.'}
               </Text>
             </>
@@ -184,7 +184,7 @@ export function EventRulesSheet({ visible, onClose }: Props) {
                   max={EVENT_LEAD_DAYS_MAX}
                   format={n => (n === 0 ? 'Same day' : n === 1 ? '1 day' : `${n} days`)}
                   label="Days before the event"
-                  describeValue={n => (n === 0 ? 'On the day of the event' : `${n} days before`)}
+                  describeValue={n => (n === 0 ? 'On the day of the event' : `${n} ${n === 1 ? 'day' : 'days'} before`)}
                 />
               </View>
             </>
@@ -195,7 +195,7 @@ export function EventRulesSheet({ visible, onClose }: Props) {
       titleMaxLength={EVENT_RULE_TITLE_MAX_LENGTH}
       emptyIcon="calendar-number-outline"
       emptyTitle="No event rules"
-      emptySubtitle="Add a rule to get a task when an event on your calendar matches, like packing before a flight."
+      emptySubtitle="Add a rule to get a task when a calendar event matches, like packing before a flight."
     />
   );
 }

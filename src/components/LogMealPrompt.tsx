@@ -303,7 +303,7 @@ export function LogMealPrompt() {
               </View>
               <Text style={styles.hint}>
                 {shown.grams !== null
-                  ? `What the container weighed when you put it away. Change it if you didn't finish it all. The whole dish weighs ${shownFigures?.cookedGrams} g.`
+                  ? `What the container weighed when you put it away. Change it if you didn’t finish it all. The whole dish weighs ${shownFigures?.cookedGrams} g.`
                   : `What was on your plate. The whole dish weighs ${shownFigures?.cookedGrams} g`
                     + (oneServing !== null ? `, so a serving is about ${oneServing} g.` : '.')}
               </Text>
@@ -327,7 +327,7 @@ export function LogMealPrompt() {
               <Text style={styles.hint}>
                 {shownFigures?.perServing
                   ? 'In servings of the recipe as it was cooked.'
-                  : 'This recipe doesn\'t say how many servings it makes, so this counts whole dishes.'}
+                  : 'This recipe has no serving count, so this counts whole dishes.'}
               </Text>
             </>
           )}
@@ -349,9 +349,9 @@ export function LogMealPrompt() {
                 activeOpacity={interaction.activeOpacity}
                 onPress={handleNever}
                 accessibilityRole="button"
-                accessibilityLabel="Never ask about this meal"
+                accessibilityLabel="Don’t ask about this meal"
               >
-                <Text style={styles.secondaryText}>Don't ask for this meal</Text>
+                <Text style={styles.secondaryText}>Don’t ask about this meal</Text>
               </TouchableOpacity>
             )}
             {!shown.asked && (
@@ -362,12 +362,12 @@ export function LogMealPrompt() {
                   onPress={handleStopAsking}
                   accessibilityRole="button"
                   accessibilityLabel="Stop asking after meals"
-                  accessibilityHint="You can turn Ask what you ate back on in Settings, under Groceries and meals."
+                  accessibilityHint="Turn “Ask what you ate” back on in Settings, under Groceries & meals."
                 >
                   <Text style={styles.secondaryText}>Stop asking after meals</Text>
                 </TouchableOpacity>
                 <Text style={styles.hint}>
-                  {'You can turn "Ask what you ate" back on in Settings, under Groceries & meals.'}
+                  {'Turn “Ask what you ate” back on in Settings, under Groceries & meals.'}
                 </Text>
               </>
             )}

@@ -73,7 +73,7 @@ export function UseUpResolveSheet() {
     Alert.alert(
       item.name,
       canFreeze
-        ? 'Used it up, froze it, or went bad? Used it up and went bad take it out of the pantry, and went bad is recorded as waste. Froze it keeps it in the pantry and pauses its use-by date.'
+        ? 'Used it up, froze it, or went bad? Used it up and went bad remove it from the pantry. Went bad is also recorded as waste. Froze it keeps it in the pantry and pauses its use-by date.'
         : 'Used it up or went bad? Either stops it counting as on hand; went bad is recorded as waste.',
       [
         { text: 'Not now', style: 'cancel', onPress: () => setPendingUseUpItem(null) },

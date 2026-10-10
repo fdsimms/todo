@@ -129,7 +129,7 @@ export function LogbookEntryMenu({
       <View style={styles.optionsCard}>
         <TouchableOpacity style={styles.optionRow} onPress={markIncomplete} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
           <Ionicons name="arrow-undo-outline" size={18} color={colors.accent} />
-          <Text style={styles.optionLabel}>Mark Incomplete</Text>
+          <Text style={styles.optionLabel}>Mark incomplete</Text>
         </TouchableOpacity>
         <View style={styles.inlineSep} />
         <TouchableOpacity style={styles.optionRow} onPress={openCalendar} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
@@ -146,7 +146,7 @@ export function LogbookEntryMenu({
               accessibilityRole="button"
             >
               <Ionicons name="help" size={18} color={colors.accent} />
-              <Text style={styles.optionLabel}>{hasAnswer ? 'Edit Answer' : 'Add Answer'}</Text>
+              <Text style={styles.optionLabel}>{hasAnswer ? 'Edit answer' : 'Add answer'}</Text>
             </TouchableOpacity>
           </>
         )}
@@ -160,7 +160,7 @@ export function LogbookEntryMenu({
               accessibilityRole="button"
             >
               <Ionicons name="repeat-outline" size={18} color={colors.accent} />
-              <Text style={styles.optionLabel}>Show the Week</Text>
+              <Text style={styles.optionLabel}>Show the week</Text>
             </TouchableOpacity>
           </>
         )}
@@ -175,7 +175,7 @@ export function LogbookEntryMenu({
           accessibilityLabel="Delete entry"
         >
           <Ionicons name="trash-outline" size={18} color={colors.red} />
-          <Text style={[styles.optionLabel, styles.destructiveLabel]}>Delete Entry</Text>
+          <Text style={[styles.optionLabel, styles.destructiveLabel]}>Delete entry</Text>
         </TouchableOpacity>
       </View>
     </CardSheet>

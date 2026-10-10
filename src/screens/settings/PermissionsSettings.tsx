@@ -44,7 +44,7 @@ interface PermissionSpec {
 const PERMISSIONS: PermissionSpec[] = [
   {
     entryId: 'permCalendar', icon: 'calendar-outline', label: 'Calendar',
-    hint: 'Reads events to show what your day looks like, and can write deadlines, completions and meals to it',
+    hint: 'Reads events to show your day, and can write deadlines, completions and meals to it',
     getStatus: getCalendarPermission, requestAccess: requestCalendarPermission, iosOnly: true,
   },
   {
@@ -54,12 +54,12 @@ const PERMISSIONS: PermissionSpec[] = [
   },
   {
     entryId: 'permContacts', icon: 'people-outline', label: 'Contacts',
-    hint: 'Fills in a person\'s name and birthday from your address book',
+    hint: 'Fills in a person’s name and birthday from your address book',
     getStatus: getContactsPermission, requestAccess: requestContactsPermission, iosOnly: true,
   },
   {
     entryId: 'permLocation', icon: 'location-outline', label: 'Location',
-    hint: 'Checks the forecast where you are for weather rules, and finds sunrise and sunset for tasks timed by the sun',
+    hint: 'Checks the forecast for weather rules and finds sunrise and sunset for tasks timed by the sun',
     getStatus: getLocationPermission, requestAccess: requestLocationPermission, iosOnly: true,
   },
   {
@@ -157,7 +157,7 @@ export function PermissionsSettings() {
     <>
       <SettingsSection
         label="Apple Health"
-        footer="Reading steps and nutrition, and writing water, weight and food, are each their own permission. See Apple Health for the full breakdown and how to fix any of them."
+        footer="Reading steps and nutrition, and writing water, weight and food, are separate permissions. Tap Apple Health to see and fix each one."
       >
         <SettingsRow
           entryId="permHealth"
@@ -173,7 +173,7 @@ export function PermissionsSettings() {
 
       <SettingsSection
         label="App permissions"
-        footer="What dundundun can read or write on this device, and one tap to fix whichever one needs it. Turning any of these off in the OS doesn't change what the app asks for next time, only what it's allowed to do until you turn it back on."
+        footer="What dundundun can read or write on this device. Tap a permission that needs attention to fix it. Turning one off in Settings stops dundundun from using it until you turn it back on."
       >
         {PERMISSIONS
           .map((permission, index) => ({ permission, index }))

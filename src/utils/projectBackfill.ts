@@ -33,14 +33,14 @@ export const PROJECT_BACKFILL_FIELDS: ProjectBackfillFieldDef[] = [
   {
     id: 'nudge',
     label: 'Bring this up',
-    hint: 'Whether this project shows up in Pull from projects, and whether it adds a review task after a while with nothing scheduled.',
+    hint: 'Shows this project in Pull from projects and adds a review task after a while with nothing scheduled.',
   },
   // A plain toggle, unlike `nudge` above it — turning this on picks nothing
   // else, so it is the `streak`/`vacation` shape rather than the cadence one.
   {
     id: 'weekendSource',
     label: 'Suggest for a free weekend',
-    hint: 'Whether the weekend task can name this project when a weekend has nothing on it.',
+    hint: 'Suggests this project in the weekend task when a weekend has nothing on it.',
   },
 ];
 

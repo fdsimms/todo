@@ -94,7 +94,7 @@ export function AppLockGate() {
           warnedUnavailable = true;
           Alert.alert(
             'App lock is inactive',
-            `This device has no Face ID, Touch ID or passcode set up, so there's nothing to unlock with. ${APP_NAME} is open as usual, and the lock starts working again once you set one up in the Settings app.`
+            `This device has no Face ID, Touch ID or passcode, so ${APP_NAME} opens without the lock until you set one up in Settings.`
           );
         }
       }

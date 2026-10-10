@@ -258,7 +258,7 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
           <View>
             <Text style={styles.sectionLabel}>Shown on Food log</Text>
             <Text style={styles.intro}>
-              Which of these the totals card shows before "Show every nutrient" is tapped.
+              Nutrients the totals card shows until you tap “Show every nutrient”.
             </Text>
             <View style={styles.pinnedCard}>
               {PINNABLE_NUTRIENTS.map((key, i) => {
@@ -287,9 +287,9 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
 
           <Text style={styles.sectionLabel}>Daily targets</Text>
           <Text style={styles.intro}>
-            A figure to read the day's total against. Nothing is set to begin with, and
-            nothing is suggested: these are yours to choose, to leave alone, or to start
-            from the U.S. Daily Value, the reference figure nutrition labels print.
+            Targets that each day’s total is compared with. None are set or suggested by default,
+            so choose your own, leave any unset, or start from the U.S. Daily Value, the
+            reference figure on nutrition labels.
           </Text>
           {unsetKeys.length > 0 && (
             <InlineAction
@@ -368,8 +368,8 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
                 )}
                 {key === 'calorieKcal' && calorieFollowsGoal && (
                   <Text style={styles.boostHint}>
-                    This follows your weight goal. It is worked out again each time the
-                    Weight screen reads your weight, which replaces a number set here.
+                    This follows your weight goal and updates each time the
+                    Weight screen reads your weight, replacing any number set here.
                   </Text>
                 )}
               </View>
@@ -380,7 +380,7 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
             <View>
               <Text style={styles.sectionLabel}>Limits</Text>
               <Text style={styles.intro}>
-                For the targets set to Stay under. A day counts as close to one at this share of it.
+                Applies to targets set to Stay under. A day counts as close to a limit at this share of it.
               </Text>
               <View style={styles.boostCard}>
                 <TouchableOpacity
@@ -424,14 +424,14 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
                   onPress={toggleLimitWarning}
                   accessibilityRole="checkbox"
                   accessibilityState={{ checked: limitWarningTasks }}
-                  accessibilityLabel="Add a daily don't-do task for each limit"
+                  accessibilityLabel="Add a daily “don’t do” task for each limit"
                 >
                   <Ionicons
                     name={limitWarningTasks ? 'checkmark-circle' : 'ellipse-outline'}
                     size={iconSize.md}
                     color={limitWarningTasks ? colors.accent : colors.textTertiary}
                   />
-                  <Text style={styles.boostToggleLabel}>Add a "don't do" task for each</Text>
+                  <Text style={styles.boostToggleLabel}>Add a “don’t do” task for each limit</Text>
                 </TouchableOpacity>
                 <View style={styles.boostFields}>
                   <View style={styles.boostFieldRow}>
@@ -474,7 +474,7 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
                 >
                   <Ionicons name="heart-outline" size={iconSize.sm} color={colors.textSecondary} />
                   <Text style={styles.boostNoticeText}>
-                    Turn on Apple Health reading in Settings to raise today's water target on a day
+                    Turn on Apple Health reading in Settings to raise today’s water target on a day
                     with exercise logged.
                   </Text>
                   <Ionicons
@@ -559,8 +559,8 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
                 >
                   <Ionicons name="heart-outline" size={iconSize.sm} color={colors.textSecondary} />
                   <Text style={styles.boostNoticeText}>
-                    Turn on Apple Health reading in Settings to raise today's calorie target on a
-                    day with more activity than usual.
+                    Turn on Apple Health reading in Settings to raise today’s calorie target on
+                    more active days.
                   </Text>
                   <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
                 </TouchableOpacity>
@@ -584,9 +584,9 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
                   {activeEnergyBoost && (
                     <View style={styles.boostFields}>
                       <Text style={styles.boostHint}>
-                        Today's calorie target goes up by whatever active calories Apple Health
-                        records past this figure. A day that stays under it is left alone, and the
-                        target you set is never changed.
+                        Today’s calorie target goes up by the active calories Apple Health
+                        records past this figure. The target you set
+                        doesn’t change.
                       </Text>
                       <View style={styles.boostFieldRow}>
                         <Text style={styles.boostFieldLabel}>Active calories in a typical day</Text>
@@ -601,7 +601,7 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
                           max={ACTIVE_ENERGY_BASELINE_RANGE.max}
                           step={ACTIVE_ENERGY_BASELINE_RANGE.step}
                           format={n => `${n.toLocaleString()} cal`}
-                          label="Typical day's active calories"
+                          label="Typical day’s active calories"
                           describeValue={n =>
                             `${(n ?? ACTIVE_ENERGY_BASELINE_RANGE.default).toLocaleString()} calories`
                           }
@@ -632,7 +632,7 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
                       )}
                       {typicalKcal === null && !noActiveEnergy && (
                         <Text style={styles.boostHint}>
-                          Apple Health hasn't recorded enough days yet to work out your average.
+                          Apple Health hasn’t recorded enough days yet to work out your average.
                         </Text>
                       )}
                       {/* The whole row opens the Health app, the same shape the

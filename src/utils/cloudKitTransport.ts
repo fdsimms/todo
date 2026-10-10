@@ -42,7 +42,7 @@ export function isCloudKitSyncAvailable(): boolean {
  */
 export async function cloudKitUnavailableReason(): Promise<string | null> {
   const b = bridge();
-  if (!b || !b.isCloudKitAvailable()) return 'This build of the app cannot sync.';
+  if (!b || !b.isCloudKitAvailable()) return 'This build can’t sync.';
 
   const status = await b.cloudKitAccountStatus();
   switch (status) {

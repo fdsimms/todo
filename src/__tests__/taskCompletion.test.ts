@@ -741,7 +741,7 @@ describe('a look-back on an answered decision', () => {
       projectId: 'p1',
       completed: false,
     });
-    expect(reviewTask!.notes).toBe('You answered "Bob\'s Roofing" on Mar 10, 2026.');
+    expect(reviewTask!.notes).toBe('You answered “Bob\'s Roofing” on Mar 10, 2026.');
     expect(dayKeyOf(new Date(reviewTask!.dueDate!))).toBe('2026-04-10');
   });
 

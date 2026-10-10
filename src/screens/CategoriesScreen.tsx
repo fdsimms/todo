@@ -84,7 +84,7 @@ export function CategoriesScreen() {
         <EmptyState
           icon="folder-open-outline"
           title="No categories yet"
-          subtitle="Group tasks by the part of life they belong to (work, health, errands) and give each one its own visibility schedule"
+          subtitle="Group tasks by part of life, like work, health or errands. Each category can have its own visibility schedule."
           actionLabel="New category"
           onAction={() => setQuickAddVisible(true)}
           bottomOffset={tabBarHeight}
@@ -118,7 +118,7 @@ export function CategoriesScreen() {
               scheduleLabel,
               hideOnVacation ? 'Hidden on vacation' : null,
               excludeFromSuggestions ? 'Skipped in suggestions' : null,
-              excludeFromNewBanner ? 'Skipped in new todos banner' : null,
+              excludeFromNewBanner ? 'Skipped in new tasks banner' : null,
             ]
               .filter(Boolean)
               .join('. ');

@@ -126,7 +126,7 @@ export function agentRecordPlan(entry: UnattendedEntry, state: RecordState): Age
       }
       if (entry.action !== 'edited' || !revert || !id) return NONE;
       const project = state.project(id);
-      if (!project) return { kind: 'none', reason: 'Since removed' };
+      if (!project) return { kind: 'none', reason: 'Removed since' };
       const record = project as unknown as Record<string, unknown>;
       const keys = Object.keys(revert.after);
       if (keys.every(k => same(record[k], revert.before[k]))) return { kind: 'none', reason: 'Undone' };

@@ -48,7 +48,7 @@ describe('calendarReviewDayKey', () => {
 
 describe('CALENDAR_REVIEW_TITLE', () => {
   it('never varies — there is exactly one question this asks', () => {
-    expect(CALENDAR_REVIEW_TITLE).toBe('Review tomorrow\'s calendar');
+    expect(CALENDAR_REVIEW_TITLE).toBe('Review tomorrow’s calendar');
   });
 });
 

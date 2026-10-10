@@ -69,9 +69,9 @@ export function WeatherRulesSheet({ visible, onClose }: Props) {
       onClose={onClose}
       title="Weather rules"
       caption={
-        "A rule adds its task on any day the weather matches, using your location, and the task "
-        + "says when that weather happens. From 6pm it adds tomorrow's too. It never applies to a "
-        + "day that's already passed."
+        "A rule adds its task on any day the weather matches, using your location. The task "
+        + "says when that weather happens, and from 6 PM "
+        + "it adds tomorrow’s too."
       }
       rules={rules}
       categoryFallback={fallbackCategory}
@@ -85,7 +85,7 @@ export function WeatherRulesSheet({ visible, onClose }: Props) {
         lastAheadDayKey: null,
       })}
       describeRule={rule => weatherConditionLabel(rule.condition)}
-      editorLabel="On a day that's"
+      editorLabel="On a day that’s"
       renderEditor={(rule, update) => (
         <SegmentedControl
           options={CONDITION_OPTIONS}
@@ -111,9 +111,9 @@ export function WeatherRulesSheet({ visible, onClose }: Props) {
           title="Location access"
           hint={
             permission === 'denied'
-              ? "Blocked. Rules can't check the weather until you turn this back on for this app."
+              ? "Blocked. Rules can’t check the weather until you turn this back on."
               : permission === 'undetermined'
-              ? "Not allowed yet. Rules can't check the weather until you allow it."
+              ? "Not allowed yet. Rules can’t check the weather until you allow it."
               : 'Not available on this platform.'
           }
           action={(permission === 'denied' || permission === 'undetermined') && (

@@ -551,8 +551,8 @@ export function PersonDetailScreen() {
             {/* "Nothing yet" and "0" are different claims — see the note on
                 daysSinceTogether. This says the first one. */}
             <Text style={styles.emptyHistory}>
-              Nothing here yet. Anything you check off with {name} on it shows up here, and you can put
-              them on a task by typing @{name.split(' ')[0].toLowerCase()} in quick add.
+              Nothing here yet. Tasks you check off with {name} on them show up here. To put
+              them on a task, type @{name.split(' ')[0].toLowerCase()} in quick add.
             </Text>
           </View>
         ) : (
@@ -565,7 +565,7 @@ export function PersonDetailScreen() {
                   onPress={() => { haptics.tap(); setEditingHistoryEntry(entry); }}
                   activeOpacity={interaction.activeOpacity}
                   accessibilityRole="button"
-                  accessibilityLabel={`Edit "${entry.title}", ${describeLastTogether(new Date(entry.at), today)}`}
+                  accessibilityLabel={`Edit “${entry.title}”, ${describeLastTogether(new Date(entry.at), today)}`}
                 >
                   <Ionicons name="checkmark-circle-outline" size={14} color={colors.textTertiary} />
                   <Text style={styles.entryTitle} numberOfLines={1}>{entry.title}</Text>
@@ -613,7 +613,7 @@ export function PersonDetailScreen() {
                         hitSlop={8}
                         activeOpacity={interaction.activeOpacity}
                         accessibilityRole="button"
-                        accessibilityLabel={`Don't suggest ${suggestion.title} again`}
+                        accessibilityLabel={`Don’t suggest ${suggestion.title} again`}
                       >
                         <Ionicons name="close" size={iconSize.md} color={colors.textTertiary} />
                       </TouchableOpacity>

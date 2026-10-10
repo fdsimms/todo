@@ -263,7 +263,7 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
     if (!project.awayStart) { apply(); return; }
     Alert.alert(
       'Replace away dates?',
-      `${project.title} already has away dates. Use this event's dates instead?`,
+      `${project.title} already has away dates. Use this event’s dates instead?`,
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Replace', onPress: apply },
@@ -365,7 +365,7 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
                     activeOpacity={interaction.activeOpacity}
                     disabled={people.length === 0 && !hasTemplates && plannedCount === 0}
                     accessibilityRole="button"
-                    accessibilityLabel={`${event.title || 'Event'}. Show who it's with and tasks planned around it.`}
+                    accessibilityLabel={`${event.title || 'Event'}. Show who it’s with and tasks planned around it.`}
                   >
                     <Text style={styles.rowTitle} numberOfLines={2}>{event.title || 'Event'}</Text>
                     <View style={styles.rowMetaRow}>

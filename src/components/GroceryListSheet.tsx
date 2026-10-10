@@ -146,7 +146,7 @@ export function GroceryListSheet({ visible, onClose }: Props) {
 
   const handleDelete = (id: string, name: string, count: number) => {
     confirmDelete({
-      title: `Delete "${name}"?`,
+      title: `Delete “${name}”?`,
       message: count > 0
         ? `${count} ${count === 1 ? 'thing' : 'things'} on it will come off the list. Nothing is removed from your catalog.`
         : 'Nothing is removed from your catalog.',
@@ -183,8 +183,8 @@ export function GroceryListSheet({ visible, onClose }: Props) {
               mechanism rather than the mood: what a second list changes is that
               its shopping stays out of your kitchen's record. */}
           <Text style={styles.sheetHint}>
-            Anything you add goes on the list you pick here. Buying things on a list other than
-            Groceries doesn't update your pantry, prices or purchase history.
+            Anything you add goes on the list you pick here. Buying items on a list other than
+            Groceries doesn’t update your pantry, prices or purchase history.
           </Text>
 
           <ScrollView

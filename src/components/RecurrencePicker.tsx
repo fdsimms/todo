@@ -224,8 +224,8 @@ export function RecurrencePicker({
     ];
   }, [rainUnit, rainSkipMm]);
   const rainHint = weatherTasksOn
-    ? 'Skips the day\'s occurrence when this much rain fell yesterday and today, counting today\'s forecast.'
-    : 'Turn on Weather-based tasks in Settings, with location access, so the app can read rainfall. Until then this does nothing.';
+    ? 'Skips the day’s occurrence when this much rain fell yesterday and today, counting today’s forecast.'
+    : 'Turn on Weather-based tasks in Settings, with location access. Until then this does nothing.';
 
   const endMode: 'never' | 'date' | 'count' =
     endDate?.value ? 'date' : recurrenceCount !== null ? 'count' : 'never';
@@ -311,7 +311,7 @@ export function RecurrencePicker({
         </View>
         {recurrenceType === 'hours' && (
           <Text style={styles.groupHint}>
-            Hidden until this many hours after you check it off, not on a fixed calendar day.
+            Hides the task for this many hours after you check it off.
           </Text>
         )}
       </Group>
@@ -354,7 +354,7 @@ export function RecurrencePicker({
         <Group
           label="On which day"
           hint={recurrenceType === 'yearly' && recurrenceMonth === null
-            ? 'The month stays whatever month the due date falls in; this only sets the day within it.'
+            ? 'The month follows the due date. This sets the day.'
             : undefined}
           styles={styles}
         >

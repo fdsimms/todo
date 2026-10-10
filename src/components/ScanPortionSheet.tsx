@@ -483,7 +483,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                       />
                     </View>
                     <Text style={styles.weighHint}>
-                      Weigh it and enter the total weight. The app remembers it for next time.
+                      Weigh it and enter the total weight. It’s saved for this food.
                     </Text>
                   </View>
                 )}
@@ -492,7 +492,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
           })}
 
           <Text style={styles.footnote}>
-            Anything left blank isn't logged.
+            Anything left blank isn’t logged.
           </Text>
           <LimitImpactLines impacts={limitImpacts} style={styles.limitImpacts} />
         </ScrollView>

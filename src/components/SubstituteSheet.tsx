@@ -324,7 +324,7 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
   // Assembled here rather than inline: four sentences across two independent
   // conditions is a ternary nobody can read in JSX.
   const ratioHint = !fromUnit
-    ? 'Optional. For a substitute that needs a different amount, not just a different name.'
+    ? 'Optional. Use it when the substitute needs a different amount.'
     // With the swap applied for you, a line the ratio can't be read against
     // isn't renamed either — see standingSwaps.ts for why a swapped name over
     // an unconverted amount is the one outcome worse than leaving the line
@@ -491,7 +491,7 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
               <View style={styles.pickedBody}>
                 <Text style={styles.pickedName} numberOfLines={1}>{picked.name}</Text>
                 <Text style={styles.pickedMeta}>
-                  Use this when there&apos;s no {item.name.toLowerCase()}.
+                  Use this when there’s no {item.name.toLowerCase()}.
                 </Text>
               </View>
               {/* Only while picking: in review mode the substitute is what the
@@ -557,7 +557,7 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
               accessibilityLabel="Note about this substitute"
             />
             <Text style={styles.hint}>
-              Where a swap that only works sometimes says so: fine for frying, wrong for
+              Say when a swap only works sometimes, for example fine for frying but not for
               baking.
             </Text>
 
@@ -580,7 +580,7 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
               <View style={styles.toggleBody}>
                 <Text style={styles.toggleLabel}>Both ways</Text>
                 <Text style={styles.toggleHint}>
-                  Also use {item.name.toLowerCase()} when there&apos;s no {picked.name.toLowerCase()}.
+                  Also use {item.name.toLowerCase()} when there’s no {picked.name.toLowerCase()}.
                 </Text>
               </View>
             </TouchableOpacity>
@@ -655,7 +655,7 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
                 <View style={styles.toggleBody}>
                   <Text style={[styles.toggleLabel, { color: colors.redText }]}>Remove</Text>
                   <Text style={styles.toggleHint}>
-                    Forgets this swap. Neither item is deleted.
+                    Removes this swap. Neither item is deleted.
                   </Text>
                 </View>
               </TouchableOpacity>
@@ -668,7 +668,7 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
                 the answer is going to turn up in every recipe calling for it. */}
             {!hideHelpText && (
               <Text style={styles.caption}>
-                Pick what you&apos;d use instead. It&apos;s saved on {item.name.toLowerCase()}, so every
+                Pick what you’d use instead. It’s saved on {item.name.toLowerCase()}, so every
                 recipe calling for it can use your answer.
               </Text>
             )}
@@ -839,8 +839,8 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
                 "buttermilk → milk + lemon juice" is two items both required,
                 which is a recipe rather than a swap. */}
             <Text style={styles.footnote}>
-              Swaps needing a second ingredient aren&apos;t offered, because those are a recipe,
-              not a substitute.
+              Swaps that need a second ingredient aren’t offered, since those are
+              recipes.
             </Text>
           </>
         )}

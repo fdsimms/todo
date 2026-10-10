@@ -286,7 +286,7 @@ export function ProjectsScreen() {
     };
     Alert.alert(
       `Delete ${ids.length} ${plural}?`,
-      `${their} tasks can stay in your list without a project, or be deleted with ${them}. You can undo this by shaking your phone right after.`,
+      `${their} tasks can stay in your list without a project, or be deleted with ${them}. Shake your phone right after to undo.`,
       [
         { text: 'Cancel', style: 'cancel' },
         { text: `Delete ${plural} only`, onPress: () => run(false) },
@@ -621,10 +621,10 @@ export function ProjectsScreen() {
             title={projectFilter === 'archived' ? 'No archived projects' : projectFilter === 'completed' ? 'No completed projects' : 'No projects yet'}
             subtitle={
               projectFilter === 'archived'
-                ? 'Projects you archive will show up here'
+                ? 'Archived projects appear here.'
                 : projectFilter === 'completed'
-                  ? 'Projects you mark complete will show up here'
-                  : 'Start a themed collection, like a summer bucket list, and pick tasks off it over time'
+                  ? 'Completed projects appear here.'
+                  : 'Start a themed collection, like a summer bucket list, and pick tasks off it over time.'
             }
             // The button is hidden on these two lists, so this is the way back.
             actionLabel={projectFilter === 'active' ? 'New project' : 'Show active projects'}
@@ -680,7 +680,7 @@ export function ProjectsScreen() {
           // Placing a new project by hand is a hand-set order, so it goes
           // wherever a row drag does (see canReorder).
           drag={canReorder ? fabDrag : undefined}
-          dragHint="Drag onto the list to add a project at that spot. Drop it back on the button to cancel."
+          dragHint="Drop on the list to add a project there. Drop on the button to cancel."
         />
       )}
 
@@ -689,7 +689,7 @@ export function ProjectsScreen() {
           selectedCount={selectedIds.size}
           totalCount={visibleProjects.length}
           category={{
-            title: 'Move to Category',
+            title: 'Move to category',
             options: bulkCategoryOptions,
             onSet: handleBulkSetCategory,
             onCreate: name => addProjectCategory(name),

@@ -380,7 +380,7 @@ export function meterFieldsFromInput(input: MeterInput, readings: readonly Meter
 export function meterSetupGap(fields: MeterFields): string | null {
   if (!fields.meterName) return null;
   if (fields.meterEvery === null) return 'Enter how far the meter runs between times.';
-  if (fields.meterDueAt === null) return 'Enter the reading it is next due at, or log the meter\'s current reading.';
+  if (fields.meterDueAt === null) return 'Enter the reading it is next due at, or log the meter’s current reading.';
   return null;
 }
 

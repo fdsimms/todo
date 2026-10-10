@@ -1058,7 +1058,7 @@ export function FoodLogEntrySheet({
     const described = picked.label;
     Alert.prompt(
       'Add as a new item',
-      'The name it will have in your grocery catalog. It is not added to your shopping list.',
+      'Name for this item in your grocery catalog. It isn’t added to your shopping list.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -1518,7 +1518,7 @@ export function FoodLogEntrySheet({
           )}
           {db.searched && !db.error && db.ranked.length === 0 && (
             <Text style={[styles.lookupNoteText, styles.lookupNote]}>
-              No matching foods. Try a plainer name: this database files foods as "Onions, raw" rather than by brand.
+              No matching foods. Try a plainer name, like “Onions, raw”. This database doesn’t list foods by brand.
             </Text>
           )}
           {dbRows.map(row => (
@@ -1705,12 +1705,12 @@ export function FoodLogEntrySheet({
               {picked.kind === 'dish'
                 ? dishWeightHint
                 : foodUnitOptions.length > 0 && amountUnit !== 'other'
-                  ? 'Type the amount and pick its unit beside it. Anything else is refused rather than guessed at.'
+                  ? 'Type the amount and pick its unit beside it.'
                   : picked.panel
                     ? `${amountHint(picked.panel)}${
                       picked.panel.basis === 'per100ml'
                         ? ' Type an amount by volume and you can weigh it once to add its weight.'
-                        : ' Type an amount by volume or count and you can weigh it once to add it.'
+                        : ' Type an amount by volume or count and you can weigh it once to add its weight.'
                     }`
                     : 'A weight, like 100g.'}
             </Text>
@@ -1721,7 +1721,7 @@ export function FoodLogEntrySheet({
                   ? (dishMeasure === 'weight'
                     ? `Enter what was on your plate, in grams, up to the ${picked.cookedGrams} g the whole dish weighs.`
                     : 'Enter how many servings you had.')
-                  : `This food has no way to measure that amount, so the figures would be a guess. ${
+                  : `Can’t measure that amount of this food, so the figures would be a guess. ${
                     picked.panel ? amountHint(picked.panel) : 'Try a weight, or an amount it states a portion for.'
                   }`}
               </Text>
@@ -1764,7 +1764,7 @@ export function FoodLogEntrySheet({
                   />
                 </View>
                 <Text style={styles.weighHint}>
-                  Weigh it and enter the total weight. The app remembers it for next time.
+                  Weigh it and enter the total weight. The app remembers it.
                 </Text>
               </View>
             )}
@@ -1793,9 +1793,9 @@ export function FoodLogEntrySheet({
               <>
                 <Text style={[styles.label, styles.labelSpaced]}>KEEP THIS FOOD</Text>
                 <Text style={styles.hint}>
-                  Your grocery catalog has nothing for this yet, so these figures
-                  go on the entry and nowhere else. File it and it's here to pick
-                  next time instead of to search for.
+                  Your grocery catalog doesn’t have this food yet, so the figures
+                  are saved on this entry only. File it to pick it here next time
+                  instead of searching.
                 </Text>
                 <View style={styles.fileRow}>
                   <InlineAction
@@ -1804,7 +1804,7 @@ export function FoodLogEntrySheet({
                     onPress={() => { haptics.tap(); fileAsNewItem(); }}
                   />
                   <InlineAction
-                    label={catalogPickOpen ? 'Never mind' : 'Something I already have'}
+                    label={catalogPickOpen ? 'Cancel' : 'Link to an existing item'}
                     icon="albums-outline"
                     variant="neutral"
                     onPress={() => { haptics.tap(); setCatalogPickOpen(o => !o); }}
@@ -1830,8 +1830,8 @@ export function FoodLogEntrySheet({
               <>
                 <Text style={[styles.label, styles.labelSpaced]}>ANYTHING ELSE?</Text>
                 <Text style={styles.hint}>
-                  These have no fixed amount in the recipe, so they're not in the figures
-                  above. Say how much you had of any you want counted, and skip the rest.
+                  These have no fixed amount in the recipe, so they’re not in the figures
+                  above. Enter how much you had of any you want counted.
                 </Text>
                 {varyingResolved.map(({ line, typed, resolved }) => (
                   <View key={line.id} style={styles.varyingRow}>
@@ -1845,7 +1845,7 @@ export function FoodLogEntrySheet({
                       accessibilityLabel={`How much ${line.name} you had`}
                     />
                     {!!typed && !resolved && (
-                      <Text style={styles.error}>Can't measure that against this food's own figures.</Text>
+                      <Text style={styles.error}>Can’t measure that amount for this food.</Text>
                     )}
                   </View>
                 ))}
@@ -1974,9 +1974,9 @@ export function FoodLogEntrySheet({
                 activeOpacity={interaction.activeOpacity}
                 onPress={() => { haptics.tap(); Keyboard.dismiss(); onDeclineMeal(); }}
                 accessibilityRole="button"
-                accessibilityLabel="Don't ask about this meal"
+                accessibilityLabel="Don’t ask about this meal"
               >
-                <Text style={styles.declineMealText}>Don't ask about this meal</Text>
+                <Text style={styles.declineMealText}>Don’t ask about this meal</Text>
               </TouchableOpacity>
             )}
             </Pressable>
@@ -2016,15 +2016,15 @@ export function FoodLogEntrySheet({
                     : (helpings.length > 0 ? 'Nothing in your catalog matches' : 'No matching food')}
                   subtitle={
                     (candidates.length === 0
-                      ? 'A food can be logged once it has nutrition on it.'
-                      : 'Only foods and recipes with nutrition on them can be logged.')
+                      ? 'A food can be logged once it has nutrition.'
+                      : 'Only foods and recipes with nutrition can be logged.')
                     + (hasFdcKey
                       ? (candidates.length === 0
-                        ? ' Type a food above and tap Food database, or open a grocery item to attach nutrition to it there.'
-                        : ' Tap Food database to search for it, or open a grocery item to attach nutrition to it there.')
+                        ? ' Type a food above and tap Food database, or add nutrition to a grocery item.'
+                        : ' Tap Food database to search for it, or add nutrition to a grocery item.')
                       // Without a key the search can only fail, so the next
                       // step is the key, not the search.
-                      : ' Searching a food database by name needs a free FoodData Central key, which you can add in Settings. You can also open a grocery item to add its nutrition there.')
+                      : ' To search a food database, add a free FoodData Central key in Settings. You can also add nutrition to a grocery item.')
                   }
                   // With nothing typed there is nothing to search for, so the
                   // button would do nothing; the subtitle says what to type.

@@ -61,6 +61,6 @@ describe('agentRevertPlan', () => {
   it('offers nothing for the app\'s own entries, other subjects, or a task that is gone', () => {
     expect(agentRevertPlan(entry({ actor: 'app' }), task())).toEqual({ kind: 'none', reason: null });
     expect(agentRevertPlan(entry({ subject: 'grocery' }), task())).toEqual({ kind: 'none', reason: null });
-    expect(agentRevertPlan(entry(), null)).toEqual({ kind: 'none', reason: 'Since removed' });
+    expect(agentRevertPlan(entry(), null)).toEqual({ kind: 'none', reason: 'Removed since' });
   });
 });

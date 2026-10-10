@@ -1,4 +1,4 @@
 {
-  "message": "If your day starts after midnight, a task whose time window or daily target falls in the small hours now shows up when it should: a window such as 3:00 to 5:00 AM no longer reads as expired all day, a target with an early-morning window no longer owes every unit the moment it opens, and Later sorts these tasks under the right day. The Stats screen counts completions by your day start too, and the morning check-in now asks about tasks on vacation pause whenever vacation mode is off.",
+  "message": "If your day starts after midnight, tasks with a time window or daily target in the small hours now show up when they should. A window such as 3:00 to 5:00 AM no longer reads as expired all day, a target with an early-morning window no longer owes every unit the moment it opens, and Later sorts these tasks under the right day. Stats now counts completions by your day start, and the morning check-in asks about tasks on vacation pause when vacation mode is off.",
   "date": "2026-10-05"
 }

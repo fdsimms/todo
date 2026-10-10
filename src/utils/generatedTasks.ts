@@ -434,7 +434,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     pausedOnVacation: true,
     enabledKey: 'waitingFollowUpTasks',
     label: 'Follow-up reminders for waiting tasks',
-    onHint: 'A task waiting on somebody, waited on long enough, adds a task to follow up',
+    onHint: 'A task that has waited on somebody long enough adds a task to follow up',
     offHint: 'A task waiting on somebody adds no follow-up task',
     icon: 'hourglass-outline',
     // Sourced on the waiting task itself (Task.id), not on the person — see
@@ -613,8 +613,8 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     pausedOnVacation: true,
     enabledKey: 'supplyReorderTasks',
     label: 'Reorder tasks for supplies',
-    onHint: 'A task running low on supplies adds a task to order more',
-    offHint: 'A task running low on supplies adds no task',
+    onHint: 'A supply running low adds a task to order more',
+    offHint: 'A supply running low adds no task',
     icon: 'cube-outline',
     // The first generator whose source is a *task*. Nothing about the
     // mechanism minds — generatedSourceId is a string and never asked what
@@ -692,7 +692,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     enabledKey: 'mealPlanNudgeEnabled',
     label: 'Plan meals for the week',
     onHint: 'Adds a stack once a week, with a task for each day of that week to plan its meals',
-    offHint: 'No weekly task to plan the week\'s meals',
+    offHint: 'No weekly task to plan the week’s meals',
     icon: 'calendar-outline',
     sourced: false,
     // A notice: seven rows saying how much of each day is planned, with the
@@ -710,9 +710,9 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     kind: 'calendarReview',
     pausedOnVacation: false,
     enabledKey: 'calendarReviewTasks',
-    label: 'Review tomorrow\'s calendar',
-    onHint: 'Adds a task each day to review tomorrow\'s events',
-    offHint: 'No daily task to review tomorrow\'s events',
+    label: 'Review tomorrow’s calendar',
+    onHint: 'Adds a task each day to review tomorrow’s events',
+    offHint: 'No daily task to review tomorrow’s events',
     icon: 'calendar-clear-outline',
     // Its source id is tomorrow's day key, the same "square on the calendar,
     // not a row" position mealPlanNudge is in — see the type's own note.
@@ -733,7 +733,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     pausedOnVacation: false,
     enabledKey: 'weatherTasks',
     label: 'Weather-based tasks',
-    onHint: "A rule that matches today's weather adds its task, like sunscreen on a sunny day",
+    onHint: "A rule that matches today’s weather adds its task, like sunscreen on a sunny day",
     offHint: 'Weather adds no tasks',
     icon: 'partly-sunny-outline',
     sourced: false,
@@ -857,8 +857,8 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     pausedOnVacation: false,
     enabledKey: 'moodLogTasks',
     label: 'Daily mood check-in',
-    onHint: 'Adds one task a day to log how you\'re feeling',
-    offHint: 'No daily task to log how you\'re feeling',
+    onHint: 'Adds one task a day to log how you’re feeling',
+    offHint: 'No daily task to log how you’re feeling',
     icon: 'happy-outline',
     // Its source id is the day key it asks about (or, with moodLogTimeSegments
     // configured, the day and the segment together — see moodLogSourceId),
@@ -1010,7 +1010,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     pausedOnVacation: true,
     enabledKey: 'limitWarningTasks',
     label: 'Stay under limits as tasks',
-    onHint: 'Adds a daily "don\'t do" task for each Stay under limit, and logs a slip when the food log goes past it',
+    onHint: 'Adds a daily “don’t do” task for each Stay under limit, and logs a slip when the food log goes past it',
     offHint: 'No task for Stay under limits',
     icon: 'nutrition-outline',
     // Keyed by the nutrient; limitWarningDeclined is what keeps a deleted one

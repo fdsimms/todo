@@ -91,7 +91,7 @@ export function CompletionCalendarSettings() {
       refreshState();
       alertPermissionOff(
         'Calendar access is off',
-        'This needs permission to write to your calendar. Turn it on for this app in the Settings app, then try again.',
+        'Writing to your calendar needs permission. Turn it on in Settings, then try again.',
       );
       return;
     }
@@ -103,7 +103,7 @@ export function CompletionCalendarSettings() {
       // one, most often. There's genuinely nothing to pick.
       Alert.alert(
         'No calendar you can write to',
-        'Every calendar on this device is read-only. Add or unlock one you can edit in the Settings app under Calendar › Accounts.',
+        'Every calendar on this device is read-only. Add or unlock one in Settings under Calendar › Accounts.',
       );
       return;
     }
@@ -114,7 +114,7 @@ export function CompletionCalendarSettings() {
   return (
     <SettingsSection
       label="Completions on your calendar"
-      footer="Adds a calendar event when a task with “Log to calendar” turned on in its own editor is completed, never every completion in the app. The event is written once, when the task is completed, and isn't updated afterward."
+      footer="Adds a calendar event when you complete a task with “Log to calendar” turned on in its editor. The event isn’t updated afterward."
     >
       <SettingsRow
         entryId="completionCalendar"
@@ -138,10 +138,10 @@ export function CompletionCalendarSettings() {
               icon="lock-closed-outline"
               iconColor={colors.warningText}
               label="Calendar access"
-              hint="Blocked. Nothing can be written until you turn it back on for this app."
+              hint="Blocked. Nothing can be written until you turn it back on in Settings."
               value="Open Settings"
               onPress={() => Linking.openSettings()}
-              accessibilityLabel="Calendar access is blocked. Opens the system Settings app."
+              accessibilityLabel="Calendar access is blocked. Opens Settings."
             />
           ) : (
             <SettingsChoiceTray
@@ -152,7 +152,7 @@ export function CompletionCalendarSettings() {
                 setCompletionCalendarId(option.id || null);
                 togglePicker();
               }}
-              emptyText="Every calendar on this device is read-only. Add or unlock one you can edit in the Settings app under Calendar › Accounts."
+              emptyText="Every calendar on this device is read-only. Add or unlock one in Settings under Calendar › Accounts."
               accessibilityLabelFor={option => (option.id ? `Write to ${option.title}` : 'Off')}
             />
           )}

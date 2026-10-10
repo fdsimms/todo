@@ -525,7 +525,7 @@ export function FoodLogScreen() {
   const handleDelete = useCallback((id: string, label: string) => {
     Alert.alert(
       `Forget ${label}?`,
-      'This removes it from the day\'s totals.',
+      'This removes it from the day’s totals.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -552,7 +552,7 @@ export function FoodLogScreen() {
   const handleRename = useCallback((entry: FoodLogEntry) => {
     Alert.prompt(
       'Rename entry',
-      'What this was. It does not change the figures.',
+      'What this was. The figures stay the same.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -664,7 +664,7 @@ export function FoodLogScreen() {
     const count = ids.length;
     Alert.alert(
       `Forget ${count} ${count === 1 ? 'entry' : 'entries'}?`,
-      'This removes them from the day\'s totals.',
+      'This removes them from the day’s totals.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -1037,7 +1037,7 @@ export function FoodLogScreen() {
       // total.
       <View style={styles.totalsEmptyNote}>
         <EmptyNote icon="stats-chart-outline">
-          {`None of ${isToday ? "today's" : "this day's"} entries have nutrition on them yet. Link one to a food with nutrition to see totals here.`}
+          {`None of ${isToday ? "today’s" : "this day’s"} entries have nutrition yet. Link one to a food with nutrition to see totals here.`}
         </EmptyNote>
       </View>
     ) : null
@@ -1385,7 +1385,7 @@ export function FoodLogScreen() {
           onPress={() => { setAddingSlot(guessedSlot); setAddOpen(true); }}
           accessibilityLabel="Log something you ate"
           drag={fabDrag}
-          dragHint="Drag onto a meal to log food there, or back to the button to cancel"
+          dragHint="Drop on a meal to log it there. Drop on the button to cancel."
         />
       )}
 
@@ -1394,7 +1394,7 @@ export function FoodLogScreen() {
           selectedCount={selectedIds.size}
           totalCount={dayEntries.length}
           category={{
-            title: 'Move to Meal',
+            title: 'Move to meal',
             noun: 'a meal',
             options: mealSlotOptions,
             onSet: handleBulkMove,
@@ -1530,9 +1530,9 @@ export function FoodLogScreen() {
         <CsvExportSheet
           visible={exportOpen}
           onClose={() => setExportOpen(false)}
-          hint={'A spreadsheet file of your entries: the day, the time, the meal, what you '
+          hint={'A spreadsheet of your entries: day, time, meal, what you '
             + 'ate and how much, where the figures came from, and each nutrient. A figure that '
-            + 'was never recorded is left blank. Nothing else from the app is included.'}
+            + 'was never recorded is left blank.'}
           dialogTitle="Share your food log"
           select={entriesSince}
           toCsv={foodLogExportCsv}

@@ -401,7 +401,7 @@ export function GroceryItemSheet({
     if (!renameItem(item.id, trimmed)) {
       const collision = renameClash(items, item.id, trimmed);
       setNameError(
-        collision ? `That's the same as ${collision.name} in your catalog.` : 'Another item already has that name.',
+        collision ? `That’s the same as ${collision.name} in your catalog.` : 'Another item already has that name.',
       );
       setNameCollisionId(collision?.id ?? null);
       haptics.error();
@@ -553,7 +553,7 @@ export function GroceryItemSheet({
       // where", and the one the field defaults to.
       pinned: true,
       selected: activeTarget === null,
-      accessibilityLabel: 'Last price paid, without saying which store',
+      accessibilityLabel: 'Last price at any store',
       onPress: () => {
         haptics.tap();
         commitPrice(priceKey);
@@ -720,7 +720,7 @@ export function GroceryItemSheet({
     }
     Alert.alert(
       `${shopName} and ${item.name}`,
-      `${count} ${count === 1 ? 'purchase' : 'purchases'} recorded here. Forgetting them can’t be undone. The item and its overall count stay either way.`,
+      `${count} ${count === 1 ? 'purchase' : 'purchases'} recorded here. Forgetting them can’t be undone, and the item and its overall count stay.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -756,7 +756,7 @@ export function GroceryItemSheet({
     );
     confirmDelete({
       title: `Forget ${item.name}?`,
-      message: `This removes it from your catalog along with its history, and can’t be undone.${loss ? `\n\n${loss}` : ''}\n\nTo just take it off this week’s list, use "Remove from list".`,
+      message: `This removes it and its history from your catalog and can’t be undone.${loss ? `\n\n${loss}` : ''}\n\nTo take it off this week’s list instead, use “Remove from list”.`,
       confirmLabel: 'Forget',
       onConfirm: () => {
         deleteItem(item.id);
@@ -907,7 +907,7 @@ export function GroceryItemSheet({
       selected: item.isStaple,
       accessibilityLabel: item.isStaple
         ? 'Always have it, marked as a staple. Tap to clear.'
-        : 'Always have it, mark as a staple you always keep stocked',
+        : 'Always have it, mark as a staple',
       onPress: toggleStaple,
     },
     {
@@ -952,7 +952,7 @@ export function GroceryItemSheet({
       label: 'In the freezer',
       selected: frozen,
       accessibilityLabel: frozen
-        ? 'In the freezer. Tap to take it out, which restarts how long it keeps.'
+        ? 'In the freezer. Tap to take it out and restart its shelf life.'
         : 'In the freezer, mark as frozen. Pauses the use-by date.',
       onPress: toggleFrozen,
     },
@@ -962,7 +962,7 @@ export function GroceryItemSheet({
       selected: opened,
       accessibilityLabel: opened
         ? `Opened${item.openedAt ? ` ${format(new Date(item.openedAt), 'MMM d')}` : ''}. Tap to clear.`
-        : 'Opened, record that this has been opened',
+        : 'Opened, mark as opened',
       onPress: toggleOpened,
     },
   ];
@@ -1096,7 +1096,7 @@ export function GroceryItemSheet({
                     }}
                     accessibilityRole="button"
                     accessibilityLabel={`${describeProduct(product)}${meta ? `. ${meta}` : ''}`}
-                    accessibilityHint="Opens this product, where you can rate, edit or remove it"
+                    accessibilityHint="Opens this product to rate, edit or remove it"
                   >
                     <View style={styles.subBody}>
                       <Text style={styles.subName} numberOfLines={1}>{describeProduct(product)}</Text>
@@ -1136,7 +1136,7 @@ export function GroceryItemSheet({
                     haptics.tap();
                     setPreferredProduct(item.id, null);
                   }}
-                  accessibilityLabel="Clear which one you want, so any of them will do"
+                  accessibilityLabel="Clear the one you want"
                 />
               )}
             </View>
@@ -1173,7 +1173,7 @@ export function GroceryItemSheet({
           <CollapsibleField
             label="Nutrition"
             summary={describeFoodPanel(item.nutrition) ?? undefined}
-            hint="What this food is made of. Used to estimate a recipe's nutrition and to log this food in the food log."
+            hint="Calories and nutrients for this food, used for recipe nutrition and the food log."
             expanded={openField === 'nutrition'}
             onToggle={() => toggleField('nutrition')}
           >
@@ -1207,8 +1207,8 @@ export function GroceryItemSheet({
                 )
               ) : (
                 <Text style={styles.nutritionDetail}>
-                  Nothing recorded. A recipe using this ingredient counts it as uncovered
-                  rather than guessing at it. Search a food database, or copy the figures
+                  Nothing recorded, so recipes can’t count this ingredient’s nutrition.
+                  Search a food database, or copy the figures
                   off the package.
                 </Text>
               )}
@@ -1280,7 +1280,7 @@ export function GroceryItemSheet({
             label="Stores"
             summary={storesSummary}
             emptySummary="Any"
-            hint="Tap a store to say you can get this there, again to say they don’t have it. Finishing a shopping trip marks them for you."
+            hint="Tap a store once if it carries this, twice if it doesn’t. Finishing a shopping trip marks them."
             expanded={openField === 'stores'}
             onToggle={() => toggleField('stores')}
           >
@@ -1298,9 +1298,9 @@ export function GroceryItemSheet({
                 {/* The rule that makes the whole feature safe, said where
                     someone is about to rely on it. */}
                 <Text style={styles.hint}>
-                  Only what you’ve marked here is left out. A store you haven’t
-                  marked still counts: stores carry several versions, so getting
-                  a different one somewhere doesn’t mean they don’t have yours.
+                  Only stores you mark here are left out.
+                  Buying a different version somewhere
+                  doesn’t mean a store lacks yours.
                 </Text>
               </View>
             )}
@@ -1351,15 +1351,15 @@ export function GroceryItemSheet({
               runningLow
                 ? `Nearly out${runningLowAddsToList ? ', and added to this week’s list' : ''}. Still counts as on hand, because there’s some left.`
                 : frozen
-                  ? 'In the freezer, so the use-by date is paused and there’s no use-up task. Taking it out starts the countdown again from a fresh shelf life.'
+                  ? 'In the freezer, so the use-by date is paused and there’s no use-up task. Taking it out restarts the shelf life.'
                   : item.isStaple
-                    ? 'Treated as on hand at all times. When a recipe adds ingredients to your list, this is filed under Always have instead of the shopping list.'
+                    ? 'Always counts as on hand. When a recipe adds ingredients, this goes under Always have instead of the shopping list.'
                     : onHandPast
                       ? portionFrozen
                         ? 'Marked out of it, apart from the portion in the freezer.'
-                        : 'Marked out of it. Won’t show as probably-have until you buy it again.'
+                        : 'Marked out of it. It won’t appear under Probably have until you buy it again.'
                       : onHandFuture
-                        ? `You said you have this. It counts as on hand until ${format(new Date(item.onHandUntil!), 'MMM d')}, based on how often you buy it (two weeks if there isn’t enough history yet). After that, purchase history decides again.`
+                        ? `You said you have this, so it counts as on hand until ${format(new Date(item.onHandUntil!), 'MMM d')}, based on how often you buy it (two weeks without enough history). After that, purchase history decides.`
                         : 'Decided automatically from purchase history when this comes up in a week plan.'
             }
             expanded={openField === 'pantry'}
@@ -1371,7 +1371,7 @@ export function GroceryItemSheet({
             <Text style={styles.portionHint}>
               {runningLowAddsToList
                 ? 'Running low also adds it to the grocery list. The mark lapses after up to two weeks.'
-                : 'Running low only notes that it’s nearly out and doesn’t add it to the list. The mark lapses after up to two weeks.'}
+                : 'Running low marks it as nearly out without adding it to the list. The mark lapses after up to two weeks.'}
             </Text>
             {/* The frozen half of a split pack, under the pills rather than
                 as a seventh one: the pills describe the item, and this is a
@@ -1477,12 +1477,12 @@ export function GroceryItemSheet({
             // see describeDisposalHistory.
             hint={[
               frozen
-                ? "How long this keeps once it comes out of the freezer. Nothing counts down while it's frozen."
+                ? "How long this keeps once it comes out of the freezer. Nothing counts down while it’s frozen."
                 : opened
                   ? 'The day this should be used up by, counted from when you opened it.'
                   : item.expiresAt
-                  ? "The day this should be used up by. Finishing a shopping trip fills it in for things that go bad, and the use-up task is dated from it."
-                  : "How long this keeps once bought. It doesn't count down yet: finishing a shopping trip starts the clock from there, and adds the use-up task.",
+                  ? "The day to use this up by. Finishing a shopping trip fills it in for things that go bad and dates the use-up task."
+                  : "How long this keeps once bought. Finishing a shopping trip starts the countdown and adds the use-up task.",
               describeDisposalHistory(item),
             ].filter(Boolean).join(' ')}
             expanded={openField === 'useBy'}
@@ -1503,7 +1503,7 @@ export function GroceryItemSheet({
                 label="Use by"
                 describeValue={n => {
                   if (n === null) return countingDown ? 'No use-by date' : 'No shelf life recorded';
-                  if (countingDown) return n === 0 ? 'Use by today' : `${n} days from today`;
+                  if (countingDown) return n === 0 ? 'Use by today' : `${n} ${n === 1 ? 'day' : 'days'} from today`;
                   if (frozen) return `Keeps ${n} ${n === 1 ? 'day' : 'days'} once out of the freezer`;
                   return `Keeps ${n} ${n === 1 ? 'day' : 'days'} once bought`;
                 }}
@@ -1531,7 +1531,7 @@ export function GroceryItemSheet({
             label="Substitutes"
             summary={substitutesSummary ?? undefined}
             emptySummary="None"
-            hint={`If there’s no ${item.name.toLowerCase()}, what you’d use instead. Saved on this item, so every recipe calling for it can use it.`}
+            hint={`If there’s no ${item.name.toLowerCase()}, what you’d use instead. Every recipe that calls for it can use it.`}
             expanded={openField === 'substitutes'}
             onToggle={() => toggleField('substitutes')}
           >
@@ -1546,7 +1546,7 @@ export function GroceryItemSheet({
                 }}
                 accessibilityRole="button"
                 accessibilityLabel={`${sub.item.name}${sub.link.note ? `, ${sub.link.note}` : ''}`}
-                accessibilityHint="Opens this substitute, where you can edit or remove it"
+                accessibilityHint="Opens this substitute to edit or remove it"
               >
                 <View style={styles.subBody}>
                   <Text style={styles.subName} numberOfLines={1}>{sub.item.name}</Text>
@@ -1623,7 +1623,7 @@ export function GroceryItemSheet({
             label="Used in"
             summary={usedInSummary}
             emptySummary="No recipes yet"
-            hint="Every recipe on your list that calls for this. Editing the ingredient happens on the recipe itself."
+            hint="Recipes that call for this item. Edit the ingredient in the recipe."
             expanded={openField === 'usedIn'}
             onToggle={() => toggleField('usedIn')}
           >
@@ -2039,7 +2039,7 @@ export function GroceryItemSheet({
                 {/* One outcome now, so one sentence: this never deletes. The
                     hint used to have to say which of two things it would do,
                     because a never-bought row was removed outright. */}
-                <Text style={styles.actionHint}>Keeps it in your catalog for next time.</Text>
+                <Text style={styles.actionHint}>Keeps it in your catalog.</Text>
               </View>
             </TouchableOpacity>
           )}
@@ -2074,7 +2074,7 @@ export function GroceryItemSheet({
               <View style={styles.actionBody}>
                 <Text style={[styles.actionLabel, { color: colors.redText }]}>Forget this item</Text>
                 <Text style={styles.actionHint}>
-                  Deletes it and its history. There&apos;s no undo.
+                  Deletes it and its history. This can’t be undone.
                 </Text>
               </View>
             </TouchableOpacity>

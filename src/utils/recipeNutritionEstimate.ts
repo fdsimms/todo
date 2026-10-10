@@ -109,7 +109,7 @@ export function describeRecipeNutritionEstimate(estimate: RecipeNutritionEstimat
   const sure = estimate.confidence === 'high'
     ? ''
     : estimate.confidence === 'medium'
-      ? ' Close, not exact.'
+      ? ' Likely close.'
       : ' A rough guess.';
-  return `Read from the ingredient list, not measured.${sure}`;
+  return `Estimated from the ingredient list.${sure}`;
 }

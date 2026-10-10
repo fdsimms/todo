@@ -131,15 +131,15 @@ function itemSublabel(item: TemplateItem, anchors: TemplateAnchors, away = false
 
 /** What the run name will do, given the container this apply resolves to. Doubles as the field's only in-app documentation. */
 function runNameHint(container: TemplateContainer, upgraded: boolean, hasPlaceholders: boolean): string {
-  const fills = hasPlaceholders ? ', and fills in the blanks below' : '';
+  const fills = hasPlaceholders ? ' The name also fills in the blanks below.' : '';
   if (container === 'project') {
     return upgraded
-      ? `Names the project these tasks land in. This template's groups become stacks inside it${fills}`
-      : `Names the project these tasks land in, dated by the start and end dates above${fills}`;
+      ? `Names the project these tasks land in. This template’s groups become stacks inside it.${fills}`
+      : `Names the project these tasks land in, dated by the start and end dates above.${fills}`;
   }
-  if (container === 'stack') return `Names the stack these tasks land in${fills}`;
-  if (container === 'task') return `Names the task these become subtasks of${fills}`;
-  return `Fills in the blanks below${fills ? '' : ''}`;
+  if (container === 'stack') return `Names the stack these tasks land in.${fills}`;
+  if (container === 'task') return `Names the task these become subtasks of.${fills}`;
+  return `Fills in the blanks below.${fills ? '' : ''}`;
 }
 
 /**
@@ -601,7 +601,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
                 style={styles.runInput}
                 value={runName}
                 onChangeText={setRunName}
-                placeholder={`Name for "${template.name}"`}
+                placeholder={`Name for “${template.name}”`}
                 placeholderTextColor={colors.textTertiary}
                 maxLength={TITLE_MAX_LENGTH}
                 returnKeyType="done"
@@ -614,7 +614,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
                   <View style={styles.planningText}>
                     <Text style={styles.planningLabel}>Start in Planning</Text>
                     <Text style={styles.runHint}>
-                      Hides the project's tasks, dated ones too, until you mark it ready.
+                      Hides the project’s tasks, dated ones too, until you mark it ready.
                     </Text>
                   </View>
                   <Switch
@@ -685,9 +685,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
           <AnchorRow
             icon={away ? 'airplane-outline' : 'play-outline'}
             label={away ? 'Leaving' : 'Start date'}
-            hint={away
-              ? 'The day you go. Items that count days from the start are dated from it.'
-              : 'Items that count days from the start are dated from this day.'}
+            hint='Items that count days from the start are dated from this day.'
             value={startAnchor}
             onPress={() => openCalendar('start')}
             onClear={() => setStartAnchor(null)}
@@ -696,9 +694,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
           <AnchorRow
             icon={away ? 'home-outline' : 'flag-outline'}
             label={away ? 'Coming back' : 'End date'}
-            hint={away
-              ? "The day you're back. Items that count days from the end are dated from it."
-              : 'Items that count days from the end are dated from this day.'}
+            hint='Items that count days from the end are dated from this day.'
             value={endAnchor}
             onPress={() => openCalendar('end')}
             onClear={() => setEndAnchor(null)}
@@ -713,7 +709,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
 
           {anchorless && (
             <Text style={styles.anchorlessHint}>
-              Some items count days from a date you haven't set, so they'll be added without dates
+              Items that count days from a date you haven’t set are added without dates.
             </Text>
           )}
           </ScrollView>

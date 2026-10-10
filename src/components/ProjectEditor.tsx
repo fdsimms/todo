@@ -81,9 +81,9 @@ const NUDGE_MODE_OPTIONS: SegmentOption<NudgeMode>[] = NUDGE_MODES.map(mode => (
  * neither three-word label carries that on its own.
  */
 const NUDGE_MODE_HINT: Record<NudgeMode, string> = {
-  never: 'Stays out of "Pull from projects" and never writes a review task. For a list you keep rather than work through, like gift ideas.',
-  'on-ask': 'Shows up in "Pull from projects" when you open it, and never brings itself up.',
-  scheduled: "Adds a review task once nothing in it is scheduled and nothing's been finished in it for this long.",
+  never: 'Stays out of “Pull from projects” and never adds a review task. For lists you keep, like gift ideas.',
+  'on-ask': 'Shows up in “Pull from projects” when you open it, and never adds a review task.',
+  scheduled: "Adds a review task once nothing in it is scheduled and nothing’s been finished in it for this long.",
 };
 
 interface Props {
@@ -208,7 +208,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
   const addLinkDraft = () => {
     if (!linkDraft.trim()) return;
     const parsed = parseLabelledLink(linkDraft);
-    if (!parsed) { setLinkError("That doesn't look like a link. Paste one that starts with https://."); return; }
+    if (!parsed) { setLinkError("That doesn’t look like a link. Paste one that starts with https://."); return; }
     haptics.tap();
     setLinks(ls => [...ls, { id: generateId(), ...parsed }]);
     setLinkDraft('');
@@ -322,7 +322,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
     if (targets.length === 0) return;
     Alert.alert(
       `Apply to ${targets.length} ${targets.length === 1 ? 'task' : 'tasks'}?`,
-      'Fills in only what is still unset on each task. Anything already answered stays as it is. A shake undoes it.',
+      'Fills in only what’s still unset on each task. Shake to undo.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -468,7 +468,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
     // read was dropped without a word. Say so instead.
     if (!skipLinkCheck && linkDraft.trim() && !parseLabelledLink(linkDraft)) {
       Alert.alert(
-        "That link can't be read",
+        "That link can’t be read",
         'A link starts with https://, or is a site name like example.com.',
         [
           { text: 'Keep editing', style: 'cancel' },
@@ -547,7 +547,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
     Alert.alert(
       isNew ? (isList ? 'Discard this list?' : 'Discard this project?') : 'Discard changes?',
       isNew
-        ? "It hasn't been saved yet. Are you sure you want to discard it?"
+        ? "It hasn’t been saved yet. Are you sure you want to discard it?"
         : 'You have unsaved changes. Are you sure you want to discard them?',
       [
         { text: 'Keep editing', style: 'cancel' },
@@ -760,7 +760,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
           "Target date" pair whose first half had one reader in its life (see
           Project.deadline). */}
       <Text style={styles.sectionFooter}>
-        The event date is the day the project is for, like a wedding or a move. Changing it offers to move the project's dated tasks by the same number of days. The deadline is shown on the project's card and flagged once it passes.
+        The event date is the day the project is for, like a wedding or a move. Changing it offers to move dated tasks by the same number of days. A passed deadline is flagged on the project’s card.
       </Text>
       </>
       )}
@@ -806,7 +806,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
               placeholder="e.g. Lisbon"
               placeholderTextColor={colors.textTertiary}
               maxLength={80}
-              accessibilityLabel="Where you're going"
+              accessibilityLabel="Where you’re going"
             />
           </View>
         )}
@@ -859,7 +859,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
             onPress={() => { haptics.tap(); setForecastOn(!forecastOn); }}
             activeOpacity={interaction.activeOpacity}
             accessibilityRole="switch"
-            accessibilityLabel="Show the forecast for where you're going"
+            accessibilityLabel="Show the forecast for where you’re going"
             accessibilityState={{ checked: forecastOn }}
           >
             <Ionicons name="partly-sunny-outline" size={18} color={forecastOn ? colors.accent : colors.textSecondary} />
@@ -867,7 +867,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
               <Text style={styles.optionLabel}>Show the forecast there</Text>
               <Text style={styles.optionHint}>
                 {forecastOn
-                  ? "Looks up the place's weather for your trip dates and shows it on the project. Applies to every trip."
+                  ? "Looks up the place’s weather for your trip dates and shows it on the project. Applies to every trip."
                   : 'Off. Turning it on looks up the place by name, for every trip.'}
               </Text>
             </View>
@@ -891,8 +891,8 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
               <Text style={styles.optionHint}>
                 {awayPauses
                   ? pausedTaskCount + pausedCategoryCount === 0
-                    ? "Vacation mode turns on the day you leave and off when you're back. Nothing is set to pause on vacation yet, so it won't hide anything until you set that on a task or category."
-                    : `Vacation mode turns on the day you leave and off when you're back, hiding ${[
+                    ? "Vacation mode turns on the day you leave and off when you’re back. It hides nothing until you set a task or category to pause on vacation."
+                    : `Vacation mode turns on the day you leave and off when you’re back, hiding ${[
                         pausedTaskCount > 0 ? `${pausedTaskCount} ${pausedTaskCount === 1 ? 'task' : 'tasks'}` : null,
                         pausedCategoryCount > 0 ? `${pausedCategoryCount} ${pausedCategoryCount === 1 ? 'category' : 'categories'}` : null,
                       ].filter(Boolean).join(' and ')} set to pause on vacation.`
@@ -913,7 +913,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
           <CollapsibleField
             label="Shopping list"
             summary={awayListName}
-            hint="Groceries opens on this list while you're away, and goes back to Groceries when you're home. Switch lists yourself any time and it stays where you put it for the rest of the trip."
+            hint="Groceries opens on this list while you’re away, then switches back. A list you pick yourself stays for the rest of the trip."
             expanded={awayListOpen}
             onToggle={() => setAwayListOpen(v => !v)}
           >
@@ -927,7 +927,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
         )}
       </View>
       <Text style={styles.sectionFooter}>
-        The days you're away from home, for a trip. Leave these blank otherwise. The day you come back doesn't count as a day away.
+        The days you’re away from home, for a trip. Leave these blank otherwise. The day you come back doesn’t count as a day away.
       </Text>
       </>
       )}
@@ -949,7 +949,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
         <CollapsibleField
           label="Default task category"
           summary={defaultTaskCategory ? categoryLabel(defaultTaskCategory, taskCategories) : undefined}
-          hint="A task added straight to this project starts in this category, unless it's given one of its own."
+          hint="A task added directly to this project starts in this category, unless it has its own."
           expanded={defaultTaskCategoryOpen}
           onToggle={() => setDefaultTaskCategoryOpen(v => !v)}
         >
@@ -963,7 +963,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
           label="New task defaults"
           summary={describeTaskFieldDefaults(taskDefaults) ?? undefined}
           emptySummary="Not set"
-          hint="Tasks added to this project start with these answers, so they don't come up in Backfill. Anything set on a task itself wins. Not set uses your app-wide default, and anything still unanswered shows up in Backfill."
+          hint="Tasks added to this project start with these answers, so they don’t come up in Backfill. A task’s own value wins, and Not set uses your app-wide default."
           expanded={taskDefaultsOpen}
           onToggle={() => setTaskDefaultsOpen(v => !v)}
         >
@@ -985,7 +985,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
           summary={personIds.length > 0
             ? people.filter(p => personIds.includes(p.id)).map(displayNameOf).join(', ') || undefined
             : undefined}
-          hint="Who this project is with or for. They're shown on the project page. New tasks don't pick them up."
+          hint="Who this project is with or for. They show on the project page but aren’t added to new tasks."
           expanded={peopleOpen}
           onToggle={() => setPeopleOpen(v => !v)}
         >
@@ -1044,7 +1044,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
             value={linkDraft}
             onChangeText={setLinkDraft}
             onSubmitEditing={addLinkDraft}
-            placeholder="Paste a link, with a name before it if you like"
+            placeholder="Paste a link, with an optional name before it"
             placeholderTextColor={colors.textTertiary}
             autoCapitalize="none"
             autoCorrect={false}
@@ -1069,7 +1069,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
           label="Bring this up"
           summary={describeNudge(nudgeFieldsFor(nudgeMode, nudgeCadenceDays))
             + (nudgeMode === 'scheduled' && autoSchedule ? ', automatically' : '')}
-          hint="A project's tasks only reach Today once they have a date. This is what happens when nothing in this project has one."
+          hint="What happens when none of this project’s tasks has a date. Tasks need a date to reach Today."
           expanded={cadenceOpen}
           onToggle={() => setCadenceOpen(v => !v)}
         >
@@ -1145,9 +1145,9 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
             <Text style={styles.optionLabel}>Suggest for a free weekend</Text>
             <Text style={styles.optionHint}>
               {!weekendNudgeOn
-                ? 'Takes effect once "Nudge for an empty weekend" is on in Automations, in the menu'
+                ? 'Takes effect once “Nudge for an empty weekend” is on in Automations, in the menu'
                 : nudgeMode === 'never'
-                  ? 'Takes effect once "Bring this up" is set to When I ask or Every…'
+                  ? 'Takes effect once “Bring this up” is set to When I ask or Every…'
                   : weekendSource
                   ? 'The weekend task names this project when a weekend has nothing on it'
                   : 'The weekend task does not name this project'}
@@ -1233,7 +1233,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
               <Text style={styles.optionHint}>
                 {showChecked
                   ? 'Checked items stay at the bottom, crossed out, in list order'
-                  : 'Checked items fold away under a "Show checked" button at the bottom'}
+                  : 'Checked items fold away under a “Show checked” button at the bottom'}
               </Text>
             </View>
             <View style={[styles.toggle, showChecked && styles.toggleOn]}>
@@ -1255,8 +1255,8 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
               <Text style={styles.optionLabel}>Group on Today</Text>
               <Text style={styles.optionHint}>
                 {groupOnToday
-                  ? "Today shows this project's tasks for the day together under its name, at the top"
-                  : "Today shows this project's tasks in their categories"}
+                  ? "Today shows this project’s tasks for the day together under its name, at the top"
+                  : "Today shows this project’s tasks in their categories"}
               </Text>
             </View>
             <View style={[styles.toggle, groupOnToday && styles.toggleOn]}>

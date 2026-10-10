@@ -1396,8 +1396,8 @@ export const TaskItem = React.memo(function TaskItem({
 
   const handleDiscardTimer = () => {
     Alert.alert(
-      'Discard timer',
-      `Discard the running timer for "${task.title}"? The elapsed time won't be saved.`,
+      'Discard timer?',
+      `The elapsed time for “${task.title}” won’t be saved.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -2082,7 +2082,7 @@ export const TaskItem = React.memo(function TaskItem({
       const confirmed = await new Promise<boolean>(resolve => {
         Alert.alert(
           'Log early?',
-          `"${displayTitleFor(task)}" isn't due for another ${formatDuration(minutesEarly)}. Log it now anyway?`,
+          `“${displayTitleFor(task)}” isn’t due for another ${formatDuration(minutesEarly)}.`,
           [
             { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
             { text: 'Log now', onPress: () => resolve(true) },
@@ -2131,7 +2131,7 @@ export const TaskItem = React.memo(function TaskItem({
       await haptics.tap();
       Alert.alert(
         'Set a reminder?',
-        `Remind you about "${displayTitleFor(task)}" in ${formatDuration(task.completionTimerMinutes)}?`,
+        `Remind you about “${displayTitleFor(task)}” in ${formatDuration(task.completionTimerMinutes)}?`,
         [
           { text: 'No thanks', style: 'cancel', onPress: () => runCompletion() },
           {
@@ -2384,7 +2384,7 @@ export const TaskItem = React.memo(function TaskItem({
     // it asks first.
     Alert.alert(
       'Take one off?',
-      `Reduce "${displayTitleFor(task)}" from ${task.progressCount} to ${task.progressCount - 1}?`,
+      `Reduce “${displayTitleFor(task)}” from ${task.progressCount} to ${task.progressCount - 1}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -3416,12 +3416,12 @@ export const TaskItem = React.memo(function TaskItem({
                 style={styles.metaChip}
                 accessibilityLabel={
                   projectTitle
-                    ? `Scheduled for you, because ${projectTitle} had gone quiet`
-                    : 'Scheduled for you, because this project had gone quiet'
+                    ? `Scheduled automatically because ${projectTitle} had gone quiet`
+                    : 'Scheduled automatically because this project had gone quiet'
                 }
               >
                 <Ionicons name="play-forward-outline" size={iconSize.xs} color={colors.accent} />
-                <Text style={styles.autoScheduledLabel} numberOfLines={1}>Scheduled for you</Text>
+                <Text style={styles.autoScheduledLabel} numberOfLines={1}>Scheduled automatically</Text>
               </View>
             )}
             {showStreakChip && (
@@ -3555,7 +3555,7 @@ export const TaskItem = React.memo(function TaskItem({
       {chainStep && (
         <View
           style={styles.chainBadge}
-          accessibilityLabel={chainName ? `Step ${chainPosition} of "${chainName}"` : `Chain step ${chainPosition}`}
+          accessibilityLabel={chainName ? `Step ${chainPosition} of “${chainName}”` : `Chain step ${chainPosition}`}
         >
           <Ionicons name="git-commit" size={9} color={colors.accent} />
           <Animated.Text style={[styles.chainBadgeText, { opacity: chainStepOpacity, transform: [{ scale: chainStepAnim }] }]}>
@@ -3987,8 +3987,8 @@ export const TaskItem = React.memo(function TaskItem({
                   accessibilityState={{ expanded: chainStepsExpanded }}
                   accessibilityLabel={
                     chainStepsExpanded
-                      ? `Collapse the ${chainStepPreview.total}-step chain${chainName ? ` "${chainName}"` : ''}`
-                      : `Show all ${chainStepPreview.total} steps of the chain${chainName ? ` "${chainName}"` : ''}, currently on ${chainStepPreview.currentTitle}`
+                      ? `Collapse the ${chainStepPreview.total}-step chain${chainName ? ` “${chainName}”` : ''}`
+                      : `Show all ${chainStepPreview.total} steps of the chain${chainName ? ` “${chainName}”` : ''}, currently on ${chainStepPreview.currentTitle}`
                   }
                 >
                   <Ionicons name="git-commit" size={12} color={colors.textSecondary} />
@@ -4333,7 +4333,7 @@ export const TaskItem = React.memo(function TaskItem({
                         startQuotaRun(task.id);
                       }}
                       hitSlop={8}
-                      accessibilityLabel={`Start today's run of ${task.title} now`}
+                      accessibilityLabel={`Start today’s run of ${task.title} now`}
                     >
                       <Ionicons name="play-circle-outline" size={iconSize.sm} color={colors.textSecondary} />
                     </PressableScale>
@@ -4439,7 +4439,7 @@ export const TaskItem = React.memo(function TaskItem({
                             updateTask(task.id, { chainIndex: chainStepIndex - 1 });
                           }}
                           hitSlop={8}
-                          accessibilityLabel={`Back a step in ${task.title}'s chain`}
+                          accessibilityLabel={`Back a step in ${task.title}’s chain`}
                         >
                           <Ionicons name="play-back-outline" size={iconSize.sm} color={colors.textSecondary} />
                         </PressableScale>
@@ -4452,7 +4452,7 @@ export const TaskItem = React.memo(function TaskItem({
                             updateTask(task.id, { chainIndex: chainStepIndex + 1 });
                           }}
                           hitSlop={8}
-                          accessibilityLabel={`Skip to the next step of ${task.title}'s chain, without completing ${chainStepPreview?.currentTitle ?? 'this step'}`}
+                          accessibilityLabel={`Skip to the next step of ${task.title}’s chain, without completing ${chainStepPreview?.currentTitle ?? 'this step'}`}
                         >
                           <Ionicons name="play-forward-outline" size={iconSize.sm} color={colors.textSecondary} />
                         </PressableScale>

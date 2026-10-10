@@ -86,7 +86,7 @@ export function KitchenSettings() {
     <>
       <SettingsSection
         label="Meals on Today"
-        footer="A planned meal that doesn't have a task from Automations shows as a plain row here instead, filed under the same category as meal tasks. It can't be checked off; tapping opens the meal plan."
+        footer="A planned meal without a task from Automations shows as a plain row in the same category as meal tasks. It can’t be checked off, and tapping it opens the meal plan."
       >
         {/* A toggle rather than a track of two: one bounded choice with two
             answers is what a switch is for, and the two shapes this used to
@@ -96,13 +96,13 @@ export function KitchenSettings() {
           entryId="mealsOnToday"
           icon="restaurant-outline"
           iconColor={mealsOnToday === 'inline' ? colors.accent : undefined}
-          label="Show the day's meals"
+          label="Show the day’s meals"
           hint={mealsOnToday === 'inline'
-            ? "As rows in the task list, for planned meals without a task from Automations"
-            : 'Nothing. Meals stay on the Meal plan screen'}
+            ? "Planned meals without a task from Automations show as rows in the task list."
+            : 'Meals show only on the Meal plan screen.'}
           toggle={mealsOnToday === 'inline'}
           onPress={() => setMealsOnToday(mealsOnToday === 'inline' ? 'off' : 'inline')}
-          accessibilityLabel="Show the day's meals"
+          accessibilityLabel="Show the day’s meals"
         />
         {/* No "needs using up" row here any more (#1689 retired): unlike a
             meal or an event, a perishable is either used up or it isn't, so an
@@ -115,8 +115,8 @@ export function KitchenSettings() {
           iconColor={targetCount > 0 ? colors.accent : undefined}
           label="Daily targets"
           hint={targetCount === 0
-            ? 'Nothing set. A figure to read the day\'s food log total against, if you want one.'
-            : `${targetCount} set. Read against the day's total in the food log.`}
+            ? 'No targets set. Add one to compare against the day’s food log total.'
+            : `${targetCount} set. Compared with the day’s total in the food log.`}
           onPress={() => setTargetsOpen(true)}
           accessibilityLabel="Daily nutrition targets"
         />
@@ -153,7 +153,7 @@ export function KitchenSettings() {
           icon="basket-outline"
           iconColor={restockOfferEnabled ? colors.accent : undefined}
           label="Restock after cooking"
-          hint="Include what the meal used that isn't on your grocery list, with a button to add it."
+          hint="Include what the meal used that isn’t on your grocery list, with a button to add it."
           toggle={restockOfferEnabled}
           onPress={() => setRestockOfferEnabled(!restockOfferEnabled)}
           accessibilityLabel="Restock after cooking"
@@ -171,7 +171,7 @@ export function KitchenSettings() {
       {(!simpleMode || householdServings > 0) && (
         <SettingsSection
           label="Meal plan"
-          footer="Only meals planned from now on start at this amount. Meals already on the plan keep theirs, and any meal can be changed under Batch on its own sheet."
+          footer="Meals planned from now on start at this amount. Meals already on the plan keep theirs, and any meal can be changed under Batch on its own sheet."
         >
           <SettingsRow
             entryId="householdServings"
@@ -179,8 +179,8 @@ export function KitchenSettings() {
             iconColor={householdServings > 0 ? colors.accent : undefined}
             label="Usually cooking for"
             hint={householdServings > 0
-              ? `A recipe you plan starts at enough for ${people(householdServings)}, when the recipe says how many it serves.`
-              : 'Not set. A recipe you plan starts at the amount it makes.'}
+              ? `Planned recipes are scaled to ${people(householdServings)} when the recipe lists how many it serves.`
+              : 'Not set. Planned recipes start at the amount they make.'}
             tight
           />
           <View style={styles.cadenceRow}>
@@ -209,7 +209,7 @@ export function KitchenSettings() {
             iconColor={tripLiveActivity ? colors.accent : undefined}
             label="Live Activity while shopping"
             hint={tripLiveActivity
-              ? 'The store you\'re at and how long you\'ve been there shows on the Lock Screen and Dynamic Island'
+              ? 'Shows the store you’re at and how long you’ve been there on the Lock Screen and Dynamic Island'
               : 'A trip stays in the app only'}
             toggle={tripLiveActivity}
             onPress={() => setTripLiveActivity(!tripLiveActivity)}
@@ -219,14 +219,14 @@ export function KitchenSettings() {
 
       <SettingsSection
         label="Pantry"
-        footer="Running low lasts up to two weeks, sooner for something you buy often. After that it stops counting as on hand, and if pantry checks are on you're asked whether you still have it."
+        footer="Running low lasts up to two weeks, sooner for something you buy often. After that it stops counting as on hand, and if pantry checks are on you’re asked whether you still have it."
       >
         <SettingsRow
           entryId="runningLowAddsToList"
           icon="cart-outline"
           iconColor={runningLowAddsToList ? colors.accent : undefined}
           label="Running low adds to the list"
-          hint="When you mark an item as running low, also put it on the grocery list. Off keeps it as a note in the pantry only."
+          hint="Adds an item to the grocery list when you mark it as running low. When off, it stays a note in the pantry."
           toggle={runningLowAddsToList}
           onPress={() => setRunningLowAddsToList(!runningLowAddsToList)}
           accessibilityLabel="Running low adds to the list"
@@ -235,7 +235,7 @@ export function KitchenSettings() {
 
       <SettingsSection
         label="Recipe & grocery amounts"
-        footer="Only what's shown changes. Recipes and the grocery list keep the amounts that were typed, and editing one shows it as written. Converted amounts are rounded, and marked with ≈. Counts, container sizes like “14 oz can”, and amounts with no number are left alone."
+        footer="Recipes and the grocery list keep the amounts as typed, and editing one shows it as written. Converted amounts are rounded, and marked with ≈. Counts, container sizes like “14 oz can”, and amounts with no number aren’t converted."
       >
         <SettingsRow
           entryId="unitSystem"
@@ -262,7 +262,7 @@ export function KitchenSettings() {
           entryId="currencySymbol"
           icon="pricetag-outline"
           label="Currency"
-          hint="The symbol grocery prices are shown with."
+          hint="The currency symbol shown with grocery prices."
           tight
         />
         <View style={styles.pillGroupRow}>
@@ -312,7 +312,7 @@ export function KitchenSettings() {
       {(!simpleMode || standingSwapCount > 0) && (
       <SettingsSection
         label="Substitutes"
-        footer="A substitute normally just says what you could use instead. One marked “always use this instead” is applied for you: recipes calling for the original show and shop for the substitute, marked with what the recipe said. Nothing is written to the recipe, and a single line can opt out under “Keep as written”."
+        footer="A substitute is a suggestion unless marked “always use this instead”. Marked ones replace the original in recipes and shopping, with a note of what the recipe said. The recipe isn’t changed, and one line can opt out under “Keep as written”."
       >
         <SettingsRow
           entryId="standingSwaps"
@@ -321,7 +321,7 @@ export function KitchenSettings() {
           label="Standing swaps"
           hint={standingSwapCount > 0
             ? 'Substitutes being applied to every recipe that calls for the original'
-            : 'Nothing is being swapped for you'}
+            : 'No swaps are being applied'}
           value={standingSwapCount > 0 ? String(standingSwapCount) : undefined}
           chevron
           onPress={() => { haptics.tap(); setStandingSwapsVisible(true); }}

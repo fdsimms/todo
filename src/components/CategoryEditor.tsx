@@ -178,8 +178,8 @@ export function CategoryEditor({ visible, category: liveCategory, onClose }: Pro
     Alert.alert(
       defaultSegments.length > 0 ? `Move to ${segmentsSummary}?` : 'Clear time of day?',
       defaultSegments.length > 0
-        ? `${pendingCount} ${noun} in "${category}" will be held back until ${defaultSegments.join(' or ')} each day. You can shake to undo this right after.`
-        : `${pendingCount} ${noun} in "${category}" will lose their time of day and show from the start of the day. You can shake to undo this right after.`,
+        ? `${pendingCount} ${noun} in “${category}” will be held back until ${defaultSegments.join(' or ')} each day. Shake your phone right after to undo.`
+        : `${pendingCount} ${noun} in “${category}” will lose their time of day and show all day. Shake your phone right after to undo.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -247,7 +247,7 @@ export function CategoryEditor({ visible, category: liveCategory, onClose }: Pro
     const trimmedName = name.trim();
     if (trimmedName && trimmedName !== category) {
       if (!renameCategory(category, trimmedName)) {
-        Alert.alert('That name is taken', `A category named "${trimmedName}" already exists.`);
+        Alert.alert('That name is taken', `A category named “${trimmedName}” already exists.`);
         return;
       }
     }
@@ -260,8 +260,8 @@ export function CategoryEditor({ visible, category: liveCategory, onClose }: Pro
     confirmDelete({
       title: 'Delete category',
       message: taskCount > 0
-        ? `Remove "${category}" from ${taskCount} ${taskCount === 1 ? 'task' : 'tasks'}? They'll become uncategorized. You can shake to undo this right after.`
-        : `Delete "${category}"? You can shake to undo this right after.`,
+        ? `Remove “${category}” from ${taskCount} ${taskCount === 1 ? 'task' : 'tasks'}? They’ll become uncategorized. Shake your phone right after to undo.`
+        : `Delete “${category}”? Shake your phone right after to undo.`,
       onConfirm: () => { Keyboard.dismiss(); animateLayout(); deleteCategory(category); onClose(); },
     });
   };
@@ -312,7 +312,7 @@ export function CategoryEditor({ visible, category: liveCategory, onClose }: Pro
             />
           </View>
           <Text style={styles.identityHint}>
-            {taskCount === 1 ? '1 task' : `${taskCount} tasks`} in this category. Tap the icon to pick an emoji. One stands in for the category everywhere it's shown.
+            {taskCount === 1 ? '1 task' : `${taskCount} tasks`} in this category. Tap the icon to pick an emoji.
           </Text>
 
           <Text style={styles.groupLabel}>VISIBILITY</Text>
@@ -320,7 +320,7 @@ export function CategoryEditor({ visible, category: liveCategory, onClose }: Pro
             <EditorRow
               icon="time-outline"
               label="Visibility schedule"
-              hint="Only surface these tasks on certain days and hours."
+              hint="Show these tasks only on certain days and hours."
               value={scheduleSummary}
               expanded={scheduleOpen}
               onPress={toggleSchedule}
@@ -393,7 +393,7 @@ export function CategoryEditor({ visible, category: liveCategory, onClose }: Pro
               <Ionicons name="airplane-outline" size={18} color={hideOnVacation ? colors.accent : colors.textSecondary} />
               <View style={styles.optionContent}>
                 <Text style={styles.optionLabel}>Hide on vacation</Text>
-                <Text style={styles.optionHint}>Tucks these tasks away while vacation mode is on</Text>
+                <Text style={styles.optionHint}>Hides these tasks while vacation mode is on.</Text>
               </View>
               <View style={[styles.toggle, hideOnVacation && styles.toggleOn]}>
                 <View style={[styles.toggleKnob, hideOnVacation && styles.toggleKnobOn]} />
@@ -424,12 +424,12 @@ export function CategoryEditor({ visible, category: liveCategory, onClose }: Pro
               activeOpacity={interaction.activeOpacity}
               accessibilityRole="switch"
               accessibilityState={{ checked: excludeFromNewBanner }}
-              accessibilityLabel="Skip in new todos banner"
+              accessibilityLabel="Skip in new tasks banner"
             >
               <Ionicons name="notifications-off-outline" size={18} color={excludeFromNewBanner ? colors.accent : colors.textSecondary} />
               <View style={styles.optionContent}>
-                <Text style={styles.optionLabel}>Skip in new todos banner</Text>
-                <Text style={styles.optionHint}>Keeps these off the "new todos" banner and the new dot on their row</Text>
+                <Text style={styles.optionLabel}>Skip in new tasks banner</Text>
+                <Text style={styles.optionHint}>Keeps these off the new tasks banner and the new dot on their row.</Text>
               </View>
               <View style={[styles.toggle, excludeFromNewBanner && styles.toggleOn]}>
                 <View style={[styles.toggleKnob, excludeFromNewBanner && styles.toggleKnobOn]} />
@@ -501,7 +501,7 @@ export function CategoryEditor({ visible, category: liveCategory, onClose }: Pro
           visible={emojiPickerOpen}
           value={emoji || null}
           title="Category emoji"
-          hint="One emoji stands in for this category everywhere it's shown."
+          hint="One emoji represents this category wherever it’s shown."
           onSelect={picked => setEmoji(picked ?? '')}
           onClose={() => setEmojiPickerOpen(false)}
         />

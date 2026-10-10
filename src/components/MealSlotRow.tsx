@@ -200,7 +200,7 @@ export function MealSlotRow({
       accessibilityHint={
         selectionMode ? 'Double tap to select this meal.'
           : onDragStart
-            ? 'Double tap to move or remove this meal. Or hold and drag it onto another day. Left to right across the day picks breakfast, lunch, dinner or a snack.'
+            ? 'Double tap to move or remove this meal, or hold and drag it onto another day. Left to right across the day picks breakfast, lunch, dinner or a snack.'
             : 'Double tap to move or remove this meal.'
       }
     >

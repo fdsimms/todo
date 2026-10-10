@@ -36,7 +36,7 @@ export const TASK_DISMISS_LABELS: Record<BackfillFieldId, string> = {
   priority: 'No priority',
   difficulty: 'No difficulty',
   category: 'Leave uncategorized',
-  streak: "Don't show streak chip",
+  streak: "Don’t show streak chip",
   vacation: 'Keep visible on vacation',
   holidays: 'Leave as usual',
   reminder: 'No reminder',
@@ -46,11 +46,11 @@ export const TASK_DISMISS_LABELS: Record<BackfillFieldId, string> = {
 export const CATEGORY_DISMISS_LABELS: Record<CategoryBackfillFieldId, string> = {
   vacation: 'Keep visible on vacation',
   suggestions: 'Keep in suggestions',
-  newBanner: 'Keep in new todos banner',
+  newBanner: 'Keep in new tasks banner',
 };
 
 export const PROJECT_DISMISS_LABELS: Record<ProjectBackfillFieldId, string> = {
-  nudge: "Don't bring this up",
+  nudge: "Don’t bring this up",
   weekendSource: 'Never suggest for weekends',
 };
 
@@ -73,5 +73,5 @@ export const RECIPE_DISMISS_LABELS: Record<RecipeBackfillFieldId, string> = {
   servings: 'No serving count',
   cookTime: 'No cook time',
   prepTime: 'No prep time',
-  cookedWeight: "Don't track weight",
+  cookedWeight: "Don’t track weight",
 };

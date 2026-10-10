@@ -100,7 +100,7 @@ export function PostponeCheckBanner({ count, primary, secondary }: Props) {
           {/* The count is the whole message — it's the thing the app knows and
               the user has lost track of. */}
           <Text style={styles.count}>Pushed {count} times.</Text>
-          {' '}Want to just get it over with?
+          {' '}Do it today?
         </Text>
       </View>
 

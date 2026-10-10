@@ -83,7 +83,7 @@ enum KitchenWidgetMode: String, AppEnum {
 
     static var typeDisplayRepresentation = TypeDisplayRepresentation(name: "Show")
     static var caseDisplayRepresentations: [KitchenWidgetMode: DisplayRepresentation] = [
-        .meals: "Today's meals",
+        .meals: "Today’s meals",
         .useUp: "Use up soon",
         .both: "Both",
     ]
@@ -91,7 +91,7 @@ enum KitchenWidgetMode: String, AppEnum {
 
 struct KitchenWidgetIntent: WidgetConfigurationIntent {
     static var title: LocalizedStringResource = "Kitchen"
-    static var description = IntentDescription("Today's meals, and what needs using up.")
+    static var description = IntentDescription("Today’s meals, and what needs using up.")
 
     @Parameter(title: "Show", default: .both)
     var mode: KitchenWidgetMode

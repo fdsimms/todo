@@ -171,7 +171,7 @@ export function MealReplaceItemSheet({ visible, count, title, hint, onReplace, o
         <View style={styles.card}>
           <Text style={styles.sheetTitle} numberOfLines={2}>{title ?? `Replace ${countLabel}`}</Text>
           <Text style={styles.sheetHint}>
-            {hint ?? 'Pick a recipe, or type a new name. It replaces the item on every selected meal.'}
+            {hint ?? 'Pick a recipe or type a name to replace the item on every selected meal.'}
           </Text>
 
           <View style={styles.searchWrap}>
@@ -203,7 +203,7 @@ export function MealReplaceItemSheet({ visible, count, title, hint, onReplace, o
                 </View>
                 <View style={styles.rowInfo}>
                   <Text style={styles.rowName} numberOfLines={1}>{typed}</Text>
-                  <Text style={styles.rowHint}>Just this, not a recipe</Text>
+                  <Text style={styles.rowHint}>Name only, no recipe</Text>
                 </View>
                 <Ionicons name="checkmark" size={16} color={colors.textTertiary} />
               </TouchableOpacity>

@@ -67,9 +67,9 @@ function fixedWithObserved(year: number, month0: number, day: number, name: stri
 /** The eleven US federal holidays of one calendar year, with any observed weekdays. */
 function usFederalCandidates(year: number): Holiday[] {
   return [
-    ...fixedWithObserved(year, 0, 1, "New Year's Day"),
+    ...fixedWithObserved(year, 0, 1, "New Year’s Day"),
     { dayKey: keyOf(year, 0, nthWeekday(year, 0, 1, 3)), name: 'Martin Luther King Jr. Day' },
-    { dayKey: keyOf(year, 1, nthWeekday(year, 1, 1, 3)), name: "Presidents' Day" },
+    { dayKey: keyOf(year, 1, nthWeekday(year, 1, 1, 3)), name: "Presidents’ Day" },
     { dayKey: keyOf(year, 4, nthWeekday(year, 4, 1, -1)), name: 'Memorial Day' },
     // A federal holiday from 2021 on.
     ...(year >= 2021 ? fixedWithObserved(year, 5, 19, 'Juneteenth') : []),

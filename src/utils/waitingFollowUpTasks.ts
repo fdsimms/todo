@@ -47,7 +47,7 @@ export function waitingFollowUpTitle(
   waitingTask: Task
 ): string {
   const who = person.nickname.trim() || person.name.trim();
-  return `Follow up with ${who} about "${displayTitleFor(waitingTask)}"`;
+  return `Follow up with ${who} about “${displayTitleFor(waitingTask)}”`;
 }
 
 /** Whether this wait's nudge was swiped away recently enough to still hold. */

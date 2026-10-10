@@ -101,7 +101,7 @@ export interface Category {
   // but bad company for whatever else lands in a shortlist.
   excludeFromSuggestions: boolean;
   // Keep tasks in this category from counting as "new" — no entry in the
-  // "you have X new todos" banner, and no dot on their own row (see
+  // "you have X new tasks" banner, and no dot on their own row (see
   // isTaskNew). Both read the same signal, so this turns it off at the
   // source rather than hiding it from only one of the two places it shows.
   // For categories that surface tasks constantly (routines, recurring
