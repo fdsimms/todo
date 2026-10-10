@@ -991,9 +991,16 @@ kept, and asked about again each time the app comes to the front.
 - **A drain stops at the first failure waiting can fix**, since the rest would
   fail the same way, so an offline phone costs one request per return to the app.
   It runs at launch and on foreground only, and is a no-op in demo mode.
-- **The questions a ready estimate came with are not asked.** The card logs the
-  figures as returned; to refine one with answers or an amount, remove it and
-  estimate again while online.
+- **A ready meal can be refined before it is logged.** Log on the card writes
+  the figures as returned. Refine opens the same `EstimatePanel` inside the add
+  sheet, already on the saved estimate with its questions, using the meal's own
+  slot and moment rather than the day being viewed (`reviewing` on
+  `FoodLogEntrySheet` and `EstimatePanel`). An answer or a typed amount re-asks
+  the model as it does for a fresh estimate, so it needs the connection the
+  queue was waiting for; a refinement that fails keeps the estimate and its Log
+  button. Logging from the panel removes the queued row, and dismissing the
+  panel leaves it. Save for later is offered only for a first ask, never for a
+  refinement, so answers are never folded into a saved description twice.
 - **Device-local.** `pending_estimates` is in both `BACKUP_EXCLUDED_TABLES` and
   `SYNC_EXCLUDED_TABLES`: a request belongs to the phone that lost its signal,
   and syncing one would have a second phone estimate and offer to log the same

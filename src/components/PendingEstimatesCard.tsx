@@ -25,7 +25,16 @@ import { InlineAction } from './InlineAction';
  * figures are shown, and Log is the confirmation), or could not be estimated
  * (the reason, and Try again).
  */
-export function PendingEstimatesCard() {
+interface Props {
+  /**
+   * Opens a ready meal's estimate to be refined with answers or an amount, in
+   * the same sheet an estimate is made in. Omitted by a host with nowhere to
+   * open one, which leaves the row with Log and Remove.
+   */
+  onRefine?: (row: PendingEstimate) => void;
+}
+
+export function PendingEstimatesCard({ onRefine }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -118,6 +127,15 @@ export function PendingEstimatesCard() {
                 icon="checkmark"
                 onPress={() => handleLog(row)}
                 accessibilityLabel={`Log ${row.estimate.label}`}
+              />
+            )}
+            {row.status === 'ready' && row.estimate && onRefine && (
+              <InlineAction
+                label="Refine"
+                icon="create-outline"
+                variant="neutral"
+                onPress={() => { haptics.tap(); onRefine(row); }}
+                accessibilityLabel={`Refine ${row.estimate.label} with an amount or answers`}
               />
             )}
             {row.status === 'failed' && (

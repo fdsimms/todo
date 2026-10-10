@@ -13,7 +13,7 @@ import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors }
 import { MEAL_SLOTS, MEAL_SLOT_LABELS, EXTERNAL_NUTRIENT_KEYS, type FoodLogEntry, type FoodNutrition, type MealSlot, type NutrientKey } from '../types';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { usePendingEstimateStore } from '../store/usePendingEstimateStore';
-import { MAX_PENDING_ESTIMATES, isQueueableFailure } from '../utils/estimateQueue';
+import { MAX_PENDING_ESTIMATES, isQueueableFailure, type PendingEstimate } from '../utils/estimateQueue';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { describeAIError, estimateMealNutrition } from '../services/aiSuggestions';
 import {
@@ -209,6 +209,18 @@ interface Props {
    * or resets without the "added" bookkeeping `onLogged` carries.
    */
   onQueued: () => void;
+  /**
+   * A queued meal being refined (`PendingEstimatesCard`'s Refine). The panel
+   * opens on its saved estimate, questions included, instead of asking again,
+   * and a successful Log removes the queued row. It is the same panel, so an
+   * answer or a typed amount re-asks the model exactly as it does for a fresh
+   * estimate, which needs the connection the queue was waiting for.
+   *
+   * Save for later is not offered while this is set: the meal is already
+   * queued, and a refinement that fails keeps the estimate on screen with its
+   * Log button, so nothing is lost.
+   */
+  reviewing?: PendingEstimate | null;
   /** The × in the panel's own header. */
   onDismiss: () => void;
   /**
@@ -228,7 +240,7 @@ export interface EstimateLogAction {
   run: () => void;
 }
 
-export function EstimatePanel({ description: rawDescription, onDescriptionChange, slot, at, mealPlanEntryId, onPickRecipe, onLogged, onQueued, onDismiss, onLogAction }: Props) {
+export function EstimatePanel({ description: rawDescription, onDescriptionChange, slot, at, mealPlanEntryId, onPickRecipe, onLogged, onQueued, reviewing = null, onDismiss, onLogAction }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -250,14 +262,16 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
   // ==== state ====
   // Capped where the old field capped it, since that is what the request accepts.
   const description = rawDescription.slice(0, ESTIMATE_DESCRIPTION_MAX_LENGTH);
-  const [estimate, setEstimate] = useState<NutritionEstimate | null>(null);
+  const [estimate, setEstimate] = useState<NutritionEstimate | null>(reviewing?.estimate ?? null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /**
-   * The text of the request that just failed for a reason waiting can fix, or
-   * null. Set only alongside `error`, and it is the refined text a re-ask would
-   * have sent, so a meal saved for later keeps the answers and amount given.
+   * The text of the first ask that just failed for a reason waiting can fix, or
+   * null. Set only alongside `error`, and only for a fresh ask: a failed
+   * refinement keeps the estimate it was refining, with its Log button, so
+   * there is nothing to save, and saving its text would fold the answers in a
+   * second time when the meal is refined later.
    */
   const [queueableText, setQueueableText] = useState<string | null>(null);
   const [chosenSlot, setChosenSlot] = useState<MealSlot | null>(slot);
@@ -287,14 +301,14 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
    * meal on screen; and the field differing from it is what brings the
    * estimate row back, to ask about the new text.
    */
-  const [estimatedFor, setEstimatedFor] = useState<string | null>(null);
+  const [estimatedFor, setEstimatedFor] = useState<string | null>(reviewing?.estimate ? reviewing.description : null);
   /**
    * The questions the first estimate asked, held apart from the estimate
    * itself. A re-ask with an answer folded in may come back asking fewer (or
    * none), and the other questions leaving the screen the moment one is
    * answered would strand them unanswerable.
    */
-  const [questions, setQuestions] = useState<NutritionEstimate['questions']>([]);
+  const [questions, setQuestions] = useState<NutritionEstimate['questions']>(reviewing?.estimate?.questions ?? []);
   /** Whether the full nutrient list and the per-ingredient split are open. */
   const [detailsOpen, setDetailsOpen] = useState(false);
   /**
@@ -474,7 +488,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
       // than the whole card going blank over one bad request.
       if (fresh) setEstimate(null);
       setError(describeAIError(e));
-      setQueueableText(isQueueableFailure(e) ? text : null);
+      setQueueableText(fresh && isQueueableFailure(e) ? text : null);
       return false;
     } finally {
       if (token === runTokenRef.current) setLoading(false);
@@ -499,6 +513,8 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
   // offers, they come first and the Estimate row is the way past them, which
   // is the "real data beats a guess" rule above.
   useEffect(() => {
+    // A queued meal opens on the estimate it already has.
+    if (reviewing?.estimate) return;
     if (recalled.length === 0 && catalogMatches.length === 0 && matches.length === 0) handleEstimate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -592,6 +608,9 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
       mealPlanEntryId: mealPlanEntryId ?? null,
     });
     if (!written) { haptics.error(); return; }
+    // The queued row this was refined from is answered by the entry just
+    // written, so it leaves the queue with it rather than offering to log twice.
+    if (reviewing) usePendingEstimateStore.getState().discard(reviewing.id);
     haptics.success();
     Keyboard.dismiss();
     onLogged(estimate.label);
@@ -1238,7 +1257,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
           )}
 
           {!!error && <Text style={styles.error}>{error}</Text>}
-          {queueableText != null && !loading && (
+          {queueableText != null && !loading && !reviewing && (
             <View style={styles.queueRow}>
               <InlineAction
                 label="Save for later"
