@@ -3451,6 +3451,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
             preferOnDevice: typeof stored.preferOnDevice === 'boolean'
               ? stored.preferOnDevice
               : aiFeatureConfig[id].preferOnDevice,
+            webSearch: typeof stored.webSearch === 'boolean'
+              ? stored.webSearch
+              : aiFeatureConfig[id].webSearch,
           };
         }
       } catch {

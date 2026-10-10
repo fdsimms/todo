@@ -22,6 +22,7 @@ import {
   nutritionLabelPhotoAiAvailable,
   estimateRecipeNutrition,
   recipeNutritionEstimateAvailable,
+  estimateMealNutrition,
 } from '../services/aiSuggestions';
 import { MAX_MEAL_IDEAS } from '../utils/mealIdeas';
 import { LEFTOVER_KEEP_DAYS_MAX, RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH, type Task } from '../types';
@@ -41,6 +42,7 @@ const TEST_AI_FEATURE_CONFIG = {
   calendarImport: { enabled: true, model: 'claude-sonnet-5' },
   nutritionLabelPhoto: { enabled: true, model: 'claude-sonnet-5' },
   recipeNutritionEstimate: { enabled: true, model: 'claude-sonnet-5' },
+  nutritionEstimate: { enabled: true, model: 'claude-sonnet-5' } as { enabled: boolean; model: string; webSearch?: boolean },
   taskBreakdown: { enabled: true, model: 'claude-haiku-4-5-20251001' },
 };
 
@@ -2446,5 +2448,60 @@ describe('readLabelPhotoWithAi', () => {
   it('maps a network failure through describeAIError like the rest of the file', async () => {
     mockFetchOnce({}, 500);
     await expect(readLabelPhotoWithAi(PHOTO)).rejects.toThrow('API error 500');
+  });
+});
+
+describe('estimateMealNutrition web search', () => {
+  const ESTIMATE = {
+    label: 'Big Mac, McDonald\'s',
+    quantity: '1 burger',
+    amounts: { calorieKcal: 590 },
+    basis: 'published',
+    confidence: 'high',
+    attribution: 'McDonald\'s',
+    questions: [],
+  };
+  const reply = (input: object) => ({ content: [{ type: 'tool_use', name: 'estimate_meal', input }] });
+  const bodyOf = (spy: jest.SpyInstance, call = 0) => JSON.parse(spy.mock.calls[call][1].body as string);
+
+  it('forces the tool and sends no search tool while the switch is off', async () => {
+    const spy = mockFetchOnce(reply(ESTIMATE));
+    await estimateMealNutrition('Big Mac');
+    const body = bodyOf(spy);
+    expect(body.tool_choice).toEqual({ type: 'tool', name: 'estimate_meal' });
+    expect(body.tools.map((t: { name: string }) => t.name)).toEqual(['estimate_meal']);
+  });
+
+  it('adds the search tool and lets the model choose when the switch is on', async () => {
+    mockSettings.aiFeatureConfig.nutritionEstimate.webSearch = true;
+    const spy = mockFetchOnce({
+      content: [
+        { type: 'server_tool_use', name: 'web_search', input: { query: 'big mac nutrition' } },
+        { type: 'tool_use', name: 'estimate_meal', input: ESTIMATE },
+      ],
+    });
+    const result = await estimateMealNutrition('Big Mac');
+    const body = bodyOf(spy);
+    expect(body.tool_choice).toEqual({ type: 'auto' });
+    expect(body.tools.map((t: { name: string }) => t.name)).toEqual(['estimate_meal', 'web_search']);
+    expect(result.basis).toBe('published');
+  });
+
+  it('falls back to the plain forced call when the search turn never calls the tool', async () => {
+    mockSettings.aiFeatureConfig.nutritionEstimate.webSearch = true;
+    const spy = mockFetchOnce({ stop_reason: 'pause_turn', content: [{ type: 'text', text: 'searching' }] });
+    spy.mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve(reply(ESTIMATE)) } as Response);
+    const result = await estimateMealNutrition('Big Mac');
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect(bodyOf(spy, 1).tool_choice).toEqual({ type: 'tool', name: 'estimate_meal' });
+    expect(result.label).toContain('Big Mac');
+  });
+
+  it('falls back when the search request itself fails', async () => {
+    mockSettings.aiFeatureConfig.nutritionEstimate.webSearch = true;
+    const spy = mockFetchOnce({}, 500);
+    spy.mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve(reply(ESTIMATE)) } as Response);
+    await expect(estimateMealNutrition('Big Mac')).resolves.toBeDefined();
+    expect(spy).toHaveBeenCalledTimes(2);
   });
 });
