@@ -2908,19 +2908,6 @@ export const TaskItem = React.memo(function TaskItem({
                 />
               </Animated.View>
             )}
-            {/* Notes only render once a row is expanded, so the collapsed row
-                otherwise gives no hint they exist. Icon-only, no text: this is
-                the quiet option (vs. a truncated preview line), matching how
-                little it needs to say — "there's something here" — against
-                the row-height cost a preview would add to every task with a
-                note. It rides the title rather than the meta line: a note is
-                part of what the task is, and a trailing icon after the stats
-                read as one more stat. */}
-            {task.notes.length > 0 && (
-              <View style={styles.notesMark} accessibilityLabel="Has notes">
-                <Ionicons name="document-text-outline" size={iconSize.xs} color={colors.textSecondary} />
-              </View>
-            )}
             {deadlineDays !== null && (
               <View
                 style={styles.deadlineBadge}
@@ -3574,6 +3561,19 @@ export const TaskItem = React.memo(function TaskItem({
           <Animated.Text style={[styles.chainBadgeText, { opacity: chainStepOpacity, transform: [{ scale: chainStepAnim }] }]}>
             {chainPosition}
           </Animated.Text>
+        </View>
+      )}
+
+      {/* Notes only render once a row is expanded, so the collapsed row
+          otherwise gives no hint they exist. Icon-only, no text: the quiet
+          option (vs. a truncated preview line). It is a sibling of the
+          trailing buttons for the same reason the chain badge is: inside the
+          title row it sat at the title's own line, off the row's centre, and
+          at a smaller size than the glyphs beside it. Same size and padding as
+          they have, so the cluster reads as one line. */}
+      {task.notes.length > 0 && (
+        <View style={styles.notesMark} accessibilityLabel="Has notes">
+          <Ionicons name="document-text-outline" size={iconSize.sm} color={colors.textSecondary} />
         </View>
       )}
 
@@ -5062,6 +5062,7 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => StyleSheet.create({
   },
   notesMark: {
     flexShrink: 0,
+    padding: 4,
   },
   newDot: {
     width: 6,
