@@ -18,7 +18,7 @@ import {
 // the other while it's being evaluated — every reference below is inside an
 // action body, by which time both have finished loading. Same shape as
 // useGroceryStore reaching into useRecipeStore.
-import { useTaskStore } from './useTaskStore';
+import { offerMealLog, useTaskStore } from './useTaskStore';
 import { useSettingsStore } from './useSettingsStore';
 import { useRecipeStore } from './useRecipeStore';
 import { useGroceryStore } from './useGroceryStore';
@@ -65,6 +65,8 @@ import {
   sortMealEntries,
   titleForEntry,
   weekCopyDrafts,
+  withoutPastDays,
+  copiedLabel,
   type MealCopyDraft,
   buildMealPlanEntry,
 } from '../utils/mealPlan';
@@ -1122,6 +1124,10 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     // its own state by the time the other calls back, so the callee returns
     // early. Don't remove either guard.
     syncCookTaskCompletion(next, cooked);
+    // The task's own completion raises the log offer when there was a task to
+    // complete; this covers the meal that had none. Raising it twice for one
+    // that did writes the same pending offer twice, which is a no-op.
+    if (cooked) offerMealLog(next);
   },
 
   setCookTask(id, value) {
@@ -1422,11 +1428,16 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
   copyWeek(fromStartKey, toStartKey) {
     const source = dbGetMealPlanEntries(fromStartKey, shiftDayKey(fromStartKey, 6));
     const shift = differenceInCalendarDays(dayKeyToDate(toStartKey), dayKeyToDate(fromStartKey));
-    const drafts = weekCopyDrafts(source, shift);
-    if (drafts.length === 0) return 0;
+    const { kept, skipped } = withoutPastDays(
+      weekCopyDrafts(source, shift), dayKeyOf(getLogicalToday()), shiftDayKey(toStartKey, 6),
+    );
+    if (kept.length === 0) return 0;
 
-    const created = drafts.map(copyRow);
-    return writeCopies(set, get, created, `Copied ${created.length} meal${created.length === 1 ? '' : 's'}`);
+    const created = kept.map(copyRow);
+    return writeCopies(
+      set, get, created,
+      copiedLabel(`Copied ${created.length} meal${created.length === 1 ? '' : 's'}`, skipped),
+    );
   },
 
   slotsToCopyFrom(fromStartKey, toStartKey) {
@@ -1443,9 +1454,15 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     const shift = differenceInCalendarDays(dayKeyToDate(toStartKey), dayKeyToDate(fromStartKey));
     // The source's sortOrder carries, as in a week copy: the slot is empty
     // all week on this side, so there's nothing for it to land among.
-    const created = slotCopyDrafts(source, slot, shift).map(copyRow);
+    const { kept, skipped } = withoutPastDays(
+      slotCopyDrafts(source, slot, shift), dayKeyOf(getLogicalToday()), shiftDayKey(toStartKey, 6),
+    );
+    const created = kept.map(copyRow);
     const n = created.length;
-    return writeCopies(set, get, created, `Copied ${n} ${n === 1 ? slotLabel(slot).toLowerCase() : slotPlural(slot)}`);
+    return writeCopies(
+      set, get, created,
+      copiedLabel(`Copied ${n} ${n === 1 ? slotLabel(slot).toLowerCase() : slotPlural(slot)}`, skipped),
+    );
   },
 
   copyEntryTo(id, dates) {

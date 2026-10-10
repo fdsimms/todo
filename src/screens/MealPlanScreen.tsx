@@ -110,6 +110,7 @@ import {
   dayKeyRange,
   describeAddedToList,
   describeWeekPlan,
+  describeDinnerCoverage,
   describeWeekRange,
   earliestUnplannedSlot,
   entriesForDay,
@@ -1896,7 +1897,9 @@ export function MealPlanScreen() {
         accessibilityLabel: 'Log food',
       } satisfies ScreenHeaderAction] : []),
       {
-        icon: copiedWeek ? 'checkmark' : 'copy-outline',
+        // Not copy-outline: that glyph is the copy-meals pill right under the
+        // header, which copies a week of meals into this one rather than text.
+        icon: copiedWeek ? 'checkmark' : 'document-text-outline',
         onPress: () => copyWeekText(weekShareText),
         disabled: !weekShareText,
         accessibilityLabel: `Copy ${weekMealsLabel} as plain text`,
@@ -1988,6 +1991,7 @@ export function MealPlanScreen() {
     animateLayout();
     const n = copyWeek(copySourceKey, range.startKey);
     if (n > 0) haptics.success();
+    else Alert.alert('Nothing copied', 'Meals on days that have already passed, and leftover nights, are left out of a copy.');
   };
 
   /**
@@ -2019,6 +2023,7 @@ export function MealPlanScreen() {
     animateLayout();
     const n = copySlotFromWeek(copyFromKey, range.startKey, slot);
     if (n > 0) haptics.success();
+    else Alert.alert('Nothing copied', 'Meals on days that have already passed, and leftover nights, are left out of a copy.');
   };
 
   const addedStamp = range ? addedToListAt[range.startKey] : undefined;
@@ -2048,7 +2053,11 @@ export function MealPlanScreen() {
   // The plan summary keeps the subtitle line; cost, nutrition and the added
   // stamp share the overline. Joined into one subtitle they wrapped beside the
   // five buttons and made this header taller than the other hub pages'.
-  const subtitle = describeWeekPlan(entries) || undefined;
+  // Left off for an empty week: the hint under the header already says
+  // "Nothing planned this week", and the two read as one line said twice.
+  const subtitle = entries.length === 0
+    ? undefined
+    : [describeWeekPlan(entries), describeDinnerCoverage(entries, days.map(dayKeyOf))].filter(Boolean).join(' · ');
   const overline = [
     describeWeekCost(weekCost, currencySymbol, new Date()),
     describeWeekNutrition(weekNutritionEstimate),

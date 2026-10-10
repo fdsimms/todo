@@ -247,3 +247,42 @@ export function mealIdeaRecipeDraft(
     prepTasks: [...recipe.prepTasks],
   };
 }
+
+/**
+ * The day each pick in the suggestions sheet lands on: a pick given a day of
+ * its own keeps it, and the rest take the open days nothing else has, in the
+ * order they sit in the list. Before a pick could be given a day, list order
+ * was the whole rule, so the only way to put the curry on Friday was to pick
+ * things in an order that happened to land it there.
+ *
+ * `takenDayKeys` are the nights already planned from this sheet (a Save that
+ * partly failed), which nothing may land on again. A chosen day that is
+ * taken, not open, or already chosen by an earlier pick is ignored, and that
+ * pick falls back to the next free day like any other. A pick left with no
+ * day (more picks than open nights) is absent from the result.
+ */
+export function assignPickDays(
+  pickedKeys: readonly string[],
+  openDayKeys: readonly string[],
+  takenDayKeys: ReadonlySet<string>,
+  chosen: ReadonlyMap<string, string>,
+): Map<string, string> {
+  const free = new Set(openDayKeys.filter(day => !takenDayKeys.has(day)));
+  const result = new Map<string, string>();
+  for (const key of pickedKeys) {
+    const day = chosen.get(key);
+    if (day !== undefined && free.has(day)) {
+      result.set(key, day);
+      free.delete(day);
+    }
+  }
+  const remaining = openDayKeys.filter(day => free.has(day));
+  let next = 0;
+  for (const key of pickedKeys) {
+    if (result.has(key)) continue;
+    const day = remaining[next++];
+    if (day === undefined) break;
+    result.set(key, day);
+  }
+  return result;
+}

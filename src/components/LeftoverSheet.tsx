@@ -9,6 +9,7 @@ import {
   ScrollView,
   StyleSheet,
   Keyboard,
+  Alert,
   useWindowDimensions,
 } from 'react-native';
 import { SheetModal } from './SheetModal';
@@ -291,6 +292,33 @@ export function LeftoverSheet({
     });
   };
 
+  // A fresh log stages everything until "Log it", so the three ways out
+  // that aren't it (scrim, swipe, Cancel) ask before dropping a draft that
+  // differs from what the sheet opened with. An existing row's controls
+  // write straight through, so there's nothing to lose there.
+  const draftDirty = !editing && (
+    title !== (seed?.title ?? '')
+    || weightText.trim() !== ''
+    || draftDaysAgo !== 0
+    || (draftKeepDays ?? LEFTOVER_KEEP_DAYS_DEFAULT) !== (seed?.keepDays ?? LEFTOVER_KEEP_DAYS_DEFAULT)
+    || destination !== 'fridge'
+  );
+  const requestDismiss = () => {
+    if (!draftDirty) { dismiss(); return; }
+    Alert.alert(
+      'Discard changes?',
+      'You have unsaved changes. Are you sure you want to discard them?',
+      [
+        { text: 'Keep editing', style: 'cancel', onPress: () => sheet.restore() },
+        { text: 'Discard', style: 'destructive', onPress: () => dismiss() },
+      ],
+    );
+  };
+  // The pan responder is built once, so it reaches the current draft through
+  // a ref rather than the closure it was created in.
+  const requestDismissRef = useRef(requestDismiss);
+  requestDismissRef.current = requestDismiss;
+
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -299,7 +327,7 @@ export function LeftoverSheet({
         if (dy > 0) translateY.setValue(dy);
       },
       onPanResponderRelease: (_, { dy, vy }) => {
-        if (dy > 80 || vy > 1.2) dismiss();
+        if (dy > 80 || vy > 1.2) requestDismissRef.current();
         else sheet.restore();
       },
     })
@@ -409,13 +437,13 @@ export function LeftoverSheet({
   };
 
   return (
-    <SheetModal visible={visible} animationType="none" transparent onRequestClose={() => dismiss()}>
+    <SheetModal visible={visible} animationType="none" transparent onRequestClose={requestDismiss}>
       <NumberPadAccessory />
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]} pointerEvents="none">
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
       </Animated.View>
-      <SheetScrim onPress={() => dismiss()} />
+      <SheetScrim onPress={requestDismiss} />
 
       <Animated.View
         onLayout={sheet.onCardLayout}
@@ -730,8 +758,8 @@ export function LeftoverSheet({
           onPress={() => {
             // Tapping Done can beat the title field's own blur — flush it
             // first instead of dropping whatever was typed.
-            if (editing) commitRename();
-            dismiss();
+            if (editing) { commitRename(); dismiss(); }
+            else requestDismiss();
           }}
           activeOpacity={interaction.activeOpacity}
         >

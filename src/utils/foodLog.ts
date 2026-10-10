@@ -1586,3 +1586,36 @@ const SOURCE_WORDS: Record<FoodNutrition['source'], string> = {
   manual: 'typed in',
   estimated: 'estimated',
 };
+
+/**
+ * Whether the add sheet's search text, with nothing picked yet, is worth a
+ * discard confirm. A food's name ("egg", "oat milk") costs nothing to retype
+ * and confirming over it would put a prompt on every look-and-cancel; a
+ * description of a meal ("chicken burrito with rice and guacamole") is the
+ * text the Estimate path reads, and losing it to a swipe-down was silent.
+ * Three words is where the field stops reading as a name and starts reading
+ * as a description.
+ */
+export function isDescriptionDraft(query: string): boolean {
+  return query.trim().split(/\s+/).filter(Boolean).length >= 3;
+}
+
+/**
+ * "from 3 of 7 entries" when only some of a day's food stated a nutrient, and
+ * null when every one did (or none could). The totals card shows one row per
+ * nutrient, and a fiber row summed from three of seven entries otherwise reads
+ * as the day's fiber; `describeFoodLogTotals` says the same for its one-line
+ * summary. Water rows are left out of the count: they state water and nothing
+ * else by definition, so "from 4 of 5" for calories would be blaming a glass
+ * of water for not having any.
+ */
+export function totalCoverageNote(
+  entries: readonly FoodLogEntry[],
+  key: NutrientKey,
+): string | null {
+  if (key === 'waterMl') return null;
+  const food = entries.filter(e => !isWaterEntry(e));
+  const reported = food.filter(e => e.nutrition.amounts[key] !== undefined).length;
+  if (reported === 0 || reported === food.length) return null;
+  return `from ${reported} of ${food.length} ${food.length === 1 ? 'entry' : 'entries'}`;
+}
