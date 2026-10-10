@@ -11,7 +11,7 @@ import {
   RECIPE_SOURCE_TYPES,
   SHOP_NAME_MAX_LENGTH,
   PREP_MAX_LENGTH,
-  NUTRIENT_KEYS,
+  EXTERNAL_NUTRIENT_KEYS,
 } from '../types';
 import { groceryNameKey } from '../utils/groceryParse';
 import { parsePriceInput } from '../utils/groceryPrice';
@@ -2371,7 +2371,7 @@ function parseExtractedCalendarEvents(raw: unknown): ExtractedCalendarEvent[] {
  * doesn't. Water is the exception: it isn't a figure anybody reads off a meal,
  * and a guessed one would land in the day's water.
  */
-const ESTIMATE_REQUIRED_KEYS = NUTRIENT_KEYS.filter(key => key !== 'waterMl');
+const ESTIMATE_REQUIRED_KEYS = EXTERNAL_NUTRIENT_KEYS.filter(key => key !== 'waterMl');
 
 const ESTIMATE_AMOUNTS_SCHEMA = {
   type: 'object' as const,
@@ -2698,7 +2698,7 @@ export async function readLabelPhotoWithAi(image: RecipeImage): Promise<LabelRea
     'If the photo does not show a nutrition panel at all, or is too illegible to make out real figures, return an empty columns array rather than guessing.',
   ].join('\n\n');
 
-  const nutrientProperties = Object.fromEntries(NUTRIENT_KEYS.map(key => [key, {
+  const nutrientProperties = Object.fromEntries(EXTERNAL_NUTRIENT_KEYS.map(key => [key, {
     type: 'string',
     description: `${NUTRIENT_LABEL[key].label}, exactly as printed with its unit. Empty string if the panel does not print this nutrient.`,
   }]));
@@ -2736,7 +2736,7 @@ export async function readLabelPhotoWithAi(image: RecipeImage): Promise<LabelRea
                   description: 'The salt figure, exactly as printed with its unit, for a panel that states salt rather than sodium. Empty string otherwise.',
                 },
               },
-              required: [...NUTRIENT_KEYS],
+              required: [...EXTERNAL_NUTRIENT_KEYS],
             },
           },
         },
@@ -2765,7 +2765,7 @@ export async function readLabelPhotoWithAi(image: RecipeImage): Promise<LabelRea
     const fields = raw as Record<string, unknown>;
 
     const amounts: Partial<Record<NutrientKey, number>> = {};
-    for (const key of NUTRIENT_KEYS) {
+    for (const key of EXTERNAL_NUTRIENT_KEYS) {
       const printed = fields[key];
       if (typeof printed !== 'string') continue;
       const amount = amountFromPrintedText(key, printed);

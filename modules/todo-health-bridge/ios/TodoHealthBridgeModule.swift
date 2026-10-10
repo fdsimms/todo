@@ -217,6 +217,34 @@ public class TodoHealthBridgeModule: Module {
     ("potassiumMg", .dietaryPotassium, HKUnit.gramUnit(with: .milli)),
     ("caffeineMg", .dietaryCaffeine, HKUnit.gramUnit(with: .milli)),
     ("waterMl", .dietaryWater, HKUnit.literUnit(with: .milli)),
+    // The vitamins and minerals, typed from a supplement's panel (never read
+    // off a barcode source). Every identifier below was checked against
+    // Apple's HKQuantityTypeIdentifier page. Like cholesterol, each is a share
+    // type an install that already allowed nutrition has not been asked about,
+    // so it reads `notDetermined` until allowed and the write skips it.
+    ("vitaminAMcg", .dietaryVitaminA, HKUnit.gramUnit(with: .micro)),
+    ("vitaminCMg", .dietaryVitaminC, HKUnit.gramUnit(with: .milli)),
+    ("vitaminDMcg", .dietaryVitaminD, HKUnit.gramUnit(with: .micro)),
+    ("vitaminEMg", .dietaryVitaminE, HKUnit.gramUnit(with: .milli)),
+    ("vitaminKMcg", .dietaryVitaminK, HKUnit.gramUnit(with: .micro)),
+    ("thiaminMg", .dietaryThiamin, HKUnit.gramUnit(with: .milli)),
+    ("riboflavinMg", .dietaryRiboflavin, HKUnit.gramUnit(with: .milli)),
+    ("niacinMg", .dietaryNiacin, HKUnit.gramUnit(with: .milli)),
+    ("vitaminB6Mg", .dietaryVitaminB6, HKUnit.gramUnit(with: .milli)),
+    ("folateMcg", .dietaryFolate, HKUnit.gramUnit(with: .micro)),
+    ("vitaminB12Mcg", .dietaryVitaminB12, HKUnit.gramUnit(with: .micro)),
+    ("biotinMcg", .dietaryBiotin, HKUnit.gramUnit(with: .micro)),
+    ("pantothenicAcidMg", .dietaryPantothenicAcid, HKUnit.gramUnit(with: .milli)),
+    ("magnesiumMg", .dietaryMagnesium, HKUnit.gramUnit(with: .milli)),
+    ("zincMg", .dietaryZinc, HKUnit.gramUnit(with: .milli)),
+    ("phosphorusMg", .dietaryPhosphorus, HKUnit.gramUnit(with: .milli)),
+    ("seleniumMcg", .dietarySelenium, HKUnit.gramUnit(with: .micro)),
+    ("copperMg", .dietaryCopper, HKUnit.gramUnit(with: .milli)),
+    ("manganeseMg", .dietaryManganese, HKUnit.gramUnit(with: .milli)),
+    ("chromiumMcg", .dietaryChromium, HKUnit.gramUnit(with: .micro)),
+    ("molybdenumMcg", .dietaryMolybdenum, HKUnit.gramUnit(with: .micro)),
+    ("iodineMcg", .dietaryIodine, HKUnit.gramUnit(with: .micro)),
+    ("chlorideMg", .dietaryChloride, HKUnit.gramUnit(with: .milli)),
   ]
 
   /// The share type a write-side call is asking about, resolved from the key

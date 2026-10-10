@@ -10,7 +10,7 @@ import {
 import { subDays } from 'date-fns/subDays';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
-import { MEAL_SLOTS, MEAL_SLOT_LABELS, NUTRIENT_KEYS, type FoodLogEntry, type FoodNutrition, type MealSlot, type NutrientKey } from '../types';
+import { MEAL_SLOTS, MEAL_SLOT_LABELS, EXTERNAL_NUTRIENT_KEYS, type FoodLogEntry, type FoodNutrition, type MealSlot, type NutrientKey } from '../types';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { describeAIError, estimateMealNutrition } from '../services/aiSuggestions';
@@ -889,7 +889,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
   };
 
   // ==== render ====
-  const shown = estimate ? NUTRIENT_KEYS.filter(k => estimate.amounts[k] !== undefined) : [];
+  const shown = estimate ? EXTERNAL_NUTRIENT_KEYS.filter(k => estimate.amounts[k] !== undefined) : [];
   const kcal = estimate?.amounts.calorieKcal;
   const macros = estimate ? MACRO_KEYS.filter(k => estimate.amounts[k] !== undefined) : [];
   // Everything stated beyond the headline number and the tiles, for the one
@@ -1285,16 +1285,16 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
                   {/* Absent stays absent: a nutrient the model said nothing about
                       simply has no row, rather than a row reading zero. */}
                   <Text style={styles.hint}>
-                    {shown.length === NUTRIENT_KEYS.length
+                    {shown.length === EXTERNAL_NUTRIENT_KEYS.length
                       ? 'Every nutrient stated.'
-                      : `${shown.length} of ${NUTRIENT_KEYS.length} nutrients stated. The rest are unknown rather than zero.`}
+                      : `${shown.length} of ${EXTERNAL_NUTRIENT_KEYS.length} nutrients stated. The rest are unknown rather than zero.`}
                   </Text>
                   {/* The same total, split into pieces small enough to check
                       against what you'd guess yourself rather than taken whole. */}
                   {estimate.breakdown.map((item, index) => (
                     <View key={`${item.label}-${index}`} style={styles.ingredient}>
                       <Text style={styles.ingredientLabel}>{item.label}</Text>
-                      {NUTRIENT_KEYS.filter(k => item.amounts[k] !== undefined).map(key => (
+                      {EXTERNAL_NUTRIENT_KEYS.filter(k => item.amounts[k] !== undefined).map(key => (
                         <NutrientLine key={key} styles={styles} nutrient={key} amount={item.amounts[key] as number} />
                       ))}
                     </View>

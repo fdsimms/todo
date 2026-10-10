@@ -652,3 +652,41 @@ describe('readFdcPortions', () => {
     expect(readFdcPortions({ foodPortions: 'nope' })).toEqual([]);
   });
 });
+
+describe('converting into a microgram nutrient', () => {
+  it('reads milligrams and grams into micrograms, not millilitres', () => {
+    expect(convertNutrientAmount(1, 'mg', 'vitaminDMcg')).toBe(1000);
+    expect(convertNutrientAmount(0.001, 'g', 'vitaminB12Mcg')).toBe(1000);
+  });
+
+  it('passes micrograms through unchanged', () => {
+    expect(convertNutrientAmount(25, 'ug', 'vitaminDMcg')).toBe(25);
+  });
+
+  it('reads micrograms into a milligram nutrient', () => {
+    expect(convertNutrientAmount(5000, 'ug', 'magnesiumMg')).toBe(5);
+  });
+
+  it('refuses a volume for a mass nutrient', () => {
+    expect(convertNutrientAmount(1, 'ml', 'zincMg')).toBeNull();
+  });
+});
+
+describe('what a barcode source never states', () => {
+  it('reads no vitamin or mineral, whatever the product states', () => {
+    const off = readOffNutrition(
+      {
+        nutriments: {
+          'energy-kcal_100g': 100,
+          'vitamin-d_100g': 0.00001,
+          'vitamin-c_100g': 0.05,
+          'magnesium_100g': 0.04,
+          'zinc_100g': 0.002,
+        },
+      },
+      '0000000000000',
+      RECORDED_AT,
+    );
+    expect(Object.keys(off?.amounts ?? {})).toEqual(['calorieKcal']);
+  });
+});

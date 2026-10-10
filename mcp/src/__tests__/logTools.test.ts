@@ -6,7 +6,8 @@
  */
 import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
-import { atFrom, deleteSavedMeal, duplicateFoodEntry, listSavedMeals, logFood, logMedication, logMood, logSavedMeal, logWater, moveFoodEntry, renameMoodTag, saveMealFromEntries, saveRecipe, setMedicationArchived, setNutritionTargets, updateFoodEntry, updateMoodLog } from '../logTools';
+import { useMedicationStore } from '../../../src/store/useMedicationStore';
+import { atFrom, deleteMedicationLog, deleteSavedMeal, duplicateFoodEntry, listSavedMeals, logFood, logMedication, logMood, logSavedMeal, logWater, moveFoodEntry, renameMoodTag, saveMealFromEntries, saveRecipe, setMedicationArchived, setNutritionTargets, updateFoodEntry, updateMoodLog } from '../logTools';
 
 let mockRaw: ShimDatabase;
 
@@ -141,6 +142,39 @@ describe('logMedication', () => {
     expect(dose.summary).toMatch(/^Ibuprofen/);
     expect(dose.day).toBe('2026-09-01');
     expect(() => logMedication(replica, { name: 'Ibuprofen', amount: 200 })).toThrow(/together/);
+  });
+});
+
+describe('a dose of a supplement with a panel', () => {
+  const panel = { servingAmount: 2, servingUnit: 'tablet', amounts: { magnesiumMg: 100, vitaminDMcg: 25 } };
+  const entries = () => replica.foodLogEntries('2000-01-01', '2100-01-01');
+
+  afterEach(() => useMedicationStore.getState().setSupplementPanel('Multivitamin', null));
+
+  it('adds its nutrients to the food log, flagged for the phone to write to Health', () => {
+    useMedicationStore.getState().setSupplementPanel('Multivitamin', panel);
+    logMedication(replica, { name: 'Multivitamin', amount: 1, unit: 'tablet' });
+    expect(entries()).toHaveLength(1);
+    expect(entries()[0]).toMatchObject({ label: 'Multivitamin', slot: null, healthWritePending: true });
+    expect(entries()[0].nutrition.amounts).toEqual({ magnesiumMg: 50, vitaminDMcg: 12.5 });
+  });
+
+  it('takes the entry away with the dose, unless the phone has already written it to Health', () => {
+    useMedicationStore.getState().setSupplementPanel('Multivitamin', panel);
+    const dose = logMedication(replica, { name: 'Multivitamin', amount: 2, unit: 'tablet' });
+    deleteMedicationLog(replica, dose.id);
+    expect(entries()).toHaveLength(0);
+
+    const kept = logMedication(replica, { name: 'Multivitamin', amount: 2, unit: 'tablet' });
+    mockRaw.runSync('UPDATE food_logs SET health_sample_ids = ?', ['["sample-1"]']);
+    replica.refresh();
+    deleteMedicationLog(replica, kept.id);
+    expect(entries()).toHaveLength(1);
+  });
+
+  it('writes nothing for a medicine with no panel', () => {
+    logMedication(replica, { name: 'Ibuprofen', amount: 200, unit: 'mg' });
+    expect(entries()).toHaveLength(0);
   });
 });
 

@@ -368,10 +368,10 @@ describe('readNutritionLabel', () => {
       });
     });
 
-    it('drops the vitamin rows, vitamin D included, which have no field', () => {
-      // The one mandatory row with nowhere to go: a US panel prints vitamin D
-      // beside the three minerals and both sources state it as a default zero
-      // far more often than as a reading. See the note on `NutrientKey`.
+    it('drops the vitamin rows, vitamin D included, which a photo is not read for', () => {
+      // The keys exist now, but only a typed panel states them: a US panel prints
+      // vitamin D beside the three minerals and the sources state it as a default
+      // zero far more often than as a reading. See the note on `NutrientKey`.
       const reading = readNutritionLabel(panel([
         ['Calories', '140'],
         ['Total Fat', '6g'],

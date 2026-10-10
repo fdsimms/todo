@@ -509,6 +509,48 @@ could not be verified, and the filter is correct either way: under the first
 reading it is the difference between a partial meal and no meal, and under the
 second it changes nothing.
 
+### The vitamins and minerals that did get in, and why the data limit stopped mattering
+
+Twenty-three more keys joined later (`MicronutrientKey`: vitamins A, C, D, E, K,
+the B vitamins, biotin, magnesium, zinc, phosphorus, selenium, copper,
+manganese, chromium, molybdenum, iodine and chloride), each with an Apple Health
+dietary type (checked against Apple's `HKQuantityTypeIdentifier` page, not
+assumed). Nothing above is reversed. What changed is who supplies the figure.
+The measurement was about what a *barcode source* states, and the answer
+stands: `nutritionParse.ts` maps none of them, so a scanned or searched food
+never claims a magnesium figure and vitamin D's bulk-default zeros still never
+reach a record. A supplement's panel is typed once by someone holding the
+bottle, and that is a different claim from a source's default.
+
+**Only a typed panel states them.** `EXTERNAL_NUTRIENT_KEYS` (every key except
+these) is what a barcode source, a photographed label and a model's estimate are
+asked for. A model asked to estimate a restaurant meal's selenium would give a
+confident number with nothing behind it, and that number would be written to
+somebody's medical record, so the request never names them and a reply that
+does is read past. The label photo's prompt still says to ignore these rows for
+the same reason.
+
+**Where the figures come from is `MedicationPrefs.nutrition`**, a
+`SupplementPanel` kept with a medication's other settings and entered on its
+page (`SupplementPanelSheet`). Each dose of that medication writes one food log
+entry (`supplementDose.ts`), which is why they reach the day's totals, targets
+and this write with no second mechanism. The entry is linked to its dose by
+`FoodNutrition.sourceId` (`dose:<id>`), counts as `isNutrientOnlyEntry` (not a
+meal, never a reason another nutrient's figure is judged incomplete), and is a
+snapshot: changing the panel later does not rewrite what past doses added.
+`useMedicationStore` reaches the food log only through `DoseEffects`, because
+the MCP server loads that store and cannot load the food log store; the app
+installs its version at launch and the replica installs one that writes the row
+flagged `healthWritePending`.
+
+**An existing install is asked again, as for cholesterol and the minerals.** The
+23 new share types are undetermined, so `writeAuthorizationStatus("nutrition")`
+drops to `notDetermined` and the row offers the ask. Until it is answered,
+`writeFoodSamples` skips the types that are not authorized and a dose's other
+figures are still written. **An install that has explicitly chosen its
+"Nutrients written per meal" list does not get the new ones added to it**: the
+default is every writable nutrient, but a stored list is a choice and stays one.
+
 ### Absent stays absent, and here it matters most
 
 A nutrient the entry does not state is not written. This is the same rule
