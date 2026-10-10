@@ -10,8 +10,8 @@ import {
 import { SheetModal } from './SheetModal';
 import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, radius, spacing, type Colors } from '../theme';
-import { NUTRIENT_KEYS, type FoodNutrition, type NutrientKey } from '../types';
-import { NUTRIENT_LABEL, NUTRITION_BASIS_LABEL } from '../utils/foodNutrition';
+import { type FoodNutrition, type NutrientKey } from '../types';
+import { NUTRITION_BASIS_LABEL } from '../utils/foodNutrition';
 import {
   applyFoodNutrition,
   applyLabelReading,
@@ -39,6 +39,7 @@ import {
 import { haptics } from '../utils/haptics';
 import { InlineAction } from './InlineAction';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
+import { NutrientFieldsCard } from './NutrientFieldsCard';
 import { NutritionBarcodeScanSheet } from './NutritionBarcodeScanSheet';
 import { SegmentedControl } from './SegmentedControl';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -153,33 +154,6 @@ const WEIGHT_UNIT_OPTIONS: { value: ServingWeightUnit; label: string }[] = [
   { value: 'g', label: 'g' },
   { value: 'oz', label: 'oz' },
 ];
-
-/**
- * A plausible figure for each nutrient, so the example reads as an example.
- *
- * One number per field rather than a repeated "e.g. 0": a greyed 0 in every
- * box is indistinguishable from a form full of saved zeroes at a glance, which
- * is the exact confusion this form exists to avoid. These are roughly a slice
- * of bread, which is a food most people can sanity-check against.
- */
-const PLACEHOLDER: Record<NutrientKey, string> = {
-  calorieKcal: 'e.g. 265',
-  fatG: 'e.g. 3.2',
-  satFatG: 'e.g. 0.6',
-  transFatG: 'e.g. 0.1',
-  cholesterolMg: 'e.g. 1',
-  carbsG: 'e.g. 49',
-  fiberG: 'e.g. 2.7',
-  sugarG: 'e.g. 5',
-  addedSugarG: 'e.g. 4',
-  proteinG: 'e.g. 9',
-  sodiumMg: 'e.g. 490',
-  calciumMg: 'e.g. 150',
-  ironMg: 'e.g. 3.6',
-  potassiumMg: 'e.g. 115',
-  caffeineMg: 'e.g. 0',
-  waterMl: 'e.g. 36',
-};
 
 /** What an unlabelled column is called, by position. A panel never prints more. */
 const COLUMN_ORDINAL = ['First column', 'Second column', 'Third column'];
@@ -650,26 +624,7 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
               If the label only gives whole-package totals, type them into the figures
               below, enter the servings per container, then divide.
             </Text>
-            <View style={styles.card}>
-              {NUTRIENT_KEYS.map(key => (
-                <View key={key} style={styles.field}>
-                  <Text style={styles.fieldLabel}>{NUTRIENT_LABEL[key].label}</Text>
-                  <View style={styles.numberRow}>
-                    <TextField
-                      style={[styles.numberInput, bad.includes(key) && styles.inputBad]}
-                      value={form.amounts[key]}
-                      onChangeText={t => setAmount(key, t)}
-                      placeholder={PLACEHOLDER[key]}
-                      placeholderTextColor={colors.textTertiary}
-                      keyboardType="decimal-pad"
-                      inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
-                      accessibilityLabel={`${NUTRIENT_LABEL[key].label} in ${NUTRIENT_LABEL[key].unit}`}
-                    />
-                    <Text style={styles.unit}>{NUTRIENT_LABEL[key].unit}</Text>
-                  </View>
-                </View>
-              ))}
-            </View>
+            <NutrientFieldsCard amounts={form.amounts} bad={bad} onChange={setAmount} />
 
             {bad.length > 0 && (
               <Text style={styles.error}>

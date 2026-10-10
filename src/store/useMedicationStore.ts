@@ -26,6 +26,7 @@ import {
   type MedicationLimit,
   type MedicationSettingsMap,
   type MedicationSupply,
+  type SupplementPanel,
 } from '../utils/medicationSettings';
 
 /** When a summary for a visit was last shared (synced, health-scoped). */
@@ -72,6 +73,45 @@ export interface DoseInput {
 }
 
 /**
+ * What follows a dose being written, edited or removed, installed by whoever
+ * can act on it.
+ *
+ * **A seam rather than an import**, because the one thing that follows a dose
+ * is a supplement's nutrients landing in the food log (`supplementDose.ts`),
+ * and the food log store reaches Apple Health and React Native. This store is
+ * loaded by the MCP server too, which can load neither. So the app installs the
+ * store-backed version at launch (`installSupplementDoseEffects`) and the MCP
+ * replica installs one that writes the rows directly; a process that installs
+ * nothing simply records doses, as before.
+ *
+ * Called after the dose is stored, so an effect that throws can't lose a dose.
+ */
+export interface DoseEffects {
+  added: (log: MedicationLog) => void;
+  /** `before` is the row as it stood; `after` as it stands now. */
+  updated: (before: MedicationLog, after: MedicationLog) => void;
+  /** Called before the rows are deleted. */
+  removed: (logs: MedicationLog[]) => void;
+}
+
+let doseEffects: DoseEffects | null = null;
+
+export function setDoseEffects(effects: DoseEffects | null): void {
+  doseEffects = effects;
+}
+
+/** Run an effect without letting it fail the write that triggered it. */
+function runEffect(run: (fx: DoseEffects) => void): void {
+  if (!doseEffects) return;
+  try {
+    run(doseEffects);
+  } catch {
+    // The dose is already stored; an effect that can't complete leaves it a
+    // plain dose, which is what it was before effects existed.
+  }
+}
+
+/**
  * What can be edited after the fact.
  *
  * `takenAt`, `dayKey` and `taskId` are deliberately absent. The first two are
@@ -107,6 +147,11 @@ interface MedicationStore {
   setLimit: (name: string, limit: Omit<MedicationLimit, 'since'> | null) => void;
   /** Set or clear a medication's supply, counted from now. */
   setSupply: (name: string, supply: Omit<MedicationSupply, 'since' | 'declinedAt'> | null) => void;
+  /**
+   * Set or clear what a serving of a medication contains. Doses recorded after
+   * this add those nutrients to the day; earlier doses are left as they were.
+   */
+  setSupplementPanel: (name: string, panel: SupplementPanel | null) => void;
   /** Add a refill to what's left. */
   refillSupply: (name: string, added: number) => void;
   /** Turn down the refill offer at the current count. */
@@ -187,6 +232,12 @@ export const useMedicationStore = create<MedicationStore>((set, get) => ({
     writeSettings(set, withPrefs(get().settings, name, { ...current, supply: next }));
   },
 
+  setSupplementPanel(name, panel) {
+    if (!medicationKey(name)) return;
+    const current = prefsFor(get().settings, name);
+    writeSettings(set, withPrefs(get().settings, name, { ...current, nutrition: panel }));
+  },
+
   refillSupply(name, added) {
     const current = prefsFor(get().settings, name);
     if (!current.supply) return;
@@ -262,6 +313,7 @@ export const useMedicationStore = create<MedicationStore>((set, get) => ({
     // next launch — a list that reorders itself on relaunch is the usual way
     // one of these drifts.
     set({ logs: [log, ...get().logs] });
+    runEffect(fx => fx.added(log));
     return log;
   },
 
@@ -286,14 +338,19 @@ export const useMedicationStore = create<MedicationStore>((set, get) => ({
     if (patch.note !== undefined) next.note = patch.note?.trim() || null;
     dbUpdateMedicationLog(next);
     set({ logs: get().logs.map(l => (l.id === id ? next : l)) });
+    runEffect(fx => fx.updated(existing, next));
   },
 
   removeLog(id) {
+    const removed = get().logs.filter(l => l.id === id);
+    runEffect(fx => fx.removed(removed));
     dbDeleteMedicationLog(id);
     set({ logs: get().logs.filter(l => l.id !== id) });
   },
 
   removeLogsForTask(taskId) {
+    const removed = get().logs.filter(l => l.taskId === taskId);
+    runEffect(fx => fx.removed(removed));
     dbDeleteMedicationLogsForTask(taskId);
     set({ logs: get().logs.filter(l => l.taskId !== taskId) });
   },

@@ -1,5 +1,5 @@
 import type { NutrientKey, FoodNutrition } from '../types';
-import { NUTRIENT_KEYS } from '../types';
+import { EXTERNAL_NUTRIENT_KEYS } from '../types';
 
 /**
  * A model's estimate of what a described meal contains, and the rules about
@@ -248,7 +248,7 @@ function readBreakdown(value: unknown): EstimateIngredient[] {
     const source = row?.amounts;
     if (typeof source !== 'object' || source === null || Array.isArray(source)) continue;
     const amounts: Partial<Record<NutrientKey, number>> = {};
-    for (const key of NUTRIENT_KEYS) {
+    for (const key of EXTERNAL_NUTRIENT_KEYS) {
       const value = amount((source as Record<string, unknown>)[key]);
       if (value !== undefined) amounts[key] = value;
     }
@@ -290,7 +290,7 @@ export function readNutritionEstimate(
   const source = (raw.amounts ?? {}) as Record<string, unknown>;
   if (typeof source !== 'object' || source === null || Array.isArray(source)) return null;
   const amounts: Partial<Record<NutrientKey, number>> = {};
-  for (const key of NUTRIENT_KEYS) {
+  for (const key of EXTERNAL_NUTRIENT_KEYS) {
     const value = amount(source[key]);
     if (value !== undefined) amounts[key] = value;
   }

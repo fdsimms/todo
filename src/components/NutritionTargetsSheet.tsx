@@ -7,7 +7,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
-import { NUTRIENT_KEYS, type NutrientKey } from '../types';
+import { EXTERNAL_NUTRIENT_KEYS, MINERAL_KEYS, VITAMIN_KEYS, type NutrientKey } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import {
   DEFAULT_LIMIT_WARN_PERCENT,
@@ -45,8 +45,10 @@ import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SegmentedControl } from './SegmentedControl';
 
+const MICRO_KEYS = [...VITAMIN_KEYS, ...MINERAL_KEYS];
+
 /** Every nutrient the Food log's own card can show — water has its own card. */
-const PINNABLE_NUTRIENTS = NUTRIENT_KEYS.filter(k => k !== 'waterMl');
+const PINNABLE_MAIN = EXTERNAL_NUTRIENT_KEYS.filter(k => k !== 'waterMl');
 
 /**
  * A daily figure to aim at, per nutrient.
@@ -197,7 +199,14 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
 
   const set = (key: NutrientKey, value: number | null) => setNutritionTarget(key, value);
 
-  const unsetKeys = NUTRIENT_KEYS.filter(key => targets[key] === undefined && !NO_DAILY_VALUE.has(key));
+  // The vitamins and minerals are folded away until asked for, or until one
+  // has a target, so a target that is set is never hidden behind a closed row.
+  const [microOpen, setMicroOpen] = useState(false);
+  const microShown = microOpen || MICRO_KEYS.some(key => targets[key] !== undefined);
+
+  // The label's own nutrients only: "Set to U.S. Daily Value" must not write twenty-three
+  // vitamin and mineral targets that nobody asked for with one tap.
+  const unsetKeys = EXTERNAL_NUTRIENT_KEYS.filter(key => targets[key] === undefined && !NO_DAILY_VALUE.has(key));
   const applyDailyValues = () => {
     haptics.tap();
     const values: NutritionTargets = {};
@@ -239,6 +248,109 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
     setFoodLogPinnedNutrients(next);
   };
 
+  // Same fold as the daily targets below: the vitamins and minerals stay behind
+  // one row until asked for, or until one is already shown on the Food log.
+  const [pinMicroOpen, setPinMicroOpen] = useState(false);
+  const pinMicroShown = pinMicroOpen || MICRO_KEYS.some(key => pinnedNutrients.includes(key));
+
+  const renderPinnedRow = (key: NutrientKey, last: boolean) => {
+    const pinned = pinnedNutrients.includes(key);
+    return (
+      <TouchableOpacity
+        key={key}
+        style={[styles.pinnedRow, last && styles.pinnedRowLast]}
+        activeOpacity={interaction.activeOpacity}
+        onPress={() => togglePinned(key)}
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: pinned }}
+        accessibilityLabel={`Show ${NUTRIENT_LABEL[key].label} on the Food log`}
+      >
+        <Ionicons
+          name={pinned ? 'checkmark-circle' : 'ellipse-outline'}
+          size={iconSize.md}
+          color={pinned ? colors.accent : colors.textTertiary}
+        />
+        <Text style={styles.pinnedRowLabel}>{NUTRIENT_LABEL[key].label}</Text>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderTarget = (key: NutrientKey) => {
+        // Water's target is stored in ml regardless (like every other
+        // water figure — see waterLogUnit's note in TaskEditor), but the
+        // stepper shows and steps in whichever unit the person picked for
+        // water elsewhere in the app (`waterUnit`).
+        const isWater = key === 'waterMl';
+        const range = isWater ? waterTargetRange(waterUnit) : NUTRITION_TARGET_RANGES[key];
+        const unit = NUTRIENT_LABEL[key].unit;
+        const value = isWater ? waterInUnit(targets.waterMl ?? null, waterUnit) : (targets[key] ?? null);
+        // waterRange's own range has no default of its own to open on —
+        // the reference figure is the ml one below, shown in whichever
+        // unit the stepper is in, the same conversion `value`/`onChange`
+        // already do. The `??` never actually fires (2000ml is always
+        // positive), it just keeps waterInUnit's `number | null` result
+        // assignable to `start`, which only takes a plain number.
+        const start = isWater
+          ? waterInUnit(NUTRITION_TARGET_RANGES.waterMl.default, waterUnit) ?? NUTRITION_TARGET_RANGES.waterMl.default
+          : NUTRITION_TARGET_RANGES[key].default;
+        return (
+          <View key={key} style={styles.row}>
+            <Text style={styles.rowLabel}>{NUTRIENT_LABEL[key].label}</Text>
+            <View style={styles.stepperLine}>
+            <CountStepper
+              value={value}
+              onChange={next =>
+                set(key, isWater ? (next === null ? null : waterToMl(next, waterUnit)) : next)
+              }
+              min={range.min}
+              max={range.max}
+              step={range.step}
+              start={start}
+              allowNull
+              emptyLabel="None"
+              format={n =>
+                isWater
+                  ? (waterUnit === 'flOz' ? `${n.toLocaleString()} fl oz` : `${n.toLocaleString()}ml`)
+                  : `${n.toLocaleString()}${unit === 'cal' ? '' : unit}`
+              }
+              label={`${NUTRIENT_LABEL[key].label} target`}
+              describeValue={n =>
+                isWater
+                  ? `${n} ${waterUnit === 'flOz' ? 'fluid ounces' : 'ml'}`
+                  : `${n} ${unit === 'cal' ? 'calories' : unit}`
+              }
+            />
+            {!NO_DAILY_VALUE.has(key) && targets[key] !== NUTRITION_TARGET_RANGES[key].default && (
+              <InlineAction
+                label="Use Daily Value"
+                variant="neutral"
+                onPress={() => {
+                  haptics.tap();
+                  set(key, NUTRITION_TARGET_RANGES[key].default);
+                }}
+                accessibilityLabel={`Set ${NUTRIENT_LABEL[key].label} target to the U.S. Daily Value`}
+              />
+            )}
+            </View>
+            {!isWater && targets[key] !== undefined && (
+              <SegmentedControl
+                options={DIRECTION_OPTIONS}
+                value={limits.includes(key) ? 'limit' : 'reach'}
+                onChange={direction => setDirection(key, direction)}
+                label={`${NUTRIENT_LABEL[key].label} target direction`}
+                surface="card"
+              />
+            )}
+            {key === 'calorieKcal' && calorieFollowsGoal && (
+              <Text style={styles.boostHint}>
+                This follows your weight goal and updates each time the
+                Weight screen reads your weight, replacing any number set here.
+              </Text>
+            )}
+          </View>
+        );
+  };
+
   return (
     <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={styles.root}>
@@ -261,28 +373,28 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
               Nutrients the totals card shows until you tap “Show every nutrient”.
             </Text>
             <View style={styles.pinnedCard}>
-              {PINNABLE_NUTRIENTS.map((key, i) => {
-                const pinned = pinnedNutrients.includes(key);
-                return (
-                  <TouchableOpacity
-                    key={key}
-                    style={[styles.pinnedRow, i === PINNABLE_NUTRIENTS.length - 1 && styles.pinnedRowLast]}
-                    activeOpacity={interaction.activeOpacity}
-                    onPress={() => togglePinned(key)}
-                    accessibilityRole="checkbox"
-                    accessibilityState={{ checked: pinned }}
-                    accessibilityLabel={`Show ${NUTRIENT_LABEL[key].label} on the Food log`}
-                  >
-                    <Ionicons
-                      name={pinned ? 'checkmark-circle' : 'ellipse-outline'}
-                      size={iconSize.md}
-                      color={pinned ? colors.accent : colors.textTertiary}
-                    />
-                    <Text style={styles.pinnedRowLabel}>{NUTRIENT_LABEL[key].label}</Text>
-                  </TouchableOpacity>
-                );
-              })}
+              {PINNABLE_MAIN.map((key, i) => renderPinnedRow(key, i === PINNABLE_MAIN.length - 1))}
             </View>
+            <TouchableOpacity
+              style={[styles.microDisclosure, styles.pinnedMicroDisclosure]}
+              activeOpacity={interaction.activeOpacity}
+              onPress={() => { haptics.tap(); setPinMicroOpen(open => !open); }}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: pinMicroShown }}
+              accessibilityLabel="Vitamins and minerals to show on the Food log"
+            >
+              <Text style={styles.rowLabel}>Vitamins and minerals</Text>
+              <Ionicons
+                name={pinMicroShown ? 'chevron-up' : 'chevron-down'}
+                size={iconSize.sm}
+                color={colors.textTertiary}
+              />
+            </TouchableOpacity>
+            {pinMicroShown && (
+              <View style={styles.pinnedCard}>
+                {MICRO_KEYS.map((key, i) => renderPinnedRow(key, i === MICRO_KEYS.length - 1))}
+              </View>
+            )}
           </View>
 
           <Text style={styles.sectionLabel}>Daily targets</Text>
@@ -300,81 +412,23 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
             />
           )}
 
-          {NUTRIENT_KEYS.map(key => {
-            // Water's target is stored in ml regardless (like every other
-            // water figure — see waterLogUnit's note in TaskEditor), but the
-            // stepper shows and steps in whichever unit the person picked for
-            // water elsewhere in the app (`waterUnit`).
-            const isWater = key === 'waterMl';
-            const range = isWater ? waterTargetRange(waterUnit) : NUTRITION_TARGET_RANGES[key];
-            const unit = NUTRIENT_LABEL[key].unit;
-            const value = isWater ? waterInUnit(targets.waterMl ?? null, waterUnit) : (targets[key] ?? null);
-            // waterRange's own range has no default of its own to open on —
-            // the reference figure is the ml one below, shown in whichever
-            // unit the stepper is in, the same conversion `value`/`onChange`
-            // already do. The `??` never actually fires (2000ml is always
-            // positive), it just keeps waterInUnit's `number | null` result
-            // assignable to `start`, which only takes a plain number.
-            const start = isWater
-              ? waterInUnit(NUTRITION_TARGET_RANGES.waterMl.default, waterUnit) ?? NUTRITION_TARGET_RANGES.waterMl.default
-              : NUTRITION_TARGET_RANGES[key].default;
-            return (
-              <View key={key} style={styles.row}>
-                <Text style={styles.rowLabel}>{NUTRIENT_LABEL[key].label}</Text>
-                <View style={styles.stepperLine}>
-                <CountStepper
-                  value={value}
-                  onChange={next =>
-                    set(key, isWater ? (next === null ? null : waterToMl(next, waterUnit)) : next)
-                  }
-                  min={range.min}
-                  max={range.max}
-                  step={range.step}
-                  start={start}
-                  allowNull
-                  emptyLabel="None"
-                  format={n =>
-                    isWater
-                      ? (waterUnit === 'flOz' ? `${n.toLocaleString()} fl oz` : `${n.toLocaleString()}ml`)
-                      : `${n.toLocaleString()}${unit === 'cal' ? '' : unit}`
-                  }
-                  label={`${NUTRIENT_LABEL[key].label} target`}
-                  describeValue={n =>
-                    isWater
-                      ? `${n} ${waterUnit === 'flOz' ? 'fluid ounces' : 'ml'}`
-                      : `${n} ${unit === 'cal' ? 'calories' : unit}`
-                  }
-                />
-                {!NO_DAILY_VALUE.has(key) && targets[key] !== NUTRITION_TARGET_RANGES[key].default && (
-                  <InlineAction
-                    label="Use Daily Value"
-                    variant="neutral"
-                    onPress={() => {
-                      haptics.tap();
-                      set(key, NUTRITION_TARGET_RANGES[key].default);
-                    }}
-                    accessibilityLabel={`Set ${NUTRIENT_LABEL[key].label} target to the U.S. Daily Value`}
-                  />
-                )}
-                </View>
-                {!isWater && targets[key] !== undefined && (
-                  <SegmentedControl
-                    options={DIRECTION_OPTIONS}
-                    value={limits.includes(key) ? 'limit' : 'reach'}
-                    onChange={direction => setDirection(key, direction)}
-                    label={`${NUTRIENT_LABEL[key].label} target direction`}
-                    surface="card"
-                  />
-                )}
-                {key === 'calorieKcal' && calorieFollowsGoal && (
-                  <Text style={styles.boostHint}>
-                    This follows your weight goal and updates each time the
-                    Weight screen reads your weight, replacing any number set here.
-                  </Text>
-                )}
-              </View>
-            );
-          })}
+          {EXTERNAL_NUTRIENT_KEYS.map(renderTarget)}
+          <TouchableOpacity
+            style={styles.microDisclosure}
+            activeOpacity={interaction.activeOpacity}
+            onPress={() => { haptics.tap(); setMicroOpen(open => !open); }}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: microShown }}
+            accessibilityLabel="Vitamins and minerals"
+          >
+            <Text style={styles.rowLabel}>Vitamins and minerals</Text>
+            <Ionicons
+              name={microShown ? 'chevron-up' : 'chevron-down'}
+              size={iconSize.sm}
+              color={colors.textTertiary}
+            />
+          </TouchableOpacity>
+          {microShown && MICRO_KEYS.map(renderTarget)}
 
           {activeLimits(targets, limits).length > 0 && (
             <View>
@@ -710,6 +764,17 @@ function makeStyles(colors: Colors) {
     pinnedRowLabel: { color: colors.text, fontSize: font.sm },
     dailyValueAction: { alignSelf: 'flex-start' },
     stepperLine: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm },
+    microDisclosure: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: colors.bgSecondary,
+      borderRadius: radius.md,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.smd,
+      minHeight: 44,
+    },
+    pinnedMicroDisclosure: { marginTop: spacing.sm, marginBottom: spacing.sm },
     row: {
       backgroundColor: colors.bgSecondary,
       borderRadius: radius.md,

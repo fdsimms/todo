@@ -457,6 +457,24 @@ task that keeps completing can't leave a medicine archived while it is still
 being logged. Don't add a separate restore step to any other write path: it
 goes through `addLog`.
 
+### A supplement's nutrients
+
+A medication can carry what one serving contains (`MedicationPrefs.nutrition`, a
+`SupplementPanel`, entered on its page). A dose recorded after that writes a
+food log entry with those figures scaled to the dose, so a multivitamin adds its
+vitamins and minerals to the day's totals and to Apple Health. The panel, the
+scaling rule and the dose-to-entry link are `src/utils/supplementDose.ts`; the
+wiring is `DoseEffects` in `useMedicationStore` and `supplementDoseSync.ts`.
+`docs/arch/health-data.md` has the Health side.
+
+**It is a nutrient feature that rides the dose, not a medication feature, and it
+leaves the section above alone.** Nothing here compares a supplement with how you
+felt, and the entry is not counted as a meal or a food. A dose in the panel's
+unit counts that many servings and any other dose counts one, which is
+`supplyRemaining`'s rule so the two answer a dose the same way. An edit only
+changes an entry that already exists, and the panel applies to doses recorded
+after it.
+
 ### A chain step records its own dose
 
 `ChainItem.medicationName` is the third field on the pattern
