@@ -30,6 +30,7 @@ export const SCREEN_SETTINGS: Readonly<Record<string, readonly string[]>> = {
   // No daily-targets row: the Food log's own target icon opens that sheet in place.
   FoodLog: ['mealLogPrompt', 'healthWrite'],
   Mood: ['gen:moodLog', 'gen:moodNudge'],
+  // No word-goal row: the Journal's own target icon opens that sheet in place.
   Journal: ['gen:journalLog'],
   Dreams: ['gen:journalLog'],
   // No goal row on Weight or Sleep: each screen's own target icon opens the goal

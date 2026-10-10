@@ -1945,6 +1945,7 @@ export function seedDemoData(): void {
     rateKgPerWeek: 0.5,
   });
   useSettingsStore.getState().setSleepGoalMinutes(450);
+  useSettingsStore.getState().setJournalWordGoal(25);
 
   // The snack suggestion, seeded directly because `reconcileSnackNudge` refuses
   // in demo mode (a pass that judges the clock and the food log would delete

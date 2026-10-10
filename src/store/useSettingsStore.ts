@@ -11,6 +11,7 @@ import {
   type WeightGoal,
 } from '../utils/weightGoal';
 import { parseSleepGoal } from '../utils/sleepLog';
+import { parseJournalWordGoal } from '../utils/journal';
 import {
   parseWaterExerciseBoost,
   serializeWaterExerciseBoost,
@@ -1143,6 +1144,8 @@ interface SettingsStore {
    * a line on a chart and a count under it.
    */
   sleepGoalMinutes: number | null;
+  /** Words a journal day is read against, or null for no goal. */
+  journalWordGoal: number | null;
 
   /**
    * A minutes-of-exercise threshold and a millilitre amount: on a day today's
@@ -1980,6 +1983,7 @@ interface SettingsStore {
   setWeightGoal: (goal: WeightGoal | null) => void;
   /** Sets the sleep goal in minutes, or clears it with null. */
   setSleepGoalMinutes: (minutes: number | null) => void;
+  setJournalWordGoal: (words: number | null) => void;
   /** Sets the water exercise boost, or clears it with null. */
   setWaterExerciseBoost: (boost: WaterExerciseBoost | null) => void;
   setActiveEnergyBoost: (boost: ActiveEnergyBoost | null) => void;
@@ -2740,6 +2744,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   waterUnit: 'ml',
   weightGoal: null,
   sleepGoalMinutes: null,
+  journalWordGoal: null,
   waterExerciseBoost: null,
   activeEnergyBoost: null,
   bodyProfile: { ...EMPTY_BODY_PROFILE },
@@ -3124,6 +3129,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // a future build can never stop the settings loading.
     const weightGoal = parseWeightGoal(dbGetSetting('weightGoal'));
     const sleepGoalMinutes = parseSleepGoal(dbGetSetting('sleepGoalMinutes'));
+    const journalWordGoal = parseJournalWordGoal(dbGetSetting('journalWordGoal'));
     const waterExerciseBoost = parseWaterExerciseBoost(dbGetSetting('waterExerciseBoost'));
     const activeEnergyBoost = parseActiveEnergyBoost(dbGetSetting('activeEnergyBoost'));
     const bodyProfile = parseBodyProfile(dbGetSetting('bodyProfile'));
@@ -3542,6 +3548,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       journalLogTaskCategory,
       journalLogTasks,
       journalLogTimeSegments,
+      journalWordGoal,
       keepOpenAfterFoodLog,
       kitchenEnabled,
       lastDeloadAppliedDayKey,
@@ -5113,6 +5120,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const value = minutes === null ? null : parseSleepGoal(String(minutes));
     dbSetSetting('sleepGoalMinutes', value === null ? '' : String(value));
     set({ sleepGoalMinutes: value });
+  },
+
+  setJournalWordGoal(words: number | null) {
+    const value = words === null ? null : parseJournalWordGoal(String(words));
+    dbSetSetting('journalWordGoal', value === null ? '' : String(value));
+    set({ journalWordGoal: value });
   },
 
   setWaterExerciseBoost(boost: WaterExerciseBoost | null) {

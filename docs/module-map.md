@@ -182,7 +182,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/itemDisposal.ts` — DisposalOutcome, REPEAT_WASTE_THRESHOLD, disposalAnswerCount, describeDisposalHistory, wantsShelfLifePrompt
 - `src/utils/itemSubs.ts` — Substitute, substitutesFor, substituteForItems, describeSubstituteLink, describeSubstitutes, SubstitutedQuantity, substituteQuantity, substitutesOnHand, describeSubstitutesOnHand, resolveShoppingSubstitutes
 - `src/utils/itemVarieties.ts` — varietyIndex, NO_VARIETIES, coveringVariety, familyOnHand, varietyOfferFor, genericNameSuggestions, describeFamilyOnHand
-- `src/utils/journal.ts` — isSealed, openEntries, sealedEntries, JUST_OPENED_DAYS, justOpened, journalEntryLink, sealedNoteTaskDraft, entriesOfKind, searchJournal, JournalDay, +7 more
+- `src/utils/journal.ts` — isSealed, openEntries, sealedEntries, JUST_OPENED_DAYS, justOpened, journalEntryLink, sealedNoteTaskDraft, entriesOfKind, searchJournal, JournalDay, +13 more
 - `src/utils/journalExport.ts` — JOURNAL_EXPORT_COLUMNS, journalExportCsv, journalExportFileName, journalExportSummary
 - `src/utils/journalMarkdown.ts` — InlineSpan, JournalBlock, parseInline, parseJournalMarkdown, journalPlainText, EditSelection, FormatEdit, toggleWrap, LineFormat, toggleLinePrefix
 - `src/utils/journalTasks.ts` — JOURNAL_LOG_TITLE, JOURNAL_SNIPPET_TITLE, DREAM_LOG_TITLE, journalLogTitle, JOURNAL_TASK_KIND, journalLogUrl, journalTaskSourceId, journalTaskDayKey
