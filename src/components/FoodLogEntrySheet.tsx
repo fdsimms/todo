@@ -86,6 +86,7 @@ import { InlineAction } from './InlineAction';
 import { PressableScale } from './PressableScale';
 import { navigateToFoodSearchSettings } from './NutritionSearchSheet';
 import { EstimatePanel, type EstimateLogAction } from './EstimatePanel';
+import type { PendingEstimate } from '../utils/estimateQueue';
 import { useFoodDatabaseSearch } from '../hooks/useFoodDatabaseSearch';
 import type { RankedFood } from '../utils/foodSearchMatch';
 import { EstimateAmountSheet } from './EstimateAmountSheet';
@@ -207,6 +208,15 @@ interface Props {
    * adding an entry has no meal plan row to point back at.
    */
   mealPlanEntryId?: string | null;
+  /**
+   * A meal queued while offline, opened on its saved estimate to be refined
+   * (`PendingEstimatesCard`'s Refine). The sheet opens with the estimate panel
+   * already up on that estimate, so a caller also passes the meal's own `slot`,
+   * `at`, `mealPlanEntryId` and `initialQuery` (its description). Logging it
+   * removes the queued row; dismissing the panel drops the review and leaves
+   * the row where it was.
+   */
+  reviewing?: PendingEstimate | null;
   /**
    * Whether "Add another" may keep this sheet open after a save instead of
    * closing it, for a caller with an open-ended run of foods to log rather
@@ -408,7 +418,7 @@ const NO_RECIPES: Recipe[] = [];
 const NO_SUBS: ItemSubLink[] = [];
 
 export function FoodLogEntrySheet({
-  visible, slot, at, initialQuery, mealPlanEntryId, editing, allowBurst, onClose, canEstimate, onScan, onPhotographLabel, onSavedMeal, onDeclineMeal,
+  visible, slot, at, initialQuery, mealPlanEntryId, editing, reviewing, allowBurst, onClose, canEstimate, onScan, onPhotographLabel, onSavedMeal, onDeclineMeal,
   overlays, ref,
 }: Props) {
   const colors = useColors();
@@ -506,6 +516,12 @@ export function FoodLogEntrySheet({
   // over (it resets by remounting; see `EstimatePanel`).
   const [estimateOpen, setEstimateOpen] = useState(false);
   const [estimateKey, setEstimateKey] = useState(0);
+  /**
+   * Which queued meal the open panel is refining, or null. Cleared when the
+   * panel is dismissed, so tapping Estimate again afterwards asks afresh
+   * instead of reopening the saved estimate.
+   */
+  const [reviewId, setReviewId] = useState<string | null>(null);
   // The open estimate's Log button, drawn at the foot of the sheet rather than
   // at the end of the card, which a long estimate pushes below the fold.
   const [estimateLog, setEstimateLog] = useState<EstimateLogAction | null>(null);
@@ -534,6 +550,14 @@ export function FoodLogEntrySheet({
     setPantryAnswer(null);
     closeDatabase();
     setEstimateOpen(false);
+    setReviewId(null);
+    if (reviewing?.estimate) {
+      // Opens straight onto the saved estimate: the field already holds the
+      // description, so the panel is the whole point of this open.
+      setEstimateKey(k => k + 1);
+      setReviewId(reviewing.id);
+      setEstimateOpen(true);
+    }
     setCatalogPickOpen(false);
     setBurstAdded([]);
     quickLogKey.current = null;
@@ -1180,6 +1204,23 @@ export function FoodLogEntrySheet({
     onClose();
   };
 
+  /**
+   * A described meal saved for later instead of logged. Nothing went in the
+   * log, so it skips `afterSave`'s "added" list; with "Add another" on it only
+   * resets the field for the next food.
+   */
+  const afterQueue = () => {
+    haptics.success();
+    if (burstMode) {
+      searchFilter.seed(initialQuery ?? '');
+      closeDatabase();
+      setEstimateOpen(false);
+      return;
+    }
+    Keyboard.dismiss();
+    onClose();
+  };
+
   // A food logged from a sheet raised over this one (a scan, a saved meal). It is
   // the same save as one made here, so it takes the same path: stay open for
   // the next food with "Add another" on, and the caller closes this sheet only
@@ -1564,7 +1605,9 @@ export function FoodLogEntrySheet({
             if (dish) choose(dish);
           }}
           onLogged={label => { setEstimateOpen(false); afterSave(label); }}
-          onDismiss={() => setEstimateOpen(false)}
+          onQueued={afterQueue}
+          reviewing={reviewing && reviewId === reviewing.id ? reviewing : null}
+          onDismiss={() => { setEstimateOpen(false); setReviewId(null); }}
           onLogAction={setEstimateLog}
         />
       )}

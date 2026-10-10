@@ -89,6 +89,8 @@ import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
 import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
 import { FoodLogEntrySheet, type FoodLogEntrySheetHandle } from '../components/FoodLogEntrySheet';
 import { SavedMealsSheet } from '../components/SavedMealsSheet';
+import { PendingEstimatesCard } from '../components/PendingEstimatesCard';
+import type { PendingEstimate } from '../utils/estimateQueue';
 import { NutrientContributorsSheet } from '../components/NutrientContributorsSheet';
 import { NutritionTargetsSheet } from '../components/NutritionTargetsSheet';
 import { CsvExportSheet } from '../components/CsvExportSheet';
@@ -262,6 +264,13 @@ export function FoodLogScreen() {
   const [dayKey, setDayKey] = useState(() => dayKeyOf(getCurrentDayStart()));
   const [addingSlot, setAddingSlot] = useState<MealSlot | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  /**
+   * A queued meal opened from the Waiting to be logged card to be refined. It
+   * rides the add sheet, which is already the one place an estimate is made,
+   * with the meal's own slot and moment in place of the day being viewed.
+   */
+  const [reviewing, setReviewing] = useState<PendingEstimate | null>(null);
+  const reviewingAt = useMemo(() => (reviewing ? new Date(reviewing.atISO) : null), [reviewing]);
   const [scanOpen, setScanOpen] = useState(false);
   // The food whose nutrition label is being photographed from the picker.
   const [labelName, setLabelName] = useState<string | null>(null);
@@ -1325,6 +1334,7 @@ export function FoodLogScreen() {
                 {`Nothing logged ${isToday ? 'today' : 'on this day'} yet. Tap + to add what you ate.`}
               </EmptyNote>
             </View>
+            <PendingEstimatesCard onRefine={setReviewing} />
             {plannedCard}
             {totalsCard}
             {produceCard}
@@ -1354,6 +1364,7 @@ export function FoodLogScreen() {
             onReorder={handleReorder}
             ListHeaderComponent={
               <>
+              <PendingEstimatesCard onRefine={setReviewing} />
               {plannedCard}
               {totalsCard}
               {produceCard}
@@ -1452,14 +1463,17 @@ export function FoodLogScreen() {
         />
       )}
 
-      <LazySheet open={addOpen}>
+      <LazySheet open={addOpen || reviewing !== null}>
         <FoodLogEntrySheet
           ref={addSheetRef}
-          visible={addOpen}
-          slot={addingSlot}
-          at={loggingAt}
-          allowBurst
-          onClose={() => setAddOpen(false)}
+          visible={addOpen || reviewing !== null}
+          slot={reviewing ? reviewing.slot : addingSlot}
+          at={reviewingAt ?? loggingAt}
+          initialQuery={reviewing?.description}
+          mealPlanEntryId={reviewing?.mealPlanEntryId}
+          reviewing={reviewing}
+          allowBurst={reviewing === null}
+          onClose={() => { setAddOpen(false); setReviewing(null); }}
           canEstimate={estimateRoute !== 'unavailable'}
           onScan={scanShown ? () => setScanOpen(true) : undefined}
           onPhotographLabel={scanShown ? setLabelName : undefined}

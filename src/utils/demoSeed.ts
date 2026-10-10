@@ -14,6 +14,7 @@ import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useSavedMealsStore } from '../store/useSavedMealsStore';
+import { usePendingEstimateStore } from '../store/usePendingEstimateStore';
 import { useMoodStore } from '../store/useMoodStore';
 import { useMilestoneStore } from '../store/useMilestoneStore';
 import { useMeterReadingStore } from '../store/useMeterReadingStore';
@@ -2657,6 +2658,18 @@ function seedFoodLog(today: Date): void {
       useSavedMealsStore.getState().addMeal('Usual breakfast', savedMealItems);
     }
   }
+
+  // A meal described with no signal, still waiting for an estimate, so the
+  // Food log's "Waiting to be logged" card is there to look at. Left waiting
+  // on purpose: demo mode refuses every AI request, so it could never be
+  // estimated here, and a seeded "ready" estimate would be a figure invented
+  // for a meal nobody described.
+  usePendingEstimateStore.getState().enqueue({
+    description: 'Chicken burrito bowl from the truck by the station',
+    slot: 'lunch',
+    at: new Date(),
+    context: [],
+  });
 }
 
 // ---------------------------------------------------------------------------
