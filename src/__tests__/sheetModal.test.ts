@@ -1,5 +1,7 @@
 import {
   anySheetOpen,
+  beginDismissal,
+  endDismissal,
   canHideSheet,
   closeTopmostSheet,
   canShowSheet,
@@ -434,5 +436,34 @@ describe('closeTopmostSheet', () => {
     expect(closed).toEqual(['b']);
     offB();
     expect(anySheetOpen()).toBe(false);
+  });
+});
+
+describe('a sheet that is mid-dismissal', () => {
+  it('keeps the sheet it was presented from from dismissing until it finishes', () => {
+    const level = createPresentationLevel();
+    registerPresentation(level, 'inner', 'inner');
+    releasePresentation(level, 'inner');
+    beginDismissal(level, 'inner');
+    expect(canHideSheet(level)).toBe(false);
+    endDismissal(level, 'inner');
+    expect(canHideSheet(level)).toBe(true);
+  });
+
+  it('wakes a subscriber when the dismissal finishes', () => {
+    const level = createPresentationLevel();
+    const fn = jest.fn();
+    subscribePresentation(level, fn);
+    beginDismissal(level, 'inner');
+    endDismissal(level, 'inner');
+    expect(fn).toHaveBeenCalledTimes(1);
+    endDismissal(level, 'inner');
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not stop a sheet opening in its place', () => {
+    const level = createPresentationLevel();
+    beginDismissal(level, 'inner');
+    expect(canShowSheet(level)).toBe(true);
   });
 });
