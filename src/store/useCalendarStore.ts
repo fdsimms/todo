@@ -109,6 +109,14 @@ interface CalendarState {
   readFailed: boolean;
   refresh: () => Promise<void>;
   /**
+   * Tomorrow's events from the calendars vacation mode is hiding, held only
+   * while vacation ends tomorrow. Read by the "Review tomorrow's calendar" task
+   * and nothing else: the hiding keeps work out of the days you're away, and
+   * knowing what waits on the day you're back is not that. Kept out of `events`
+   * on purpose, since every other reader of that would start showing them.
+   */
+  vacationReturnEvents: BusyEvent[];
+  /**
    * The past window, and it is a **separate window on purpose** rather than a
    * widening of the one above. That one is refreshed on every foreground to
    * answer questions Today asks; nothing on Today asks about last month, so
@@ -171,6 +179,26 @@ export function sameBusyEvents(held: readonly BusyEvent[], read: readonly BusyEv
   return held.every((e, i) => e === read[i] || JSON.stringify(e) === JSON.stringify(read[i]));
 }
 
+/**
+ * The calendars whose events for tomorrow the review task may still read: the
+ * ones vacation mode is hiding, but only when vacation ends tomorrow. Vacation
+ * turns off when its end date's day begins (`checkVacationExpiry`), so that
+ * day is the first one back.
+ */
+export function vacationReturnCalendarIds(s: {
+  vacationMode: boolean;
+  vacationEnd: string | null;
+  calendarIds: readonly string[];
+  vacationHiddenCalendarIds: readonly string[];
+  dayResetTime: string;
+}): string[] {
+  if (!s.vacationMode || !s.vacationEnd) return [];
+  const endKey = dayKeyOf(getDayStart(new Date(s.vacationEnd), s.dayResetTime));
+  const tomorrowKey = dayKeyOf(addDays(getDayStart(new Date(), s.dayResetTime), 1));
+  if (endKey !== tomorrowKey) return [];
+  return s.calendarIds.filter(id => s.vacationHiddenCalendarIds.includes(id));
+}
+
 const windowGuard = createRefreshGuard();
 const pastGuard = createRefreshGuard();
 const aheadGuard = createRefreshGuard();
@@ -178,6 +206,7 @@ const followUpGuard = createRefreshGuard();
 
 export const useCalendarStore = create<CalendarState>((set, get) => ({
   events: [],
+  vacationReturnEvents: [],
   perCalendar: {},
   calendarsById: {},
   windowStart: null,
@@ -196,7 +225,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
   handledLoaded: false,
 
   async refresh() {
-    const { calendarReadEnabled, calendarIds, vacationMode, vacationHiddenCalendarIds, dayResetTime } =
+    const { calendarReadEnabled, calendarIds, vacationMode, vacationHiddenCalendarIds, vacationEnd, dayResetTime } =
       useSettingsStore.getState();
     // While on vacation, a calendar picked here can still be left out of the
     // read — a work calendar you want gone for the trip without un-picking
@@ -212,7 +241,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
       // intentional clear with whatever it read before the read was cleared.
       windowGuard.invalidate();
       set({
-        events: [], perCalendar: {}, calendarsById: {},
+        events: [], vacationReturnEvents: [], perCalendar: {}, calendarsById: {},
         windowStart: null, windowEnd: null, loaded: false, readFailed: false,
       });
       return;
@@ -224,6 +253,18 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
     const token = windowGuard.begin();
     const result = await fetchEvents(readIds, start, end);
     if (!windowGuard.isCurrent(token)) return;
+    // The return day's events from the hidden calendars: a second, one-day
+    // read, so `events` stays exactly what the hiding promises.
+    let vacationReturnEvents: BusyEvent[] = [];
+    const returnIds = vacationReturnCalendarIds({
+      vacationMode, vacationEnd, calendarIds, vacationHiddenCalendarIds, dayResetTime,
+    });
+    if (result !== null && returnIds.length > 0) {
+      const tomorrow = addDays(start, 1);
+      const held = await fetchEvents(returnIds, tomorrow, addDays(tomorrow, 1));
+      if (!windowGuard.isCurrent(token)) return;
+      vacationReturnEvents = held?.events ?? [];
+    }
     if (result === null) {
       // A failed read leaves the previous window (and per-calendar status) in
       // place rather than blanking it: yesterday's answer is better than a
@@ -233,6 +274,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
     }
     set({
       events: result.events,
+      vacationReturnEvents,
       perCalendar: result.perCalendar,
       calendarsById: result.calendarsById,
       windowStart: start.toISOString(),
@@ -371,7 +413,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
     aheadGuard.invalidate();
     followUpGuard.invalidate();
     set({
-      events: [], perCalendar: {}, calendarsById: {}, windowStart: null, windowEnd: null, loaded: false, readFailed: false,
+      events: [], vacationReturnEvents: [], perCalendar: {}, calendarsById: {}, windowStart: null, windowEnd: null, loaded: false, readFailed: false,
       pastEvents: [], pastLoaded: false, pastReadAt: null,
       aheadEvents: [], aheadLoaded: false, aheadWindowEnd: null,
       followUpEvents: [], followUpLoaded: false,

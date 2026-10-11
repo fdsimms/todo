@@ -1,4 +1,4 @@
-import { useCalendarStore } from '../store/useCalendarStore';
+import { useCalendarStore, vacationReturnCalendarIds } from '../store/useCalendarStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { dbGetSetting, dbSetSetting } from '../db/database';
 import { fetchEvents } from '../utils/calendarSync';
@@ -150,6 +150,51 @@ describe('refresh', () => {
     const state = useCalendarStore.getState();
     expect(state.loaded).toBe(false);
     expect(state.events).toHaveLength(1);
+  });
+});
+
+describe('vacation return day', () => {
+  const base = {
+    vacationMode: true,
+    calendarIds: ['cal-1', 'cal-2'],
+    vacationHiddenCalendarIds: ['cal-2'],
+    dayResetTime: '00:00',
+  };
+
+  beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(new Date(2026, 9, 11, 20, 10));
+  });
+  afterEach(() => jest.useRealTimers());
+
+  it('names the hidden calendars when vacation ends tomorrow', () => {
+    expect(vacationReturnCalendarIds({ ...base, vacationEnd: new Date(2026, 9, 12, 12).toISOString() }))
+      .toEqual(['cal-2']);
+  });
+
+  it('names none when vacation ends later or already passed', () => {
+    expect(vacationReturnCalendarIds({ ...base, vacationEnd: new Date(2026, 9, 14, 12).toISOString() })).toEqual([]);
+    expect(vacationReturnCalendarIds({ ...base, vacationEnd: new Date(2026, 9, 11, 12).toISOString() })).toEqual([]);
+  });
+
+  it('names none with no end date, or with vacation off', () => {
+    expect(vacationReturnCalendarIds({ ...base, vacationEnd: null })).toEqual([]);
+    expect(vacationReturnCalendarIds({
+      ...base, vacationMode: false, vacationEnd: new Date(2026, 9, 12, 12).toISOString(),
+    })).toEqual([]);
+  });
+
+  it('reads the hidden calendar for tomorrow only, apart from events', async () => {
+    useSettingsStore.setState({
+      ...base, vacationEnd: new Date(2026, 9, 12, 12).toISOString(),
+    });
+    (fetchEvents as jest.Mock)
+      .mockResolvedValueOnce(readResult([event('e-1')]))
+      .mockResolvedValueOnce(readResult([event('held')]));
+    await useCalendarStore.getState().refresh();
+    expect(fetchEvents).toHaveBeenNthCalledWith(2, ['cal-2'], new Date(2026, 9, 12), new Date(2026, 9, 13));
+    const state = useCalendarStore.getState();
+    expect(state.events.map(e => e.id)).toEqual(['e-1']);
+    expect(state.vacationReturnEvents.map(e => e.id)).toEqual(['held']);
   });
 });
 

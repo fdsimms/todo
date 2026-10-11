@@ -5568,7 +5568,7 @@ describe('checkCalendarReviewTasks', () => {
     jest.useFakeTimers();
     jest.setSystemTime(NOW);
     useSettingsStore.getState.mockReturnValue(settings());
-    useCalendarStore.getState.mockReturnValue({ events: [], loaded: false });
+    useCalendarStore.getState.mockReturnValue({ events: [], vacationReturnEvents: [], loaded: false });
     useTaskStore.setState({ tasks: [] });
   });
 
@@ -5576,11 +5576,19 @@ describe('checkCalendarReviewTasks', () => {
     jest.useRealTimers();
     // Restore the file's shared default so a later describe block that never
     // touches the calendar store isn't left reading this block's last state.
-    useCalendarStore.getState.mockReturnValue({ events: [], loaded: false });
+    useCalendarStore.getState.mockReturnValue({ events: [], vacationReturnEvents: [], loaded: false });
+  });
+
+  it('writes a task when tomorrow only has an event from a calendar vacation is hiding', () => {
+    useCalendarStore.getState.mockReturnValue({ events: [], vacationReturnEvents: [tomorrowEvent()], loaded: true });
+
+    useTaskStore.getState().checkCalendarReviewTasks();
+
+    expect(reviewTasks()).toHaveLength(1);
   });
 
   it('writes a task when tomorrow has an event', () => {
-    useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], loaded: true });
+    useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], vacationReturnEvents: [], loaded: true });
 
     useTaskStore.getState().checkCalendarReviewTasks();
 
@@ -5592,7 +5600,7 @@ describe('checkCalendarReviewTasks', () => {
   });
 
   it('writes nothing when tomorrow has no events', () => {
-    useCalendarStore.getState.mockReturnValue({ events: [], loaded: true });
+    useCalendarStore.getState.mockReturnValue({ events: [], vacationReturnEvents: [], loaded: true });
 
     useTaskStore.getState().checkCalendarReviewTasks();
 
@@ -5601,7 +5609,7 @@ describe('checkCalendarReviewTasks', () => {
 
   it('holds the task back until the chosen time of day, when one is set', () => {
     useSettingsStore.getState.mockReturnValue(settings({ calendarReviewTimeSegment: 'evening' }));
-    useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], loaded: true });
+    useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], vacationReturnEvents: [], loaded: true });
 
     useTaskStore.getState().checkCalendarReviewTasks();
 
@@ -5610,7 +5618,7 @@ describe('checkCalendarReviewTasks', () => {
   });
 
   it('carries no time-of-day hold-back by default', () => {
-    useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], loaded: true });
+    useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], vacationReturnEvents: [], loaded: true });
 
     useTaskStore.getState().checkCalendarReviewTasks();
 
@@ -5620,7 +5628,7 @@ describe('checkCalendarReviewTasks', () => {
 
   it('is a no-op while the setting is off', () => {
     useSettingsStore.getState.mockReturnValue(settings({ calendarReviewTasks: false }));
-    useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], loaded: true });
+    useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], vacationReturnEvents: [], loaded: true });
 
     useTaskStore.getState().checkCalendarReviewTasks();
 
@@ -5629,7 +5637,7 @@ describe('checkCalendarReviewTasks', () => {
 
   it('is a no-op while calendar reading is off', () => {
     useSettingsStore.getState.mockReturnValue(settings({ calendarReadEnabled: false }));
-    useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], loaded: true });
+    useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], vacationReturnEvents: [], loaded: true });
 
     useTaskStore.getState().checkCalendarReviewTasks();
 
@@ -5638,7 +5646,7 @@ describe('checkCalendarReviewTasks', () => {
 
   it('writes an uncategorized task when "None" is chosen, same as every other generator', () => {
     useSettingsStore.getState.mockReturnValue(settings({ calendarReviewTaskCategory: null }));
-    useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], loaded: true });
+    useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], vacationReturnEvents: [], loaded: true });
 
     useTaskStore.getState().checkCalendarReviewTasks();
 
@@ -5652,7 +5660,7 @@ describe('checkCalendarReviewTasks', () => {
   it('treats an unread window as unknown, not as tomorrow being free', () => {
     const s = settings();
     useSettingsStore.getState.mockReturnValue(s);
-    useCalendarStore.getState.mockReturnValue({ events: [], loaded: false });
+    useCalendarStore.getState.mockReturnValue({ events: [], vacationReturnEvents: [], loaded: false });
 
     useTaskStore.getState().checkCalendarReviewTasks();
 
@@ -5663,7 +5671,7 @@ describe('checkCalendarReviewTasks', () => {
   });
 
   it('does not pile up a second task on the next sweep', () => {
-    useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], loaded: true });
+    useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], vacationReturnEvents: [], loaded: true });
 
     useTaskStore.getState().checkCalendarReviewTasks();
     useTaskStore.getState().checkCalendarReviewTasks();
@@ -5680,7 +5688,7 @@ describe('checkCalendarReviewTasks', () => {
   it('is a no-op in demo mode, however the setting is set', () => {
     setDemoModeActive(true);
     try {
-      useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], loaded: true });
+      useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], vacationReturnEvents: [], loaded: true });
 
       useTaskStore.getState().checkCalendarReviewTasks();
 
@@ -5697,7 +5705,7 @@ describe('checkCalendarReviewTasks', () => {
   // outcome was.
   it('does not hand back a task for a day already decided', () => {
     useSettingsStore.getState.mockReturnValue(settings({ calendarReviewLastDayKey: '2026-08-26' }));
-    useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], loaded: true });
+    useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], vacationReturnEvents: [], loaded: true });
 
     useTaskStore.getState().checkCalendarReviewTasks();
 
@@ -5717,7 +5725,7 @@ describe('checkCalendarReviewTasks', () => {
         generatedSourceId: '2026-08-25',
       })],
     });
-    useCalendarStore.getState.mockReturnValue({ events: [], loaded: true });
+    useCalendarStore.getState.mockReturnValue({ events: [], vacationReturnEvents: [], loaded: true });
 
     useTaskStore.getState().checkCalendarReviewTasks();
 

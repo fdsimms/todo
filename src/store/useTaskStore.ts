@@ -6696,7 +6696,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (settings.calendarReviewLastDayKey === tomorrowKey) return;
     settings.setCalendarReviewLastDayKey(tomorrowKey);
 
-    const tomorrowEvents = eventsIn(calendar.events, tomorrowStart, addDays(tomorrowStart, 1));
+    // Includes the calendars vacation is hiding when vacation ends tomorrow:
+    // the hiding is for the days you're away, not the one you're back.
+    const tomorrowEvents = eventsIn(
+      [...calendar.events, ...calendar.vacationReturnEvents], tomorrowStart, addDays(tomorrowStart, 1));
     if (!wantsCalendarReview(tomorrowEvents)) return;
 
     const dueDate = getCurrentDayStart();
