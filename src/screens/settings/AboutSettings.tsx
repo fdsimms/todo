@@ -8,6 +8,8 @@ import { SettingsRow } from './SettingsRow';
 import { makeSettingsStyles } from './settingsStyles';
 import { setFlagMode, getFlagModeVersion, isFlagMode, subscribeFlagMode } from '../../utils/copyFlagMode';
 import { setTabDiagEnabled, useTabDiagEnabled } from '../../components/FreezeWhenBlurred';
+import { useCopyToClipboard } from '../../hooks/useCopyToClipboard';
+import { perfReportText } from '../../utils/perfReport';
 
 export function AboutSettings() {
   const colors = useColors();
@@ -18,6 +20,7 @@ export function AboutSettings() {
   // TEMPORARY dev tooling (see CopyFlag): session-only, so it can't stay on.
   useSyncExternalStore(subscribeFlagMode, getFlagModeVersion);
   const flagMode = isFlagMode();
+  const { copy: copyPerf, copied: perfCopied } = useCopyToClipboard();
 
   return (
     <>
@@ -48,6 +51,15 @@ export function AboutSettings() {
             : 'Debug text for the blank screen bug is hidden'}
           toggle={tabDiag}
           onPress={() => setTabDiagEnabled(!tabDiag)}
+        />
+        <View style={styles.sep} />
+        <SettingsRow
+          entryId="perfLog"
+          icon="speedometer-outline"
+          label="Copy performance log"
+          hint="Copies how long each launch step took, plus the launch and hang times iOS measures. Stays on this device until you paste it."
+          value={perfCopied ? 'Copied' : undefined}
+          onPress={() => copyPerf(perfReportText())}
         />
         <View style={styles.sep} />
         <SettingsRow

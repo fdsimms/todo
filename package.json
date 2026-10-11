@@ -15,6 +15,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:tz": "TZ=Pacific/Kiritimati jest && TZ=Pacific/Pago_Pago jest && TZ=America/St_Johns jest",
+    "bench": "jest --runInBand --testMatch '**/__bench__/*.bench.ts'",
     "docs": "node scripts/build-module-map.js && node scripts/check-doc-stats.js && node scripts/build-screen-map.js",
     "verify": "tsc --noEmit && npm test && npm run docs && git status --short"
   },
@@ -110,6 +111,7 @@
     "todo-foundation-models": "file:./modules/todo-foundation-models",
     "todo-health-bridge": "file:./modules/todo-health-bridge",
     "todo-key-commands": "file:./modules/todo-key-commands",
+    "todo-metrickit-bridge": "file:./modules/todo-metrickit-bridge",
     "todo-privacy-shield": "file:./modules/todo-privacy-shield",
     "todo-screentime-bridge": "file:./modules/todo-screentime-bridge",
     "todo-vision-bridge": "file:./modules/todo-vision-bridge",
