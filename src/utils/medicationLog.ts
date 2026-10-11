@@ -308,6 +308,15 @@ export function isAsNeededMedication(
   return logs.some(l => medicationKey(l.name) === key && l.asNeeded);
 }
 
+/**
+ * The part of a medication's settings the tallies read. Structural so this
+ * module need not import `medicationSettings.ts`, which imports it.
+ */
+export type MedicationTallyPrefs = Record<string, {
+  asNeeded?: boolean | null;
+  usualDose?: { amount: number; unit: string } | null;
+}>;
+
 /** What one medication's history adds up to. Counting only — no comparisons. */
 export interface MedicationStat {
   key: string;
@@ -323,6 +332,10 @@ export interface MedicationStat {
   typicalDose: string | null;
 }
 
+function usualDoseText(prefs: MedicationTallyPrefs[string] | undefined): string | null {
+  return prefs?.usualDose ? formatDose(prefs.usualDose) : null;
+}
+
 /**
  * Every medication you have logged, with what it adds up to, most recent first.
  *
@@ -335,6 +348,7 @@ export interface MedicationStat {
 export function medicationStats(
   logs: readonly MedicationLog[],
   registered: readonly string[] = [],
+  prefs: MedicationTallyPrefs = {},
 ): MedicationStat[] {
   const byKey = new Map<string, MedicationLog[]>();
   for (const log of logs) {
@@ -361,8 +375,9 @@ export function medicationStats(
       doses: sorted.length,
       days: new Set(sorted.map(e => e.dayKey)).size,
       lastTakenAt: sorted[0].takenAt,
-      asNeeded: sorted.some(e => e.asNeeded),
-      typicalDose,
+      // What you said wins; with no answer it is read off the doses.
+      asNeeded: prefs[key]?.asNeeded ?? sorted.some(e => e.asNeeded),
+      typicalDose: typicalDose ?? usualDoseText(prefs[key]),
     });
   }
   // A medication added by name with no doses yet is listed after the ones with
@@ -372,7 +387,8 @@ export function medicationStats(
     if (!key || byKey.has(key)) continue;
     byKey.set(key, []);
     stats.push({
-      key, name: name.trim(), doses: 0, days: 0, lastTakenAt: null, asNeeded: false, typicalDose: null,
+      key, name: name.trim(), doses: 0, days: 0, lastTakenAt: null,
+      asNeeded: prefs[key]?.asNeeded ?? false, typicalDose: usualDoseText(prefs[key]),
     });
   }
   return stats.sort((a, b) => {
@@ -483,15 +499,20 @@ export function frequencyTrend(
  * once. As needed because the quick button is offered only on as-needed rows:
  * a scheduled dose is recorded by checking off its task.
  */
-export function repeatDose(logs: readonly MedicationLog[], name: string): MedicationDose & { asNeeded: true } {
+export function repeatDose(
+  logs: readonly MedicationLog[],
+  name: string,
+  usual: { amount: number; unit: string } | null = null,
+): MedicationDose & { asNeeded: true } {
   const key = medicationKey(name);
   const last = logs
     .filter(l => medicationKey(l.name) === key)
     .sort((a, b) => b.takenAt.localeCompare(a.takenAt))[0];
   return {
     name: last?.name.trim() ?? name.trim(),
-    amount: last?.amount ?? null,
-    unit: last?.unit ?? null,
+    // The last dose wins; the usual amount is what stands in before there is one.
+    amount: last ? last.amount : usual?.amount ?? null,
+    unit: last ? last.unit : usual?.unit ?? null,
     asNeeded: true,
   };
 }

@@ -73,6 +73,9 @@ export function renamedSettings(
     supply: target?.supply ?? source.supply,
     // The supplement panel follows the same rule as the limit and supply.
     ...((target?.nutrition ?? source.nutrition) ? { nutrition: target?.nutrition ?? source.nutrition } : {}),
+    // How you take it and the usual amount follow the same rule.
+    ...(typeof (target?.asNeeded ?? source.asNeeded) === 'boolean' ? { asNeeded: target?.asNeeded ?? source.asNeeded } : {}),
+    ...((target?.usualDose ?? source.usualDose) ? { usualDose: target?.usualDose ?? source.usualDose } : {}),
   };
   return next;
 }

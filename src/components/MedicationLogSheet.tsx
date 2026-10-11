@@ -14,6 +14,7 @@ import { WhenPicker } from './WhenPicker';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { prefsFor } from '../utils/medicationSettings';
 import { getLogicalToday } from '../utils/dateUtils';
 import { DOSE_UNITS, medicationKey, medicationVocabulary } from '../utils/medicationLog';
 import { confirmWithinLimit, recordDose, syncOkAgainNotification, unrecordDose } from '../utils/doseRecording';
@@ -91,9 +92,13 @@ export function MedicationLogSheet({ visible, log, initialName, onClose }: Props
   useEffect(() => {
     if (!visible) return;
     setName(log?.name ?? initialName ?? '');
-    setAmount(log?.amount !== null && log?.amount !== undefined ? String(log.amount) : '');
-    setUnit(log?.unit ?? null);
-    setAsNeeded(log ? log.asNeeded : true);
+    // A new dose of a named medication starts from what was set up for it.
+    const prefs = !log && initialName ? prefsFor(useMedicationStore.getState().settings, initialName) : null;
+    setAmount(log?.amount !== null && log?.amount !== undefined
+      ? String(log.amount)
+      : prefs?.usualDose ? String(prefs.usualDose.amount) : '');
+    setUnit(log?.unit ?? prefs?.usualDose?.unit ?? null);
+    setAsNeeded(log ? log.asNeeded : prefs?.asNeeded ?? true);
     setNote(log?.note ?? '');
     setDay(noonOfToday());
     setAgoMinutes(0);

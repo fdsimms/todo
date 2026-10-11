@@ -142,7 +142,7 @@ export function MedicationScreen() {
   }, []);
   useEffect(() => () => { if (undoTimer.current) clearTimeout(undoTimer.current); }, []);
 
-  const allStats = useMemo(() => medicationStats(logs, registered), [logs, registered]);
+  const allStats = useMemo(() => medicationStats(logs, registered, settings), [logs, registered, settings]);
   const stats = useMemo(() => allStats.filter(s => !archived.includes(s.key)), [allStats, archived]);
   const archivedStats = useMemo(() => allStats.filter(s => archived.includes(s.key)), [allStats, archived]);
   const recent = useMemo(() => logs.slice(0, recentLimit), [logs, recentLimit]);
@@ -219,7 +219,7 @@ export function MedicationScreen() {
   const quickRecord = async (stat: MedicationStat) => {
     haptics.tap();
     if (!(await confirmWithinLimit(stat.name))) return;
-    const log = recordDose(repeatDose(logs, stat.name));
+    const log = recordDose(repeatDose(logs, stat.name, prefsFor(settings, stat.name).usualDose ?? null));
     if (!log) return;
     haptics.success();
     showUndo(log);

@@ -29,6 +29,7 @@ import { useFoodLogStore } from '../store/useFoodLogStore';
 import { foodLogTotals } from './foodLog';
 import { buildMedicationIndex, parseQueuedDoses, resolveQueuedDoseName } from './medicationIndex';
 import { repeatDose } from './medicationLog';
+import { prefsFor } from './medicationSettings';
 import { recordDose } from './doseRecording';
 import { haptics } from './haptics';
 import { parseQueuedDreams } from './dreamQueue';
@@ -170,9 +171,9 @@ async function processPendingDoses(): Promise<void> {
     const queued = parseQueuedDoses(await bridge.drainPendingDoses());
     if (queued.length === 0) return;
     for (const dose of queued) {
-      const { logs, registered } = useMedicationStore.getState();
+      const { logs, registered, settings } = useMedicationStore.getState();
       const name = resolveQueuedDoseName(dose, logs, registered);
-      recordDose({ ...repeatDose(logs, name), at: dose.at ?? undefined });
+      recordDose({ ...repeatDose(logs, name, prefsFor(settings, name).usualDose ?? null), at: dose.at ?? undefined });
     }
     haptics.success();
   } catch {

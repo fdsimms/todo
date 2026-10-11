@@ -282,3 +282,26 @@ describe('a supplement panel', () => {
     expect(prefsFor(back, 'x').nutrition?.amounts).toEqual({ zincMg: 5 });
   });
 });
+
+describe('asNeeded and usualDose', () => {
+  it('round-trip through the stored map and keep an entry that holds only them', () => {
+    const map = parseMedicationSettings(JSON.stringify({
+      zinc: { limit: null, supply: null, asNeeded: false, usualDose: { amount: 50, unit: 'mg' } },
+    }));
+    expect(map.zinc).toMatchObject({ asNeeded: false, usualDose: { amount: 50, unit: 'mg' } });
+  });
+
+  it('drop a malformed usual dose and a non-boolean answer', () => {
+    const map = parseMedicationSettings(JSON.stringify({
+      zinc: { asNeeded: 'yes', usualDose: { amount: -1, unit: 'mg' } },
+      iron: { usualDose: { amount: 5, unit: 'furlongs' } },
+    }));
+    expect(map).toEqual({});
+  });
+
+  it('withPrefs drops an entry once nothing is set', () => {
+    const map = withPrefs({}, 'Zinc', { limit: null, supply: null, asNeeded: true });
+    expect(map.zinc.asNeeded).toBe(true);
+    expect(withPrefs(map, 'Zinc', { limit: null, supply: null, asNeeded: null })).toEqual({});
+  });
+});

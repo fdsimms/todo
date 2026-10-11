@@ -458,3 +458,29 @@ describe('medications added by name', () => {
     expect(parseRegisteredMedications('["Zinc"," zinc ",3,"","Iron"]')).toEqual(['Zinc', 'Iron']);
   });
 });
+
+describe('how a medication is taken, and its usual amount', () => {
+  it('lets a stated answer override what the doses say', () => {
+    const logs = [dose({ name: 'Ibuprofen', asNeeded: true })];
+    expect(medicationStats(logs)[0].asNeeded).toBe(true);
+    expect(medicationStats(logs, [], { ibuprofen: { asNeeded: false } })[0].asNeeded).toBe(false);
+    expect(medicationStats([dose({ name: 'Ibuprofen' })], [], { ibuprofen: { asNeeded: true } })[0].asNeeded).toBe(true);
+  });
+
+  it('marks a medication with no doses as needed when told so', () => {
+    expect(medicationStats([], ['Zinc'], { zinc: { asNeeded: true } })[0].asNeeded).toBe(true);
+  });
+
+  it('shows the usual amount until a dose states one', () => {
+    const usual = { zinc: { usualDose: { amount: 50, unit: 'mg' } } };
+    expect(medicationStats([], ['Zinc'], usual)[0].typicalDose).toBe('50 mg');
+    const logs = [dose({ name: 'Zinc', amount: 25, unit: 'mg' })];
+    expect(medicationStats(logs, [], usual)[0].typicalDose).toBe('25 mg');
+  });
+
+  it('records the usual amount before any dose, and the last dose after', () => {
+    expect(repeatDose([], 'Zinc', { amount: 50, unit: 'mg' })).toMatchObject({ amount: 50, unit: 'mg' });
+    const logs = [dose({ name: 'Zinc', amount: 25, unit: 'mg' })];
+    expect(repeatDose(logs, 'Zinc', { amount: 50, unit: 'mg' })).toMatchObject({ amount: 25, unit: 'mg' });
+  });
+});

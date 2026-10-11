@@ -101,9 +101,24 @@ export interface SupplementPanel {
   amounts: Partial<Record<NutrientKey, number>>;
 }
 
+/** The amount you usually take, typed once: prefills a dose, and is what the round button records before any dose exists. */
+export interface UsualDose {
+  amount: number;
+  /** One of `DOSE_UNITS`. */
+  unit: string;
+}
+
 export interface MedicationPrefs {
   limit: MedicationLimit | null;
   supply: MedicationSupply | null;
+  /**
+   * Whether you take it as needed (true) or on a schedule (false). Null or
+   * absent means decide from the doses, which is the only answer a medication
+   * had before this existed: any dose recorded as needed makes it as needed.
+   */
+  asNeeded?: boolean | null;
+  /** The amount you usually take, or null when none was entered. */
+  usualDose?: UsualDose | null;
   /** What a serving contains, or null when none was entered. Optional so a map written before it reads unchanged. */
   nutrition?: SupplementPanel | null;
 }
@@ -137,6 +152,19 @@ function parseLimit(raw: unknown): MedicationLimit | null {
     notify: r.notify === true,
     since,
   };
+}
+
+function parseUsualDose(raw: unknown): UsualDose | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const amount = positiveOrNull(r.amount, 99999);
+  const unit = typeof r.unit === 'string' && DOSE_UNITS.some(u => u.value === r.unit) ? r.unit : null;
+  return amount !== null && unit ? { amount, unit } : null;
+}
+
+/** Whether an entry says anything; an entry that doesn't is dropped rather than stored empty. */
+function hasPrefs(p: MedicationPrefs): boolean {
+  return !!(p.limit || p.supply || p.nutrition || p.usualDose || typeof p.asNeeded === 'boolean');
 }
 
 function parseSupply(raw: unknown): MedicationSupply | null {
@@ -204,12 +232,15 @@ export function parseMedicationSettings(raw: string | null): MedicationSettingsM
     const nutrition = parseSupplementPanel(v.nutrition);
     // Only when present, so a map with no panel reads exactly as it did before
     // the field existed.
+    const usualDose = parseUsualDose(v.usualDose);
     const prefs: MedicationPrefs = {
       limit: parseLimit(v.limit),
       supply: parseSupply(v.supply),
       ...(nutrition ? { nutrition } : {}),
+      ...(typeof v.asNeeded === 'boolean' ? { asNeeded: v.asNeeded } : {}),
+      ...(usualDose ? { usualDose } : {}),
     };
-    if (prefs.limit || prefs.supply || prefs.nutrition) out[key] = prefs;
+    if (hasPrefs(prefs)) out[key] = prefs;
   }
   return out;
 }
@@ -228,7 +259,7 @@ export function withPrefs(
   const key = medicationKey(name);
   const next = { ...map };
   if (!key) return next;
-  if (!prefs.limit && !prefs.supply && !prefs.nutrition) delete next[key];
+  if (!hasPrefs(prefs)) delete next[key];
   else next[key] = prefs;
   return next;
 }

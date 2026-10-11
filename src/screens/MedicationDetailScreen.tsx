@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Switch } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
@@ -32,6 +32,7 @@ import { DetailHeader } from '../components/DetailHeader';
 import { EmptyState } from '../components/EmptyState';
 import { CountStepper } from '../components/CountStepper';
 import { SegmentedControl } from '../components/SegmentedControl';
+import { DoseAmountField } from '../components/DoseAmountField';
 import { InlineAction } from '../components/InlineAction';
 import { MedicationLogSheet } from '../components/MedicationLogSheet';
 import { MedicationRenameSheet } from '../components/MedicationRenameSheet';
@@ -78,6 +79,8 @@ export function MedicationDetailScreen() {
   const setLimit = useMedicationStore(s => s.setLimit);
   const setSupply = useMedicationStore(s => s.setSupply);
   const setSupplementPanel = useMedicationStore(s => s.setSupplementPanel);
+  const setAsNeeded = useMedicationStore(s => s.setAsNeeded);
+  const setUsualDose = useMedicationStore(s => s.setUsualDose);
   const refillSupply = useMedicationStore(s => s.refillSupply);
   const archiveMedication = useMedicationStore(s => s.archiveMedication);
   const unarchiveMedication = useMedicationStore(s => s.unarchiveMedication);
@@ -90,7 +93,7 @@ export function MedicationDetailScreen() {
   const [editing, setEditing] = useState<MedicationLog | null>(null);
   const [renameOpen, setRenameOpen] = useState(false);
 
-  const stat = useMemo(() => medicationStats(logs, registered).find(s => s.key === key) ?? null, [logs, registered, key]);
+  const stat = useMemo(() => medicationStats(logs, registered, settings).find(s => s.key === key) ?? null, [logs, registered, settings, key]);
   const entries = useMemo(() => logs.filter(l => medicationKey(l.name) === key), [logs, key]);
 
   const strip = useMemo(() => {
@@ -112,6 +115,29 @@ export function MedicationDetailScreen() {
   }, [logs, key]);
   const stripMax = Math.max(1, ...strip.map(d => d.count));
   const timeOfDay = useMemo(() => timeOfDayOf(entries), [entries]);
+
+  // Hooks sit above the early return, where the page may have no medication.
+  const medName = stat?.name ?? key;
+  const howValue = prefsFor(settings, medName).asNeeded === true ? 'asNeeded'
+    : prefsFor(settings, medName).asNeeded === false ? 'scheduled' : 'auto';
+  const storedUsual = prefsFor(settings, medName).usualDose ?? null;
+  // The amount and unit are typed separately, so the half-typed state lives here
+  // and the store is written once both make a dose (or the amount is cleared).
+  const [usualAmount, setUsualAmount] = useState(storedUsual ? String(storedUsual.amount) : '');
+  const [usualUnit, setUsualUnit] = useState<string | null>(storedUsual?.unit ?? null);
+  useEffect(() => {
+    setUsualAmount(storedUsual ? String(storedUsual.amount) : '');
+    setUsualUnit(storedUsual?.unit ?? null);
+    // Only when the page switches medication (a rename re-keys it); typing must not reset itself.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  const saveUsual = (amountText: string, unit: string | null) => {
+    const parsed = Number(amountText.trim());
+    if (amountText.trim() === '') { setUsualDose(medName, null); return; }
+    if (Number.isFinite(parsed) && parsed > 0 && unit) setUsualDose(medName, { amount: parsed, unit });
+  };
+  const changeUsualAmount = (next: string) => { setUsualAmount(next); saveUsual(next, usualUnit); };
+  const changeUsualUnit = (next: string | null) => { setUsualUnit(next); saveUsual(usualAmount, next); };
 
   if (!stat) {
     // Taken off the list while this page was open (see `removeMedication`).
@@ -157,6 +183,8 @@ export function MedicationDetailScreen() {
     if (next.count === null) { setSupply(name, null); return; }
     setSupply(name, { ...next, count: next.count });
   };
+
+  const hasSupply = !!supply && remaining !== null;
 
   const promptRefill = () => {
     haptics.tap();
@@ -295,6 +323,38 @@ export function MedicationDetailScreen() {
           </>
         )}
 
+        <Text style={styles.sectionTitle}>HOW YOU TAKE IT</Text>
+        <View style={[styles.card, styles.formCard]}>
+          <SegmentedControl
+            options={[
+              { value: 'auto', label: 'From doses' },
+              { value: 'asNeeded', label: 'As needed' },
+              { value: 'scheduled', label: 'Scheduled' },
+            ]}
+            value={howValue}
+            columns={3}
+            label="How you take it"
+            onChange={value => {
+              haptics.tap();
+              setAsNeeded(name, value === 'asNeeded' ? true : value === 'scheduled' ? false : null);
+            }}
+          />
+          <Text style={styles.fieldHint}>
+            As needed shows a button on the Medications screen that records another dose, and compares how often you take it. From doses marks it as needed once a dose is recorded as needed.
+          </Text>
+          <Text style={[styles.fieldLabel, styles.panelHeading]}>Usual amount</Text>
+          <DoseAmountField
+            name="MedicationDetail usual dose unit menu"
+            amount={usualAmount}
+            onChangeAmount={changeUsualAmount}
+            unit={usualUnit}
+            onChangeUnit={changeUsualUnit}
+          />
+          <Text style={styles.fieldHint}>
+            Prefills the amount when you record a dose, and is what the round button records before you have recorded one.
+          </Text>
+        </View>
+
         <Text style={styles.sectionTitle}>LIMIT</Text>
         <View style={[styles.card, styles.formCard]}>
           <View style={styles.fieldRow}>
@@ -327,28 +387,27 @@ export function MedicationDetailScreen() {
             />
           </View>
           <Text style={styles.fieldHint}>Counted over any 24-hour period, not by calendar day.</Text>
-          {limit && (
-            <>
-              <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>Notify me when it’s OK</Text>
-                <Switch
-                  value={limit.notify}
-                  onValueChange={async next => {
-                    haptics.tap();
-                    if (next && !(await allowOkAgainNotification())) return;
-                    updateLimit({ notify: next });
-                  }}
-                  trackColor={{ false: colors.bgTertiary, true: colors.accent }}
-                  accessibilityLabel="Notify me when another dose is within the limit"
-                />
-              </View>
-              <Text style={styles.fieldHint}>
-                {status.nextOkAt
-                  ? `Within your limit again at ${format(status.nextOkAt, 'h:mm a')}.`
-                  : `${describeLimit(limit)}. ${status.inLast24h} in the last 24 hours.`}
-              </Text>
-            </>
-          )}
+          <View style={styles.fieldRow}>
+            <Text style={styles.fieldLabel}>Notify me when it’s OK</Text>
+            <Switch
+              value={limit?.notify ?? false}
+              disabled={!limit}
+              onValueChange={async next => {
+                haptics.tap();
+                if (next && !(await allowOkAgainNotification())) return;
+                updateLimit({ notify: next });
+              }}
+              trackColor={{ false: colors.bgTertiary, true: colors.accent }}
+              accessibilityLabel="Notify me when another dose is within the limit"
+            />
+          </View>
+          <Text style={styles.fieldHint}>
+            {!limit
+              ? 'Set hours apart or a most-in-24-hours cap above to turn this on.'
+              : status.nextOkAt
+                ? `Within your limit again at ${format(status.nextOkAt, 'h:mm a')}.`
+                : `${describeLimit(limit)}. ${status.inLast24h} in the last 24 hours.`}
+          </Text>
           <Text style={styles.fieldNote}>
             Warns you before a dose goes past this limit. Copy it from the label or what your doctor told you.
           </Text>
@@ -379,51 +438,58 @@ export function MedicationDetailScreen() {
               <Text style={styles.fieldHint}>
                 Goes down with each dose you record here. Doses from a scheduled task count against that task instead.
               </Text>
-              {supply && remaining !== null && (
-                <>
-                  <View style={styles.unitRow}>
-                    <SegmentedControl
-                      options={SUPPLY_UNITS.map(u => ({ value: u, label: u === 'dose' ? 'doses' : u }))}
-                      value={supply.unit}
-                      columns={3}
-                      label="What the supply counts"
-                      onChange={value => { haptics.tap(); updateSupply({ unit: value }); }}
-                    />
-                  </View>
-                  <Text style={styles.fieldHint}>
-                    A dose recorded in this unit uses that many. Any other dose uses one.
-                  </Text>
-                  <View style={styles.fieldRow}>
-                    <Text style={styles.fieldLabel}>Refill size</Text>
-                    <CountStepper
-                      value={supply.refillCount}
-                      onChange={n => updateSupply({ refillCount: n })}
-                      min={1}
-                      max={999}
-                      allowNull
-                      emptyLabel="Not set"
-                      label="Refill size"
-                      describeValue={n => (n === null ? 'not set' : `${n} per refill`)}
-                    />
-                  </View>
-                  <View style={styles.fieldRow}>
-                    <Text style={styles.fieldLabel}>Offer a refill at</Text>
-                    <CountStepper
-                      value={supply.reorderAt}
-                      onChange={n => updateSupply({ reorderAt: Math.max(1, n ?? 1) })}
-                      min={1}
-                      max={99}
-                      label="Offer a refill at"
-                    />
-                  </View>
-                  <Text style={styles.fieldHint}>
-                    Offers to add a refill task once a dose takes the count this low.
-                  </Text>
-                  <View style={styles.supplyFooter}>
-                    <Text style={styles.supplyLeft}>{describeSupplyLeft(remaining, supply.unit)}</Text>
-                    <InlineAction label="Refilled" icon="refresh" onPress={promptRefill} />
-                  </View>
-                </>
+              {/* Shown from the start so they can be found; they act on a count, so
+                  they stay dimmed until one is set. */}
+              <View
+                style={!hasSupply && styles.dimmed}
+                pointerEvents={hasSupply ? 'auto' : 'none'}
+              >
+                <View style={styles.unitRow}>
+                  <SegmentedControl
+                    options={SUPPLY_UNITS.map(u => ({ value: u, label: u === 'dose' ? 'doses' : u }))}
+                    value={supply?.unit ?? 'dose'}
+                    columns={3}
+                    label="What the supply counts"
+                    onChange={value => { haptics.tap(); updateSupply({ unit: value }); }}
+                  />
+                </View>
+                <Text style={styles.fieldHint}>
+                  A dose recorded in this unit uses that many. Any other dose uses one.
+                </Text>
+                <View style={styles.fieldRow}>
+                  <Text style={styles.fieldLabel}>Refill size</Text>
+                  <CountStepper
+                    value={supply?.refillCount ?? null}
+                    onChange={n => updateSupply({ refillCount: n })}
+                    min={1}
+                    max={999}
+                    allowNull
+                    emptyLabel="Not set"
+                    label="Refill size"
+                    describeValue={n => (n === null ? 'not set' : `${n} per refill`)}
+                  />
+                </View>
+                <View style={styles.fieldRow}>
+                  <Text style={styles.fieldLabel}>Offer a refill at</Text>
+                  <CountStepper
+                    value={supply?.reorderAt ?? 5}
+                    onChange={n => updateSupply({ reorderAt: Math.max(1, n ?? 1) })}
+                    min={1}
+                    max={99}
+                    label="Offer a refill at"
+                  />
+                </View>
+                <Text style={styles.fieldHint}>
+                  Offers to add a refill task once a dose takes the count this low.
+                </Text>
+              </View>
+              {hasSupply && supply && remaining !== null ? (
+                <View style={styles.supplyFooter}>
+                  <Text style={styles.supplyLeft}>{describeSupplyLeft(remaining, supply.unit)}</Text>
+                  <InlineAction label="Refilled" icon="refresh" onPress={promptRefill} />
+                </View>
+              ) : (
+                <Text style={styles.fieldHint}>Set how many are left to use the options above.</Text>
               )}
             </>
           )}
@@ -514,6 +580,7 @@ const SCROLL_TOP_SIZE = 44;
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
+  dimmed: { opacity: 0.45 },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: spacing.md, paddingTop: spacing.md },
   statRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },

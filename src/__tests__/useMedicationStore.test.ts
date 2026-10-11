@@ -422,3 +422,28 @@ describe('medications added by name', () => {
     expect(state().registered).toEqual(['Zinc 50 mg']);
   });
 });
+
+describe('how it is taken and the usual amount', () => {
+  it('stores an answer for a medication with no doses, and clears it', () => {
+    state().addMedication('Zinc');
+    state().setAsNeeded('Zinc', true);
+    expect(state().settings.zinc.asNeeded).toBe(true);
+    state().setAsNeeded('Zinc', null);
+    expect(state().settings.zinc).toBeUndefined();
+  });
+
+  it('stores a usual amount and refuses a nonsensical one', () => {
+    state().setUsualDose('Zinc', { amount: 50, unit: 'mg' });
+    expect(state().settings.zinc.usualDose).toEqual({ amount: 50, unit: 'mg' });
+    state().setUsualDose('Zinc', { amount: 0, unit: 'mg' });
+    expect(state().settings.zinc).toBeUndefined();
+  });
+
+  it('keeps them through a rename', () => {
+    state().addMedication('Zinc');
+    state().setAsNeeded('Zinc', false);
+    state().setUsualDose('Zinc', { amount: 50, unit: 'mg' });
+    state().renameMedication('Zinc', 'Zinc picolinate');
+    expect(state().settings['zinc picolinate']).toMatchObject({ asNeeded: false, usualDose: { amount: 50, unit: 'mg' } });
+  });
+});

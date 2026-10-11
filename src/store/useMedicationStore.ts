@@ -35,6 +35,7 @@ import {
   type MedicationSettingsMap,
   type MedicationSupply,
   type SupplementPanel,
+  type UsualDose,
 } from '../utils/medicationSettings';
 
 /** When a summary for a visit was last shared (synced, health-scoped). */
@@ -166,6 +167,10 @@ interface MedicationStore {
    * this add those nutrients to the day; earlier doses are left as they were.
    */
   setSupplementPanel: (name: string, panel: SupplementPanel | null) => void;
+  /** Say whether it is taken as needed or on a schedule; null goes back to reading it off the doses. */
+  setAsNeeded: (name: string, asNeeded: boolean | null) => void;
+  /** Set or clear the amount you usually take. */
+  setUsualDose: (name: string, dose: UsualDose | null) => void;
   /** Add a refill to what's left. */
   refillSupply: (name: string, added: number) => void;
   /** Turn down the refill offer at the current count. */
@@ -272,6 +277,19 @@ export const useMedicationStore = create<MedicationStore>((set, get) => ({
     if (!medicationKey(name)) return;
     const current = prefsFor(get().settings, name);
     writeSettings(set, withPrefs(get().settings, name, { ...current, nutrition: panel }));
+  },
+
+  setAsNeeded(name, asNeeded) {
+    if (!medicationKey(name)) return;
+    const current = prefsFor(get().settings, name);
+    writeSettings(set, withPrefs(get().settings, name, { ...current, asNeeded }));
+  },
+
+  setUsualDose(name, dose) {
+    if (!medicationKey(name)) return;
+    const current = prefsFor(get().settings, name);
+    const usualDose = dose && Number.isFinite(dose.amount) && dose.amount > 0 && dose.unit ? dose : null;
+    writeSettings(set, withPrefs(get().settings, name, { ...current, usualDose }));
   },
 
   refillSupply(name, added) {
