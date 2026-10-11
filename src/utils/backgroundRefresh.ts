@@ -214,7 +214,7 @@ export async function runBackgroundSync(): Promise<SyncSummary | null> {
 // writes are fire-and-forget, like every event reconcile: one cut short by a
 // background run ending waits for that row's next change.
 registerSyncReload(applied => {
-  useTaskStore.getState().initialize();
+  useTaskStore.getState().initialize({ reload: true });
   useSettingsStore.getState().initialize();
   useTaskStore.getState().reconcileSyncedEvents(applied);
   useMealPlanStore.getState().reconcileSyncedEvents(applied);

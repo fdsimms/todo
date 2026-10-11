@@ -23,6 +23,7 @@ import {
   changeTrackingStatements,
   deletionsTableStatements,
   installStatements,
+  installSignature,
   rowKeyExpr,
   updatedAtMigrations,
   type SyncTable,
@@ -420,5 +421,12 @@ describe('pruning', () => {
     ).run(`-${TOMBSTONE_RETENTION_DAYS} days`);
 
     expect(tombstones(db).map(t => t.row_key)).toEqual(['recent']);
+  });
+});
+
+describe('installSignature', () => {
+  it('is stable between calls, so an unchanged install is recognised', () => {
+    expect(installSignature()).toBe(installSignature());
+    expect(installSignature()).toMatch(/^[0-9a-f]{1,8}$/);
   });
 });

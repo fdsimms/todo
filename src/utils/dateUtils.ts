@@ -31,8 +31,24 @@ export function getDayStart(date: Date = new Date(), dayResetTime?: string): Dat
   return logicalDayStart(date, dayResetTime ?? useSettingsStore.getState().dayResetTime);
 }
 
+// The visibility gates call getCurrentDayStart() several times per task, and a
+// list selector runs them over every open task, so one pass asked for the same
+// day start thousands of times. The answer is a pure function of the clock
+// reading and the reset time, so a reading taken in the same millisecond under
+// the same reset time is the same answer: nothing here can go stale, the cache
+// only turns a pass into a few computations (one per millisecond it spans).
+let dayStartMemo: { now: number; reset: string; startMs: number } | null = null;
+
 export function getCurrentDayStart(): Date {
-  return getDayStart(new Date());
+  const now = Date.now();
+  const reset = useSettingsStore.getState().dayResetTime;
+  // A fresh Date each time: callers are free to mutate what they are handed.
+  if (dayStartMemo && dayStartMemo.now === now && dayStartMemo.reset === reset) {
+    return new Date(dayStartMemo.startMs);
+  }
+  const start = getDayStart(new Date(now), reset);
+  dayStartMemo = { now, reset, startMs: start.getTime() };
+  return start;
 }
 
 /**

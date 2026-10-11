@@ -8,6 +8,7 @@
 
 import {
   initDatabase,
+  ensureDatabaseReady,
   dbGetSetting,
   dbGetAllSettings,
   dbSetSetting,
@@ -142,6 +143,8 @@ import {
   SYNC_DELETIONS_TABLE,
   SYNC_DEVICE_LOCAL_COLUMNS,
   TOMBSTONE_RETENTION_DAYS,
+  SYNC_INSTALL_SIGNATURE_KEY,
+  installSignature,
 } from '../db/syncTracking';
 import { buildBackup, serializeBackup, parseBackup } from '../utils/backup';
 import { OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
@@ -366,6 +369,65 @@ describe('initDatabase', () => {
     initDatabase();
     // better-sqlite3 reports 1 for NORMAL (0 OFF, 2 FULL, 3 EXTRA).
     expect(mockRawDb.pragma('synchronous', { simple: true })).toBe(1);
+  });
+
+  describe('sync tracking install', () => {
+    const triggerSql = (name: string) =>
+      (mockRawDb.prepare("SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = ?").get(name) as
+        { sql: string } | undefined)?.sql;
+    const SENTINEL = 'tasks_sync_stamp_update';
+
+    // Stands in for "last release's trigger body": different text, same name.
+    const plantStaleTrigger = () => {
+      mockRawDb.exec(`DROP TRIGGER ${SENTINEL}; CREATE TRIGGER ${SENTINEL} AFTER UPDATE ON tasks BEGIN SELECT 1; END;`);
+    };
+
+    it('records what it installed', () => {
+      initDatabase();
+      expect(dbGetSetting(SYNC_INSTALL_SIGNATURE_KEY)).toBe(installSignature());
+    });
+
+    it('leaves the triggers alone on a launch that finds them current', () => {
+      initDatabase();
+      plantStaleTrigger();
+      initDatabase();
+      expect(triggerSql(SENTINEL)).toContain('SELECT 1');
+    });
+
+    it('reinstalls when the stored signature is not the current one', () => {
+      initDatabase();
+      plantStaleTrigger();
+      dbSetSetting(SYNC_INSTALL_SIGNATURE_KEY, 'previous-release');
+      initDatabase();
+      expect(triggerSql(SENTINEL)).not.toContain('SELECT 1');
+      expect(dbGetSetting(SYNC_INSTALL_SIGNATURE_KEY)).toBe(installSignature());
+    });
+
+    it('reinstalls when a trigger is missing even though the signature matches', () => {
+      initDatabase();
+      mockRawDb.exec(`DROP TRIGGER ${SENTINEL}`);
+      initDatabase();
+      expect(triggerSql(SENTINEL)).toBeDefined();
+    });
+  });
+
+  describe('ensureDatabaseReady', () => {
+    const FLAG = 'recipe_cookbook_backfill_done';
+    const clearFlag = () => mockRawDb.prepare('DELETE FROM settings WHERE key = ?').run(FLAG);
+
+    it('does not repeat the migrations on a handle that has already been through them', () => {
+      initDatabase();
+      clearFlag();
+      ensureDatabaseReady();
+      expect(dbGetSetting(FLAG)).toBeNull();
+    });
+
+    it('is what initDatabase still does when called directly', () => {
+      initDatabase();
+      clearFlag();
+      initDatabase();
+      expect(dbGetSetting(FLAG)).toBe('1');
+    });
   });
 
   it('creates the tasks table', () => {

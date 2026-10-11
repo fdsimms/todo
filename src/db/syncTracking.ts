@@ -948,6 +948,35 @@ export function backfillStatements(): string[] {
   );
 }
 
+/** The settings key `installSignature()` is kept under: device-local, never in SYNCED_SETTING_KEYS. */
+export const SYNC_INSTALL_SIGNATURE_KEY = 'sync_tracking_signature';
+
+/** Triggers `installStatements()` leaves behind per tracked table (the four in `changeTrackingStatements`). */
+export const SYNC_TRIGGERS_PER_TABLE = 4;
+
+/**
+ * A fingerprint of everything `installStatements()` would run (FNV-1a over the
+ * statement text). Dropping and recreating ~150 triggers writes the schema on
+ * every cold start, so `initDatabase` stores this after installing and skips
+ * the reinstall while it still matches *and* the triggers are all there. Edit
+ * a trigger body or add a tracked table and the text changes, so the new rules
+ * still reach an install that has the old ones, which is why they are dropped
+ * and recreated at all.
+ */
+export function installSignature(): string {
+  let h = 0x811c9dc5;
+  for (const sql of installStatements()) {
+    for (let i = 0; i < sql.length; i++) {
+      h ^= sql.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+    // A boundary, so two statements can't hash like one longer one.
+    h ^= 0x3b;
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16);
+}
+
 /** Every statement needed to install tracking, in order. */
 export function installStatements(): string[] {
   return [

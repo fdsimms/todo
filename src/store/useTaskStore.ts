@@ -3,6 +3,7 @@ import { addDays } from 'date-fns/addDays';
 import type { Task, TaskDraft, Priority, TimeOfDay, TitleRule, Person, QuotaPeriod, Polarity, Difficulty, MealPlanEntry, FoodLogEntry } from '../types';
 import {
   initDatabase,
+  ensureDatabaseReady,
   dbGetAllTasks,
   dbInsertTask,
   dbUpdateTask,
@@ -1501,7 +1502,12 @@ interface TaskStore extends UndoHistoryActions {
   // pace, so the row can be tapped again — see QUOTA_HOLD_BACKSTOP_MS.
   quotaHoldIds: string[];
 
-  initialize: () => void;
+  /**
+   * Loads every data store from the database. `reload` is for a reload after a
+   * sync applied rows: the schema and migrations already ran this launch, so
+   * only the loads are repeated.
+   */
+  initialize: (opts?: { reload?: boolean }) => void;
   // Marks a completion as animating so the batched collapse waits for it.
   // Called when the row's completion animation starts, i.e. a beat before the
   // completeTask that follows it.
@@ -2743,8 +2749,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     armCompletionCollapse();
   },
 
-  initialize() {
-    initDatabase();
+  initialize(opts) {
+    if (opts?.reload) ensureDatabaseReady();
+    else initDatabase();
     useCategoryStore.getState().initialize();
     // After the categories load, because it may add one: an install that
     // already had the calendar read on predates events having a section to
