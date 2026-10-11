@@ -240,6 +240,8 @@ npm run test:watch   # watch mode
 npm run test:tz      # the suite in UTC+14, UTC-11 and Newfoundland (DST, half-hour offset);
                      # CI runs UTC+14 only, and a local run is usually UTC
 npx jest src/__tests__/dateUtils.test.ts  # one file, for iterating on a change
+npm run bench        # times the Today/Later/Expired selectors and search over 5,000 synthetic
+                     # tasks (src/__bench__/); compare two checkouts, it is not part of npm test
 npm run docs         # regenerate all three generated docs, then commit them
 npm run verify       # the whole verification loop, below
 ```
