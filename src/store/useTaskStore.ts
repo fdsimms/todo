@@ -226,6 +226,7 @@ import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOve
 import { isRotationTask, rotationCoversNew, rotationPick, rotationPlanFor, rotationUnpick, rotationUnpickUncovers } from '../utils/rotation';
 import { MIN_TARGET_COUNT, MAX_TARGET_COUNT, taskKindOf } from '../utils/taskKinds';
 import { nextStreakRecord } from '../utils/streakRecord';
+import { countsUnits } from '../utils/streakUnits';
 import { isNegativeTask, slipsToday, slipPatch, undoSlipPatch, cleanDayPatch, nextSlipIsFree, lastSlipWasFree, closeDayPatch, reopenDayPatch, windowCloseDayPatch } from '../utils/negativeHabits';
 import { creditShieldUntil, extendShieldUntil, penaltyChargeFor, penaltyCreditFor, slipPenaltyUntil, uncreditShieldUntil } from '../utils/penaltyShield';
 // One name per line, deliberately, and not to be re-joined. See the note
@@ -271,6 +272,7 @@ import {
   sunLocationOn,
 } from '../utils/visibilityUtils';
 import { openTasksOf } from '../utils/openTasks';
+import { isProjectHidden, useProjectLockStore } from './useProjectLockStore';
 import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
 import { categoryLabel } from '../utils/categoryLabel';
 import {
@@ -1337,6 +1339,15 @@ function liveListRows(tasks: Task[], heldIds: string[]): Task[] {
   return withHeldCompletions(tasks.filter(t => !t.completed || held.has(t.id)), heldIds);
 }
 
+// A task whose project is behind Face ID and not yet unlocked. A display rule
+// only: the task stays due and keeps repeating (see utils/projectLock.ts). The
+// list lenses keep such a task, since its row draws itself redacted
+// (LockedTaskRow); only lists that print a title with no row (the Logbook, the
+// archive) leave it out.
+function isLockedAway(task: Pick<Task, 'projectId'>): boolean {
+  return isProjectHidden(task.projectId);
+}
+
 // A daily target whose row is still playing out its send-off (see
 // QUOTA_HOLD_BACKSTOP_MS) counts as on Today even though the pace gate has
 // closed on it — and correspondingly isn't in Later yet, since the two lists
@@ -1494,6 +1505,8 @@ interface TaskStore extends UndoHistoryActions {
   // Ids of tasks completed within the last COMPLETION_HOLD_MS — see
   // withHeldCompletions above.
   completionHoldIds: string[];
+  /** Mirrors useProjectLockStore.revision so a lock change re-runs the list selectors. */
+  lockRevision: number;
   // The subset of those rows that has been told to shrink away. Set in one
   // go once the burst settles, so every row completed in it closes its gap
   // together (see COMPLETION_COLLAPSE_MS) — TaskItem watches for its own id
@@ -2746,6 +2759,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
   ...undoHistoryActions(set, get),
   completionHoldIds: [],
+  lockRevision: 0,
   completionCollapseIds: [],
   quotaHoldIds: [],
 
@@ -4580,6 +4594,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       ...task,
       progressCount: task.progressCount + 1,
       ...(hadCountdown ? { timerStartedAt: null, timerElapsedSeconds: 0 } : {}),
+      // streakDate is stamped too: the first unit of a task that has never
+      // completed would otherwise leave a total with no date to read it by.
+      ...(countsUnits(task)
+        ? { streakCount: task.streakCount + 1, streakDate: task.streakDate ?? getCurrentDayStart().toISOString() }
+        : {}),
     };
     dbUpdateTask(updated);
     set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
@@ -4706,7 +4725,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   unlogQuotaUnit(id) {
     const task = get().tasks.find(t => t.id === id);
     if (!task || !isQuotaTask(task) || task.progressCount === 0) return;
-    const updated = { ...task, progressCount: task.progressCount - 1 };
+    const updated = {
+      ...task,
+      progressCount: task.progressCount - 1,
+      ...(countsUnits(task) && task.streakCount > 0 ? { streakCount: task.streakCount - 1 } : {}),
+    };
     dbUpdateTask(updated);
     set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
     // The unit being taken back is the dose that unit recorded, and only that
@@ -4912,14 +4935,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // `nextStreak` reused for both fields the same way completeTask does,
       // so nextStreakRecord folds nothing when it's unchanged.
       const neutral = task.quotaPeriod !== 'week' && !isCategoryScheduledDay(task.category, new Date(ownPeriodStart));
-      const nextStreak = neutral ? task.streakCount : 0;
+      // A weekly target counting units is a total, so a short week keeps it.
+      const keepsStreak = neutral || countsUnits(task);
+      const nextStreak = keepsStreak ? task.streakCount : 0;
       closed.push({
         ...task,
         completed: true,
         completedAt: ownDayEnd.toISOString(),
         // progressCount deliberately left as-is — that's the record.
         streakCount: nextStreak,
-        streakDate: neutral ? task.streakDate : null,
+        streakDate: keepsStreak ? task.streakDate : null,
         previousStreakCount: task.streakCount,
         previousStreakDate: task.streakDate,
         // A partial day closes the run out, so the run it ends is a candidate
@@ -4962,7 +4987,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         // forward exactly as it stood — a non-work day never happened, so
         // the successor picking it up must not read as day one either.
         streakCount: nextStreak,
-        streakDate: neutral ? task.streakDate : null,
+        streakDate: keepsStreak ? task.streakDate : null,
         previousStreakCount: 0,
         previousStreakDate: null,
         // Not 0, unlike everything else reset on this successor: the streak
@@ -8326,7 +8351,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       previousStreakDate: null,
       priorBestStreak: 0,
       showStreak: false,
-      streakRequiresWindow: false,
+      streakRequiresWindow: false, streakCountsUnits: false,
       polarity: 'positive',
       slipCount: 0,
       slipDate: null,
@@ -8553,7 +8578,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       previousStreakDate: null,
       priorBestStreak: 0,
       showStreak: false,
-      streakRequiresWindow: false,
+      streakRequiresWindow: false, streakCountsUnits: false,
       polarity: 'positive',
       slipCount: 0,
       slipDate: null,
@@ -9961,12 +9986,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       done = tasks.filter(t => !t.parentId && t.completed && t.completedAt);
       completedTasksCache.set(tasks, done);
     }
-    return done;
+    // Not cached: the lock changes without the task array doing so.
+    return useProjectLockStore.getState().lockedIds.length === 0 ? done : done.filter(t => !isLockedAway(t));
   },
 
   archivedTasks() {
     return openTasksOf(get().tasks)
-      .filter(t => !t.parentId && t.archived && !t.completed)
+      .filter(t => !t.parentId && t.archived && !t.completed && !isLockedAway(t))
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
@@ -10214,3 +10240,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 // src/utils/blockerRegistry.ts for why this is a getter rather than a snapshot.
 registerTaskSource(() => useTaskStore.getState().tasks);
 registerPersonTaskSource(() => useTaskStore.getState().tasks);
+
+// The list selectors above read the project lock at call time, and a selector
+// only re-runs when this store changes, so a lock or unlock writes here too.
+useProjectLockStore.subscribe((state, prev) => {
+  if (state.revision !== prev.revision) useTaskStore.setState({ lockRevision: state.revision });
+});

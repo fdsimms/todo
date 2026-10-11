@@ -33,6 +33,7 @@ import { recordDose } from './doseRecording';
 import { haptics } from './haptics';
 import { parseQueuedDreams } from './dreamQueue';
 import { useJournalStore } from '../store/useJournalStore';
+import { isProjectLocked } from '../store/useProjectLockStore';
 
 const DEBOUNCE_MS = 300;
 
@@ -328,6 +329,8 @@ function widgetUpcoming(deferred: readonly Task[], now: Date): { task: Task; vis
   return deferred.map(task => ({ task, visibleAt: getVisibleAt(task, pass) }));
 }
 
+const notLocked = (t: Task) => !isProjectLocked(t.projectId);
+
 function writeSnapshotNow(): void {
   if (Platform.OS !== 'ios') return;
   const now = new Date();
@@ -342,9 +345,11 @@ function writeSnapshotNow(): void {
 
   const snapshot = buildWidgetSnapshot({
     now,
-    visibleTasks: tasks.visibleTasks(),
-    pinnedTasks: tasks.pinnedTasks(),
-    allTasks: tasks.tasks,
+    // A widget can't ask for Face ID, so a locked project stays off it even
+    // while the app is unlocked.
+    visibleTasks: tasks.visibleTasks().filter(notLocked),
+    pinnedTasks: tasks.pinnedTasks().filter(notLocked),
+    allTasks: tasks.tasks.filter(notLocked),
     categories: useCategoryStore.getState().categories.map(c => c.name),
     dayResetTime,
     doneToday: completedOnDay(tasks.tasks, todayKey, dayResetTime).length,
@@ -392,7 +397,7 @@ function writeSnapshotNow(): void {
         }
       : null,
     dayEnd: addDays(getDayStart(now, dayResetTime), 1),
-    upcoming: widgetUpcoming(tasks.deferredTasks(), now),
+    upcoming: widgetUpcoming(tasks.deferredTasks().filter(notLocked), now),
     mealLogPrompt: settings.mealLogPrompt,
   });
 

@@ -1,4 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
+import { useWithoutLockedTasks } from '../hooks/useWithoutLockedTasks';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -44,7 +45,7 @@ export function SavedViewsScreen() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const views = useSavedViewStore(useShallow(s => s.views));
-  const allTasks = useTaskStore(s => s.tasks);
+  const allTasks = useWithoutLockedTasks(useTaskStore(s => s.tasks));
   const projects = useProjectStore(useShallow(s => s.projects));
 
   const [editorVisible, setEditorVisible] = useState(false);

@@ -8,6 +8,7 @@
 // The row is rendered on several screens, and `duplicateRow` marks the pinned
 // copy so two rows never claim one task id in the paint-select registry (see
 // the Pinning note in CLAUDE.md).
+import { countsUnits } from '../utils/streakUnits';
 import React, { useRef, useState, useMemo, useEffect } from 'react';
 import {
   View,
@@ -36,6 +37,9 @@ import Reanimated, {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { PinIcon } from './PinIcon';
+import { LockedTaskRow } from './LockedTaskRow';
+import { useProjectLockStore } from '../store/useProjectLockStore';
+import { isProjectLockedAway } from '../utils/projectLock';
 import { CoinIcon } from './CoinIcon';
 import type { Task, GroceryItem, ItemSubLink, ItemProduct, Recipe, ChainItem } from '../types';
 import { MEAL_SLOT_ICONS, MEAL_SLOT_LABELS, PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
@@ -353,7 +357,7 @@ function filedOfferLabel(parsed: ParsedCategoryAndTags, categories: Parameters<t
 const markerFitCache = new Map<string, boolean>();
 const NBSP = '\u00A0';
 
-export const TaskItem = React.memo(function TaskItem({
+const TaskItemRow = React.memo(function TaskItem({
   task,
   onPress,
   rowKey,
@@ -3565,6 +3569,8 @@ export const TaskItem = React.memo(function TaskItem({
                     ? shownStreak > 0
                       ? `${shownStreak} clean ${shownStreak === 1 ? 'day' : 'days'}${atRecord ? ', the longest this task has had' : ''}`
                       : 'No clean days yet'
+                  : countsUnits(task)
+                    ? `Done ${shownStreak} ${shownStreak === 1 ? 'time' : 'times'}`
                   : atRecord
                     ? `${shownStreak} day streak, the longest this task has had`
                     : shownStreak > 0
@@ -5756,4 +5762,15 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => StyleSheet.create({
   iconActionBtnAccent: {
     backgroundColor: colors.accentSubtle,
   },
+});
+
+/**
+ * The row every list renders. A task in a locked project draws as
+ * `LockedTaskRow` (dates kept, title and the rest hidden) and the real row,
+ * with all its hooks, mounts only once the project is unlocked.
+ */
+export const TaskItem = React.memo(function TaskItem(props: React.ComponentProps<typeof TaskItemRow>) {
+  const locked = useProjectLockStore(s => isProjectLockedAway(props.task.projectId, s.lockedIds, s.unlocked));
+  if (locked) return <LockedTaskRow task={props.task} indented={props.indented} />;
+  return <TaskItemRow {...props} />;
 });

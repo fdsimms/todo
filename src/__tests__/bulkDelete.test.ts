@@ -56,7 +56,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   penaltyFiredAt: null,
   penaltyCreditedAt: null,
   gatesApps: false,
-  showStreak: false, streakRequiresWindow: false,
+  showStreak: false, streakRequiresWindow: false, streakCountsUnits: false,
   parentId: null, groupId: null, projectId: null,
   chainEnabled: false, chainIndex: 0, chainItems: [], chainStepOnSchedule: false, vacationPause: false, excludeFromSuggestions: false,
   followUpTaskEveryN: null, followUpTaskTitle: null, followUpTaskDraft: null,

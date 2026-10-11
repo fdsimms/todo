@@ -1,4 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useProjectLockStore } from '../store/useProjectLockStore';
+import { isProjectLockedAway } from '../utils/projectLock';
+import { useWithoutLockedTasks } from '../hooks/useWithoutLockedTasks';
 import {
   Keyboard,
   View,
@@ -295,7 +298,9 @@ function QuickSearchProjectRow({ result, onSelect, styles, colors }: {
   colors: Colors;
 }) {
   const { project, titleMatches, progress } = result;
-  const progressLabel = progress.total === 0 ? 'No tasks yet' : `${progress.done}/${progress.total} done`;
+  // Its tasks are filtered out of the search, so an empty count would be a lie.
+  const locked = useProjectLockStore(st => isProjectLockedAway(project.id, st.lockedIds, st.unlocked));
+  const progressLabel = locked ? 'Locked' : progress.total === 0 ? 'No tasks yet' : `${progress.done}/${progress.total} done`;
   return (
     <TouchableOpacity
       style={styles.resultRow}
@@ -394,7 +399,8 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
   const { isDark, shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const tasks = useTasksWhileOpen(visible);
+  // A locked project's tasks are not findable until it is unlocked.
+  const tasks = useWithoutLockedTasks(useTasksWhileOpen(visible));
   const projects = useProjectStore(s => s.projects);
   const groups = useTaskGroupStore(s => s.groups);
   const recentSearches = useSettingsStore(useShallow(s => s.recentSearches));

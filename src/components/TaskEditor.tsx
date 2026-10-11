@@ -868,6 +868,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const followsWaterTarget =
     targetCount !== null && quotaPeriod === 'day' && logHealthMetric === 'waterMl' && logHealthAmount !== null;
   const [streakRequiresWindow, setStreakRequiresWindow] = useState(false);
+  const [streakCountsUnits, setStreakCountsUnits] = useState(false);
 
   // Every picker section starts collapsed to its current value; opening one is
   // an explicit tap, so the form reads as a list of named fields rather than a
@@ -1177,6 +1178,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       setQuotaRampEvery(task.quotaRampEvery ?? 1);
       setQuotaRampGoal(task.quotaRampGoal ?? null);
       setStreakRequiresWindow(task.streakRequiresWindow ?? false);
+      setStreakCountsUnits(task.streakCountsUnits ?? false);
       setLinkUrl(task.linkUrl ?? null);
       setCompletionTimerMinutes(task.completionTimerMinutes ?? null);
       setCompletionTimerNote(task.completionTimerNote ?? null);
@@ -1213,7 +1215,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       // because the one before it was. A new field goes in both branches.
       setTitle(initialDraft?.title ?? ''); titleCaret.resetCaret(initialDraft?.title ?? ''); setNotes(initialDraft?.notes ?? ''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
-      setDueDate(initialDraft?.dueDate ?? null); setExtraDates(initialDraft?.extraDates ?? []); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setDeadlineTime(null); setDeadlineTimePickerOpen(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(initialDraft?.windowEnd ?? null); setWindowStartSun(initialDraft?.windowStartSun ?? null); setWindowEndSun(initialDraft?.windowEndSun ?? null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day'); setQuotaRampStep(null); setQuotaRampEvery(1); setQuotaRampGoal(null); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setProrateFirstWeek(true); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setWeatherWait(initialDraft?.weatherWait ?? null); setWeatherWaitOpen(false); setMeterInput(meterInputFromDraft(initialDraft)); setMeterOpen(false); setMeterReadingText(''); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
+      setDueDate(initialDraft?.dueDate ?? null); setExtraDates(initialDraft?.extraDates ?? []); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setDeadlineTime(null); setDeadlineTimePickerOpen(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(initialDraft?.windowEnd ?? null); setWindowStartSun(initialDraft?.windowStartSun ?? null); setWindowEndSun(initialDraft?.windowEndSun ?? null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day');  setStreakCountsUnits(false); setQuotaRampStep(null); setQuotaRampEvery(1); setQuotaRampGoal(null); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setProrateFirstWeek(true); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setWeatherWait(initialDraft?.weatherWait ?? null); setWeatherWaitOpen(false); setMeterInput(meterInputFromDraft(initialDraft)); setMeterOpen(false); setMeterReadingText(''); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceMonthDay(initialDraft?.recurrenceMonthDay ?? null);
@@ -1396,6 +1398,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       slipAllowance: task ? (task.slipAllowance ?? null) : null,
       showStreak: task ? (task.showStreak ?? false) : initialDraft?.polarity === 'negative',
       streakRequiresWindow: task?.streakRequiresWindow ?? false,
+      streakCountsUnits: task?.streakCountsUnits ?? false,
       linkUrl: task ? (task.linkUrl ?? null) : (initialDraft?.linkUrl ?? null),
       completionTimerMinutes: task ? (task.completionTimerMinutes ?? null) : (initialDraft?.completionTimerMinutes ?? null),
       completionTimerNote: task ? (task.completionTimerNote ?? null) : (initialDraft?.completionTimerNote ?? null),
@@ -2188,6 +2191,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       // for such a task), so this doesn't also need timeSegments/windowEnd to
       // still be set — only the editor's own row is gated on that.
       streakRequiresWindow: recurrenceType !== 'none' && streakRequiresWindow,
+      streakCountsUnits: recurrenceType !== 'none' && quotaPeriod === 'week' && targetCount !== null && streakCountsUnits,
       linkUrl: resolveLinkUrl(),
       completionTimerMinutes,
       completionTimerNote,
@@ -3024,6 +3028,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       slipAllowance,
       showStreak,
       streakRequiresWindow,
+      streakCountsUnits,
       linkUrl,
       completionTimerMinutes,
       completionTimerNote,
@@ -8030,6 +8035,36 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                   </View>
                   <View style={[styles.toggle, streakRequiresWindow && styles.toggleOn]}>
                     <View style={[styles.toggleKnob, streakRequiresWindow && styles.toggleKnobOn]} />
+                  </View>
+                </TouchableOpacity>
+              </>
+            ),
+          }] : []),
+          // A weekly target only (see Task.streakCountsUnits): the chip then
+          // totals every unit logged instead of weeks in a row.
+          ...(recurrenceType !== 'none' && quotaPeriod === 'week' && targetCount !== null ? [{
+            key: 'streakCountsUnits', label: 'Streak counts every time', set: streakCountsUnits,
+            keywords: ['total', 'count', 'weekly', 'week', 'target', 'times', 'units'],
+            node: (
+              <>
+                <TouchableOpacity
+                  style={styles.optionRow}
+                  onPress={() => {
+                    haptics.tap();
+                    setStreakCountsUnits(v => !v);
+                  }}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="switch"
+                  accessibilityLabel="Streak counts every time"
+                  accessibilityState={{ checked: streakCountsUnits }}
+                >
+                  <Ionicons name="repeat-outline" size={18} color={streakCountsUnits ? colors.orangeText : colors.textSecondary} />
+                  <View style={styles.optionContent}>
+                    <Text style={styles.optionLabel}>Streak counts every time</Text>
+                    <Text style={styles.optionHint}>Count each time you log this task instead of the weeks in a row you hit the target. A short week doesn’t reset it</Text>
+                  </View>
+                  <View style={[styles.toggle, streakCountsUnits && styles.toggleOn]}>
+                    <View style={[styles.toggleKnob, streakCountsUnits && styles.toggleKnobOn]} />
                   </View>
                 </TouchableOpacity>
               </>

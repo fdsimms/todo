@@ -10,6 +10,7 @@ import { AppLockGate } from './src/components/AppLockGate';
 import { FirstRunHost } from './src/components/FirstRunSheet';
 import { FlagCopyHost } from './src/components/FlagCopyHost';
 import { useTaskStore } from './src/store/useTaskStore';
+import { useProjectLockStore } from './src/store/useProjectLockStore';
 import { useSettingsStore } from './src/store/useSettingsStore';
 import { requestNotificationPermissions, isAlarmKitAvailable, requestAlarmAuthorization } from './src/utils/notifications';
 import { useDailyAgendaSync } from './src/utils/dailyAgendaSync';
@@ -132,6 +133,7 @@ function AppGate() {
     (async () => {
       runStartupStep('initialize tasks', () => useTaskStore.getState().initialize());
       runStartupStep('load settings', () => useSettingsStore.getState().initialize());
+      runStartupStep('load project locks', () => useProjectLockStore.getState().initialize());
       runStartupStep('load sync state', () => useSyncStore.getState().initialize());
       await Promise.all([preloadAppFont(useSettingsStore.getState().appFont), preloadBrandFonts()]);
       markMilestone('splash can hide');

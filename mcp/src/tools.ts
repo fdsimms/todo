@@ -192,6 +192,8 @@ export interface GetTaskResult {
   excludeFromSuggestions?: true;
   /** A completion outside the task's own time window counts as done but does not extend the streak (`streakRequiresWindow`). */
   streakRequiresWindow?: true;
+  /** A weekly target's streak totals every unit logged instead of weeks in a row (`streakCountsUnits`). */
+  streakCountsUnits?: true;
   /**
    * Read-only, deliberately: a gate or penalty blocks apps on the phone, so
    * only the person sets one. (`medication` below is writable: it makes
@@ -396,6 +398,7 @@ export function getTask(replica: Replica, id: string): GetTaskResult | null {
     reminderRule: describeReminderRule(task) ?? undefined,
     excludeFromSuggestions: task.excludeFromSuggestions ? true : undefined,
     streakRequiresWindow: task.streakRequiresWindow ? true : undefined,
+    streakCountsUnits: task.streakCountsUnits ? true : undefined,
     gatesApps: task.gatesApps ? true : undefined,
     penalty: task.penaltyMinutes != null
       ? {

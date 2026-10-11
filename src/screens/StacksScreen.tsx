@@ -1,4 +1,5 @@
 import React, { useMemo, useRef, useState, useCallback } from 'react';
+import { useWithoutLockedTasks } from '../hooks/useWithoutLockedTasks';
 import {
   View,
   Text,
@@ -63,7 +64,7 @@ export function StacksScreen() {
 
   const groups = useTaskGroupStore(s => s.groups);
   const createGroup = useTaskGroupStore(s => s.createGroup);
-  const allTasks = useTaskStore(s => s.tasks);
+  const allTasks = useWithoutLockedTasks(useTaskStore(s => s.tasks));
   const bulkDeleteGroups = useTaskStore(s => s.bulkDeleteGroups);
   const bulkSetGroupCategory = useTaskStore(s => s.bulkSetGroupCategory);
   const categories = useCategoryStore(useShallow(s => s.categories));
