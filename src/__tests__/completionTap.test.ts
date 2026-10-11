@@ -259,6 +259,10 @@ describe('completionTapFor', () => {
       expect(completionTapFor({ ...baseTask, generatedKind: kind } as Task)).toBe('open-log');
     });
 
+    it('is an ordinary tick once the entry exists', () => {
+      expect(completionTapFor({ ...baseTask, generatedKind: 'moodLog' } as Task, true)).toBe('complete');
+    });
+
     it('is still an ordinary tick for any other generated task', () => {
       expect(completionTapFor({ ...baseTask, generatedKind: 'moodNudge' } as Task)).toBe('complete');
     });

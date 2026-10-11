@@ -86,9 +86,9 @@ away, off by default, and each opens its sheet through
 - **Saving a new entry for today completes that kind's reminder**
   (`completeJournalTaskForToday`); a backdated or edited one does not, for the
   mood sheet's reason.
-  It is also the only thing that does: the reminder's checkbox opens the sheet
-  and `completeTask` refuses a manual completion (`recordTasks.ts`; see the mood
-  log's "The two generators").
+  Until an entry exists the reminder's checkbox opens the sheet and
+  `completeTask` refuses a tick; afterwards the row reads ready (`recordTasks.ts`;
+  see the mood log's "The two generators").
 
 ## Read back beside the mood log
 

@@ -117,7 +117,7 @@ import { generatedBy, generatedSourceOf, generatedTaskCountOf, generatorPausedFo
 import { setGeneratorEnabled } from './generatorSwitch';
 import { featureHidden } from '../utils/simpleMode';
 import { CALENDAR_REVIEW_TITLE, calendarReviewDayKey, wantsCalendarReview } from '../utils/calendarReviewTasks';
-import { isAnsweredByRecord } from '../utils/recordTasks';
+import { isAnsweredByRecord, isRecordAnswered } from '../utils/recordTasks';
 import { MOOD_LOG_LINK_URL, MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, moodLogDayKey, moodLogSourceId, moodNudgeNotes, wantsMoodNudge } from '../utils/moodTasks';
 import { DREAM_LOG_TITLE, JOURNAL_TASK_KIND, journalLogTitle, journalLogUrl, journalTaskDayKey, journalTaskSourceId } from '../utils/journalTasks';
 import {
@@ -2682,6 +2682,15 @@ function negativeHabitDuePatch(task: Task, todayStart: Date, resetTime: string):
   return { dueDate: next.toISOString(), recurrenceAnchorDate: null };
 }
 
+/** Whether the entry a mood, journal, dream or weigh-in task asks for exists right now. */
+function recordTaskAnswered(task: Task): boolean {
+  return isRecordAnswered(task, {
+    moodLogs: useMoodStore.getState().logs,
+    journalEntries: useJournalStore.getState().entries,
+    weighInAnsweredOn: useHealthStore.getState().weighInAnsweredOn,
+  });
+}
+
 export const useTaskStore = create<TaskStore>((set, get) => ({
   tasks: [],
   tagRegistry: [],
@@ -3662,10 +3671,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // is precisely the row that is supposed to sit there all day. `logSlip` is
     // the action this polarity has instead.
     if (isNegativeTask(task)) return;
-    // A task a record answers (mood, journal, dream, weigh-in) is completed by
-    // saving that record and by nothing else; see recordTasks.ts. A missed mark
-    // claims nothing, so the sweep still closes one out.
-    if (isAnsweredByRecord(task) && !missed && !options?.recorded) return;
+    // A task a record answers (mood, journal, dream, weigh-in) completes only
+    // once that record exists (the tick on a ready row) or from the sheet's own
+    // save; see recordTasks.ts. A missed mark claims nothing, so the sweep still
+    // closes one out.
+    if (isAnsweredByRecord(task) && !missed && !options?.recorded) {
+      if (!recordTaskAnswered(task)) return;
+      options = { ...options, recorded: true };
+    }
     // Recurring tasks shown early in Later (deferred to, or due on, a future
     // day) can't be completed ahead of schedule — doing so would generate the
     // next occurrence off today instead of the task's real day. Non-recurring
@@ -7534,19 +7547,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         .filter(task => moodLogDayKey(task) !== todayKey || task.generatedSourceId !== sourceId)
         .forEach(task => deleteGeneratedTaskQuietly(task.id));
 
-      // Computed ahead of the once-a-slot mark below: an entry saved some other
-      // way (Claude over MCP, another device) lands after the check-in was
-      // written, and the check-in has no manual completion, so this is what
-      // closes it. Any-time: was the day logged at all; a segment: was
-      // anything logged since it began.
+      // Whether this slot is already answered. Read for the write below only: a
+      // live check-in whose entry arrived some other way is made ready by
+      // `isRecordAnswered` on its row, not completed here.
       const answered = sourceId !== null && (segment
         ? hasLoggedSince(logs, timeSegmentThreshold(segment).toISOString())
         : hasLogOnDay(logs, todayKey));
-      if (answered) {
-        const live = liveGeneratedTasksOfKind(get().tasks, 'moodLog')
-          .find(task => task.generatedSourceId === sourceId);
-        if (live) get().completeTask(live.id, { recorded: true });
-      }
 
       // Recorded before the "already logged" check below and unconditionally,
       // for the reason calendarReviewLastDayKey is: a slot already decided
@@ -7661,13 +7667,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       const answered = segment
         ? hasLoggedSince(written, timeSegmentThreshold(segment).toISOString())
         : hasLogOnDay(written, todayKey);
-      // Ahead of the once-a-slot mark for checkMoodTasks' reason: an entry saved
-      // some other way closes a reminder that has no manual completion.
-      if (answered) {
-        const live = liveGeneratedTasksOfKind(get().tasks, generatedKind)
-          .find(task => task.generatedSourceId === sourceId);
-        if (live) get().completeTask(live.id, { recorded: true });
-      }
       if (lastKey === sourceId) return;
       // Stamped before deciding, so a swiped-away reminder stays away for its slot.
       setLastKey(sourceId);
@@ -7873,15 +7872,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
     const everyDays = clampWeighInEveryDays(settings.weighInEveryDays);
 
-    // A request already on the list is closed by a reading in its window, however
-    // the reading got there (the Health app, a smart scale): the request has no
-    // manual completion, so this is the only other way it ends. A null read says
-    // nothing either way, so the request stays.
+    // A request already on the list reads ready once a reading lands in its
+    // window, however it got there (the Health app, a smart scale). Only the
+    // answer is kept, as a day key, for the row to read; the tick is still the
+    // person's. A null read says nothing either way, so the marker is left alone.
     const liveRequest = liveGeneratedTasksOfKind(get().tasks, 'weighIn')
       .find(task => weighInDayKey(task) === todayKey);
     if (liveRequest) {
       const recent = await useHealthStore.getState().readRecentWeights(everyDays);
-      if (recent !== null && !wantsWeighIn(recent)) get().completeTask(liveRequest.id, { recorded: true });
+      if (recent !== null) {
+        useHealthStore.getState().setWeighInAnsweredOn(wantsWeighIn(recent) ? null : todayKey);
+      }
       return;
     }
 

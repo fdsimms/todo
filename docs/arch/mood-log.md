@@ -211,18 +211,21 @@ does real work in a background run. `useTaskStore.initialize()`'s fan-out loads
 the mood log, which is what makes that true.
 It carries `dundundun://mood?log=1` so the row opens the sheet that answers it.
 
-**Saving the entry is the only thing that completes it.** The app knows from the
-mood log whether the question was answered, so a tick that completes the task on
-its own can only disagree with that: the question marked answered while no answer
-is recorded. The journal, dream and weigh-in reminders are the same shape, and
-`src/utils/recordTasks.ts` lists the four. Their checkbox opens the sheet
-(`'open-log'` in `completionTap.ts`), and `completeTask` refuses every completion
-except the sheet's own `complete…TaskForToday` (`CompletionOptions.recorded`) and
-a missed mark, which claims nothing. Same funnel the negative-habit refusal uses,
-so the widget, bulk bar and MCP server can't get round it. An entry saved some
-other way (Claude over MCP, another device, a weight written to Health by a
-scale) never reaches the sheet's completion, so each generator pass also closes
-a live reminder whose slot is already answered, with the same `recorded` flag.
+**The tick is gated on the entry, and the row reads ready when it exists.** The
+app knows from the mood log whether the question was answered, so a tick that
+completes the task regardless can only disagree with that: the question marked
+answered while no answer is recorded. The journal, dream and weigh-in reminders
+are the same shape, and `src/utils/recordTasks.ts` lists the four. Until the
+entry exists the checkbox opens the sheet (`'open-log'` in `completionTap.ts`)
+and `completeTask` refuses; `isRecordAnswered` (read by `useRecordTaskReady`)
+then makes the row ready, the green ring `health` and the pantry check use, and
+the tick completes it. Nothing completes the task on its own except the sheet's
+own save (`complete…TaskForToday`, `CompletionOptions.recorded`), which is the
+tick done for you at the one moment the person just did the thing. A missed mark
+claims nothing and is never gated. An entry saved some other way (Claude over
+MCP, another device) makes the row ready with no pass involved. A weigh-in is
+answered by a reading only Health can report, so `checkWeighInTasks` records the
+answer as a day key (`weighInAnsweredOn`, memory only) for the row to read.
 
 `moodLogTimeSegments` holds the check-in back until a part of the day, the
 same shape `calendarReviewTimeSegment` has for its one segment, read once at

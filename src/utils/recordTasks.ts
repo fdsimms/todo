@@ -1,7 +1,9 @@
-import type { Task } from '../types';
-import { journalLogUrl } from './journalTasks';
-import { MOOD_LOG_LINK_URL } from './moodTasks';
-import { WEIGH_IN_LINK_URL } from './weightTasks';
+import type { JournalEntry, MoodLog, Task } from '../types';
+import { journalLogUrl, journalTaskDayKey } from './journalTasks';
+import { hasLogOnDay, hasLoggedSince } from './moodLog';
+import { MOOD_LOG_LINK_URL, moodLogDayKey } from './moodTasks';
+import { timeSegmentThreshold } from './visibilityUtils';
+import { WEIGH_IN_LINK_URL, weighInDayKey } from './weightTasks';
 
 /**
  * The generated tasks that ask for a record, and are answered by the record.
@@ -10,11 +12,15 @@ import { WEIGH_IN_LINK_URL } from './weightTasks';
  * "Record your weight" each have a sheet, and saving an entry for today
  * completes the task (`completeMoodLogTaskForToday` and its three siblings). So
  * the app already knows whether the thing was done, and a checkbox that
- * completes the task on its own can only disagree with that: it marks the
- * question answered with no answer recorded. These rows have no manual
- * completion. Their checkbox opens the sheet (`'open-log'` in `completionTap.ts`),
- * and `completeTask` refuses anything but the sheet's own save
- * (`CompletionOptions.recorded`) or a missed mark, which claims nothing.
+ * completes the task regardless can only disagree with that: it marks the
+ * question answered with no answer recorded.
+ *
+ * So the tick is gated on the record, the way `health.ts`'s readings gate a
+ * health task: until `isRecordAnswered` says there is an entry, the checkbox
+ * opens the sheet (`'open-log'` in `completionTap.ts`) and `completeTask`
+ * refuses; once there is one, the row reads *ready* and the tick completes it.
+ * Nothing here completes a task on its own. A missed mark claims nothing, so
+ * it is never gated.
  */
 const RECORD_KINDS: ReadonlySet<string> = new Set(['moodLog', 'journalLog', 'dreamLog', 'weighIn']);
 
@@ -37,5 +43,55 @@ export function recordLogUrl(task: Pick<Task, 'generatedKind'>): string | null {
     case 'dreamLog': return journalLogUrl('dream');
     case 'weighIn': return WEIGH_IN_LINK_URL;
     default: return null;
+  }
+}
+
+/** What `isRecordAnswered` reads, gathered by the caller so the rule needs no store. */
+export interface RecordContext {
+  moodLogs: readonly Pick<MoodLog, 'dayKey' | 'loggedAt'>[];
+  journalEntries: readonly Pick<JournalEntry, 'kind' | 'dayKey' | 'loggedAt'>[];
+  /** The day a weigh-in request was last found answered by a reading, or null. */
+  weighInAnsweredOn: string | null;
+}
+
+/** The part of the day a check-in or journal reminder was raised for, off its source id. */
+function segmentOfSource(task: Pick<Task, 'generatedSourceId'>): Parameters<typeof timeSegmentThreshold>[0] | null {
+  const source = task.generatedSourceId ?? '';
+  const sep = source.indexOf(':');
+  return sep === -1 ? null : (source.slice(sep + 1) as Parameters<typeof timeSegmentThreshold>[0]);
+}
+
+/**
+ * Whether the entry this task asks for exists, which is what makes its row ready.
+ *
+ * The same question the generating pass asks before writing the task, read
+ * back: an any-time reminder is answered by an entry on its day, one raised for
+ * a part of the day by an entry since that part began. A weigh-in is answered by
+ * a reading in its window, which only Health can say, so the pass records the
+ * answer (`weighInAnsweredOn`) rather than the row reading Health on every render.
+ */
+export function isRecordAnswered(task: Task, ctx: RecordContext): boolean {
+  switch (task.generatedKind) {
+    case 'moodLog': {
+      const day = moodLogDayKey(task);
+      if (day === null) return false;
+      const segment = segmentOfSource(task);
+      return segment ? hasLoggedSince(ctx.moodLogs, timeSegmentThreshold(segment).toISOString()) : hasLogOnDay(ctx.moodLogs, day);
+    }
+    case 'journalLog':
+    case 'dreamLog': {
+      const kind = task.generatedKind === 'dreamLog' ? 'dream' : 'journal';
+      const day = journalTaskDayKey(task, kind);
+      if (day === null) return false;
+      const written = ctx.journalEntries.filter(e => e.kind === kind);
+      const segment = segmentOfSource(task);
+      return segment ? hasLoggedSince(written, timeSegmentThreshold(segment).toISOString()) : hasLogOnDay(written, day);
+    }
+    case 'weighIn': {
+      const day = weighInDayKey(task);
+      return day !== null && ctx.weighInAnsweredOn === day;
+    }
+    default:
+      return false;
   }
 }

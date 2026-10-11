@@ -6808,14 +6808,17 @@ describe('checkMoodTasks', () => {
       expect(check.linkUrl).toBe('dundundun://mood?log=1');
     });
 
-    it('closes a check-in itself when the entry was saved some other way', () => {
+    it('refuses a tick until the entry exists, then lets it through', () => {
       useTaskStore.getState().checkMoodTasks();
+      const [check] = tasksOfKind('moodLog');
+      useTaskStore.getState().completeTask(check.id);
       expect(tasksOfKind('moodLog')).toHaveLength(1);
 
-      // Logged over MCP or on another device: nothing here completes the task,
-      // and it has no manual completion, so the next pass has to.
+      // Logged over MCP or on another device: the row is ready, and the tick is
+      // the person's.
       setLogs([entry(TODAY, 4)]);
-      useTaskStore.getState().checkMoodTasks();
+      expect(tasksOfKind('moodLog')).toHaveLength(1);
+      useTaskStore.getState().completeTask(check.id);
       expect(tasksOfKind('moodLog')).toHaveLength(0);
     });
 
@@ -7184,22 +7187,17 @@ describe('checkJournalTasks', () => {
     expect(tasksOfKind('journalLog')).toHaveLength(1);
   });
 
-  it('closes a reminder itself when the entry was saved some other way', () => {
-    useSettingsStore.getState.mockReturnValue(settings({ dreamLogTasks: true }));
-    useTaskStore.getState().checkJournalTasks();
-    expect(tasksOfKind('dreamLog')).toHaveLength(1);
-
-    setEntries([written('dream', TODAY)]);
-    useTaskStore.getState().checkJournalTasks();
-    expect(tasksOfKind('dreamLog')).toHaveLength(0);
-  });
-
-  it('refuses a manual completion of a reminder a saved entry answers', () => {
+  it('refuses a tick on a reminder until its entry exists', () => {
     useSettingsStore.getState.mockReturnValue(settings({ dreamLogTasks: true }));
     useTaskStore.getState().checkJournalTasks();
     const [task] = tasksOfKind('dreamLog');
     useTaskStore.getState().completeTask(task.id);
     expect(tasksOfKind('dreamLog')).toHaveLength(1);
+
+    // Once the dream is written the row is ready, and the tick goes through.
+    setEntries([written('dream', TODAY)]);
+    useTaskStore.getState().completeTask(task.id);
+    expect(tasksOfKind('dreamLog')).toHaveLength(0);
   });
 });
 
@@ -7249,7 +7247,7 @@ describe('checkWeighInTasks', () => {
 
   afterEach(() => {
     jest.useRealTimers();
-    useHealthStore.setState({ readRecentWeights: realRead });
+    useHealthStore.setState({ readRecentWeights: realRead, weighInAnsweredOn: null });
   });
 
   it('asks when the window has no weight in it', async () => {
@@ -7257,20 +7255,28 @@ describe('checkWeighInTasks', () => {
     expect(requests().map(t => t.generatedSourceId)).toEqual(['2026-09-08']);
   });
 
-  it('closes a request itself once a weight lands in its window, and keeps it when the read says nothing', async () => {
+  it('marks a request answered once a weight lands in its window, and leaves it when the read says nothing', async () => {
     await on(8);
     expect(requests()).toHaveLength(1);
+    const id = requests()[0].id;
+    // Not answered yet: the tick is refused.
+    useTaskStore.getState().completeTask(id);
+    expect(requests()).toHaveLength(1);
 
-    // Health could not be asked: evidence of nothing, so the request stays.
+    // Health could not be asked: evidence of nothing.
     useHealthStore.setState({ readRecentWeights: jest.fn().mockResolvedValue(null) });
     await on(8);
-    expect(requests()).toHaveLength(1);
+    expect(useHealthStore.getState().weighInAnsweredOn).toBeNull();
 
-    // Weighed on the scale and written to Health, outside the sheet.
+    // Weighed on the scale and written to Health, outside the sheet: ready, and
+    // still the person's to tick.
     useHealthStore.setState({
       readRecentWeights: jest.fn().mockResolvedValue([{ dayKey: '2026-09-08', kilograms: 70 }]),
     });
     await on(8);
+    expect(useHealthStore.getState().weighInAnsweredOn).toBe('2026-09-08');
+    expect(requests()).toHaveLength(1);
+    useTaskStore.getState().completeTask(id);
     expect(requests()).toHaveLength(0);
   });
 

@@ -17,6 +17,7 @@ import { useColors } from '../theme/ThemeContext';
 import { animation, border, checkboxRadius, iconSize, interaction, spacing, type Colors } from '../theme';
 import { completionTapFor, offersMealLogOnCompletion } from '../utils/completionTap';
 import { recordLogUrl } from '../utils/recordTasks';
+import { useRecordTaskReady } from '../hooks/useRecordTaskReady';
 import { openInAppUrl } from '../utils/deepLinks';
 import { isQuotaPartial, quotaFraction } from '../utils/visibilityUtils';
 import { isFailedToday } from '../utils/negativeHabits';
@@ -102,7 +103,8 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
   const mountHoldMenu = useSheetMount(showHoldMenu);
   const scale = useRef(new Animated.Value(1)).current;
 
-  const action = completionTapFor(task);
+  const recordReady = useRecordTaskReady(task);
+  const action = completionTapFor(task, recordReady);
   // Ticks normally, then offerMealLog's "what did you eat?" sheet follows —
   // see offersMealLogOnCompletion's own doc comment for why this is a
   // separate flag rather than another `action` case.
@@ -192,8 +194,9 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
         }
         return;
       case 'open-log': {
-        // Same contract as 'review-project': the tap opens the sheet that
-        // records the entry, and saving it is what completes the task.
+        // Same contract as 'review-project': until there is an entry the tap
+        // opens the sheet that records it. Once there is one, the tap is a
+        // plain 'complete'.
         await haptics.tap();
         const url = recordLogUrl(task);
         if (url && !openInAppUrl(url)) {
@@ -255,6 +258,7 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
     : action === 'log-unit'
       ? `Log one of ${task.targetCount}${task.targetUnit ? ` ${task.targetUnit}` : ''}, ${formatQuotaProgress(task.progressCount, task.targetCount!, task.targetUnit)} done, ${label}`
     : action === 'uncomplete' ? `Mark ${label} as not done`
+    : recordReady ? `${label}, entry saved, complete`
     : `Complete ${label}`;
 
   return (
