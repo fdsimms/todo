@@ -30,7 +30,9 @@ export function LockedTaskRow({ task, indented = false }: { task: Task; indented
       accessible
       accessibilityLabel={`Locked task${when ? `, ${when}` : ''}`}
     >
-      <Ionicons name="lock-closed" size={16} color={colors.textTertiary} />
+      <View style={styles.iconSlot}>
+        <Ionicons name="lock-closed" size={16} color={colors.textTertiary} />
+      </View>
       <View style={styles.body}>
         <Text style={styles.title} numberOfLines={1}>Locked task</Text>
         {when !== '' && <Text style={styles.when} numberOfLines={1}>{when}</Text>}
@@ -60,6 +62,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgSecondary,
   },
   wrapperIndented: { marginHorizontal: 0 },
+  // The width of a checkbox, so a locked title lines up with the real ones.
+  iconSlot: { width: 22, alignItems: 'center' },
   body: { flex: 1 },
   title: {
     color: colors.textSecondary,
