@@ -7172,6 +7172,14 @@ describe('checkJournalTasks', () => {
     expect(tasksOfKind('dreamLog')).toHaveLength(0);
     expect(tasksOfKind('journalLog')).toHaveLength(1);
   });
+
+  it('refuses a manual completion of a reminder a saved entry answers', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ dreamLogTasks: true }));
+    useTaskStore.getState().checkJournalTasks();
+    const [task] = tasksOfKind('dreamLog');
+    useTaskStore.getState().completeTask(task.id);
+    expect(tasksOfKind('dreamLog')).toHaveLength(1);
+  });
 });
 
 describe('checkWeighInTasks', () => {

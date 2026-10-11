@@ -124,6 +124,13 @@ describe('completionRefusal', () => {
     expect(completionRefusal(makeTask({ polarity: 'negative' }))).toMatch(/slip/);
   });
 
+  it('refuses a task a saved entry answers, except for the save itself and a missed mark', () => {
+    const task = makeTask({ generatedKind: 'moodLog' });
+    expect(completionRefusal(task)).toMatch(/saving the entry/);
+    expect(completionRefusal(task, { recorded: true })).toBeNull();
+    expect(completionRefusal(task, { missed: true })).toBeNull();
+  });
+
   it('refuses a recurring task that is not due yet', () => {
     const later = new Date();
     later.setDate(later.getDate() + 5);

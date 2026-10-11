@@ -6,6 +6,7 @@ import { mealLogNudgeEntryId } from './mealLogNudgeTasks';
 import { isRotationTask } from './rotation';
 import { isNegativeTask } from './negativeHabits';
 import { projectReviewProjectId } from './projectReviewTasks';
+import { isAnsweredByRecord } from './recordTasks';
 
 /**
  * What a tap on a task's checkbox should do, for the surfaces that show a
@@ -28,6 +29,8 @@ export type CompletionTap =
   | 'pick-meal'
   /** A quiet project's review task — open the pull sheet, not the checkmark. */
   | 'review-project'
+  /** A task a record answers (mood, journal, dream, weigh-in) — open its sheet; saving the entry is what completes it. */
+  | 'open-log'
   /** A rotation (see utils/rotation.ts) — ask which member was done, then log that. */
   | 'pick'
   /** A daily target below its count: this tap logs one unit, not the lot. */
@@ -64,6 +67,9 @@ export type CompletionTap =
 export function completionTapFor(task: Task): CompletionTap {
   if (task.completed) return 'uncomplete';
   if (isNegativeTask(task)) return 'slip';
+  // Above every question below: the app knows from the saved entry whether
+  // this was done, so no tap here is allowed to say so (see recordTasks.ts).
+  if (isAnsweredByRecord(task)) return 'open-log';
   if (isRecurrenceNotYetDue(task)) return 'locked';
   // Ahead of the quota branch because it is the more specific claim about the
   // same tap: a rotation *is* a quota, so that branch would answer 'log-unit'

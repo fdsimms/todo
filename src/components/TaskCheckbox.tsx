@@ -16,6 +16,7 @@ import { useSheetMount } from '../hooks/useSheetMount';
 import { useColors } from '../theme/ThemeContext';
 import { animation, border, checkboxRadius, iconSize, interaction, spacing, type Colors } from '../theme';
 import { completionTapFor, offersMealLogOnCompletion } from '../utils/completionTap';
+import { recordLogUrl } from '../utils/recordTasks';
 import { openInAppUrl } from '../utils/deepLinks';
 import { isQuotaPartial, quotaFraction } from '../utils/visibilityUtils';
 import { isFailedToday } from '../utils/negativeHabits';
@@ -190,6 +191,20 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
           }
         }
         return;
+      case 'open-log': {
+        // Same contract as 'review-project': the tap opens the sheet that
+        // records the entry, and saving it is what completes the task.
+        await haptics.tap();
+        const url = recordLogUrl(task);
+        if (url && !openInAppUrl(url)) {
+          try {
+            await Linking.openURL(url);
+          } catch {
+            // silently ignore — no toast infra for this row-level action
+          }
+        }
+        return;
+      }
       case 'log-unit':
         await haptics.impactLight();
         scale.setValue(1);
@@ -236,6 +251,7 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
     : action === 'ask' ? `Complete ${label}, asks for an answer`
     : action === 'pick-meal' ? `${label}, pick a meal`
     : action === 'review-project' ? `${label}, review what to pull in`
+    : action === 'open-log' ? `${label}, opens the entry sheet`
     : action === 'log-unit'
       ? `Log one of ${task.targetCount}${task.targetUnit ? ` ${task.targetUnit}` : ''}, ${formatQuotaProgress(task.progressCount, task.targetCount!, task.targetUnit)} done, ${label}`
     : action === 'uncomplete' ? `Mark ${label} as not done`

@@ -117,7 +117,8 @@ import { generatedBy, generatedSourceOf, generatedTaskCountOf, generatorPausedFo
 import { setGeneratorEnabled } from './generatorSwitch';
 import { featureHidden } from '../utils/simpleMode';
 import { CALENDAR_REVIEW_TITLE, calendarReviewDayKey, wantsCalendarReview } from '../utils/calendarReviewTasks';
-import { MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, moodLogDayKey, moodLogSourceId, moodNudgeNotes, wantsMoodNudge } from '../utils/moodTasks';
+import { isAnsweredByRecord } from '../utils/recordTasks';
+import { MOOD_LOG_LINK_URL, MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, moodLogDayKey, moodLogSourceId, moodNudgeNotes, wantsMoodNudge } from '../utils/moodTasks';
 import { DREAM_LOG_TITLE, JOURNAL_TASK_KIND, journalLogTitle, journalLogUrl, journalTaskDayKey, journalTaskSourceId } from '../utils/journalTasks';
 import {
   WEIGH_IN_LINK_URL,
@@ -1698,6 +1699,8 @@ interface TaskStore extends UndoHistoryActions {
     /** Ask how the answer turned out after this long. See CompletionOptions.reviewAfter. */
     reviewAfter?: ReviewAfter | null;
     neutral?: boolean;
+    /** See CompletionOptions.recorded (taskCompletion.ts); set only by the complete…TaskForToday actions. */
+    recorded?: boolean;
     /** See CompletionOptions.byOther (taskCompletion.ts) — somebody else did it. */
     byOther?: boolean;
     completedAt?: string;
@@ -3659,6 +3662,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // is precisely the row that is supposed to sit there all day. `logSlip` is
     // the action this polarity has instead.
     if (isNegativeTask(task)) return;
+    // A task a record answers (mood, journal, dream, weigh-in) is completed by
+    // saving that record and by nothing else; see recordTasks.ts. A missed mark
+    // claims nothing, so the sweep still closes one out.
+    if (isAnsweredByRecord(task) && !missed && !options?.recorded) return;
     // Recurring tasks shown early in Later (deferred to, or due on, a future
     // day) can't be completed ahead of schedule — doing so would generate the
     // next occurrence off today instead of the task's real day. Non-recurring
@@ -7565,7 +7572,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
               // this the only thing to do with a check-in is tick it, which
               // completes the task without logging anything — the question
               // marked answered and no answer recorded.
-              linkUrl: 'dundundun://mood?log=1',
+              linkUrl: MOOD_LOG_LINK_URL,
               ...generatedBy('moodLog', sourceId),
             }),
           });
@@ -7908,7 +7915,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const task = liveGeneratedTasksOfKind(get().tasks, 'weighIn')
       .find(t => weighInDayKey(t) === todayKey);
     if (!task) return;
-    get().completeTask(task.id);
+    get().completeTask(task.id, { recorded: true });
   },
 
   completeJournalTaskForToday(kind) {
@@ -7916,7 +7923,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const task = liveGeneratedTasksOfKind(get().tasks, JOURNAL_TASK_KIND[kind])
       .find(t => journalTaskDayKey(t, kind) === todayKey);
     if (!task) return;
-    get().completeTask(task.id);
+    get().completeTask(task.id, { recorded: true });
   },
 
   completeMoodLogTaskForToday() {
@@ -7924,7 +7931,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const task = liveGeneratedTasksOfKind(get().tasks, 'moodLog')
       .find(t => moodLogDayKey(t) === todayKey);
     if (!task) return;
-    get().completeTask(task.id);
+    get().completeTask(task.id, { recorded: true });
   },
 
   skipNextRecurrence(id) {

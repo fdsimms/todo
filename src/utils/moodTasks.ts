@@ -41,6 +41,9 @@ import { lowMoodRun, type MoodDay } from './moodInsights';
  *    let the nudge fire off days nobody reported.
  */
 
+/** The deep link a check-in's row opens, to the sheet that answers it. */
+export const MOOD_LOG_LINK_URL = 'dundundun://mood?log=1';
+
 /** The daily task's title. Never varies. */
 export const MOOD_LOG_TITLE = 'Log how you’re feeling';
 
