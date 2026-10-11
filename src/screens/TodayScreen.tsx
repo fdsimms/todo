@@ -31,7 +31,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PinIcon } from '../components/PinIcon';
 import { format } from 'date-fns/format';
-import type { ContextRow, SavedViewClause, Task, TaskGroup, TaskTemplate, Category, TimeOfDay } from '../types';
+import type { ContextRow, NutrientKey, SavedViewClause, Task, TaskGroup, TaskTemplate, Category, TimeOfDay } from '../types';
 import { taskHomeFor } from '../utils/taskHome';
 import { isTaskNew, isTaskVisible, isUnscheduledTask, isInboxTask, isDismissedToday, isRelevantToGroupToday, groupRoster } from '../utils/visibilityUtils';
 import { openTasksOf } from '../utils/openTasks';
@@ -179,6 +179,9 @@ import { useCalendarStore } from '../store/useCalendarStore';
 import { useHealthStore } from '../store/useHealthStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { foodLogTotals } from '../utils/foodLog';
+import { NutrientContributorsSheet } from '../components/NutrientContributorsSheet';
+import { describeAgainstTarget } from '../utils/nutritionTargets';
+import { NUTRIENT_LABEL } from '../utils/foodNutrition';
 import { activeLimits, limitsShownOnToday } from '../utils/nutritionTargets';
 import { useWeatherStore } from '../store/useWeatherStore';
 import { weatherConditionAdjective, weatherIconFor } from '../utils/weatherCondition';
@@ -2541,6 +2544,21 @@ export function TodayScreen() {
   const calendarIds = useSettingsStore(s => s.calendarIds);
   const eventCalendarTags = calendarIds.length > 1 ? calendarsById : undefined;
   const [eventsSheetVisible, setEventsSheetVisible] = useState(false);
+  // Which nutrient's food contribution breakdown is open, from a limit or goal row.
+  const [contributorsKey, setContributorsKey] = useState<NutrientKey | null>(null);
+  const contributorsEntries = useMemo(() => {
+    if (contributorsKey === null) return [];
+    const key = getLogicalDayKey(new Date(), dayResetTime);
+    return recentFoodEntries(key, key);
+  }, [contributorsKey, recentFoodEntries, dayResetTime, foodLogCount, foodLogWindow]);
+  const contributorsTotal = useMemo(() => {
+    if (contributorsKey === null) return null;
+    const value = foodLogTotals(contributorsEntries).total[contributorsKey];
+    if (value === undefined) return null;
+    const unit = NUTRIENT_LABEL[contributorsKey].unit;
+    return describeAgainstTarget(contributorsKey, value, nutritionTargets)
+      ?? `${Math.round(value).toLocaleString()}${unit === 'cal' ? '' : unit}`;
+  }, [contributorsKey, contributorsEntries, nutritionTargets]);
 
   // The Today widget's "Add event" shortcut (openQuickAddEventFromShortcut()
   // in navigationRef.ts, deep link dundundun://addevent) — the event
@@ -3664,7 +3682,10 @@ export function TodayScreen() {
             // list throwing you out to a different app for a line you have
             // already read. The arm is explicit rather than left to fall
             // through, because the fall-through is the meal plan.
-            : item.row.kind === 'health' ? undefined
+            : item.row.kind === 'health'
+              ? (item.row.nutrientKey
+                ? () => { const key = item.row.nutrientKey!; setContributorsKey(key); }
+                : undefined)
             : openMealPlan;
       // While a task is focused, a tap anywhere else only unfocuses it, so a
       // context row must not open its sheet (or the meal plan) on that tap.
@@ -5557,6 +5578,16 @@ export function TodayScreen() {
             visible={quickEventVisible}
             seed={quickEventSeed}
             onClose={() => { setQuickEventVisible(false); setQuickEventSeed(null); }}
+          />
+        </LazySheet>
+
+        <LazySheet open={contributorsKey !== null}>
+          <NutrientContributorsSheet
+            visible={contributorsKey !== null}
+            nutrientKey={contributorsKey}
+            entries={contributorsEntries}
+            total={contributorsTotal}
+            onClose={() => setContributorsKey(null)}
           />
         </LazySheet>
 

@@ -270,7 +270,9 @@ export function DayContextRow({ row, onPress, onMarkCooked, cardPosition }: Prop
               accessibilityRole="button"
               accessibilityLabel={a11yLabel}
               accessibilityHint={
-                row.kind === 'event' ? "Opens the day’s events" : 'Opens Meal plan'
+                row.kind === 'event' ? "Opens the day’s events"
+                  : row.nutrientKey ? 'Shows which foods contributed'
+                    : 'Opens Meal plan'
               }
             >
               {body}
