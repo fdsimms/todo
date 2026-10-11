@@ -265,6 +265,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/peopleLocations.ts` — peopleNearLocation, anyoneHasLocation
 - `src/utils/peopleRegistry.ts` — registerPersonSource, registerPersonGroupSource, registerPersonTaskSource, resolvePerson, peopleOn, contactDetailsFor, peoplePageLinkFor, tasksNaming, resolvePersonGroup, groupMembers, +1 more
 - `src/utils/peopleStats.ts` — timeTogetherInRange, describeTimeTogether, taskYearRange
+- `src/utils/perfLog.ts` — PerfEntry, PerfRunKind, PerfRun, PERF_RUN_LIMIT, PERF_ENTRY_LIMIT, perfNow, recordTiming, markMilestone, timed, currentEntries, +5 more
+- `src/utils/perfReport.ts` — savePerfRun, perfReportText
 - `src/utils/permissionAlert.ts` — alertPermissionOff
 - `src/utils/personHistory.ts` — HistoryEntry, personHistory, UpcomingEntry, personUpcoming, lastTogether, describeLastTogether, daysSinceTogether, describeDaysSince
 - `src/utils/personNotes.ts` — PERSON_NOTE_LABELS, PERSON_NOTE_HEADINGS, PERSON_NOTE_HINTS, isLiveNote, isStaleNote, notesOfKind, notesFor, describeNoteDay, giftIdeasText

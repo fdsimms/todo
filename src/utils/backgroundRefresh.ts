@@ -89,6 +89,8 @@ import type { SyncSummary } from './syncEngine';
 import { isDemoModeActive } from './demoState';
 import { runPendingHealthFoodWrites } from './pendingHealthFoodWrites';
 import { runStartupSequence, runStartupStep } from './startup';
+import { timed } from './perfLog';
+import { savePerfRun } from './perfReport';
 import { catchUpPasses, rebuildNotificationQueue } from './maintenancePasses';
 import { writeWidgetSnapshotNow } from './widgetSync';
 import { reconcileAppShield } from './appShieldReconcile';
@@ -214,10 +216,13 @@ export async function runBackgroundSync(): Promise<SyncSummary | null> {
 // writes are fire-and-forget, like every event reconcile: one cut short by a
 // background run ending waits for that row's next change.
 registerSyncReload(applied => {
-  useTaskStore.getState().initialize({ reload: true });
-  useSettingsStore.getState().initialize();
-  useTaskStore.getState().reconcileSyncedEvents(applied);
-  useMealPlanStore.getState().reconcileSyncedEvents(applied);
+  // Timed per piece but not saved: a write here would land in the middle of a
+  // sync, so these wait in memory and show up in the copied report's
+  // "since the last saved run" section.
+  timed('sync reload: tasks', () => useTaskStore.getState().initialize({ reload: true }));
+  timed('sync reload: settings', () => useSettingsStore.getState().initialize());
+  timed('sync reload: task events', () => useTaskStore.getState().reconcileSyncedEvents(applied));
+  timed('sync reload: meal events', () => useMealPlanStore.getState().reconcileSyncedEvents(applied));
   // A calendar request an agent made arrives this way, so this is when one
   // can be written. Not filtered on the report: a pass with nothing pending
   // reads one small table and stops.
@@ -230,6 +235,7 @@ registerSyncReload(applied => {
 TaskManager.defineTask(BACKGROUND_REFRESH_TASK, async () => {
   try {
     const outcome = runBackgroundRefresh();
+    savePerfRun('background');
     // A pass that threw was already isolated and logged by name
     // (runStartupSequence); the run as a whole still succeeded, and reporting
     // failure would only make iOS less willing to run the next one.
