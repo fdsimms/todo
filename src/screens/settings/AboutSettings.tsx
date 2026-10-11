@@ -57,7 +57,7 @@ export function AboutSettings() {
           entryId="perfLog"
           icon="speedometer-outline"
           label="Copy performance log"
-          hint="Copies how long each step took over the last few launches. Stays on this device until you paste it."
+          hint="Copies how long each launch step took, plus the launch and hang times iOS measures. Stays on this device until you paste it."
           value={perfCopied ? 'Copied' : undefined}
           onPress={() => copyPerf(perfReportText())}
         />

@@ -41,7 +41,8 @@ import { useSyncStore } from './src/store/useSyncStore';
 import { useSyncOnForeground } from './src/utils/useSyncOnForeground';
 import { runStartupSequence, runStartupStep } from './src/utils/startup';
 import { markMilestone } from './src/utils/perfLog';
-import { savePerfRun } from './src/utils/perfReport';
+import { collectDeviceMetrics, savePerfRun } from './src/utils/perfReport';
+import { startDeviceMetrics } from './src/utils/deviceMetrics';
 import { backfillCalendarExternalIds } from './src/utils/calendarIdBackfill';
 import { drainCalendarRequests } from './src/utils/calendarRequestDrain';
 import { expiryPasses, catchUpPasses, retentionPasses } from './src/utils/maintenancePasses';
@@ -218,6 +219,13 @@ function AppRoot() {
     // Everything above was timed under its own name (runStartupStep). Saved
     // here, after the sequence, so the one write is not part of what it times.
     markMilestone('launch steps done');
+    // The reports iOS builds about the app (launch time, hangs, memory) come
+    // in about once a day and only while something is listening, so listening
+    // starts at every launch. Read straight after, for any already delivered.
+    runStartupSequence([
+      ['start device metrics', startDeviceMetrics],
+      ['read device metrics', () => { collectDeviceMetrics(); }],
+    ]);
     savePerfRun('launch');
   }, [initSecrets]);
 
