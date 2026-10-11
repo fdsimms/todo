@@ -531,6 +531,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 
 ## `src/hooks`
 
+- `src/hooks/useActionMenu.tsx` — ActionMenuSpec, useActionMenu
 - `src/hooks/useAnswerFirstCompletion.ts` — useAnswerFirstCompletion
 - `src/hooks/useAppShieldSync.ts` — useAppShieldSync
 - `src/hooks/useBulkBarEntrance.ts` — useBulkBarEntrance

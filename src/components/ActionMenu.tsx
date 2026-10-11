@@ -17,7 +17,8 @@ export interface ActionMenuChoice {
 export interface ActionMenuAction {
   key: string;
   label: string;
-  icon: IconName;
+  /** Omitted for a plain list of choices, which then has no icon column. */
+  icon?: IconName;
   /** Runs once the menu has finished closing. Omit when `choices` is given. */
   onPress?: () => void;
   /** Opens a second list inside the same card, with a back row, instead of acting. */
@@ -30,6 +31,8 @@ interface Props {
   visible: boolean;
   /** What the menu is about; shown at the top and kept while the card fades out. */
   title: string;
+  /** A line under the title saying what the options will do. */
+  message?: string;
   actions: ActionMenuAction[];
   /** Where the "…" or the row was tapped, so the menu opens from it; null centers it. */
   anchor?: CardAnchor | null;
@@ -43,7 +46,7 @@ interface Props {
  * with `choices` swaps the card's content for that list rather than raising a
  * second dialog. Destructive actions sit in their own group at the bottom.
  */
-export function ActionMenu({ visible, title, actions, anchor, onClose }: Props) {
+export function ActionMenu({ visible, title, message, actions, anchor, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const card = useCardSheet();
@@ -78,7 +81,7 @@ export function ActionMenu({ visible, title, actions, anchor, onClose }: Props) 
         accessibilityRole="button"
         accessibilityLabel={action.label}
       >
-        <Ionicons name={action.icon} size={18} color={action.destructive ? colors.red : colors.accent} />
+        {action.icon && <Ionicons name={action.icon} size={18} color={action.destructive ? colors.red : colors.accent} />}
         <Text style={[styles.label, action.destructive && styles.labelDestructive]}>{action.label}</Text>
         {action.choices && <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} style={styles.chevron} />}
       </TouchableOpacity>
@@ -124,6 +127,7 @@ export function ActionMenu({ visible, title, actions, anchor, onClose }: Props) 
       ) : (
         <ScrollView style={styles.scroll} bounces={false}>
           <Text style={styles.title} numberOfLines={2}>{title}</Text>
+          {message ? <Text style={styles.message}>{message}</Text> : null}
           <View style={styles.sep} />
           {regular.map((action, i) => renderRow(action, i === 0))}
           {destructive.length > 0 && (
@@ -145,6 +149,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.semibold,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.smd,
+  },
+  message: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.smd,
   },
   row: {
     flexDirection: 'row',

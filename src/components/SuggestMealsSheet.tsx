@@ -42,6 +42,7 @@ import { EmptyState } from './EmptyState';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { haptics } from '../utils/haptics';
 import { TextField } from './TextField';
+import { useActionMenu } from '../hooks/useActionMenu';
 
 /**
  * A row Save can commit, in the order the days are handed out. The two the
@@ -199,6 +200,7 @@ export function SuggestMealsSheet({
   aiIdeasEnabled = false, plannedTitles, recentTitles, expiringItemHints = [], slotsToFill,
   onPlan, onPlanLeftover, onClose,
 }: Props) {
+  const actionMenu = useActionMenu();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
@@ -344,15 +346,16 @@ export function SuggestMealsSheet({
     haptics.tap();
     const taken = new Set([...landedOn.values()].map(dayKeyOf));
     const current = dayByKey.get(key);
-    Alert.alert(`Which night for ${name}?`, undefined, [
-      ...openDays
+    actionMenu.open({
+      title: `Which night for ${name}?`,
+      actions: openDays
         .filter(day => !taken.has(dayKeyOf(day)))
         .map(day => ({
-          text: `${format(day, 'EEEE')}${current && dayKeyOf(current) === dayKeyOf(day) ? ' (current)' : ''}`,
+          key: dayKeyOf(day),
+          label: `${format(day, 'EEEE')}${current && dayKeyOf(current) === dayKeyOf(day) ? ' (current)' : ''}`,
           onPress: () => setChosenDays(prev => new Map(prev).set(key, dayKeyOf(day))),
         })),
-      { text: 'Cancel', style: 'cancel' as const },
-    ]);
+    });
   };
 
   /**
@@ -1109,6 +1112,7 @@ export function SuggestMealsSheet({
           )}
         </SheetModal>
       </View>
+      {actionMenu.element}
     </SheetModal>
   );
 }

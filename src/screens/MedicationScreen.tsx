@@ -56,6 +56,7 @@ import { useAnswerFirstCompletion } from '../hooks/useAnswerFirstCompletion';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { usePullToSearch } from '../hooks/usePullToSearch';
+import { useActionMenu } from '../hooks/useActionMenu';
 
 /** How many recent doses the list shows at first, and how many more each tap adds. */
 const RECENT_PAGE = 25;
@@ -92,6 +93,7 @@ const TREND_DAYS = 14;
  * button on the as-needed ones), Archived, and Recent.
  */
 export function MedicationScreen() {
+  const actionMenu = useActionMenu();
   const pullSearch = usePullToSearch();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -196,11 +198,13 @@ export function MedicationScreen() {
   const share = () => {
     if (logs.length === 0 || sharing) return;
     haptics.tap();
-    Alert.alert('Share', undefined, [
-      { text: 'Summary for a visit', onPress: () => setSummaryOpen(true) },
-      { text: 'Full log (CSV)', onPress: () => { void shareCsv(); } },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
+    actionMenu.open({
+      title: 'Share',
+      actions: [
+        { key: 'summary', label: 'Summary for a visit', icon: 'document-text-outline', onPress: () => setSummaryOpen(true) },
+        { key: 'csv', label: 'Full log (CSV)', icon: 'download-outline', onPress: () => { void shareCsv(); } },
+      ],
+    });
   };
 
   const showUndo = (log: MedicationLog) => {
@@ -512,6 +516,7 @@ export function MedicationScreen() {
       {sheets}
       <ScrollToTopButton {...scrollTop.buttonProps} />
       {pullSearch.sheet}
+      {actionMenu.element}
     </View>
   );
 }

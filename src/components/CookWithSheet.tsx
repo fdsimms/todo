@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
@@ -20,6 +20,7 @@ import {
   pantryIngredients, splitIngredientText, type FinderEntryHit,
 } from '../utils/cookbookIndex';
 import { TextField } from './TextField';
+import { useActionMenu } from '../hooks/useActionMenu';
 
 /** Which question the sheet is asking: about words you type, or about the pantry. */
 export type CookWithMode = 'pick' | 'have';
@@ -68,6 +69,7 @@ interface Props {
  * is nothing for a discard guard to protect.
  */
 export function CookWithSheet({ visible, onClose, onOpenRecipe, onOpenCookbook, initialMode }: Props) {
+  const actionMenu = useActionMenu();
   const insets = useSafeAreaInsets();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -145,17 +147,16 @@ export function CookWithSheet({ visible, onClose, onOpenRecipe, onOpenCookbook, 
       setTyped('');
       onOpenRecipe(target.id);
     };
-    Alert.alert(
-      entry.title,
-      recipe
+    actionMenu.open({
+      title: entry.title,
+      message: recipe
         ? where
         : `${where}\n\nAdding it creates a recipe with this name, book and page, ready to type up.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Open cookbook', onPress: () => { setTyped(''); onOpenCookbook(entry.cookbookId); } },
-        { text: recipe ? 'Open recipe' : 'Add to my recipes', onPress: toRecipe },
+      actions: [
+        { key: 'cookbook', label: 'Open cookbook', icon: 'book-outline', onPress: () => { setTyped(''); onOpenCookbook(entry.cookbookId); } },
+        { key: 'recipe', label: recipe ? 'Open recipe' : 'Add to my recipes', icon: recipe ? 'restaurant-outline' : 'add-circle-outline', onPress: toRecipe },
       ],
-    );
+    });
   };
 
   // The entry's own words, marked where they answer what was asked. Either
@@ -320,6 +321,7 @@ export function CookWithSheet({ visible, onClose, onOpenRecipe, onOpenCookbook, 
           )}
         </ScrollView>
       </View>
+      {actionMenu.element}
     </SheetModal>
   );
 }

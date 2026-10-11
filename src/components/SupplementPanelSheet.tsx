@@ -29,6 +29,7 @@ import {
   describeAIError, nutritionLabelPhotoAiAvailable, readLabelPhotoWithAi,
 } from '../services/aiSuggestions';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
+import { useActionMenu } from '../hooks/useActionMenu';
 
 /**
  * What one serving of a supplement contains, typed in from its label.
@@ -57,6 +58,7 @@ interface Props {
 const UNIT_OPTIONS = PANEL_UNITS.map(unit => ({ value: unit, label: unit }));
 
 export function SupplementPanelSheet({ visible, name, panel, onClose, onSave }: Props) {
+  const actionMenu = useActionMenu();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
@@ -149,15 +151,14 @@ export function SupplementPanelSheet({ visible, name, panel, onClose, onSave }: 
   }, []);
 
   const startPhoto = () => {
-    Alert.alert(
-      'Read the label',
-      'Photograph the supplement facts and the figures on it will fill in the fields below.',
-      [
-        { text: 'Take a photo', onPress: () => { void handlePhoto('camera'); } },
-        { text: 'Choose a photo', onPress: () => { void handlePhoto('library'); } },
-        { text: 'Cancel', style: 'cancel' },
+    actionMenu.open({
+      title: 'Read the label',
+      message: 'Photograph the supplement facts and the figures on it will fill in the fields below.',
+      actions: [
+        { key: 'camera', label: 'Take a photo', icon: 'camera-outline', onPress: () => { void handlePhoto('camera'); } },
+        { key: 'library', label: 'Choose a photo', icon: 'images-outline', onPress: () => { void handlePhoto('library'); } },
       ],
-    );
+    });
   };
 
   const setAmount = (key: NutrientKey, text: string) => {
@@ -306,6 +307,7 @@ export function SupplementPanelSheet({ visible, name, panel, onClose, onSave }: 
         </View>
         <NumberPadAccessory />
       </View>
+      {actionMenu.element}
     </SheetModal>
   );
 }
