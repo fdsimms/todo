@@ -16,6 +16,8 @@ import { useSheetMount } from '../hooks/useSheetMount';
 import { useColors } from '../theme/ThemeContext';
 import { animation, border, checkboxRadius, iconSize, interaction, spacing, type Colors } from '../theme';
 import { completionTapFor, offersMealLogOnCompletion } from '../utils/completionTap';
+import { recordLogUrl } from '../utils/recordTasks';
+import { useRecordTaskReady } from '../hooks/useRecordTaskReady';
 import { openInAppUrl } from '../utils/deepLinks';
 import { isQuotaPartial, quotaFraction } from '../utils/visibilityUtils';
 import { isFailedToday } from '../utils/negativeHabits';
@@ -101,7 +103,8 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
   const mountHoldMenu = useSheetMount(showHoldMenu);
   const scale = useRef(new Animated.Value(1)).current;
 
-  const action = completionTapFor(task);
+  const recordReady = useRecordTaskReady(task);
+  const action = completionTapFor(task, recordReady);
   // Ticks normally, then offerMealLog's "what did you eat?" sheet follows —
   // see offersMealLogOnCompletion's own doc comment for why this is a
   // separate flag rather than another `action` case.
@@ -190,6 +193,21 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
           }
         }
         return;
+      case 'open-log': {
+        // Same contract as 'review-project': until there is an entry the tap
+        // opens the sheet that records it. Once there is one, the tap is a
+        // plain 'complete'.
+        await haptics.tap();
+        const url = recordLogUrl(task);
+        if (url && !openInAppUrl(url)) {
+          try {
+            await Linking.openURL(url);
+          } catch {
+            // silently ignore — no toast infra for this row-level action
+          }
+        }
+        return;
+      }
       case 'log-unit':
         await haptics.impactLight();
         scale.setValue(1);
@@ -236,9 +254,11 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
     : action === 'ask' ? `Complete ${label}, asks for an answer`
     : action === 'pick-meal' ? `${label}, pick a meal`
     : action === 'review-project' ? `${label}, review what to pull in`
+    : action === 'open-log' ? `${label}, opens the entry sheet`
     : action === 'log-unit'
       ? `Log one of ${task.targetCount}${task.targetUnit ? ` ${task.targetUnit}` : ''}, ${formatQuotaProgress(task.progressCount, task.targetCount!, task.targetUnit)} done, ${label}`
     : action === 'uncomplete' ? `Mark ${label} as not done`
+    : recordReady ? `${label}, entry saved, complete`
     : `Complete ${label}`;
 
   return (

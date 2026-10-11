@@ -117,7 +117,8 @@ import { generatedBy, generatedSourceOf, generatedTaskCountOf, generatorPausedFo
 import { setGeneratorEnabled } from './generatorSwitch';
 import { featureHidden } from '../utils/simpleMode';
 import { CALENDAR_REVIEW_TITLE, calendarReviewDayKey, wantsCalendarReview } from '../utils/calendarReviewTasks';
-import { MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, moodLogDayKey, moodLogSourceId, moodNudgeNotes, wantsMoodNudge } from '../utils/moodTasks';
+import { isAnsweredByRecord, isRecordAnswered } from '../utils/recordTasks';
+import { MOOD_LOG_LINK_URL, MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, moodLogDayKey, moodLogSourceId, moodNudgeNotes, wantsMoodNudge } from '../utils/moodTasks';
 import { DREAM_LOG_TITLE, JOURNAL_TASK_KIND, journalLogTitle, journalLogUrl, journalTaskDayKey, journalTaskSourceId } from '../utils/journalTasks';
 import {
   WEIGH_IN_LINK_URL,
@@ -1698,6 +1699,8 @@ interface TaskStore extends UndoHistoryActions {
     /** Ask how the answer turned out after this long. See CompletionOptions.reviewAfter. */
     reviewAfter?: ReviewAfter | null;
     neutral?: boolean;
+    /** See CompletionOptions.recorded (taskCompletion.ts); set only by the complete…TaskForToday actions. */
+    recorded?: boolean;
     /** See CompletionOptions.byOther (taskCompletion.ts) — somebody else did it. */
     byOther?: boolean;
     completedAt?: string;
@@ -2677,6 +2680,15 @@ function negativeHabitDuePatch(task: Task, todayStart: Date, resetTime: string):
   // Written the way `updateTask` writes any dueDate: the pinned grid anchor
   // belonged to the occurrence being left behind.
   return { dueDate: next.toISOString(), recurrenceAnchorDate: null };
+}
+
+/** Whether the entry a mood, journal, dream or weigh-in task asks for exists right now. */
+function recordTaskAnswered(task: Task): boolean {
+  return isRecordAnswered(task, {
+    moodLogs: useMoodStore.getState().logs,
+    journalEntries: useJournalStore.getState().entries,
+    weighInAnsweredOn: useHealthStore.getState().weighInAnsweredOn,
+  });
 }
 
 export const useTaskStore = create<TaskStore>((set, get) => ({
@@ -3659,6 +3671,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // is precisely the row that is supposed to sit there all day. `logSlip` is
     // the action this polarity has instead.
     if (isNegativeTask(task)) return;
+    // A task a record answers (mood, journal, dream, weigh-in) completes only
+    // once that record exists (the tick on a ready row) or from the sheet's own
+    // save; see recordTasks.ts. A missed mark claims nothing, so the sweep still
+    // closes one out.
+    if (isAnsweredByRecord(task) && !missed && !options?.recorded) {
+      if (!recordTaskAnswered(task)) return;
+      options = { ...options, recorded: true };
+    }
     // Recurring tasks shown early in Later (deferred to, or due on, a future
     // day) can't be completed ahead of schedule — doing so would generate the
     // next occurrence off today instead of the task's real day. Non-recurring
@@ -7532,6 +7552,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         .filter(task => moodLogDayKey(task) !== todayKey || task.generatedSourceId !== sourceId)
         .forEach(task => deleteGeneratedTaskQuietly(task.id));
 
+      // Whether this slot is already answered. Read for the write below only: a
+      // live check-in whose entry arrived some other way is made ready by
+      // `isRecordAnswered` on its row, not completed here.
+      const answered = sourceId !== null && (segment
+        ? hasLoggedSince(logs, timeSegmentThreshold(segment).toISOString())
+        : hasLogOnDay(logs, todayKey));
+
       // Recorded before the "already logged" check below and unconditionally,
       // for the reason calendarReviewLastDayKey is: a slot already decided
       // must not be re-diagnosed on every later sweep, or a check-in swiped
@@ -7546,9 +7573,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         // The any-time case asks "was the day logged at all"; a segment asks
         // the narrower "was anything logged since this segment began" — an
         // entry from this morning must not silence the evening check-in.
-        const answered = segment
-          ? hasLoggedSince(logs, timeSegmentThreshold(segment).toISOString())
-          : hasLogOnDay(logs, todayKey);
         if (!answered) {
           reconcileGeneratedTask({
             kind: 'moodLog',
@@ -7570,7 +7594,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
               // this the only thing to do with a check-in is tick it, which
               // completes the task without logging anything — the question
               // marked answered and no answer recorded.
-              linkUrl: 'dundundun://mood?log=1',
+              linkUrl: MOOD_LOG_LINK_URL,
               ...generatedBy('moodLog', sourceId),
             }),
           });
@@ -7643,13 +7667,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       liveGeneratedTasksOfKind(get().tasks, generatedKind)
         .filter(task => journalTaskDayKey(task, kind) !== todayKey || task.generatedSourceId !== sourceId)
         .forEach(task => deleteGeneratedTaskQuietly(task.id));
-      if (sourceId === null || lastKey === sourceId) return;
-      // Stamped before deciding, so a swiped-away reminder stays away for its slot.
-      setLastKey(sourceId);
+      if (sourceId === null) return;
       const written = entries.filter(e => e.kind === kind);
       const answered = segment
         ? hasLoggedSince(written, timeSegmentThreshold(segment).toISOString())
         : hasLogOnDay(written, todayKey);
+      if (lastKey === sourceId) return;
+      // Stamped before deciding, so a swiped-away reminder stays away for its slot.
+      setLastKey(sourceId);
       if (answered) return;
       reconcileGeneratedTask({
         kind: generatedKind,
@@ -7850,9 +7875,24 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       .filter(task => weighInDayKey(task) !== todayKey)
       .forEach(task => dropGeneratedTask('weighIn', task.generatedSourceId));
 
+    const everyDays = clampWeighInEveryDays(settings.weighInEveryDays);
+
+    // A request already on the list reads ready once a reading lands in its
+    // window, however it got there (the Health app, a smart scale). Only the
+    // answer is kept, as a day key, for the row to read; the tick is still the
+    // person's. A null read says nothing either way, so the marker is left alone.
+    const liveRequest = liveGeneratedTasksOfKind(get().tasks, 'weighIn')
+      .find(task => weighInDayKey(task) === todayKey);
+    if (liveRequest) {
+      const recent = await useHealthStore.getState().readRecentWeights(everyDays);
+      if (recent !== null) {
+        useHealthStore.getState().setWeighInAnsweredOn(wantsWeighIn(recent) ? null : todayKey);
+      }
+      return;
+    }
+
     if (settings.weighInLastDayKey === todayKey) return;
 
-    const everyDays = clampWeighInEveryDays(settings.weighInEveryDays);
     // A deleted request holds for the window from the day it was deleted on,
     // rather than until tomorrow. Checked before the read, which it makes
     // unnecessary, and without spending the mark, which has nothing to say
@@ -7913,7 +7953,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const task = liveGeneratedTasksOfKind(get().tasks, 'weighIn')
       .find(t => weighInDayKey(t) === todayKey);
     if (!task) return;
-    get().completeTask(task.id);
+    get().completeTask(task.id, { recorded: true });
   },
 
   completeJournalTaskForToday(kind) {
@@ -7921,7 +7961,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const task = liveGeneratedTasksOfKind(get().tasks, JOURNAL_TASK_KIND[kind])
       .find(t => journalTaskDayKey(t, kind) === todayKey);
     if (!task) return;
-    get().completeTask(task.id);
+    get().completeTask(task.id, { recorded: true });
   },
 
   completeMoodLogTaskForToday() {
@@ -7929,7 +7969,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const task = liveGeneratedTasksOfKind(get().tasks, 'moodLog')
       .find(t => moodLogDayKey(t) === todayKey);
     if (!task) return;
-    get().completeTask(task.id);
+    get().completeTask(task.id, { recorded: true });
   },
 
   skipNextRecurrence(id) {

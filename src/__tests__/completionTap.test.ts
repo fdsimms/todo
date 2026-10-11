@@ -254,6 +254,20 @@ describe('completionTapFor', () => {
 
   // Polarity decides what the control *is*, so it is asked before any of the
   // questions about how a completion should behave.
+  describe('a task a saved entry answers', () => {
+    it.each(['moodLog', 'journalLog', 'dreamLog', 'weighIn'] as const)('%s opens its sheet instead of completing', kind => {
+      expect(completionTapFor({ ...baseTask, generatedKind: kind } as Task)).toBe('open-log');
+    });
+
+    it('is an ordinary tick once the entry exists', () => {
+      expect(completionTapFor({ ...baseTask, generatedKind: 'moodLog' } as Task, true)).toBe('complete');
+    });
+
+    it('is still an ordinary tick for any other generated task', () => {
+      expect(completionTapFor({ ...baseTask, generatedKind: 'moodNudge' } as Task)).toBe('complete');
+    });
+  });
+
   describe('a negative habit', () => {
     const avoid = { ...baseTask, polarity: 'negative' } as Task;
 

@@ -54,6 +54,7 @@ import { carryClockTime, logicalDayStart } from './clockTime';
 import { canReviewDecision, reviewTaskDraft, type ReviewAfter } from './decisionReview';
 import { isRecurrenceNotYetDue, isQuotaTask, quotaRidesOutTheDay, isCompletionOnTime, hasNoDateSignal, getVisibleAt } from './visibilityUtils';
 import { isNegativeTask } from './negativeHabits';
+import { isAnsweredByRecord } from './recordTasks';
 import { nextStreakRecord } from './streakRecord';
 import {
   followUpTaskRule,
@@ -101,6 +102,12 @@ export interface CompletionOptions {
    */
   reviewAfter?: ReviewAfter | null;
   neutral?: boolean;
+  /**
+   * Internal: the record this task asks for was just saved. Only the four
+   * `complete…TaskForToday` actions set it; see `isAnsweredByRecord` for why no
+   * other completion of those tasks is allowed.
+   */
+  recorded?: boolean;
   /**
    * The person says somebody else did it. Stamps `Task.doneByOtherAt`, and
    * closes the occurrence the way `neutral` does (no coins, the streak neither
@@ -200,6 +207,11 @@ export function completionRefusal(task: Task, options?: CompletionOptions): stri
   if (task.completed) return 'That task is already completed.';
   if (isNegativeTask(task)) {
     return 'That task is a habit you are avoiding rather than one you finish, so it has no completion. Record a slip against it instead.';
+  }
+  // A record answers these, so a tick would mark the question answered with
+  // nothing recorded. A missed mark claims nothing and still goes through.
+  if (isAnsweredByRecord(task) && !options?.missed && !options?.recorded) {
+    return 'That task is answered by saving the entry it asks for, so it has no manual completion. Record the entry instead.';
   }
   if (isRecurrenceNotYetDue(task)) {
     if (task.recurrenceType === 'hours' && options?.logEarly) return null;

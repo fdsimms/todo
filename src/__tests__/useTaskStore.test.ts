@@ -6826,6 +6826,20 @@ describe('checkMoodTasks', () => {
       expect(check.linkUrl).toBe('dundundun://mood?log=1');
     });
 
+    it('refuses a tick until the entry exists, then lets it through', () => {
+      useTaskStore.getState().checkMoodTasks();
+      const [check] = tasksOfKind('moodLog');
+      useTaskStore.getState().completeTask(check.id);
+      expect(tasksOfKind('moodLog')).toHaveLength(1);
+
+      // Logged over MCP or on another device: the row is ready, and the tick is
+      // the person's.
+      setLogs([entry(TODAY, 4)]);
+      expect(tasksOfKind('moodLog')).toHaveLength(1);
+      useTaskStore.getState().completeTask(check.id);
+      expect(tasksOfKind('moodLog')).toHaveLength(0);
+    });
+
     it('writes nothing when the day has already been logged', () => {
       setLogs([entry(TODAY, 4)]);
 
@@ -7190,6 +7204,19 @@ describe('checkJournalTasks', () => {
     expect(tasksOfKind('dreamLog')).toHaveLength(0);
     expect(tasksOfKind('journalLog')).toHaveLength(1);
   });
+
+  it('refuses a tick on a reminder until its entry exists', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ dreamLogTasks: true }));
+    useTaskStore.getState().checkJournalTasks();
+    const [task] = tasksOfKind('dreamLog');
+    useTaskStore.getState().completeTask(task.id);
+    expect(tasksOfKind('dreamLog')).toHaveLength(1);
+
+    // Once the dream is written the row is ready, and the tick goes through.
+    setEntries([written('dream', TODAY)]);
+    useTaskStore.getState().completeTask(task.id);
+    expect(tasksOfKind('dreamLog')).toHaveLength(0);
+  });
 });
 
 describe('checkWeighInTasks', () => {
@@ -7238,12 +7265,37 @@ describe('checkWeighInTasks', () => {
 
   afterEach(() => {
     jest.useRealTimers();
-    useHealthStore.setState({ readRecentWeights: realRead });
+    useHealthStore.setState({ readRecentWeights: realRead, weighInAnsweredOn: null });
   });
 
   it('asks when the window has no weight in it', async () => {
     await on(8);
     expect(requests().map(t => t.generatedSourceId)).toEqual(['2026-09-08']);
+  });
+
+  it('marks a request answered once a weight lands in its window, and leaves it when the read says nothing', async () => {
+    await on(8);
+    expect(requests()).toHaveLength(1);
+    const id = requests()[0].id;
+    // Not answered yet: the tick is refused.
+    useTaskStore.getState().completeTask(id);
+    expect(requests()).toHaveLength(1);
+
+    // Health could not be asked: evidence of nothing.
+    useHealthStore.setState({ readRecentWeights: jest.fn().mockResolvedValue(null) });
+    await on(8);
+    expect(useHealthStore.getState().weighInAnsweredOn).toBeNull();
+
+    // Weighed on the scale and written to Health, outside the sheet: ready, and
+    // still the person's to tick.
+    useHealthStore.setState({
+      readRecentWeights: jest.fn().mockResolvedValue([{ dayKey: '2026-09-08', kilograms: 70 }]),
+    });
+    await on(8);
+    expect(useHealthStore.getState().weighInAnsweredOn).toBe('2026-09-08');
+    expect(requests()).toHaveLength(1);
+    useTaskStore.getState().completeTask(id);
+    expect(requests()).toHaveLength(0);
   });
 
   it('holds a deleted request for the whole window rather than asking again tomorrow', async () => {

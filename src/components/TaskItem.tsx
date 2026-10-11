@@ -70,6 +70,8 @@ import type { ReviewAfter } from '../utils/decisionReview';
 import { offersMealLogOnCompletion } from '../utils/completionTap';
 import { describeTaskRecurrence } from '../utils/recurrenceLabels';
 import { chainPreview, isChainFinish, chainStepAdvancesInPlace, nextChainStep } from '../utils/chain';
+import { isAnsweredByRecord, recordLogUrl } from '../utils/recordTasks';
+import { useRecordTaskReady } from '../hooks/useRecordTaskReady';
 import { formatQuotaProgress } from '../utils/quotaUnit';
 import { clampSupplyReorderAt, describeSupply } from '../utils/supply';
 import { followUpTaskRule, completionsUntilFollowUpTask } from '../utils/followUpTask';
@@ -1204,6 +1206,11 @@ export const TaskItem = React.memo(function TaskItem({
   // and only its *result* is subscribed to, so a task changing elsewhere in
   // the list doesn't re-render this row unless the day count itself moved.
   const reviewProjectId = projectReviewProjectId(task);
+  // A mood, journal, dream or weigh-in task: until its entry exists the checkbox
+  // opens the sheet instead of completing; once it does the row is ready and the
+  // tick completes it (see recordTasks.ts).
+  const recordReady = useRecordTaskReady(task);
+  const recordLog = isAnsweredByRecord(task) && !recordReady ? recordLogUrl(task) : null;
   const reviewProject = useProjectStore(s =>
     reviewProjectId ? s.projects.find(p => p.id === reviewProjectId) ?? null : null
   );
@@ -1656,7 +1663,7 @@ export const TaskItem = React.memo(function TaskItem({
   // are offered only when there is a next date to move to.
   const completionMenuOffered =
     !selectionMode && !isNegative && !completing && !showQuotaMeter && !isRotation &&
-    !completionLocked;
+    !completionLocked && !recordLog;
   const completionMenuRepeats = task.recurrenceType !== 'none';
   const openCompletionMenu = (e: { nativeEvent: { pageX: number; pageY: number } }) => {
     haptics.impactMedium();
@@ -2182,6 +2189,14 @@ export const TaskItem = React.memo(function TaskItem({
     if (reviewProjectId) {
       await haptics.tap();
       handleOpenLink();
+      return;
+    }
+    // A mood, journal, dream or weigh-in task is answered by the entry it asks
+    // for. Ticking it before there is one would say it was done when nothing
+    // was recorded, so the tap opens the sheet until the row is ready.
+    if (recordLog) {
+      await haptics.tap();
+      handleOpenLink(recordLog);
       return;
     }
     // The question comes before the animation, not after it: the row has to
@@ -2711,6 +2726,10 @@ export const TaskItem = React.memo(function TaskItem({
                       ? `${task.title}, pick a meal`
                     : reviewProjectId
                       ? `${task.title}, opens the project review`
+                    : recordLog
+                      ? `${task.title}, opens the entry sheet`
+                    : recordReady
+                      ? `${task.title}, entry saved, complete`
                     : asksOnComplete
                       ? `Complete ${task.title}, asks for an answer`
                     : offersMealLog
@@ -2741,6 +2760,7 @@ export const TaskItem = React.memo(function TaskItem({
           !completing &&
             !completionLocked &&
             (timerReady ||
+              recordReady ||
               mealPlanReady ||
               healthReady ||
               pantryCheckReady ||
@@ -2871,7 +2891,7 @@ export const TaskItem = React.memo(function TaskItem({
           {!completing && !isNegative && recurrenceNotYetDue && (
             <Ionicons name="repeat" size={iconSize.sm} color={colors.textSecondary} />
           )}
-          {!completing && !completionLocked && (asksOnComplete || mealSlotChooseSource || reviewProjectId) && (
+          {!completing && !completionLocked && (asksOnComplete || mealSlotChooseSource || reviewProjectId || recordLog) && (
             // xs like the lock, not sm like the repeat: a "?" is tall where
             // the repeat glyph is wide and short, so the same nominal size
             // fills far more of a 20pt box and reads as crowded. Shared with
