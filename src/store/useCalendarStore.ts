@@ -117,6 +117,13 @@ interface CalendarState {
    */
   vacationReturnEvents: BusyEvent[];
   /**
+   * True only when vacation hides every calendar that was picked and the
+   * return-day read above succeeded, which makes that read the complete answer
+   * for tomorrow. Stands in for `loaded` in the review task alone; `loaded`
+   * itself stays false, since nothing else is being read.
+   */
+  vacationReturnLoaded: boolean;
+  /**
    * The past window, and it is a **separate window on purpose** rather than a
    * widening of the one above. That one is refreshed on every foreground to
    * answer questions Today asks; nothing on Today asks about last month, so
@@ -207,6 +214,7 @@ const followUpGuard = createRefreshGuard();
 export const useCalendarStore = create<CalendarState>((set, get) => ({
   events: [],
   vacationReturnEvents: [],
+  vacationReturnLoaded: false,
   perCalendar: {},
   calendarsById: {},
   windowStart: null,
@@ -234,6 +242,16 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
     const readIds = vacationMode
       ? calendarIds.filter(id => !vacationHiddenCalendarIds.includes(id))
       : calendarIds;
+    // Anchored on the logical day rather than midnight, so a 2 AM day reset
+    // reads "today" the way every other list in the app does.
+    const start = getDayStart(new Date(), dayResetTime);
+    const end = addDays(start, CALENDAR_WINDOW_DAYS);
+    // The return day's events from the hidden calendars: a second, one-day
+    // read, so `events` stays exactly what the hiding promises.
+    const returnIds = vacationReturnCalendarIds({
+      vacationMode, vacationEnd, calendarIds, vacationHiddenCalendarIds, dayResetTime,
+    });
+    const tomorrow = addDays(start, 1);
     if (!calendarReadEnabled || readIds.length === 0 || Platform.OS !== 'ios') {
       // Same rule `clear()` follows: this write must invalidate the guard too,
       // or a normal refresh already in flight (started before this branch ran)
@@ -241,26 +259,26 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
       // intentional clear with whatever it read before the read was cleared.
       windowGuard.invalidate();
       set({
-        events: [], vacationReturnEvents: [], perCalendar: {}, calendarsById: {},
+        events: [], vacationReturnEvents: [], vacationReturnLoaded: false, perCalendar: {}, calendarsById: {},
         windowStart: null, windowEnd: null, loaded: false, readFailed: false,
       });
+      // Vacation hides every calendar that was picked, so the one-day read is
+      // the whole answer for tomorrow and the review task has nothing else to
+      // wait for. `loaded` stays false: Today and the busy checks still see no
+      // calendar, which is what the hiding promises.
+      if (calendarReadEnabled && Platform.OS === 'ios' && returnIds.length > 0) {
+        const guardToken = windowGuard.begin();
+        const held = await fetchEvents(returnIds, tomorrow, addDays(tomorrow, 1));
+        if (!windowGuard.isCurrent(guardToken) || held === null) return;
+        set({ vacationReturnEvents: held.events, vacationReturnLoaded: true });
+      }
       return;
     }
-    // Anchored on the logical day rather than midnight, so a 2 AM day reset
-    // reads "today" the way every other list in the app does.
-    const start = getDayStart(new Date(), dayResetTime);
-    const end = addDays(start, CALENDAR_WINDOW_DAYS);
     const token = windowGuard.begin();
     const result = await fetchEvents(readIds, start, end);
     if (!windowGuard.isCurrent(token)) return;
-    // The return day's events from the hidden calendars: a second, one-day
-    // read, so `events` stays exactly what the hiding promises.
     let vacationReturnEvents: BusyEvent[] = [];
-    const returnIds = vacationReturnCalendarIds({
-      vacationMode, vacationEnd, calendarIds, vacationHiddenCalendarIds, dayResetTime,
-    });
     if (result !== null && returnIds.length > 0) {
-      const tomorrow = addDays(start, 1);
       const held = await fetchEvents(returnIds, tomorrow, addDays(tomorrow, 1));
       if (!windowGuard.isCurrent(token)) return;
       vacationReturnEvents = held?.events ?? [];
@@ -275,6 +293,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
     set({
       events: result.events,
       vacationReturnEvents,
+      vacationReturnLoaded: false,
       perCalendar: result.perCalendar,
       calendarsById: result.calendarsById,
       windowStart: start.toISOString(),
@@ -413,7 +432,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
     aheadGuard.invalidate();
     followUpGuard.invalidate();
     set({
-      events: [], vacationReturnEvents: [], perCalendar: {}, calendarsById: {}, windowStart: null, windowEnd: null, loaded: false, readFailed: false,
+      events: [], vacationReturnEvents: [], vacationReturnLoaded: false, perCalendar: {}, calendarsById: {}, windowStart: null, windowEnd: null, loaded: false, readFailed: false,
       pastEvents: [], pastLoaded: false, pastReadAt: null,
       aheadEvents: [], aheadLoaded: false, aheadWindowEnd: null,
       followUpEvents: [], followUpLoaded: false,

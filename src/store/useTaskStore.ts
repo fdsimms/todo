@@ -6670,8 +6670,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
     const calendar = useCalendarStore.getState();
     // Not the same question as `events` being empty — see CalendarState.loaded.
-    // An unread window must not be read as "tomorrow is free".
-    if (!calendar.loaded) return;
+    // An unread window must not be read as "tomorrow is free". (Or the
+    // return-day read alone, when vacation hides every calendar: then that
+    // read is the whole of tomorrow.)
+    if (!calendar.loaded && !calendar.vacationReturnLoaded) return;
 
     const tomorrowStart = getLogicalTomorrow(settings.dayResetTime);
     const tomorrowKey = dayKeyOf(tomorrowStart);

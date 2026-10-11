@@ -5587,6 +5587,16 @@ describe('checkCalendarReviewTasks', () => {
     expect(reviewTasks()).toHaveLength(1);
   });
 
+  it('writes a task from the return-day read alone when vacation hides every calendar', () => {
+    useCalendarStore.getState.mockReturnValue({
+      events: [], vacationReturnEvents: [tomorrowEvent()], vacationReturnLoaded: true, loaded: false,
+    });
+
+    useTaskStore.getState().checkCalendarReviewTasks();
+
+    expect(reviewTasks()).toHaveLength(1);
+  });
+
   it('writes a task when tomorrow has an event', () => {
     useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], vacationReturnEvents: [], loaded: true });
 
