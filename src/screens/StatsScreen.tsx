@@ -1,4 +1,5 @@
 import React, { useCallback, useMemo, useRef, useState, useEffect } from 'react';
+import { useWithoutLockedTasks } from '../hooks/useWithoutLockedTasks';
 import {
   View,
   Text,
@@ -176,7 +177,7 @@ export function StatsScreen() {
   const insets = useSafeAreaInsets();
   const scrollTop = useListScrollToTop();
   const tabBarHeight = useBottomTabBarHeight();
-  const tasks = useTaskStore(s => s.tasks);
+  const tasks = useWithoutLockedTasks(useTaskStore(s => s.tasks));
   const colors = useColors();
   // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
   const screenSettings = useScreenSettings('Stats', 'Stats settings');

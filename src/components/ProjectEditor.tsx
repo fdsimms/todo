@@ -46,6 +46,9 @@ import { addDays } from 'date-fns/addDays';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { buildAwayShiftPlan } from '../utils/awayShift';
 import { haptics } from '../utils/haptics';
+import { useProjectLockStore, isProjectHidden } from '../store/useProjectLockStore';
+import { unlockProjects } from '../hooks/useProjectAccess';
+import { scheduleTaskReminder } from '../utils/notifications';
 import { animateLayout } from '../utils/layoutAnimation';
 import { PLANNING_PAUSE_KEY, isPlanning } from '../utils/projectPause';
 import {
@@ -589,7 +592,28 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
     closeCategory();
   };
 
+  const projectLocked = useProjectLockStore(s => !!project && s.lockedIds.includes(project.id));
   if (!project) return null;
+  // The lock commits as it is tapped, like archive: it is a device setting and
+  // not part of the staged project. Turning it on or off asks for Face ID first
+  // when the projects are currently hidden, so it can't be undone by someone
+  // holding an unlocked-looking phone; it also leaves the session unlocked so
+  // the project doesn't vanish from under the sheet.
+  const handleToggleLock = async () => {
+    if (!project) return;
+    if (!projectLocked || isProjectHidden(project.id)) {
+      if (!useProjectLockStore.getState().unlocked && !(await unlockProjects())) return;
+    }
+    haptics.tap();
+    const next = !projectLocked;
+    useProjectLockStore.getState().setProjectLocked(project.id, next);
+    // A reminder already scheduled keeps the title it was given, so rewrite
+    // this project's pending ones under the new rule.
+    useTaskStore.getState().tasks
+      .filter(t => t.projectId === project.id && !t.completed && t.reminderTime)
+      .forEach(t => { scheduleTaskReminder(t); });
+  };
+
   const archived = liveArchived ?? project.archived;
   const completed = liveCompleted ?? project.completed;
 
@@ -1372,6 +1396,29 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
               <Text style={styles.optionLabel}>{archived ? 'Unarchive' : 'Archive'}</Text>
               <Text style={styles.optionHint}>
                 {archived ? 'Moves it back out of the Archived list' : 'Moves it to the Archived list. Its tasks stay where they are'}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {!isNew && project && (
+        <View style={[styles.card, styles.stackedCard]}>
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={handleToggleLock}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="switch"
+            accessibilityLabel="Lock with Face ID"
+            accessibilityState={{ checked: projectLocked }}
+          >
+            <Ionicons name={projectLocked ? 'lock-closed' : 'lock-open-outline'} size={18} color={projectLocked ? colors.accent : colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Lock with Face ID</Text>
+              <Text style={styles.optionHint}>
+                {isList
+                  ? 'Its items stay out of Today, Search and the widget until you unlock. Reminders show no title.'
+                  : 'Its tasks stay out of Today, Search and the widget until you unlock. Reminders show no title.'}
               </Text>
             </View>
           </TouchableOpacity>

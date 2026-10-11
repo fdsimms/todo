@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { useWithoutLockedTasks } from '../hooks/useWithoutLockedTasks';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -48,7 +49,7 @@ export function MetersScreen() {
 
   const readings = useMeterReadingStore(s => s.readings);
   const removeReading = useMeterReadingStore(s => s.removeReading);
-  const tasks = useTaskStore(s => s.tasks);
+  const tasks = useWithoutLockedTasks(useTaskStore(s => s.tasks));
   const meters = useMemo(() => meterOverview(readings, tasks), [readings, tasks]);
 
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());

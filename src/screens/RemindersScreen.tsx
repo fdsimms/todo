@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useCallback } from 'react';
+import { useWithoutLockedTasks } from '../hooks/useWithoutLockedTasks';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -43,7 +44,7 @@ export function RemindersScreen() {
   const tabBarHeight = useBottomTabBarHeight();
   // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
   const screenSettings = useScreenSettings('Reminders', 'Reminder settings');
-  const tasks = useTaskStore(useShallow(s => s.tasks));
+  const tasks = useWithoutLockedTasks(useTaskStore(useShallow(s => s.tasks)));
   const getCategoryByName = useCategoryStore(s => s.getCategoryByName);
   const projects = useProjectStore(useShallow(s => s.projects));
   const { colors, shadows } = useTheme();

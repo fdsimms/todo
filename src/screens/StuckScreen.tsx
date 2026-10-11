@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useCallback } from 'react';
+import { useWithoutLockedTasks } from '../hooks/useWithoutLockedTasks';
 import { View, Text, FlatList, TouchableOpacity, Alert, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -146,7 +147,7 @@ export function StuckScreen() {
   // deleted — either frees their waiters (see canWaitOn), and a stale list
   // would keep showing a heading for a person who no longer holds anything.
   const people = usePersonStore(useShallow(s => s.people));
-  const tasks = useTaskStore(s => s.tasks);
+  const tasks = useWithoutLockedTasks(useTaskStore(s => s.tasks));
   const updateTask = useTaskStore(s => s.updateTask);
   const setLastAction = useTaskStore(s => s.setLastAction);
   const completeTask = useTaskStore(s => s.completeTask);

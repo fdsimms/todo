@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useWithoutLockedTasks } from '../hooks/useWithoutLockedTasks';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Linking } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -119,7 +120,7 @@ export function PersonDetailScreen() {
   // The index rather than a scan: `Task.personIds` is an array on the row (see
   // the field note), so this is the reverse direction and it is rebuilt only
   // when the store replaces its array.
-  const allTasks = useTaskStore(useShallow(s => s.tasks));
+  const allTasks = useWithoutLockedTasks(useTaskStore(useShallow(s => s.tasks)));
   const [editing, setEditing] = useState(false);
 
   const personId = route.params.personId;

@@ -271,6 +271,7 @@ import {
   sunLocationOn,
 } from '../utils/visibilityUtils';
 import { openTasksOf } from '../utils/openTasks';
+import { isProjectHidden, useProjectLockStore } from './useProjectLockStore';
 import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
 import { categoryLabel } from '../utils/categoryLabel';
 import {
@@ -1337,6 +1338,15 @@ function liveListRows(tasks: Task[], heldIds: string[]): Task[] {
   return withHeldCompletions(tasks.filter(t => !t.completed || held.has(t.id)), heldIds);
 }
 
+// A task whose project is behind Face ID and not yet unlocked. A display rule
+// only: the task stays due and keeps repeating (see utils/projectLock.ts). The
+// list lenses keep such a task, since its row draws itself redacted
+// (LockedTaskRow); only lists that print a title with no row (the Logbook, the
+// archive) leave it out.
+function isLockedAway(task: Pick<Task, 'projectId'>): boolean {
+  return isProjectHidden(task.projectId);
+}
+
 // A daily target whose row is still playing out its send-off (see
 // QUOTA_HOLD_BACKSTOP_MS) counts as on Today even though the pace gate has
 // closed on it — and correspondingly isn't in Later yet, since the two lists
@@ -1494,6 +1504,8 @@ interface TaskStore extends UndoHistoryActions {
   // Ids of tasks completed within the last COMPLETION_HOLD_MS — see
   // withHeldCompletions above.
   completionHoldIds: string[];
+  /** Mirrors useProjectLockStore.revision so a lock change re-runs the list selectors. */
+  lockRevision: number;
   // The subset of those rows that has been told to shrink away. Set in one
   // go once the burst settles, so every row completed in it closes its gap
   // together (see COMPLETION_COLLAPSE_MS) — TaskItem watches for its own id
@@ -2746,6 +2758,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
   ...undoHistoryActions(set, get),
   completionHoldIds: [],
+  lockRevision: 0,
   completionCollapseIds: [],
   quotaHoldIds: [],
 
@@ -9961,12 +9974,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       done = tasks.filter(t => !t.parentId && t.completed && t.completedAt);
       completedTasksCache.set(tasks, done);
     }
-    return done;
+    // Not cached: the lock changes without the task array doing so.
+    return useProjectLockStore.getState().lockedIds.length === 0 ? done : done.filter(t => !isLockedAway(t));
   },
 
   archivedTasks() {
     return openTasksOf(get().tasks)
-      .filter(t => !t.parentId && t.archived && !t.completed)
+      .filter(t => !t.parentId && t.archived && !t.completed && !isLockedAway(t))
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
@@ -10214,3 +10228,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 // src/utils/blockerRegistry.ts for why this is a getter rather than a snapshot.
 registerTaskSource(() => useTaskStore.getState().tasks);
 registerPersonTaskSource(() => useTaskStore.getState().tasks);
+
+// The list selectors above read the project lock at call time, and a selector
+// only re-runs when this store changes, so a lock or unlock writes here too.
+useProjectLockStore.subscribe((state, prev) => {
+  if (state.revision !== prev.revision) useTaskStore.setState({ lockRevision: state.revision });
+});

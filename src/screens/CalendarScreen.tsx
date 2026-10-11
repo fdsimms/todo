@@ -1,4 +1,5 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { useWithoutLockedTasks } from '../hooks/useWithoutLockedTasks';
 import { useStableCallback } from '../hooks/useStableCallback';
 import { Animated, View, Text, ScrollView, StyleSheet, Dimensions, TouchableOpacity, PanResponder, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -153,7 +154,7 @@ export function CalendarScreen() {
   const styles = useMemo(() => makeStyles(colors, textScaleFactor), [colors, textScaleFactor]);
 
   // ==== stores and screen state ====
-  const allTasks = useTaskStore(s => s.tasks);
+  const allTasks = useWithoutLockedTasks(useTaskStore(s => s.tasks));
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const sunLocation = useSettingsStore(s => s.sunLocation);
