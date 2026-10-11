@@ -20,10 +20,15 @@
  * Data on iOS) without a debugger attached, same as ErrorBoundary.
  */
 
-/** Runs one launch step. Returns whether it got through without throwing. */
+import { timed } from './perfLog';
+
+/**
+ * Runs one launch step. Returns whether it got through without throwing. How
+ * long it took is recorded under its name (see perfLog.ts), failed or not.
+ */
 export function runStartupStep(name: string, step: () => void): boolean {
   try {
-    step();
+    timed(name, step);
     return true;
   } catch (error) {
     console.error(`Startup step "${name}" failed`, error);

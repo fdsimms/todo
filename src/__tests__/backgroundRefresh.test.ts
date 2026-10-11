@@ -83,6 +83,7 @@ const mockSyncState = {
   syncNow: async () => { mockCalls.push('syncNow'); return null; },
 };
 
+jest.mock('../utils/perfReport', () => ({ savePerfRun: jest.fn() }));
 jest.mock('../store/useTaskStore', () => ({
   useTaskStore: { getState: () => mockTaskState },
 }));
