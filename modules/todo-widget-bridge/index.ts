@@ -29,6 +29,9 @@ interface TodoWidgetBridgeNativeModule {
   // Doses queued by LogMedicationIntent ("log ibuprofen"). A JSON string of
   // records, read-and-clear — see src/utils/widgetSync.ts.
   drainPendingDoses(): Promise<string>;
+  // Dreams queued by LogDreamIntent ("log a dream"). A JSON string of
+  // `{ text, at }` records, read-and-clear — see src/utils/widgetSync.ts.
+  drainPendingDreams(): Promise<string>;
   // Taps the widget applied without opening the app: CompleteTaskQuietlyIntent
   // and CheckGroceryItemIntent (targets/todo-widget/WidgetQuietIntents.swift).
   // A JSON string of records, read-and-clear — see src/utils/widgetQuietTaps.ts.
@@ -80,6 +83,10 @@ export function writeMedicationIndex(jsonString: string): Promise<boolean> {
 
 export function drainPendingDoses(): Promise<string> {
   return TodoWidgetBridge.drainPendingDoses();
+}
+
+export function drainPendingDreams(): Promise<string> {
+  return TodoWidgetBridge.drainPendingDreams();
 }
 
 export function drainQuietWidgetTaps(): Promise<string> {

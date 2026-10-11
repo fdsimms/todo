@@ -7,6 +7,7 @@ import { format } from 'date-fns/format';
 import type { JournalEntry, JournalKind } from '../types';
 import { useJournalStore } from '../store/useJournalStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -17,9 +18,13 @@ import {
   countWords,
   daysReachingWordGoal,
   entriesOfKind,
+  entriesWithTag,
   groupJournalByDay,
+  journalSnippet,
   journalStats,
   justOpened,
+  onThisDay,
+  randomJournalDay,
   formatWordCount,
   openEntries,
   searchJournal,
@@ -27,8 +32,14 @@ import {
   type JournalDay,
 } from '../utils/journal';
 import { dropSealedNoteReminder } from '../utils/sealedNoteTasks';
-import { journalExportCsv, journalExportFileName, journalExportSummary } from '../utils/journalExport';
-import { writeExportFile, shareCsvFile, discardBackupFile, canShare } from '../utils/backupFile';
+import {
+  journalExportCsv,
+  journalExportFileName,
+  journalExportMarkdown,
+  journalExportSummary,
+  type JournalExportFormat,
+} from '../utils/journalExport';
+import { writeExportFile, shareCsvFile, shareMarkdownFile, discardBackupFile, canShare } from '../utils/backupFile';
 import { navigateToTab } from '../navigation/navigationRef';
 import { useFilterField } from '../hooks/useFilterField';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
@@ -43,9 +54,44 @@ import { SearchField } from '../components/SearchField';
 import { JournalEntrySheet } from '../components/JournalEntrySheet';
 import { JournalText } from '../components/JournalText';
 import { JournalWordGoalSheet } from '../components/JournalWordGoalSheet';
+import { JournalDaySheet } from '../components/JournalDaySheet';
+import { JournalMonthSheet } from '../components/JournalMonthSheet';
 import { journalPlainText } from '../utils/journalMarkdown';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
+
+/**
+ * The labels and people on an entry, under its words. A tag is a button that
+ * narrows the list to it; the people are plain text, since their page is where
+ * the entries about them are read.
+ */
+function EntryMeta({ entry, personName, onTag, styles }: {
+  entry: JournalEntry;
+  personName: (id: string) => string | null;
+  onTag: (tag: string) => void;
+  styles: ReturnType<typeof makeStyles>;
+}) {
+  const names = (entry.personIds ?? []).map(personName).filter((n): n is string => n !== null);
+  const tags = entry.tags ?? [];
+  if (tags.length === 0 && names.length === 0) return null;
+  return (
+    <View style={styles.metaRow}>
+      {names.length > 0 && <Text style={styles.metaText}>{`About ${names.join(', ')}`}</Text>}
+      {tags.map(tag => (
+        <TouchableOpacity
+          key={tag}
+          style={styles.tagChip}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => { haptics.tap(); onTag(tag); }}
+          accessibilityRole="button"
+          accessibilityLabel={`Show only entries tagged ${tag}`}
+        >
+          <Text style={styles.tagChipText}>{tag}</Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+}
 
 /**
  * The journal, or the dream log: one screen over `useJournalStore`, split by
@@ -77,10 +123,33 @@ function JournalLogContent({ kind }: { kind: JournalKind }) {
   const sealed = useMemo(() => sealedEntries(written, todayKey), [written, todayKey]);
   const opened = useMemo(() => justOpened(entries, todayKey), [entries, todayKey]);
   const search = useFilterField();
-  const days = useMemo(
-    () => groupJournalByDay(searchJournal(entries, search.query)),
-    [entries, search.query],
-  );
+  // One tag the list is narrowed to, set by tapping a tag on an entry.
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const days = useMemo(() => {
+    const found = searchJournal(entries, search.query);
+    return groupJournalByDay(tagFilter ? entriesWithTag(found, tagFilter) : found);
+  }, [entries, search.query, tagFilter]);
+  const pastYears = useMemo(() => onThisDay(entries, kind, todayKey), [entries, kind, todayKey]);
+  const people = usePersonStore(s => s.people);
+  const personName = (id: string): string | null => {
+    const person = people.find(p => p.id === id);
+    return person ? displayNameOf(person) : null;
+  };
+  // The month grid and the page it opens, or a random page.
+  const [monthOpen, setMonthOpen] = useState(false);
+  const [dayOpen, setDayOpen] = useState(false);
+  const [shownDay, setShownDay] = useState<string | null>(null);
+  const [dayIsRandom, setDayIsRandom] = useState(false);
+  const showDay = (dayKey: string, random: boolean) => {
+    setShownDay(dayKey);
+    setDayIsRandom(random);
+    setMonthOpen(false);
+    setDayOpen(true);
+  };
+  const showRandomDay = () => {
+    const pick = randomJournalDay(entries, kind, todayKey);
+    if (pick) showDay(pick, true);
+  };
   const stats = useMemo(() => journalStats(entries, todayKey.slice(0, 7)), [entries, todayKey]);
   // Only the journal has a goal: a dream is written down as it is remembered.
   const wordGoal = useSettingsStore(s => (kind === 'journal' ? s.journalWordGoal : null));
@@ -167,20 +236,21 @@ function JournalLogContent({ kind }: { kind: JournalKind }) {
   const shareTitle = kind === 'dream' ? 'Share your dreams' : 'Share your journal';
 
   /**
-   * Hand this kind's entries to the share sheet as CSV, the medication
-   * screen's flow: the summary is confirmed before anything is written, and
+   * Hand this kind's entries to the share sheet as Markdown or CSV, the
+   * medication screen's flow: the summary is confirmed before anything is written, and
    * the file is deleted the moment the share sheet closes.
    */
   const share = async () => {
     if (entries.length === 0 || sharing) return;
     haptics.tap();
-    const confirmed = await new Promise<boolean>(resolve => {
+    const chosen = await new Promise<JournalExportFormat | null>(resolve => {
       Alert.alert(shareTitle, journalExportSummary(entries, kind), [
-        { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
-        { text: 'Share', onPress: () => resolve(true) },
-      ]);
+        { text: 'Cancel', style: 'cancel', onPress: () => resolve(null) },
+        { text: 'Share as Markdown', onPress: () => resolve('markdown') },
+        { text: 'Share as CSV', onPress: () => resolve('csv') },
+      ], { onDismiss: () => resolve(null) });
     });
-    if (!confirmed) return;
+    if (!chosen) return;
 
     setSharing(true);
     let uri: string | null = null;
@@ -189,8 +259,11 @@ function JournalLogContent({ kind }: { kind: JournalKind }) {
         Alert.alert('Sharing unavailable', 'This device cannot open a share sheet.');
         return;
       }
-      uri = writeExportFile(journalExportCsv(entries, kind), journalExportFileName(kind, new Date()));
-      await shareCsvFile(uri, shareTitle);
+      const body = chosen === 'markdown'
+        ? journalExportMarkdown(entries, kind, personName)
+        : journalExportCsv(entries, kind, personName);
+      uri = writeExportFile(body, journalExportFileName(kind, new Date(), chosen));
+      await (chosen === 'markdown' ? shareMarkdownFile(uri, shareTitle) : shareCsvFile(uri, shareTitle));
     } catch {
       Alert.alert('Export failed', 'Couldn’t write the file. Try again.');
     } finally {
@@ -224,6 +297,15 @@ function JournalLogContent({ kind }: { kind: JournalKind }) {
             loading: sharing,
             accessibilityLabel: shareTitle,
           }] : []),
+          ...(entries.length > 0 ? [{
+            icon: 'calendar-outline' as const,
+            onPress: () => { haptics.tap(); setMonthOpen(true); },
+            accessibilityLabel: 'See the days you have written',
+          }, {
+            icon: 'shuffle' as const,
+            onPress: () => { haptics.tap(); showRandomDay(); },
+            accessibilityLabel: kind === 'dream' ? 'Read a random dream page' : 'Read a random journal page',
+          }] : []),
           ...(kind === 'journal' ? [{
             icon: 'target' as const,
             onPress: () => { haptics.tap(); setGoalOpen(true); },
@@ -244,7 +326,23 @@ function JournalLogContent({ kind }: { kind: JournalKind }) {
   );
 
   const sheet = (
-    <JournalEntrySheet visible={sheetOpen} kind={kind} editing={editing} onClose={closeSheet} />
+    <>
+      <JournalEntrySheet visible={sheetOpen} kind={kind} editing={editing} onClose={closeSheet} />
+      <JournalMonthSheet
+        visible={monthOpen}
+        kind={kind}
+        onPickDay={dayKey => showDay(dayKey, false)}
+        onClose={() => setMonthOpen(false)}
+      />
+      <JournalDaySheet
+        visible={dayOpen}
+        kind={kind}
+        dayKey={shownDay}
+        onAnother={dayIsRandom ? showRandomDay : undefined}
+        onEdit={entry => { setDayOpen(false); openEdit(entry); }}
+        onClose={() => setDayOpen(false)}
+      />
+    </>
   );
 
   // A note for later and nothing else is still something written, so the
@@ -275,6 +373,20 @@ function JournalLogContent({ kind }: { kind: JournalKind }) {
         accessibilityLabel={kind === 'dream' ? 'Search your dreams' : 'Search your journal'}
         style={styles.search}
       />
+      {tagFilter && (
+        <View style={styles.activeFilterRow}>
+          <TouchableOpacity
+            style={styles.activeFilter}
+            activeOpacity={interaction.activeOpacity}
+            onPress={() => { haptics.tap(); setTagFilter(null); }}
+            accessibilityRole="button"
+            accessibilityLabel={`Showing only ${tagFilter}. Clear this filter`}
+          >
+            <Text style={styles.activeFilterText}>{tagFilter}</Text>
+            <Ionicons name="close" size={iconSize.sm} color={colors.onAccent} />
+          </TouchableOpacity>
+        </View>
+      )}
       <FlatList
         ref={scrollTop.ref}
         refreshControl={pullSearch.refreshControl}
@@ -285,8 +397,30 @@ function JournalLogContent({ kind }: { kind: JournalKind }) {
         keyExtractor={day => day.dayKey}
         contentContainerStyle={[styles.listContent, { paddingBottom: tabBarHeight + spacing.xl }]}
         keyboardShouldPersistTaps="handled"
-        ListHeaderComponent={search.query ? null : (
+        ListHeaderComponent={search.query || tagFilter ? null : (
           <>
+            {pastYears.length > 0 && (
+              <View>
+                <Text style={styles.dayLabel}>ON THIS DAY</Text>
+                <View style={styles.card}>
+                  {pastYears.map((past, index) => (
+                    <TouchableOpacity
+                      key={past.dayKey}
+                      style={[styles.entryRow, index === 0 && styles.firstRow]}
+                      activeOpacity={interaction.activeOpacity}
+                      onPress={() => { haptics.tap(); showDay(past.dayKey, false); }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${past.yearsAgo === 1 ? 'A year ago' : `${past.yearsAgo} years ago`}: ${journalSnippet(past.entries[0].text)}`}
+                    >
+                      <Text style={styles.entryTime}>
+                        {`${past.yearsAgo === 1 ? '1 year ago' : `${past.yearsAgo} years ago`} · ${format(new Date(`${past.dayKey}T12:00:00`), 'MMMM d, yyyy')}`}
+                      </Text>
+                      <Text style={styles.entryText} numberOfLines={3}>{journalSnippet(past.entries[0].text)}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            )}
             {sealed.length > 0 && (
               <TouchableOpacity
                 style={[styles.card, styles.sealedCard]}
@@ -351,6 +485,7 @@ function JournalLogContent({ kind }: { kind: JournalKind }) {
                 >
                   <Text style={styles.entryTime}>{format(new Date(entry.loggedAt), 'h:mm a')}</Text>
                   <JournalText text={entry.text} textStyle={styles.entryText} />
+                  <EntryMeta entry={entry} personName={personName} onTag={setTagFilter} styles={styles} />
                 </TouchableOpacity>
               ))}
             </View>
@@ -415,6 +550,26 @@ export function DreamsScreen() {
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
+  metaRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm },
+  metaText: { color: colors.textSecondary, fontSize: font.xs },
+  tagChip: {
+    backgroundColor: colors.bgTertiary,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.smd,
+    paddingVertical: spacing.xxs,
+  },
+  tagChipText: { color: colors.text, fontSize: font.xs },
+  activeFilterRow: { paddingHorizontal: spacing.md, paddingBottom: spacing.sm, flexDirection: 'row' },
+  activeFilter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: colors.accentFill,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.smd,
+    paddingVertical: spacing.xsm,
+  },
+  activeFilterText: { color: colors.onAccent, fontSize: font.sm, fontWeight: fontWeight.semibold },
   container: { flex: 1, backgroundColor: colors.bg },
   search: { marginHorizontal: spacing.md, marginBottom: spacing.sm },
   list: { flex: 1 },

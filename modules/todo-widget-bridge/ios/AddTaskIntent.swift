@@ -140,5 +140,16 @@ struct DundundunShortcuts: AppShortcutsProvider {
             shortTitle: "Log a Dose",
             systemImageName: "pills"
         )
+        // Free text again, so no parameter in the phrase: Siri asks what the
+        // dream was (LogDreamIntent.swift), the same way Add Task asks.
+        AppShortcut(
+            intent: LogDreamIntent(),
+            phrases: [
+                "Log a dream in \(.applicationName)",
+                "Write down a dream in \(.applicationName)",
+            ],
+            shortTitle: "Log a Dream",
+            systemImageName: "moon.stars"
+        )
     }
 }

@@ -405,8 +405,13 @@ since the Activity list is about the app and should not show somebody's health.
 **Journal entries and dreams have their own tools** (`mcp/src/journalTools.ts`:
 `list_journal_entries`, `log_journal_entry`, `update_journal_entry`, `delete_journal_entry`), through
 `useJournalStore` like the mood log goes through its store. They are health rows for the same
-switch, and the Activity entry names the kind and the day, never the words. `log_mood` no longer
-takes a dream (`docs/arch/journal.md`).
+switch, and the Activity entry names the kind and the day, never the words (nor the tags or people).
+`log_mood` no longer takes a dream (`docs/arch/journal.md`). `search_journal_entries` is the
+app's own `searchJournal` rule (every word, plain substring) over all days written unless
+`from`/`to` narrow it, capped at 50 with a `total`, so a word can be found without reading a
+year of entries; it filters through `openEntries` like every reader. Entries carry `tags` and
+`personIds` when they have any, `list_journal_entries` filters by either, and `log_`/`update_journal_entry`
+write them (an update replaces the whole list and leaves out what it isn't given).
 
 **Water is its own tool, `log_water`, because the food log keeps one water entry a day.**
 `waterLog.ts`'s rule is that eight glasses are one row stepped up eight times, not eight rows in

@@ -107,7 +107,7 @@ import { followedWaterTaskDoneOn, WATER_SHORTFALL_NOTES, waterShortfallTitle } f
 import { isMissed, isRealCompletion, mostMissed } from '../utils/missed';
 import { goalDirection } from '../utils/weightGoal';
 import { lookBacks } from '../utils/moodHistory';
-import { daysReachingWordGoal, entriesOfKind, journalStats } from '../utils/journal';
+import { daysReachingWordGoal, entriesOfKind, journalStats, onThisDay } from '../utils/journal';
 import { parseJournalMarkdown } from '../utils/journalMarkdown';
 import { isStaleNote } from '../utils/personNotes';
 import { personBackfillFieldCounts, PERSON_BACKFILL_FIELDS } from '../utils/peopleBackfill';
@@ -2187,6 +2187,14 @@ describe('demo seed — people', () => {
     const perDay = new Map<string, number>();
     entriesOfKind(entries, 'journal').forEach(e => perDay.set(e.dayKey, (perDay.get(e.dayKey) ?? 0) + 1));
     expect(Math.max(...perDay.values())).toBeGreaterThanOrEqual(3);
+  });
+
+  it('seeds journal tags, a person link, a page from a year ago and a custom prompt', () => {
+    const entries = useJournalStore.getState().entries;
+    expect(entries.some(e => (e.tags ?? []).includes('work'))).toBe(true);
+    expect(entries.some(e => (e.personIds ?? []).length > 0)).toBe(true);
+    expect(onThisDay(entries, 'journal', dayKeyOf(getCurrentDayStart())).length).toBeGreaterThan(0);
+    expect(useSettingsStore.getState().journalCustomPrompts.length).toBeGreaterThan(0);
   });
 
   it('seeds context tags, so the Mood screen has something to show for the feature', () => {

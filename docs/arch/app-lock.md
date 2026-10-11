@@ -68,7 +68,7 @@ For the same reason the Settings toggle calls `unlock()` *before*
   `useJournalAccess`). Same derived `locked = enabled && !unlocked`, but no grace
   period: `AppLockGate` closes it whenever the app stops being active. Every
   reader of journal text checks `useJournalAccess().locked`: the Journal and
-  Dreams screens (which mount no content while locked), the mood day page and
+  Dreams screens (which mount no content while locked), the mood day page, a person's page (its "In your writing" list) and
   Looking back, which drop the entries so paging doesn't stop on a day that only
   has writing on it. A new reader of journal entries does the same. It is
   device-local like the app lock, and it does not cover Claude's journal tools,

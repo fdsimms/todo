@@ -107,7 +107,7 @@ import { DEFAULT_PATTERN_DAYS, focusHistory, habitPatterns, moodInsights } from 
 import { addMilestone, deleteMilestone, listMilestones, updateMilestone } from './milestoneTools';
 import { listCopyFlags, resolveCopyFlag } from './copyFlagTools';
 import { deleteMeterReading, listMeterReadings, logMeterReading } from './meterTools';
-import { deleteJournalEntry, listJournalEntries, logJournalEntry, updateJournalEntry } from './journalTools';
+import { deleteJournalEntry, listJournalEntries, logJournalEntry, searchJournalEntries, updateJournalEntry } from './journalTools';
 import { SAVED_VIEW_TASK_LIMIT, createSavedView, deleteSavedView, getSavedView, listSavedViews, updateSavedView } from './savedViewTools';
 import { setVacationMode } from './vacationTools';
 import { getSettings, updateSettings } from './settingsTools';
@@ -491,8 +491,28 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
   server.tool(
     'list_journal_entries',
     'Journal entries and dreams the person wrote, over a range of days, newest first. kind narrows to one ("journal" or "dream"). Defaults to the last 7 days. Empty unless the person has turned on Include journal and dreams for the sync server on their phone (its own switch, separate from health logs), so an empty result is not evidence that nothing was written; if they want you to see it, tell them where the switch is. Quote or summarize only what they ask about; never interpret a dream or read meaning into an entry.',
-    { ...logRange, kind: z.enum(['journal', 'dream']).optional() },
+    {
+      ...logRange,
+      kind: z.enum(['journal', 'dream']).optional(),
+      tag: z.string().min(1).optional().describe('Only entries carrying this tag (a label the person typed).'),
+      personId: z.string().min(1).optional().describe('Only entries about this person, by id from list_people.'),
+    },
     async input => json(await withFresh(() => listJournalEntries(replica, input)))
+  );
+
+  server.tool(
+    'search_journal_entries',
+    'Find journal entries and dreams containing every word of a query, across everything written unless from/to narrow it. Use this instead of listing a long range to look for a word. Newest first, at most 50; total says how many matched. Same switch and same rules as list_journal_entries: quote only what the person asks about and never interpret an entry.',
+    {
+      query: z.string().min(1),
+      kind: z.enum(['journal', 'dream']).optional(),
+      tag: z.string().min(1).optional(),
+      personId: z.string().min(1).optional(),
+      from: dayKey.optional(),
+      to: dayKey.optional(),
+      limit: z.number().int().positive().max(50).optional(),
+    },
+    async input => json(await withFresh(() => searchJournalEntries(replica, input)))
   );
 
   server.tool(
@@ -1761,6 +1781,8 @@ function registerWriteTools(
       kind: z.enum(['journal', 'dream']),
       text: z.string().min(1).max(5000),
       at: z.string().optional().describe('An ISO date-time, or YYYY-MM-DD for a day gone by. Default now.'),
+      tags: z.array(z.string().min(1)).max(8).optional().describe('Labels, only ones the person named. Never invent tags to describe what an entry means.'),
+      personIds: z.array(z.string().min(1)).optional().describe('People it is about, by id from list_people, only when the person said so.'),
     },
     async input => {
       try {
@@ -1773,11 +1795,16 @@ function registerWriteTools(
 
   server.tool(
     'update_journal_entry',
-    'Replace the text of a journal or dream entry, by its id from list_journal_entries. It cannot move an entry to another day; for a wrong date, delete it and write it again.',
-    { id: z.string().min(1), text: z.string().min(1).max(5000) },
-    async ({ id, text }) => {
+    'Replace the text, the tags or the people of a journal or dream entry, by its id from list_journal_entries. What you leave out stays as it was; tags and personIds replace the whole list. It cannot move an entry to another day; for a wrong date, delete it and write it again.',
+    {
+      id: z.string().min(1),
+      text: z.string().min(1).max(5000).optional(),
+      tags: z.array(z.string().min(1)).max(8).optional(),
+      personIds: z.array(z.string().min(1)).optional(),
+    },
+    async ({ id, ...change }) => {
       try {
-        return json(await withWrite(() => updateJournalEntry(replica, id, text)));
+        return json(await withWrite(() => updateJournalEntry(replica, id, change)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not change the entry.' });
       }

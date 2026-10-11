@@ -8,12 +8,34 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { dayKeyOf, getLogicalToday } from '../utils/dateUtils';
-import { JOURNAL_KIND_COPY, countWords, entriesOnDay, formatWordCount, journalPromptAt, openEntries, wordsOnDay } from '../utils/journal';
+import {
+  JOURNAL_KIND_COPY,
+  JOURNAL_TAGS_PER_ENTRY,
+  JOURNAL_TAG_MAX_LENGTH,
+  countWords,
+  entriesOnDay,
+  formatWordCount,
+  journalPromptAt,
+  journalPromptList,
+  journalTagKey,
+  journalTagsIn,
+  normalizeJournalTag,
+  openEntries,
+  sealShortcuts,
+  wordsOnDay,
+} from '../utils/journal';
+import {
+  JOURNAL_DRAFT_DELAY_MS,
+  clearJournalDraft,
+  readJournalDraft,
+  writeJournalDraft,
+} from '../utils/journalDraft';
 import { addSealedNoteReminder, dropSealedNoteReminder } from '../utils/sealedNoteTasks';
 import { journalPlainText, toggleLinePrefix, toggleWrap } from '../utils/journalMarkdown';
 import { useJournalStore } from '../store/useJournalStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { EditorSheet } from './EditorSheet';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -21,6 +43,8 @@ import { EditorRow } from './EditorRow';
 import { WhenPicker } from './WhenPicker';
 import { TextField } from './TextField';
 import { InlineAction } from './InlineAction';
+import { CollapsibleField } from './CollapsibleField';
+import { PillGroup } from './PillGroup';
 import { JournalText } from './JournalText';
 import { JOURNAL_FORMAT_BAR_HEIGHT, JournalFormatBar, type FormatAction } from './JournalFormatBar';
 import { useTitleSelection } from '../hooks/useTitleSelection';
@@ -32,6 +56,10 @@ function noonOn(day: Date): Date {
   const at = new Date(day);
   at.setHours(12, 0, 0, 0);
   return at;
+}
+
+function sameList(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((v, i) => v === b[i]);
 }
 
 function dayLabel(day: Date): string {
@@ -67,7 +95,10 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
   const removeEntry = useJournalStore(s => s.removeEntry);
   const allEntries = useJournalStore(s => s.entries);
   const completeJournalTaskForToday = useTaskStore(s => s.completeJournalTaskForToday);
+  const setEntryMeta = useJournalStore(s => s.setEntryMeta);
   const wordGoal = useSettingsStore(s => s.journalWordGoal);
+  const customPrompts = useSettingsStore(s => s.journalCustomPrompts);
+  const allPeople = usePersonStore(s => s.people);
 
   const [text, setText] = useState('');
   const [day, setDay] = useState<Date>(() => getLogicalToday());
@@ -79,6 +110,13 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
   // Which writing prompt is showing, or null for none. Only ever set by a tap:
   // a prompt is offered, never put in front of you or written into the entry.
   const [promptIndex, setPromptIndex] = useState<number | null>(null);
+  // Labels and people the person attaches (JournalEntry.tags / personIds).
+  const [tags, setTags] = useState<string[]>([]);
+  const [personIds, setPersonIds] = useState<string[]>([]);
+  const [tagsOpen, setTagsOpen] = useState(false);
+  const [peopleOpen, setPeopleOpen] = useState(false);
+  // Whether the text on the page came back from a kept draft, said once.
+  const [restoredDraft, setRestoredDraft] = useState(false);
   // The selection is tracked for the formatting bar (see useTitleSelection for
   // why it is never fed back except on the one render an edit places it), and
   // focus is tracked because a floating bar has no native tie to the field.
@@ -88,8 +126,17 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
   // Reseeds on every open, so a reopened sheet never hands back a half-written page.
   useEffect(() => {
     if (!visible) return;
-    setText(editing?.text ?? '');
-    caret.resetCaret(editing?.text ?? '');
+    // A new entry picks up the draft left by an interrupted one; an edit has
+    // its saved words and no draft.
+    const draft = editing ? null : readJournalDraft(kind);
+    const seed = editing?.text ?? draft ?? '';
+    setText(seed);
+    caret.resetCaret(seed);
+    setRestoredDraft(draft !== null);
+    setTags(editing?.tags ?? []);
+    setPersonIds(editing?.personIds ?? []);
+    setTagsOpen(false);
+    setPeopleOpen(false);
     setDay(getLogicalToday());
     setPickerOpen(false);
     setOpenOn(null);
@@ -98,6 +145,15 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
     // caret's functions are stable (useCallback with no deps).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, editing]);
+
+  // Keeps a new entry's words as a draft while they are typed. The first run
+  // after a reopen carries the stale blank text, but the seed above changes
+  // `text` before the delay passes, which cancels that write.
+  useEffect(() => {
+    if (!visible || editing) return;
+    const timer = setTimeout(() => writeJournalDraft(kind, text), JOURNAL_DRAFT_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [visible, editing, kind, text]);
 
   // A formatting button: rewrite the text round the selection, then put the
   // selection back over the same words (or the caret between an empty pair).
@@ -135,7 +191,24 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
     ? formatWordCount(entryWords)
     : `${dayWords.toLocaleString('en-US')} of ${goal.toLocaleString('en-US')} words${dayWords >= goal ? ' · Goal reached' : ''}`;
 
-  const canSave = text.trim().length > 0 && (!editing || text.trim() !== editing.text);
+  const prompts = useMemo(() => journalPromptList(customPrompts), [customPrompts]);
+  const metaChanged = !!editing && (
+    !sameList(tags, editing.tags ?? []) || !sameList(personIds, editing.personIds ?? [])
+  );
+  const canSave = text.trim().length > 0 && (!editing || text.trim() !== editing.text || metaChanged);
+
+  // Tags already in use on this kind (open entries only, so a sealed note's
+  // labels aren't shown early), then any picked in this sheet.
+  const tagChoices = useMemo(() => {
+    const used = journalTagsIn(openEntries(allEntries, dayKeyOf(getLogicalToday())), kind);
+    const keys = new Set(used.map(journalTagKey));
+    return [...used, ...tags.filter(t => !keys.has(journalTagKey(t)))];
+  }, [allEntries, kind, tags]);
+  const pickablePeople = useMemo(
+    () => allPeople.filter(p => !p.archived || personIds.includes(p.id)),
+    [allPeople, personIds],
+  );
+  const shortcuts = useMemo(() => sealShortcuts(dayKeyOf(getLogicalToday())), [visible]);
   // Sealing is for a page written now: a backdated entry is filling in a day
   // that has gone, not leaving a note for one to come.
   const canSeal = kind === 'journal' && !editing && isSameDay(day, getLogicalToday());
@@ -145,14 +218,16 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
     haptics.success();
     if (editing) {
       updateEntry(editing.id, text);
+      if (metaChanged) setEntryMeta(editing.id, { tags, personIds });
     } else {
       const isToday = isSameDay(day, getLogicalToday());
       const sealUntil = canSeal && openOn ? dayKeyOf(openOn) : null;
-      const entry = addEntry(kind, text, isToday ? undefined : noonOn(day), sealUntil);
+      const entry = addEntry(kind, text, isToday ? undefined : noonOn(day), sealUntil, { tags, personIds });
       if (entry?.openOn) addSealedNoteReminder(entry);
       // Writing is what the reminder asks for. Only a new entry for today: the
       // day you missed filled in later is not today's entry.
       if (isToday) completeJournalTaskForToday(kind);
+      clearJournalDraft(kind);
     }
     onClose();
   };
@@ -160,14 +235,14 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
   // A journal page can be long, so Cancel asks before throwing words away.
   // The copy is TaskEditor's own handleCancel's.
   const handleCancel = () => {
-    const dirty = text.trim() !== (editing?.text ?? '');
-    if (!dirty) { onClose(); return; }
+    const dirty = text.trim() !== (editing?.text ?? '') || metaChanged || (!editing && (tags.length > 0 || personIds.length > 0));
+    if (!dirty) { if (!editing) clearJournalDraft(kind); onClose(); return; }
     Alert.alert(
       'Discard changes?',
       'You have unsaved changes. Are you sure you want to discard them?',
       [
         { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: onClose },
+        { text: 'Discard', style: 'destructive', onPress: () => { if (!editing) clearJournalDraft(kind); onClose(); } },
       ],
     );
   };
@@ -225,6 +300,19 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
               onPress={() => { haptics.tap(); setOpenOnPickerOpen(true); }}
             />
           )}
+          {canSeal && (
+            <View style={styles.shortcuts}>
+              {shortcuts.map(shortcut => (
+                <InlineAction
+                  key={shortcut.label}
+                  label={shortcut.label}
+                  variant="neutral"
+                  surface="card"
+                  onPress={() => { haptics.tap(); setOpenOn(new Date(`${shortcut.dayKey}T12:00:00`)); }}
+                />
+              ))}
+            </View>
+          )}
           {canSeal && openOn && (
             <Text style={styles.sealHint}>
               You won't be able to read this until that day. A task will remind you to open it. You can also open it early from the Journal.
@@ -270,8 +358,9 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
           accessibilityLabel={kind === 'dream' ? 'A dream you remember' : 'Journal entry'}
         />
         <Text style={styles.wordCount}>{wordsLine}</Text>
+        {restoredDraft && <Text style={styles.wordCount}>Restored the draft you hadn’t saved.</Text>}
         {kind === 'journal' && promptIndex !== null && (
-          <Text style={styles.prompt}>{journalPromptAt(promptIndex)}</Text>
+          <Text style={styles.prompt}>{journalPromptAt(promptIndex, prompts)}</Text>
         )}
         {/* Only on a blank page: once there are words, a prompt is in the way. */}
         {kind === 'journal' && !editing && text.trim().length === 0 && (
@@ -292,6 +381,72 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
       <Text style={styles.formatHint}>
         Use the buttons above the keyboard, or type **bold**, *italics*, # for a heading, - for a list item and &gt; for a quote.
       </Text>
+
+      <View style={styles.card}>
+        <CollapsibleField
+          label="Tags"
+          summary={tags.length > 0 ? tags.join(', ') : undefined}
+          hint="Labels you choose, to find entries by later. Nothing is added for you."
+          expanded={tagsOpen}
+          onToggle={() => { haptics.tap(); setTagsOpen(o => !o); }}
+        >
+          <PillGroup
+            noun="tag"
+            surface="card"
+            createMaxLength={JOURNAL_TAG_MAX_LENGTH}
+            options={tagChoices.map(tag => {
+              const on = tags.some(t => journalTagKey(t) === journalTagKey(tag));
+              return {
+                key: journalTagKey(tag),
+                label: tag,
+                selected: on,
+                onPress: () => {
+                  haptics.tap();
+                  setTags(list => on ? list.filter(t => journalTagKey(t) !== journalTagKey(tag)) : [...list, tag]);
+                },
+              };
+            })}
+            onCreate={name => {
+              const tag = normalizeJournalTag(name);
+              if (!tag) return 'Enter a tag.';
+              if (tags.some(t => journalTagKey(t) === journalTagKey(tag))) return 'That tag is already on this entry.';
+              if (tags.length >= JOURNAL_TAGS_PER_ENTRY) return `An entry can have up to ${JOURNAL_TAGS_PER_ENTRY} tags.`;
+              setTags(list => [...list, tag]);
+            }}
+          />
+        </CollapsibleField>
+        <CollapsibleField
+          label="About"
+          summary={personIds.length > 0
+            ? personIds.map(id => allPeople.find(p => p.id === id)).filter(p => !!p).map(p => displayNameOf(p!)).join(', ')
+            : undefined}
+          hint="People this is about. The entry is listed on their page."
+          expanded={peopleOpen}
+          onToggle={() => { haptics.tap(); setPeopleOpen(o => !o); }}
+        >
+          <PillGroup
+            noun="person"
+            pluralNoun="people"
+            surface="card"
+            options={pickablePeople.map(p => {
+              const on = personIds.includes(p.id);
+              return {
+                key: p.id,
+                label: displayNameOf(p),
+                selected: on,
+                onPress: () => {
+                  haptics.tap();
+                  setPersonIds(list => on ? list.filter(id => id !== p.id) : [...list, p.id]);
+                },
+              };
+            })}
+            onCreate={name => {
+              const person = usePersonStore.getState().createPerson(name);
+              setPersonIds(list => [...list, person.id]);
+            }}
+          />
+        </CollapsibleField>
+      </View>
 
       {editing && (
         <TouchableOpacity
@@ -369,6 +524,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.sm,
     color: colors.textSecondary,
   },
+  shortcuts: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingTop: spacing.sm },
   sealHint: {
     fontSize: font.sm,
     color: colors.textSecondary,

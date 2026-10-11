@@ -23,6 +23,7 @@ import { goalDirection } from '../../utils/weightGoal';
 import { formatSleepDuration } from '../../utils/sleepLog';
 import { SleepGoalSheet } from '../../components/SleepGoalSheet';
 import { JournalWordGoalSheet } from '../../components/JournalWordGoalSheet';
+import { JournalPromptsSheet } from '../../components/JournalPromptsSheet';
 import { formatWordCount } from '../../utils/journal';
 import { resetToWeightGoal } from '../../navigation/navigationRef';
 import { useColors } from '../../theme/ThemeContext';
@@ -112,7 +113,9 @@ export function HealthSettings() {
   const sleepGoalMinutes = useSettingsStore(s => s.sleepGoalMinutes);
   const [sleepGoalOpen, setSleepGoalOpen] = useState(false);
   const journalWordGoal = useSettingsStore(s => s.journalWordGoal);
+  const journalCustomPrompts = useSettingsStore(s => s.journalCustomPrompts);
   const [wordGoalOpen, setWordGoalOpen] = useState(false);
+  const [promptsOpen, setPromptsOpen] = useState(false);
   const categories = useCategoryStore(s => s.categories);
   const today = useHealthStore(s => s.today);
   const refreshing = useHealthStore(s => s.refreshing);
@@ -621,8 +624,18 @@ export function HealthSettings() {
         value={journalWordGoal === null ? 'None' : formatWordCount(journalWordGoal)}
         onPress={() => { haptics.tap(); setWordGoalOpen(true); }}
       />
+      <SettingsRow
+        entryId="journalPrompts"
+        icon="bulb-outline"
+        iconColor={journalCustomPrompts.length > 0 ? colors.accent : undefined}
+        label="Your prompts"
+        hint="Questions offered over a blank journal page, before the built-in ones."
+        value={journalCustomPrompts.length === 0 ? 'None' : String(journalCustomPrompts.length)}
+        onPress={() => { haptics.tap(); setPromptsOpen(true); }}
+      />
     </SettingsSection>
     <JournalWordGoalSheet visible={wordGoalOpen} onClose={() => setWordGoalOpen(false)} />
+    <JournalPromptsSheet visible={promptsOpen} onClose={() => setPromptsOpen(false)} />
     </>
   );
 }

@@ -1298,15 +1298,15 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
 
     // A journal entry or dream is the most personal thing the app holds, so,
     // as for a mood entry, the record names the kind and the day, never the words.
-    addJournalEntry(kind, text, at) {
-      const entry = replica.addJournalEntry(kind, text, at);
+    addJournalEntry(kind, text, at, meta) {
+      const entry = replica.addJournalEntry(kind, text, at, meta);
       const noun = entry.kind === 'dream' ? 'dream' : 'journal entry';
       log({ action: 'created', subject: 'journal', title: entry.kind === 'dream' ? 'Dream' : 'Journal entry', taskId: null, recordId: entry.id, note: `Write a ${noun} for ${entry.dayKey}` });
       return entry;
     },
 
-    updateJournalEntry(id, text) {
-      const entry = replica.updateJournalEntry(id, text);
+    updateJournalEntry(id, change) {
+      const entry = replica.updateJournalEntry(id, change);
       const noun = entry.kind === 'dream' ? 'dream' : 'journal entry';
       log({ action: 'edited', subject: 'journal', title: entry.kind === 'dream' ? 'Dream' : 'Journal entry', taskId: null, recordId: entry.id, note: `Change the ${noun} from ${entry.dayKey}` });
       return entry;
