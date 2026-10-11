@@ -4,6 +4,9 @@
  * travels to a peer.
  */
 import { dbGetSetting, dbSetSetting } from '../db/database';
+import { isDemoModeActive } from './demoState';
+import { readDevicePayloads } from './deviceMetrics';
+import { collectSummaries, formatDeviceMetrics, parseSummaries, type DeviceMetricSummary } from './metricKit';
 import {
   appendRun,
   currentEntries,
@@ -14,6 +17,7 @@ import {
 } from './perfLog';
 
 const PERF_RUNS_KEY = 'perf_runs';
+const DEVICE_METRICS_KEY = 'device_metrics';
 
 /**
  * Saves what has been recorded as one run and starts a new one. Does nothing
@@ -31,7 +35,27 @@ export function savePerfRun(kind: PerfRunKind): void {
   }
 }
 
-/** The report to copy: saved runs plus anything recorded since. */
+/**
+ * Reads the daily reports iOS has delivered, folds them into the saved
+ * summaries and writes them back if there is anything new. Returns what is
+ * saved. Never throws, for the same reason savePerfRun doesn't. In demo mode
+ * it returns what it finds without saving, since the demo database is thrown
+ * away.
+ */
+export function collectDeviceMetrics(): DeviceMetricSummary[] {
+  let saved: DeviceMetricSummary[] = [];
+  try {
+    saved = parseSummaries(dbGetSetting(DEVICE_METRICS_KEY));
+    const { summaries, changed } = collectSummaries(saved, readDevicePayloads());
+    if (changed && !isDemoModeActive()) dbSetSetting(DEVICE_METRICS_KEY, JSON.stringify(summaries));
+    return summaries;
+  } catch (error) {
+    console.error('Could not read device metrics', error);
+    return saved;
+  }
+}
+
+/** The report to copy: saved runs plus anything recorded since, then what iOS measured. */
 export function perfReportText(): string {
   let runs = parseRuns(null);
   try {
@@ -39,5 +63,5 @@ export function perfReportText(): string {
   } catch {
     // The report still has the current session to show.
   }
-  return formatPerfReport(runs, currentEntries());
+  return `${formatPerfReport(runs, currentEntries())}\n\n${formatDeviceMetrics(collectDeviceMetrics())}`;
 }

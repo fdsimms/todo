@@ -984,7 +984,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'tabDiagnostics', groupId: 'about', label: 'Show tab diagnostics', section: 'About',
     keywords: ['debug', 'blank screen'] },
   { id: 'perfLog', groupId: 'about', label: 'Copy performance log', section: 'About',
-    keywords: ['debug', 'speed', 'slow', 'launch time', 'startup', 'diagnostics'] },
+    keywords: ['debug', 'speed', 'slow', 'launch time', 'startup', 'diagnostics', 'hangs', 'memory', 'metrickit'] },
   { id: 'flagCopy', groupId: 'about', label: 'Flag copy', section: 'About',
     keywords: ['debug', 'text', 'wording', 'rewrite'] },
 ];

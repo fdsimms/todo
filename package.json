@@ -111,6 +111,7 @@
     "todo-foundation-models": "file:./modules/todo-foundation-models",
     "todo-health-bridge": "file:./modules/todo-health-bridge",
     "todo-key-commands": "file:./modules/todo-key-commands",
+    "todo-metrickit-bridge": "file:./modules/todo-metrickit-bridge",
     "todo-privacy-shield": "file:./modules/todo-privacy-shield",
     "todo-screentime-bridge": "file:./modules/todo-screentime-bridge",
     "todo-vision-bridge": "file:./modules/todo-vision-bridge",
