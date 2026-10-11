@@ -100,7 +100,7 @@ const baseTask: Task = {
   penaltyCreditedAt: null,
   gatesApps: false,
   showStreak: false,
-  streakRequiresWindow: false,
+  streakRequiresWindow: false, streakCountsUnits: false,
   recurrenceFromCompletion: false,
   supplyCount: null,
   supplyUnit: null,

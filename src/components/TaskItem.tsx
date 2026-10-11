@@ -8,6 +8,7 @@
 // The row is rendered on several screens, and `duplicateRow` marks the pinned
 // copy so two rows never claim one task id in the paint-select registry (see
 // the Pinning note in CLAUDE.md).
+import { countsUnits } from '../utils/streakUnits';
 import React, { useRef, useState, useMemo, useEffect } from 'react';
 import {
   View,
@@ -3568,6 +3569,8 @@ const TaskItemRow = React.memo(function TaskItem({
                     ? shownStreak > 0
                       ? `${shownStreak} clean ${shownStreak === 1 ? 'day' : 'days'}${atRecord ? ', the longest this task has had' : ''}`
                       : 'No clean days yet'
+                  : countsUnits(task)
+                    ? `Done ${shownStreak} ${shownStreak === 1 ? 'time' : 'times'}`
                   : atRecord
                     ? `${shownStreak} day streak, the longest this task has had`
                     : shownStreak > 0

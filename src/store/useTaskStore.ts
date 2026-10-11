@@ -226,6 +226,7 @@ import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOve
 import { isRotationTask, rotationCoversNew, rotationPick, rotationPlanFor, rotationUnpick, rotationUnpickUncovers } from '../utils/rotation';
 import { MIN_TARGET_COUNT, MAX_TARGET_COUNT, taskKindOf } from '../utils/taskKinds';
 import { nextStreakRecord } from '../utils/streakRecord';
+import { countsUnits } from '../utils/streakUnits';
 import { isNegativeTask, slipsToday, slipPatch, undoSlipPatch, cleanDayPatch, nextSlipIsFree, lastSlipWasFree, closeDayPatch, reopenDayPatch, windowCloseDayPatch } from '../utils/negativeHabits';
 import { creditShieldUntil, extendShieldUntil, penaltyChargeFor, penaltyCreditFor, slipPenaltyUntil, uncreditShieldUntil } from '../utils/penaltyShield';
 // One name per line, deliberately, and not to be re-joined. See the note
@@ -4593,6 +4594,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       ...task,
       progressCount: task.progressCount + 1,
       ...(hadCountdown ? { timerStartedAt: null, timerElapsedSeconds: 0 } : {}),
+      // streakDate is stamped too: the first unit of a task that has never
+      // completed would otherwise leave a total with no date to read it by.
+      ...(countsUnits(task)
+        ? { streakCount: task.streakCount + 1, streakDate: task.streakDate ?? getCurrentDayStart().toISOString() }
+        : {}),
     };
     dbUpdateTask(updated);
     set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
@@ -4719,7 +4725,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   unlogQuotaUnit(id) {
     const task = get().tasks.find(t => t.id === id);
     if (!task || !isQuotaTask(task) || task.progressCount === 0) return;
-    const updated = { ...task, progressCount: task.progressCount - 1 };
+    const updated = {
+      ...task,
+      progressCount: task.progressCount - 1,
+      ...(countsUnits(task) && task.streakCount > 0 ? { streakCount: task.streakCount - 1 } : {}),
+    };
     dbUpdateTask(updated);
     set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
     // The unit being taken back is the dose that unit recorded, and only that
@@ -4925,14 +4935,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // `nextStreak` reused for both fields the same way completeTask does,
       // so nextStreakRecord folds nothing when it's unchanged.
       const neutral = task.quotaPeriod !== 'week' && !isCategoryScheduledDay(task.category, new Date(ownPeriodStart));
-      const nextStreak = neutral ? task.streakCount : 0;
+      // A weekly target counting units is a total, so a short week keeps it.
+      const keepsStreak = neutral || countsUnits(task);
+      const nextStreak = keepsStreak ? task.streakCount : 0;
       closed.push({
         ...task,
         completed: true,
         completedAt: ownDayEnd.toISOString(),
         // progressCount deliberately left as-is — that's the record.
         streakCount: nextStreak,
-        streakDate: neutral ? task.streakDate : null,
+        streakDate: keepsStreak ? task.streakDate : null,
         previousStreakCount: task.streakCount,
         previousStreakDate: task.streakDate,
         // A partial day closes the run out, so the run it ends is a candidate
@@ -4975,7 +4987,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         // forward exactly as it stood — a non-work day never happened, so
         // the successor picking it up must not read as day one either.
         streakCount: nextStreak,
-        streakDate: neutral ? task.streakDate : null,
+        streakDate: keepsStreak ? task.streakDate : null,
         previousStreakCount: 0,
         previousStreakDate: null,
         // Not 0, unlike everything else reset on this successor: the streak
@@ -8339,7 +8351,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       previousStreakDate: null,
       priorBestStreak: 0,
       showStreak: false,
-      streakRequiresWindow: false,
+      streakRequiresWindow: false, streakCountsUnits: false,
       polarity: 'positive',
       slipCount: 0,
       slipDate: null,
@@ -8566,7 +8578,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       previousStreakDate: null,
       priorBestStreak: 0,
       showStreak: false,
-      streakRequiresWindow: false,
+      streakRequiresWindow: false, streakCountsUnits: false,
       polarity: 'positive',
       slipCount: 0,
       slipDate: null,

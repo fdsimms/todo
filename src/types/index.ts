@@ -3640,6 +3640,13 @@ export interface Task {
   // late against, and this is inert on it.
   streakRequiresWindow: boolean;
 
+  // Opt-in per task, for a weekly target (quotaPeriod 'week'): the streak chip
+  // counts every unit logged, as a running total, instead of the weeks in a row
+  // the whole target was hit. A missed or short week costs nothing, since
+  // there is no run to break. Inert on any other task, which is the only place
+  // the editor offers it. See countsUnits in src/utils/streakUnits.ts.
+  streakCountsUnits: boolean;
+
   // Series — one commitment that falls on several hand-picked dates (e.g.
   // walking the neighbour's dog on the 10th and the 15th). Every date is its
   // own real row sharing this id, deliberately rather than one row holding a

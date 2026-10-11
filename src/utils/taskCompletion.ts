@@ -56,6 +56,7 @@ import { isRecurrenceNotYetDue, isQuotaTask, quotaRidesOutTheDay, isCompletionOn
 import { isNegativeTask } from './negativeHabits';
 import { isAnsweredByRecord } from './recordTasks';
 import { nextStreakRecord } from './streakRecord';
+import { countsUnits } from './streakUnits';
 import {
   followUpTaskRule,
   followUpTaskEndRule,
@@ -341,7 +342,13 @@ export function buildCompletion(
   const streakBreaks = missed && recurs && datesBySchedule;
   // Named once because the record's fold compares against it (see
   // nextStreakRecord) and the completed row and its successor must agree.
-  const nextStreak = streakBreaks ? 0 : streakAdvances ? newStreakCount : task.streakCount;
+  //
+  // A weekly target counting units (countsUnits) is a total: the completing
+  // unit adds one and a miss leaves it alone. logQuotaUnit added the rest.
+  const unitTotal = countsUnits(task) && recurs && datesBySchedule;
+  const nextStreak = unitTotal
+    ? (missed || neutral ? task.streakCount : task.streakCount + 1)
+    : streakBreaks ? 0 : streakAdvances ? newStreakCount : task.streakCount;
 
   // "Follow-up task" — every Nth completion adds a separate one-off task (see
   // Task.followUpTaskEveryN). The tally is advanced here, not derived from the

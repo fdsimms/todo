@@ -407,6 +407,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/storeAliases.ts` — aliasKeyFor, gtinAliasText, aliasItemIdFor, AliasDraft, aliasDraftsFrom
 - `src/utils/streakLeaderboard.ts` — LEADERBOARD_SIZE, streakScore, rankStreaks
 - `src/utils/streakRecord.ts` — nextStreakRecord, bestStreakOf, isStreakAtRecord, streakHint
+- `src/utils/streakUnits.ts` — countsUnits
 - `src/utils/substituteSuggestions.ts` — MAX_SUGGESTED_SUBSTITUTES, SuggestedSubstitute, RawSuggestedSubstitute, dedupeSuggestedSubstitutes
 - `src/utils/sunTimes.ts` — SunEvent, SunAnchor, SunLocation, SUN_OFFSET_LIMIT, SUN_OFFSET_STEP, parseSunAnchor, formatSunAnchor, clampSunOffset, describeSunAnchor, shortSunAnchor, +12 more
 - `src/utils/supplementDose.ts` — DOSE_SOURCE_PREFIX, doseSourceId, supplementDoseIdOf, isSupplementEntry, supplementServings, SupplementHelping, supplementHelping, entryForDose, SupplementForm, emptySupplementForm, +8 more
