@@ -488,7 +488,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/generatedTaskSync.ts` — deleteGeneratedTaskQuietly, ReconcileGeneratedOptions, reconcileGeneratedTask, dropGeneratedTask
 - `src/store/generatorSwitch.ts` — setGeneratorEnabled
 - `src/store/useAppLockStore.ts` — useAppLockStore, isAppLocked
-- `src/store/useCalendarStore.ts` — CALENDAR_WINDOW_DAYS, CALENDAR_CHANGE_COALESCE_MS, TRIP_WINDOW_DAYS, sameBusyEvents, useCalendarStore, useCalendarSync
+- `src/store/useCalendarStore.ts` — CALENDAR_WINDOW_DAYS, CALENDAR_CHANGE_COALESCE_MS, TRIP_WINDOW_DAYS, sameBusyEvents, vacationReturnCalendarIds, useCalendarStore, useCalendarSync
 - `src/store/useCategoryStore.ts` — useCategoryStore, CALENDAR_EVENTS_CATEGORY, HEALTH_CATEGORY, ensureCalendarEventCategory, ensureHealthCategory, renameGeneratedCategorySettings, getGeneratedCategory, setGeneratedCategory, clearGeneratedCategorySettings, ensureGeneratedTaskCategory, +1 more
 - `src/store/useCopyFlagStore.ts` — useCopyFlagStore
 - `src/store/useDemoStore.ts` — clearUndoHistories, useDemoStore
