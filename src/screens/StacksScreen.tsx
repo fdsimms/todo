@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -35,9 +35,14 @@ import { spacing, font, fontWeight, radius, interaction, flattenOverlay, type Co
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { groupRoster, isRelevantToGroupToday } from '../utils/visibilityUtils';
+import { reuseUnchangedLists } from '../utils/stableLists';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
+
+// One shared empty roster for a stack with no members, so its memoized row
+// isn't handed a fresh `[]` on every render.
+const NO_ROSTER: Task[] = [];
 
 /**
  * Every stack, whether or not it has work today.
@@ -93,6 +98,7 @@ export function StacksScreen() {
   // groupId, so counting rows makes an 8-task stack climb without bound (see
   // groupRoster). Built once for every stack rather than per row, since each
   // pass is a scan of the full task list.
+  const rostersPrev = useRef<Map<string, Task[]> | null>(null);
   const rostersByGroupId = useMemo(() => {
     const children = new Map<string, Task[]>();
     for (const t of allTasks) {
@@ -105,7 +111,9 @@ export function StacksScreen() {
     for (const [groupId, list] of children) {
       rosters.set(groupId, groupRoster(list));
     }
-    return rosters;
+    // Last time's roster for any stack whose members didn't change, so the
+    // memoized StackRow only re-renders for the stack a write touched.
+    return (rostersPrev.current = reuseUnchangedLists(rostersPrev.current, rosters));
   }, [allTasks]);
 
   const openEditor = useCallback((group: TaskGroup) => {
@@ -189,7 +197,7 @@ export function StacksScreen() {
   const renderStack = ({ item: group }: { item: TaskGroup }) => (
     <StackRow
       group={group}
-      roster={rostersByGroupId.get(group.id) ?? []}
+      roster={rostersByGroupId.get(group.id) ?? NO_ROSTER}
       categories={categories}
       colors={colors}
       styles={styles}

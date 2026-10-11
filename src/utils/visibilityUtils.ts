@@ -341,12 +341,15 @@ function getWindowThreshold(hhmm: string, pass?: VisibleAtPass): Date {
  */
 export function windowBoundsFor(
   task: WindowFields,
-  dayStart: Date = getCurrentDayStart(),
+  dayStart?: Date,
 ): { start: string | null; end: string | null } {
   if (!task.windowStartSun && !task.windowEndSun) {
     return { start: task.windowStart, end: task.windowEnd };
   }
-  return windowBounds(task, dayStart, sunLocationOn(dayStart));
+  // Resolved here rather than as a default parameter: a default is evaluated
+  // on every call, and most tasks have no sun anchor and never need the day.
+  const day = dayStart ?? getCurrentDayStart();
+  return windowBounds(task, day, sunLocationOn(day));
 }
 
 /**
@@ -529,8 +532,9 @@ function isVacationPauseInForce(): boolean {
 // "deferred" — they move to their own Expired bucket and stay there until the
 // user deals with them (delete, or skip/reschedule a recurring task).
 export function isTaskExpired(task: Task): boolean {
+  if (task.completed || task.archived) return false;
   const end = effectiveWindowEnd(task);
-  if (task.completed || task.archived || !end) return false;
+  if (!end) return false;
   // An avoid-task's end time says when its day counts as clean, never that it
   // lapsed: expiry deletes, and a standing commitment is not late for anything.
   if (isNegativeTask(task)) return false;
