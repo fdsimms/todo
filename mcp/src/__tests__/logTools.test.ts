@@ -539,15 +539,15 @@ describe('set_medication_limit and set_medication_supply', () => {
   });
 
   it('sets a supply counted from now, keeps unspecified fields, and clears', () => {
-    addMedication(replica, 'Zinc');
-    expect(setMedicationSupply(replica, { name: 'zinc', count: 30, unit: 'tablet', refillCount: 60, reorderAt: 7 }))
-      .toMatchObject({ medicine: 'Zinc', left: '30 tablets left' });
+    addMedication(replica, 'Magnesium');
+    expect(setMedicationSupply(replica, { name: 'magnesium', count: 30, unit: 'tablet', refillCount: 60, reorderAt: 7 }))
+      .toMatchObject({ medicine: 'Magnesium', left: '30 tablets left' });
     // Only the count changed: the unit and reorder point stay.
-    expect(setMedicationSupply(replica, { name: 'Zinc', count: 25 }).left).toBe('25 tablets left');
+    expect(setMedicationSupply(replica, { name: 'Magnesium', count: 25 }).left).toBe('25 tablets left');
     const { useMedicationStore: meds } = require('../../../src/store/useMedicationStore');
     meds.getState().initialize();
-    expect(meds.getState().settings.zinc.supply).toMatchObject({ unit: 'tablet', refillCount: 60, reorderAt: 7 });
-    expect(setMedicationSupply(replica, { name: 'Zinc', clear: true }).left).toBeNull();
+    expect(meds.getState().settings.magnesium.supply).toMatchObject({ unit: 'tablet', refillCount: 60, reorderAt: 7 });
+    expect(setMedicationSupply(replica, { name: 'Magnesium', clear: true }).left).toBeNull();
   });
 
   it('refuses a supply with no count, a bad unit or an unlisted medicine', () => {
