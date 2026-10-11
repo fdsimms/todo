@@ -24,6 +24,7 @@ import { getRecipe, type RecipeDetail } from './kitchenTools';
 // write.
 import { describeWater, waterToMl, type WaterUnit } from '../../src/utils/waterLog';
 import { PANEL_UNITS } from '../../src/utils/medicationSettings';
+import { DOSE_UNITS } from '../../src/utils/medicationLog';
 import { describeSupplementPanel } from '../../src/utils/supplementDose';
 
 /** A bare date as noon that day (the app's anchor for a backdated entry), else the instant given; now when absent. */
@@ -412,6 +413,56 @@ export function setSupplementNutrients(
 /** Archive a medicine, or bring one back. See `Replica.setMedicationArchived`. */
 export function setMedicationArchived(replica: Replica, name: string, archived: boolean): { medicine: string; archived: boolean } {
   return { medicine: replica.setMedicationArchived(name, archived), archived };
+}
+
+/** Add a medicine to the list before any dose. See `Replica.addMedication`. */
+export function addMedication(replica: Replica, name: string): { medicine: string; added: boolean; note: string } {
+  const out = replica.addMedication(name);
+  return {
+    medicine: out.name,
+    added: out.added,
+    note: out.added
+      ? 'On their list with no doses. Record doses with log_medication whenever it is taken.'
+      : 'Already on their list. Nothing changed.',
+  };
+}
+
+/** Take a medicine with no doses off the list. See `Replica.removeMedication`. */
+export function removeMedication(replica: Replica, name: string): { removed: string } {
+  return { removed: replica.removeMedication(name) };
+}
+
+/** How a medicine is taken and its usual amount. See `Replica.setMedicationProfile`. */
+export function setMedicationProfile(
+  replica: Replica,
+  input: { name: string; asNeeded?: boolean | null; usualAmount?: number | null; usualUnit?: string | null },
+): { medicine: string; asNeeded?: boolean | null; usualDose?: string | null } {
+  const touchesDose = input.usualAmount !== undefined || input.usualUnit !== undefined;
+  if (input.asNeeded === undefined && !touchesDose) {
+    throw new Error('Give asNeeded, usualAmount and usualUnit, or some of them.');
+  }
+  let usualDose: { amount: number; unit: string } | null | undefined;
+  if (touchesDose) {
+    const unit = input.usualUnit?.trim() ?? null;
+    if (input.usualAmount == null && !unit) usualDose = null;
+    else {
+      if (input.usualAmount == null || !unit) throw new Error('Give usualAmount and usualUnit together ("50" and "mg"), or both null to clear it.');
+      if (!(Number.isFinite(input.usualAmount) && input.usualAmount > 0)) throw new Error('usualAmount must be a number greater than 0.');
+      if (!DOSE_UNITS.some(u => u.value === unit)) {
+        throw new Error(`usualUnit must be one of: ${DOSE_UNITS.map(u => u.value).join(', ')}.`);
+      }
+      usualDose = { amount: input.usualAmount, unit };
+    }
+  }
+  const medicine = replica.setMedicationProfile(input.name, {
+    ...(input.asNeeded !== undefined ? { asNeeded: input.asNeeded } : {}),
+    ...(usualDose !== undefined ? { usualDose } : {}),
+  });
+  return {
+    medicine,
+    ...(input.asNeeded !== undefined ? { asNeeded: input.asNeeded } : {}),
+    ...(usualDose !== undefined ? { usualDose: usualDose ? `${usualDose.amount} ${usualDose.unit}` : null } : {}),
+  };
 }
 
 /** Rename a medicine everywhere, or combine it into another. See `Replica.renameMedication`. */

@@ -41,6 +41,8 @@ interface Props {
   /** The medication a new dose starts on, when opened from its own page. */
   initialName?: string;
   onClose: () => void;
+  /** Called after the dose is deleted, with the row as it was, so the host can offer an undo. */
+  onDeleted?: (log: MedicationLog) => void;
 }
 
 /**
@@ -71,7 +73,7 @@ const AGO_OPTIONS: { value: number; label: string }[] = [
  * dose they forgot to tick flips it, and the control says so plainly rather
  * than the sheet guessing from history.
  */
-export function MedicationLogSheet({ visible, log, initialName, onClose }: Props) {
+export function MedicationLogSheet({ visible, log, initialName, onClose, onDeleted }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const logs = useMedicationStore(s => s.logs);
@@ -182,7 +184,7 @@ export function MedicationLogSheet({ visible, log, initialName, onClose }: Props
     if (!log) { onClose(); return; }
     Alert.alert('Delete this dose?', undefined, [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => { unrecordDose(log); onClose(); } },
+      { text: 'Delete', style: 'destructive', onPress: () => { unrecordDose(log); onDeleted?.(log); onClose(); } },
     ]);
   };
 

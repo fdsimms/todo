@@ -50,6 +50,7 @@ import { InlineAction } from '../components/InlineAction';
 import { PressableScale } from '../components/PressableScale';
 import { SheetUndoBar } from '../components/SheetUndoBar';
 import { MedicationLogSheet } from '../components/MedicationLogSheet';
+import { useDeletedDoseUndo } from '../hooks/useDeletedDoseUndo';
 import { MedicationAddSheet } from '../components/MedicationAddSheet';
 import { MedicationSummarySheet } from '../components/MedicationSummarySheet';
 import { DeliverablePromptQueue } from '../components/DeliverablePromptQueue';
@@ -132,6 +133,7 @@ export function MedicationScreen() {
   const [sharing, setSharing] = useState(false);
   const [recentLimit, setRecentLimit] = useState(RECENT_PAGE);
   const [undo, setUndo] = useState<MedicationLog | null>(null);
+  const deletedDose = useDeletedDoseUndo();
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Re-read the clock each minute, so "OK again at 4:15 PM" goes away when
   // 4:15 comes rather than when something else re-renders the screen.
@@ -309,7 +311,7 @@ export function MedicationScreen() {
 
   const sheets = (
     <>
-      <MedicationLogSheet visible={sheetOpen} log={editing} onClose={closeSheet} />
+      <MedicationLogSheet visible={sheetOpen} log={editing} onClose={closeSheet} onDeleted={deletedDose.remember} />
       <MedicationAddSheet visible={addOpen} onClose={() => setAddOpen(false)} onAdded={key => navigation.navigate('MedicationDetail', { medicationKey: key })} />
       <MedicationSummarySheet visible={summaryOpen} onClose={() => setSummaryOpen(false)} />
       <DeliverablePromptQueue {...queueProps} />
@@ -519,6 +521,13 @@ export function MedicationScreen() {
         <SheetUndoBar
           label={`Recorded ${[undo.name, formatDose(undo)].filter(Boolean).join(' ')}`}
           onUndo={undoQuickRecord}
+          bottom={tabBarHeight + spacing.md}
+        />
+      )}
+      {deletedDose.deleted && (
+        <SheetUndoBar
+          label={`Deleted ${[deletedDose.deleted.name, formatDose(deletedDose.deleted)].filter(Boolean).join(' ')}`}
+          onUndo={deletedDose.undo}
           bottom={tabBarHeight + spacing.md}
         />
       )}

@@ -111,7 +111,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/demoState.ts` — isDemoModeActive, setDemoModeActive
 - `src/utils/deviceMetrics.ts` — startDeviceMetrics, readDevicePayloads
 - `src/utils/deviceTimeZone.ts` — DEVICE_TIME_ZONE_KEY, isValidTimeZone, currentTimeZone, recordDeviceTimeZone
-- `src/utils/doseRecording.ts` — syncOkAgainNotification, allowOkAgainNotification, confirmWithinLimit, recordDose, unrecordDose
+- `src/utils/doseRecording.ts` — syncOkAgainNotification, allowOkAgainNotification, confirmWithinLimit, recordDose, unrecordDose, restoreDose
 - `src/utils/dreamQueue.ts` — QueuedDream, QUEUED_DREAM_MAX_LENGTH, parseQueuedDreams
 - `src/utils/editorFold.ts` — FoldableRow, FoldState, isRowFolded, foldedRowCount, moreOptionsLabel
 - `src/utils/editorSearch.ts` — EditorSearchable, editorSearchTerms, matchesEditorQuery, filterEditorRows
@@ -551,6 +551,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useClipboardImage.ts` — useClipboardImage
 - `src/hooks/useCopyToClipboard.ts` — COPIED_TICK_MS, useCopyToClipboard
 - `src/hooks/useDebouncedValue.ts` — useDebouncedValue
+- `src/hooks/useDeletedDoseUndo.ts` — useDeletedDoseUndo
 - `src/hooks/useDestinationForecast.ts` — DestinationForecastLines, useDestinationForecast
 - `src/hooks/useDragToDay.ts` — DayDragHandlers, DayDragSource, useDragToDay
 - `src/hooks/useElevatedCellRenderer.tsx` — useElevatedCellRenderer

@@ -7,7 +7,7 @@
 import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
 import { useMedicationStore } from '../../../src/store/useMedicationStore';
-import { atFrom, deleteMedicationLog, deleteSavedMeal, setSupplementNutrients, duplicateFoodEntry, listSavedMeals, logFood, logMedication, logMood, logSavedMeal, logWater, moveFoodEntry, renameMedication, renameMoodTag, saveMealFromEntries, saveRecipe, setMedicationArchived, setNutritionTargets, updateFoodEntry, updateMoodLog } from '../logTools';
+import { atFrom, deleteMedicationLog, deleteSavedMeal, setSupplementNutrients, duplicateFoodEntry, listSavedMeals, logFood, logMedication, logMood, logSavedMeal, logWater, moveFoodEntry, renameMedication, renameMoodTag, saveMealFromEntries, saveRecipe, setMedicationArchived, addMedication, removeMedication, setMedicationProfile, setNutritionTargets, updateFoodEntry, updateMoodLog } from '../logTools';
 
 let mockRaw: ShimDatabase;
 
@@ -462,5 +462,43 @@ describe('set_supplement_nutrients', () => {
     expect(names).toContain('fish oil');
     expect(names).not.toContain('Multivitamin');
     setSupplementNutrients(replica, { name: 'Fish oil', clear: true });
+  });
+});
+
+describe('add_medication and set_medication_profile', () => {
+  it('adds a medicine with no dose, once, and lists it', () => {
+    expect(addMedication(replica, ' Zinc ')).toMatchObject({ medicine: 'Zinc', added: true });
+    expect(addMedication(replica, 'zinc')).toMatchObject({ medicine: 'Zinc', added: false });
+    expect(replica.medicationSettings().find(m => m.name === 'Zinc')).toMatchObject({ noDosesYet: true });
+    expect(() => addMedication(replica, '  ')).toThrow(/needs a name/);
+  });
+
+  it('removes a medicine with no doses, and refuses one that has doses', () => {
+    addMedication(replica, 'Biotin');
+    expect(removeMedication(replica, 'biotin')).toEqual({ removed: 'Biotin' });
+    expect(replica.medicationSettings().some(m => m.name === 'Biotin')).toBe(false);
+    logMedication(replica, { name: 'Ibuprofen' });
+    expect(() => removeMedication(replica, 'Ibuprofen')).toThrow(/recorded doses/);
+    expect(() => removeMedication(replica, 'Nothing')).toThrow(/No medicine called/);
+  });
+
+  it('sets how it is taken and the usual amount, and reports them', () => {
+    addMedication(replica, 'Magnesium');
+    expect(setMedicationProfile(replica, { name: 'magnesium', asNeeded: true, usualAmount: 200, usualUnit: 'mg' }))
+      .toEqual({ medicine: 'Magnesium', asNeeded: true, usualDose: '200 mg' });
+    expect(replica.medicationSettings().find(m => m.name === 'Magnesium'))
+      .toMatchObject({ takenAsNeeded: true, usualAmount: '200 mg' });
+    // Left out is unchanged; null goes back to the doses and clears the amount.
+    setMedicationProfile(replica, { name: 'Magnesium', asNeeded: null, usualAmount: null, usualUnit: null });
+    expect(replica.medicationSettings().find(m => m.name === 'Magnesium')).toMatchObject({ noDosesYet: true });
+    expect(replica.medicationSettings().find(m => m.name === 'Magnesium')?.takenAsNeeded).toBeUndefined();
+  });
+
+  it('refuses an unlisted medicine and an incomplete or unknown dose', () => {
+    expect(() => setMedicationProfile(replica, { name: 'Nothing', asNeeded: true })).toThrow(/No medicine called/);
+    addMedication(replica, 'Iron');
+    expect(() => setMedicationProfile(replica, { name: 'Iron' })).toThrow(/Give asNeeded/);
+    expect(() => setMedicationProfile(replica, { name: 'Iron', usualAmount: 5 })).toThrow(/together/);
+    expect(() => setMedicationProfile(replica, { name: 'Iron', usualAmount: 5, usualUnit: 'furlongs' })).toThrow(/one of/);
   });
 });

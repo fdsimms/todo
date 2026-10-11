@@ -35,6 +35,8 @@ import { SegmentedControl } from '../components/SegmentedControl';
 import { DoseAmountField } from '../components/DoseAmountField';
 import { InlineAction } from '../components/InlineAction';
 import { MedicationLogSheet } from '../components/MedicationLogSheet';
+import { SheetUndoBar } from '../components/SheetUndoBar';
+import { useDeletedDoseUndo } from '../hooks/useDeletedDoseUndo';
 import { MedicationRenameSheet } from '../components/MedicationRenameSheet';
 import { SupplementPanelSheet } from '../components/SupplementPanelSheet';
 import { describeSupplementPanel } from '../utils/supplementDose';
@@ -92,6 +94,7 @@ export function MedicationDetailScreen() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [editing, setEditing] = useState<MedicationLog | null>(null);
   const [renameOpen, setRenameOpen] = useState(false);
+  const deletedDose = useDeletedDoseUndo();
 
   const stat = useMemo(() => medicationStats(logs, registered, settings).find(s => s.key === key) ?? null, [logs, registered, settings, key]);
   const entries = useMemo(() => logs.filter(l => medicationKey(l.name) === key), [logs, key]);
@@ -550,6 +553,13 @@ export function MedicationDetailScreen() {
           />
         </View>
       </ScrollView>
+      {deletedDose.deleted && (
+        <SheetUndoBar
+          label={`Deleted ${[deletedDose.deleted.name, formatDose(deletedDose.deleted)].filter(Boolean).join(' ')}`}
+          onUndo={deletedDose.undo}
+          bottom={insets.bottom + spacing.md}
+        />
+      )}
       <SupplementPanelSheet
         visible={panelOpen}
         name={name}
@@ -562,6 +572,7 @@ export function MedicationDetailScreen() {
         log={editing}
         initialName={name}
         onClose={() => { setSheetOpen(false); setEditing(null); }}
+        onDeleted={deletedDose.remember}
       />
       <MedicationRenameSheet
         visible={renameOpen}

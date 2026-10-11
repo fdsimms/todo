@@ -36,7 +36,7 @@ components below.
 - `src/screens/KitchenScreen.tsx` — ActiveTripBanner, BarcodeScanSheet, CookWithSheet, EmptyState, GroceryItemSheet, HubPills, InlineAction, ItemDisposalOffer, LazySheet, LeftoverSheet, PantryReviewSheet, PressableScale, +5 more
 - `src/screens/LogbookScreen.tsx` — CardSheet, DeliverablePromptSheet, EmptyState, HighlightedText, HubPills, LogbookEntryMenu, LogbookFilterSheet, PaintSelection, RotationWeekSheet, ScreenHeader, ScreenSettingsSheet, ScrollToTopButton, +6 more
 - `src/screens/MealPlanScreen.tsx` — ActiveTripBanner, AddMealsToListSheet, FabDropZones, FridgeHistorySheet, HubPills, InlineAction, LazySheet, LeftoverSheet, LeftoversCard, ListBulkBar, MealEntrySheet, MealReplaceItemSheet, +13 more
-- `src/screens/MedicationDetailScreen.tsx` — CountStepper, DetailHeader, DoseAmountField, EmptyState, InlineAction, MedicationLogSheet, MedicationRenameSheet, ScrollToTopButton, SegmentedControl, SupplementPanelSheet
+- `src/screens/MedicationDetailScreen.tsx` — CountStepper, DetailHeader, DoseAmountField, EmptyState, InlineAction, MedicationLogSheet, MedicationRenameSheet, ScrollToTopButton, SegmentedControl, SheetUndoBar, SupplementPanelSheet
 - `src/screens/MedicationScreen.tsx` — DeliverablePromptQueue, EmptyState, HubPills, InlineAction, MedicationAddSheet, MedicationLogSheet, MedicationSummarySheet, PressableScale, ScreenHeader, ScrollToTopButton, SheetUndoBar
 - `src/screens/MetersScreen.tsx` — EmptyState, HubPills, InlineAction, MeterReadingSheet, ScreenHeader, TaskEditor
 - `src/screens/MoodDayScreen.tsx` — DetailHeader, EmptyState, JournalEntrySheet, JournalText, MoodLogSheet
@@ -312,7 +312,7 @@ Where each component can appear.
 - `src/components/SheetHeaderButton.tsx` — on ArchivedScreen, AutomationsScreen, BackfillScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, CookbookDetailScreen, CookbooksScreen, FoodLogScreen, GroceryScreen, JournalScreen, KitchenScreen, +31 more
 - `src/components/SheetModal.tsx` — on ArchivedScreen, AutomationsScreen, BackfillScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, CookbookDetailScreen, CookbooksScreen, FoodLogScreen, GroceryScreen, JournalScreen, KitchenScreen, +34 more
 - `src/components/SheetScrim.tsx` — on ArchivedScreen, AutomationsScreen, BackfillScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, CookbooksScreen, FoodLogScreen, GroceryScreen, JournalScreen, KitchenScreen, LogbookScreen, +32 more
-- `src/components/SheetUndoBar.tsx` — on GroceryScreen, MealPlanScreen, MedicationScreen, RecipeDetailScreen
+- `src/components/SheetUndoBar.tsx` — on GroceryScreen, MealPlanScreen, MedicationDetailScreen, MedicationScreen, RecipeDetailScreen
 - `src/components/ShoppingTripSheet.tsx` — on GroceryScreen
 - `src/components/SideMenuDrawer.tsx` — on app shell
 - `src/components/SimpleBulkBar.tsx` — on ArchivedScreen, LogbookScreen, PeopleScreen

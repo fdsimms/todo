@@ -206,6 +206,12 @@ interface MedicationStore {
   updateLog: (id: string, patch: MedicationLogPatch) => void;
   removeLog: (id: string) => void;
   /**
+   * Put a deleted dose back exactly as it was (same id, time, day and task), for
+   * an undo. A dose already present is left alone. Not `addLog`: that would
+   * stamp a new id and time, and unarchive a medication a restore says nothing about.
+   */
+  restoreLog: (log: MedicationLog) => void;
+  /**
    * Drop every dose a task's completion recorded — what unticking that task
    * runs. See `Task.medicationName` for why this is not one-shot the way the
    * Apple Health write beside it is.
@@ -483,6 +489,14 @@ export const useMedicationStore = create<MedicationStore>((set, get) => ({
     dbDeleteMedicationLog(id);
     set({ logs: get().logs.filter(l => l.id !== id) });
     keepListed(get, set, removed);
+  },
+
+  restoreLog(log) {
+    if (get().logs.some(l => l.id === log.id)) return;
+    dbInsertMedicationLog(log);
+    // Newest first by when it was taken, which is where it was before it was deleted.
+    set({ logs: [...get().logs, log].sort((a, b) => b.takenAt.localeCompare(a.takenAt)) });
+    runEffect(fx => fx.added(log));
   },
 
   removeLogsForTask(taskId) {

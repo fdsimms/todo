@@ -447,3 +447,27 @@ describe('how it is taken and the usual amount', () => {
     expect(state().settings['zinc picolinate']).toMatchObject({ asNeeded: false, usualDose: { amount: 50, unit: 'mg' } });
   });
 });
+
+describe('restoreLog', () => {
+  it('puts a deleted dose back with its own id, time and day, in order', () => {
+    const older = state().addLog({ name: 'Ibuprofen', at: new Date(2026, 8, 9, 9) })!;
+    const newer = state().addLog({ name: 'Ibuprofen', at: new Date(2026, 8, 10, 9) })!;
+    state().removeLog(older.id);
+    (dbInsertMedicationLog as jest.Mock).mockClear();
+    state().restoreLog(older);
+    expect(dbInsertMedicationLog).toHaveBeenCalledWith(older);
+    expect(state().logs.map(l => l.id)).toEqual([newer.id, older.id]);
+    expect(state().logs[1]).toEqual(older);
+  });
+
+  it('ignores a dose that is already there, and does not unarchive', () => {
+    const log = state().addLog({ name: 'Ibuprofen' })!;
+    (dbInsertMedicationLog as jest.Mock).mockClear();
+    state().restoreLog(log);
+    expect(dbInsertMedicationLog).not.toHaveBeenCalled();
+    state().removeLog(log.id);
+    state().archiveMedication('Ibuprofen');
+    state().restoreLog(log);
+    expect(state().archived).toEqual(['ibuprofen']);
+  });
+});

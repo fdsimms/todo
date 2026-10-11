@@ -102,7 +102,7 @@ import { forget, remember } from './memoryTools';
 import { deleteRule, listAutomations, saveRule, setAutomation, RULE_TYPES } from './automationTools';
 import { deleteCategory, reorderCategories, updateCategory } from './categoryTools';
 import { cancelCalendarRequest, changeCalendarEvent, listCalendarRequests, requestCalendarEvent } from './calendarTools';
-import { ESTIMATE_KEY_LIST, NUTRIENT_KEY_LIST, atFrom, deleteSavedMeal, duplicateFoodEntry, listSavedMeals, logSavedMeal, moveFoodEntry, saveMealFromEntries, setNutritionTargets, renameMedication, renameMoodTag, setMedicationArchived, logFood, logMedication, setSupplementNutrients, logMood, logWater, updateRecipe, deleteRecipe, updateFoodEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
+import { ESTIMATE_KEY_LIST, NUTRIENT_KEY_LIST, atFrom, deleteSavedMeal, duplicateFoodEntry, listSavedMeals, logSavedMeal, moveFoodEntry, saveMealFromEntries, setNutritionTargets, renameMedication, renameMoodTag, setMedicationArchived, addMedication, removeMedication, setMedicationProfile, logFood, logMedication, setSupplementNutrients, logMood, logWater, updateRecipe, deleteRecipe, updateFoodEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
 import { DEFAULT_PATTERN_DAYS, focusHistory, habitPatterns, moodInsights } from './patternTools';
 import { addMilestone, deleteMilestone, listMilestones, updateMilestone } from './milestoneTools';
 import { listCopyFlags, resolveCopyFlag } from './copyFlagTools';
@@ -524,7 +524,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'list_medication_logs',
-    'Doses recorded over a range of days, including as-needed ones, plus the limit and supply the person set for each medication (limitsAndSupply: their own limit, how many doses in the last 24 hours, when the next is within it, and how many are left). A limit is the person\'s own, never a prescription; say it that way. Defaults to the last 7 days. Empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that nothing was logged.',
+    'Doses recorded over a range of days, including as-needed ones, plus the limit and supply the person set for each medication (limitsAndSupply: their own limit, how many doses in the last 24 hours, when the next is within it, and how many are left; also whether they take it as needed, their usual amount, and medicines added with no dose yet). A limit is the person\'s own, never a prescription; say it that way. Defaults to the last 7 days. Empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that nothing was logged.',
     logRange,
     async input => json(await withFresh(() => listMedicationLogs(replica, input)))
   );
@@ -2411,6 +2411,50 @@ function registerWriteTools(
         return json(await withWrite(() => setMedicationArchived(replica, name, archived ?? true)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not archive it.' });
+      }
+    }
+  );
+
+  server.tool(
+    'add_medication',
+    'Add a medicine to the person\'s list by name, before any dose is recorded, as Add medication does on the Medications screen. It stays listed with no doses, and one that is archived is brought back. Use it when they say they take, or are about to start, something; record actual doses with log_medication. Nothing is added twice: a name already listed (in any capitalization) changes nothing.',
+    { name: z.string().min(1) },
+    async ({ name }) => {
+      try {
+        return json(await withWrite(() => addMedication(replica, name)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not add it.' });
+      }
+    }
+  );
+
+  server.tool(
+    'remove_medication',
+    'Take a medicine off the list, with its limit and supply, as Remove on its page does. Only one with no recorded doses: doses are the person\'s record, so a medicine that has any is refused (delete_medication_log removes a dose; archive_medication moves it out of "what you take"). Use it to put right an add_medication.',
+    { name: z.string().min(1) },
+    async ({ name }) => {
+      try {
+        return json(await withWrite(() => removeMedication(replica, name)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not remove it.' });
+      }
+    }
+  );
+
+  server.tool(
+    'set_medication_profile',
+    'Set how a listed medicine is taken and the amount usually taken, as its page does. asNeeded: true for taken as needed (the Medications screen then offers a button that records another dose), false for on a schedule, null to go back to reading it off the recorded doses. usualAmount and usualUnit (together, e.g. 50 and "mg") are what a new dose starts from and what the round button records before any dose exists; both null clears them. A field left out is unchanged. Only from what the person told you.',
+    {
+      name: z.string().min(1),
+      asNeeded: z.boolean().nullable().optional(),
+      usualAmount: z.number().positive().nullable().optional(),
+      usualUnit: z.string().nullable().optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => setMedicationProfile(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not set it.' });
       }
     }
   );
