@@ -414,6 +414,7 @@ interface SettingsStore {
   // someone's lock off.
   appLockEnabled: boolean;
   appLockGraceSeconds: number; // how long backgrounded before it re-locks
+  journalLockEnabled: boolean; // an extra Face ID before the journal and dreams are shown
   vacationMode: boolean;
   vacationStart: string | null;
   vacationEnd: string | null; // optional ISO date — vacation mode auto-turns-off once this passes
@@ -1927,6 +1928,7 @@ interface SettingsStore {
   setPostponeCheckThreshold: (count: number) => void;
   setAppLockEnabled: (on: boolean) => void;
   setAppLockGraceSeconds: (seconds: number) => void;
+  setJournalLockEnabled: (on: boolean) => void;
   setVacationMode: (on: boolean, endDate?: string | null) => void;
   setVacationEnd: (endDate: string | null) => void;
   setVacationDrivenBy: (projectId: string | null) => void;
@@ -2654,6 +2656,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   aiFeatureConfig: defaultAiFeatureConfig(),
   appLockEnabled: false,
   appLockGraceSeconds: DEFAULT_APP_LOCK_GRACE_SECONDS,
+  journalLockEnabled: false,
   vacationMode: false,
   vacationStart: null,
   vacationEnd: null,
@@ -2958,6 +2961,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const backgroundRefreshEnabled = dbGetSetting('backgroundRefreshEnabled') !== 'false';
     const appLockEnabled = dbGetSetting('appLockEnabled') === 'true';
     const appLockGraceSeconds = parseGraceSeconds(dbGetSetting('appLockGraceSeconds'));
+    const journalLockEnabled = dbGetSetting('journalLockEnabled') === 'true';
     // `!== 'false'` rather than `=== 'true'`: this defaults on, so an install
     // that predates the setting starts with it rather than without it.
     const postponeCheckEnabled = dbGetSetting('postponeCheckEnabled') !== 'false';
@@ -3586,6 +3590,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       hideListPreviews,
       holidaySet,
       householdServings,
+      journalLockEnabled,
       journalLogLastDayKey,
       journalLogTaskCategory,
       journalLogTasks,
@@ -3989,6 +3994,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setAppLockGraceSeconds(seconds: number) {
     dbSetSetting('appLockGraceSeconds', String(seconds));
     set({ appLockGraceSeconds: seconds });
+  },
+
+  setJournalLockEnabled(on: boolean) {
+    dbSetSetting('journalLockEnabled', on ? 'true' : 'false');
+    set({ journalLockEnabled: on });
   },
 
   setVacationMode(on: boolean, endDate?: string | null) {

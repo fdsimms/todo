@@ -32,6 +32,7 @@ import { writeExportFile, shareCsvFile, discardBackupFile, canShare } from '../u
 import { navigateToTab } from '../navigation/navigationRef';
 import { useFilterField } from '../hooks/useFilterField';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
+import { useJournalAccess } from '../hooks/useJournalAccess';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { HubPills } from '../components/HubPills';
 import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
@@ -55,7 +56,7 @@ import { ScrollToTopButton } from '../components/ScrollToTopButton';
  * with only their time between them, the words at body size. Counts only, and nothing derived from
  * what was written.
  */
-function JournalLogScreen({ kind }: { kind: JournalKind }) {
+function JournalLogContent({ kind }: { kind: JournalKind }) {
   const pullSearch = usePullToSearch();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -365,6 +366,44 @@ function JournalLogScreen({ kind }: { kind: JournalKind }) {
 
 function sealedLabel(count: number): string {
   return count === 1 ? '1 note for later' : `${count} notes for later`;
+}
+
+/**
+ * The journal lock (Settings › Privacy & AI) in front of the screen. The
+ * content is a separate component so none of its stores, searches or sheets
+ * mount while locked, and a reminder's `?log=1` link is handled once it is
+ * opened, since the route params are still there when it mounts.
+ */
+function JournalLogScreen({ kind }: { kind: JournalKind }) {
+  const { locked, unlock } = useJournalAccess();
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
+  const copy = JOURNAL_KIND_COPY[kind];
+  const route = kind === 'dream' ? 'Dreams' : 'Journal';
+
+  // Asks as soon as the screen is shown, as the app lock does. A cancel leaves
+  // the button below for another go.
+  useEffect(() => {
+    if (locked) unlock();
+  }, [locked, unlock]);
+
+  if (!locked) return <JournalLogContent kind={kind} />;
+  return (
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      <ScreenHeader title={copy.title} />
+      <HubPills hub="health" active={route} />
+      <EmptyState
+        icon="lock-closed-outline"
+        title={kind === 'dream' ? 'Dreams are locked' : 'Journal is locked'}
+        subtitle="Unlock with Face ID to read and write here."
+        actionLabel="Unlock"
+        onAction={() => { unlock(); }}
+        bottomOffset={tabBarHeight}
+      />
+    </View>
+  );
 }
 
 export function JournalScreen() {

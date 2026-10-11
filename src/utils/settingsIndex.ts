@@ -945,6 +945,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['touch id', 'biometric', 'lock', 'passcode', 'privacy', 'security'] },
   { id: 'appLockGrace', requires: 'appLock', groupId: 'privacyAi', label: 'Lock again after', section: 'App lock',
     keywords: ['grace', 'timeout'] },
+  { id: 'journalLock', groupId: 'privacyAi', label: 'Require Face ID for the journal', section: 'App lock',
+    keywords: ['touch id', 'biometric', 'lock', 'passcode', 'privacy', 'dreams', 'diary', 'security'] },
   { id: 'apiKey', groupId: 'privacyAi', label: 'Anthropic API key', section: 'AI suggestions',
     keywords: ['ai', 'claude', 'suggestions'] },
   ...AI_FEATURE_ENTRIES,

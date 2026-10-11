@@ -11,6 +11,7 @@ import { useShallow } from 'zustand/react/shallow';
 import type { Milestone, MoodLevel, MoodLog } from '../types';
 import { useMoodStore } from '../store/useMoodStore';
 import { useJournalStore } from '../store/useJournalStore';
+import { useJournalAccess } from '../hooks/useJournalAccess';
 import { journalPlainText } from '../utils/journalMarkdown';
 import { useMilestoneStore } from '../store/useMilestoneStore';
 import { useTaskStore } from '../store/useTaskStore';
@@ -187,7 +188,12 @@ export function MoodScreen() {
   const todayKey = dayKeyOf(getCurrentDayStart());
   const journal = useJournalStore(s => s.entries);
   // A sealed note to your future self is no look back until its day (openEntries).
-  const lookedBack = useMemo(() => lookBacks(logs, todayKey, openEntries(journal, todayKey)), [logs, todayKey, journal]);
+  // Left out entirely while the journal lock is closed, so a page from a year ago isn't quoted here.
+  const journalLocked = useJournalAccess().locked;
+  const lookedBack = useMemo(
+    () => lookBacks(logs, todayKey, journalLocked ? [] : openEntries(journal, todayKey)),
+    [logs, todayKey, journal, journalLocked],
+  );
 
   // The first day the task record is complete for. `completedRetentionDays`
   // deletes completed rows on a schedule while the mood log keeps every entry

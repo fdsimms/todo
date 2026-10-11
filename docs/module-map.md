@@ -496,6 +496,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useGroceryStore.ts` — subscribeCartHoldRelease, PlannedRow, PlanAddResult, describePlanAdd, useGroceryStore
 - `src/store/useHealthStore.ts` — HealthDay, EXERCISE_LIVE_WINDOW_DAYS, HEALTH_HISTORY_DAYS, WEIGHT_HISTORY_DAYS, SLEEP_HISTORY_DAYS, sameHealthHistory, useHealthStore, useHealthSync
 - `src/store/useHiddenEventsStore.ts` — useHiddenEventsStore
+- `src/store/useJournalLockStore.ts` — useJournalLockStore, isJournalLocked
 - `src/store/useJournalStore.ts` — useJournalStore
 - `src/store/useLeftoverStore.ts` — useLeftoverStore
 - `src/store/useMealPlanStore.ts` — MealPlanDraft, CookRecap, sameMealPlanEntries, useMealPlanStore
@@ -548,6 +549,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useFocusRefreshedRead.ts` — useFocusRefreshedRead
 - `src/hooks/useFocusSession.ts` — useFocusSession, useFocusPlanReconcile
 - `src/hooks/useFoodDatabaseSearch.ts` — FoodDatabaseSearch, useFoodDatabaseSearch
+- `src/hooks/useJournalAccess.ts` — useJournalAccess
 - `src/hooks/useKeyShortcuts.ts` — useKeyShortcuts
 - `src/hooks/useKeyboardHeight.ts` — useKeyboardHeight
 - `src/hooks/useKeyboardInsetScroll.ts` — ScrollHandle, KeyboardScrollIntoViewContext, useScrollFieldIntoView, useKeyboardInsetScroll

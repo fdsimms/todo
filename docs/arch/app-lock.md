@@ -64,6 +64,15 @@ For the same reason the Settings toggle calls `unlock()` *before*
   task list nobody can ever open. It alerts rather than opening quietly, and
   leaves the setting on so it resumes when they re-enrol. The same reasoning is
   why turning the lock *on* authenticates first.
+- **The journal has its own, second lock** (`journalLockEnabled`, `useJournalLockStore`,
+  `useJournalAccess`). Same derived `locked = enabled && !unlocked`, but no grace
+  period: `AppLockGate` closes it whenever the app stops being active. Every
+  reader of journal text checks `useJournalAccess().locked`: the Journal and
+  Dreams screens (which mount no content while locked), the mood day page and
+  Looking back, which drop the entries so paging doesn't stop on a day that only
+  has writing on it. A new reader of journal entries does the same. It is
+  device-local like the app lock, and it does not cover Claude's journal tools,
+  which are governed by the sync switch in `journal.md`.
 - **`resetToDefaults` doesn't touch it**, like vacation mode: "reset appearance and
   formatting" is not a request to take the lock off the app.
 
