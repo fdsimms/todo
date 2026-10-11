@@ -355,7 +355,7 @@ file: the two maps are indexes, not write-ups.
 | the task edit sheet | `src/components/TaskEditor.tsx` |
 | picking a task's category, anywhere | `src/components/CategoryPicker.tsx` (+ `src/utils/categoryPicker.ts`) |
 | a task row — swipes, checkbox, expansion | `src/components/TaskItem.tsx` |
-| quick-add text parsing (`"pay rent tmrw 5p #home"`) | `src/utils/parseTaskInput.ts`, `parseNaturalDate.ts` |
+| quick-add text parsing (`"pay rent tmrw 5p #home"`) | `src/utils/parseTaskInput.ts`, `parseNaturalDate.ts`. What a line offers after the date, `#word` and `@name` (priority, project, link, phone, timer, target and the rest) is picked in `src/utils/titleSuggestion.ts`, which `QuickAddModal` and `TaskEditor` both call: a new title parse goes there, not into either component |
 | what a template asks before it creates anything | `src/utils/templateQuestions.ts` — see `docs/arch/template-questions.md` |
 | a task the app writes unasked, and the quiet-project offer | `src/utils/generatedTasks.ts` (`GENERATED_KINDS` is the list of generators) + `src/utils/projectReviewTasks.ts` — see `docs/arch/generated-tasks.md` |
 | a bare weekend, and the project it offers to fill it from | `src/utils/weekendTasks.ts` + `Project.weekendSource` — see `docs/arch/generated-tasks.md` |

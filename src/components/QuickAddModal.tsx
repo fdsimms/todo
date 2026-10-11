@@ -68,7 +68,7 @@ import {
 import { isSimpleChip } from '../utils/simpleTaskForm';
 import { featureShown } from '../utils/simpleMode';
 import { resolvePillOverflow } from '../utils/pillOverflow';
-import { MAX_TARGET_UNIT_LENGTH, formatQuotaTarget, normalizeTargetUnit } from '../utils/quotaUnit';
+import { MAX_TARGET_UNIT_LENGTH, normalizeTargetUnit } from '../utils/quotaUnit';
 import { firstWeekAnchor, proratedWeeklyTarget, weekDaysLeft, firstWeekPatch } from '../utils/quotaSchedule';
 import { WhenPicker } from './WhenPicker';
 import { projectDateAnchor } from '../utils/projectDateShortcuts';
@@ -82,12 +82,13 @@ import { tokenChipsFor, applyTokenChip, type TokenChip } from '../utils/titleTok
 import { HighlightedText } from './HighlightedText';
 import { suggestTitles } from '../utils/titleSuggestions';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInputAheadOfRainSkip, scheduleClockInstant, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseWeatherWaitInput, parseMeterInput, parseRainSkipInput, parseSunWindowInput, parseProjectInput, parseWaitingOnInput, parseSubtasksInput, parseAvoidInput, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, applyMentionOverrides, withTrailingSpace, type ParsedCategoryAndTags, type ParsedTaskInput, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
-import { formatMeterAmount, knownMeterNames, latestReading, meterFieldsFromInput, meterKey } from '../utils/meters';
-import { canSkipForRain, defaultRainSkipMm, formatRain, rainUnitFor } from '../utils/rainSkip';
+import { parseTaskInputAheadOfRainSkip, scheduleClockInstant, describeSchedule, stripRemindPrefix, parseCategoryAndTagsInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, applyMentionOverrides, withTrailingSpace, type ParsedCategoryAndTags, type ParsedTaskInput, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
+import { formatMeterAmount, knownMeterNames, latestReading, meterFieldsFromInput } from '../utils/meters';
+import { canSkipForRain, formatRain, rainUnitFor } from '../utils/rainSkip';
 import { useMeterReadingStore } from '../store/useMeterReadingStore';
 import { mergeRanges } from '../utils/ranges';
 import { aimTooltip } from '../utils/tooltipAim';
+import { pickTitleSuggestion, describeTitleSuggestion, linkLabel } from '../utils/titleSuggestion';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { groupMentionTokens } from '../utils/peopleRegistry';
@@ -216,10 +217,6 @@ interface ToolChipDescriptor {
  */
 function remindsFromTitle(parsed: ParsedTaskInput): string | null {
   return parsed.schedule.explicitClockTime ? stripRemindPrefix(parsed.cleanTitle) : null;
-}
-
-function linkLabel(url: string): string {
-  return KNOWN_LINK_APPS.find(app => app.scheme === url)?.name ?? url;
 }
 
 /** Tooltip label for a "#word" match — category, tag count/name, or both joined. */
@@ -912,15 +909,14 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   useEffect(() => {
     setCandidateLayouts([]);
   }, [candidateRowKey]);
-  // "clean the garage !urgent" — a "!word" token naming a priority
-  // (parsePriorityInput), same single tooltip slot and same sigil-token
-  // shape as the category/tag check above, just checked after the ambiguous
-  // mention and the in-progress mention suggestions so a "@name" still
-  // claiming the slot always wins.
-  const priorityParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && title.trim() ? parsePriorityInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion]
-  );
+  // Everything a typed line can say after the schedule phrase, the "#word"
+  // token and the "@name" mention: priority, project, chain, link, phone, email,
+  // timer, supply, target, estimate, weather wait, sun window, meter, rain
+  // skip, waiting on, subtasks, avoid. One suggestion at a time, in that order,
+  // through pickTitleSuggestion (src/utils/titleSuggestion.ts), which the task
+  // editor reads too so the two can't disagree about what a line means. Each
+  // parser's own gate (plain kind, a repeat, the weather switch, ...) is the
+  // context passed in below; its doc comment says why.
   // "book hotel +japan" — the "+" sigil for a project, resolved against the
   // live ones only (see parseProjectInput). A sigil like "#" and "!", so it's
   // checked beside them, ahead of the chain: a "+trip" inside a line that
@@ -933,180 +929,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     () => projects.filter(p => !p.archived && !p.completedAt),
     [projects]
   );
-  const projectParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !intoProjectId && title.trim()
-      ? parseProjectInput(title, liveProjects) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, intoProjectId, liveProjects]
-  );
-  // "call mom -> buy milk -> walk the dog" — the "->" token for an ad hoc
-  // chain, each segment becoming its own step (see parseChainInput's own doc
-  // comment for why a step's duration/link phrase binds to that step while
-  // everything else — schedule, category/tag, priority, mention — stays
-  // task-wide). Checked after every task-wide token so those still resolve
-  // wherever they're typed, including inside a later step, before the split
-  // is offered, and before link/phone/email/duration below, which must not
-  // claim a step's own phrase for the whole task once a chain is what's
-  // being typed. Same type gate as durationParsed and for the same reason:
-  // accepting it commits the sheet to Chain, so it's only offered from the
-  // plain type.
-  const chainParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !projectParsed
-      && type === 'task' && title.trim()
-      ? parseChainInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, type]
-  );
-  // Pasted URL/app-link detection — same tooltip mechanism as the schedule
-  // parse above, just not suffix-anchored. Only checked when no schedule
-  // phrase, category/tag token, ambiguous mention, priority token, or chain
-  // matched, so the tooltips never compete for the same slot.
-  const linkParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !projectParsed && !chainParsed && title.trim() ? parseLinkInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed]
-  );
-  // "call the doctor 555-123-4567" — the same mechanism again, for the number
-  // rather than the URL. Checked after the link so a tel: URL someone pasted
-  // still reads as a link, and deliberately stricter about what counts (see
-  // looksLikePhoneNumber): this one is reading prose full of digits, so a
-  // year or a price must not light it up.
-  const phoneParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !projectParsed && !chainParsed && !linkParsed && title.trim() ? parsePhoneInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed]
-  );
-  // "email jane@example.com about the invoice" — the same mechanism again,
-  // for an address rather than a number. Checked after phone so a title that
-  // happens to contain both keeps reading as whichever comes first in the
-  // priority chain, and email addresses don't collide with the phone pattern
-  // since "@" and letters aren't dial digits.
-  const emailParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !projectParsed && !chainParsed && !linkParsed && !phoneParsed && title.trim() ? parseEmailInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed]
-  );
-  // "play violin for 15 minutes" — a duration, not a schedule. Same single
-  // tooltip slot, checked last, so a schedule, category/tag token, link or
-  // contact phrase always wins.
-  //
-  // Only offered from the plain type, because accepting it switches the sheet
-  // into Timed: it's how someone who has never picked a type discovers there
-  // is one. Someone already part-way through a Chain or a Target has said what
-  // they're making, and a tooltip shouldn't overrule it.
-  const durationParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !projectParsed && !chainParsed && !linkParsed && !phoneParsed && !emailParsed && type === 'task' && title.trim() ? parseDurationInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, type]
-  );
-  // "replace cpap filter 6 filters left" — a stock this task spends, not a
-  // schedule. Last in the chain, so everything above still wins the one slot.
-  //
-  // **Offered only once the sheet has a repeat**, which is this parser's
-  // equivalent of the type gate above it. A supply counts down by riding onto
-  // the successor a completion spawns, so on a one-off it would sit at its
-  // starting number for ever (see canHoldSupply) — offering it there would be
-  // offering a field that does nothing. It also happens to be the cheapest
-  // false-positive filter available: "finish the report 3 spare left" on a
-  // task with no repeat never gets asked about.
-  //
-  // The order this composes in is the user's, not ours. Type the whole line
-  // and the schedule tooltip comes first (it needs the trailing text); tapping
-  // it shortens the title, sets the repeat, and this fires on the remainder.
-  const supplyParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !projectParsed && !chainParsed && !linkParsed && !phoneParsed && !emailParsed
-      && !durationParsed && recurrenceType !== 'none' && title.trim()
-      ? parseSupplyInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, recurrenceType]
-  );
-  // "drink water 8 times a day" — a daily target, or "run 3 times a week", a
-  // weekly one. Last in the chain, behind supply, so every phrase above still
-  // wins the one slot.
-  //
-  // Same type gate as durationParsed: accepting it switches the sheet into
-  // Target, so it's only offered from the plain type. And only while the
-  // repeat is unset or matches a period a target can count across: a target
-  // resets by repeating, so on a sheet set to "every 2 weeks" or "every
-  // monday" there's no reading of "3 times" that the repeat wouldn't undo.
-  //
-  // A bare "3 times" on a weekly repeat ("3 times" then "every week" accepted
-  // first) is three a week; "3 times a week" on a daily repeat is refused
-  // rather than letting either half overrule the other.
-  const targetParsed = useMemo(() => {
-    if (parsed || categoryTagsParsed || ambiguousMention || mentionSuggestion || priorityParsed || projectParsed || chainParsed || linkParsed || phoneParsed || emailParsed
-      || durationParsed || supplyParsed || type !== 'task' || !title.trim()) return null;
-    const plainWeekly = recurrenceType === 'weekly' && recurrenceInterval === 1 && recurrenceDays.length === 0;
-    if (recurrenceType !== 'none' && recurrenceType !== 'daily' && !plainWeekly) return null;
-    if (recurrenceType === 'daily' && recurrenceInterval !== 1) return null;
-    const result = parseTargetInput(title);
-    if (!result) return null;
-    if (result.period === 'week' && recurrenceType === 'daily') return null;
-    return plainWeekly ? { ...result, period: 'week' as const } : result;
-  }, [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, type, recurrenceType, recurrenceInterval, recurrenceDays]);
-  // "clean the garage ~2h" — an estimate, not a timer. Last in the chain, so
-  // "for 15 minutes" (a timer) and everything above still win the one slot.
-  // Hidden in Timed for the reason the Effort chip is: there the countdown
-  // already is the estimate.
-  const estimateParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !projectParsed && !chainParsed && !linkParsed && !phoneParsed && !emailParsed
-      && !durationParsed && !supplyParsed && !targetParsed && isChipVisible(type, 'effort') && title.trim()
-      ? parseEstimateInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, type]
-  );
-  // "leave books on the curb on the next sunny day" — wait for a kind of day.
-  // After estimate in the chain, so everything above still wins the one slot.
-  //
-  // Offered only where the wait would be honoured, and refused otherwise
-  // rather than accepted and dropped: the weather switch has to be on (nothing
-  // reads the forecast otherwise), and only a plain one-off may wait, so a
-  // repeat, a set of dates, a chain or another kind has already said it
-  // schedules itself (see canWaitForWeather).
-  const weatherParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !projectParsed && !chainParsed && !linkParsed && !phoneParsed && !emailParsed
-      && !durationParsed && !supplyParsed && !targetParsed && !estimateParsed
-      && weatherTasksOn && type === 'task' && recurrenceType === 'none' && !titleSeries && chainItems.length === 0 && weatherWait === null && title.trim()
-      ? parseWeatherWaitInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, estimateParsed, weatherTasksOn, type, recurrenceType, titleSeries, chainItems, weatherWait]
-  );
-  // "porch lights after sunset" / "walk the dog expires at dark" — a window
-  // bound that follows the sun. After the weather wait in the chain.
-  //
-  // Offered only where it can be honoured, the weather phrase's rule: the
-  // time has to be worked out from somewhere (a saved location, or the trip
-  // covering that day), and a polar day with no sunset offers nothing rather
-  // than an anchor that would fall back to a guess. The clock time resolved
-  // here rides beside the anchor, as the editor writes it.
   const sunDayStart = dueDate ? getTaskDayStart(dueDate, dayResetTime) : getCurrentDayStart();
-  const sunParsed = useMemo(() => {
-    if (parsed || categoryTagsParsed || ambiguousMention || mentionSuggestion || priorityParsed || projectParsed || chainParsed || linkParsed || phoneParsed || emailParsed
-      || durationParsed || supplyParsed || targetParsed || estimateParsed || weatherParsed || !title.trim()) return null;
-    const hit = parseSunWindowInput(title);
-    if (!hit) return null;
-    const clock = sunAnchorHHMM(hit.anchor, sunDayStart, sunLocationOn(sunDayStart));
-    return clock ? { ...hit, clock } : null;
-    // sunLocation is a dep for the re-read alone: sunLocationOn reads it.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, estimateParsed, weatherParsed, type, sunDayStart.getTime(), sunLocationSetting]);
-  // "change the oil every 5,000 miles on the car": due by usage. After the sun
-  // phrase in the chain, and only on a plain one-off with nothing else holding
-  // it (canFollowMeter's rule). The name is matched against the meters already
-  // read, so "the car" files under the "Car" the readings use.
-  const meterParsed = useMemo(() => {
-    if (parsed || categoryTagsParsed || ambiguousMention || mentionSuggestion || priorityParsed || projectParsed || chainParsed || linkParsed || phoneParsed || emailParsed
-      || durationParsed || supplyParsed || targetParsed || estimateParsed || weatherParsed || sunParsed || !title.trim()) return null;
-    if (type !== 'task' || recurrenceType !== 'none' || titleSeries || chainItems.length > 0 || weatherWait !== null || polarity === 'negative' || titleMeter !== null) return null;
-    const hit = parseMeterInput(title);
-    if (!hit) return null;
-    const known = knownMeterNames(meterReadings).find(n => meterKey(n) === meterKey(hit.meterName));
-    const name = known?.trim() ?? hit.meterName.charAt(0).toUpperCase() + hit.meterName.slice(1);
-    return { ...hit, meterName: name, read: !!known };
-  }, [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, estimateParsed, weatherParsed, sunParsed, type, recurrenceType, titleSeries, chainItems, weatherWait, polarity, titleMeter, meterReadings]);
-  // "water the garden every 2 days unless it rains": skip a day it rained.
-  // After the meter phrase in the chain, and offered only once the repeat is
-  // set (the schedule phrase ahead of it in the same line is what sets it) and
-  // the weather switch is on, since nothing reads rainfall otherwise: the
-  // weather phrase's rule of refusing what wouldn't be honoured.
-  const rainParsed = useMemo(() => {
-    if (parsed || categoryTagsParsed || ambiguousMention || mentionSuggestion || priorityParsed || projectParsed || chainParsed || linkParsed || phoneParsed || emailParsed
-      || durationParsed || supplyParsed || targetParsed || estimateParsed || weatherParsed || sunParsed || meterParsed || !title.trim()) return null;
-    if (!weatherTasksOn || type !== 'task' || titleRainSkipMm !== null || !canSkipForRain({ recurrenceType, polarity })) return null;
-    const hit = parseRainSkipInput(title);
-    return hit ? { ...hit, mm: hit.mm ?? defaultRainSkipMm(rainUnit) } : null;
-  }, [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, estimateParsed, weatherParsed, sunParsed, meterParsed, weatherTasksOn, type, titleRainSkipMm, recurrenceType, polarity, rainUnit]);
   // "file taxes after get W-2" — waiting on another task. Matched strictly
   // (see parseWaitingOnInput) against live top-level tasks, one row per
   // series so a dated set doesn't read as several tasks of the same name.
@@ -1124,31 +947,55 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       return true;
     });
   }, [tasks, visible]);
-  const waitingParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !projectParsed && !chainParsed && !linkParsed && !phoneParsed && !emailParsed
-      && !durationParsed && !supplyParsed && !targetParsed && !estimateParsed && !weatherParsed && !sunParsed && !meterParsed && !rainParsed && title.trim()
-      ? parseWaitingOnInput(title, waitCandidates) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, estimateParsed, weatherParsed, sunParsed, meterParsed, rainParsed, waitCandidates]
+  const titleSuggestion = useMemo(
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion
+      ? pickTitleSuggestion(title, {
+        plainKind: type === 'task',
+        estimateOffered: isChipVisible(type, 'effort'),
+        recurrenceType,
+        recurrenceInterval,
+        recurrenceDays,
+        hasSeries: !!titleSeries,
+        hasChainSteps: chainItems.length > 0,
+        // Not offered on a sheet opened inside a project: createTask files the
+        // task there whatever this says, and a tooltip setting a project that
+        // would then be ignored is an input the save drops.
+        projects: intoProjectId ? null : liveProjects,
+        waitCandidates,
+        weatherTasksOn,
+        weatherWait,
+        polarity,
+        hasMeter: titleMeter !== null,
+        knownMeters: knownMeterNames(meterReadings),
+        hasRainSkip: titleRainSkipMm !== null,
+        rainUnit,
+        sunClock: anchor => sunAnchorHHMM(anchor, sunDayStart, sunLocationOn(sunDayStart)),
+      })
+      : null),
+    // sunLocation is a dep for the re-read alone: sunLocationOn reads it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, type, recurrenceType, recurrenceInterval, recurrenceDays, titleSeries, chainItems, intoProjectId, liveProjects, waitCandidates, weatherTasksOn, weatherWait, polarity, titleMeter, meterReadings, titleRainSkipMm, rainUnit, sunDayStart.getTime(), sunLocationSetting]
   );
-  // "pack: socks, charger, passport" — subtasks. Last of all: a colon list is
-  // the loosest shape here, so anything more specific in the line wins first.
-  const subtasksParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !projectParsed && !chainParsed && !linkParsed && !phoneParsed && !emailParsed
-      && !durationParsed && !supplyParsed && !targetParsed && !estimateParsed && !weatherParsed && !sunParsed && !meterParsed && !rainParsed && !waitingParsed && title.trim()
-      ? parseSubtasksInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, estimateParsed, weatherParsed, sunParsed, meterParsed, rainParsed, waitingParsed]
-  );
-  // "Don't check Twitter", "No snacking" — a habit to avoid. Strips nothing
-  // (the words are its name), so it stops being offered once accepted rather
-  // than when the phrase leaves the title. Plain kind only, like the Goal
-  // control in the editor.
-  const avoidParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !projectParsed && !chainParsed && !linkParsed && !phoneParsed && !emailParsed
-      && !durationParsed && !supplyParsed && !targetParsed && !estimateParsed && !weatherParsed && !sunParsed && !meterParsed && !rainParsed && !waitingParsed && !subtasksParsed
-      && type === 'task' && polarity !== 'negative' && title.trim()
-      ? parseAvoidInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, estimateParsed, weatherParsed, sunParsed, meterParsed, rainParsed, waitingParsed, subtasksParsed, type, polarity]
-  );
+  const titleSuggestionDescription = titleSuggestion
+    ? describeTitleSuggestion(titleSuggestion, rainUnit, hhmm => formatHHMM(hhmm))
+    : null;
+  const priorityParsed = titleSuggestion?.kind === 'priority' ? titleSuggestion.hit : null;
+  const projectParsed = titleSuggestion?.kind === 'project' ? titleSuggestion.hit : null;
+  const chainParsed = titleSuggestion?.kind === 'chain' ? titleSuggestion.hit : null;
+  const linkParsed = titleSuggestion?.kind === 'link' ? titleSuggestion.hit : null;
+  const phoneParsed = titleSuggestion?.kind === 'phone' ? titleSuggestion.hit : null;
+  const emailParsed = titleSuggestion?.kind === 'email' ? titleSuggestion.hit : null;
+  const durationParsed = titleSuggestion?.kind === 'duration' ? titleSuggestion.hit : null;
+  const supplyParsed = titleSuggestion?.kind === 'supply' ? titleSuggestion.hit : null;
+  const targetParsed = titleSuggestion?.kind === 'target' ? titleSuggestion.hit : null;
+  const estimateParsed = titleSuggestion?.kind === 'estimate' ? titleSuggestion.hit : null;
+  const weatherParsed = titleSuggestion?.kind === 'weather' ? titleSuggestion.hit : null;
+  const sunParsed = titleSuggestion?.kind === 'sun' ? titleSuggestion.hit : null;
+  const meterParsed = titleSuggestion?.kind === 'meter' ? titleSuggestion.hit : null;
+  const rainParsed = titleSuggestion?.kind === 'rain' ? titleSuggestion.hit : null;
+  const waitingParsed = titleSuggestion?.kind === 'waiting' ? titleSuggestion.hit : null;
+  const subtasksParsed = titleSuggestion?.kind === 'subtasks' ? titleSuggestion.hit : null;
+  const avoidParsed = titleSuggestion?.kind === 'avoid' ? titleSuggestion.hit : null;
   // Whether the task being built is an avoid-task: the flag, on the one kind
   // that can hold it (a later switch to Timed or Target leaves it unset).
   const avoidsHere = polarity === 'negative' && type === 'task';
@@ -2715,78 +2562,14 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                                 : parsed.schedule.deadline ? 'flag-outline' : 'calendar-outline')
                             : categoryTagsParsed
                               ? (categoryTagsParsed.category ? 'pricetag-outline' : 'pricetags-outline')
-                              : priorityParsed
-                                ? 'alert-circle-outline'
-                                : projectParsed
-                                ? 'briefcase-outline'
-                                : chainParsed
-                                  ? 'git-commit-outline'
-                                  : linkParsed
-                                    ? 'link-outline'
-                                    : phoneParsed
-                                      ? 'call-outline'
-                                      : emailParsed
-                                        ? 'mail-outline'
-                                        : durationParsed
-                                          ? 'timer-outline'
-                                          : supplyParsed
-                                            ? 'cube-outline'
-                                            : targetParsed
-                                              ? 'speedometer-outline'
-                                              : estimateParsed
-                                                ? 'barbell'
-                                                : weatherParsed
-                                                ? 'partly-sunny-outline'
-                                                : sunParsed
-                                                ? (sunParsed.anchor === 'sunrise' ? 'sunny-outline' : 'moon-outline')
-                                                : meterParsed
-                                                ? 'speedometer-outline'
-                                                : rainParsed
-                                                ? 'rainy-outline'
-                                                : waitingParsed
-                                                  ? 'hourglass-outline'
-                                                  : subtasksParsed
-                                                    ? 'list-outline'
-                                                    : 'shield-checkmark-outline'
+                              : (titleSuggestionDescription?.icon ?? 'shield-checkmark-outline') as React.ComponentProps<typeof TitleSuggestionBanner>['icon']
                     }
                     label={
 parsed
                           ? `${describeSchedule(parsed.schedule, getLogicalNow(dayResetTime))}${remindsFromTitle(parsed) ? ' · Reminder' : ''}`
                           : categoryTagsParsed
                             ? categoryTagsLabel(categoryTagsParsed, categories)
-                            : priorityParsed
-                              ? `Priority · ${PRIORITY_LABELS_SHORT[priorityParsed.priority]}`
-                              : projectParsed
-                              ? `Project · ${projectParsed.title}`
-                              : chainParsed
-                                ? `Chain · ${chainParsed.steps.length} steps`
-                                : linkParsed
-                                  ? linkLabel(linkParsed.url)
-                                  : phoneParsed
-                                    ? `Call ${phoneParsed.number}`
-                                    : emailParsed
-                                      ? `Email ${emailParsed.address}`
-                                      : durationParsed
-                                        ? `Timer · ${formatDuration(durationParsed.minutes)}`
-                                        : supplyParsed
-                                          ? `Supply · ${formatSupplyLeft(supplyParsed.count, supplyParsed.unit)}`
-                                          : targetParsed
-                                            ? `${targetParsed.period === 'week' ? 'Weekly' : 'Daily'} target · ${formatQuotaTarget(targetParsed.count, null)}`
-                                            : estimateParsed
-                                              ? `Estimate · ${formatDuration(estimateParsed.minutes)}`
-                                              : weatherParsed
-                                              ? `Wait for a ${weatherParsed.condition} day`
-                                              : sunParsed
-                                              ? `${sunParsed.bound === 'start' ? 'Hidden until' : 'Expires at'} ${sunParsed.anchor} · ${formatHHMM(sunParsed.clock)} that day`
-                                              : meterParsed
-                                              ? `Due every ${formatMeterAmount(meterParsed.every, meterParsed.unit)} on ${meterParsed.meterName}`
-                                              : rainParsed
-                                              ? `Skip after ${formatRain(rainParsed.mm, rainUnit)} of rain`
-                                              : waitingParsed
-                                                ? `Waiting on · ${waitingParsed.title}`
-                                                : subtasksParsed
-                                                  ? `${subtasksParsed.subtasks.length} subtasks`
-                                                  : 'Avoid this habit'
+                            : (titleSuggestionDescription?.label ?? '')
                     }
                     onApply={applyActiveParse}
                     onDismiss={dismissActiveParse}

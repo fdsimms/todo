@@ -98,7 +98,7 @@ import { isStreakAtRecord, nextStreakRecord, streakHint } from '../utils/streakR
 import { formatDeadlineDate, formatDeadlineLabel, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, describeDeadlineOffset, describeReminderOffset, describeReminderTracksVisibility, getTaskDayStart, getCurrentDayStart, getLogicalNow, getLogicalToday, seriesMonthDaysFrom, getNextDueDate, dayKeyOf, dayKeyToDate } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInput, describeSchedule, detectContactIntent, matchPersonMentions, getEditorMentionSuggestions, withTrailingSpace, parseCategoryAndTagsInput, type MentionSuggestionCandidate, type ParsedCategoryAndTags } from '../utils/parseTaskInput';
+import { parseTaskInputAheadOfRainSkip, scheduleClockInstant, stripRemindPrefix, describeSchedule, detectContactIntent, matchPersonMentions, getEditorMentionSuggestions, withTrailingSpace, parseCategoryAndTagsInput, type MentionSuggestionCandidate, type ParsedCategoryAndTags } from '../utils/parseTaskInput';
 import { groupMentionTokens } from '../utils/peopleRegistry';
 import { mergeRanges } from '../utils/ranges';
 import { HighlightedText } from './HighlightedText';
@@ -136,7 +136,10 @@ import { FollowUpTaskSheet } from './FollowUpTaskSheet';
 import { CalendarChoiceSheet } from './CalendarChoiceSheet';
 import { QuickEventSheet } from './QuickEventSheet';
 import { TaskRelationPickerSheet } from './TaskRelationPickerSheet';
-import { blockerFields, blockerIdsOf, describeBlocks } from '../utils/blocking';
+import { blockerFields, blockerIdsOf, describeBlocks, resolverFor, canBeBlockerOf } from '../utils/blocking';
+import { pickTitleSuggestion, suggestionMatch, describeTitleSuggestion } from '../utils/titleSuggestion';
+import { rainUnitFor } from '../utils/rainSkip';
+import { clampSupplyCount } from '../utils/supply';
 import { displayTitleFor, isMissableMealPlanTask, getVisibleAt, onLogicalDay, isQuotaTask, sunLocationOn } from '../utils/visibilityUtils';
 import { firstWeekAnchor, proratedFrom, proratedWeeklyTarget, quotaProrationPatch, weekDaysLeft } from '../utils/quotaSchedule';
 import { nextChainStepTitle } from '../utils/chain';
@@ -445,6 +448,8 @@ const WINDOW_KIND_OPTIONS: SegmentOption<'time' | SunEvent>[] = [
   { value: 'sunrise', label: 'Sunrise' },
   { value: 'sunset', label: 'Sunset' },
 ];
+
+const NO_TASKS: Task[] = [];
 
 function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   // ==== store bindings ====
@@ -846,6 +851,9 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const [weatherWait, setWeatherWait] = useState<WeatherCondition | null>(null);
   const [weatherWaitOpen, setWeatherWaitOpen] = useState(false);
   const weatherTasksOn = useSettingsStore(s => s.weatherTasks);
+  const rainUnit = rainUnitFor(useSettingsStore(s => s.unitSystem));
+  // Every task, for "after <task>" in the title to name one. Read only while open.
+  const allTasks = useTaskStore(s => (visible ? s.tasks : NO_TASKS));
   // See Task.meterName. Held as typed text (MeterInput) so a half-typed
   // "45,0" isn't snapped to a number under the cursor; meterFieldsFromInput
   // turns it into fields on save.
@@ -995,6 +1003,11 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   // it isn't the same phrase anymore, rather than staying dismissed forever.
   const [dismissedScheduleSignature, setDismissedScheduleSignature] = useState<string | null>(null);
   const mentionSuggestionAnim = useRef(new Animated.Value(0)).current;
+  const titleSuggestionAnim = useRef(new Animated.Value(0)).current;
+  const hadTitleSuggestion = useRef(false);
+  const [dismissedSuggestionSignature, setDismissedSuggestionSignature] = useState<string | null>(null);
+  // A clock time the schedule phrase named ("at 5pm"), offered as a reminder.
+  const [reminderOffer, setReminderOffer] = useState<Date | null>(null);
   const hadMentionSuggestion = useRef(false);
 
   const categoryTagsTooltipAnim = useRef(new Animated.Value(0)).current;
@@ -1435,7 +1448,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   // same way the quick-add modal does. The phrase is highlighted and
   // described in a banner below the title; nothing is applied until tapped.
   const parsedSchedule = useMemo(
-    () => (title.trim() ? parseTaskInput(title, getLogicalNow(dayResetTime), new Date()) : null),
+    () => (title.trim() ? parseTaskInputAheadOfRainSkip(title, getLogicalNow(dayResetTime), new Date()) : null),
     [title, dayResetTime]
   );
   // The banner's own ✕ answers "not a date" for this one phrase — comparing
@@ -1476,13 +1489,6 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
     ).map((m): [number, number] => [m.start, m.end])),
     [title, people, personIds]
   );
-  const titleHighlightRanges = useMemo(() => {
-    const ranges = [...titleMentionRanges];
-    if (activeParsedSchedule) ranges.push([activeParsedSchedule.matchStart, scheduleMatchEnd]);
-    if (activeCategoryTags) ranges.push([activeCategoryTags.matchStart, activeCategoryTags.matchEnd]);
-    return mergeRanges(ranges);
-  }, [titleMentionRanges, activeParsedSchedule, scheduleMatchEnd, activeCategoryTags]);
-  const hasTitleOverlay = activeParsedSchedule != null || activeCategoryTags != null || titleMentionRanges.length > 0;
 
   // Unlike quick add, nothing here ever resolves a fresh "@name" on its own —
   // so a token that would be a unique, fully-typed match anywhere else still
@@ -1495,6 +1501,85 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       : null),
     [title, activeParsedSchedule, activeCategoryTags, people, personIds]
   );
+
+  // ==== the rest of the title: priority, project, link, phone, email, timer, ... ====
+  // Everything quick add reads out of a typed line after the schedule phrase,
+  // the "#word" token and the "@name" suggestion, through the same
+  // pickTitleSuggestion, so the two can't disagree about what a line means.
+  // One suggestion at a time and nothing applied until tapped, like the
+  // banners above. What a form's state would decide (is the kind plain, is
+  // there a repeat, is the weather switch on) is passed in as the context.
+  const titleKind = taskKindOf({ chainEnabled, targetCount, timedMinutes, healthMetric, healthTarget, rotationEnabled });
+  const titleSunDayStart = dueDate ? getTaskDayStart(dueDate, dayResetTime) : getCurrentDayStart();
+  const titleSunLocation = sunLocationOn(titleSunDayStart);
+  // Tasks "after <task>" can name. The cycle check is per candidate, so it
+  // only runs while the title has an "after" to match.
+  const titleWaitCandidates = useMemo(() => {
+    if (!visible || !/\bafter\b/i.test(title)) return [];
+    const resolve = resolverFor(allTasks);
+    const taken = new Set([...blockerIds, ...blocksIds]);
+    const seen = new Set<string>();
+    return allTasks.filter(t => {
+      if (taken.has(t.id) || !canBeBlockerOf(t, task?.id ?? null, resolve)) return false;
+      if (t.seriesId) {
+        if (seen.has(t.seriesId)) return false;
+        seen.add(t.seriesId);
+      }
+      return true;
+    });
+  }, [visible, title, allTasks, blockerIds, blocksIds, task?.id]);
+  const titleSuggestion = useMemo(() => {
+    if (activeParsedSchedule || activeCategoryTags || titleMentionSuggestion) return null;
+    return pickTitleSuggestion(title, {
+      plainKind: titleKind === 'task',
+      estimateOffered: titleKind !== 'timed',
+      recurrenceType,
+      recurrenceInterval,
+      recurrenceDays,
+      hasSeries: extraDates.length > 0,
+      hasChainSteps: chainItems.length > 0,
+      projects: projects.filter(p => !p.completedAt),
+      waitCandidates: titleWaitCandidates,
+      weatherTasksOn,
+      weatherWait,
+      polarity,
+      hasMeter: meterInput.name.trim() !== '',
+      knownMeters: knownMeterNames(meterReadings),
+      hasRainSkip: rainSkipMm !== null,
+      rainUnit,
+      sunClock: anchor => sunAnchorHHMM(anchor, titleSunDayStart, titleSunLocation),
+    });
+    // titleSunLocation is read through sunLocationOn, whose input is the saved
+    // location the editor already subscribes to.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    title, activeParsedSchedule, activeCategoryTags, titleMentionSuggestion, titleKind, recurrenceType,
+    recurrenceInterval, recurrenceDays, extraDates, chainItems, projects, titleWaitCandidates, weatherTasksOn,
+    weatherWait, polarity, meterInput.name, meterReadings, rainSkipMm, rainUnit, titleSunDayStart.getTime(),
+    titleSunLocation,
+  ]);
+  const titleSuggestionMatch = titleSuggestion ? suggestionMatch(title, titleSuggestion) : null;
+  const titleSuggestionSignature = titleSuggestionMatch
+    ? `${titleSuggestionMatch.matchStart}|${titleSuggestionMatch.matchedText}`
+    : null;
+  const activeTitleSuggestion = titleSuggestionSignature !== null && titleSuggestionSignature === dismissedSuggestionSignature
+    ? null
+    : titleSuggestion;
+  const activeSuggestionMatch = activeTitleSuggestion ? titleSuggestionMatch : null;
+  const titleSuggestionDescription = activeTitleSuggestion ? describeTitleSuggestion(activeTitleSuggestion, rainUnit, hhmm => formatHHMM(hhmm, use24HourTime)) : null;
+
+  const titleHighlightRanges = useMemo(() => {
+    const ranges = [...titleMentionRanges];
+    if (activeParsedSchedule) ranges.push([activeParsedSchedule.matchStart, scheduleMatchEnd]);
+    if (activeCategoryTags) ranges.push([activeCategoryTags.matchStart, activeCategoryTags.matchEnd]);
+    // A match that is the whole line (a chain) gets no highlight: see quick
+    // add's highlightRanges for why the overlay can't stand in for a long line.
+    if (activeSuggestionMatch && !activeSuggestionMatch.wholeLine) {
+      ranges.push([activeSuggestionMatch.matchStart, activeSuggestionMatch.matchStart + activeSuggestionMatch.matchedText.length]);
+    }
+    return mergeRanges(ranges);
+  }, [titleMentionRanges, activeParsedSchedule, scheduleMatchEnd, activeCategoryTags, activeSuggestionMatch]);
+  const hasTitleOverlay = titleHighlightRanges.length > 0;
 
   // "Call Kristen", "Text the plumber", "Email the landlord" — a title that
   // implies a contact action with no data to power it. Purely a discoverability
@@ -1521,6 +1606,14 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
     }
     hadMentionSuggestion.current = titleMentionSuggestion != null;
   }, [titleMentionSuggestion]);
+
+  useEffect(() => {
+    if (activeTitleSuggestion && !hadTitleSuggestion.current) {
+      titleSuggestionAnim.setValue(0);
+      Animated.spring(titleSuggestionAnim, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: true }).start();
+    }
+    hadTitleSuggestion.current = activeTitleSuggestion != null;
+  }, [activeTitleSuggestion]);
 
   useEffect(() => {
     if (activeCategoryTags && !hadCategoryTagsParse.current) {
@@ -1574,10 +1667,24 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
     if (!parsedSchedule) return;
     haptics.success();
     animateLayout();
-    const nextTitle = withTrailingSpace(parsedSchedule.cleanTitle);
+    // "remind me to ... at 4pm": the request is the reminder, so the words go
+    // with the phrase (stripRemindPrefix), and only when there is a clock time.
+    const remindTitle = parsedSchedule.schedule.explicitClockTime ? stripRemindPrefix(parsedSchedule.cleanTitle) : null;
+    const nextTitle = withTrailingSpace(remindTitle ?? parsedSchedule.cleanTitle);
     setTitle(nextTitle);
     titleCaret.moveCaret(nextTitle);
     setDueDate(parsedSchedule.schedule.dueDate);
+    if (parsedSchedule.schedule.extraDates?.length) setExtraDates(parsedSchedule.schedule.extraDates);
+    // "after 5pm" / "before 9am": a window bound, which the phrase otherwise
+    // dropped on the floor here while quick add kept it.
+    if (parsedSchedule.schedule.windowStart != null) {
+      setWindowStart(parsedSchedule.schedule.windowStart);
+      setWindowStartSun(null);
+    }
+    if (parsedSchedule.schedule.windowEnd != null) {
+      setWindowEnd(parsedSchedule.schedule.windowEnd);
+      setWindowEndSun(null);
+    }
     if (parsedSchedule.schedule.deadline) {
       setDeadline(parsedSchedule.schedule.deadline);
       setDeadlineOffsetDays(null);
@@ -1592,6 +1699,178 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
     setRecurrenceEndDate(parsedSchedule.schedule.recurrenceEndDate ? new Date(parsedSchedule.schedule.recurrenceEndDate) : null);
     setRecurrenceCount(parsedSchedule.schedule.recurrenceCount ?? null);
     setRecurrenceFromCompletion(parsedSchedule.schedule.recurrenceFromCompletion ?? false);
+    // A literal clock time ("5pm") is otherwise only a time-of-day bucket, so
+    // it is offered as a reminder rather than scheduling a notification
+    // unasked; "remind me to ..." already chose, so that one is set.
+    const clockAt = scheduleClockInstant(parsedSchedule.schedule, dayResetTime);
+    if (clockAt && remindTitle) {
+      setReminderTime(clockAt);
+      setReminderOffsetDays(null);
+      setReminderTracksVisibility(false);
+      setReminderTouched(true);
+      setReminderOffer(null);
+      void askForReminderPermissionIfNeeded();
+    } else if (clockAt && !reminderTime) {
+      setReminderOffer(clockAt);
+    } else {
+      setReminderOffer(null);
+    }
+  };
+
+  const acceptReminderOffer = () => {
+    if (!reminderOffer) return;
+    haptics.success();
+    setReminderTime(reminderOffer);
+    setReminderOffsetDays(null);
+    setReminderTracksVisibility(false);
+    setReminderTouched(true);
+    setReminderOffer(null);
+    void askForReminderPermissionIfNeeded();
+  };
+
+  const dismissReminderOffer = () => {
+    haptics.tap();
+    setReminderOffer(null);
+  };
+
+  // Apply whichever suggestion the rest of the title offers (see
+  // titleSuggestion) and, for the ones that name a field, strip the phrase.
+  // Typing "for 15 minutes", "8 times a day" or "->" is describing a kind of
+  // task in your own words, so accepting one switches the Kind control the
+  // same way picking it would (applyKind). Mirrors quick add's apply* handlers.
+  const applyTitleSuggestion = () => {
+    const s = activeTitleSuggestion;
+    if (!s) return;
+    haptics.success();
+    animateLayout();
+    const strip = (cleanTitle: string) => {
+      const nextTitle = withTrailingSpace(cleanTitle);
+      setTitle(nextTitle);
+      titleCaret.moveCaret(nextTitle);
+    };
+    switch (s.kind) {
+      case 'priority':
+        strip(s.hit.cleanTitle);
+        setPriority(s.hit.priority);
+        setPriorityTouched(true);
+        break;
+      case 'project':
+        strip(s.hit.cleanTitle);
+        setProject(s.hit.projectId);
+        break;
+      case 'chain': {
+        const [first, ...rest] = s.hit.steps;
+        setTitle(first.title);
+        titleCaret.moveCaret(first.title);
+        applyKind('chain');
+        if (first.estimatedMinutes !== null) setEstimatedMinutes(first.estimatedMinutes);
+        if (first.linkUrl !== null) setLinkUrl(first.linkUrl);
+        setChainItems(rest.map(step => ({
+          id: generateId(),
+          title: step.title,
+          estimatedMinutes: step.estimatedMinutes,
+          linkUrl: step.linkUrl,
+        })));
+        break;
+      }
+      case 'link':
+        strip(s.hit.cleanTitle);
+        setLinkUrl(s.hit.url);
+        break;
+      case 'phone':
+        strip(s.hit.cleanTitle);
+        setPhoneNumber(s.hit.number);
+        setPhoneText(s.hit.number);
+        break;
+      case 'email':
+        strip(s.hit.cleanTitle);
+        setEmailAddress(s.hit.address);
+        setEmailText(s.hit.address);
+        break;
+      case 'duration':
+        strip(s.hit.cleanTitle);
+        applyKind('timed');
+        setTimedMinutes(s.hit.minutes);
+        break;
+      case 'supply':
+        strip(s.hit.cleanTitle);
+        setSupplyCount(clampSupplyCount(s.hit.count));
+        setSupplyUnit(s.hit.unit ?? '');
+        break;
+      case 'target':
+        strip(s.hit.cleanTitle);
+        applyKind('target');
+        setTargetCount(s.hit.count);
+        setQuotaPeriod(s.hit.period);
+        setRecurrenceType(s.hit.period === 'week' ? 'weekly' : 'daily');
+        break;
+      case 'estimate':
+        strip(s.hit.cleanTitle);
+        setEffortTouched(true);
+        setEstimatedMinutes(s.hit.minutes);
+        setEffort(minutesToEffort(s.hit.minutes));
+        break;
+      case 'weather':
+        strip(s.hit.cleanTitle);
+        setWeatherWait(s.hit.condition);
+        break;
+      case 'sun':
+        strip(s.hit.cleanTitle);
+        // The anchor and the clock time it resolves to on this day, as
+        // commitWindowSun writes them.
+        if (s.hit.bound === 'start') {
+          setWindowStartSun(s.hit.anchor);
+          setWindowStart(s.hit.clock);
+          applyDefaultReminderLead(s.hit.clock);
+          applyDerivedTargetCount({ windowStart: s.hit.clock });
+        } else {
+          setWindowEndSun(s.hit.anchor);
+          setWindowEnd(s.hit.clock);
+          applyDerivedTargetCount({ windowEnd: s.hit.clock });
+        }
+        break;
+      case 'meter':
+        strip(s.hit.cleanTitle);
+        setMeterInput({
+          name: s.hit.meterName,
+          unit: s.hit.unit,
+          everyText: formatMeterValue(s.hit.every),
+          dueText: '',
+          limitMonths: null,
+        });
+        break;
+      case 'rain':
+        strip(s.hit.cleanTitle);
+        setRainSkipMm(s.hit.mm);
+        break;
+      case 'waiting':
+        strip(s.hit.cleanTitle);
+        setBlockerIds(prev => (prev.includes(s.hit.taskId) ? prev : [...prev, s.hit.taskId]));
+        break;
+      case 'subtasks':
+        strip(s.hit.cleanTitle);
+        if (task) {
+          for (const sub of s.hit.subtasks) addSubtask(task.id, sub);
+        } else {
+          setDraftSubtasks(prev => [
+            ...prev,
+            ...s.hit.subtasks.map(t => ({ id: generateId(), title: t, completed: false, timedMinutes: null })),
+          ]);
+        }
+        break;
+      case 'avoid':
+        // Strips nothing: "No snacking after 8pm" is the habit's name.
+        setPolarity('negative');
+        break;
+    }
+  };
+
+  // "No, that's just part of the title" for the suggestion above.
+  const dismissTitleSuggestion = () => {
+    if (!titleSuggestionSignature) return;
+    haptics.tap();
+    animateLayout();
+    setDismissedSuggestionSignature(titleSuggestionSignature);
   };
 
   // "No, that's just part of the title" — leaves the title and every other
@@ -1626,6 +1905,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
     if (!mirroringMode) return;
     if (activeParsedSchedule) applyParsedSchedule();
     else if (activeCategoryTags) applyCategoryTagsBanner();
+    else if (activeTitleSuggestion) applyTitleSuggestion();
   };
 
   // The banner's own ✕ — same as dismissParsedSchedule, just hides the
@@ -3680,7 +3960,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                 ? 'repeat'
                 : activeParsedSchedule.schedule.deadline ? 'flag-outline' : 'calendar-outline'
             }
-            label={describeSchedule(activeParsedSchedule.schedule, getLogicalNow(dayResetTime))}
+            label={`${describeSchedule(activeParsedSchedule.schedule, getLogicalNow(dayResetTime))}${activeParsedSchedule.schedule.explicitClockTime && stripRemindPrefix(activeParsedSchedule.cleanTitle) !== null ? ' · Reminder' : ''}`}
             onApply={applyParsedSchedule}
             onDismiss={dismissParsedSchedule}
             dismissLabel="Not a date"
@@ -3709,6 +3989,50 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             dismissLabel="Hide suggestion"
           />
         </Animated.View>
+      )}
+
+      {/* Everything else a title can say — priority, project, link, phone,
+          email, timer, supply, target, estimate, weather, sun, meter, rain,
+          waiting on, subtasks, avoid. One at a time; tap to apply, or ✕ to
+          say it is just part of the title. */}
+      {titleVisible && activeTitleSuggestion && titleSuggestionDescription && (
+        <Animated.View
+          style={[styles.scheduleBanner, {
+            opacity: titleSuggestionAnim,
+            transform: [
+              { translateY: titleSuggestionAnim.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] }) },
+              { scale: titleSuggestionAnim.interpolate({ inputRange: [0, 1], outputRange: [0.95, 1] }) },
+            ],
+          }]}
+        >
+          <TitleSuggestionBanner
+            icon={titleSuggestionDescription.icon as React.ComponentProps<typeof TitleSuggestionBanner>['icon']}
+            label={titleSuggestionDescription.label}
+            onApply={applyTitleSuggestion}
+            onDismiss={dismissTitleSuggestion}
+            dismissLabel="Not that"
+          />
+        </Animated.View>
+      )}
+
+      {/* A clock time the date phrase named, offered as a reminder. */}
+      {titleVisible && !!reminderOffer && (
+        <View style={styles.reminderOfferRow}>
+          <InlineAction
+            icon="notifications-outline"
+            label={`Remind me at ${formatTimeOfDay(reminderOffer, use24HourTime)}?`}
+            variant="neutral"
+            surface="page"
+            onPress={acceptReminderOffer}
+          />
+          <InlineAction
+            icon="close"
+            label="No thanks"
+            variant="neutral"
+            surface="page"
+            onPress={dismissReminderOffer}
+          />
+        </View>
       )}
 
       {/* Mention suggestions — a still-typed or already-resolvable "@name"; tap one to link them */}
@@ -7873,6 +8197,13 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     fontSize: font.sm,
     fontWeight: '600',
     flexShrink: 1,
+  },
+  reminderOfferRow: {
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.md,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
   },
   contactNudgeRow: {
     marginHorizontal: spacing.md,
