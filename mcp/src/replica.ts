@@ -1263,6 +1263,27 @@ export interface Replica {
    */
   removeMedication(name: string): string;
   /**
+   * Set (or, with null, clear) the limit the person gave for a listed medicine:
+   * hours apart, most doses in 24 hours, most of one unit in 24 hours. A cap
+   * left out keeps what it was; null for a cap removes it. The notification
+   * switch is untouched (it needs the phone's permission). Returns the spelling
+   * listed and the limit as the app words it, or null when none remains.
+   */
+  setMedicationLimit(
+    name: string,
+    limit: { minHours?: number | null; maxPer24h?: number | null; maxAmount24h?: { amount: number; unit: string } | null } | null,
+  ): { medicine: string; limit: string | null };
+  /**
+   * Set (or, with null, clear) how many of a listed medicine the person has, as
+   * the page's Left field does. The count is as of now: what is left afterwards
+   * is this less the doses recorded from here on. Returns the spelling listed
+   * and how many are left.
+   */
+  setMedicationSupply(
+    name: string,
+    supply: { count: number; unit?: string; refillCount?: number | null; reorderAt?: number } | null,
+  ): { medicine: string; left: string | null };
+  /**
    * How a medicine is taken (`asNeeded`: true, false, or null to read it off the
    * doses) and the amounts usually taken (the whole list, first is the default;
    * empty clears it). A field left out is
@@ -2061,6 +2082,18 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   // Medications added by name before any dose: part of the list alongside the logged ones.
   const registeredMedications = (): string[] =>
     medication.parseRegisteredMedications(db.dbGetSetting(medication.REGISTERED_MEDICATIONS_SETTING_KEY));
+  // The spelling a listed medicine goes by, or a refusal that points at add_medication.
+  const listedMedicationName = (
+    meds: typeof import('../../src/store/useMedicationStore').useMedicationStore,
+    name: string,
+  ): string => {
+    const key = medication.medicationKey(name);
+    const spelled = medication.medicationVocabulary(db.dbGetAllMedicationLogs(), [], registeredMedications())
+      .find(n => medication.medicationKey(n) === key)
+      ?? meds.getState().archived.find(k => k === key);
+    if (!spelled) throw new Error(`No medicine called "${name}" in the list. add_medication adds one; list_medication_logs shows them.`);
+    return spelled;
+  };
   const medicationSettings = require('../../src/utils/medicationSettings') as MedicationSettingsModule;
   const supplementDose = require('../../src/utils/supplementDose') as typeof import('../../src/utils/supplementDose'); // eslint-disable-line @typescript-eslint/no-require-imports
   const rewards = require('../../src/utils/rewards') as RewardsModule;
@@ -4579,6 +4612,48 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         throw new Error(`${spelled} has recorded doses, which are the person's record. Delete them one at a time with delete_medication_log, or archive_medication to move it out of "what you take".`);
       }
       return spelled;
+    },
+
+    setMedicationLimit(name, limit) {
+      const { useMedicationStore: meds } = require('../../src/store/useMedicationStore') as typeof import('../../src/store/useMedicationStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+      // Loaded first: the store writes the whole settings map back.
+      meds.getState().initialize();
+      const spelled = listedMedicationName(meds, name);
+      const current = medicationSettings.prefsFor(meds.getState().settings, spelled).limit;
+      if (limit === null) {
+        meds.getState().setLimit(spelled, null);
+      } else {
+        const next = {
+          minHours: limit.minHours === undefined ? current?.minHours ?? null : limit.minHours,
+          maxPer24h: limit.maxPer24h === undefined ? current?.maxPer24h ?? null : limit.maxPer24h,
+          maxAmount24h: limit.maxAmount24h === undefined ? current?.maxAmount24h ?? null : limit.maxAmount24h,
+          // The switch needs the phone's notification permission, so it stays as the person left it.
+          notify: current?.notify ?? false,
+        };
+        meds.getState().setLimit(spelled, next);
+      }
+      const after = medicationSettings.prefsFor(meds.getState().settings, spelled).limit;
+      return { medicine: spelled, limit: medicationSettings.describeLimit(after) };
+    },
+
+    setMedicationSupply(name, supply) {
+      const { useMedicationStore: meds } = require('../../src/store/useMedicationStore') as typeof import('../../src/store/useMedicationStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+      meds.getState().initialize();
+      const spelled = listedMedicationName(meds, name);
+      const current = medicationSettings.prefsFor(meds.getState().settings, spelled).supply;
+      if (supply === null) {
+        meds.getState().setSupply(spelled, null);
+      } else {
+        meds.getState().setSupply(spelled, {
+          count: supply.count,
+          unit: supply.unit ?? current?.unit ?? 'dose',
+          refillCount: supply.refillCount === undefined ? current?.refillCount ?? null : supply.refillCount,
+          reorderAt: supply.reorderAt ?? current?.reorderAt ?? 5,
+        });
+      }
+      const after = medicationSettings.prefsFor(meds.getState().settings, spelled).supply;
+      const left = medicationSettings.supplyRemaining(db.dbGetAllMedicationLogs(), spelled, after);
+      return { medicine: spelled, left: left === null || !after ? null : medicationSettings.describeSupplyLeft(left, after.unit) };
     },
 
     setMedicationProfile(name, profile) {

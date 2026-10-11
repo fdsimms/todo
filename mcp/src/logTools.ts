@@ -23,7 +23,7 @@ import { getRecipe, type RecipeDetail } from './kitchenTools';
 // safe to import for its value here; the replica loads the same module for the
 // write.
 import { describeWater, waterToMl, type WaterUnit } from '../../src/utils/waterLog';
-import { MAX_USUAL_DOSES, PANEL_UNITS } from '../../src/utils/medicationSettings';
+import { MAX_USUAL_DOSES, PANEL_UNITS, SUPPLY_UNITS } from '../../src/utils/medicationSettings';
 import { DOSE_UNITS } from '../../src/utils/medicationLog';
 import { describeSupplementPanel } from '../../src/utils/supplementDose';
 
@@ -460,6 +460,78 @@ export function setMedicationProfile(
     medicine,
     ...(input.asNeeded !== undefined ? { asNeeded: input.asNeeded } : {}),
     ...(usualDoses !== undefined ? { usualAmounts: usualDoses.map(d => `${d.amount} ${d.unit}`) } : {}),
+  };
+}
+
+/** Set or clear the limit the person gave. See `Replica.setMedicationLimit`. */
+export function setMedicationLimit(
+  replica: Replica,
+  input: {
+    name: string;
+    clear?: true;
+    minHours?: number | null;
+    maxPer24h?: number | null;
+    maxAmount24h?: { amount: number; unit: string } | null;
+  },
+): { medicine: string; limit: string | null; note: string } {
+  const given = input.minHours !== undefined || input.maxPer24h !== undefined || input.maxAmount24h !== undefined;
+  if (input.clear && given) throw new Error('Give clear: true on its own, or the caps to set.');
+  if (!input.clear && !given) throw new Error('Give minHours, maxPer24h or maxAmount24h, or clear: true.');
+  if (input.minHours != null && !(input.minHours > 0 && input.minHours <= 72)) throw new Error('minHours must be between 0 and 72.');
+  if (input.maxPer24h != null && !(Number.isInteger(input.maxPer24h) && input.maxPer24h >= 1 && input.maxPer24h <= 99)) {
+    throw new Error('maxPer24h must be a whole number from 1 to 99.');
+  }
+  const cap = input.maxAmount24h;
+  if (cap != null) {
+    if (!(Number.isFinite(cap.amount) && cap.amount > 0)) throw new Error('maxAmount24h.amount must be a number greater than 0.');
+    if (!DOSE_UNITS.some(u => u.value === cap.unit)) {
+      throw new Error(`maxAmount24h.unit must be one of: ${DOSE_UNITS.map(u => u.value).join(', ')}.`);
+    }
+  }
+  const out = replica.setMedicationLimit(input.name, input.clear ? null : {
+    ...(input.minHours !== undefined ? { minHours: input.minHours } : {}),
+    ...(input.maxPer24h !== undefined ? { maxPer24h: input.maxPer24h } : {}),
+    ...(input.maxAmount24h !== undefined ? { maxAmount24h: input.maxAmount24h } : {}),
+  });
+  return {
+    ...out,
+    note: out.limit
+      ? 'This is the person\'s own limit: the phone asks before a dose that goes past it, and the visit summary reports doses that did. Only doses recorded from now on are judged against it. The notification when the next dose is OK is a switch on the phone.'
+      : 'No limit is set for this medicine now.',
+  };
+}
+
+/** Set or clear how many the person has. See `Replica.setMedicationSupply`. */
+export function setMedicationSupply(
+  replica: Replica,
+  input: { name: string; clear?: true; count?: number; unit?: string; refillCount?: number | null; reorderAt?: number },
+): { medicine: string; left: string | null; note: string } {
+  if (input.clear) {
+    if (input.count !== undefined || input.unit !== undefined || input.refillCount !== undefined || input.reorderAt !== undefined) {
+      throw new Error('Give clear: true on its own, or the supply to set.');
+    }
+  } else if (input.count === undefined) {
+    throw new Error('Give count (how many they have now), or clear: true.');
+  }
+  if (input.count !== undefined && !(Number.isFinite(input.count) && input.count >= 0)) throw new Error('count must be a number of zero or more.');
+  if (input.unit !== undefined && !SUPPLY_UNITS.includes(input.unit)) {
+    throw new Error(`unit must be one of: ${SUPPLY_UNITS.join(', ')}.`);
+  }
+  if (input.refillCount != null && !(input.refillCount > 0)) throw new Error('refillCount must be greater than 0.');
+  if (input.reorderAt !== undefined && !(Number.isInteger(input.reorderAt) && input.reorderAt >= 1)) {
+    throw new Error('reorderAt must be a whole number of 1 or more.');
+  }
+  const out = replica.setMedicationSupply(input.name, input.clear ? null : {
+    count: input.count!,
+    ...(input.unit !== undefined ? { unit: input.unit } : {}),
+    ...(input.refillCount !== undefined ? { refillCount: input.refillCount } : {}),
+    ...(input.reorderAt !== undefined ? { reorderAt: input.reorderAt } : {}),
+  });
+  return {
+    ...out,
+    note: out.left
+      ? 'Counted from now: what is left is this count less the doses recorded from here on, so deleting or editing a dose puts it back. Doses from a scheduled task spend that task\'s own supply instead.'
+      : 'No supply is tracked for this medicine now.',
   };
 }
 

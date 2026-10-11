@@ -155,6 +155,8 @@ export const WRITE_TOOLS: Record<string, { title: string; destructive: boolean; 
   update_settings: { title: 'Change settings', destructive: true, idempotent: true },
   archive_medication: { title: 'Archive a medicine', destructive: false, idempotent: true },
   add_medication: { title: 'Add a medicine to the list', destructive: false, idempotent: true },
+  set_medication_limit: { title: 'Set a medicine\'s limit', destructive: true, idempotent: true },
+  set_medication_supply: { title: 'Set how many of a medicine they have', destructive: true, idempotent: true },
   remove_medication: { title: 'Remove a medicine with no doses', destructive: true, idempotent: false },
   set_medication_profile: { title: 'Set how a medicine is taken', destructive: true, idempotent: true },
   rename_medication: { title: 'Rename or combine a medicine', destructive: true, idempotent: false },

@@ -102,7 +102,7 @@ import { forget, remember } from './memoryTools';
 import { deleteRule, listAutomations, saveRule, setAutomation, RULE_TYPES } from './automationTools';
 import { deleteCategory, reorderCategories, updateCategory } from './categoryTools';
 import { cancelCalendarRequest, changeCalendarEvent, listCalendarRequests, requestCalendarEvent } from './calendarTools';
-import { ESTIMATE_KEY_LIST, NUTRIENT_KEY_LIST, atFrom, deleteSavedMeal, duplicateFoodEntry, listSavedMeals, logSavedMeal, moveFoodEntry, saveMealFromEntries, setNutritionTargets, renameMedication, renameMoodTag, setMedicationArchived, addMedication, removeMedication, setMedicationProfile, logFood, logMedication, setSupplementNutrients, logMood, logWater, updateRecipe, deleteRecipe, updateFoodEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
+import { ESTIMATE_KEY_LIST, NUTRIENT_KEY_LIST, atFrom, deleteSavedMeal, duplicateFoodEntry, listSavedMeals, logSavedMeal, moveFoodEntry, saveMealFromEntries, setNutritionTargets, renameMedication, renameMoodTag, setMedicationArchived, addMedication, removeMedication, setMedicationProfile, setMedicationLimit, setMedicationSupply, logFood, logMedication, setSupplementNutrients, logMood, logWater, updateRecipe, deleteRecipe, updateFoodEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
 import { DEFAULT_PATTERN_DAYS, focusHistory, habitPatterns, moodInsights } from './patternTools';
 import { addMilestone, deleteMilestone, listMilestones, updateMilestone } from './milestoneTools';
 import { listCopyFlags, resolveCopyFlag } from './copyFlagTools';
@@ -2424,6 +2424,45 @@ function registerWriteTools(
         return json(await withWrite(() => addMedication(replica, name)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not add it.' });
+      }
+    }
+  );
+
+  server.tool(
+    'set_medication_limit',
+    'Set the limit the person gave for a listed medicine, as its page does, or clear it with clear: true. Any of: minHours (fewest hours between two doses), maxPer24h (most doses in any 24 hours), maxAmount24h ({amount, unit}, e.g. 1200 and "mg": the most of one unit in any 24 hours, for a label stated as a total; only doses recorded in that unit are added up). A cap you leave out keeps its current value; null removes it. It is the person\'s own limit, never a prescription and never yours to work out: set it only from figures they gave you, copied from the label or what their doctor told them, and say back what you set. The phone asks before recording a dose that goes past it, and only doses recorded after you set it are judged. The "tell me when it is OK again" notification is a switch on the phone and is left as it is.',
+    {
+      name: z.string().min(1),
+      clear: z.literal(true).optional(),
+      minHours: z.number().positive().max(72).nullable().optional(),
+      maxPer24h: z.number().int().min(1).max(99).nullable().optional(),
+      maxAmount24h: z.object({ amount: z.number().positive(), unit: z.string() }).nullable().optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => setMedicationLimit(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not set the limit.' });
+      }
+    }
+  );
+
+  server.tool(
+    'set_medication_supply',
+    'Set how many of a listed medicine the person has, as the Left field on its page does, or stop tracking it with clear: true. count is how many they have right now, in unit (a countable unit such as tablet or capsule, or "dose", the default); what is left afterwards is that count less the doses recorded from now on, so it goes down on its own and a deleted dose puts one back. refillCount prefills the refill prompt and reorderAt is the count the phone offers a refill task at. Leave a field out to keep it. A scheduled task that records the medicine keeps its own supply, which this does not touch. Only from a count the person gave you.',
+    {
+      name: z.string().min(1),
+      clear: z.literal(true).optional(),
+      count: z.number().min(0).optional(),
+      unit: z.string().optional().describe('dose, or a countable unit such as tablet, capsule, drop or spray.'),
+      refillCount: z.number().positive().nullable().optional(),
+      reorderAt: z.number().int().min(1).optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => setMedicationSupply(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not set the supply.' });
       }
     }
   );
