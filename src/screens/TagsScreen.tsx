@@ -48,6 +48,7 @@ import { tagColor } from '../utils/tagColor';
 import type { Task } from '../types';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
+import { reuseUnchangedLists } from '../utils/stableLists';
 
 // One shared empty array for a task with no subtasks — a fresh `[]` per row per
 // render is exactly the identity churn the grouping below exists to avoid.
@@ -161,6 +162,7 @@ export function TagsScreen() {
   // Every subtask on this screen, grouped once. Each row used to filter the
   // whole task list for its own children inline, which is O(tasks) per row and
   // — worse — handed the memoized row a fresh array on every render.
+  const subtasksPrev = useRef<Map<string, Task[]> | null>(null);
   const subtasksByParent = useMemo(() => {
     const map = new Map<string, Task[]>();
     for (const t of allTasks) {
@@ -169,7 +171,7 @@ export function TagsScreen() {
       if (list) list.push(t);
       else map.set(t.parentId, [t]);
     }
-    return map;
+    return (subtasksPrev.current = reuseUnchangedLists(subtasksPrev.current, map));
   }, [allTasks]);
   const subtasksOf = (id: string): Task[] => subtasksByParent.get(id) ?? NO_SUBTASKS;
 

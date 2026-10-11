@@ -79,7 +79,10 @@ export function FocusBar({ onOpen, floating = false, lifted = false }: Props) {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const { session, now } = useFocusSession();
-  const tasks = useTaskStore(s => s.tasks);
+  // Only the step's own task, so a write to any other task doesn't re-render
+  // the bar (it is mounted app-wide and already ticks every second).
+  const stepTaskId = session ? currentFocusStep(session)?.taskId : undefined;
+  const task = useTaskStore(s => (stepTaskId ? s.tasks.find(t => t.id === stepTaskId) : undefined));
   const pause = useFocusStore(s => s.pause);
   const resume = useFocusStore(s => s.resume);
 
@@ -93,7 +96,6 @@ export function FocusBar({ onOpen, floating = false, lifted = false }: Props) {
   const stepDone = isFocusStepDone(session, now);
   const remaining = focusStepRemaining(session, now);
 
-  const task = step?.taskId ? tasks.find(t => t.id === step.taskId) : undefined;
   const label = finished
     ? 'Session done'
     : step?.kind === 'rest'
