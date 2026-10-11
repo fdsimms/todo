@@ -29,7 +29,6 @@ import {
   foodLogTotals,
   logInstantFor,
   resolveFoodLogDrop,
-  totalCoverageNote,
   wholeEstimate,
   type FoodLogListItem,
 } from '../utils/foodLog';
@@ -1097,12 +1096,6 @@ export function FoodLogScreen() {
         >
           <View style={styles.totalLabelCol}>
             <Text style={styles.totalLabel}>{NUTRIENT_LABEL[key].label}</Text>
-            {/* Partial coverage said on the row it qualifies: a total summed
-                from some of the day's entries isn't the day's figure. */}
-            {(() => {
-              const note = totalCoverageNote(dayEntries, key);
-              return note ? <Text style={styles.totalCoverage}>{note}</Text> : null;
-            })()}
           </View>
           <View style={styles.totalRight}>
             {/* The target, when there is one, and nothing suggested
@@ -1808,7 +1801,6 @@ function makeStyles(colors: Colors) {
     targetFill: { height: '100%', borderRadius: 2, backgroundColor: colors.accent },
     totalLabelCol: { flexShrink: 1 },
     totalLabel: { color: colors.text, fontSize: font.sm },
-    totalCoverage: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xxs },
     totalRight: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm },
     totalValue: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
     sectionHeader: {
