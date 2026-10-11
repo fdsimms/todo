@@ -157,6 +157,17 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
   const panelFor = (food: ScannedFood): FoodNutrition => weighedPanels[food.key] ?? food.panel;
 
   /**
+   * What an untouched card reads as: one serving, for a panel that has one.
+   * Derived rather than seeded into `answers`, so it follows `foods` and a
+   * weighed panel without a reset. A card the person has touched (even to
+   * clear it) has an `answers` entry and never falls back to this.
+   */
+  const defaultAmountFor = (food: ScannedFood): { number: string; answer: string } | null => {
+    const serving = foodUnitOptionsFor(panelFor(food)).find(o => o.key === 'serving');
+    return serving ? { number: '1', answer: composeFoodAmount('1', serving) } : null;
+  };
+
+  /**
    * What each answered card actually works out to. A typed amount that doesn't
    * resolve lands here as null, which is what greys its own card's figure out
    * rather than failing at Log — the person is looking at the field they typed.
@@ -167,7 +178,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
       { nutrition: FoodNutrition; grams: number | null; quantity: string; approximate: boolean } | null
     >();
     for (const food of foods) {
-      const answer = answers[food.key];
+      const answer = answers[food.key] ?? defaultAmountFor(food)?.answer;
       // A field typed into and then cleared is untouched again, not a refusal.
       // Left as an answer it rendered "That amount can't be measured against
       // this label." under an empty box, which reads as the label being at
@@ -299,7 +310,8 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
 
           {foods.map((food, foodIndex) => {
             const panel = panelFor(food);
-            const answer = answers[food.key] ?? '';
+            const defaultAmount = defaultAmountFor(food);
+            const answer = answers[food.key] ?? defaultAmount?.answer ?? '';
             // Only the whole package is still a tap: the panel's own serving is
             // the "serving" unit below, which is the default for any panel that
             // has one, so a "1 serving" button beside it was a second control
@@ -334,7 +346,9 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                 <View style={styles.inputRow}>
                   <TextField
                     style={styles.inputInRow}
-                    value={usingPills ? (amountNumbers[food.key] ?? '') : answer}
+                    value={usingPills
+                      ? (amountNumbers[food.key] ?? (answers[food.key] === undefined ? defaultAmount?.number : undefined) ?? '')
+                      : answer}
                     onChangeText={text => {
                       if (usingPills) {
                         setAmountNumbers(n => ({ ...n, [food.key]: text }));
