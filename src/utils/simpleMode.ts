@@ -355,6 +355,7 @@ export const SIMPLE_EDITOR_ROW_FEATURES: Readonly<Record<string, SimpleFeatureId
   streak: 'streakOptions',
   showStreak: 'streakOptions',
   streakRequiresWindow: 'streakOptions',
+  streakCountsUnits: 'streakOptions',
 };
 
 /**

@@ -476,7 +476,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   penaltyCreditedAt: null,
   gatesApps: false,
   showStreak: false,
-  streakRequiresWindow: false,
+  streakRequiresWindow: false, streakCountsUnits: false,
   parentId: null,
   groupId: null,
   projectId: null,
@@ -3033,7 +3033,7 @@ describe('completeTask', () => {
         const yesterdayStart = new Date(2025, 5, 9, 0, 0, 0).toISOString();
         const task = makeTask({
           recurrenceType: 'daily', streakCount: 3, streakDate: yesterdayStart,
-          streakRequiresWindow: false, windowStart: '07:00', windowEnd: '09:00',
+          streakRequiresWindow: false, streakCountsUnits: false, windowStart: '07:00', windowEnd: '09:00',
         });
         useTaskStore.setState({ tasks: [task] });
         useTaskStore.getState().completeTask(task.id);
@@ -14587,6 +14587,48 @@ describe('quota tasks', () => {
   // A weekly target — "three times a week, any days". The clock in this
   // describe is Tuesday June 10 2025, and the week starts on Sunday (the mock's
   // weekStartsOn), so the current week runs Sun June 8 to Sat June 14.
+  describe('a weekly target whose streak counts every time', () => {
+    const counting = (overrides: Partial<Task> = {}) =>
+      quota({
+        quotaPeriod: 'week', recurrenceType: 'weekly', targetCount: 3, streakCountsUnits: true,
+        streakCount: 4, streakDate: new Date(2025, 5, 2, 12, 0, 0).toISOString(),
+        dueDate: new Date(2025, 5, 8, 12, 0, 0).toISOString(), ...overrides,
+      });
+
+    it('adds one per unit logged and takes it back on undo', () => {
+      useTaskStore.setState({ tasks: [counting({ progressCount: 0 })] });
+      useTaskStore.getState().logQuotaUnit('water');
+      expect(useTaskStore.getState().tasks.find(t => t.id === 'water')!.streakCount).toBe(5);
+      useTaskStore.getState().unlogQuotaUnit('water');
+      expect(useTaskStore.getState().tasks.find(t => t.id === 'water')!.streakCount).toBe(4);
+    });
+
+    it('counts the unit that completes the week too', () => {
+      useTaskStore.setState({ tasks: [counting({ progressCount: 2 })] });
+      useTaskStore.getState().logQuotaUnit('water');
+      const successor = useTaskStore.getState().tasks.find(t => t.id !== 'water' && !t.completed)!;
+      expect(successor.streakCount).toBe(5);
+    });
+
+    it('keeps the total through a week that fell short', () => {
+      useTaskStore.setState({
+        tasks: [counting({ progressCount: 1, dueDate: new Date(2025, 5, 3, 12, 0, 0).toISOString() })],
+      });
+      useTaskStore.getState().rolloverQuotas();
+      const successor = useTaskStore.getState().tasks.find(t => !t.completed)!;
+      expect(successor.streakCount).toBe(4);
+    });
+
+    it('still resets on a short week when the setting is off', () => {
+      useTaskStore.setState({
+        tasks: [counting({ streakCountsUnits: false, progressCount: 1, dueDate: new Date(2025, 5, 3, 12, 0, 0).toISOString() })],
+      });
+      useTaskStore.getState().rolloverQuotas();
+      const successor = useTaskStore.getState().tasks.find(t => !t.completed)!;
+      expect(successor.streakCount).toBe(0);
+    });
+  });
+
   describe('rolloverQuotas: a weekly target', () => {
     const weekly = (overrides: Partial<Task> = {}) =>
       quota({ quotaPeriod: 'week', recurrenceType: 'weekly', targetCount: 3, ...overrides });

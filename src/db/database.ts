@@ -2113,6 +2113,9 @@ function runInitDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN quota_ramp_every INTEGER',
     'ALTER TABLE tasks ADD COLUMN quota_ramp_goal INTEGER',
     'ALTER TABLE tasks ADD COLUMN quota_ramp_hits INTEGER NOT NULL DEFAULT 0',
+    // 0 on every existing row, which keeps the streak counting periods in a
+    // row. See Task.streakCountsUnits.
+    'ALTER TABLE tasks ADD COLUMN streak_counts_units INTEGER NOT NULL DEFAULT 0',
     // Null on every existing task: none of them is a look-back. See Task.reviewOfTaskId.
     'ALTER TABLE tasks ADD COLUMN review_of_task_id TEXT',
     // Null on every existing entry: all of them were open when written. See
@@ -3576,6 +3579,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     quotaRampEvery: (row.quota_ramp_every as number | null) ?? null,
     quotaRampGoal: (row.quota_ramp_goal as number | null) ?? null,
     quotaRampHits: (row.quota_ramp_hits as number | null) ?? 0,
+    streakCountsUnits: Boolean(row.streak_counts_units),
     reviewOfTaskId: (row.review_of_task_id as string | null) ?? null,
     targetCount: (row.target_count as number | null) ?? null,
     progressCount: (row.progress_count as number) ?? 0,
@@ -3789,8 +3793,8 @@ export function dbInsertTask(task: Task): void {
       blocked_by_ids, deliverable_options, deliverable_sets_away, follow_up_on, extra_task_source_id,
       pin_each_occurrence, bounty_pushes, difficulty, answer_gate, deliverable_why, deliverable_revisit_if, extra_task_at_end, weather_wait, wait_for_series_end, rotation_plan, slip_allowance, done_by_other_at, window_start_sun, window_end_sun, recurrence_holidays,
       meter_name, meter_unit, meter_every, meter_due_at, meter_limit_months, meter_held_until, rain_skip_mm, rain_skipped_on, review_of_task_id,
-      quota_ramp_step, quota_ramp_every, quota_ramp_goal, quota_ramp_hits
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      quota_ramp_step, quota_ramp_every, quota_ramp_goal, quota_ramp_hits, streak_counts_units
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deadlineTime ?? null, task.deferUntil,
@@ -3931,6 +3935,7 @@ export function dbInsertTask(task: Task): void {
       task.quotaRampEvery ?? null,
       task.quotaRampGoal ?? null,
       task.quotaRampHits ?? 0,
+      task.streakCountsUnits ? 1 : 0,
     ]
   );
 }
@@ -3969,7 +3974,7 @@ export function dbUpdateTask(task: Task): void {
       blocked_by_ids=?, deliverable_options=?, deliverable_sets_away=?, follow_up_on=?, extra_task_source_id=?,
       pin_each_occurrence=?, bounty_pushes=?, difficulty=?, answer_gate=?, deliverable_why=?, deliverable_revisit_if=?, extra_task_at_end=?, weather_wait=?, wait_for_series_end=?, rotation_plan=?, slip_allowance=?, done_by_other_at=?, window_start_sun=?, window_end_sun=?, recurrence_holidays=?,
       meter_name=?, meter_unit=?, meter_every=?, meter_due_at=?, meter_limit_months=?, meter_held_until=?, rain_skip_mm=?, rain_skipped_on=?, review_of_task_id=?,
-      quota_ramp_step=?, quota_ramp_every=?, quota_ramp_goal=?, quota_ramp_hits=?
+      quota_ramp_step=?, quota_ramp_every=?, quota_ramp_goal=?, quota_ramp_hits=?, streak_counts_units=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -4111,6 +4116,7 @@ export function dbUpdateTask(task: Task): void {
       task.quotaRampEvery ?? null,
       task.quotaRampGoal ?? null,
       task.quotaRampHits ?? 0,
+      task.streakCountsUnits ? 1 : 0,
       task.id,
     ]
   );

@@ -282,7 +282,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   penaltyCreditedAt: null,
   gatesApps: false,
   showStreak: false,
-  streakRequiresWindow: false,
+  streakRequiresWindow: false, streakCountsUnits: false,
   parentId: null,
   groupId: null,
   projectId: null,
@@ -6028,5 +6028,14 @@ describe('pending recipe estimates (the offline recipe queue)', () => {
     expect(Object.keys(dbExportTables())).not.toContain('pending_recipe_estimates');
     dbDeletePendingRecipeEstimate('r1');
     expect(dbGetPendingRecipeEstimates()).toEqual([]);
+  });
+});
+
+describe('streakCountsUnits', () => {
+  it('round-trips through insert and update', () => {
+    dbInsertTask(makeTask({ id: 'weekly', streakCountsUnits: true }));
+    expect(dbGetAllTasks().find(t => t.id === 'weekly')!.streakCountsUnits).toBe(true);
+    dbUpdateTask({ ...dbGetAllTasks().find(t => t.id === 'weekly')!, streakCountsUnits: false });
+    expect(dbGetAllTasks().find(t => t.id === 'weekly')!.streakCountsUnits).toBe(false);
   });
 });

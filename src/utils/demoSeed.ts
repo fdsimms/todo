@@ -828,7 +828,8 @@ export function seedDemoData(): void {
     // is the right behaviour and the wrong thing for a seed to show.
     quotaAlwaysVisible: true,
   });
-  updateTask(runs.id, { progressCount: 1 });
+  // Totals every run logged, so the chip reads as times done rather than weeks in a row.
+  updateTask(runs.id, { progressCount: 1, showStreak: true, streakCountsUnits: true, streakCount: 14, streakDate: today.toISOString() });
 
   // A weekly target set up partway through its first week, scaled down to
   // the days that were left (see proratedWeeklyTarget). Through the same patch

@@ -1,4 +1,5 @@
 import { addDays } from 'date-fns/addDays';
+import { countsUnits } from './streakUnits';
 import { addHours } from 'date-fns/addHours';
 import { addWeeks } from 'date-fns/addWeeks';
 import { addMonths } from 'date-fns/addMonths';
@@ -972,6 +973,7 @@ export function getStreakOutcome(
  */
 export function liveStreakCount(task: Task, dayResetTime?: string): number {
   if (task.streakCount <= 0 || task.polarity === 'negative') return task.streakCount;
+  if (countsUnits(task)) return task.streakCount;
   if (task.chainItems.length > 0 && !task.chainStepOnSchedule) return task.streakCount;
   if (task.recurrenceType === 'none' || !task.streakDate) return task.streakCount;
   return getStreakOutcome(task, dayResetTime) === 'reset' ? 0 : task.streakCount;
