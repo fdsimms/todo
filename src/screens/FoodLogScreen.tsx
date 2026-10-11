@@ -116,6 +116,8 @@ import { Fab, FAB_SIZE, type FabDragHandlers, useFabBottom } from '../components
 import { useRowSelection } from '../hooks/useRowSelection';
 import { usePullToSearch } from '../hooks/usePullToSearch';
 import { LazySheet } from '../components/LazySheet';
+import { ActionMenu, type ActionMenuAction, type ActionMenuChoice } from '../components/ActionMenu';
+import type { CardAnchor } from '../components/CardSheet';
 
 /**
  * A day of eating, read back.
@@ -298,6 +300,9 @@ export function FoodLogScreen() {
    * the meal's own figures moves with it.
    */
   const [linkingEntry, setLinkingEntry] = useState<FoodLogEntry | null>(null);
+  /** The entry whose "…" menu is open, and the touch it opened from. */
+  const [menuEntry, setMenuEntry] = useState<FoodLogEntry | null>(null);
+  const [menuAnchor, setMenuAnchor] = useState<CardAnchor | null>(null);
   /**
    * The entry being corrected, which reopens the add sheet on it rather than
    * on an empty form. Null the rest of the time.
@@ -625,58 +630,65 @@ export function FoodLogScreen() {
   // The "…" on a row is a real menu, not a synonym for delete: an accidental
   // tap must not open a destructive confirm with nothing to say what's about
   // to happen. Move reuses the same slot list the bulk bar's own panel does.
-  const handleOpenMenu = useCallback((entry: FoodLogEntry) => {
-    const moveButtons = MEAL_SLOTS
+  const handleOpenMenu = useCallback((entry: FoodLogEntry, anchor?: CardAnchor) => {
+    setMenuAnchor(anchor ?? null);
+    setMenuEntry(entry);
+  }, []);
+
+  const menuActions = useMemo<ActionMenuAction[]>(() => {
+    const entry = menuEntry;
+    if (!entry) return [];
+    const moveChoices: ActionMenuChoice[] = MEAL_SLOTS
       .filter(s => s !== entry.slot)
       .map(s => ({
-        text: MEAL_SLOT_LABELS[s],
-        onPress: () => { haptics.tap(); moveEntries([entry.id], s); },
+        key: s,
+        label: MEAL_SLOT_LABELS[s],
+        onPress: () => moveEntries([entry.id], s),
       }));
     if (entry.slot !== null) {
-      moveButtons.push({ text: 'Other', onPress: () => { haptics.tap(); moveEntries([entry.id], null); } });
+      moveChoices.push({ key: 'other', label: 'Other', onPress: () => moveEntries([entry.id], null) });
     }
-    Alert.alert(entry.label, undefined, [
+    return [
       // Edit reopens the sheet and re-measures, which needs a panel to measure
       // against; `foodLogEntryEdit` is where that rule lives rather than here.
       // An entry without one still gets its words back, since renaming is the
       // one correction that claims nothing about how much was eaten.
       foodLogEntryEdit(entry)
-        ? { text: 'Edit', onPress: () => setEditingEntry(entry) }
-        : { text: 'Rename', onPress: () => handleRename(entry) },
+        ? { key: 'edit', label: 'Edit', icon: 'create-outline', onPress: () => setEditingEntry(entry) }
+        : { key: 'rename', label: 'Rename', icon: 'pencil-outline', onPress: () => handleRename(entry) },
       // A described meal has no panel for Edit to re-measure against, but
       // more or less of what the model stated needs none. See
       // `estimateAmountPatch`.
       ...(wholeEstimate(entry)
-        ? [{ text: 'Change amount…', onPress: () => setAmountEntry(entry) }]
+        ? [{ key: 'amount', label: 'Change amount…', icon: 'options-outline', onPress: () => setAmountEntry(entry) } as const]
         : []),
+      { key: 'move', label: 'Move to meal', icon: 'swap-vertical-outline', choices: moveChoices },
       {
-        text: 'Move to meal',
-        onPress: () => Alert.alert('Move to meal', undefined, [
-          ...moveButtons,
-          { text: 'Cancel', style: 'cancel' as const },
-        ]),
-      },
-      {
-        text: entry.itemId ? 'Link to a different grocery item' : 'Link to a grocery item',
+        key: 'link',
+        label: entry.itemId ? 'Link to a different grocery item' : 'Link to a grocery item',
+        icon: 'link-outline',
         onPress: () => setLinkingEntry(entry),
       },
       ...(entry.itemId
         ? [{
-          text: 'Remove the grocery item link',
+          key: 'unlink',
+          label: 'Remove the grocery item link',
+          icon: 'unlink-outline',
           onPress: () => {
             // The box goes with the row: a product is one of an item's boxes,
             // so an entry pointing at a box and not at the item is a pointer
             // with nothing above it.
             updateEntry(entry.id, { itemId: null, productId: null });
-            haptics.tap();
           },
-        }]
+        } as const]
         : []),
       {
         // For "I just ran out": a linked entry re-lists its own catalog row
         // (keeping its aisle, brand and store), and an unlinked one goes on by
         // name like a typed add. The store registers the undo either way.
-        text: 'Add to grocery list',
+        key: 'relist',
+        label: 'Add to grocery list',
+        icon: 'cart-outline',
         onPress: () => {
           const { items: catalog, addExisting, addByName } = useGroceryStore.getState();
           if (entry.itemId && catalog.some(i => i.id === entry.itemId)) addExisting(entry.itemId);
@@ -684,12 +696,11 @@ export function FoodLogScreen() {
           haptics.success();
         },
       },
-      { text: 'Re-date…', onPress: () => setRedatingEntry(entry) },
-      { text: 'Duplicate to…', onPress: () => setDuplicating([entry]) },
-      { text: 'Forget', style: 'destructive', onPress: () => handleDelete(entry.id, entry.label) },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  }, [moveEntries, updateEntry, handleDelete, handleRename]);
+      { key: 'redate', label: 'Re-date…', icon: 'calendar-outline', onPress: () => setRedatingEntry(entry) },
+      { key: 'duplicate', label: 'Duplicate to…', icon: 'copy-outline', onPress: () => setDuplicating([entry]) },
+      { key: 'forget', label: 'Forget', icon: 'trash-outline', destructive: true, onPress: () => handleDelete(entry.id, entry.label) },
+    ];
+  }, [menuEntry, moveEntries, updateEntry, handleDelete, handleRename]);
 
   const handleBulkDelete = () => {
     const ids = Array.from(selectedIds);
@@ -1529,6 +1540,13 @@ export function FoodLogScreen() {
       </LazySheet>
       {/* Provenance only: the entry's own figures are a snapshot of what was
           eaten and must not follow the pointer. See `FoodLogPatch`. */}
+      <ActionMenu
+        visible={menuEntry !== null}
+        title={menuEntry?.label ?? ''}
+        actions={menuActions}
+        anchor={menuAnchor}
+        onClose={() => setMenuEntry(null)}
+      />
       <LazySheet open={linkingEntry !== null}>
         <CatalogLinkSheet
           visible={linkingEntry !== null}
@@ -1923,7 +1941,7 @@ const FoodLogRow = React.memo(function FoodLogRow({
   // is the same rule `renderTaskRow`'s `rowKey` exists for on Today.
   onToggleSelect: (entryId: string) => void;
   onSwipeSelect: (entryId: string) => void;
-  onOpenMenu: (entry: FoodLogEntry) => void;
+  onOpenMenu: (entry: FoodLogEntry, anchor?: CardAnchor) => void;
   onEdit: (entry: FoodLogEntry) => void;
 }) {
   const paintRef = usePaintSelectionRow(entry.id);
@@ -1974,7 +1992,7 @@ const FoodLogRow = React.memo(function FoodLogRow({
         ) : (
           <TouchableOpacity
             style={styles.entryMenuButton}
-            onPress={openMenu}
+            onPress={e => onOpenMenu(entry, { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             accessibilityRole="button"
             accessibilityLabel={`More options for ${entry.label}`}

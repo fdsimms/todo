@@ -1,0 +1,4 @@
+{
+  "message": "The menu on a food log entry now opens as a popover from the \"…\" button, like the menus elsewhere in the app, instead of a system alert. Move to meal opens its list inside the same menu.",
+  "date": "2026-10-11"
+}
