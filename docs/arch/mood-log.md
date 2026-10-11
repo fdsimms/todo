@@ -219,7 +219,10 @@ is recorded. The journal, dream and weigh-in reminders are the same shape, and
 (`'open-log'` in `completionTap.ts`), and `completeTask` refuses every completion
 except the sheet's own `complete…TaskForToday` (`CompletionOptions.recorded`) and
 a missed mark, which claims nothing. Same funnel the negative-habit refusal uses,
-so the widget, bulk bar and MCP server can't get round it.
+so the widget, bulk bar and MCP server can't get round it. An entry saved some
+other way (Claude over MCP, another device, a weight written to Health by a
+scale) never reaches the sheet's completion, so each generator pass also closes
+a live reminder whose slot is already answered, with the same `recorded` flag.
 
 `moodLogTimeSegments` holds the check-in back until a part of the day, the
 same shape `calendarReviewTimeSegment` has for its one segment, read once at

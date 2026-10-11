@@ -6808,6 +6808,17 @@ describe('checkMoodTasks', () => {
       expect(check.linkUrl).toBe('dundundun://mood?log=1');
     });
 
+    it('closes a check-in itself when the entry was saved some other way', () => {
+      useTaskStore.getState().checkMoodTasks();
+      expect(tasksOfKind('moodLog')).toHaveLength(1);
+
+      // Logged over MCP or on another device: nothing here completes the task,
+      // and it has no manual completion, so the next pass has to.
+      setLogs([entry(TODAY, 4)]);
+      useTaskStore.getState().checkMoodTasks();
+      expect(tasksOfKind('moodLog')).toHaveLength(0);
+    });
+
     it('writes nothing when the day has already been logged', () => {
       setLogs([entry(TODAY, 4)]);
 
@@ -7173,6 +7184,16 @@ describe('checkJournalTasks', () => {
     expect(tasksOfKind('journalLog')).toHaveLength(1);
   });
 
+  it('closes a reminder itself when the entry was saved some other way', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ dreamLogTasks: true }));
+    useTaskStore.getState().checkJournalTasks();
+    expect(tasksOfKind('dreamLog')).toHaveLength(1);
+
+    setEntries([written('dream', TODAY)]);
+    useTaskStore.getState().checkJournalTasks();
+    expect(tasksOfKind('dreamLog')).toHaveLength(0);
+  });
+
   it('refuses a manual completion of a reminder a saved entry answers', () => {
     useSettingsStore.getState.mockReturnValue(settings({ dreamLogTasks: true }));
     useTaskStore.getState().checkJournalTasks();
@@ -7234,6 +7255,23 @@ describe('checkWeighInTasks', () => {
   it('asks when the window has no weight in it', async () => {
     await on(8);
     expect(requests().map(t => t.generatedSourceId)).toEqual(['2026-09-08']);
+  });
+
+  it('closes a request itself once a weight lands in its window, and keeps it when the read says nothing', async () => {
+    await on(8);
+    expect(requests()).toHaveLength(1);
+
+    // Health could not be asked: evidence of nothing, so the request stays.
+    useHealthStore.setState({ readRecentWeights: jest.fn().mockResolvedValue(null) });
+    await on(8);
+    expect(requests()).toHaveLength(1);
+
+    // Weighed on the scale and written to Health, outside the sheet.
+    useHealthStore.setState({
+      readRecentWeights: jest.fn().mockResolvedValue([{ dayKey: '2026-09-08', kilograms: 70 }]),
+    });
+    await on(8);
+    expect(requests()).toHaveLength(0);
   });
 
   it('holds a deleted request for the whole window rather than asking again tomorrow', async () => {

@@ -7534,6 +7534,20 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         .filter(task => moodLogDayKey(task) !== todayKey || task.generatedSourceId !== sourceId)
         .forEach(task => deleteGeneratedTaskQuietly(task.id));
 
+      // Computed ahead of the once-a-slot mark below: an entry saved some other
+      // way (Claude over MCP, another device) lands after the check-in was
+      // written, and the check-in has no manual completion, so this is what
+      // closes it. Any-time: was the day logged at all; a segment: was
+      // anything logged since it began.
+      const answered = sourceId !== null && (segment
+        ? hasLoggedSince(logs, timeSegmentThreshold(segment).toISOString())
+        : hasLogOnDay(logs, todayKey));
+      if (answered) {
+        const live = liveGeneratedTasksOfKind(get().tasks, 'moodLog')
+          .find(task => task.generatedSourceId === sourceId);
+        if (live) get().completeTask(live.id, { recorded: true });
+      }
+
       // Recorded before the "already logged" check below and unconditionally,
       // for the reason calendarReviewLastDayKey is: a slot already decided
       // must not be re-diagnosed on every later sweep, or a check-in swiped
@@ -7548,9 +7562,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         // The any-time case asks "was the day logged at all"; a segment asks
         // the narrower "was anything logged since this segment began" — an
         // entry from this morning must not silence the evening check-in.
-        const answered = segment
-          ? hasLoggedSince(logs, timeSegmentThreshold(segment).toISOString())
-          : hasLogOnDay(logs, todayKey);
         if (!answered) {
           reconcileGeneratedTask({
             kind: 'moodLog',
@@ -7645,13 +7656,21 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       liveGeneratedTasksOfKind(get().tasks, generatedKind)
         .filter(task => journalTaskDayKey(task, kind) !== todayKey || task.generatedSourceId !== sourceId)
         .forEach(task => deleteGeneratedTaskQuietly(task.id));
-      if (sourceId === null || lastKey === sourceId) return;
-      // Stamped before deciding, so a swiped-away reminder stays away for its slot.
-      setLastKey(sourceId);
+      if (sourceId === null) return;
       const written = entries.filter(e => e.kind === kind);
       const answered = segment
         ? hasLoggedSince(written, timeSegmentThreshold(segment).toISOString())
         : hasLogOnDay(written, todayKey);
+      // Ahead of the once-a-slot mark for checkMoodTasks' reason: an entry saved
+      // some other way closes a reminder that has no manual completion.
+      if (answered) {
+        const live = liveGeneratedTasksOfKind(get().tasks, generatedKind)
+          .find(task => task.generatedSourceId === sourceId);
+        if (live) get().completeTask(live.id, { recorded: true });
+      }
+      if (lastKey === sourceId) return;
+      // Stamped before deciding, so a swiped-away reminder stays away for its slot.
+      setLastKey(sourceId);
       if (answered) return;
       reconcileGeneratedTask({
         kind: generatedKind,
@@ -7852,9 +7871,22 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       .filter(task => weighInDayKey(task) !== todayKey)
       .forEach(task => dropGeneratedTask('weighIn', task.generatedSourceId));
 
+    const everyDays = clampWeighInEveryDays(settings.weighInEveryDays);
+
+    // A request already on the list is closed by a reading in its window, however
+    // the reading got there (the Health app, a smart scale): the request has no
+    // manual completion, so this is the only other way it ends. A null read says
+    // nothing either way, so the request stays.
+    const liveRequest = liveGeneratedTasksOfKind(get().tasks, 'weighIn')
+      .find(task => weighInDayKey(task) === todayKey);
+    if (liveRequest) {
+      const recent = await useHealthStore.getState().readRecentWeights(everyDays);
+      if (recent !== null && !wantsWeighIn(recent)) get().completeTask(liveRequest.id, { recorded: true });
+      return;
+    }
+
     if (settings.weighInLastDayKey === todayKey) return;
 
-    const everyDays = clampWeighInEveryDays(settings.weighInEveryDays);
     // A deleted request holds for the window from the day it was deleted on,
     // rather than until tomorrow. Checked before the read, which it makes
     // unnecessary, and without spending the mark, which has nothing to say
