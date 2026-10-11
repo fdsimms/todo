@@ -13,8 +13,10 @@ import { generateId } from '../utils/id';
 import { dayKeyOf, getCurrentDayStart, getDayStart } from '../utils/dateUtils';
 import {
   ARCHIVED_MEDICATIONS_SETTING_KEY,
+  REGISTERED_MEDICATIONS_SETTING_KEY,
   medicationKey,
   parseArchivedMedications,
+  parseRegisteredMedications,
 } from '../utils/medicationLog';
 import {
   renamedKeys,
@@ -33,6 +35,7 @@ import {
   type MedicationSettingsMap,
   type MedicationSupply,
   type SupplementPanel,
+  type UsualDose,
 } from '../utils/medicationSettings';
 
 /** When a summary for a visit was last shared (synced, health-scoped). */
@@ -135,6 +138,12 @@ interface MedicationStore {
   /** `medicationKey`s you have archived. A set of names, not a flag on a dose. */
   archived: string[];
   /**
+   * Medications added by name, spelled as typed. Lets a medication exist before
+   * its first dose and stay listed after its last one is deleted; one with doses
+   * needs no entry here (see `medicationVocabulary`).
+   */
+  registered: string[];
+  /**
    * The limit and supply you set per medication, keyed by `medicationKey`.
    * See `src/utils/medicationSettings.ts`.
    */
@@ -158,6 +167,10 @@ interface MedicationStore {
    * this add those nutrients to the day; earlier doses are left as they were.
    */
   setSupplementPanel: (name: string, panel: SupplementPanel | null) => void;
+  /** Say whether it is taken as needed or on a schedule; null goes back to reading it off the doses. */
+  setAsNeeded: (name: string, asNeeded: boolean | null) => void;
+  /** Set or clear the amount you usually take. */
+  setUsualDose: (name: string, dose: UsualDose | null) => void;
   /** Add a refill to what's left. */
   refillSupply: (name: string, added: number) => void;
   /** Turn down the refill offer at the current count. */
@@ -166,6 +179,17 @@ interface MedicationStore {
   dismissMilestoneOffer: (name: string) => void;
   /** Record that a summary was just shared. */
   markSummaryShared: (at: Date) => void;
+  /**
+   * Add a medication to the list with no dose. Restores it when archived and
+   * returns false for a blank name or one already listed.
+   */
+  addMedication: (name: string) => boolean;
+  /**
+   * Take a medication with no doses off the list, along with its limit and
+   * supply. Refuses (returns false) one that has doses: those are the record,
+   * and are deleted one at a time.
+   */
+  removeMedication: (name: string) => boolean;
   /** Move a medication out of "what you take". Deletes no doses. */
   archiveMedication: (name: string) => void;
   /** Put an archived medication back. */
@@ -181,6 +205,12 @@ interface MedicationStore {
   addLog: (input: DoseInput) => MedicationLog | null;
   updateLog: (id: string, patch: MedicationLogPatch) => void;
   removeLog: (id: string) => void;
+  /**
+   * Put a deleted dose back exactly as it was (same id, time, day and task), for
+   * an undo. A dose already present is left alone. Not `addLog`: that would
+   * stamp a new id and time, and unarchive a medication a restore says nothing about.
+   */
+  restoreLog: (log: MedicationLog) => void;
   /**
    * Drop every dose a task's completion recorded — what unticking that task
    * runs. See `Task.medicationName` for why this is not one-shot the way the
@@ -200,6 +230,7 @@ interface MedicationStore {
 export const useMedicationStore = create<MedicationStore>((set, get) => ({
   logs: [],
   archived: [],
+  registered: [],
   settings: {},
   lastSummaryAt: null,
   milestoneDismissed: [],
@@ -208,6 +239,7 @@ export const useMedicationStore = create<MedicationStore>((set, get) => ({
   initialize() {
     const logs = dbGetAllMedicationLogs();
     const archived = parseArchivedMedications(dbGetSetting(ARCHIVED_MEDICATIONS_SETTING_KEY));
+    const registered = parseRegisteredMedications(dbGetSetting(REGISTERED_MEDICATIONS_SETTING_KEY));
     const settings = parseMedicationSettings(dbGetSetting(MEDICATION_SETTINGS_KEY));
     const lastSummary = dbGetSetting(SUMMARY_LAST_SETTING_KEY);
     const milestoneDismissed = parseArchivedMedications(dbGetSetting(MILESTONE_DISMISSED_SETTING_KEY));
@@ -215,6 +247,7 @@ export const useMedicationStore = create<MedicationStore>((set, get) => ({
       milestoneDismissed,
       logs,
       archived,
+      registered,
       settings,
       lastSummaryAt: lastSummary && !Number.isNaN(Date.parse(lastSummary)) ? lastSummary : null,
       initialized: true,
@@ -252,6 +285,19 @@ export const useMedicationStore = create<MedicationStore>((set, get) => ({
     writeSettings(set, withPrefs(get().settings, name, { ...current, nutrition: panel }));
   },
 
+  setAsNeeded(name, asNeeded) {
+    if (!medicationKey(name)) return;
+    const current = prefsFor(get().settings, name);
+    writeSettings(set, withPrefs(get().settings, name, { ...current, asNeeded }));
+  },
+
+  setUsualDose(name, dose) {
+    if (!medicationKey(name)) return;
+    const current = prefsFor(get().settings, name);
+    const usualDose = dose && Number.isFinite(dose.amount) && dose.amount > 0 && dose.unit ? dose : null;
+    writeSettings(set, withPrefs(get().settings, name, { ...current, usualDose }));
+  },
+
   refillSupply(name, added) {
     const current = prefsFor(get().settings, name);
     if (!current.supply) return;
@@ -282,6 +328,38 @@ export const useMedicationStore = create<MedicationStore>((set, get) => ({
     set({ lastSummaryAt: iso });
   },
 
+  addMedication(name) {
+    const clean = name.trim();
+    const key = medicationKey(clean);
+    if (!key) return false;
+    const { logs, registered, archived } = get();
+    const listed = logs.some(l => medicationKey(l.name) === key)
+      || registered.some(r => medicationKey(r) === key);
+    // Adding an archived one is taking it again, the rule `addLog` applies.
+    if (listed && !archived.includes(key)) return false;
+    if (!registered.some(r => medicationKey(r) === key) && !logs.some(l => medicationKey(l.name) === key)) {
+      writeRegistered(set, [...registered, clean]);
+    }
+    get().unarchiveMedication(clean);
+    return true;
+  },
+
+  removeMedication(name) {
+    const key = medicationKey(name);
+    if (!key || get().logs.some(l => medicationKey(l.name) === key)) return false;
+    const { registered, archived, settings } = get();
+    if (registered.some(r => medicationKey(r) === key)) {
+      writeRegistered(set, registered.filter(r => medicationKey(r) !== key));
+    }
+    if (archived.includes(key)) writeArchived(set, archived.filter(k => k !== key));
+    if (settings[key]) {
+      const next = { ...settings };
+      delete next[key];
+      writeSettings(set, next);
+    }
+    return true;
+  },
+
   archiveMedication(name) {
     const key = medicationKey(name);
     if (!key || get().archived.includes(key)) return;
@@ -299,8 +377,9 @@ export const useMedicationStore = create<MedicationStore>((set, get) => ({
     const name = to.trim();
     const toKey = medicationKey(name);
     if (!fromKey || !toKey) return null;
-    const { logs } = get();
-    if (!logs.some(l => medicationKey(l.name) === fromKey)) return null;
+    const { logs, registered } = get();
+    const fromRegistered = registered.some(r => medicationKey(r) === fromKey);
+    if (!fromRegistered && !logs.some(l => medicationKey(l.name) === fromKey)) return null;
     const cleanFill = fill && Number.isFinite(fill.amount) && fill.amount > 0 && fill.unit.trim()
       ? { amount: fill.amount, unit: fill.unit.trim() }
       : null;
@@ -313,6 +392,14 @@ export const useMedicationStore = create<MedicationStore>((set, get) => ({
     // scales with the dose, so a renamed or re-filled dose updates it too.
     const before = new Map(logs.map(l => [l.id, l]));
     changed.forEach(after => runEffect(fx => fx.updated(before.get(after.id)!, after)));
+
+    // The added-by-name list follows the name too; a spelling change keeps the
+    // entry (so a dose-less medication takes its new spelling), a fold drops it.
+    if (fromRegistered) {
+      const kept = registered.filter(r => medicationKey(r) !== fromKey);
+      const next = kept.some(r => medicationKey(r) === toKey) ? kept : [...kept, name];
+      writeRegistered(set, next);
+    }
 
     if (fromKey === toKey) return changed.length;
 
@@ -401,6 +488,15 @@ export const useMedicationStore = create<MedicationStore>((set, get) => ({
     runEffect(fx => fx.removed(removed));
     dbDeleteMedicationLog(id);
     set({ logs: get().logs.filter(l => l.id !== id) });
+    keepListed(get, set, removed);
+  },
+
+  restoreLog(log) {
+    if (get().logs.some(l => l.id === log.id)) return;
+    dbInsertMedicationLog(log);
+    // Newest first by when it was taken, which is where it was before it was deleted.
+    set({ logs: [...get().logs, log].sort((a, b) => b.takenAt.localeCompare(a.takenAt)) });
+    runEffect(fx => fx.added(log));
   },
 
   removeLogsForTask(taskId) {
@@ -408,6 +504,7 @@ export const useMedicationStore = create<MedicationStore>((set, get) => ({
     runEffect(fx => fx.removed(removed));
     dbDeleteMedicationLogsForTask(taskId);
     set({ logs: get().logs.filter(l => l.taskId !== taskId) });
+    keepListed(get, set, removed);
   },
 
   removeLatestLogForTask(taskId) {
@@ -429,6 +526,37 @@ function writeSettings(
 ): void {
   dbSetSetting(MEDICATION_SETTINGS_KEY, JSON.stringify(settings));
   set({ settings });
+}
+
+/**
+ * After doses are deleted, keep a medication that just lost its last one on the
+ * list. Medications that were only ever derived from doses have no entry of
+ * their own, so without this the last delete would remove the medication
+ * itself, with its limit and supply stranded under a name nothing lists.
+ */
+function keepListed(
+  get: () => { logs: MedicationLog[]; registered: string[] },
+  set: (partial: { registered: string[] }) => void,
+  removed: readonly MedicationLog[],
+): void {
+  const { logs, registered } = get();
+  const next = [...registered];
+  for (const log of removed) {
+    const key = medicationKey(log.name);
+    if (!key) continue;
+    if (logs.some(l => medicationKey(l.name) === key)) continue;
+    if (next.some(r => medicationKey(r) === key)) continue;
+    next.push(log.name.trim());
+  }
+  if (next.length !== registered.length) writeRegistered(set, next);
+}
+
+function writeRegistered(
+  set: (partial: { registered: string[] }) => void,
+  registered: string[],
+): void {
+  dbSetSetting(REGISTERED_MEDICATIONS_SETTING_KEY, JSON.stringify(registered));
+  set({ registered });
 }
 
 function writeArchived(

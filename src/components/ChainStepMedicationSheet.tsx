@@ -65,12 +65,13 @@ export function ChainStepMedicationSheet({
   const [unit, setUnit] = useState<string | null>(null);
 
   // Every medication ever logged, for the name field's own suggestions below
-  // — see medicationVocabulary for why this is derived rather than a registry.
+  // — see medicationVocabulary for what it unions.
   const medicationLogs = useMedicationStore(useShallow(s => s.logs));
   const archivedMedications = useMedicationStore(useShallow(s => s.archived));
+  const registeredMedications = useMedicationStore(useShallow(s => s.registered));
   const medicationSuggestions = useMemo(
-    () => medicationVocabulary(medicationLogs, archivedMedications),
-    [medicationLogs, archivedMedications]
+    () => medicationVocabulary(medicationLogs, archivedMedications, registeredMedications),
+    [medicationLogs, archivedMedications, registeredMedications]
   );
 
   useEffect(() => {

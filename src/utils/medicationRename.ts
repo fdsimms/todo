@@ -5,7 +5,8 @@ import type { MedicationSettingsMap } from './medicationSettings';
 /**
  * Renaming a medication, or folding one into another.
  *
- * A medication has no row of its own (`medicationKey`), so a rename is a
+ * A medication has no row of its own (`medicationKey`; the added-by-name list
+ * is just names), so a rename is a
  * rewrite of every place that holds the name: the doses, the limit and supply
  * (`medication_settings`), the archived and milestone-dismissed key lists, the
  * tasks, chain steps and template items that record a dose. Each function here
@@ -72,6 +73,9 @@ export function renamedSettings(
     supply: target?.supply ?? source.supply,
     // The supplement panel follows the same rule as the limit and supply.
     ...((target?.nutrition ?? source.nutrition) ? { nutrition: target?.nutrition ?? source.nutrition } : {}),
+    // How you take it and the usual amount follow the same rule.
+    ...(typeof (target?.asNeeded ?? source.asNeeded) === 'boolean' ? { asNeeded: target?.asNeeded ?? source.asNeeded } : {}),
+    ...((target?.usualDose ?? source.usualDose) ? { usualDose: target?.usualDose ?? source.usualDose } : {}),
   };
   return next;
 }

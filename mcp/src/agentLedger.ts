@@ -764,6 +764,28 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return spelled;
     },
 
+    addMedication(name) {
+      const out = replica.addMedication(name);
+      if (out.added) log({ action: 'created', subject: 'medication', title: out.name, taskId: null, note: `Add ${out.name} to the medication list, with no doses` });
+      return out;
+    },
+
+    removeMedication(name) {
+      const spelled = replica.removeMedication(name);
+      log({ action: 'cleared', subject: 'medication', title: spelled, taskId: null, note: `Remove ${spelled} from the medication list (it had no doses), with its limit and supply` });
+      return spelled;
+    },
+
+    setMedicationProfile(name, profile) {
+      const spelled = replica.setMedicationProfile(name, profile);
+      const said = [
+        profile.asNeeded === undefined ? null : profile.asNeeded === null ? 'taken as needed or not, read from the doses' : profile.asNeeded ? 'taken as needed' : 'taken on a schedule',
+        profile.usualDose === undefined ? null : profile.usualDose ? `usual amount ${profile.usualDose.amount} ${profile.usualDose.unit}` : 'usual amount cleared',
+      ].filter(Boolean).join(', ');
+      log({ action: 'edited', subject: 'medication', title: spelled, taskId: null, note: `Set ${spelled}: ${said}` });
+      return spelled;
+    },
+
     renameMoodTag(from, to) {
       const count = replica.renameMoodTag(from, to);
       log({ action: 'edited', subject: 'mood', title: 'Mood log', taskId: null, note: `Rename the context tag "${from}" to "${to}" on ${count} mood ${count === 1 ? 'check-in' : 'check-ins'}` });

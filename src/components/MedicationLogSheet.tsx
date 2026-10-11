@@ -14,6 +14,7 @@ import { WhenPicker } from './WhenPicker';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { prefsFor } from '../utils/medicationSettings';
 import { getLogicalToday } from '../utils/dateUtils';
 import { DOSE_UNITS, medicationKey, medicationVocabulary } from '../utils/medicationLog';
 import { confirmWithinLimit, recordDose, syncOkAgainNotification, unrecordDose } from '../utils/doseRecording';
@@ -40,6 +41,8 @@ interface Props {
   /** The medication a new dose starts on, when opened from its own page. */
   initialName?: string;
   onClose: () => void;
+  /** Called after the dose is deleted, with the row as it was, so the host can offer an undo. */
+  onDeleted?: (log: MedicationLog) => void;
 }
 
 /**
@@ -70,11 +73,12 @@ const AGO_OPTIONS: { value: number; label: string }[] = [
  * dose they forgot to tick flips it, and the control says so plainly rather
  * than the sheet guessing from history.
  */
-export function MedicationLogSheet({ visible, log, initialName, onClose }: Props) {
+export function MedicationLogSheet({ visible, log, initialName, onClose, onDeleted }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const logs = useMedicationStore(s => s.logs);
   const archived = useMedicationStore(s => s.archived);
+  const registered = useMedicationStore(s => s.registered);
   const updateLog = useMedicationStore(s => s.updateLog);
 
   const [name, setName] = useState('');
@@ -90,9 +94,13 @@ export function MedicationLogSheet({ visible, log, initialName, onClose }: Props
   useEffect(() => {
     if (!visible) return;
     setName(log?.name ?? initialName ?? '');
-    setAmount(log?.amount !== null && log?.amount !== undefined ? String(log.amount) : '');
-    setUnit(log?.unit ?? null);
-    setAsNeeded(log ? log.asNeeded : true);
+    // A new dose of a named medication starts from what was set up for it.
+    const prefs = !log && initialName ? prefsFor(useMedicationStore.getState().settings, initialName) : null;
+    setAmount(log?.amount !== null && log?.amount !== undefined
+      ? String(log.amount)
+      : prefs?.usualDose ? String(prefs.usualDose.amount) : '');
+    setUnit(log?.unit ?? prefs?.usualDose?.unit ?? null);
+    setAsNeeded(log ? log.asNeeded : prefs?.asNeeded ?? true);
     setNote(log?.note ?? '');
     setDay(noonOfToday());
     setAgoMinutes(0);
@@ -111,7 +119,7 @@ export function MedicationLogSheet({ visible, log, initialName, onClose }: Props
   const pillNames = useMemo(() => {
     const seen = new Set<string>();
     const out: string[] = [];
-    for (const candidate of [name, ...medicationVocabulary(logs, archived), ...drafted]) {
+    for (const candidate of [name, ...medicationVocabulary(logs, archived, registered), ...drafted]) {
       const trimmed = candidate.trim();
       const key = medicationKey(trimmed);
       if (!key || seen.has(key)) continue;
@@ -119,7 +127,7 @@ export function MedicationLogSheet({ visible, log, initialName, onClose }: Props
       out.push(trimmed);
     }
     return out;
-  }, [name, logs, archived, drafted]);
+  }, [name, logs, archived, registered, drafted]);
 
   const createMedication = (raw: string): string | null | void => {
     const trimmed = raw.trim();
@@ -176,7 +184,7 @@ export function MedicationLogSheet({ visible, log, initialName, onClose }: Props
     if (!log) { onClose(); return; }
     Alert.alert('Delete this dose?', undefined, [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => { unrecordDose(log); onClose(); } },
+      { text: 'Delete', style: 'destructive', onPress: () => { unrecordDose(log); onDeleted?.(log); onClose(); } },
     ]);
   };
 

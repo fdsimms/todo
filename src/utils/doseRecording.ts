@@ -161,3 +161,18 @@ export function unrecordDose(log: MedicationLog): void {
     useTaskStore.getState().updateTask(supplyTask.id, { supplyCount: supplyTask.supplyCount + 1 });
   }
 }
+
+/**
+ * Put back a dose `unrecordDose` took away, for an undo. Spends the one
+ * `unrecordDose` returned to its task's supply, under the same conditions, so
+ * delete then undo leaves the count where it started.
+ */
+export function restoreDose(log: MedicationLog): void {
+  useMedicationStore.getState().restoreLog(log);
+  syncOkAgainNotification(log.name);
+  if (log.taskId !== null || log.dayKey !== dayKeyOf(getCurrentDayStart())) return;
+  const supplyTask = taskSupplyFor(useTaskStore.getState().tasks, log.name);
+  if (supplyTask && supplyTask.supplyCount !== null) {
+    useTaskStore.getState().updateTask(supplyTask.id, { supplyCount: Math.max(0, supplyTask.supplyCount - 1) });
+  }
+}

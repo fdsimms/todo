@@ -47,6 +47,7 @@ const COUNTERPARTS: Record<string, string[]> = {
   create_saved_view: ['update_saved_view', 'delete_saved_view'],
   request_calendar_event: ['cancel_calendar_request'],
   log_medication: ['update_medication_log', 'delete_medication_log'],
+  add_medication: ['remove_medication', 'archive_medication', 'rename_medication'],
   plan_meal: ['update_meal', 'remove_meal'],
   save_meal_as_recipe: ['update_meal', 'delete_recipe'],
   add_grocery_item: ['remove_from_grocery_list', 'check_off_grocery_item'],

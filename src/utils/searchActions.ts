@@ -99,7 +99,7 @@ export type SearchAction = DoseAction | WaterAction | MoodAction | GroceryAction
 
 /** What each kind needs to match against, or null while its screen is hidden. */
 export interface SearchActionSources {
-  medications?: { logs: readonly MedicationLog[]; archived: readonly string[] } | null;
+  medications?: { logs: readonly MedicationLog[]; archived: readonly string[]; registered?: readonly string[] } | null;
   water?: { unit: WaterUnit } | null;
   mood?: { symptoms: readonly string[] } | null;
   groceries?: {
@@ -149,6 +149,7 @@ function doseActions(
   query: string,
   logs: readonly MedicationLog[],
   archived: readonly string[],
+  registered: readonly string[] = [],
 ): DoseAction[] {
   const explicit = DOSE_VERB_RE.test(query);
   const { typed, amount, unit } = readDoseWords(query.replace(DOSE_VERB_RE, ''));
@@ -157,7 +158,7 @@ function doseActions(
   if (!explicit && key.length < BARE_NAME_MIN_LENGTH) return [];
 
   const tiers: string[][] = [[], [], []];
-  for (const name of medicationVocabulary(logs, archived)) {
+  for (const name of medicationVocabulary(logs, archived, registered)) {
     const nameKey = medicationKey(name);
     if (nameKey === key) tiers[0].push(name);
     else if (nameKey.startsWith(key)) tiers[1].push(name);
@@ -309,7 +310,7 @@ export function searchActions(
 
   const found: SearchAction[] = [];
   if (sources.medications) {
-    found.push(...doseActions(text, sources.medications.logs, sources.medications.archived));
+    found.push(...doseActions(text, sources.medications.logs, sources.medications.archived, sources.medications.registered));
   }
   if (sources.water) {
     const water = waterAction(text, sources.water.unit);

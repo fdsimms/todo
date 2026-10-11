@@ -318,13 +318,13 @@ export function buildWidgetMedications(
   archived: readonly string[],
 ): WidgetMedication[] {
   return medicationStats(logs)
-    .filter(stat => stat.asNeeded && !archived.includes(stat.key))
+    .filter(stat => stat.asNeeded && stat.lastTakenAt !== null && !archived.includes(stat.key))
     .slice(0, MAX_WIDGET_MEDICATIONS)
     .map(stat => ({
       id: stat.key,
       name: stat.name,
       dose: formatDose(repeatDose(logs, stat.name)),
-      lastTakenAt: stat.lastTakenAt,
+      lastTakenAt: stat.lastTakenAt as string,
     }));
 }
 

@@ -476,7 +476,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     // What "your medicines" means on the day of the run, for an item marked
     // medicationChecklist. Read here rather than by each caller so the apply
     // sheet and a scheduled run agree.
-    const medications = medicationVocabulary(useMedicationStore.getState().logs, useMedicationStore.getState().archived);
+    const medications = medicationVocabulary(useMedicationStore.getState().logs, useMedicationStore.getState().archived, useMedicationStore.getState().registered);
     dbTransaction(() => {
       createdTasks = applyTemplateRun(template, templatesById, selectedItemIds, anchors, { medications, ...options }, {
         addTask: draft => tasks.addTask(draft),

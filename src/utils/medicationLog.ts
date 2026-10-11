@@ -148,16 +148,20 @@ export function medicationKey(name: string): string {
 }
 
 /**
- * Every medication you have ever logged, most-used first, then alphabetical.
+ * Every medication you have logged or added by name, most-used first, then
+ * alphabetical.
  *
- * Derived on read rather than stored, exactly as `symptomVocabulary` is: a
- * medication is named by having been taken, so the honest vocabulary is the
- * set of things that have been taken. Nothing to migrate, nothing to prune,
- * and something taken once two years ago drops off the suggestions by itself.
+ * A medication is named in either of two ways: by having been taken (a dose
+ * carries the name), or by being added to the list before any dose
+ * (`registered`, stored as `REGISTERED_MEDICATIONS_SETTING_KEY`). Taking the
+ * union is what lets a medication exist with no doses, and what keeps it
+ * listed after its last dose is deleted. A medication that was only ever taken
+ * still needs no registration, so nothing had to be migrated.
  */
 export function medicationVocabulary(
   logs: readonly MedicationLog[],
   archived: readonly string[] = [],
+  registered: readonly string[] = [],
 ): string[] {
   const counts = new Map<string, { name: string; count: number }>();
   for (const log of logs) {
@@ -168,6 +172,11 @@ export function medicationVocabulary(
     const seen = counts.get(key);
     if (seen) seen.count++;
     else counts.set(key, { name: log.name.trim(), count: 1 });
+  }
+  for (const name of registered) {
+    const key = medicationKey(name);
+    if (!key || archived.includes(key) || counts.has(key)) continue;
+    counts.set(key, { name: name.trim(), count: 0 });
   }
   return [...counts.values()]
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
@@ -193,6 +202,37 @@ export function parseArchivedMedications(raw: string | null): string[] {
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     return [...new Set(parsed.filter((k): k is string => typeof k === 'string' && k !== ''))];
+  } catch {
+    return [];
+  }
+}
+
+/** The settings key the added-by-name list is stored under (synced, see `SYNCED_SETTING_KEYS`). */
+export const REGISTERED_MEDICATIONS_SETTING_KEY = 'medication_registered';
+
+/**
+ * Read the stored added-by-name list back, tolerating anything that isn't one.
+ *
+ * Names rather than keys, unlike the archived list, because a medication with no
+ * doses has no logged spelling to show: the name typed when it was added is the
+ * only one there is. One entry per `medicationKey`, first spelling kept.
+ */
+export function parseRegisteredMedications(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const entry of parsed) {
+      if (typeof entry !== 'string') continue;
+      const name = entry.trim();
+      const key = medicationKey(name);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(name);
+    }
+    return out;
   } catch {
     return [];
   }
@@ -268,6 +308,15 @@ export function isAsNeededMedication(
   return logs.some(l => medicationKey(l.name) === key && l.asNeeded);
 }
 
+/**
+ * The part of a medication's settings the tallies read. Structural so this
+ * module need not import `medicationSettings.ts`, which imports it.
+ */
+export type MedicationTallyPrefs = Record<string, {
+  asNeeded?: boolean | null;
+  usualDose?: { amount: number; unit: string } | null;
+}>;
+
 /** What one medication's history adds up to. Counting only — no comparisons. */
 export interface MedicationStat {
   key: string;
@@ -276,10 +325,15 @@ export interface MedicationStat {
   doses: number;
   /** Distinct days carrying at least one dose — not the same as `doses`. */
   days: number;
-  lastTakenAt: string;
+  /** Null for a medication that was added by name and has no doses yet. */
+  lastTakenAt: string | null;
   asNeeded: boolean;
   /** The dose phrase seen most often, or null when none was ever stated. */
   typicalDose: string | null;
+}
+
+function usualDoseText(prefs: MedicationTallyPrefs[string] | undefined): string | null {
+  return prefs?.usualDose ? formatDose(prefs.usualDose) : null;
 }
 
 /**
@@ -291,7 +345,11 @@ export interface MedicationStat {
  * comparison. Somebody who has taken something twice is entitled to see both
  * of those days.
  */
-export function medicationStats(logs: readonly MedicationLog[]): MedicationStat[] {
+export function medicationStats(
+  logs: readonly MedicationLog[],
+  registered: readonly string[] = [],
+  prefs: MedicationTallyPrefs = {},
+): MedicationStat[] {
   const byKey = new Map<string, MedicationLog[]>();
   for (const log of logs) {
     const key = medicationKey(log.name);
@@ -317,11 +375,29 @@ export function medicationStats(logs: readonly MedicationLog[]): MedicationStat[
       doses: sorted.length,
       days: new Set(sorted.map(e => e.dayKey)).size,
       lastTakenAt: sorted[0].takenAt,
-      asNeeded: sorted.some(e => e.asNeeded),
-      typicalDose,
+      // What you said wins; with no answer it is read off the doses.
+      asNeeded: prefs[key]?.asNeeded ?? sorted.some(e => e.asNeeded),
+      typicalDose: typicalDose ?? usualDoseText(prefs[key]),
     });
   }
-  return stats.sort((a, b) => b.lastTakenAt.localeCompare(a.lastTakenAt));
+  // A medication added by name with no doses yet is listed after the ones with
+  // a history, alphabetically, so it is findable without outranking them.
+  for (const name of registered) {
+    const key = medicationKey(name);
+    if (!key || byKey.has(key)) continue;
+    byKey.set(key, []);
+    stats.push({
+      key, name: name.trim(), doses: 0, days: 0, lastTakenAt: null,
+      asNeeded: prefs[key]?.asNeeded ?? false, typicalDose: usualDoseText(prefs[key]),
+    });
+  }
+  return stats.sort((a, b) => {
+    if (a.lastTakenAt === null || b.lastTakenAt === null) {
+      if (a.lastTakenAt === b.lastTakenAt) return a.name.localeCompare(b.name);
+      return a.lastTakenAt === null ? 1 : -1;
+    }
+    return b.lastTakenAt.localeCompare(a.lastTakenAt);
+  });
 }
 
 /**
@@ -423,15 +499,20 @@ export function frequencyTrend(
  * once. As needed because the quick button is offered only on as-needed rows:
  * a scheduled dose is recorded by checking off its task.
  */
-export function repeatDose(logs: readonly MedicationLog[], name: string): MedicationDose & { asNeeded: true } {
+export function repeatDose(
+  logs: readonly MedicationLog[],
+  name: string,
+  usual: { amount: number; unit: string } | null = null,
+): MedicationDose & { asNeeded: true } {
   const key = medicationKey(name);
   const last = logs
     .filter(l => medicationKey(l.name) === key)
     .sort((a, b) => b.takenAt.localeCompare(a.takenAt))[0];
   return {
     name: last?.name.trim() ?? name.trim(),
-    amount: last?.amount ?? null,
-    unit: last?.unit ?? null,
+    // The last dose wins; the usual amount is what stands in before there is one.
+    amount: last ? last.amount : usual?.amount ?? null,
+    unit: last ? last.unit : usual?.unit ?? null,
     asNeeded: true,
   };
 }
