@@ -8,6 +8,7 @@ import {
 } from '../db/database';
 import { generateId } from '../utils/id';
 import { dayKeyOf, getCurrentDayStart, getDayStart } from '../utils/dateUtils';
+import { cleanJournalTags, cleanPersonIds } from '../utils/journal';
 
 /**
  * The journal and the dream log — see `docs/arch/journal.md`.
@@ -19,6 +20,12 @@ import { dayKeyOf, getCurrentDayStart, getDayStart } from '../utils/dateUtils';
  * Loaded wholesale at startup, like the mood log: a few rows a day at most.
  */
 
+/** The labels and people a person attaches to an entry (see `JournalEntry.tags`). */
+export interface JournalEntryMeta {
+  tags?: readonly string[];
+  personIds?: readonly string[];
+}
+
 interface JournalStore {
   entries: JournalEntry[];
   initialized: boolean;
@@ -28,9 +35,17 @@ interface JournalStore {
    * mood sheet does); the day key is stamped from it under `dayResetTime`, so
    * a 1am entry with a 02:00 reset files under yesterday. Refuses blank text.
    */
-  addEntry: (kind: JournalKind, text: string, at?: Date, openOn?: string | null) => JournalEntry | null;
+  addEntry: (
+    kind: JournalKind,
+    text: string,
+    at?: Date,
+    openOn?: string | null,
+    meta?: JournalEntryMeta,
+  ) => JournalEntry | null;
   /** Change the words. The day is fixed once written, as a mood entry's is. */
   updateEntry: (id: string, text: string) => void;
+  /** Replace an entry's tags and people. Either left out stays as it was. */
+  setEntryMeta: (id: string, meta: JournalEntryMeta) => void;
   /** Opens a sealed note early: clears `openOn`, so it reads like any other entry. */
   openNow: (id: string) => void;
   removeEntry: (id: string) => void;
@@ -44,7 +59,7 @@ export const useJournalStore = create<JournalStore>((set, get) => ({
     set({ entries: dbGetAllJournalEntries(), initialized: true });
   },
 
-  addEntry(kind, text, at, openOn) {
+  addEntry(kind, text, at, openOn, meta) {
     const trimmed = text.trim();
     if (!trimmed) return null;
     const when = at ?? new Date();
@@ -56,6 +71,8 @@ export const useJournalStore = create<JournalStore>((set, get) => ({
       text: trimmed,
       // Only a later day seals anything; today or earlier is open already.
       openOn: openOn && openOn > dayKeyOf(getCurrentDayStart()) ? openOn : null,
+      tags: cleanJournalTags(meta?.tags ?? []),
+      personIds: cleanPersonIds(meta?.personIds ?? []),
     };
     dbInsertJournalEntry(entry);
     // Kept in the order dbGetAllJournalEntries hands back, so nothing reorders
@@ -71,6 +88,18 @@ export const useJournalStore = create<JournalStore>((set, get) => ({
     // action; an empty entry would be a day marked written with nothing on it.
     if (!existing || !trimmed || trimmed === existing.text) return;
     const next: JournalEntry = { ...existing, text: trimmed };
+    dbUpdateJournalEntry(next);
+    set({ entries: get().entries.map(e => (e.id === id ? next : e)) });
+  },
+
+  setEntryMeta(id, meta) {
+    const existing = get().entries.find(e => e.id === id);
+    if (!existing) return;
+    const next: JournalEntry = {
+      ...existing,
+      tags: meta.tags ? cleanJournalTags(meta.tags) : existing.tags ?? [],
+      personIds: meta.personIds ? cleanPersonIds(meta.personIds) : existing.personIds ?? [],
+    };
     dbUpdateJournalEntry(next);
     set({ entries: get().entries.map(e => (e.id === id ? next : e)) });
   },

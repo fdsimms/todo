@@ -35,6 +35,9 @@ private let pendingDisposalsFileName = "pending_disposals.json"
 // matches MarkDisposedIntent.swift. See src/utils/medicationIndex.ts.
 private let medicationIndexFileName = "siri_medication_index.json"
 private let pendingDosesFileName = "pending_doses.json"
+// Matching LogDreamIntent.swift. The dream log's own queue, drained by
+// processPendingDreams in src/utils/widgetSync.ts.
+private let pendingDreamsFileName = "pending_dreams.json"
 // Must match QuietTapQueue.fileName in targets/todo-widget/WidgetQuietIntents.swift
 // (a separate target, so the literal can't be shared).
 private let quietTapsFileName = "widget_quiet_taps.json"
@@ -54,6 +57,13 @@ private struct PendingDisposalPayload: Codable {
 private struct PendingDosePayload: Codable {
   let id: String?
   let name: String
+  let at: String
+}
+
+// Mirrors what LogDreamIntent queues and what processPendingDreams() in
+// widgetSync.ts expects back. `at` is the ISO 8601 moment Siri was asked.
+private struct PendingDreamPayload: Codable {
+  let text: String
   let at: String
 }
 
@@ -331,6 +341,33 @@ public class TodoWidgetBridgeModule: Module {
         guard let data = try? Data(contentsOf: fileURL) else { return }
         defer { try? FileManager.default.removeItem(at: fileURL) }
         guard let decoded = try? JSONDecoder().decode([PendingDosePayload].self, from: data) else {
+          return
+        }
+        guard let reencoded = try? JSONEncoder().encode(decoded) else { return }
+        json = String(data: reencoded, encoding: .utf8) ?? "[]"
+      }
+      return json
+    }
+
+    // Reads and clears the queue LogDreamIntent writes ("log a dream"). The
+    // same read-and-delete shape as drainPendingDoses: a corrupt file is
+    // deleted rather than failing on every launch.
+    AsyncFunction("drainPendingDreams") { () -> String in
+      var json = "[]"
+      TodoWidgetExceptionCatcher.runCatchingExceptions {
+        guard let containerURL = FileManager.default.containerURL(
+          forSecurityApplicationGroupIdentifier: appGroupID
+        ) else {
+          return
+        }
+
+        let fileURL = containerURL
+          .appendingPathComponent("Library/Application Support", isDirectory: true)
+          .appendingPathComponent(pendingDreamsFileName)
+
+        guard let data = try? Data(contentsOf: fileURL) else { return }
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+        guard let decoded = try? JSONDecoder().decode([PendingDreamPayload].self, from: data) else {
           return
         }
         guard let reencoded = try? JSONEncoder().encode(decoded) else { return }

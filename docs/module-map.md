@@ -44,7 +44,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/backfillSuggest.ts` — SuggestibleBackfillFieldId, SUGGESTIBLE_BACKFILL_FIELDS, isSuggestibleBackfillField, MAX_SUGGESTION_TASKS, MAX_SUGGESTION_EXAMPLES, SUGGESTION_NOTES_MAX_CHARS, SuggestionTask, SuggestionExample, BackfillSuggestion, TitleOf, +4 more
 - `src/utils/backgroundRefresh.ts` — BACKGROUND_REFRESH_TASK, BACKGROUND_REFRESH_INTERVAL_MINUTES, BackgroundRefreshOutcome, runBackgroundRefresh, runBackgroundSync, useBackgroundRefresh
 - `src/utils/backup.ts` — BACKUP_FORMAT, REDACTED_SETTING_KEYS, isDeviceLocalSetting, BackupRow, Backup, ParseResult, redactSettings, buildBackup, serializeBackup, parseBackup, +4 more
-- `src/utils/backupFile.ts` — writeExportFile, canShare, shareExportFile, shareBackupFile, shareCsvFile, writePdfFile, sharePdfFile, discardBackupFile, pickBackupFile
+- `src/utils/backupFile.ts` — writeExportFile, canShare, shareExportFile, shareBackupFile, shareCsvFile, shareMarkdownFile, writePdfFile, sharePdfFile, discardBackupFile, pickBackupFile
 - `src/utils/beatMark.ts` — BeatMarkGeometry, beatMarkGeometry, BEAT_STEP_MS
 - `src/utils/beatSound.ts` — playBeatSound
 - `src/utils/birthdayTasks.ts` — DEFAULT_BIRTHDAY_LEAD_DAYS, DEFAULT_BIRTHDAY_GIFT_LEAD_DAYS, MAX_BIRTHDAY_LEAD_DAYS, clampBirthdayLeadDays, clampBirthdayGiftLeadDays, parseBirthdayLeadDays, parseBirthdayGiftLeadDays, birthdaySourceId, parseBirthdaySource, parseBirthdayGiftSource, +15 more
@@ -112,6 +112,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/deviceMetrics.ts` — startDeviceMetrics, readDevicePayloads
 - `src/utils/deviceTimeZone.ts` — DEVICE_TIME_ZONE_KEY, isValidTimeZone, currentTimeZone, recordDeviceTimeZone
 - `src/utils/doseRecording.ts` — syncOkAgainNotification, allowOkAgainNotification, confirmWithinLimit, recordDose, unrecordDose
+- `src/utils/dreamQueue.ts` — QueuedDream, QUEUED_DREAM_MAX_LENGTH, parseQueuedDreams
 - `src/utils/editorFold.ts` — FoldableRow, FoldState, isRowFolded, foldedRowCount, moreOptionsLabel
 - `src/utils/editorSearch.ts` — EditorSearchable, editorSearchTerms, matchesEditorQuery, filterEditorRows
 - `src/utils/effort.ts` — MeasuredTimeUpdate, applyMeasuredTime, formatStopwatch, EFFORT_MINUTES, effortToMinutes, minutesToEffort, EstimateSource, estimatedMinutesFor, measuredTimeAppliesTo, SuggestionCarrier, +7 more
@@ -187,8 +188,9 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/itemDisposal.ts` — DisposalOutcome, REPEAT_WASTE_THRESHOLD, disposalAnswerCount, describeDisposalHistory, wantsShelfLifePrompt
 - `src/utils/itemSubs.ts` — Substitute, substitutesFor, substituteForItems, describeSubstituteLink, describeSubstitutes, SubstitutedQuantity, substituteQuantity, substitutesOnHand, describeSubstitutesOnHand, resolveShoppingSubstitutes
 - `src/utils/itemVarieties.ts` — varietyIndex, NO_VARIETIES, coveringVariety, familyOnHand, varietyOfferFor, genericNameSuggestions, describeFamilyOnHand
-- `src/utils/journal.ts` — isSealed, openEntries, sealedEntries, JUST_OPENED_DAYS, justOpened, journalEntryLink, sealedNoteTaskDraft, entriesOfKind, searchJournal, JournalDay, +13 more
-- `src/utils/journalExport.ts` — JOURNAL_EXPORT_COLUMNS, journalExportCsv, journalExportFileName, journalExportSummary
+- `src/utils/journal.ts` — isSealed, openEntries, sealedEntries, JUST_OPENED_DAYS, justOpened, journalEntryLink, sealedNoteTaskDraft, entriesOfKind, searchJournal, JournalDay, +34 more
+- `src/utils/journalDraft.ts` — JOURNAL_DRAFT_DELAY_MS, journalDraftKey, readJournalDraft, writeJournalDraft, clearJournalDraft
+- `src/utils/journalExport.ts` — JOURNAL_EXPORT_COLUMNS, PersonNamer, journalExportCsv, journalExportMarkdown, JournalExportFormat, journalExportFileName, journalExportSummary
 - `src/utils/journalMarkdown.ts` — InlineSpan, JournalBlock, parseInline, parseJournalMarkdown, journalPlainText, EditSelection, FormatEdit, toggleWrap, LineFormat, toggleLinePrefix
 - `src/utils/journalTasks.ts` — JOURNAL_LOG_TITLE, JOURNAL_SNIPPET_TITLE, DREAM_LOG_TITLE, journalLogTitle, JOURNAL_TASK_KIND, journalLogUrl, journalTaskSourceId, journalTaskDayKey
 - `src/utils/keyShortcuts.ts` — KeyModifier, ShortcutAction, KeyShortcut, KEY_SHORTCUTS, shortcutById, shortcutKeys, describeShortcuts
@@ -503,7 +505,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useHealthStore.ts` — HealthDay, EXERCISE_LIVE_WINDOW_DAYS, HEALTH_HISTORY_DAYS, WEIGHT_HISTORY_DAYS, SLEEP_HISTORY_DAYS, sameHealthHistory, useHealthStore, useHealthSync
 - `src/store/useHiddenEventsStore.ts` — useHiddenEventsStore
 - `src/store/useJournalLockStore.ts` — useJournalLockStore, isJournalLocked
-- `src/store/useJournalStore.ts` — useJournalStore
+- `src/store/useJournalStore.ts` — JournalEntryMeta, useJournalStore
 - `src/store/useLeftoverStore.ts` — useLeftoverStore
 - `src/store/useMealPlanStore.ts` — MealPlanDraft, CookRecap, sameMealPlanEntries, useMealPlanStore
 - `src/store/useMedicationStore.ts` — SUMMARY_LAST_SETTING_KEY, MILESTONE_DISMISSED_SETTING_KEY, DoseInput, DoseEffects, setDoseEffects, MedicationLogPatch, useMedicationStore

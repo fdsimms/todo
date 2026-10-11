@@ -64,6 +64,7 @@ export const READ_TOOLS: Record<string, string> = {
   list_food_log: 'Food log',
   list_mood_logs: 'Mood log',
   list_journal_entries: 'Journal and dreams',
+  search_journal_entries: 'Journal and dreams',
   list_calendar_requests: 'Calendar requests',
   list_medication_logs: 'Medication log',
   list_templates: 'List templates',

@@ -7,6 +7,12 @@ import { useShallow } from 'zustand/react/shallow';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { usePersonNoteStore } from '../store/usePersonNoteStore';
+import { format } from 'date-fns/format';
+import { useJournalStore } from '../store/useJournalStore';
+import { useJournalAccess } from '../hooks/useJournalAccess';
+import { JournalDaySheet } from '../components/JournalDaySheet';
+import { entriesAboutPerson, journalSnippet } from '../utils/journal';
+import type { JournalKind } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { TaskEditor } from '../components/TaskEditor';
@@ -135,6 +141,18 @@ export function PersonDetailScreen() {
       .sort((a, b) => Number(a.completed) - Number(b.completed) || a.sortOrder - b.sortOrder),
     [allProjects, personId],
   );
+  // Journal and dream entries that name this person (JournalEntry.personIds),
+  // newest first. A list and no count: how often somebody is written about is
+  // not a measure of them. Behind the journal lock like every reader of the
+  // words, and a sealed note is left out (openEntries via entriesAboutPerson).
+  const journalEntries = useJournalStore(s => s.entries);
+  const { locked: journalLocked, unlock: unlockJournal } = useJournalAccess();
+  const pages = useMemo(
+    () => entriesAboutPerson(journalEntries, personId, dayKeyOf(getCurrentDayStart())),
+    [journalEntries, personId],
+  );
+  const [pageDay, setPageDay] = useState<{ dayKey: string; kind: JournalKind } | null>(null);
+  const [pageOpen, setPageOpen] = useState(false);
   const history = useMemo(() => personHistory(tasks), [tasks]);
   const upcoming = useMemo(() => personUpcoming(tasks), [tasks]);
 
@@ -545,6 +563,45 @@ export function PersonDetailScreen() {
           </>
         )}
 
+        {pages.length > 0 && (
+          <>
+            <Text style={styles.groupLabel}>IN YOUR WRITING</Text>
+            <View style={styles.card}>
+              {journalLocked ? (
+                <TouchableOpacity
+                  style={styles.entryRow}
+                  onPress={() => { haptics.tap(); unlockJournal(); }}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel="Unlock your journal to see what you wrote about them"
+                >
+                  <Ionicons name="lock-closed-outline" size={14} color={colors.textSecondary} />
+                  <Text style={styles.entryTitle}>Unlock your journal to read these</Text>
+                  <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+                </TouchableOpacity>
+              ) : (
+                pages.map((entry, i) => (
+                  <View key={entry.id}>
+                    {i > 0 && <View style={styles.sep} />}
+                    <TouchableOpacity
+                      style={styles.entryRow}
+                      onPress={() => { haptics.tap(); setPageDay({ dayKey: entry.dayKey, kind: entry.kind }); setPageOpen(true); }}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${entry.kind === 'dream' ? 'Dream' : 'Journal'} from ${format(new Date(`${entry.dayKey}T12:00:00`), 'MMMM d, yyyy')}: ${journalSnippet(entry.text)}`}
+                    >
+                      <Ionicons name={entry.kind === 'dream' ? 'cloudy-night-outline' : 'book-outline'} size={14} color={colors.accent} />
+                      <Text style={styles.entryTitle} numberOfLines={2}>{journalSnippet(entry.text, 100)}</Text>
+                      <Text style={styles.entryDate}>{format(new Date(`${entry.dayKey}T12:00:00`), 'MMM d, yyyy')}</Text>
+                      <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+                    </TouchableOpacity>
+                  </View>
+                ))
+              )}
+            </View>
+          </>
+        )}
+
         <Text style={styles.groupLabel}>TOGETHER</Text>
         {history.length === 0 ? (
           <View style={styles.card}>
@@ -685,6 +742,13 @@ export function PersonDetailScreen() {
         note={noteSheet?.note ?? null}
         initialKind={noteSheet?.kind ?? 'note'}
         onClose={() => setNoteSheet(null)}
+      />
+      <JournalDaySheet
+        visible={pageOpen}
+        kind={pageDay?.kind ?? 'journal'}
+        dayKey={pageDay?.dayKey ?? null}
+        onEdit={entry => { setPageOpen(false); navigateToTab(entry.kind === 'dream' ? 'Dreams' : 'Journal'); }}
+        onClose={() => setPageOpen(false)}
       />
       <ScrollToTopButton {...scrollTop.buttonProps} />
     </View>

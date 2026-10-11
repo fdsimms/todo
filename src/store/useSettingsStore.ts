@@ -11,7 +11,7 @@ import {
   type WeightGoal,
 } from '../utils/weightGoal';
 import { parseSleepGoal } from '../utils/sleepLog';
-import { parseJournalWordGoal } from '../utils/journal';
+import { parseJournalWordGoal, parseJournalCustomPrompts, cleanJournalPrompts } from '../utils/journal';
 import {
   parseWaterExerciseBoost,
   serializeWaterExerciseBoost,
@@ -1149,6 +1149,8 @@ interface SettingsStore {
   sleepGoalMinutes: number | null;
   /** Words a journal day is read against, or null for no goal. */
   journalWordGoal: number | null;
+  /** The person's own writing prompts, offered before the built-in ones. */
+  journalCustomPrompts: string[];
 
   /**
    * A minutes-of-exercise threshold and a millilitre amount: on a day today's
@@ -2003,6 +2005,7 @@ interface SettingsStore {
   /** Sets the sleep goal in minutes, or clears it with null. */
   setSleepGoalMinutes: (minutes: number | null) => void;
   setJournalWordGoal: (words: number | null) => void;
+  setJournalCustomPrompts: (prompts: string[]) => void;
   /** Sets the water exercise boost, or clears it with null. */
   setWaterExerciseBoost: (boost: WaterExerciseBoost | null) => void;
   setActiveEnergyBoost: (boost: ActiveEnergyBoost | null) => void;
@@ -2777,6 +2780,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   weightGoal: null,
   sleepGoalMinutes: null,
   journalWordGoal: null,
+  journalCustomPrompts: [],
   waterExerciseBoost: null,
   activeEnergyBoost: null,
   bodyProfile: { ...EMPTY_BODY_PROFILE },
@@ -3164,6 +3168,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const weightGoal = parseWeightGoal(dbGetSetting('weightGoal'));
     const sleepGoalMinutes = parseSleepGoal(dbGetSetting('sleepGoalMinutes'));
     const journalWordGoal = parseJournalWordGoal(dbGetSetting('journalWordGoal'));
+    const journalCustomPrompts = parseJournalCustomPrompts(dbGetSetting('journalCustomPrompts'));
     const waterExerciseBoost = parseWaterExerciseBoost(dbGetSetting('waterExerciseBoost'));
     const activeEnergyBoost = parseActiveEnergyBoost(dbGetSetting('activeEnergyBoost'));
     const bodyProfile = parseBodyProfile(dbGetSetting('bodyProfile'));
@@ -3590,6 +3595,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       hideListPreviews,
       holidaySet,
       householdServings,
+      journalCustomPrompts,
       journalLockEnabled,
       journalLogLastDayKey,
       journalLogTaskCategory,
@@ -5194,6 +5200,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const value = words === null ? null : parseJournalWordGoal(String(words));
     dbSetSetting('journalWordGoal', value === null ? '' : String(value));
     set({ journalWordGoal: value });
+  },
+
+  setJournalCustomPrompts(prompts: string[]) {
+    const value = cleanJournalPrompts(prompts);
+    dbSetSetting('journalCustomPrompts', JSON.stringify(value));
+    set({ journalCustomPrompts: value });
   },
 
   setWaterExerciseBoost(boost: WaterExerciseBoost | null) {

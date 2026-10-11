@@ -157,6 +157,64 @@ leave it out.
   and a dream is about last night, so the row shows for neither. Opening early is the only change
   to `openOn` after it's written, and it only ever clears it.
 
+## Tags and people
+
+An entry can carry `tags` (labels the person typed) and `personIds` (people it is about), both
+JSON-array columns (`tags`, `person_ids`) that sync like the rest of the row. Both are chosen,
+never detected, which is what keeps them inside the "nothing is derived" rule.
+
+- **Tags are listed A to Z, not by use** (`journalTagsIn`): ordering them by how often they appear
+  would rank the person's own labels against each other. Case is kept as typed, and two tags that
+  differ only by case are one (`journalTagKey`). The vocabulary the sheet offers is built from
+  open entries only, so a sealed note's labels aren't shown before its day.
+- **A tap on a tag on an entry narrows the list to it**, with the active tag as a removable pill
+  under the search field, rather than a row of chips to scroll.
+- **A person's page lists the entries about them** (`entriesAboutPerson`), newest first and with
+  no count, behind the journal lock (`useJournalAccess`) and through `openEntries`. A deleted
+  person's id stays on the entry and reads as nobody; the export skips it.
+- **Editing is `setEntryMeta`**, separate from `updateEntry` (which refuses an unchanged text).
+
+## Reading it back: on this day, the month, a random page
+
+`onThisDay` finds the same month and day in earlier years (a Feb 29 page appears only on a Feb 29)
+and the Journal shows it as a card at the top of the list. `daysWrittenInMonth` fills the month
+grid (`JournalMonthSheet`), where a day with nothing on it is plain and untappable, never "missed".
+`randomJournalDay` draws from the days written and leaves today out while anything older exists.
+A tapped day or a random one opens `JournalDaySheet`. All three go through `openEntries`.
+
+## Drafts
+
+A new entry's unsaved words are kept per kind in the settings table (`journalDraft_<kind>`,
+`src/utils/journalDraft.ts`), written 600ms after typing pauses and cleared on save and on Discard.
+It is not synced, and the sheet that shows it sits behind the journal lock, so it is as exposed
+as the entries themselves. An edit has no draft. A Cancel that discards still asks first; the draft
+is for an interruption (a crash, a call, the system reclaiming the app), not a way round that.
+
+## Your own prompts
+
+`journalCustomPrompts` (Settings › Health › Journal) are offered before the built-in
+`JOURNAL_PROMPTS` when "Suggest a prompt" is tapped, up to 20. Device-local, like the draft:
+a prompt can be personal ("what am I not telling Sam?") and is not on the synced-settings allowlist.
+
+## Hide until: shortcuts
+
+`sealShortcuts` offers a month, six months, a year and New Year's Day beside the date picker. There
+is no "on my birthday": the app doesn't hold the person's own birthday, only other people's.
+
+## Saying a dream to Siri
+
+`LogDreamIntent` queues `{ text, at }` in the App Group and the app writes it as a dream on the
+next foreground (`docs/native-targets.md`). It can only add: nothing reads the journal, and the app
+navigates nowhere, so the Face ID lock is untouched. The queue file holds the words in plain
+text until the app drains it, the same as a task title queued by `AddTaskIntent`. Saying one for
+today answers that day's dream reminder.
+
+## Markdown export
+
+The share action offers Markdown beside CSV (`journalExportMarkdown`): a heading per day, each
+entry under its time, oldest first. The entry's own text goes out as typed, with its `#` headings
+pushed down two levels to stay under the day's. Tags and people are a line under the entry.
+
 ## Word counts and a word goal
 
 `countWords` (`journal.ts`) counts the words as `JournalText` draws them, so a

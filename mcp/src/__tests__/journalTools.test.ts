@@ -4,7 +4,7 @@
  */
 import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
-import { deleteJournalEntry, listJournalEntries, logJournalEntry, updateJournalEntry } from '../journalTools';
+import { deleteJournalEntry, listJournalEntries, logJournalEntry, searchJournalEntries, updateJournalEntry } from '../journalTools';
 
 let mockRaw: ShimDatabase;
 
@@ -61,14 +61,14 @@ describe('the journal tools', () => {
 
   it('refuses blank text, and an unknown id', () => {
     expect(() => logJournalEntry(replica, { kind: 'journal', text: '  ' })).toThrow(/needs some text/);
-    expect(() => updateJournalEntry(replica, 'nope', 'x')).toThrow(/No journal or dream entry/);
+    expect(() => updateJournalEntry(replica, 'nope', { text: 'x' })).toThrow(/No journal or dream entry/);
     expect(() => deleteJournalEntry(replica, 'nope')).toThrow(/No journal or dream entry/);
   });
 
   it('changes the words and deletes', () => {
     const { entry } = logJournalEntry(replica, { kind: 'journal', text: 'First' });
-    expect(updateJournalEntry(replica, entry.id, 'Second').entry.text).toBe('Second');
-    expect(() => updateJournalEntry(replica, entry.id, '  ')).toThrow(/delete it instead/);
+    expect(updateJournalEntry(replica, entry.id, { text: 'Second' }).entry.text).toBe('Second');
+    expect(() => updateJournalEntry(replica, entry.id, { text: '  ' })).toThrow(/delete it instead/);
     expect(deleteJournalEntry(replica, entry.id).deleted.id).toBe(entry.id);
     expect(listJournalEntries(replica).entries).toEqual([]);
   });
@@ -81,7 +81,41 @@ describe('the journal tools', () => {
     );
     replica.refresh();
     expect(listJournalEntries(replica)).toMatchObject({ entries: [{ id: entry.id }], sealedNotes: 1 });
-    expect(() => updateJournalEntry(replica, 'sealed', 'x')).toThrow(/sealed until 2999-01-01/);
+    expect(() => updateJournalEntry(replica, 'sealed', { text: 'x' })).toThrow(/sealed until 2999-01-01/);
     expect(() => deleteJournalEntry(replica, 'sealed')).toThrow(/sealed until/);
+  });
+
+  it('writes tags and people, lists them, and filters by either', () => {
+    const a = logJournalEntry(replica, { kind: 'journal', text: 'Dinner with Sam', tags: [' work ', 'Work', 'family'], personIds: ['p1', 'p1'] }).entry;
+    logJournalEntry(replica, { kind: 'journal', text: 'Alone' });
+    expect(a.tags).toEqual(['work', 'family']);
+    expect(a.personIds).toEqual(['p1']);
+    expect(listJournalEntries(replica, { tag: 'WORK' }).entries.map(e => e.id)).toEqual([a.id]);
+    expect(listJournalEntries(replica, { personId: 'p1' }).entries.map(e => e.id)).toEqual([a.id]);
+    expect(listJournalEntries(replica).entries.find(e => e.id !== a.id)).not.toHaveProperty('tags');
+  });
+
+  it('changes tags alone without touching the words, and refuses an empty change', () => {
+    const { entry } = logJournalEntry(replica, { kind: 'journal', text: 'Keep me', tags: ['a'] });
+    const changed = updateJournalEntry(replica, entry.id, { tags: ['b'] }).entry;
+    expect(changed).toMatchObject({ text: 'Keep me', tags: ['b'] });
+    expect(updateJournalEntry(replica, entry.id, { tags: [] }).entry.tags).toBeUndefined();
+    expect(() => updateJournalEntry(replica, entry.id, {})).toThrow(/Nothing to change/);
+  });
+
+  it('searches every word, newest first, never a sealed note, and says when it truncated', () => {
+    logJournalEntry(replica, { kind: 'journal', text: 'Blue bicycle ride', at: '2026-01-02' });
+    logJournalEntry(replica, { kind: 'dream', text: 'A blue door', at: '2026-02-03' });
+    logJournalEntry(replica, { kind: 'journal', text: 'Red bicycle', at: '2026-03-04' });
+    mockRaw.runSync(
+      "INSERT INTO journal_entries (id, kind, logged_at, day_key, text, open_on) VALUES ('sealed', 'journal', ?, ?, 'blue secret', '2999-01-01')",
+      [new Date().toISOString(), replica.todayKey()],
+    );
+    replica.refresh();
+    expect(searchJournalEntries(replica, { query: 'blue' }).entries.map(e => e.text)).toEqual(['A blue door', 'Blue bicycle ride']);
+    expect(searchJournalEntries(replica, { query: 'bicycle blue' }).entries.map(e => e.text)).toEqual(['Blue bicycle ride']);
+    expect(searchJournalEntries(replica, { query: 'blue', kind: 'dream' }).total).toBe(1);
+    expect(searchJournalEntries(replica, { query: 'blue', from: '2026-02-01', to: '2026-12-31' }).entries).toHaveLength(1);
+    expect(searchJournalEntries(replica, { query: 'bicycle', limit: 1 })).toMatchObject({ total: 2, truncated: true });
   });
 });

@@ -91,3 +91,38 @@ describe('removeEntry', () => {
     expect(dbDeleteJournalEntry).toHaveBeenCalledWith(entry.id);
   });
 });
+
+describe('tags and people', () => {
+  it('stores cleaned tags and people on a new entry', () => {
+    const entry = state().addEntry('journal', 'Dinner', undefined, null, {
+      tags: [' work ', 'Work', 'home'],
+      personIds: ['p1', 'p1', ''],
+    })!;
+    expect(entry.tags).toEqual(['work', 'home']);
+    expect(entry.personIds).toEqual(['p1']);
+    expect(dbInsertJournalEntry).toHaveBeenCalledWith(entry);
+  });
+
+  it('gives an entry with none empty lists, not undefined', () => {
+    const entry = state().addEntry('journal', 'Plain')!;
+    expect(entry.tags).toEqual([]);
+    expect(entry.personIds).toEqual([]);
+  });
+
+  it('replaces only what setEntryMeta is given, and writes it', () => {
+    const entry = state().addEntry('journal', 'Dinner', undefined, null, { tags: ['a'], personIds: ['p1'] })!;
+    (dbUpdateJournalEntry as jest.Mock).mockClear();
+    state().setEntryMeta(entry.id, { tags: ['b', 'B'] });
+    const next = state().entries[0];
+    expect(next).toMatchObject({ text: 'Dinner', tags: ['b'], personIds: ['p1'] });
+    expect(dbUpdateJournalEntry).toHaveBeenCalledWith(next);
+    state().setEntryMeta(entry.id, { personIds: [] });
+    expect(state().entries[0].personIds).toEqual([]);
+    expect(state().entries[0].tags).toEqual(['b']);
+  });
+
+  it('ignores an unknown id', () => {
+    state().setEntryMeta('nope', { tags: ['x'] });
+    expect(dbUpdateJournalEntry).not.toHaveBeenCalled();
+  });
+});

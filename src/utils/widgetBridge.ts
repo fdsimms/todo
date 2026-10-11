@@ -55,6 +55,11 @@ export interface WidgetBridge {
    */
   writeMedicationIndex?: (jsonString: string) => Promise<boolean>;
   drainPendingDoses?: () => Promise<string>;
+  /**
+   * Dreams queued by LogDreamIntent (`{ text, at }` as JSON) — see
+   * dreamQueue.ts. Optional for the reason the dose drain is.
+   */
+  drainPendingDreams?: () => Promise<string>;
   drainSharedLinks: () => Promise<string[]>;
   syncTimerLiveActivities: (jsonString: string) => Promise<boolean>;
   syncTripLiveActivity: (jsonString: string) => Promise<boolean>;

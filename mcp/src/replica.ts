@@ -1100,8 +1100,8 @@ export interface Replica {
    * text is refused as the sheet refuses it, and an entry's day is fixed once
    * written, as in the app.
    */
-  addJournalEntry(kind: JournalKind, text: string, at?: Date): JournalEntry;
-  updateJournalEntry(id: string, text: string): JournalEntry;
+  addJournalEntry(kind: JournalKind, text: string, at?: Date, meta?: { tags?: string[]; personIds?: string[] }): JournalEntry;
+  updateJournalEntry(id: string, change: { text?: string; tags?: string[]; personIds?: string[] }): JournalEntry;
   deleteJournalEntry(id: string): JournalEntry;
   /**
    * Finished focus sessions, newest first: `focus_session_log`, what Stats
@@ -3745,23 +3745,28 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return db.dbGetAllJournalEntries()
         .filter(e => e.dayKey >= fromDayKey && e.dayKey <= toDayKey && (!kind || e.kind === kind));
     },
-    addJournalEntry(kind: JournalKind, text: string, at?: Date): JournalEntry {
+    addJournalEntry(kind: JournalKind, text: string, at?: Date, meta?: { tags?: string[]; personIds?: string[] }): JournalEntry {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { useJournalStore } = require('../../src/store/useJournalStore') as typeof import('../../src/store/useJournalStore');
       const store = useJournalStore.getState();
       store.initialize();
-      const entry = store.addEntry(kind, text, at);
+      const entry = store.addEntry(kind, text, at, null, meta);
       if (!entry) throw new Error('An entry needs some text.');
       return entry;
     },
-    updateJournalEntry(id: string, text: string): JournalEntry {
+    updateJournalEntry(id: string, change: { text?: string; tags?: string[]; personIds?: string[] }): JournalEntry {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { useJournalStore } = require('../../src/store/useJournalStore') as typeof import('../../src/store/useJournalStore');
       const store = useJournalStore.getState();
       store.initialize();
       if (!store.entries.some(e => e.id === id)) throw new Error(`No journal or dream entry with id ${id}. list_journal_entries names them.`);
-      if (!text.trim()) throw new Error('An entry needs some text. To remove it, delete it instead.');
-      store.updateEntry(id, text);
+      if (change.text !== undefined) {
+        if (!change.text.trim()) throw new Error('An entry needs some text. To remove it, delete it instead.');
+        store.updateEntry(id, change.text);
+      }
+      if (change.tags !== undefined || change.personIds !== undefined) {
+        store.setEntryMeta(id, { tags: change.tags, personIds: change.personIds });
+      }
       return useJournalStore.getState().entries.find(e => e.id === id)!;
     },
     deleteJournalEntry(id: string): JournalEntry {

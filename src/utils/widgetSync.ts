@@ -31,6 +31,8 @@ import { buildMedicationIndex, parseQueuedDoses, resolveQueuedDoseName } from '.
 import { repeatDose } from './medicationLog';
 import { recordDose } from './doseRecording';
 import { haptics } from './haptics';
+import { parseQueuedDreams } from './dreamQueue';
+import { useJournalStore } from '../store/useJournalStore';
 
 const DEBOUNCE_MS = 300;
 
@@ -174,6 +176,36 @@ async function processPendingDoses(): Promise<void> {
     haptics.success();
   } catch {
     // A build predating drainPendingDoses — no-op.
+  }
+}
+
+// Dreams said to Siri or the Action Button (LogDreamIntent): written into the
+// dream log, filed under the day they were said. Silent on arrival, like the
+// task capture: no navigation, so the journal lock stays closed. Saying one
+// also answers today's "write down a dream" reminder, as saving it in the
+// sheet does. Written through the store's own addEntry, which refuses blank
+// text, so a malformed record costs nothing.
+async function processPendingDreams(): Promise<void> {
+  const bridge = widgetBridge();
+  // Optional on the bridge: a binary built before the intent has no drain.
+  if (!bridge?.drainPendingDreams) return;
+  try {
+    const queued = parseQueuedDreams(await bridge.drainPendingDreams());
+    if (queued.length === 0) return;
+    const journal = useJournalStore.getState();
+    // The store loads with the task store at startup; a drain that beats it
+    // would otherwise sort the new row into an empty list.
+    if (!journal.initialized) journal.initialize();
+    let wroteToday = false;
+    for (const dream of queued) {
+      const entry = useJournalStore.getState().addEntry('dream', dream.text, dream.at ?? undefined);
+      if (entry && dream.at === null) wroteToday = true;
+      if (entry && dream.at !== null && getLogicalDayKey(dream.at) === getLogicalDayKey(new Date())) wroteToday = true;
+    }
+    if (wroteToday) useTaskStore.getState().completeJournalTaskForToday('dream');
+    haptics.success();
+  } catch {
+    // A build predating drainPendingDreams — no-op.
   }
 }
 
@@ -481,6 +513,7 @@ export function useWidgetSync(): void {
       processPendingAddTasks(),
       processPendingDisposals(),
       processPendingDoses(),
+      processPendingDreams(),
       processQuietWidgetTaps(),
     ]).finally(() => {
       // Deferred rather than called synchronously during mount — avoids
@@ -503,6 +536,7 @@ export function useWidgetSync(): void {
           processPendingAddTasks(),
           processPendingDisposals(),
           processPendingDoses(),
+          processPendingDreams(),
           processQuietWidgetTaps(),
         ]).finally(scheduleSnapshotWrite);
       }

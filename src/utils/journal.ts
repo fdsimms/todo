@@ -7,9 +7,11 @@
  */
 
 import { format } from 'date-fns/format';
+import { addMonths } from 'date-fns/addMonths';
+import { addYears } from 'date-fns/addYears';
 import type { JournalEntry, JournalKind, TaskDraft } from '../types';
 import { textMatchesQuery } from './moodHistory';
-import { parseJournalMarkdown } from './journalMarkdown';
+import { journalPlainText, parseJournalMarkdown } from './journalMarkdown';
 
 /**
  * Whether a note to your future self is still sealed on `todayKey`, the
@@ -214,6 +216,174 @@ export function daysReachingWordGoal(
   return days;
 }
 
+// ==== Reading back: on this day, the month, a random page ====
+
+/** Earlier years' pages for one calendar day, newest year first. */
+export interface OnThisDay {
+  dayKey: string;
+  /** Whole years before today, always at least 1. */
+  yearsAgo: number;
+  entries: JournalEntry[];
+}
+
+/**
+ * The same month and day in earlier years that carry an entry of `kind`.
+ * Only a day that has something on it appears, so a year with nothing written
+ * is absent rather than a blank to explain. Sealed notes are left out here
+ * (`openEntries`), since this is a reader like any other. Feb 29 turns up
+ * only on a Feb 29.
+ */
+export function onThisDay(entries: readonly JournalEntry[], kind: JournalKind, todayKey: string): OnThisDay[] {
+  const monthDay = todayKey.slice(5);
+  const year = Number(todayKey.slice(0, 4));
+  const days = groupJournalByDay(
+    openEntries(entriesOfKind(entries, kind), todayKey).filter(e => e.dayKey.slice(5) === monthDay && e.dayKey < todayKey),
+  );
+  return days.map(d => ({ dayKey: d.dayKey, yearsAgo: year - Number(d.dayKey.slice(0, 4)), entries: d.entries }));
+}
+
+/** The days of `monthPrefix` (`2026-10`) that carry an open entry of `kind`. */
+export function daysWrittenInMonth(
+  entries: readonly JournalEntry[],
+  kind: JournalKind,
+  monthPrefix: string,
+  todayKey: string,
+): Set<string> {
+  return new Set(
+    openEntries(entriesOfKind(entries, kind), todayKey)
+      .filter(e => e.dayKey.startsWith(monthPrefix))
+      .map(e => e.dayKey),
+  );
+}
+
+/**
+ * A page to reread, chosen by chance from the days that have one. `random` is
+ * a parameter so a test pins it. Null when nothing is written. Today is left
+ * out when there is anything older, since a page you wrote an hour ago is not
+ * one you have forgotten.
+ */
+export function randomJournalDay(
+  entries: readonly JournalEntry[],
+  kind: JournalKind,
+  todayKey: string,
+  random: () => number = Math.random,
+): string | null {
+  const days = [...new Set(openEntries(entriesOfKind(entries, kind), todayKey).map(e => e.dayKey))].sort();
+  const older = days.filter(d => d !== todayKey);
+  const pool = older.length > 0 ? older : days;
+  if (pool.length === 0) return null;
+  return pool[Math.min(pool.length - 1, Math.floor(random() * pool.length))];
+}
+
+/** The start of an entry as plain text, cut at a word, for a line that previews it. */
+export function journalSnippet(text: string, max = 140): string {
+  const plain = journalPlainText(text).replace(/\s+/g, ' ').trim();
+  if (plain.length <= max) return plain;
+  const cut = plain.slice(0, max);
+  const lastSpace = cut.lastIndexOf(' ');
+  return `${(lastSpace > max / 2 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
+}
+
+// ==== Tags and people ====
+
+/** The longest a tag may be, and how many one entry may carry. */
+export const JOURNAL_TAG_MAX_LENGTH = 24;
+export const JOURNAL_TAGS_PER_ENTRY = 8;
+
+/**
+ * A typed tag as stored: trimmed, inner whitespace collapsed, cut to length.
+ * Null when nothing is left. Case is kept as typed; two tags that differ only
+ * by case are one tag everywhere they are compared (`journalTagKey`).
+ */
+export function normalizeJournalTag(raw: string): string | null {
+  const tag = raw.trim().replace(/^#+/, '').replace(/\s+/g, ' ').trim().slice(0, JOURNAL_TAG_MAX_LENGTH).trim();
+  return tag.length > 0 ? tag : null;
+}
+
+export function journalTagKey(tag: string): string {
+  return tag.toLowerCase();
+}
+
+/** A list of typed tags as stored: normalized, de-duplicated, capped, in the order given. */
+export function cleanJournalTags(raw: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of raw) {
+    const tag = normalizeJournalTag(item);
+    if (!tag || seen.has(journalTagKey(tag))) continue;
+    seen.add(journalTagKey(tag));
+    out.push(tag);
+    if (out.length === JOURNAL_TAGS_PER_ENTRY) break;
+  }
+  return out;
+}
+
+/**
+ * Every tag in use on `kind`, A to Z. Alphabetical on purpose: ordering by how
+ * often a tag is used would rank the person's own labels against each other.
+ * The first spelling met is the one shown.
+ */
+export function journalTagsIn(entries: readonly JournalEntry[], kind: JournalKind): string[] {
+  const byKey = new Map<string, string>();
+  for (const e of entries) {
+    if (e.kind !== kind) continue;
+    for (const tag of e.tags ?? []) if (!byKey.has(journalTagKey(tag))) byKey.set(journalTagKey(tag), tag);
+  }
+  return [...byKey.values()].sort((a, b) => a.localeCompare(b));
+}
+
+/** The entries carrying `tag`, in the order given. */
+export function entriesWithTag(entries: readonly JournalEntry[], tag: string): JournalEntry[] {
+  const key = journalTagKey(tag);
+  return entries.filter(e => (e.tags ?? []).some(t => journalTagKey(t) === key));
+}
+
+/**
+ * Open entries naming `personId`, newest first: the pages listed on a
+ * person's page. A list and no more; there is no count of "how often" and no
+ * order but time.
+ */
+export function entriesAboutPerson(
+  entries: readonly JournalEntry[],
+  personId: string,
+  todayKey: string,
+): JournalEntry[] {
+  return openEntries(entries, todayKey)
+    .filter(e => (e.personIds ?? []).includes(personId))
+    .sort((a, b) => b.loggedAt.localeCompare(a.loggedAt));
+}
+
+/** A list of person ids as stored: de-duplicated, in the order given. */
+export function cleanPersonIds(raw: readonly string[]): string[] {
+  return [...new Set(raw.filter(id => id.length > 0))];
+}
+
+// ==== Hide until: shortcuts ====
+
+export interface SealShortcut {
+  label: string;
+  dayKey: string;
+}
+
+/**
+ * Quick answers for "Hide until", worked from the logical today so a 1am
+ * entry under a 2am reset counts from yesterday's date. Always later than
+ * `todayKey`, which is what a seal needs.
+ */
+export function sealShortcuts(todayKey: string): SealShortcut[] {
+  const today = new Date(`${todayKey}T12:00:00`);
+  const key = (d: Date) => format(d, 'yyyy-MM-dd');
+  const newYear = new Date(today.getFullYear() + 1, 0, 1, 12);
+  return [
+    { label: 'In a month', dayKey: key(addMonths(today, 1)) },
+    { label: 'In 6 months', dayKey: key(addMonths(today, 6)) },
+    { label: 'In a year', dayKey: key(addYears(today, 1)) },
+    { label: 'New Year’s Day', dayKey: key(newYear) },
+  ];
+}
+
+// ==== Prompts ====
+
 /**
  * Questions the journal sheet can offer over an empty page.
  *
@@ -234,10 +404,47 @@ export const JOURNAL_PROMPTS: readonly string[] = [
   'What are you grateful for right now?',
 ];
 
-/** The prompt at `index`, wrapping, so a caller can step through them with a counter. */
-export function journalPromptAt(index: number): string {
-  const n = JOURNAL_PROMPTS.length;
-  return JOURNAL_PROMPTS[((index % n) + n) % n];
+/** The most prompts a person can add, and the longest one. */
+export const JOURNAL_CUSTOM_PROMPTS_MAX = 20;
+export const JOURNAL_CUSTOM_PROMPT_MAX_LENGTH = 120;
+
+/** The stored setting (a JSON array of strings) back to the person's own prompts. */
+export function parseJournalCustomPrompts(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? cleanJournalPrompts(parsed.filter((p): p is string => typeof p === 'string')) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Typed prompts as stored: trimmed, blanks and repeats dropped, capped. */
+export function cleanJournalPrompts(raw: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of raw) {
+    const prompt = item.replace(/\s+/g, ' ').trim().slice(0, JOURNAL_CUSTOM_PROMPT_MAX_LENGTH).trim();
+    if (!prompt || seen.has(prompt.toLowerCase())) continue;
+    seen.add(prompt.toLowerCase());
+    out.push(prompt);
+    if (out.length === JOURNAL_CUSTOM_PROMPTS_MAX) break;
+  }
+  return out;
+}
+
+/** The person's own prompts first, then the built-in ones. */
+export function journalPromptList(custom: readonly string[] = []): readonly string[] {
+  return custom.length > 0 ? [...custom, ...JOURNAL_PROMPTS] : JOURNAL_PROMPTS;
+}
+
+/**
+ * The prompt at `index` in `prompts`, wrapping, so a caller can step through
+ * them with a counter.
+ */
+export function journalPromptAt(index: number, prompts: readonly string[] = JOURNAL_PROMPTS): string {
+  const n = prompts.length;
+  return prompts[((index % n) + n) % n];
 }
 
 /** What a screen and its sheet call one kind. */

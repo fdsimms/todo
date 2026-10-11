@@ -1952,6 +1952,18 @@ export interface JournalEntry {
    * reader uses. Optional so a row or fixture from before it reads as open.
    */
   openOn?: string | null;
+  /**
+   * Labels the person put on the entry ("recurring", "work"). Typed by them
+   * and never detected from the words, so the app still derives nothing from
+   * what was written. Optional so a row from before tags reads as untagged.
+   */
+  tags?: string[];
+  /**
+   * The people the entry is about (`Person.id`), picked by the person. The
+   * person's page lists these entries and nothing more: a count of pages is
+   * not a ranking. Optional so an older row reads as about nobody.
+   */
+  personIds?: string[];
 }
 
 /**

@@ -2118,6 +2118,9 @@ function runInitDatabase(): void {
     // Null on every existing entry: all of them were open when written. See
     // JournalEntry.openOn.
     'ALTER TABLE journal_entries ADD COLUMN open_on TEXT',
+    // JournalEntry.tags / JournalEntry.personIds: JSON arrays of strings.
+    'ALTER TABLE journal_entries ADD COLUMN tags TEXT',
+    'ALTER TABLE journal_entries ADD COLUMN person_ids TEXT',
     'CREATE INDEX IF NOT EXISTS idx_meter_readings_key ON meter_readings(meter_key, read_at)',
     // Off on every existing project: Today keeps its category sections until
     // a project asks for a band of its own. See Project.groupOnToday.
@@ -6904,6 +6907,8 @@ function rowToJournalEntry(row: Record<string, unknown>): JournalEntry {
     dayKey: row.day_key as string,
     text: row.text as string,
     openOn: typeof row.open_on === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(row.open_on) ? row.open_on : null,
+    tags: parseStringList(row.tags),
+    personIds: parseStringList(row.person_ids),
   };
 }
 
@@ -6920,17 +6925,28 @@ export function dbGetAllJournalEntries(): JournalEntry[] {
 
 export function dbInsertJournalEntry(entry: JournalEntry): void {
   db.runSync(
-    'INSERT INTO journal_entries (id, kind, logged_at, day_key, text, open_on) VALUES (?, ?, ?, ?, ?, ?)',
-    [entry.id, entry.kind, entry.loggedAt, entry.dayKey, entry.text, entry.openOn ?? null]
+    'INSERT INTO journal_entries (id, kind, logged_at, day_key, text, open_on, tags, person_ids) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    [
+      entry.id, entry.kind, entry.loggedAt, entry.dayKey, entry.text, entry.openOn ?? null,
+      entry.tags?.length ? JSON.stringify(entry.tags) : null,
+      entry.personIds?.length ? JSON.stringify(entry.personIds) : null,
+    ]
   );
 }
 
 /**
- * Only the words and the day it opens change: an entry's day is fixed once
- * written, as a mood entry's is. `openOn` only ever clears here (opened early).
+ * The words, the tags, the people and the day it opens change: an entry's day
+ * is fixed once written, as a mood entry's is. `openOn` only ever clears here
+ * (opened early).
  */
 export function dbUpdateJournalEntry(entry: JournalEntry): void {
-  db.runSync('UPDATE journal_entries SET text=?, open_on=? WHERE id=?', [entry.text, entry.openOn ?? null, entry.id]);
+  db.runSync('UPDATE journal_entries SET text=?, open_on=?, tags=?, person_ids=? WHERE id=?', [
+    entry.text,
+    entry.openOn ?? null,
+    entry.tags?.length ? JSON.stringify(entry.tags) : null,
+    entry.personIds?.length ? JSON.stringify(entry.personIds) : null,
+    entry.id,
+  ]);
 }
 
 export function dbDeleteJournalEntry(id: string): void {

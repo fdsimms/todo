@@ -1,6 +1,7 @@
 import { addDays } from 'date-fns/addDays';
 import { addMonths } from 'date-fns/addMonths';
 import { subDays } from 'date-fns/subDays';
+import { subYears } from 'date-fns/subYears';
 import { subHours } from 'date-fns/subHours';
 import { setHours } from 'date-fns/setHours';
 import { useTaskStore } from '../store/useTaskStore';
@@ -1951,6 +1952,7 @@ export function seedDemoData(): void {
   });
   useSettingsStore.getState().setSleepGoalMinutes(450);
   useSettingsStore.getState().setJournalWordGoal(25);
+  useSettingsStore.getState().setJournalCustomPrompts(['What am I avoiding this week?']);
 
   // The snack suggestion, seeded directly because `reconcileSnackNudge` refuses
   // in demo mode (a pass that judges the clock and the food log would delete
@@ -3108,16 +3110,26 @@ function seedJournal(today: Date): void {
     d.setHours(hour, 0, 0, 0);
     return d;
   };
-  addEntry('journal', 'Deadline is close. Made a list of what is actually left and it is shorter than it felt.', at(10, 21));
+  // Tags are labels the person typed, and an entry can name who it is about
+  // (people are seeded first, so they can be found by name).
+  const gideon = usePersonStore.getState().people.find(p => p.name === 'Gideon');
+  addEntry('journal', 'Deadline is close. Made a list of what is actually left and it is shorter than it felt.', at(10, 21), null, { tags: ['work'] });
+  // The same day last year, so the Journal's "On this day" card has a page.
+  const lastYear = subYears(today, 1);
+  lastYear.setHours(20, 0, 0, 0);
+  addEntry('journal', 'Cold walk after dinner. Trying to write something down every night this month.', lastYear);
   // Formatted, so the light Markdown the journal draws has something to show.
   addEntry('journal', '# Slow Saturday\nSlept in, then a **long** walk by the river.\n- Call Mom\n- Start the next book', at(4, 18));
-  addEntry('journal', 'Good meeting this morning. Want to remember to thank Sam for covering on Friday.', at(1, 9));
+  addEntry('journal', 'Good meeting this morning. Want to remember to thank Sam for covering on Friday.', at(1, 9), null, {
+    tags: ['work'],
+    personIds: gideon ? [gideon.id] : [],
+  });
   // Two more on the same day, so the Journal shows a day written in snippets
   // (what the part-of-day reminders ask for) drawn as one page.
   addEntry('journal', 'Lunch outside for once. Got the report draft over to Priya.', at(1, 13));
   addEntry('journal', 'Quiet evening. Pasta, then an hour of the new book.', at(1, 20));
   addEntry('dream', 'Walking along a beach I did not recognize, looking for a train station.', at(15, 7));
-  addEntry('dream', 'Missing a meeting I could not find the room for. Woke up twice.', at(9, 7));
+  addEntry('dream', 'Missing a meeting I could not find the room for. Woke up twice.', at(9, 7), null, { tags: ['recurring'] });
   // A note to your future self, sealed for three months (JournalEntry.openOn):
   // the Journal shows it only as "1 note for later", and its reminder waits in
   // Later for the day it opens.

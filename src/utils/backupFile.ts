@@ -81,6 +81,15 @@ export async function shareCsvFile(uri: string, dialogTitle: string): Promise<vo
   });
 }
 
+/** The journal's Markdown export, through the same three calls. */
+export async function shareMarkdownFile(uri: string, dialogTitle: string): Promise<void> {
+  await shareExportFile(uri, {
+    mimeType: 'text/markdown',
+    UTI: 'net.daringfireball.markdown',
+    dialogTitle,
+  });
+}
+
 /**
  * Renders an HTML page to a PDF in the cache, named `fileName`, and returns its
  * file:// URI. US Letter, with the margins set here rather than by an `@page`
