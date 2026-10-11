@@ -6670,8 +6670,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
     const calendar = useCalendarStore.getState();
     // Not the same question as `events` being empty — see CalendarState.loaded.
-    // An unread window must not be read as "tomorrow is free".
-    if (!calendar.loaded) return;
+    // An unread window must not be read as "tomorrow is free". (Or the
+    // return-day read alone, when vacation hides every calendar: then that
+    // read is the whole of tomorrow.)
+    if (!calendar.loaded && !calendar.vacationReturnLoaded) return;
 
     const tomorrowStart = getLogicalTomorrow(settings.dayResetTime);
     const tomorrowKey = dayKeyOf(tomorrowStart);
@@ -6696,7 +6698,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (settings.calendarReviewLastDayKey === tomorrowKey) return;
     settings.setCalendarReviewLastDayKey(tomorrowKey);
 
-    const tomorrowEvents = eventsIn(calendar.events, tomorrowStart, addDays(tomorrowStart, 1));
+    // Includes the calendars vacation is hiding when vacation ends tomorrow:
+    // the hiding is for the days you're away, not the one you're back.
+    const tomorrowEvents = eventsIn(
+      [...calendar.events, ...calendar.vacationReturnEvents], tomorrowStart, addDays(tomorrowStart, 1));
     if (!wantsCalendarReview(tomorrowEvents)) return;
 
     const dueDate = getCurrentDayStart();
