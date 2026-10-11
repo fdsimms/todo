@@ -19,6 +19,7 @@ import { dayKeyOf, getDayStart } from '../utils/dateUtils';
 import { useSettingsStore } from './useSettingsStore';
 import { spansDays } from '../utils/tripEvents';
 import { createRefreshGuard } from '../utils/refreshGuard';
+import { createCoalescedTrigger, onEventStoreChanged } from '../utils/eventStoreChanges';
 
 /**
  * A rolling window of the device calendar, held in memory.
@@ -28,9 +29,11 @@ import { createRefreshGuard } from '../utils/refreshGuard';
  * no migration and no reconcile. Caching it into SQLite would create a second
  * copy that goes stale silently and has to be invalidated by something, and
  * expo-calendar gives us no change notification to invalidate it with (there is
- * no `EKEventStoreChanged` bridge). A window in memory, refreshed on
- * foreground, has exactly one failure mode — being a few minutes old — and it
- * is the same one the Reminders import already lives with.
+ * no `EKEventStoreChanged` bridge in expo-calendar, so `todo-eventkit-bridge`
+ * supplies one). A window in memory, refreshed on foreground and when the
+ * Calendar database says it changed, has exactly one failure mode — being a few
+ * seconds or minutes old — and it is the same one the Reminders import already
+ * lives with.
  *
  * The one thing that *is* persisted is `handledHistory`, and it is the other
  * side of that line rather than an exception to it: which history offers the
@@ -47,6 +50,14 @@ import { createRefreshGuard } from '../utils/refreshGuard';
  * every foreground and holding them for a screen that shows one day.
  */
 export const CALENDAR_WINDOW_DAYS = 14;
+
+/**
+ * How long a burst of Calendar-database changes is gathered before the window
+ * is read again. One edit in the Calendar app can post several notifications
+ * in quick succession; a second is enough for them to land and short enough
+ * that the screen catches up before anyone notices it was behind.
+ */
+export const CALENDAR_CHANGE_COALESCE_MS = 1000;
 
 /**
  * How far ahead the trip read reaches. A trip is planned weeks out, past the
@@ -408,9 +419,12 @@ function hydrateHandled(
 /**
  * Keeps the window current. Call once from the root component.
  *
- * Three triggers, none of which is a poll — the same set `useRemindersImportSync`
- * settled on, and for the same reason: there is no OS-side change notification
- * to subscribe to.
+ * Four triggers, none of which is a poll: the cold start, a settings change,
+ * coming back to the app, and the Calendar database changing while the app is
+ * open (`onEventStoreChanged`). The last is the newest, and it is an addition
+ * to the foreground read rather than a replacement: Apple does not say which
+ * event stores are told of a change, so a build where it never fires still
+ * refreshes the way it always did.
  *
  * The window also goes stale by *sitting there* — it's anchored on the day it
  * was read, so an app left open overnight would answer questions about
@@ -458,9 +472,22 @@ export function useCalendarSync(): void {
       if (state === 'active' && useSettingsStore.getState().calendarReadEnabled) refreshWindows();
     });
 
+    // A change made while the app is open: the Calendar app edited, a sync
+    // landing, or this app's own write. The notification says nothing about
+    // what changed, so this reads the same window the foreground does. Read
+    // only, so it cannot feed itself: a read posts no notification. A burst of
+    // them is one read, and only while the app is in front and the read is on.
+    const changed = createCoalescedTrigger(() => {
+      if (AppState.currentState !== 'active') return;
+      if (useSettingsStore.getState().calendarReadEnabled) refreshWindows();
+    }, CALENDAR_CHANGE_COALESCE_MS);
+    const stopListening = onEventStoreChanged(() => changed.fire());
+
     return () => {
       unsubscribe();
       subscription.remove();
+      stopListening();
+      changed.cancel();
     };
   }, []);
 }
