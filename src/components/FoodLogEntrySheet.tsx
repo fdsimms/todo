@@ -731,9 +731,13 @@ export function FoodLogEntrySheet({
       return;
     }
     setDishMeasure(weigh ? 'weight' : 'servings');
-    setAmount(candidate.kind === 'dish' && !weigh ? '1' : '');
+    // A food with a serving of its own starts at one of them.
+    const serving = options.find(o => o.key === 'serving' && o.key === options[0]?.key);
+    const start = serving ? composeFoodAmount('1', serving) : candidate.kind === 'dish' && !weigh ? '1' : '';
+    pickedAmountRef.current = start;
+    setAmount(start);
     setAmountUnit(options[0]?.key ?? null);
-    setAmountNumber('');
+    setAmountNumber(serving ? '1' : '');
   };
 
   /**
@@ -1339,12 +1343,14 @@ export function FoodLogEntrySheet({
   // as a picked dish carries `servingPanel` rather than pointing at one.
   const handleDbPick = (nutrition: FoodNutrition, description: string) => {
     setPicked(databaseCandidate(`db:${description}`, description, nutrition));
-    pickedAmountRef.current = '';
-    setAmount('');
     setRecalledAmount(null);
     const options = foodUnitOptionsFor(nutrition);
+    const serving = options.find(o => o.key === 'serving' && o.key === options[0]?.key);
+    const start = serving ? composeFoodAmount('1', serving) : '';
+    pickedAmountRef.current = start;
+    setAmount(start);
     setAmountUnit(options[0]?.key ?? null);
-    setAmountNumber('');
+    setAmountNumber(serving ? '1' : '');
   };
 
   // The dirty check and confirm behind both Cancel and "Open Settings" from
