@@ -573,6 +573,9 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // Which medications you have archived. A statement about what you take, and
   // a device without it would list a medicine you stopped on the other one.
   'medication_archived',
+  // Medications added by name before any dose. Same reasoning as the archived
+  // list: it says what you take, and a device without it lists one fewer.
+  'medication_registered',
   // The limits and supply counts you set per medication, and when you last
   // made a summary for a visit. Same reasoning: they say what you take.
   'medication_settings',
@@ -697,7 +700,7 @@ export function isSyncedSettingKey(key: string): boolean {
  * and "started sertraline" is as common a one as "new job".
  * `journal_entries` are not here but in `JOURNAL_SYNC_TABLES` below, with a
  * switch of their own.
- * `medication_archived` is here because it is a list of medicine names, which
+ * `medication_archived` and `medication_registered` are here because they are lists of medicine names, which
  * says what somebody takes as plainly as the dose log does, and
  * `medication_settings` (a limit and a pill count per medicine name) ,
  * `medication_summary_last` and `medication_milestone_dismissed` (medicine
@@ -711,7 +714,7 @@ export function isSyncedSettingKey(key: string): boolean {
  */
 export const HEALTH_SYNC_TABLES: readonly string[] = ['mood_logs', 'milestones', 'medication_logs', 'food_logs'];
 export const HEALTH_SYNC_SETTING_KEYS: readonly string[] = [
-  'medication_archived', 'medication_settings', 'medication_summary_last',
+  'medication_archived', 'medication_registered', 'medication_settings', 'medication_summary_last',
   'medication_milestone_dismissed', 'nutritionTargets', 'nutritionLimits', 'limitWarnPercent',
   'limitWarningAutoSlips',
   // A typed-in goal that sleep is read against; it travels with the record it is read against.

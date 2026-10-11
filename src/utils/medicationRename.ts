@@ -5,7 +5,8 @@ import type { MedicationSettingsMap } from './medicationSettings';
 /**
  * Renaming a medication, or folding one into another.
  *
- * A medication has no row of its own (`medicationKey`), so a rename is a
+ * A medication has no row of its own (`medicationKey`; the added-by-name list
+ * is just names), so a rename is a
  * rewrite of every place that holds the name: the doses, the limit and supply
  * (`medication_settings`), the archived and milestone-dismissed key lists, the
  * tasks, chain steps and template items that record a dose. Each function here

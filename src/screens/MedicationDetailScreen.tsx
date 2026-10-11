@@ -72,6 +72,8 @@ export function MedicationDetailScreen() {
 
   const logs = useMedicationStore(s => s.logs);
   const archived = useMedicationStore(s => s.archived);
+  const registered = useMedicationStore(s => s.registered);
+  const removeMedication = useMedicationStore(s => s.removeMedication);
   const settings = useMedicationStore(s => s.settings);
   const setLimit = useMedicationStore(s => s.setLimit);
   const setSupply = useMedicationStore(s => s.setSupply);
@@ -88,7 +90,7 @@ export function MedicationDetailScreen() {
   const [editing, setEditing] = useState<MedicationLog | null>(null);
   const [renameOpen, setRenameOpen] = useState(false);
 
-  const stat = useMemo(() => medicationStats(logs).find(s => s.key === key) ?? null, [logs, key]);
+  const stat = useMemo(() => medicationStats(logs, registered).find(s => s.key === key) ?? null, [logs, registered, key]);
   const entries = useMemo(() => logs.filter(l => medicationKey(l.name) === key), [logs, key]);
 
   const strip = useMemo(() => {
@@ -112,15 +114,15 @@ export function MedicationDetailScreen() {
   const timeOfDay = useMemo(() => timeOfDayOf(entries), [entries]);
 
   if (!stat) {
-    // Every dose of it was deleted while this page was open. A medication has
-    // no row of its own, so it stops existing with its last dose.
+    // Taken off the list while this page was open (see `removeMedication`).
+    // Deleting its last dose does not get here: a listed medication stays.
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <DetailHeader title="" onBack={() => navigation.goBack()} />
         <EmptyState
           icon="medkit-outline"
           title="This medication is gone"
-          subtitle="Every dose of it has been deleted."
+          subtitle="It was removed from your list."
         />
       </View>
     );
@@ -192,12 +194,28 @@ export function MedicationDetailScreen() {
     );
   };
 
+  // Only offered while there are no doses: the doses are the record, and each
+  // is deleted on its own. Removing also clears the limit and supply it held.
+  const confirmRemove = () => {
+    haptics.tap();
+    Alert.alert(
+      `Remove ${name}?`,
+      'It comes off your list, along with any limit or supply you set for it.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Remove', style: 'destructive', onPress: () => { removeMedication(name); navigation.goBack(); } },
+      ],
+    );
+  };
+
   const openNew = () => { haptics.tap(); setEditing(null); setSheetOpen(true); };
   const openEdit = (log: MedicationLog) => { haptics.tap(); setEditing(log); setSheetOpen(true); };
 
   const todayKey = dayKeyOf(getCurrentDayStart());
   const lastKey = entries[0]?.dayKey ?? todayKey;
-  const lastLabel = lastKey === todayKey ? 'Today' : format(new Date(`${lastKey}T12:00:00`), 'MMM d');
+  const lastLabel = entries.length === 0
+    ? 'None yet'
+    : lastKey === todayKey ? 'Today' : format(new Date(`${lastKey}T12:00:00`), 'MMM d');
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -226,6 +244,15 @@ export function MedicationDetailScreen() {
 
         <View style={styles.actionsRow}>
           <InlineAction label="Record a dose" icon="add" onPress={openNew} surface="page" />
+          {stat.doses === 0 && (
+            <InlineAction
+              label="Remove"
+              icon="trash-outline"
+              variant="neutral"
+              onPress={confirmRemove}
+              surface="page"
+            />
+          )}
           <InlineAction
             label="Rename"
             icon="create-outline"

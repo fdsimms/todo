@@ -2029,6 +2029,9 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const standingSwaps = require('../../src/utils/standingSwaps') as StandingSwapsModule;
   const moodHistory = require('../../src/utils/moodHistory') as MoodHistoryModule;
   const medication = require('../../src/utils/medicationLog') as MedicationModule;
+  // Medications added by name before any dose: part of the list alongside the logged ones.
+  const registeredMedications = (): string[] =>
+    medication.parseRegisteredMedications(db.dbGetSetting(medication.REGISTERED_MEDICATIONS_SETTING_KEY));
   const medicationSettings = require('../../src/utils/medicationSettings') as MedicationSettingsModule;
   const supplementDose = require('../../src/utils/supplementDose') as typeof import('../../src/utils/supplementDose'); // eslint-disable-line @typescript-eslint/no-require-imports
   const rewards = require('../../src/utils/rewards') as RewardsModule;
@@ -2425,6 +2428,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         const medications = medication.medicationVocabulary(
           db.dbGetAllMedicationLogs(),
           medication.parseArchivedMedications(db.dbGetSetting(medication.ARCHIVED_MEDICATIONS_SETTING_KEY)),
+          registeredMedications(),
         );
         created = templateApply.applyTemplateRun(template, byId, selected, anchors, { medications, ...options }, {
           addTask: draft => replica.createTask(draft as Partial<TaskDraft>),
@@ -3498,7 +3502,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     medicationSettings: () => {
       const logs = db.dbGetAllMedicationLogs();
       const map = medicationSettings.parseMedicationSettings(db.dbGetSetting(medicationSettings.MEDICATION_SETTINGS_KEY));
-      const names = new Map(medication.medicationVocabulary(logs).map(n => [medication.medicationKey(n), n]));
+      const names = new Map(medication.medicationVocabulary(logs, [], registeredMedications()).map(n => [medication.medicationKey(n), n]));
       const now = new Date();
       return Object.entries(map).map(([key, prefs]) => {
         const name = names.get(key) ?? key;
@@ -4184,7 +4188,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       /* eslint-disable @typescript-eslint/no-require-imports */
       const { useMedicationStore: meds } = require('../../src/store/useMedicationStore') as typeof import('../../src/store/useMedicationStore');
       /* eslint-enable @typescript-eslint/no-require-imports */
-      const known = medication.medicationVocabulary(db.dbGetAllMedicationLogs(), []);
+      const known = medication.medicationVocabulary(db.dbGetAllMedicationLogs(), [], registeredMedications());
       const name = known.find(n => medication.medicationKey(n) === medication.medicationKey(input.name)) ?? input.name.trim();
       if ((input.amount == null) !== (input.unit == null || input.unit === '')) {
         throw new Error('Give amount and unit together ("400" and "mg"), or neither.');
@@ -4492,7 +4496,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       meds.getState().initialize();
       const key = medication.medicationKey(name);
       if (!key) throw new Error('A medicine needs a name.');
-      const known = medication.medicationVocabulary(db.dbGetAllMedicationLogs(), []);
+      const known = medication.medicationVocabulary(db.dbGetAllMedicationLogs(), [], registeredMedications());
       const spelled = known.find(n => medication.medicationKey(n) === key) ?? name.trim();
       meds.getState().setSupplementPanel(spelled, panel);
       return spelled;
@@ -4502,7 +4506,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const { useMedicationStore: meds } = require('../../src/store/useMedicationStore') as typeof import('../../src/store/useMedicationStore'); // eslint-disable-line @typescript-eslint/no-require-imports
       meds.getState().initialize();
       const key = medication.medicationKey(name);
-      const known = medication.medicationVocabulary(db.dbGetAllMedicationLogs(), []);
+      const known = medication.medicationVocabulary(db.dbGetAllMedicationLogs(), [], registeredMedications());
       const spelled = known.find(n => medication.medicationKey(n) === key) ?? meds.getState().archived.find(n => medication.medicationKey(n) === key);
       if (!spelled) throw new Error(`No medicine called "${name}" in the log. list_medication_logs shows them.`);
       if (archived) meds.getState().archiveMedication(spelled);
@@ -4518,7 +4522,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const target = to.trim();
       if (!target) throw new Error('A medicine needs a name.');
       const fromKey = medication.medicationKey(from);
-      const spelled = medication.medicationVocabulary(db.dbGetAllMedicationLogs(), [])
+      const spelled = medication.medicationVocabulary(db.dbGetAllMedicationLogs(), [], registeredMedications())
         .find(n => medication.medicationKey(n) === fromKey)
         ?? meds.getState().logs.find(l => medication.medicationKey(l.name) === fromKey)?.name;
       if (!spelled) throw new Error(`No medicine called "${from}" in the log. list_medication_logs shows them.`);
@@ -4571,7 +4575,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         throw new Error('Give amount and unit together ("400" and "mg"), or neither.');
       }
       if (patch.name !== undefined && !patch.name.trim()) throw new Error('A dose needs the medication\'s name.');
-      const known = medication.medicationVocabulary(db.dbGetAllMedicationLogs(), []);
+      const known = medication.medicationVocabulary(db.dbGetAllMedicationLogs(), [], registeredMedications());
       const name = patch.name === undefined ? undefined
         : known.find(n => medication.medicationKey(n) === medication.medicationKey(patch.name!)) ?? patch.name.trim();
       meds.getState().updateLog(id, {

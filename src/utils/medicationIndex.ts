@@ -32,8 +32,9 @@ export const MAX_MEDICATION_INDEX_ENTRIES = 200;
 export function buildMedicationIndex(
   logs: readonly MedicationLog[],
   archived: readonly string[],
+  registered: readonly string[] = [],
 ): MedicationIndexEntry[] {
-  return medicationVocabulary(logs, archived)
+  return medicationVocabulary(logs, archived, registered)
     .slice(0, MAX_MEDICATION_INDEX_ENTRIES)
     .map(name => ({ id: medicationKey(name), name }))
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -77,8 +78,12 @@ export function parseQueuedDoses(json: string): QueuedDose[] {
  * as heard. Never null: a dose somebody said they took is recorded, and a new
  * spelling is the honest record of one the log hadn't seen.
  */
-export function resolveQueuedDoseName(queued: QueuedDose, logs: readonly MedicationLog[]): string {
-  const vocabulary = medicationVocabulary(logs);
+export function resolveQueuedDoseName(
+  queued: QueuedDose,
+  logs: readonly MedicationLog[],
+  registered: readonly string[] = [],
+): string {
+  const vocabulary = medicationVocabulary(logs, [], registered);
   const byId = queued.id ? vocabulary.find(n => medicationKey(n) === queued.id) : undefined;
   if (byId) return byId;
   return vocabulary.find(n => medicationKey(n) === medicationKey(queued.name)) ?? queued.name;

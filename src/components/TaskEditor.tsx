@@ -495,13 +495,14 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const groceryItems = useGroceryStore(useShallow(s => s.items));
   const addGroceryItem = useGroceryStore(s => s.addToPantry);
   // Every medication ever logged, for the "Log a dose" name field's own
-  // suggestions below — see medicationVocabulary for why this is derived
+  // suggestions below — see medicationVocabulary for what it unions
   // rather than a registry.
   const medicationLogs = useMedicationStore(useShallow(s => s.logs));
   const archivedMedications = useMedicationStore(useShallow(s => s.archived));
+  const registeredMedications = useMedicationStore(useShallow(s => s.registered));
   const medicationSuggestions = useMemo(
-    () => medicationVocabulary(medicationLogs, archivedMedications),
-    [medicationLogs, archivedMedications]
+    () => medicationVocabulary(medicationLogs, archivedMedications, registeredMedications),
+    [medicationLogs, archivedMedications, registeredMedications]
   );
   // Archived people are out of the picker but never stripped off a task that
   // already names them: filing somebody away is about the list, not about

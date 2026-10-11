@@ -14,6 +14,7 @@ import {
   medicationLogSummary,
   medicationStats,
   medicationVocabulary,
+  parseRegisteredMedications,
   milestoneOffers,
   parseArchivedMedications,
   repeatDose,
@@ -432,5 +433,28 @@ describe('taskSupplyFor', () => {
     ];
     expect(taskSupplyFor(tasks, ' sertraline ')?.id).toBe('new');
     expect(taskSupplyFor(tasks, 'Melatonin')).toBeNull();
+  });
+});
+
+describe('medications added by name', () => {
+  it('are in the vocabulary with no doses, after the ones with doses', () => {
+    const logs = [dose({ name: 'Ibuprofen' })];
+    expect(medicationVocabulary(logs, [], ['Zinc', 'ibuprofen'])).toEqual(['Ibuprofen', 'Zinc']);
+  });
+
+  it('leave out an archived one', () => {
+    expect(medicationVocabulary([], ['zinc'], ['Zinc'])).toEqual([]);
+  });
+
+  it('appear in the stats with no doses, last, and no last-taken date', () => {
+    const stats = medicationStats([dose({ name: 'Ibuprofen' })], ['Zinc']);
+    expect(stats.map(s => s.name)).toEqual(['Ibuprofen', 'Zinc']);
+    expect(stats[1]).toMatchObject({ doses: 0, days: 0, lastTakenAt: null, asNeeded: false, typicalDose: null });
+  });
+
+  it('parse back, tolerating junk and keeping the first spelling per key', () => {
+    expect(parseRegisteredMedications(null)).toEqual([]);
+    expect(parseRegisteredMedications('nope')).toEqual([]);
+    expect(parseRegisteredMedications('["Zinc"," zinc ",3,"","Iron"]')).toEqual(['Zinc', 'Iron']);
   });
 });

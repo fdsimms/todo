@@ -170,8 +170,8 @@ async function processPendingDoses(): Promise<void> {
     const queued = parseQueuedDoses(await bridge.drainPendingDoses());
     if (queued.length === 0) return;
     for (const dose of queued) {
-      const { logs } = useMedicationStore.getState();
-      const name = resolveQueuedDoseName(dose, logs);
+      const { logs, registered } = useMedicationStore.getState();
+      const name = resolveQueuedDoseName(dose, logs, registered);
       recordDose({ ...repeatDose(logs, name), at: dose.at ?? undefined });
     }
     haptics.success();
@@ -223,7 +223,7 @@ function scheduleMedicationIndexWrite(): void {
     const meds = useMedicationStore.getState();
     if (!meds.initialized) return;
     const bridge = widgetBridge();
-    bridge?.writeMedicationIndex?.(JSON.stringify(buildMedicationIndex(meds.logs, meds.archived))).catch(() => {});
+    bridge?.writeMedicationIndex?.(JSON.stringify(buildMedicationIndex(meds.logs, meds.archived, meds.registered))).catch(() => {});
   }, DEBOUNCE_MS);
 }
 
@@ -492,7 +492,7 @@ function subscribeToStores(): () => void {
       }
     }),
     useMedicationStore.subscribe((s, p) => {
-      if (s.logs !== p.logs || s.archived !== p.archived || s.initialized !== p.initialized) {
+      if (s.logs !== p.logs || s.archived !== p.archived || s.registered !== p.registered || s.initialized !== p.initialized) {
         // The Medications widget reads the snapshot, Siri reads the index.
         scheduleSnapshotWrite();
         scheduleMedicationIndexWrite();

@@ -52,7 +52,7 @@ export function useSearchActions(query: string, active: boolean, limit?: number)
     const settings = useSettingsStore.getState();
     const grocery = useGroceryStore.getState();
     const sources: SearchActionSources = {
-      medications: routes.has('Medications') ? { logs: medication.logs, archived: medication.archived } : null,
+      medications: routes.has('Medications') ? { logs: medication.logs, archived: medication.archived, registered: medication.registered } : null,
       water: routes.has('FoodLog') ? { unit: settings.waterUnit } : null,
       mood: routes.has('Mood') ? { symptoms: symptomVocabulary(useMoodStore.getState().logs) } : null,
       // The list the grocery screen last had open: the one a person reaching

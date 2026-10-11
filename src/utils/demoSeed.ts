@@ -3248,6 +3248,8 @@ function seedAsNeededDoses(today: Date): void {
     });
   }
   useMedicationStore.getState().archiveMedication('Amoxicillin');
+  // A medication added by name before its first dose, so the list shows one with none recorded.
+  useMedicationStore.getState().addMedication('Allergy tablets');
 
   // A limit and a supply on the ibuprofen, so its row says where it stands
   // and its page has both cards filled in. Through the store's own actions,

@@ -6,7 +6,8 @@ import { DOSE_UNITS, medicationKey } from './medicationLog';
  * What you have told the app about one medication: a limit on how often you
  * take it, and how many you have left.
  *
- * A medication still has no row of its own (see `medicationVocabulary`), so
+ * A medication still has no row of its own (see `medicationVocabulary`; the
+ * added-by-name list is just names), so
  * these hang off its `medicationKey` in one synced setting, the shape
  * `medication_archived` already takes. Nothing here is a prescription and
  * nothing here is guessed: every number was typed by the person, and every

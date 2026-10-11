@@ -217,13 +217,14 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     });
   };
   // Every medication ever logged, for the "Log a dose" name field's own
-  // suggestions below — see medicationVocabulary for why this is derived
+  // suggestions below — see medicationVocabulary for what it unions
   // rather than a registry.
   const medicationLogs = useMedicationStore(useShallow(s => s.logs));
   const archivedMedications = useMedicationStore(useShallow(s => s.archived));
+  const registeredMedications = useMedicationStore(useShallow(s => s.registered));
   const medicationSuggestions = useMemo(
-    () => medicationVocabulary(medicationLogs, archivedMedications),
-    [medicationLogs, archivedMedications]
+    () => medicationVocabulary(medicationLogs, archivedMedications, registeredMedications),
+    [medicationLogs, archivedMedications, registeredMedications]
   );
 
   // ==== local state: the draft, one piece of state per field ====

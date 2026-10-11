@@ -2265,6 +2265,9 @@ describe('demo seed — people', () => {
     expect(logs.some(l => l.taskId !== null && l.amount !== null)).toBe(true);
     // And one archived medication, so the Archived section has a row.
     expect(useMedicationStore.getState().archived).toEqual(['amoxicillin']);
+    // And one added by name with no doses, so the list shows that state too.
+    expect(useMedicationStore.getState().registered).toEqual(['Allergy tablets']);
+    expect(logs.some(l => l.name === 'Allergy tablets')).toBe(false);
   });
 
   it('seeds an hours-recurrence task, hidden behind its own deferUntil', () => {

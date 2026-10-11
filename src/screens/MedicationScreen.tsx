@@ -50,6 +50,7 @@ import { InlineAction } from '../components/InlineAction';
 import { PressableScale } from '../components/PressableScale';
 import { SheetUndoBar } from '../components/SheetUndoBar';
 import { MedicationLogSheet } from '../components/MedicationLogSheet';
+import { MedicationAddSheet } from '../components/MedicationAddSheet';
 import { MedicationSummarySheet } from '../components/MedicationSummarySheet';
 import { DeliverablePromptQueue } from '../components/DeliverablePromptQueue';
 import { useAnswerFirstCompletion } from '../hooks/useAnswerFirstCompletion';
@@ -103,6 +104,7 @@ export function MedicationScreen() {
   const navigation = useNavigation<{ navigate: (screen: string, params?: object) => void }>();
   const logs = useMedicationStore(s => s.logs);
   const archived = useMedicationStore(s => s.archived);
+  const registered = useMedicationStore(s => s.registered);
   const settings = useMedicationStore(s => s.settings);
   const milestoneDismissed = useMedicationStore(s => s.milestoneDismissed);
   const dismissMilestoneOffer = useMedicationStore(s => s.dismissMilestoneOffer);
@@ -124,6 +126,7 @@ export function MedicationScreen() {
   )));
 
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [editing, setEditing] = useState<MedicationLog | null>(null);
   const [sharing, setSharing] = useState(false);
@@ -139,7 +142,7 @@ export function MedicationScreen() {
   }, []);
   useEffect(() => () => { if (undoTimer.current) clearTimeout(undoTimer.current); }, []);
 
-  const allStats = useMemo(() => medicationStats(logs), [logs]);
+  const allStats = useMemo(() => medicationStats(logs, registered), [logs, registered]);
   const stats = useMemo(() => allStats.filter(s => !archived.includes(s.key)), [allStats, archived]);
   const archivedStats = useMemo(() => allStats.filter(s => archived.includes(s.key)), [allStats, archived]);
   const recent = useMemo(() => logs.slice(0, recentLimit), [logs, recentLimit]);
@@ -289,6 +292,11 @@ export function MedicationScreen() {
             accessibilityLabel: 'Share your medication log',
           }] : []),
           {
+            icon: 'medkit-outline' as const,
+            onPress: () => { haptics.tap(); setAddOpen(true); },
+            accessibilityLabel: 'Add a medication',
+          },
+          {
             icon: 'add-circle-outline' as const,
             onPress: openNew,
             accessibilityLabel: 'Record a dose',
@@ -302,21 +310,22 @@ export function MedicationScreen() {
   const sheets = (
     <>
       <MedicationLogSheet visible={sheetOpen} log={editing} onClose={closeSheet} />
+      <MedicationAddSheet visible={addOpen} onClose={() => setAddOpen(false)} onAdded={key => navigation.navigate('MedicationDetail', { medicationKey: key })} />
       <MedicationSummarySheet visible={summaryOpen} onClose={() => setSummaryOpen(false)} />
       <DeliverablePromptQueue {...queueProps} />
     </>
   );
 
-  if (logs.length === 0 && dueTasks.length === 0) {
+  if (logs.length === 0 && registered.length === 0 && dueTasks.length === 0) {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
         {header}
         <EmptyState
           icon="medkit-outline"
-          title="Nothing recorded yet"
-          subtitle="Use a repeating task for anything you take on a schedule: checking it off records the dose. Record doses you take as needed here."
-          actionLabel="Record a dose"
-          onAction={openNew}
+          title="No medications yet"
+          subtitle="Add a medication by name, or record a dose and it is added for you. Use a repeating task for anything you take on a schedule: checking it off records the dose."
+          actionLabel="Add a medication"
+          onAction={() => { haptics.tap(); setAddOpen(true); }}
           bottomOffset={tabBarHeight}
         />
         {sheets}
@@ -605,9 +614,11 @@ function MedicationRow({
         </View>
         <Text style={styles.medMeta}>
           {[
-            `${stat.doses} ${stat.doses === 1 ? 'dose' : 'doses'} over ${stat.days} ${stat.days === 1 ? 'day' : 'days'}`,
+            stat.doses === 0
+              ? 'No doses recorded yet'
+              : `${stat.doses} ${stat.doses === 1 ? 'dose' : 'doses'} over ${stat.days} ${stat.days === 1 ? 'day' : 'days'}`,
             stat.typicalDose ? `usually ${stat.typicalDose}` : null,
-            `last on ${format(new Date(stat.lastTakenAt), 'MMM d')}`,
+            stat.lastTakenAt ? `last on ${format(new Date(stat.lastTakenAt), 'MMM d')}` : null,
           ].filter(Boolean).join(' · ')}
         </Text>
         {status.length > 0 && (

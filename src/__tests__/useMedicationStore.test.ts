@@ -30,7 +30,7 @@ jest.mock('../utils/dateUtils', () => ({
 
 beforeEach(() => {
   jest.clearAllMocks();
-  useMedicationStore.setState({ logs: [], archived: [], settings: {}, milestoneDismissed: [], initialized: false });
+  useMedicationStore.setState({ logs: [], archived: [], registered: [], settings: {}, milestoneDismissed: [], initialized: false });
 });
 
 const state = () => useMedicationStore.getState();
@@ -352,5 +352,73 @@ describe('renameMedication', () => {
     expect(updated).toHaveBeenCalledTimes(1);
     expect(updated.mock.calls[0][0].name).toBe('Old');
     expect(updated.mock.calls[0][1].name).toBe('New');
+  });
+});
+
+describe('medications added by name', () => {
+  it('adds one with no dose and persists the spelling typed', () => {
+    expect(state().addMedication('  Sertraline ')).toBe(true);
+    expect(state().registered).toEqual(['Sertraline']);
+    expect(dbSetSetting).toHaveBeenCalledWith('medication_registered', '["Sertraline"]');
+    expect(state().logs).toEqual([]);
+  });
+
+  it('refuses a blank name and one already listed under another case', () => {
+    expect(state().addMedication('   ')).toBe(false);
+    state().addMedication('Sertraline');
+    expect(state().addMedication('sertraline')).toBe(false);
+    expect(state().registered).toEqual(['Sertraline']);
+  });
+
+  it('refuses a name that already has doses', () => {
+    state().addLog({ name: 'Ibuprofen' });
+    expect(state().addMedication('ibuprofen')).toBe(false);
+    expect(state().registered).toEqual([]);
+  });
+
+  it('adding an archived medication restores it', () => {
+    state().archiveMedication('Valtrex');
+    expect(state().addMedication('Valtrex')).toBe(true);
+    expect(state().archived).toEqual([]);
+  });
+
+  it('loads the list', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((k: string) => (k === 'medication_registered' ? '["Zinc"]' : null));
+    state().initialize();
+    expect(state().registered).toEqual(['Zinc']);
+    (dbGetSetting as jest.Mock).mockImplementation(() => null);
+  });
+
+  it('keeps a medication listed after its last dose is deleted', () => {
+    const log = state().addLog({ name: 'Ibuprofen', amount: 200, unit: 'mg' })!;
+    state().setLimit('Ibuprofen', { minHours: 6, maxPer24h: null, notify: false });
+    state().removeLog(log.id);
+    expect(state().logs).toEqual([]);
+    expect(state().registered).toEqual(['Ibuprofen']);
+    expect(state().settings['ibuprofen']).toBeDefined();
+  });
+
+  it('does not register a medication that still has doses', () => {
+    const a = state().addLog({ name: 'Ibuprofen' })!;
+    state().addLog({ name: 'Ibuprofen' });
+    state().removeLog(a.id);
+    expect(state().registered).toEqual([]);
+  });
+
+  it('removes one with no doses, and its settings, but never one with doses', () => {
+    state().addMedication('Zinc');
+    state().setSupply('Zinc', { count: 30, unit: 'tablets', perDose: 1 } as never);
+    expect(state().removeMedication('Zinc')).toBe(true);
+    expect(state().registered).toEqual([]);
+    expect(state().settings['zinc']).toBeUndefined();
+    state().addLog({ name: 'Ibuprofen' });
+    expect(state().removeMedication('Ibuprofen')).toBe(false);
+    expect(state().logs).toHaveLength(1);
+  });
+
+  it('renames one that has no doses', () => {
+    state().addMedication('Zinc');
+    expect(state().renameMedication('Zinc', 'Zinc 50 mg')).toBe(0);
+    expect(state().registered).toEqual(['Zinc 50 mg']);
   });
 });
