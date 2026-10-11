@@ -108,6 +108,9 @@ import {
   withoutDeviceLocalColumns,
   backfillStatements,
   installStatements,
+  installSignature,
+  SYNC_INSTALL_SIGNATURE_KEY,
+  SYNC_TRIGGERS_PER_TABLE,
   updatedAtMigrations,
   type SyncTable,
 } from './syncTracking';
@@ -242,6 +245,29 @@ export function isUsingDemoDatabase(): boolean {
 }
 
 export function initDatabase(): void {
+  runInitDatabase();
+  initializedHandles.add(db);
+}
+
+// Handles whose schema and migrations have already run in this process, for
+// `ensureDatabaseReady`. A sync that applied rows reloads every store, and the
+// first thing each reload did was initDatabase(): ~400 statements to learn
+// nothing, since the schema cannot have changed under an open connection and
+// every data migration in it is behind a done flag. A demo database is a new
+// handle each time it is entered, so it still gets the full pass.
+const initializedHandles = new WeakSet<object>();
+
+/**
+ * `initDatabase()` unless this handle has already been through it. What a
+ * store's `initialize()` calls, so a reload after a sync is only the store
+ * loads. Anything that deliberately re-runs the migrations (resetting a done
+ * flag, a test) calls `initDatabase()` itself.
+ */
+export function ensureDatabaseReady(): void {
+  if (!initializedHandles.has(db)) initDatabase();
+}
+
+function runInitDatabase(): void {
   // synchronous = NORMAL is the setting WAL is designed around: a commit is
   // still atomic and the file can't be corrupted, and an app being killed
   // loses nothing, but the commit no longer waits on a disk sync. The default,
@@ -2135,8 +2161,23 @@ export function initDatabase(): void {
   for (const sql of backfillStatements()) {
     try { db.runSync(sql); } catch (_) { /* table predates this install */ }
   }
-  for (const sql of installStatements()) {
-    try { db.runSync(sql); } catch (_) { /* trigger or index already current */ }
+  // The reinstall drops and recreates every trigger (so an edited body reaches
+  // an install holding the old one), which is ~350 statements written to the
+  // schema on each cold start. Skipped while the text it would run is what was
+  // last installed here and every trigger is still present; the backfill above
+  // stays unconditional, since it is an index lookup that touches no rows.
+  const signature = installSignature();
+  const triggersPresent = db.getFirstSync<{ n: number }>(
+    "SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'trigger' AND name LIKE '%\\_sync\\_%' ESCAPE '\\'"
+  )?.n ?? 0;
+  const trackingCurrent =
+    dbGetSetting(SYNC_INSTALL_SIGNATURE_KEY) === signature &&
+    triggersPresent >= SYNC_TRACKED_TABLES.length * SYNC_TRIGGERS_PER_TABLE;
+  if (!trackingCurrent) {
+    for (const sql of installStatements()) {
+      try { db.runSync(sql); } catch (_) { /* trigger or index already current */ }
+    }
+    dbSetSetting(SYNC_INSTALL_SIGNATURE_KEY, signature);
   }
   try { dbPruneSyncDeletions(); } catch (_) { /* nothing to prune */ }
 
