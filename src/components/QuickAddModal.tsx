@@ -1176,6 +1176,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   const titleChips = useMemo(
     () => tokenChipsFor(title, {
       categories: categories.map(c => c.name),
+      categoryEmoji: Object.fromEntries(categories.filter(c => c.emoji).map(c => [c.name, c.emoji!])),
       tags: allTags,
       projects: intoProjectId ? [] : liveProjects.map(p => p.title),
     }),
