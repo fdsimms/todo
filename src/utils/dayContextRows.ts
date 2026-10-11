@@ -346,7 +346,7 @@ export function healthContextRows(
       sourceId: '',
       kind: 'health',
       title: ringsLine,
-      caption: 'Activity rings, so far today',
+      caption: '',
       category: opts.category,
       now: false,
       calendarTag: null,
@@ -386,6 +386,7 @@ export function limitContextRows(
     return {
       id: `limit-${key}`,
       sourceId: '',
+      nutrientKey: key,
       kind: 'health' as const,
       title: `${name} ${rounded.toLocaleString()} of ${target.toLocaleString()}${suffix}, ${describeLimit(key, total, targets)!.replace('At the limit', 'at the limit')}`,
       caption: '',
@@ -424,6 +425,7 @@ export function goalContextRows(
       return {
         id: `goal-${key}`,
         sourceId: '',
+        nutrientKey: key,
         kind: 'health' as const,
         title: `${name} ${describeAgainstTarget(key, total, targets)!}`,
         caption: '',

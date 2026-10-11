@@ -65,7 +65,7 @@ components below.
 - `src/screens/TemplateDetailScreen.tsx` — ApplyTemplateSheet, DetailHeader, EmptyState, Fab, FabDropZones, NestedTemplatePicker, PaintSelection, ReorderableList, SelectionDot, SwipeActionButtons, SwipeableRow, TemplateAppliedToast, +5 more
 - `src/screens/TemplatesScreen.tsx` — ApplyTemplateSheet, EmptyState, Fab, FabDropZones, HubPills, ListBulkBar, PaintSelection, QuickAddNameSheet, ReorderableList, ScreenHeader, ScreenSettingsSheet, SelectionDot, +4 more
 - `src/screens/TipsScreen.tsx` — EmptyState, ScreenHeader, ScreenSettingsSheet, ScrollToTopButton, SearchField, TipHost
-- `src/screens/TodayScreen.tsx` — AddTaskFab, AllClearMark, ApplyTemplateSheet, BulkActionBar, CardSheet, CategoryOrderSheet, CoinIcon, CompletionCollapse, CreatedTaskToast, DayContextRow, DeliverablePromptQueue, DeloadSheet, +39 more
+- `src/screens/TodayScreen.tsx` — AddTaskFab, AllClearMark, ApplyTemplateSheet, BulkActionBar, CardSheet, CategoryOrderSheet, CoinIcon, CompletionCollapse, CreatedTaskToast, DayContextRow, DeliverablePromptQueue, DeloadSheet, +40 more
 - `src/screens/UnattendedLogScreen.tsx` — ActivitySourceSheet, EmptyState, HubPills, InlineAction, ScreenHeader, ScreenSettingsSheet, ScrollToTopButton
 - `src/screens/WeightScreen.tsx` — EmptyState, HubPills, LogWeightSheet, ScreenHeader, ScreenSettingsSheet, ScrollToTopButton, SegmentedControl, WeightChart, WeightGoalSheet
 
@@ -224,7 +224,7 @@ Where each component can appear.
 - `src/components/NestedTemplatePicker.tsx` — on TemplateDetailScreen
 - `src/components/NewTasksBanner.tsx` — on TodayScreen
 - `src/components/NumberPadAccessory.tsx` — on ArchivedScreen, BackfillScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, GroceryScreen, KitchenScreen, MealPlanScreen, MedicationDetailScreen, MetersScreen, PeopleScreen, PersonDetailScreen, +14 more
-- `src/components/NutrientContributorsSheet.tsx` — on FoodLogScreen
+- `src/components/NutrientContributorsSheet.tsx` — on FoodLogScreen, TodayScreen
 - `src/components/NutrientDayChart.tsx` — on StatsScreen
 - `src/components/NutrientFieldsCard.tsx` — on BackfillScreen, FoodLogScreen, GroceryScreen, KitchenScreen, MedicationDetailScreen, RecipeDetailScreen, app shell
 - `src/components/NutritionBarcodeScanSheet.tsx` — on BackfillScreen, FoodLogScreen, GroceryScreen, KitchenScreen, RecipeDetailScreen, app shell

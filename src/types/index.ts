@@ -8063,6 +8063,11 @@ export interface ContextRow {
    */
   tone?: 'near' | 'over';
   /**
+   * The nutrient a limit or goal row is about, so a tap can open that
+   * nutrient's food contribution breakdown. Absent on every other row.
+   */
+  nutrientKey?: NutrientKey;
+  /**
    * A drawing that goes with the figure, for a health reading that is measured
    * against something: a bar for a limit or the Move goal, the three rings for
    * the Activity summary. The title stays the full sentence either way, since
