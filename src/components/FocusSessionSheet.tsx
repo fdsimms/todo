@@ -45,6 +45,7 @@ import { PressableScale } from './PressableScale';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { InlineAction } from './InlineAction';
 import type { FocusSession, FocusStep, Task } from '../types';
+import { useActionMenu } from '../hooks/useActionMenu';
 
 /** How much time "+5 min" adds to a step that needs a little longer. */
 const EXTEND_MINUTES = 5;
@@ -79,6 +80,7 @@ interface Props {
 const NO_TASKS: Task[] = [];
 
 export function FocusSessionSheet({ visible, onClose }: Props) {
+  const actionMenu = useActionMenu();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -190,15 +192,13 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
   const handleContact = () => {
     if (!callUrl) return;
     haptics.tap();
-    Alert.alert(
-      contact.phoneNumber ?? '',
-      undefined,
-      [
-        { text: 'Call', onPress: handleCall },
-        ...(textUrl ? [{ text: 'Message', onPress: handleText }] : []),
-        { text: 'Cancel', style: 'cancel' as const },
+    actionMenu.open({
+      title: contact.phoneNumber ?? '',
+      actions: [
+        { key: 'call', label: 'Call', icon: 'call-outline', onPress: handleCall },
+        ...(textUrl ? [{ key: 'message', label: 'Message', icon: 'chatbubble-outline', onPress: handleText } as const] : []),
       ],
-    );
+    });
   };
   const emailUrl = mailtoUrl(contact.emailAddress);
   const handleEmail = async () => {
@@ -719,6 +719,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
       </View>
 
       <DeliverablePromptQueue {...queueProps} />
+      {actionMenu.element}
     </SheetModal>
   );
 }

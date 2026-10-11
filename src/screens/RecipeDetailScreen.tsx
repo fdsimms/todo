@@ -129,6 +129,8 @@ import { resetToMealPlan } from '../navigation/navigationRef';
 import { TextField } from '../components/TextField';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
+import { useActionMenu } from '../hooks/useActionMenu';
+import type { ActionMenuAction } from '../components/ActionMenu';
 
 type RootStackParamList = {
   /**
@@ -152,6 +154,7 @@ type MergedStepRow =
   | { kind: 'heading'; id: string; name: string; empty: boolean };
 
 export function RecipeDetailScreen() {
+  const actionMenu = useActionMenu();
   // ==== store bindings and layout insets ====
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
@@ -942,17 +945,16 @@ export function RecipeDetailScreen() {
   const handleMadeIt = () => {
     haptics.tap();
     const canLogFood = !!nutritionReading?.nutrition;
-    Alert.alert(
-      `Log ${recipe.name}`,
-      canLogFood
+    actionMenu.open({
+      title: `Log ${recipe.name}`,
+      message: canLogFood
         ? 'Log as cooked asks for a rating, any leftovers and the ingredients you used up. Add to food log records what you ate.'
         : 'Log as cooked asks for a rating, any leftovers and the ingredients you used up.',
-      [
-        { text: 'Log as cooked', onPress: () => cookRecipeNow(recipe) },
-        ...(canLogFood ? [{ text: 'Add to food log', onPress: handleLogToFoodLog }] : []),
-        { text: 'Cancel', style: 'cancel' as const },
+      actions: [
+        { key: 'cooked', label: 'Log as cooked', icon: 'restaurant-outline', onPress: () => cookRecipeNow(recipe) },
+        ...(canLogFood ? [{ key: 'food', label: 'Add to food log', icon: 'nutrition-outline', onPress: handleLogToFoodLog } as const] : []),
       ],
-    );
+    });
   };
 
   const handleLogToFoodLog = () => {
@@ -1095,16 +1097,15 @@ export function RecipeDetailScreen() {
   const openImagePicker = () => {
     if (pickingImage) return;
     haptics.tap();
-    const options: Array<{ text: string; style?: 'default' | 'cancel' | 'destructive'; onPress?: () => void }> = [
-      { text: 'Take photo', onPress: () => pickImage('camera') },
-      { text: 'Choose from library', onPress: () => pickImage('library') },
-      { text: 'Paste image', onPress: () => pickImage('clipboard') },
+    const actions: ActionMenuAction[] = [
+      { key: 'camera', label: 'Take photo', icon: 'camera-outline', onPress: () => pickImage('camera') },
+      { key: 'library', label: 'Choose from library', icon: 'images-outline', onPress: () => pickImage('library') },
+      { key: 'paste', label: 'Paste image', icon: 'clipboard-outline', onPress: () => pickImage('clipboard') },
     ];
     if (recipe.imagePath) {
-      options.push({ text: 'Remove photo', style: 'destructive', onPress: () => setImage(recipe.id, null) });
+      actions.push({ key: 'remove', label: 'Remove photo', icon: 'trash-outline', destructive: true, onPress: () => setImage(recipe.id, null) });
     }
-    options.push({ text: 'Cancel', style: 'cancel' });
-    Alert.alert('Recipe photo', undefined, options);
+    actionMenu.open({ title: 'Recipe photo', actions });
   };
   // The row currently under the drag, by id — set from SortableList's
   // onHoverChange so an empty heading can light up as a live drop target the
@@ -2770,6 +2771,7 @@ export function RecipeDetailScreen() {
           being mounted at once is fine (see NumberPadAccessory). */}
       <NumberPadAccessory />
       <ScrollToTopButton {...scrollTop.buttonProps} />
+      {actionMenu.element}
     </View>
   );
 }

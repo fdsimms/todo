@@ -155,6 +155,7 @@ import { NumberPadAccessory } from './NumberPadAccessory';
 import { SpotlightScrim, useSpotlightLinger } from './SpotlightOverlay';
 import { ProgressBar } from './ProgressBar';
 import { TextField } from './TextField';
+import { useActionMenu } from '../hooks/useActionMenu';
 
 const CHECKBOX_SIZE = 20;
 const SUBTASK_CHECKBOX_SIZE = 16;
@@ -387,6 +388,7 @@ export const TaskItem = React.memo(function TaskItem({
   onOpenProject,
   onOpenCategory,
 }: Props) {
+  const actionMenu = useActionMenu();
   // What a press reports back: this row, not necessarily this task (see the
   // prop's note). Everything else about the row still speaks in task ids.
   const rowId = rowKey ?? task.id;
@@ -537,15 +539,13 @@ export const TaskItem = React.memo(function TaskItem({
   const handleContact = () => {
     if (!callUrl) return;
     haptics.tap();
-    Alert.alert(
-      contact.phoneNumber ?? '',
-      undefined,
-      [
-        { text: 'Call', onPress: handleCall },
-        ...(textUrl ? [{ text: 'Message', onPress: handleText }] : []),
-        { text: 'Cancel', style: 'cancel' as const },
+    actionMenu.open({
+      title: contact.phoneNumber ?? '',
+      actions: [
+        { key: 'call', label: 'Call', icon: 'call-outline', onPress: handleCall },
+        ...(textUrl ? [{ key: 'message', label: 'Message', icon: 'chatbubble-outline', onPress: handleText } as const] : []),
       ],
-    );
+    });
   };
 
   const handleEmail = async () => {
@@ -4935,6 +4935,7 @@ export const TaskItem = React.memo(function TaskItem({
           onPlan={itemId => planRotationItem(task.id, itemId)}
         />
       )}
+      {actionMenu.element}
     </>
   );
 });

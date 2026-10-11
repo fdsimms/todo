@@ -46,6 +46,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { TextField } from './TextField';
+import { useActionMenu } from '../hooks/useActionMenu';
 
 /**
  * Typing in a label panel by hand, for the food no database has.
@@ -159,6 +160,7 @@ const WEIGHT_UNIT_OPTIONS: { value: ServingWeightUnit; label: string }[] = [
 const COLUMN_ORDINAL = ['First column', 'Second column', 'Third column'];
 
 export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onSave, openCamera }: Props) {
+  const actionMenu = useActionMenu();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
@@ -331,15 +333,14 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
   }, [label]);
 
   const startPhoto = useCallback(() => {
-    Alert.alert(
-      'Read the label',
-      'Photograph the nutrition panel to fill in the fields below.',
-      [
-        { text: 'Take a photo', onPress: () => { void handlePhoto('camera'); } },
-        { text: 'Choose a photo', onPress: () => { void handlePhoto('library'); } },
-        { text: 'Cancel', style: 'cancel' },
+    actionMenu.open({
+      title: 'Read the label',
+      message: 'Photograph the nutrition panel to fill in the fields below.',
+      actions: [
+        { key: 'camera', label: 'Take a photo', icon: 'camera-outline', onPress: () => { void handlePhoto('camera'); } },
+        { key: 'library', label: 'Choose a photo', icon: 'images-outline', onPress: () => { void handlePhoto('library'); } },
       ],
-    );
+    });
   }, [handlePhoto]);
 
   /**
@@ -642,6 +643,7 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
         onClose={() => setScanning(false)}
         onFound={handleBarcodeFound}
       />
+      {actionMenu.element}
     </SheetModal>
   );
 }
