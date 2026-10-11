@@ -447,6 +447,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/timerSegments.ts` — TimerSegment, SegmentPhase, SegmentSource, segmentMinutesOf, timerSegments, apportionedMinutes, activeSegmentIndex, activeSegment, segmentPhase, segmentRemaining
 - `src/utils/tips.ts` — TipArea, TipScreen, TipSignals, Tip, TipAreaInfo, TIP_AREAS, TIPS, tipsFor, tipsForArea, unseenTipsForScreen, +4 more
 - `src/utils/titleRules.ts` — MIN_KEYWORD_LENGTH, KEYWORD_MAX_LENGTH, TITLE_RULE_MATCHES, TitleRuleMatchResult, TitleRuleFill, emptyTitleRule, titleRuleSaysNothing, titleRuleIsUseless, normalizeKeywords, matchKeyword, +7 more
+- `src/utils/titleSuggestion.ts` — TitleSuggestionContext, TitleSuggestion, pickTitleSuggestion, suggestionMatch, linkLabel, describeTitleSuggestion
 - `src/utils/titleSuggestions.ts` — TitleSuggestion, suggestTitles
 - `src/utils/titleTokenChips.ts` — TokenChipKind, TokenChip, TokenChipSet, TokenChipSources, MAX_TOKEN_CHIPS, tokenChipsFor, applyTokenChip
 - `src/utils/todayProjectBands.ts` — TodayProjectBand, TodayProjectBands, buildTodayProjectBands
