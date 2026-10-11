@@ -94,10 +94,13 @@ For the same reason the Settings toggle calls `unlock()` *before*
   - **List selectors only re-run when the task store changes**, so
     `useProjectLockStore.revision` is mirrored into `useTaskStore.lockRevision`
     on every lock or unlock.
-  - **Not covered:** Claude's MCP tools (a lock is a screen guard on this
-    device, as the journal lock is), the month grid, Stats and any screen that
-    reads `tasks` directly. A new screen that lists tasks filters with
-    `isProjectLockedAway`.
+  - **Screens that read the whole task array** (Calendar, Stats, Tags, Stacks,
+    Reminders, Saved views, Stuck, Backfill, Search, a category or person
+    page) take it through `useWithoutLockedTasks`; list selectors in
+    `useTaskStore` filter themselves. A new screen that lists tasks does one
+    or the other. **Not covered:** Claude's MCP tools (a lock is a screen
+    guard on this device, as the journal lock is), and aggregates such as the
+    mood contrasts and Rewards.
 - **`resetToDefaults` doesn't touch it**, like vacation mode: "reset appearance and
   formatting" is not a request to take the lock off the app.
 

@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { useProjectLockStore } from '../store/useProjectLockStore';
-import { isProjectLockedAway } from '../utils/projectLock';
+import { useWithoutLockedTasks } from '../hooks/useWithoutLockedTasks';
 import {
   View,
   Text,
@@ -462,16 +461,8 @@ export function SearchScreen() {
   const navigation = useNavigation();
   const route = useRoute<any>();
   const tabBarHeight = useBottomTabBarHeight();
-  const allTasks = useTaskStore(s => s.tasks);
   // A locked project's tasks are not findable until it is unlocked.
-  const lockedIds = useProjectLockStore(s => s.lockedIds);
-  const projectsUnlocked = useProjectLockStore(s => s.unlocked);
-  const tasks = useMemo(
-    () => (lockedIds.length === 0 || projectsUnlocked
-      ? allTasks
-      : allTasks.filter(t => !isProjectLockedAway(t.projectId, lockedIds, false))),
-    [allTasks, lockedIds, projectsUnlocked],
-  );
+  const tasks = useWithoutLockedTasks(useTaskStore(s => s.tasks));
   const projects = useProjectStore(s => s.projects);
   const groups = useTaskGroupStore(s => s.groups);
   const categories = useCategoryStore(s => s.categories);

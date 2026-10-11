@@ -607,6 +607,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useTitleSelection.ts` — TitleSelection, useTitleSelection
 - `src/hooks/useTravelTaskSync.ts` — useTravelTaskSync
 - `src/hooks/useWeatherWaitSync.ts` — useWeatherWaitSync
+- `src/hooks/useWithoutLockedTasks.ts` — useWithoutLockedTasks
 
 ## `src/db`
 
