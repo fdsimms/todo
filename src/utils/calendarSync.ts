@@ -28,11 +28,12 @@ import type { EventRecurrence } from './quickEvent';
  *
  * Modelled on `remindersImportSync.ts`, which is the app's other EventKit
  * consumer, and inherits its constraints — including the big one: expo-calendar
- * exposes no `EKEventStoreChanged` bridge, so there is nothing to subscribe to
- * and no way to be told an event moved (or, now, deleted out from under a
- * write this file made). Freshness comes from re-reading on foreground and on
- * focus. A calendar read is stale between those, and every caller has to be
- * fine with that.
+ * exposes no `EKEventStoreChanged` bridge, so there is no way to be told an
+ * event moved (or, now, deleted out from under a write this file made) from
+ * this file's own calls. Freshness comes from re-reading on foreground, on
+ * focus and, for the calendar window only, when `todo-eventkit-bridge` reports
+ * the Calendar database changed (`useCalendarSync`). A calendar read is stale
+ * between those, and every caller has to be fine with that.
  *
  * The deadline write goes through `createEventAsync`/`updateEventAsync`
  * /`deleteEventAsync` rather than `createEventInCalendarAsync`'s system
