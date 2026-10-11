@@ -38,6 +38,11 @@ export interface TokenChipSet {
 export interface TokenChipSources {
   categories: readonly string[];
   tags: readonly string[];
+  /**
+   * A category's emoji by name. It prefixes the chip's label only; the value
+   * stays the bare word, since `parseCategoryAndTagsInput` reads `[a-z][\w-]*`.
+   */
+  categoryEmoji?: Readonly<Record<string, string>>;
   /** Live projects only, and none at all when the sheet is already inside one. */
   projects: readonly string[];
 }
@@ -60,7 +65,7 @@ function slug(title: string): string {
 }
 
 /** Chips whose value starts with what is typed so far, minus one already complete. */
-function narrow(values: string[], typed: string): TokenChip[] {
+function narrow(values: string[], typed: string, emoji: Readonly<Record<string, string>> = {}): TokenChip[] {
   const lower = typed.toLowerCase();
   const seen = new Set<string>();
   const out: TokenChip[] = [];
@@ -68,7 +73,7 @@ function narrow(values: string[], typed: string): TokenChip[] {
     const key = value.toLowerCase();
     if (seen.has(key) || !key.startsWith(lower) || key === lower) continue;
     seen.add(key);
-    out.push({ label: value, value });
+    out.push({ label: emoji[value] ? `${emoji[value]} ${value}` : value, value });
   }
   return out.slice(0, MAX_TOKEN_CHIPS);
 }
@@ -102,7 +107,7 @@ export function tokenChipsFor(title: string, sources: TokenChipSources): TokenCh
       break;
   }
 
-  const chips = narrow(values, typed);
+  const chips = narrow(values, typed, kind === 'category' ? sources.categoryEmoji : undefined);
   return chips.length > 0 ? { kind, from, chips } : null;
 }
 

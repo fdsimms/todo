@@ -53,6 +53,20 @@ describe('tokenChipsFor', () => {
   });
 });
 
+describe('category emoji', () => {
+  const withEmoji: TokenChipSources = { ...sources, categoryEmoji: { Home: '🏠' } };
+
+  it('prefixes the label but leaves the inserted value bare', () => {
+    const set = tokenChipsFor('x #ho', withEmoji)!;
+    expect(set.chips).toEqual([{ label: '🏠 Home', value: 'Home' }]);
+    expect(applyTokenChip('x #ho', set, set.chips[0])).toBe('x #Home ');
+  });
+
+  it('does not decorate tags or priorities', () => {
+    expect(labels('x !', withEmoji)).toEqual(['urgent', 'high', 'medium', 'low']);
+  });
+});
+
 describe('applyTokenChip', () => {
   it('replaces the typed part and adds a space', () => {
     const title = 'Renew passport !h';
