@@ -8,6 +8,7 @@ import {
   shopperNameFor,
   shorterNameSuggestions,
   sourceLabelFor,
+  sourceLineFor,
   unknownScannedItem,
   variantFor,
   type ScannedItem,
@@ -217,6 +218,19 @@ describe('sourceLabelFor', () => {
 
   it('is the brand alone rather than a dangling separator when there is no label', () => {
     expect(sourceLabelFor('', 'Beyond Meat')).toBe('Beyond Meat');
+  });
+});
+
+describe('sourceLineFor', () => {
+  it('prints only the maker while the name is still the lookup\'s own words', () => {
+    expect(sourceLineFor('Sweet Hot Mustard With Honey', 'Sweet Hot Mustard With Honey', 'Inglehoffer'))
+      .toBe('Inglehoffer');
+    expect(sourceLineFor(' sweet hot mustard with honey ', 'Sweet Hot Mustard With Honey', null)).toBe('');
+  });
+
+  it('prints the full source line once the name has been edited or shortened', () => {
+    expect(sourceLineFor('Honey', 'Sweet Hot Mustard With Honey', 'Inglehoffer'))
+      .toBe('Inglehoffer · Sweet Hot Mustard With Honey');
   });
 });
 

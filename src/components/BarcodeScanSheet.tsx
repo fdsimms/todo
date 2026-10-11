@@ -53,7 +53,7 @@ import {
   nameFromScanFor,
   scannedItemFor,
   shorterNameSuggestions,
-  sourceLabelFor,
+  sourceLineFor,
   variantFor,
   unknownScannedItem,
   type ScannedGtinLink,
@@ -1075,8 +1075,8 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                           to check the name above is against the box in hand.
                           The maker leads it when the name doesn't already say
                           who it is — see `sourceLabelFor`. */}
-                      {!!row.label && (
-                        <Text style={styles.rowLabel}>{sourceLabelFor(row.label, row.brand)}</Text>
+                      {!!sourceLineFor(row.name, row.label, row.brand) && (
+                        <Text style={styles.rowLabel}>{sourceLineFor(row.name, row.label, row.brand)}</Text>
                       )}
                       {/* Shorter names for a row that is still wearing the
                           lookup's words and will mint a new item (a row filed
@@ -1091,6 +1091,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                         if (shorter.length === 0) return null;
                         return (
                           <View style={styles.captionRow}>
+                            <Text style={styles.rowCaption}>Shorten to</Text>
                             {shorter.map(label => (
                               <InlineAction
                                 key={label}
@@ -1126,22 +1127,28 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                         </View>
                       )}
                       {!row.pending && (
-                        <View style={styles.captionRow}>
-                          {!!caption && (
+                        <>
+                        {/* What the row resolved to, on its own line so the
+                            actions below start at the same left edge whether or
+                            not there is a sentence to lead them. */}
+                        {!!caption && (
+                          <View style={styles.captionRow}>
                             <Text style={row.error ? styles.rowError : styles.rowCaption}>
                               {caption}
                             </Text>
-                          )}
-                          {!!pendingId && !!caption && (
-                            <InlineAction
-                              label="Confirm"
-                              icon="checkmark-circle-outline"
-                              variant="neutral"
-                              onPress={() => patchRow(row.key, { confirmedMatchId: pendingId })}
-                              accessibilityLabel={`Confirm: ${caption}`}
-                              style={styles.confirmPill}
-                            />
-                          )}
+                            {!!pendingId && (
+                              <InlineAction
+                                label="Confirm"
+                                icon="checkmark-circle-outline"
+                                variant="neutral"
+                                onPress={() => patchRow(row.key, { confirmedMatchId: pendingId })}
+                                accessibilityLabel={`Confirm: ${caption}`}
+                                style={styles.confirmPill}
+                              />
+                            )}
+                          </View>
+                        )}
+                        <View style={styles.captionRow}>
                           {/* The way out of every reading above, including the
                               one that read nothing. Neutral rather than accent
                               for the reason `InlineAction` gives: it is the
@@ -1208,6 +1215,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                             />
                           )}
                         </View>
+                        </>
                       )}
                       {/* Only when the label isn't there to identify the row.
                           Once a product name is showing, the digits are a
