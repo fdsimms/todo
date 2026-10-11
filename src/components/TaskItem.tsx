@@ -1230,11 +1230,14 @@ export const TaskItem = React.memo(function TaskItem({
   const calendarReviewRawEvents = useCalendarStore(s =>
     task.generatedKind === 'calendarReview' ? s.events : EMPTY_BUSY_EVENTS
   );
+  const calendarReviewReturnEvents = useCalendarStore(s =>
+    task.generatedKind === 'calendarReview' ? s.vacationReturnEvents : EMPTY_BUSY_EVENTS
+  );
   const calendarReviewEvents = useMemo(
     () => (task.generatedKind === 'calendarReview'
-      ? calendarReviewEventsFor(task, calendarReviewRawEvents)
+      ? calendarReviewEventsFor(task, calendarReviewRawEvents, calendarReviewReturnEvents)
       : EMPTY_BUSY_EVENTS),
-    [task, calendarReviewRawEvents]
+    [task, calendarReviewRawEvents, calendarReviewReturnEvents]
   );
 
   // The calendar event a rule-written task ("Prep for interview") came from,

@@ -65,9 +65,10 @@ export function wantsCalendarReview(tomorrowEvents: readonly BusyEvent[]): boole
 export function calendarReviewEventsFor(
   task: Pick<Task, 'generatedKind' | 'generatedSourceId'>,
   events: readonly BusyEvent[],
+  vacationReturnEvents: readonly BusyEvent[] = [],
 ): BusyEvent[] {
   const dayKey = calendarReviewDayKey(task);
   if (!dayKey) return [];
   const dayStart = new Date(`${dayKey}T00:00:00`);
-  return eventsIn(events, dayStart, addDays(dayStart, 1));
+  return eventsIn([...events, ...vacationReturnEvents], dayStart, addDays(dayStart, 1));
 }
