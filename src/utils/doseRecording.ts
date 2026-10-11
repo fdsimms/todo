@@ -78,12 +78,18 @@ export async function allowOkAgainNotification(): Promise<boolean> {
 
 /**
  * Ask before recording a dose the limit you set says is too soon. Resolves
- * true straight away when there is no limit or it allows one now.
+ * true straight away when there is no limit or it allows one now. `planned` is
+ * the dose about to be recorded: a limit on a total asks whether that much
+ * fits, so the same limit can allow 400 mg and refuse 800 mg.
  */
-export function confirmWithinLimit(name: string, now: Date = new Date()): Promise<boolean> {
+export function confirmWithinLimit(
+  name: string,
+  now: Date = new Date(),
+  planned: { amount: number | null; unit: string | null } | null = null,
+): Promise<boolean> {
   const { logs, settings } = useMedicationStore.getState();
   const { limit } = prefsFor(settings, name);
-  const status = limitStatus(logs, name, limit, now);
+  const status = limitStatus(logs, name, limit, now, planned);
   if (!status.nextOkAt) return Promise.resolve(true);
   const message = `The limit you set is ${describeLimit(limit)!.toLowerCase()}. `
     + `The next dose is within it at ${format(status.nextOkAt, 'h:mm a')}.`;

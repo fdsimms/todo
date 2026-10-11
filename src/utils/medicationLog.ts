@@ -314,7 +314,7 @@ export function isAsNeededMedication(
  */
 export type MedicationTallyPrefs = Record<string, {
   asNeeded?: boolean | null;
-  usualDose?: { amount: number; unit: string } | null;
+  usualDoses?: { amount: number; unit: string }[];
 }>;
 
 /** What one medication's history adds up to. Counting only — no comparisons. */
@@ -333,7 +333,8 @@ export interface MedicationStat {
 }
 
 function usualDoseText(prefs: MedicationTallyPrefs[string] | undefined): string | null {
-  return prefs?.usualDose ? formatDose(prefs.usualDose) : null;
+  const first = prefs?.usualDoses?.[0];
+  return first ? formatDose(first) : null;
 }
 
 /**

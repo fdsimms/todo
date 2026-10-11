@@ -18,8 +18,11 @@ import {
   taskSupplyFor,
 } from '../utils/medicationLog';
 import {
+  MAX_USUAL_DOSES,
   SUPPLY_UNITS,
   describeLimit,
+  formatCapAmount,
+  type AmountCap,
   describeSupplyLeft,
   limitStatus,
   prefsFor,
@@ -82,7 +85,7 @@ export function MedicationDetailScreen() {
   const setSupply = useMedicationStore(s => s.setSupply);
   const setSupplementPanel = useMedicationStore(s => s.setSupplementPanel);
   const setAsNeeded = useMedicationStore(s => s.setAsNeeded);
-  const setUsualDose = useMedicationStore(s => s.setUsualDose);
+  const setUsualDoses = useMedicationStore(s => s.setUsualDoses);
   const refillSupply = useMedicationStore(s => s.refillSupply);
   const archiveMedication = useMedicationStore(s => s.archiveMedication);
   const unarchiveMedication = useMedicationStore(s => s.unarchiveMedication);
@@ -123,24 +126,51 @@ export function MedicationDetailScreen() {
   const medName = stat?.name ?? key;
   const howValue = prefsFor(settings, medName).asNeeded === true ? 'asNeeded'
     : prefsFor(settings, medName).asNeeded === false ? 'scheduled' : 'auto';
-  const storedUsual = prefsFor(settings, medName).usualDose ?? null;
-  // The amount and unit are typed separately, so the half-typed state lives here
-  // and the store is written once both make a dose (or the amount is cleared).
-  const [usualAmount, setUsualAmount] = useState(storedUsual ? String(storedUsual.amount) : '');
-  const [usualUnit, setUsualUnit] = useState<string | null>(storedUsual?.unit ?? null);
+  const storedUsuals = prefsFor(settings, medName).usualDoses ?? [];
+  const storedCap = prefsFor(settings, medName).limit?.maxAmount24h ?? null;
+  // An amount and its unit are typed separately, so the half-typed state lives
+  // here. The usual amount is added with a button once both make a dose; the
+  // amount cap is written as soon as both do (or the amount is cleared).
+  const [usualAmount, setUsualAmount] = useState('');
+  const [usualUnit, setUsualUnit] = useState<string | null>(null);
+  const [capAmount, setCapAmount] = useState(storedCap ? String(storedCap.amount) : '');
+  const [capUnit, setCapUnit] = useState<string | null>(storedCap?.unit ?? null);
   useEffect(() => {
-    setUsualAmount(storedUsual ? String(storedUsual.amount) : '');
-    setUsualUnit(storedUsual?.unit ?? null);
+    setUsualAmount('');
+    setUsualUnit(null);
+    setCapAmount(storedCap ? String(storedCap.amount) : '');
+    setCapUnit(storedCap?.unit ?? null);
     // Only when the page switches medication (a rename re-keys it); typing must not reset itself.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
-  const saveUsual = (amountText: string, unit: string | null) => {
-    const parsed = Number(amountText.trim());
-    if (amountText.trim() === '') { setUsualDose(medName, null); return; }
-    if (Number.isFinite(parsed) && parsed > 0 && unit) setUsualDose(medName, { amount: parsed, unit });
+  const usualParsed = Number(usualAmount.trim());
+  const canAddUsual = usualAmount.trim() !== '' && Number.isFinite(usualParsed) && usualParsed > 0 && !!usualUnit
+    && storedUsuals.length < MAX_USUAL_DOSES
+    && !storedUsuals.some(d => d.amount === usualParsed && d.unit === usualUnit);
+  const addUsual = () => {
+    if (!canAddUsual || !usualUnit) return;
+    haptics.success();
+    setUsualDoses(medName, [...storedUsuals, { amount: usualParsed, unit: usualUnit }]);
+    setUsualAmount('');
+    setUsualUnit(null);
   };
-  const changeUsualAmount = (next: string) => { setUsualAmount(next); saveUsual(next, usualUnit); };
-  const changeUsualUnit = (next: string | null) => { setUsualUnit(next); saveUsual(usualAmount, next); };
+  const editUsual = (index: number) => {
+    haptics.tap();
+    const dose = storedUsuals[index];
+    const label = formatDose(dose) ?? '';
+    Alert.alert(label, undefined, [
+      ...(index > 0 ? [{
+        text: 'Make default',
+        onPress: () => setUsualDoses(medName, [dose, ...storedUsuals.filter((_, i) => i !== index)]),
+      }] : []),
+      {
+        text: 'Remove',
+        style: 'destructive' as const,
+        onPress: () => setUsualDoses(medName, storedUsuals.filter((_, i) => i !== index)),
+      },
+      { text: 'Cancel', style: 'cancel' as const },
+    ]);
+  };
 
   if (!stat) {
     // Taken off the list while this page was open (see `removeMedication`).
@@ -164,16 +194,25 @@ export function MedicationDetailScreen() {
   const status = limitStatus(logs, name, limit, new Date());
   const remaining = supplyRemaining(logs, name, supply);
 
-  const updateLimit = (patch: Partial<{ minHours: number | null; maxPer24h: number | null; notify: boolean }>) => {
+  const updateLimit = (patch: Partial<{ minHours: number | null; maxPer24h: number | null; maxAmount24h: AmountCap | null; notify: boolean }>) => {
     const next = {
       minHours: limit?.minHours ?? null,
       maxPer24h: limit?.maxPer24h ?? null,
+      maxAmount24h: limit?.maxAmount24h ?? null,
       notify: limit?.notify ?? false,
       ...patch,
     };
-    setLimit(name, next.minHours === null && next.maxPer24h === null ? null : next);
+    setLimit(name, next.minHours === null && next.maxPer24h === null && next.maxAmount24h === null ? null : next);
     syncOkAgainNotification(name);
   };
+
+  const saveCap = (amountText: string, unit: string | null) => {
+    const parsed = Number(amountText.trim());
+    if (amountText.trim() === '') { updateLimit({ maxAmount24h: null }); return; }
+    if (Number.isFinite(parsed) && parsed > 0 && unit) updateLimit({ maxAmount24h: { amount: parsed, unit } });
+  };
+  const changeCapAmount = (next: string) => { setCapAmount(next); saveCap(next, capUnit); };
+  const changeCapUnit = (next: string | null) => { setCapUnit(next); saveCap(capAmount, next); };
 
   const updateSupply = (patch: Partial<{ count: number | null; unit: string; refillCount: number | null; reorderAt: number }>) => {
     const next = {
@@ -345,16 +384,37 @@ export function MedicationDetailScreen() {
           <Text style={styles.fieldHint}>
             As needed shows a button on the Medications screen that records another dose, and compares how often you take it. From doses marks it as needed once a dose is recorded as needed.
           </Text>
-          <Text style={[styles.fieldLabel, styles.panelHeading]}>Usual amount</Text>
+          <Text style={[styles.fieldLabel, styles.panelHeading]}>Usual amounts</Text>
+          {storedUsuals.length > 0 && (
+            <View style={styles.usualChips}>
+              {storedUsuals.map((dose, index) => (
+                <TouchableOpacity
+                  key={`${dose.amount}-${dose.unit}`}
+                  style={styles.usualChip}
+                  activeOpacity={interaction.activeOpacity}
+                  onPress={() => editUsual(index)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${formatDose(dose)}${index === 0 ? ', default' : ''}. Double tap for options`}
+                >
+                  <Text style={styles.usualChipText}>
+                    {formatDose(dose)}{index === 0 && storedUsuals.length > 1 ? ' · default' : ''}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
           <DoseAmountField
             name="MedicationDetail usual dose unit menu"
             amount={usualAmount}
-            onChangeAmount={changeUsualAmount}
+            onChangeAmount={setUsualAmount}
             unit={usualUnit}
-            onChangeUnit={changeUsualUnit}
+            onChangeUnit={setUsualUnit}
           />
+          <View style={styles.panelActions}>
+            <InlineAction label="Add amount" icon="add" onPress={addUsual} disabled={!canAddUsual} />
+          </View>
           <Text style={styles.fieldHint}>
-            Prefills the amount when you record a dose, and is what the round button records before you have recorded one.
+            {`Quick picks when you record a dose. The first is what a new dose starts from and what the round button records before you have recorded one. Up to ${MAX_USUAL_DOSES}.`}
           </Text>
         </View>
 
@@ -390,6 +450,25 @@ export function MedicationDetailScreen() {
             />
           </View>
           <Text style={styles.fieldHint}>Counted over any 24-hour period, not by calendar day.</Text>
+          <Text style={[styles.fieldLabel, styles.panelHeading]}>Most amount in 24 hours</Text>
+          <DoseAmountField
+            name="MedicationDetail amount cap unit menu"
+            amount={capAmount}
+            onChangeAmount={changeCapAmount}
+            unit={capUnit}
+            onChangeUnit={changeCapUnit}
+          />
+          <Text style={styles.fieldHint}>
+            A total, such as 1,200 mg, for a label that limits the amount rather than the number of doses. Only doses recorded in the same unit are added up. A dose with no amount, or in another unit, is not counted.
+          </Text>
+          {status.maxAmount24h && status.amountInLast24h !== null && (
+            <Text style={styles.fieldHint}>
+              {`${status.amountInLast24h.toLocaleString('en-US', { maximumFractionDigits: 2 })} of ${formatCapAmount(status.maxAmount24h)} in the last 24 hours`}
+              {status.unmeasuredInLast24h > 0
+                ? `, not counting ${status.unmeasuredInLast24h} ${status.unmeasuredInLast24h === 1 ? 'dose' : 'doses'} with no ${status.maxAmount24h.unit} amount.`
+                : '.'}
+            </Text>
+          )}
           <View style={styles.fieldRow}>
             <Text style={styles.fieldLabel}>Notify me when it’s OK</Text>
             <Switch
@@ -607,6 +686,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   statLabel: { fontSize: font.xs, color: colors.textSecondary, marginTop: spacing.xxs, textAlign: 'center' },
   actionsRow: { flexDirection: 'row', justifyContent: 'flex-start', gap: spacing.sm, marginBottom: spacing.lg },
   panelHeading: { paddingHorizontal: spacing.md, paddingTop: spacing.sm },
+  usualChips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
+  usualChip: { backgroundColor: colors.bgTertiary, borderRadius: radius.sm, paddingHorizontal: spacing.smd, paddingVertical: spacing.xsm },
+  usualChipText: { color: colors.text, fontSize: font.sm },
   panelActions: { flexDirection: 'row', justifyContent: 'flex-start', paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
   sectionTitle: {
     fontSize: font.xs,

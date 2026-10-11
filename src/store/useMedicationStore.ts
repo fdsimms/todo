@@ -35,6 +35,7 @@ import {
   type MedicationSettingsMap,
   type MedicationSupply,
   type SupplementPanel,
+  MAX_USUAL_DOSES,
   type UsualDose,
 } from '../utils/medicationSettings';
 
@@ -169,8 +170,12 @@ interface MedicationStore {
   setSupplementPanel: (name: string, panel: SupplementPanel | null) => void;
   /** Say whether it is taken as needed or on a schedule; null goes back to reading it off the doses. */
   setAsNeeded: (name: string, asNeeded: boolean | null) => void;
-  /** Set or clear the amount you usually take. */
-  setUsualDose: (name: string, dose: UsualDose | null) => void;
+  /**
+   * Replace the amounts you usually take. The first is the default, the rest are
+   * quick picks. Anything not a positive amount with a unit is dropped, repeats
+   * are folded, and the list is cut to `MAX_USUAL_DOSES`.
+   */
+  setUsualDoses: (name: string, doses: UsualDose[]) => void;
   /** Add a refill to what's left. */
   refillSupply: (name: string, added: number) => void;
   /** Turn down the refill offer at the current count. */
@@ -258,12 +263,17 @@ export const useMedicationStore = create<MedicationStore>((set, get) => ({
     if (!medicationKey(name)) return;
     const current = prefsFor(get().settings, name);
     let next: MedicationLimit | null = null;
-    if (limit && (limit.minHours !== null || limit.maxPer24h !== null)) {
+    const amountCap = limit?.maxAmount24h ?? null;
+    if (limit && (limit.minHours !== null || limit.maxPer24h !== null || amountCap)) {
+      const before = current.limit?.maxAmount24h ?? null;
       const capsUnchanged = current.limit
         && current.limit.minHours === limit.minHours
-        && current.limit.maxPer24h === limit.maxPer24h;
+        && current.limit.maxPer24h === limit.maxPer24h
+        && before?.amount === amountCap?.amount
+        && before?.unit === amountCap?.unit;
       next = {
         ...limit,
+        maxAmount24h: amountCap,
         since: capsUnchanged && current.limit ? current.limit.since : new Date().toISOString(),
       };
     }
@@ -291,11 +301,18 @@ export const useMedicationStore = create<MedicationStore>((set, get) => ({
     writeSettings(set, withPrefs(get().settings, name, { ...current, asNeeded }));
   },
 
-  setUsualDose(name, dose) {
+  setUsualDoses(name, doses) {
     if (!medicationKey(name)) return;
     const current = prefsFor(get().settings, name);
-    const usualDose = dose && Number.isFinite(dose.amount) && dose.amount > 0 && dose.unit ? dose : null;
-    writeSettings(set, withPrefs(get().settings, name, { ...current, usualDose }));
+    const usualDoses: UsualDose[] = [];
+    for (const d of doses) {
+      if (!Number.isFinite(d.amount) || d.amount <= 0 || !d.unit) continue;
+      if (usualDoses.some(u => u.amount === d.amount && u.unit === d.unit)) continue;
+      usualDoses.push({ amount: d.amount, unit: d.unit });
+      if (usualDoses.length >= MAX_USUAL_DOSES) break;
+    }
+    const { usualDoses: _dropped, ...rest } = current;
+    writeSettings(set, withPrefs(get().settings, name, usualDoses.length > 0 ? { ...rest, usualDoses } : rest));
   },
 
   refillSupply(name, added) {

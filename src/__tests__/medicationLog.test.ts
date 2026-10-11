@@ -472,7 +472,7 @@ describe('how a medication is taken, and its usual amount', () => {
   });
 
   it('shows the usual amount until a dose states one', () => {
-    const usual = { zinc: { usualDose: { amount: 50, unit: 'mg' } } };
+    const usual = { zinc: { usualDoses: [{ amount: 50, unit: 'mg' }, { amount: 25, unit: 'mg' }] } };
     expect(medicationStats([], ['Zinc'], usual)[0].typicalDose).toBe('50 mg');
     const logs = [dose({ name: 'Zinc', amount: 25, unit: 'mg' })];
     expect(medicationStats(logs, [], usual)[0].typicalDose).toBe('25 mg');

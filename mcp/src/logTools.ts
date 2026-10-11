@@ -23,7 +23,7 @@ import { getRecipe, type RecipeDetail } from './kitchenTools';
 // safe to import for its value here; the replica loads the same module for the
 // write.
 import { describeWater, waterToMl, type WaterUnit } from '../../src/utils/waterLog';
-import { PANEL_UNITS } from '../../src/utils/medicationSettings';
+import { MAX_USUAL_DOSES, PANEL_UNITS } from '../../src/utils/medicationSettings';
 import { DOSE_UNITS } from '../../src/utils/medicationLog';
 import { describeSupplementPanel } from '../../src/utils/supplementDose';
 
@@ -432,36 +432,34 @@ export function removeMedication(replica: Replica, name: string): { removed: str
   return { removed: replica.removeMedication(name) };
 }
 
-/** How a medicine is taken and its usual amount. See `Replica.setMedicationProfile`. */
+/** How a medicine is taken and the amounts usually taken. See `Replica.setMedicationProfile`. */
 export function setMedicationProfile(
   replica: Replica,
-  input: { name: string; asNeeded?: boolean | null; usualAmount?: number | null; usualUnit?: string | null },
-): { medicine: string; asNeeded?: boolean | null; usualDose?: string | null } {
-  const touchesDose = input.usualAmount !== undefined || input.usualUnit !== undefined;
-  if (input.asNeeded === undefined && !touchesDose) {
-    throw new Error('Give asNeeded, usualAmount and usualUnit, or some of them.');
+  input: { name: string; asNeeded?: boolean | null; usualAmounts?: { amount: number; unit: string }[] },
+): { medicine: string; asNeeded?: boolean | null; usualAmounts?: string[] } {
+  if (input.asNeeded === undefined && input.usualAmounts === undefined) {
+    throw new Error('Give asNeeded, usualAmounts, or both.');
   }
-  let usualDose: { amount: number; unit: string } | null | undefined;
-  if (touchesDose) {
-    const unit = input.usualUnit?.trim() ?? null;
-    if (input.usualAmount == null && !unit) usualDose = null;
-    else {
-      if (input.usualAmount == null || !unit) throw new Error('Give usualAmount and usualUnit together ("50" and "mg"), or both null to clear it.');
-      if (!(Number.isFinite(input.usualAmount) && input.usualAmount > 0)) throw new Error('usualAmount must be a number greater than 0.');
-      if (!DOSE_UNITS.some(u => u.value === unit)) {
-        throw new Error(`usualUnit must be one of: ${DOSE_UNITS.map(u => u.value).join(', ')}.`);
+  let usualDoses: { amount: number; unit: string }[] | undefined;
+  if (input.usualAmounts !== undefined) {
+    if (input.usualAmounts.length > MAX_USUAL_DOSES) throw new Error(`At most ${MAX_USUAL_DOSES} usual amounts.`);
+    usualDoses = input.usualAmounts.map(d => {
+      const unit = d.unit?.trim();
+      if (!(Number.isFinite(d.amount) && d.amount > 0)) throw new Error('Each usual amount must be a number greater than 0.');
+      if (!unit || !DOSE_UNITS.some(u => u.value === unit)) {
+        throw new Error(`Each usual amount needs a unit, one of: ${DOSE_UNITS.map(u => u.value).join(', ')}.`);
       }
-      usualDose = { amount: input.usualAmount, unit };
-    }
+      return { amount: d.amount, unit };
+    });
   }
   const medicine = replica.setMedicationProfile(input.name, {
     ...(input.asNeeded !== undefined ? { asNeeded: input.asNeeded } : {}),
-    ...(usualDose !== undefined ? { usualDose } : {}),
+    ...(usualDoses !== undefined ? { usualDoses } : {}),
   });
   return {
     medicine,
     ...(input.asNeeded !== undefined ? { asNeeded: input.asNeeded } : {}),
-    ...(usualDose !== undefined ? { usualDose: usualDose ? `${usualDose.amount} ${usualDose.unit}` : null } : {}),
+    ...(usualDoses !== undefined ? { usualAmounts: usualDoses.map(d => `${d.amount} ${d.unit}`) } : {}),
   };
 }
 

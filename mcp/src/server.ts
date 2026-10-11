@@ -524,7 +524,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'list_medication_logs',
-    'Doses recorded over a range of days, including as-needed ones, plus the limit and supply the person set for each medication (limitsAndSupply: their own limit, how many doses in the last 24 hours, when the next is within it, and how many are left; also whether they take it as needed, their usual amount, and medicines added with no dose yet). A limit is the person\'s own, never a prescription; say it that way. Defaults to the last 7 days. Empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that nothing was logged.',
+    'Doses recorded over a range of days, including as-needed ones, plus the limit and supply the person set for each medication (limitsAndSupply: their own limit, how many doses in the last 24 hours, the total against a limit on an amount, when the next is within it, and how many are left; also whether they take it as needed, their usual amount, and medicines added with no dose yet). A limit is the person\'s own, never a prescription; say it that way. Defaults to the last 7 days. Empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that nothing was logged.',
     logRange,
     async input => json(await withFresh(() => listMedicationLogs(replica, input)))
   );
@@ -2443,12 +2443,11 @@ function registerWriteTools(
 
   server.tool(
     'set_medication_profile',
-    'Set how a listed medicine is taken and the amount usually taken, as its page does. asNeeded: true for taken as needed (the Medications screen then offers a button that records another dose), false for on a schedule, null to go back to reading it off the recorded doses. usualAmount and usualUnit (together, e.g. 50 and "mg") are what a new dose starts from and what the round button records before any dose exists; both null clears them. A field left out is unchanged. Only from what the person told you.',
+    'Set how a listed medicine is taken and the amounts usually taken, as its page does. asNeeded: true for taken as needed (the Medications screen then offers a button that records another dose), false for on a schedule, null to go back to reading it off the recorded doses. usualAmounts is the whole list (e.g. [{amount: 400, unit: "mg"}, {amount: 200, unit: "mg"}], at most 6): the first is what a new dose starts from and what the round button records before any dose exists, and all of them are quick picks when recording a dose; [] clears them. A field left out is unchanged. Only from what the person told you.',
     {
       name: z.string().min(1),
       asNeeded: z.boolean().nullable().optional(),
-      usualAmount: z.number().positive().nullable().optional(),
-      usualUnit: z.string().nullable().optional(),
+      usualAmounts: z.array(z.object({ amount: z.number().positive(), unit: z.string() })).max(6).optional(),
     },
     async input => {
       try {

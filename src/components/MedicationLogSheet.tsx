@@ -14,9 +14,9 @@ import { WhenPicker } from './WhenPicker';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { prefsFor } from '../utils/medicationSettings';
+import { defaultUsualDose, prefsFor } from '../utils/medicationSettings';
 import { getLogicalToday } from '../utils/dateUtils';
-import { DOSE_UNITS, medicationKey, medicationVocabulary } from '../utils/medicationLog';
+import { DOSE_UNITS, formatDose, medicationKey, medicationVocabulary } from '../utils/medicationLog';
 import { confirmWithinLimit, recordDose, syncOkAgainNotification, unrecordDose } from '../utils/doseRecording';
 import { TextField } from './TextField';
 
@@ -79,6 +79,7 @@ export function MedicationLogSheet({ visible, log, initialName, onClose, onDelet
   const logs = useMedicationStore(s => s.logs);
   const archived = useMedicationStore(s => s.archived);
   const registered = useMedicationStore(s => s.registered);
+  const settings = useMedicationStore(s => s.settings);
   const updateLog = useMedicationStore(s => s.updateLog);
 
   const [name, setName] = useState('');
@@ -96,10 +97,11 @@ export function MedicationLogSheet({ visible, log, initialName, onClose, onDelet
     setName(log?.name ?? initialName ?? '');
     // A new dose of a named medication starts from what was set up for it.
     const prefs = !log && initialName ? prefsFor(useMedicationStore.getState().settings, initialName) : null;
+    const usual = defaultUsualDose(prefs ?? undefined);
     setAmount(log?.amount !== null && log?.amount !== undefined
       ? String(log.amount)
-      : prefs?.usualDose ? String(prefs.usualDose.amount) : '');
-    setUnit(log?.unit ?? prefs?.usualDose?.unit ?? null);
+      : usual ? String(usual.amount) : '');
+    setUnit(log?.unit ?? usual?.unit ?? null);
     setAsNeeded(log ? log.asNeeded : prefs?.asNeeded ?? true);
     setNote(log?.note ?? '');
     setDay(noonOfToday());
@@ -139,6 +141,9 @@ export function MedicationLogSheet({ visible, log, initialName, onClose, onDelet
     setName(trimmed);
   };
 
+  // The amounts set up for this medication, as quick picks above the field.
+  const usualDoses = prefsFor(settings, name).usualDoses ?? [];
+
   const canSave = name.trim().length > 0;
 
   const backdated = day.toDateString() !== noonOfToday().toDateString();
@@ -166,7 +171,7 @@ export function MedicationLogSheet({ visible, log, initialName, onClose, onDelet
       const at = backdated
         ? day
         : agoMinutes > 0 ? new Date(Date.now() - agoMinutes * 60_000) : undefined;
-      if (!backdated && !(await confirmWithinLimit(trimmed, at ?? new Date()))) return;
+      if (!backdated && !(await confirmWithinLimit(trimmed, at ?? new Date(), { amount: usableAmount, unit }))) return;
       recordDose({
         name: trimmed,
         amount: usableAmount,
@@ -245,6 +250,18 @@ export function MedicationLogSheet({ visible, log, initialName, onClose, onDelet
         <Text style={styles.hint}>
           Optional. Leave it blank to record only that you took it.
         </Text>
+        {usualDoses.length > 0 && (
+          <PillGroup
+            noun="amount"
+            surface="card"
+            options={usualDoses.map(d => ({
+              key: `${d.amount}-${d.unit}`,
+              label: formatDose(d) ?? '',
+              selected: unit === d.unit && Number(amount.trim()) === d.amount,
+              onPress: () => { haptics.tap(); setAmount(String(d.amount)); setUnit(d.unit); },
+            }))}
+          />
+        )}
         <TextField
           style={styles.amountInput}
           value={amount}

@@ -482,14 +482,15 @@ describe('add_medication and set_medication_profile', () => {
     expect(() => removeMedication(replica, 'Nothing')).toThrow(/No medicine called/);
   });
 
-  it('sets how it is taken and the usual amount, and reports them', () => {
+  it('sets how it is taken and the usual amounts, and reports them', () => {
     addMedication(replica, 'Magnesium');
-    expect(setMedicationProfile(replica, { name: 'magnesium', asNeeded: true, usualAmount: 200, usualUnit: 'mg' }))
-      .toEqual({ medicine: 'Magnesium', asNeeded: true, usualDose: '200 mg' });
+    expect(setMedicationProfile(replica, {
+      name: 'magnesium', asNeeded: true, usualAmounts: [{ amount: 200, unit: 'mg' }, { amount: 100, unit: 'mg' }],
+    })).toEqual({ medicine: 'Magnesium', asNeeded: true, usualAmounts: ['200 mg', '100 mg'] });
     expect(replica.medicationSettings().find(m => m.name === 'Magnesium'))
-      .toMatchObject({ takenAsNeeded: true, usualAmount: '200 mg' });
-    // Left out is unchanged; null goes back to the doses and clears the amount.
-    setMedicationProfile(replica, { name: 'Magnesium', asNeeded: null, usualAmount: null, usualUnit: null });
+      .toMatchObject({ takenAsNeeded: true, usualAmounts: ['200 mg', '100 mg'] });
+    // Left out is unchanged; null goes back to the doses and [] clears the amounts.
+    setMedicationProfile(replica, { name: 'Magnesium', asNeeded: null, usualAmounts: [] });
     expect(replica.medicationSettings().find(m => m.name === 'Magnesium')).toMatchObject({ noDosesYet: true });
     expect(replica.medicationSettings().find(m => m.name === 'Magnesium')?.takenAsNeeded).toBeUndefined();
   });
@@ -498,7 +499,8 @@ describe('add_medication and set_medication_profile', () => {
     expect(() => setMedicationProfile(replica, { name: 'Nothing', asNeeded: true })).toThrow(/No medicine called/);
     addMedication(replica, 'Iron');
     expect(() => setMedicationProfile(replica, { name: 'Iron' })).toThrow(/Give asNeeded/);
-    expect(() => setMedicationProfile(replica, { name: 'Iron', usualAmount: 5 })).toThrow(/together/);
-    expect(() => setMedicationProfile(replica, { name: 'Iron', usualAmount: 5, usualUnit: 'furlongs' })).toThrow(/one of/);
+    expect(() => setMedicationProfile(replica, { name: 'Iron', usualAmounts: [{ amount: 5, unit: '' }] })).toThrow(/needs a unit/);
+    expect(() => setMedicationProfile(replica, { name: 'Iron', usualAmounts: [{ amount: 5, unit: 'furlongs' }] })).toThrow(/one of/);
+    expect(() => setMedicationProfile(replica, { name: 'Iron', usualAmounts: [{ amount: 0, unit: 'mg' }] })).toThrow(/greater than 0/);
   });
 });

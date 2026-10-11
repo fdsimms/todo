@@ -2323,7 +2323,9 @@ describe('demo seed — people', () => {
   it('seeds a limit and a supply on an as-needed medication', () => {
     const { logs, settings } = useMedicationStore.getState();
     const { limit, supply } = prefsFor(settings, 'Ibuprofen');
-    expect(limit).toMatchObject({ minHours: 6, maxPer24h: 3 });
+    expect(limit).toMatchObject({ minHours: 6, maxPer24h: 3, maxAmount24h: { amount: 1200, unit: 'mg' } });
+    // And two usual strengths, the first being the default.
+    expect(prefsFor(settings, 'Ibuprofen').usualDoses).toEqual([{ amount: 400, unit: 'mg' }, { amount: 200, unit: 'mg' }]);
     expect(limitStatus(logs, 'Ibuprofen', limit, new Date()).inLast24h).toBe(0);
     expect(supplyRemaining(logs, 'Ibuprofen', supply)).toBe(9);
   });

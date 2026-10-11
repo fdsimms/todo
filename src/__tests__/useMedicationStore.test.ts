@@ -432,19 +432,40 @@ describe('how it is taken and the usual amount', () => {
     expect(state().settings.zinc).toBeUndefined();
   });
 
-  it('stores a usual amount and refuses a nonsensical one', () => {
-    state().setUsualDose('Zinc', { amount: 50, unit: 'mg' });
-    expect(state().settings.zinc.usualDose).toEqual({ amount: 50, unit: 'mg' });
-    state().setUsualDose('Zinc', { amount: 0, unit: 'mg' });
+  it('stores usual amounts in order, folds repeats and refuses nonsense', () => {
+    state().setUsualDoses('Zinc', [
+      { amount: 50, unit: 'mg' }, { amount: 25, unit: 'mg' }, { amount: 50, unit: 'mg' }, { amount: 0, unit: 'mg' },
+    ]);
+    expect(state().settings.zinc.usualDoses).toEqual([{ amount: 50, unit: 'mg' }, { amount: 25, unit: 'mg' }]);
+    state().setUsualDoses('Zinc', []);
     expect(state().settings.zinc).toBeUndefined();
+  });
+
+  it('stops at the maximum number of usual amounts', () => {
+    state().setUsualDoses('Zinc', Array.from({ length: 10 }, (_, i) => ({ amount: i + 1, unit: 'mg' })));
+    expect(state().settings.zinc.usualDoses).toHaveLength(6);
+  });
+
+  it('sets a limit on a total, and keeps its start time while the caps are unchanged', () => {
+    state().setLimit('Ibuprofen', { minHours: null, maxPer24h: null, notify: false, maxAmount24h: { amount: 1200, unit: 'mg' } });
+    const first = state().settings.ibuprofen.limit!;
+    expect(first.maxAmount24h).toEqual({ amount: 1200, unit: 'mg' });
+    state().setLimit('Ibuprofen', { minHours: null, maxPer24h: null, notify: true, maxAmount24h: { amount: 1200, unit: 'mg' } });
+    expect(state().settings.ibuprofen.limit!.since).toBe(first.since);
+    state().setLimit('Ibuprofen', { minHours: null, maxPer24h: null, notify: true, maxAmount24h: { amount: 800, unit: 'mg' } });
+    expect(state().settings.ibuprofen.limit!.since >= first.since).toBe(true);
+    state().setLimit('Ibuprofen', { minHours: null, maxPer24h: null, notify: true, maxAmount24h: null });
+    expect(state().settings.ibuprofen).toBeUndefined();
   });
 
   it('keeps them through a rename', () => {
     state().addMedication('Zinc');
     state().setAsNeeded('Zinc', false);
-    state().setUsualDose('Zinc', { amount: 50, unit: 'mg' });
+    state().setUsualDoses('Zinc', [{ amount: 50, unit: 'mg' }, { amount: 25, unit: 'mg' }]);
     state().renameMedication('Zinc', 'Zinc picolinate');
-    expect(state().settings['zinc picolinate']).toMatchObject({ asNeeded: false, usualDose: { amount: 50, unit: 'mg' } });
+    expect(state().settings['zinc picolinate']).toMatchObject({
+      asNeeded: false, usualDoses: [{ amount: 50, unit: 'mg' }, { amount: 25, unit: 'mg' }],
+    });
   });
 });
 

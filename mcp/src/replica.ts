@@ -891,10 +891,12 @@ export interface MedicationSettingsView {
   nutrientsDetail?: string;
   /** "9 doses left". */
   supplyLeft?: string;
+  /** "800 of 1,200 mg", what has been added up against a limit on a total, in the last 24 hours. */
+  amountInLast24h?: string;
   /** Set by the person: true taken as needed, false on a schedule. Absent means read off the doses. */
   takenAsNeeded?: boolean;
-  /** "50 mg", the amount the person usually takes. */
-  usualAmount?: string;
+  /** ["50 mg", "25 mg"], the amounts the person usually takes; the first is the default. */
+  usualAmounts?: string[];
   /** Listed by name with no dose recorded yet. */
   noDosesYet?: true;
 }
@@ -1262,12 +1264,13 @@ export interface Replica {
   removeMedication(name: string): string;
   /**
    * How a medicine is taken (`asNeeded`: true, false, or null to read it off the
-   * doses) and the amount usually taken (null clears it). A field left out is
+   * doses) and the amounts usually taken (the whole list, first is the default;
+   * empty clears it). A field left out is
    * unchanged. Refuses a medicine that is not listed. Returns the spelling listed.
    */
   setMedicationProfile(
     name: string,
-    profile: { asNeeded?: boolean | null; usualDose?: { amount: number; unit: string } | null },
+    profile: { asNeeded?: boolean | null; usualDoses?: { amount: number; unit: string }[] },
   ): string;
   /**
    * Set (or, with null, clear) what one serving of a medicine contains. Doses
@@ -3543,6 +3546,9 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           name,
           limit: medicationSettings.describeLimit(prefs.limit) ?? undefined,
           dosesInLast24h: prefs.limit ? status.inLast24h : undefined,
+          amountInLast24h: status.maxAmount24h && status.amountInLast24h !== null
+            ? `${status.amountInLast24h.toLocaleString('en-US', { maximumFractionDigits: 2 })} of ${medicationSettings.formatCapAmount(status.maxAmount24h)}`
+            : undefined,
           withinLimitAgainAt: status.nextOkAt ? status.nextOkAt.toISOString() : undefined,
           supplyLeft: left === null || !prefs.supply ? undefined : medicationSettings.describeSupplyLeft(left, prefs.supply.unit),
           ...(prefs.nutrition ? (() => {
@@ -3550,7 +3556,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
             return { nutrients: d.heading, nutrientsDetail: d.detail };
           })() : {}),
           ...(typeof prefs.asNeeded === 'boolean' ? { takenAsNeeded: prefs.asNeeded } : {}),
-          ...(prefs.usualDose ? { usualAmount: medication.formatDose(prefs.usualDose) ?? undefined } : {}),
+          ...(prefs.usualDoses?.length ? { usualAmounts: prefs.usualDoses.map(d => medication.formatDose(d) ?? '') } : {}),
           ...(logs.some(l => medication.medicationKey(l.name) === key) ? {} : { noDosesYet: true as const }),
         };
       });
@@ -4584,7 +4590,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         ?? meds.getState().archived.find(k => k === key);
       if (!spelled) throw new Error(`No medicine called "${name}" in the list. add_medication adds one; list_medication_logs shows them.`);
       if (profile.asNeeded !== undefined) meds.getState().setAsNeeded(spelled, profile.asNeeded);
-      if (profile.usualDose !== undefined) meds.getState().setUsualDose(spelled, profile.usualDose);
+      if (profile.usualDoses !== undefined) meds.getState().setUsualDoses(spelled, profile.usualDoses);
       return spelled;
     },
 

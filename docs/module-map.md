@@ -226,7 +226,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/medicationLog.ts` — DOSE_UNITS, MIN_TREND_DOSES, MedicationDose, MedicationSource, medicationFor, medicationKey, medicationVocabulary, ARCHIVED_MEDICATIONS_SETTING_KEY, parseArchivedMedications, REGISTERED_MEDICATIONS_SETTING_KEY, +18 more
 - `src/utils/medicationRename.ts` — DoseFill, renamedLogs, renamedSettings, renamedKeys, renamedChain, renamedTask, renamedTemplateItem, splitStrength
 - `src/utils/medicationRenameApply.ts` — renameMedicationEverywhere
-- `src/utils/medicationSettings.ts` — MEDICATION_SETTINGS_KEY, MedicationLimit, MedicationSupply, SupplementPanel, UsualDose, MedicationPrefs, MedicationSettingsMap, SUPPLY_UNITS, PANEL_UNITS, parseMedicationSettings, +14 more
+- `src/utils/medicationSettings.ts` — MEDICATION_SETTINGS_KEY, AmountCap, MedicationLimit, MedicationSupply, SupplementPanel, UsualDose, MedicationPrefs, MedicationSettingsMap, SUPPLY_UNITS, MAX_USUAL_DOSES, +18 more
 - `src/utils/medicationSummary.ts` — SummaryPreset, SummaryRange, summaryRange, rangeDays, describeRange, SummaryCandidate, summaryCandidates, missedCountsByMedication, DoseAmount, DoseRun, +15 more
 - `src/utils/meters.ts` — METER_CHECK_IN_DAYS, METER_RATE_MIN_DAYS, METER_RATE_WINDOW_DAYS, METER_NAME_MAX_LENGTH, meterKey, canFollowMeter, hasMeter, NO_METER, readingsFor, latestReading, +23 more
 - `src/utils/metricKit.ts` — DeviceMetricSummary, DEVICE_METRIC_LIMIT, Bucket, histogramBuckets, bucketTotal, bucketMedianMs, parseMetricPayload, parseSummaries, mergeSummaries, collectSummaries, +1 more

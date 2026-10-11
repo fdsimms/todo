@@ -7,6 +7,8 @@ import {
   formatHours,
   limitBreaches,
   limitStatus,
+  MAX_USUAL_DOSES,
+  defaultUsualDose,
   parseMedicationSettings,
   prefsFor,
   refilledSupply,
@@ -283,18 +285,18 @@ describe('a supplement panel', () => {
   });
 });
 
-describe('asNeeded and usualDose', () => {
+describe('asNeeded and usualDoses', () => {
   it('round-trip through the stored map and keep an entry that holds only them', () => {
     const map = parseMedicationSettings(JSON.stringify({
-      zinc: { limit: null, supply: null, asNeeded: false, usualDose: { amount: 50, unit: 'mg' } },
+      zinc: { limit: null, supply: null, asNeeded: false, usualDoses: [{ amount: 50, unit: 'mg' }, { amount: 25, unit: 'mg' }] },
     }));
-    expect(map.zinc).toMatchObject({ asNeeded: false, usualDose: { amount: 50, unit: 'mg' } });
+    expect(map.zinc).toMatchObject({ asNeeded: false, usualDoses: [{ amount: 50, unit: 'mg' }, { amount: 25, unit: 'mg' }] });
   });
 
   it('drop a malformed usual dose and a non-boolean answer', () => {
     const map = parseMedicationSettings(JSON.stringify({
-      zinc: { asNeeded: 'yes', usualDose: { amount: -1, unit: 'mg' } },
-      iron: { usualDose: { amount: 5, unit: 'furlongs' } },
+      zinc: { asNeeded: 'yes', usualDoses: [{ amount: -1, unit: 'mg' }] },
+      iron: { usualDoses: [{ amount: 5, unit: 'furlongs' }] },
     }));
     expect(map).toEqual({});
   });
@@ -303,5 +305,99 @@ describe('asNeeded and usualDose', () => {
     const map = withPrefs({}, 'Zinc', { limit: null, supply: null, asNeeded: true });
     expect(map.zinc.asNeeded).toBe(true);
     expect(withPrefs(map, 'Zinc', { limit: null, supply: null, asNeeded: null })).toEqual({});
+  });
+});
+
+describe('usual amounts', () => {
+  it('reads the single usualDose an earlier build wrote as a list of one', () => {
+    const map = parseMedicationSettings(JSON.stringify({ zinc: { usualDose: { amount: 50, unit: 'mg' } } }));
+    expect(map.zinc.usualDoses).toEqual([{ amount: 50, unit: 'mg' }]);
+  });
+
+  it('folds repeats, drops bad entries and stops at the maximum', () => {
+    const many = Array.from({ length: 10 }, (_, i) => ({ amount: i + 1, unit: 'mg' }));
+    const map = parseMedicationSettings(JSON.stringify({
+      zinc: { usualDoses: [{ amount: 5, unit: 'mg' }, { amount: 5, unit: 'mg' }, { amount: 0, unit: 'mg' }, ...many] },
+    }));
+    expect(map.zinc.usualDoses).toHaveLength(MAX_USUAL_DOSES);
+    expect(map.zinc.usualDoses![0]).toEqual({ amount: 5, unit: 'mg' });
+    expect(map.zinc.usualDoses!.filter(d => d.amount === 5)).toHaveLength(1);
+  });
+
+  it('names the first as the default', () => {
+    expect(defaultUsualDose({ usualDoses: [{ amount: 2, unit: 'tablet' }, { amount: 1, unit: 'tablet' }] })).toEqual({ amount: 2, unit: 'tablet' });
+    expect(defaultUsualDose({ usualDoses: [] })).toBeNull();
+    expect(defaultUsualDose(undefined)).toBeNull();
+  });
+});
+
+describe('a limit on a total amount', () => {
+  const now = new Date('2026-09-14T15:00');
+  const cap = (amount = 1200) => limit({ minHours: null, maxPer24h: null, maxAmount24h: { amount, unit: 'mg' } });
+
+  it('is a limit on its own, and is stated', () => {
+    const parsed = parseMedicationSettings(JSON.stringify({
+      ibuprofen: { limit: { maxAmount24h: { amount: 1200, unit: 'mg' }, since: '2026-09-01T00:00:00.000Z' } },
+    }));
+    expect(parsed.ibuprofen.limit?.maxAmount24h).toEqual({ amount: 1200, unit: 'mg' });
+    expect(describeLimit(cap())).toBe('At most 1,200 mg in 24 hours');
+    expect(describeLimit(limit({ maxAmount24h: { amount: 1200, unit: 'mg' } })))
+      .toBe('At least 6 hours apart, at most 4 in 24 hours, at most 1,200 mg in 24 hours');
+  });
+
+  it('adds up doses of different strengths, which a count cap cannot', () => {
+    const logs = [
+      dose('2026-09-14T06:00', { amount: 400 }),
+      dose('2026-09-14T09:00', { amount: 200 }),
+      dose('2026-09-14T12:00', { amount: 600 }),
+    ];
+    const status = limitStatus(logs, 'Ibuprofen', cap(), now);
+    expect(status.amountInLast24h).toBe(1200);
+    expect(status.inLast24h).toBe(3);
+    expect(status.reason).toBe('amount');
+    // Dropping the 06:00 dose leaves 800, which fits under 1200 with room.
+    expect(status.nextOkAt).toEqual(new Date('2026-09-15T06:00'));
+  });
+
+  it('has room until the total is reached, and asks whether a planned dose fits', () => {
+    const logs = [dose('2026-09-14T06:00', { amount: 400 }), dose('2026-09-14T09:00', { amount: 400 })];
+    expect(limitStatus(logs, 'Ibuprofen', cap(), now).nextOkAt).toBeNull();
+    expect(limitStatus(logs, 'Ibuprofen', cap(), now, { amount: 400, unit: 'mg' }).nextOkAt).toBeNull();
+    const big = limitStatus(logs, 'Ibuprofen', cap(), now, { amount: 800, unit: 'mg' });
+    expect(big.nextOkAt).toEqual(new Date('2026-09-15T06:00'));
+    expect(big.reason).toBe('amount');
+  });
+
+  it('does not count a dose with no amount or in another unit, and says how many', () => {
+    const logs = [
+      dose('2026-09-14T06:00', { amount: 800 }),
+      dose('2026-09-14T09:00', { amount: null, unit: null }),
+      dose('2026-09-14T10:00', { amount: 2, unit: 'tablet' }),
+    ];
+    const status = limitStatus(logs, 'Ibuprofen', cap(), now);
+    expect(status.amountInLast24h).toBe(800);
+    expect(status.unmeasuredInLast24h).toBe(2);
+    expect(status.nextOkAt).toBeNull();
+  });
+
+  it('ignores a planned dose in another unit', () => {
+    const logs = [dose('2026-09-14T06:00', { amount: 1100 })];
+    expect(limitStatus(logs, 'Ibuprofen', cap(), now, { amount: 5, unit: 'tablet' }).nextOkAt).toBeNull();
+  });
+
+  it('forgets doses older than 24 hours', () => {
+    const logs = [dose('2026-09-13T10:00', { amount: 1200 })];
+    expect(limitStatus(logs, 'Ibuprofen', cap(), now).amountInLast24h).toBe(0);
+  });
+
+  it('reports the doses that took the total past the cap', () => {
+    const logs = [
+      dose('2026-09-14T06:00', { amount: 600 }),
+      dose('2026-09-14T09:00', { amount: 600 }),
+      dose('2026-09-14T12:00', { amount: 200 }),
+    ];
+    const breaches = limitBreaches(logs, 'Ibuprofen', cap());
+    expect(breaches.map(b => b.reason)).toEqual(['amount']);
+    expect(breaches[0].log.takenAt).toBe(new Date('2026-09-14T12:00').toISOString());
   });
 });
