@@ -52,6 +52,9 @@ import { useRowSelection } from '../hooks/useRowSelection';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, flattenOverlay, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { useProjectLockStore, isProjectHidden } from '../store/useProjectLockStore';
+import { unlockProjects } from '../hooks/useProjectAccess';
+import { isProjectLockedAway } from '../utils/projectLock';
 import { navigateToSettingsEntry } from '../navigation/openSettings';
 import { useScreenSettings } from '../hooks/useScreenSettings';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -121,6 +124,8 @@ export function ProjectsScreen() {
   const projectSort = useSettingsStore(s => s.projectSortOption);
   const setProjectSort = useSettingsStore(s => s.setProjectSortOption);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  const lockedIds = useProjectLockStore(s => s.lockedIds);
+  const projectsUnlocked = useProjectLockStore(s => s.unlocked);
   const hideListPreviews = useSettingsStore(s => s.hideListPreviews);
   // Re-renders the list when the day rolls over, so a card's "Due tomorrow"
   // becomes "Due today" without waiting for some unrelated store write.
@@ -482,6 +487,14 @@ export function ProjectsScreen() {
 
   const handleOpenProject = useCallback((project: Project) => {
     if (selectionMode) { toggleSelection(project.id); return; }
+    // The page asks for Face ID itself, but asking here first keeps a cancel
+    // on this list rather than pushing a locked page nobody asked to see.
+    if (isProjectHidden(project.id)) {
+      unlockProjects().then(ok => {
+        if (ok) (navigation as any).navigate('ProjectDetail', { projectId: project.id });
+      });
+      return;
+    }
     (navigation as any).navigate('ProjectDetail', { projectId: project.id });
   }, [selectionMode, toggleSelection, navigation]);
 
@@ -491,7 +504,14 @@ export function ProjectsScreen() {
     (navigation as any).navigate('ProjectDetail', { projectId: project.id, addLine: Date.now() });
   }, [navigation]);
 
-  const handleEditProject = useCallback((project: Project) => setEditingProject(project), []);
+  // A locked project's settings are as private as its tasks.
+  const handleEditProject = useCallback((project: Project) => {
+    if (isProjectHidden(project.id)) {
+      unlockProjects().then(ok => { if (ok) setEditingProject(project); });
+      return;
+    }
+    setEditingProject(project);
+  }, []);
 
   const renderRow = (item: ProjectListItem, drag?: () => void, isActive?: boolean) => {
     if (item.type === 'header') {
@@ -517,17 +537,21 @@ export function ProjectsScreen() {
     // for "every task done" to mean anything against.
     const allDone = projectFilter === 'active' && !project.ongoing
       && progress.total > 0 && progress.done === progress.total;
+    // A locked project keeps its row, so there is a sign the tasks exist, but
+    // says nothing about what is in it: no progress, next step or dates.
+    const locked = isProjectLockedAway(project.id, lockedIds, projectsUnlocked);
     return (
       <ProjectRow
         project={project}
+        locked={locked}
         progress={progress}
-        pastWindow={pastWindow}
-        captionText={caption?.text ?? null}
+        pastWindow={pastWindow && !locked}
+        captionText={locked ? null : caption?.text ?? null}
         captionOverdue={caption?.overdue ?? false}
         captionSoon={caption?.soon ?? false}
-        progressNote={projectProgressNote(project, progress)}
-        nextStep={facts?.next ?? null}
-        preview={facts?.preview ?? null}
+        progressNote={locked ? null : projectProgressNote(project, progress)}
+        nextStep={locked ? null : facts?.next ?? null}
+        preview={locked ? null : facts?.preview ?? null}
         projectFilter={projectFilter}
         allDone={allDone}
         selectionMode={selectionMode}
@@ -777,11 +801,13 @@ export function ProjectsScreen() {
  * follows on Today.
  */
 const ProjectRow = React.memo(function ProjectRow({
-  project, progress, pastWindow, captionText, captionOverdue, captionSoon, progressNote, nextStep, preview, projectFilter, allDone,
+  project, locked, progress, pastWindow, captionText, captionOverdue, captionSoon, progressNote, nextStep, preview, projectFilter, allDone,
   selectionMode, selected, isActive, drag, colors, styles,
   onPress, onToggleSelect, onSwipeSelect, onQuickUnarchive, onQuickUncomplete, onQuickComplete, onEdit, onAddLine,
 }: {
   project: Project;
+  /** Behind Face ID right now: the row names the project and nothing else. */
+  locked: boolean;
   progress: { done: number; total: number };
   pastWindow: boolean;
   // Two primitives rather than the caption object, which is rebuilt on every
@@ -849,8 +875,8 @@ const ProjectRow = React.memo(function ProjectRow({
             // caption and next step are read too: they're the rest of what the
             // card shows.
             [
-              project.title + (project.kind === 'list' ? ', list' : ''),
-              progressNote ?? `${progress.done} of ${progress.total} done`,
+              project.title + (project.kind === 'list' ? ', list' : '') + (locked ? ', locked' : ''),
+              locked ? null : progressNote ?? `${progress.done} of ${progress.total} done`,
               nextStep ? `next: ${nextStep}` : null,
               preview,
               captionText,
@@ -859,6 +885,8 @@ const ProjectRow = React.memo(function ProjectRow({
           accessibilityHint={
             selectionMode
               ? 'Double tap to select project'
+              : locked
+                ? 'Double tap to unlock with Face ID and view this project.'
               : drag
                 ? `Double tap to view ${project.kind === 'list' ? 'this list' : 'tasks in this project'}. Long press to reorder.`
                 : `Double tap to view ${project.kind === 'list' ? 'this list' : 'tasks in this project'}.`
@@ -874,6 +902,7 @@ const ProjectRow = React.memo(function ProjectRow({
                 <Ionicons name="list-outline" size={14} color={colors.textTertiary} />
               )}
               <Text style={styles.projectName} numberOfLines={1}>{project.title}</Text>
+              {locked && <Ionicons name="lock-closed" size={14} color={colors.textTertiary} />}
               {/* Nothing a row can do to itself while a selection is being
                   built — each of these acts on one project and would fight the
                   bar. The dot takes the slot they vacate, which is the trailing
@@ -902,7 +931,7 @@ const ProjectRow = React.memo(function ProjectRow({
                     <Ionicons name="arrow-undo-outline" size={16} color={colors.accent} />
                   </TouchableOpacity>
                 )}
-                {allDone && (
+                {allDone && !locked && (
                   <TouchableOpacity
                     onPress={() => onQuickComplete(project)}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -940,7 +969,9 @@ const ProjectRow = React.memo(function ProjectRow({
                 </>
               )}
             </View>
-            {progressNote ? (
+            {locked ? (
+              <Text style={styles.rangeText} numberOfLines={1}>Locked. Unlock with Face ID to see its tasks.</Text>
+            ) : progressNote ? (
               <Text style={styles.rangeText} numberOfLines={1}>{progressNote}</Text>
             ) : (
               <View style={styles.progressRow}>

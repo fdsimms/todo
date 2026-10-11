@@ -1,4 +1,5 @@
 import * as Notifications from 'expo-notifications';
+import { isProjectLockedAtAll } from './projectLock';
 import type { PermissionResponse } from 'expo-modules-core';
 import { Platform } from 'react-native';
 import type { StepTimer, Task } from '../types';
@@ -201,6 +202,15 @@ export async function getNotificationPermission(): Promise<NotificationPermissio
   return existing.status === 'undetermined' || existing.canAskAgain ? 'undetermined' : 'denied';
 }
 
+/**
+ * A reminder shows on the lock screen, where Face ID can't be asked, so a task
+ * in a locked project is announced without its title.
+ */
+function reminderTitleFor(task: Task): string {
+  if (isProjectLockedAtAll(task.projectId)) return 'Task reminder';
+  return displayTitleFor(task) || 'Task reminder';
+}
+
 export async function scheduleTaskReminder(task: Task): Promise<void> {
   // Demo tasks are seeded through this same store action, but a real native
   // notification or AlarmKit alarm is a side effect on the device, not on the
@@ -245,7 +255,7 @@ export async function scheduleTaskReminder(task: Task): Promise<void> {
     // this feature genuinely cannot ship with.
     await cancelAlarmChain(task.id);
 
-    const title = displayTitleFor(task) || 'Task reminder';
+    const title = reminderTitleFor(task);
     const { quietHoursStart: qStart, quietHoursEnd: qEnd } = useSettingsStore.getState();
     const times = alarmChainTimes(triggerDate, ringCountFor(task));
 
@@ -266,8 +276,8 @@ export async function scheduleTaskReminder(task: Task): Promise<void> {
   await Notifications.scheduleNotificationAsync({
     identifier: task.id,
     content: {
-      title: displayTitleFor(task) || 'Task reminder',
-      body: task.notes || 'You have a task coming up',
+      title: reminderTitleFor(task),
+      body: isProjectLockedAtAll(task.projectId) ? 'You have a task coming up' : task.notes || 'You have a task coming up',
       data: { taskId: task.id },
       sound: true,
       categoryIdentifier: TASK_REMINDER_CATEGORY,

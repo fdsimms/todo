@@ -4,6 +4,7 @@ import { registerPausedProjectSource } from '../utils/projectPause';
 import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
 import { logTaskHealthValue, unlogTaskNutrientFromFoodLog } from '../utils/healthCompletionSync';
 import { useTaskStore } from '../store/useTaskStore';
+import { useProjectLockStore } from '../store/useProjectLockStore';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { useRewardStore } from '../store/useRewardStore';
@@ -3040,6 +3041,42 @@ describe('completeTask', () => {
         const completed = useTaskStore.getState().tasks.find(t => t.id === task.id);
         expect(completed?.streakCount).toBe(4);
       });
+    });
+  });
+
+  describe('project lock', () => {
+    // Same date as the completion-hold block: noon-ish June 10, 2025.
+    const dueToday = new Date(2025, 5, 10, 0, 0, 0).toISOString();
+
+    afterEach(() => {
+      useProjectLockStore.setState({ lockedIds: [], unlocked: false });
+    });
+
+    it('keeps a locked project\'s tasks off the lists until the session is unlocked', () => {
+      useTaskStore.setState({
+        tasks: [
+          makeTask({ id: 'open', dueDate: dueToday }),
+          makeTask({ id: 'secret', dueDate: dueToday, projectId: 'p1' }),
+        ],
+      });
+      useProjectLockStore.setState({ lockedIds: ['p1'], unlocked: false });
+      expect(useTaskStore.getState().visibleTasks().map(t => t.id)).toEqual(['open']);
+
+      useProjectLockStore.getState().unlock();
+      expect(useTaskStore.getState().visibleTasks().map(t => t.id).sort()).toEqual(['open', 'secret']);
+    });
+
+    it('is a display rule: the task is still in the store and still due', () => {
+      useTaskStore.setState({ tasks: [makeTask({ id: 'secret', dueDate: dueToday, projectId: 'p1' })] });
+      useProjectLockStore.setState({ lockedIds: ['p1'], unlocked: false });
+      expect(useTaskStore.getState().visibleTasks()).toHaveLength(0);
+      expect(useTaskStore.getState().tasks.map(t => t.id)).toEqual(['secret']);
+    });
+
+    it('bumps the task store when the lock changes so subscribed selectors re-run', () => {
+      const before = useTaskStore.getState().lockRevision;
+      useProjectLockStore.getState().unlock();
+      expect(useTaskStore.getState().lockRevision).toBeGreaterThan(before);
     });
   });
 

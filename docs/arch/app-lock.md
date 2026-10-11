@@ -73,6 +73,31 @@ For the same reason the Settings toggle calls `unlock()` *before*
   has writing on it. A new reader of journal entries does the same. It is
   device-local like the app lock, and it does not cover Claude's journal tools,
   which are governed by the sync switch in `journal.md`.
+- **Individual projects can be locked, and the lock is a display rule.**
+  `useProjectLockStore` holds the locked ids (`lockedProjectIds` in settings,
+  device-local like the other locks) and a session `unlocked` flag that
+  `AppLockGate` closes whenever the app stops being active, with no grace
+  period. One Face ID opens every locked project for the session. A locked
+  project's tasks are filtered out of the list selectors in `useTaskStore`
+  (`isLockedAway`), Search, quick search and the Logbook, and its page renders
+  `ProjectDetailScreen`'s lock notice instead of mounting. **It is not
+  `isWithheld`:** the tasks stay due, repeat, keep their streaks and are
+  charged as usual, so a locked project never stands anything down.
+  - **There is always a sign the tasks exist.** The Projects list keeps the
+    row, with a lock and no counts, next step or dates, and Today shows one
+    "N tasks in locked projects" row that asks for Face ID when tapped.
+  - **Anything outside the app ignores the session flag.** The widget and a
+    reminder can't ask for Face ID, so `isProjectLocked` (locked at all) keeps
+    a locked project's tasks off the widget and a reminder reads "Task
+    reminder" with no title or notes, even while the app is unlocked.
+    Toggling the lock reschedules that project's reminders.
+  - **List selectors only re-run when the task store changes**, so
+    `useProjectLockStore.revision` is mirrored into `useTaskStore.lockRevision`
+    on every lock or unlock.
+  - **Not covered:** Claude's MCP tools (a lock is a screen guard on this
+    device, as the journal lock is), the month grid, Stats and any screen that
+    reads `tasks` directly. A new screen that lists tasks filters with
+    `isProjectLockedAway`.
 - **`resetToDefaults` doesn't touch it**, like vacation mode: "reset appearance and
   formatting" is not a request to take the lock off the app.
 

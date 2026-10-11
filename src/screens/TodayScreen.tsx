@@ -76,6 +76,9 @@ import { useAnswerFirstCompletion } from '../hooks/useAnswerFirstCompletion';
 import { asksOnCompletion } from '../utils/deliverables';
 import { DeliverablePromptQueue } from '../components/DeliverablePromptQueue';
 import { useTaskStore } from '../store/useTaskStore';
+import { useProjectLockStore, isProjectHidden } from '../store/useProjectLockStore';
+import { unlockProjects } from '../hooks/useProjectAccess';
+import { isProjectLockedAway } from '../utils/projectLock';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useTemplateStore } from '../store/useTemplateStore';
@@ -448,6 +451,38 @@ function AddTaskFabWithDropLabel({
   return <AddTaskFab {...props} dragLabel={label} />;
 }
 
+// What a locked project leaves on Today: one row saying how many of its tasks
+// are due, so there is a sign they exist, and a tap that asks for Face ID. It is
+// gone once the projects are unlocked, because the tasks themselves are back.
+function LockedProjectsRow({
+  count,
+  styles,
+  colors,
+}: {
+  count: number;
+  styles: ReturnType<typeof makeStyles>;
+  colors: Colors;
+}) {
+  if (count === 0) return null;
+  return (
+    <View style={styles.hiddenSection}>
+      <TouchableOpacity
+        style={styles.hiddenToggle}
+        onPress={() => { haptics.tap(); unlockProjects(); }}
+        activeOpacity={interaction.activeOpacity}
+        accessibilityRole="button"
+        accessibilityLabel={`${count} ${count === 1 ? 'task' : 'tasks'} in locked projects. Unlock with Face ID`}
+      >
+        <Ionicons name="lock-closed" size={13} color={colors.textTertiary} />
+        <Text style={styles.hiddenToggleText}>
+          {count} {count === 1 ? 'task' : 'tasks'} in locked projects
+        </Text>
+        <Text style={styles.hiddenToggleText}>Unlock</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 // Collapsible reveal for tasks hidden by vacation mode (vacation-paused tasks
 // and tasks in categories set to hide on vacation). Defaults to collapsed,
 // always shows the hidden count, and renders the tasks inline when expanded.
@@ -754,6 +789,14 @@ export function TodayScreen() {
     useShallow(s => (showingToday ? s.upcomingTodayTasks() : NO_TASKS)),
   );
   const allTasks = useTaskStore(s => s.tasks);
+  const lockedIds = useProjectLockStore(s => s.lockedIds);
+  const projectsUnlocked = useProjectLockStore(s => s.unlocked);
+  const lockedTodayCount = useMemo(
+    () => (viewMode !== 'today' || projectsUnlocked || lockedIds.length === 0
+      ? 0
+      : openTasksOf(allTasks).filter(t => !t.parentId && isProjectLockedAway(t.projectId, lockedIds, false) && isTaskVisible(t)).length),
+    [viewMode, allTasks, lockedIds, projectsUnlocked],
+  );
   const isEmptyDatabase = allTasks.length === 0;
   // The whole shortlist "batch the reach-outs" (#2091) starts from — the cap
   // on the generator is already the ranking, the same way pinnedTasks() is
@@ -1870,7 +1913,7 @@ export function TodayScreen() {
   // that reads the list (same trade inboxTasks makes above). A scalar, so it
   // can't churn renders — this recomputes on every store write and re-renders
   // only when the number itself moves.
-  const unscheduledCount = useTaskStore(s => openTasksOf(s.tasks).filter(isUnscheduledTask).length);
+  const unscheduledCount = useTaskStore(s => openTasksOf(s.tasks).filter(t => isUnscheduledTask(t) && !isProjectHidden(t.projectId)).length);
   // Later and Inbox stay whatever the mode is: each is the only route to a set
   // of real tasks, and a lens that hides tasks isn't a simplification. Only
   // Unscheduled goes, and only while it's empty and isn't the view you're on.
@@ -4210,6 +4253,7 @@ export function TodayScreen() {
           colors={colors}
         />
       )}
+      <LockedProjectsRow count={lockedTodayCount} styles={styles} colors={colors} />
       <VacationHiddenSection
         tasks={vacationHiddenTasks}
         expanded={showHidden}

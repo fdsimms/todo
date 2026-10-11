@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect, useId } from 'react';
+import { useProjectAccess } from '../hooks/useProjectAccess';
 import {
   View,
   Text,
@@ -62,6 +63,7 @@ import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
 import { TemplateAppliedToast } from '../components/TemplateAppliedToast';
 import { ProjectTaskSuggestionsSheet } from '../components/ProjectTaskSuggestionsSheet';
 import { EmptyState } from '../components/EmptyState';
+import { ScreenHeader } from '../components/ScreenHeader';
 import { InlineAction } from '../components/InlineAction';
 import { ProjectDecisions } from '../components/ProjectDecisions';
 import { DeliverablePromptSheet } from '../components/DeliverablePromptSheet';
@@ -379,7 +381,7 @@ function NewLineField({
   );
 }
 
-export function ProjectDetailScreen() {
+function ProjectDetailContent() {
   const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
   const fabBottom = useFabBottom();
@@ -2929,3 +2931,38 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.xs,
   },
 });
+
+/**
+ * The project lock in front of the page. The content is a separate component
+ * so none of its stores, searches or sheets mount while locked, the same split
+ * as the journal screen. Opened from anywhere (a task's project chip, search),
+ * so the gate lives here rather than at the Projects list.
+ */
+export function ProjectDetailScreen() {
+  const route = useRoute<RouteProp<RootStackParamList, 'ProjectDetail'>>();
+  const { projectId } = route.params;
+  const { locked, unlock } = useProjectAccess(projectId);
+  const title = useProjectStore(s => s.projects.find(p => p.id === projectId)?.title);
+  const colors = useColors();
+  const insets = useSafeAreaInsets();
+
+  // Asks as soon as the screen is shown, as the app lock does. A cancel leaves
+  // the button below for another go.
+  useEffect(() => {
+    if (locked) unlock();
+  }, [locked, unlock]);
+
+  if (!locked) return <ProjectDetailContent />;
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: insets.top }}>
+      <ScreenHeader title={title ?? 'Project'} />
+      <EmptyState
+        icon="lock-closed-outline"
+        title="This project is locked"
+        subtitle="Unlock with Face ID to see its tasks."
+        actionLabel="Unlock"
+        onAction={() => { unlock(); }}
+      />
+    </View>
+  );
+}

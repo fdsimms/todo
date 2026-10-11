@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useProjectLockStore } from '../store/useProjectLockStore';
+import { isProjectLockedAway } from '../utils/projectLock';
 import {
   Keyboard,
   View,
@@ -394,7 +396,16 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
   const { isDark, shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const tasks = useTasksWhileOpen(visible);
+  const openTasks = useTasksWhileOpen(visible);
+  // A locked project's tasks are not findable until it is unlocked.
+  const lockedIds = useProjectLockStore(s => s.lockedIds);
+  const projectsUnlocked = useProjectLockStore(s => s.unlocked);
+  const tasks = useMemo(
+    () => (lockedIds.length === 0 || projectsUnlocked
+      ? openTasks
+      : openTasks.filter(t => !isProjectLockedAway(t.projectId, lockedIds, false))),
+    [openTasks, lockedIds, projectsUnlocked],
+  );
   const projects = useProjectStore(s => s.projects);
   const groups = useTaskGroupStore(s => s.groups);
   const recentSearches = useSettingsStore(useShallow(s => s.recentSearches));

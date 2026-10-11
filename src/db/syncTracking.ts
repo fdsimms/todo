@@ -614,7 +614,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
  *   ergonomics of one device. A Mac has no haptics and no thumb reach, and
  *   which maps apps are installed differs from phone to phone. Whether a phone
  *   is driven through iPhone Mirroring is a fact about that phone.
- * - `appLockEnabled`, `appLockGraceSeconds`, `journalLockEnabled` — syncing these would let a
+ * - `appLockEnabled`, `appLockGraceSeconds`, `journalLockEnabled`, `lockedProjectIds` — syncing these would let a
  *   device turn the lock off on another one. Security settings are per-device
  *   by design.
  * - `dailyAgendaEnabled`, `dailyAgendaTime`, `reminderMeetingNudgeEnabled` —

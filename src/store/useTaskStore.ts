@@ -271,6 +271,7 @@ import {
   sunLocationOn,
 } from '../utils/visibilityUtils';
 import { openTasksOf } from '../utils/openTasks';
+import { isProjectHidden, useProjectLockStore } from './useProjectLockStore';
 import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
 import { categoryLabel } from '../utils/categoryLabel';
 import {
@@ -1337,6 +1338,12 @@ function liveListRows(tasks: Task[], heldIds: string[]): Task[] {
   return withHeldCompletions(tasks.filter(t => !t.completed || held.has(t.id)), heldIds);
 }
 
+// A task whose project is behind Face ID and not yet unlocked. A display rule
+// only: the task stays due and keeps repeating (see utils/projectLock.ts).
+function isLockedAway(task: Pick<Task, 'projectId'>): boolean {
+  return isProjectHidden(task.projectId);
+}
+
 // A daily target whose row is still playing out its send-off (see
 // QUOTA_HOLD_BACKSTOP_MS) counts as on Today even though the pace gate has
 // closed on it — and correspondingly isn't in Later yet, since the two lists
@@ -1494,6 +1501,8 @@ interface TaskStore extends UndoHistoryActions {
   // Ids of tasks completed within the last COMPLETION_HOLD_MS — see
   // withHeldCompletions above.
   completionHoldIds: string[];
+  /** Mirrors useProjectLockStore.revision so a lock change re-runs the list selectors. */
+  lockRevision: number;
   // The subset of those rows that has been told to shrink away. Set in one
   // go once the burst settles, so every row completed in it closes its gap
   // together (see COMPLETION_COLLAPSE_MS) — TaskItem watches for its own id
@@ -2746,6 +2755,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
   ...undoHistoryActions(set, get),
   completionHoldIds: [],
+  lockRevision: 0,
   completionCollapseIds: [],
   quotaHoldIds: [],
 
@@ -9841,7 +9851,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   visibleTasks() {
     const { tasks, completionHoldIds, quotaHoldIds } = get();
     return liveListRows(tasks, completionHoldIds)
-      .filter(t => !t.parentId && (isTaskVisible(t) || isQuotaHeld(t, quotaHoldIds)))
+      .filter(t => !t.parentId && !isLockedAway(t) && (isTaskVisible(t) || isQuotaHeld(t, quotaHoldIds)))
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
@@ -9852,19 +9862,19 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   upcomingTodayTasks() {
     const { tasks, completionHoldIds, quotaHoldIds } = get();
     return liveListRows(tasks, completionHoldIds)
-      .filter(t => !t.parentId && isUpcomingToday(t) && !isQuotaHeld(t, quotaHoldIds))
+      .filter(t => !t.parentId && !isLockedAway(t) && isUpcomingToday(t) && !isQuotaHeld(t, quotaHoldIds))
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
   inboxTasks() {
     return openTasksOf(get().tasks)
-      .filter(isInboxTask)
+      .filter(t => isInboxTask(t) && !isLockedAway(t))
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
   unscheduledTasks() {
     return openTasksOf(get().tasks)
-      .filter(isUnscheduledTask)
+      .filter(t => isUnscheduledTask(t) && !isLockedAway(t))
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
@@ -9877,7 +9887,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // With several blockers, the first one still open is the one it's filed under.
     const waitKey = (t: Task) => blockerOf(t, resolveBlocker)?.id ?? blockerIdsOf(t)[0] ?? t.waitingOnPersonId ?? '';
     return openTasksOf(get().tasks)
-      .filter(isWaitingTask)
+      .filter(t => isWaitingTask(t) && !isLockedAway(t))
       .sort((a, b) => waitKey(a).localeCompare(waitKey(b)) || a.sortOrder - b.sortOrder);
   },
 
@@ -9900,14 +9910,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   deferredTasks() {
     const { tasks, completionHoldIds, quotaHoldIds } = get();
     return liveListRows(tasks, completionHoldIds)
-      .filter(t => !t.parentId && isTaskDeferred(t) && !isQuotaHeld(t, quotaHoldIds))
+      .filter(t => !t.parentId && !isLockedAway(t) && isTaskDeferred(t) && !isQuotaHeld(t, quotaHoldIds))
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
   expiredTasks() {
     const { tasks, completionHoldIds } = get();
     return liveListRows(tasks, completionHoldIds)
-      .filter(t => !t.parentId && isTaskExpired(t))
+      .filter(t => !t.parentId && !isLockedAway(t) && isTaskExpired(t))
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
@@ -9943,7 +9953,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // isPinnedOnToday). Its successor is spawned pinned, so without that gate
       // a daily task finished today would sit at the top of Today all day.
       .filter(t => !t.parentId && !t.completed && !t.archived
-        && !isHeldBack(t) && !isWithheld(t) && isPinnedOnToday(t))
+        && !isLockedAway(t) && !isHeldBack(t) && !isWithheld(t) && isPinnedOnToday(t))
       // sortOrder breaks ties rather than being the sort: every row starts at
       // pinnedOrder 0, so an install that has never dragged a pin (or upgraded
       // into the column) reads exactly as it did before. See Task.pinnedOrder.
@@ -9961,12 +9971,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       done = tasks.filter(t => !t.parentId && t.completed && t.completedAt);
       completedTasksCache.set(tasks, done);
     }
-    return done;
+    // Not cached: the lock changes without the task array doing so.
+    return useProjectLockStore.getState().lockedIds.length === 0 ? done : done.filter(t => !isLockedAway(t));
   },
 
   archivedTasks() {
     return openTasksOf(get().tasks)
-      .filter(t => !t.parentId && t.archived && !t.completed)
+      .filter(t => !t.parentId && t.archived && !t.completed && !isLockedAway(t))
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
@@ -10214,3 +10225,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 // src/utils/blockerRegistry.ts for why this is a getter rather than a snapshot.
 registerTaskSource(() => useTaskStore.getState().tasks);
 registerPersonTaskSource(() => useTaskStore.getState().tasks);
+
+// The list selectors above read the project lock at call time, and a selector
+// only re-runs when this store changes, so a lock or unlock writes here too.
+useProjectLockStore.subscribe((state, prev) => {
+  if (state.revision !== prev.revision) useTaskStore.setState({ lockRevision: state.revision });
+});

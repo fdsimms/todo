@@ -5,6 +5,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { isAppLocked, useAppLockStore } from '../store/useAppLockStore';
 import { useJournalLockStore } from '../store/useJournalLockStore';
+import { useProjectLockStore } from '../store/useProjectLockStore';
 import { authenticateForAppLock } from '../utils/appLockAuth';
 import { setPrivacyShieldEnabled } from 'todo-privacy-shield';
 import { useColors } from '../theme/ThemeContext';
@@ -125,6 +126,7 @@ export function AppLockGate() {
         noteInactive(Date.now());
         // The journal lock has no grace period: leaving the app closes it.
         useJournalLockStore.getState().lock();
+        useProjectLockStore.getState().lock();
       }
     });
     return () => sub.remove();

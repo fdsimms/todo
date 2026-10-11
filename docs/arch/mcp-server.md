@@ -1538,3 +1538,10 @@ Two obligations apply whatever the label says:
 - **Phase 3 (done). Hosting.** OAuth for the chat connector and a Fly deployment
   (`mcp/DEPLOY.md`). The Settings surface that admits to the copy,
   the health logs' own switch and the privacy-label draft are done (see above).
+
+## Locked projects are not hidden from Claude
+
+A project locked with Face ID (`docs/arch/app-lock.md`) is a screen guard on one
+device, kept in a device-local setting that never syncs. The replica never
+sees it, so Claude's tools read and write a locked project's tasks as usual.
+The journal lock is the same.
