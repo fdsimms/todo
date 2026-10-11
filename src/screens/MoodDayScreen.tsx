@@ -7,6 +7,7 @@ import { format } from 'date-fns/format';
 import type { JournalEntry, MoodLog } from '../types';
 import { useMoodStore } from '../store/useMoodStore';
 import { useJournalStore } from '../store/useJournalStore';
+import { useJournalAccess } from '../hooks/useJournalAccess';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -58,7 +59,12 @@ export function MoodDayScreen() {
   const allJournal = useJournalStore(s => s.entries);
   // A sealed note to your future self shows nowhere until its day (openEntries).
   const todayKey = dayKeyOf(getCurrentDayStart());
-  const journal = useMemo(() => openEntries(allJournal, todayKey), [allJournal, todayKey]);
+  const openJournal = useMemo(() => openEntries(allJournal, todayKey), [allJournal, todayKey]);
+  // While the journal lock is closed nothing written is read here, and paging
+  // doesn't stop on a day that only has writing on it.
+  const { locked: journalLocked, unlock: unlockJournal } = useJournalAccess();
+  const journal = useMemo(() => (journalLocked ? [] : openJournal), [journalLocked, openJournal]);
+  const lockedOnDay = journalLocked && openJournal.some(e => e.dayKey === dayKey);
   const [editingPage, setEditingPage] = useState<JournalEntry | null>(null);
   // Its own flag so the entry stays put while the sheet fades out.
   const [pageOpen, setPageOpen] = useState(false);
@@ -132,6 +138,20 @@ export function MoodDayScreen() {
               )}
             </TouchableOpacity>
           ))}
+
+          {lockedOnDay && (
+            <TouchableOpacity
+              style={styles.entry}
+              activeOpacity={interaction.activeOpacity}
+              onPress={() => { haptics.tap(); unlockJournal(); }}
+              accessibilityRole="button"
+              accessibilityLabel="Journal entries from this day are locked"
+              accessibilityHint="Asks for Face ID to show them"
+            >
+              <Text style={styles.section}>JOURNAL</Text>
+              <Text style={styles.note}>Locked. Tap to unlock with Face ID.</Text>
+            </TouchableOpacity>
+          )}
 
           {([['JOURNAL', journalPages], ['DREAMS', dreamPages]] as const).map(([heading, list]) => list.length > 0 && (
             <View key={heading}>

@@ -4,6 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { dbClearGtinLookups, dbCountGtinLookups } from '../../db/database';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { useAppLockStore } from '../../store/useAppLockStore';
+import { useJournalLockStore } from '../../store/useJournalLockStore';
 import { APP_LOCK_GRACE_OPTIONS, graceLabel } from '../../utils/appLock';
 import { authenticateForAppLock, getAppLockSupport, type AppLockSupport } from '../../utils/appLockAuth';
 import { useColors } from '../../theme/ThemeContext';
@@ -169,6 +170,44 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
     setAppLockEnabled(true);
   };
 
+  const journalLockEnabled = useSettingsStore(s => s.journalLockEnabled);
+  const setJournalLockEnabled = useSettingsStore(s => s.setJournalLockEnabled);
+
+  /** Same checks as the app lock: it authenticates first and refuses when nothing could pass the prompt. */
+  const onToggleJournalLock = async (next: boolean) => {
+    if (!next) {
+      setJournalLockEnabled(false);
+      return;
+    }
+    const support = await getAppLockSupport();
+    setLockSupport(support);
+    if (support.capability === 'none' || support.capability === 'unsupported') {
+      Alert.alert(
+        'Journal lock unavailable',
+        `Set up ${support.label} or a device passcode in Settings first. Without one, you couldn’t get back into your journal.`
+      );
+      return;
+    }
+    const { setPrompting } = useAppLockStore.getState();
+    setPrompting(true);
+    let result;
+    try {
+      result = await authenticateForAppLock('Turn on the journal lock');
+    } finally {
+      setPrompting(false);
+    }
+    if (result !== 'success') {
+      Alert.alert(
+        'Journal lock still off',
+        `${support.label} didn’t confirm it was you. Try again to turn on the lock.`
+      );
+      return;
+    }
+    // Unlocked first, for the reason the app lock is.
+    useJournalLockStore.getState().unlock();
+    setJournalLockEnabled(true);
+  };
+
   const lockLabel = lockSupport?.label ?? 'Face ID';
 
   return (
@@ -193,6 +232,19 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
           }
           toggle={appLockEnabled}
           onPress={() => onToggleAppLock(!appLockEnabled)}
+          tight={appLockEnabled}
+        />
+        <View style={styles.sep} />
+        <SettingsRow
+          entryId="journalLock"
+          icon="book-outline"
+          iconColor={journalLockEnabled ? colors.accent : undefined}
+          label={`Require ${lockLabel} for the journal`}
+          hint={journalLockEnabled
+            ? 'Asks each time you open the journal or dreams, and shows nothing written until then'
+            : 'An extra check before the journal, dreams and their previews on the Mood screen'}
+          toggle={journalLockEnabled}
+          onPress={() => onToggleJournalLock(!journalLockEnabled)}
           tight={appLockEnabled}
         />
         {appLockEnabled && (

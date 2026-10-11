@@ -4,6 +4,7 @@ import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { isAppLocked, useAppLockStore } from '../store/useAppLockStore';
+import { useJournalLockStore } from '../store/useJournalLockStore';
 import { authenticateForAppLock } from '../utils/appLockAuth';
 import { setPrivacyShieldEnabled } from 'todo-privacy-shield';
 import { useColors } from '../theme/ThemeContext';
@@ -122,6 +123,8 @@ export function AppLockGate() {
         attemptUnlock();
       } else {
         noteInactive(Date.now());
+        // The journal lock has no grace period: leaving the app closes it.
+        useJournalLockStore.getState().lock();
       }
     });
     return () => sub.remove();
