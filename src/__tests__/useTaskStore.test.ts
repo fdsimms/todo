@@ -3052,7 +3052,7 @@ describe('completeTask', () => {
       useProjectLockStore.setState({ lockedIds: [], unlocked: false });
     });
 
-    it('keeps a locked project\'s tasks off the lists until the session is unlocked', () => {
+    it('keeps a locked project\'s tasks in the lists, since their rows draw redacted', () => {
       useTaskStore.setState({
         tasks: [
           makeTask({ id: 'open', dueDate: dueToday }),
@@ -3060,17 +3060,19 @@ describe('completeTask', () => {
         ],
       });
       useProjectLockStore.setState({ lockedIds: ['p1'], unlocked: false });
-      expect(useTaskStore.getState().visibleTasks().map(t => t.id)).toEqual(['open']);
-
-      useProjectLockStore.getState().unlock();
       expect(useTaskStore.getState().visibleTasks().map(t => t.id).sort()).toEqual(['open', 'secret']);
     });
 
-    it('is a display rule: the task is still in the store and still due', () => {
-      useTaskStore.setState({ tasks: [makeTask({ id: 'secret', dueDate: dueToday, projectId: 'p1' })] });
+    it('leaves a locked project\'s completed tasks out of the Logbook until unlocked', () => {
+      const done = { completed: true, completedAt: dueToday };
+      useTaskStore.setState({
+        tasks: [makeTask({ id: 'open', ...done }), makeTask({ id: 'secret', projectId: 'p1', ...done })],
+      });
       useProjectLockStore.setState({ lockedIds: ['p1'], unlocked: false });
-      expect(useTaskStore.getState().visibleTasks()).toHaveLength(0);
-      expect(useTaskStore.getState().tasks.map(t => t.id)).toEqual(['secret']);
+      expect(useTaskStore.getState().completedTasks().map(t => t.id)).toEqual(['open']);
+
+      useProjectLockStore.getState().unlock();
+      expect(useTaskStore.getState().completedTasks().map(t => t.id).sort()).toEqual(['open', 'secret']);
     });
 
     it('bumps the task store when the lock changes so subscribed selectors re-run', () => {

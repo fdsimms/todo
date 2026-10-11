@@ -1339,7 +1339,10 @@ function liveListRows(tasks: Task[], heldIds: string[]): Task[] {
 }
 
 // A task whose project is behind Face ID and not yet unlocked. A display rule
-// only: the task stays due and keeps repeating (see utils/projectLock.ts).
+// only: the task stays due and keeps repeating (see utils/projectLock.ts). The
+// list lenses keep such a task, since its row draws itself redacted
+// (LockedTaskRow); only lists that print a title with no row (the Logbook, the
+// archive) leave it out.
 function isLockedAway(task: Pick<Task, 'projectId'>): boolean {
   return isProjectHidden(task.projectId);
 }
@@ -9851,7 +9854,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   visibleTasks() {
     const { tasks, completionHoldIds, quotaHoldIds } = get();
     return liveListRows(tasks, completionHoldIds)
-      .filter(t => !t.parentId && !isLockedAway(t) && (isTaskVisible(t) || isQuotaHeld(t, quotaHoldIds)))
+      .filter(t => !t.parentId && (isTaskVisible(t) || isQuotaHeld(t, quotaHoldIds)))
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
@@ -9862,19 +9865,19 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   upcomingTodayTasks() {
     const { tasks, completionHoldIds, quotaHoldIds } = get();
     return liveListRows(tasks, completionHoldIds)
-      .filter(t => !t.parentId && !isLockedAway(t) && isUpcomingToday(t) && !isQuotaHeld(t, quotaHoldIds))
+      .filter(t => !t.parentId && isUpcomingToday(t) && !isQuotaHeld(t, quotaHoldIds))
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
   inboxTasks() {
     return openTasksOf(get().tasks)
-      .filter(t => isInboxTask(t) && !isLockedAway(t))
+      .filter(isInboxTask)
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
   unscheduledTasks() {
     return openTasksOf(get().tasks)
-      .filter(t => isUnscheduledTask(t) && !isLockedAway(t))
+      .filter(isUnscheduledTask)
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
@@ -9887,7 +9890,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // With several blockers, the first one still open is the one it's filed under.
     const waitKey = (t: Task) => blockerOf(t, resolveBlocker)?.id ?? blockerIdsOf(t)[0] ?? t.waitingOnPersonId ?? '';
     return openTasksOf(get().tasks)
-      .filter(t => isWaitingTask(t) && !isLockedAway(t))
+      .filter(isWaitingTask)
       .sort((a, b) => waitKey(a).localeCompare(waitKey(b)) || a.sortOrder - b.sortOrder);
   },
 
@@ -9910,14 +9913,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   deferredTasks() {
     const { tasks, completionHoldIds, quotaHoldIds } = get();
     return liveListRows(tasks, completionHoldIds)
-      .filter(t => !t.parentId && !isLockedAway(t) && isTaskDeferred(t) && !isQuotaHeld(t, quotaHoldIds))
+      .filter(t => !t.parentId && isTaskDeferred(t) && !isQuotaHeld(t, quotaHoldIds))
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
   expiredTasks() {
     const { tasks, completionHoldIds } = get();
     return liveListRows(tasks, completionHoldIds)
-      .filter(t => !t.parentId && !isLockedAway(t) && isTaskExpired(t))
+      .filter(t => !t.parentId && isTaskExpired(t))
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
@@ -9953,7 +9956,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // isPinnedOnToday). Its successor is spawned pinned, so without that gate
       // a daily task finished today would sit at the top of Today all day.
       .filter(t => !t.parentId && !t.completed && !t.archived
-        && !isLockedAway(t) && !isHeldBack(t) && !isWithheld(t) && isPinnedOnToday(t))
+        && !isHeldBack(t) && !isWithheld(t) && isPinnedOnToday(t))
       // sortOrder breaks ties rather than being the sort: every row starts at
       // pinnedOrder 0, so an install that has never dragged a pin (or upgraded
       // into the column) reads exactly as it did before. See Task.pinnedOrder.

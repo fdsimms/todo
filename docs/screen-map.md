@@ -200,6 +200,7 @@ Where each component can appear.
 - `src/components/LimitImpactLines.tsx` — on FoodLogScreen, app shell
 - `src/components/LinkedText.tsx` — on ProjectDetailScreen
 - `src/components/ListBulkBar.tsx` — on FoodLogScreen, GroceryScreen, MealPlanScreen, ProjectsScreen, RecipeDetailScreen, RecipesScreen, StacksScreen, TemplatesScreen
+- `src/components/LockedTaskRow.tsx` — on CalendarScreen, CategoryDetailScreen, ProjectDetailScreen, SavedViewDetailScreen, StackDetailScreen, TagsScreen, TodayScreen
 - `src/components/LogMealEntrySheet.tsx` — on app shell
 - `src/components/LogMealPrompt.tsx` — on app shell
 - `src/components/LogWeightSheet.tsx` — on WeightScreen

@@ -78,29 +78,33 @@ For the same reason the Settings toggle calls `unlock()` *before*
   device-local like the other locks) and a session `unlocked` flag that
   `AppLockGate` closes whenever the app stops being active, with no grace
   period. One Face ID opens every locked project for the session. A locked
-  project's tasks are filtered out of the list selectors in `useTaskStore`
-  (`isLockedAway`), Search, quick search and the Logbook, and its page renders
+  project's tasks stay in Today, Later and the other lenses but draw as
+  `LockedTaskRow` (`TaskItem` is a gate that picks it): a lock, "Locked task",
+  the date and deadline, and an Unlock button, with no checkbox, swipe or drag.
+  The Logbook, archive, Search and quick search leave them out, because they
+  print a title with no row to redact, and the project's page renders
   `ProjectDetailScreen`'s lock notice instead of mounting. **It is not
   `isWithheld`:** the tasks stay due, repeat, keep their streaks and are
   charged as usual, so a locked project never stands anything down.
   - **There is always a sign the tasks exist.** The Projects list keeps the
-    row, with a lock and no counts, next step or dates, and Today shows one
-    "N tasks in locked projects" row that asks for Face ID when tapped.
+    row, with a lock and no counts, next step or dates, and each task keeps its
+    place in the lists as a redacted row. Dates and deadlines stay visible on
+    purpose: "something is due Friday" is useful without the title.
   - **Anything outside the app ignores the session flag.** The widget and a
     reminder can't ask for Face ID, so `isProjectLocked` (locked at all) keeps
     a locked project's tasks off the widget and a reminder reads "Task
     reminder" with no title or notes, even while the app is unlocked.
     Toggling the lock reschedules that project's reminders.
-  - **List selectors only re-run when the task store changes**, so
-    `useProjectLockStore.revision` is mirrored into `useTaskStore.lockRevision`
-    on every lock or unlock.
+  - **A store selector that reads the lock only re-runs when the task store
+    changes**, so `useProjectLockStore.revision` is mirrored into
+    `useTaskStore.lockRevision` on every lock or unlock.
   - **Screens that read the whole task array** (Calendar, Stats, Tags, Stacks,
     Reminders, Saved views, Stuck, Backfill, Search, a category or person
-    page) take it through `useWithoutLockedTasks`; list selectors in
-    `useTaskStore` filter themselves. A new screen that lists tasks does one
-    or the other. **Not covered:** Claude's MCP tools (a lock is a screen
-    guard on this device, as the journal lock is), and aggregates such as the
-    mood contrasts and Rewards.
+    page) take it through `useWithoutLockedTasks`. A new screen that lists
+    tasks renders them through `TaskItem` (redacted) or filters with that.
+  - **Not covered:** Claude's MCP tools (a lock is a screen guard on this
+    device, as the journal lock is), and aggregates such as the mood contrasts
+    and Rewards.
 - **`resetToDefaults` doesn't touch it**, like vacation mode: "reset appearance and
   formatting" is not a request to take the lock off the app.
 
