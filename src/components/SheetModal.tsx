@@ -1,10 +1,12 @@
 import React, { useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Keyboard, Modal } from 'react-native';
 import {
+  beginDismissal,
   canHideSheet,
   canShowSheet,
   claimPresentation,
   createPresentationLevel,
+  endDismissal,
   mustYieldSheet,
   nextSheetVisibility,
   PresentationLevelContext,
@@ -16,6 +18,11 @@ import {
   trackOpenSheet,
   type PresentationLevel,
 } from '../utils/sheetModal';
+
+// How long a sheet that has been closed may hold the sheet underneath back
+// waiting for iOS to say its dismissal finished. A slide-down is ~350ms; this is
+// only the backstop for a Modal that never reports one.
+const DISMISS_BACKSTOP_MS = 800;
 
 // How long a sheet may stay registered before development builds warn about it.
 const STUCK_SHEET_WARN_MS = 5 * 60 * 1000;
@@ -280,6 +287,29 @@ export function SheetModal({ visible = true, children, name, preempts = false, .
     setShown(step.shown);
   }, [visible, shown, above, ownLevel]);
 
+  // The closing edge's other half: from the commit this sheet is handed
+  // `visible: false`, the sheet it was presented from may not dismiss until iOS
+  // has finished taking this one down (`beginDismissal`). `onDismiss` is the
+  // real signal; the timer is only for a Modal that never fires it.
+  const wasShown = useRef(shown);
+  const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const finishDismissal = () => {
+    if (dismissTimer.current) { clearTimeout(dismissTimer.current); dismissTimer.current = null; }
+    endDismissal(parentLevel, id);
+  };
+  useEffect(() => {
+    if (wasShown.current && !shown) {
+      beginDismissal(parentLevel, id);
+      if (dismissTimer.current) clearTimeout(dismissTimer.current);
+      dismissTimer.current = setTimeout(finishDismissal, DISMISS_BACKSTOP_MS);
+    } else if (shown) {
+      finishDismissal();
+    }
+    wasShown.current = shown;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shown]);
+  useEffect(() => () => finishDismissal(), []);  // eslint-disable-line react-hooks/exhaustive-deps
+
   // A sheet torn down while still on screen closes the same way one that is
   // merely hidden does, so it needs the same dismissal — a parent dropping it
   // from the tree is one more close path, and the one no prop change reports.
@@ -345,7 +375,11 @@ export function SheetModal({ visible = true, children, name, preempts = false, .
   }, [shown, parentLevel, ownLevel, id, name, rest.testID, preempts]);
 
   return (
-    <Modal visible={shown} {...rest}>
+    <Modal
+      visible={shown}
+      {...rest}
+      onDismiss={() => { finishDismissal(); rest.onDismiss?.(); }}
+    >
       <PresentationLevelContext.Provider value={ownLevel}>
         {children}
       </PresentationLevelContext.Provider>
