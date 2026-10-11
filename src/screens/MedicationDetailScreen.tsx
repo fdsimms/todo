@@ -207,7 +207,7 @@ export function MedicationDetailScreen() {
         ref={scrollTop.ref}
         {...scrollTop.listProps}
         style={styles.scroll}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + spacing.xl }]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: scrollTop.buttonProps.bottom + SCROLL_TOP_SIZE + spacing.md }]}
       >
         <View style={styles.statRow}>
           <View style={styles.statCell} accessible accessibilityLabel={`${stat.doses} ${stat.doses === 1 ? 'dose' : 'doses'} recorded`}>
@@ -406,7 +406,7 @@ export function MedicationDetailScreen() {
         <View style={[styles.card, styles.formCard]}>
           {panelSummary ? (
             <>
-              <Text style={styles.fieldLabel}>{panelSummary.heading}</Text>
+              <Text style={[styles.fieldLabel, styles.panelHeading]}>{panelSummary.heading}</Text>
               <Text style={styles.fieldHint}>{panelSummary.detail}</Text>
             </>
           ) : (
@@ -426,7 +426,7 @@ export function MedicationDetailScreen() {
           </View>
         </View>
 
-        <Text style={styles.sectionTitle}>EVERY DOSE</Text>
+        <Text style={styles.sectionTitle}>HISTORY</Text>
         <View style={[styles.card, styles.listCard]}>
           {entries.map((log, index) => (
             <TouchableOpacity
@@ -482,10 +482,13 @@ export function MedicationDetailScreen() {
   );
 }
 
+// ScrollToTopButton's own diameter, so the last row can clear it.
+const SCROLL_TOP_SIZE = 44;
+
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   scroll: { flex: 1 },
-  scrollContent: { paddingHorizontal: spacing.md },
+  scrollContent: { paddingHorizontal: spacing.md, paddingTop: spacing.md },
   statRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
   statCell: {
     flex: 1,
@@ -498,7 +501,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   statValue: { fontSize: font.lg, fontWeight: fontWeight.bold, color: colors.text },
   statLabel: { fontSize: font.xs, color: colors.textSecondary, marginTop: spacing.xxs, textAlign: 'center' },
   actionsRow: { flexDirection: 'row', justifyContent: 'flex-start', gap: spacing.sm, marginBottom: spacing.lg },
-  panelActions: { flexDirection: 'row', justifyContent: 'flex-start' },
+  panelHeading: { paddingHorizontal: spacing.md, paddingTop: spacing.sm },
+  panelActions: { flexDirection: 'row', justifyContent: 'flex-start', paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
   sectionTitle: {
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,
