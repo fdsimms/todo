@@ -75,7 +75,9 @@ export function renamedSettings(
     ...((target?.nutrition ?? source.nutrition) ? { nutrition: target?.nutrition ?? source.nutrition } : {}),
     // How you take it and the usual amount follow the same rule.
     ...(typeof (target?.asNeeded ?? source.asNeeded) === 'boolean' ? { asNeeded: target?.asNeeded ?? source.asNeeded } : {}),
-    ...((target?.usualDose ?? source.usualDose) ? { usualDose: target?.usualDose ?? source.usualDose } : {}),
+    ...((target?.usualDoses?.length ? target.usualDoses : source.usualDoses)?.length
+      ? { usualDoses: target?.usualDoses?.length ? target.usualDoses : source.usualDoses }
+      : {}),
   };
   return next;
 }

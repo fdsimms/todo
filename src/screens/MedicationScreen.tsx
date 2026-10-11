@@ -28,6 +28,8 @@ import {
   describeSupplyLeft,
   limitStatus,
   prefsFor,
+  defaultUsualDose,
+  formatCapAmount,
   supplyRemaining,
   wantsRefill,
   type MedicationSettingsMap,
@@ -220,8 +222,9 @@ export function MedicationScreen() {
 
   const quickRecord = async (stat: MedicationStat) => {
     haptics.tap();
-    if (!(await confirmWithinLimit(stat.name))) return;
-    const log = recordDose(repeatDose(logs, stat.name, prefsFor(settings, stat.name).usualDose ?? null));
+    const dose = repeatDose(logs, stat.name, defaultUsualDose(prefsFor(settings, stat.name)));
+    if (!(await confirmWithinLimit(stat.name, new Date(), dose))) return;
+    const log = recordDose(dose);
     if (!log) return;
     haptics.success();
     showUndo(log);
@@ -559,6 +562,8 @@ function statusParts(
       parts.push({ text: `Within your limit again at ${format(status.nextOkAt, 'h:mm a')}`, warn: true });
     } else if (status.maxPer24h !== null && status.inLast24h > 0) {
       parts.push({ text: `${status.inLast24h} of ${status.maxPer24h} in 24 hours`, warn: false });
+    } else if (status.maxAmount24h && status.amountInLast24h) {
+      parts.push({ text: `${status.amountInLast24h.toLocaleString('en-US', { maximumFractionDigits: 2 })} of ${formatCapAmount(status.maxAmount24h)} in 24 hours`, warn: false });
     }
   }
   const remaining = supplyRemaining(logs, stat.name, supply);

@@ -69,7 +69,7 @@ export function waterTodayMl(now: Date = new Date()): number {
 async function runDose(action: DoseAction): Promise<SearchActionReceipt | null> {
   // Through `recordDose` like every other door a dose comes in by, so the
   // limit is asked about and a low supply offers a refill.
-  if (!(await confirmWithinLimit(action.dose.name))) return null;
+  if (!(await confirmWithinLimit(action.dose.name, new Date(), action.dose))) return null;
   const log: MedicationLog | null = recordDose(action.dose);
   if (!log) return null;
   return {

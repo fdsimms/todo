@@ -770,6 +770,18 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return out;
     },
 
+    setMedicationLimit(name, limit) {
+      const out = replica.setMedicationLimit(name, limit);
+      log({ action: 'edited', subject: 'medication', title: out.medicine, taskId: null, note: out.limit ? `Set the limit for ${out.medicine}: ${out.limit.toLowerCase()}` : `Clear the limit for ${out.medicine}` });
+      return out;
+    },
+
+    setMedicationSupply(name, supply) {
+      const out = replica.setMedicationSupply(name, supply);
+      log({ action: 'edited', subject: 'medication', title: out.medicine, taskId: null, note: out.left ? `Set the supply for ${out.medicine}: ${out.left}` : `Stop tracking the supply for ${out.medicine}` });
+      return out;
+    },
+
     removeMedication(name) {
       const spelled = replica.removeMedication(name);
       log({ action: 'cleared', subject: 'medication', title: spelled, taskId: null, note: `Remove ${spelled} from the medication list (it had no doses), with its limit and supply` });
@@ -780,7 +792,7 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       const spelled = replica.setMedicationProfile(name, profile);
       const said = [
         profile.asNeeded === undefined ? null : profile.asNeeded === null ? 'taken as needed or not, read from the doses' : profile.asNeeded ? 'taken as needed' : 'taken on a schedule',
-        profile.usualDose === undefined ? null : profile.usualDose ? `usual amount ${profile.usualDose.amount} ${profile.usualDose.unit}` : 'usual amount cleared',
+        profile.usualDoses === undefined ? null : profile.usualDoses.length > 0 ? `usual amounts ${profile.usualDoses.map(d => `${d.amount} ${d.unit}`).join(', ')}` : 'usual amounts cleared',
       ].filter(Boolean).join(', ');
       log({ action: 'edited', subject: 'medication', title: spelled, taskId: null, note: `Set ${spelled}: ${said}` });
       return spelled;

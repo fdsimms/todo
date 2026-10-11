@@ -1873,7 +1873,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   );
   const addAsDose = async (dose: MedicationDose) => {
     haptics.tap();
-    if (!(await confirmWithinLimit(dose.name))) return;
+    if (!(await confirmWithinLimit(dose.name, new Date(), dose))) return;
     if (!recordDose({ ...dose, asNeeded: true })) return;
     haptics.success();
     dismiss();

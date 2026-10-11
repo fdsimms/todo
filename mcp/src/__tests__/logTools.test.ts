@@ -7,7 +7,7 @@
 import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
 import { useMedicationStore } from '../../../src/store/useMedicationStore';
-import { atFrom, deleteMedicationLog, deleteSavedMeal, setSupplementNutrients, duplicateFoodEntry, listSavedMeals, logFood, logMedication, logMood, logSavedMeal, logWater, moveFoodEntry, renameMedication, renameMoodTag, saveMealFromEntries, saveRecipe, setMedicationArchived, addMedication, removeMedication, setMedicationProfile, setNutritionTargets, updateFoodEntry, updateMoodLog } from '../logTools';
+import { atFrom, deleteMedicationLog, deleteSavedMeal, setSupplementNutrients, duplicateFoodEntry, listSavedMeals, logFood, logMedication, logMood, logSavedMeal, logWater, moveFoodEntry, renameMedication, renameMoodTag, saveMealFromEntries, saveRecipe, setMedicationArchived, addMedication, removeMedication, setMedicationProfile, setMedicationLimit, setMedicationSupply, setNutritionTargets, updateFoodEntry, updateMoodLog } from '../logTools';
 
 let mockRaw: ShimDatabase;
 
@@ -482,14 +482,15 @@ describe('add_medication and set_medication_profile', () => {
     expect(() => removeMedication(replica, 'Nothing')).toThrow(/No medicine called/);
   });
 
-  it('sets how it is taken and the usual amount, and reports them', () => {
+  it('sets how it is taken and the usual amounts, and reports them', () => {
     addMedication(replica, 'Magnesium');
-    expect(setMedicationProfile(replica, { name: 'magnesium', asNeeded: true, usualAmount: 200, usualUnit: 'mg' }))
-      .toEqual({ medicine: 'Magnesium', asNeeded: true, usualDose: '200 mg' });
+    expect(setMedicationProfile(replica, {
+      name: 'magnesium', asNeeded: true, usualAmounts: [{ amount: 200, unit: 'mg' }, { amount: 100, unit: 'mg' }],
+    })).toEqual({ medicine: 'Magnesium', asNeeded: true, usualAmounts: ['200 mg', '100 mg'] });
     expect(replica.medicationSettings().find(m => m.name === 'Magnesium'))
-      .toMatchObject({ takenAsNeeded: true, usualAmount: '200 mg' });
-    // Left out is unchanged; null goes back to the doses and clears the amount.
-    setMedicationProfile(replica, { name: 'Magnesium', asNeeded: null, usualAmount: null, usualUnit: null });
+      .toMatchObject({ takenAsNeeded: true, usualAmounts: ['200 mg', '100 mg'] });
+    // Left out is unchanged; null goes back to the doses and [] clears the amounts.
+    setMedicationProfile(replica, { name: 'Magnesium', asNeeded: null, usualAmounts: [] });
     expect(replica.medicationSettings().find(m => m.name === 'Magnesium')).toMatchObject({ noDosesYet: true });
     expect(replica.medicationSettings().find(m => m.name === 'Magnesium')?.takenAsNeeded).toBeUndefined();
   });
@@ -498,7 +499,63 @@ describe('add_medication and set_medication_profile', () => {
     expect(() => setMedicationProfile(replica, { name: 'Nothing', asNeeded: true })).toThrow(/No medicine called/);
     addMedication(replica, 'Iron');
     expect(() => setMedicationProfile(replica, { name: 'Iron' })).toThrow(/Give asNeeded/);
-    expect(() => setMedicationProfile(replica, { name: 'Iron', usualAmount: 5 })).toThrow(/together/);
-    expect(() => setMedicationProfile(replica, { name: 'Iron', usualAmount: 5, usualUnit: 'furlongs' })).toThrow(/one of/);
+    expect(() => setMedicationProfile(replica, { name: 'Iron', usualAmounts: [{ amount: 5, unit: '' }] })).toThrow(/needs a unit/);
+    expect(() => setMedicationProfile(replica, { name: 'Iron', usualAmounts: [{ amount: 5, unit: 'furlongs' }] })).toThrow(/one of/);
+    expect(() => setMedicationProfile(replica, { name: 'Iron', usualAmounts: [{ amount: 0, unit: 'mg' }] })).toThrow(/greater than 0/);
+  });
+});
+
+describe('set_medication_limit and set_medication_supply', () => {
+  it('sets each cap, keeps the ones left out, and clears', () => {
+    logMedication(replica, { name: 'Ibuprofen', amount: 200, unit: 'mg' });
+    expect(setMedicationLimit(replica, { name: 'ibuprofen', minHours: 6, maxAmount24h: { amount: 1200, unit: 'mg' } }))
+      .toMatchObject({ medicine: 'Ibuprofen', limit: 'At least 6 hours apart, at most 1,200 mg in 24 hours' });
+    // A cap left out is kept; null removes one.
+    expect(setMedicationLimit(replica, { name: 'Ibuprofen', maxPer24h: 4 }).limit)
+      .toBe('At least 6 hours apart, at most 4 in 24 hours, at most 1,200 mg in 24 hours');
+    expect(setMedicationLimit(replica, { name: 'Ibuprofen', minHours: null, maxAmount24h: null }).limit)
+      .toBe('At most 4 in 24 hours');
+    expect(replica.medicationSettings().find(m => m.name === 'Ibuprofen')?.limit).toBe('At most 4 in 24 hours');
+    expect(setMedicationLimit(replica, { name: 'Ibuprofen', clear: true })).toMatchObject({ limit: null });
+  });
+
+  it('refuses a limit that is empty, mixed or out of range, and an unlisted medicine', () => {
+    addMedication(replica, 'Naproxen');
+    expect(() => setMedicationLimit(replica, { name: 'Naproxen' })).toThrow(/Give minHours/);
+    expect(() => setMedicationLimit(replica, { name: 'Naproxen', clear: true, minHours: 4 })).toThrow(/on its own/);
+    expect(() => setMedicationLimit(replica, { name: 'Naproxen', maxPer24h: 2.5 })).toThrow(/whole number/);
+    expect(() => setMedicationLimit(replica, { name: 'Naproxen', maxAmount24h: { amount: 5, unit: 'furlongs' } })).toThrow(/one of/);
+    expect(() => setMedicationLimit(replica, { name: 'Nothing', minHours: 4 })).toThrow(/No medicine called/);
+  });
+
+  it('keeps the notification switch as it was', () => {
+    addMedication(replica, 'Aspirin');
+    setMedicationLimit(replica, { name: 'Aspirin', minHours: 4 });
+    const { useMedicationStore: meds } = require('../../../src/store/useMedicationStore');
+    meds.getState().setLimit('Aspirin', { minHours: 4, maxPer24h: null, notify: true });
+    setMedicationLimit(replica, { name: 'Aspirin', maxPer24h: 3 });
+    meds.getState().initialize();
+    expect(meds.getState().settings.aspirin.limit.notify).toBe(true);
+  });
+
+  it('sets a supply counted from now, keeps unspecified fields, and clears', () => {
+    addMedication(replica, 'Zinc');
+    expect(setMedicationSupply(replica, { name: 'zinc', count: 30, unit: 'tablet', refillCount: 60, reorderAt: 7 }))
+      .toMatchObject({ medicine: 'Zinc', left: '30 tablets left' });
+    // Only the count changed: the unit and reorder point stay.
+    expect(setMedicationSupply(replica, { name: 'Zinc', count: 25 }).left).toBe('25 tablets left');
+    const { useMedicationStore: meds } = require('../../../src/store/useMedicationStore');
+    meds.getState().initialize();
+    expect(meds.getState().settings.zinc.supply).toMatchObject({ unit: 'tablet', refillCount: 60, reorderAt: 7 });
+    expect(setMedicationSupply(replica, { name: 'Zinc', clear: true }).left).toBeNull();
+  });
+
+  it('refuses a supply with no count, a bad unit or an unlisted medicine', () => {
+    addMedication(replica, 'Iron');
+    expect(() => setMedicationSupply(replica, { name: 'Iron' })).toThrow(/Give count/);
+    expect(() => setMedicationSupply(replica, { name: 'Iron', count: -1 })).toThrow(/zero or more/);
+    expect(() => setMedicationSupply(replica, { name: 'Iron', count: 5, unit: 'mg' })).toThrow(/one of/);
+    expect(() => setMedicationSupply(replica, { name: 'Iron', clear: true, count: 5 })).toThrow(/on its own/);
+    expect(() => setMedicationSupply(replica, { name: 'Nothing', count: 5 })).toThrow(/No medicine called/);
   });
 });

@@ -102,7 +102,7 @@ import { forget, remember } from './memoryTools';
 import { deleteRule, listAutomations, saveRule, setAutomation, RULE_TYPES } from './automationTools';
 import { deleteCategory, reorderCategories, updateCategory } from './categoryTools';
 import { cancelCalendarRequest, changeCalendarEvent, listCalendarRequests, requestCalendarEvent } from './calendarTools';
-import { ESTIMATE_KEY_LIST, NUTRIENT_KEY_LIST, atFrom, deleteSavedMeal, duplicateFoodEntry, listSavedMeals, logSavedMeal, moveFoodEntry, saveMealFromEntries, setNutritionTargets, renameMedication, renameMoodTag, setMedicationArchived, addMedication, removeMedication, setMedicationProfile, logFood, logMedication, setSupplementNutrients, logMood, logWater, updateRecipe, deleteRecipe, updateFoodEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
+import { ESTIMATE_KEY_LIST, NUTRIENT_KEY_LIST, atFrom, deleteSavedMeal, duplicateFoodEntry, listSavedMeals, logSavedMeal, moveFoodEntry, saveMealFromEntries, setNutritionTargets, renameMedication, renameMoodTag, setMedicationArchived, addMedication, removeMedication, setMedicationProfile, setMedicationLimit, setMedicationSupply, logFood, logMedication, setSupplementNutrients, logMood, logWater, updateRecipe, deleteRecipe, updateFoodEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
 import { DEFAULT_PATTERN_DAYS, focusHistory, habitPatterns, moodInsights } from './patternTools';
 import { addMilestone, deleteMilestone, listMilestones, updateMilestone } from './milestoneTools';
 import { listCopyFlags, resolveCopyFlag } from './copyFlagTools';
@@ -524,7 +524,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'list_medication_logs',
-    'Doses recorded over a range of days, including as-needed ones, plus the limit and supply the person set for each medication (limitsAndSupply: their own limit, how many doses in the last 24 hours, when the next is within it, and how many are left; also whether they take it as needed, their usual amount, and medicines added with no dose yet). A limit is the person\'s own, never a prescription; say it that way. Defaults to the last 7 days. Empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that nothing was logged.',
+    'Doses recorded over a range of days, including as-needed ones, plus the limit and supply the person set for each medication (limitsAndSupply: their own limit, how many doses in the last 24 hours, the total against a limit on an amount, when the next is within it, and how many are left; also whether they take it as needed, their usual amount, and medicines added with no dose yet). A limit is the person\'s own, never a prescription; say it that way. Defaults to the last 7 days. Empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that nothing was logged.',
     logRange,
     async input => json(await withFresh(() => listMedicationLogs(replica, input)))
   );
@@ -2429,6 +2429,45 @@ function registerWriteTools(
   );
 
   server.tool(
+    'set_medication_limit',
+    'Set the limit the person gave for a listed medicine, as its page does, or clear it with clear: true. Any of: minHours (fewest hours between two doses), maxPer24h (most doses in any 24 hours), maxAmount24h ({amount, unit}, e.g. 1200 and "mg": the most of one unit in any 24 hours, for a label stated as a total; only doses recorded in that unit are added up). A cap you leave out keeps its current value; null removes it. It is the person\'s own limit, never a prescription and never yours to work out: set it only from figures they gave you, copied from the label or what their doctor told them, and say back what you set. The phone asks before recording a dose that goes past it, and only doses recorded after you set it are judged. The "tell me when it is OK again" notification is a switch on the phone and is left as it is.',
+    {
+      name: z.string().min(1),
+      clear: z.literal(true).optional(),
+      minHours: z.number().positive().max(72).nullable().optional(),
+      maxPer24h: z.number().int().min(1).max(99).nullable().optional(),
+      maxAmount24h: z.object({ amount: z.number().positive(), unit: z.string() }).nullable().optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => setMedicationLimit(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not set the limit.' });
+      }
+    }
+  );
+
+  server.tool(
+    'set_medication_supply',
+    'Set how many of a listed medicine the person has, as the Left field on its page does, or stop tracking it with clear: true. count is how many they have right now, in unit (a countable unit such as tablet or capsule, or "dose", the default); what is left afterwards is that count less the doses recorded from now on, so it goes down on its own and a deleted dose puts one back. refillCount prefills the refill prompt and reorderAt is the count the phone offers a refill task at. Leave a field out to keep it. A scheduled task that records the medicine keeps its own supply, which this does not touch. Only from a count the person gave you.',
+    {
+      name: z.string().min(1),
+      clear: z.literal(true).optional(),
+      count: z.number().min(0).optional(),
+      unit: z.string().optional().describe('dose, or a countable unit such as tablet, capsule, drop or spray.'),
+      refillCount: z.number().positive().nullable().optional(),
+      reorderAt: z.number().int().min(1).optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => setMedicationSupply(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not set the supply.' });
+      }
+    }
+  );
+
+  server.tool(
     'remove_medication',
     'Take a medicine off the list, with its limit and supply, as Remove on its page does. Only one with no recorded doses: doses are the person\'s record, so a medicine that has any is refused (delete_medication_log removes a dose; archive_medication moves it out of "what you take"). Use it to put right an add_medication.',
     { name: z.string().min(1) },
@@ -2443,12 +2482,11 @@ function registerWriteTools(
 
   server.tool(
     'set_medication_profile',
-    'Set how a listed medicine is taken and the amount usually taken, as its page does. asNeeded: true for taken as needed (the Medications screen then offers a button that records another dose), false for on a schedule, null to go back to reading it off the recorded doses. usualAmount and usualUnit (together, e.g. 50 and "mg") are what a new dose starts from and what the round button records before any dose exists; both null clears them. A field left out is unchanged. Only from what the person told you.',
+    'Set how a listed medicine is taken and the amounts usually taken, as its page does. asNeeded: true for taken as needed (the Medications screen then offers a button that records another dose), false for on a schedule, null to go back to reading it off the recorded doses. usualAmounts is the whole list (e.g. [{amount: 400, unit: "mg"}, {amount: 200, unit: "mg"}], at most 6): the first is what a new dose starts from and what the round button records before any dose exists, and all of them are quick picks when recording a dose; [] clears them. A field left out is unchanged. Only from what the person told you.',
     {
       name: z.string().min(1),
       asNeeded: z.boolean().nullable().optional(),
-      usualAmount: z.number().positive().nullable().optional(),
-      usualUnit: z.string().nullable().optional(),
+      usualAmounts: z.array(z.object({ amount: z.number().positive(), unit: z.string() })).max(6).optional(),
     },
     async input => {
       try {

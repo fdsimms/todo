@@ -44,11 +44,27 @@ import { DOSE_UNITS, medicationKey } from './medicationLog';
 /** The settings key the whole map is stored under (synced, health-scoped). */
 export const MEDICATION_SETTINGS_KEY = 'medication_settings';
 
+/** A total of one unit, such as 1200 mg. */
+export interface AmountCap {
+  amount: number;
+  /** One of `DOSE_UNITS`. */
+  unit: string;
+}
+
 export interface MedicationLimit {
   /** Fewest hours between two doses, or null for no spacing rule. */
   minHours: number | null;
   /** Most doses in any 24 hours, or null for no cap. */
   maxPer24h: number | null;
+  /**
+   * Most of one unit in any 24 hours, or null/absent for no cap. For a label
+   * that states a total ("no more than 1200 mg a day") rather than a number of
+   * doses, which is what makes it hold across strengths. Only doses recorded in
+   * this unit are added up: a dose with no amount, or in another unit, is
+   * counted as unmeasured and never converted or guessed (the rule
+   * `supplyUseOf` states for a supply). Optional so a map written before it reads unchanged.
+   */
+  maxAmount24h?: AmountCap | null;
   /** Send a notification when the next dose is allowed again. */
   notify: boolean;
   /** ISO instant the limit was set; doses before it are never judged. */
@@ -101,7 +117,7 @@ export interface SupplementPanel {
   amounts: Partial<Record<NutrientKey, number>>;
 }
 
-/** The amount you usually take, typed once: prefills a dose, and is what the round button records before any dose exists. */
+/** An amount you usually take: prefills a dose, and the first one is what the round button records before any dose exists. */
 export interface UsualDose {
   amount: number;
   /** One of `DOSE_UNITS`. */
@@ -117,8 +133,12 @@ export interface MedicationPrefs {
    * had before this existed: any dose recorded as needed makes it as needed.
    */
   asNeeded?: boolean | null;
-  /** The amount you usually take, or null when none was entered. */
-  usualDose?: UsualDose | null;
+  /**
+   * The amounts you usually take, at most `MAX_USUAL_DOSES`. The first is the
+   * default; the rest are quick picks in the dose sheet. Absent or empty when
+   * none were entered.
+   */
+  usualDoses?: UsualDose[];
   /** What a serving contains, or null when none was entered. Optional so a map written before it reads unchanged. */
   nutrition?: SupplementPanel | null;
 }
@@ -143,7 +163,8 @@ function parseLimit(raw: unknown): MedicationLimit | null {
   const r = raw as Record<string, unknown>;
   const minHours = positiveOrNull(r.minHours, 72);
   const maxPer24h = positiveOrNull(r.maxPer24h, 99);
-  if (minHours === null && maxPer24h === null) return null;
+  const maxAmount24h = parseAmount(r.maxAmount24h, 999999);
+  if (minHours === null && maxPer24h === null && maxAmount24h === null) return null;
   const since = typeof r.since === 'string' && !Number.isNaN(Date.parse(r.since)) ? r.since : null;
   if (!since) return null;
   return {
@@ -151,20 +172,44 @@ function parseLimit(raw: unknown): MedicationLimit | null {
     maxPer24h: maxPer24h === null ? null : Math.round(maxPer24h),
     notify: r.notify === true,
     since,
+    ...(maxAmount24h ? { maxAmount24h } : {}),
   };
 }
 
-function parseUsualDose(raw: unknown): UsualDose | null {
+/** How many usual amounts one medication keeps. */
+export const MAX_USUAL_DOSES = 6;
+
+function parseAmount(raw: unknown, max: number): UsualDose | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
-  const amount = positiveOrNull(r.amount, 99999);
+  const amount = positiveOrNull(r.amount, max);
   const unit = typeof r.unit === 'string' && DOSE_UNITS.some(u => u.value === r.unit) ? r.unit : null;
   return amount !== null && unit ? { amount, unit } : null;
 }
 
+/**
+ * The usual amounts, one per amount and unit. Reads the single `usualDose` an
+ * earlier build wrote as a list of one, so nothing typed is lost.
+ */
+function parseUsualDoses(list: unknown, legacy: unknown): UsualDose[] {
+  const raw = Array.isArray(list) ? list : legacy ? [legacy] : [];
+  const out: UsualDose[] = [];
+  for (const entry of raw) {
+    const dose = parseAmount(entry, 99999);
+    if (dose && !out.some(d => d.amount === dose.amount && d.unit === dose.unit)) out.push(dose);
+    if (out.length >= MAX_USUAL_DOSES) break;
+  }
+  return out;
+}
+
+/** The amount a new dose starts from: the first usual amount, or null. */
+export function defaultUsualDose(prefs: Pick<MedicationPrefs, 'usualDoses'> | undefined): UsualDose | null {
+  return prefs?.usualDoses?.[0] ?? null;
+}
+
 /** Whether an entry says anything; an entry that doesn't is dropped rather than stored empty. */
 function hasPrefs(p: MedicationPrefs): boolean {
-  return !!(p.limit || p.supply || p.nutrition || p.usualDose || typeof p.asNeeded === 'boolean');
+  return !!(p.limit || p.supply || p.nutrition || p.usualDoses?.length || typeof p.asNeeded === 'boolean');
 }
 
 function parseSupply(raw: unknown): MedicationSupply | null {
@@ -232,13 +277,13 @@ export function parseMedicationSettings(raw: string | null): MedicationSettingsM
     const nutrition = parseSupplementPanel(v.nutrition);
     // Only when present, so a map with no panel reads exactly as it did before
     // the field existed.
-    const usualDose = parseUsualDose(v.usualDose);
+    const usualDoses = parseUsualDoses(v.usualDoses, v.usualDose);
     const prefs: MedicationPrefs = {
       limit: parseLimit(v.limit),
       supply: parseSupply(v.supply),
       ...(nutrition ? { nutrition } : {}),
       ...(typeof v.asNeeded === 'boolean' ? { asNeeded: v.asNeeded } : {}),
-      ...(usualDose ? { usualDose } : {}),
+      ...(usualDoses.length > 0 ? { usualDoses } : {}),
     };
     if (hasPrefs(prefs)) out[key] = prefs;
   }
@@ -275,12 +320,18 @@ export function formatHours(hours: number): string {
   return `${rounded} ${rounded === 1 ? 'hour' : 'hours'}`;
 }
 
+/** "1,200 mg": an amount cap as the label would print it. */
+export function formatCapAmount(cap: AmountCap): string {
+  return `${cap.amount.toLocaleString('en-US', { maximumFractionDigits: 2 })} ${cap.unit}`;
+}
+
 /** "At least 6 hours apart, at most 4 in 24 hours", or null with no limit. */
 export function describeLimit(limit: MedicationLimit | null): string | null {
   if (!limit) return null;
   const parts: string[] = [];
   if (limit.minHours !== null) parts.push(`at least ${formatHours(limit.minHours)} apart`);
   if (limit.maxPer24h !== null) parts.push(`at most ${limit.maxPer24h} in 24 hours`);
+  if (limit.maxAmount24h) parts.push(`at most ${formatCapAmount(limit.maxAmount24h)} in 24 hours`);
   if (parts.length === 0) return null;
   const text = parts.join(', ');
   return text.charAt(0).toUpperCase() + text.slice(1);
@@ -295,7 +346,13 @@ export interface LimitStatus {
   /** When the next dose is allowed, or null when it's allowed now. */
   nextOkAt: Date | null;
   /** Which cap is holding it back, when one is. */
-  reason: 'spacing' | 'max' | null;
+  reason: 'spacing' | 'max' | 'amount' | null;
+  /** The amount cap, when the limit has one. */
+  maxAmount24h: AmountCap | null;
+  /** Added up from the doses in that cap's unit in the last 24 hours; null without an amount cap. */
+  amountInLast24h: number | null;
+  /** Doses in the last 24 hours that state no amount in that unit, so are not in the sum. Zero without an amount cap. */
+  unmeasuredInLast24h: number;
 }
 
 function dosesOf(logs: readonly MedicationLog[], key: string): number[] {
@@ -306,6 +363,40 @@ function dosesOf(logs: readonly MedicationLog[], key: string): number[] {
     .sort((a, b) => a - b);
 }
 
+/** A dose's time and what it contributes to a cap in `unit`, or null amount when it states none in that unit. */
+interface TimedAmount { t: number; amount: number | null }
+
+function amountsOf(logs: readonly MedicationLog[], key: string, unit: string): TimedAmount[] {
+  return logs
+    .filter(l => medicationKey(l.name) === key)
+    .map(l => ({
+      t: Date.parse(l.takenAt),
+      amount: l.unit === unit && l.amount !== null && l.amount > 0 ? l.amount : null,
+    }))
+    .filter(d => Number.isFinite(d.t))
+    .sort((a, b) => a.t - b.t);
+}
+
+/**
+ * The earliest moment a cap on a total has room again. `need` is the dose being
+ * considered (0 asks only whether there is any room). Walks the window oldest
+ * first, dropping each dose as it ages out, so the answer is the time of the
+ * dose whose leaving makes `sum + need` fit. 0 when it already fits.
+ */
+function amountOkAt(window: readonly TimedAmount[], cap: number, need: number): number {
+  const fits = (sum: number) => (need > 0 ? sum + need <= cap : sum < cap);
+  let sum = window.reduce((s, d) => s + (d.amount ?? 0), 0);
+  if (fits(sum)) return 0;
+  let okAt = 0;
+  for (const d of window) {
+    if (d.amount === null) continue;
+    sum -= d.amount;
+    okAt = d.t + DAY_MS;
+    if (fits(sum)) break;
+  }
+  return okAt;
+}
+
 /**
  * Where a medication stands against its limit right now.
  *
@@ -313,24 +404,37 @@ function dosesOf(logs: readonly MedicationLog[], key: string): number[] {
  * the body, which keeps no `dayResetTime`. A dose recorded in the future (a
  * clock change, a typo'd backdate) counts from where it says it was, which
  * can only make the answer more cautious.
+ *
+ * `planned` is the dose about to be taken. Only an amount cap reads it: a
+ * count cap asks whether one more fits, and an amount cap asks whether *this*
+ * much does, which depends on the dose. A planned dose in another unit, or
+ * with no amount, is not measured against the cap.
  */
 export function limitStatus(
   logs: readonly MedicationLog[],
   name: string,
   limit: MedicationLimit | null,
   now: Date,
+  planned: { amount: number | null; unit: string | null } | null = null,
 ): LimitStatus {
   const key = medicationKey(name);
   const times = dosesOf(logs, key).filter(t => t <= now.getTime() + HOUR_MS);
   const last = times.length > 0 ? times[times.length - 1] : null;
   const windowStart = now.getTime() - DAY_MS;
   const recent = times.filter(t => t > windowStart);
+  const cap = limit?.maxAmount24h ?? null;
+  const measured = cap
+    ? amountsOf(logs, key, cap.unit).filter(d => d.t <= now.getTime() + HOUR_MS && d.t > windowStart)
+    : [];
   const status: LimitStatus = {
     inLast24h: recent.length,
     maxPer24h: limit?.maxPer24h ?? null,
     lastTakenAt: last === null ? null : new Date(last).toISOString(),
     nextOkAt: null,
     reason: null,
+    maxAmount24h: cap,
+    amountInLast24h: cap ? Math.round(measured.reduce((s, d) => s + (d.amount ?? 0), 0) * 100) / 100 : null,
+    unmeasuredInLast24h: cap ? measured.filter(d => d.amount === null).length : 0,
   };
   if (!limit) return status;
 
@@ -342,25 +446,31 @@ export function limitStatus(
     // N in the window and a cap of M, the (N - M + 1)th oldest.
     maxOk = recent[recent.length - limit.maxPer24h] + DAY_MS;
   }
-  const okAt = Math.max(spacingOk, maxOk);
+  let amountOk = 0;
+  if (cap) {
+    const need = planned && planned.unit === cap.unit && planned.amount !== null && planned.amount > 0 ? planned.amount : 0;
+    amountOk = amountOkAt(measured, cap.amount, need);
+  }
+  const okAt = Math.max(spacingOk, maxOk, amountOk);
   if (okAt > now.getTime()) {
     status.nextOkAt = new Date(okAt);
-    status.reason = maxOk >= spacingOk ? 'max' : 'spacing';
+    status.reason = okAt === amountOk && amountOk > Math.max(spacingOk, maxOk) ? 'amount'
+      : maxOk >= spacingOk ? 'max' : 'spacing';
   }
   return status;
 }
 
 export interface LimitBreach {
   log: MedicationLog;
-  reason: 'spacing' | 'max';
+  reason: 'spacing' | 'max' | 'amount';
 }
 
 /**
  * The doses that went past the limit you set, oldest first.
  *
  * Only doses from `limit.since` on are judged (see the header). A dose that
- * broke both caps is reported once, as spacing, since that is the one a reader
- * can see from the two times alone.
+ * broke more than one cap is reported once: spacing first, since that is the
+ * one a reader can see from the two times alone, then the count, then the total.
  */
 export function limitBreaches(
   logs: readonly MedicationLog[],
@@ -387,7 +497,16 @@ export function limitBreaches(
     if (limit.maxPer24h !== null) {
       let inWindow = 0;
       for (let j = i; j >= 0 && t - Date.parse(ordered[j].takenAt) < DAY_MS; j--) inWindow++;
-      if (inWindow > limit.maxPer24h) breaches.push({ log: ordered[i], reason: 'max' });
+      if (inWindow > limit.maxPer24h) { breaches.push({ log: ordered[i], reason: 'max' }); continue; }
+    }
+    if (limit.maxAmount24h) {
+      // The total of this unit in the 24 hours up to and including this dose.
+      const { amount: capAmount, unit } = limit.maxAmount24h;
+      let total = 0;
+      for (let j = i; j >= 0 && t - Date.parse(ordered[j].takenAt) < DAY_MS; j--) {
+        if (ordered[j].unit === unit && ordered[j].amount !== null) total += ordered[j].amount!;
+      }
+      if (total > capAmount) breaches.push({ log: ordered[i], reason: 'amount' });
     }
   }
   return breaches;

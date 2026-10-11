@@ -558,6 +558,18 @@ hours, optionally a notification when the next dose is within it) and a
   than 4 in 24 hours", and a per-day cap would allow four at 11pm and four more
   after `dayResetTime`. For the same reason a limit is wall-clock time:
   spacing is about a body, which keeps no day boundary.
+- **A limit can cap a total as well as a count** (`MedicationLimit.maxAmount24h`,
+  "at most 1,200 mg in 24 hours"), because a count treats a 200 mg dose and a
+  400 mg one as the same. It follows the supply's rule above: only doses
+  recorded in the cap's own unit are added up, and a dose with no amount or in
+  another unit is counted as unmeasured (`LimitStatus.unmeasuredInLast24h`) and
+  said so, never converted. `limitStatus` takes the dose about to be recorded
+  (`planned`), since for a total the question is whether *that much* fits.
+- **Usual amounts are a list, and the first is the default** (`usualDoses`,
+  `defaultUsualDose`): quick picks in the dose sheet, and what a new dose and the
+  round button start from before there is a last dose. This, not a medication
+  per strength, is how one drug in several strengths is kept: the strength lives
+  on the dose, so the limit, the summary and the contrasts stay one record.
 - **A limit only judges doses from when it was set** (`MedicationLimit.since`,
   restamped when a cap changes). A history judged against a rule typed
   afterwards would report "too soon" for doses nobody had a rule for, in the
