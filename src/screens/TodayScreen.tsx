@@ -1759,11 +1759,22 @@ export function TodayScreen() {
   // without needing its own refresh.
   const morningCheckInLastDayKey = useSettingsStore(s => s.morningCheckInLastDayKey);
   const setMorningCheckInLastDayKey = useSettingsStore(s => s.setMorningCheckInLastDayKey);
+  const vacationEndedAt = useSettingsStore(s => s.vacationEndedAt);
   const morningCheckInCandidates = useMemo(
-    () => morningCheckInTasks(openTasksOf(allTasks), dayResetTime),
-    [allTasks, dayResetTime]
+    () => morningCheckInTasks(openTasksOf(allTasks), dayResetTime, vacationEndedAt),
+    [allTasks, dayResetTime, vacationEndedAt]
   );
+  // Judged exactly once per mount, and only after tasks have loaded. Leaving
+  // the tab hides it in an Activity (FreezeWhenBlurred), which tears effects
+  // down and re-runs them on every return, so an effect with no guard re-asked
+  // the question on each tab switch: a visit with nothing to ask about, then a
+  // return after a mood log, opened the sheet "at random". Refs survive the
+  // hide, so this one keeps the later returns from judging again.
+  const checkInTasksLoaded = useTaskStore(s => s.initialized);
+  const morningCheckInJudged = useRef(false);
   useEffect(() => {
+    if (!checkInTasksLoaded || morningCheckInJudged.current) return;
+    morningCheckInJudged.current = true;
     const todayKey = getLogicalDayKey(new Date(), dayResetTime);
     const opens = morningCheckInLastDayKey !== todayKey && morningCheckInCandidates.length > 0;
     reportMorningCheckIn({
@@ -1780,7 +1791,7 @@ export function TodayScreen() {
     // it, so the candidate list and the visible flag are deliberately left
     // out of the dependency array.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [checkInTasksLoaded]);
 
   // The one place the mood log reaches back into Today — one line under
   // "Lighten today", and only while a run of low days is actually going. See
