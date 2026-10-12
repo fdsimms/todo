@@ -12,7 +12,7 @@ import { useTravelTimeStore } from '../store/useTravelTimeStore';
 import { readSavedPlaces } from '../utils/savedPlaces';
 import { haptics } from '../utils/haptics';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, border, iconSize, interaction, type Colors } from '../theme';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import { PressableScale } from './PressableScale';
@@ -32,7 +32,9 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { taskFieldsFromEvent } from '../utils/calendarEventImport';
 import { useEventPeopleStore } from '../store/useEventPeopleStore';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
-import { peopleForEvent, suggestedEventPeople } from '../utils/eventPeople';
+import { peopleForEvent } from '../utils/eventPeople';
+import { EventPeoplePanel } from './EventPeoplePanel';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { QuickEventSheet, type QuickEventEditTarget } from './QuickEventSheet';
 import { isDemoModeActive } from '../utils/demoState';
 import { InlineAction } from './InlineAction';
@@ -59,7 +61,7 @@ import type { TaskTemplate } from '../types';
 type OffsetChoice = number | null;
 
 /** Which of a row's two fold-out panels is open. One at a time across the sheet. */
-type OpenPanel = { key: string; panel: 'reminder' | 'details' };
+type OpenPanel = { key: string; panel: 'reminder' | 'details' | 'people' };
 
 interface Props {
   visible: boolean;
@@ -106,7 +108,10 @@ interface Props {
  * is for, so that button isn't timed-event-only.
  *
  * **The person button links an event to people on the People list**
- * (`src/utils/eventPeople.ts`). That link is the app's own metadata and never
+ * (`src/utils/eventPeople.ts`; the picker is `EventPeoplePanel`, which offers a
+ * few suggestions and a find field rather than the whole list). Tapping the row
+ * itself opens its details (edit, template, trip, and a "Who it's with" row that
+ * opens the same picker). That link is the app's own metadata and never
  * an attendee on the event, so nothing is sent to anybody. People the title
  * already names are listed first as a suggestion, and are still a tap each:
  * a title match is a guess, and only the user says who a plan is with. A task
@@ -138,6 +143,8 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
   const hideEvent = useHiddenEventsStore(s => s.hideEvent);
   const unhideEvent = useHiddenEventsStore(s => s.unhideEvent);
   const [openPanel, setOpenPanel] = useState<OpenPanel | null>(null);
+  // Called from outside the SheetModal it renders, so `ownsSheet`.
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
   const eventPeople = useEventPeopleStore(s => s.links);
   const setEventPeople = useEventPeopleStore(s => s.setPeople);
   const [newEventOpen, setNewEventOpen] = useState(false);
@@ -340,14 +347,19 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
           right={<SheetHeaderButton label="Done" onPress={onClose} minWidth={64} />}
         />
 
-        <ScrollView contentContainerStyle={styles.list}>
+        <ScrollView
+          ref={keyboardScroll.ref}
+          {...keyboardScroll.props}
+          contentContainerStyle={styles.list}
+          keyboardShouldPersistTaps="handled"
+        >
           {events.map(event => {
             const calendar = calendarsById?.[event.calendarId];
             const key = eventReminderKey(event);
             const reminder = remindersByKey[key];
             const reminderOpen = openPanel?.key === key && openPanel.panel === 'reminder';
             const detailsOpen = openPanel?.key === key && openPanel.panel === 'details';
-            const plannedCount = tasksForEvent(taskLinks, event).filter(id => liveTaskIds.has(id)).length;
+            const peopleOpen = openPanel?.key === key && openPanel.panel === 'people';
             const moved = movedByKey[eventTaskKey(event)];
             const movedTasks = moved ? moved.link.taskIds.filter(id => liveTaskIds.has(id)).length : 0;
             const hidden = hiddenEventKey(event) in hiddenByKey;
@@ -363,9 +375,8 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
                     style={styles.rowInfo}
                     onPress={() => togglePanel(key, 'details')}
                     activeOpacity={interaction.activeOpacity}
-                    disabled={people.length === 0 && !hasTemplates && plannedCount === 0}
                     accessibilityRole="button"
-                    accessibilityLabel={`${event.title || 'Event'}. Show who it’s with and tasks planned around it.`}
+                    accessibilityLabel={`${event.title || 'Event'}. Show details.`}
                   >
                     <Text style={styles.rowTitle} numberOfLines={2}>{event.title || 'Event'}</Text>
                     <View style={styles.rowMetaRow}>
@@ -421,7 +432,7 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
                     {people.length > 0 && (
                       <PressableScale hitSlop={8}
                         style={styles.actionButton}
-                        onPress={() => togglePanel(key, 'details')}
+                        onPress={() => togglePanel(key, 'people')}
                         haptic
                         accessibilityLabel={
                           linkedNames.length > 0
@@ -490,7 +501,7 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
 
                 {detailsOpen && (
                   <View style={styles.reminderPanel}>
-                    <View style={[styles.pillRow, people.length > 0 && styles.panelSection]}>
+                    <View style={styles.pillRow}>
                       <InlineAction
                         icon="create-outline"
                         label="Edit event"
@@ -520,29 +531,32 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
                       )}
                     </View>
                     {people.length > 0 && (
-                    <>
-                    <Text style={styles.panelHint}>
-                      Who this is with. Only this app sees it; nobody is invited.
-                    </Text>
-                    <View style={styles.pillRow}>
-                      {orderPeopleForEvent(people, event.title, linkedIds).map(p => {
-                        const on = linkedIds.includes(p.id);
-                        return (
-                          <TouchableOpacity
-                            key={p.id}
-                            style={[styles.pill, on && styles.pillActive]}
-                            onPress={() => togglePerson(event, p.id)}
-                            activeOpacity={interaction.activeOpacity}
-                            accessibilityRole="checkbox"
-                            accessibilityState={{ checked: on }}
-                          >
-                            <Text style={[styles.pillText, on && styles.pillTextActive]}>{displayNameOf(p)}</Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                    </>
+                      <TouchableOpacity
+                        style={styles.detailRow}
+                        onPress={() => togglePanel(key, 'people')}
+                        activeOpacity={interaction.activeOpacity}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Who ${event.title || 'this event'} is with. ${linkedNames.length > 0 ? linkedNames.join(', ') : 'No one'}.`}
+                      >
+                        <Ionicons name="people-outline" size={iconSize.sm} color={colors.accent} />
+                        <Text style={styles.detailLabel}>Who it’s with</Text>
+                        <Text style={styles.detailValue} numberOfLines={1}>
+                          {linkedNames.length > 0 ? linkedNames.join(', ') : 'No one'}
+                        </Text>
+                        <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+                      </TouchableOpacity>
                     )}
+                  </View>
+                )}
+
+                {peopleOpen && (
+                  <View style={styles.reminderPanel}>
+                    <EventPeoplePanel
+                      people={people}
+                      title={event.title}
+                      linkedIds={linkedIds}
+                      onToggle={personId => togglePerson(event, personId)}
+                    />
                   </View>
                 )}
 
@@ -634,22 +648,6 @@ function formatMovedFrom(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
-/**
- * The picker's order: anybody the title names comes first (the suggestion),
- * then everybody else in the user's own list order.
- */
-function orderPeopleForEvent<P extends { id: string; name: string; nickname: string }>(
-  people: readonly P[],
-  title: string,
-  linkedIds: readonly string[]
-): P[] {
-  const suggested = suggestedEventPeople(title, people, linkedIds);
-  return [
-    ...people.filter(p => suggested.includes(p.id)),
-    ...people.filter(p => !suggested.includes(p.id)),
-  ];
-}
-
 const makeStyles = (colors: Colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   headerSpacer: { width: 64 },
@@ -686,16 +684,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   rowPeople: { color: colors.textSecondary, fontSize: font.xs },
   panelHint: { color: colors.textSecondary, fontSize: font.xs, marginBottom: spacing.sm },
   pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
-  panelSection: { marginBottom: spacing.md },
-  pill: {
-    paddingHorizontal: spacing.smd,
-    paddingVertical: spacing.xsm,
-    borderRadius: radius.full,
-    backgroundColor: colors.bgTertiary,
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.smd,
+    paddingVertical: spacing.smd,
+    borderTopWidth: border.hairline,
+    borderTopColor: colors.separator,
   },
-  pillActive: { backgroundColor: colors.accentFill },
-  pillText: { color: colors.text, fontSize: font.sm },
-  pillTextActive: { color: colors.onAccent, fontWeight: fontWeight.medium },
+  detailLabel: { color: colors.text, fontSize: font.md },
+  detailValue: { flex: 1, textAlign: 'right', color: colors.accentText, fontSize: font.sm },
   newEventRow: { flexDirection: 'row', marginHorizontal: spacing.md, marginTop: spacing.md },
   // A hidden event stays in this list (it's how you find your way back to
   // un-hiding it) but reads as put-away, the same dimming a completed task
