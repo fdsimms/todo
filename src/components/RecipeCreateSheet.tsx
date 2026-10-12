@@ -72,6 +72,7 @@ import {
   methodRowMeta, prepTasksRowMeta, methodPreviewLines, prepTaskPreviewLines,
 } from '../utils/recipeImportPreview';
 import { InlineEditableText } from './InlineEditableText';
+import { CookbookShelfChips } from './CookbookShelfChips';
 import { usePendingEdits } from '../hooks/usePendingEdits';
 import { useRecipeImportSource } from '../hooks/useRecipeImportSource';
 import { useRecipeComponentImports } from '../hooks/useRecipeComponentImports';
@@ -1101,6 +1102,14 @@ export function RecipeCreateSheet({
               </>
             )}
           </View>
+          {importedSourceType === 'cookbook' && (
+            <CookbookShelfChips
+              cookbooks={cookbooks}
+              title={siteName}
+              author={sourceAuthor}
+              onPick={book => { setSiteName(book.title); setSourceAuthor(book.author ?? ''); }}
+            />
+          )}
           {/* A link import's URL comes from the page it fetched and isn't
               editable (see the comment by sourcePlanFor below) — this is
               only for the two imports that never had a page to read one off. */}

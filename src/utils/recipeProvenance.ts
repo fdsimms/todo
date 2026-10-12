@@ -15,7 +15,8 @@
  * typed — see `sourceFieldsFor`.
  */
 
-import type { RecipeSourceType } from '../types';
+import type { Cookbook, RecipeSourceType } from '../types';
+import { cleanRecipeSource, cookbookKey } from './recipeUtils';
 
 /** The subset of an `ExtractedRecipe` this cares about. */
 export interface ExtractedSource {
@@ -106,6 +107,43 @@ export function cookbookEditIntent(
   const sameAuthor = (current.author ?? '').trim() === typedAuthor.trim();
   if (sameTitle && sameAuthor) return 'refile';
   return linkedCount > 1 ? 'ask' : 'rename';
+}
+
+/** How many shelf books the import sheets' picker offers at once. */
+export const SHELF_SUGGESTION_LIMIT = 6;
+
+/**
+ * The books already on the shelf that the "Where it's from" row can point at.
+ *
+ * An import links by find-or-create on title *and* author together
+ * (`ensureCookbook`), so a title typed correctly with an author spelled
+ * differently ("Molinaro" against "Joanne Lee Molinaro") quietly files a second
+ * copy of the book. Offering the shelf is what lets a person say "that one"
+ * rather than retype it exactly. A book is left out only when the typed pair
+ * already resolves to it, since offering it would change nothing; a book with
+ * the right title and a different author is exactly the one to offer.
+ *
+ * With nothing typed it is the shelf in its own order. Typed, it is the books
+ * whose title or author contains the text, exact title matches first.
+ */
+export function shelfSuggestions(
+  cookbooks: readonly Cookbook[],
+  title: string,
+  author: string,
+): Cookbook[] {
+  const typedTitle = cleanRecipeSource(title);
+  const typedAuthor = cleanRecipeSource(author);
+  const resolved = typedTitle ? cookbookKey(typedTitle, typedAuthor || null) : null;
+  const q = typedTitle.toLowerCase();
+
+  const open = cookbooks.filter(c => c.titleKey !== resolved);
+  const matches = q
+    ? open.filter(c => c.title.toLowerCase().includes(q) || (c.author ?? '').toLowerCase().includes(q))
+    : open;
+  const exact = (c: Cookbook) => (c.title.toLowerCase() === q ? 0 : 1);
+  return [...matches]
+    .sort((a, b) => exact(a) - exact(b) || a.sortOrder - b.sortOrder)
+    .slice(0, SHELF_SUGGESTION_LIMIT);
 }
 
 /** The writes a ticked "Where it's from" row turns into. Nulls are "don't write". */

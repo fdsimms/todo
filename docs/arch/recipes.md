@@ -308,6 +308,10 @@ import sheets rather than hand-copied into each, since they are the same sheet t
   photo is overwhelmingly one already on the shelf from the last recipe out of it. A cookbook with
   no title stays a plain classification — a `Cookbook` row with an empty title is one nobody can
   pick.
+- **The row also offers the shelf** (`shelfSuggestions`, `CookbookShelfChips`). Find-or-create keys on
+  title *and* author, so a right title with an author typed differently filed a second copy of the
+  book. A chip fills both fields from the existing book. A book is withheld only when the typed pair
+  already resolves to it; a same-title book with another author is the one to offer.
 
 ## A cookbook's index, and Cook with… (`cookbookIndex.ts`, `CookbookIndexEntry`)
 

@@ -332,7 +332,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/recipePhoto.ts` — MAX_PHOTO_EDGE, MAX_RECIPE_PHOTOS, RecipePhotoSource, RecipePhoto, RecipePhotoResult, photoTargetSize, CameraPermission, PhotoLibraryPermission, getCameraPermission, requestCameraPermission, +13 more
 - `src/utils/recipePlanned.ts` — PLANNED_MEAL_LIMIT, upcomingRecipeMeals, plannedMealLabel
 - `src/utils/recipeProduce.ts` — recipeProduceGrams, helpingsOf, dishShare, recipeProduceResolver
-- `src/utils/recipeProvenance.ts` — ExtractedSource, FetchedSourcePage, SourceFields, sourceFieldsFor, CookbookEditIntent, cookbookEditIntent, SourcePlan, sourcePlanFor
+- `src/utils/recipeProvenance.ts` — ExtractedSource, FetchedSourcePage, SourceFields, sourceFieldsFor, CookbookEditIntent, cookbookEditIntent, SHELF_SUGGESTION_LIMIT, shelfSuggestions, SourcePlan, sourcePlanFor
 - `src/utils/recipeScale.ts` — ScaledQuantity, scaleQuantity, RECIPE_SCALE_FACTORS, isUnscaled, normalizeScale, formatScale, scaleServings, factorForServings, MAX_HOUSEHOLD_SERVINGS, householdScale, +3 more
 - `src/utils/recipeSections.ts` — parseEmptySections, SectionedRow, SectionListEntry, sectionsFromMergedOrder, sectionsOf, allSectionsOf, FlatSectionRow, IngredientHeading, ingredientHeadings
 - `src/utils/recipeTags.ts` — cleanRecipeTag, normalizeRecipeTags, parseRecipeTags, allRecipeTags, recipeTagCounts, filterRecipesByTags, formatTagList, toggleRecipeTag
