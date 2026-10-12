@@ -423,6 +423,22 @@ describe('the catalog tools', () => {
       expect(replica.groceryItems().find(i => i.id === idOf('oats'))!.nutrition).toBeNull();
     });
 
+    it('shows an item\'s nutrition panel on get_grocery_item, with its source, and omits it when there is none', () => {
+      addGroceryItem(replica, 'lentils');
+      expect(getGroceryItem(replica, { name: 'lentils' }).nutrition).toBeUndefined();
+      setNutritionPanel(replica, {
+        item: 'lentils',
+        panel: { basis: 'per100g', amounts: { calorieKcal: 116, proteinG: 9 }, estimated: true },
+      });
+      expect(getGroceryItem(replica, { name: 'lentils' }).nutrition).toMatchObject({
+        basis: 'per100g',
+        source: 'estimated',
+        amounts: { calorieKcal: 116, proteinG: 9 },
+      });
+      setNutritionPanel(replica, { item: 'lentils', panel: null });
+      expect(getGroceryItem(replica, { name: 'lentils' }).nutrition).toBeUndefined();
+    });
+
     it('adds, renames, marks non-food, orders and deletes an aisle, refiling its items', () => {
       expect(saveAisle(replica, { name: 'Bulk bins' }).aisles).toContain('Bulk bins');
       addGroceryItem(replica, 'quinoa');

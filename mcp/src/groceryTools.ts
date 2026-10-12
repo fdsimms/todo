@@ -18,7 +18,7 @@
  *   rule (`docs/arch/groceries.md`, "An away trip records nothing"), and the
  *   result says so rather than leaving it to look like a failure.
  */
-import type { GroceryItem, GroceryList, ItemProduct, ReceiptStyle } from '../../src/types';
+import type { FoodNutrition, GroceryItem, GroceryList, ItemProduct, ReceiptStyle } from '../../src/types';
 import type {
   GroceryBoxInput,
   GroceryItemChange,
@@ -119,13 +119,45 @@ export interface GroceryItemDetail {
   onlyPreferredBrand?: boolean;
   boughtTimes?: number;
   lastBought?: string;
+  /** Its nutrition panel, absent when it has none. A set_nutrition_panel write replaces this. */
+  nutrition?: NutritionPanelDetail;
   lists: { id: string | null; name: string; checked: boolean }[];
-  boxes: { id: string; brand?: string; variant?: string; note?: string; rating?: string; portion?: boolean }[];
+  boxes: { id: string; brand?: string; variant?: string; note?: string; rating?: string; portion?: boolean; nutrition?: NutritionPanelDetail }[];
   stores: { id: string; name: string; timesBought: number; unavailable?: boolean; price?: number }[];
   /** Items that can stand in for this one. */
   substitutes: { itemId: string; name: string; note?: string; ratio?: string; standing?: boolean }[];
   /** Names printed on receipts that mean this item. */
   receiptNames: { store: string; text: string }[];
+}
+
+/**
+ * A panel as Claude reads it. `source` is what decides how far the figures can
+ * be trusted (a label, a typed copy of one, or an estimate), so it is always
+ * shown; a write that replaces a label with an estimate should be a choice.
+ * `amounts` keeps the absent-is-unknown rule: only the nutrients the panel
+ * states are listed.
+ */
+export interface NutritionPanelDetail {
+  basis: 'per100g' | 'per100ml' | 'perServing';
+  source: string;
+  servingGrams?: number;
+  servingText?: string;
+  amounts: Record<string, number>;
+  recordedAt: string;
+}
+
+function nutritionDetail(n: FoodNutrition | null | undefined): { nutrition?: NutritionPanelDetail } {
+  if (!n) return {};
+  return {
+    nutrition: {
+      basis: n.basis,
+      source: n.source,
+      ...(n.servingGrams ? { servingGrams: n.servingGrams } : {}),
+      ...(n.servingText ? { servingText: n.servingText } : {}),
+      amounts: { ...n.amounts } as Record<string, number>,
+      recordedAt: n.recordedAt,
+    },
+  };
 }
 
 export function getGroceryItem(replica: Replica, ref: { id?: string; name?: string }): GroceryItemDetail {
@@ -146,6 +178,7 @@ export function getGroceryItem(replica: Replica, ref: { id?: string; name?: stri
     ...(item.productStrict ? { onlyPreferredBrand: true } : {}),
     ...(item.purchaseCount > 0 ? { boughtTimes: item.purchaseCount } : {}),
     ...(item.lastPurchasedAt ? { lastBought: item.lastPurchasedAt } : {}),
+    ...nutritionDetail(item.nutrition),
     lists: replica.groceryListEntries().filter(e => e.itemId === item.id).map(e => ({ id: e.listId, name: e.listId === null ? home : lists.get(e.listId)?.name ?? 'unknown', checked: e.checked })),
     boxes: replica.itemProducts().filter(p => p.itemId === item.id).map((p: ItemProduct) => ({
       id: p.id,
@@ -154,6 +187,7 @@ export function getGroceryItem(replica: Replica, ref: { id?: string; name?: stri
       ...(p.note ? { note: p.note } : {}),
       ...(p.rating ? { rating: String(p.rating) } : {}),
       ...(p.isPortion ? { portion: true } : {}),
+      ...nutritionDetail(p.nutrition),
     })),
     stores: replica.itemShopLinks().filter(l => l.itemId === item.id).map(l => ({
       id: l.shopId,
