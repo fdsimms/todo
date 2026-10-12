@@ -14,9 +14,8 @@ import { SheetHeader } from './SheetHeader';
 /**
  * Which of a day's entries put what toward one nutrient.
  *
- * Opened from a tap on a totals row, this is the coverage clause
- * (`describeFoodLogTotals`'s "from 5 of 7 entries") broken back out by entry
- * rather than left as a count with nothing to point at. Nothing is edited
+ * Opened from a tap on a totals row, this breaks the total back out by entry
+ * so there is something to point at. Nothing is edited
  * here, so there is no dirty state and no confirm on close.
  *
  * **It is not a dead end** (#2916). A row that explains a total is usually the

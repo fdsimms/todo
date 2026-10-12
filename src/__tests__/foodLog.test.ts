@@ -4,7 +4,6 @@ import {
   combineFoodNutrition,
   composeFoodAmount,
   describeFoodLogEntry,
-  describeFoodLogTotals,
   ESTIMATE_AMOUNTS,
   MAX_ESTIMATE_MULTIPLE,
   currentEstimateCount,
@@ -37,7 +36,6 @@ import {
   wholeEstimate,
   type FoodLogListItem,
   isDescriptionDraft,
-  totalCoverageNote,
 } from '../utils/foodLog';
 import type { FoodLogEntry, FoodNutrition, MealPlanEntry, NutrientKey, SavedMealItem } from '../types';
 import { packageChoices } from '../utils/scanPortion';
@@ -585,35 +583,6 @@ describe('resolveFoodLogDrop', () => {
     ];
     const resolved = resolveFoodLogDrop(items);
     expect(resolved[0].slot).toBeNull();
-  });
-});
-
-describe('describeFoodLogTotals', () => {
-  it('leads with calories and protein', () => {
-    const totals = foodLogTotals([
-      entry({ nutrition: panel({ amounts: { calorieKcal: 400, proteinG: 20 } }) }),
-      entry({ nutrition: panel({ amounts: { calorieKcal: 600, proteinG: 30 } }) }),
-    ]);
-    expect(describeFoodLogTotals(totals)).toBe('1000 cal, 50g protein');
-  });
-
-  it('says what the figure covers whenever it is not the whole day', () => {
-    // Without the clause the number reads as the day's calorie count rather
-    // than as the count of what was logged and measurable.
-    const totals = foodLogTotals([
-      entry({ nutrition: panel({ amounts: { calorieKcal: 400, proteinG: 20 } }) }),
-      entry({ nutrition: panel({ amounts: { proteinG: 30 } }) }),
-    ]);
-    expect(describeFoodLogTotals(totals)).toBe('400 cal, 50g protein, from 1 of 2 entries');
-  });
-
-  it('says nothing for a day with no entries', () => {
-    expect(describeFoodLogTotals(foodLogTotals([]))).toBeNull();
-  });
-
-  it('says nothing when nothing it leads with was stated', () => {
-    const totals = foodLogTotals([entry({ nutrition: panel({ amounts: { sodiumMg: 400 } }) })]);
-    expect(describeFoodLogTotals(totals)).toBeNull();
   });
 });
 
@@ -1481,28 +1450,5 @@ describe('isDescriptionDraft', () => {
   it('treats a meal description as a draft worth keeping', () => {
     expect(isDescriptionDraft('chicken burrito with rice')).toBe(true);
     expect(isDescriptionDraft('pad  thai   takeout')).toBe(true);
-  });
-});
-
-describe('totalCoverageNote', () => {
-  const water = () => entry({ nutrition: panel({ source: 'manual', amounts: { waterMl: 500 } }) });
-  const withFiber = () => entry({ nutrition: panel({ basis: 'perServing', amounts: { calorieKcal: 100, fiberG: 3 } }) });
-
-  it('says nothing when every entry stated the nutrient', () => {
-    expect(totalCoverageNote([entry(), entry()], 'calorieKcal')).toBeNull();
-  });
-
-  it('names how many of the entries a partial total came from', () => {
-    expect(totalCoverageNote([withFiber(), entry(), entry()], 'fiberG')).toBe('from 1 of 3 entries');
-  });
-
-  it('leaves water rows out of the count', () => {
-    expect(totalCoverageNote([entry(), water()], 'calorieKcal')).toBeNull();
-    expect(totalCoverageNote([withFiber(), entry(), water()], 'fiberG')).toBe('from 1 of 2 entries');
-    expect(totalCoverageNote([entry(), water()], 'waterMl')).toBeNull();
-  });
-
-  it('says nothing when no entry stated it', () => {
-    expect(totalCoverageNote([entry()], 'fiberG')).toBeNull();
   });
 });

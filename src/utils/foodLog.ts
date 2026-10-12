@@ -830,41 +830,6 @@ export function resolveFoodLogDrop(items: readonly FoodLogListItem[]): FoodLogEn
   return resolved;
 }
 
-/** The nutrients a day's one-line summary leads with, same two the recipe line uses. */
-const SUMMARY_KEYS: readonly NutrientKey[] = ['calorieKcal', 'proteinG'];
-
-const SUMMARY_LABEL: Record<string, (amount: number) => string> = {
-  calorieKcal: n => `${Math.round(n)} cal`,
-  proteinG: n => `${Math.round(n)}g protein`,
-};
-
-/**
- * "1,840 cal, 78g protein, from 5 of 7 entries", or null while there is nothing
- * worth saying.
- *
- * **The coverage clause is not optional**, and is what stops the number reading
- * as the day's calorie count rather than as the count of what was logged and
- * measurable. It drops only when every entry stated the nutrient, exactly as
- * `describeRecipeNutrition` drops its own. Counted per nutrient rather than per
- * day, because a day where every entry has calories and three have fibre is
- * fully covered for one figure and not the other.
- */
-export function describeFoodLogTotals(totals: FoodLogTotals): string | null {
-  if (totals.entries === 0) return null;
-  const parts = SUMMARY_KEYS
-    .filter(key => totals.total[key] !== undefined)
-    .map(key => SUMMARY_LABEL[key](totals.total[key] as number));
-  if (parts.length === 0) return null;
-
-  const covered = Math.min(...SUMMARY_KEYS
-    .filter(key => totals.total[key] !== undefined)
-    .map(key => totals.reported[key] ?? 0));
-  const clause = covered === totals.entries
-    ? ''
-    : `, from ${covered} of ${totals.entries} ${totals.entries === 1 ? 'entry' : 'entries'}`;
-  return `${parts.join(', ')}${clause}`;
-}
-
 /** One entry's stated amount of a nutrient, or `null` when it never said. */
 export interface NutrientContribution {
   entry: FoodLogEntry;
@@ -1614,24 +1579,4 @@ const SOURCE_WORDS: Record<FoodNutrition['source'], string> = {
  */
 export function isDescriptionDraft(query: string): boolean {
   return query.trim().split(/\s+/).filter(Boolean).length >= 3;
-}
-
-/**
- * "from 3 of 7 entries" when only some of a day's food stated a nutrient, and
- * null when every one did (or none could). The totals card shows one row per
- * nutrient, and a fiber row summed from three of seven entries otherwise reads
- * as the day's fiber; `describeFoodLogTotals` says the same for its one-line
- * summary. Water rows are left out of the count: they state water and nothing
- * else by definition, so "from 4 of 5" for calories would be blaming a glass
- * of water for not having any.
- */
-export function totalCoverageNote(
-  entries: readonly FoodLogEntry[],
-  key: NutrientKey,
-): string | null {
-  if (key === 'waterMl') return null;
-  const food = entries.filter(e => !isWaterEntry(e));
-  const reported = food.filter(e => e.nutrition.amounts[key] !== undefined).length;
-  if (reported === 0 || reported === food.length) return null;
-  return `from ${reported} of ${food.length} ${food.length === 1 ? 'entry' : 'entries'}`;
 }
