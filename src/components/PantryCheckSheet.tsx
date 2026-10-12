@@ -16,7 +16,7 @@ interface Props {
 }
 
 interface Row {
-  key: 'have' | 'out';
+  key: 'have' | 'out' | 'out-list';
   icon: React.ComponentProps<typeof Ionicons>['name'];
   tone: 'accent' | 'red';
   label: string;
@@ -41,6 +41,14 @@ const ROWS: Row[] = [
     detail: 'Takes it out of your pantry until you get more.',
     feedback: haptics.tap,
   },
+  {
+    key: 'out-list',
+    icon: 'cart-outline',
+    tone: 'accent',
+    label: 'Out of it, add to list',
+    detail: 'Takes it out of your pantry and puts it on your grocery list.',
+    feedback: haptics.tap,
+  },
 ];
 
 /**
@@ -48,7 +56,8 @@ const ROWS: Row[] = [
  * (`pantryCheckTasks.ts`). It asks the question the task is about and writes
  * the answer with the same call the pantry review deck uses
  * (`answerPantryReview`), so each button writes exactly what the matching pill
- * on the item's own sheet writes. That answer is also what retires the task:
+ * on the item's own sheet writes. "Out of it, add to list" is that same "out"
+ * plus the row joining the home list. That answer is also what retires the task:
  * either one makes the item stop wanting a check, and `checkPantryCheckTasks`
  * drops the row, run here so it leaves now rather than at the next sweep.
  *
@@ -62,7 +71,11 @@ export function PantryCheckSheet({ visible, itemId, onClose }: Props) {
   const name = useGroceryStore(s => s.itemById(itemId)?.name ?? null);
 
   const answer = (key: Row['key']) => {
-    useGroceryStore.getState().answerPantryReview(itemId, key);
+    const groceries = useGroceryStore.getState();
+    groceries.answerPantryReview(itemId, key === 'have' ? 'have' : 'out');
+    // The home list, not whichever one is open: this is answered from a task
+    // row, and an away list is that trip's own.
+    if (key === 'out-list') groceries.addExistingMany([itemId], { listId: null });
     useTaskStore.getState().checkPantryCheckTasks();
   };
 

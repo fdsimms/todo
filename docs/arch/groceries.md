@@ -1236,6 +1236,8 @@ Three things about it belong here rather than there:
 - **Answering it is the existing pair of pills, not the task.** The row's link button opens
   `PantryCheckSheet`, a small card asking "Do you still have X?" whose two buttons call
   `answerPantryReview` (`have` / `out`), so each writes what its pill on `GroceryItemSheet` writes.
+  A third, "Out of it, add to list", is `out` plus `addExistingMany(…, { listId: null })`: the home
+  list, since a task row isn't the grocery screen and the open list may be an away trip's.
   The row still carries `kitchenLinkUrl` (which `KitchenScreen` resolves to that sheet by id when the
   item isn't in the list, and a checked item never is, by definition); the card just intercepts the
   tap in `TaskItem.handleOpenLink`. Either answer makes the item stop wanting a check, and the card
