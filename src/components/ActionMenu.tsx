@@ -125,17 +125,20 @@ export function ActionMenu({ visible, title, message, actions, anchor, onClose }
           ))}
         </ScrollView>
       ) : (
-        <ScrollView style={styles.scroll} bounces={false}>
-          <Text style={styles.title} numberOfLines={2}>{title}</Text>
-          {message ? <Text style={styles.message}>{message}</Text> : null}
-          <View style={styles.sep} />
-          {regular.map((action, i) => renderRow(action, i === 0))}
+        <>
+          <ScrollView style={styles.scroll} bounces={false}>
+            <Text style={styles.title} numberOfLines={2}>{title}</Text>
+            {message ? <Text style={styles.message}>{message}</Text> : null}
+            <View style={styles.sep} />
+            {regular.map((action, i) => renderRow(action, i === 0))}
+          </ScrollView>
+          {/* Outside the scroll so a menu taller than the room it has never clips the delete row. */}
           {destructive.length > 0 && (
             <View style={styles.destructiveGroup}>
               {destructive.map((action, i) => renderRow(action, i === 0))}
             </View>
           )}
-        </ScrollView>
+        </>
       )}
     </CardSheet>
   );
