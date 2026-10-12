@@ -3,6 +3,7 @@ import {
   formatQuantityAmount,
   formatRational,
   inflectUnit,
+  isSizedContainer,
   multiplyRational,
   parseQuantity,
   rational,
@@ -590,4 +591,21 @@ export function convertQuantity(quantity: string, system: UnitSystem): Converted
   const parts = text.split(MERGE_SEPARATOR).map(part => convertOne(part, system));
   if (!parts.some(part => part.converted)) return { text, converted: false };
   return { text: `≈${parts.map(part => part.text).join(MERGE_SEPARATOR)}`, converted: true };
+}
+
+/**
+ * A counted sized container with the count set apart from the size, for the
+ * reader's eye only: "2 14 oz cans, drained" shows as "2 × 14 oz cans,
+ * drained". Stored text keeps the bare form every parser reads, and
+ * `convertQuantity` still passes a container through verbatim, so this is a
+ * separate step a read-only row applies after it. Anything that isn't a
+ * count followed by a real container shape comes back untouched.
+ */
+const COUNTED_CONTAINER_DISPLAY =
+  /^(\d+(?:\.\d+)?) (?=\d+(?:\.\d+)?\s*-?\s*([a-z]+)\.?\s+([a-z]+)\b)/i;
+
+export function showContainerCount(text: string): string {
+  const m = COUNTED_CONTAINER_DISPLAY.exec(text);
+  if (!m || !isSizedContainer(m[2], m[3])) return text;
+  return `${m[1]} \u00d7 ${text.slice(m[0].length)}`;
 }

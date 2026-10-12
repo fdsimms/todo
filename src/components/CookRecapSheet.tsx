@@ -22,7 +22,7 @@ import {
 import { SafeBlurView } from './SafeBlurView';
 import { useGroceryStore, type PlannedRow } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { convertQuantity } from '../utils/unitConvert';
+import { convertQuantity, showContainerCount } from '../utils/unitConvert';
 import type { ClassifiedIngredient } from '../utils/mealPlanGroceries';
 import { RECIPE_VOTE_LABELS, type RecipeVote } from '../types';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
@@ -500,7 +500,7 @@ export function CookRecapSheet({
                 <View style={styles.card}>
                   {rows.map((row, i) => {
                     const on = ticked.has(row.nameKey);
-                    const shownQuantity = convertQuantity(row.quantity, unitSystem).text;
+                    const shownQuantity = showContainerCount(convertQuantity(row.quantity, unitSystem).text);
                     return (
                       <React.Fragment key={row.nameKey}>
                         {i > 0 && <View style={styles.sep} />}
@@ -557,7 +557,7 @@ export function CookRecapSheet({
                 <View style={styles.card}>
                   {restockRows.map((row, i) => {
                     const on = restockTicked.has(row.nameKey);
-                    const shownQuantity = convertQuantity(row.quantity, unitSystem).text;
+                    const shownQuantity = showContainerCount(convertQuantity(row.quantity, unitSystem).text);
                     return (
                       <React.Fragment key={row.nameKey}>
                         {i > 0 && <View style={styles.sep} />}

@@ -25,7 +25,7 @@ import { ingredientHeadings } from '../utils/recipeSections';
 import { describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
 import { onHandNameKeys } from '../utils/grocerySuggest';
 import { describeLeftover, isPlannedPastKeepUntil, liveFreshnessOf } from '../utils/leftovers';
-import { convertQuantity } from '../utils/unitConvert';
+import { convertQuantity, showContainerCount } from '../utils/unitConvert';
 import {
   assignPickDays, mergeMealSuggestions, mealIdeaRecipeDraft,
   type MealIdea, type MealSuggestion,
@@ -1079,7 +1079,7 @@ export function SuggestMealsSheet({
                       <Text style={styles.sectionHeader}>FROM {group.recipe.name.toUpperCase()}</Text>
                     )}
                     {group.items.map(({ flat: { ingredient, swappedFrom }, section }) => {
-                      const quantity = convertQuantity(ingredient.quantity, unitSystem).text;
+                      const quantity = showContainerCount(convertQuantity(ingredient.quantity, unitSystem).text);
                       return (
                         <View key={ingredient.id}>
                           {!!section && (

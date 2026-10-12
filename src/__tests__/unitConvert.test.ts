@@ -1,4 +1,4 @@
-import { convertQuantity, describeUnitFamily, formatScaleWeight, measureQuantity, unitFactor } from '../utils/unitConvert';
+import { convertQuantity, describeUnitFamily, formatScaleWeight, measureQuantity, showContainerCount, unitFactor } from '../utils/unitConvert';
 
 const metric = (q: string) => convertQuantity(q, 'metric').text;
 const us = (q: string) => convertQuantity(q, 'us').text;
@@ -302,5 +302,19 @@ describe('formatScaleWeight', () => {
   it('is null for nothing', () => {
     expect(formatScaleWeight(0, 'metric')).toBeNull();
     expect(formatScaleWeight(0.2, 'metric')).toBeNull();
+  });
+});
+
+describe('showContainerCount', () => {
+  it('sets a container count apart from its size', () => {
+    expect(showContainerCount('2 14 oz cans')).toBe('2 \u00d7 14 oz cans');
+    expect(showContainerCount('2 14 oz cans, drained and rinsed')).toBe('2 \u00d7 14 oz cans, drained and rinsed');
+    expect(showContainerCount('3 14.5 oz cans')).toBe('3 \u00d7 14.5 oz cans');
+  });
+
+  it('leaves everything that is not a counted container alone', () => {
+    for (const text of ['14 oz can', '2 lb, cut into 1-inch pieces', '2 cans', '1 2 cups flour', '', 'x2']) {
+      expect(showContainerCount(text)).toBe(text);
+    }
   });
 });
