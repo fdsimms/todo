@@ -2658,7 +2658,21 @@ function seedFoodLog(today: Date): void {
       })
       .filter((i): i is NonNullable<typeof i> => i !== null);
     if (savedMealItems.length > 0) {
-      useSavedMealsStore.getState().addMeal('Usual breakfast', savedMealItems);
+      const usual = useSavedMealsStore.getState().addMeal('Usual breakfast', savedMealItems);
+      // Task.logSavedMealId: a task that names its food, so completing it logs
+      // the saved meal with no sheet. Left live and never completed, same
+      // reasoning as the Log breakfast task: completing it would write an
+      // entry rather than demonstrate the setting.
+      if (usual) {
+        useTaskStore.getState().addTask({
+          title: 'Have my usual breakfast',
+          notes: 'Completing this logs your saved meal to the food log. Unchecking it removes the entry.',
+          category: 'Health',
+          dueDate: today.toISOString(),
+          logMealSlot: 'breakfast',
+          logSavedMealId: usual.id,
+        });
+      }
     }
   }
 

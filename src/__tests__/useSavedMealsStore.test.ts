@@ -196,6 +196,13 @@ describe('useSavedMealsStore', () => {
       expect(new Set(written.map(e => e.id)).size).toBe(2);
     });
 
+    it('stamps each entry with the task logging it when asked to', () => {
+      const meal = useSavedMealsStore.getState().addFromEntries('Metamucil', [makeEntry({ label: 'Metamucil' })]);
+      const written = useSavedMealsStore.getState().logMeal(meal as SavedMeal, 'breakfast', new Date(2026, 3, 5, 8), { taskId: 't-1', undoable: false });
+      expect(written).toHaveLength(1);
+      expect(written[0].taskId).toBe('t-1');
+    });
+
     it('hands each item\'s kept panel to the entry it logs, so that entry can be corrected too', () => {
       const kept: FoodNutrition = { ...nutrition(165), basis: 'per100g', source: 'fdc', sourceId: '171077' };
       const whole: FoodNutrition = { ...nutrition(900), source: 'estimated' };

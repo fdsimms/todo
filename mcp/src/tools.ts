@@ -231,6 +231,8 @@ export interface GetTaskResult {
     logsMedication?: { name: string; amount?: number; unit?: string };
     logsHealth?: { metric: string; amount?: number };
     logsMealSlot?: string;
+    /** The saved meal's id, when completing the task logs it straight away (`logSavedMealId`). */
+    logsSavedMealId?: string;
   };
   /** A countdown (`minutes`) or an Apple Health reading (`healthTarget`) the task reads as ready at; `measuredMinutes` is how long it actually took. */
   timer?: { minutes: number };
@@ -308,6 +310,7 @@ function taskExtras(replica: Replica, task: Task): Partial<GetTaskResult> {
     };
   }
   if (task.logMealSlot) onCompletion.logsMealSlot = task.logMealSlot;
+  if (task.logSavedMealId) onCompletion.logsSavedMealId = task.logSavedMealId;
   if (Object.keys(onCompletion).length > 0) out.onCompletion = onCompletion;
 
   if (task.timedMinutes != null) out.timer = { minutes: task.timedMinutes };

@@ -40,6 +40,7 @@ jest.mock('../db/database', () => ({
   // Matches the real dbGetFoodLogEntry's own miss case (a null row reads as
   // null, never undefined) — see database.ts.
   dbGetFoodLogEntry: jest.fn((id: string) => mockGetRow(id)),
+  dbGetFoodLogEntriesForTask: jest.fn((taskId: string) => mockRows.filter(r => (r as { taskId?: string }).taskId === taskId)),
   dbCountFoodLogEntries: jest.fn(() => 0),
   dbGetPendingHealthFoodEntries: jest.fn(() => []),
   dbInsertFoodLogEntry: jest.fn((entry: { id: string; dayKey: string }) => { mockRows.push(entry); }),
@@ -1055,6 +1056,26 @@ describe('removeEntries', () => {
     (dbGetFoodLogEntry as jest.Mock).mockReturnValue({ healthSampleIds: [] });
     state().removeEntries(['a']);
     expect(retractFoodEntryFromHealth).not.toHaveBeenCalled();
+  });
+});
+
+describe('removeEntriesForTask', () => {
+  it('forgets every entry a task wrote, on any day, and leaves the rest', () => {
+    state().loadRange('2026-04-02', '2026-04-02');
+    const logged = state().addEntry(draft({ label: 'Metamucil', taskId: 'task-1' }), { undoable: false })!;
+    const byHand = state().addEntry(draft({ label: 'Toast' }))!;
+
+    state().removeEntriesForTask('task-1');
+
+    expect(dbDeleteFoodLogEntry).toHaveBeenCalledWith(logged.id);
+    expect(dbDeleteFoodLogEntry).not.toHaveBeenCalledWith(byHand.id);
+    expect(state().entries.map(e => e.label)).toEqual(['Toast']);
+  });
+
+  it('stamps the task on the entry it writes', () => {
+    const entry = state().addEntry(draft({ label: 'Metamucil', taskId: 'task-1' }))!;
+    expect(entry.taskId).toBe('task-1');
+    expect(state().addEntry(draft({ label: 'Toast' }))!.taskId).toBeUndefined();
   });
 });
 

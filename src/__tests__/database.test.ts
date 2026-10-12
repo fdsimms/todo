@@ -123,6 +123,7 @@ import {
   dbInsertFoodLogEntry,
   dbGetPendingHealthFoodEntries,
   dbGetFoodLogEntry,
+  dbGetFoodLogEntriesForTask,
   dbInsertSavedMeal,
   dbGetSavedMeals,
   dbGetPendingEstimates,
@@ -6028,6 +6029,40 @@ describe('pending recipe estimates (the offline recipe queue)', () => {
     expect(Object.keys(dbExportTables())).not.toContain('pending_recipe_estimates');
     dbDeletePendingRecipeEstimate('r1');
     expect(dbGetPendingRecipeEstimates()).toEqual([]);
+  });
+});
+
+describe('logSavedMealId', () => {
+  it('round-trips through insert and update, and reads as none when unset', () => {
+    dbInsertTask(makeTask({ id: 'meta', logSavedMealId: 'sm-1' }));
+    expect(dbGetAllTasks().find(t => t.id === 'meta')!.logSavedMealId).toBe('sm-1');
+    dbUpdateTask({ ...dbGetAllTasks().find(t => t.id === 'meta')!, logSavedMealId: null });
+    expect(dbGetAllTasks().find(t => t.id === 'meta')!.logSavedMealId).toBeNull();
+    dbInsertTask(makeTask({ id: 'plain' }));
+    expect(dbGetAllTasks().find(t => t.id === 'plain')!.logSavedMealId).toBeNull();
+  });
+});
+
+describe('a food log entry\'s task link', () => {
+  beforeEach(() => {
+    mockRawDb.exec('DELETE FROM food_logs; DELETE FROM sync_deletions;');
+  });
+
+  const entry = (overrides: Partial<FoodLogEntry>): FoodLogEntry => ({
+    id: 'f1', dayKey: '2026-04-02', atISO: '2026-04-02T08:00:00.000Z', slot: 'breakfast', label: 'Metamucil',
+    recipeId: null, itemId: null, productId: null, mealPlanEntryId: null, quantity: '1 serving', grams: null,
+    nutrition: { basis: 'perServing', servingGrams: null, servingText: null, amounts: { fiberG: 3 }, source: 'manual', sourceId: null, portions: [], recordedAt: '2026-04-02T08:00:00.000Z' },
+    healthSampleIds: [], sortOrder: 0, createdAt: '2026-04-02T08:00:00.000Z', ...overrides,
+  });
+
+  it('is stored, read back, and finds only that task\'s entries on any day', () => {
+    dbInsertFoodLogEntry(entry({ id: 'a', taskId: 't-1', dayKey: '2026-03-01' }));
+    dbInsertFoodLogEntry(entry({ id: 'b', taskId: 't-2' }));
+    dbInsertFoodLogEntry(entry({ id: 'c' }));
+    expect(dbGetFoodLogEntry('a')?.taskId).toBe('t-1');
+    expect(dbGetFoodLogEntry('c')?.taskId).toBeNull();
+    expect(dbGetFoodLogEntriesForTask('t-1').map(e => e.id)).toEqual(['a']);
+    expect(dbGetFoodLogEntriesForTask('nobody')).toEqual([]);
   });
 });
 

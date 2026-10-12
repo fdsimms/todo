@@ -409,6 +409,11 @@ describe('offersMealLogOnCompletion', () => {
     expect(offersMealLogOnCompletion(captureTask, false)).toBe(true);
   });
 
+  it('is false when the task names a saved meal, since the tick logs it with no sheet', () => {
+    const named = { ...baseTask, logMealSlot: 'breakfast', logSavedMealId: 'sm-1' } as Task;
+    expect(offersMealLogOnCompletion(named, true)).toBe(false);
+  });
+
   it('is false for a completed task with logMealSlot set', () => {
     const captureTask = { ...baseTask, logMealSlot: 'breakfast', completed: true } as Task;
     expect(offersMealLogOnCompletion(captureTask, true)).toBe(false);

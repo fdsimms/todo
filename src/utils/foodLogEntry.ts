@@ -47,6 +47,9 @@ export function buildFoodLogEntry(
     itemId: draft.itemId ?? null,
     productId: draft.productId ?? null,
     mealPlanEntryId: draft.mealPlanEntryId ?? null,
+    // Only present when a task's completion wrote it, so an ordinary entry's
+    // shape (and every test that compares one) is unchanged.
+    ...(draft.taskId ? { taskId: draft.taskId } : {}),
     quantity: draft.quantity.trim(),
     grams: draft.grams,
     nutrition: draft.nutrition,
