@@ -776,11 +776,28 @@ export function recipesUsing(recipes: readonly Recipe[], targetId: string): Reci
  * with what a meal of this recipe actually involves, and "mash or roast" is one
  * side dish however many ways it can be made — the same reason the clause
  * exists at all, which is to stop a count reading as more of a shop than it is.
+ *
+ * With `recipesById` the clause also says how many ingredients the components
+ * bring ("1 component with 22 ingredients"), counted choice-aware like the
+ * recipe's own number. Without it the clause is only the component count, since
+ * a list row has no library to resolve against. A component that no longer
+ * resolves contributes nothing, so the tail is dropped when the total is 0.
  */
-export function describeComponents(recipe: Recipe): string {
+export function describeComponents(
+  recipe: Recipe,
+  recipesById?: ReadonlyMap<string, Recipe>,
+): string {
   const count = countChoiceAware(recipe.components);
   if (count === 0) return '';
-  return count === 1 ? '1 component' : `${count} components`;
+  const base = count === 1 ? '1 component' : `${count} components`;
+  if (!recipesById) return base;
+  const fromComponents = countChoiceAware(
+    flattenRecipeIngredients(recipe, recipesById)
+      .filter(f => f.depth > 0)
+      .map(f => f.ingredient),
+  );
+  if (fromComponents === 0) return base;
+  return `${base} with ${fromComponents === 1 ? '1 ingredient' : `${fromComponents} ingredients`}`;
 }
 
 /**

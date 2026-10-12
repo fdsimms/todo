@@ -1896,7 +1896,7 @@ export function RecipeDetailScreen() {
           />
         )}
 
-        <Text style={styles.summary}>{describeRecipe(recipe)}</Text>
+        <Text style={styles.summary}>{describeRecipe(recipe, null, { recipesById })}</Text>
         {/* The book's own page, a tap away: its index, and the other recipes
             filed under it. */}
         {cookbook && (
