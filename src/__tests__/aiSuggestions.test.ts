@@ -991,6 +991,18 @@ describe('extractRecipe', () => {
     expect(result.leftoverKeepDays).toBeNull();
   });
 
+  it('keeps a months-long storage time as days rather than clamping it to a quarter', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Chili crisp',
+        leftoverKeepDays: 180,
+        items: [],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.leftoverKeepDays).toBe(180);
+  });
+
   it('clamps a leftoverKeepDays past the sayable range', async () => {
     mockFetchOnce(
       toolUseResponse('extract_recipe', {

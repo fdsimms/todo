@@ -1127,7 +1127,7 @@ function sharedRecipeInstructions(availableAisles: string[]): string[] {
     `Sections available: ${availableAisles.join(', ')}. Use "Other" only when nothing else fits.`,
     'If the recipe\'s own ingredient list is split into labelled components — "For the cake" / "For the frosting", "For the marinade" / "For the dish" — carry that label into each item\'s "component" field. Leave it empty when the recipe lists everything as one plain list.',
     'Set "optional" to true only when the recipe itself says so — "(optional)", "if desired", "if you have it", a garnish explicitly called not required. Leave it false otherwise, even for an item you\'d personally guess is skippable, like a garnish with nothing next to it saying so.',
-    'If the recipe says how long its own leftovers keep — "store in an airtight container for up to 4 days", "keeps 3-4 days in the fridge", "will keep for a week" — put that number of days in "leftoverKeepDays", the low end when a range is given. This is about the cooked dish afterward, not a raw ingredient\'s shelf life, a "best served immediately" note, or how long the dish takes to make. 0 when the recipe says nothing about storage, which is most recipes — never estimate one yourself.',
+    'If the recipe says how long its own leftovers keep — "store in an airtight container for up to 4 days", "keeps 3-4 days in the fridge", "will keep for a week", "store up to 6 months" — put that number of days in "leftoverKeepDays", the low end when a range is given. Convert weeks and longer to days (a week is 7, a month 30, a year 365), so "up to 6 months" is 180. A storage time counts whatever it is stored in (fridge, freezer, pantry); when the recipe gives more than one, use the refrigerator figure. This is about the cooked dish afterward, not a raw ingredient\'s shelf life, a "best served immediately" note, or how long the dish takes to make. 0 when the recipe says nothing about storage, which is most recipes — never estimate one yourself.',
   ];
 }
 
@@ -1311,7 +1311,7 @@ export async function extractRecipe(
           },
           leftoverKeepDays: {
             type: 'integer',
-            description: 'How many days the recipe says its own leftovers keep, if it states this explicitly — the low end when a range is given ("keeps 3-4 days" -> 3). 0 if the recipe says nothing about storing leftovers, which is most recipes; never guess a number it doesn\'t give.',
+            description: 'How many days the recipe says its own leftovers keep, if it states this explicitly — the low end when a range is given ("keeps 3-4 days" -> 3). Convert weeks, months and years to days ("up to 6 months" -> 180). When the recipe gives several storage times, use the refrigerator one. 0 if the recipe says nothing about storing leftovers, which is most recipes; never guess a number it doesn\'t give.',
           },
           items: groceryItemsSchema(
             availableAisles,
