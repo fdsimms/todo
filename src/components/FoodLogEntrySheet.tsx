@@ -83,6 +83,7 @@ import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { CatalogLinkPicker } from './CatalogLinkPicker';
 import { EmptyState } from './EmptyState';
 import { InlineAction } from './InlineAction';
+import { NutritionPanelSheet } from './NutritionPanelSheet';
 import { PressableScale } from './PressableScale';
 import { navigateToFoodSearchSettings } from './NutritionSearchSheet';
 import { EstimatePanel, type EstimateLogAction } from './EstimatePanel';
@@ -530,6 +531,8 @@ export function FoodLogEntrySheet({
   const [amountHelping, setAmountHelping] = useState<FoodLogEntry | null>(null);
   /** Whether the "which item is this" picker is open under a database food. */
   const [catalogPickOpen, setCatalogPickOpen] = useState(false);
+  // The label panel for the food on screen, opened from "Edit nutrition facts".
+  const [factsOpen, setFactsOpen] = useState(false);
   // What was typed for each of a dish's amount-varies lines, keyed by the
   // recipe ingredient's own id. See `varyingLines` below.
   const [varyingAmounts, setVaryingAmounts] = useState<Record<string, string>>({});
@@ -1043,6 +1046,36 @@ export function FoodLogEntrySheet({
    * thing next week meant searching for it again, and the weigh-it offer below
    * had no row to write a portion to at all.
    */
+  // ==== correcting the food's own nutrition facts ====
+  /**
+   * Whether the food's figures live on a row this sheet can write to: a box
+   * (`productId`) or the catalog row that holds the panel (`panelItemId`, never
+   * `itemId`, for the reason `handleSaveWeighedPortion` gives). A database food
+   * nobody filed has no row, so its figures are the database's and not ours to
+   * retype.
+   */
+  const factsEditable = picked?.kind === 'food' && !!picked.panel
+    && (!!picked.productId || !!picked.panelItemId);
+
+  /**
+   * A mistyped label (16,000 mg of sodium for 160) lives on the catalog row and
+   * was copied into every entry logged from it, so correcting only this entry
+   * would leave the row wrong for the next scan. The panel is fixed at its
+   * source and `picked` takes it, which re-measures the amount through `built`
+   * exactly as a changed amount would; Save then revises the entry. Other
+   * entries already logged from the row keep the figures they were written with.
+   */
+  const handleSaveFacts = (panel: FoodNutrition | null) => {
+    setFactsOpen(false);
+    // Clearing every figure would leave nothing to measure an amount against.
+    if (!picked || !panel) return;
+    if (picked.productId) setProductNutrition(picked.productId, panel);
+    else if (picked.panelItemId) setItemNutrition(picked.panelItemId, panel);
+    else return;
+    setPicked({ ...picked, panel });
+    haptics.success();
+  };
+
   // ==== filing a database food into the grocery catalog ====
   const unfiled = !!picked && picked.fromDatabase && !!picked.panel && picked.itemId === null;
 
@@ -1925,6 +1958,17 @@ export function FoodLogEntrySheet({
               <Text style={styles.hint}>Approximate: no manufacturer serving data.</Text>
             )}
 
+            {factsEditable && (
+              <View style={styles.fileRow}>
+                <InlineAction
+                  label="Edit nutrition facts"
+                  icon="create-outline"
+                  variant="neutral"
+                  onPress={() => { haptics.tap(); Keyboard.dismiss(); setFactsOpen(true); }}
+                />
+              </View>
+            )}
+
             {unfiled && (
               <>
                 <Text style={[styles.label, styles.labelSpaced]}>KEEP THIS FOOD</Text>
@@ -2216,6 +2260,15 @@ export function FoodLogEntrySheet({
         allowUnchanged
         onSave={patch => { if (amountHelping) logHelpingAtAmount(amountHelping, patch); }}
         onClose={() => setAmountHelping(null)}
+      />
+      {/* Inside this Modal for the same reason: it is raised from a sheet that
+          holds a typed amount. */}
+      <NutritionPanelSheet
+        visible={factsOpen}
+        foodName={picked?.label ?? ''}
+        nutrition={picked?.panel ?? null}
+        onClose={() => setFactsOpen(false)}
+        onSave={handleSaveFacts}
       />
       {overlays}
       <NumberPadAccessory />

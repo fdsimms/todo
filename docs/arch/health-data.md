@@ -855,6 +855,14 @@ something nobody measured:
   be weighed (`measuresByWeight`), a food that can't be shows what it will
   log and why, and a weight that still can't be used is said in the card
   rather than swapped for the recorded helping.
+- **A linked entry can also correct the food's own facts** (`handleSaveFacts` in
+  `FoodLogEntrySheet`). A mistyped label (16,000 mg of sodium for 160) lives on
+  the row or box the scan wrote and was copied into the entry, so fixing only
+  the entry leaves the next scan wrong. "Edit nutrition facts" opens the label
+  panel on that row (`panelItemId`/`productId`, never a database food nobody
+  filed), and the amount is then re-measured against the corrected panel and
+  saved through `reviseEntry`. Other entries already logged from the row keep
+  the figures they were written with.
 - **The rewrite is skipped when nothing Health holds changed.** Moving the meal
   or re-filing the item touches no figure Health ever saw, and rewriting anyway
   would churn somebody's medical record for a field it never got.
