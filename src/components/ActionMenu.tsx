@@ -60,6 +60,9 @@ export function ActionMenu({ visible, title, message, actions, anchor, onClose }
   const regular = actions.filter(a => !a.destructive);
   const destructive = actions.filter(a => a.destructive);
 
+  // Title, the rows and their hairlines, as the styles below lay them out.
+  const expectedHeight = (message ? 96 : 56) + actions.length * 49;
+
   const run = (action: ActionMenuAction) => {
     if (action.choices) {
       haptics.tap();
@@ -96,6 +99,7 @@ export function ActionMenu({ visible, title, message, actions, anchor, onClose }
       onClose={onClose}
       anchor={anchor}
       popoverWidth={300}
+      expectedHeight={expectedHeight}
       scrimLabel="Close menu"
     >
       {submenu?.choices ? (
