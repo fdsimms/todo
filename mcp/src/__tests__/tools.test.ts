@@ -256,6 +256,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     createStack: () => { throw new Error('not stubbed'); },
     setTaskStack: () => { throw new Error('not stubbed'); },
     rewardState: () => ({ entries: [], rewards: [] }),
+    currentDayStart: () => new Date(2026, 0, 1),
     addReward: () => { throw new Error('not stubbed'); },
     updateReward: () => { throw new Error('not stubbed'); },
     deleteReward: () => { throw new Error('not stubbed'); },

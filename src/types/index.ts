@@ -2194,6 +2194,14 @@ export interface Reward {
    * `src/utils/rewardGuard.ts`. No foreign key, like `taskId`.
    */
   guardsTaskId: string | null;
+  /**
+   * The reward can be claimed once per this many days (a week is 7, a month
+   * 30; the form picks days, weeks or months). Null is no limit. Whether it is
+   * waiting is read off the ledger's newest claim (`claimWaitDays`), so undoing
+   * the claim frees it with nothing else to reset. Never set on a one-time or
+   * wish list reward, which are claimed once anyway.
+   */
+  claimEveryDays: number | null;
 }
 
 /**

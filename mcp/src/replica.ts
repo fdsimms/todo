@@ -1829,20 +1829,22 @@ export interface Replica {
    * never stored, so a reader sums `entries` (`rewards.coinBalance`).
    */
   rewardState(): { entries: CoinEntry[]; rewards: Reward[] };
+  /** The start of the person's current logical day, for a claim limit's day count. */
+  currentDayStart(): Date;
   /**
    * A new reward, through `useRewardStore.addReward`. Refused while rewards are
    * off, because the Rewards screen is hidden then and a reward made here would
    * sit on a screen the person cannot open. Never a wish-list reward: those
    * read their title off a list item and are made in the app.
    */
-  addReward(title: string, cost: number, details: { linkUrl?: string | null; note?: string | null; oneTime?: boolean; priceMinor?: number | null; guardsTaskId?: string | null }): Reward;
+  addReward(title: string, cost: number, details: { linkUrl?: string | null; note?: string | null; oneTime?: boolean; priceMinor?: number | null; guardsTaskId?: string | null; claimEveryDays?: number | null }): Reward;
   /**
    * Change a reward's cost, or its title, link, note, one-time flag or the
    * habit it guards. A wish-list reward is refused: its title, note and link
    * live on the list item. A guarded habit must be a live "don't do this"
    * habit no other reward guards, on a reward that isn't one-time.
    */
-  updateReward(id: string, patch: { title?: string; cost?: number; linkUrl?: string | null; note?: string | null; oneTime?: boolean; priceMinor?: number | null; guardsTaskId?: string | null }): Reward;
+  updateReward(id: string, patch: { title?: string; cost?: number; linkUrl?: string | null; note?: string | null; oneTime?: boolean; priceMinor?: number | null; guardsTaskId?: string | null; claimEveryDays?: number | null }): Reward;
   /** Delete a reward. Coins already spent on it stay spent, as in the app. */
   deleteReward(id: string): Reward;
   /**
@@ -7100,6 +7102,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return updated;
     },
 
+    currentDayStart(): Date {
+      return dates.getCurrentDayStart();
+    },
+
     rewardState(): { entries: CoinEntry[]; rewards: Reward[] } {
       return {
         entries: rewards.sortCoinEntries(db.dbGetAllCoinEntries()),
@@ -7144,6 +7150,8 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const reward = requireReward(id);
       const { entries } = useRewardStore.getState();
       if (reward.oneTime && rewards.lastClaimedAt(entries, id) !== null) throw new Error(`"${reward.title}" is a one-time reward and has already been claimed.`);
+      const wait = rewards.claimWaitDays(reward, entries, dates.getCurrentDayStart());
+      if (wait > 0) throw new Error(`"${reward.title}" can be claimed ${rewards.describeClaimLimit(reward.claimEveryDays!).toLowerCase()}. ${rewards.describeClaimWait(wait)}.`);
       // A wish-list reward is its list item: claiming it checks the item off, the
       // app's `claim` in RewardsScreen. Judged before any coin moves, so a
       // refusal leaves the balance alone.

@@ -2229,6 +2229,7 @@ describe('demo seed — people', () => {
     // Every optional field, a goal, and a wish list feeding the screen.
     expect(rewards.some(r => r.linkUrl && r.note)).toBe(true);
     expect(rewards.some(r => r.oneTime && !r.taskId)).toBe(true);
+    expect(rewards.some(r => r.claimEveryDays === 7)).toBe(true);
     const listId = useSettingsStore.getState().rewardListProjectId;
     const list = useProjectStore.getState().projects.find(p => p.id === listId);
     expect(list?.kind).toBe('list');

@@ -3186,6 +3186,7 @@ function seedRewards(today: Date): void {
   const takeout = rewards.addReward('Takeout dinner', 120, {
     linkUrl: 'ubereats://',
     note: 'The Thai place on 5th. Get the pad see ew.',
+    claimEveryDays: 7,
   });
   rewards.addReward('A new book', 300, { oneTime: true });
   if (takeout) useSettingsStore.getState().setRewardGoalId(takeout.id);

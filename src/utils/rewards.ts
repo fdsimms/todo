@@ -1,6 +1,7 @@
 import type { CoinEntry, Difficulty, Reward, Task } from '../types';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { estimatedMinutesFor, minutesToEffort, type EstimateSource } from './effort';
+import { CADENCE_UNIT_DAYS, CADENCE_UNIT_MAX, toCadenceParts } from './nudgeCadence';
 
 /**
  * Coins and rewards: a light, Habitica-style economy over tasks you already
@@ -628,14 +629,64 @@ export function rewardDisplay(
  * for a guarded slip's "already claimed it today" (`claimedSince`).
  */
 export function describeLastClaimed(at: string, todayStart: Date): string {
+  const days = claimDaysAgo(at, todayStart);
+  if (days <= 0) return 'Claimed today';
+  if (days === 1) return 'Claimed yesterday';
+  return `Last claimed ${days} days ago`;
+}
+
+/** How many logical days before `todayStart`'s day a claim at `at` falls. */
+function claimDaysAgo(at: string, todayStart: Date): number {
   // The claim's own logical day: its time pulled back by the day start's
   // clock time, which rolls one made before the reset onto the date before.
   const claimDay = new Date(at);
   claimDay.setHours(claimDay.getHours() - todayStart.getHours(), claimDay.getMinutes() - todayStart.getMinutes());
-  const days = differenceInCalendarDays(todayStart, claimDay);
-  if (days <= 0) return 'Claimed today';
-  if (days === 1) return 'Claimed yesterday';
-  return `Last claimed ${days} days ago`;
+  return differenceInCalendarDays(todayStart, claimDay);
+}
+
+// ==== A claim limit ====
+
+/** The most a limit can be: 24 months, the nudge cadence's own ceiling. */
+export const MAX_CLAIM_EVERY_DAYS = CADENCE_UNIT_MAX.months * CADENCE_UNIT_DAYS.months;
+
+/**
+ * A limit as it is stored: a whole number of days from 1 to the ceiling, or
+ * null. A one-time or wish list reward takes none, since it is claimed once.
+ */
+export function cleanClaimLimit(days: number | null | undefined, oneTime: boolean): number | null {
+  if (oneTime || days == null || !Number.isFinite(days) || days < 1) return null;
+  return Math.min(MAX_CLAIM_EVERY_DAYS, Math.round(days));
+}
+
+/**
+ * Logical days before a limited reward can be claimed again, 0 when it can be
+ * now. Counted in logical days from the newest claim, so a claim on Monday
+ * under "once a week" is free again the next Monday, and a claim at 1am under
+ * a 2am day start counts as the day before. Read off the ledger, so undoing
+ * the claim frees it.
+ */
+export function claimWaitDays(
+  reward: Pick<Reward, 'id' | 'claimEveryDays'>,
+  entries: readonly CoinEntry[],
+  todayStart: Date,
+): number {
+  if (!reward.claimEveryDays) return 0;
+  const last = lastClaimedAt(entries, reward.id);
+  if (last === null) return 0;
+  return Math.max(0, reward.claimEveryDays - claimDaysAgo(last, todayStart));
+}
+
+/** "Once a week", "Once every 3 days": the card's line and the form's summary. */
+export function describeClaimLimit(days: number): string {
+  const { count, unit } = toCadenceParts(days);
+  if (count === null) return '';
+  const noun = unit.replace(/s$/, '');
+  return count === 1 ? `Once a ${noun}` : `Once every ${count} ${unit}`;
+}
+
+/** "Available again tomorrow" / "Available again in 3 days". */
+export function describeClaimWait(waitDays: number): string {
+  return waitDays <= 1 ? 'Available again tomorrow' : `Available again in ${waitDays} days`;
 }
 
 /** The share of a goal bar's track that is always filled, so an empty goal still reads as a bar. */

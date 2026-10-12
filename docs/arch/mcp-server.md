@@ -947,7 +947,9 @@ are `save_project_category` and `reorder_projects`.
 over the `Replica` methods of the same names). `docs/arch/rewards.md` says only a person moves coins.
 The tools keep that by being things the person asks Claude to do, never things Claude does to be
 helpful: each description says "only when they say so", every write previews first, and the
-app's own passes (the sweeps, the rollover) still never charge anything.
+app's own passes (the sweeps, the rollover) still never charge anything. A reward's claim limit
+(`claimEveryDays`) is enforced in the store's `claimReward`, so `claim_reward` is refused inside it and
+`get_rewards` reports `availableInDays`.
 
 - **The rules are the app's.** Claims go through `useRewardStore.claimReward`, bounties through the
   same `canPostBounty` / `bountyLimit` checks as `postBounty`, a miss through `buildCompletion` with

@@ -14,7 +14,7 @@ const DAY = new Date(2026, 9, 9, 4, 0, 0);
 
 const reward = (over: Partial<Reward> = {}): Reward => ({
   id: 'dessert', title: 'A dessert', cost: 110, createdAt: '2026-01-01T00:00:00.000Z',
-  linkUrl: null, note: null, oneTime: false, taskId: null, priceMinor: null, guardsTaskId: 'no-dessert',
+  linkUrl: null, note: null, oneTime: false, taskId: null, priceMinor: null, guardsTaskId: 'no-dessert', claimEveryDays: null,
   ...over,
 });
 
@@ -24,10 +24,11 @@ const habit = (over: Partial<Task> = {}) => ({
   ...over,
 }) as Task;
 
-const plan = (over: { task?: Task; rewards?: Reward[]; balance?: number; rewardsEnabled?: boolean } = {}) =>
+const plan = (over: { task?: Task; rewards?: Reward[]; entries?: CoinEntry[]; balance?: number; rewardsEnabled?: boolean } = {}) =>
   planGuardedSlip({
     task: over.task ?? habit(),
     rewards: over.rewards ?? [reward()],
+    entries: over.entries ?? [],
     balance: over.balance ?? 207,
     todayStart: DAY,
     rewardsEnabled: over.rewardsEnabled ?? true,
@@ -68,6 +69,13 @@ describe('planGuardedSlip', () => {
   it('claims the reward when the balance covers it', () => {
     expect(plan()).toEqual({ kind: 'claim', reward: reward() });
     expect(plan({ balance: 110 })?.kind).toBe('claim');
+  });
+
+  it('charges a slip on a reward inside its claim limit, even when the balance covers it', () => {
+    const limited = reward({ claimEveryDays: 7 });
+    const claimed: CoinEntry = { id: 'c', kind: 'spend', amount: 110, at: new Date(2026, 9, 7, 12).toISOString(), taskId: null, rewardId: 'dessert', label: 'A dessert' };
+    expect(plan({ rewards: [limited], entries: [claimed] })).toEqual({ kind: 'charge', reward: limited, amount: 110, waitDays: 5 });
+    expect(plan({ rewards: [limited], entries: [] })?.kind).toBe('claim');
   });
 
   it('charges the whole balance when it falls short, never below zero', () => {

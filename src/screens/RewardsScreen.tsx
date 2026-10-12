@@ -21,6 +21,7 @@ import {
   CADENCE_UNIT_MAX,
   cadenceUnitLabel,
   fromCadenceParts,
+  toCadenceParts,
   withCadenceUnit,
   type CadenceUnit,
 } from '../utils/nudgeCadence';
@@ -58,10 +59,13 @@ import {
   STREAK_BONUS_CAP,
   STREAK_BONUS_EVERY,
   canClaimReward,
+  claimWaitDays,
   coinBalance,
   coinsForPrice,
   coinsPerDollar,
   describeExchangeRate,
+  describeClaimLimit,
+  describeClaimWait,
   describeLastClaimed,
   describeRewardPace,
   earnRatePerDay,
@@ -274,6 +278,9 @@ export function RewardsScreen() {
   const [draftNote, setDraftNote] = useState('');
   const [draftLink, setDraftLink] = useState('');
   const [draftOneTime, setDraftOneTime] = useState(false);
+  // "Limit claims" (Reward.claimEveryDays): a count and a unit, null count = no limit.
+  const [limitCount, setLimitCount] = useState<number | null>(null);
+  const [limitUnit, setLimitUnit] = useState<CadenceUnit>('weeks');
   // The avoid habit this reward guards (Reward.guardsTaskId), picked in HabitPickerSheet.
   const [draftGuard, setDraftGuard] = useState<string | null>(null);
   const [habitPickerOpen, setHabitPickerOpen] = useState(false);
@@ -323,6 +330,8 @@ export function RewardsScreen() {
     setDraftNote('');
     setDraftLink('');
     setDraftOneTime(false);
+    setLimitCount(null);
+    setLimitUnit('weeks');
     setDraftGuard(null);
     setCustomCount(null);
   }, []);
@@ -336,6 +345,9 @@ export function RewardsScreen() {
     setDraftLink(reward?.linkUrl ?? '');
     setDraftOneTime(reward?.oneTime ?? next.mode === 'item');
     setDraftGuard(reward?.guardsTaskId ?? null);
+    const limit = toCadenceParts(reward?.claimEveryDays ?? 0);
+    setLimitCount(limit.count);
+    setLimitUnit(limit.count === null ? 'weeks' : limit.unit);
     setCustomCount(null);
   }, []);
 
@@ -344,7 +356,7 @@ export function RewardsScreen() {
     haptics.tap();
     const store = useRewardStore.getState();
     const priceMinor = priceDriven ? parsedPrice : null;
-    const details = { note: draftNote, linkUrl: draftLink, oneTime: draftOneTime, priceMinor, guardsTaskId: draftOneTime ? null : draftGuard };
+    const details = { note: draftNote, linkUrl: draftLink, oneTime: draftOneTime, priceMinor, guardsTaskId: draftOneTime ? null : draftGuard, claimEveryDays: draftOneTime ? null : fromCadenceParts({ count: limitCount, unit: limitUnit }) || null };
     if (draft.mode === 'new') {
       store.addReward(draftTitle, parsedCost!, details);
     } else if (draft.mode === 'item') {
@@ -357,7 +369,7 @@ export function RewardsScreen() {
         : { title: draftTitle, cost: parsedCost!, ...details });
     }
     closeDraft();
-  }, [canSave, draft, draftItem, draftTitle, draftNote, draftLink, draftOneTime, draftGuard, parsedCost, parsedPrice, priceDriven, closeDraft]);
+  }, [canSave, draft, draftItem, draftTitle, draftNote, draftLink, draftOneTime, draftGuard, limitCount, limitUnit, parsedCost, parsedPrice, priceDriven, closeDraft]);
 
   // ==== actions on a reward ====
   const addIdea = useCallback((idea: PricedRewardIdea) => {
@@ -656,6 +668,41 @@ export function RewardsScreen() {
               accessibilityLabel="One time only"
             />
           </View>
+          {!draftOneTime && (
+            <>
+              <Text style={styles.fieldLabel}>Limit claims</Text>
+              <Text style={styles.hint}>
+                {limitCount === null
+                  ? 'Claim it as often as you like.'
+                  : `${describeClaimLimit(fromCadenceParts({ count: limitCount, unit: limitUnit }))}. After you claim it, it can’t be claimed again until the time is up.`}
+              </Text>
+              <View style={styles.customRow}>
+                <CountStepper
+                  value={limitCount}
+                  onChange={setLimitCount}
+                  min={1}
+                  max={CADENCE_UNIT_MAX[limitUnit]}
+                  allowNull
+                  start={1}
+                  emptyLabel="No limit"
+                  format={n => `Once every ${n}`}
+                  label="Claim limit"
+                  describeValue={n => (n === null ? 'No limit' : `Once every ${n} ${n === 1 ? limitUnit.replace(/s$/, '') : limitUnit}`)}
+                />
+                <View style={styles.customUnit}>
+                  <SegmentedControl
+                    label="Claim limit unit"
+                    options={CADENCE_UNITS.map(unit => ({ value: unit, label: cadenceUnitLabel(unit) }))}
+                    value={limitUnit}
+                    onChange={unit => {
+                      setLimitCount(withCadenceUnit({ count: limitCount, unit }, unit).count);
+                      setLimitUnit(unit);
+                    }}
+                  />
+                </View>
+              </View>
+            </>
+          )}
           {!draftOneTime && (() => {
             // A one-time reward can't guard a habit (see canGuard), so the
             // field goes while the switch is on.
@@ -714,6 +761,7 @@ export function RewardsScreen() {
     const affordable = canClaimReward(balance, reward.cost);
     const pace = describeRewardPace(rate, reward.cost);
     const claimedAt = lastClaimedAt(entries, reward.id);
+    const waitDays = claimWaitDays(reward, entries, getCurrentDayStart());
     const isGoal = goal?.id === reward.id;
     const source = sourceOf(reward);
     const sourceList = source ? projects.find(p => p.id === source.projectId) ?? list : null;
@@ -735,14 +783,21 @@ export function RewardsScreen() {
             </Text>
           </View>
           {pace && <Text style={styles.hint}>{sentence(pace)}</Text>}
+          {reward.claimEveryDays && !reward.oneTime && <Text style={styles.hint}>{describeClaimLimit(reward.claimEveryDays)}</Text>}
           {claimedAt && <Text style={styles.hint}>{describeLastClaimed(claimedAt, getCurrentDayStart())}</Text>}
+          {waitDays > 0 && <Text style={styles.hint}>{describeClaimWait(waitDays)}</Text>}
           {guardHabit && <Text style={styles.hint}>{describeGuard(displayTitleFor(guardHabit))}</Text>}
         </View>
         <View style={styles.rewardActions}>
           <InlineAction
             label="Claim"
             icon="gift-outline"
-            onPress={() => (affordable
+            onPress={() => (waitDays > 0
+              ? Alert.alert(
+                `${shown.title} isn’t available yet`,
+                `${describeClaimLimit(reward.claimEveryDays!)}. ${describeClaimWait(waitDays)}.`,
+              )
+              : affordable
               ? claim(reward, shown.title)
               : Alert.alert(
                 'Not enough coins',
@@ -750,8 +805,10 @@ export function RewardsScreen() {
               ))}
             // Dimmed rather than disabled: a disabled pill swallows the tap
             // without saying why.
-            style={!affordable ? { opacity: 0.4 } : undefined}
-            accessibilityLabel={affordable
+            style={!affordable || waitDays > 0 ? { opacity: 0.4 } : undefined}
+            accessibilityLabel={waitDays > 0
+              ? `${shown.title}. ${describeClaimWait(waitDays)}`
+              : affordable
               ? `Claim ${shown.title} for ${formatCoins(reward.cost)}`
               : `${shown.title} needs ${formatCoins(reward.cost - balance)} more`}
           />
