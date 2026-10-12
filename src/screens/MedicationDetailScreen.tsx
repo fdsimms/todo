@@ -409,6 +409,7 @@ export function MedicationDetailScreen() {
             onChangeAmount={setUsualAmount}
             unit={usualUnit}
             onChangeUnit={setUsualUnit}
+            style={styles.amountField}
           />
           <View style={styles.panelActions}>
             <InlineAction label="Add amount" icon="add" onPress={addUsual} disabled={!canAddUsual} />
@@ -457,6 +458,7 @@ export function MedicationDetailScreen() {
             onChangeAmount={changeCapAmount}
             unit={capUnit}
             onChangeUnit={changeCapUnit}
+            style={styles.amountField}
           />
           <Text style={styles.fieldHint}>
             A total, such as 1,200 mg, for a label that limits the amount rather than the number of doses. Only doses recorded in the same unit are added up. A dose with no amount, or in another unit, is not counted.
@@ -685,11 +687,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   statValue: { fontSize: font.lg, fontWeight: fontWeight.bold, color: colors.text },
   statLabel: { fontSize: font.xs, color: colors.textSecondary, marginTop: spacing.xxs, textAlign: 'center' },
   actionsRow: { flexDirection: 'row', justifyContent: 'flex-start', gap: spacing.sm, marginBottom: spacing.lg },
-  panelHeading: { paddingHorizontal: spacing.md, paddingTop: spacing.sm },
+  panelHeading: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.xsm },
+  // The card has no horizontal padding (rows carry their own), so the field needs its own inset.
+  amountField: { marginHorizontal: spacing.md },
   usualChips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
   usualChip: { backgroundColor: colors.bgTertiary, borderRadius: radius.sm, paddingHorizontal: spacing.smd, paddingVertical: spacing.xsm },
   usualChipText: { color: colors.text, fontSize: font.sm },
-  panelActions: { flexDirection: 'row', justifyContent: 'flex-start', paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
+  panelActions: { flexDirection: 'row', justifyContent: 'flex-start', paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.xs },
   sectionTitle: {
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,
