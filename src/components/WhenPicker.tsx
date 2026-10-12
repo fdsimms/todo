@@ -190,7 +190,9 @@ const CAL_PADDING = 10;
 const CELL_SIZE = Math.floor((CARD_WIDTH - CAL_PADDING * 2) / 7);
 // Rows are shorter than the columns are wide: a square cell made the month
 // grid taller than the controls above it. The circle is sized from the row.
-const ROW_HEIGHT = 40;
+// Tall enough for the circle plus the weight slot under it, which is also where
+// today's caption sits, so the label never overlaps the circle's shading.
+const ROW_HEIGHT = 46;
 const DAY_CIRCLE = 32;
 
 // How long the selection "pop" plays before the modal commits and closes.
@@ -866,8 +868,11 @@ export function WhenPicker({
                 const load = dayLoads.get(dayKeyOf(day));
                 // The calendar's shade, so a day reads the same in both grids.
                 // Away has no band to say it here, so it keeps its dashes.
-                const shade = outOfRange ? 0 : shadeFor(load);
-                const away = !outOfRange && !!load?.away;
+                // A day already gone carries no load shade: it can't be planned into, and
+                // a busy past day read louder than today itself.
+                const isPast = isDayBefore(day, today);
+                const shade = outOfRange || isPast ? 0 : shadeFor(load);
+                const away = !outOfRange && !isPast && !!load?.away;
                 const tint = isSelected || isPending ? null : dayShadeBackground(shade, colors);
                 const spoken = [shade >= 2 ? describeDayShade(shade) : '', away ? 'away' : ''].filter(Boolean).join(', ');
                 const dateLabel = todayDay ? `Today, ${format(day, 'EEEE, MMMM d')}` : format(day, 'EEEE, MMMM d');
@@ -904,7 +909,7 @@ export function WhenPicker({
                         ) : (
                           <Text maxFontSizeMultiplier={textScale.badge} style={[
                             styles.dayText,
-                            !inMonth && styles.dayTextOtherMonth,
+                            (!inMonth || isPast) && styles.dayTextOtherMonth,
                             isSelected && !outOfRange && styles.dayTextSelected,
                             !isSelected && todayDay && styles.dayTextToday,
                             isSuggested && styles.dayTextSuggested,
@@ -918,7 +923,16 @@ export function WhenPicker({
                       {/* Reserved on every cell, marked or not, so the dashes
                           can't nudge their own circle out of line. */}
                       <View style={styles.weightSlot}>
-                        {away && (
+                        {todayDay && (
+                          <Text
+                            maxFontSizeMultiplier={textScale.badge}
+                            numberOfLines={1}
+                            style={styles.todayCaption}
+                          >
+                            TODAY
+                          </Text>
+                        )}
+                        {away && !todayDay && (
                           // Two segments with a gap: a run of them reads across
                           // the row as the stretch of days it is. Grey, since a
                           // coloured dot here would read as an event marker.
@@ -1207,7 +1221,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     justifyContent: 'center',
   },
   weightSlot: {
-    height: 3,
+    height: 12,
     marginTop: 1,
     justifyContent: 'center',
   },
@@ -1226,7 +1240,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.accentFill,
   },
   dayCircleToday: {
-    borderWidth: 1.5,
+    borderWidth: 2.5,
     borderColor: colors.accent,
   },
   dayCircleSuggested: {
@@ -1262,7 +1276,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   dayTextToday: {
     color: colors.accentText,
-    fontWeight: fontWeight.semibold,
+    fontWeight: fontWeight.bold,
+  },
+  todayCaption: {
+    color: colors.accentText,
+    fontSize: font.xxs,
+    fontWeight: fontWeight.bold,
+    letterSpacing: 0.4,
   },
   dayTextSuggested: {
     color: colors.purpleText,
