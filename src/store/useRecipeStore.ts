@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Cookbook, CookbookIndexEntry, Recipe, RecipeIngredient, RecipeMealType, RecipePrepTask, RecipeSourceType, RecipeStep, RecipeVote } from '../types';
+import type { ComponentPlacement, Cookbook, CookbookIndexEntry, Recipe, RecipeIngredient, RecipeMealType, RecipePrepTask, RecipeSourceType, RecipeStep, RecipeVote } from '../types';
 import { GROCERY_NAME_MAX_LENGTH, RECIPE_PAGE_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH, RECIPE_STEP_NOTE_MAX_LENGTH, TITLE_MAX_LENGTH } from '../types';
 import {
   dbGetAllRecipes,
@@ -39,7 +39,7 @@ import { cookTimerElapsed, prepTimerElapsed } from '../utils/recipeTimer';
 import { clampKeepDays } from '../utils/leftovers';
 import { clampCookedWeight } from '../utils/mealLog';
 import { normalizeRecipeTags } from '../utils/recipeTags';
-import { makeComponent, recipeMap, wouldCreateRecipeCycle } from '../utils/recipeComponents';
+import { componentPlacement, makeComponent, reanchorComponents, recipeMap, wouldCreateRecipeCycle } from '../utils/recipeComponents';
 import { sectionsOf } from '../utils/recipeSections';
 import { pageAfterCookbookLink } from '../utils/cookbookRecipes';
 import {
@@ -426,6 +426,13 @@ interface RecipeStore {
     recipeId: string,
     ids: string[],
     sectionById: ReadonlyMap<string, string | null>,
+    /**
+     * The components that sat in the same merged list, written in the same
+     * save: `order` is their ids as dropped and `placements` where each now
+     * sits (see `ComponentPlacement`). A component in a choice group is left
+     * alone, since its placement is never read.
+     */
+    components?: { order: string[]; placements: ReadonlyMap<string, ComponentPlacement> },
   ) => void;
   /** Removes several ingredients from one recipe at once — the bulk form of removeIngredient. */
   bulkRemoveIngredients: (recipeId: string, ingredientIds: string[]) => void;
@@ -1234,8 +1241,9 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       .map(i => (i.id === survivor.id
         ? { ...i, name: combinedName, nameKey, choiceGroup: null }
         : i));
+    const removed = new Set([...memberIds].filter(id => id !== survivor.id));
 
-    save(set, { ...recipe, ingredients });
+    save(set, { ...recipe, ingredients, components: reanchorComponents(recipe.components, recipe.ingredients, removed) });
     return true;
   },
 
@@ -1260,7 +1268,8 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     if (!recipe) return;
     const ingredients = recipe.ingredients.filter(i => i.id !== ingredientId);
     if (ingredients.length === recipe.ingredients.length) return;
-    save(set, { ...recipe, ingredients });
+    const components = reanchorComponents(recipe.components, recipe.ingredients, new Set([ingredientId]));
+    save(set, { ...recipe, ingredients, components });
   },
 
   bulkRemoveIngredients(recipeId, ingredientIds) {
@@ -1269,7 +1278,8 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     const idSet = new Set(ingredientIds);
     const ingredients = recipe.ingredients.filter(i => !idSet.has(i.id));
     if (ingredients.length === recipe.ingredients.length) return;
-    save(set, { ...recipe, ingredients });
+    const components = reanchorComponents(recipe.components, recipe.ingredients, idSet);
+    save(set, { ...recipe, ingredients, components });
   },
 
   bulkSetIngredientAisle(recipeId, ingredientIds, aisle) {
@@ -1292,6 +1302,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     const cleaned = name.trim().slice(0, RECIPE_SECTION_MAX_LENGTH).trim();
     if (!cleaned) return false;
     if (sectionsOf(recipe.ingredients).includes(cleaned)) return false;
+    if (recipe.components.some(c => componentPlacement(c)?.section === cleaned)) return false;
     if (recipe.emptySections.includes(cleaned)) return false;
     save(set, { ...recipe, emptySections: [...recipe.emptySections, cleaned] });
     return true;
@@ -1303,7 +1314,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     save(set, { ...recipe, emptySections: recipe.emptySections.filter(s => s !== name) });
   },
 
-  reorderIngredients(recipeId, ids, sectionById) {
+  reorderIngredients(recipeId, ids, sectionById, placed) {
     const recipe = get().recipes.find(r => r.id === recipeId);
     if (!recipe) return;
     const byId = new Map(recipe.ingredients.map(i => [i.id, i]));
@@ -1323,7 +1334,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       return section === undefined || section === i.section ? i : { ...i, section };
     });
 
-    save(set, { ...recipe, ingredients });
+    save(set, { ...recipe, ingredients, components: placed ? placeComponents(recipe.components, placed) : recipe.components });
   },
 
   addComponent(recipeId, componentRecipeId, choiceGroup = null) {
@@ -1355,7 +1366,14 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     if (!recipe.components.some(c => c.id === componentId)) return;
     save(set, {
       ...recipe,
-      components: recipe.components.map(c => (c.id === componentId ? { ...c, choiceGroup: clean } : c)),
+      // An alternative is drawn with its group, so a position it had as a part
+      // on its own goes (`componentPlacement` would ignore it anyway, but a
+      // stale one would come back if the group were later dissolved).
+      components: recipe.components.map(c => {
+        if (c.id !== componentId) return c;
+        const { placement: _placement, ...rest } = c;
+        return clean ? { ...rest, choiceGroup: clean } : { ...c, choiceGroup: clean };
+      }),
     });
   },
 
@@ -1596,6 +1614,30 @@ function unlinkIfChanged(recipe: Recipe, changed: boolean): { cookbookId?: strin
 }
 
 /**
+ * The components after a drop in the merged ingredient list. The placeable ones
+ * (no choice group) are put back into the slots they already held, in the order
+ * they were dropped, so a component in a choice group keeps its place in the
+ * array and the group's default (its first member) is not disturbed.
+ */
+function placeComponents(
+  components: readonly Recipe['components'][number][],
+  placed: { order: string[]; placements: ReadonlyMap<string, ComponentPlacement> },
+): Recipe['components'] {
+  const free = components.filter(c => !c.choiceGroup);
+  const rank = new Map(placed.order.map((id, i) => [id, i]));
+  // Anything the caller didn't name keeps its relative place after the ones it
+  // did, the same stale-list rule `reorderIngredients` follows for ingredients.
+  const sorted = [...free].sort((a, b) => (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity));
+  let next = 0;
+  return components.map(c => {
+    if (c.choiceGroup) return c;
+    const target = sorted[next++];
+    const placement = placed.placements.get(target.id);
+    return placement ? { ...target, placement } : target;
+  });
+}
+
+/**
  * Write-then-patch. Every mutation above is a whole-row update — the row holds
  * its ingredients as a blob, so there is no such thing as a partial write here
  * — which makes one helper honest rather than a premature abstraction.
@@ -1612,6 +1654,7 @@ function save(set: SetRecipes, recipe: Recipe): void {
     ...recipe,
     emptySections: recipe.emptySections.filter(
       name => !recipe.ingredients.some(i => i.section === name)
+        && !recipe.components.some(c => componentPlacement(c)?.section === name)
     ),
   };
   // Same reconciliation, one field over — see Recipe.emptyStepSections.

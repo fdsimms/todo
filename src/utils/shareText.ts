@@ -222,6 +222,9 @@ export function buildRecipeShareText(
     const headings = ingredientHeadings(rows.map(row => row.line));
     const alternatives = componentAlternativeNames(recipe, recipesById);
     rows.forEach((row, index) => {
+      const parentSection = headings[index].parentSection;
+      if (parentSection) lines.push(`${parentSection}:`);
+      if (headings[index].resume) lines.push(`For the ${row.line.recipe.name}:`);
       if (headings[index].dish) {
         const others = alternatives.get(row.line.recipe.id);
         const or = others ? ` (or ${others.join(' or ')})` : '';

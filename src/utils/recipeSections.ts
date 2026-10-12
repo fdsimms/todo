@@ -109,6 +109,8 @@ export interface FlatSectionRow {
   /** 0 for the root's own lines, 1 for a direct component's, and so on. */
   depth: number;
   ingredient: { section: string | null };
+  /** The heading the component this line came through is placed under — see `FlatIngredient.linkSection`. */
+  linkSection?: string | null;
 }
 
 /** Which headings open on one line of a flattened list — see `ingredientHeadings`. */
@@ -119,6 +121,18 @@ export interface IngredientHeading {
    * word it differently ("For the mash:" in a share, the bare name in a panel).
    */
   dish: boolean;
+  /**
+   * The root's heading a component was placed under, on the line where that
+   * component starts and only when it differs from the heading already open.
+   * Drawn above the component's own name, since the part sits under it.
+   */
+  parentSection: string | null;
+  /**
+   * True where the root's own lines pick up again after a component placed in
+   * the middle of them. Without a heading the lines would read as part of the
+   * component above, so the caller names the root again.
+   */
+  resume: boolean;
   /** The section heading opening on this line, null where it carries on the one above or has none. */
   section: string | null;
 }
@@ -138,6 +152,12 @@ export interface IngredientHeading {
  * are separate vocabularies that happen to collide — a component opening with
  * "Sauce" under a root whose last line was also "Sauce" is a new heading, not
  * a continuation of somebody else's.
+ *
+ * **The root's own heading is remembered across a component.** A part can be
+ * placed in the middle of the root's lines, so the root's walk resumes where it
+ * left off when its lines come back, rather than reopening a heading the part
+ * already sat under. `linkSection` is how a direct component says which root
+ * heading it was placed under.
  */
 export function ingredientHeadings(
   rows: readonly FlatSectionRow[],
@@ -145,15 +165,31 @@ export function ingredientHeadings(
   const out: IngredientHeading[] = [];
   let prevRecipeId: string | null = null;
   let prevSection: string | null = null;
+  let rootSection: string | null = null;
   for (const row of rows) {
-    if (row.recipe.id !== prevRecipeId) prevSection = null;
+    const boundary = row.recipe.id !== prevRecipeId;
+    let parentSection: string | null = null;
+    if (boundary) {
+      if (row.depth === 0) {
+        prevSection = rootSection;
+      } else {
+        prevSection = null;
+        if (row.depth === 1 && row.linkSection) {
+          if (row.linkSection !== rootSection) parentSection = row.linkSection;
+          rootSection = row.linkSection;
+        }
+      }
+    }
     const label = row.ingredient.section;
     out.push({
-      dish: row.depth > 0 && row.recipe.id !== prevRecipeId,
+      dish: row.depth > 0 && boundary,
+      parentSection,
+      resume: row.depth === 0 && boundary && prevRecipeId !== null,
       section: label && label !== prevSection ? label : null,
     });
     prevRecipeId = row.recipe.id;
     prevSection = label;
+    if (row.depth === 0) rootSection = label;
   }
   return out;
 }

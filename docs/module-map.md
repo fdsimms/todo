@@ -319,7 +319,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/receiptOffline.ts` — isNonItemRow, findPrintedDate, findPrintedTotal, guessStoreName, extractReceiptOffline
 - `src/utils/recentSearches.ts` — RECENT_SEARCH_LIMIT, addRecentSearch, parseRecentSearches
 - `src/utils/recipeBackfill.ts` — RecipeBackfillFieldId, RecipeBackfillFieldDef, RECIPE_BACKFILL_FIELDS, isRecipeFieldMissing, isRecipeBackfillDismissed, recipeBackfillCandidates, recipeBackfillFieldCounts, dismissRecipeBackfillField
-- `src/utils/recipeComponents.ts` — parseRecipeComponents, normalizeComponent, parseRecipeChoices, makeComponent, ChoiceResolution, choiceGroupKey, activeComponents, activeIngredients, recipeMap, ResolvedComponent, +21 more
+- `src/utils/recipeComponents.ts` — parseRecipeComponents, normalizeComponent, componentPlacement, LayoutItem, ingredientLayout, reanchorComponents, parseRecipeChoices, makeComponent, ChoiceResolution, choiceGroupKey, +25 more
 - `src/utils/recipeCost.ts` — CostEstimate, estimateRecipeCost, estimateWeekCost, describeRecipeCost, describeWeekCost
 - `src/utils/recipeEstimateQueue.ts` — PendingRecipeEstimateStatus, PendingRecipeEstimate, liveFor, awaitingRecipeEstimate
 - `src/utils/recipeImageSync.ts` — recipeImageNames, readRecipeImageForSync, hasRecipeImageForSync, writeRecipeImageFromSync, recipeIdsIn, unreferencedImageNames, applyWithRecipeImages

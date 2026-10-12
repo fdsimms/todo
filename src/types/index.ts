@@ -6934,6 +6934,29 @@ export interface RecipeComponent {
   // while order is already there. makeComponentDefault moves a link to the
   // front of its group, which is the whole of "make this the usual one".
   choiceGroup: string | null;
+  // Where this part sits among the recipe's own ingredient lines, and which
+  // heading it is under. **Absent means unplaced** (every link that predates the
+  // field), which reads as it always did: after the last ingredient, under no
+  // heading. Present, it is the position a person dragged the part to, and every
+  // surface that flattens the recipe (the shopping list, cook mode, the share
+  // text) honors it, so the order on the recipe page is the order everywhere.
+  //
+  // **Never set on a link in a choice group** (`componentPlacement` is the one
+  // reader, and drops it): an alternative is drawn beside its siblings, under
+  // the group's one header, and a position of its own would pull it away.
+  placement?: ComponentPlacement;
+}
+
+// A component's slot among its parent's ingredient lines. `before` names the
+// ingredient the part sits directly above, and is the anchor rather than an
+// index so it survives an ingredient being added or reordered. null means after
+// the last one; an id that no longer resolves reads the same way, and the store
+// re-anchors to the next line when it removes one (`reanchorComponents`).
+// `section` is the heading it is under, set from the same heading marker an
+// ingredient's `section` is, null before the first heading.
+export interface ComponentPlacement {
+  before: string | null;
+  section: string | null;
 }
 
 // Which meal of the day a recipe is *for* — a browsing/filtering tag, not a

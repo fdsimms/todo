@@ -124,6 +124,31 @@ meal that uses it. The graph walk — flatten, cycle check, reverse lookup — l
   the quantities it's written with and the parent's factor multiplies them on the way out. Nothing
   about `servings` is consulted, and nothing is written back onto the recipe.
 
+**A component has a position among the ingredients (`RecipeComponent.placement`).** It is a row in
+the Ingredients list on the recipe page, dragged like an ingredient, and the position is honored by
+every surface that flattens the recipe, because there is one walk (`flattenRecipeIngredients`, over
+`ingredientLayout`) rather than a display order and a shopping order.
+
+- **`before` is an anchor, not an index.** It names the ingredient the part sits above, so it
+  survives an ingredient being added or moved; null is after the last one, and an id that no longer
+  resolves reads the same way. A drag commit rewrites every placeable part's anchor from the merged
+  list (`handleMergedReorder`), and the store re-anchors to the next line when it removes one
+  (`reanchorComponents`) so deleting the line under a part doesn't send it to the end.
+- **`section` comes from the same heading marker an ingredient's does** (`sectionsFromMergedOrder`),
+  and a heading a part sits under keeps a declared-empty heading from being redeclared
+  (`save()` prunes against both lists).
+- **Absent means unplaced**, which reads exactly as before (after the last ingredient, under no
+  heading), so no migration. A part in a choice group never has one (`componentPlacement` is the one
+  reader and drops it, and `setComponentChoiceGroup` clears it): alternatives are drawn together
+  under one header, and a position of its own would pull one away. Those keep their long press for
+  the either/or sheet, and every other part's long press is the drag.
+- **Interleaving makes headings ambiguous, which `ingredientHeadings` resolves.** A part placed
+  under a root heading opens it above its own name (`parentSection`), and the root's own lines
+  coming back after a part name the root again (`resume`) instead of reading as the part's. The root's
+  heading is remembered across a part, so a heading the part already sat under isn't reopened.
+- **Only ingredients interleave.** Method steps and prep tasks still follow the dish order
+  (`cookedDishes`): the app can't know that the mash wants boiling before the steak is seared.
+
 **Alternatives are a label on a flat list**, not a fourth entity — and they exist at *both* levels:
 components sharing a `choiceGroup` ("mash *or* roast potatoes", #1252) and ingredients sharing one
 ("serrano *or* jalapeño", #1117). Exactly one option of a group is cooked and bought. A `Meal`

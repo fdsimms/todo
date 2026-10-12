@@ -2439,3 +2439,122 @@ describe('cookbook index entries', () => {
     expect(useRecipeStore.getState().recipes).toHaveLength(1);
   });
 });
+
+describe('component placement', () => {
+  // Dinner with two ingredients and the mash linked, the state right before a
+  // drag lands the mash between them.
+  const seedDinner = () => {
+    const dinner = makeRecipe('Dinner');
+    const mash = makeRecipe('Mash');
+    const rub = makeRecipe('Rub');
+    seed([dinner, mash, rub]);
+    const steak = useRecipeStore.getState().addIngredient(dinner.id, 'Steak')!;
+    const salt = useRecipeStore.getState().addIngredient(dinner.id, 'Salt')!;
+    useRecipeStore.getState().addComponent(dinner.id, mash.id);
+    useRecipeStore.getState().addComponent(dinner.id, rub.id);
+    const links = useRecipeStore.getState().recipeById(dinner.id)!.components;
+    return { dinner, steak, salt, mashLink: links[0], rubLink: links[1] };
+  };
+  const placeOf = (recipeId: string, linkId: string) =>
+    useRecipeStore.getState().recipeById(recipeId)!.components.find(c => c.id === linkId)!.placement;
+
+  it('writes the order, the sections and the placements in one save', () => {
+    const { dinner, steak, salt, mashLink, rubLink } = seedDinner();
+    (dbUpdateRecipe as jest.Mock).mockClear();
+
+    useRecipeStore.getState().reorderIngredients(
+      dinner.id,
+      [steak.id, salt.id],
+      new Map([[steak.id, null], [salt.id, 'Sides'], [rubLink.id, null], [mashLink.id, 'Sides']]),
+      {
+        order: [rubLink.id, mashLink.id],
+        placements: new Map([
+          [rubLink.id, { before: salt.id, section: null }],
+          [mashLink.id, { before: null, section: 'Sides' }],
+        ]),
+      },
+    );
+
+    expect(dbUpdateRecipe).toHaveBeenCalledTimes(1);
+    const saved = useRecipeStore.getState().recipeById(dinner.id)!;
+    expect(saved.components.map(c => c.id)).toEqual([rubLink.id, mashLink.id]);
+    expect(placeOf(dinner.id, rubLink.id)).toEqual({ before: salt.id, section: null });
+    expect(placeOf(dinner.id, mashLink.id)).toEqual({ before: null, section: 'Sides' });
+  });
+
+  it('leaves the components alone when the caller sends none', () => {
+    const { dinner, steak, salt, mashLink } = seedDinner();
+    useRecipeStore.getState().reorderIngredients(dinner.id, [salt.id, steak.id], new Map());
+    expect(placeOf(dinner.id, mashLink.id)).toBeUndefined();
+  });
+
+  it('keeps a component in a choice group where it is, and gives it no placement', () => {
+    const { dinner, steak, salt, mashLink, rubLink } = seedDinner();
+    useRecipeStore.getState().setComponentChoiceGroup(dinner.id, mashLink.id, 'Side');
+
+    useRecipeStore.getState().reorderIngredients(dinner.id, [steak.id, salt.id], new Map(), {
+      order: [rubLink.id],
+      placements: new Map([[rubLink.id, { before: salt.id, section: null }]]),
+    });
+
+    const links = useRecipeStore.getState().recipeById(dinner.id)!.components;
+    expect(links.map(c => c.id)).toEqual([mashLink.id, rubLink.id]);
+    expect(links[0].placement).toBeUndefined();
+    expect(links[1].placement).toEqual({ before: salt.id, section: null });
+  });
+
+  it('drops a placement when the link joins a choice group', () => {
+    const { dinner, salt, mashLink } = seedDinner();
+    useRecipeStore.getState().reorderIngredients(dinner.id, [salt.id], new Map(), {
+      order: [mashLink.id],
+      placements: new Map([[mashLink.id, { before: salt.id, section: 'Sides' }]]),
+    });
+
+    useRecipeStore.getState().setComponentChoiceGroup(dinner.id, mashLink.id, 'Side');
+    expect(placeOf(dinner.id, mashLink.id)).toBeUndefined();
+
+    useRecipeStore.getState().setComponentChoiceGroup(dinner.id, mashLink.id, null);
+    expect(placeOf(dinner.id, mashLink.id)).toBeUndefined();
+  });
+
+  it('moves a part to the next line when the line under it is removed, one or many', () => {
+    const { dinner, steak, salt, mashLink, rubLink } = seedDinner();
+    useRecipeStore.getState().reorderIngredients(dinner.id, [steak.id, salt.id], new Map(), {
+      order: [mashLink.id, rubLink.id],
+      placements: new Map([
+        [mashLink.id, { before: steak.id, section: null }],
+        [rubLink.id, { before: salt.id, section: null }],
+      ]),
+    });
+
+    useRecipeStore.getState().removeIngredient(dinner.id, steak.id);
+    expect(placeOf(dinner.id, mashLink.id)?.before).toBe(salt.id);
+
+    useRecipeStore.getState().bulkRemoveIngredients(dinner.id, [salt.id]);
+    expect(placeOf(dinner.id, mashLink.id)?.before).toBeNull();
+    expect(placeOf(dinner.id, rubLink.id)?.before).toBeNull();
+  });
+
+  it('retires a declared empty heading once a component is placed under it', () => {
+    const { dinner, salt, mashLink } = seedDinner();
+    useRecipeStore.getState().addEmptySection(dinner.id, 'Sides');
+    expect(useRecipeStore.getState().recipeById(dinner.id)!.emptySections).toEqual(['Sides']);
+
+    useRecipeStore.getState().reorderIngredients(dinner.id, [salt.id], new Map(), {
+      order: [mashLink.id],
+      placements: new Map([[mashLink.id, { before: null, section: 'Sides' }]]),
+    });
+
+    expect(useRecipeStore.getState().recipeById(dinner.id)!.emptySections).toEqual([]);
+  });
+
+  it('refuses to declare a heading a placed component already sits under', () => {
+    const { dinner, salt, mashLink } = seedDinner();
+    useRecipeStore.getState().reorderIngredients(dinner.id, [salt.id], new Map(), {
+      order: [mashLink.id],
+      placements: new Map([[mashLink.id, { before: null, section: 'Sides' }]]),
+    });
+
+    expect(useRecipeStore.getState().addEmptySection(dinner.id, 'Sides')).toBe(false);
+  });
+});
