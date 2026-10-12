@@ -95,7 +95,7 @@ const TREND_DAYS = 14;
  *
  * Top to bottom: the milestone offer for a medicine just started, Today (the
  * scheduled doses due, read off their tasks rather than kept as a second
- * list), What you take (a row per medication, opening its page, with a quick
+ * list, then every dose taken today, as-needed ones included), What you take (a row per medication, opening its page, with a quick
  * button on the as-needed ones), Archived, and Recent.
  */
 export function MedicationScreen() {
@@ -154,7 +154,7 @@ export function MedicationScreen() {
   const recent = useMemo(() => logs.slice(0, recentLimit), [logs, recentLimit]);
   const today = dayKeyOf(getCurrentDayStart());
   const takenToday = useMemo(
-    () => logs.filter(l => l.taskId !== null && l.dayKey === today && !l.asNeeded)
+    () => logs.filter(l => l.dayKey === today)
       .sort((a, b) => a.takenAt.localeCompare(b.takenAt)),
     [logs, today],
   );
@@ -392,6 +392,9 @@ export function MedicationScreen() {
             <View style={[styles.card, styles.todayCard]}>
               {takenToday.map((log, index) => {
                 const undoable = log.taskId !== null && undoableTaskIds.has(log.taskId);
+                // A dose with no task behind it has no check to take back, so a
+                // tap opens it to edit or delete, the way it does under Recent.
+                const detached = log.taskId === null;
                 const undoAction = {
                   onUndo: () => undoTaken(log),
                   accessibilityLabel: `Undo ${log.name} taken`,
@@ -401,16 +404,24 @@ export function MedicationScreen() {
                     {index > 0 && <View style={styles.todaySeparator} />}
                     {/* Always mounted, enabled only when there is a check to take back. */}
                     <SwipeableRow enabled={undoable} undoAction={undoAction}>
-                      <View style={styles.todayRow} accessible accessibilityLabel={`${log.name} taken`}>
+                      <TouchableOpacity
+                        style={styles.todayRow}
+                        activeOpacity={detached ? interaction.activeOpacity : 1}
+                        disabled={!detached}
+                        onPress={() => openEdit(log)}
+                        accessible
+                        accessibilityRole={detached ? 'button' : undefined}
+                        accessibilityLabel={`${log.name} taken`}
+                      >
                         <Ionicons name="checkmark-circle" size={iconSize.lg} color={colors.done} />
                         <View style={styles.doseText}>
                           <Text style={styles.doseName} numberOfLines={1}>{log.name}</Text>
                           <Text style={styles.doseMeta} numberOfLines={1}>
-                            {[`Taken ${format(new Date(log.takenAt), 'h:mm a')}`, formatDose(log)].filter(Boolean).join(' · ')}
+                            {[`Taken ${format(new Date(log.takenAt), 'h:mm a')}`, formatDose(log), log.asNeeded ? 'as needed' : null].filter(Boolean).join(' · ')}
                           </Text>
                         </View>
                         <SwipeActionButtons enabled={undoable} undoAction={undoAction} />
-                      </View>
+                      </TouchableOpacity>
                     </SwipeableRow>
                   </React.Fragment>
                 );

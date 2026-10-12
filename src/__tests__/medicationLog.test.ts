@@ -7,6 +7,7 @@ import {
   dosesOnDay,
   formatDose,
   frequencyTrend,
+  hasScheduledTask,
   hasDoseOnDay,
   isAsNeededMedication,
   logsOnDay,
@@ -499,5 +500,29 @@ describe('how a medication is taken, and its usual amount', () => {
     expect(repeatDose([], 'Zinc', { amount: 50, unit: 'mg' })).toMatchObject({ amount: 50, unit: 'mg' });
     const logs = [dose({ name: 'Zinc', amount: 25, unit: 'mg' })];
     expect(repeatDose(logs, 'Zinc', { amount: 50, unit: 'mg' })).toMatchObject({ amount: 25, unit: 'mg' });
+  });
+});
+
+describe('hasScheduledTask', () => {
+  const task = (over: Record<string, unknown>) => ({
+    completed: false, archived: false, parentId: null, recurrenceType: 'daily',
+    medicationName: 'Vitamin D', medicationAmount: null, medicationUnit: null, chainItems: [], chainIndex: 0,
+    ...over,
+  }) as unknown as Parameters<typeof hasScheduledTask>[0][number];
+
+  it('is true for an open repeating task recording the medication', () => {
+    expect(hasScheduledTask([task({})], ' vitamin d ')).toBe(true);
+  });
+
+  it('ignores one-off, finished, archived, subtask and other-medication tasks', () => {
+    const tasks = [
+      task({ recurrenceType: 'none' }),
+      task({ completed: true }),
+      task({ archived: true }),
+      task({ parentId: 'p' }),
+      task({ medicationName: 'Zinc' }),
+    ];
+    expect(hasScheduledTask(tasks, 'Vitamin D')).toBe(false);
+    expect(hasScheduledTask([], '')).toBe(false);
   });
 });
