@@ -32,6 +32,7 @@ import { useTemplateStore } from '../store/useTemplateStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
+import { useSavedMealsStore } from '../store/useSavedMealsStore';
 import { useUnattendedStore } from '../store/useUnattendedStore';
 import { useHealthStore } from '../store/useHealthStore';
 import { usePersonStore } from '../store/usePersonStore';
@@ -154,6 +155,7 @@ jest.mock('../db/database', () => ({
   dbGetFoodLogEntries: jest.fn().mockReturnValue([]),
   dbCountFoodLogEntries: jest.fn().mockReturnValue(0),
   dbInsertFoodLogEntry: jest.fn(),
+  dbGetFoodLogEntriesForTask: jest.fn().mockReturnValue([]),
   dbUpdateFoodLogEntry: jest.fn(),
   dbGetSavedMeals: jest.fn().mockReturnValue([]),
   dbGetPendingEstimates: jest.fn().mockReturnValue([]),
@@ -17045,6 +17047,74 @@ describe('Task.logMealSlot offers to log an arbitrary task to the food log', () 
     useTaskStore.getState().completeTask(task.id, { missed: true });
 
     expect(useFoodLogStore.getState().pendingManualMealLog).toBeNull();
+  });
+});
+
+describe('Task.logSavedMealId logs a named food when the task is completed', () => {
+  const nutrition: FoodNutrition = {
+    basis: 'perServing', servingGrams: null, servingText: null, amounts: { fiberG: 3 },
+    source: 'manual', sourceId: null, portions: [], recordedAt: '2026-04-01T08:00:00.000Z',
+  };
+  const metamucil = {
+    id: 'sm-1', name: 'Metamucil', createdAt: '2026-04-01T08:00:00.000Z',
+    items: [{ label: 'Metamucil', recipeId: null, itemId: null, productId: null, quantity: '1 serving', grams: null, nutrition }],
+  };
+  let addEntry: jest.Mock;
+  let removeEntriesForTask: jest.Mock;
+
+  beforeEach(() => {
+    addEntry = jest.fn().mockReturnValue({ id: 'e-1' });
+    removeEntriesForTask = jest.fn();
+    useFoodLogStore.setState({ pendingMealLog: null, pendingManualMealLog: null, addEntry, removeEntriesForTask });
+    useSavedMealsStore.setState({ meals: [metamucil] });
+  });
+
+  it('writes the saved meal with no sheet, stamped with the task and its slot', () => {
+    const task = useTaskStore.getState().addTask({ title: 'Metamucil', logMealSlot: 'breakfast', logSavedMealId: 'sm-1' });
+
+    useTaskStore.getState().completeTask(task.id);
+
+    expect(addEntry).toHaveBeenCalledTimes(1);
+    expect(addEntry.mock.calls[0][0]).toMatchObject({ label: 'Metamucil', slot: 'breakfast', taskId: task.id, nutrition });
+    // Kept out of shake-to-undo: the completion owns the undo bar.
+    expect(addEntry.mock.calls[0][1]).toEqual({ undoable: false });
+    expect(useFoodLogStore.getState().pendingManualMealLog).toBeNull();
+  });
+
+  it('falls back to the manual offer when the saved meal has been deleted', () => {
+    useSavedMealsStore.setState({ meals: [] });
+    const task = useTaskStore.getState().addTask({ title: 'Metamucil', logMealSlot: 'breakfast', logSavedMealId: 'sm-1' });
+
+    useTaskStore.getState().completeTask(task.id);
+
+    expect(addEntry).not.toHaveBeenCalled();
+    expect(useFoodLogStore.getState().pendingManualMealLog?.label).toBe('Metamucil');
+  });
+
+  it('logs nothing on a missed completion', () => {
+    const task = useTaskStore.getState().addTask({ title: 'Metamucil', logMealSlot: 'breakfast', logSavedMealId: 'sm-1' });
+
+    useTaskStore.getState().completeTask(task.id, { missed: true });
+
+    expect(addEntry).not.toHaveBeenCalled();
+  });
+
+  it('takes back what it logged when the task is unchecked', () => {
+    const task = useTaskStore.getState().addTask({ title: 'Metamucil', logMealSlot: 'breakfast', logSavedMealId: 'sm-1' });
+    useTaskStore.getState().completeTask(task.id);
+
+    useTaskStore.getState().uncompleteTask(task.id);
+
+    expect(removeEntriesForTask).toHaveBeenCalledWith(task.id);
+  });
+
+  it('leaves the food log alone when un-completing a task that names no food', () => {
+    const task = useTaskStore.getState().addTask({ title: 'Log breakfast', logMealSlot: 'breakfast' });
+    useTaskStore.getState().completeTask(task.id);
+
+    useTaskStore.getState().uncompleteTask(task.id);
+
+    expect(removeEntriesForTask).not.toHaveBeenCalled();
   });
 });
 

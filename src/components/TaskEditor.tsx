@@ -61,7 +61,6 @@ import { confirmDelete } from '../utils/confirmDelete';
 import { confirmDeleteGenerated } from '../utils/confirmDeleteGenerated';
 import { stoppableGenerator } from '../utils/generatedTasks';
 import { animateLayout } from '../utils/layoutAnimation';
-import { moreOptionsLabel } from '../utils/editorFold';
 import { formatPhoneInput } from '../utils/phone';
 import {
   bakedFields, taskKindOf, DEFAULT_TARGET_COUNT, DEFAULT_TIMED_MINUTES,
@@ -91,6 +90,8 @@ import { useProjectStore } from '../store/useProjectStore';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useMedicationStore } from '../store/useMedicationStore';
+import { useSavedMealsStore } from '../store/useSavedMealsStore';
+import { slotForHour } from '../utils/mealLog';
 import { categoryLabel } from '../utils/categoryLabel';
 import { askForReminderPermissionIfNeeded } from '../utils/reminderPermission';
 import { useShallow } from 'zustand/react/shallow';
@@ -268,6 +269,7 @@ export interface TaskDraft {
   medicationAmount?: number | null;
   medicationUnit?: string | null;
   logMealSlot?: MealSlot | null;
+  logSavedMealId?: string | null;
   phoneNumber?: string | null;
   emailAddress?: string | null;
   location?: string | null;
@@ -557,17 +559,6 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
     setMatchCounts(prev => (prev[groupKey] === count ? prev : { ...prev, [groupKey]: count }));
   }, []);
 
-  // "More options": the rows tagged `fold` in the groups below stay hidden on
-  // a task that holds nothing for them. See `src/utils/editorFold.ts`.
-  const [moreOpen, setMoreOpen] = useState(false);
-  const [foldEpoch, setFoldEpoch] = useState(0);
-  const [foldCounts, setFoldCounts] = useState<Record<string, number>>({});
-  const reportFold = useCallback((groupKey: string, count: number) => {
-    setFoldCounts(prev => (prev[groupKey] === count ? prev : { ...prev, [groupKey]: count }));
-  }, []);
-  const foldProps = { moreOpen, foldEpoch, onFoldCount: reportFold };
-  const foldedTotal = Object.values(foldCounts).reduce((sum, n) => sum + n, 0);
-
   const totalMatches = useMemo(() => {
     if (!searching) return 0;
     const loose = [titleVisible, notesVisible, subtasksVisible, dangerVisible].filter(Boolean).length;
@@ -741,6 +732,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const [medicationAmount, setMedicationAmount] = useState('');
   const [medicationUnit, setMedicationUnit] = useState<string | null>(null);
   const [logMealSlot, setLogMealSlot] = useState<MealSlot | null>(null);
+  const [logSavedMealId, setLogSavedMealId] = useState<string | null>(null);
+  const savedMeals = useSavedMealsStore(s => s.meals);
   // Every task this one waits on, in order. Several are allowed, and it waits
   // for all of them (Task.blockedByIds); stored through blockerFields on save.
   const [blockerIds, setBlockerIds] = useState<string[]>([]);
@@ -1078,10 +1071,6 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
     // A search belongs to the trip you made to find one field, not to the
     // sheet — reopening the editor on a filtered form would look broken.
     setSearchOpen(false);
-    // More options starts closed for each task, and the rows that were
-    // showing because they held a value are forgotten.
-    setMoreOpen(false);
-    setFoldEpoch(e => e + 1);
     // Same for a dismissed schedule phrase — belongs to this trip through
     // the title, not to the sheet.
     setDismissedScheduleSignature(null);
@@ -1189,6 +1178,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       setMedicationAmount(task.medicationAmount !== null ? String(task.medicationAmount) : '');
       setMedicationUnit(task.medicationUnit ?? null);
       setLogMealSlot(task.logMealSlot ?? null);
+      setLogSavedMealId(task.logSavedMealId ?? null);
       setPhoneNumber(task.phoneNumber ?? null);
       setEmailAddress(task.emailAddress ?? null);
       setLocation(task.location ?? null);
@@ -1261,6 +1251,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       );
       setMedicationUnit(initialDraft?.medicationUnit ?? null);
       setLogMealSlot(initialDraft?.logMealSlot ?? null);
+      setLogSavedMealId(initialDraft?.logSavedMealId ?? null);
       setPhoneNumber(initialDraft?.phoneNumber ?? null);
       setEmailAddress(initialDraft?.emailAddress ?? null);
       setLocation(initialDraft?.location ?? null);
@@ -1414,6 +1405,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       })(),
       medicationUnit: task ? (task.medicationUnit ?? null) : (initialDraft?.medicationUnit ?? null),
       logMealSlot: task ? (task.logMealSlot ?? null) : (initialDraft?.logMealSlot ?? null),
+      logSavedMealId: task ? (task.logSavedMealId ?? null) : (initialDraft?.logSavedMealId ?? null),
       phoneNumber: task ? (task.phoneNumber ?? null) : (initialDraft?.phoneNumber ?? null),
       emailAddress: task ? (task.emailAddress ?? null) : (initialDraft?.emailAddress ?? null),
       location: task ? (task.location ?? null) : (initialDraft?.location ?? null),
@@ -2205,6 +2197,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       medicationAmount: resolveMedicationAmount(),
       medicationUnit: resolveMedicationAmount() !== null ? medicationUnit : null,
       logMealSlot,
+      // A food needs a slot to be logged under, so clearing the slot clears it.
+      logSavedMealId: logMealSlot !== null ? logSavedMealId : null,
       phoneNumber: resolvePhoneNumber(),
       emailAddress: resolveEmailAddress(),
       location: resolveLocation(),
@@ -3039,6 +3033,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       medicationAmount,
       medicationUnit,
       logMealSlot,
+      logSavedMealId,
       phoneNumber,
       emailAddress,
       location,
@@ -4072,8 +4067,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       )}
 
       {/* Contact nudge — "Call Kristen"/"Text the plumber"/"Email the
-          landlord" with no number/email on the task yet. Tap reveals the
-          matching row in "More" below rather than setting anything itself.
+          landlord" with no number/email on the task yet. Tap opens the
+          matching field below rather than setting anything itself.
           Suppressed while searching: it's an unprompted suggestion, and a
           search is the one moment the user has said what they're after. */}
       {!searching && (showPhoneNudge || showEmailNudge) && (
@@ -4084,7 +4079,6 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             variant="neutral"
             surface="page"
             onPress={() => {
-              setMoreOpen(true);
               if (showPhoneNudge) {
                 setPhoneText(phoneNumber ?? '');
                 setShowPhoneField(true);
@@ -4113,7 +4107,6 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         divider="full"
         searchTerms={searchTerms}
         onMatchCount={reportMatches}
-        {...foldProps}
         rows={[
           {
             key: 'kind', label: 'Kind', set: kind !== 'task',
@@ -4139,7 +4132,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
           // something, and an avoid-task is never completed (see applyKind,
           // which resets this when the kind moves away).
           ...(kind === 'task' ? [{
-            key: 'polarity', label: 'Goal', set: polarity === 'negative', fold: true,
+            key: 'polarity', label: 'Goal', set: polarity === 'negative',
             keywords: ['avoid', 'negative', 'quit', 'stop', 'habit', 'dont', 'abstain', 'streak'],
             node: (
               <View style={styles.kindBlock}>
@@ -5115,7 +5108,6 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         label="Schedule"
         searchTerms={searchTerms}
         onMatchCount={reportMatches}
-        {...foldProps}
         rows={[
           {
             key: 'date', label: 'Date',
@@ -5856,7 +5848,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             ),
           },
           {
-            key: 'completionTimer', label: 'Completion timer', set: completionTimerMinutes !== null, fold: true,
+            key: 'completionTimer', label: 'Completion timer', set: completionTimerMinutes !== null,
             keywords: ['timer', 'alarm', 'after', 'later', 'reminder', 'wait', 'note', 'context', 'purpose', 'why'],
             node: (
               <>
@@ -6155,7 +6147,6 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         divider="full"
         searchTerms={searchTerms}
         onMatchCount={reportMatches}
-        {...foldProps}
         rows={[
           // Only when there is something to pick. An empty picker would teach
           // nothing — stacks are created from the + menu on Today, not here.
@@ -6570,7 +6561,6 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         divider="full"
         searchTerms={searchTerms}
         onMatchCount={reportMatches}
-        {...foldProps}
         rows={[
           {
             key: 'priority', label: 'Priority',
@@ -6789,7 +6779,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             ),
           }] : []),
           {
-            key: 'excludeFromSuggestions', label: 'Skip in suggestions', set: excludeFromSuggestions, fold: true,
+            key: 'excludeFromSuggestions', label: 'Skip in suggestions', set: excludeFromSuggestions,
             keywords: ['pin', 'focus', 'suggest', 'exclude', 'hide', 'shortlist'],
             node: (
               <>
@@ -6830,7 +6820,6 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         label="Relationships"
         searchTerms={searchTerms}
         onMatchCount={reportMatches}
-        {...foldProps}
         rows={[
           {
             key: 'waitingOn', label: 'Waiting on', set: blockerIds.length > 0,
@@ -6915,7 +6904,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
           // Beside "Waiting on" because until the question is answered it is
           // exactly that; see Task.answerGate for what happens after.
           {
-            key: 'answerGate', label: 'Only if', set: !!answerGate, fold: true,
+            key: 'answerGate', label: 'Only if', set: !!answerGate,
             keywords: ['answer', 'branch', 'decision', 'question', 'condition', 'if', 'choice', 'not needed'],
             node: (
               <>
@@ -6989,7 +6978,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
           // Only once somebody has been added, like the People field: a picker
           // with nothing in it is a prompt to start filing your friends.
           ...(people.length > 0 ? [{
-            key: 'waitingOnPerson', label: 'Waiting on someone', set: !!waitingOnPersonId, fold: true,
+            key: 'waitingOnPerson', label: 'Waiting on someone', set: !!waitingOnPersonId,
             keywords: ['blocked', 'person', 'friend', 'owes', 'chase', 'reply', 'follow up', 'nudge'],
             node: (
               <>
@@ -7337,7 +7326,6 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         label="On completion"
         searchTerms={searchTerms}
         onMatchCount={reportMatches}
-        {...foldProps}
         rows={[
           // Not one of the four kinds, and deliberately a row of its own below
           // them: the kinds are exclusive (bakedFields clears the other three)
@@ -7421,7 +7409,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
           // completion itself, not to a deadline the way the calendar toggle
           // in the Schedule group does.
           {
-            key: 'logCompletionToCalendar', label: 'Log to calendar', set: logCompletionToCalendar, fold: true,
+            key: 'logCompletionToCalendar', label: 'Log to calendar', set: logCompletionToCalendar,
             keywords: ['calendar', 'event', 'log', 'history', 'record'],
             node: (
               <TouchableOpacity
@@ -7472,7 +7460,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
           // to bake in — this used to log dietary water only.
           {
             key: 'logHealthValue', label: 'Log to Health',
-            set: logHealthMetric !== null && logHealthAmount !== null, fold: true,
+            set: logHealthMetric !== null && logHealthAmount !== null,
             keywords: ['water', 'hydration', 'drink', 'health', 'apple health', 'nutrient', 'protein', 'sodium', 'calories', 'sugar', 'fiber', 'fat', 'carbs', 'caffeine'],
             node: (() => {
               // Water is the one nutrient with a second unit worth offering —
@@ -7618,7 +7606,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
           // again would be recording the same fact twice. See
           // docs/arch/mood-log.md.
           {
-            key: 'medication', label: 'Log a dose', set: medicationName !== null, fold: true,
+            key: 'medication', label: 'Log a dose', set: medicationName !== null,
             keywords: ['medication', 'medicine', 'pill', 'tablet', 'dose', 'drug', 'supplement', 'vitamin', 'mg', 'prescription'],
             node: (
               <CollapsibleField
@@ -7678,49 +7666,95 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
               </CollapsibleField>
             ),
           },
-          // The fifth "what does completing this mean" row. Unlike the two
-          // above it never writes anything by itself — a plain task names no
-          // food and no amount, so completing it raises the same manual
+          // The fifth "what does completing this mean" row. With no food named
+          // it never writes anything by itself: a plain task names no food and
+          // no amount, so completing it raises the same manual
           // search-sheet offer a meal-plan task's own completion does (see
           // offerMealLog in useTaskStore.ts), prefilled with this slot and
-          // the task's own title. It needs no Settings switch for the same
+          // the task's own title. Naming a saved meal is what changes that:
+          // the meal is the food and the amount, so completing the task writes
+          // it (Task.logSavedMealId). It needs no Settings switch for the same
           // reason the medication row above doesn't: picking a slot here is
           // itself the opt-in.
           {
-            key: 'logMealSlot', label: 'Log to food log', set: logMealSlot !== null, fold: true,
-            keywords: ['food', 'meal', 'eat', 'nutrition', 'breakfast', 'lunch', 'dinner', 'snack', 'diet'],
-            node: (
-              <CollapsibleField
-                label="Log to food log"
-                summary={logMealSlot ? `Offers to log ${MEAL_SLOT_LABELS[logMealSlot].toLowerCase()} when completed` : undefined}
-                hint="Offers to add a food log entry for the meal below each time you complete this task."
-                expanded={fieldOpen('logMealSlot')}
-                onToggle={() => toggleField('logMealSlot')}
-                right={logMealSlot !== null ? (
-                  <TouchableOpacity
-                    onPress={() => {
-                      haptics.tap();
-                      setLogMealSlot(null);
-                      closeField('logMealSlot');
-                    }}
-                    hitSlop={8}
-                    accessibilityRole="button"
-                    accessibilityLabel="Clear log to food log"
-                  >
-                    <Ionicons name="close-circle" size={16} color={colors.textSecondary} />
-                  </TouchableOpacity>
-                ) : undefined}
-              >
-                <SegmentedControl<MealSlot>
-                  options={MEAL_SLOTS.map(slot => ({ value: slot, label: MEAL_SLOT_LABELS[slot] }))}
-                  value={logMealSlot ?? 'breakfast'}
-                  onChange={next => { haptics.tap(); setLogMealSlot(next); }}
-                  columns={2}
-                  label="Meal"
-                  surface="card"
-                />
-              </CollapsibleField>
-            ),
+            key: 'logMealSlot', label: 'Log to food log', set: logMealSlot !== null,
+            keywords: ['food', 'meal', 'eat', 'nutrition', 'breakfast', 'lunch', 'dinner', 'snack', 'diet', 'saved meal', 'supplement', 'fiber'],
+            node: (() => {
+              const chosenMeal = logSavedMealId ? savedMeals.find(m => m.id === logSavedMealId) ?? null : null;
+              return (
+                <CollapsibleField
+                  label="Log to food log"
+                  summary={
+                    chosenMeal && logMealSlot
+                      ? `Logs ${chosenMeal.name} when completed`
+                      : logMealSlot ? `Offers to log ${MEAL_SLOT_LABELS[logMealSlot].toLowerCase()} when completed` : undefined
+                  }
+                  hint="Adds a food log entry each time you complete this task, under the meal below. Pick a saved meal to log it right away, or leave it on Ask each time to choose the food then. Unchecking the task removes what it logged."
+                  expanded={fieldOpen('logMealSlot')}
+                  onToggle={() => toggleField('logMealSlot')}
+                  right={logMealSlot !== null ? (
+                    <TouchableOpacity
+                      onPress={() => {
+                        haptics.tap();
+                        setLogMealSlot(null);
+                        setLogSavedMealId(null);
+                        closeField('logMealSlot');
+                      }}
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel="Clear log to food log"
+                    >
+                      <Ionicons name="close-circle" size={16} color={colors.textSecondary} />
+                    </TouchableOpacity>
+                  ) : undefined}
+                >
+                  <SegmentedControl<MealSlot>
+                    options={MEAL_SLOTS.map(slot => ({ value: slot, label: MEAL_SLOT_LABELS[slot] }))}
+                    value={logMealSlot ?? 'breakfast'}
+                    onChange={next => { haptics.tap(); setLogMealSlot(next); }}
+                    columns={2}
+                    label="Meal"
+                    surface="card"
+                  />
+                  {/* Saved meals are the one open set here, built from the food
+                      log's Save as meal, so this is a PillGroup rather than a
+                      track. "Ask each time" is pinned for the reason PillGroup
+                      pins every option meaning no choice. With none saved the
+                      row says how to make one rather than showing an empty set. */}
+                  <Text style={styles.kindHint}>Food</Text>
+                  {savedMeals.length === 0 ? (
+                    <Text style={styles.kindHint}>
+                      No saved meals yet. In the food log, select an entry and choose Save as meal, then pick it here.
+                    </Text>
+                  ) : (
+                    <PillGroup
+                      noun="saved meal"
+                      surface="card"
+                      filterPlaceholder="Find a saved meal…"
+                      options={[
+                        {
+                          key: '',
+                          label: 'Ask each time',
+                          selected: !chosenMeal,
+                          pinned: true,
+                          onPress: () => { haptics.tap(); setLogSavedMealId(null); },
+                        },
+                        ...savedMeals.map(meal => ({
+                          key: meal.id,
+                          label: meal.name,
+                          selected: meal.id === chosenMeal?.id,
+                          onPress: () => {
+                            haptics.tap();
+                            setLogSavedMealId(meal.id);
+                            if (logMealSlot === null) setLogMealSlot(slotForHour(new Date().getHours()));
+                          },
+                        })),
+                      ]}
+                    />
+                  )}
+                </CollapsibleField>
+              );
+            })(),
           },
         ]}
       />
@@ -7732,10 +7766,9 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         label="Task actions"
         searchTerms={searchTerms}
         onMatchCount={reportMatches}
-        {...foldProps}
         rows={[
           {
-            key: 'link', label: 'Link', set: !!linkUrl || showLinkPicker, fold: true,
+            key: 'link', label: 'Link', set: !!linkUrl || showLinkPicker,
             keywords: ['url', 'website', 'open', 'app', 'address'],
             node: (
               <>
@@ -7799,7 +7832,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             ),
           },
           {
-            key: 'phone', label: 'Phone', set: !!phoneNumber || showPhoneField, fold: true,
+            key: 'phone', label: 'Phone', set: !!phoneNumber || showPhoneField,
             keywords: ['call', 'text', 'number', 'sms', 'contact'],
             node: (
               <>
@@ -7853,7 +7886,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             ),
           },
           {
-            key: 'email', label: 'Email', set: !!emailAddress || showEmailField, fold: true,
+            key: 'email', label: 'Email', set: !!emailAddress || showEmailField,
             keywords: ['mail', 'contact', 'compose', 'address'],
             node: (
               <>
@@ -7897,26 +7930,6 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         ]}
       />
 
-      {/* More options — reveals the rows tagged `fold` above (completion logging,
-          link/phone/email, Goal, Only if, and the like). Hidden while searching,
-          since a search already shows every match wherever it lives. Below the
-          last group rather than at the top so someone looking for a rarely used
-          field finds it where the form ends. */}
-      {!searching && (foldedTotal > 0 || moreOpen) && (
-        <View style={styles.moreOptionsRow}>
-          <InlineAction
-            icon={moreOpen ? 'chevron-up' : 'chevron-down'}
-            label={moreOptionsLabel(foldedTotal, moreOpen)}
-            variant="neutral"
-            surface="page"
-            onPress={() => {
-              animateLayout();
-              setMoreOpen(open => !open);
-            }}
-          />
-        </View>
-      )}
-
       {/* Streaks — a task that repeats, once it has one. Vacation pause used to sit here because
           keeping a streak alive through a week away is what it is for, but it applies to every task, so it
           is in Organize now. */}
@@ -7924,7 +7937,6 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         label="Streaks"
         searchTerms={searchTerms}
         onMatchCount={reportMatches}
-        {...foldProps}
         rows={[
           ...(task && task.recurrenceType !== 'none' ? [{
             key: 'streak', label: 'Streak', set: liveStreakTask!.streakCount > 0,
@@ -8187,11 +8199,6 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     paddingVertical: 7,
     borderRadius: radius.md,
     backgroundColor: colors.accentFill,
-  },
-  moreOptionsRow: {
-    alignItems: 'center',
-    marginHorizontal: spacing.md,
-    marginBottom: spacing.lg,
   },
   scheduleBannerText: {
     color: colors.onAccent,

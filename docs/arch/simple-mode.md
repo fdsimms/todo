@@ -112,27 +112,20 @@ new one goes. Same call `AppNavigator` already makes about the recipe-timer dot 
 - **`aiFeatureConfig`, and every setting for a hidden feature.** Hidden, never rewritten, so the
   whole thing comes back as it was.
 
-## A fold that is not the mode
+## No fold in the task editor
 
-Simplified mode is a switch a person turns on. Some of the same relief applies to everyone, without
-a switch, as a **fold**: a row tagged `fold` in the task editor (`EditorGroupRow.fold`, decided by
-`isRowFolded` in `src/utils/editorFold.ts`) waits behind one "More options" button until it
-has a reason to show. The reasons are the mode's own rule 2 plus two more: the task already holds
-a value for it (`set`), the user opened More options, a search is running, or the row was on
-screen earlier in the session because it held a value. A row that tags itself `fold` therefore has to report `set` too,
-or a task already using it would lose sight of the value.
+The task editor once hid its rarely used rows behind a "More options" button (`fold` on
+`EditorGroupRow`). It was removed: a button reading "(12 hidden)" made people hunt for fields that
+were simply one tap away, so every row not covered by the mode is on screen again. Don't bring the
+fold back for the editor; if the form is too long, the answer is the mode or a better grouping.
 
-It composes with the mode instead of replacing it: the mode removes whole capabilities, the fold only
-postpones the rows nearly nobody touches (completion logging, link, phone, email, Goal, Only if,
-completion timer, skip in suggestions). Nothing is cleared or stored differently.
-
-The same idea at Settings level is `SettingsDisclosure` (one row that opens a run of rows, and
+The same idea at Settings level exists as `SettingsDisclosure` (one row that opens a run of rows, and
 opens itself when a search or link points inside it), and `visibleSettingsGroups` drops a group
 the mode has left with no rows.
 
 **Not done, deliberately:** a middle level between "everything" and this mode. `simpleMode` is a
 boolean read in about 200 places, many as plain truthiness rather than through `featureHidden`, so a
-third state needs every one of them reviewed. `TemplateItemEditor` also has no gating and no fold yet.
+third state needs every one of them reviewed. `TemplateItemEditor` also has no gating yet.
 
 ## Tips
 

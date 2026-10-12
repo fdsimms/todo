@@ -2524,6 +2524,17 @@ export interface Task {
   // this slot and the task's title, rather than writing a FoodLogEntry
   // outright — see FoodLogEntrySheet.tsx.
   logMealSlot: MealSlot | null;
+  // A saved meal (`SavedMeal`) completing this task logs straight to the food
+  // log, in `logMealSlot`'s slot: "Metamucil" logs that you took Metamucil with
+  // no sheet to answer. Null or absent means the offer above is all that
+  // happens. Optional so a row or fixture from before it reads as off.
+  //
+  // Resolve-or-shrug, the same call `MealPlanEntry.recipeId` makes: a saved
+  // meal that has since been deleted falls back to the manual offer rather than
+  // logging nothing, so the tick is never silently a no-op. Each entry written
+  // carries `FoodLogEntry.taskId`, and uncompleting the task takes them back.
+  // Rides ...effective onto the next occurrence like logMealSlot does.
+  logSavedMealId?: string | null;
   deferUntil: string | null;
   timeSegments: TimeOfDay[];
   windowStart: string | null; // "HH:MM" — task only becomes visible/active from this time on its day
@@ -5170,6 +5181,14 @@ export interface FoodLogEntry {
   itemId: string | null;
   productId: string | null;
   mealPlanEntryId: string | null;
+  /**
+   * The task whose completion wrote this entry (`Task.logSavedMealId`), so
+   * un-completing it can take the entry back, the way `MedicationLog.taskId`
+   * does for a dose. Provenance only and free to dangle: deleting the task
+   * leaves the entry, because the food was still eaten. Optional because absent
+   * and null read the same everywhere.
+   */
+  taskId?: string | null;
   /** The amount as entered — "1 serving", "2 cups", "340g". */
   quantity: string;
   /** What that amount resolved to in grams, or null when nothing could resolve it. */

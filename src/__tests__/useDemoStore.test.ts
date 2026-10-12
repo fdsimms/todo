@@ -2321,6 +2321,14 @@ describe('demo seed — people', () => {
     expect(logTask!.logMealSlot).toBe('breakfast');
   });
 
+  it('seeds a task that names a saved meal and logs it on completion', () => {
+    const task = useTaskStore.getState().tasks.find(t => t.title === 'Have my usual breakfast');
+    expect(task).toBeDefined();
+    expect(task!.logMealSlot).toBe('breakfast');
+    const meal = useSavedMealsStore.getState().meals.find(m => m.name === 'Usual breakfast');
+    expect(task!.logSavedMealId).toBe(meal!.id);
+  });
+
   it('seeds a limit and a supply on an as-needed medication', () => {
     const { logs, settings } = useMedicationStore.getState();
     const { limit, supply } = prefsFor(settings, 'Ibuprofen');

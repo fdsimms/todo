@@ -117,7 +117,8 @@ export function completionTapFor(task: Task, recordReady = false): CompletionTap
  */
 export function offersMealLogOnCompletion(task: Task, mealLogPromptEnabled: boolean): boolean {
   if (task.completed) return false;
-  if (task.logMealSlot) return true;
+  // A named food is logged by the tick itself, so no sheet follows it.
+  if (task.logMealSlot && !task.logSavedMealId) return true;
   if (!mealLogPromptEnabled) return false;
   return (mealSlotOf(task) !== null && completesMealSlot(task)) || mealLogNudgeEntryId(task) !== null;
 }

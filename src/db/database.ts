@@ -2116,6 +2116,12 @@ function runInitDatabase(): void {
     // 0 on every existing row, which keeps the streak counting periods in a
     // row. See Task.streakCountsUnits.
     'ALTER TABLE tasks ADD COLUMN streak_counts_units INTEGER NOT NULL DEFAULT 0',
+    // The saved meal completing this task logs straight to the food log. NULL on
+    // every existing row, which is the feature being off. See Task.logSavedMealId.
+    'ALTER TABLE tasks ADD COLUMN log_saved_meal_id TEXT',
+    // The task whose completion wrote this entry, so un-completing it can take
+    // the entry back. NULL on every row but those. See FoodLogEntry.taskId.
+    'ALTER TABLE food_logs ADD COLUMN task_id TEXT',
     // Null on every existing task: none of them is a look-back. See Task.reviewOfTaskId.
     'ALTER TABLE tasks ADD COLUMN review_of_task_id TEXT',
     // Null on every existing entry: all of them were open when written. See
@@ -3582,6 +3588,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     quotaRampGoal: (row.quota_ramp_goal as number | null) ?? null,
     quotaRampHits: (row.quota_ramp_hits as number | null) ?? 0,
     streakCountsUnits: Boolean(row.streak_counts_units),
+    logSavedMealId: (row.log_saved_meal_id as string | null) || null,
     reviewOfTaskId: (row.review_of_task_id as string | null) ?? null,
     targetCount: (row.target_count as number | null) ?? null,
     progressCount: (row.progress_count as number) ?? 0,
@@ -3795,8 +3802,8 @@ export function dbInsertTask(task: Task): void {
       blocked_by_ids, deliverable_options, deliverable_sets_away, follow_up_on, extra_task_source_id,
       pin_each_occurrence, bounty_pushes, difficulty, answer_gate, deliverable_why, deliverable_revisit_if, extra_task_at_end, weather_wait, wait_for_series_end, rotation_plan, slip_allowance, done_by_other_at, window_start_sun, window_end_sun, recurrence_holidays,
       meter_name, meter_unit, meter_every, meter_due_at, meter_limit_months, meter_held_until, rain_skip_mm, rain_skipped_on, review_of_task_id,
-      quota_ramp_step, quota_ramp_every, quota_ramp_goal, quota_ramp_hits, streak_counts_units
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      quota_ramp_step, quota_ramp_every, quota_ramp_goal, quota_ramp_hits, streak_counts_units, log_saved_meal_id
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deadlineTime ?? null, task.deferUntil,
@@ -3938,6 +3945,7 @@ export function dbInsertTask(task: Task): void {
       task.quotaRampGoal ?? null,
       task.quotaRampHits ?? 0,
       task.streakCountsUnits ? 1 : 0,
+      task.logSavedMealId ?? null,
     ]
   );
 }
@@ -3976,7 +3984,7 @@ export function dbUpdateTask(task: Task): void {
       blocked_by_ids=?, deliverable_options=?, deliverable_sets_away=?, follow_up_on=?, extra_task_source_id=?,
       pin_each_occurrence=?, bounty_pushes=?, difficulty=?, answer_gate=?, deliverable_why=?, deliverable_revisit_if=?, extra_task_at_end=?, weather_wait=?, wait_for_series_end=?, rotation_plan=?, slip_allowance=?, done_by_other_at=?, window_start_sun=?, window_end_sun=?, recurrence_holidays=?,
       meter_name=?, meter_unit=?, meter_every=?, meter_due_at=?, meter_limit_months=?, meter_held_until=?, rain_skip_mm=?, rain_skipped_on=?, review_of_task_id=?,
-      quota_ramp_step=?, quota_ramp_every=?, quota_ramp_goal=?, quota_ramp_hits=?, streak_counts_units=?
+      quota_ramp_step=?, quota_ramp_every=?, quota_ramp_goal=?, quota_ramp_hits=?, streak_counts_units=?, log_saved_meal_id=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -4119,6 +4127,7 @@ export function dbUpdateTask(task: Task): void {
       task.quotaRampGoal ?? null,
       task.quotaRampHits ?? 0,
       task.streakCountsUnits ? 1 : 0,
+      task.logSavedMealId ?? null,
       task.id,
     ]
   );
@@ -7392,6 +7401,7 @@ function rowToFoodLogEntry(row: Record<string, unknown>): FoodLogEntry | null {
     itemId: (row.item_id as string) || null,
     productId: (row.product_id as string) || null,
     mealPlanEntryId: (row.meal_plan_entry_id as string) || null,
+    taskId: (row.task_id as string) || null,
     quantity: (row.quantity as string) ?? '',
     grams: typeof row.grams === 'number' && Number.isFinite(row.grams) ? row.grams : null,
     nutrition,
@@ -7460,15 +7470,15 @@ export function dbInsertFoodLogEntry(entry: FoodLogEntry): void {
   db.runSync(
     `INSERT INTO food_logs (id, day_key, at_iso, slot, label, recipe_id, item_id, product_id,
        meal_plan_entry_id, quantity, grams, nutrition, source_panel, health_sample_ids,
-       health_write_pending, sort_order, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       health_write_pending, sort_order, created_at, task_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       entry.id, entry.dayKey, entry.atISO, entry.slot, entry.label,
       entry.recipeId, entry.itemId, entry.productId, entry.mealPlanEntryId,
       entry.quantity, entry.grams, serializeFoodNutrition(entry.nutrition),
       serializeFoodNutrition(entry.sourcePanel ?? null),
       JSON.stringify(entry.healthSampleIds), entry.healthWritePending ? 1 : 0,
-      entry.sortOrder, entry.createdAt,
+      entry.sortOrder, entry.createdAt, entry.taskId ?? null,
     ]
   );
 }
@@ -7488,6 +7498,19 @@ export function dbUpdateFoodLogEntry(entry: FoodLogEntry): void {
       entry.sortOrder, entry.id,
     ]
   );
+}
+
+/**
+ * Every entry a task's completion wrote, on any day. The range read the screens
+ * use can't answer this: un-completing a task from last week has to find the
+ * entry dated last week.
+ */
+export function dbGetFoodLogEntriesForTask(taskId: string): FoodLogEntry[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    'SELECT * FROM food_logs WHERE task_id = ? ORDER BY at_iso ASC',
+    [taskId]
+  );
+  return rows.map(rowToFoodLogEntry).filter((e): e is FoodLogEntry => e !== null);
 }
 
 export function dbDeleteFoodLogEntry(id: string): void {

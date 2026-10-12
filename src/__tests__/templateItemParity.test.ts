@@ -61,6 +61,10 @@ const NOT_SEEDED: Record<string, string[]> = {
   // Names someone or something outside the template that a run can't know.
   'names a person or a date outside the template': ['waitingOnPersonId', 'followUpOn'],
 
+  // Points at a row in this person's own saved meals, which a template shared
+  // to another person (or run on another device before sync) can't resolve.
+  'names a saved meal outside the template': ['logSavedMealId'],
+
   // The reading a task is due at is where one meter stood at one moment. A run
   // can't know where the odometer is now, so a seeded "due at 45,000" would be
   // wrong for every run but the first.

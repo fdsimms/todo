@@ -972,6 +972,21 @@ migration is partial.** Log half of Tuesday here and half in Cronometer and
 Tuesday reads as whichever half was larger, not as the day. That is the safe
 direction and it is not an obvious one.
 
+### A task that names its food writes the entry, and takes it back
+
+`Task.logSavedMealId` points a task's "Log to food log" row at one of the person's saved meals, and
+completing the task then logs that meal straight away (`completeTask` in `useTaskStore.ts`, through
+`useSavedMealsStore.logMeal`), with no sheet. That is the one place a task writes the food log
+unattended by a prompt, and it is allowed because the saved meal already is the food and the amount:
+nothing is guessed, which is the reason the plain `logMealSlot` row only ever offers.
+
+Two rules keep it honest. **Each entry carries `FoodLogEntry.taskId`**, and un-completing the task
+removes them (`removeEntriesForTask`, which retracts any Health samples the way a delete does), the
+same shape as `MedicationLog.taskId`. A task ticked by mistake means the food was not eaten, and a
+phantom entry would corrupt the day's totals. And **a missed completion logs nothing**, nor does a
+saved meal that has since been deleted: that case falls back to the manual offer, so the tick is
+never a silent no-op. Deleting the task leaves its entries, since the food was eaten.
+
 ### A meal described with no signal waits as a description, never as an entry
 
 `utils/estimateQueue.ts`, `usePendingEstimateStore`, `PendingEstimatesCard`. When

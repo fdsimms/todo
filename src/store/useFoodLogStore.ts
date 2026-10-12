@@ -9,6 +9,7 @@ import {
   dbDeleteFoodLogEntry,
   dbGetFoodLogEntries,
   dbGetFoodLogEntry,
+  dbGetFoodLogEntriesForTask,
   dbGetPendingHealthFoodEntries,
   dbInsertFoodLogEntry,
   dbUpdateFoodLogEntry,
@@ -93,6 +94,8 @@ export interface FoodLogDraft {
   itemId?: string | null;
   productId?: string | null;
   mealPlanEntryId?: string | null;
+  /** The task whose completion is writing this entry. See `FoodLogEntry.taskId`. */
+  taskId?: string | null;
   /**
    * The panel the helping was measured against, for a food no catalog row
    * holds. See `FoodLogEntry.sourcePanel`; null or absent for anything linked.
@@ -347,6 +350,12 @@ interface FoodLogStore extends UndoHistoryActions {
   removeEntry: (id: string, opts?: { undoable?: boolean }) => void;
   /** Forget several entries at once — the bulk bar's Delete. */
   removeEntries: (ids: string[]) => void;
+  /**
+   * Forget what a task's completion logged (`FoodLogEntry.taskId`), on any day.
+   * Never offers an undo of its own: the un-completing action that calls it has
+   * the undo bar, and a second "Deleted ..." would replace it.
+   */
+  removeEntriesForTask: (taskId: string) => void;
   /** Re-slot several entries at once — the bulk bar's Move to meal. */
   moveEntries: (ids: string[], slot: MealSlot | null) => void;
   /**
@@ -958,6 +967,12 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
         undo: () => restoreEntries(removed, get, set),
         redo: () => get().removeEntries(ids),
       });
+    }
+  },
+
+  removeEntriesForTask(taskId) {
+    for (const entry of dbGetFoodLogEntriesForTask(taskId)) {
+      get().removeEntry(entry.id, { undoable: false });
     }
   },
 

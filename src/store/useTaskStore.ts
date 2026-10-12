@@ -3982,12 +3982,28 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (!missed) {
       const loggableEntryId = cookedEntryId ?? logNudgeEntryId;
       const loggable = loggableEntryId ? dbGetMealPlanEntry(loggableEntryId) : null;
+      const loggedSavedMeal = !loggable && task.logSavedMealId
+        ? useSavedMealsStore.getState().meals.find(m => m.id === task.logSavedMealId) ?? null
+        : null;
       if (loggable) {
         // A "Log dinner" nudge ticked is a request to log it, so a recipe with
         // no figures goes on to the search sheet rather than completing with
         // nothing opened (see PendingMealLog.asked). The Eat step is the app
         // volunteering, and stays quiet for one.
         offerMealLog(loggable, !cookedEntryId);
+      } else if (loggedSavedMeal) {
+        // A task that names its food ("Metamucil") has nothing left to ask: the
+        // saved meal is the food and the amount, so the tick writes it. Stamped
+        // with this task so uncompleteTask takes it back, and kept out of
+        // shake-to-undo since the completion already owns the undo bar. A saved
+        // meal that has since been deleted isn't found above and falls through
+        // to the manual offer below, so the tick is never a silent no-op.
+        useSavedMealsStore.getState().logMeal(
+          loggedSavedMeal,
+          task.logMealSlot ?? null,
+          completedAt,
+          { taskId: id, undoable: false },
+        );
       } else if (task.logMealSlot) {
         // An arbitrary task ("Log breakfast", "Pack lunch") opted into the
         // same offer, but names no recipe and no meal-plan entry — so it
@@ -4250,6 +4266,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       if (isQuotaTask(task) && !isMissed(task)) medication.removeLatestLogForTask(id);
       else medication.removeLogsForTask(id);
     }
+    // What a named food logged on completion goes with it, for the reason the
+    // dose does above: a task ticked by mistake means the food was not eaten.
+    // Matched on FoodLogEntry.taskId, so it finds the entries on whatever day
+    // they were written and touches nothing the person logged by hand.
+    if (task.logSavedMealId) useFoodLogStore.getState().removeEntriesForTask(id);
     dbUpdateTask(updated);
     // Reopened, so a deadline it still carries is live again.
     reconcileDeadlineEvent(updated);
@@ -8364,6 +8385,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       medicationAmount: null,
       medicationUnit: null,
       logMealSlot: null,
+      logSavedMealId: null,
       estimateBeforeTiming: null,
       parentId,
       groupId: null,
@@ -8591,6 +8613,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       medicationAmount: null,
       medicationUnit: null,
       logMealSlot: null,
+      logSavedMealId: null,
       estimateBeforeTiming: null,
       parentId: null,
       groupId,
