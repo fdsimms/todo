@@ -331,7 +331,7 @@ export function MedicationDetailScreen() {
         ref={scrollTop.ref}
         {...scrollTop.listProps}
         style={styles.scroll}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: scrollTop.buttonProps.bottom + SCROLL_TOP_SIZE + spacing.md }]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: scrollTop.clearance }]}
       >
         <View style={styles.statRow}>
           <View style={styles.statCell} accessible accessibilityLabel={`${stat.doses} ${stat.doses === 1 ? 'dose' : 'doses'} recorded`}>
@@ -724,9 +724,6 @@ export function MedicationDetailScreen() {
     </View>
   );
 }
-
-// ScrollToTopButton's own diameter, so the last row can clear it.
-const SCROLL_TOP_SIZE = 44;
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },

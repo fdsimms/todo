@@ -563,7 +563,7 @@ export function StatsScreen() {
           ref={scrollTop.ref}
           {...scrollTop.listProps}
           refreshControl={pullSearch.refreshControl}
-          contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}
+          contentContainerStyle={[styles.scroll, { paddingBottom: Math.max(insets.bottom + 100, scrollTop.clearance) }]}
           showsVerticalScrollIndicator={false}
         >
 

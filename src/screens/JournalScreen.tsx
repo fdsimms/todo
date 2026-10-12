@@ -395,7 +395,7 @@ function JournalLogContent({ kind }: { kind: JournalKind }) {
         style={styles.list}
         data={days}
         keyExtractor={day => day.dayKey}
-        contentContainerStyle={[styles.listContent, { paddingBottom: tabBarHeight + spacing.xl }]}
+        contentContainerStyle={[styles.listContent, { paddingBottom: Math.max(tabBarHeight + spacing.xl, scrollTop.clearance) }]}
         keyboardShouldPersistTaps="handled"
         ListHeaderComponent={search.query || tagFilter ? null : (
           <>

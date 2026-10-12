@@ -182,7 +182,7 @@ export function ArchivedScreen() {
   // list always clears it; selection mode stacks the bulk bar on top of that.
   const listBottomPadding = selectionMode
     ? tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm
-    : tabBarHeight + spacing.md;
+    : Math.max(tabBarHeight + spacing.md, scrollTop.clearance);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>

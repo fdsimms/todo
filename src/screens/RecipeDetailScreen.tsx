@@ -130,7 +130,7 @@ import { plannedMealLabel } from '../utils/recipePlanned';
 import { resetToMealPlan } from '../navigation/navigationRef';
 import { TextField } from '../components/TextField';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
-import { ScrollToTopButton } from '../components/ScrollToTopButton';
+import { ScrollToTopButton, SCROLL_TO_TOP_SIZE } from '../components/ScrollToTopButton';
 import { useActionMenu } from '../hooks/useActionMenu';
 import type { ActionMenuAction } from '../components/ActionMenu';
 
@@ -1870,7 +1870,8 @@ export function RecipeDetailScreen() {
         // Same while a paint gesture owns the touch: iOS has to be told
         // directly (see PaintSelectionProvider).
         scrollEnabled={!dragging && !painting}
-        contentContainerStyle={styles.scroll}
+        // The footer bar covers most of the button's rise; selecting hides it.
+        contentContainerStyle={[styles.scroll, { paddingBottom: selectionMode ? scrollTop.clearance : spacing.md + SCROLL_TO_TOP_SIZE }]}
         keyboardShouldPersistTaps="handled"
         {...keyboardScroll.props}
         {...scrollTop.listProps}

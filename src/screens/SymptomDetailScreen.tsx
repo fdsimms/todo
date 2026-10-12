@@ -180,7 +180,7 @@ export function SymptomDetailScreen() {
         ref={scrollTop.ref}
         {...scrollTop.listProps}
         style={styles.scroll}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + spacing.xl }]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(insets.bottom + spacing.xl, scrollTop.clearance) }]}
       >
         <View style={styles.statRow}>
           <View

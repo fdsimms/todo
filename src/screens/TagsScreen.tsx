@@ -394,7 +394,7 @@ export function TagsScreen() {
                 ListFooterComponent={
                   tagTasks.length === 0
                     ? null
-                    : <TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />
+                    : <TouchableOpacity style={[styles.listFooter, { minHeight: Math.max(120, sheetScrollTop.clearance) }]} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />
                 }
                 ListFooterComponentStyle={tagTasks.length === 0 ? undefined : styles.listFooterCell}
                 ListEmptyComponent={
