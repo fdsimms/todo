@@ -8,6 +8,7 @@ import {
   type PersonToken,
 } from './parseTaskInput';
 import { defaultNewEventSpan } from './eventPeople';
+import { peopleNamedInTitle } from './calendarHistory';
 import { parseDurationTail, type ParsedSchedule } from './parseTaskInput';
 import type { TimeOfDay } from '../types';
 import type { ClockTime } from './parseNaturalDate';
@@ -19,7 +20,8 @@ import type { ClockTime } from './parseNaturalDate';
  * (`saveEventDirect`), and names who to link it to afterward.
  *
  * **It reuses quick add's two readers rather than growing its own**:
- * `parseTaskInput` for the day and time, `matchPersonMentions` for "@name".
+ * `parseTaskInput` for the day and time, `matchPersonMentions` for "@name",
+ * and `peopleAfterWith` for the names after "with" or "w/".
  * Both already carry the refusals that matter (a schedule phrase must be a
  * suffix, an ambiguous "@sam" names nobody), so an event line reads exactly
  * the way a task line does.
@@ -220,6 +222,24 @@ export function parseClockRange(input: string): { start: number; from: ClockTime
 // " at Joe's", where the clause runs to the end of what is left.
 const LOCATION_CLAUSE = /\s+at\s+(\S.*)$/i;
 
+// "with Gideon", "w/ Gideon", "w/Gideon". The word has to stand alone, so
+// "without" and "forthwith" don't count, and what follows it is read for names.
+const WITH_MARKER = /(?<![a-z0-9])(?:with(?![a-z0-9])|w\/)\s*/i;
+
+/**
+ * The people a line names after "with" or "w/" ("Big walk with Bylila"), out
+ * of the people already added. Typing the word is the deliberate act an "@"
+ * is, so these link on their own. Only what follows the first marker is read,
+ * so a name earlier in the line ("Gideon's birthday") links nobody, and the
+ * match is `peopleNamedInTitle`'s: whole-word, exact, ambiguity resolves to
+ * nobody, and nobody is ever created.
+ */
+export function peopleAfterWith(line: string, people: readonly PersonToken[]): string[] {
+  const marker = WITH_MARKER.exec(line);
+  if (!marker) return [];
+  return peopleNamedInTitle(line.slice(marker.index + marker[0].length), people);
+}
+
 /** A representative hour for a day-part word with no clock time. */
 const DAY_PART_HOUR: Record<TimeOfDay, number> = {
   morning: 9,
@@ -323,7 +343,10 @@ export function parseQuickEvent(
     matchPersonMentions(body, [...opts.people], [...(opts.groups ?? [])]),
     opts.mentionOverrides ?? {}
   );
-  const personIds = [...new Set(mentions.map(m => m.personId))];
+  // "with Gideon" links like "@gideon" does, except where the line is an
+  // opened event's own title, which is read as plain text until changed.
+  const withIds = opts.plain ? [] : peopleAfterWith(input, opts.people);
+  const personIds = [...new Set([...mentions.map(m => m.personId), ...withIds])];
 
   // Rebuild the title from the original input so both kinds of span can be
   // edited by index: the schedule phrase dropped, each mention named.

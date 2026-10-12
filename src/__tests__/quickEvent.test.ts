@@ -42,6 +42,46 @@ describe('parseQuickEvent', () => {
     expect(draft.personIds).toEqual(['p1', 'p2']);
   });
 
+  describe('"with" and "w/"', () => {
+    it.each(['Big walk with Tessa', 'Big walk w/ Tessa', 'Big walk w/Tessa', 'Big WITH Tessa'])('links the person named in "%s"', line => {
+      const draft = parseQuickEvent(line, opts);
+      expect(draft.personIds).toEqual(['p2']);
+      expect(draft.title).toBe(line);
+    });
+
+    it('matches a first name against a full name and reads past the schedule phrase', () => {
+      const draft = parseQuickEvent('lunch with Gideon tomorrow 12pm', opts);
+      expect(draft.personIds).toEqual(['p1']);
+      expect(draft.scheduled).toBe(true);
+    });
+
+    it('links everybody named, once, alongside an @mention', () => {
+      expect(parseQuickEvent('beach with Gideon and Tessa', opts).personIds).toEqual(['p1', 'p2']);
+      expect(parseQuickEvent('beach with @tessa and Tessa', opts).personIds).toEqual(['p2']);
+    });
+
+    it('still finds the name when a place follows', () => {
+      expect(parseQuickEvent("dinner at Joe's with Tessa", opts).personIds).toEqual(['p2']);
+    });
+
+    it('links nobody without the word, before it, or for an unknown name', () => {
+      expect(parseQuickEvent('Tessa birthday dinner', opts).personIds).toEqual([]);
+      expect(parseQuickEvent('Tessa party with the team', opts).personIds).toEqual([]);
+      expect(parseQuickEvent('walk with Bylila', opts).personIds).toEqual([]);
+      expect(parseQuickEvent('go without Tessa', opts).personIds).toEqual([]);
+    });
+
+    it('refuses an ambiguous name', () => {
+      const twoSams = [...people, { id: 'p3', name: 'Sam Ortiz', nickname: '' }, { id: 'p4', name: 'Sam Lee', nickname: '' }];
+      expect(parseQuickEvent('lunch with Sam', { ...opts, people: twoSams }).personIds).toEqual([]);
+      expect(parseQuickEvent('lunch with Sam Lee', { ...opts, people: twoSams }).personIds).toEqual(['p4']);
+    });
+
+    it('leaves an opened event\'s own title unlinked', () => {
+      expect(parseQuickEvent('Big walk with Tessa', { ...opts, plain: true }).personIds).toEqual([]);
+    });
+  });
+
   it('uses a representative hour for a day-part word', () => {
     const draft = parseQuickEvent('dinner tomorrow evening', opts);
     expect(draft.start.getHours()).toBe(19);
