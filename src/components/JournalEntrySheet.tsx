@@ -115,6 +115,7 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
   const [personIds, setPersonIds] = useState<string[]>([]);
   const [tagsOpen, setTagsOpen] = useState(false);
   const [peopleOpen, setPeopleOpen] = useState(false);
+  const [hideOpen, setHideOpen] = useState(false);
   // Whether the text on the page came back from a kept draft, said once.
   const [restoredDraft, setRestoredDraft] = useState(false);
   // The selection is tracked for the formatting bar (see useTitleSelection for
@@ -137,6 +138,7 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
     setPersonIds(editing?.personIds ?? []);
     setTagsOpen(false);
     setPeopleOpen(false);
+    setHideOpen(false);
     setDay(getLogicalToday());
     setPickerOpen(false);
     setOpenOn(null);
@@ -291,33 +293,6 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
             value={dayLabel(day)}
             onPress={() => { haptics.tap(); setPickerOpen(true); }}
           />
-          {canSeal && (
-            <EditorRow
-              icon="lock-closed-outline"
-              label="Hide until"
-              hint="Save this as a note to your future self"
-              value={openOn ? format(openOn, 'EEE, MMM d, yyyy') : 'Not hidden'}
-              onPress={() => { haptics.tap(); setOpenOnPickerOpen(true); }}
-            />
-          )}
-          {canSeal && (
-            <View style={styles.shortcuts}>
-              {shortcuts.map(shortcut => (
-                <InlineAction
-                  key={shortcut.label}
-                  label={shortcut.label}
-                  variant="neutral"
-                  surface="card"
-                  onPress={() => { haptics.tap(); setOpenOn(new Date(`${shortcut.dayKey}T12:00:00`)); }}
-                />
-              ))}
-            </View>
-          )}
-          {canSeal && openOn && (
-            <Text style={styles.sealHint}>
-              You won't be able to read this until that day. A task will remind you to open it. You can also open it early from the Journal.
-            </Text>
-          )}
         </View>
       )}
 
@@ -446,6 +421,39 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
             }}
           />
         </CollapsibleField>
+        {canSeal && (
+          <CollapsibleField
+            label="Hide until"
+            summary={openOn ? format(openOn, 'EEE, MMM d, yyyy') : undefined}
+            emptySummary="Not hidden"
+            hint="Save this as a note to your future self."
+            expanded={hideOpen}
+            onToggle={() => { haptics.tap(); setHideOpen(o => !o); }}
+          >
+            <View style={styles.shortcuts}>
+              {shortcuts.map(shortcut => (
+                <InlineAction
+                  key={shortcut.label}
+                  label={shortcut.label}
+                  variant="neutral"
+                  surface="card"
+                  onPress={() => { haptics.tap(); setOpenOn(new Date(`${shortcut.dayKey}T12:00:00`)); }}
+                />
+              ))}
+              <InlineAction
+                label="Pick a date"
+                variant="neutral"
+                surface="card"
+                onPress={() => { haptics.tap(); setOpenOnPickerOpen(true); }}
+              />
+            </View>
+            {openOn && (
+              <Text style={styles.sealHint}>
+                You won't be able to read this until that day. A task will remind you to open it. You can also open it early from the Journal.
+              </Text>
+            )}
+          </CollapsibleField>
+        )}
       </View>
 
       {editing && (
