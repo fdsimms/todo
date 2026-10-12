@@ -7864,7 +7864,7 @@ export const LEFTOVER_KEEP_DAYS_MIN = 0;
  * a real leftover, and CountStepper exists precisely so a ceiling nobody asked
  * for doesn't make a legitimate answer unsayable.
  */
-export const LEFTOVER_KEEP_DAYS_MAX = 90;
+export const LEFTOVER_KEEP_DAYS_MAX = 365;
 
 /**
  * How long a *closed-out* leftover is kept, in days.
