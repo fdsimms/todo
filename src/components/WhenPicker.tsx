@@ -190,9 +190,7 @@ const CAL_PADDING = 10;
 const CELL_SIZE = Math.floor((CARD_WIDTH - CAL_PADDING * 2) / 7);
 // Rows are shorter than the columns are wide: a square cell made the month
 // grid taller than the controls above it. The circle is sized from the row.
-// Tall enough for the circle plus the weight slot under it, which is also where
-// today's caption sits, so the label never overlaps the circle's shading.
-const ROW_HEIGHT = 46;
+const ROW_HEIGHT = 40;
 const DAY_CIRCLE = 32;
 
 // How long the selection "pop" plays before the modal commits and closes.
@@ -325,6 +323,12 @@ export function WhenPicker({
     [displayMonth, weekStartsOn]
   );
   const dayHeaders = useMemo(() => weekdayHeaders(weekStartsOn), [weekStartsOn]);
+  // The row today sits in (-1 when it isn't on this month's grid), which gets a
+  // band behind it so the eye finds the week before it finds the day.
+  const bandRow = useMemo(() => {
+    const i = calendarDays.findIndex(d => isSameDay(d, today));
+    return i < 0 ? -1 : Math.floor(i / 7);
+  }, [calendarDays, today]);
   const canPageBack = canPageToPreviousMonth(displayMonth, earliestDay);
   const canPageForward = canPageToNextMonth(displayMonth, latestDay);
 
@@ -855,6 +859,7 @@ export function WhenPicker({
             </View>
 
             <View style={styles.grid}>
+              {bandRow >= 0 && <View style={[styles.todayRowBand, { top: bandRow * ROW_HEIGHT }]} />}
               {calendarDays.map((day, idx) => {
                 const inMonth = isSameMonth(day, displayMonth);
                 const isSelected = value ? isSameDay(day, value) : false;
@@ -873,7 +878,7 @@ export function WhenPicker({
                 const isPast = isDayBefore(day, today);
                 const shade = outOfRange || isPast ? 0 : shadeFor(load);
                 const away = !outOfRange && !isPast && !!load?.away;
-                const tint = isSelected || isPending ? null : dayShadeBackground(shade, colors);
+                const tint = isSelected || isPending || todayDay ? null : dayShadeBackground(shade, colors);
                 const spoken = [shade >= 2 ? describeDayShade(shade) : '', away ? 'away' : ''].filter(Boolean).join(', ');
                 const dateLabel = todayDay ? `Today, ${format(day, 'EEEE, MMMM d')}` : format(day, 'EEEE, MMMM d');
 
@@ -899,6 +904,7 @@ export function WhenPicker({
                         // on an accent circle is unreadable as well as
                         // misleading about what a tap would do.
                         isSelected && !isPending && !outOfRange && styles.dayCircleSelected,
+                        isSelected && !isPending && !outOfRange && todayDay && styles.dayCircleTodayScheduled,
                         !isSelected && !isPending && todayDay && styles.dayCircleToday,
                         !isPending && isSuggested && styles.dayCircleSuggested,
                         isPending && styles.dayCirclePending,
@@ -920,19 +926,20 @@ export function WhenPicker({
                           </Text>
                         )}
                       </Animated.View>
+                      {isSelected && !isPending && !outOfRange && (
+                        <View
+                          style={[
+                            styles.scheduledBadge,
+                            { borderColor: bandRow === Math.floor(idx / 7) ? colors.bgTertiary : colors.bgSecondary },
+                          ]}
+                        >
+                          <Ionicons name="checkmark-sharp" size={9} color={colors.onAccent} />
+                        </View>
+                      )}
                       {/* Reserved on every cell, marked or not, so the dashes
                           can't nudge their own circle out of line. */}
                       <View style={styles.weightSlot}>
-                        {todayDay && (
-                          <Text
-                            maxFontSizeMultiplier={textScale.badge}
-                            numberOfLines={1}
-                            style={styles.todayCaption}
-                          >
-                            TODAY
-                          </Text>
-                        )}
-                        {away && !todayDay && (
+                        {away && (
                           // Two segments with a gap: a run of them reads across
                           // the row as the stretch of days it is. Grey, since a
                           // coloured dot here would read as an event marker.
@@ -1221,7 +1228,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     justifyContent: 'center',
   },
   weightSlot: {
-    height: 12,
+    height: 3,
     marginTop: 1,
     justifyContent: 'center',
   },
@@ -1239,9 +1246,36 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   dayCircleSelected: {
     backgroundColor: colors.accentFill,
   },
+  // Neutral rather than violet, so today never competes with the accent fill
+  // on the scheduled day: two violet marks on one grid read as the same thing.
   dayCircleToday: {
+    backgroundColor: colors.text,
+  },
+  // Today is also the scheduled day: the accent fill wins, ringed in the
+  // neutral so it still reads as today.
+  dayCircleTodayScheduled: {
     borderWidth: 2.5,
-    borderColor: colors.accent,
+    borderColor: colors.text,
+  },
+  todayRowBand: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: ROW_HEIGHT,
+    borderRadius: radius.md,
+    backgroundColor: colors.bgTertiary,
+  },
+  scheduledBadge: {
+    position: 'absolute',
+    top: -3,
+    right: -3,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.accentFill,
   },
   dayCircleSuggested: {
     borderWidth: 1.5,
@@ -1275,14 +1309,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     opacity: 0.55,
   },
   dayTextToday: {
-    color: colors.accentText,
+    color: colors.bg,
     fontWeight: fontWeight.bold,
-  },
-  todayCaption: {
-    color: colors.accentText,
-    fontSize: font.xxs,
-    fontWeight: fontWeight.bold,
-    letterSpacing: 0.4,
   },
   dayTextSuggested: {
     color: colors.purpleText,
