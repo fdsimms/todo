@@ -1,6 +1,7 @@
 {
   "platforms": ["ios"],
   "ios": {
-    "modules": ["TodoWidgetBridgeModule"]
+    "modules": ["TodoWidgetBridgeModule"],
+    "appDelegateSubscribers": ["WatchSessionAppDelegate"]
   }
 }

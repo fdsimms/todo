@@ -130,6 +130,7 @@
       "./plugins/withHealthKit",
       "./plugins/withActivityMonitor",
       "./plugins/withShieldExtensions",
+      "./plugins/withWatchApp",
       [
         "expo-quick-actions",
         {
@@ -208,6 +209,24 @@
                   "bundleIdentifier": "com.fdsimms.dundundun.ShieldAction",
                   "entitlements": {
                     "com.apple.developer.family-controls": true
+                  }
+                },
+                {
+                  "targetName": "TodoWatch",
+                  "bundleIdentifier": "com.fdsimms.dundundun.watchkitapp",
+                  "entitlements": {
+                    "com.apple.security.application-groups": [
+                      "group.com.fdsimms.dundundun"
+                    ]
+                  }
+                },
+                {
+                  "targetName": "TodoWatchComplication",
+                  "bundleIdentifier": "com.fdsimms.dundundun.watchkitapp.complication",
+                  "entitlements": {
+                    "com.apple.security.application-groups": [
+                      "group.com.fdsimms.dundundun"
+                    ]
                   }
                 }
               ]
