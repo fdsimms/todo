@@ -237,6 +237,11 @@ export function WhenPicker({
   const [nlText, setNlText] = useState('');
   // Day currently being confirmed — drives the brief "you picked it" feedback.
   const [pendingKey, setPendingKey] = useState<string | null>(null);
+  // Whether the pending pick came from a calendar cell. Cells and quick buttons
+  // share day keys (so a quick button also pops its cell), but a cell tap must
+  // not pop a quick button that merely lands on the same day.
+  const [pendingFromGrid, setPendingFromGrid] = useState(false);
+  const quickPendingKey = pendingFromGrid ? null : pendingKey;
   const [suggestion, setSuggestion] = useState<{ key: string; reason: string } | null>(null);
   const [suggestError, setSuggestError] = useState<string | null>(null);
 
@@ -287,6 +292,7 @@ export function WhenPicker({
       setSegments(initialSegments ?? []);
       setNlText('');
       setPendingKey(null);
+      setPendingFromGrid(false);
       setSuggestion(null);
       setSuggestError(null);
       setCheckDismissed(false);
@@ -374,7 +380,7 @@ export function WhenPicker({
   };
 
   // Play a quick pop + haptic on the chosen target, then commit & close.
-  const confirmWithFeedback = (date: Date | null, key: string) => {
+  const confirmWithFeedback = (date: Date | null, key: string, fromGrid = false) => {
     if (pendingRef.current) return;
     pendingRef.current = true;
     // The free-text field can still hold focus when a calendar day or quick
@@ -382,6 +388,7 @@ export function WhenPicker({
     // is gone; this only starts it moving a beat sooner.
     Keyboard.dismiss();
     setPendingKey(key);
+    setPendingFromGrid(fromGrid);
     if (date) setDisplayMonth(startOfMonth(date));
     haptics.success();
     popAnim.setValue(0.7);
@@ -400,7 +407,7 @@ export function WhenPicker({
     // Picking today resolves the task, same as the quick button — only a day
     // after it is a deferral the reach-out offer needs to hear about.
     if (!isSameDay(day, today)) declineReachOutOfferIfShown();
-    confirmWithFeedback(noonOf(day), isSameDay(day, today) ? 'today' : dayKeyOf(day));
+    confirmWithFeedback(noonOf(day), isSameDay(day, today) ? 'today' : dayKeyOf(day), true);
   };
 
   const handleToday = () => confirmWithFeedback(noonOf(today), 'today');
@@ -686,7 +693,7 @@ export function WhenPicker({
                 icon="star"
                 iconColor={colors.warningText}
                 label="Today"
-                pending={pendingKey === 'today'}
+                pending={quickPendingKey === 'today'}
                 popAnim={popAnim}
                 onPress={handleToday}
               />
@@ -697,7 +704,7 @@ export function WhenPicker({
                   icon="sunny"
                   iconColor={colors.timeMorning}
                   label="Tomorrow"
-                  pending={pendingKey === tomorrowKey}
+                  pending={quickPendingKey === tomorrowKey}
                   popAnim={popAnim}
                   onPress={handleTomorrow}
                 />
@@ -736,7 +743,7 @@ export function WhenPicker({
                         <Animated.Text
                           style={[
                             styles.projectShortcutText,
-                            pendingKey === key && { transform: [{ scale: popAnim }] },
+                            quickPendingKey === key && { transform: [{ scale: popAnim }] },
                           ]}
                         >
                           {shortcut.label}
@@ -756,10 +763,10 @@ export function WhenPicker({
               >
                 <Animated.View style={[
                   styles.afterVacationInner,
-                  pendingKey === afterVacationKey && { transform: [{ scale: popAnim }] },
+                  quickPendingKey === afterVacationKey && { transform: [{ scale: popAnim }] },
                 ]}>
                   <Ionicons
-                    name={pendingKey === afterVacationKey ? 'checkmark-circle' : 'airplane'}
+                    name={quickPendingKey === afterVacationKey ? 'checkmark-circle' : 'airplane'}
                     size={15}
                     color={colors.accent}
                   />
