@@ -106,19 +106,17 @@ export function NutrientFieldsCard({ amounts, bad, onChange, primary = 'main' }:
   const renderField = (key: NutrientKey) => (
     <View key={key} style={styles.field}>
       <Text style={styles.fieldLabel}>{NUTRIENT_LABEL[key].label}</Text>
-      <View style={styles.numberRow}>
-        <TextField
-          style={[styles.numberInput, bad.includes(key) && styles.inputBad]}
-          value={amounts[key]}
-          onChangeText={t => onChange(key, t)}
-          placeholder={PLACEHOLDER[key]}
-          placeholderTextColor={colors.textTertiary}
-          keyboardType="decimal-pad"
-          inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
-          accessibilityLabel={`${NUTRIENT_LABEL[key].label} in ${NUTRIENT_LABEL[key].unit}`}
-        />
-        <Text style={styles.unit}>{NUTRIENT_LABEL[key].unit}</Text>
-      </View>
+      <TextField
+        style={[styles.numberInput, bad.includes(key) && styles.inputBad]}
+        value={amounts[key]}
+        onChangeText={t => onChange(key, t)}
+        placeholder={PLACEHOLDER[key]}
+        placeholderTextColor={colors.textTertiary}
+        keyboardType="decimal-pad"
+        inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
+        accessibilityLabel={`${NUTRIENT_LABEL[key].label} in ${NUTRIENT_LABEL[key].unit}`}
+      />
+      <Text style={styles.unit}>{NUTRIENT_LABEL[key].unit}</Text>
     </View>
   );
 
@@ -168,7 +166,7 @@ function makeStyles(colors: Colors) {
       backgroundColor: colors.bgSecondary,
       borderRadius: radius.lg,
       padding: spacing.md,
-      gap: spacing.md,
+      gap: spacing.sm,
     },
     subheading: {
       color: colors.textSecondary,
@@ -176,11 +174,14 @@ function makeStyles(colors: Colors) {
       fontWeight: fontWeight.semibold,
       letterSpacing: 0.8,
     },
-    field: { gap: spacing.xs },
-    fieldLabel: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
-    numberRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    // One row per nutrient, like the label being copied: name on the left, the
+    // figure and its unit on the right. Stacked label-over-field made each of
+    // the 16 rows ~110pt tall. The name wraps rather than truncating.
+    field: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    fieldLabel: { flex: 1, color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
     numberInput: {
-      flex: 1,
+      width: 104,
+      textAlign: 'right',
       color: colors.text,
       fontSize: font.md,
       backgroundColor: colors.bg,
