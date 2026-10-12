@@ -32,6 +32,40 @@ const path = require('path');
 const DEVELOPMENT_TEAM = '4L5S4WA628';
 
 /**
+ * Links a system framework into one target, whether or not another target
+ * already links it.
+ *
+ * `xcode`'s addFramework() returns false without doing anything when the
+ * project already has a file reference at that path, and the check is
+ * project-wide rather than per target. So the second target to name a framework
+ * got nothing: ManagedSettings was listed by both shield targets and the
+ * activity monitor and linked into one of them, and those targets built only
+ * because Swift autolinks a framework on `import`. Here the second and later
+ * targets get a build file of their own pointing at the shared reference, in
+ * their own Frameworks phase, which is what Xcode writes when you tick the same
+ * framework for two targets.
+ */
+function linkFramework(project, framework, targetUuid) {
+  if (project.addFramework(framework, { target: targetUuid })) return;
+
+  const fileRefs = project.pbxFileReferenceSection();
+  const unquote = value => (typeof value === 'string' ? value.replace(/^"|"$/g, '') : value);
+  const fileRef = Object.keys(fileRefs).find(
+    key =>
+      !key.endsWith('_comment') &&
+      unquote(fileRefs[key].path) === `System/Library/Frameworks/${framework}`
+  );
+  if (!fileRef) return;
+
+  const comment = `${framework} in Frameworks`;
+  const buildFileUuid = project.generateUuid();
+  const buildFiles = project.pbxBuildFileSection();
+  buildFiles[buildFileUuid] = { isa: 'PBXBuildFile', fileRef, fileRef_comment: framework };
+  buildFiles[`${buildFileUuid}_comment`] = comment;
+  project.pbxFrameworksBuildPhaseObj(targetUuid).files.push({ value: buildFileUuid, comment });
+}
+
+/**
  * `xcode`'s addTarget() stores the target name pre-wrapped in literal quote
  * characters (`name: '"' + targetName + '"'`), which propagates verbatim into
  * the PBXNativeTarget section's comment. pbxTargetByName() does a plain string
@@ -170,7 +204,7 @@ function addAppExtensionTarget({
   }
 
   for (const framework of frameworks) {
-    project.addFramework(framework, { target: target.uuid });
+    linkFramework(project, framework, target.uuid);
   }
 
   const configListUuid = target.pbxNativeTarget.buildConfigurationList;
