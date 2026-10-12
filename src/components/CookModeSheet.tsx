@@ -504,6 +504,8 @@ export function CookModeSheet({
                 const last = position === ingredients.length - 1;
                 return (
                   <View key={`${flat.recipe.id}:${flat.ingredient.id}`}>
+                    {!!heading.parentSection && <Text style={styles.miseHeading}>{heading.parentSection}</Text>}
+                    {heading.resume && <Text style={styles.miseHeading}>{flat.recipe.name}</Text>}
                     {heading.dish && <Text style={styles.miseHeading}>{flat.recipe.name}</Text>}
                     {!!heading.section && <Text style={styles.miseHeading}>{heading.section}</Text>}
                     <View style={[styles.miseRow, last && styles.miseRowLast]}>
@@ -791,10 +793,14 @@ export function CookModeSheet({
                     // the boundary there, and a rule between the two would
                     // read as a separator rather than as a heading and the
                     // heading under it.
-                    const rule = position > 0 && !heading.dish && !!heading.section;
+                    const rule = position > 0 && !heading.dish && !heading.parentSection && !heading.resume && !!heading.section;
                     return (
                       <View key={`${flat.recipe.id}:${flat.ingredient.id}`}>
                         {rule && <View style={styles.panelDivider} />}
+                        {!!heading.parentSection && (
+                          <Text style={styles.panelHeading}>{heading.parentSection}</Text>
+                        )}
+                        {heading.resume && <Text style={styles.panelHeading}>{flat.recipe.name}</Text>}
                         {heading.dish && <Text style={styles.panelHeading}>{flat.recipe.name}</Text>}
                         {!!heading.section && (
                           <Text style={styles.panelHeading}>{heading.section}</Text>

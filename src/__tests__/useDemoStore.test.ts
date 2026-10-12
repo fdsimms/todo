@@ -3529,6 +3529,21 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     ).toEqual({ text: '1/2 tsp', converted: true });
   });
 
+  it('seeds a component placed above its parent’s own lines, and every list reads it there', () => {
+    const recipes = useRecipeStore.getState().recipes;
+    const recipesById = new Map(recipes.map(r => [r.id, r]));
+    const steak = recipes.find(r => r.name === 'Seared steak')
+      ?? recipes.find(r => r.notes.includes('salt the steak'))!;
+    const placed = steak.components.filter(c => !c.choiceGroup && c.placement);
+    expect(placed).toHaveLength(1);
+
+    const flat = flattenRecipeIngredients(steak, recipesById);
+    const firstOwn = flat.findIndex(f => f.depth === 0);
+    // The salad's lines come first, then the steak's own.
+    expect(firstOwn).toBeGreaterThan(0);
+    expect(flat.slice(0, firstOwn).every(f => f.depth === 1)).toBe(true);
+  });
+
   it('seeds a substitute that actually captions a row, without moving it', () => {
     // A link on its own says nothing — the caption needs the original wanted
     // and the substitute on hand — so the seed has to arrange both halves or

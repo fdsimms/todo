@@ -618,7 +618,8 @@ export interface LikelyInPantryCount {
  * because it has to agree with the list the detail screen puts on screen right
  * under it. What the component clause is for is saying there's more: "3
  * ingredients" alone would read as the whole shop for a dish that's mostly its
- * parts.
+ * parts. A caller with the library passes `recipesById`, and
+ * the clause then says how many ingredients the components bring.
  *
  * `sharedName` moves the attribution to the front, for a recipe whose name
  * another recipe also has (`sharedRecipeNameKeys`). Two cookbooks can each hold
@@ -629,7 +630,7 @@ export interface LikelyInPantryCount {
 export function describeRecipe(
   recipe: Recipe,
   likelyInPantry?: LikelyInPantryCount | null,
-  options: { sharedName?: boolean } = {},
+  options: { sharedName?: boolean; recipesById?: ReadonlyMap<string, Recipe> } = {},
 ): string {
   // Choice-aware, so "serrano or jalapeño" reads as the one pepper a meal of
   // this actually buys — see countChoiceAware.
@@ -637,7 +638,7 @@ export function describeRecipe(
   const parts: string[] = [];
   if (recipe.mealType) parts.push(RECIPE_MEAL_TYPE_LABELS[recipe.mealType]);
   parts.push(count === 1 ? '1 ingredient' : `${count} ingredients`);
-  const components = describeComponents(recipe);
+  const components = describeComponents(recipe, options.recipesById);
   if (components) parts.push(components);
   if (likelyInPantry?.probablyHave) {
     parts.push(likelyInPantry.probablyHave === 1 ? '1 likely in pantry' : `${likelyInPantry.probablyHave} likely in pantry`);
@@ -1110,6 +1111,30 @@ export function filterRecipeSuggestions(values: readonly string[], query: string
 export function cleanChoiceGroup(raw: string | null | undefined): string | null {
   const clean = (raw ?? '').trim().replace(/\s+/g, ' ').slice(0, RECIPE_CHOICE_GROUP_MAX_LENGTH).trim();
   return clean || null;
+}
+
+/**
+ * The name a choice group gets when nobody has typed one: its options joined
+ * with "or", and when that would run past the label cap, the first option and a
+ * count ("Dandelion greens or 2 more").
+ *
+ * A group's label is its heading on the recipe page, so clipping the join at
+ * the cap printed half a word ("…MUSTARD GREENS OR SP"). The count form never
+ * clips a word, and it stays recognisable because the first option is the
+ * group's default.
+ *
+ * `updateIngredient` treats a label equal to this (or to the plain join, which
+ * older groups carry) as untouched, so a renamed member carries it forward.
+ */
+export function defaultChoiceGroupLabel(names: readonly string[]): string {
+  const clean = names.map(n => n.trim().replace(/\s+/g, ' ')).filter(Boolean);
+  const joined = clean.join(' or ');
+  if (joined.length <= RECIPE_CHOICE_GROUP_MAX_LENGTH || clean.length < 2) {
+    return cleanChoiceGroup(joined) ?? '';
+  }
+  const tail = ` or ${clean.length - 1} more`;
+  const room = RECIPE_CHOICE_GROUP_MAX_LENGTH - tail.length;
+  return cleanChoiceGroup(`${clean[0].slice(0, Math.max(room, 1)).trim()}${tail}`) ?? '';
 }
 
 /**

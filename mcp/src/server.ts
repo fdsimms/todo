@@ -1293,7 +1293,7 @@ function registerWriteTools(
     notes: z.string().optional(),
     vote: z.enum(['loved', 'liked', 'never']).nullable().optional().describe('The person\'s own rating. Set it only on their word.'),
     upNext: z.boolean().optional().describe('On the Up next shelf.'),
-    leftoverKeepDays: z.number().int().nullable().optional().describe('Days its leftovers keep, 0 to 90; null for the app default.'),
+    leftoverKeepDays: z.number().int().nullable().optional().describe('Days its leftovers keep, 0 to 365; null for the app default.'),
     components: z.array(z.object({
       recipeId: z.string().min(1),
       choiceGroup: z.string().nullable().optional(),

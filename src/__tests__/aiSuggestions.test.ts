@@ -555,12 +555,21 @@ describe('describeAIError', () => {
     }
   });
 
-  it('falls back to a network message for an unrecognized error', () => {
+  it('blames the connection for a failed fetch', () => {
+    expect(describeAIError(new TypeError('Network request failed'))).toContain('connection');
     expect(describeAIError(new Error('Network request failed'))).toContain('connection');
   });
 
-  it('falls back to a network message for a non-Error throw', () => {
-    expect(describeAIError('some string')).toContain('connection');
+  it('does not blame the connection for an unrecognized error, and logs it', () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      expect(describeAIError(new TypeError("Cannot read property 'x' of undefined")))
+        .toBe('Something went wrong. Try again.');
+      expect(describeAIError('some string')).toBe('Something went wrong. Try again.');
+      expect(warn).toHaveBeenCalledTimes(2);
+    } finally {
+      warn.mockRestore();
+    }
   });
 });
 
@@ -989,6 +998,18 @@ describe('extractRecipe', () => {
     );
     const result = await extractRecipe('some recipe', AISLES);
     expect(result.leftoverKeepDays).toBeNull();
+  });
+
+  it('keeps a months-long storage time as days rather than clamping it to a quarter', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Chili crisp',
+        leftoverKeepDays: 180,
+        items: [],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.leftoverKeepDays).toBe(180);
   });
 
   it('clamps a leftoverKeepDays past the sayable range', async () => {

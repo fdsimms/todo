@@ -114,6 +114,25 @@ describe('update_recipe', () => {
     expect(updateRecipe(replica, pie.id, { components: [] }).components).toBeUndefined();
   });
 
+  it('keeps a component’s dragged position when an edit leaves the link in place', () => {
+    const crust = saveRecipe(replica, { name: 'Crust' });
+    const glaze = saveRecipe(replica, { name: 'Glaze' });
+    const pie = saveRecipe(replica, { name: 'Pie', components: [{ recipeId: crust.id }, { recipeId: glaze.id }] });
+    const links = stored(pie.id).components;
+    const moved = links.map(c => (c.recipeId === glaze.id ? { ...c, placement: { before: null, section: 'To finish' } } : c));
+    mockRaw.runSync('UPDATE recipes SET components = ? WHERE id = ?', [JSON.stringify(moved), pie.id]);
+    replica.refresh();
+
+    // Reordering and regrouping other links rewrites no placement.
+    updateRecipe(replica, pie.id, { components: [{ recipeId: glaze.id }, { recipeId: crust.id, choiceGroup: 'Base' }] });
+
+    const after = stored(pie.id).components;
+    expect(after.map(c => c.recipeId)).toEqual([glaze.id, crust.id]);
+    expect(after[0].placement).toEqual({ before: null, section: 'To finish' });
+    expect(after[1].choiceGroup).toBe('Base');
+    expect(after[0].id).toBe(links[1].id);
+  });
+
   it('refuses values outside what the app takes', () => {
     const r = saveRecipe(replica, { name: 'Soup', servings: 4 });
     expect(() => updateRecipe(replica, r.id, { servingsMax: 3 })).toThrow(/more than servings/);

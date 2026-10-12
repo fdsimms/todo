@@ -53,6 +53,7 @@ export function RecipeComponentPicker({ visible, recipe, onClose, onSelect }: Pr
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   // Recipes another recipe shares a name with lead their subtitle with the book.
   const sharedNames = useMemo(() => sharedRecipeNameKeys(recipes), [recipes]);
+  const libraryById = useMemo(() => recipeMap(recipes), [recipes]);
 
   const { query, clear: clearQuery, props: filterField } = useFilterField();
   useEffect(() => { if (visible) clearQuery(); }, [visible]);
@@ -141,7 +142,7 @@ export function RecipeComponentPicker({ visible, recipe, onClose, onSelect }: Pr
                     disabled={!!reason}
                     activeOpacity={interaction.activeOpacity}
                     accessibilityRole="button"
-                    accessibilityLabel={`${candidate.name}. ${reason ?? describeRecipe(candidate, null, { sharedName: sharedNames.has(candidate.nameKey) })}`}
+                    accessibilityLabel={`${candidate.name}. ${reason ?? describeRecipe(candidate, null, { sharedName: sharedNames.has(candidate.nameKey), recipesById: libraryById })}`}
                     accessibilityState={{ disabled: !!reason }}
                   >
                     <View style={[styles.icon, { backgroundColor: colors.accentSubtle }]}>
@@ -155,7 +156,7 @@ export function RecipeComponentPicker({ visible, recipe, onClose, onSelect }: Pr
                       <Text style={[styles.name, !!reason && styles.nameDisabled]} numberOfLines={1}>
                         {candidate.name}
                       </Text>
-                      <Text style={styles.hint} numberOfLines={1}>{reason ?? describeRecipe(candidate, null, { sharedName: sharedNames.has(candidate.nameKey) })}</Text>
+                      <Text style={styles.hint} numberOfLines={1}>{reason ?? describeRecipe(candidate, null, { sharedName: sharedNames.has(candidate.nameKey), recipesById: libraryById })}</Text>
                     </View>
                     {!reason && <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />}
                   </TouchableOpacity>

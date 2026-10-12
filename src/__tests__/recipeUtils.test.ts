@@ -55,6 +55,7 @@ import {
   recipeHasMethod,
   recipeHasPrepTasks,
   recipeHasAttribution,
+  defaultChoiceGroupLabel,
 } from '../utils/recipeUtils';
 import type { GroceryItem, ItemSubLink, Recipe, RecipeComponent, RecipeIngredient, RecipePrepTask } from '../types';
 import { RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH, RECIPE_STEP_NOTE_MAX_LENGTH } from '../types';
@@ -1098,6 +1099,19 @@ describe('describeRecipe', () => {
     expect(describeRecipe(recipe('J', {
       components: [component('r-mash', 'Mash'), component('r-gravy', 'Gravy')],
     }))).toBe('0 ingredients · 2 components');
+  });
+
+  it('says how many ingredients the components bring when given the library', () => {
+    const mash = recipe('Mash', { id: 'r-mash', ingredients: [ing('Potato'), ing('Butter'), ing('Milk')] });
+    const composed = recipe('I', {
+      ingredients: [ing('Steak')],
+      components: [component('r-mash', 'Mash')],
+    });
+    const byId = new Map([[mash.id, mash], [composed.id, composed]]);
+    expect(describeRecipe(composed, null, { recipesById: byId }))
+      .toBe('1 ingredient · 1 component with 3 ingredients');
+    // No library, no tail: a list row can't resolve the component.
+    expect(describeRecipe(composed)).toBe('1 ingredient · 1 component');
   });
 });
 
@@ -2538,5 +2552,30 @@ describe('parseServingsRange', () => {
     expect(parseServingsRange('')).toBeNull();
     expect(parseServingsRange('a few')).toBeNull();
     expect(parseServingsRange('0')).toBeNull();
+  });
+});
+
+describe('defaultChoiceGroupLabel', () => {
+  it('joins the options with "or" while that fits the label cap', () => {
+    expect(defaultChoiceGroupLabel(['Serrano', 'Jalapeño'])).toBe('Serrano or Jalapeño');
+    expect(defaultChoiceGroupLabel(['Shishito', 'Jalapeño pepper'])).toBe('Shishito or Jalapeño pepper');
+  });
+
+  it('names the first option and a count instead of clipping a word', () => {
+    const label = defaultChoiceGroupLabel(['Dandelion greens', 'Mustard greens', 'Spinach']);
+    expect(label).toBe('Dandelion greens or 2 more');
+  });
+
+  it('shortens a first option that is itself too long, and never exceeds the cap', () => {
+    const label = defaultChoiceGroupLabel([
+      'Extra virgin cold pressed olive oil from the first harvest', 'Butter', 'Ghee',
+    ]);
+    expect(label.length).toBeLessThanOrEqual(40);
+    expect(label.endsWith(' or 2 more')).toBe(true);
+  });
+
+  it('ignores blanks and handles a single or empty list', () => {
+    expect(defaultChoiceGroupLabel(['  ', 'Butter'])).toBe('Butter');
+    expect(defaultChoiceGroupLabel([])).toBe('');
   });
 });

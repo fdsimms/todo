@@ -177,7 +177,7 @@ export function TipsScreen() {
           data={rows}
           keyExtractor={row => row.key}
           renderItem={renderRow}
-          contentContainerStyle={{ paddingBottom: tabBarHeight + spacing.xl }}
+          contentContainerStyle={{ paddingBottom: Math.max(tabBarHeight + spacing.xl, scrollTop.clearance) }}
           keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
           {...keyboardScroll.props}

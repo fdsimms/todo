@@ -1374,6 +1374,56 @@ describe('renameChoiceGroup', () => {
     expect(useRecipeStore.getState().renameChoiceGroup('gone', 'Pepper', 'Chili pepper')).toBeNull();
     expect(dbUpdateRecipe).not.toHaveBeenCalled();
   });
+
+  it('refuses a name another group in the recipe already has, which would fold the two together', () => {
+    const r = makeRecipe('Salsa', {
+      ingredients: [
+        { id: 'i1', name: 'Serrano', nameKey: 'serrano', quantity: '', aisle: null, prep: null, purpose: null, section: null, choiceGroup: 'Pepper' },
+        { id: 'i2', name: 'Cheddar', nameKey: 'cheddar', quantity: '', aisle: null, prep: null, purpose: null, section: null, choiceGroup: 'Cheese' },
+      ],
+    });
+    seed([r]);
+
+    expect(useRecipeStore.getState().renameChoiceGroup(r.id, 'Pepper', 'Cheese')).toBeNull();
+
+    const ingredients = useRecipeStore.getState().recipeById(r.id)!.ingredients;
+    expect(ingredients.map(i => i.choiceGroup)).toEqual(['Pepper', 'Cheese']);
+  });
+});
+
+describe('a long either/or group keeps its short default name', () => {
+  const GREENS = 'Dandelion greens or 2 more';
+  const withLongGroup = (label: string) => {
+    const r = makeRecipe('Salad', {
+      ingredients: ['Dandelion greens', 'Mustard greens', 'Spinach'].map((name, n) => ({
+        id: `g${n}`, name, nameKey: name.toLowerCase(), quantity: '', aisle: null, prep: null,
+        purpose: null, section: null, choiceGroup: label,
+      })),
+    });
+    seed([r]);
+    return r;
+  };
+
+  it('follows a renamed member while the label is still the short default', () => {
+    const r = withLongGroup(GREENS);
+
+    useRecipeStore.getState().updateIngredient(r.id, 'g0', { name: 'Kale' });
+
+    const labels = useRecipeStore.getState().recipeById(r.id)!.ingredients.map(i => i.choiceGroup);
+    // Short enough once "Kale" replaces the long name, so it reads in full again.
+    expect(labels).toEqual(Array(3).fill('Kale or Mustard greens or Spinach'));
+  });
+
+  it('repairs a label an older split clipped mid-word, but not one the user typed', () => {
+    const clipped = withLongGroup('Dandelion greens or Mustard greens or Sp');
+    useRecipeStore.getState().updateIngredient(clipped.id, 'g0', { name: 'Kale' });
+    expect(useRecipeStore.getState().recipeById(clipped.id)!.ingredients[1].choiceGroup)
+      .toBe('Kale or Mustard greens or Spinach');
+
+    const typed = withLongGroup('Greens');
+    useRecipeStore.getState().updateIngredient(typed.id, 'g0', { name: 'Kale' });
+    expect(useRecipeStore.getState().recipeById(typed.id)!.ingredients[1].choiceGroup).toBe('Greens');
+  });
 });
 
 describe('setComponentChoiceGroup / makeComponentDefault', () => {
@@ -2437,5 +2487,126 @@ describe('cookbook index entries', () => {
     expect(useRecipeStore.getState().indexEntries).toHaveLength(1);
     expect(useRecipeStore.getState().recipeFromIndexEntry(entry.id)!.id).toBe(recipe.id);
     expect(useRecipeStore.getState().recipes).toHaveLength(1);
+  });
+});
+
+describe('component placement', () => {
+  // Dinner with two ingredients and the mash linked, the state right before a
+  // drag lands the mash between them.
+  const seedDinner = () => {
+    const dinner = makeRecipe('Dinner');
+    const mash = makeRecipe('Mash');
+    const rub = makeRecipe('Rub');
+    seed([dinner, mash, rub]);
+    const steak = useRecipeStore.getState().addIngredient(dinner.id, 'Steak')!;
+    const salt = useRecipeStore.getState().addIngredient(dinner.id, 'Salt')!;
+    useRecipeStore.getState().addComponent(dinner.id, mash.id);
+    useRecipeStore.getState().addComponent(dinner.id, rub.id);
+    const links = useRecipeStore.getState().recipeById(dinner.id)!.components;
+    return { dinner, steak, salt, mashLink: links[0], rubLink: links[1] };
+  };
+  const placeOf = (recipeId: string, linkId: string) =>
+    useRecipeStore.getState().recipeById(recipeId)!.components.find(c => c.id === linkId)!.placement;
+
+  it('writes the order, the sections and the placements in one save', () => {
+    const { dinner, steak, salt, mashLink, rubLink } = seedDinner();
+    (dbUpdateRecipe as jest.Mock).mockClear();
+
+    useRecipeStore.getState().reorderIngredients(
+      dinner.id,
+      [steak.id, salt.id],
+      new Map([[steak.id, null], [salt.id, 'Sides'], [rubLink.id, null], [mashLink.id, 'Sides']]),
+      {
+        order: [rubLink.id, mashLink.id],
+        placements: new Map([
+          [rubLink.id, { before: salt.id, section: null }],
+          [mashLink.id, { before: null, section: 'Sides' }],
+        ]),
+      },
+    );
+
+    expect(dbUpdateRecipe).toHaveBeenCalledTimes(1);
+    const saved = useRecipeStore.getState().recipeById(dinner.id)!;
+    expect(saved.components.map(c => c.id)).toEqual([rubLink.id, mashLink.id]);
+    expect(placeOf(dinner.id, rubLink.id)).toEqual({ before: salt.id, section: null });
+    expect(placeOf(dinner.id, mashLink.id)).toEqual({ before: null, section: 'Sides' });
+  });
+
+  it('leaves the components alone when the caller sends none', () => {
+    const { dinner, steak, salt, mashLink } = seedDinner();
+    useRecipeStore.getState().reorderIngredients(dinner.id, [salt.id, steak.id], new Map());
+    expect(placeOf(dinner.id, mashLink.id)).toBeUndefined();
+  });
+
+  it('places a component in a choice group like any other, and the array follows the drop', () => {
+    const { dinner, steak, salt, mashLink, rubLink } = seedDinner();
+    useRecipeStore.getState().setComponentChoiceGroup(dinner.id, mashLink.id, 'Side');
+
+    useRecipeStore.getState().reorderIngredients(dinner.id, [steak.id, salt.id], new Map(), {
+      order: [rubLink.id, mashLink.id],
+      placements: new Map([
+        [rubLink.id, { before: steak.id, section: null }],
+        [mashLink.id, { before: salt.id, section: null }],
+      ]),
+    });
+
+    const links = useRecipeStore.getState().recipeById(dinner.id)!.components;
+    expect(links.map(c => c.id)).toEqual([rubLink.id, mashLink.id]);
+    expect(links[1]).toMatchObject({ choiceGroup: 'Side', placement: { before: salt.id, section: null } });
+  });
+
+  it('keeps a placement when the link joins or leaves a choice group', () => {
+    const { dinner, salt, mashLink } = seedDinner();
+    useRecipeStore.getState().reorderIngredients(dinner.id, [salt.id], new Map(), {
+      order: [mashLink.id],
+      placements: new Map([[mashLink.id, { before: salt.id, section: 'Sides' }]]),
+    });
+
+    useRecipeStore.getState().setComponentChoiceGroup(dinner.id, mashLink.id, 'Side');
+    expect(placeOf(dinner.id, mashLink.id)).toEqual({ before: salt.id, section: 'Sides' });
+
+    useRecipeStore.getState().setComponentChoiceGroup(dinner.id, mashLink.id, null);
+    expect(placeOf(dinner.id, mashLink.id)).toEqual({ before: salt.id, section: 'Sides' });
+  });
+
+  it('moves a part to the next line when the line under it is removed, one or many', () => {
+    const { dinner, steak, salt, mashLink, rubLink } = seedDinner();
+    useRecipeStore.getState().reorderIngredients(dinner.id, [steak.id, salt.id], new Map(), {
+      order: [mashLink.id, rubLink.id],
+      placements: new Map([
+        [mashLink.id, { before: steak.id, section: null }],
+        [rubLink.id, { before: salt.id, section: null }],
+      ]),
+    });
+
+    useRecipeStore.getState().removeIngredient(dinner.id, steak.id);
+    expect(placeOf(dinner.id, mashLink.id)?.before).toBe(salt.id);
+
+    useRecipeStore.getState().bulkRemoveIngredients(dinner.id, [salt.id]);
+    expect(placeOf(dinner.id, mashLink.id)?.before).toBeNull();
+    expect(placeOf(dinner.id, rubLink.id)?.before).toBeNull();
+  });
+
+  it('retires a declared empty heading once a component is placed under it', () => {
+    const { dinner, salt, mashLink } = seedDinner();
+    useRecipeStore.getState().addEmptySection(dinner.id, 'Sides');
+    expect(useRecipeStore.getState().recipeById(dinner.id)!.emptySections).toEqual(['Sides']);
+
+    useRecipeStore.getState().reorderIngredients(dinner.id, [salt.id], new Map(), {
+      order: [mashLink.id],
+      placements: new Map([[mashLink.id, { before: null, section: 'Sides' }]]),
+    });
+
+    expect(useRecipeStore.getState().recipeById(dinner.id)!.emptySections).toEqual([]);
+  });
+
+  it('refuses to declare a heading a placed component already sits under', () => {
+    const { dinner, salt, mashLink } = seedDinner();
+    useRecipeStore.getState().reorderIngredients(dinner.id, [salt.id], new Map(), {
+      order: [mashLink.id],
+      placements: new Map([[mashLink.id, { before: null, section: 'Sides' }]]),
+    });
+
+    expect(useRecipeStore.getState().addEmptySection(dinner.id, 'Sides')).toBe(false);
   });
 });

@@ -192,6 +192,32 @@ describe('buildRecipeShareText', () => {
     ]);
   });
 
+  it('reads a component placed between two lines in that order, and names the recipe again after it', () => {
+    const mash = recipe('r2', 'Mash', { ingredients: [ing('Butter')] });
+    const salt = ing('Salt', { section: 'Seasoning' });
+    const steak = recipe('r1', 'Steak', {
+      ingredients: [ing('Steak', { section: 'Seasoning' }), salt],
+      components: [{ ...link('r2', 'Mash'), placement: { before: salt.id, section: 'Seasoning' } }],
+    });
+    const lines = buildRecipeShareText(steak, recipeMap([steak, mash])).split('\n');
+    const at = lines.indexOf('Ingredients:');
+    expect(lines.slice(at + 1, at + 6)).toEqual([
+      'Seasoning:', '- Steak', 'For the Mash:', '- Butter', 'For the Steak:',
+    ]);
+    expect(lines[at + 6]).toBe('- Salt');
+  });
+
+  it('opens the heading a placed component sits under above its own name', () => {
+    const mash = recipe('r2', 'Mash', { ingredients: [ing('Butter')] });
+    const steak = recipe('r1', 'Steak', {
+      ingredients: [ing('Steak', { section: 'Meat' })],
+      components: [{ ...link('r2', 'Mash'), placement: { before: null, section: 'Sides' } }],
+    });
+    const lines = buildRecipeShareText(steak, recipeMap([steak, mash])).split('\n');
+    const at = lines.indexOf('Ingredients:');
+    expect(lines.slice(at + 1, at + 6)).toEqual(['Meat:', '- Steak', 'Sides:', 'For the Mash:', '- Butter']);
+  });
+
   it('sends an either/or as the choice, every option with its own amount (#2948)', () => {
     // The recipe screen shows both peppers, captioned "or jalapeño". Sending
     // the default alone told the reader there was no choice.

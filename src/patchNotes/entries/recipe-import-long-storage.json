@@ -1,0 +1,1 @@
+{ "message": "Recipe import now reads storage times given in weeks or months (like \"store up to 6 months\") and fills in Leftovers keep. The limit is now 365 days.", "date": "2026-10-12" }

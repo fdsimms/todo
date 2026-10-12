@@ -1,6 +1,8 @@
 import { useCallback, useRef, type MutableRefObject } from 'react';
 import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
 import { useFabBottom } from '../components/Fab';
+import { SCROLL_TO_TOP_SIZE } from '../components/ScrollToTopButton';
+import { spacing } from '../theme';
 import { useScrollToTopVisibility } from './useScrollToTopVisibility';
 
 /** The scroll handle every list type here has, whichever of the three methods it exposes. */
@@ -21,6 +23,12 @@ interface AnyScroller {
  * our `onScroll` replaces the one its `props` carry, so it is called from here
  * and the keyboard-dismissal clamp still hears every event. Spread `listProps`
  * after the hook's `props`, and use the returned `ref` in place of its own.
+ *
+ * **The list's bottom padding is at least `clearance`.** The button floats over
+ * the list's corner, so a last row that ends closer to the screen bottom than
+ * this sits under it with no way to scroll it clear. The tab bar is absolute,
+ * so `tabBarHeight + xl` is not enough (the button's top edge is the safe-area
+ * inset + 108pt up). Use `Math.max(yourPadding, scrollTop.clearance)`.
  */
 export function useListScrollToTop<T = any>(
   keyboardScroll?: {
@@ -47,8 +55,11 @@ export function useListScrollToTop<T = any>(
     else list.getScrollResponder?.()?.scrollTo?.({ y: 0, animated: true });
   }, []);
 
+  const clearance = bottom + SCROLL_TO_TOP_SIZE + spacing.md;
+
   return {
     ref,
+    clearance,
     listProps: { onScroll: handleScroll, scrollEventThrottle: 16 },
     buttonProps: { visible, bottom, onPress: scrollToTop },
   };

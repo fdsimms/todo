@@ -85,7 +85,7 @@ export function SettingsGroupScreen() {
           ref={scrollRef}
           {...scrollTop.listProps}
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xl }}
+          contentContainerStyle={{ paddingBottom: Math.max(insets.bottom + spacing.xl, scrollTop.clearance) }}
           {...scrollProps}
         >
           <View ref={contentRef} collapsable={false}>

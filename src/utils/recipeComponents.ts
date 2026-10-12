@@ -1,5 +1,5 @@
-import type { Recipe, RecipeComponent, RecipeIngredient, RecipePrepTask } from '../types';
-import { RECIPE_CHOICE_GROUP_MAX_LENGTH, RECIPE_NAME_MAX_LENGTH } from '../types';
+import type { ComponentPlacement, Recipe, RecipeComponent, RecipeIngredient, RecipePrepTask } from '../types';
+import { RECIPE_CHOICE_GROUP_MAX_LENGTH, RECIPE_NAME_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH } from '../types';
 import { generateId } from './id';
 import { applyStandingSwap, NO_STANDING_SWAPS, type StandingSwapMap } from './standingSwaps';
 
@@ -102,12 +102,104 @@ export function normalizeComponent(raw: unknown): RecipeComponent | null {
   const choiceGroup = typeof r.choiceGroup === 'string'
     ? r.choiceGroup.trim().slice(0, RECIPE_CHOICE_GROUP_MAX_LENGTH)
     : '';
+  const placement = normalizePlacement(r.placement);
   return {
     id: typeof r.id === 'string' && r.id ? r.id : generateId(),
     recipeId,
     name: typeof r.name === 'string' ? r.name.trim().slice(0, RECIPE_NAME_MAX_LENGTH) : '',
     choiceGroup: choiceGroup || null,
+    ...(placement ? { placement } : {}),
   };
+}
+
+/** A stored placement, or undefined for anything that isn't one (absent, not null, so an unplaced link round-trips unchanged). */
+function normalizePlacement(raw: unknown): ComponentPlacement | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const p = raw as Partial<ComponentPlacement>;
+  const before = typeof p.before === 'string' && p.before ? p.before : null;
+  const section = typeof p.section === 'string'
+    ? p.section.trim().slice(0, RECIPE_SECTION_MAX_LENGTH).trim()
+    : '';
+  return { before, section: section || null };
+}
+
+/**
+ * Where a component sits among its parent's ingredients, or undefined when it
+ * was never placed. Every reader of a placement goes through this rather than
+ * `component.placement`.
+ */
+export function componentPlacement(component: RecipeComponent): ComponentPlacement | undefined {
+  return component.placement;
+}
+
+/** One line of a recipe's ingredient list, with the parts placed among them — see `ingredientLayout`. */
+export type LayoutItem =
+  | { kind: 'ingredient'; ingredient: RecipeIngredient }
+  | { kind: 'component'; component: RecipeComponent };
+
+/**
+ * A recipe's own ingredients with its components placed among them, in the
+ * order the recipe page shows and every flatten reads.
+ *
+ * A component sits directly above the ingredient its placement names, so one
+ * placed before the same line keeps component order. An unplaced component in
+ * a choice group an ingredient also carries sits right after that group's last
+ * ingredient, where the page has always drawn it ("buy rice, or cook this
+ * instead"). Anything else with no usable placement (never placed, or anchored
+ * to a line that is gone) goes after the last ingredient in component order,
+ * which for a recipe with no placements at all is exactly the order the walk
+ * always had.
+ */
+export function ingredientLayout(recipe: Recipe): LayoutItem[] {
+  const ingredientIds = new Set(recipe.ingredients.map(i => i.id));
+  const lastOfGroup = new Map<string, string>();
+  for (const ingredient of recipe.ingredients) {
+    if (ingredient.choiceGroup) lastOfGroup.set(ingredient.choiceGroup, ingredient.id);
+  }
+  const before = new Map<string, RecipeComponent[]>();
+  const after = new Map<string, RecipeComponent[]>();
+  const trailing: RecipeComponent[] = [];
+  const push = (map: Map<string, RecipeComponent[]>, key: string, component: RecipeComponent) => {
+    const list = map.get(key);
+    if (list) list.push(component); else map.set(key, [component]);
+  };
+  for (const component of recipe.components) {
+    const anchor = componentPlacement(component)?.before ?? null;
+    const folded = !component.placement && component.choiceGroup
+      ? lastOfGroup.get(component.choiceGroup)
+      : undefined;
+    if (anchor && ingredientIds.has(anchor)) push(before, anchor, component);
+    else if (folded) push(after, folded, component);
+    else trailing.push(component);
+  }
+  const out: LayoutItem[] = [];
+  for (const ingredient of recipe.ingredients) {
+    for (const component of before.get(ingredient.id) ?? []) out.push({ kind: 'component', component });
+    out.push({ kind: 'ingredient', ingredient });
+    for (const component of after.get(ingredient.id) ?? []) out.push({ kind: 'component', component });
+  }
+  for (const component of trailing) out.push({ kind: 'component', component });
+  return out;
+}
+
+/**
+ * `components` with the placement of any that sat above a removed ingredient
+ * moved to the next line that survives (null when none does), so deleting the
+ * line under a part leaves it where it was instead of sending it to the end.
+ * `before` is the ingredient list as it stood; `removedIds` is what is going.
+ */
+export function reanchorComponents(
+  components: readonly RecipeComponent[],
+  before: readonly RecipeIngredient[],
+  removedIds: ReadonlySet<string>,
+): RecipeComponent[] {
+  return components.map(component => {
+    const placement = component.placement;
+    if (!placement?.before || !removedIds.has(placement.before)) return component;
+    const at = before.findIndex(i => i.id === placement.before);
+    const next = before.slice(at + 1).find(i => !removedIds.has(i.id));
+    return { ...component, placement: { ...placement, before: next?.id ?? null } };
+  });
 }
 
 /**
@@ -372,11 +464,20 @@ export interface FlatIngredient {
    * walk itself always sets it.
    */
   swappedFrom?: string | null;
+  /**
+   * The heading the component this line came through is placed under in its
+   * parent (`ComponentPlacement.section`), null for the root's own lines and for
+   * a part with no placement. `ingredientHeadings` reads it to open that heading
+   * above the part's own name.
+   */
+  linkSection?: string | null;
 }
 
 /**
- * Everything it takes to shop for `recipe`: its own ingredient lines, then
- * each component's, depth-first, in component order.
+ * Everything it takes to shop for `recipe`: its own ingredient lines with its
+ * components placed among them (`ingredientLayout`), depth-first. For a recipe
+ * whose components were never placed, that is the lines, then each component's
+ * in component order.
  *
  * **A recipe contributes its lines at most once per flatten**, which is the
  * one place this deliberately parts company with expandTemplateItems (whose
@@ -408,17 +509,36 @@ export function flattenRecipeIngredients(
   swaps: StandingSwapMap = NO_STANDING_SWAPS,
 ): FlatIngredient[] {
   const out: FlatIngredient[] = [];
-  walk(recipe, recipesById, new Set([recipe.id]), 0, resolution, node => {
+  const visited = new Set([recipe.id]);
+  // Not `walk`: that visits a node's lines whole and then its children, and a
+  // component placed between two lines has to land between them. The rules it
+  // enforces are repeated here, each recipe once and only the components the
+  // resolution leaves standing, and `cookedDishes` and the prep walk still use it.
+  const emit = (node: Recipe, depth: number, via: RecipeComponent | null): void => {
     // Resolved, not raw: an either/or line contributes whichever pepper this
     // meal picked. Ungrouped lines are every line, so a recipe with no
     // alternatives flattens exactly as it always did.
-    for (const line of activeIngredients(node.recipe, resolution)) {
-      // Swapped after the choice is resolved, never before: an option the
-      // user isn't cooking has nothing to be swapped into.
-      const { ingredient, swappedFrom } = applyStandingSwap(line, swaps);
-      out.push({ ingredient, recipe: node.recipe, depth: node.depth, swappedFrom });
+    const lines = new Set(activeIngredients(node, resolution));
+    const parts = new Set(activeComponents(node, resolution).map(c => c.id));
+    const linkSection = (via && componentPlacement(via)?.section) || null;
+    for (const item of ingredientLayout(node)) {
+      if (item.kind === 'ingredient') {
+        if (!lines.has(item.ingredient)) continue;
+        // Swapped after the choice is resolved, never before: an option the
+        // user isn't cooking has nothing to be swapped into.
+        const { ingredient, swappedFrom } = applyStandingSwap(item.ingredient, swaps);
+        out.push({ ingredient, recipe: node, depth, swappedFrom, linkSection });
+        continue;
+      }
+      const { component } = item;
+      if (!parts.has(component.id) || visited.has(component.recipeId)) continue;
+      const target = recipesById.get(component.recipeId);
+      if (!target) continue;
+      visited.add(component.recipeId);
+      emit(target, depth + 1, component);
     }
-  });
+  };
+  emit(recipe, 0, null);
   return out;
 }
 
@@ -776,11 +896,28 @@ export function recipesUsing(recipes: readonly Recipe[], targetId: string): Reci
  * with what a meal of this recipe actually involves, and "mash or roast" is one
  * side dish however many ways it can be made — the same reason the clause
  * exists at all, which is to stop a count reading as more of a shop than it is.
+ *
+ * With `recipesById` the clause also says how many ingredients the components
+ * bring ("1 component with 22 ingredients"), counted choice-aware like the
+ * recipe's own number. Without it the clause is only the component count, for a
+ * caller with no library to resolve against. A component that no longer
+ * resolves contributes nothing, so the tail is dropped when the total is 0.
  */
-export function describeComponents(recipe: Recipe): string {
+export function describeComponents(
+  recipe: Recipe,
+  recipesById?: ReadonlyMap<string, Recipe>,
+): string {
   const count = countChoiceAware(recipe.components);
   if (count === 0) return '';
-  return count === 1 ? '1 component' : `${count} components`;
+  const base = count === 1 ? '1 component' : `${count} components`;
+  if (!recipesById) return base;
+  const fromComponents = countChoiceAware(
+    flattenRecipeIngredients(recipe, recipesById)
+      .filter(f => f.depth > 0)
+      .map(f => f.ingredient),
+  );
+  if (fromComponents === 0) return base;
+  return `${base} with ${fromComponents === 1 ? '1 ingredient' : `${fromComponents} ingredients`}`;
 }
 
 /**

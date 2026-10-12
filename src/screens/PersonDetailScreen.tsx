@@ -403,7 +403,7 @@ export function PersonDetailScreen() {
 
       <ScrollView
         ref={scrollTop.ref}
-        {...scrollTop.listProps} style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+        {...scrollTop.listProps} style={styles.scroll} contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(120, scrollTop.clearance) }]}>
         {/* The reach-them row. Only the ones they actually have. */}
         {(person.phoneNumber || person.email || person.linkUrl) && (
           <View style={styles.actionRow}>

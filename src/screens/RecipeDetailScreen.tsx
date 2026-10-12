@@ -28,7 +28,7 @@ import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import { useMeasuredTextWidth } from '../hooks/useMeasuredTextWidth';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
-import type { RecipeIngredient, RecipePrepTask, RecipeStep } from '../types';
+import type { ComponentPlacement, RecipeIngredient, RecipePrepTask, RecipeStep } from '../types';
 import { GROCERY_NAME_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH, RECIPE_STEP_NOTE_MAX_LENGTH, TITLE_MAX_LENGTH } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useSyncStore } from '../store/useSyncStore';
@@ -85,6 +85,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { pickRecipeImage, recipeImageOnDevice, resolveRecipeImagePath, type RecipePhotoSource } from '../utils/recipePhoto';
 import {
   blockedIngredientNote,
+  cleanChoiceGroup,
   describeRecipe,
   duplicateIngredientIn,
   ingredientsFromText,
@@ -104,11 +105,14 @@ import { formatDuration } from '../utils/effort';
 import {
   applyChoice,
   choiceGroupKey,
+  componentPlacement,
   flattenRecipeIngredients,
+  ingredientLayout,
   recipeAlternativeCaptions,
   recipeChoiceGroups,
   recipeMap,
   resolveComponents,
+  type ChoiceGroup,
   type ResolvedComponent,
 } from '../utils/recipeComponents';
 import { applyStandingSwap, describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
@@ -128,7 +132,7 @@ import { plannedMealLabel } from '../utils/recipePlanned';
 import { resetToMealPlan } from '../navigation/navigationRef';
 import { TextField } from '../components/TextField';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
-import { ScrollToTopButton } from '../components/ScrollToTopButton';
+import { ScrollToTopButton, SCROLL_TO_TOP_SIZE } from '../components/ScrollToTopButton';
 import { useActionMenu } from '../hooks/useActionMenu';
 import type { ActionMenuAction } from '../components/ActionMenu';
 
@@ -146,6 +150,7 @@ type RootStackParamList = {
 /** One row of the merged list the ingredients SortableList drags over — see mergedIngredientRows. */
 type MergedIngredientRow =
   | { kind: 'ingredient'; id: string; ingredient: RecipeIngredient }
+  | { kind: 'component'; id: string; resolved: ResolvedComponent }
   | { kind: 'heading'; id: string; name: string; empty: boolean };
 
 /** The same merged shape, one field over — see mergedStepRows. */
@@ -180,6 +185,7 @@ export function RecipeDetailScreen() {
   );
   const addIngredient = useRecipeStore(s => s.addIngredient);
   const updateIngredient = useRecipeStore(s => s.updateIngredient);
+  const renameChoiceGroup = useRecipeStore(s => s.renameChoiceGroup);
   const addIngredientsFromText = useRecipeStore(s => s.addIngredientsFromText);
   const removeIngredient = useRecipeStore(s => s.removeIngredient);
   const reorderIngredients = useRecipeStore(s => s.reorderIngredients);
@@ -298,6 +304,35 @@ export function RecipeDetailScreen() {
     () => (recipe ? recipeChoiceGroups(recipe, recipesById, choiceResolution) : []),
     [recipe, recipesById, choiceResolution]
   );
+
+  // Renames a group of this recipe's own ingredient lines from its heading above
+  // the chips. Only an all-ingredient group: a side dish's label lives on the
+  // component row, which `renameChoiceGroup` doesn't touch.
+  const promptRenameGroup = (group: ChoiceGroup) => {
+    haptics.tap();
+    Alert.prompt(
+      'Group name',
+      'Shown above the choices. Renames it for every ingredient in the group.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Save',
+          onPress: (value?: string) => {
+            const clean = cleanChoiceGroup(value);
+            if (!clean || clean === group.label) return;
+            if (renameChoiceGroup(group.recipe.id, group.label, clean)) {
+              haptics.success();
+              return;
+            }
+            haptics.error();
+            Alert.alert('Name already used', 'Another group in this recipe already has that name.');
+          },
+        },
+      ],
+      'plain-text',
+      group.label,
+    );
+  };
 
   // What each step's own sentence is worth: the amount this reading of the
   // recipe needs, and any standing swap, named where the ingredient is
@@ -558,8 +593,25 @@ export function RecipeDetailScreen() {
   // per-ingredient `section` values.
   const mergedIngredientRows = useMemo(() => {
     const rows: MergedIngredientRow[] = [];
+    if (!recipe) return rows;
+    const resolvedById = new Map(components.map(r => [r.component.id, r]));
     let prevSection: string | null = null;
-    for (const ing of recipe?.ingredients ?? []) {
+    for (const item of ingredientLayout(recipe)) {
+      if (item.kind === 'component') {
+        const resolved = resolvedById.get(item.component.id);
+        if (!resolved) continue;
+        // An unplaced part carries on under whatever heading is open, which is
+        // where it is drawn (after the last line), so it opens no heading.
+        const placement = componentPlacement(item.component);
+        const section: string | null = placement ? placement.section : prevSection;
+        if (section && section !== prevSection) {
+          rows.push({ kind: 'heading', id: `heading:${section}`, name: section, empty: false });
+        }
+        if (section) prevSection = section;
+        rows.push({ kind: 'component', id: item.component.id, resolved });
+        continue;
+      }
+      const ing = item.ingredient;
       if (ing.section && ing.section !== prevSection) {
         rows.push({ kind: 'heading', id: `heading:${ing.section}`, name: ing.section, empty: false });
       }
@@ -570,7 +622,7 @@ export function RecipeDetailScreen() {
       rows.push({ kind: 'heading', id: `heading:${name}`, name, empty: true });
     }
     return rows;
-  }, [recipe]);
+  }, [recipe, components]);
 
   // The row currently under the drag, by id — set from SortableList's
   // onHoverChange so an empty heading can light up as a live drop target the
@@ -583,7 +635,15 @@ export function RecipeDetailScreen() {
   // section" checks the typed name against so it can't redeclare one that
   // already exists.
   const allSections = useMemo(
-    () => allSectionsOf(recipe?.ingredients ?? [], recipe?.emptySections ?? []),
+    () => allSectionsOf(
+      [
+        ...(recipe?.ingredients ?? []),
+        // A heading a placed part is under counts, or "New section" would
+        // redeclare it and the picker would not offer it.
+        ...(recipe?.components ?? []).map(c => ({ id: c.id, section: componentPlacement(c)?.section ?? null })),
+      ],
+      recipe?.emptySections ?? [],
+    ),
     [recipe]
   );
 
@@ -643,8 +703,8 @@ export function RecipeDetailScreen() {
 
   // Every label an ingredient carries — what makes a group "mixed" (see the
   // cross-type groups note in recipeComponents.ts). A component sharing one of
-  // these is folded in next to that ingredient instead of getting a header of
-  // its own; see mixedComponentsByLabel/lastIngredientIdByGroup below.
+  // these is drawn right after that group's last ingredient (ingredientLayout)
+  // instead of getting a header of its own.
   const ingredientChoiceLabels = useMemo(
     () => new Set((recipe?.ingredients ?? []).filter(i => i.choiceGroup).map(i => i.choiceGroup as string)),
     [recipe],
@@ -663,35 +723,6 @@ export function RecipeDetailScreen() {
     return raw;
   }, [recipe, ingredientChoiceLabels]);
 
-  // The last ingredient (in stored order) carrying each label, and the
-  // components that share it — where a mixed group's component options fold
-  // into the ingredient list, right after the option they're an alternative
-  // to. Components with no matching ingredient label render in their usual
-  // trailing block instead (trailingComponents, used where `components` was).
-  const lastIngredientIdByGroup = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const ing of recipe?.ingredients ?? []) {
-      if (ing.choiceGroup) map.set(ing.choiceGroup, ing.id);
-    }
-    return map;
-  }, [recipe]);
-  const mixedComponentsByLabel = useMemo(() => {
-    const map = new Map<string, ResolvedComponent[]>();
-    for (const resolved of components) {
-      const label = resolved.component.choiceGroup;
-      if (!label || !ingredientChoiceLabels.has(label)) continue;
-      const list = map.get(label);
-      if (list) list.push(resolved); else map.set(label, [resolved]);
-    }
-    return map;
-  }, [components, ingredientChoiceLabels]);
-  const trailingComponents = useMemo(
-    () => components.filter(resolved => {
-      const label = resolved.component.choiceGroup;
-      return !label || !ingredientChoiceLabels.has(label);
-    }),
-    [components, ingredientChoiceLabels],
-  );
 
   // The header above only opens at a group's *first* option, so on its own every
   // other option reads as an ordinary line — and a list you read as ordinary is
@@ -1225,7 +1256,7 @@ export function RecipeDetailScreen() {
           <View style={styles.choiceHeader}>
             <Ionicons name="git-branch-outline" size={iconSize.xs} color={colors.accent} />
             <Text style={styles.choiceHeaderText} numberOfLines={1}>
-              Choose one · {choiceHeader}
+              Choose one
             </Text>
           </View>
         )}
@@ -1404,15 +1435,6 @@ export function RecipeDetailScreen() {
         </TouchableOpacity>
         </PaintSelectionRow>
         </SwipeableRow>
-        {/* A component sharing this ingredient's choice group folds in right
-            here, after the group's last ingredient option — not in its own
-            block at the bottom of the card (see trailingComponents below).
-            Not part of the SortableList's own data, just extra content this
-            one row renders: the drag math only ever tracks ingredient rows,
-            and a linked component isn't one — it's still removed and
-            re-grouped from its own long press, same as any other component. */}
-        {!!choiceGroup && lastIngredientIdByGroup.get(choiceGroup) === ingredient.id
-          && (mixedComponentsByLabel.get(choiceGroup) ?? []).map(resolved => renderComponent(resolved, true))}
       </View>
     );
   };
@@ -1466,10 +1488,11 @@ export function RecipeDetailScreen() {
     );
   };
 
-  const renderMergedRow: SortableRenderItem<MergedIngredientRow> = (row, displayIndex, drag, isDragging) =>
-    row.kind === 'heading'
-      ? renderHeadingRow(row, displayIndex === 0)
-      : renderIngredient(row.ingredient, displayIndex, drag, isDragging);
+  const renderMergedRow: SortableRenderItem<MergedIngredientRow> = (row, displayIndex, drag, isDragging) => {
+    if (row.kind === 'heading') return renderHeadingRow(row, displayIndex === 0);
+    if (row.kind === 'component') return renderComponent(row.resolved, true, { drag, isDragging });
+    return renderIngredient(row.ingredient, displayIndex, drag, isDragging);
+  };
 
   // A drag commit hands back the whole merged order; sectionsFromMergedOrder
   // is the one-pass walk that turns "which heading marker precedes this row"
@@ -1482,7 +1505,20 @@ export function RecipeDetailScreen() {
     const sectionById = sectionsFromMergedOrder(entries);
     const ids = rows.filter((r): r is Extract<MergedIngredientRow, { kind: 'ingredient' }> => r.kind === 'ingredient')
       .map(r => r.id);
-    reorderIngredients(recipe.id, ids, sectionById);
+    // Each part is anchored to the next ingredient below it (null when none
+    // is), so it stays put when ingredients are added or moved later. Walked
+    // from the bottom so "the next ingredient" is just the last one seen.
+    const placements = new Map<string, ComponentPlacement>();
+    let below: string | null = null;
+    for (let i = rows.length - 1; i >= 0; i -= 1) {
+      const row = rows[i];
+      if (row.kind === 'ingredient') below = row.id;
+      else if (row.kind === 'component') {
+        placements.set(row.id, { before: below, section: sectionById.get(row.id) ?? null });
+      }
+    }
+    const order = rows.filter(r => r.kind === 'component').map(r => r.id);
+    reorderIngredients(recipe.id, ids, sectionById, { order, placements });
   };
 
   // A component row opens the recipe it points at, so the shared part is one
@@ -1494,7 +1530,16 @@ export function RecipeDetailScreen() {
   // instead of no icon, and no remove-× — removing a component stays a
   // Components-section-only action, so there's exactly one place to do it,
   // even though there are now two places to *see* it.
-  const renderComponent = (resolved: ResolvedComponent, marker = false) => {
+  //
+  // `row` is passed only where the part is a row of the ingredient list, which
+  // is the one place its long press means drag. Everywhere else (the Components
+  // section, a part drawn with its choice group) long press stays what it was:
+  // the either/or sheet.
+  const renderComponent = (
+    resolved: ResolvedComponent,
+    marker = false,
+    row?: { drag: () => void; isDragging: boolean },
+  ) => {
     const target = resolved.recipe;
     const label = resolved.name || 'Deleted recipe';
     const groupHeader = componentGroups.headers.get(resolved.component.id);
@@ -1507,14 +1552,14 @@ export function RecipeDetailScreen() {
           <View style={styles.choiceHeader}>
             <Ionicons name="git-branch-outline" size={iconSize.xs} color={colors.accent} />
             <Text style={styles.choiceHeaderText} numberOfLines={1}>
-              Choose one · {groupHeader}
+              Choose one
             </Text>
           </View>
         )}
         <TouchableOpacity
-          style={[styles.ingredient, !!group && styles.ingredientChoice]}
+          style={[styles.ingredient, !!group && styles.ingredientChoice, row?.isDragging && styles.ingredientDragging]}
           activeOpacity={target ? interaction.activeOpacity : 1}
-          disabled={!target}
+          disabled={!target && !row}
           onPress={() => {
             if (!target) return;
             haptics.tap();
@@ -1529,8 +1574,12 @@ export function RecipeDetailScreen() {
             (navigation as any).navigate('RecipeDetail', { recipeId: target.id, scale });
           }}
           // Long press is free on these rows (unlike an ingredient's, which
-          // drags) and is where making this an either/or lives.
-          onLongPress={() => { haptics.impactLight(); setChoiceComponent(resolved); }}
+          // drags) and is where making this an either/or lives. In the
+          // ingredient list it drags like an ingredient instead, and the
+          // either/or sheet is one long press away in the Components section.
+          onLongPress={row
+            ? (selectionMode ? undefined : row.drag)
+            : () => { haptics.impactLight(); setChoiceComponent(resolved); }}
           delayLongPress={interaction.delayLongPress}
           accessibilityRole="button"
           accessibilityLabel={
@@ -1538,13 +1587,15 @@ export function RecipeDetailScreen() {
               marker ? 'Component' : null,
               label,
               group ? (isDefault ? `usual choice for ${group}` : `alternative for ${group}`) : null,
-              target ? describeRecipe(target) : 'no longer in your recipes',
+              target ? describeRecipe(target, null, { recipesById }) : 'no longer in your recipes',
             ].filter(Boolean).join(', ')
           }
           accessibilityHint={
-            target
-              ? 'Double tap to open this recipe. Long press to make it an alternative.'
-              : 'Long press to make it an alternative.'
+            row
+              ? (target ? 'Double tap to open this recipe. Long press to reorder.' : 'Long press to reorder.')
+              : target
+                ? 'Double tap to open this recipe. Long press to make it an alternative.'
+                : 'Long press to make it an alternative.'
           }
         >
           {marker && (
@@ -1557,7 +1608,7 @@ export function RecipeDetailScreen() {
               {label}
             </Text>
             <Text style={styles.componentMeta} numberOfLines={1}>
-              {target ? describeRecipe(target) : 'No longer in your recipes'}
+              {target ? describeRecipe(target, null, { recipesById }) : 'No longer in your recipes'}
             </Text>
             {!!alternativeNote && (
               <Text style={styles.alternativeNote} numberOfLines={1}>{alternativeNote}</Text>
@@ -1838,7 +1889,8 @@ export function RecipeDetailScreen() {
         // Same while a paint gesture owns the touch: iOS has to be told
         // directly (see PaintSelectionProvider).
         scrollEnabled={!dragging && !painting}
-        contentContainerStyle={styles.scroll}
+        // The footer bar covers most of the button's rise; selecting hides it.
+        contentContainerStyle={[styles.scroll, { paddingBottom: selectionMode ? scrollTop.clearance : spacing.md + SCROLL_TO_TOP_SIZE }]}
         keyboardShouldPersistTaps="handled"
         {...keyboardScroll.props}
         {...scrollTop.listProps}
@@ -1896,7 +1948,7 @@ export function RecipeDetailScreen() {
           />
         )}
 
-        <Text style={styles.summary}>{describeRecipe(recipe)}</Text>
+        <Text style={styles.summary}>{describeRecipe(recipe, null, { recipesById })}</Text>
         {/* The book's own page, a tap away: its index, and the other recipes
             filed under it. */}
         {cookbook && (
@@ -2055,6 +2107,7 @@ export function RecipeDetailScreen() {
                     animateLayout();
                     setChoices(prev => applyChoice(prev, group, optionId));
                   }}
+                  onRename={group.kind === 'ingredient' ? () => promptRenameGroup(group) : undefined}
                 />
               );
             })}
@@ -2185,14 +2238,6 @@ export function RecipeDetailScreen() {
                 renderItem={renderMergedRow}
               />
             )}
-            {/* Marked so a shared part reads as part of this recipe from the
-                first list you'd check, not only several scrolls down in its
-                own Components section (which stays the place to remove one or
-                set a choice-group default). Only the components with nowhere
-                more specific to be — one sharing an ingredient's choice group
-                folds in next to that ingredient instead, inside renderIngredient
-                itself (see mixedComponentsByLabel above). */}
-            {trailingComponents.map(resolved => renderComponent(resolved, true))}
           </View>
         )}
 
