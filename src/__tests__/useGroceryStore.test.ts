@@ -3045,6 +3045,26 @@ describe('remembered aisles', () => {
 });
 
 describe('addFromPlan', () => {
+  it('keeps each recipe\'s own amount when a second recipe wants a row already on the list', () => {
+    seed([]);
+    const store = useGroceryStore.getState();
+    store.addFromPlan([
+      { name: 'Scallions', quantity: '2, chopped, white and green parts divided', aisle: 'Produce', sourceRecipeId: 'r1', sourceRecipeTitle: 'Fish Hot Pot' },
+    ]);
+    expect(useGroceryStore.getState().itemByNameKey('scallions')!.recipeSources).toBeUndefined();
+
+    store.addFromPlan([
+      { name: 'Scallions', quantity: '2, chopped', aisle: 'Produce', sourceRecipeId: 'r2', sourceRecipeTitle: 'Noodle Bowls' },
+    ]);
+
+    const item = useGroceryStore.getState().itemByNameKey('scallions')!;
+    expect(item.sourceRecipeId).toBeNull();
+    expect(item.recipeSources).toEqual([
+      { recipeId: 'r1', title: 'Fish Hot Pot', quantity: '2, chopped, white and green parts divided' },
+      { recipeId: 'r2', title: 'Noodle Bowls', quantity: '2, chopped' },
+    ]);
+  });
+
   it('adds a new name carrying its quantity and aisle', () => {
     seed([]);
 

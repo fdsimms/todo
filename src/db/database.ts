@@ -82,6 +82,7 @@ import { parseTaskFieldDefaults, serializeTaskFieldDefaults } from '../utils/tas
 import { appendPriceObservation, parsePriceHistory } from '../utils/priceHistory';
 import { nextPurchaseIntervalDays } from '../utils/purchaseInterval';
 import { parseFoodNutrition, serializeFoodNutrition } from '../utils/foodNutrition';
+import { parseRecipeSources, serializeRecipeSources } from '../utils/recipeSourcesCodec';
 import { parseUnavailableProductIds, productKeyFor } from '../utils/groceryProduct';
 import { parseChainItems } from '../utils/chain';
 import { parseRotationItems, parseRotationLastDone, parseRotationLog, parseRotationPlan } from '../utils/rotation';
@@ -2142,6 +2143,9 @@ function runInitDatabase(): void {
     'ALTER TABLE rewards ADD COLUMN guards_task_id TEXT',
     // Null on every existing reward: none is limited. See Reward.claimEveryDays.
     'ALTER TABLE rewards ADD COLUMN claim_every_days INTEGER',
+    // Null on every existing row: no row has had a second recipe fold into it
+    // yet. See GroceryItem.recipeSources.
+    'ALTER TABLE grocery_items ADD COLUMN recipe_sources TEXT',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -5063,6 +5067,7 @@ function rowToGroceryItem(row: Record<string, unknown>): GroceryItem {
     onHandUntil: (row.on_hand_until as string) ?? null,
     sourceRecipeId: (row.source_recipe_id as string) ?? null,
     sourceRecipeTitle: (row.source_recipe_title as string) ?? null,
+    recipeSources: parseRecipeSources(row.recipe_sources as string | null),
     choiceGroup: (row.choice_group as string) ?? null,
     isStaple: Boolean(row.is_staple),
     expiresAt: (row.expires_at as string) ?? null,
@@ -5108,8 +5113,8 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
        source_recipe_id, source_recipe_title, choice_group, is_staple, expires_at, frozen_at, opened_at, running_low_at, shelf_life_days, use_up_task,
        pantry_check_declined_at, pantry_reviewed_at, used_up_count, spoiled_count, last_spoiled_at,
        last_price_minor, last_priced_at, last_price_quantity, preferred_product_id, brand_strict, variety_of_key,
-       backfill_dismissed_fields, nutrition, name_from_scan, purchase_interval_days)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       backfill_dismissed_fields, nutrition, name_from_scan, purchase_interval_days, recipe_sources)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       item.id, item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
       item.onList ? 1 : 0, item.checked ? 1 : 0, 1, item.sortOrder,
@@ -5128,6 +5133,7 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
       serializeFoodNutrition(item.nutrition),
       item.nameFromScan ? 1 : 0,
       item.purchaseIntervalDays ?? null,
+      serializeRecipeSources(item.recipeSources),
     ]
   );
 }
@@ -5149,7 +5155,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
        pantry_check_declined_at=?, pantry_reviewed_at=?, used_up_count=?, spoiled_count=?, last_spoiled_at=?,
        last_price_minor=?, last_priced_at=?, last_price_quantity=?,
        preferred_product_id=?, brand_strict=?, variety_of_key=?, backfill_dismissed_fields=?, nutrition=?,
-       name_from_scan=?, price_history=?, purchase_interval_days=?
+       name_from_scan=?, price_history=?, purchase_interval_days=?, recipe_sources=?
      WHERE id=?`,
     [
       item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
@@ -5173,6 +5179,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
       // the history, leaving the undone price in it for good.
       JSON.stringify(item.priceHistory ?? []),
       item.purchaseIntervalDays ?? null,
+      serializeRecipeSources(item.recipeSources),
       item.id,
     ]
   );

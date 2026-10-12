@@ -5207,6 +5207,15 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     sourceRecipeTitle: 'Weeknight chicken stir-fry',
   })));
 
+  // One row two recipes want, with amounts that can't be added: the row shows
+  // each amount under its own recipe instead of one joined string.
+  addFromPlan([
+    { name: 'Scallions', quantity: '2, chopped, white and green parts divided', aisle: 'Produce', sourceRecipeId: recipes.stirFry, sourceRecipeTitle: 'Weeknight chicken stir-fry' },
+  ]);
+  addFromPlan([
+    { name: 'Scallions', quantity: '2, chopped', aisle: 'Produce', sourceRecipeId: recipes.soup, sourceRecipeTitle: 'Weeknight vegetable soup' },
+  ]);
+
   // A second list, for the week away. Seeded because separate lists are one of
   // the capabilities that stay invisible until something uses them: with only
   // "Groceries" on file the switcher is a chevron beside a title that never

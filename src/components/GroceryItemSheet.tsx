@@ -26,6 +26,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useTaskStore } from '../store/useTaskStore';
 import { describeSupplyStock, suppliesStockedFrom } from '../utils/supply';
+import { recipeLedgerFor } from '../utils/recipeSources';
 import { useColors } from '../theme/ThemeContext';
 import {
   spacing,
@@ -1789,6 +1790,29 @@ export function GroceryItemSheet({
               <Text style={styles.hint}>For the recipe “{item.sourceRecipeTitle}”</Text>
             )
           )}
+          {/* The same line for a row more than one recipe wants (the credit
+              above is null then): one per recipe, with its own amount, linked
+              the same way. Only while the recipes still own the quantity. */}
+          {recipeLedgerFor(item) !== null && item.recipeSources?.map((src, i) => {
+            const label = src.quantity ? `${src.quantity} for “${src.title}”` : `For “${src.title}”`;
+            return src.recipeId && onOpenRecipe && recipeExists?.(src.recipeId) ? (
+              <TouchableOpacity
+                key={`${i}-${src.recipeId}`}
+                style={styles.recipeLink}
+                activeOpacity={interaction.activeOpacity}
+                onPress={() => onOpenRecipe(src.recipeId!)}
+                accessibilityRole="button"
+                accessibilityLabel={`Open the recipe ${src.title}`}
+                accessibilityHint="Closes this and opens the recipe"
+              >
+                <Ionicons name="restaurant-outline" size={iconSize.sm} color={colors.accent} />
+                <Text style={styles.recipeLinkText} numberOfLines={2}>{label}</Text>
+                <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+              </TouchableOpacity>
+            ) : (
+              <Text key={`${i}-${src.title}`} style={styles.hint}>{label}</Text>
+            );
+          })}
           {/* The third entry in this strip, and the same job as the recipe line
               above it: an account of why this row exists. A supply is the one
               cause whose reason lives on a different screen entirely, so

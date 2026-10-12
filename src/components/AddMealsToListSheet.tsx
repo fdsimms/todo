@@ -315,6 +315,7 @@ export function AddMealsToListSheet({
         aisle: r.aisle,
         sourceRecipeId: r.sourceRecipeId,
         sourceRecipeTitle: r.sourceRecipeTitle,
+        recipeSources: r.recipeSources,
       }));
 
     if (rows.length === 0) { onClose(); return; }
