@@ -252,6 +252,44 @@ export function variantFor(
   return residue ? residue.slice(0, GROCERY_VARIANT_MAX_LENGTH) : null;
 }
 
+/** Where a scanned row's product came from. See `scanBoxChoice`. */
+export type ScanBoxSource = 'picked' | 'linked' | 'barcode';
+
+/**
+ * The product a scanned row will be filed under, and which rule chose it.
+ *
+ * **One function for what the sheet shows and what Add writes**, so the
+ * "Product" line can't say something the apply step then doesn't do (the same
+ * rule `recalledHelping` has beside `recallAmountAsk`). In order: a product the
+ * person picked, the one this barcode is already linked to, then the words the
+ * barcode lookup supplied. `null` is no product at all, which is the ordinary
+ * answer for a typed row or a code with no brand.
+ *
+ * `linked` outranks re-deriving for the reason `variantFor` gives: it subtracts
+ * the item's name from the product's, so a row renamed away from the source's
+ * wording yields no variant and would mint a brand-only second box beside the
+ * real one on every scan.
+ */
+export function scanBoxChoice(args: {
+  itemId: string;
+  /** Null when the item can't be found, which rules out deriving from the label. */
+  itemName: string | null;
+  picked: Pick<ItemProduct, 'itemId' | 'brand' | 'variant'> | null | undefined;
+  linked: Pick<ItemProduct, 'itemId' | 'brand' | 'variant'> | null | undefined;
+  label: string;
+  brand: string | null;
+}): { brand: string | null; variant: string | null; source: ScanBoxSource } | null {
+  const picked = scanBoxFor(args.picked, args.itemId);
+  if (picked) return { ...picked, source: 'picked' };
+  if (args.linked && args.linked.itemId === args.itemId) {
+    return { brand: args.linked.brand, variant: args.linked.variant, source: 'linked' };
+  }
+  if (!args.label || args.itemName === null) return null;
+  const variant = variantFor(args.label, args.brand, args.itemName);
+  if (!args.brand && !variant) return null;
+  return { brand: args.brand, variant, source: 'barcode' };
+}
+
 /** A looked-up product as a row waiting to be reviewed. */
 export function scannedItemFor(record: ProductRecord): ScannedItem {
   return {

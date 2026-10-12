@@ -1,0 +1,4 @@
+{
+  "message": "Scanned items now explain themselves. Each row says whether you scanned the barcode before, matched it by name, or it will be added as new, shows which product it will be filed under, and only offers \"Add from label\" when the nutrition facts are not already known",
+  "date": "2026-10-12"
+}

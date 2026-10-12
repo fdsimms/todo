@@ -42,18 +42,18 @@ import type { ReceiptMatch } from '../utils/receiptMatch';
 import { lookupGtin, describeLookupError } from '../services/productLookup';
 import { formatGtin, normalizeGtin } from '../utils/gtin';
 import { describeProduct, productsForItem } from '../utils/groceryProduct';
+import { nutritionFor } from '../utils/foodNutrition';
 import { priceNearBarcode } from '../utils/shelfLabel';
 import { formatPrice } from '../utils/groceryPrice';
 import { normalizePlu, pluNameFor } from '../utils/plu';
 import {
   matchScans,
-  scanBoxFor,
+  scanBoxChoice,
   scanLinkTarget,
   pluScannedItem,
   nameFromScanFor,
   scannedItemFor,
   sourceLineFor,
-  variantFor,
   unknownScannedItem,
   type ScannedGtinLink,
   type ScannedItem,
@@ -178,6 +178,13 @@ interface ScanRow extends ScannedItem {
    * and `KitchenScreen` hands them to `addManyToPantry`.
    */
   priceMinor: number | null;
+  /**
+   * Whether the barcode lookup stated a nutrition panel. Only the answer, not
+   * the figures: `linkScannedGtins` carries the panel off the barcode cache
+   * when the scan is applied, and the row only needs to say it is there so the
+   * Nutrition line doesn't offer to photograph a label the database already read.
+   */
+  hasNutrition?: boolean;
 }
 
 /** Which screen is scanning. See `Props.context`. */
@@ -200,8 +207,6 @@ const CONTEXT_COPY: Record<ScanContext, {
   matched: (name: string) => string;
   /** A row the user filed by hand. One sentence per context, same as the rest. */
   picked: (name: string) => string;
-  scannedBefore: (name: string) => string;
-  matchedBefore: (name: string) => string;
   offList: (name: string) => string;
 }> = {
   shopping: {
@@ -216,8 +221,6 @@ const CONTEXT_COPY: Record<ScanContext, {
     freezer: true,
     matched: name => `On your list as ${name}`,
     picked: name => `Filed as ${name} on your list`,
-    scannedBefore: name => `On your list as ${name}, as you scanned it before`,
-    matchedBefore: name => `On your list as ${name}, as you matched it before`,
     offList: name => `Back on the list as ${name}`,
   },
   pantry: {
@@ -227,8 +230,6 @@ const CONTEXT_COPY: Record<ScanContext, {
     freezer: true,
     matched: name => `Matches \u201C${name}\u201D in your pantry`,
     picked: name => `Filed as \u201C${name}\u201D in your pantry`,
-    scannedBefore: name => `Matches \u201C${name}\u201D, as you scanned it before`,
-    matchedBefore: name => `Matches \u201C${name}\u201D, as you matched it before`,
     offList: name => `Matches \u201C${name}\u201D`,
   },
   log: {
@@ -240,8 +241,6 @@ const CONTEXT_COPY: Record<ScanContext, {
     freezer: false,
     matched: name => `Matches \u201C${name}\u201D`,
     picked: name => `Filed as \u201C${name}\u201D`,
-    scannedBefore: name => `Matches \u201C${name}\u201D, as you scanned it before`,
-    matchedBefore: name => `Matches \u201C${name}\u201D, as you matched it before`,
     offList: name => `Matches \u201C${name}\u201D`,
   },
 };
@@ -367,41 +366,72 @@ interface Props {
  * rule `acceptedByDefault` applies to a weak receipt match, for the same
  * reason: an unchecked row is a question and a checked one is an assertion.
  */
-type DetailTone = 'plain' | 'action' | 'error';
+type DetailTone = 'plain' | 'muted' | 'action' | 'error';
 
 /**
  * One "label, answer, chevron" line under a scanned row's name. The whole line
  * is the tap target; `extra` is the single pill that may sit beside the answer.
  * Nested touchables are avoided by keeping the pill a sibling of the tap area.
+ *
+ * `note` is a second, quieter line saying where the answer came from. Without
+ * `onPress` the line is a plain statement (nothing to change, so no chevron),
+ * with a check when `done`: a row that offers a button for something already
+ * settled is what made this card read as a list of chores.
  */
 function DetailRow({
-  styles, colors, label, value, tone, onPress, accessibilityLabel, extra,
+  styles, colors, label, value, note, tone, onPress, accessibilityLabel, extra, done,
 }: {
   styles: ReturnType<typeof makeStyles>;
   colors: Colors;
   label: string;
   value: string;
+  note?: string | null;
   tone: DetailTone;
-  onPress: () => void;
+  onPress?: () => void;
   accessibilityLabel: string;
   extra?: React.ReactNode;
+  done?: boolean;
 }) {
   const valueStyle =
-    tone === 'action' ? styles.detailAction : tone === 'error' ? styles.detailError : styles.detailValue;
+    tone === 'action'
+      ? styles.detailAction
+      : tone === 'error'
+        ? styles.detailError
+        : tone === 'muted'
+          ? styles.detailMuted
+          : styles.detailValue;
+  const body = (
+    <>
+      <Text style={styles.detailLabel}>{label}</Text>
+      <View style={styles.detailText}>
+        <Text style={valueStyle} numberOfLines={2}>{value}</Text>
+        {!!note && <Text style={styles.detailNote}>{note}</Text>}
+      </View>
+    </>
+  );
   return (
     <View style={styles.detailRow}>
-      <TouchableOpacity
-        style={styles.detailTap}
-        activeOpacity={interaction.activeOpacity}
-        onPress={onPress}
-        accessibilityRole="button"
-        accessibilityLabel={accessibilityLabel}
-      >
-        <Text style={styles.detailLabel}>{label}</Text>
-        <Text style={valueStyle} numberOfLines={2}>{value}</Text>
-      </TouchableOpacity>
+      {onPress ? (
+        <TouchableOpacity
+          style={styles.detailTap}
+          activeOpacity={interaction.activeOpacity}
+          onPress={onPress}
+          accessibilityRole="button"
+          accessibilityLabel={accessibilityLabel}
+        >
+          {body}
+        </TouchableOpacity>
+      ) : (
+        <View style={styles.detailTap} accessible accessibilityLabel={accessibilityLabel}>
+          {body}
+        </View>
+      )}
       {extra}
-      <Ionicons name="chevron-forward" size={iconSize.xs} color={colors.textTertiary} />
+      {onPress ? (
+        <Ionicons name="chevron-forward" size={iconSize.xs} color={colors.textTertiary} />
+      ) : done ? (
+        <Ionicons name="checkmark-circle" size={iconSize.sm} color={colors.greenText} />
+      ) : null}
     </View>
   );
 }
@@ -509,7 +539,12 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
         const record = await lookupGtin(gtin);
         const known = record ? null : remembered();
         if (record) {
-          patchRow(key, { ...scannedItemFor(record), pending: false, included: true });
+          patchRow(key, {
+            ...scannedItemFor(record),
+            hasNutrition: !!record.nutrition,
+            pending: false,
+            included: true,
+          });
         } else if (known) {
           patchRow(key, { pending: false, name: known.name, included: true, error: null });
         } else {
@@ -764,42 +799,25 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
      * *named* after the residue, so there is nothing left over.
      */
     const recordProduct = (itemId: string, row: ScanRow) => {
-      // A box the user chose outranks everything below, including the one this
-      // barcode already names: picking one is the act of correcting exactly
-      // that. Expressed as its own words, which is what `addProduct` and
-      // `linkScannedGtins` both find a box by, so this reuses the existing box
-      // rather than minting a second with the same name.
-      if (row.pickedProductId) {
-        const picked = scanBoxFor(
-          itemProducts.find(p => p.id === row.pickedProductId),
-          itemId,
-        );
-        if (picked) {
-          products.push({ itemId, ...picked, gtin: row.gtin, packSize: row.quantity });
-          return;
-        }
-        // A pick that no longer resolves — the box was deleted, or the item
-        // pick moved on and left it behind. Resolve-or-shrug: fall through to
-        // the barcode's own words, which is the answer the row had before
-        // anybody picked anything.
-      }
-      // A box this barcode already names is the answer, and re-deriving one
-      // would produce a worse one: `variantFor` subtracts the item's own name
-      // from the product name, so a row renamed away from the source's wording
-      // ("vegan sausage" for "Beyond Plant Based Sausages Cajun") leaves
-      // nothing to subtract and returns null — minting a brand-only second box
-      // beside the real one every time it is scanned.
-      const linked = gtinProductFor(row.gtin);
-      if (linked && linked.itemId === itemId) {
-        products.push({ itemId, brand: linked.brand, variant: linked.variant, gtin: row.gtin, packSize: row.quantity });
-        return;
-      }
-      if (!row.label) return;
-      const item = items.find(i => i.id === itemId);
-      if (!item) return;
-      const variant = variantFor(row.label, row.brand, item.name);
-      if (!row.brand && !variant) return;
-      products.push({ itemId, brand: row.brand, variant, gtin: row.gtin, packSize: row.quantity });
+      // The rule is `scanBoxChoice`, shared with the row's Product line so what
+      // the sheet says it will file is what this writes. A pick that no longer
+      // resolves falls through to the barcode's own words inside it.
+      const choice = scanBoxChoice({
+        itemId,
+        itemName: items.find(i => i.id === itemId)?.name ?? null,
+        picked: row.pickedProductId ? itemProducts.find(p => p.id === row.pickedProductId) : null,
+        linked: gtinProductFor(row.gtin),
+        label: row.label,
+        brand: row.brand,
+      });
+      if (!choice) return;
+      products.push({
+        itemId,
+        brand: choice.brand,
+        variant: choice.variant,
+        gtin: row.gtin,
+        packSize: row.quantity,
+      });
     };
     /**
      * The barcode of a row whose catalog id is already known.
@@ -936,17 +954,8 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
     if (itemId) {
       const item = items.find(i => i.id === itemId);
       if (!item) return null;
-      // Both arrive as `remembered`, since a barcode link resolves through the
-      // same alias tier a phrase does. Naming which of the two it was is worth
-      // the branch: "as you scanned it before" is checkable against the box in
-      // your hand, where the generic wording sends someone looking for a name
-      // they typed and never find, the row having been renamed since.
-      const viaGtin = !!row.gtin && gtinItemFor(row.gtin) === itemId;
-      const copy = CONTEXT_COPY[context];
-      if (viaGtin) return copy.scannedBefore(item.name);
-      return match?.confidence === 'remembered'
-        ? copy.matchedBefore(item.name)
-        : copy.matched(item.name);
+      // Why it matched (barcode or name) is `captionNoteFor`'s line.
+      return CONTEXT_COPY[context].matched(item.name);
     }
     const offListMatchId = confidentOffListMatchId(row, match);
     if (offListMatchId) {
@@ -960,6 +969,28 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
       if (item) return `Might match “${item.name}”`;
     }
     return 'New item';
+  };
+
+  /**
+   * The line under a row's item answer saying *why* it is that item, or what
+   * happens when it isn't one yet. Split from `captionFor` so the answer stays
+   * short and the reason is checkable: "scanned before" is a fact about the
+   * barcode in your hand, "matched by name" is a guess you may want to correct.
+   */
+  const captionNoteFor = (row: ScanRow, index: number): string | null => {
+    if (row.pending || row.error) return null;
+    if (pickedTarget(row)) return 'Chosen by you';
+    if (!row.name.trim()) return null;
+    const match = matches[index];
+    const matchedId = confidentItemId(row, match) ?? confidentOffListMatchId(row, match);
+    if (matchedId) {
+      if (row.gtin && gtinItemFor(row.gtin) === matchedId) return 'You scanned this barcode before';
+      return match?.confidence === 'remembered'
+        ? 'Matched by name, as you matched it before'
+        : 'Matched by name';
+    }
+    if (pendingMatchId(row, match)) return 'Confirm it is the same food, or choose another item';
+    return 'Added to your catalog when you continue';
   };
 
   const camera = () => {
@@ -1059,9 +1090,42 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                 const rowBoxes = rowItemId ? productsForItem(rowItemId, itemProducts) : [];
                 const boxCount = rowBoxes.length;
                 const resolvedName = rowItem?.name ?? null;
-                const boxLabel = row.pickedProductId
-                  ? describeProduct(rowBoxes.find(b => b.id === row.pickedProductId)) ?? 'Pick a product'
-                  : 'Pick a product';
+                const captionNote = captionNoteFor(row, index);
+                // What Add will file this row's product as, from the same rule
+                // that writes it, so the line is a statement and not a prompt.
+                const boxChoice = rowItemId
+                  ? scanBoxChoice({
+                      itemId: rowItemId,
+                      itemName: resolvedName,
+                      picked: row.pickedProductId ? rowBoxes.find(b => b.id === row.pickedProductId) : null,
+                      linked: gtinProductFor(row.gtin),
+                      label: row.label,
+                      brand: row.brand,
+                    })
+                  : null;
+                const boxText = boxChoice ? describeProduct(boxChoice) : null;
+                const boxNote =
+                  boxChoice?.source === 'picked'
+                    ? 'Chosen by you'
+                    : boxChoice?.source === 'linked'
+                      ? 'Linked to this barcode'
+                      : boxChoice
+                        ? 'Read from the barcode lookup'
+                        : boxCount > 0
+                          ? 'Optional. Tap to choose one'
+                          : 'Optional. Tap to name one';
+                // Whether figures already exist for what this row resolves to:
+                // the product's or the catalog row's own, else the barcode
+                // database's. Only then is "Add from label" a real next step.
+                const nutritionSource: 'catalog' | 'database' | null =
+                  rowItem && nutritionFor(
+                    rowItem,
+                    rowBoxes.find(b => b.id === (row.pickedProductId ?? gtinProductFor(row.gtin)?.id)),
+                  )
+                    ? 'catalog'
+                    : row.hasNutrition
+                      ? 'database'
+                      : null;
                 return (
                   <View key={row.key} style={index > 0 ? styles.rowDivided : undefined}>
                   <View style={styles.row}>
@@ -1145,6 +1209,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                           colors={colors}
                           label="Item"
                           value={caption || 'Pick an item'}
+                          note={captionNote}
                           tone={row.error ? 'error' : caption ? 'plain' : 'action'}
                           onPress={() => setPicking(p => (p?.key === row.key && p.mode === 'item' ? null : { key: row.key, mode: 'item' }))}
                           accessibilityLabel={
@@ -1184,10 +1249,17 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                             styles={styles}
                             colors={colors}
                             label="Product"
-                            value={boxCount > 0 ? boxLabel : 'Add a product'}
-                            tone={boxCount > 0 && row.pickedProductId ? 'plain' : 'action'}
+                            value={boxText ?? 'None'}
+                            note={boxNote}
+                            tone={boxText ? 'plain' : 'muted'}
                             onPress={() => setPicking(p => (p?.key === row.key && p.mode === 'box' ? null : { key: row.key, mode: 'box' }))}
-                            accessibilityLabel={boxCount > 0 ? `Choose which product of ${resolvedName ?? 'this item'} this is` : `Add a product to ${resolvedName ?? 'this item'}`}
+                            accessibilityLabel={
+                              boxText
+                                ? `Filed as ${boxText}. Change which product of ${resolvedName ?? 'this item'} this is`
+                                : boxCount > 0
+                                  ? `Choose which product of ${resolvedName ?? 'this item'} this is`
+                                  : `Add a product to ${resolvedName ?? 'this item'}`
+                            }
                           />
                         )}
                         {/* The way out of a code nothing has heard of: the
@@ -1197,16 +1269,39 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                             nutrition, and only once there's a name to attach
                             the figures to and nothing in the catalog has
                             already answered for this row. */}
-                        {context === 'log' && !!onPhotographLabel && !pendingId && !row.pickedItemId && !!row.name.trim() && (
-                          <DetailRow
-                            styles={styles}
-                            colors={colors}
-                            label="Nutrition"
-                            value="Add from label"
-                            tone="action"
-                            onPress={() => onPhotographLabel(row.name.trim())}
-                            accessibilityLabel={`Photograph the nutrition label for ${row.name.trim()}`}
-                          />
+                        {context === 'log' && !pendingId && !!row.name.trim() && (
+                          nutritionSource ? (
+                            <DetailRow
+                              styles={styles}
+                              colors={colors}
+                              label="Nutrition"
+                              value={nutritionSource === 'catalog' ? 'On file' : 'From the barcode lookup'}
+                              tone="plain"
+                              done
+                              accessibilityLabel={`Nutrition facts for ${row.name.trim()} are already known`}
+                            />
+                          ) : !!onPhotographLabel && !row.pickedItemId ? (
+                            <DetailRow
+                              styles={styles}
+                              colors={colors}
+                              label="Nutrition"
+                              value="Add from label"
+                              note="Not found yet. Photograph the label to log it"
+                              tone="action"
+                              onPress={() => onPhotographLabel(row.name.trim())}
+                              accessibilityLabel={`Photograph the nutrition label for ${row.name.trim()}`}
+                            />
+                          ) : (
+                            <DetailRow
+                              styles={styles}
+                              colors={colors}
+                              label="Nutrition"
+                              value="None yet"
+                              note="This food can't be logged until it has nutrition facts"
+                              tone="muted"
+                              accessibilityLabel={`${row.name.trim()} has no nutrition facts yet`}
+                            />
+                          )
                         )}
                         </>
                       )}
@@ -1420,7 +1515,7 @@ function makeStyles(colors: Colors) {
     // No lineHeight: RN maps it onto the iOS paragraph style with no baseline
     // compensation, which drops the glyphs below the caret. See CLAUDE.md.
     rowInput: { color: colors.text, fontSize: font.md, paddingVertical: spacing.xxs },
-    rowLabel: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },
+    rowLabel: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs, marginBottom: spacing.xs },
     // Wraps, because the caption now shares its line with up to three pills
     // and a long "Filed as …" sentence would otherwise squeeze them off the
     // right edge — see CLAUDE.md on text losing a row to its buttons.
@@ -1448,7 +1543,10 @@ function makeStyles(colors: Colors) {
       borderTopWidth: border.hairline,
       borderTopColor: colors.separator,
     },
-    detailTap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 44 },
+    detailTap: { flex: 1, flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, minHeight: 44, paddingVertical: spacing.smd },
+    detailText: { flex: 1 },
+    detailNote: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },
+    detailMuted: { color: colors.textSecondary, fontSize: font.sm },
     detailLabel: { color: colors.textSecondary, fontSize: font.sm, minWidth: 72 },
     detailValue: { color: colors.text, fontSize: font.sm, flex: 1 },
     detailError: { color: colors.orangeText, fontSize: font.sm, flex: 1 },
