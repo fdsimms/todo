@@ -1423,6 +1423,16 @@ describe('the replica', () => {
       replica.refresh();
     });
 
+    it('refuses a second claim inside a reward\'s claim limit', () => {
+      earn(90);
+      const reward = replica.addReward('Coffee', 5, { claimEveryDays: 7 });
+      expect(reward.claimEveryDays).toBe(7);
+      const claim = replica.claimReward(reward.id);
+      expect(() => replica.claimReward(reward.id)).toThrow(/once a week.*Available again in 7 days/);
+      replica.unclaimReward(claim.id);
+      expect(replica.claimReward(reward.id).kind).toBe('spend');
+    });
+
     it('adds, claims and takes back a reward against the stored balance', () => {
       // The store is loaded from the database, so a balance earned before this
       // process's reward store was last read still counts toward a claim.

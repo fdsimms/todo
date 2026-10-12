@@ -18,7 +18,7 @@ jest.mock('../db/database', () => ({
   dbDeleteReward: jest.fn(),
 }));
 
-const settings = { rewardsEnabled: true };
+const settings = { rewardsEnabled: true, dayResetTime: '00:00' };
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: { getState: () => settings },
 }));
@@ -305,5 +305,32 @@ describe('dollar-priced rewards', () => {
     const r = state().addReward('Coffee', 45, { priceMinor: 450 })!;
     state().updateReward(r.id, { priceMinor: null });
     expect(state().rewards[0].priceMinor).toBeNull();
+  });
+});
+
+describe('claim limit', () => {
+  it('refuses a second claim inside the limit and allows it once undone or elapsed', () => {
+    state().addReward('Coffee', 5, { claimEveryDays: 7 });
+    const r = state().rewards[0];
+    expect(r.claimEveryDays).toBe(7);
+    useRewardStore.setState({ entries: [{ id: 'e', kind: 'earn', amount: 50, at: AT, taskId: 't', rewardId: null, label: 'x' }] });
+    const first = state().claimReward(r.id)!;
+    expect(first).not.toBeNull();
+    expect(state().claimReward(r.id)).toBeNull();
+    state().unclaim(first.id);
+    expect(state().claimReward(r.id)).not.toBeNull();
+    // A claim from long ago no longer holds it.
+    useRewardStore.setState(s => ({ entries: s.entries.filter(e => e.kind !== 'spend').concat({ id: 'old', kind: 'spend', amount: 5, at: '2026-01-01T09:00:00.000Z', taskId: null, rewardId: r.id, label: 'Coffee' }) }));
+    expect(state().claimReward(r.id)).not.toBeNull();
+  });
+
+  it('drops the limit on a one-time reward and keeps it across an edit', () => {
+    const r = state().addReward('Boots', 300, { oneTime: true, claimEveryDays: 7 })!;
+    expect(r.claimEveryDays).toBeNull();
+    const c = state().addReward('Tea', 3, { claimEveryDays: 14 })!;
+    state().updateReward(c.id, { title: 'Green tea' });
+    expect(state().rewards.find(x => x.id === c.id)!.claimEveryDays).toBe(14);
+    state().updateReward(c.id, { claimEveryDays: null });
+    expect(state().rewards.find(x => x.id === c.id)!.claimEveryDays).toBeNull();
   });
 });

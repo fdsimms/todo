@@ -152,6 +152,22 @@ so the rate is never a number the app invented, and there is no rate until both 
   checking off the thing you just spent coins on would also earn coins; the undo takes both back.
   Checking it off by hand (you bought it without coins) retires the reward. Always one-time.
 
+## Limiting claims
+
+A repeatable reward can be limited to one claim every N days, weeks or months (`Reward.claimEveryDays`,
+stored in days, a month being 30 as in the nudge cadence). "A dessert, once a week." Rules in
+`src/utils/rewards.ts` under "A claim limit".
+
+- **Waiting is read off the ledger**, like one-time (`claimWaitDays`): the newest spend naming the
+  reward, counted in logical days. Undoing the claim removes the spend and frees it, with nothing to
+  reset. There is no "available on" date stored.
+- **Enforced in `claimReward`**, not only by the dimmed button, so a second device, the MCP replica
+  and a claim made before a sync all hit the same refusal. The button stays tappable and says why.
+- **It doesn't touch the balance or the price.** A limit is not a cost; don't turn it into one.
+- **A one-time or wish list reward takes none** (`cleanClaimLimit`); turning one one-time drops it.
+- **A slip on a guarded habit inside the limit is a real slip**, charged like one the balance can't
+  cover (`planGuardedSlip`): the claim it would have made is refused, so it can't be the way out.
+
 ## A reward guarding a habit
 
 A reward can name an "Avoid this" habit it is the honest way to have (`Reward.guardsTaskId`): "No

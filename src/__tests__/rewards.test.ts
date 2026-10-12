@@ -9,6 +9,10 @@ import {
   REWARD_IDEAS,
   rewardIdeas,
   describeLastClaimed,
+  claimWaitDays,
+  cleanClaimLimit,
+  describeClaimLimit,
+  describeClaimWait,
   goalProgress,
   goalBarFill,
   savingForGoal,
@@ -455,6 +459,50 @@ describe('a reward on the list', () => {
     expect(describeLastClaimed(new Date(2026, 9, 3, 2, 30).toISOString(), today)).toBe('Claimed today');
     expect(describeLastClaimed(new Date(2026, 9, 4, 1).toISOString(), new Date(2026, 9, 3, 2, 30))).toBe('Claimed today');
     expect(describeLastClaimed(new Date(2026, 9, 2, 1).toISOString(), today)).toBe('Last claimed 2 days ago');
+  });
+
+  describe('claim limit', () => {
+    const spend = (at: Date) => ({ id: 'e', kind: 'spend' as const, amount: 5, at: at.toISOString(), taskId: null, rewardId: 'r', label: 'R' });
+    const weekly = { id: 'r', claimEveryDays: 7 };
+
+    it('is free when there is no limit or no claim', () => {
+      const today = new Date(2026, 9, 12);
+      expect(claimWaitDays({ id: 'r', claimEveryDays: null }, [spend(today)], today)).toBe(0);
+      expect(claimWaitDays(weekly, [], today)).toBe(0);
+    });
+
+    it('counts logical days from the newest claim', () => {
+      const today = new Date(2026, 9, 12);
+      expect(claimWaitDays(weekly, [spend(new Date(2026, 9, 12, 8))], today)).toBe(7);
+      expect(claimWaitDays(weekly, [spend(new Date(2026, 9, 9, 8))], today)).toBe(4);
+      expect(claimWaitDays(weekly, [spend(new Date(2026, 9, 6, 8))], today)).toBe(1);
+      expect(claimWaitDays(weekly, [spend(new Date(2026, 9, 5, 8))], today)).toBe(0);
+      expect(claimWaitDays(weekly, [spend(new Date(2026, 8, 1)), spend(new Date(2026, 9, 11))], today)).toBe(6);
+    });
+
+    it('counts a claim before the day start toward the day before', () => {
+      const today = new Date(2026, 9, 12, 2, 0);
+      expect(claimWaitDays({ id: 'r', claimEveryDays: 1 }, [spend(new Date(2026, 9, 12, 1))], today)).toBe(0);
+      expect(claimWaitDays({ id: 'r', claimEveryDays: 1 }, [spend(new Date(2026, 9, 12, 3))], today)).toBe(1);
+    });
+
+    it('stores a whole number of days, none for a one-time reward', () => {
+      expect(cleanClaimLimit(14, false)).toBe(14);
+      expect(cleanClaimLimit(14, true)).toBeNull();
+      expect(cleanClaimLimit(0, false)).toBeNull();
+      expect(cleanClaimLimit(null, false)).toBeNull();
+      expect(cleanClaimLimit(99999, false)).toBe(720);
+    });
+
+    it('says it in plain terms', () => {
+      expect(describeClaimLimit(1)).toBe('Once a day');
+      expect(describeClaimLimit(7)).toBe('Once a week');
+      expect(describeClaimLimit(14)).toBe('Once every 2 weeks');
+      expect(describeClaimLimit(10)).toBe('Once every 10 days');
+      expect(describeClaimLimit(30)).toBe('Once a month');
+      expect(describeClaimWait(1)).toBe('Available again tomorrow');
+      expect(describeClaimWait(4)).toBe('Available again in 4 days');
+    });
   });
 
   it('measures progress toward a goal, clamped', () => {

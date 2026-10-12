@@ -13,6 +13,8 @@ import { generateId } from '../utils/id';
 import { derivedId, spawnSeed } from '../utils/syncIds';
 import {
   canClaimReward,
+  claimWaitDays,
+  cleanClaimLimit,
   coinBalance,
   coinsForPrice,
   lastClaimedAt,
@@ -21,6 +23,7 @@ import {
 } from '../utils/rewards';
 import { canGuard, claimedSince, planGuardedSlip, type GuardedSlip } from '../utils/rewardGuard';
 import type { NegativeHabitFields } from '../utils/negativeHabits';
+import { getCurrentDayStart, getDayStart } from '../utils/dateUtils';
 import { useSettingsStore } from './useSettingsStore';
 
 /**
@@ -108,7 +111,7 @@ interface RewardStore {
 const ANNOUNCE_WINDOW_MS = 60_000;
 
 /** The optional half of a reward, as the form edits it. */
-export type RewardDetails = Pick<Reward, 'linkUrl' | 'note' | 'oneTime' | 'taskId' | 'priceMinor' | 'guardsTaskId'>;
+export type RewardDetails = Pick<Reward, 'linkUrl' | 'note' | 'oneTime' | 'taskId' | 'priceMinor' | 'guardsTaskId' | 'claimEveryDays'>;
 
 /** Blank text is no value, so a cleared field stores null rather than "". */
 function cleanText(text: string | null | undefined): string | null {
@@ -206,7 +209,7 @@ export const useRewardStore = create<RewardStore>((set, get) => {
 
     slipGuardFor(task, todayStart) {
       const balance = get().balance();
-      const plan = planGuardedSlip({ task, rewards: get().rewards, balance, todayStart, rewardsEnabled: enabled() });
+      const plan = planGuardedSlip({ task, rewards: get().rewards, entries: get().entries, balance, todayStart, rewardsEnabled: enabled() });
       if (!plan) return null;
       return { plan, balance, claimedToday: claimedSince(get().entries, plan.reward.id, todayStart) };
     },
@@ -227,6 +230,7 @@ export const useRewardStore = create<RewardStore>((set, get) => {
         taskId,
         priceMinor: details?.priceMinor ?? null,
         guardsTaskId: canGuard({ oneTime, taskId }) ? details?.guardsTaskId ?? null : null,
+        claimEveryDays: cleanClaimLimit(details?.claimEveryDays, oneTime),
       };
       dbInsertReward(reward);
       set(s => ({ rewards: sortRewards([...s.rewards, reward]) }));
@@ -253,6 +257,8 @@ export const useRewardStore = create<RewardStore>((set, get) => {
         priceMinor: patch.priceMinor !== undefined ? patch.priceMinor : current.priceMinor,
         // Turning a reward one-time drops the habit it guarded (see canGuard).
         guardsTaskId: canGuard({ oneTime, taskId }) ? guardsTaskId : null,
+        // Turning a reward one-time drops its limit, which it has no use for.
+        claimEveryDays: cleanClaimLimit(patch.claimEveryDays !== undefined ? patch.claimEveryDays : current.claimEveryDays, oneTime),
       };
       dbUpdateReward(next);
       set(s => ({ rewards: sortRewards(s.rewards.map(r => (r.id === id ? next : r))) }));
@@ -286,6 +292,10 @@ export const useRewardStore = create<RewardStore>((set, get) => {
       // A one-time reward is claimed once. The list hides it after, so this is
       // the guard for a second device that claimed it before the first synced.
       if (reward.oneTime && lastClaimedAt(get().entries, reward.id) !== null) return null;
+      // A limited reward waits out its limit. The Claim button says so first;
+      // this is the guard for a second device, the MCP replica and a backdated
+      // claim, which `at` counts from its own day.
+      if (claimWaitDays(reward, get().entries, at ? getDayStart(at, useSettingsStore.getState().dayResetTime) : getCurrentDayStart()) > 0) return null;
       const entry: CoinEntry = {
         id: generateId(),
         kind: 'spend',

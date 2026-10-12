@@ -1,5 +1,5 @@
 import type { CoinEntry, Reward, Task } from '../types';
-import { canClaimReward, formatCoins } from './rewards';
+import { canClaimReward, claimWaitDays, formatCoins } from './rewards';
 import { isNegativeTask, nextSlipIsFree, type NegativeHabitFields } from './negativeHabits';
 import { format } from 'date-fns/format';
 
@@ -29,7 +29,8 @@ import { format } from 'date-fns/format';
 /** What a slip on a guarded habit does instead of the ordinary slip. */
 export type GuardedSlip =
   | { kind: 'claim'; reward: Reward }
-  | { kind: 'charge'; reward: Reward; amount: number };
+  /** `waitDays` is set when the reward is inside its own claim limit, which is why it can't be claimed. */
+  | { kind: 'charge'; reward: Reward; amount: number; waitDays?: number };
 
 /**
  * Whether a reward can guard a habit at all. A one-time reward is gone after
@@ -62,17 +63,23 @@ export function guardingReward(rewards: readonly Reward[], taskId: string): Rewa
 export function planGuardedSlip(input: {
   task: NegativeHabitFields & Pick<Task, 'id'>;
   rewards: readonly Reward[];
+  entries: readonly CoinEntry[];
   balance: number;
   todayStart: Date;
   rewardsEnabled: boolean;
 }): GuardedSlip | null {
-  const { task, rewards, balance, todayStart, rewardsEnabled } = input;
+  const { task, rewards, entries, balance, todayStart, rewardsEnabled } = input;
   if (!rewardsEnabled || !isNegativeTask(task)) return null;
   const reward = guardingReward(rewards, task.id);
   if (!reward) return null;
   if (nextSlipIsFree(task, todayStart)) return null;
+  const amount = Math.max(0, Math.min(reward.cost, balance));
+  // A reward inside its claim limit can't be claimed, so a slip on its habit
+  // is a real one, charged the same as a slip the balance doesn't cover.
+  const waitDays = claimWaitDays(reward, entries, todayStart);
+  if (waitDays > 0) return { kind: 'charge', reward, amount, waitDays };
   if (canClaimReward(balance, reward.cost)) return { kind: 'claim', reward };
-  return { kind: 'charge', reward, amount: Math.max(0, Math.min(reward.cost, balance)) };
+  return { kind: 'charge', reward, amount };
 }
 
 /**
@@ -108,6 +115,14 @@ export function guardedSlipPrompt(
         claimedToday ? 'You already claimed it once today.' : null,
       ].filter(Boolean).join(' '),
       confirm: 'Claim it',
+    };
+  }
+  if (plan.waitDays) {
+    const when = plan.waitDays === 1 ? 'until tomorrow' : `for ${plan.waitDays} more days`;
+    return {
+      title: 'Log a slip?',
+      message: `${reward.title} can't be claimed again ${when}, so this counts as a slip${plan.amount > 0 ? ` and costs ${formatCoins(plan.amount)}` : ' and costs no coins'}.`,
+      confirm: 'Log it',
     };
   }
   return {

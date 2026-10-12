@@ -32,6 +32,10 @@ export interface SerializedReward {
    */
   guardsHabitId?: string;
   guardsHabit?: string;
+  /** Claimable once per this many days (a week is 7, a month 30). Absent when unlimited. */
+  claimEveryDays?: number;
+  /** Days until a limited reward can be claimed again. Absent when it can be claimed now. */
+  availableInDays?: number;
   /** Whether the balance covers it right now. */
   affordable: boolean;
   /** Coins still needed; 0 when affordable. */
@@ -92,6 +96,7 @@ export function getRewards(replica: Replica, input: { historyLimit?: number } = 
     if (!lib.rewardIsOpen(reward, entries, source)) return [];
     const shown = lib.rewardDisplay(reward, source);
     const last = lib.lastClaimedAt(entries, reward.id);
+    const wait = lib.claimWaitDays(reward, entries, replica.currentDayStart());
     return [{
       id: reward.id,
       title: shown.title,
@@ -102,6 +107,8 @@ export function getRewards(replica: Replica, input: { historyLimit?: number } = 
       oneTime: reward.oneTime,
       ...(reward.taskId ? { wishListTaskId: reward.taskId } : {}),
       ...guardOf(replica, reward),
+      ...(reward.claimEveryDays && !reward.oneTime ? { claimEveryDays: reward.claimEveryDays } : {}),
+      ...(wait > 0 ? { availableInDays: wait } : {}),
       affordable: lib.canClaimReward(balance, reward.cost),
       shortBy: Math.max(0, reward.cost - balance),
       ...(last ? { lastClaimedAt: last } : {}),
@@ -140,6 +147,8 @@ export interface RewardInput {
   oneTime?: boolean;
   /** The "don't do this" habit's task id this reward guards. Null on an update unlinks it. */
   guardsHabitId?: string | null;
+  /** Claimable once per this many days (a week is 7, a month 30). Null on an update removes the limit. Not on a oneTime reward. */
+  claimEveryDays?: number | null;
 }
 
 /** The habit a reward guards, as the serialized reward names it. */
@@ -184,7 +193,7 @@ export function createReward(replica: Replica, input: RewardInput): SerializedRe
   }
   const priceMinor = input.price != null ? priceToMinor(input.price) : null;
   const cost = priceMinor !== null ? costForPrice(replica, priceMinor) : input.cost!;
-  const reward = replica.addReward(input.title, cost, { note: input.note, linkUrl: input.link, oneTime: input.oneTime, priceMinor, guardsTaskId: input.guardsHabitId });
+  const reward = replica.addReward(input.title, cost, { note: input.note, linkUrl: input.link, oneTime: input.oneTime, priceMinor, guardsTaskId: input.guardsHabitId, claimEveryDays: input.claimEveryDays });
   return rewardById(replica, reward.id);
 }
 
@@ -208,6 +217,7 @@ export function updateReward(
     ...(patch.link !== undefined ? { linkUrl: patch.link } : {}),
     ...(patch.oneTime !== undefined ? { oneTime: patch.oneTime } : {}),
     ...(patch.guardsHabitId !== undefined ? { guardsTaskId: patch.guardsHabitId } : {}),
+    ...(patch.claimEveryDays !== undefined ? { claimEveryDays: patch.claimEveryDays } : {}),
   });
   return rewardById(replica, reward.id);
 }
