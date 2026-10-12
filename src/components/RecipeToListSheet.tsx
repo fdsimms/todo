@@ -34,7 +34,7 @@ import { describeSubstitutes, substitutesFor, type Substitute } from '../utils/i
 import { alternativeCaptions, applyChoice, choiceGroupKey, recipeChoiceGroups } from '../utils/recipeComponents';
 import { normalizeScale } from '../utils/recipeScale';
 import { featureShown } from '../utils/simpleMode';
-import { convertQuantity } from '../utils/unitConvert';
+import { convertQuantity, showContainerCount } from '../utils/unitConvert';
 import { quantityFitsBesideName, recipeToListNameSpace } from '../utils/groceryRowQuantity';
 import { RecipeScaleChips } from './RecipeScaleChips';
 import { RecipeChoiceChips } from './RecipeChoiceChips';
@@ -471,6 +471,7 @@ export function RecipeToListSheet({
         // actually tapped is the honest answer for that case.
         sourceRecipeId: r.sourceRecipeId ?? recipe.id,
         sourceRecipeTitle: r.sourceRecipeTitle ?? recipe.name,
+        recipeSources: r.recipeSources,
         choiceGroup: r.choiceGroup,
       }));
 
@@ -650,7 +651,7 @@ export function RecipeToListSheet({
                               // Shown in the reader's units; what gets written
                               // to the list is still row.quantity, as the
                               // recipe wrote it.
-                              const shownQuantity = convertQuantity(row.quantity, unitSystem).text;
+                              const shownQuantity = showContainerCount(convertQuantity(row.quantity, unitSystem).text);
                               // Beside the name when both fit, under it when
                               // the quantity is too long for the capped pill
                               // or the name too long to share the line with

@@ -5,7 +5,7 @@ import { ingredientHeadings } from './recipeSections';
 import { describeAttribution, formatServingsRange, totalMinutes } from './recipeUtils';
 import { formatDuration } from './effort';
 import { scaleQuantity, scaleServings } from './recipeScale';
-import { convertQuantity, type UnitSystem } from './unitConvert';
+import { convertQuantity, showContainerCount, type UnitSystem } from './unitConvert';
 import { ingredientWeightText, type WeightLookups } from './lineWeight';
 import { dayKeyOf } from './dateUtils';
 import { describeWeekRange, entriesForDay, mealTitleOffPlan, slotLabel, titleForEntry } from './mealPlan';
@@ -39,7 +39,7 @@ function formatShareIngredientLine(
   weights: WeightLookups | null,
 ): string {
   const scaled = scaleQuantity(ingredient.quantity, scale).text;
-  const quantity = convertQuantity(scaled, unitSystem).text;
+  const quantity = showContainerCount(convertQuantity(scaled, unitSystem).text);
   const weight = weights ? ingredientWeightText(ingredient, scaled, weights, unitSystem) : null;
   const line = [quantity, ingredient.name, weight && `(${weight})`].filter(Boolean).join(' ').trim();
   const trailing = [ingredient.prep, ingredient.purpose ? `for ${ingredient.purpose}` : null]
@@ -326,7 +326,7 @@ export function buildGroceryListShareText(
   if (onList.length === 0) return '';
   const unitSystem = options.unitSystem ?? 'asWritten';
   const describe = (item: GroceryItem) => {
-    const quantity = convertQuantity(item.quantity ?? '', unitSystem).text;
+    const quantity = showContainerCount(convertQuantity(item.quantity ?? '', unitSystem).text);
     const product = options.productCaptions?.get(item.id);
     const note = item.note?.trim();
     return `${quantity ? `${quantity} ` : ''}${item.name}${product ? `: ${product}` : ''}${note ? ` (${note})` : ''}`;

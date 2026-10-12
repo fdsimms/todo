@@ -106,6 +106,16 @@ list, which meant every feature recording a fact had to remember to promote its 
 
 ---
 
+## A row two recipes want (`recipeSources`)
+
+`sourceRecipeId` is one credit and goes null when a second recipe wants the row, so the per-recipe
+amounts live in `GroceryItem.recipeSources` (`src/utils/recipeSources.ts`). The row says it one of
+two ways, picked by `recipeLedgerFor`: amounts that can't be added (`mergeQuantities` would join
+them with " · ") are drawn one per recipe, each pill with its recipe under it; amounts that add up
+keep the one pill and the caption reads "For N recipes", with the names and links in the item
+sheet. It is meaningful only while `quantityFromRecipe` is true, which is why it never needs
+clearing at the sites that end a shop: they already clear that flag.
+
 ## Products (`ItemProduct`) — which bread, under Bread
 
 A `GroceryItem` is the Platonic ideal: Bread is what recipes call for, what the pantry tracks,
@@ -1223,12 +1233,17 @@ Three things about it belong here rather than there:
 - **It is gated harder than the reading is.** `probablyHaveReason` is happy to guess from a flat
   fortnight below `MIN_PURCHASES_FOR_CADENCE`; asking the user about a guess is a different bar, so
   the check refuses anything with fewer than three purchases behind it.
-- **Answering it is the existing pair of pills, not the task.** The row links to
-  `GroceryItemSheet` opened on the Pantry field (`kitchenLinkUrl`, which `KitchenScreen` resolves to
-  the sheet by id when the item isn't in the list — and a checked item never is, by definition).
-  "Got it" or "Out of it" makes the item stop wanting a check, so the task clears itself on the next
-  sweep. Ticking it off means "I've dealt with this" and writes nothing to the row — inferring "yes
-  I still have it" from a tick is the guess a container's ✕ already refuses to make.
+- **Answering it is the existing pair of pills, not the task.** The row's link button opens
+  `PantryCheckSheet`, a small card asking "Do you still have X?" whose two buttons call
+  `answerPantryReview` (`have` / `out`), so each writes what its pill on `GroceryItemSheet` writes.
+  A third, "Out of it, add to list", is `out` plus `addExistingMany(…, { listId: null })`: the home
+  list, since a task row isn't the grocery screen and the open list may be an away trip's.
+  The row still carries `kitchenLinkUrl` (which `KitchenScreen` resolves to that sheet by id when the
+  item isn't in the list, and a checked item never is, by definition); the card just intercepts the
+  tap in `TaskItem.handleOpenLink`. Either answer makes the item stop wanting a check, and the card
+  runs `checkPantryCheckTasks` so the task clears at once instead of at the next sweep. Ticking the
+  task off means "I've dealt with this" and writes nothing to the row — inferring "yes I still have
+  it" from a tick is the guess a container's ✕ already refuses to make.
 
 ### The review deck — the same question asked in bulk (`pantryReview.ts`)
 

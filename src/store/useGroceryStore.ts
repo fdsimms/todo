@@ -1,6 +1,7 @@
 import { create } from 'zustand';
-import type { FoodNutrition, GroceryGroupBy, GroceryItem, GroceryList, GroceryListEntry, ItemProduct, ItemShopLink, ItemSubLink, PriceObservation, ProductRating, ReceiptStyle, Shop, StoreAlias } from '../types';
+import type { FoodNutrition, GroceryGroupBy, GroceryItem, GroceryRecipeSource, GroceryList, GroceryListEntry, ItemProduct, ItemShopLink, ItemSubLink, PriceObservation, ProductRating, ReceiptStyle, Shop, StoreAlias } from '../types';
 import { isPortionBox } from '../types';
+import { incomingSourcesOf, sourcesAfterMerge } from '../utils/recipeSources';
 import {
   type DeletedItemSnapshot,
   listNameProblem,
@@ -638,7 +639,12 @@ interface GroceryStore extends UndoHistoryActions {
   /** A pasted block, one item per line. */
   addManyFromText: (raw: string) => { added: GroceryItem[]; alreadyOnList: GroceryItem[] };
   addExisting: (id: string) => void;
-  addExistingMany: (ids: string[]) => void;
+  /**
+   * `listId` names the list the rows join, defaulting to the active one (a tap on
+   * the grocery screen). A caller that isn't looking at that screen, like a task
+   * row's pantry check, passes `null` for the home list.
+   */
+  addExistingMany: (ids: string[], opts?: { listId?: string | null }) => void;
   /**
    * Puts a reviewed set of planned rows — currently a recipe's ingredients —
    * onto the list in one transaction. See the implementation for why this isn't
@@ -1622,6 +1628,11 @@ export interface PlannedRow {
   sourceRecipeId?: string | null;
   sourceRecipeTitle?: string | null;
   /**
+   * What each recipe asked for, on a row more than one recipe wanted. Carried
+   * to `GroceryItem.recipeSources`; see there.
+   */
+  recipeSources?: GroceryRecipeSource[];
+  /**
    * The either/or slot this row is one option of, as the recipe-side key
    * `choiceGroupKey` mints — see ClassifiedIngredient.choiceGroup. Rows sharing
    * one land on the list under a single opaque `GroceryItem.choiceGroup`, so
@@ -1729,6 +1740,12 @@ function mergeOnListRecipeNeed(existing: GroceryItem, row: PlannedRow): GroceryI
   if (existing.sourceRecipeId && row.sourceRecipeId !== existing.sourceRecipeId) {
     patch.sourceRecipeId = null;
     patch.sourceRecipeTitle = null;
+    changed = true;
+  }
+
+  const sources = sourcesAfterMerge(existing, row);
+  if (sources) {
+    patch.recipeSources = sources;
     changed = true;
   }
 
@@ -2289,10 +2306,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     get().addExistingMany([id]);
   },
 
-  addExistingMany(ids) {
+  addExistingMany(ids, opts) {
     const wanted = new Set(ids);
     const now = new Date().toISOString();
-    const listId = get().activeListId;
+    const listId = opts?.listId !== undefined ? opts.listId : get().activeListId;
     // Already in *this* trolley is the no-op, not already in some trolley: a
     // staple on the list at home is exactly what you want to add to the Airbnb
     // one. See GroceryListEntry.
@@ -2410,7 +2427,13 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         if (row.quantity) {
           const current = get().itemById(item.id);
           if (current && (!current.quantity || current.quantityFromRecipe)) {
-            const withQuantity = { ...current, quantity: row.quantity, quantityFromRecipe: true };
+            const incoming = incomingSourcesOf(row);
+            const withQuantity = {
+              ...current,
+              quantity: row.quantity,
+              quantityFromRecipe: true,
+              recipeSources: incoming.length >= 2 ? incoming : undefined,
+            };
             dbUpdateGroceryItem(withQuantity);
             set(s => ({ items: s.items.map(i => (i.id === withQuantity.id ? withQuantity : i)) }));
           }

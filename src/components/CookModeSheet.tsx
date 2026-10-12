@@ -59,7 +59,7 @@ import { annotateSteps, stepIngredientLines } from '../utils/stepIngredients';
 import { describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
 import { onHandNameKeys } from '../utils/grocerySuggest';
 import { formatScale, isUnscaled, scaleQuantity } from '../utils/recipeScale';
-import { convertQuantity } from '../utils/unitConvert';
+import { convertQuantity, showContainerCount } from '../utils/unitConvert';
 import { ingredientWeightText, weightLookups as buildWeightLookups } from '../utils/lineWeight';
 import { TextField } from './TextField';
 
@@ -529,7 +529,7 @@ export function CookModeSheet({
                               style={[styles.miseQtyText, marked && styles.miseQtyTextMarked]}
                               numberOfLines={1}
                             >
-                              {converted.text}
+                              {showContainerCount(converted.text)}
                             </Text>
                           </View>
                           {!!weight && (
@@ -823,7 +823,7 @@ export function CookModeSheet({
                             <View style={styles.qtyColumn}>
                               <View style={[styles.qtyPill, marked && styles.qtyPillMarked]}>
                                 <Text style={[styles.qtyText, marked && styles.qtyTextMarked]} numberOfLines={1}>
-                                  {converted.text}
+                                  {showContainerCount(converted.text)}
                                 </Text>
                               </View>
                               {!!weight && (

@@ -31,7 +31,7 @@ import {
 import { describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
 import { onHandNameKeys } from '../utils/grocerySuggest';
 import { describeSubstitutes, substitutesFor, type Substitute } from '../utils/itemSubs';
-import { convertQuantity } from '../utils/unitConvert';
+import { convertQuantity, showContainerCount } from '../utils/unitConvert';
 import { addMealsToListNameSpace, quantityFitsBesideName } from '../utils/groceryRowQuantity';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
@@ -315,6 +315,7 @@ export function AddMealsToListSheet({
         aisle: r.aisle,
         sourceRecipeId: r.sourceRecipeId,
         sourceRecipeTitle: r.sourceRecipeTitle,
+        recipeSources: r.recipeSources,
       }));
 
     if (rows.length === 0) { onClose(); return; }
@@ -413,7 +414,7 @@ export function AddMealsToListSheet({
                               // Shown in the reader's units; what gets written to
                               // the list is still row.quantity, as the recipes
                               // wrote it.
-                              const shownQuantity = convertQuantity(row.quantity, unitSystem).text;
+                              const shownQuantity = showContainerCount(convertQuantity(row.quantity, unitSystem).text);
                               // Under the name, because it qualifies the name —
                               // the row is the app's substitution, not the
                               // recipe's word.
