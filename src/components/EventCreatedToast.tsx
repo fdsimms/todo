@@ -67,10 +67,10 @@ export function EventCreatedToast() {
             onPress={save}
             activeOpacity={interaction.activeOpacity}
             accessibilityRole="button"
-            accessibilityLabel={`Save ${saveAs.title} as a saved event`}
+            accessibilityLabel={`Save ${saveAs.title} as a template so you can add it again quickly`}
             hitSlop={{ top: spacing.sm, bottom: spacing.sm, left: spacing.sm, right: spacing.sm }}
           >
-            <Text style={styles.action}>Save</Text>
+            <Text style={styles.action}>Save as template</Text>
           </TouchableOpacity>
         )}
         <TouchableOpacity
