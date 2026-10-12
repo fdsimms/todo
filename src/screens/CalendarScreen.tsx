@@ -1309,6 +1309,9 @@ export function CalendarScreen() {
                   onPressTask={handleRowPress}
                   onPressEvent={() => { haptics.tap(); setEventsSheetVisible(true); }}
                   onPressSlot={handlePressSlot}
+                  placeholderMinutes={slotMenuOpen && slotMenu
+                    ? Math.round((slotMenu.at.getTime() - selectedDayStart.getTime()) / 60000)
+                    : null}
                 />
                 {/* Everything the axis refused to place, as real rows. */}
                 {renderRows('No time set', dayTimeline.unplaced)}

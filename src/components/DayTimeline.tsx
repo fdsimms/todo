@@ -49,7 +49,16 @@ interface Props {
    * above it and keep their own taps.
    */
   onPressSlot?: (minutes: number, pageX: number, pageY: number) => void;
+  /**
+   * Minutes from `dayStart` to draw a dashed placeholder at, for the slot a
+   * tap is choosing between a task and an event for. Drawn an hour long, the
+   * default length of a new event. Null when nothing is being placed.
+   */
+  placeholderMinutes?: number | null;
 }
+
+/** How long the placeholder block is, in minutes. */
+const PLACEHOLDER_MINUTES = 60;
 
 /**
  * One day drawn against a clock (#2680).
@@ -62,6 +71,7 @@ interface Props {
  */
 export function DayTimeline({
   dayStart, timeline, meals, busyKnown, tripOnly = false, use24Hour, nowMinutes, onPressTask, onPressEvent, onPressSlot,
+  placeholderMinutes = null,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -133,6 +143,27 @@ export function DayTimeline({
         ))}
 
         <View style={styles.track} pointerEvents="box-none">
+        {placeholderMinutes !== null && placeholderMinutes >= firstMinute && placeholderMinutes < lastMinute && (
+          <View
+            pointerEvents="none"
+            accessibilityElementsHidden
+            importantForAccessibility="no"
+            style={[
+              styles.placeholder,
+              {
+                top: offsetFor(placeholderMinutes),
+                height: Math.max(
+                  MIN_BLOCK_HEIGHT,
+                  (Math.min(PLACEHOLDER_MINUTES, lastMinute - placeholderMinutes) / 60) * HOUR_HEIGHT - BLOCK_GAP,
+                ),
+              },
+            ]}
+          >
+            <Text style={styles.placeholderTime} numberOfLines={1}>
+              {formatTimeOfDay(new Date(dayStart.getTime() + placeholderMinutes * 60000), use24Hour)}
+            </Text>
+          </View>
+        )}
         {entries.map(entry => {
           const top = offsetFor(entry.startMinutes);
           const rawHeight = ((entry.endMinutes - entry.startMinutes) / 60) * HOUR_HEIGHT;
@@ -294,6 +325,25 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   entry: {
     position: 'absolute',
     paddingRight: spacing.xs,
+  },
+  // A dashed outline rather than a fill, so it reads as "something goes here"
+  // and not as a task or event that already exists.
+  placeholder: {
+    position: 'absolute',
+    left: 0,
+    right: spacing.xs,
+    borderRadius: radius.sm,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSubtle,
+    paddingHorizontal: spacing.xsm,
+    paddingVertical: 3,
+  },
+  placeholderTime: {
+    fontSize: font.xxs,
+    fontWeight: fontWeight.medium,
+    color: colors.accentText,
   },
   block: {
     borderRadius: radius.sm,
