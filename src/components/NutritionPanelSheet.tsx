@@ -30,6 +30,7 @@ import {
   type PanelForm,
   type ServingWeightUnit,
 } from '../utils/nutritionPanelForm';
+import { panelWarnings } from '../utils/nutritionSanity';
 import { canReadTextOnDevice } from '../utils/receiptOcr';
 import { readLabelPhoto, type LabelReading } from '../utils/labelOcr';
 import { pickRecipePhoto } from '../utils/recipePhoto';
@@ -428,10 +429,25 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
       setBad(invalid);
       return;
     }
-    haptics.success();
-    Keyboard.dismiss();
-    onSave(buildPanelNutrition(form, nutrition));
-    onClose();
+    const built = buildPanelNutrition(form, nutrition);
+    const warnings = built ? panelWarnings(built) : [];
+    const commit = () => {
+      haptics.success();
+      Keyboard.dismiss();
+      onSave(built);
+      onClose();
+    };
+    if (warnings.length === 0) { commit(); return; }
+    haptics.warning();
+    setBad(warnings.map(w => w.key));
+    Alert.alert(
+      'Check these figures',
+      `${warnings.map(w => w.message).join('\n\n')}\n\nCheck them against the packet.`,
+      [
+        { text: 'Edit', style: 'cancel' },
+        { text: 'Save anyway', onPress: commit },
+      ],
+    );
   };
 
   /**
