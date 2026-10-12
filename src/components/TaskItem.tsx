@@ -122,6 +122,7 @@ import { usePlanMeal } from '../hooks/usePlanMeal';
 import { useSheetMount } from '../hooks/useSheetMount';
 import { CompletionOptionsMenu } from './CompletionOptionsMenu';
 import { NegativeHoldMenu } from './NegativeHoldMenu';
+import { PantryCheckSheet } from './PantryCheckSheet';
 import { SwipeActionButtons } from './SwipeActionButtons';
 import type { CardAnchor } from '../utils/cardAnchor';
 import { RotationPickSheet } from './RotationPickSheet';
@@ -465,6 +466,12 @@ const TaskItemRow = React.memo(function TaskItem({
     const url = target;
     if (!url) return;
     haptics.tap();
+    // A pantry check's own link answers in a card rather than leaving Today.
+    // The item's sheet is still one tap further, from the Kitchen screen.
+    if (pantryCheckId && url === rowLink) {
+      setShowPantryCheck(true);
+      return;
+    }
     // A link this app owns (dundundun://groceries) navigates in place. Going
     // out through Linking would come back to us anyway, but as an app-switch
     // round trip that flashes.
@@ -1192,6 +1199,10 @@ const TaskItemRow = React.memo(function TaskItem({
   const [negativeMenuHold, setNegativeMenuHold] = useState<NegativeHold>('close');
   const [showNegativeMenu, setShowNegativeMenu] = useState(false);
   const mountNegativeMenu = useSheetMount(showNegativeMenu);
+  // "Check if you still have X": the row's link button asks right here instead
+  // of navigating to the item's sheet (see handleOpenLink).
+  const [showPantryCheck, setShowPantryCheck] = useState(false);
+  const mountPantryCheck = useSheetMount(showPantryCheck);
   // iPhone Mirroring: Return on the inline rename takes the title offer.
   const mirroringMode = useSettingsStore(s => s.mirroringMode);
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
@@ -4819,6 +4830,13 @@ const TaskItemRow = React.memo(function TaskItem({
           onReopen={() => reopenNegativeDay(task.id)}
           onSlip={() => confirmSlip(task, penaltyShieldEnabled, getCurrentDayStart(), () => logSlip(task.id), useRewardStore.getState().slipGuardFor(task, getCurrentDayStart()))}
           onUndoSlip={() => undoSlip(task.id)}
+        />
+      )}
+      {mountPantryCheck && pantryCheckId && (
+        <PantryCheckSheet
+          visible={showPantryCheck}
+          itemId={pantryCheckId}
+          onClose={() => setShowPantryCheck(false)}
         />
       )}
       {mountWhenPicker && (

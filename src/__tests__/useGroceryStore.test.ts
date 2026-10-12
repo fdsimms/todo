@@ -8116,6 +8116,16 @@ describe('separate shopping lists', () => {
       expect(entryOf(milk.id, null)).not.toBeNull();
       expect(entryOf(milk.id, AIRBNB.id)).not.toBeNull();
     });
+
+    it('adds to the home list when asked, whichever list is open', () => {
+      const milk = makeItem({ name: 'Milk', onList: false });
+      seed([milk], { lists: [AIRBNB], activeListId: AIRBNB.id });
+
+      useGroceryStore.getState().addExistingMany([milk.id], { listId: null });
+
+      expect(entryOf(milk.id, null)).not.toBeNull();
+      expect(entryOf(milk.id, AIRBNB.id)).toBeNull();
+    });
   });
 
   describe('ticking', () => {

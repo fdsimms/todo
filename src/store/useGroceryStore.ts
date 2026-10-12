@@ -639,7 +639,12 @@ interface GroceryStore extends UndoHistoryActions {
   /** A pasted block, one item per line. */
   addManyFromText: (raw: string) => { added: GroceryItem[]; alreadyOnList: GroceryItem[] };
   addExisting: (id: string) => void;
-  addExistingMany: (ids: string[]) => void;
+  /**
+   * `listId` names the list the rows join, defaulting to the active one (a tap on
+   * the grocery screen). A caller that isn't looking at that screen, like a task
+   * row's pantry check, passes `null` for the home list.
+   */
+  addExistingMany: (ids: string[], opts?: { listId?: string | null }) => void;
   /**
    * Puts a reviewed set of planned rows — currently a recipe's ingredients —
    * onto the list in one transaction. See the implementation for why this isn't
@@ -2301,10 +2306,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     get().addExistingMany([id]);
   },
 
-  addExistingMany(ids) {
+  addExistingMany(ids, opts) {
     const wanted = new Set(ids);
     const now = new Date().toISOString();
-    const listId = get().activeListId;
+    const listId = opts?.listId !== undefined ? opts.listId : get().activeListId;
     // Already in *this* trolley is the no-op, not already in some trolley: a
     // staple on the list at home is exactly what you want to add to the Airbnb
     // one. See GroceryListEntry.
