@@ -469,7 +469,9 @@ export function CookModeSheet({
           <ScrollView style={styles.stepScrollView} contentContainerStyle={styles.stepScroll}>
             <Text style={styles.miseTitle}>Mise en place</Text>
             <Text style={styles.miseSubtitle}>
-              Everything this recipe needs, before you start cooking.
+              {steps.length > 0
+                ? 'Everything this recipe needs, before you start cooking.'
+                : 'Everything this recipe needs. It has no steps yet, so add them in the recipe to read the method here.'}
             </Text>
             {/* Where the recipe offers a choice, it's made here, as the
                 ingredients are gathered — the list below follows the pick. */}
@@ -878,7 +880,9 @@ export function CookModeSheet({
           </View>
 
           {atMise ? (
-            <View style={styles.controls}>
+            // No steps means nothing to start: the screen is the whole sheet, and
+            // the cook timer above is still there to run.
+            steps.length > 0 && <View style={styles.controls}>
               <TouchableOpacity
                 style={styles.controlPrimary}
                 activeOpacity={interaction.activeOpacity}

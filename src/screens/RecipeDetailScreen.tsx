@@ -254,14 +254,15 @@ export function RecipeDetailScreen() {
   );
   // What cook mode would have to read out — this recipe's steps and every
   // component's, or the notes blob a recipe predating Recipe.steps still keeps
-  // its method in. Zero means there is no method here at all, and the footer
-  // simply doesn't offer the button rather than offering a disabled one: an
-  // absent verb reads as "nothing written down yet", where a greyed one reads
-  // as a feature that's broken.
+  // its method in.
   const cookableCount = useMemo(
     () => (recipe ? cookSteps(recipe, recipesById).length : 0),
     [recipe, recipesById]
   );
+  // Cook is offered whenever there is a method or ingredients to gather. A
+  // recipe with no steps still has a mise en place screen worth opening, and
+  // a recipe saved before steps existed shouldn't lose the button for it.
+  const cookModeAvailable = cookableCount > 0 || shoppableCount > 0;
 
   // How much of the recipe you're reading it for. Screen state, deliberately
   // written nowhere: halving a recipe to cook for one tonight is not an edit to
@@ -494,7 +495,7 @@ export function RecipeDetailScreen() {
    * `openCookMode` (route.params) is CookingBar's and the More tab's
    * cook-timer dot's way back in — resetToRecipeDetail's second param, the
    * same stamped-and-compare handoff resetToGroceries's openFinish uses. A
-   * request that arrives before `cookableCount`/`simpleMode` are known to
+   * request that arrives before `cookModeAvailable`/`simpleMode` are known to
    * allow the button at all is answered the same way the button itself
    * would be: nothing opens, and the stamp is still marked handled so it
    * doesn't fire again on the next render once those are known.
@@ -504,8 +505,8 @@ export function RecipeDetailScreen() {
   useEffect(() => {
     if (openCookModeStamp === undefined || openCookModeStamp === handledCookModeStamp) return;
     setHandledCookModeStamp(openCookModeStamp);
-    if (cookableCount > 0 && !featureHidden('cookMode', simpleMode)) setCookModeVisible(true);
-  }, [openCookModeStamp, handledCookModeStamp, cookableCount, simpleMode]);
+    if (cookModeAvailable && !featureHidden('cookMode', simpleMode)) setCookModeVisible(true);
+  }, [openCookModeStamp, handledCookModeStamp, cookModeAvailable, simpleMode]);
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const [componentPickerVisible, setComponentPickerVisible] = useState(false);
   const [choiceComponent, setChoiceComponent] = useState<ResolvedComponent | null>(null);
@@ -2625,7 +2626,7 @@ export function RecipeDetailScreen() {
               reason and in the same place: it's the one that happens *now*, so
               it leads. Its label is a word where the others are two, which is
               what keeps three buttons on a 390pt line. */}
-          {cookableCount > 0 && !featureHidden('cookMode', simpleMode) && (
+          {cookModeAvailable && !featureHidden('cookMode', simpleMode) && (
             <TouchableOpacity
               style={styles.secondary}
               activeOpacity={interaction.activeOpacity}
