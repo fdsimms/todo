@@ -178,7 +178,16 @@ export function describeAIError(error: unknown): string {
   if (message === 'No suggestions returned' || message === 'No answer returned' || error instanceof SyntaxError) {
     return 'Nothing usable came back. Try again.';
   }
-  return 'Network request failed. Check your connection.';
+  // Only a failed fetch is the connection. React Native's fetch rejects with
+  // `TypeError("Network request failed")`; Node's says "fetch failed".
+  if (/network request failed|fetch failed|failed to fetch|network connection was lost/i.test(message)) {
+    return 'Network request failed. Check your connection.';
+  }
+  // Anything else is a bug or a shape nobody anticipated. Calling it a network
+  // problem sent people to check a connection that was fine, and hid the cause,
+  // so say what happened and leave the real error in the log.
+  console.warn('Unrecognized AI error', error);
+  return 'Something went wrong. Try again.';
 }
 
 export interface TemplateItemSuggestion {
