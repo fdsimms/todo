@@ -28,6 +28,7 @@ import { useCategoryStore } from '../store/useCategoryStore';
 import { fuzzySearch } from '../utils/fuzzySearch';
 import { canBeBlockedBy, canBeBlockerOf, canBeGateOf, resolverFor, sortByBlockerAffinity, type BlockerContext } from '../utils/blocking';
 import { displayTitleFor } from '../utils/visibilityUtils';
+import { canCarryMedication } from '../utils/medicationLog';
 import { categoryLabel } from '../utils/categoryLabel';
 import type { Task } from '../types';
 import { useSheetMotion } from '../hooks/useSheetMotion';
@@ -37,7 +38,7 @@ import { useFilterField } from '../hooks/useFilterField';
  * Which end of the relationship is being filled in: the task being edited is
  * either the one waiting, or the one everything else is waiting on.
  */
-export type TaskRelation = 'waitingOn' | 'blocks' | 'answer';
+export type TaskRelation = 'waitingOn' | 'blocks' | 'answer' | 'medication';
 
 interface Props {
   visible: boolean;
@@ -102,6 +103,15 @@ const COPY: Record<TaskRelation, {
     emptySub: 'Only tasks that ask Yes/No or Pick one when completed are listed.',
     action: title => `Only if ${title}`,
   },
+  // Not a blocking relation at all: borrowed for the dose sheet, which needs the
+  // same searchable list of tasks and nothing else from this file.
+  medication: {
+    title: 'Add to a task',
+    hint: 'Checking off the task you pick records the dose each time.',
+    emptyTitle: 'No repeating tasks',
+    emptySub: 'Only repeating tasks that do not already record a medication are listed.',
+    action: title => `Record doses when ${title} is checked off`,
+  },
 };
 
 /**
@@ -143,7 +153,9 @@ export function TaskRelationPickerSheet({ visible, onClose, relation, taskId, co
         ? canBeBlockerOf(t, taskId, resolve)
         : relation === 'answer'
           ? canBeGateOf(t, taskId, resolve)
-          : canBeBlockedBy(t, taskId, resolve))
+          : relation === 'medication'
+            ? canCarryMedication(t)
+            : canBeBlockedBy(t, taskId, resolve))
     );
     // Rank before truncating, so a neighbour buried deep in the list still
     // reaches the visible rows.

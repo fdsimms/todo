@@ -285,6 +285,22 @@ export function MedicationScreen() {
   const openEdit = (log: MedicationLog) => { haptics.tap(); setEditing(log); setSheetOpen(true); };
   const closeSheet = () => { setSheetOpen(false); setEditing(null); };
 
+  // A section that lists doses carries its own way to record one.
+  const recordHeader = (title: string) => (
+    <View style={styles.sectionHeaderRow}>
+      <Text style={[styles.sectionTitle, styles.sectionTitleInRow]}>{title}</Text>
+      <TouchableOpacity
+        onPress={openNew}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        activeOpacity={interaction.activeOpacity}
+        accessibilityRole="button"
+        accessibilityLabel="Record a dose"
+      >
+        <Ionicons name="add-circle-outline" size={iconSize.lg} color={colors.accent} />
+      </TouchableOpacity>
+    </View>
+  );
+
   const header = (
     <>
       <ScreenHeader
@@ -303,11 +319,6 @@ export function MedicationScreen() {
             icon: 'medkit-outline' as const,
             onPress: () => { haptics.tap(); setAddOpen(true); },
             accessibilityLabel: 'Add a medication',
-          },
-          {
-            icon: 'add-circle-outline' as const,
-            onPress: openNew,
-            accessibilityLabel: 'Record a dose',
           },
         ]}
       />
@@ -377,7 +388,7 @@ export function MedicationScreen() {
 
         {(dueTasks.length > 0 || takenToday.length > 0) && (
           <>
-            <Text style={styles.sectionTitle}>TODAY</Text>
+            {recordHeader('TODAY')}
             <View style={[styles.card, styles.todayCard]}>
               {takenToday.map((log, index) => {
                 const undoable = log.taskId !== null && undoableTaskIds.has(log.taskId);
@@ -499,7 +510,7 @@ export function MedicationScreen() {
 
         {recent.length > 0 && (
           <>
-            <Text style={styles.sectionTitle}>RECENT</Text>
+            {recordHeader('RECENT')}
             <View style={styles.card}>
               {recent.map((log, index) => (
                 <TouchableOpacity
@@ -693,6 +704,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginTop: spacing.md,
     marginBottom: spacing.sm,
   },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  sectionTitleInRow: { marginTop: 0, marginBottom: 0 },
   card: {
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.md,

@@ -2,6 +2,7 @@ import type { ChainItem, MedicationLog } from '../types';
 import {
   DOSE_UNITS,
   MIN_TREND_DOSES,
+  canCarryMedication,
   doseCountInWindow,
   dosesOnDay,
   formatDose,
@@ -41,6 +42,22 @@ function dose(overrides: Partial<MedicationLog> = {}): MedicationLog {
     ...overrides,
   };
 }
+
+describe('canCarryMedication', () => {
+  const base = { completed: false, archived: false, parentId: null, recurrenceType: 'daily' as const, medicationName: null };
+
+  it('accepts an open repeating task with no medication', () => {
+    expect(canCarryMedication(base)).toBe(true);
+  });
+
+  it('refuses a one-off, a finished or archived task, a subtask, and one already recording a medication', () => {
+    expect(canCarryMedication({ ...base, recurrenceType: 'none' })).toBe(false);
+    expect(canCarryMedication({ ...base, completed: true })).toBe(false);
+    expect(canCarryMedication({ ...base, archived: true })).toBe(false);
+    expect(canCarryMedication({ ...base, parentId: 'p' })).toBe(false);
+    expect(canCarryMedication({ ...base, medicationName: 'Sertraline' })).toBe(false);
+  });
+});
 
 describe('medicationKey', () => {
   it('folds case and surrounding space', () => {

@@ -135,6 +135,23 @@ export function medicationFor(task: MedicationSource): MedicationDose | null {
 }
 
 /**
+ * Whether a task can be handed a medication to record on completion: an open,
+ * top-level, repeating task that doesn't already record one. Repeating because a
+ * scheduled dose recurs, and "doesn't already record one" because attaching
+ * would silently replace the medication it has (set that from the task's own
+ * editor instead).
+ */
+export function canCarryMedication(
+  task: Pick<Task, 'completed' | 'archived' | 'parentId' | 'recurrenceType' | 'medicationName'>,
+): boolean {
+  return !task.completed
+    && !task.archived
+    && !task.parentId
+    && task.recurrenceType !== 'none'
+    && !task.medicationName?.trim();
+}
+
+/**
  * The key two spellings of one medication agree on.
  *
  * Case and surrounding space only — the same refusal `symptomKey` makes, for a
