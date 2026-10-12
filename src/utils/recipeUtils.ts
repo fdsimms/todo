@@ -1113,6 +1113,30 @@ export function cleanChoiceGroup(raw: string | null | undefined): string | null 
 }
 
 /**
+ * The name a choice group gets when nobody has typed one: its options joined
+ * with "or", and when that would run past the label cap, the first option and a
+ * count ("Dandelion greens or 2 more").
+ *
+ * A group's label is its heading on the recipe page, so clipping the join at
+ * the cap printed half a word ("…MUSTARD GREENS OR SP"). The count form never
+ * clips a word, and it stays recognisable because the first option is the
+ * group's default.
+ *
+ * `updateIngredient` treats a label equal to this (or to the plain join, which
+ * older groups carry) as untouched, so a renamed member carries it forward.
+ */
+export function defaultChoiceGroupLabel(names: readonly string[]): string {
+  const clean = names.map(n => n.trim().replace(/\s+/g, ' ')).filter(Boolean);
+  const joined = clean.join(' or ');
+  if (joined.length <= RECIPE_CHOICE_GROUP_MAX_LENGTH || clean.length < 2) {
+    return cleanChoiceGroup(joined) ?? '';
+  }
+  const tail = ` or ${clean.length - 1} more`;
+  const room = RECIPE_CHOICE_GROUP_MAX_LENGTH - tail.length;
+  return cleanChoiceGroup(`${clean[0].slice(0, Math.max(room, 1)).trim()}${tail}`) ?? '';
+}
+
+/**
  * One term's weight against one recipe — the tier ladder `rankRecipes` ranks
  * by, pulled out so a multi-word query can run it once per word.
  *

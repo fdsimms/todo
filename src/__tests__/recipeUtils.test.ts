@@ -55,6 +55,7 @@ import {
   recipeHasMethod,
   recipeHasPrepTasks,
   recipeHasAttribution,
+  defaultChoiceGroupLabel,
 } from '../utils/recipeUtils';
 import type { GroceryItem, ItemSubLink, Recipe, RecipeComponent, RecipeIngredient, RecipePrepTask } from '../types';
 import { RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH, RECIPE_STEP_NOTE_MAX_LENGTH } from '../types';
@@ -2538,5 +2539,30 @@ describe('parseServingsRange', () => {
     expect(parseServingsRange('')).toBeNull();
     expect(parseServingsRange('a few')).toBeNull();
     expect(parseServingsRange('0')).toBeNull();
+  });
+});
+
+describe('defaultChoiceGroupLabel', () => {
+  it('joins the options with "or" while that fits the label cap', () => {
+    expect(defaultChoiceGroupLabel(['Serrano', 'Jalapeño'])).toBe('Serrano or Jalapeño');
+    expect(defaultChoiceGroupLabel(['Shishito', 'Jalapeño pepper'])).toBe('Shishito or Jalapeño pepper');
+  });
+
+  it('names the first option and a count instead of clipping a word', () => {
+    const label = defaultChoiceGroupLabel(['Dandelion greens', 'Mustard greens', 'Spinach']);
+    expect(label).toBe('Dandelion greens or 2 more');
+  });
+
+  it('shortens a first option that is itself too long, and never exceeds the cap', () => {
+    const label = defaultChoiceGroupLabel([
+      'Extra virgin cold pressed olive oil from the first harvest', 'Butter', 'Ghee',
+    ]);
+    expect(label.length).toBeLessThanOrEqual(40);
+    expect(label.endsWith(' or 2 more')).toBe(true);
+  });
+
+  it('ignores blanks and handles a single or empty list', () => {
+    expect(defaultChoiceGroupLabel(['  ', 'Butter'])).toBe('Butter');
+    expect(defaultChoiceGroupLabel([])).toBe('');
   });
 });

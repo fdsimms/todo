@@ -1374,6 +1374,56 @@ describe('renameChoiceGroup', () => {
     expect(useRecipeStore.getState().renameChoiceGroup('gone', 'Pepper', 'Chili pepper')).toBeNull();
     expect(dbUpdateRecipe).not.toHaveBeenCalled();
   });
+
+  it('refuses a name another group in the recipe already has, which would fold the two together', () => {
+    const r = makeRecipe('Salsa', {
+      ingredients: [
+        { id: 'i1', name: 'Serrano', nameKey: 'serrano', quantity: '', aisle: null, prep: null, purpose: null, section: null, choiceGroup: 'Pepper' },
+        { id: 'i2', name: 'Cheddar', nameKey: 'cheddar', quantity: '', aisle: null, prep: null, purpose: null, section: null, choiceGroup: 'Cheese' },
+      ],
+    });
+    seed([r]);
+
+    expect(useRecipeStore.getState().renameChoiceGroup(r.id, 'Pepper', 'Cheese')).toBeNull();
+
+    const ingredients = useRecipeStore.getState().recipeById(r.id)!.ingredients;
+    expect(ingredients.map(i => i.choiceGroup)).toEqual(['Pepper', 'Cheese']);
+  });
+});
+
+describe('a long either/or group keeps its short default name', () => {
+  const GREENS = 'Dandelion greens or 2 more';
+  const withLongGroup = (label: string) => {
+    const r = makeRecipe('Salad', {
+      ingredients: ['Dandelion greens', 'Mustard greens', 'Spinach'].map((name, n) => ({
+        id: `g${n}`, name, nameKey: name.toLowerCase(), quantity: '', aisle: null, prep: null,
+        purpose: null, section: null, choiceGroup: label,
+      })),
+    });
+    seed([r]);
+    return r;
+  };
+
+  it('follows a renamed member while the label is still the short default', () => {
+    const r = withLongGroup(GREENS);
+
+    useRecipeStore.getState().updateIngredient(r.id, 'g0', { name: 'Kale' });
+
+    const labels = useRecipeStore.getState().recipeById(r.id)!.ingredients.map(i => i.choiceGroup);
+    // Short enough once "Kale" replaces the long name, so it reads in full again.
+    expect(labels).toEqual(Array(3).fill('Kale or Mustard greens or Spinach'));
+  });
+
+  it('repairs a label an older split clipped mid-word, but not one the user typed', () => {
+    const clipped = withLongGroup('Dandelion greens or Mustard greens or Sp');
+    useRecipeStore.getState().updateIngredient(clipped.id, 'g0', { name: 'Kale' });
+    expect(useRecipeStore.getState().recipeById(clipped.id)!.ingredients[1].choiceGroup)
+      .toBe('Kale or Mustard greens or Spinach');
+
+    const typed = withLongGroup('Greens');
+    useRecipeStore.getState().updateIngredient(typed.id, 'g0', { name: 'Kale' });
+    expect(useRecipeStore.getState().recipeById(typed.id)!.ingredients[1].choiceGroup).toBe('Greens');
+  });
 });
 
 describe('setComponentChoiceGroup / makeComponentDefault', () => {
