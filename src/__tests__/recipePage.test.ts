@@ -1,6 +1,7 @@
 // Cuts the dateUtils -> useSettingsStore -> database -> expo-sqlite chain that
 // `describeAIError`'s module drags in; same mock aiSuggestions.test.ts uses, and
 // nothing here reads a setting.
+jest.mock('../utils/errorLog', () => ({ logError: jest.fn() }));
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: { getState: () => ({ anthropicApiKey: null, aiFeatureConfig: {} }) },
 }));

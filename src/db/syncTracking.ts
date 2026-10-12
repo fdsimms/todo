@@ -181,6 +181,11 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   // from, which is the exact question this table exists to answer. Ids are
   // base36 from generateId().
   { name: 'unattended_log', key: ['id'] },
+  // The error log. Written once, never updated, so last-writer-wins is a no-op.
+  // It travels for one reason: the MCP server is a replica and can read only
+  // what syncs, so a phone's failures are invisible to an agent unless they are
+  // rows. Messages are trimmed and carry no request bodies (utils/errorLog.ts).
+  { name: 'error_log', key: ['id'] },
 ];
 
 /**

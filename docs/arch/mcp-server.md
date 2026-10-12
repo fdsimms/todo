@@ -1405,6 +1405,14 @@ Four areas had no MCP read or write, and the shape of each answer follows from w
   purpose (a cursor two devices could fight over), so no replica ever holds it: nothing here can say
   what the person is working through now, or start, pause or advance a session, and the result's
   `liveSession` says so in words the model can repeat.
+- **The error log exists because a replica cannot read a console.** `list_errors` reads `error_log`,
+  rows the phone writes through `logError` (`src/utils/errorLog.ts`) when it catches a failure it
+  doesn't recognize (`describeAIError`'s fallthrough, which names its caller through a `source`) and
+  syncs like any other table. What goes in is the error's name, a message trimmed to 300
+  characters and the top six stack lines, never a request body, and an API key in a message is
+  blanked. It is capped at 100 rows and 30 days, is excluded from backups, and demo mode writes
+  nothing. A new catch site that wants to be readable here passes its `source` to
+  `describeImportError`/`describeAIError`, or calls `logError` directly.
 - **Milestones go through `useMilestoneStore`'s own actions** (`milestoneTools.ts`), which is
   loadable here because it imports only the db layer. A blank label is refused as the sheet refuses
   it, and a date is anchored at noon as `MilestoneSheet` anchors a picked day, because the row's

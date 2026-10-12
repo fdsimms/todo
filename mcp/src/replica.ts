@@ -169,6 +169,7 @@ export interface PlannedAddResult {
 }
 
 type DbModule = typeof import('../../src/db/database');
+type ErrorLogRow = import('../../src/db/database').ErrorLogRow;
 type VisibilityModule = typeof import('../../src/utils/visibilityUtils');
 type FuzzyModule = typeof import('../../src/utils/fuzzySearch');
 type EffortModule = typeof import('../../src/utils/effort');
@@ -1119,6 +1120,12 @@ export interface Replica {
    * to read or drive from here.
    */
   focusHistory(): FocusSessionRecord[];
+  /**
+   * The error log, newest first: failures the phone recorded in `error_log`
+   * (utils/errorLog.ts), which syncs so this server can read what a phone's
+   * console would otherwise keep to itself.
+   */
+  errorLog(): ErrorLogRow[];
   /** The person's saved views, in their own order. */
   savedViews(): SavedView[];
   /**
@@ -3886,6 +3893,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return entry;
     },
     focusHistory: () => db.dbGetFocusSessionLog(),
+    errorLog: () => db.dbGetErrorLog(),
     savedViews: () => db.dbGetAllSavedViews(),
     savedViewTasks(clauses: readonly SavedViewClause[]): Task[] {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
