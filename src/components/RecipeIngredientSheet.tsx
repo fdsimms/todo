@@ -27,7 +27,7 @@ import { groceryNameKey, splitAlternativeNames } from '../utils/groceryParse';
 import { varietyOfferFor } from '../utils/itemVarieties';
 import { matchIngredientToCatalog } from '../utils/ingredientCatalogMatch';
 import { catalogItemForKey } from '../utils/groceryPlural';
-import { cleanChoiceGroup } from '../utils/recipeUtils';
+import { cleanChoiceGroup, defaultChoiceGroupLabel } from '../utils/recipeUtils';
 import { describeCatalogItem } from '../utils/groceryProduct';
 import { allSectionsOf } from '../utils/recipeSections';
 import { standingSwapMap } from '../utils/standingSwaps';
@@ -133,6 +133,8 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
   // there means "start a new group", not "reword this one".
   const [editingGroupName, setEditingGroupName] = useState(false);
   const [groupNameDraft, setGroupNameDraft] = useState('');
+  // The name typed into the split offer's own field; empty means the default.
+  const [splitNameDraft, setSplitNameDraft] = useState('');
   const [aisle, setAisle] = useState<string | null>(null);
   // The per-line exception to a standing swap — "this pastry needs real
   // butter" (RecipeIngredient.noSwap).
@@ -171,6 +173,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
     setSection(ingredient.section ?? '');
     setChoiceGroup(ingredient.choiceGroup ?? '');
     setEditingGroupName(false);
+    setSplitNameDraft('');
     setAisle(ingredient.aisle);
     setNoSwap(!!ingredient.noSwap);
     setOptional(!!ingredient.optional);
@@ -333,6 +336,13 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
   // stock" needs a human to finish it.
   const alternatives = splitAlternativeNames(name);
 
+  // What the new group is called, asked beside the offer rather than after it.
+  // Untouched, it's the short default (the whole line would be clipped at the
+  // label cap and head the group as half a word); typing replaces it, and an
+  // emptied field falls back to it so accepting can never name a group nothing.
+  const defaultSplitName = defaultChoiceGroupLabel(alternatives ?? []);
+  const splitGroupName = cleanChoiceGroup(splitNameDraft) ?? defaultSplitName;
+
   const catalogSummary = catalogItem
     ? describeCatalogItem(catalogItem, itemSubs, groceryItems, itemProducts, new Date())
     : null;
@@ -346,11 +356,8 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
 
   const acceptSplit = () => {
     if (!ingredient || !alternatives) return;
-    // The label defaults to the line as written — the one name guaranteed to
-    // exist, to be unique among this recipe's groups, and to mean something to
-    // whoever typed it. It's editable from the group picker below if not.
     const created = splitIngredientAlternatives(
-      recipeId, ingredient.id, alternatives, name.trim()
+      recipeId, ingredient.id, alternatives, splitGroupName
     );
     if (!created) return;
     haptics.success();
@@ -490,6 +497,22 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
               </Text>
             </View>
           </TouchableOpacity>
+        )}
+        {!!alternatives && (
+          <View style={styles.splitNameRow}>
+            <Text style={styles.groupNameLabel}>Group name</Text>
+            <TextField
+              style={styles.splitNameInput}
+              value={splitNameDraft}
+              onChangeText={setSplitNameDraft}
+              maxLength={RECIPE_CHOICE_GROUP_MAX_LENGTH}
+              placeholder={defaultSplitName}
+              placeholderTextColor={colors.textTertiary}
+              returnKeyType="done"
+              accessibilityLabel="Name for the new group"
+              accessibilityHint="Shown above the choices on the recipe. Leave empty to use the suggested name."
+            />
+          </View>
         )}
         {!!catalogSuggestion && (
           <TouchableOpacity
@@ -1197,6 +1220,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: spacing.xs,
+  },
+  splitNameRow: {
+    marginTop: spacing.xs,
+    gap: spacing.xs,
+  },
+  splitNameInput: {
+    color: colors.text,
+    fontSize: font.md,
+    minHeight: 32,
   },
   groupNameLabel: {
     color: colors.textSecondary,

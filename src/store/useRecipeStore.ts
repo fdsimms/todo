@@ -24,6 +24,7 @@ import {
   applyMeasuredCookTime,
   applyMeasuredPrepTime,
   cleanChoiceGroup,
+  defaultChoiceGroupLabel,
   cleanRecipeName,
   cleanRecipeSource,
   cleanSourcePage,
@@ -1151,10 +1152,14 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     if (patch.name !== undefined && patch.name !== original.name && original.choiceGroup) {
       const group = original.choiceGroup;
       const members = recipe.ingredients.filter(i => i.choiceGroup === group);
-      const autoLabel = members.map(m => m.name).join(' or ');
-      if (autoLabel === group) {
-        const nextLabel = cleanChoiceGroup(
-          members.map(m => (m.id === ingredientId ? patch.name! : m.name)).join(' or ')
+      const names = members.map(m => m.name);
+      // The plain join is what groups made before the short default carry (and
+      // what a short one still is), so both count as "nobody named this".
+      const isAuto = group === defaultChoiceGroupLabel(names)
+        || group === cleanChoiceGroup(names.join(' or '));
+      if (isAuto) {
+        const nextLabel = defaultChoiceGroupLabel(
+          members.map(m => (m.id === ingredientId ? patch.name! : m.name))
         );
         if (nextLabel) {
           ingredients = ingredients.map(i => (
@@ -1244,6 +1249,8 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     if (!recipe) return null;
     const clean = cleanChoiceGroup(newLabel);
     if (!clean || clean === oldLabel) return null;
+    // A name another group already has would fold the two into one either/or.
+    if (recipe.ingredients.some(i => i.choiceGroup === clean)) return null;
     let touched = false;
     const ingredients = recipe.ingredients.map(i => {
       if (i.choiceGroup !== oldLabel) return i;

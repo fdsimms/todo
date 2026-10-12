@@ -2,7 +2,8 @@ import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import type { ChoiceGroup } from '../utils/recipeComponents';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 
 interface Props {
@@ -20,6 +21,8 @@ interface Props {
    * same fill would vanish into it.
    */
   surface?: 'page' | 'card';
+  /** Makes the group's name a button that renames it. Omitted where the group isn't editable. */
+  onRename?: () => void;
 }
 
 /**
@@ -29,13 +32,27 @@ interface Props {
  * the two don't drift into two chip treatments for the one either/or concept.
  */
 export function RecipeChoiceChips({
-  group, activeOptionId, onPick, extraChip, hint, surface = 'page',
+  group, activeOptionId, onPick, extraChip, hint, surface = 'page', onRename,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <View style={styles.group}>
-      <Text style={styles.sectionLabel}>{group.label}</Text>
+      {onRename ? (
+        <TouchableOpacity
+          style={styles.labelRow}
+          activeOpacity={interaction.activeOpacity}
+          onPress={onRename}
+          accessibilityRole="button"
+          accessibilityLabel={`Group name, ${group.label}`}
+          accessibilityHint="Double tap to rename this group"
+        >
+          <Text style={[styles.sectionLabel, styles.labelText]}>{group.label}</Text>
+          <Ionicons name="pencil" size={iconSize.xs} color={colors.textTertiary} />
+        </TouchableOpacity>
+      ) : (
+        <Text style={styles.sectionLabel}>{group.label}</Text>
+      )}
       <View style={styles.chips}>
         {group.options.map(option => {
           const on = option.id === activeOptionId;
@@ -71,6 +88,8 @@ function makeStyles(colors: Colors) {
       letterSpacing: 0.8,
       textTransform: 'uppercase',
     },
+    labelRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xsm },
+    labelText: { flexShrink: 1 },
     chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
     chip: {
       backgroundColor: colors.bgSecondary,

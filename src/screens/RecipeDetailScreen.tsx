@@ -85,6 +85,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { pickRecipeImage, recipeImageOnDevice, resolveRecipeImagePath, type RecipePhotoSource } from '../utils/recipePhoto';
 import {
   blockedIngredientNote,
+  cleanChoiceGroup,
   describeRecipe,
   duplicateIngredientIn,
   ingredientsFromText,
@@ -109,6 +110,7 @@ import {
   recipeChoiceGroups,
   recipeMap,
   resolveComponents,
+  type ChoiceGroup,
   type ResolvedComponent,
 } from '../utils/recipeComponents';
 import { applyStandingSwap, describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
@@ -180,6 +182,7 @@ export function RecipeDetailScreen() {
   );
   const addIngredient = useRecipeStore(s => s.addIngredient);
   const updateIngredient = useRecipeStore(s => s.updateIngredient);
+  const renameChoiceGroup = useRecipeStore(s => s.renameChoiceGroup);
   const addIngredientsFromText = useRecipeStore(s => s.addIngredientsFromText);
   const removeIngredient = useRecipeStore(s => s.removeIngredient);
   const reorderIngredients = useRecipeStore(s => s.reorderIngredients);
@@ -298,6 +301,35 @@ export function RecipeDetailScreen() {
     () => (recipe ? recipeChoiceGroups(recipe, recipesById, choiceResolution) : []),
     [recipe, recipesById, choiceResolution]
   );
+
+  // Renames a group of this recipe's own ingredient lines from its heading above
+  // the chips. Only an all-ingredient group: a side dish's label lives on the
+  // component row, which `renameChoiceGroup` doesn't touch.
+  const promptRenameGroup = (group: ChoiceGroup) => {
+    haptics.tap();
+    Alert.prompt(
+      'Group name',
+      'Shown above the choices. Renames it for every ingredient in the group.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Save',
+          onPress: (value?: string) => {
+            const clean = cleanChoiceGroup(value);
+            if (!clean || clean === group.label) return;
+            if (renameChoiceGroup(group.recipe.id, group.label, clean)) {
+              haptics.success();
+              return;
+            }
+            haptics.error();
+            Alert.alert('Name already used', 'Another group in this recipe already has that name.');
+          },
+        },
+      ],
+      'plain-text',
+      group.label,
+    );
+  };
 
   // What each step's own sentence is worth: the amount this reading of the
   // recipe needs, and any standing swap, named where the ingredient is
@@ -2055,6 +2087,7 @@ export function RecipeDetailScreen() {
                     animateLayout();
                     setChoices(prev => applyChoice(prev, group, optionId));
                   }}
+                  onRename={group.kind === 'ingredient' ? () => promptRenameGroup(group) : undefined}
                 />
               );
             })}
