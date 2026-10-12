@@ -103,6 +103,7 @@ import { deleteRule, listAutomations, saveRule, setAutomation, RULE_TYPES } from
 import { deleteCategory, reorderCategories, updateCategory } from './categoryTools';
 import { cancelCalendarRequest, changeCalendarEvent, listCalendarRequests, requestCalendarEvent } from './calendarTools';
 import { ESTIMATE_KEY_LIST, NUTRIENT_KEY_LIST, atFrom, deleteSavedMeal, duplicateFoodEntry, listSavedMeals, logSavedMeal, moveFoodEntry, saveMealFromEntries, setNutritionTargets, renameMedication, renameMoodTag, setMedicationArchived, addMedication, removeMedication, setMedicationProfile, setMedicationLimit, setMedicationSupply, logFood, logMedication, setSupplementNutrients, logMood, logWater, updateRecipe, deleteRecipe, updateFoodEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
+import { listErrors, MAX_ERRORS } from './errorTools';
 import { DEFAULT_PATTERN_DAYS, focusHistory, habitPatterns, moodInsights } from './patternTools';
 import { addMilestone, deleteMilestone, listMilestones, updateMilestone } from './milestoneTools';
 import { listCopyFlags, resolveCopyFlag } from './copyFlagTools';
@@ -555,6 +556,16 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     `Finished focus sessions over a range of days (default ${DEFAULT_LOG_DAYS}, up to ${MAX_LOG_DAYS}), as the Stats screen reads them: worked and rested minutes, how work stretches ran against their planned length (only once there are enough), how many offered breaks were taken, and each session's steps with the task behind each. History only: a session in progress lives on the phone and does not sync, so this cannot say what the person is working through right now, or start, pause or advance a session. Ask them.`,
     logRange,
     async input => json(await withFresh(() => focusHistory(replica, input)))
+  );
+
+  server.tool(
+    'list_errors',
+    'Unexpected failures the phone recorded (an AI or import request that failed in a way nobody anticipated), newest first, each with where it was caught, the error name, a trimmed message and the top of its stack. Use it to work out why a feature the person says is not working failed. Read-only. Empty means none were recorded.',
+    {
+      source: z.string().optional().describe('Only errors caught in one place, e.g. "recipe-component-import".'),
+      limit: z.number().int().positive().max(MAX_ERRORS).optional(),
+    },
+    async input => json(await withFresh(() => listErrors(replica, input)))
   );
 
   server.tool(

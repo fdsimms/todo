@@ -24,6 +24,7 @@ import {
   recipeNutritionEstimateAvailable,
   estimateMealNutrition,
 } from '../services/aiSuggestions';
+import { logError } from '../utils/errorLog';
 import { MAX_MEAL_IDEAS } from '../utils/mealIdeas';
 import { LEFTOVER_KEEP_DAYS_MAX, RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH, type Task } from '../types';
 
@@ -69,6 +70,7 @@ const resetMockSettings = () => {
 };
 resetMockSettings();
 
+jest.mock('../utils/errorLog', () => ({ logError: jest.fn() }));
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: {
     getState: () => mockSettings,
@@ -567,6 +569,9 @@ describe('describeAIError', () => {
         .toBe('Something went wrong. Try again.');
       expect(describeAIError('some string')).toBe('Something went wrong. Try again.');
       expect(warn).toHaveBeenCalledTimes(2);
+      expect(logError).toHaveBeenCalledWith('ai', expect.any(TypeError));
+      describeAIError(new Error('x'), 'recipe-component-import');
+      expect(logError).toHaveBeenLastCalledWith('recipe-component-import', expect.any(Error));
     } finally {
       warn.mockRestore();
     }

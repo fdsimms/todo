@@ -45,6 +45,7 @@ import { NUTRIENT_LABEL } from '../utils/foodNutrition';
 import { clampKeepDays } from '../utils/leftovers';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { isDemoModeActive } from '../utils/demoState';
+import { logError } from '../utils/errorLog';
 import { getLogicalToday, dayKeyOf } from '../utils/dateUtils';
 import type { AiFeatureId, AiModelId } from '../utils/aiFeatures';
 import { routeForFeature, type AiRoute } from '../utils/aiRouting';
@@ -150,7 +151,7 @@ async function callAnthropic(
 }
 
 /** Maps an Anthropic request failure to copy safe to show a user. */
-export function describeAIError(error: unknown): string {
+export function describeAIError(error: unknown, source: string = 'ai'): string {
   const message = error instanceof Error ? error.message : '';
   // The on-device path shares this function, because a caller can't know which
   // engine answered it and shouldn't have to. Its failures are checked first:
@@ -185,8 +186,10 @@ export function describeAIError(error: unknown): string {
   }
   // Anything else is a bug or a shape nobody anticipated. Calling it a network
   // problem sent people to check a connection that was fine, and hid the cause,
-  // so say what happened and leave the real error in the log.
+  // so say what happened and leave the real error in the log. The console for
+  // someone holding the phone, `error_log` for the MCP server, which can't see it.
   console.warn('Unrecognized AI error', error);
+  logError(source, error);
   return 'Something went wrong. Try again.';
 }
 

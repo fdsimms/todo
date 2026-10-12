@@ -310,6 +310,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     updateJournalEntry: () => { throw new Error('not stubbed'); },
     deleteJournalEntry: () => { throw new Error('not stubbed'); },
     focusHistory: () => [],
+    errorLog: () => [],
     savedViews: () => [],
     savedViewTasks: () => [],
     createSavedView: () => { throw new Error('not stubbed'); },
