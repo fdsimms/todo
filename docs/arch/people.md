@@ -596,6 +596,10 @@ events sheet, or by starting the event from a person's page ("Plan something").
   link is written to the event.
 - **A title match is offered, not applied.** The picker lists people the title
   names first, and each is still a tap. Same bar as the history offer.
+- **The picker never lays out the whole list.** `eventPeopleChoices` offers the
+  people the title names, then the first few in the user's own order, and a find
+  field searches everybody else. Linked people sit above it as filled chips. The
+  row's details (edit, template, trip) are a separate panel from the picker.
 - **After the event, a link makes an offer, not a record.** Linked people are
   offered the event under "From your calendar" even when the title never names
   them (`suggestedHistoryEvents`' `linkedPeople`). A link says who a plan was
@@ -637,8 +641,8 @@ an "@" does for the names after it (`peopleAfterWith`: "Big walk with Tessa" lin
 Tessa), through the history offer's own whole-word, ambiguity-resolves-to-nobody
 match, so only people already on the list link and a name before the word links
 nobody. An opened event's own title is read plain, so it links nothing until edited. The rows Apple's form asked for are chips
-on the card (calendar, alert, Busy/Free) that start as the last saved event
-left them (`quickEventDefaults.ts`), plus a Notes or link field and a trailing
+on the card (calendar, alert, repeat, and All day and Busy/Free as switches) that start as the last saved event
+left them (`quickEventDefaults.ts`), plus a Notes or link field (behind a "+ Notes" chip until used), a Starts and an Ends block (an end picked by hand is stored as a length, so it replaces a typed "for 2h") and a trailing
 `at (place)` and `alert 30m` in the line, which win over a chip's earlier pick.
 With "Suggest places" on (`placeSuggestionsEnabled`, off by default because it
 sends what is typed to Apple), the location is looked up in Apple Maps as you
