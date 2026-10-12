@@ -84,9 +84,11 @@ export function InlineEditableText({
   // source fields) resizes on every keystroke as the input's intrinsic
   // content width changes, which reflows every sibling in the row along with
   // it — the field being typed into, and the ones next to it, visibly shift
-  // with each character. Freezing the width at the value the box already had
-  // stops that; overflow while typing scrolls inside the box instead, same
-  // as any ordinary text field.
+  // with each character. Holding the width at the value the box already had
+  // as a floor stops that for anything that still fits. It is a floor and not
+  // a fixed width because a fixed one hid the end of a longer value being
+  // typed ("Molinar" for "Molinaro"); past the floor the box grows with the
+  // text, up to the row's own width (`maxWidth` in `input`).
   const [chipWidth, setChipWidth] = useState<number | undefined>(undefined);
 
   // Mirrors commit()'s validation exactly, so what the registry reports
@@ -119,7 +121,7 @@ export function InlineEditableText({
   if (editing) {
     return (
       <TextField
-        style={[styles.input, inputStyle, chipWidth ? { width: Math.max(chipWidth, 56) } : null]}
+        style={[styles.input, inputStyle, chipWidth ? { minWidth: Math.max(chipWidth, 56) } : null]}
         value={draft}
         onChangeText={setDraft}
         onBlur={commit}
@@ -195,6 +197,7 @@ function makeStyles(colors: Colors) {
       paddingHorizontal: CHIP_PAD_H,
       paddingVertical: CHIP_PAD_V,
       minWidth: 56,
+      maxWidth: '100%',
       margin: 0,
     },
     placeholder: { color: colors.textTertiary },
