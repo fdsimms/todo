@@ -43,6 +43,7 @@ import {
   methodRowMeta, prepTasksRowMeta, methodPreviewLines, prepTaskPreviewLines,
 } from '../utils/recipeImportPreview';
 import { InlineEditableText } from './InlineEditableText';
+import { CookbookShelfChips } from './CookbookShelfChips';
 import { usePendingEdits } from '../hooks/usePendingEdits';
 import { useRecipeImportSource } from '../hooks/useRecipeImportSource';
 import { useRecipeComponentImports } from '../hooks/useRecipeComponentImports';
@@ -98,6 +99,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
   const groceryItems = useGroceryStore(useShallow(s => s.items));
   const recipes = useRecipeStore(useShallow(s => s.recipes));
+  const cookbooks = useRecipeStore(useShallow(s => s.cookbooks));
   const rememberedAisleFor = useGroceryStore(s => s.rememberedAisleFor);
   const addToPantry = useGroceryStore(s => s.addToPantry);
   const setServings = useRecipeStore(s => s.setServings);
@@ -827,6 +829,14 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
               </>
             )}
           </View>
+          {importedSourceType === 'cookbook' && (
+            <CookbookShelfChips
+              cookbooks={cookbooks}
+              title={siteName}
+              author={sourceAuthor}
+              onPick={book => { setSiteName(book.title); setSourceAuthor(book.author ?? ''); }}
+            />
+          )}
           {/* A link import's URL comes from the page it fetched and isn't
               editable — this is only for the two imports that never had a
               page to read one off. Left blank, the recipe's existing link
