@@ -1393,6 +1393,29 @@ that narrow: the target is a constant rather than a typed number, the bar
 stops at full, and nothing (color, copy, a streak) changes when it fills. The
 Stats row draws the average day against the same figure.
 
+## A panel that looks wrong, and who decides
+
+A panel can pass every check and still be a misprint: a label that says 16 g of
+sodium where it meant 16 mg is possible, just not plausible. Two gates exist
+and they are deliberately different kinds.
+
+- **`PER_100_CEILING` (`nutritionParse.ts`) drops the impossible.** It runs on a
+  barcode record that nobody is looking at, so it may only refuse what cannot
+  be true (more than 100 g of anything in 100 g of food). Tightening it would
+  make a module with no person in front of it decide which real foods are too
+  unusual to keep.
+- **`panelWarnings` (`nutritionSanity.ts`) flags the implausible, and a person
+  answers.** It runs when `NutritionPanelSheet` saves, offering Edit or Save
+  anyway. It never drops a figure and never edits one, because the packet in
+  the person's hand is the only authority on whether the label itself is
+  wrong. Its rules use the panel's own figures and serving weight and nothing
+  else: a bound is set so salt, bouillon and pure oil still pass.
+
+A new check goes in `panelWarnings` if it needs a person to judge it, and in
+`PER_100_CEILING` only if it is arithmetically impossible. Barcode lookups and
+AI estimates are not run through `panelWarnings` on their own; they reach it
+only when a person saves the result in that sheet.
+
 ## What is deliberately not built yet
 
 Steps, sleep, exercise minutes, active energy, eight nutrients (sodium,
