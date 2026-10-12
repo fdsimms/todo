@@ -128,7 +128,7 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
 
   private static func subtitle() -> String {
     guard let state = ScreenTimeShared.readShieldState() else {
-      return "dundundun is blocking it. Open the app to see why."
+      return "dundundun is blocking it. Open dundundun to see why."
     }
 
     switch state.reason {
@@ -149,13 +149,13 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
       let until = state.untilIso.flatMap(Self.timeLabel)
       switch (cause, until) {
       case let (cause?, until?):
-        return "\(cause) wasn't done in time. This ends at \(until)."
+        return "\(cause) wasn’t done in time. This ends at \(until)."
       case let (cause?, nil):
-        return "\(cause) wasn't done in time."
+        return "\(cause) wasn’t done in time."
       case let (nil, until?):
-        return "A task wasn't done in time. This ends at \(until)."
+        return "A task wasn’t done in time. This ends at \(until)."
       case (nil, nil):
-        return "A task wasn't done in time."
+        return "A task wasn’t done in time."
       }
     default:
       // A gate the monitor extension raised while the app was closed lands
@@ -169,7 +169,7 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
       // The shield is up but the app's last reconcile says nothing wants it —
       // a state the app's own next foreground resolves by lifting it. Saying
       // so is better than claiming a reason that isn't there.
-      return "dundundun is blocking it. Open the app to see why."
+      return "dundundun is blocking it. Open dundundun to see why."
     }
   }
 

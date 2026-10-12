@@ -66,7 +66,7 @@ export function describeSnackNudgeHour(hour: number): string {
 
 /** Why the task exists, in the plain terms the rest of the app uses. */
 export const SNACK_NUDGE_NOTES =
-  'Based on the calories logged in the food log today. If you have eaten without logging it, this can be dismissed.';
+  'Based on the calories in today’s food log. Dismiss it if you ate without logging.';
 
 /** A calorie figure with a thousands separator. */
 function kcal(n: number): string {

@@ -14,9 +14,16 @@ import { WhenPicker } from './WhenPicker';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { defaultUsualDose, prefsFor } from '../utils/medicationSettings';
 import { getLogicalToday } from '../utils/dateUtils';
-import { DOSE_UNITS, medicationKey, medicationVocabulary } from '../utils/medicationLog';
+import { DOSE_UNITS, formatDose, medicationKey, medicationVocabulary } from '../utils/medicationLog';
+import { confirmWithinLimit, recordDose, syncOkAgainNotification, unrecordDose } from '../utils/doseRecording';
 import { TextField } from './TextField';
+import { InlineAction } from './InlineAction';
+import { TaskEditor } from './TaskEditor';
+import { TaskRelationPickerSheet } from './TaskRelationPickerSheet';
+import { useTaskStore } from '../store/useTaskStore';
+import { displayTitleFor } from '../utils/visibilityUtils';
 
 const NAME_MAX_LENGTH = 60;
 const NOTE_MAX_LENGTH = 200;
@@ -36,8 +43,26 @@ interface Props {
   visible: boolean;
   /** The dose being edited, or null to record a new one. */
   log: MedicationLog | null;
+  /** The medication a new dose starts on, when opened from its own page. */
+  initialName?: string;
   onClose: () => void;
+  /** Called after the dose is deleted, with the row as it was, so the host can offer an undo. */
+  onDeleted?: (log: MedicationLog) => void;
 }
+
+/**
+ * How long ago a dose recorded today was taken, in minutes. A closed set of
+ * the answers people actually give ("about an hour ago"), rather than a time
+ * picker, because the point is to record it now while it's remembered. The
+ * limit (`medicationSettings.ts`) is measured from this, so "now" for a dose
+ * taken two hours ago would put the next one two hours later than it is.
+ */
+const AGO_OPTIONS: { value: number; label: string }[] = [
+  { value: 0, label: 'Now' },
+  { value: 30, label: '30 min ago' },
+  { value: 60, label: '1 hr ago' },
+  { value: 120, label: '2 hr ago' },
+];
 
 /**
  * Recording a dose by hand — see `src/utils/medicationLog.ts`.
@@ -53,14 +78,14 @@ interface Props {
  * dose they forgot to tick flips it, and the control says so plainly rather
  * than the sheet guessing from history.
  */
-export function MedicationLogSheet({ visible, log, onClose }: Props) {
+export function MedicationLogSheet({ visible, log, initialName, onClose, onDeleted }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const logs = useMedicationStore(s => s.logs);
   const archived = useMedicationStore(s => s.archived);
-  const addLog = useMedicationStore(s => s.addLog);
+  const registered = useMedicationStore(s => s.registered);
+  const settings = useMedicationStore(s => s.settings);
   const updateLog = useMedicationStore(s => s.updateLog);
-  const removeLog = useMedicationStore(s => s.removeLog);
 
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
@@ -68,20 +93,34 @@ export function MedicationLogSheet({ visible, log, onClose }: Props) {
   const [asNeeded, setAsNeeded] = useState(true);
   const [note, setNote] = useState('');
   const [day, setDay] = useState<Date>(() => noonOfToday());
+  const [agoMinutes, setAgoMinutes] = useState(0);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [drafted, setDrafted] = useState<string[]>([]);
+  const [taskEditorOpen, setTaskEditorOpen] = useState(false);
+  const [taskPickerOpen, setTaskPickerOpen] = useState(false);
+  const [attachedTitle, setAttachedTitle] = useState<string | null>(null);
+  const updateTask = useTaskStore(s => s.updateTask);
 
   useEffect(() => {
     if (!visible) return;
-    setName(log?.name ?? '');
-    setAmount(log?.amount !== null && log?.amount !== undefined ? String(log.amount) : '');
-    setUnit(log?.unit ?? null);
-    setAsNeeded(log ? log.asNeeded : true);
+    setName(log?.name ?? initialName ?? '');
+    // A new dose of a named medication starts from what was set up for it.
+    const prefs = !log && initialName ? prefsFor(useMedicationStore.getState().settings, initialName) : null;
+    const usual = defaultUsualDose(prefs ?? undefined);
+    setAmount(log?.amount !== null && log?.amount !== undefined
+      ? String(log.amount)
+      : usual ? String(usual.amount) : '');
+    setUnit(log?.unit ?? usual?.unit ?? null);
+    setAsNeeded(log ? log.asNeeded : prefs?.asNeeded ?? true);
     setNote(log?.note ?? '');
     setDay(noonOfToday());
+    setAgoMinutes(0);
     setShowDatePicker(false);
     setDrafted([]);
-  }, [visible, log]);
+    setTaskEditorOpen(false);
+    setTaskPickerOpen(false);
+    setAttachedTitle(null);
+  }, [visible, log, initialName]);
 
   /**
    * The pills to offer: what's picked, then what's been logged before, then
@@ -94,7 +133,7 @@ export function MedicationLogSheet({ visible, log, onClose }: Props) {
   const pillNames = useMemo(() => {
     const seen = new Set<string>();
     const out: string[] = [];
-    for (const candidate of [name, ...medicationVocabulary(logs, archived), ...drafted]) {
+    for (const candidate of [name, ...medicationVocabulary(logs, archived, registered), ...drafted]) {
       const trimmed = candidate.trim();
       const key = medicationKey(trimmed);
       if (!key || seen.has(key)) continue;
@@ -102,7 +141,7 @@ export function MedicationLogSheet({ visible, log, onClose }: Props) {
       out.push(trimmed);
     }
     return out;
-  }, [name, logs, archived, drafted]);
+  }, [name, logs, archived, registered, drafted]);
 
   const createMedication = (raw: string): string | null | void => {
     const trimmed = raw.trim();
@@ -114,9 +153,14 @@ export function MedicationLogSheet({ visible, log, onClose }: Props) {
     setName(trimmed);
   };
 
+  // The amounts set up for this medication, as quick picks above the field.
+  const usualDoses = prefsFor(settings, name).usualDoses ?? [];
+
   const canSave = name.trim().length > 0;
 
-  const handleSave = () => {
+  const backdated = day.toDateString() !== noonOfToday().toDateString();
+
+  const handleSave = async () => {
     const trimmed = name.trim();
     if (!trimmed) return;
     const parsed = Number(amount.trim());
@@ -129,29 +173,62 @@ export function MedicationLogSheet({ visible, log, onClose }: Props) {
         asNeeded,
         note,
       });
+      syncOkAgainNotification(log.name);
+      if (medicationKey(trimmed) !== medicationKey(log.name)) syncOkAgainNotification(trimmed);
     } else {
-      const today = noonOfToday();
-      const backdated = day.toDateString() !== today.toDateString();
-      addLog({
+      // A backdated day records noon on it; today records the real moment,
+      // less however long ago it was taken. Only a dose recorded for now-ish
+      // is checked against the limit: one remembered from last Tuesday is
+      // history, and a warning about it can't change anything.
+      const at = backdated
+        ? day
+        : agoMinutes > 0 ? new Date(Date.now() - agoMinutes * 60_000) : undefined;
+      if (!backdated && !(await confirmWithinLimit(trimmed, at ?? new Date(), { amount: usableAmount, unit }))) return;
+      recordDose({
         name: trimmed,
         amount: usableAmount,
         unit,
         asNeeded,
         note,
-        // Only pass an instant when the day was actually changed, so the
-        // ordinary case records the real moment rather than noon.
-        at: backdated ? day : undefined,
+        at,
       });
     }
     haptics.success();
     onClose();
   };
 
+  // What a task made or picked from here would record: the name, and the amount
+  // only when it parses and has a unit, the pair the task editor itself keeps.
+  const taskMedication = () => {
+    const parsed = Number(amount.trim());
+    const usable = amount.trim() !== '' && Number.isFinite(parsed) && unit !== null;
+    return {
+      medicationName: name.trim(),
+      medicationAmount: usable ? parsed : null,
+      medicationUnit: usable ? unit : null,
+    };
+  };
+
+  const taskDraft = useMemo(
+    () => (taskEditorOpen ? { title: name.trim(), recurrenceType: 'daily' as const, ...taskMedication() } : null),
+    // Frozen while the editor is open, so typing underneath can't reseed it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [taskEditorOpen],
+  );
+
+  const attachToTask = (taskId: string) => {
+    const task = useTaskStore.getState().tasks.find(t => t.id === taskId);
+    if (!task) return;
+    updateTask(taskId, taskMedication());
+    setAttachedTitle(displayTitleFor(task));
+    haptics.success();
+  };
+
   const handleDelete = () => {
     if (!log) { onClose(); return; }
     Alert.alert('Delete this dose?', undefined, [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => { removeLog(log.id); onClose(); } },
+      { text: 'Delete', style: 'destructive', onPress: () => { unrecordDose(log); onDeleted?.(log); onClose(); } },
     ]);
   };
 
@@ -173,11 +250,12 @@ export function MedicationLogSheet({ visible, log, onClose }: Props) {
               <Ionicons name="trash-outline" size={20} color={colors.red} />
             </TouchableOpacity>
           ) : (
-            <SheetHeaderButton label="Save" onPress={handleSave} disabled={!canSave} />
+            <SheetHeaderButton label="Save" onPress={() => { void handleSave(); }} disabled={!canSave} />
           )}
         />
       }
       footer={
+        <>
         <WhenPicker
           visible={showDatePicker}
           value={day}
@@ -188,6 +266,21 @@ export function MedicationLogSheet({ visible, log, onClose }: Props) {
           onConfirm={picked => { if (picked) setDay(picked); setShowDatePicker(false); }}
           onCancel={() => setShowDatePicker(false)}
         />
+        {/* Rendered inside this sheet, never beside it: two sibling Modals can't
+            both be visible (see SheetModal). */}
+        <TaskEditor
+          visible={taskEditorOpen}
+          initialDraft={taskDraft}
+          onClose={() => { setTaskEditorOpen(false); }}
+        />
+        <TaskRelationPickerSheet
+          visible={taskPickerOpen}
+          relation="medication"
+          taskId={null}
+          onClose={() => setTaskPickerOpen(false)}
+          onSelect={attachToTask}
+        />
+        </>
       }
     >
       <View style={styles.card}>
@@ -212,6 +305,18 @@ export function MedicationLogSheet({ visible, log, onClose }: Props) {
         <Text style={styles.hint}>
           Optional. Leave it blank to record only that you took it.
         </Text>
+        {usualDoses.length > 0 && (
+          <PillGroup
+            noun="amount"
+            surface="card"
+            options={usualDoses.map(d => ({
+              key: `${d.amount}-${d.unit}`,
+              label: formatDose(d) ?? '',
+              selected: unit === d.unit && Number(amount.trim()) === d.amount,
+              onPress: () => { haptics.tap(); setAmount(String(d.amount)); setUnit(d.unit); },
+            }))}
+          />
+        )}
         <TextField
           style={styles.amountInput}
           value={amount}
@@ -231,20 +336,40 @@ export function MedicationLogSheet({ visible, log, onClose }: Props) {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.groupLabel}>WHY YOU TOOK IT</Text>
+        <Text style={styles.groupLabel}>WHEN YOU TAKE IT</Text>
         <SegmentedControl
           options={[
             { value: true, label: 'As needed' },
             { value: false, label: 'On schedule' },
           ]}
           value={asNeeded}
-          label="Why you took it"
+          label="When you take it"
           onChange={value => { haptics.tap(); setAsNeeded(value); }}
         />
-        <Text style={styles.hint}>
-          Something you take on a schedule is better kept as a repeating task,
-          which records the dose when you check it off.
-        </Text>
+        {asNeeded ? null : (
+          <>
+            <Text style={styles.hint}>
+              {attachedTitle
+                ? `Checking off "${attachedTitle}" records this medication.`
+                : 'A repeating task records the dose each time you check it off.'}
+            </Text>
+            {canSave && (
+              <View style={styles.taskActions}>
+                <InlineAction
+                  icon="add"
+                  label="New repeating task"
+                  onPress={() => setTaskEditorOpen(true)}
+                />
+                <InlineAction
+                  icon="link-outline"
+                  label="Add to a task"
+                  variant="neutral"
+                  onPress={() => setTaskPickerOpen(true)}
+                />
+              </View>
+            )}
+          </>
+        )}
       </View>
 
       {!log && (
@@ -255,6 +380,17 @@ export function MedicationLogSheet({ visible, log, onClose }: Props) {
             value={format(day, 'EEE, MMM d')}
             onPress={() => { haptics.tap(); setShowDatePicker(true); }}
           />
+          {!backdated && (
+            <View style={styles.agoRow}>
+              <SegmentedControl
+                options={AGO_OPTIONS}
+                value={agoMinutes}
+                columns={4}
+                label="When you took it"
+                onChange={value => { haptics.tap(); setAgoMinutes(value); }}
+              />
+            </View>
+          )}
         </View>
       )}
 
@@ -303,6 +439,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     lineHeight: 17,
     marginBottom: spacing.sm,
   },
+  agoRow: { marginTop: spacing.sm },
+  taskActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   amountInput: {
     backgroundColor: colors.bgTertiary,
     borderRadius: radius.sm,

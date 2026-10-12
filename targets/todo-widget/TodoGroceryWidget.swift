@@ -77,9 +77,9 @@ struct GroceryWidgetEntryView: View {
 
     private var emptyStateMessage: String {
         switch entry.result {
-        case .noAppGroupAccess: return "Can't access shared data (App Group)"
+        case .noAppGroupAccess: return "Can’t access shared data (App Group)"
         case .noSnapshotYet: return "Open the app to get started"
-        case .decodeFailed: return "Couldn't read task data"
+        case .decodeFailed: return "Couldn’t read grocery data"
         case .success:
             // A grocery store that was never opened and an empty trolley are
             // different answers, and saying "Nothing to buy" for the first one
@@ -247,7 +247,7 @@ struct TodoGroceryWidget: Widget {
                 }
         }
         .configurationDisplayName("Groceries")
-        .description("What's left to buy, and the store you're shopping at.")
+        .description("What’s left to buy, and the store you’re shopping at.")
         .supportedFamilies([
             .systemSmall, .systemMedium,
             .accessoryRectangular, .accessoryCircular, .accessoryInline,

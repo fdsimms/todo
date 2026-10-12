@@ -181,5 +181,5 @@ export function reachOutHistoryTitle(kind: ReachOutKind, name: string): string {
  * really happened, and the user is the only one who can check it.
  */
 export function reachOutPromptMessage(kind: ReachOutKind, name: string, at: Date): string {
-  return `"${reachOutHistoryTitle(kind, name)}", ${format(at, 'h:mm a')}`;
+  return `“${reachOutHistoryTitle(kind, name)}”, ${format(at, 'h:mm a')}`;
 }

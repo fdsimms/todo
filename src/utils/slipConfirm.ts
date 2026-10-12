@@ -2,6 +2,14 @@ import { Alert } from 'react-native';
 import type { Task } from '../types';
 import { formatDuration } from './effort';
 import { nextSlipIsFree } from './negativeHabits';
+import { guardedSlipPrompt, type GuardedSlip } from './rewardGuard';
+
+/** A guarded habit's slip, as `useRewardStore.slipGuardFor` reads it. */
+export interface SlipGuard {
+  plan: GuardedSlip;
+  balance: number;
+  claimedToday: boolean;
+}
 
 /**
  * Ask before logging a slip that costs something, and go straight through when
@@ -19,16 +27,44 @@ import { nextSlipIsFree } from './negativeHabits';
  * by something else entirely (see `slipPenaltyUntil`). Asking first is the
  * cheaper half of that trade — one extra tap, and only for the tasks somebody
  * has actually attached a cost to.
+ *
+ * `guard` is the habit's guarding reward, when it has one, and replaces the
+ * question: the tap is then a claim or a charge of the reward's price.
  */
-export function confirmSlip(task: Task, penaltyEnabled: boolean, todayStart: Date, onConfirm: () => void): void {
+export function confirmSlip(
+  task: Task,
+  penaltyEnabled: boolean,
+  todayStart: Date,
+  onConfirm: () => void,
+  guard: SlipGuard | null = null,
+): void {
+  const penalty = penaltyEnabled && task.penaltyMinutes !== null && !nextSlipIsFree(task, todayStart)
+    ? `This blocks the apps you picked for ${formatDuration(task.penaltyMinutes!)}. It can’t be undone.`
+    : null;
+  // A habit a reward guards always asks: the tap either spends the reward's
+  // price or takes the balance, and both are worth a second look. A claim
+  // records no slip, so it blocks nothing either.
+  if (guard) {
+    const prompt = guardedSlipPrompt(guard.plan, guard.balance, guard.claimedToday);
+    const blocks = guard.plan.kind === 'charge' ? penalty : null;
+    Alert.alert(
+      prompt.title,
+      [prompt.message, blocks].filter(Boolean).join(' '),
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: prompt.confirm, style: guard.plan.kind === 'charge' ? 'destructive' : 'default', onPress: onConfirm },
+      ],
+    );
+    return;
+  }
   // A slip inside the day's allowance blocks nothing, so there is nothing to confirm.
-  if (!penaltyEnabled || task.penaltyMinutes === null || nextSlipIsFree(task, todayStart)) {
+  if (!penalty) {
     onConfirm();
     return;
   }
   Alert.alert(
     'Log a slip?',
-    `This blocks the apps you picked for ${formatDuration(task.penaltyMinutes)}. It can’t be undone.`,
+    penalty,
     [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Log it', style: 'destructive', onPress: onConfirm },

@@ -8,6 +8,7 @@
 
 import {
   initDatabase,
+  ensureDatabaseReady,
   dbGetSetting,
   dbGetAllSettings,
   dbSetSetting,
@@ -122,8 +123,15 @@ import {
   dbInsertFoodLogEntry,
   dbGetPendingHealthFoodEntries,
   dbGetFoodLogEntry,
+  dbGetFoodLogEntriesForTask,
   dbInsertSavedMeal,
   dbGetSavedMeals,
+  dbGetPendingEstimates,
+  dbSavePendingEstimate,
+  dbDeletePendingEstimate,
+  dbGetPendingRecipeEstimates,
+  dbSavePendingRecipeEstimate,
+  dbDeletePendingRecipeEstimate,
   dbUpdateFoodLogEntry,
   dbGetDeviceId,
   dbGetSyncCursor,
@@ -136,6 +144,8 @@ import {
   SYNC_DELETIONS_TABLE,
   SYNC_DEVICE_LOCAL_COLUMNS,
   TOMBSTONE_RETENTION_DAYS,
+  SYNC_INSTALL_SIGNATURE_KEY,
+  installSignature,
 } from '../db/syncTracking';
 import { buildBackup, serializeBackup, parseBackup } from '../utils/backup';
 import { OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
@@ -273,7 +283,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   penaltyCreditedAt: null,
   gatesApps: false,
   showStreak: false,
-  streakRequiresWindow: false,
+  streakRequiresWindow: false, streakCountsUnits: false,
   parentId: null,
   groupId: null,
   projectId: null,
@@ -360,6 +370,65 @@ describe('initDatabase', () => {
     initDatabase();
     // better-sqlite3 reports 1 for NORMAL (0 OFF, 2 FULL, 3 EXTRA).
     expect(mockRawDb.pragma('synchronous', { simple: true })).toBe(1);
+  });
+
+  describe('sync tracking install', () => {
+    const triggerSql = (name: string) =>
+      (mockRawDb.prepare("SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = ?").get(name) as
+        { sql: string } | undefined)?.sql;
+    const SENTINEL = 'tasks_sync_stamp_update';
+
+    // Stands in for "last release's trigger body": different text, same name.
+    const plantStaleTrigger = () => {
+      mockRawDb.exec(`DROP TRIGGER ${SENTINEL}; CREATE TRIGGER ${SENTINEL} AFTER UPDATE ON tasks BEGIN SELECT 1; END;`);
+    };
+
+    it('records what it installed', () => {
+      initDatabase();
+      expect(dbGetSetting(SYNC_INSTALL_SIGNATURE_KEY)).toBe(installSignature());
+    });
+
+    it('leaves the triggers alone on a launch that finds them current', () => {
+      initDatabase();
+      plantStaleTrigger();
+      initDatabase();
+      expect(triggerSql(SENTINEL)).toContain('SELECT 1');
+    });
+
+    it('reinstalls when the stored signature is not the current one', () => {
+      initDatabase();
+      plantStaleTrigger();
+      dbSetSetting(SYNC_INSTALL_SIGNATURE_KEY, 'previous-release');
+      initDatabase();
+      expect(triggerSql(SENTINEL)).not.toContain('SELECT 1');
+      expect(dbGetSetting(SYNC_INSTALL_SIGNATURE_KEY)).toBe(installSignature());
+    });
+
+    it('reinstalls when a trigger is missing even though the signature matches', () => {
+      initDatabase();
+      mockRawDb.exec(`DROP TRIGGER ${SENTINEL}`);
+      initDatabase();
+      expect(triggerSql(SENTINEL)).toBeDefined();
+    });
+  });
+
+  describe('ensureDatabaseReady', () => {
+    const FLAG = 'recipe_cookbook_backfill_done';
+    const clearFlag = () => mockRawDb.prepare('DELETE FROM settings WHERE key = ?').run(FLAG);
+
+    it('does not repeat the migrations on a handle that has already been through them', () => {
+      initDatabase();
+      clearFlag();
+      ensureDatabaseReady();
+      expect(dbGetSetting(FLAG)).toBeNull();
+    });
+
+    it('is what initDatabase still does when called directly', () => {
+      initDatabase();
+      clearFlag();
+      initDatabase();
+      expect(dbGetSetting(FLAG)).toBe('1');
+    });
   });
 
   it('creates the tasks table', () => {
@@ -1761,6 +1830,8 @@ describe('Templates', () => {
     deadlineTime: null,
     windowStart: null,
     windowEnd: null,
+    windowStartSun: null,
+    windowEndSun: null,
     linkUrl: null,
     location: null,
     recurrenceWeekOrdinal: null,
@@ -1786,8 +1857,13 @@ describe('Templates', () => {
     recurrenceMonthDay: null,
     recurrenceMonth: null,
     recurrenceFromCompletion: false,
+    recurrenceHolidays: null,
+    rainSkipMm: null,
+    quotaRampStep: null,
+    quotaRampEvery: null,
+    quotaRampGoal: null,
     recurrenceCount: null,
-    vacationPause: false, excludeFromSuggestions: false, pinEachOccurrence: false, weatherWait: null, difficulty: null,
+    vacationPause: false, excludeFromSuggestions: false, pinEachOccurrence: false, medicationChecklist: false, conditionsMatch: 'all', weatherWait: null, difficulty: null,
     estimatedMinutes: null,
     completionTimerMinutes: null, completionTimerNote: null,
     penaltyMinutes: null,
@@ -1893,6 +1969,18 @@ describe('Templates', () => {
       options: [],
       defaultValue: '',
       fromDates: 'nights' as const,
+      multiple: false,
+      showForecast: false,
+    }, {
+      id: 'q2',
+      name: 'weather',
+      prompt: "What's the weather like?",
+      kind: 'choice' as const,
+      options: ['Mild', 'Cold'],
+      defaultValue: '',
+      fromDates: 'none' as const,
+      multiple: true,
+      showForecast: true,
     }];
     dbInsertTemplate(makeTemplate({ questions }));
     expect(dbGetAllTemplates()[0].questions).toEqual(questions);
@@ -1920,6 +2008,8 @@ describe('Templates', () => {
       options: [],
       defaultValue: '',
       fromDates: 'none',
+      multiple: false,
+      showForecast: false,
     });
   });
 
@@ -2014,11 +2104,11 @@ describe('Projects', () => {
   });
 
   it('round-trips task defaults on insert and update, and clears them', () => {
-    dbInsertProject(makeProject({ id: 'p-defaults', taskDefaults: { priority: 0, difficulty: 'easy', effort: 2 } }));
-    expect(dbGetAllProjects().find(row => row.id === 'p-defaults')?.taskDefaults).toEqual({ priority: 0, difficulty: 'easy', effort: 2 });
+    dbInsertProject(makeProject({ id: 'p-defaults', taskDefaults: { priority: 0, difficulty: 'easy', effort: 2, showStreak: null, vacationPause: null, excludeFromSuggestions: null } }));
+    expect(dbGetAllProjects().find(row => row.id === 'p-defaults')?.taskDefaults).toEqual({ priority: 0, difficulty: 'easy', effort: 2, showStreak: null, vacationPause: null, excludeFromSuggestions: null });
 
-    dbUpdateProject(makeProject({ id: 'p-defaults', taskDefaults: { priority: 3, difficulty: null, effort: null } }));
-    expect(dbGetAllProjects().find(row => row.id === 'p-defaults')?.taskDefaults).toEqual({ priority: 3, difficulty: null, effort: null });
+    dbUpdateProject(makeProject({ id: 'p-defaults', taskDefaults: { priority: 3, difficulty: null, effort: null, showStreak: null, vacationPause: null, excludeFromSuggestions: null } }));
+    expect(dbGetAllProjects().find(row => row.id === 'p-defaults')?.taskDefaults).toEqual({ priority: 3, difficulty: null, effort: null, showStreak: null, vacationPause: null, excludeFromSuggestions: null });
 
     dbUpdateProject(makeProject({ id: 'p-defaults', taskDefaults: null }));
     expect(dbGetAllProjects().find(row => row.id === 'p-defaults')?.taskDefaults).toBeNull();
@@ -2037,6 +2127,17 @@ describe('Projects', () => {
 
     dbUpdateProject(makeProject({ id: 'p-ongoing', ongoing: false }));
     expect(dbGetAllProjects().find(row => row.id === 'p-ongoing')?.ongoing).toBe(false);
+  });
+
+  it('round-trips groupOnToday on insert and update, reading a row without it as off', () => {
+    dbInsertProject(makeProject({ id: 'p-band', groupOnToday: true }));
+    expect(dbGetAllProjects().find(row => row.id === 'p-band')?.groupOnToday).toBe(true);
+
+    dbUpdateProject(makeProject({ id: 'p-band', groupOnToday: false }));
+    expect(dbGetAllProjects().find(row => row.id === 'p-band')?.groupOnToday).toBe(false);
+
+    dbInsertProject(makeProject({ id: 'p-unset' }));
+    expect(dbGetAllProjects().find(row => row.id === 'p-unset')?.groupOnToday).toBe(false);
   });
 
   it('orders by sort_order', () => {
@@ -5808,5 +5909,168 @@ describe('a saved meal item\'s kept panel', () => {
     mockRawDb.exec('DELETE FROM saved_meals;');
     dbReplaceAllData(parsed.backup.tables);
     expect(dbGetSavedMeals()[0].items[0].sourcePanel).toEqual(chicken);
+  });
+});
+
+describe('pending estimates (the offline food log queue)', () => {
+  const waiting = {
+    id: 'p1',
+    description: 'cheeseburger and fries',
+    slot: 'lunch' as const,
+    atISO: '2026-04-01T16:30:00.000Z',
+    mealPlanEntryId: null,
+    context: [{ label: 'My chili', quantity: '1 bowl', amounts: { calorieKcal: 400 } }],
+    status: 'waiting' as const,
+    estimate: null,
+    estimatedAtISO: null,
+    error: null,
+    createdAt: '2026-04-01T16:31:00.000Z',
+  };
+  const estimate = {
+    label: 'Cheeseburger and fries',
+    quantity: '1 burger and a regular fries',
+    amounts: { calorieKcal: 1100 },
+    basis: 'typical' as const,
+    confidence: 'medium' as const,
+    attribution: null,
+    questions: [],
+    breakdown: [],
+  };
+
+  it('round-trips a waiting meal with its context', () => {
+    dbSavePendingEstimate(waiting);
+    expect(dbGetPendingEstimates()).toEqual([waiting]);
+  });
+
+  it('round-trips a ready meal with its estimate', () => {
+    const ready = { ...waiting, status: 'ready' as const, estimate, estimatedAtISO: '2026-04-01T20:00:00.000Z' };
+    dbSavePendingEstimate(ready);
+    expect(dbGetPendingEstimates()).toEqual([ready]);
+  });
+
+  it('rewrites a meal in place when its id is saved again', () => {
+    dbSavePendingEstimate(waiting);
+    dbSavePendingEstimate({ ...waiting, status: 'failed', error: 'Check your API key in Settings.' });
+    const rows = dbGetPendingEstimates();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ status: 'failed', error: 'Check your API key in Settings.' });
+  });
+
+  it('reads a ready meal whose estimate will not parse as waiting again, not lost', () => {
+    dbSavePendingEstimate({ ...waiting, status: 'ready', estimate, estimatedAtISO: '2026-04-01T20:00:00.000Z' });
+    mockRawDb.exec("UPDATE pending_estimates SET estimate = '{not json'");
+    expect(dbGetPendingEstimates()[0]).toMatchObject({ status: 'waiting', estimate: null, estimatedAtISO: null });
+  });
+
+  it('lists them in the order the meals were eaten', () => {
+    dbSavePendingEstimate({ ...waiting, id: 'dinner', atISO: '2026-04-01T23:00:00.000Z' });
+    dbSavePendingEstimate({ ...waiting, id: 'lunch' });
+    expect(dbGetPendingEstimates().map(p => p.id)).toEqual(['lunch', 'dinner']);
+  });
+
+  it('deletes one meal', () => {
+    dbSavePendingEstimate(waiting);
+    dbDeletePendingEstimate('p1');
+    expect(dbGetPendingEstimates()).toEqual([]);
+  });
+
+  it('stays out of a backup, since a request belongs to the phone that lost its signal', () => {
+    dbSavePendingEstimate(waiting);
+    expect(Object.keys(dbExportTables())).not.toContain('pending_estimates');
+  });
+});
+
+describe('pending recipe estimates (the offline recipe queue)', () => {
+  const waiting = {
+    recipeId: 'r1',
+    estimateKey: 'Stew\n4\n1 lb beef|beef|',
+    title: 'Stew',
+    servings: 4,
+    lines: ['1 lb beef', '2 cups stock'],
+    status: 'waiting' as const,
+    estimate: null,
+    error: null,
+    createdAt: '2026-04-01T16:31:00.000Z',
+  };
+
+  it('round-trips a waiting row, fingerprint and lines included', () => {
+    dbSavePendingRecipeEstimate(waiting);
+    expect(dbGetPendingRecipeEstimates()).toEqual([waiting]);
+  });
+
+  it('round-trips a ready row with its estimate', () => {
+    const ready = { ...waiting, status: 'ready' as const, estimate: { amounts: { calorieKcal: 2400 }, confidence: 'medium' as const } };
+    dbSavePendingRecipeEstimate(ready);
+    expect(dbGetPendingRecipeEstimates()).toEqual([ready]);
+  });
+
+  it('keeps one row per recipe', () => {
+    dbSavePendingRecipeEstimate(waiting);
+    dbSavePendingRecipeEstimate({ ...waiting, estimateKey: 'newer' });
+    const rows = dbGetPendingRecipeEstimates();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].estimateKey).toBe('newer');
+  });
+
+  it('reads a ready row whose estimate will not parse as waiting again', () => {
+    dbSavePendingRecipeEstimate({ ...waiting, status: 'ready', estimate: { amounts: { calorieKcal: 1 }, confidence: 'low' } });
+    mockRawDb.exec("UPDATE pending_recipe_estimates SET estimate = '{nope'");
+    expect(dbGetPendingRecipeEstimates()[0]).toMatchObject({ status: 'waiting', estimate: null });
+  });
+
+  it('drops a row with no lines, which could not be asked about', () => {
+    dbSavePendingRecipeEstimate(waiting);
+    mockRawDb.exec("UPDATE pending_recipe_estimates SET lines = '[]'");
+    expect(dbGetPendingRecipeEstimates()).toEqual([]);
+  });
+
+  it('deletes one row, and stays out of a backup', () => {
+    dbSavePendingRecipeEstimate(waiting);
+    expect(Object.keys(dbExportTables())).not.toContain('pending_recipe_estimates');
+    dbDeletePendingRecipeEstimate('r1');
+    expect(dbGetPendingRecipeEstimates()).toEqual([]);
+  });
+});
+
+describe('logSavedMealId', () => {
+  it('round-trips through insert and update, and reads as none when unset', () => {
+    dbInsertTask(makeTask({ id: 'meta', logSavedMealId: 'sm-1' }));
+    expect(dbGetAllTasks().find(t => t.id === 'meta')!.logSavedMealId).toBe('sm-1');
+    dbUpdateTask({ ...dbGetAllTasks().find(t => t.id === 'meta')!, logSavedMealId: null });
+    expect(dbGetAllTasks().find(t => t.id === 'meta')!.logSavedMealId).toBeNull();
+    dbInsertTask(makeTask({ id: 'plain' }));
+    expect(dbGetAllTasks().find(t => t.id === 'plain')!.logSavedMealId).toBeNull();
+  });
+});
+
+describe('a food log entry\'s task link', () => {
+  beforeEach(() => {
+    mockRawDb.exec('DELETE FROM food_logs; DELETE FROM sync_deletions;');
+  });
+
+  const entry = (overrides: Partial<FoodLogEntry>): FoodLogEntry => ({
+    id: 'f1', dayKey: '2026-04-02', atISO: '2026-04-02T08:00:00.000Z', slot: 'breakfast', label: 'Metamucil',
+    recipeId: null, itemId: null, productId: null, mealPlanEntryId: null, quantity: '1 serving', grams: null,
+    nutrition: { basis: 'perServing', servingGrams: null, servingText: null, amounts: { fiberG: 3 }, source: 'manual', sourceId: null, portions: [], recordedAt: '2026-04-02T08:00:00.000Z' },
+    healthSampleIds: [], sortOrder: 0, createdAt: '2026-04-02T08:00:00.000Z', ...overrides,
+  });
+
+  it('is stored, read back, and finds only that task\'s entries on any day', () => {
+    dbInsertFoodLogEntry(entry({ id: 'a', taskId: 't-1', dayKey: '2026-03-01' }));
+    dbInsertFoodLogEntry(entry({ id: 'b', taskId: 't-2' }));
+    dbInsertFoodLogEntry(entry({ id: 'c' }));
+    expect(dbGetFoodLogEntry('a')?.taskId).toBe('t-1');
+    expect(dbGetFoodLogEntry('c')?.taskId).toBeNull();
+    expect(dbGetFoodLogEntriesForTask('t-1').map(e => e.id)).toEqual(['a']);
+    expect(dbGetFoodLogEntriesForTask('nobody')).toEqual([]);
+  });
+});
+
+describe('streakCountsUnits', () => {
+  it('round-trips through insert and update', () => {
+    dbInsertTask(makeTask({ id: 'weekly', streakCountsUnits: true }));
+    expect(dbGetAllTasks().find(t => t.id === 'weekly')!.streakCountsUnits).toBe(true);
+    dbUpdateTask({ ...dbGetAllTasks().find(t => t.id === 'weekly')!, streakCountsUnits: false });
+    expect(dbGetAllTasks().find(t => t.id === 'weekly')!.streakCountsUnits).toBe(false);
   });
 });

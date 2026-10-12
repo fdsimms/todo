@@ -14,10 +14,7 @@ import { generateId } from '../utils/id';
 import { TITLE_MAX_LENGTH } from '../types';
 import { useProjectStore } from '../store/useProjectStore';
 import { useTaskStore, redoRestoringRows } from '../store/useTaskStore';
-import { useTemplateStore } from '../store/useTemplateStore';
-import { useTaskGroupStore } from '../store/useTaskGroupStore';
-import { templateFromProject } from '../utils/projectTemplate';
-import { useNavigation } from '@react-navigation/native';
+import { useProjectActions } from '../hooks/useProjectActions';
 import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { WhenPicker } from './WhenPicker';
@@ -49,6 +46,9 @@ import { addDays } from 'date-fns/addDays';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { buildAwayShiftPlan } from '../utils/awayShift';
 import { haptics } from '../utils/haptics';
+import { useProjectLockStore, isProjectHidden } from '../store/useProjectLockStore';
+import { unlockProjects } from '../hooks/useProjectAccess';
+import { scheduleTaskReminder } from '../utils/notifications';
 import { animateLayout } from '../utils/layoutAnimation';
 import { PLANNING_PAUSE_KEY, isPlanning } from '../utils/projectPause';
 import {
@@ -84,9 +84,9 @@ const NUDGE_MODE_OPTIONS: SegmentOption<NudgeMode>[] = NUDGE_MODES.map(mode => (
  * neither three-word label carries that on its own.
  */
 const NUDGE_MODE_HINT: Record<NudgeMode, string> = {
-  never: 'Stays out of "Pull from projects" and never writes a review task. For a list you keep rather than work through, like gift ideas.',
-  'on-ask': 'Shows up in "Pull from projects" when you open it, and never brings itself up.',
-  scheduled: "Adds a review task once nothing in it is scheduled and nothing's been finished in it for this long.",
+  never: 'Stays out of “Pull from projects” and never adds a review task. For lists you keep, like gift ideas.',
+  'on-ask': 'Shows up in “Pull from projects” when you open it, and never adds a review task.',
+  scheduled: "Adds a review task once nothing in it is scheduled and nothing’s been finished in it for this long.",
 };
 
 interface Props {
@@ -112,14 +112,6 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const updateProject = useProjectStore(s => s.updateProject);
-  const archiveProject = useTaskStore(s => s.archiveProject);
-  const unarchiveProject = useTaskStore(s => s.unarchiveProject);
-  const completeProject = useTaskStore(s => s.completeProject);
-  const uncompleteProject = useTaskStore(s => s.uncompleteProject);
-  const deleteProject = useTaskStore(s => s.deleteProject);
-  const startFreshFromProject = useTaskStore(s => s.startFreshFromProject);
-  const addTemplateFromProject = useTemplateStore(s => s.addTemplateFromProject);
-  const navigation = useNavigation();
   // `project` is a snapshot handed down when the sheet was opened, so it never
   // sees its own archived flag flip back — read that one field live instead,
   // or unarchiving here leaves the toggle showing "archived" until the sheet
@@ -211,13 +203,15 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
   const [linkError, setLinkError] = useState<string | null>(null);
   const [inOrder, setInOrder] = useState(false);
   const [showChecked, setShowChecked] = useState(false);
+  const [hideNextStep, setHideNextStep] = useState(false);
+  const [groupOnToday, setGroupOnToday] = useState(false);
   const people = usePersonStore(useShallow(s => s.people.filter(p => !p.archived)));
 
   // Returns the typed link to the list, or says why it can't.
   const addLinkDraft = () => {
     if (!linkDraft.trim()) return;
     const parsed = parseLabelledLink(linkDraft);
-    if (!parsed) { setLinkError("That doesn't look like a link. Paste one that starts with https://."); return; }
+    if (!parsed) { setLinkError("That doesn’t look like a link. Paste one that starts with https://."); return; }
     haptics.tap();
     setLinks(ls => [...ls, { id: generateId(), ...parsed }]);
     setLinkDraft('');
@@ -291,6 +285,8 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
     setLinkError(null);
     setInOrder(project.inOrder ?? false);
     setShowChecked(project.showChecked ?? false);
+    setHideNextStep(project.hideNextStep ?? false);
+    setGroupOnToday(project.groupOnToday ?? false);
     setCategoryOpen(false);
     setCadenceOpen(false);
   }, [visible, project]);
@@ -320,8 +316,8 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
   // The tasks the staged defaults would still change: only a field still unset
   // is filled, so what someone already answered is never touched.
   const applyableTasks = useMemo(
-    () => (project ? tasksNeedingDefaults(projectTasks, taskDefaults) : []),
-    [project, projectTasks, taskDefaults],
+    () => (project ? tasksNeedingDefaults(projectTasks, taskDefaults, taskCategories) : []),
+    [project, projectTasks, taskDefaults, taskCategories],
   );
   const applyableCount = applyableTasks.length;
   const confirmApplyToExisting = () => {
@@ -329,7 +325,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
     if (targets.length === 0) return;
     Alert.alert(
       `Apply to ${targets.length} ${targets.length === 1 ? 'task' : 'tasks'}?`,
-      'Fills in only what is still unset on each task. Anything already answered stays as it is. A shake undoes it.',
+      'Fills in only what’s still unset on each task. Shake to undo.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -337,7 +333,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
           onPress: () => {
             const snapshots = targets.map(t => ({ ...t }));
             for (const t of targets) {
-              const patch = existingTaskPatch(t, taskDefaults);
+              const patch = existingTaskPatch(t, taskDefaults, taskCategories);
               if (patch) updateTask(t.id, patch);
             }
             haptics.success();
@@ -435,6 +431,8 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
       })(),
       inOrder,
       showChecked,
+      hideNextStep,
+      groupOnToday,
     });
     if (departureMoved && priorStart && nextStart) return { from: priorStart, to: nextStart };
     // The same offer when the event moves: the wedding pushed back a month
@@ -473,7 +471,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
     // read was dropped without a word. Say so instead.
     if (!skipLinkCheck && linkDraft.trim() && !parseLabelledLink(linkDraft)) {
       Alert.alert(
-        "That link can't be read",
+        "That link can’t be read",
         'A link starts with https://, or is a site name like example.com.',
         [
           { text: 'Keep editing', style: 'cancel' },
@@ -534,7 +532,9 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
       JSON.stringify(links) !== JSON.stringify(project.links ?? []) ||
       linkDraft.trim() !== '' ||
       inOrder !== (project.inOrder ?? false) ||
-      showChecked !== (project.showChecked ?? false)
+      showChecked !== (project.showChecked ?? false) ||
+      hideNextStep !== (project.hideNextStep ?? false) ||
+      groupOnToday !== (project.groupOnToday ?? false)
     );
   };
 
@@ -550,7 +550,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
     Alert.alert(
       isNew ? (isList ? 'Discard this list?' : 'Discard this project?') : 'Discard changes?',
       isNew
-        ? "It hasn't been saved yet. Are you sure you want to discard it?"
+        ? "It hasn’t been saved yet. Are you sure you want to discard it?"
         : 'You have unsaved changes. Are you sure you want to discard them?',
       [
         { text: 'Keep editing', style: 'cancel' },
@@ -559,53 +559,20 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
     );
   };
 
-  const handleDelete = () => {
-    if (!project) return;
-    Alert.alert(
-      `Delete "${displayTitle()}"?`,
-      isList
-        ? 'Its items can stay as tasks without a list, or be deleted with it.'
-        : 'Its tasks can stay in your list without a project, or be deleted with it.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: isList ? 'Delete list only' : 'Delete project only', onPress: () => { deleteProject(project.id, { cascade: false }); onClose(); } },
-        {
-          text: isList ? 'Delete list and items' : 'Delete project and tasks',
-          style: 'destructive',
-          onPress: () => { deleteProject(project.id, { cascade: true }); onClose(); },
-        },
-      ],
-    );
-  };
-
-  const handleComplete = () => {
-    if (!project) return;
-    // Read at the moment of asking rather than subscribed to: nothing else on
-    // the sheet needs the task list, and a subscription re-rendered the whole
-    // editor on every task write anywhere in the app.
-    const remaining = useTaskStore.getState().tasks.filter(
-      t => t.projectId === project.id && t.parentId === null && !t.completed && !t.archived
-    );
-    const finish = (archiveRemaining: boolean) => {
-      haptics.success();
-      commitEdits();
-      completeProject(project.id, { archiveRemaining });
-      onClose();
-    };
-    if (remaining.length === 0) {
-      finish(false);
-      return;
-    }
-    Alert.alert(
-      `Complete "${displayTitle()}"?`,
-      `It still has ${remaining.length} open ${remaining.length === 1 ? 'task' : 'tasks'}.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Leave remaining tasks', onPress: () => finish(false) },
-        { text: 'Archive remaining tasks', onPress: () => finish(true) },
-      ],
-    );
-  };
+  const {
+    complete: handleComplete,
+    archive: handleArchive,
+    reopen: handleReopen,
+    unarchive: handleUnarchive,
+    saveAsTemplate: handleSaveAsTemplate,
+    startFresh: handleStartFresh,
+    confirmDelete: handleDelete,
+  } = useProjectActions(project, {
+    displayTitle,
+    prepare: commitEdits,
+    onEnded: () => onClose(),
+    onDeleted: () => onClose(),
+  });
 
   const categoryOptions: PillGroupOption[] = [
     {
@@ -625,74 +592,28 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
     closeCategory();
   };
 
-  const handleArchive = () => {
-    if (!project) return;
-    haptics.success();
-    commitEdits();
-    archiveProject(project.id);
-    onClose();
-  };
-
-  // Reopening and unarchiving leave the sheet open, since the project is still
-  // the one being edited; only the flag underneath it changed.
-  const handleReopen = () => {
-    if (!project) return;
-    haptics.tap();
-    uncompleteProject(project.id);
-  };
-
-  // Reusing a project, for the next party or the next trip: as a template to
-  // apply whenever, or as a fresh copy straight away. Both save the sheet
-  // first, so what's reused is what's on screen.
-  const handleSaveAsTemplate = () => {
-    if (!project) return;
-    commitEdits();
-    const saved = useProjectStore.getState().getProjectById(project.id) ?? project;
-    const draft = templateFromProject(
-      saved,
-      useTaskStore.getState().tasks,
-      useTaskGroupStore.getState().groups,
-      useSettingsStore.getState().dayResetTime,
-    );
-    addTemplateFromProject(draft);
-    haptics.success();
-    Alert.alert(
-      'Saved as a template',
-      `"${draft.name}" is in Templates with its ${draft.items.length} ${draft.items.length === 1 ? 'task' : 'tasks'}${
-        saved.awayStart ? ', dated from the day you leave' : saved.eventDate ? ', dated from the event date' : saved.deadline ? ', dated from the deadline' : ''
-      }. Apply it from any project's add button, or from Templates.`,
-    );
-  };
-
-  const handleStartFresh = () => {
-    if (!project) return;
-    Alert.alert(
-      'Start a fresh copy?',
-      'Makes a new project with the same tasks and sections, all open again and with no dates. This one stays as it is.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Start fresh',
-          onPress: () => {
-            commitEdits();
-            const copy = startFreshFromProject(project.id);
-            if (!copy) return;
-            haptics.success();
-            onClose();
-            (navigation as any).navigate('ProjectDetail', { projectId: copy.id });
-          },
-        },
-      ],
-    );
-  };
-
-  const handleUnarchive = () => {
-    if (!project) return;
-    haptics.tap();
-    unarchiveProject(project.id);
-  };
-
+  const projectLocked = useProjectLockStore(s => !!project && s.lockedIds.includes(project.id));
   if (!project) return null;
+  // The lock commits as it is tapped, like archive: it is a device setting and
+  // not part of the staged project. Turning it on or off asks for Face ID first
+  // when the projects are currently hidden, so it can't be undone by someone
+  // holding an unlocked-looking phone; it also leaves the session unlocked so
+  // the project doesn't vanish from under the sheet.
+  const handleToggleLock = async () => {
+    if (!project) return;
+    if (!projectLocked || isProjectHidden(project.id)) {
+      if (!useProjectLockStore.getState().unlocked && !(await unlockProjects())) return;
+    }
+    haptics.tap();
+    const next = !projectLocked;
+    useProjectLockStore.getState().setProjectLocked(project.id, next);
+    // A reminder already scheduled keeps the title it was given, so rewrite
+    // this project's pending ones under the new rule.
+    useTaskStore.getState().tasks
+      .filter(t => t.projectId === project.id && !t.completed && t.reminderTime)
+      .forEach(t => { scheduleTaskReminder(t); });
+  };
+
   const archived = liveArchived ?? project.archived;
   const completed = liveCompleted ?? project.completed;
 
@@ -818,7 +739,11 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
       />
       <View style={styles.notesCard}>
         <TextField
-          style={[styles.notesInput, { height: Math.max(styles.notesInput.minHeight, notesHeight) }]}
+          // An empty field is always the minimum height. The measured height is
+          // reported while the sheet is still opening, before the field has its
+          // final width, and once a large figure lands nothing brings it back
+          // down, so an empty notes box opened at 120 and then grew to ~280.
+          style={[styles.notesInput, { height: notes ? Math.max(styles.notesInput.minHeight, notesHeight) : styles.notesInput.minHeight }]}
           value={notes}
           onChangeText={setNotes}
           onContentSizeChange={e => setNotesHeight(Math.ceil(e.nativeEvent.contentSize.height))}
@@ -859,7 +784,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
           "Target date" pair whose first half had one reader in its life (see
           Project.deadline). */}
       <Text style={styles.sectionFooter}>
-        The event date is the day the project is for, like a wedding or a move. Changing it offers to move the project's dated tasks by the same number of days. The deadline is shown on the project's card and flagged once it passes.
+        The event date is the day the project is for, like a wedding or a move. Changing it offers to move dated tasks by the same number of days. A passed deadline is flagged on the project’s card.
       </Text>
       </>
       )}
@@ -905,7 +830,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
               placeholder="e.g. Lisbon"
               placeholderTextColor={colors.textTertiary}
               maxLength={80}
-              accessibilityLabel="Where you're going"
+              accessibilityLabel="Where you’re going"
             />
           </View>
         )}
@@ -958,7 +883,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
             onPress={() => { haptics.tap(); setForecastOn(!forecastOn); }}
             activeOpacity={interaction.activeOpacity}
             accessibilityRole="switch"
-            accessibilityLabel="Show the forecast for where you're going"
+            accessibilityLabel="Show the forecast for where you’re going"
             accessibilityState={{ checked: forecastOn }}
           >
             <Ionicons name="partly-sunny-outline" size={18} color={forecastOn ? colors.accent : colors.textSecondary} />
@@ -966,7 +891,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
               <Text style={styles.optionLabel}>Show the forecast there</Text>
               <Text style={styles.optionHint}>
                 {forecastOn
-                  ? "Looks up the place's weather for your trip dates and shows it on the project. Applies to every trip."
+                  ? "Looks up the place’s weather for your trip dates and shows it on the project. Applies to every trip."
                   : 'Off. Turning it on looks up the place by name, for every trip.'}
               </Text>
             </View>
@@ -990,8 +915,8 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
               <Text style={styles.optionHint}>
                 {awayPauses
                   ? pausedTaskCount + pausedCategoryCount === 0
-                    ? "Vacation mode turns on the day you leave and off when you're back. Nothing is set to pause on vacation yet, so it won't hide anything until you set that on a task or category."
-                    : `Vacation mode turns on the day you leave and off when you're back, hiding ${[
+                    ? "Vacation mode turns on the day you leave and off when you’re back. It hides nothing until you set a task or category to pause on vacation."
+                    : `Vacation mode turns on the day you leave and off when you’re back, hiding ${[
                         pausedTaskCount > 0 ? `${pausedTaskCount} ${pausedTaskCount === 1 ? 'task' : 'tasks'}` : null,
                         pausedCategoryCount > 0 ? `${pausedCategoryCount} ${pausedCategoryCount === 1 ? 'category' : 'categories'}` : null,
                       ].filter(Boolean).join(' and ')} set to pause on vacation.`
@@ -1012,7 +937,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
           <CollapsibleField
             label="Shopping list"
             summary={awayListName}
-            hint="Groceries opens on this list while you're away, and goes back to Groceries when you're home. Switch lists yourself any time and it stays where you put it for the rest of the trip."
+            hint="Groceries opens on this list while you’re away, then switches back. A list you pick yourself stays for the rest of the trip."
             expanded={awayListOpen}
             onToggle={() => setAwayListOpen(v => !v)}
           >
@@ -1026,7 +951,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
         )}
       </View>
       <Text style={styles.sectionFooter}>
-        The days you're away from home, for a trip. Leave these blank otherwise. The day you come back doesn't count as a day away.
+        The days you’re away from home, for a trip. Leave these blank otherwise. The day you come back doesn’t count as a day away.
       </Text>
       </>
       )}
@@ -1048,7 +973,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
         <CollapsibleField
           label="Default task category"
           summary={defaultTaskCategory ? categoryLabel(defaultTaskCategory, taskCategories) : undefined}
-          hint="A task added straight to this project starts in this category, unless it's given one of its own."
+          hint="A task added directly to this project starts in this category, unless it has its own."
           expanded={defaultTaskCategoryOpen}
           onToggle={() => setDefaultTaskCategoryOpen(v => !v)}
         >
@@ -1061,8 +986,8 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
         <CollapsibleField
           label="New task defaults"
           summary={describeTaskFieldDefaults(taskDefaults) ?? undefined}
-          emptySummary="Ask for each task"
-          hint="Tasks added to this project start with these answers, so they don't come up in Backfill. Anything set on a task itself wins."
+          emptySummary="Not set"
+          hint="Tasks added to this project start with these answers, so they don’t come up in Backfill. A task’s own value wins, and Not set uses your app-wide default."
           expanded={taskDefaultsOpen}
           onToggle={() => setTaskDefaultsOpen(v => !v)}
         >
@@ -1084,7 +1009,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
           summary={personIds.length > 0
             ? people.filter(p => personIds.includes(p.id)).map(displayNameOf).join(', ') || undefined
             : undefined}
-          hint="Who this project is with or for. They're shown on the project page. New tasks don't pick them up."
+          hint="Who this project is with or for. They show on the project page but aren’t added to new tasks."
           expanded={peopleOpen}
           onToggle={() => setPeopleOpen(v => !v)}
         >
@@ -1143,7 +1068,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
             value={linkDraft}
             onChangeText={setLinkDraft}
             onSubmitEditing={addLinkDraft}
-            placeholder="Paste a link, with a name before it if you like"
+            placeholder="Paste a link, with an optional name before it"
             placeholderTextColor={colors.textTertiary}
             autoCapitalize="none"
             autoCorrect={false}
@@ -1168,7 +1093,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
           label="Bring this up"
           summary={describeNudge(nudgeFieldsFor(nudgeMode, nudgeCadenceDays))
             + (nudgeMode === 'scheduled' && autoSchedule ? ', automatically' : '')}
-          hint="A project's tasks only reach Today once they have a date. This is what happens when nothing in this project has one."
+          hint="What happens when none of this project’s tasks has a date. Tasks need a date to reach Today."
           expanded={cadenceOpen}
           onToggle={() => setCadenceOpen(v => !v)}
         >
@@ -1230,14 +1155,40 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
             </TouchableOpacity>
           )}
         </CollapsibleField>
+        <View style={styles.sepIcon} />
+        <TouchableOpacity
+          style={styles.optionRow}
+          onPress={() => { haptics.tap(); setWeekendSource(v => !v); }}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="switch"
+          accessibilityLabel="Suggest for a free weekend"
+          accessibilityState={{ checked: weekendSource }}
+        >
+          <Ionicons name="sunny-outline" size={18} color={weekendSource ? colors.accent : colors.textSecondary} />
+          <View style={styles.optionContent}>
+            <Text style={styles.optionLabel}>Suggest for a free weekend</Text>
+            <Text style={styles.optionHint}>
+              {!weekendNudgeOn
+                ? 'Takes effect once “Nudge for an empty weekend” is on in Automations, in the menu'
+                : nudgeMode === 'never'
+                  ? 'Takes effect once “Bring this up” is set to When I ask or Every…'
+                  : weekendSource
+                  ? 'The weekend task names this project when a weekend has nothing on it'
+                  : 'The weekend task does not name this project'}
+            </Text>
+          </View>
+          <View style={[styles.toggle, weekendSource && styles.toggleOn]}>
+            <View style={[styles.toggleKnob, weekendSource && styles.toggleKnobOn]} />
+          </View>
+        </TouchableOpacity>
       </View>
       </>
       )}
 
       {/*
-        Whether this project is a list lives on its own screen — the
-        list-outline toggle in ProjectDetailScreen's header, right where its
-        effect shows — not here. See docs/arch/lists.md.
+        Whether this project is a list is chosen when it is made (quick add's
+        Project/List control) and converted from ProjectDetailScreen's "..."
+        menu, right where its effect shows — not here. See docs/arch/lists.md.
       */}
 
       <Text style={styles.groupLabel}>More</Text>
@@ -1306,7 +1257,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
               <Text style={styles.optionHint}>
                 {showChecked
                   ? 'Checked items stay at the bottom, crossed out, in list order'
-                  : 'Checked items fold away under a "Show checked" button at the bottom'}
+                  : 'Checked items fold away under a “Show checked” button at the bottom'}
               </Text>
             </View>
             <View style={[styles.toggle, showChecked && styles.toggleOn]}>
@@ -1314,6 +1265,51 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
             </View>
           </TouchableOpacity>
         ) : (
+          <>
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => { haptics.tap(); setGroupOnToday(v => !v); }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="switch"
+            accessibilityLabel="Group on Today"
+            accessibilityState={{ checked: groupOnToday }}
+          >
+            <Ionicons name="folder-open-outline" size={18} color={groupOnToday ? colors.accent : colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Group on Today</Text>
+              <Text style={styles.optionHint}>
+                {groupOnToday
+                  ? "Today shows this project’s tasks for the day together under its name, at the top"
+                  : "Today shows this project’s tasks in their categories"}
+              </Text>
+            </View>
+            <View style={[styles.toggle, groupOnToday && styles.toggleOn]}>
+              <View style={[styles.toggleKnob, groupOnToday && styles.toggleKnobOn]} />
+            </View>
+          </TouchableOpacity>
+          <View style={styles.sepIcon} />
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => { haptics.tap(); setHideNextStep(v => !v); }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="switch"
+            accessibilityLabel="Hide next task"
+            accessibilityState={{ checked: hideNextStep }}
+          >
+            <Ionicons name="eye-off-outline" size={18} color={hideNextStep ? colors.accent : colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Hide next task</Text>
+              <Text style={styles.optionHint}>
+                {hideNextStep
+                  ? 'The project card does not show its next open task'
+                  : 'The project card shows its next open task'}
+              </Text>
+            </View>
+            <View style={[styles.toggle, hideNextStep && styles.toggleOn]}>
+              <View style={[styles.toggleKnob, hideNextStep && styles.toggleKnobOn]} />
+            </View>
+          </TouchableOpacity>
+          <View style={styles.sepIcon} />
           <TouchableOpacity
             style={styles.optionRow}
             onPress={() => { haptics.tap(); setInOrder(v => !v); }}
@@ -1335,6 +1331,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
               <View style={[styles.toggleKnob, inOrder && styles.toggleKnobOn]} />
             </View>
           </TouchableOpacity>
+          </>
         )}
         <View style={styles.sepIcon} />
         <TouchableOpacity
@@ -1356,32 +1353,6 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
           </View>
           <View style={[styles.toggle, ongoing && styles.toggleOn]}>
             <View style={[styles.toggleKnob, ongoing && styles.toggleKnobOn]} />
-          </View>
-        </TouchableOpacity>
-        <View style={styles.sepIcon} />
-        <TouchableOpacity
-          style={styles.optionRow}
-          onPress={() => { haptics.tap(); setWeekendSource(v => !v); }}
-          activeOpacity={interaction.activeOpacity}
-          accessibilityRole="switch"
-          accessibilityLabel="Suggest for a free weekend"
-          accessibilityState={{ checked: weekendSource }}
-        >
-          <Ionicons name="sunny-outline" size={18} color={weekendSource ? colors.accent : colors.textSecondary} />
-          <View style={styles.optionContent}>
-            <Text style={styles.optionLabel}>Suggest for a free weekend</Text>
-            <Text style={styles.optionHint}>
-              {!weekendNudgeOn
-                ? 'Takes effect once "Nudge for an empty weekend" is on in Automations, in the menu'
-                : nudgeMode === 'never'
-                  ? 'Takes effect once "Bring this up" is set to When I ask or Every…'
-                  : weekendSource
-                  ? 'The weekend task names this project when a weekend has nothing on it'
-                  : 'The weekend task does not name this project'}
-            </Text>
-          </View>
-          <View style={[styles.toggle, weekendSource && styles.toggleOn]}>
-            <View style={[styles.toggleKnob, weekendSource && styles.toggleKnobOn]} />
           </View>
         </TouchableOpacity>
       </View>
@@ -1425,6 +1396,29 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
               <Text style={styles.optionLabel}>{archived ? 'Unarchive' : 'Archive'}</Text>
               <Text style={styles.optionHint}>
                 {archived ? 'Moves it back out of the Archived list' : 'Moves it to the Archived list. Its tasks stay where they are'}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {!isNew && project && (
+        <View style={[styles.card, styles.stackedCard]}>
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={handleToggleLock}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="switch"
+            accessibilityLabel="Lock with Face ID"
+            accessibilityState={{ checked: projectLocked }}
+          >
+            <Ionicons name={projectLocked ? 'lock-closed' : 'lock-open-outline'} size={18} color={projectLocked ? colors.accent : colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Lock with Face ID</Text>
+              <Text style={styles.optionHint}>
+                {isList
+                  ? 'Its items stay out of Today, Search and the widget until you unlock. Reminders show no title.'
+                  : 'Its tasks stay out of Today, Search and the widget until you unlock. Reminders show no title.'}
               </Text>
             </View>
           </TouchableOpacity>

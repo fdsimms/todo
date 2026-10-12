@@ -27,6 +27,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { resolveFieldDefaults, seedTaskFields } from './taskFieldDefaults';
+import { generatedExtrasFill } from './generatedTaskSettings';
 import { resolveTitleRules } from './titleRules';
 import { taskKindOf, MIN_TARGET_COUNT, MAX_TARGET_COUNT } from './taskKinds';
 import {
@@ -161,6 +162,11 @@ export function applyTitleRulesToDraft(
 // unlike timeSegments, a cloned series row already carries its own category/
 // priority/effort explicitly (spread from the source row), so the ?? never
 // fires on a clone; it's only ever a fallback for an unanswered field.
+//
+// Fields are written one by one, never by spreading the draft, so a new Task
+// field has to be named here or it is dropped on every create:
+// taskDraftFieldCoverage.test.ts fails until it is, or is listed there with
+// the reason it isn't.
 export function newTaskFromDraft(
   draft: Partial<TaskDraft>,
   now: string,
@@ -169,6 +175,13 @@ export function newTaskFromDraft(
   id?: string,
   skipCategoryDefault = false,
 ): Task {
+  // A kind of generated task's tags, time of day and question (its "Task
+  // settings"), beneath whatever the generator's own draft names. Folded into
+  // the draft up front so every line below reads one draft.
+  if (draft.generatedKind) {
+    const extras = useSettingsStore.getState().generatedTaskExtras?.[draft.generatedKind];
+    if (extras) draft = { ...draft, ...generatedExtrasFill(draft, extras) };
+  }
   const defaults = useSettingsStore.getState().newTaskDefaults;
   // A project's own default (Project.defaultTaskCategory) outranks Settings'
   // global one, but only when nothing more specific already named a category
@@ -229,7 +242,14 @@ export function newTaskFromDraft(
     timeSegments: seedFromCategory ? resolveTimeSegments(draft, defaults.timeSegment) : (draft.timeSegments ?? []),
     windowStart: draft.windowStart ?? null,
     windowEnd: draft.windowEnd ?? null,
+    windowStartSun: draft.windowStartSun ?? null,
+    windowEndSun: draft.windowEndSun ?? null,
     recurrenceType: draft.recurrenceType ?? 'none',
+    recurrenceHolidays: draft.recurrenceHolidays ?? null,
+    rainSkipMm: draft.rainSkipMm ?? null,
+    // The pass's mark, never carried: a new row hasn't been skipped.
+    rainSkippedOn: null,
+    reviewOfTaskId: draft.reviewOfTaskId ?? null,
     recurrenceInterval: draft.recurrenceInterval ?? 1,
     recurrenceDays: draft.recurrenceDays ?? [],
     recurrenceMonthDay: draft.recurrenceMonthDay ?? null,
@@ -252,6 +272,10 @@ export function newTaskFromDraft(
     quotaAlwaysVisible: draft.quotaAlwaysVisible ?? false,
     followWaterTarget: draft.followWaterTarget ?? false,
     quotaPeriod: isRotationTask(draft) ? 'week' : draft.quotaPeriod ?? 'day',
+    quotaRampStep: draft.quotaRampStep ?? null,
+    quotaRampEvery: draft.quotaRampEvery ?? null,
+    quotaRampGoal: draft.quotaRampGoal ?? null,
+    quotaRampHits: 0,
     rotationEnabled: draft.rotationEnabled ?? false,
     rotationItems: draft.rotationItems ?? [],
     rotationLog: [],
@@ -340,8 +364,9 @@ export function newTaskFromDraft(
     // every recurring row is noise (the reasoning behind the field), but the run
     // of clean days is the *only* feedback an avoid-task ever gives: it is never
     // completed, so without the chip the row never changes at all.
-    showStreak: draft.showStreak ?? resolvedPolarity === 'negative',
+    showStreak: draft.showStreak ?? seeded.showStreak ?? resolvedPolarity === 'negative',
     streakRequiresWindow: draft.streakRequiresWindow ?? false,
+    streakCountsUnits: draft.streakCountsUnits ?? false,
     parentId: draft.parentId ?? null,
     groupId: draft.groupId ?? null,
     projectId: draft.projectId ?? null,
@@ -377,9 +402,17 @@ export function newTaskFromDraft(
           followUpTaskOneAtATime: false,
           followUpTaskAtEnd: false,
         }),
-    vacationPause: draft.vacationPause ?? false,
-    excludeFromSuggestions: draft.excludeFromSuggestions ?? false,
+    vacationPause: draft.vacationPause ?? seeded.vacationPause ?? false,
+    excludeFromSuggestions: draft.excludeFromSuggestions ?? seeded.excludeFromSuggestions ?? false,
     weatherWait: draft.weatherWait ?? null,
+    // A meter rides in from the editor or quick add as typed; the hold is the
+    // pass's to write, so a new row never starts with one.
+    meterName: draft.meterName ?? null,
+    meterUnit: draft.meterUnit ?? null,
+    meterEvery: draft.meterEvery ?? null,
+    meterDueAt: draft.meterDueAt ?? null,
+    meterLimitMonths: draft.meterLimitMonths ?? null,
+    meterHeldUntil: null,
     difficulty: seeded.difficulty,
     pinEachOccurrence: draft.pinEachOccurrence ?? false,
     timerStartedAt: draft.timerStartedAt ?? null,
@@ -399,6 +432,7 @@ export function newTaskFromDraft(
     medicationAmount: draft.medicationAmount ?? null,
     medicationUnit: draft.medicationUnit ?? null,
     logMealSlot: draft.logMealSlot ?? null,
+    logSavedMealId: draft.logSavedMealId ?? null,
     previousOccurrenceId: draft.previousOccurrenceId ?? null,
     generatedKind: draft.generatedKind ?? null,
     generatedSourceId: draft.generatedSourceId ?? null,
@@ -506,7 +540,7 @@ type RecurrenceFields = Pick<
   | 'recurrenceType' | 'recurrenceInterval' | 'recurrenceDays' | 'recurrenceMonthDay' | 'recurrenceMonth'
   | 'recurrenceWeekOrdinal' | 'recurrenceAnchorDay' | 'recurrenceAnchorDate'
   | 'recurrenceEndDate' | 'recurrenceCount'
-  | 'recurrenceFromCompletion' | 'showStreak' | 'streakRequiresWindow'
+  | 'recurrenceFromCompletion' | 'showStreak' | 'streakRequiresWindow' | 'streakCountsUnits'
   | 'supplyCount' | 'supplyUnit' | 'supplyRefillCount' | 'supplyReorderAt'
   | 'supplyLeadDays' | 'supplyDeclinedAtCount' | 'supplyGroceryItemId'
 >;
@@ -552,7 +586,7 @@ export const NO_RECURRENCE: RecurrenceFields = {
   showStreak: false,
   // Same reasoning as showStreak above: a series row is a one-off with no
   // streak of its own, so nothing is left on for it to be late against.
-  streakRequiresWindow: false,
+  streakRequiresWindow: false, streakCountsUnits: false,
 };
 
 /**

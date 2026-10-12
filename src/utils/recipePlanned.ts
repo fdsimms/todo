@@ -35,8 +35,8 @@ export function upcomingRecipeMeals(
 export function plannedMealLabel(entry: MealPlanEntry, todayKey: string): string {
   const slot = MEAL_SLOT_LABELS[entry.slot].toLowerCase();
   const days = differenceInCalendarDays(dayKeyToDate(entry.date), dayKeyToDate(todayKey));
-  if (days === 0) return `Today's ${slot}`;
-  if (days === 1) return `Tomorrow's ${slot}`;
+  if (days === 0) return `Today’s ${slot}`;
+  if (days === 1) return `Tomorrow’s ${slot}`;
   const day = dayKeyToDate(entry.date);
   return `${days < 7 ? format(day, 'EEE') : format(day, 'MMM d')} ${slot}`;
 }

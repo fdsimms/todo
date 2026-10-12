@@ -1,7 +1,7 @@
 import React from 'react';
 import { TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import type { DeleteAction, SelectAction, WhenAction } from './SwipeableRow';
+import type { DeleteAction, SelectAction, UndoAction, WhenAction } from './SwipeableRow';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
 import { iconSize, spacing } from '../theme';
@@ -10,6 +10,8 @@ import { haptics } from '../utils/haptics';
 interface Props {
   /** The row's swipe-right "when" action. Omit where the row has none, or where another button already does it. */
   whenAction?: WhenAction;
+  /** A finished record's swipe-right undo, shown in place of the two below. */
+  undoAction?: UndoAction;
   /** A list line's swipe-right delete, shown in place of `whenAction`. */
   deleteAction?: DeleteAction;
   /** The row's swipe-left action: enter bulk editing with this row selected. */
@@ -40,14 +42,24 @@ interface Props {
  * radio ring the row turns into once it's selectable, drawn smaller and
  * dimmer than `SelectionDot` so a list doesn't look mid-selection at rest.
  */
-export function SwipeActionButtons({ whenAction, deleteAction, selectAction, enabled = true }: Props) {
+export function SwipeActionButtons({ undoAction, whenAction, deleteAction, selectAction, enabled = true }: Props) {
   const colors = useColors();
   const mirroringMode = useSettingsStore(s => s.mirroringMode);
   if (!mirroringMode || !enabled) return null;
 
   return (
     <>
-      {deleteAction ? (
+      {undoAction ? (
+        <TouchableOpacity
+          onPress={() => { haptics.tap(); undoAction.onUndo(); }}
+          hitSlop={8}
+          style={styles.button}
+          accessibilityRole="button"
+          accessibilityLabel={undoAction.accessibilityLabel}
+        >
+          <Ionicons name="arrow-undo-outline" size={iconSize.sm} color={colors.textSecondary} />
+        </TouchableOpacity>
+      ) : deleteAction ? (
         <TouchableOpacity
           onPress={() => { haptics.tap(); deleteAction.onDelete(); }}
           hitSlop={8}

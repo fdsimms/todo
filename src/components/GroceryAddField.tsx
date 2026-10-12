@@ -679,7 +679,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
                   onPress={() => { haptics.tap(); setRejectedQuantity(tokens.quantity); }}
                   hitSlop={8}
                   accessibilityRole="button"
-                  accessibilityLabel={`Keep "${tokens.quantity}" in the name instead of the quantity`}
+                  accessibilityLabel={`Keep “${tokens.quantity}” in the name instead of the quantity`}
                 >
                   <Ionicons name="close" size={11} color={colors.textTertiary} />
                 </TouchableOpacity>
@@ -692,7 +692,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
                   onPress={() => { haptics.tap(); setRejectedPrep(tokens.prep); }}
                   hitSlop={8}
                   accessibilityRole="button"
-                  accessibilityLabel={`Keep "${tokens.prep}" in the name instead of splitting it out`}
+                  accessibilityLabel={`Keep “${tokens.prep}” in the name instead of splitting it out`}
                 >
                   <Ionicons name="close" size={11} color={colors.textTertiary} />
                 </TouchableOpacity>
@@ -705,7 +705,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
                   onPress={() => { haptics.tap(); setRejectedPurpose(tokens.purpose); }}
                   hitSlop={8}
                   accessibilityRole="button"
-                  accessibilityLabel={`Keep "for ${tokens.purpose}" in the name instead of making it a note`}
+                  accessibilityLabel={`Keep “for ${tokens.purpose}” in the name instead of making it a note`}
                 >
                   <Ionicons name="close" size={11} color={colors.textTertiary} />
                 </TouchableOpacity>
@@ -729,7 +729,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
           accessibilityRole="button"
           accessibilityLabel={
             `Add as an either/or: ${alternatives.join(' or ')}. ` +
-            'Both go on the list and checking one off takes the others off.'
+            'Each goes on the list. Checking one off takes the others off.'
           }
         >
           <Text style={styles.altSuggestionText}>

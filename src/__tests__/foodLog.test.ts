@@ -4,7 +4,6 @@ import {
   combineFoodNutrition,
   composeFoodAmount,
   describeFoodLogEntry,
-  describeFoodLogTotals,
   ESTIMATE_AMOUNTS,
   MAX_ESTIMATE_MULTIPLE,
   currentEstimateCount,
@@ -30,11 +29,13 @@ import {
   portionExamples,
   recallAmount,
   recipeHelpingNutrition,
+  remeasureEntry,
   resolveFoodLogDrop,
   savedMealCalories,
   scalePanelToAmount,
   wholeEstimate,
   type FoodLogListItem,
+  isDescriptionDraft,
 } from '../utils/foodLog';
 import type { FoodLogEntry, FoodNutrition, MealPlanEntry, NutrientKey, SavedMealItem } from '../types';
 import { packageChoices } from '../utils/scanPortion';
@@ -585,35 +586,6 @@ describe('resolveFoodLogDrop', () => {
   });
 });
 
-describe('describeFoodLogTotals', () => {
-  it('leads with calories and protein', () => {
-    const totals = foodLogTotals([
-      entry({ nutrition: panel({ amounts: { calorieKcal: 400, proteinG: 20 } }) }),
-      entry({ nutrition: panel({ amounts: { calorieKcal: 600, proteinG: 30 } }) }),
-    ]);
-    expect(describeFoodLogTotals(totals)).toBe('1000 cal, 50g protein');
-  });
-
-  it('says what the figure covers whenever it is not the whole day', () => {
-    // Without the clause the number reads as the day's calorie count rather
-    // than as the count of what was logged and measurable.
-    const totals = foodLogTotals([
-      entry({ nutrition: panel({ amounts: { calorieKcal: 400, proteinG: 20 } }) }),
-      entry({ nutrition: panel({ amounts: { proteinG: 30 } }) }),
-    ]);
-    expect(describeFoodLogTotals(totals)).toBe('400 cal, 50g protein, from 1 of 2 entries');
-  });
-
-  it('says nothing for a day with no entries', () => {
-    expect(describeFoodLogTotals(foodLogTotals([]))).toBeNull();
-  });
-
-  it('says nothing when nothing it leads with was stated', () => {
-    const totals = foodLogTotals([entry({ nutrition: panel({ amounts: { sodiumMg: 400 } }) })]);
-    expect(describeFoodLogTotals(totals)).toBeNull();
-  });
-});
-
 describe('describeFoodLogEntry', () => {
   it('says the amount and what it came to', () => {
     expect(describeFoodLogEntry(entry({
@@ -1019,6 +991,23 @@ describe('changing an estimate\'s amount (#2914)', () => {
     expect(patch.sourcePanel.amounts.calorieKcal).toBe(600);
   });
 
+  it('scales an estimate\'s breakdown with its total and keeps the unscaled lines in the whole', () => {
+    const row = pizza();
+    row.nutrition.breakdown = [
+      { label: 'Crust', amounts: { calorieKcal: 400 } },
+      { label: 'Pepperoni', amounts: { calorieKcal: 200, fatG: 15 } },
+    ];
+    const patch = estimateAmountPatch(row, 3 / 2)!;
+    expect(patch.nutrition.breakdown).toEqual([
+      { label: 'Crust', amounts: { calorieKcal: 600 } },
+      { label: 'Pepperoni', amounts: { calorieKcal: 300, fatG: 22.5 } },
+    ]);
+    expect(patch.sourcePanel.breakdown?.[0].amounts.calorieKcal).toBe(400);
+    // Choosing the original amount again puts the lines back exactly.
+    const back = estimateAmountPatch({ ...row, nutrition: patch.nutrition, sourcePanel: patch.sourcePanel }, 1)!;
+    expect(back.nutrition.breakdown?.[0].amounts.calorieKcal).toBe(400);
+  });
+
   it('scales it down the same way', () => {
     const patch = estimateAmountPatch(pizza(), 1 / 2)!;
     expect(patch.nutrition.amounts.calorieKcal).toBe(300);
@@ -1152,7 +1141,7 @@ const bare = (o: Partial<FoodNutrition> = {}) => panel({ amounts: {}, ...o });
 describe('amountHint / amountExample', () => {
   it('says a weight and the food\'s own portions, for a per-100g panel', () => {
     expect(amountHint(bare())).toBe(
-      'A weight (like 100g), or one of this food\'s stated portions: 1 cup.',
+      'A weight (like 100g), or one of this food’s stated portions: 1 cup.',
     );
     expect(amountExample(bare())).toBe('1 cup');
   });
@@ -1182,7 +1171,7 @@ describe('amountHint / amountExample', () => {
 
   it('asks for a serving count from a perServing panel with no serving weight', () => {
     expect(amountHint(bare({ basis: 'perServing', servingGrams: null, portions: [] })))
-      .toBe('A number of servings, like 1 serving. This food states no weight per serving to measure anything else against.');
+      .toBe('A number of servings, like 1 serving. This food has no weight per serving, so nothing else can be entered.');
     expect(amountExample(bare({ basis: 'perServing', servingGrams: null, portions: [] })))
       .toBe('1 serving');
   });
@@ -1194,7 +1183,7 @@ describe('amountHint / amountExample', () => {
 
   it('mentions servings too, once a per-100g panel states a serving weight', () => {
     expect(amountHint(bare({ servingGrams: 25 }))).toBe(
-      'A weight (like 100g), or one of this food\'s stated portions: 1 cup, or a number of servings.',
+      'A weight (like 100g), or one of this food’s stated portions: 1 cup, or a number of servings.',
     );
     expect(amountHint(bare({ servingGrams: 25, portions: [] }))).toBe(
       'A weight, like 100g, or a number of servings.',
@@ -1385,5 +1374,81 @@ describe('logInstantFor', () => {
     const at = logInstantFor('2026-09-27', '2026-09-27', now);
     at.setHours(0);
     expect(now.getHours()).toBe(19);
+  });
+});
+
+describe('remeasureEntry', () => {
+  const chocolate = panel({
+    amounts: { calorieKcal: 500, proteinG: 10, fatG: 30, sugarG: 50 },
+    portions: [{ amount: 1, label: 'square', grams: 5 }],
+  });
+  const at = (grams: number) => {
+    const helping = scalePanelToAmount(chocolate, `${grams} g`, null, NOW)!;
+    return entry({
+      label: 'FILLED milk chocolate bar, TONY\'S CHOCOLONELY', quantity: `${grams} g`, grams,
+      nutrition: helping.nutrition, sourcePanel: chocolate,
+    });
+  };
+
+  it('scales an unfiled database food from its kept panel: 10 g to 23 g is 2.3 times the nutrients', () => {
+    const before = at(10);
+    const result = remeasureEntry(before, null, '23 g', NOW);
+    if (!result.ok) throw new Error(result.reason);
+    const { fields } = result;
+    expect(before.nutrition.amounts).toEqual({ calorieKcal: 50, proteinG: 1, fatG: 3, sugarG: 5 });
+    expect(fields.nutrition.amounts).toEqual({ calorieKcal: 115, proteinG: 2.3, fatG: 6.9, sugarG: 11.5 });
+    for (const key of ['calorieKcal', 'proteinG', 'fatG', 'sugarG'] as const) {
+      expect(fields.nutrition.amounts[key]! / before.nutrition.amounts[key]!).toBeCloseTo(2.3, 5);
+    }
+    expect(fields).toMatchObject({ quantity: '23 g', grams: 23, sourcePanel: chocolate });
+    expect(result.approximate).toBe(false);
+  });
+
+  it('measures against the record, not the stored helping, so a round trip loses nothing', () => {
+    const there = remeasureEntry(at(10), null, '23 g', NOW);
+    if (!there.ok) throw new Error(there.reason);
+    const back = remeasureEntry({ ...at(10), ...there.fields }, null, '10 g', NOW);
+    expect(back.ok && back.fields.nutrition.amounts).toEqual(at(10).nutrition.amounts);
+  });
+
+  it('measures a portion the record lists', () => {
+    const result = remeasureEntry(at(10), null, '2 square', NOW);
+    if (!result.ok) throw new Error(result.reason);
+    expect(result.fields.grams).toBe(10);
+    expect(result.fields.nutrition.amounts.calorieKcal).toBe(50);
+  });
+
+  it('measures a linked entry against its catalog panel and drops the kept one, as Save does', () => {
+    const linked = entry({ itemId: 'item-choc', quantity: '10 g', grams: 10, sourcePanel: null });
+    const result = remeasureEntry(linked, chocolate, '23 g', NOW);
+    expect(result.ok && result.fields.nutrition.amounts.calorieKcal).toBe(115);
+    expect(result.ok && result.fields.sourcePanel).toBeNull();
+  });
+
+  it('refuses what the app would not reopen, each with its own reason', () => {
+    const why = (r: ReturnType<typeof remeasureEntry>) => (r.ok ? 'ok' : r.reason);
+    expect(why(remeasureEntry(entry({ recipeId: 'r1', quantity: '2 servings' }), null, '100 g', NOW))).toMatch(/dish/);
+    expect(why(remeasureEntry(entry({ quantity: 'a bowl of ramen', sourcePanel: null }), null, '100 g', NOW))).toMatch(/no food record/);
+    expect(why(remeasureEntry(entry({ itemId: 'gone', quantity: '10 g' }), null, '23 g', NOW))).toMatch(/no longer there/);
+    expect(why(remeasureEntry(at(10), null, 'a handful', NOW))).toMatch(/cannot be measured/);
+    expect(why(remeasureEntry(at(10), null, '  ', NOW))).toMatch(/cannot be measured/);
+  });
+
+  it('never keeps an estimate\'s whole as a record to measure against', () => {
+    const estimate = entry({ quantity: '1 bowl', sourcePanel: panel({ source: 'estimated', basis: 'perServing' }) });
+    expect(remeasureEntry(estimate, null, '200 g', NOW).ok).toBe(false);
+  });
+});
+
+describe('isDescriptionDraft', () => {
+  it('treats a food name as cheap to retype', () => {
+    expect(isDescriptionDraft('')).toBe(false);
+    expect(isDescriptionDraft('  egg ')).toBe(false);
+    expect(isDescriptionDraft('oat milk')).toBe(false);
+  });
+
+  it('treats a meal description as a draft worth keeping', () => {
+    expect(isDescriptionDraft('chicken burrito with rice')).toBe(true);
+    expect(isDescriptionDraft('pad  thai   takeout')).toBe(true);
   });
 });

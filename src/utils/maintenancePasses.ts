@@ -102,6 +102,8 @@ export function catchUpPasses(): MaintenanceStep[] {
     // Beside it, reading the same food log: 3 PM arriving is time passing, and
     // the food log's own writes cover everything else. See snackNudgeTasks.ts.
     ['sync snack nudge', () => tasks().syncSnackNudgeTasks()],
+    // And the Stay under warnings, off the same log. See limitWarningTasks.ts.
+    ['sync limit warnings', () => tasks().syncLimitWarningTasks()],
     // A saved event's booking interval running out is a day passing, so it is
     // caught up here. Reads only its own setting; see savedEventTasks.ts.
     ['check book-event tasks', () => tasks().checkBookEventTasks()],
@@ -174,6 +176,14 @@ export function catchUpPasses(): MaintenanceStep[] {
     // works in a background run; moving a hold to a new day waits for a
     // snapshot, and useWeatherWaitSync re-runs it when one lands.
     ['apply weather waits', () => tasks().applyWeatherWaits()],
+    // Rain skips read the same snapshot, and refuse on its day key the same
+    // way: at cold launch, before the first fetch, they do nothing, and the
+    // weather sync runs them again once a reading for today lands.
+    ['apply rain skips', () => tasks().applyRainSkips()],
+    // Meter holds read only what's on the device (the readings and the day), so
+    // they work at cold launch and in a background run alike: a task whose
+    // estimate or time limit arrives overnight is on Today in the morning.
+    ['apply meter holds', () => tasks().applyMeterHolds()],
     // Beside it, and unlike the three around it this one *can* do real work at
     // cold launch: the window it reads is whatever useCalendarSync last left
     // behind, exactly as checkCalendarReviewTasks' is, and it refuses on

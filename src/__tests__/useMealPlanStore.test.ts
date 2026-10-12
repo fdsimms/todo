@@ -142,8 +142,10 @@ const mockTaskState = {
     mockTaskState.tasks = mockTaskState.tasks.map(t => (t.id === id ? { ...t, completed: false } : t));
   }),
 };
+const mockOfferMealLog = jest.fn();
 jest.mock('../store/useTaskStore', () => ({
   useTaskStore: { getState: () => mockTaskState },
+  offerMealLog: (...args: unknown[]) => mockOfferMealLog(...args),
 }));
 
 const mockRecipeNameKey = (name: string): string =>
@@ -828,7 +830,7 @@ describe('planMeal', () => {
       date: '2026-08-05', slot: 'dinner', title: 'Roast',
     })!;
 
-    expect(useMealPlanStore.getState().lastAction?.label).toBe('Planned "Roast"');
+    expect(useMealPlanStore.getState().lastAction?.label).toBe('Planned “Roast”');
     useMealPlanStore.getState().undoLastAction();
 
     expect(dbDeleteMealPlanEntry).toHaveBeenCalledWith(planned.id);
@@ -902,7 +904,7 @@ describe('moveEntry', () => {
     loadWeek([dinner]);
 
     useMealPlanStore.getState().moveEntry(dinner.id, { date: '2026-08-07', slot: 'lunch' });
-    expect(useMealPlanStore.getState().lastAction?.label).toBe(`Moved "${dinner.title}"`);
+    expect(useMealPlanStore.getState().lastAction?.label).toBe(`Moved “${dinner.title}”`);
     useMealPlanStore.getState().undoLastAction();
 
     expect(dbUpdateMealPlanEntry).toHaveBeenLastCalledWith(dinner);
@@ -926,7 +928,7 @@ describe('removeEntry', () => {
     loadWeek([dinner]);
 
     useMealPlanStore.getState().removeEntry(dinner.id);
-    expect(useMealPlanStore.getState().lastAction?.label).toBe(`Removed "${dinner.title}"`);
+    expect(useMealPlanStore.getState().lastAction?.label).toBe(`Removed “${dinner.title}”`);
     useMealPlanStore.getState().undoLastAction();
 
     expect(dbInsertMealPlanEntry).toHaveBeenCalledWith(dinner);
@@ -1147,6 +1149,21 @@ describe('setCooked', () => {
     const updated = getEntries().find(e => e.id === dinner.id)!;
     expect(updated.cookedAt).not.toBeNull();
     expect(dbUpdateMealPlanEntry).toHaveBeenCalledWith(expect.objectContaining({ id: dinner.id, cookedAt: expect.any(String) }));
+  });
+
+  // A snack, or a slot whose task is switched off, has no task to complete,
+  // so the offer the task path raises has to come from the tick itself.
+  it('offers to log the meal it cooked, and not on un-cooking', () => {
+    mockOfferMealLog.mockClear();
+    const dinner = entry('2026-08-05', 'dinner');
+    loadWeek([dinner]);
+
+    useMealPlanStore.getState().setCooked(dinner.id, true);
+    expect(mockOfferMealLog).toHaveBeenCalledWith(expect.objectContaining({ id: dinner.id }));
+
+    mockOfferMealLog.mockClear();
+    useMealPlanStore.getState().setCooked(dinner.id, false);
+    expect(mockOfferMealLog).not.toHaveBeenCalled();
   });
 
   // The half that used not to exist: a row could be ticked and never un-ticked
@@ -3171,7 +3188,7 @@ describe('finishCookForRecipe', () => {
 
     useMealPlanStore.getState().finishCookForRecipe('r1');
     const action = useMealPlanStore.getState().lastAction!;
-    expect(action.label).toBe('Cooked "Ragu"');
+    expect(action.label).toBe('Cooked “Ragu”');
 
     action.undo();
 
@@ -3184,7 +3201,7 @@ describe('finishCookForRecipe', () => {
   it('registers an undo for the off-plan cooking too', () => {
     useMealPlanStore.getState().finishCookForRecipe('r1');
     const action = useMealPlanStore.getState().lastAction!;
-    expect(action.label).toBe('Cooked "Ragu"');
+    expect(action.label).toBe('Cooked “Ragu”');
 
     action.undo();
 

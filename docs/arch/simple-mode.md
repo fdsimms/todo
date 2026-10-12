@@ -1,6 +1,6 @@
 # Simplified mode
 
-One switch (`simpleMode`, Settings → Tasks & projects → Feature areas) that takes the app down to
+One switch (`simpleMode`, Settings → Feature areas) that takes the app down to
 an ordinary todo/kitchen app by hiding a few dozen capabilities at once (`SIMPLE_FEATURES` is the
 list).
 
@@ -44,8 +44,8 @@ The one non-obvious decision. `screenShown` treats two kinds of screen different
 - **Lenses** (`SIMPLE_HIDDEN_SCREENS`: Calendar, Stats, Stuck and the like) go unconditionally.
   Every task they show is reachable from Today or Search, so hiding them costs nothing however
   much data exists.
-- **Content screens** (`SIMPLE_CONTENT_SCREENS`: Stacks, Templates, People, Mood, Medications, Food
-  log) hold objects that live nowhere else. Hiding one while the user has some would strand real
+- **Content screens** (`SIMPLE_CONTENT_SCREENS`: Stacks, Templates, People, Meters, Mood, Medications,
+  Food log) hold objects that live nowhere else. Hiding one while the user has some would strand real
   data, so each survives for exactly as long as it holds anything (`screenShown`'s
   `contentCounts`).
 
@@ -111,6 +111,21 @@ new one goes. Same call `AppNavigator` already makes about the recipe-timer dot 
   The Go-UPC key and "Forget saved barcodes" only serve the scanner, so they are still `simple`.
 - **`aiFeatureConfig`, and every setting for a hidden feature.** Hidden, never rewritten, so the
   whole thing comes back as it was.
+
+## No fold in the task editor
+
+The task editor once hid its rarely used rows behind a "More options" button (`fold` on
+`EditorGroupRow`). It was removed: a button reading "(12 hidden)" made people hunt for fields that
+were simply one tap away, so every row not covered by the mode is on screen again. Don't bring the
+fold back for the editor; if the form is too long, the answer is the mode or a better grouping.
+
+The same idea at Settings level exists as `SettingsDisclosure` (one row that opens a run of rows, and
+opens itself when a search or link points inside it), and `visibleSettingsGroups` drops a group
+the mode has left with no rows.
+
+**Not done, deliberately:** a middle level between "everything" and this mode. `simpleMode` is a
+boolean read in about 200 places, many as plain truthiness rather than through `featureHidden`, so a
+third state needs every one of them reviewed. `TemplateItemEditor` also has no gating yet.
 
 ## Tips
 

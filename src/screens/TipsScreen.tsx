@@ -16,6 +16,9 @@ import { font, fontWeight, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { TIPS, TIP_AREAS, filterTips, tipsFor, type Tip } from '../utils/tips';
 import { useFilterField } from '../hooks/useFilterField';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 
 /**
  * Everything the app can do, in one list.
@@ -38,13 +41,15 @@ type Row =
   | { type: 'tip'; key: string; tip: Tip; seen: boolean };
 
 export function TipsScreen() {
+  const pullSearch = usePullToSearch();
   const colors = useColors();
   // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
   const screenSettings = useScreenSettings('Tips', 'Tip settings');
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const tabBarHeight = useBottomTabBarHeight();
   const insets = useSafeAreaInsets();
-  const keyboardScroll = useKeyboardInsetScroll<FlatList>();
+  const keyboardScroll = useKeyboardInsetScroll<FlatList>({ refreshing: pullSearch.pulling });
+  const scrollTop = useListScrollToTop(keyboardScroll);
 
   const seenTips = useSettingsStore(useShallow(s => s.seenTips));
   const markAllTipsSeen = useSettingsStore(s => s.markAllTipsSeen);
@@ -96,7 +101,7 @@ export function TipsScreen() {
     haptics.tap();
     Alert.alert(
       'Show all tips again',
-      'Every tip becomes unread, and the app will start offering them on their screens again, one a day.',
+      'Every tip becomes unread and shows again on its screen, one a day.',
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Show again', onPress: () => resetTips() },
@@ -149,7 +154,7 @@ export function TipsScreen() {
         }
         actions={withScreenSettings(actions, screenSettings.action)}
       />
-  const actions = useMemo<ScreenSettingsSheet {...screenSettings.sheet} />
+      <ScreenSettingsSheet {...screenSettings.sheet} />
 
       <SearchField
         field={searchFilter}
@@ -162,12 +167,13 @@ export function TipsScreen() {
         <EmptyState
           icon="bulb-outline"
           title="Nothing matches"
-          subtitle={`No tip mentions "${query}". Try one word instead of two.`}
+          subtitle={`No tip mentions “${query}”. Try one word instead of two.`}
           bottomOffset={tabBarHeight}
         />
       ) : (
         <FlatList
-          ref={keyboardScroll.ref}
+          ref={scrollTop.ref}
+          refreshControl={pullSearch.refreshControl}
           data={rows}
           keyExtractor={row => row.key}
           renderItem={renderRow}
@@ -175,8 +181,11 @@ export function TipsScreen() {
           keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
           {...keyboardScroll.props}
+          {...scrollTop.listProps}
         />
       )}
+      <ScrollToTopButton {...scrollTop.buttonProps} />
+      {pullSearch.sheet}
     </View>
   );
 }

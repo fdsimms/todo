@@ -230,6 +230,14 @@ interface HealthState {
   weightSeries: WeightPoint[] | null;
   loadingWeight: boolean;
   /**
+   * The day key a weigh-in request was last found answered by a reading in its
+   * window, or null. Memory only, and one day key rather than any weight: it is
+   * what lets the request's row read ready without reading Health on every
+   * render (see `isRecordAnswered`). Cleared with the rest on revoked access.
+   */
+  weighInAnsweredOn: string | null;
+  setWeighInAnsweredOn: (dayKey: string | null) => void;
+  /**
    * The last `SLEEP_HISTORY_DAYS` of sleep, one entry per day with any, oldest
    * first, or null for "not looked yet" (the third answer the two windows
    * above carry).
@@ -284,6 +292,8 @@ export const useHealthStore = create<HealthState>((set, get) => ({
   loadingHistory: false,
   weightSeries: null,
   loadingWeight: false,
+  weighInAnsweredOn: null,
+  setWeighInAnsweredOn: dayKey => set({ weighInAnsweredOn: dayKey }),
   sleepNights: null,
   loadingSleep: false,
 
@@ -576,7 +586,7 @@ export const useHealthStore = create<HealthState>((set, get) => ({
     historyGuard.invalidate();
     weightGuard.invalidate();
     sleepGuard.invalidate();
-    set({ today: null, history: null, weightSeries: null, sleepNights: null });
+    set({ today: null, history: null, weightSeries: null, weighInAnsweredOn: null, sleepNights: null });
   },
 }));
 

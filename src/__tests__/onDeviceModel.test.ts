@@ -59,11 +59,11 @@ describe('describeOnDeviceAvailability', () => {
   // the hardware is the reason.
   it('explains an ineligible device rather than implying a fix', () => {
     const copy = describeOnDeviceAvailability('deviceNotEligible');
-    expect(copy).toContain('doesn\'t support Apple Intelligence');
+    expect(copy).toContain('doesn’t support Apple Intelligence');
   });
 
   it('points at the Settings app when Apple Intelligence is merely off', () => {
-    expect(describeOnDeviceAvailability('notEnabled')).toContain('Settings app');
+    expect(describeOnDeviceAvailability('notEnabled')).toContain('Turn on Apple Intelligence in Settings');
   });
 
   it('says a download in progress will finish on its own', () => {

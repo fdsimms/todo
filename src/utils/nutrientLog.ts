@@ -2,6 +2,7 @@ import type { FoodLogEntry, FoodNutrition, NutrientKey } from '../types';
 import { NUTRIENT_KEYS } from '../types';
 import { NUTRIENT_LABEL } from './foodNutrition';
 import { waterHelping } from './waterLog';
+import { isSupplementEntry } from './supplementDose';
 
 /**
  * A single nutrient logged on its own, as one food log entry.
@@ -28,9 +29,18 @@ import { waterHelping } from './waterLog';
  * ask.
  */
 
-/** Whether this entry is a nutrient logged on its own rather than a food. */
+/**
+ * Whether this entry is a nutrient logged on its own rather than a food.
+ *
+ * **A supplement dose's entry counts**, though it states many nutrients rather
+ * than one (`supplementDose.ts`). Every reader that asks this is asking "is
+ * this a food somebody ate": not a meal, never what makes a day complete, never
+ * vetoing another nutrient's coverage, never a recent. A multivitamin answers
+ * no to all of them for the same reason a glass of water does, and what it
+ * states still adds to each nutrient's day total.
+ */
 export function isNutrientOnlyEntry(entry: FoodLogEntry): boolean {
-  return nutrientOnlyKey(entry) !== null;
+  return nutrientOnlyKey(entry) !== null || isSupplementEntry(entry);
 }
 
 /**

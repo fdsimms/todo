@@ -1,1 +1,1 @@
-{ "message": "A task checked off from the widget or a Live Activity is no longer completed again, or a daily target logged again, when you come back to Today from another tab. A pinned task also no longer gets the tap twice.", "date": "2026-10-08" }
+{ "message": "Fixed a task checked off from the widget or a Live Activity being completed again, or a daily target logged again, when you returned to Today from another tab. A pinned task also no longer gets the tap twice.", "date": "2026-10-08" }

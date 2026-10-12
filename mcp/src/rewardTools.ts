@@ -17,12 +17,25 @@ export interface SerializedReward {
   id: string;
   title: string;
   cost: number;
+  /** The dollar price in major units, for a reward priced in money. `cost` is that price at the current rate. */
+  price?: number;
   note?: string;
   link?: string;
   /** Claimed once, then gone from the list. */
   oneTime: boolean;
   /** The wish-list task this reward is. Claimed in the app only. */
   wishListTaskId?: string;
+  /**
+   * The "don't do this" habit this reward guards, and its title: a slip logged
+   * on it claims this reward when the balance covers it, and otherwise costs
+   * the balance up to its price.
+   */
+  guardsHabitId?: string;
+  guardsHabit?: string;
+  /** Claimable once per this many days (a week is 7, a month 30). Absent when unlimited. */
+  claimEveryDays?: number;
+  /** Days until a limited reward can be claimed again. Absent when it can be claimed now. */
+  availableInDays?: number;
   /** Whether the balance covers it right now. */
   affordable: boolean;
   /** Coins still needed; 0 when affordable. */
@@ -83,14 +96,19 @@ export function getRewards(replica: Replica, input: { historyLimit?: number } = 
     if (!lib.rewardIsOpen(reward, entries, source)) return [];
     const shown = lib.rewardDisplay(reward, source);
     const last = lib.lastClaimedAt(entries, reward.id);
+    const wait = lib.claimWaitDays(reward, entries, replica.currentDayStart());
     return [{
       id: reward.id,
       title: shown.title,
       cost: reward.cost,
+      ...(reward.priceMinor !== null ? { price: reward.priceMinor / 100 } : {}),
       ...(shown.note ? { note: shown.note } : {}),
       ...(shown.linkUrl ? { link: shown.linkUrl } : {}),
       oneTime: reward.oneTime,
       ...(reward.taskId ? { wishListTaskId: reward.taskId } : {}),
+      ...guardOf(replica, reward),
+      ...(reward.claimEveryDays && !reward.oneTime ? { claimEveryDays: reward.claimEveryDays } : {}),
+      ...(wait > 0 ? { availableInDays: wait } : {}),
       affordable: lib.canClaimReward(balance, reward.cost),
       shortBy: Math.max(0, reward.cost - balance),
       ...(last ? { lastClaimedAt: last } : {}),
@@ -120,15 +138,62 @@ export function getRewards(replica: Replica, input: { historyLimit?: number } = 
 
 export interface RewardInput {
   title: string;
-  cost: number;
+  /** Coins. Give this or `price`. */
+  cost?: number;
+  /** Dollars (major units, up to two decimals), converted to coins at the person's rate. Null on an update clears it. */
+  price?: number | null;
   note?: string | null;
   link?: string | null;
   oneTime?: boolean;
+  /** The "don't do this" habit's task id this reward guards. Null on an update unlinks it. */
+  guardsHabitId?: string | null;
+  /** Claimable once per this many days (a week is 7, a month 30). Null on an update removes the limit. Not on a oneTime reward. */
+  claimEveryDays?: number | null;
 }
 
-/** A new reward. The cost is the person's to set; the app prices ideas off the earning rate, which Claude can ask them about. */
+/** The habit a reward guards, as the serialized reward names it. */
+function guardOf(replica: Replica, reward: Reward): Pick<SerializedReward, 'guardsHabitId' | 'guardsHabit'> {
+  if (!reward.guardsTaskId || reward.oneTime || reward.taskId) return {};
+  const habit = replica.taskById(reward.guardsTaskId);
+  return habit ? { guardsHabitId: habit.id, guardsHabit: replica.displayTitle(habit) } : {};
+}
+
+/**
+ * Coins per dollar: the person's weekly earning over their typed weekly reward
+ * budget (`coinsPerDollar`). Null until both exist, and a dollar price is
+ * refused rather than guessed while it is.
+ */
+function exchangeRate(replica: Replica): number | null {
+  const { rewards: lib } = replica.lib();
+  const rate = lib.earnRatePerDay(replica.tasks(), new Date());
+  return lib.coinsPerDollar(rate, replica.settings().rewardWeeklyBudgetMinor);
+}
+
+/** A typed dollar amount to minor units, refusing more than two decimals so nothing is rounded silently. */
+function priceToMinor(price: number): number {
+  const minor = Math.round(price * 100);
+  if (!(price > 0) || Math.abs(minor - price * 100) > 1e-6) {
+    throw new Error('price must be a positive amount with at most two decimals, like 4.5.');
+  }
+  return minor;
+}
+
+function costForPrice(replica: Replica, priceMinor: number): number {
+  const rate = exchangeRate(replica);
+  if (rate === null) {
+    throw new Error('A dollar price needs a coin-to-dollar rate: the person has to set a weekly reward budget in Rewards, and have about a week of completed tasks. Give a cost in coins instead.');
+  }
+  return replica.lib().rewards.coinsForPrice(priceMinor, rate);
+}
+
+/** A new reward. Give a coin cost, or a dollar price the person's own rate converts to one. */
 export function createReward(replica: Replica, input: RewardInput): SerializedReward {
-  const reward = replica.addReward(input.title, input.cost, { note: input.note, linkUrl: input.link, oneTime: input.oneTime });
+  if ((input.cost === undefined) === (input.price == null)) {
+    throw new Error('Give either cost (coins) or price (dollars), not both and not neither.');
+  }
+  const priceMinor = input.price != null ? priceToMinor(input.price) : null;
+  const cost = priceMinor !== null ? costForPrice(replica, priceMinor) : input.cost!;
+  const reward = replica.addReward(input.title, cost, { note: input.note, linkUrl: input.link, oneTime: input.oneTime, priceMinor, guardsTaskId: input.guardsHabitId, claimEveryDays: input.claimEveryDays });
   return rewardById(replica, reward.id);
 }
 
@@ -137,12 +202,22 @@ export function updateReward(
   id: string,
   patch: Partial<RewardInput>,
 ): SerializedReward {
+  if (patch.cost !== undefined && patch.price != null) {
+    throw new Error('Give either cost (coins) or price (dollars), not both.');
+  }
+  // A new price recomputes the coins; a coin cost on its own makes the reward
+  // coin-priced, so a stale dollar price can't repaint it later.
+  const priceMinor = patch.price != null ? priceToMinor(patch.price) : undefined;
+  const cost = priceMinor !== undefined ? costForPrice(replica, priceMinor) : patch.cost;
   const reward = replica.updateReward(id, {
     ...(patch.title !== undefined ? { title: patch.title } : {}),
-    ...(patch.cost !== undefined ? { cost: patch.cost } : {}),
+    ...(cost !== undefined ? { cost } : {}),
+    ...(priceMinor !== undefined ? { priceMinor } : patch.cost !== undefined || patch.price === null ? { priceMinor: null } : {}),
     ...(patch.note !== undefined ? { note: patch.note } : {}),
     ...(patch.link !== undefined ? { linkUrl: patch.link } : {}),
     ...(patch.oneTime !== undefined ? { oneTime: patch.oneTime } : {}),
+    ...(patch.guardsHabitId !== undefined ? { guardsTaskId: patch.guardsHabitId } : {}),
+    ...(patch.claimEveryDays !== undefined ? { claimEveryDays: patch.claimEveryDays } : {}),
   });
   return rewardById(replica, reward.id);
 }
@@ -154,7 +229,17 @@ export function deleteReward(replica: Replica, id: string): { deleted: { id: str
 
 /** Spend a reward's cost. The result carries the claim id `unclaim_reward` takes back. */
 export function claimReward(replica: Replica, id: string): { claimId: string; reward: string; spent: number; balance: number; checkedOff?: string } {
-  const listItem = replica.rewardState().rewards.find(r => r.id === id)?.taskId;
+  const before = replica.rewardState().rewards.find(r => r.id === id);
+  // A dollar-priced reward is claimed at today's rate, the way the app
+  // reprices it when its screen opens, so a stale cost isn't what gets spent.
+  if (before && before.priceMinor !== null && !before.taskId) {
+    const rate = exchangeRate(replica);
+    if (rate !== null) {
+      const fresh = replica.lib().rewards.coinsForPrice(before.priceMinor, rate);
+      if (fresh !== before.cost) replica.updateReward(id, { cost: fresh });
+    }
+  }
+  const listItem = before?.taskId;
   const itemTitle = listItem ? replica.taskById(listItem)?.title : undefined;
   const entry = replica.claimReward(id);
   return {
@@ -182,7 +267,7 @@ function rewardById(replica: Replica, id: string): SerializedReward {
   if (found) return found;
   // A one-time reward claimed a moment ago is no longer on the list; say what it is.
   const raw = replica.rewardState().rewards.find(r => r.id === id)!;
-  return { id: raw.id, title: raw.title, cost: raw.cost, oneTime: raw.oneTime, affordable: false, shortBy: raw.cost };
+  return { id: raw.id, title: raw.title, cost: raw.cost, oneTime: raw.oneTime, ...guardOf(replica, raw), affordable: false, shortBy: raw.cost };
 }
 
 /** Post a coin bounty on a task, or withdraw the live one. */
@@ -221,8 +306,26 @@ export function markMissed(replica: Replica, id: string): MissedResult {
   };
 }
 
-/** Log a slip against a "don't do this" habit, or take back today's latest one. */
-export function setSlip(replica: Replica, id: string, logged: boolean): { task: SerializedTask } {
-  const task = logged ? replica.logSlip(id) : replica.undoSlip(id);
-  return { task: serializeTasks(replica, [task])[0] };
+/**
+ * Log a slip against a "don't do this" habit, or take back today's latest one.
+ * On a habit a reward guards, a slip the balance covers claims the reward
+ * instead: `claimed` says so, with the `claimId` unclaim_reward takes back.
+ */
+export function setSlip(replica: Replica, id: string, logged: boolean): {
+  task: SerializedTask;
+  claimed?: { claimId: string; reward: string; spent: number; balance: number };
+} {
+  if (!logged) return { task: serializeTasks(replica, [replica.undoSlip(id)])[0] };
+  const { task, claim } = replica.logSlip(id);
+  return {
+    task: serializeTasks(replica, [task])[0],
+    ...(claim ? {
+      claimed: {
+        claimId: claim.id,
+        reward: claim.label,
+        spent: claim.amount,
+        balance: replica.lib().rewards.coinBalance(replica.rewardState().entries),
+      },
+    } : {}),
+  };
 }

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
@@ -20,6 +20,7 @@ import {
   pantryIngredients, splitIngredientText, type FinderEntryHit,
 } from '../utils/cookbookIndex';
 import { TextField } from './TextField';
+import { useActionMenu } from '../hooks/useActionMenu';
 
 /** Which question the sheet is asking: about words you type, or about the pantry. */
 export type CookWithMode = 'pick' | 'have';
@@ -68,6 +69,7 @@ interface Props {
  * is nothing for a discard guard to protect.
  */
 export function CookWithSheet({ visible, onClose, onOpenRecipe, onOpenCookbook, initialMode }: Props) {
+  const actionMenu = useActionMenu();
   const insets = useSafeAreaInsets();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -145,17 +147,16 @@ export function CookWithSheet({ visible, onClose, onOpenRecipe, onOpenCookbook, 
       setTyped('');
       onOpenRecipe(target.id);
     };
-    Alert.alert(
-      entry.title,
-      recipe
+    actionMenu.open({
+      title: entry.title,
+      message: recipe
         ? where
-        : `${where}\n\nAdding it to your recipes makes a recipe with this name, book and page, ready for you to type up.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Open the book', onPress: () => { setTyped(''); onOpenCookbook(entry.cookbookId); } },
-        { text: recipe ? 'Open the recipe' : 'Add to my recipes', onPress: toRecipe },
+        : `${where}\n\nAdding it creates a recipe with this name, book and page, ready to type up.`,
+      actions: [
+        { key: 'cookbook', label: 'Open cookbook', icon: 'book-outline', onPress: () => { setTyped(''); onOpenCookbook(entry.cookbookId); } },
+        { key: 'recipe', label: recipe ? 'Open recipe' : 'Add to my recipes', icon: recipe ? 'restaurant-outline' : 'add-circle-outline', onPress: toRecipe },
       ],
-    );
+    });
   };
 
   // The entry's own words, marked where they answer what was asked. Either
@@ -174,7 +175,7 @@ export function CookWithSheet({ visible, onClose, onOpenRecipe, onOpenCookbook, 
   const shownRecipes = results.recipes.slice(0, MAX_ROWS);
   const shownEntries = results.entries.slice(0, MAX_ROWS);
   const moreNote = (total: number) => total > MAX_ROWS
-    ? <Text style={styles.moreNote}>{`Showing ${MAX_ROWS} of ${total}, the ones using the most first.`}</Text>
+    ? <Text style={styles.moreNote}>{`Showing ${MAX_ROWS} of ${total}, most ingredients matched first.`}</Text>
     : null;
 
   return (
@@ -202,7 +203,7 @@ export function CookWithSheet({ visible, onClose, onOpenRecipe, onOpenCookbook, 
           {mode === 'have' ? (
             have.length > 0 && (
               <Text style={styles.haveNote}>
-                {`Using the ${have.length === 1 ? 'one thing' : `${have.length} things`} the pantry says you have. Staples like salt aren't counted.`}
+                {`Using ${have.length === 1 ? '1 thing' : `${have.length} things`} from your pantry. Staples like salt aren’t counted.`}
               </Text>
             )
           ) : (
@@ -244,9 +245,9 @@ export function CookWithSheet({ visible, onClose, onOpenRecipe, onOpenCookbook, 
             <View style={styles.note}>
               <EmptyNote icon={mode === 'have' ? 'basket-outline' : 'search-outline'}>
                 {mode === 'have'
-                  ? "The pantry doesn't list anything you have yet. Mark things as Got it on the Pantry screen, or finish a shopping trip, and they count here."
-                  : `Add an ingredient to see the recipes you've typed up and the dishes in your cookbooks' indexes that use it.${
-                      entries.length === 0 ? " A cookbook's index is added from its page under Cookbooks." : ''
+                  ? "Nothing in your pantry yet. Mark things as Got it on the Pantry screen, or finish a shopping trip, and they count here."
+                  : `Add an ingredient to see which of your recipes and cookbook indexes use it.${
+                      entries.length === 0 ? " Add a cookbook’s index from its page under Cookbooks." : ''
                     }`}
               </EmptyNote>
             </View>
@@ -255,7 +256,7 @@ export function CookWithSheet({ visible, onClose, onOpenRecipe, onOpenCookbook, 
             <View style={styles.note}>
               <EmptyNote icon="search-outline">
                 {mode === 'have'
-                  ? 'Nothing in your recipes or cookbook indexes uses what the pantry says you have.'
+                  ? 'Nothing in your recipes or cookbook indexes uses what’s in your pantry.'
                   : `Nothing in your recipes or cookbook indexes uses ${wanted.join(' or ')} yet.`}
               </EmptyNote>
             </View>
@@ -320,6 +321,7 @@ export function CookWithSheet({ visible, onClose, onOpenRecipe, onOpenCookbook, 
           )}
         </ScrollView>
       </View>
+      {actionMenu.element}
     </SheetModal>
   );
 }

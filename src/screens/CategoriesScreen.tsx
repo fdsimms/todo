@@ -1,11 +1,11 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -15,12 +15,13 @@ import { useShallow } from 'zustand/react/shallow';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
 import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { ReorderableList } from '../components/ReorderableList';
 import { CategoryEditor } from '../components/CategoryEditor';
 import { QuickAddNameSheet } from '../components/QuickAddNameSheet';
-import { Fab, FAB_SIZE } from '../components/Fab';
+import { Fab, FAB_SIZE, useFabBottom } from '../components/Fab';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors, textScale } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -28,7 +29,9 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { formatCategorySchedule } from '../utils/categorySchedule';
 
 export function CategoriesScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
+  const fabBottom = useFabBottom();
   const tabBarHeight = useBottomTabBarHeight();
   const navigation = useNavigation();
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
@@ -44,6 +47,18 @@ export function CategoriesScreen() {
 
   const [editingCategory, setEditingCategory] = useState<string | null>(null);
   const [quickAddVisible, setQuickAddVisible] = useState(false);
+
+  // One category's editor, opened from a Backfill card. Stamped so the same
+  // category opened twice opens twice; a name that no longer exists is a shrug.
+  const route = useRoute();
+  const openCategoryName: string | undefined = (route.params as { openCategory?: string } | undefined)?.openCategory;
+  const openCategoryStamp: number | undefined = (route.params as { openCategoryStamp?: number } | undefined)?.openCategoryStamp;
+  const [handledCategoryStamp, setHandledCategoryStamp] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    if (openCategoryStamp === undefined || openCategoryStamp === handledCategoryStamp) return;
+    setHandledCategoryStamp(openCategoryStamp);
+    if (openCategoryName && allCategories.includes(openCategoryName)) setEditingCategory(openCategoryName);
+  }, [openCategoryStamp, handledCategoryStamp, openCategoryName, allCategories]);
 
   const getCategoryObj = (name: string) => categories.find(c => c.name === name) ?? null;
 
@@ -69,16 +84,17 @@ export function CategoriesScreen() {
         <EmptyState
           icon="folder-open-outline"
           title="No categories yet"
-          subtitle="Group tasks by the part of life they belong to (work, health, errands) and give each one its own visibility schedule"
+          subtitle="Group tasks by part of life, like work, health or errands. Each category can have its own visibility schedule."
           actionLabel="New category"
           onAction={() => setQuickAddVisible(true)}
           bottomOffset={tabBarHeight}
         />
       ) : (
         <ReorderableList
+          refreshControl={pullSearch.refreshControl}
           data={allCategories}
           keyExtractor={c => c}
-          scrollToTop={{ bottom: insets.bottom + tabBarHeight + spacing.md }}
+          scrollToTop={{ bottom: fabBottom }}
           contentContainerStyle={styles.list}
           ListFooterComponent={<View style={{ height: tabBarHeight + FAB_SIZE + spacing.xl }} />}
           placeholderStyle={styles.dropSlot}
@@ -102,7 +118,7 @@ export function CategoriesScreen() {
               scheduleLabel,
               hideOnVacation ? 'Hidden on vacation' : null,
               excludeFromSuggestions ? 'Skipped in suggestions' : null,
-              excludeFromNewBanner ? 'Skipped in new todos banner' : null,
+              excludeFromNewBanner ? 'Skipped in new tasks banner' : null,
             ]
               .filter(Boolean)
               .join('. ');
@@ -174,7 +190,6 @@ export function CategoriesScreen() {
       <Fab
         onPress={() => setQuickAddVisible(true)}
         accessibilityLabel="Add category"
-        bottom={insets.bottom + tabBarHeight + spacing.md}
       />
 
       <QuickAddNameSheet
@@ -195,6 +210,7 @@ export function CategoriesScreen() {
         category={editingCategory}
         onClose={() => setEditingCategory(null)}
       />
+      {pullSearch.sheet}
     </View>
   );
 }

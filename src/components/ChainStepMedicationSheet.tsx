@@ -15,7 +15,7 @@ import { medicationVocabulary, medicationKey } from '../utils/medicationLog';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { useShallow } from 'zustand/react/shallow';
 import { PillGroup } from './PillGroup';
-import { DoseAmountField } from './DoseAmountField';
+import { TaskDoseAmount } from './TaskDoseAmount';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { TextField } from './TextField';
 
@@ -65,12 +65,13 @@ export function ChainStepMedicationSheet({
   const [unit, setUnit] = useState<string | null>(null);
 
   // Every medication ever logged, for the name field's own suggestions below
-  // — see medicationVocabulary for why this is derived rather than a registry.
+  // — see medicationVocabulary for what it unions.
   const medicationLogs = useMedicationStore(useShallow(s => s.logs));
   const archivedMedications = useMedicationStore(useShallow(s => s.archived));
+  const registeredMedications = useMedicationStore(useShallow(s => s.registered));
   const medicationSuggestions = useMemo(
-    () => medicationVocabulary(medicationLogs, archivedMedications),
-    [medicationLogs, archivedMedications]
+    () => medicationVocabulary(medicationLogs, archivedMedications, registeredMedications),
+    [medicationLogs, archivedMedications, registeredMedications]
   );
 
   useEffect(() => {
@@ -132,7 +133,7 @@ export function ChainStepMedicationSheet({
           />
           <Text style={styles.hint}>
             {taskMedicationName
-              ? `Leave it empty and this step records the task's ${taskMedicationName}.`
+              ? `Leave it empty and this step records the task’s ${taskMedicationName}.`
               : 'Leave it empty and this step records nothing.'}
           </Text>
 
@@ -149,20 +150,31 @@ export function ChainStepMedicationSheet({
                 key: medicationKey(n),
                 label: n,
                 selected: !!name.trim() && medicationKey(n) === medicationKey(name),
-                onPress: () => { haptics.tap(); setName(n); },
+                onPress: () => {
+                  haptics.tap();
+                  // An amount typed for one medicine is not another's.
+                  if (medicationKey(n) !== medicationKey(name)) { setAmount(''); setUnit(null); }
+                  setName(n);
+                },
               }))}
             />
           )}
 
           {name.trim().length > 0 && (
             <>
-              <DoseAmountField
-                name="ChainStepMedicationSheet dose unit menu"
+              <TaskDoseAmount
+                menuName="ChainStepMedicationSheet dose unit menu"
+                medication={name.trim()}
                 amount={amount}
                 onChangeAmount={setAmount}
                 unit={unit}
                 onChangeUnit={setUnit}
               />
+              {/* The one place a taper can be discovered from: nothing else
+                  says a chain of doses can step down a day at a time. */}
+              <Text style={[styles.hint, styles.taperHint]}>
+                For a taper, give each step its own dose, set Next step to On the next repeat, and end the repeat after the last step.
+              </Text>
             </>
           )}
         </View>
@@ -209,4 +221,5 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     minHeight: 36,
   },
   hint: { color: colors.textSecondary, fontSize: font.sm },
+  taperHint: { marginTop: spacing.sm },
 });

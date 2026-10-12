@@ -1,4 +1,5 @@
 import * as Notifications from 'expo-notifications';
+import { isProjectLockedAtAll } from './projectLock';
 import type { PermissionResponse } from 'expo-modules-core';
 import { Platform } from 'react-native';
 import type { StepTimer, Task } from '../types';
@@ -11,7 +12,7 @@ import {
   isFocusRunning,
   isFocusSessionFinished,
 } from './focusPlan';
-import { displayTitleFor, isHeldBack, isTaskNotNeeded, isWithheld } from './visibilityUtils';
+import { displayTitleFor, isHeldBack, isQuotaTask, isTaskNotNeeded, isWithheld, windowBoundsFor } from './visibilityUtils';
 import { agendaCounts, agendaBody, agendaMeetings, agendaSpokenBody, nextAgendaTime } from './dailyAgenda';
 import { calendarCovers } from './eventConflicts';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -201,6 +202,15 @@ export async function getNotificationPermission(): Promise<NotificationPermissio
   return existing.status === 'undetermined' || existing.canAskAgain ? 'undetermined' : 'denied';
 }
 
+/**
+ * A reminder shows on the lock screen, where Face ID can't be asked, so a task
+ * in a locked project is announced without its title.
+ */
+function reminderTitleFor(task: Task): string {
+  if (isProjectLockedAtAll(task.projectId)) return 'Task reminder';
+  return displayTitleFor(task) || 'Task reminder';
+}
+
 export async function scheduleTaskReminder(task: Task): Promise<void> {
   // Demo tasks are seeded through this same store action, but a real native
   // notification or AlarmKit alarm is a side effect on the device, not on the
@@ -245,7 +255,7 @@ export async function scheduleTaskReminder(task: Task): Promise<void> {
     // this feature genuinely cannot ship with.
     await cancelAlarmChain(task.id);
 
-    const title = displayTitleFor(task) || 'Task reminder';
+    const title = reminderTitleFor(task);
     const { quietHoursStart: qStart, quietHoursEnd: qEnd } = useSettingsStore.getState();
     const times = alarmChainTimes(triggerDate, ringCountFor(task));
 
@@ -266,8 +276,8 @@ export async function scheduleTaskReminder(task: Task): Promise<void> {
   await Notifications.scheduleNotificationAsync({
     identifier: task.id,
     content: {
-      title: displayTitleFor(task) || 'Task reminder',
-      body: task.notes || 'You have a task coming up',
+      title: reminderTitleFor(task),
+      body: isProjectLockedAtAll(task.projectId) ? 'You have a task coming up' : task.notes || 'You have a task coming up',
       data: { taskId: task.id },
       sound: true,
       categoryIdentifier: TASK_REMINDER_CATEGORY,
@@ -330,7 +340,7 @@ export async function scheduleCompletionTimer(task: Task, completedAt: Date = ne
     identifier: completionTimerNotificationId(task.id),
     content: {
       title: displayTitleFor(task) || 'Task timer',
-      body: task.completionTimerNote || `It's time. You completed "${displayTitleFor(task) || task.title}" a while ago.`,
+      body: task.completionTimerNote || `“${displayTitleFor(task) || task.title}” timer is up.`,
       data: { taskId: task.id, completionTimer: true },
       sound: true,
       interruptionLevel: REMINDER_INTERRUPTION_LEVEL,
@@ -344,6 +354,45 @@ export async function scheduleCompletionTimer(task: Task, completedAt: Date = ne
 
 export async function cancelCompletionTimer(taskId: string): Promise<void> {
   await Notifications.cancelScheduledNotificationAsync(completionTimerNotificationId(taskId)).catch(() => {});
+}
+
+function medicationOkAgainId(key: string): string {
+  return `medication-ok-${key}`;
+}
+
+/**
+ * "You can take it again": the notification a medication's limit can ask for
+ * (`MedicationLimit.notify`), fired when the spacing or the 24-hour cap you
+ * set next allows a dose. One per medication, replaced on every dose, the way
+ * a completion timer is replaced on every completion. Like that timer it
+ * ignores quiet hours: it answers a question you asked about a clock, and
+ * holding it back would make the answer wrong. Not counted in
+ * `nonReminderSlots`, the same as completion timers: there is at most one per
+ * medication you set it on.
+ */
+export async function scheduleMedicationOkAgain(key: string, name: string, at: Date): Promise<void> {
+  if (isDemoModeActive()) return;
+  await Notifications.cancelScheduledNotificationAsync(medicationOkAgainId(key)).catch(() => {});
+  if (at.getTime() <= Date.now()) return;
+  await Notifications.scheduleNotificationAsync({
+    identifier: medicationOkAgainId(key),
+    content: {
+      title: name,
+      body: 'The limit you set now allows another dose.',
+      data: { medicationOkAgain: key },
+      sound: true,
+      interruptionLevel: REMINDER_INTERRUPTION_LEVEL,
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DATE,
+      date: at,
+    },
+  });
+}
+
+export async function cancelMedicationOkAgain(key: string): Promise<void> {
+  if (isDemoModeActive()) return;
+  await Notifications.cancelScheduledNotificationAsync(medicationOkAgainId(key)).catch(() => {});
 }
 
 // iOS caps pending local notification requests at 64.
@@ -693,7 +742,11 @@ export async function scheduleTimerAlarm(task: Task): Promise<void> {
     identifier: timerAlarmId(task.id),
     content: {
       title: 'Time’s up',
-      body: `${displayTitleFor(task) || 'Your task'} is ready to complete`,
+      // A target's countdown is for one unit, and tapping it logs one rather
+      // than completing the task, so it can't say "complete".
+      body: isQuotaTask(task)
+        ? `${displayTitleFor(task) || 'Your task'} is ready to log`
+        : `${displayTitleFor(task) || 'Your task'} is ready to complete`,
       data: { taskId: task.id },
       sound: true,
       // A countdown the user started and is waiting on, same urgency as a
@@ -776,9 +829,9 @@ export async function scheduleFocusStepAlarm(session: FocusSession | null): Prom
     content: {
       title: isRest ? 'Break’s over' : 'Time’s up',
       body: isRest
-        ? 'Back to it when you’re ready.'
+        ? 'Back to it.'
         : nextIsRest
-          ? 'That stretch is done. Take your break when you’re ready.'
+          ? 'That stretch is done. Take your break.'
           : 'That stretch is done.',
       data: { focusSessionId: session.id },
       sound: true,
@@ -827,7 +880,7 @@ export async function scheduleFocusMeetingHeadsUp(session: FocusSession | null):
     identifier: FOCUS_MEETING_ID,
     content: {
       title: 'Meeting soon',
-      body: headsUp.title ? `"${headsUp.title}" starts at ${time}.` : `A calendar event starts at ${time}.`,
+      body: headsUp.title ? `“${headsUp.title}” starts at ${time}.` : `A calendar event starts at ${time}.`,
       data: { focusSessionId: session.id },
       sound: true,
       interruptionLevel: REMINDER_INTERRUPTION_LEVEL,
@@ -915,16 +968,18 @@ function quotaNudgeInstants(task: Task, now: Date): { index: number; time: Date 
 
   const { activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, dayResetTime } =
     useSettingsStore.getState();
+  // getDayStart(now, …) rather than getCurrentDayStart() so the day the run
+  // is anchored to follows the `now` being asked about — the same logical-day
+  // helper either way, just not pinned to the wall clock.
+  const dayStart = getDayStart(now, dayResetTime);
+  const window = windowBoundsFor(task, dayStart);
   const span = quotaRunSpan({
-    windowStart: task.windowStart,
-    windowEnd: task.windowEnd,
+    windowStart: window.start,
+    windowEnd: window.end,
     quotaStartedAt: task.quotaStartedAt,
     activeHoursStart,
     activeHoursEnd,
-    // getDayStart(now, …) rather than getCurrentDayStart() so the day the run
-    // is anchored to follows the `now` being asked about — the same logical-day
-    // helper either way, just not pinned to the wall clock.
-    dayStart: getDayStart(now, dayResetTime),
+    dayStart,
   });
 
   return quotaDueTimesAfter(span, task.targetCount, now, MAX_QUOTA_NUDGES_AHEAD)
@@ -1138,7 +1193,7 @@ export async function scheduleTripReminder(shopName: string, startedAt: string):
     identifier: TRIP_REMINDER_ID,
     content: {
       title: 'Still shopping?',
-      body: `Tap to wrap up your trip at ${shopName}`,
+      body: `Tap to finish your trip at ${shopName}.`,
       data: { activeTripReminder: true },
       sound: true,
       // A gentle backstop two hours in, not a moment the user set — see

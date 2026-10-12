@@ -367,7 +367,7 @@ describe('the gift task', () => {
   });
 
   it('names the action, unlike the reminder', () => {
-    expect(birthdayGiftTitle(person())).toBe("Get Tessa's birthday gift");
+    expect(birthdayGiftTitle(person())).toBe("Get Tessa’s birthday gift");
   });
 
   describe('who wants one right now', () => {
@@ -376,7 +376,7 @@ describe('the gift task', () => {
     it('offers one inside the window', () => {
       const wants = wantedBirthdayGiftTasks([person()], lead, noon(2026, 3, 6));
       expect(wants).toHaveLength(1);
-      expect(wants[0].title).toBe("Get Tessa's birthday gift");
+      expect(wants[0].title).toBe("Get Tessa’s birthday gift");
       expect(wants[0].deadline).toEqual(noon(2026, 3, 14));
     });
 
@@ -387,6 +387,10 @@ describe('the gift task', () => {
     it('honours the reminder opt-out too — not wanting to be told rules out shopping for it', () => {
       expect(wantedBirthdayGiftTasks([person({ birthdayTaskOptOut: true })], lead, noon(2026, 3, 6)))
         .toEqual([]);
+    });
+
+    it('offers nothing for a business, like the reminder', () => {
+      expect(wantedBirthdayGiftTasks([person({ kind: 'business' })], lead, noon(2026, 3, 6))).toEqual([]);
     });
 
     it('honours its own, narrower opt-out', () => {

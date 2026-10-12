@@ -112,7 +112,7 @@ export function useShakeToUndo(enabled: boolean): void {
         ];
         if (canRedo && redoStore) {
           buttons.push({
-            text: `Redo "${redoEntry!.label}"`,
+            text: `Redo “${redoEntry!.label}”`,
             onPress: async () => {
               confirmOpenRef.current = false;
               await haptics.success();
@@ -136,7 +136,7 @@ export function useShakeToUndo(enabled: boolean): void {
         haptics.warning();
         Alert.alert(
           canUndo ? 'Undo last action' : 'Redo last undo',
-          canUndo ? `Undo "${lastAction!.label}"?` : `Redo "${redoEntry!.label}"?`,
+          canUndo ? `Undo “${lastAction!.label}”?` : `Redo “${redoEntry!.label}”?`,
           buttons,
           { onDismiss: () => { confirmOpenRef.current = false; } }
         );

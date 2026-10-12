@@ -7,21 +7,37 @@ import {
   Animated,
   PanResponder,
   StyleSheet,
+  useWindowDimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SheetModal } from './SheetModal';
 import { SortableList } from './SortableList';
 import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeBlurView } from './SafeBlurView';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, lineHeight, border, animation, interaction, iconSize, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, lineHeight, border, animation, interaction, iconSize, sheetBottomInset, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { formatClockDuration, formatDuration } from '../utils/effort';
 import { formatTimeOfDay } from '../utils/dateUtils';
 import { isQuotaTask } from '../utils/visibilityUtils';
 import { formatQuotaProgress } from '../utils/quotaUnit';
 import { buildFocusPlan, focusPlanTotals, plannedTaskMinutes, type FocusPlanOptions } from '../utils/focusPlan';
-import { focusPlanOptionsFrom, focusRestsDisabled } from '../utils/focusSettings';
+import {
+  FOCUS_LONG_REST_EVERY_MAX,
+  FOCUS_LONG_REST_EVERY_MIN,
+  FOCUS_REST_AFTER_MINUTES_MAX,
+  FOCUS_REST_AFTER_MINUTES_MIN,
+  FOCUS_REST_MAX,
+  FOCUS_REST_MIN,
+  applySessionBreakEdits,
+  describeBreakRule,
+  focusPlanOptionsFrom,
+  focusRestsDisabled,
+  sessionBreakEditsFrom,
+  sessionBreakEditsMatch,
+  type SessionBreakEdits,
+} from '../utils/focusSettings';
 import {
   buildFocusContext,
   focusQueueFromPinned,
@@ -115,13 +131,13 @@ interface Props {
  * seed above), so it needed no new picking logic, only a second caller of
  * `focusQueueFromPinned` and its own copy. See `docs/arch/people.md`.
  *
- * The Breaks toggle is a per-session override, not a shortcut to Settings: it
- * only ever turns breaks *off* for the run about to start, never on past what
- * Settings already does, and it's dropped from the sheet entirely once
- * Settings already has none configured (see `docs/arch/focus-sessions.md`,
- * "with both triggers off the plan is a straight run of work, which is a
- * legitimate thing to ask for"). The plan preview and `onStart` both read the
- * same `effectivePlanOptions`, so what's shown is exactly what runs.
+ * The Breaks row is a per-session override, not a shortcut to Settings. The
+ * toggle turns breaks off for the run about to start, and "Edit" opens the
+ * cadence and lengths (`breakEdits`), seeded from Settings on every open and
+ * never written back. It is dropped from the sheet entirely once Settings
+ * already has no breaks configured (see `docs/arch/focus-sessions.md`). The
+ * plan preview and `onStart` both read the same `effectivePlanOptions`, so
+ * what's shown is exactly what runs.
  *
  * The Hide timer toggle is the same idea for `focusHideTimers`, and freer:
  * unlike Breaks it isn't one-directional, since showing or hiding a number is
@@ -135,6 +151,11 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  // The sheet grows upward from the bottom, so opening the break settings
+  // pushed its top (title and window stepper) off screen. Capping it at the
+  // window less the top inset makes the task list give up the height instead.
+  const { height: windowHeight } = useWindowDimensions();
+  const topInset = useSafeAreaInsets().top;
   const navigation = useNavigation();
 
   // useShallow, not a bare selector: focusPlanOptionsFrom builds a fresh
@@ -162,6 +183,13 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
    * switch that can't do anything is worse than no switch.
    */
   const [breaksEnabled, setBreaksEnabled] = useState(true);
+  /**
+   * This session's own cadence and lengths, seeded from Settings on every open
+   * and never written back. Same one-run scope as `breaksEnabled`: Settings is
+   * the standing default, and this is the "not this time" for one session.
+   */
+  const [breakEdits, setBreakEdits] = useState<SessionBreakEdits>(() => sessionBreakEditsFrom(planOptions));
+  const [breaksOpen, setBreaksOpen] = useState(false);
   // planOptions already reads null triggers when Settings' breaks switch is off.
   const settingsHaveBreaks = !focusRestsDisabled({
     focusRestAfterTasks: planOptions.restAfterTasks,
@@ -254,6 +282,8 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
     if (!visible) return;
     repick(windowMinutes);
     setBreaksEnabled(true);
+    setBreakEdits(sessionBreakEditsFrom(planOptions));
+    setBreaksOpen(false);
     setHideTimersEnabled(settingsHideTimers);
     sheet.show();
     // Keyed on `visible` alone — the shortlist is taken once, at open, and
@@ -279,7 +309,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
     // dismiss animation runs same as Cancel; the pushed screen is behind it
     // and shows once the sheet is gone.
     (navigation as never as { navigate: (n: string, p: object) => void })
-      .navigate('SettingsGroup', { groupId: 'tasksProjects' });
+      .navigate('SettingsGroup', { groupId: 'focus' });
     dismiss();
   };
 
@@ -362,9 +392,13 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
   // Same options the session will actually start with, so the preview never
   // shows a shape the run itself won't match.
   const effectivePlanOptions: FocusPlanOptions = useMemo(
-    () => (breaksEnabled ? planOptions : { ...planOptions, restAfterTasks: null, restAfterMinutes: null }),
-    [planOptions, breaksEnabled]
+    () => (breaksEnabled
+      ? applySessionBreakEdits(planOptions, breakEdits)
+      : { ...planOptions, restAfterTasks: null, restAfterMinutes: null }),
+    [planOptions, breaksEnabled, breakEdits]
   );
+  const breakEditsChanged = !sessionBreakEditsMatch(planOptions, breakEdits);
+  const patchBreaks = (patch: Partial<SessionBreakEdits>) => setBreakEdits(prev => ({ ...prev, ...patch }));
 
   // The real plan, so the summary counts the breaks and any split stretches
   // rather than just adding up estimates.
@@ -492,7 +526,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
       </Animated.View>
       <SheetScrim onPress={dismiss} />
 
-      <Animated.View onLayout={sheet.onCardLayout} style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
+      <Animated.View onLayout={sheet.onCardLayout} style={[styles.sheetOuter, { maxHeight: windowHeight - topInset - spacing.sm, transform: [{ translateY }] }]}>
         <View style={styles.handleArea} {...panResponder.panHandlers}>
           <View style={styles.handle} />
         </View>
@@ -591,24 +625,113 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
           )}
 
           {settingsHaveBreaks && (
-            <TouchableOpacity
-              style={styles.breaksRow}
-              onPress={() => { haptics.tap(); setBreaksEnabled(v => !v); }}
-              activeOpacity={interaction.activeOpacity}
-              accessibilityRole="switch"
-              accessibilityLabel="Take breaks"
-              accessibilityState={{ checked: breaksEnabled }}
-            >
-              <View style={styles.windowLabelWrap}>
-                <Text style={styles.windowLabel}>Breaks</Text>
-                <Text style={styles.windowHint}>
-                  {breaksEnabled ? 'Break rules from Settings apply' : 'No breaks for this session'}
-                </Text>
+            <View style={styles.breaksBlock}>
+              <View style={styles.breaksHeader}>
+                <TouchableOpacity
+                  style={styles.breaksSummary}
+                  onPress={() => { haptics.tap(); setBreaksOpen(v => !v); }}
+                  disabled={!breaksEnabled}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Break settings, ${describeBreakRule(effectivePlanOptions)}`}
+                  accessibilityState={{ expanded: breaksOpen && breaksEnabled, disabled: !breaksEnabled }}
+                >
+                  <View style={styles.windowLabelWrap}>
+                    <Text style={styles.windowLabel}>Breaks</Text>
+                    <Text style={styles.windowHint}>
+                      {!breaksEnabled
+                        ? 'No breaks for this session'
+                        : breaksOpen
+                          ? 'Changes apply to this session only'
+                          : describeBreakRule(effectivePlanOptions)}
+                    </Text>
+                  </View>
+                  {breaksEnabled && (
+                    <View style={styles.breaksEdit}>
+                      {!breaksOpen && <Text style={styles.breaksEditText}>Edit</Text>}
+                      <Ionicons
+                        name={breaksOpen ? 'chevron-up' : 'chevron-down'}
+                        size={iconSize.xs}
+                        color={colors.textTertiary}
+                      />
+                    </View>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => { haptics.tap(); setBreaksEnabled(v => !v); }}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="switch"
+                  accessibilityLabel="Take breaks"
+                  accessibilityState={{ checked: breaksEnabled }}
+                >
+                  <View style={[styles.toggle, breaksEnabled && styles.toggleOn]}>
+                    <View style={[styles.toggleKnob, breaksEnabled && styles.toggleKnobOn]} />
+                  </View>
+                </TouchableOpacity>
               </View>
-              <View style={[styles.toggle, breaksEnabled && styles.toggleOn]}>
-                <View style={[styles.toggleKnob, breaksEnabled && styles.toggleKnobOn]} />
-              </View>
-            </TouchableOpacity>
+
+              {breaksEnabled && breaksOpen && (
+                <>
+                  <View style={styles.breaksCard}>
+                    <View style={styles.breaksCardRow}>
+                      <Text style={styles.windowLabel}>Break after</Text>
+                      <CountStepper
+                        value={breakEdits.restAfterMinutes}
+                        onChange={next => patchBreaks({ restAfterMinutes: next })}
+                        min={FOCUS_REST_AFTER_MINUTES_MIN}
+                        max={FOCUS_REST_AFTER_MINUTES_MAX}
+                        allowNull
+                        emptyLabel="Off"
+                        format={n => `${n} min`}
+                        label="Break after this much work"
+                        describeValue={n => (n === null ? 'Off' : `${n} minutes`)}
+                      />
+                    </View>
+                    <View style={[styles.breaksCardRow, styles.breaksCardRowRule]}>
+                      <Text style={styles.windowLabel}>Break length</Text>
+                      <CountStepper
+                        value={breakEdits.restMinutes}
+                        onChange={next => patchBreaks({ restMinutes: next ?? planOptions.restMinutes })}
+                        min={FOCUS_REST_MIN}
+                        max={FOCUS_REST_MAX}
+                        format={n => `${n} min`}
+                        label="Break length"
+                        describeValue={n => `${n} minutes`}
+                      />
+                    </View>
+                    <View style={[styles.breaksCardRow, styles.breaksCardRowRule]}>
+                      <Text style={styles.windowLabel}>Long break every</Text>
+                      <CountStepper
+                        value={breakEdits.longRestEvery}
+                        onChange={next => patchBreaks({ longRestEvery: next })}
+                        min={FOCUS_LONG_REST_EVERY_MIN}
+                        max={FOCUS_LONG_REST_EVERY_MAX}
+                        allowNull
+                        emptyLabel="Off"
+                        format={n => `${n} breaks`}
+                        label="Long break every"
+                        describeValue={n => (n === null ? 'Off' : `every ${n} breaks`)}
+                      />
+                    </View>
+                  </View>
+                  <View style={styles.breaksFootnote}>
+                    <Text style={[styles.windowHint, styles.windowLabelWrap]} numberOfLines={1}>
+                      {`Settings default: ${describeBreakRule(planOptions)}`}
+                    </Text>
+                    {breakEditsChanged && (
+                      <TouchableOpacity
+                        onPress={() => { haptics.tap(); setBreakEdits(sessionBreakEditsFrom(planOptions)); }}
+                        activeOpacity={interaction.activeOpacity}
+                        accessibilityRole="button"
+                        accessibilityLabel="Reset break settings to the Settings default"
+                      >
+                        <Text style={styles.breaksReset}>Reset</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </>
+              )}
+            </View>
           )}
 
           <TouchableOpacity
@@ -622,7 +745,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
             <View style={styles.windowLabelWrap}>
               <Text style={styles.windowLabel}>Hide timer</Text>
               <Text style={styles.windowHint}>
-                {hideTimersEnabled ? 'No countdown for this session' : 'Shows a countdown, same as usual'}
+                {hideTimersEnabled ? 'No countdown for this session' : 'Shows a countdown'}
               </Text>
             </View>
             <View style={[styles.toggle, hideTimersEnabled && styles.toggleOn]}>
@@ -682,7 +805,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
               {endsAt !== null && (
                 <Text style={styles.summarySub}>
                   {windowMinutes === null
-                    ? `Ends around ${endsAt} if it all runs to time`
+                    ? `Ends around ${endsAt} if it all runs on schedule`
                     : spare === 0
                       ? `Fills your ${formatClockDuration(windowMinutes)}. Ends around ${endsAt}`
                       : `${formatClockDuration(spare)} of your ${formatClockDuration(windowMinutes)} left over. Ends around ${endsAt}`}
@@ -723,7 +846,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     right: 0,
     bottom: 0,
     paddingHorizontal: spacing.md,
-    paddingBottom: 34,
+    paddingBottom: sheetBottomInset,
   },
   handleArea: { alignItems: 'center', paddingTop: spacing.sm, paddingBottom: spacing.sm },
   handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.bgQuaternary },
@@ -732,6 +855,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.lg,
     overflow: 'hidden',
     marginBottom: spacing.sm,
+    flexShrink: 1,
   },
   header: {
     flexDirection: 'row',
@@ -787,6 +911,39 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.md,
   },
+  breaksBlock: { paddingBottom: spacing.md },
+  breaksHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingHorizontal: spacing.md,
+  },
+  breaksSummary: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.smd },
+  breaksEdit: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  breaksEditText: { color: colors.textTertiary, fontSize: font.xs },
+  breaksCard: {
+    backgroundColor: colors.bgTertiary,
+    borderRadius: radius.md,
+    marginHorizontal: spacing.md,
+    marginTop: spacing.smd,
+    paddingHorizontal: spacing.smd,
+  },
+  breaksCardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  breaksCardRowRule: { borderTopWidth: border.hairline, borderTopColor: colors.separator },
+  breaksFootnote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.xsm,
+  },
+  breaksReset: { color: colors.accent, fontSize: font.xs, fontWeight: fontWeight.semibold },
   toggle: {
     width: 46, height: 27, borderRadius: 14,
     backgroundColor: colors.bgQuaternary, justifyContent: 'center', paddingHorizontal: 3,
@@ -811,7 +968,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: spacing.md,
     textAlign: 'center',
   },
-  list: { maxHeight: 300 },
+  list: { maxHeight: 300, flexShrink: 1 },
   row: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bgSecondary },
   rowActive: { backgroundColor: colors.bgTertiary },
   rowMain: {

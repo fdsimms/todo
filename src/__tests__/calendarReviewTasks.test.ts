@@ -48,7 +48,7 @@ describe('calendarReviewDayKey', () => {
 
 describe('CALENDAR_REVIEW_TITLE', () => {
   it('never varies — there is exactly one question this asks', () => {
-    expect(CALENDAR_REVIEW_TITLE).toBe('Review tomorrow\'s calendar');
+    expect(CALENDAR_REVIEW_TITLE).toBe('Review tomorrow’s calendar');
   });
 });
 
@@ -73,6 +73,20 @@ describe('calendarReviewEventsFor', () => {
       end: new Date(2026, 7, 27, 15).toISOString(),
     });
     expect(calendarReviewEventsFor(task, [onDay, dayBefore, dayAfter])).toEqual([onDay]);
+  });
+
+  it('adds the vacation return events for the same day', () => {
+    const own = makeEvent({
+      id: 'own',
+      start: new Date(2026, 7, 26, 9).toISOString(),
+      end: new Date(2026, 7, 26, 10).toISOString(),
+    });
+    const held = makeEvent({
+      id: 'held',
+      start: new Date(2026, 7, 26, 14).toISOString(),
+      end: new Date(2026, 7, 26, 15).toISOString(),
+    });
+    expect(calendarReviewEventsFor(task, [own], [held]).map(e => e.id)).toEqual(['own', 'held']);
   });
 
   it('is empty for any other kind of task, even one carrying a source id', () => {

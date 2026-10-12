@@ -21,7 +21,7 @@ export interface ListBulkAction {
 
 export interface ListBulkCategoryPanel {
   /**
-   * Sub-panel heading, e.g. "Move to Category" — also what the Move action
+   * Sub-panel heading, e.g. "Move to category" — also what the Move action
    * announces to a screen reader, since the button itself is one word.
    */
   title: string;
@@ -36,6 +36,8 @@ export interface ListBulkCategoryPanel {
   onCreate?: (name: string) => void;
   /** Off for a field that always holds a value — an aisle, say — where "None" isn't a real choice. Defaults to true. */
   allowNone?: boolean;
+  /** What the no-value chip says, where a list calls its empty group something else ("Other"). Defaults to "None". */
+  noneLabel?: string;
   /**
    * What one option is called, with its article, for the find field: "an
    * aisle", "a meal type". Defaults to "a category", which is what the field
@@ -147,7 +149,7 @@ export function ListBulkBar({
               style={styles.selectAllBtn}
               onPress={() => { haptics.tap(); allSelected ? onDeselectAll() : onSelectAll(); }}
             >
-              <Text style={styles.selectAllText}>{allSelected ? 'Deselect All' : 'Select All'}</Text>
+              <Text style={styles.selectAllText}>{allSelected ? 'Deselect all' : 'Select all'}</Text>
             </TouchableOpacity>
             <Text style={styles.countText}>{selectedCount} selected</Text>
             <TouchableOpacity style={styles.cancelBtn} onPress={onCancel} hitSlop={8} accessibilityRole="button" accessibilityLabel="Cancel selection">
@@ -222,7 +224,7 @@ export function ListBulkBar({
           >
             {!query && category.allowNone !== false && (
               <TouchableOpacity style={styles.categoryChip} onPress={() => handleSetCategory(null)}>
-                <Text style={styles.categoryChipText}>None</Text>
+                <Text style={styles.categoryChipText}>{category.noneLabel ?? 'None'}</Text>
               </TouchableOpacity>
             )}
             {filtered.map(name => (

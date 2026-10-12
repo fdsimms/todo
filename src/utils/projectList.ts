@@ -140,6 +140,9 @@ export function projectProgressNote(
 ): string | null {
   if (progress.total === 0) return project.kind === 'list' ? 'No items yet' : 'No tasks yet';
   if (!project.ongoing) return null;
+  // A list has no open tasks to count: its lines are the thing it holds, so
+  // the count names how many there are.
+  if (project.kind === 'list') return progress.total === 1 ? '1 item' : `${progress.total} items`;
   const open = progress.total - progress.done;
   return open === 0 ? 'Nothing open' : `${open} open`;
 }

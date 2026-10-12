@@ -13,7 +13,7 @@ describe('calendarStatusLine', () => {
   });
 
   it('names a calendar whose own read failed', () => {
-    expect(calendarStatusLine({ ...base, status: { ok: false } })).toBe("Couldn't read");
+    expect(calendarStatusLine({ ...base, status: { ok: false } })).toBe("Couldn’t read");
   });
 
   it('says a calendar hidden for vacation is left out, rather than saying nothing', () => {
@@ -36,7 +36,7 @@ describe('failedCalendarsLabel', () => {
   });
 
   it('says none could be read when every calendar asked about failed', () => {
-    expect(failedCalendarsLabel(2, 2)).toBe('None of your calendars could be read just now');
+    expect(failedCalendarsLabel(2, 2)).toBe('None of your calendars could be read');
   });
 });
 

@@ -9,16 +9,22 @@ import { useDemoStore } from '../../store/useDemoStore';
 import { useCategoryStore, ensureHealthCategory } from '../../store/useCategoryStore';
 import { categoryLabel } from '../../utils/categoryLabel';
 import { PillGroup } from '../../components/PillGroup';
+import { CountStepper } from '../../components/CountStepper';
+import { HEALTH_ROW_KEYS, HEALTH_ROW_LABELS } from '../../utils/dayContextRows';
+import { STEP_GOAL_DEFAULT, STEP_GOAL_MAX, STEP_GOAL_MIN, STEP_GOAL_STEP } from '../../utils/stepGoal';
 import { ActivityRingsCard } from '../../components/ActivityRingsCard';
-import { NUTRIENT_KEYS } from '../../types';
+import { HEALTH_WRITABLE_NUTRIENTS } from '../../types';
 import { NUTRIENT_LABEL } from '../../utils/foodNutrition';
 import { healthBridge, isHealthSupported, openHealthApp } from '../../utils/healthBridge';
 import type { WeightUnit } from '../../utils/weightLog';
 import { dayKeyOf, getCurrentDayStart } from '../../utils/dateUtils';
 import { formatWeight } from '../../utils/weightLog';
 import { goalDirection } from '../../utils/weightGoal';
-import { SLEEP_GOAL_RANGE, formatSleepDuration } from '../../utils/sleepLog';
-import { CountStepper } from '../../components/CountStepper';
+import { formatSleepDuration } from '../../utils/sleepLog';
+import { SleepGoalSheet } from '../../components/SleepGoalSheet';
+import { JournalWordGoalSheet } from '../../components/JournalWordGoalSheet';
+import { JournalPromptsSheet } from '../../components/JournalPromptsSheet';
+import { formatWordCount } from '../../utils/journal';
 import { resetToWeightGoal } from '../../navigation/navigationRef';
 import { useColors } from '../../theme/ThemeContext';
 import { SettingsSection } from './SettingsSection';
@@ -96,12 +102,20 @@ export function HealthSettings() {
   const healthWriteNutrients = useSettingsStore(useShallow(s => s.healthWriteNutrients));
   const setHealthWriteNutrients = useSettingsStore(s => s.setHealthWriteNutrients);
   const healthCategory = useSettingsStore(s => s.healthCategory);
+  const stepGoal = useSettingsStore(s => s.stepGoal);
+  const setStepGoal = useSettingsStore(s => s.setStepGoal);
   const setHealthCategory = useSettingsStore(s => s.setHealthCategory);
+  const healthTodayHidden = useSettingsStore(s => s.healthTodayHidden);
+  const setHealthTodayHidden = useSettingsStore(s => s.setHealthTodayHidden);
   const weightUnit = useSettingsStore(s => s.weightUnit);
   const weightGoal = useSettingsStore(useShallow(s => s.weightGoal));
   const setWeightUnit = useSettingsStore(s => s.setWeightUnit);
   const sleepGoalMinutes = useSettingsStore(s => s.sleepGoalMinutes);
-  const setSleepGoalMinutes = useSettingsStore(s => s.setSleepGoalMinutes);
+  const [sleepGoalOpen, setSleepGoalOpen] = useState(false);
+  const journalWordGoal = useSettingsStore(s => s.journalWordGoal);
+  const journalCustomPrompts = useSettingsStore(s => s.journalCustomPrompts);
+  const [wordGoalOpen, setWordGoalOpen] = useState(false);
+  const [promptsOpen, setPromptsOpen] = useState(false);
   const categories = useCategoryStore(s => s.categories);
   const today = useHealthStore(s => s.today);
   const refreshing = useHealthStore(s => s.refreshing);
@@ -120,7 +134,7 @@ export function HealthSettings() {
   const [waterWriteStatus, setWaterWriteStatus] = useState<HealthWriteStatus | null>(null);
   const [weightWriteStatus, setWeightWriteStatus] = useState<HealthWriteStatus | null>(null);
   // A third, and the only one standing for more than one share type: a meal is
-  // thirteen of them, and this reads as allowed only when every one is. See the
+  // fourteen of them, and this reads as allowed only when every one is. See the
   // native `writeAuthorizationStatus`.
   const [nutritionWriteStatus, setNutritionWriteStatus] = useState<HealthWriteStatus | null>(null);
 
@@ -222,7 +236,7 @@ export function HealthSettings() {
     }
   };
 
-  const toggleWriteNutrient = (key: (typeof NUTRIENT_KEYS)[number]) => {
+  const toggleWriteNutrient = (key: (typeof HEALTH_WRITABLE_NUTRIENTS)[number]) => {
     haptics.tap();
     const next = healthWriteNutrients.includes(key)
       ? healthWriteNutrients.filter(k => k !== key)
@@ -243,11 +257,12 @@ export function HealthSettings() {
   const todayKey = dayKeyOf(getCurrentDayStart());
   const reading = today?.dayKey === todayKey ? today : null;
 
+  const noSteps = reading?.steps == null && !(refreshing && !reading);
   const stepsValue = refreshing && !reading
     ? 'Reading…'
     : reading?.steps != null
       ? reading.steps.toLocaleString()
-      : 'No number';
+      : 'Open Health';
 
   if (!supported) {
     return (
@@ -256,7 +271,7 @@ export function HealthSettings() {
           label="Apple Health"
           footer={demoActive
             ? 'Demo mode does not read or write Apple Health.'
-            : "This device doesn't have Health data, so there is nothing for the app to read."}
+            : "This device doesn’t have Health data, so there’s nothing to read."}
         >
           <SettingsRow
             entryId="healthRead"
@@ -286,7 +301,7 @@ export function HealthSettings() {
     <>
     <SettingsSection
       label="Apple Health"
-      footer="Reads what Health already has on this phone, so the app can show it beside your day and check it against rules you set. This section never writes anything to Health, nothing is sent anywhere, and no copy is kept: the numbers are read when the app opens and are gone when it closes. iOS never tells an app whether a Health read was allowed, so if you say no, the app sees the same thing it sees on a day with nothing recorded."
+      footer="Reads what Health has on this phone, to show beside your day and check against your rules. This section doesn’t write to Health, send anything or keep a copy: numbers are read when the app opens and cleared when it closes. iOS doesn’t tell apps whether a Health read was allowed, so a refusal looks like a day with nothing recorded."
     >
       <SettingsRow
         entryId="healthRead"
@@ -294,7 +309,7 @@ export function HealthSettings() {
         iconColor={healthReadEnabled ? colors.accent : undefined}
         label="Read Apple Health"
         hint={healthReadEnabled
-          ? "Reads today's steps, active calories and Activity rings, and shows them on Today"
+          ? "Reads today’s steps, active calories and Activity rings, and shows them on Today"
           : 'Nothing is read from Health'}
         toggle={healthReadEnabled}
         onPress={onToggle}
@@ -322,7 +337,7 @@ export function HealthSettings() {
                 // aren't a surprise, whether or not Log to Health is even on.
                 ? "Not asked yet. Allowing this also asks about writing to Health (water, weight, meals), in the same sheet"
                 : requestStatus === 'unnecessary'
-                  ? "Already asked. To change what's shared, open Health, tap your profile picture, then Privacy, then Apps, then dundundun"
+                  ? "Already asked. To change what’s shared, open Health, tap your profile picture, then Privacy, then Apps, then dundundun"
                   : requestStatus === 'unavailable'
                     ? 'Not available on this device'
                     : 'Checking…'
@@ -350,13 +365,21 @@ export function HealthSettings() {
             // "No number" rather than 0: a refused read and a day with nothing
             // recorded are the same answer from HealthKit, and neither of them
             // is a day somebody took no steps.
-            hint={reading?.steps == null && !refreshing
-              ? 'Nothing recorded for today, or Health is not sharing steps with this app'
+            // Kept through a refresh when there is already a reading on screen:
+            // dropping it for the length of the read and putting it back
+            // resized the row and shook the card under it, for an answer that
+            // usually comes back the same.
+            hint={reading?.steps == null && !(refreshing && !reading)
+              ?'Nothing recorded for today, or Health is not sharing steps with this app'
               : undefined}
             alwaysShowHint
             value={stepsValue}
             busy={refreshing}
-            onPress={() => { haptics.tap(); void refresh(); }}
+            // With no number a re-read would only come back empty, so the tap
+            // goes to where sharing is changed instead.
+            onPress={noSteps
+              ? () => { haptics.tap(); void openHealthApp(); }
+              : () => { haptics.tap(); void refresh(); }}
             accessibilityLabel={`Steps today, ${stepsValue}`}
           />
 
@@ -367,12 +390,38 @@ export function HealthSettings() {
 
           <View style={styles.sep} />
           <SettingsRow
+            entryId="stepGoal"
+            icon="flag-outline"
+            label="Daily step goal"
+            hint={stepGoal
+              ? 'The steps row on Today shows a bar toward this number'
+              : 'No goal set. The steps row shows the count only'}
+            tight
+          />
+          <View style={styles.cadenceRow}>
+            <CountStepper
+              value={stepGoal}
+              onChange={next => setStepGoal(next)}
+              allowNull
+              start={STEP_GOAL_DEFAULT}
+              min={STEP_GOAL_MIN}
+              max={STEP_GOAL_MAX}
+              step={STEP_GOAL_STEP}
+              emptyLabel="No goal"
+              format={n => `${n.toLocaleString()} steps`}
+              label="Daily step goal"
+              describeValue={n => (n === null ? 'No goal' : `${n} steps`)}
+            />
+          </View>
+
+          <View style={styles.sep} />
+          <SettingsRow
             entryId="healthCategory"
             icon="pricetag-outline"
             label="Show Health readings under"
             hint={healthCategory
               ? 'Steps, active calories and your Activity rings show as rows in this category'
-              : "Health readings don't show on Today"}
+              : "Health readings don’t show on Today"}
             value={healthCategory ? categoryLabel(healthCategory, categories) : 'Nowhere'}
             tight
           />
@@ -392,13 +441,46 @@ export function HealthSettings() {
               }))}
             />
           </View>
+          {healthCategory && (
+            <>
+              <View style={styles.sep} />
+              <SettingsRow
+                entryId="healthTodayRows"
+                icon="list-outline"
+                label="Readings shown"
+                hint="Turn off a reading to leave its row off Today."
+                tight
+              />
+              <View style={styles.pillGroupRow}>
+                <PillGroup
+                  noun="reading"
+                  options={HEALTH_ROW_KEYS.map(key => {
+                    const label = HEALTH_ROW_LABELS[key];
+                    const shown = !healthTodayHidden.includes(key);
+                    return {
+                      key,
+                      label,
+                      selected: shown,
+                      accessibilityLabel: `${label} on Today: ${shown ? 'shown' : 'hidden'}`,
+                      onPress: () => {
+                        haptics.tap();
+                        setHealthTodayHidden(
+                          shown ? [...healthTodayHidden, key] : healthTodayHidden.filter(k => k !== key),
+                        );
+                      },
+                    };
+                  })}
+                />
+              </View>
+            </>
+          )}
         </>
       )}
     </SettingsSection>
 
     <SettingsSection
       label="Log to Health"
-      footer="Writes a dietary water sample when a task you've set up to log it is completed, a body mass sample when you record a weight, and a meal's nutrition when you add it to the food log. These are the only things this app ever writes to Health, and nothing else is touched. Deleting a food log entry removes what it wrote. Which nutrients a logged meal is allowed to carry into Health is picked below; nothing a meal doesn't state is ever written, whatever's selected there."
+      footer="Writes water when a task you’ve set up to log it is completed, your weight when you record it, and a meal’s nutrition when you add it to the food log. Nothing else is written to Health. Deleting a food log entry removes what it wrote. Choose below which nutrients a logged meal can carry into Health. A nutrient a meal doesn’t state is never written, even if it is selected."
     >
       <SettingsRow
         entryId="healthWrite"
@@ -456,7 +538,7 @@ export function HealthSettings() {
           <View style={styles.pillGroupRow}>
             <PillGroup
               noun="nutrient"
-              options={NUTRIENT_KEYS.map(key => ({
+              options={HEALTH_WRITABLE_NUTRIENTS.map(key => ({
                 key,
                 label: NUTRIENT_LABEL[key].label,
                 selected: healthWriteNutrients.includes(key),
@@ -471,7 +553,7 @@ export function HealthSettings() {
 
     <SettingsSection
       label="Weight"
-      footer="Which unit a weight is shown and typed in. Health always stores kilograms, so this changes what you read and type, not what is recorded."
+      footer="The unit weights are shown and typed in. Health stores kilograms either way."
     >
       {/* Opens the sheet on the Weight screen rather than in place. The sheet
           needs the latest weigh-in to measure a goal from, and that is a read
@@ -513,7 +595,7 @@ export function HealthSettings() {
 
     <SettingsSection
       label="Sleep"
-      footer="The Sleep screen draws this as a line and counts the days that reach it. Nothing else reads it."
+      footer="The Sleep screen draws this as a line and counts the days that reach it."
     >
       <SettingsRow
         entryId="sleepGoal"
@@ -522,24 +604,38 @@ export function HealthSettings() {
         label="Sleep goal"
         hint="Hours asleep you want each day to reach."
         value={sleepGoalMinutes === null ? 'None' : formatSleepDuration(sleepGoalMinutes)}
-        tight
+        onPress={() => { haptics.tap(); setSleepGoalOpen(true); }}
       />
-      <View style={styles.cadenceRow}>
-        <CountStepper
-          value={sleepGoalMinutes}
-          onChange={next => setSleepGoalMinutes(next)}
-          min={SLEEP_GOAL_RANGE.min}
-          max={SLEEP_GOAL_RANGE.max}
-          step={SLEEP_GOAL_RANGE.step}
-          start={SLEEP_GOAL_RANGE.start}
-          allowNull
-          emptyLabel="None"
-          format={formatSleepDuration}
-          label="sleep goal"
-          describeValue={n => (n === null ? 'No sleep goal' : formatSleepDuration(n))}
-        />
-      </View>
     </SettingsSection>
+    {/* The sheet the Sleep screen's own target icon opens, not a second
+        stepper for the same number. */}
+    <SleepGoalSheet visible={sleepGoalOpen} onClose={() => setSleepGoalOpen(false)} />
+
+    <SettingsSection
+      label="Journal"
+      footer="The Journal shows each day's word count against this and counts the days that reach it."
+    >
+      <SettingsRow
+        entryId="journalWordGoal"
+        icon="create-outline"
+        iconColor={journalWordGoal !== null ? colors.accent : undefined}
+        label="Word goal"
+        hint="Words you want each journal day to reach."
+        value={journalWordGoal === null ? 'None' : formatWordCount(journalWordGoal)}
+        onPress={() => { haptics.tap(); setWordGoalOpen(true); }}
+      />
+      <SettingsRow
+        entryId="journalPrompts"
+        icon="bulb-outline"
+        iconColor={journalCustomPrompts.length > 0 ? colors.accent : undefined}
+        label="Your prompts"
+        hint="Questions offered over a blank journal page, before the built-in ones."
+        value={journalCustomPrompts.length === 0 ? 'None' : String(journalCustomPrompts.length)}
+        onPress={() => { haptics.tap(); setPromptsOpen(true); }}
+      />
+    </SettingsSection>
+    <JournalWordGoalSheet visible={wordGoalOpen} onClose={() => setWordGoalOpen(false)} />
+    <JournalPromptsSheet visible={promptsOpen} onClose={() => setPromptsOpen(false)} />
     </>
   );
 }

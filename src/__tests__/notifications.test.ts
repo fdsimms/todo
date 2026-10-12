@@ -181,7 +181,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   penaltyCreditedAt: null,
   gatesApps: false,
   showStreak: false,
-  streakRequiresWindow: false,
+  streakRequiresWindow: false, streakCountsUnits: false,
   parentId: null,
   groupId: null,
   projectId: null,
@@ -460,7 +460,7 @@ describe('scheduleCompletionTimer', () => {
       makeTask({ title: 'Take iron pill', completionTimerMinutes: 120, completionTimerNote: null })
     );
     const arg = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
-    expect(arg.content.body).toBe('It\'s time. You completed "Take iron pill" a while ago.');
+    expect(arg.content.body).toBe('“Take iron pill” timer is up.');
   });
 });
 
@@ -607,6 +607,15 @@ describe('scheduleTimerAlarm', () => {
     const call = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
     expect(call.identifier).toBe('timer:task-1');
     expect(call.identifier).not.toBe('task-1');
+  });
+
+  it('asks to log a unit, not to complete, when the countdown belongs to a target', async () => {
+    const running = new Date().toISOString();
+    await scheduleTimerAlarm(makeTask({ title: 'Meditate', timedMinutes: 10, targetCount: 3, timerStartedAt: running }));
+    await scheduleTimerAlarm(makeTask({ title: 'Violin', timedMinutes: 10, timerStartedAt: running }));
+    const calls = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls;
+    expect(calls[0][0].content.body).toBe('Meditate is ready to log');
+    expect(calls[1][0].content.body).toBe('Violin is ready to complete');
   });
 
   it('fires at the remaining time, not the full duration', async () => {
@@ -1649,7 +1658,7 @@ describe('scheduleFocusStepAlarm', () => {
   it('mentions a break when one actually follows', async () => {
     await scheduleFocusStepAlarm(makeSession([workStep(), restStep()], 0));
     const call = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
-    expect(call.content.body).toBe('That stretch is done. Take your break when you’re ready.');
+    expect(call.content.body).toBe('That stretch is done. Take your break.');
   });
 
   it('says nothing about a break when the plan has none, like a no-breaks session', async () => {
@@ -1668,7 +1677,7 @@ describe('scheduleFocusStepAlarm', () => {
     await scheduleFocusStepAlarm(makeSession([workStep(), restStep()], 1));
     const call = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
     expect(call.content.title).toBe('Break’s over');
-    expect(call.content.body).toBe('Back to it when you’re ready.');
+    expect(call.content.body).toBe('Back to it.');
   });
 
   it('schedules nothing once the session is finished', async () => {

@@ -596,6 +596,10 @@ events sheet, or by starting the event from a person's page ("Plan something").
   link is written to the event.
 - **A title match is offered, not applied.** The picker lists people the title
   names first, and each is still a tap. Same bar as the history offer.
+- **The picker never lays out the whole list.** `eventPeopleChoices` offers the
+  people the title names, then the first few in the user's own order, and a find
+  field searches everybody else. Linked people sit above it as filled chips. The
+  row's details (edit, template, trip) are a separate panel from the picker.
 - **After the event, a link makes an offer, not a record.** Linked people are
   offered the event under "From your calendar" even when the title never names
   them (`suggestedHistoryEvents`' `linkedPeople`). A link says who a plan was
@@ -632,9 +636,13 @@ events sheet, or by starting the event from a person's page ("Plan something").
 parsers (`parseTaskInput` for the day and time, `matchPersonMentions` for
 "@name"), so it reads exactly as a task line does, refusals included. It fills
 the card and saves straight into the calendar (`saveEventDirect`), with no
-system sheet, then links the people. The rows Apple's form asked for are chips
-on the card (calendar, alert, Busy/Free) that start as the last saved event
-left them (`quickEventDefaults.ts`), plus a Notes or link field and a trailing
+system sheet, then links the people. The word "with" or "w/" in the line does what
+an "@" does for the names after it (`peopleAfterWith`: "Big walk with Tessa" links
+Tessa), through the history offer's own whole-word, ambiguity-resolves-to-nobody
+match, so only people already on the list link and a name before the word links
+nobody. An opened event's own title is read plain, so it links nothing until edited. The rows Apple's form asked for are chips
+on the card (calendar, alert, repeat, and All day and Busy/Free as switches) that start as the last saved event
+left them (`quickEventDefaults.ts`), plus a Notes or link field (behind a "+ Notes" chip until used), a Starts and an Ends block (an end picked by hand is stored as a length, so it replaces a typed "for 2h") and a trailing
 `at (place)` and `alert 30m` in the line, which win over a chip's earlier pick.
 With "Suggest places" on (`placeSuggestionsEnabled`, off by default because it
 sends what is typed to Apple), the location is looked up in Apple Maps as you
@@ -1180,10 +1188,14 @@ it lives and what it asks.
   friends. It carries no person and never appears on a card, which is the line
   `peopleStats.ts` draws one shelf over — aggregates about you are fine,
   aggregates about individual people are not.
-- **No redo-from-scratch mode**, unlike the task fields. Redoing a field
-  wholesale means being walked past everybody you know to reconsider a cadence
-  for each of them, which is precisely the afternoon above. The task side's
-  header refresh button is not rendered for this pool.
+- **Redo from scratch exists, behind a confirm.** It was left out at first,
+  because walking past everybody you know to reconsider a cadence for each of
+  them is the afternoon above, and added later on request so every Backfill pool
+  has the same header button. What keeps it from being that afternoon: it opens
+  only by choice (the button, then a confirm), nobody's value changes until
+  their own card is answered, the order is still your own hand order, and
+  nothing in it reads history or ranks anybody. A business is still left out of
+  the three fields that don't apply to one (`isPersonFieldApplicable`).
 - **A dismissal is about the field, not the person.**
   `Person.backfillDismissedFields` records "I'm not going to put a birthday on
   this one", the same session-outliving decision its three siblings hold. It is

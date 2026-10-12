@@ -6,7 +6,8 @@
  */
 import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
-import { atFrom, deleteSavedMeal, duplicateFoodEntry, listSavedMeals, logFood, logMedication, logMood, logSavedMeal, logWater, moveFoodEntry, renameMoodTag, saveMealFromEntries, saveRecipe, setMedicationArchived, setNutritionTargets, updateMoodLog } from '../logTools';
+import { useMedicationStore } from '../../../src/store/useMedicationStore';
+import { atFrom, deleteMedicationLog, deleteSavedMeal, setSupplementNutrients, duplicateFoodEntry, listSavedMeals, logFood, logMedication, logMood, logSavedMeal, logWater, moveFoodEntry, renameMedication, renameMoodTag, saveMealFromEntries, saveRecipe, setMedicationArchived, addMedication, removeMedication, setMedicationProfile, setMedicationLimit, setMedicationSupply, setNutritionTargets, updateFoodEntry, updateMoodLog } from '../logTools';
 
 let mockRaw: ShimDatabase;
 
@@ -66,6 +67,62 @@ describe('logFood', () => {
     expect(entry).toMatchObject({ id: logged.id, label: 'Burrito bowl', slot: 'lunch', healthSampleIds: [] });
     expect(entry.nutrition.source).toBe('estimated');
     expect(logged.note).toMatch(/Apple Health/);
+  });
+
+  it('keeps a breakdown on the entry, previews it, and says when a part was dropped', () => {
+    const parts: { label: string; amounts: Record<string, number> }[] = [
+      { label: 'Birch beer', amounts: { calorieKcal: 250, vibes: 1 } },
+      { label: 'Soft pretzel', amounts: { calorieKcal: 300 } },
+      { label: '   ', amounts: { calorieKcal: 5 } },
+    ];
+    const preview = logFood(replica, { label: 'Lunch', amounts: { calorieKcal: 550 }, breakdown: parts });
+    expect(preview.breakdown).toEqual([
+      { label: 'Birch beer', amounts: { calorieKcal: 250 } },
+      { label: 'Soft pretzel', amounts: { calorieKcal: 300 } },
+    ]);
+    expect(preview.breakdownDropped).toBe(1);
+    expect(replica.foodLogEntries('2000-01-01', '2100-01-01')).toHaveLength(0);
+
+    const logged = logFood(replica, { label: 'Lunch', amounts: { calorieKcal: 550 }, breakdown: parts, apply: true });
+    const entry = replica.foodLogEntries('2000-01-01', '2100-01-01').find(e => e.id === logged.id)!;
+    expect(entry.nutrition.breakdown).toHaveLength(2);
+    expect(entry.nutrition.source).toBe('estimated');
+  });
+
+  it('refuses a breakdown that does not add up to the total, on log and on update', () => {
+    const off = [{ label: 'Birch beer', amounts: { calorieKcal: 250 } }, { label: 'Pretzel', amounts: { calorieKcal: 400 } }];
+    expect(() => logFood(replica, { label: 'Lunch', amounts: { calorieKcal: 550 }, breakdown: off, apply: true }))
+      .toThrow(/has to add up.*calorieKcal: the parts add up to 650 but the total is 550/);
+    // A preview refuses too, so the person is never shown a split that is wrong.
+    expect(() => logFood(replica, { label: 'Lunch', amounts: { calorieKcal: 550 }, breakdown: off })).toThrow(/has to add up/);
+    expect(replica.foodLogEntries('2000-01-01', '2100-01-01')).toHaveLength(0);
+    // Rounding is allowed for; a real gap is not.
+    expect(logFood(replica, {
+      label: 'Lunch', amounts: { calorieKcal: 550 }, apply: true,
+      breakdown: [{ label: 'Birch beer', amounts: { calorieKcal: 250.4 } }, { label: 'Pretzel', amounts: { calorieKcal: 299.8 } }],
+    }).applied).toBe(true);
+    const logged = logFood(replica, { label: 'Tea', amounts: { calorieKcal: 10 }, apply: true });
+    expect(() => updateFoodEntry(replica, logged.id!, { amounts: { calorieKcal: 900 }, breakdown: [{ label: 'Rice', amounts: { calorieKcal: 500 } }] }))
+      .toThrow(/has to add up/);
+    expect(() => updateFoodEntry(replica, logged.id!, { breakdown: [{ label: 'Rice', amounts: { calorieKcal: 10 } }] }))
+      .toThrow(/give the amounts/);
+  });
+
+  it('logs with no breakdown key when none was given', () => {
+    const logged = logFood(replica, { label: 'Tea', amounts: { calorieKcal: 2 }, apply: true });
+    const entry = replica.foodLogEntries('2000-01-01', '2100-01-01').find(e => e.id === logged.id)!;
+    expect('breakdown' in entry.nutrition).toBe(false);
+    expect(logged.breakdownDropped).toBeUndefined();
+  });
+
+  it('takes a new breakdown with restated amounts on an estimated entry', () => {
+    const logged = logFood(replica, { label: 'Lunch', amounts: { calorieKcal: 600 }, apply: true });
+    updateFoodEntry(replica, logged.id!, {
+      amounts: { calorieKcal: 900 },
+      breakdown: [{ label: 'Rice', amounts: { calorieKcal: 900 } }],
+    });
+    const entry = replica.foodLogEntries('2000-01-01', '2100-01-01').find(e => e.id === logged.id)!;
+    expect(entry.nutrition.breakdown).toEqual([{ label: 'Rice', amounts: { calorieKcal: 900 } }]);
   });
 
   it('refuses an entry with no figures', () => {
@@ -144,6 +201,39 @@ describe('logMedication', () => {
   });
 });
 
+describe('a dose of a supplement with a panel', () => {
+  const panel = { servingAmount: 2, servingUnit: 'tablet', amounts: { magnesiumMg: 100, vitaminDMcg: 25 } };
+  const entries = () => replica.foodLogEntries('2000-01-01', '2100-01-01');
+
+  afterEach(() => useMedicationStore.getState().setSupplementPanel('Multivitamin', null));
+
+  it('adds its nutrients to the food log, flagged for the phone to write to Health', () => {
+    useMedicationStore.getState().setSupplementPanel('Multivitamin', panel);
+    logMedication(replica, { name: 'Multivitamin', amount: 1, unit: 'tablet' });
+    expect(entries()).toHaveLength(1);
+    expect(entries()[0]).toMatchObject({ label: 'Multivitamin', slot: null, healthWritePending: true });
+    expect(entries()[0].nutrition.amounts).toEqual({ magnesiumMg: 50, vitaminDMcg: 12.5 });
+  });
+
+  it('takes the entry away with the dose, unless the phone has already written it to Health', () => {
+    useMedicationStore.getState().setSupplementPanel('Multivitamin', panel);
+    const dose = logMedication(replica, { name: 'Multivitamin', amount: 2, unit: 'tablet' });
+    deleteMedicationLog(replica, dose.id);
+    expect(entries()).toHaveLength(0);
+
+    const kept = logMedication(replica, { name: 'Multivitamin', amount: 2, unit: 'tablet' });
+    mockRaw.runSync('UPDATE food_logs SET health_sample_ids = ?', ['["sample-1"]']);
+    replica.refresh();
+    deleteMedicationLog(replica, kept.id);
+    expect(entries()).toHaveLength(1);
+  });
+
+  it('writes nothing for a medicine with no panel', () => {
+    logMedication(replica, { name: 'Ibuprofen', amount: 200, unit: 'mg' });
+    expect(entries()).toHaveLength(0);
+  });
+});
+
 describe('atFrom', () => {
   it('reads a bare date as noon that day', () => {
     const at = atFrom('2026-09-01')!;
@@ -159,6 +249,17 @@ describe('archive_medication and rename_mood_tag', () => {
     expect(setMedicationArchived(replica, 'ibuprofen', true)).toEqual({ medicine: 'Ibuprofen', archived: true });
     expect(setMedicationArchived(replica, 'Ibuprofen', false).archived).toBe(false);
     expect(() => setMedicationArchived(replica, 'Nothing', true)).toThrow(/No medicine called/);
+  });
+
+  it('renames a medicine, fills a strength, and combines into an existing one', () => {
+    logMedication(replica, { name: 'Naproxen 200' });
+    logMedication(replica, { name: 'Naproxen', amount: 400, unit: 'mg' });
+    const out = renameMedication(replica, 'naproxen 200', 'naproxen', { amount: 200, unit: 'mg' });
+    expect(out).toEqual({ from: 'Naproxen 200', to: 'naproxen', doses: 1 });
+    const doses = replica.medicationLogs('2000-01-01', '2100-01-01').filter(l => l.name === 'Naproxen');
+    expect(doses.map(l => l.amount).sort()).toEqual([200, 400]);
+    expect(() => renameMedication(replica, 'Nothing', 'X')).toThrow(/No medicine called/);
+    expect(() => renameMedication(replica, 'Naproxen', 'X', { amount: 5 })).toThrow(/together/);
   });
 
   it('renames a context tag on every check-in that has it', () => {
@@ -208,5 +309,253 @@ describe('moving, copying and saving food', () => {
     expect(setNutritionTargets(replica, { proteinG: null }).targets.proteinG).toBeUndefined();
     expect(() => setNutritionTargets(replica, { calorieKcal: 90000 })).toThrow(/from 0 to 6000/);
     expect(() => setNutritionTargets(replica, { vibes: 3 })).toThrow(/not a nutrient/);
+  });
+});
+
+describe('changing the amount of a measured food entry', () => {
+  const choc: import('../../../src/types').FoodNutrition = {
+    basis: 'per100g', servingGrams: null, servingText: null,
+    amounts: { calorieKcal: 500, proteinG: 10, fatG: 30 },
+    source: 'fdc', sourceId: '1', portions: [], recordedAt: '2026-01-01T00:00:00.000Z',
+  };
+  const all = () => replica.foodLogEntries('2000-01-01', '2100-01-01');
+
+  /** An entry measured at `grams` against a database record it kept, as a lookup in the app logs one. */
+  function logMeasured(grams: number, extra: Partial<import('../../../src/types').FoodLogEntry> = {}) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const db = require('../../../src/db/database') as typeof import('../../../src/db/database');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { scalePanelToAmount } = require('../../../src/utils/foodLog') as typeof import('../../../src/utils/foodLog');
+    const helping = scalePanelToAmount(choc, `${grams} g`, null)!;
+    const entry = {
+      id: `measured-${Math.random().toString(36).slice(2)}`, dayKey: '2030-03-10', atISO: '2030-03-10T12:00:00.000Z', slot: null,
+      label: 'FILLED milk chocolate bar, TONY\'S CHOCOLONELY', recipeId: null, itemId: null, productId: null, mealPlanEntryId: null,
+      quantity: `${grams} g`, grams, nutrition: helping.nutrition, sourcePanel: choc, healthSampleIds: [], sortOrder: 0,
+      createdAt: '2030-03-10T12:00:00.000Z', ...extra,
+    } as import('../../../src/types').FoodLogEntry;
+    db.dbInsertFoodLogEntry(entry);
+    replica.refresh();
+    return entry;
+  }
+
+  it('re-measures a measured entry from its record when grams change: 10 g to 23 g is 2.3 times the nutrients', () => {
+    const entry = logMeasured(10);
+    const out = updateFoodEntry(replica, entry.id, { grams: 23 });
+    expect(out).toMatchObject({ quantity: '23 g', grams: 23, calorieKcal: 115 });
+    const saved = all().find(e => e.id === entry.id)!;
+    expect(saved.nutrition.amounts).toEqual({ calorieKcal: 115, proteinG: 2.3, fatG: 6.9 });
+    expect(entry.nutrition.amounts).toEqual({ calorieKcal: 50, proteinG: 1, fatG: 3 });
+    // Still re-measurable afterwards, and still the database's own record.
+    expect(saved.sourcePanel).toMatchObject({ source: 'fdc' });
+    expect(saved.id).toBe(entry.id);
+  });
+
+  it('takes quantity as the amount on a measured entry, and refuses grams together with amounts or quantity', () => {
+    const entry = logMeasured(10);
+    expect(updateFoodEntry(replica, entry.id, { quantity: '40 g' })).toMatchObject({ grams: 40, calorieKcal: 200 });
+    expect(() => updateFoodEntry(replica, entry.id, { grams: 5, quantity: '6 g' })).toThrow(/grams or as quantity/);
+    expect(() => updateFoodEntry(replica, entry.id, { grams: 5, amounts: { calorieKcal: 1 } })).toThrow(/not both/);
+    expect(() => updateFoodEntry(replica, entry.id, { amounts: { calorieKcal: 1 } })).toThrow(/measured/);
+    expect(() => updateFoodEntry(replica, entry.id, { grams: 0 })).toThrow(/positive/);
+    expect(() => updateFoodEntry(replica, entry.id, { quantity: 'a handful' })).toThrow(/cannot be measured/);
+  });
+
+  it('refuses an entry already in Apple Health, and one with no record to measure against', () => {
+    const synced = logMeasured(10, { healthSampleIds: ['s1'] });
+    expect(() => updateFoodEntry(replica, synced.id, { grams: 23 })).toThrow(/Apple Health/);
+    const bare = logMeasured(10, { sourcePanel: null });
+    expect(() => updateFoodEntry(replica, bare.id, { grams: 23 })).toThrow(/no food record/);
+  });
+
+  it('drops an estimate\'s breakdown when its figures are restated, since the lines no longer add up', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const db = require('../../../src/db/database') as typeof import('../../../src/db/database');
+    const logged = logFood(replica, { label: 'Lunch', quantity: '1 plate', amounts: { calorieKcal: 600 }, apply: true });
+    const row = all().find(e => e.id === logged.id)!;
+    db.dbUpdateFoodLogEntry({
+      ...row,
+      nutrition: { ...row.nutrition, breakdown: [{ label: 'Rice', amounts: { calorieKcal: 600 } }] },
+    });
+    replica.refresh();
+    // A new amount text alone leaves the figures, and so the lines, as they were.
+    updateFoodEntry(replica, row.id, { quantity: '1 big plate' });
+    expect(all().find(e => e.id === row.id)!.nutrition.breakdown).toHaveLength(1);
+    updateFoodEntry(replica, row.id, { amounts: { calorieKcal: 900 } });
+    expect(all().find(e => e.id === row.id)!.nutrition.breakdown).toBeUndefined();
+  });
+
+  it('leaves estimated entries as they were: quantity and amounts still restate, grams is refused', () => {
+    const logged = logFood(replica, { label: 'Burrito', quantity: '1', amounts: { calorieKcal: 600 }, at: '2030-03-10', apply: true });
+    expect(updateFoodEntry(replica, logged.id!, { quantity: '2', amounts: { calorieKcal: 1200 } })).toEqual(
+      { id: logged.id, day: '2030-03-10', label: 'Burrito', quantity: '2', slot: undefined },
+    );
+    expect(() => updateFoodEntry(replica, logged.id!, { grams: 200 })).toThrow(/estimated entry has none/);
+    expect(all().find(e => e.id === logged.id)!.nutrition.amounts.calorieKcal).toBe(1200);
+  });
+
+  it('measures an entry linked to a catalog item against that item\'s panel', () => {
+    const added = replica.addGroceryItem('Dark chocolate');
+    mockRaw.runSync('UPDATE grocery_items SET nutrition = ? WHERE id = ?', [JSON.stringify(choc), (added as { item: { id: string } }).item.id]);
+    replica.refresh();
+    const entry = logMeasured(10, { itemId: (added as { item: { id: string } }).item.id, sourcePanel: null, label: 'Dark chocolate' });
+    expect(updateFoodEntry(replica, entry.id, { grams: 23 })).toMatchObject({ grams: 23, calorieKcal: 115 });
+    expect(all().find(e => e.id === entry.id)!.sourcePanel).toBeNull();
+  });
+
+  it('copies a measured entry at a new amount, scaled from the record, and leaves the original', () => {
+    const entry = logMeasured(10);
+    const out = duplicateFoodEntry(replica, entry.id, '2030-03-11', { grams: 23 });
+    expect(out.logged).toMatchObject({ day: '2030-03-11', quantity: '23 g', grams: 23, calorieKcal: 115 });
+    const rows = all();
+    expect(rows).toHaveLength(2);
+    expect(rows.find(e => e.id === entry.id)!.nutrition.amounts.calorieKcal).toBe(50);
+    const copy = rows.find(e => e.id === out.logged.id)!;
+    expect(copy.nutrition.amounts).toEqual({ calorieKcal: 115, proteinG: 2.3, fatG: 6.9 });
+    expect(copy.sourcePanel).toMatchObject({ source: 'fdc' });
+    expect(copy.healthWritePending).toBe(true);
+  });
+
+  it('copies at the original amount when none is given, and refuses an amount for an estimate', () => {
+    const entry = logMeasured(10);
+    expect(duplicateFoodEntry(replica, entry.id, '2030-03-11').logged).toMatchObject({ quantity: '10 g' });
+    expect(all().find(e => e.dayKey === '2030-03-11')!.nutrition.amounts.calorieKcal).toBe(50);
+    const est = logFood(replica, { label: 'Soup', amounts: { calorieKcal: 300 }, at: '2030-03-10', apply: true });
+    expect(() => duplicateFoodEntry(replica, est.id!, '2030-03-11', { grams: 100 })).toThrow(/no food record/);
+    expect(() => duplicateFoodEntry(replica, entry.id, '2030-03-11', { grams: 5, quantity: '6 g' })).toThrow(/grams or as quantity/);
+  });
+});
+
+describe('log_food and the vitamins and minerals', () => {
+  it('reports a vitamin figure as ignored: a meal\'s figures are estimates and these are read off a label', () => {
+    const preview = logFood(replica, { label: 'Fortified cereal', amounts: { calorieKcal: 120, vitaminDMcg: 2, magnesiumMg: 40 } });
+    expect(preview.amounts).toEqual({ calorieKcal: 120 });
+    expect(preview.ignored).toEqual(['vitaminDMcg', 'magnesiumMg']);
+  });
+});
+
+describe('set_supplement_nutrients', () => {
+  const entries = () => replica.foodLogEntries('2000-01-01', '2100-01-01');
+  afterEach(() => useMedicationStore.getState().setSupplementPanel('Multivitamin', null));
+
+  it('sets a panel that later doses use, and reports it beside the limit and supply', () => {
+    const set = setSupplementNutrients(replica, {
+      name: 'multivitamin', servingAmount: 2, servingUnit: 'tablet', amounts: { vitaminCMg: 90, zincMg: 11, omega3G: 1 },
+    });
+    expect(set).toMatchObject({ nutrients: 'Per 2 tablets: 2 nutrients', ignored: ['omega3G'] });
+    logMedication(replica, { name: 'Multivitamin', amount: 2, unit: 'tablet' });
+    expect(entries()[0].nutrition.amounts).toEqual({ vitaminCMg: 90, zincMg: 11 });
+    expect(replica.medicationSettings().find(m => m.name === 'Multivitamin')).toMatchObject({ nutrients: 'Per 2 tablets: 2 nutrients' });
+  });
+
+  it('refuses what the app\'s sheet refuses', () => {
+    expect(() => setSupplementNutrients(replica, { name: 'Multivitamin', servingUnit: 'tablet', amounts: { zincMg: 1 } })).toThrow(/servingAmount/);
+    expect(() => setSupplementNutrients(replica, { name: 'Multivitamin', servingAmount: 1, servingUnit: 'mg', amounts: { zincMg: 1 } })).toThrow(/servingUnit/);
+    expect(() => setSupplementNutrients(replica, { name: 'Multivitamin', servingAmount: 1, servingUnit: 'tablet', amounts: { zincMg: -1 } })).toThrow(/zero or more/);
+    expect(() => setSupplementNutrients(replica, { name: 'Multivitamin', servingAmount: 1, servingUnit: 'tablet', amounts: {} })).toThrow(/at least one/);
+  });
+
+  it('clears a panel without touching another medicine\'s', () => {
+    setSupplementNutrients(replica, { name: 'Multivitamin', servingAmount: 1, servingUnit: 'tablet', amounts: { zincMg: 11 } });
+    setSupplementNutrients(replica, { name: 'Fish oil', servingAmount: 1, servingUnit: 'capsule', amounts: { vitaminEMg: 2 } });
+    setSupplementNutrients(replica, { name: 'Multivitamin', clear: true });
+    const names = replica.medicationSettings().map(m => m.name);
+    expect(names).toContain('fish oil');
+    expect(names).not.toContain('Multivitamin');
+    setSupplementNutrients(replica, { name: 'Fish oil', clear: true });
+  });
+});
+
+describe('add_medication and set_medication_profile', () => {
+  it('adds a medicine with no dose, once, and lists it', () => {
+    expect(addMedication(replica, ' Zinc ')).toMatchObject({ medicine: 'Zinc', added: true });
+    expect(addMedication(replica, 'zinc')).toMatchObject({ medicine: 'Zinc', added: false });
+    expect(replica.medicationSettings().find(m => m.name === 'Zinc')).toMatchObject({ noDosesYet: true });
+    expect(() => addMedication(replica, '  ')).toThrow(/needs a name/);
+  });
+
+  it('removes a medicine with no doses, and refuses one that has doses', () => {
+    addMedication(replica, 'Biotin');
+    expect(removeMedication(replica, 'biotin')).toEqual({ removed: 'Biotin' });
+    expect(replica.medicationSettings().some(m => m.name === 'Biotin')).toBe(false);
+    logMedication(replica, { name: 'Ibuprofen' });
+    expect(() => removeMedication(replica, 'Ibuprofen')).toThrow(/recorded doses/);
+    expect(() => removeMedication(replica, 'Nothing')).toThrow(/No medicine called/);
+  });
+
+  it('sets how it is taken and the usual amounts, and reports them', () => {
+    addMedication(replica, 'Magnesium');
+    expect(setMedicationProfile(replica, {
+      name: 'magnesium', asNeeded: true, usualAmounts: [{ amount: 200, unit: 'mg' }, { amount: 100, unit: 'mg' }],
+    })).toEqual({ medicine: 'Magnesium', asNeeded: true, usualAmounts: ['200 mg', '100 mg'] });
+    expect(replica.medicationSettings().find(m => m.name === 'Magnesium'))
+      .toMatchObject({ takenAsNeeded: true, usualAmounts: ['200 mg', '100 mg'] });
+    // Left out is unchanged; null goes back to the doses and [] clears the amounts.
+    setMedicationProfile(replica, { name: 'Magnesium', asNeeded: null, usualAmounts: [] });
+    expect(replica.medicationSettings().find(m => m.name === 'Magnesium')).toMatchObject({ noDosesYet: true });
+    expect(replica.medicationSettings().find(m => m.name === 'Magnesium')?.takenAsNeeded).toBeUndefined();
+  });
+
+  it('refuses an unlisted medicine and an incomplete or unknown dose', () => {
+    expect(() => setMedicationProfile(replica, { name: 'Nothing', asNeeded: true })).toThrow(/No medicine called/);
+    addMedication(replica, 'Iron');
+    expect(() => setMedicationProfile(replica, { name: 'Iron' })).toThrow(/Give asNeeded/);
+    expect(() => setMedicationProfile(replica, { name: 'Iron', usualAmounts: [{ amount: 5, unit: '' }] })).toThrow(/needs a unit/);
+    expect(() => setMedicationProfile(replica, { name: 'Iron', usualAmounts: [{ amount: 5, unit: 'furlongs' }] })).toThrow(/one of/);
+    expect(() => setMedicationProfile(replica, { name: 'Iron', usualAmounts: [{ amount: 0, unit: 'mg' }] })).toThrow(/greater than 0/);
+  });
+});
+
+describe('set_medication_limit and set_medication_supply', () => {
+  it('sets each cap, keeps the ones left out, and clears', () => {
+    logMedication(replica, { name: 'Ibuprofen', amount: 200, unit: 'mg' });
+    expect(setMedicationLimit(replica, { name: 'ibuprofen', minHours: 6, maxAmount24h: { amount: 1200, unit: 'mg' } }))
+      .toMatchObject({ medicine: 'Ibuprofen', limit: 'At least 6 hours apart, at most 1,200 mg in 24 hours' });
+    // A cap left out is kept; null removes one.
+    expect(setMedicationLimit(replica, { name: 'Ibuprofen', maxPer24h: 4 }).limit)
+      .toBe('At least 6 hours apart, at most 4 in 24 hours, at most 1,200 mg in 24 hours');
+    expect(setMedicationLimit(replica, { name: 'Ibuprofen', minHours: null, maxAmount24h: null }).limit)
+      .toBe('At most 4 in 24 hours');
+    expect(replica.medicationSettings().find(m => m.name === 'Ibuprofen')?.limit).toBe('At most 4 in 24 hours');
+    expect(setMedicationLimit(replica, { name: 'Ibuprofen', clear: true })).toMatchObject({ limit: null });
+  });
+
+  it('refuses a limit that is empty, mixed or out of range, and an unlisted medicine', () => {
+    addMedication(replica, 'Naproxen');
+    expect(() => setMedicationLimit(replica, { name: 'Naproxen' })).toThrow(/Give minHours/);
+    expect(() => setMedicationLimit(replica, { name: 'Naproxen', clear: true, minHours: 4 })).toThrow(/on its own/);
+    expect(() => setMedicationLimit(replica, { name: 'Naproxen', maxPer24h: 2.5 })).toThrow(/whole number/);
+    expect(() => setMedicationLimit(replica, { name: 'Naproxen', maxAmount24h: { amount: 5, unit: 'furlongs' } })).toThrow(/one of/);
+    expect(() => setMedicationLimit(replica, { name: 'Nothing', minHours: 4 })).toThrow(/No medicine called/);
+  });
+
+  it('keeps the notification switch as it was', () => {
+    addMedication(replica, 'Aspirin');
+    setMedicationLimit(replica, { name: 'Aspirin', minHours: 4 });
+    const { useMedicationStore: meds } = require('../../../src/store/useMedicationStore');
+    meds.getState().setLimit('Aspirin', { minHours: 4, maxPer24h: null, notify: true });
+    setMedicationLimit(replica, { name: 'Aspirin', maxPer24h: 3 });
+    meds.getState().initialize();
+    expect(meds.getState().settings.aspirin.limit.notify).toBe(true);
+  });
+
+  it('sets a supply counted from now, keeps unspecified fields, and clears', () => {
+    addMedication(replica, 'Selenium');
+    expect(setMedicationSupply(replica, { name: 'selenium', count: 30, unit: 'tablet', refillCount: 60, reorderAt: 7 }))
+      .toMatchObject({ medicine: 'Selenium', left: '30 tablets left' });
+    // Only the count changed: the unit and reorder point stay.
+    expect(setMedicationSupply(replica, { name: 'Selenium', count: 25 }).left).toBe('25 tablets left');
+    const { useMedicationStore: meds } = require('../../../src/store/useMedicationStore');
+    meds.getState().initialize();
+    expect(meds.getState().settings.selenium.supply).toMatchObject({ unit: 'tablet', refillCount: 60, reorderAt: 7 });
+    expect(setMedicationSupply(replica, { name: 'Selenium', clear: true }).left).toBeNull();
+  });
+
+  it('refuses a supply with no count, a bad unit or an unlisted medicine', () => {
+    addMedication(replica, 'Iron');
+    expect(() => setMedicationSupply(replica, { name: 'Iron' })).toThrow(/Give count/);
+    expect(() => setMedicationSupply(replica, { name: 'Iron', count: -1 })).toThrow(/zero or more/);
+    expect(() => setMedicationSupply(replica, { name: 'Iron', count: 5, unit: 'mg' })).toThrow(/one of/);
+    expect(() => setMedicationSupply(replica, { name: 'Iron', clear: true, count: 5 })).toThrow(/on its own/);
+    expect(() => setMedicationSupply(replica, { name: 'Nothing', count: 5 })).toThrow(/No medicine called/);
   });
 });

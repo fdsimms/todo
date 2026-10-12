@@ -1,5 +1,6 @@
 import {
   isTaskVisible,
+  isPinnedOnToday,
   isTaskDeferred,
   isTaskWindowActive,
   isTaskExpired,
@@ -27,6 +28,7 @@ import {
   formatQuotaNextDue,
   isQuotaPartial,
   isOnPaceQuota,
+  quotaHidesWhenOnPace,
   isDismissedToday,
   isTaskBlocked,
   isWaitingTask,
@@ -37,7 +39,10 @@ import {
   isCategoryScheduledDay,
   currentTimeSegment,
   timeSegmentThreshold,
+  windowBoundsFor,
+  sunLocationOn,
 } from '../utils/visibilityUtils';
+import { sunAnchorHHMM } from '../utils/sunTimes';
 import { registerTaskSource } from '../utils/blockerRegistry';
 import { registerAwayProjectSource } from '../utils/awayDates';
 import { registerPausedProjectSource } from '../utils/projectPause';
@@ -53,7 +58,9 @@ const mockSettingsState = {
   nightStart: '21:00',
   activeHoursStart: '08:00',
   activeHoursEnd: '22:00',
+  weekStartsOn: 1,
   vacationMode: false,
+  sunLocation: null as { latitude: number; longitude: number } | null,
 };
 
 jest.mock('../store/useSettingsStore', () => ({
@@ -146,7 +153,7 @@ const baseTask: Task = {
   penaltyCreditedAt: null,
   gatesApps: false,
   showStreak: false,
-  streakRequiresWindow: false,
+  streakRequiresWindow: false, streakCountsUnits: false,
   recurrenceFromCompletion: false,
   supplyCount: null,
   supplyUnit: null,
@@ -2080,6 +2087,42 @@ describe('quota tasks', () => {
     });
   });
 
+  describe('isUpcomingToday for an on-pace target', () => {
+    it('is true for a daily target whose next unit falls due later today', () => {
+      expect(isUpcomingToday({ ...quotaTask, progressCount: 2 })).toBe(true);
+    });
+
+    // NOW is Tue Jun 10 10:00; the week runs Mon Jun 9 to Mon Jun 16, so 3 of 5
+    // is ahead of pace and the fourth unit isn't owed until Friday.
+    it('is false for a weekly target whose next unit falls due on another day', () => {
+      const weekly: Task = {
+        ...quotaTask,
+        recurrenceType: 'weekly',
+        quotaPeriod: 'week',
+        targetCount: 5,
+        progressCount: 3,
+      };
+      expect(isOnPaceQuota(weekly)).toBe(true);
+      expect(isUpcomingToday(weekly)).toBe(false);
+    });
+
+    // 1 of 4 is on pace at Tue 10:00, and the second unit is owed Tue 18:00:
+    // later today, so the row stays on Today rather than waiting in Later today.
+    it('keeps a weekly target on Today when its next unit falls due later today', () => {
+      const weekly: Task = {
+        ...quotaTask,
+        recurrenceType: 'weekly',
+        quotaPeriod: 'week',
+        targetCount: 4,
+        progressCount: 1,
+      };
+      expect(quotaHidesWhenOnPace(weekly)).toBe(false);
+      expect(isOnPaceQuota(weekly)).toBe(false);
+      expect(isUpcomingToday(weekly)).toBe(false);
+      expect(isTaskVisible(weekly)).toBe(true);
+    });
+  });
+
   describe('activeChainStepTitle / displayTitleFor', () => {
     const chainItems = [
       { id: 'c1', title: 'Stretch for five minutes', estimatedMinutes: null },
@@ -2551,5 +2594,113 @@ describe('getVisibleAt with a category schedule', () => {
   it('keeps the task\'s own later start when it falls inside the window', () => {
     const task = { ...baseTask, category: 'Work', dueDate: new Date(2025, 5, 12, 12, 0, 0).toISOString(), windowStart: '10:00' };
     expect(getVisibleAt(task)).toEqual(new Date(2025, 5, 12, 10, 0, 0));
+  });
+});
+
+// ─── a window that follows the sun ────────────────────────────────────────────
+
+describe('a window bound that follows the sun', () => {
+  const day = new Date(2025, 5, 10);
+  // A place on the equator whose solar time matches this process's clock, so
+  // sunset lands near 18:00 local in any zone the suite runs in.
+  const longitude = ((-day.getTimezoneOffset() / 60) * 15 + 540) % 360 - 180;
+  const here = { latitude: 0, longitude };
+  const at = (hhmm: string, plusMinutes = 0) => {
+    const [h, m] = hhmm.split(':').map(Number);
+    return new Date(2025, 5, 10, h, m + plusMinutes, 0);
+  };
+  const dueToday = { ...baseTask, dueDate: new Date(2025, 5, 10, 12, 0, 0).toISOString() };
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    mockSettingsState.sunLocation = here;
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    mockSettingsState.sunLocation = null;
+  });
+
+  it('opens at the resolved sunset, not at the clock time it was saved with', () => {
+    const sunset = sunAnchorHHMM('sunset', day, here)!;
+    // Saved weeks ago, when the stored fallback said 08:00.
+    const task = { ...dueToday, windowStart: '08:00', windowStartSun: 'sunset' };
+    jest.setSystemTime(at('12:00'));
+    expect(isTaskVisible(task)).toBe(false);
+    jest.setSystemTime(at(sunset, 1));
+    expect(isTaskVisible(task)).toBe(true);
+    expect(isTaskWindowActive(task)).toBe(true);
+  });
+
+  it('expires at the resolved bound, offset included', () => {
+    const end = sunAnchorHHMM('sunset-30', day, here)!;
+    const task = { ...dueToday, windowEnd: '23:00', windowEndSun: 'sunset-30' };
+    jest.setSystemTime(at(end, -1));
+    expect(isTaskExpired(task)).toBe(false);
+    jest.setSystemTime(at(end, 1));
+    expect(isTaskExpired(task)).toBe(true);
+  });
+
+  it('falls back to the stored clock time with no location saved', () => {
+    mockSettingsState.sunLocation = null;
+    const task = { ...dueToday, windowStart: '08:00', windowStartSun: 'sunset' };
+    jest.setSystemTime(at('12:00'));
+    expect(isTaskVisible(task)).toBe(true);
+    expect(windowBoundsFor(task, day)).toEqual({ start: '08:00', end: null });
+  });
+
+  it('places a later day by that day\'s own sunset', () => {
+    jest.setSystemTime(at('12:00'));
+    const north = { latitude: 52, longitude };
+    mockSettingsState.sunLocation = north;
+    const later = new Date(2025, 11, 10);
+    const task = {
+      ...baseTask,
+      dueDate: new Date(2025, 11, 10, 12, 0, 0).toISOString(),
+      windowStart: sunAnchorHHMM('sunset', day, north)!,
+      windowStartSun: 'sunset',
+    };
+    const [h, m] = sunAnchorHHMM('sunset', later, north)!.split(':').map(Number);
+    expect(getVisibleAt(task)).toEqual(new Date(2025, 11, 10, h, m, 0));
+  });
+
+  it('uses a trip\'s destination on the days the trip covers, and home on the rest', () => {
+    const away = { latitude: 60, longitude };
+    registerAwayProjectSource(() => [{
+      awayStart: new Date(2025, 5, 9, 12).toISOString(), awayEnd: new Date(2025, 5, 12, 12).toISOString(),
+      awayPauses: false, awayPauseDeclinedFor: null, archived: false, completed: false,
+      destinationLatitude: away.latitude, destinationLongitude: away.longitude,
+    }]);
+    try {
+      expect(sunLocationOn(day)).toEqual(away);
+      expect(windowBoundsFor({ ...dueToday, windowStart: '08:00', windowStartSun: 'sunset' }, day).start)
+        .toBe(sunAnchorHHMM('sunset', day, away));
+      expect(sunLocationOn(new Date(2025, 5, 13))).toEqual(here);
+    } finally {
+      registerAwayProjectSource(null);
+    }
+  });
+
+  it('leaves a plain window untouched', () => {
+    expect(windowBoundsFor({ ...baseTask, windowStart: '09:00', windowEnd: '17:00' }, day))
+      .toEqual({ start: '09:00', end: '17:00' });
+  });
+});
+
+describe('isPinnedOnToday', () => {
+  const withTask = (o: Partial<Task>): Task => ({ ...baseTask, ...o });
+  it('lights a pin-each-occurrence pin only while its occurrence is visible', () => {
+    const later = withTask({ pinned: true, pinEachOccurrence: true, recurrenceType: 'daily', dueDate: new Date(2999, 0, 1, 9).toISOString() });
+    const due = withTask({ pinned: true, pinEachOccurrence: true, recurrenceType: 'daily', dueDate: new Date(2020, 0, 1, 9).toISOString() });
+    expect(isPinnedOnToday(later)).toBe(false);
+    expect(isPinnedOnToday(due)).toBe(true);
+  });
+
+  it('keeps a manual pin lit regardless of its date', () => {
+    expect(isPinnedOnToday(withTask({ pinned: true, dueDate: new Date(2999, 0, 1, 9).toISOString() }))).toBe(true);
+  });
+
+  it('is unlit when the task is not pinned', () => {
+    expect(isPinnedOnToday(withTask({ pinned: false }))).toBe(false);
   });
 });

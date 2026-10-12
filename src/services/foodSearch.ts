@@ -161,11 +161,11 @@ export async function fetchFoodPortions(
  */
 export function describeFoodSearchError(error: unknown): string {
   const message = error instanceof Error ? error.message : '';
-  if (message === 'Request timed out') return 'The search took too long. Try again in a moment.';
+  if (message === 'Request timed out') return 'The search took too long. Try again.';
   if (message === 'Lookups are off') return 'Food lookups are off. Turn them on in Settings.';
   if (message === DEMO_LOOKUP_REFUSAL) return 'Food lookups are off in demo mode.';
   if (message === 'No food database key') return 'Searching by name needs a FoodData Central key, free from api.data.gov. Add it in Settings.';
-  return 'Couldn\'t reach the food database. Try again in a moment.';
+  return 'Couldn’t reach the food database. Try again.';
 }
 
 /**

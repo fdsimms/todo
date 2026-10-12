@@ -1,4 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useProjectLockStore } from '../store/useProjectLockStore';
+import { isProjectLockedAway } from '../utils/projectLock';
+import { useWithoutLockedTasks } from '../hooks/useWithoutLockedTasks';
 import {
   Keyboard,
   View,
@@ -30,6 +33,10 @@ import { categoryLabel } from '../utils/categoryLabel';
 import { quickSearch, QUICK_SEARCH_LIMIT } from '../utils/quickSearch';
 import { allElsewhere, describeElsewhere, quickElsewhere, QUICK_ELSEWHERE_LIMIT, type ElsewhereResult } from '../utils/searchElsewhere';
 import { useElsewhereSearch } from '../hooks/useElsewhereSearch';
+import { useSearchActionReceipts, useSearchActions } from '../hooks/useSearchActions';
+import { QUICK_ACTION_LIMIT, type SearchAction } from '../utils/searchActions';
+import { openMoodLogFor } from '../utils/searchActionRun';
+import { SearchActionRow } from './SearchActionRow';
 import type { SearchResult, GroupSearchResult, ProjectSearchResult } from '../utils/fuzzySearch';
 import { formatOccurrenceCount, type CollapsedOccurrence } from '../utils/searchCollapse';
 import { displayTitleFor, groupRoster, quotaNextDueLabel } from '../utils/visibilityUtils';
@@ -103,7 +110,7 @@ function QuickSearchRow({ result, onSelect, onTicked, styles, colors }: {
   styles: ReturnType<typeof makeStyles>;
   colors: Colors;
 }) {
-  const { task, titleMatches, projectName, projectMatches, occurrenceCount } = result;
+  const { task, titleMatches, projectName, projectMatches, notesExcerpt, occurrenceCount } = result;
   const categories = useCategoryStore(s => s.categories);
   const displayTitle = displayTitleFor(task);
   // An "@name" mention stays literal in the title (see matchPersonMentions'
@@ -191,6 +198,7 @@ function QuickSearchRow({ result, onSelect, onTicked, styles, colors }: {
           task.category ? `in ${task.category}` : null,
           task.archived ? 'archived' : null,
           task.completed ? 'completed' : null,
+          notesExcerpt ? `matches in notes: ${notesExcerpt.text}` : null,
           dateLabel,
           hoursUnlock ? `unlocks ${hoursUnlock}` : null,
           quotaNext ? `next ${quotaNext}` : null,
@@ -221,6 +229,21 @@ function QuickSearchRow({ result, onSelect, onTicked, styles, colors }: {
                 <Text style={styles.countText}>{countLabel}</Text>
               </View>
             )}
+          </View>
+        )}
+        {/* Only when the notes are why this row is here: a title or project
+            match is already highlighted above. Its own line, since it is the
+            longest thing on the row and would otherwise squeeze the meta. */}
+        {notesExcerpt && (
+          <View style={styles.notesMatch}>
+            <Ionicons name="document-text-outline" size={iconSize.xs} color={colors.textTertiary} />
+            <HighlightedText
+              text={notesExcerpt.text}
+              ranges={notesExcerpt.ranges}
+              style={styles.notesMatchText}
+              highlightStyle={styles.metaHighlight}
+              numberOfLines={1}
+            />
           </View>
         )}
       </TouchableOpacity>
@@ -275,7 +298,9 @@ function QuickSearchProjectRow({ result, onSelect, styles, colors }: {
   colors: Colors;
 }) {
   const { project, titleMatches, progress } = result;
-  const progressLabel = progress.total === 0 ? 'No tasks yet' : `${progress.done}/${progress.total} done`;
+  // Its tasks are filtered out of the search, so an empty count would be a lie.
+  const locked = useProjectLockStore(st => isProjectLockedAway(project.id, st.lockedIds, st.unlocked));
+  const progressLabel = locked ? 'Locked' : progress.total === 0 ? 'No tasks yet' : `${progress.done}/${progress.total} done`;
   return (
     <TouchableOpacity
       style={styles.resultRow}
@@ -374,7 +399,8 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
   const { isDark, shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const tasks = useTasksWhileOpen(visible);
+  // A locked project's tasks are not findable until it is unlocked.
+  const tasks = useWithoutLockedTasks(useTasksWhileOpen(visible));
   const projects = useProjectStore(s => s.projects);
   const groups = useTaskGroupStore(s => s.groups);
   const recentSearches = useSettingsStore(useShallow(s => s.recentSearches));
@@ -444,21 +470,30 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
   const allElsewhereResults = useMemo(() => allElsewhere(elsewhereSections), [elsewhereSections]);
   const elsewhereTotal = allElsewhereResults.length;
 
+  // Actions ("take aleve", "buy milk") lead the card and come out of its seven
+  // slots, so offering one never makes the card longer than it always was.
+  const { actions, onSubmit: submitAction, descriptions: actionDescriptions } =
+    useSearchActions(debouncedQuery, visible, QUICK_ACTION_LIMIT);
+  // What the rows ran while the card is open, so a row can say so and offer
+  // Undo. Cleared with the query, like `heldIds`.
+  const { receipts, run: runReceipt, undo: undoAction, clear: clearReceipts } = useSearchActionReceipts(debouncedQuery);
+  const searchBudget = QUICK_SEARCH_LIMIT - actions.length;
+
   // Tasks, stacks and projects take the card's slots first; the non-task rows
   // below them spend only what is left (at most QUICK_ELSEWHERE_LIMIT).
   const { groupResults, projectResults, results, total: taskTotal } = useMemo(
     () => quickSearch(
-      tasks, debouncedQuery, projectNamesById, QUICK_SEARCH_LIMIT, heldIds,
+      tasks, debouncedQuery, projectNamesById, searchBudget, heldIds,
       groups, rosterByGroupId, projects, progressByProject
     ),
-    [tasks, debouncedQuery, projectNamesById, heldIds, groups, rosterByGroupId, projects, progressByProject]
+    [tasks, debouncedQuery, projectNamesById, searchBudget, heldIds, groups, rosterByGroupId, projects, progressByProject]
   );
   const elsewhereResults = useMemo(
     () => quickElsewhere(
       elsewhereSections,
-      Math.min(QUICK_ELSEWHERE_LIMIT, QUICK_SEARCH_LIMIT - groupResults.length - projectResults.length - results.length)
+      Math.min(QUICK_ELSEWHERE_LIMIT, searchBudget - groupResults.length - projectResults.length - results.length)
     ),
-    [elsewhereSections, groupResults.length, projectResults.length, results.length]
+    [elsewhereSections, searchBudget, groupResults.length, projectResults.length, results.length]
   );
   // The footer's count is what the Search screen will show, which is now
   // everything this card found, not just the tasks.
@@ -467,6 +502,7 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
   useEffect(() => {
     if (!visible) return;
     searchFilter.clear();
+    clearReceipts();
     scaleAnim.setValue(0.94);
     translateYAnim.setValue(-20);
     cardOpacity.setValue(0);
@@ -521,6 +557,17 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
     dismiss(() => onSelectElsewhere(result));
   };
 
+  // The mood log is a screen rather than a write, so it closes the card like
+  // any other result that goes somewhere; the rest run in place.
+  const runAction = (action: SearchAction) => {
+    if (action.kind === 'mood') {
+      haptics.tap();
+      dismiss(() => openMoodLogFor(action));
+      return;
+    }
+    void runReceipt(action);
+  };
+
   const handleOpenFull = () => {
     haptics.tap();
     pushRecentSearch(query);
@@ -530,13 +577,21 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
 
   const trimmed = query.trim();
   const hasTaskResults = groupResults.length > 0 || projectResults.length > 0 || results.length > 0;
-  const hasResults = hasTaskResults || elsewhereResults.length > 0;
+  const hasSearchResults = hasTaskResults || elsewhereResults.length > 0;
+  const hasResults = hasSearchResults || actions.length > 0;
   const showNoMatches = trimmed.length > 0 && !hasResults;
 
   // Return goes to the Search tab as it always has, unless the query found no
   // task at all: "weight" means the Weight screen, not a Search tab with one
-  // row on it.
+  // row on it. A query that asked for one action in words ("take aleve", "buy
+  // milk") runs it, since that is what was typed. Only once the
+  // debounce has caught up, so Return never runs an action for a query that's
+  // already been typed past.
   const handleSubmit = () => {
+    if (submitAction && query === debouncedQuery && !receipts.has(submitAction.key)) {
+      runAction(submitAction);
+      return;
+    }
     if (!hasTaskResults && elsewhereResults.length > 0) {
       handleSelectElsewhere(elsewhereResults[0]);
       return;
@@ -602,6 +657,17 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
 
           {hasResults && (
             <View style={styles.results}>
+              {actions.map(action => (
+                <SearchActionRow
+                  key={action.key}
+                  action={action}
+                  description={actionDescriptions.get(action.key)!}
+                  receipt={receipts.get(action.key) ?? null}
+                  layout="card"
+                  onRun={runAction}
+                  onUndo={undoAction}
+                />
+              ))}
               {/* Stacks and projects lead, same order and reasoning as the
                   Search screen's own sections (see the doc comment above). */}
               {groupResults.map(result => (
@@ -652,7 +718,7 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
             <Text style={styles.noMatches}>No matches for “{trimmed}”</Text>
           )}
 
-          {hasResults && (
+          {hasSearchResults && (
             <View style={styles.footer}>
               <InlineAction
                 label={total === 1 ? 'See 1 result' : `See all ${total} results`}
@@ -749,6 +815,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   metaText: { color: colors.textSecondary, fontSize: font.xs },
   metaHighlight: { color: colors.accent, fontWeight: fontWeight.semibold },
+  notesMatch: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xsm,
+    marginTop: 2,
+  },
+  notesMatchText: { color: colors.textTertiary, fontSize: font.xs, flexShrink: 1 },
   // Dots rather than the Search screen's bare gaps: that row separates its
   // parts with an icon, coloured tag dots and a "Due" prefix, and this one has
   // none of those, so "Home Friday" would read as one phrase.

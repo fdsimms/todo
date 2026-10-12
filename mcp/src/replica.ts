@@ -48,6 +48,8 @@ import type {
   GeneratedKind,
   HealthRule,
   Milestone,
+  CopyFlag,
+  MeterReading,
   JournalEntry,
   JournalKind,
   FocusSessionRecord,
@@ -87,9 +89,12 @@ import type {
   TaskDraft,
   TaskGroup,
   TimeOfDay,
+  TaskFieldDefaults,
+  GeneratedTaskExtras,
 } from '../../src/types';
 import { parseTaskFieldDefaults } from '../../src/utils/taskFieldDefaults';
 import { rotationItemFromInput, rotationMemberTitle, rotationMembers } from '../../src/utils/rotation';
+import { sunAnchorHHMM } from '../../src/utils/sunTimes';
 import type { AwaySpan } from '../../src/utils/awayDates';
 import type { WaterUnit } from '../../src/utils/waterLog';
 import type { FoodLogTotals } from '../../src/utils/foodLog';
@@ -120,6 +125,7 @@ export interface StackPatch {
   category?: string | null;
   projectId?: string | null;
   checklist?: boolean;
+  hideNextStep?: boolean;
 }
 
 export interface CategorySettingsPatch {
@@ -177,8 +183,10 @@ type RecipeProduceModule = typeof import('../../src/utils/recipeProduce');
 type StandingSwapsModule = typeof import('../../src/utils/standingSwaps');
 type MoodHistoryModule = typeof import('../../src/utils/moodHistory');
 type MedicationModule = typeof import('../../src/utils/medicationLog');
+type MedicationSettingsModule = typeof import('../../src/utils/medicationSettings');
 type RewardsModule = typeof import('../../src/utils/rewards');
 type NegativeHabitsModule = typeof import('../../src/utils/negativeHabits');
+type RewardGuardModule = typeof import('../../src/utils/rewardGuard');
 type TemplateUtilsModule = typeof import('../../src/utils/templateUtils');
 type TaskDraftModule = typeof import('../../src/utils/taskDraft');
 type TaskCompletionModule = typeof import('../../src/utils/taskCompletion');
@@ -232,6 +240,8 @@ export interface ReplicaSettings {
   rewardsEnabled: boolean;
   /** The reward being saved for, or null. */
   rewardGoalId: string | null;
+  /** Weekly reward spend in minor units, which with the earning rate sets the coin-to-dollar rate. Null when unset. */
+  rewardWeeklyBudgetMinor: number | null;
   /** How many coin bounties may be live at once. */
   bountyLimit: number;
   /** Days completed tasks are kept, or null for for ever. */
@@ -241,6 +251,10 @@ export interface ReplicaSettings {
    * (`calendarRequestDeviceId`). Without one, a request would wait for ever.
    */
   calendarRequestsOn: boolean;
+  /** How amounts show (asWritten, metric or us); a rain threshold reads millimetres only on metric. */
+  unitSystem: 'asWritten' | 'metric' | 'us';
+  /** The weather switch. Off, nothing reads a forecast, so a rain skip never fires. */
+  weatherTasks: boolean;
 }
 
 /** An event to ask the phone to write. Already parsed: instants, and an exclusive end. */
@@ -282,6 +296,9 @@ export interface ReplicaLib {
   agentNotes: typeof import('../../src/utils/agentNotes');
   nutritionEstimate: typeof import('../../src/utils/nutritionEstimate');
   generatedTasks: typeof import('../../src/utils/generatedTasks');
+  generatedTaskSettings: typeof import('../../src/utils/generatedTaskSettings');
+  taskFieldDefaults: typeof import('../../src/utils/taskFieldDefaults');
+  deliverables: typeof import('../../src/utils/deliverables');
   titleRules: typeof import('../../src/utils/titleRules');
   weatherTasks: typeof import('../../src/utils/weatherTasks');
   eventTasks: typeof import('../../src/utils/eventTasks');
@@ -428,8 +445,16 @@ export interface FoodInput {
   quantity?: string;
   /** Estimated amounts for the whole of what was eaten, by nutrient key. */
   amounts: Record<string, number>;
+  /** The estimate split across what it named, each line stating its own figures. */
+  breakdown?: FoodBreakdownInput[];
   slot?: MealSlot | null;
   at?: Date;
+}
+
+/** One component of an estimated meal, as an agent states it. Read by `readNutritionEstimate`. */
+export interface FoodBreakdownInput {
+  label: string;
+  amounts: Record<string, number>;
 }
 
 export interface MoodInput {
@@ -504,7 +529,21 @@ export interface FoodPatch {
   quantity?: string;
   /** Replaces every figure. Only an estimated entry has figures an agent may restate. */
   amounts?: Record<string, number>;
+  /** With `amounts`: the parts of the restated total. Without it the restated entry has none. */
+  breakdown?: FoodBreakdownInput[];
   slot?: MealSlot | null;
+  /**
+   * A new weight for an entry measured against a food record. The figures are
+   * re-measured from that record (`remeasureEntry`), not scaled off the old ones.
+   * On a measured entry `quantity` is re-measured the same way ("2 servings").
+   */
+  grams?: number;
+}
+
+/** A new amount for a copy of a measured entry. One of the two. */
+export interface FoodAmount {
+  grams?: number;
+  quantity?: string;
 }
 
 export type MoodPatch = Partial<Pick<MoodInput, 'mood' | 'symptoms' | 'contextTags' | 'note'>>;
@@ -523,7 +562,7 @@ export interface DoseInput {
 /** One Settings row, located the way a person would have to walk to it. */
 export interface SettingsHit {
   label: string;
-  /** "Settings › Day & time › When the day turns over › Morning". */
+  /** "Settings › Day & time › When the day turns over › Day starts". */
   path: string;
   /** Why it matched when the label did not: a keyword or the section name. */
   matchedVia?: string;
@@ -705,6 +744,8 @@ export interface CompletedResult {
   nextTask: Task | null;
   /** The every-Nth-completion task, where this completion earned one. */
   followUpTask: Task | null;
+  /** The "How did it turn out?" look-back, where the answer asked for one. */
+  reviewTask: Task | null;
   /** The next set of a repeating dated series, where its last date just landed. */
   rolledOver: Task[];
   /** True when a dose was recorded against the medication the task names. */
@@ -761,8 +802,11 @@ export interface ProjectPatch {
   eventDate?: string | null;
   category?: string | null;
   defaultTaskCategory?: string | null;
-  /** Priority (0 to 4, 0 meaning deliberately none), difficulty and estimate bucket (1 to 6) new tasks start with; null clears. */
-  taskDefaults?: { priority?: number | null; difficulty?: 'easy' | 'normal' | 'hard' | null; effort?: number | null } | null;
+  /** Priority (0 to 4, 0 meaning deliberately none), difficulty and estimate bucket (0 to 6, 0 meaning deliberately none) new tasks start with; null clears. */
+  taskDefaults?: {
+    priority?: number | null; difficulty?: 'easy' | 'normal' | 'hard' | null; effort?: number | null;
+    showStreak?: boolean | null; vacationPause?: boolean | null; excludeFromSuggestions?: boolean | null;
+  } | null;
   kind?: ProjectKind;
   completed?: boolean;
   archived?: boolean;
@@ -800,6 +844,10 @@ export interface ProjectPatch {
   weekendSource?: boolean;
   /** On a list: checked items stay on the page instead of folding away. */
   showChecked?: boolean;
+  /** Leave the "Next:" line off its card on the Projects screen. */
+  hideNextStep?: boolean;
+  /** Today gathers its tasks for the day under its name, at the top. */
+  groupOnToday?: boolean;
 }
 
 /** A glass (or a bottle) of water, added onto the day's single water entry. */
@@ -827,6 +875,30 @@ export interface DeletedCategory {
   automationsRepointed: string[];
   /** Whether Today's calendar-events section was filed under it. */
   calendarEventsRepointed: boolean;
+}
+
+/** One medication's limit and supply as `list_medication_logs` reports them. */
+export interface MedicationSettingsView {
+  name: string;
+  /** "At least 6 hours apart, at most 3 in 24 hours", the person's own limit. */
+  limit?: string;
+  dosesInLast24h?: number;
+  /** When the next dose is within the limit, if it isn't now. */
+  withinLimitAgainAt?: string;
+  /** "Per 2 tablets: 15 nutrients", what a serving of a supplement contains, as the person typed it. */
+  nutrients?: string;
+  /** "Vitamin C 90 mg, Magnesium 100 mg, and 3 more". */
+  nutrientsDetail?: string;
+  /** "9 doses left". */
+  supplyLeft?: string;
+  /** "800 of 1,200 mg", what has been added up against a limit on a total, in the last 24 hours. */
+  amountInLast24h?: string;
+  /** Set by the person: true taken as needed, false on a schedule. Absent means read off the doses. */
+  takenAsNeeded?: boolean;
+  /** ["50 mg", "25 mg"], the amounts the person usually takes; the first is the default. */
+  usualAmounts?: string[];
+  /** Listed by name with no dose recorded yet. */
+  noDosesYet?: true;
 }
 
 export interface Replica {
@@ -920,6 +992,18 @@ export interface Replica {
    * user would say they were asking about.
    */
   todayKey(): string;
+  /**
+   * A task's window as clock times today, with a bound that follows the sun
+   * resolved for today (see Task.windowStartSun). The stored clock fields hold
+   * only the time an anchor resolved to when it was set.
+   */
+  windowToday(task: Task): { start: string | null; end: string | null };
+  /**
+   * The "HH:MM" a sun anchor comes to on a task's day (its due date, else
+   * today), at the trip's destination on a trip day and home otherwise; null
+   * with no location saved, or on a day the sun doesn't rise or set.
+   */
+  sunAnchorClock(anchor: string, dueDate: string | null): string | null;
   /** Shifts a day key by whole days. Used to default a range to "the last N days". */
   shiftDayKey(key: string, days: number): string;
 
@@ -944,6 +1028,12 @@ export interface Replica {
   medicationLogs(fromDayKey: string, toDayKey: string): MedicationLog[];
   /** "Ibuprofen · 400 mg · as needed", the app's own one-line rendering of a dose. */
   medicationSummary(log: MedicationLog): string;
+  /**
+   * The limit and supply the person set per medication, read the app's way:
+   * where each one stands against its limit now, and what's left of its
+   * supply (derived from the doses, never stored as a running number).
+   */
+  medicationSettings(): MedicationSettingsView[];
 
   /** Every stored template, for listing and for resolving a nested reference. */
   templates(): TaskTemplate[];
@@ -987,6 +1077,10 @@ export interface Replica {
   /** Every mood check-in, unfiltered: the insights need the whole log. */
   allMoodLogs(): MoodLog[];
   milestones(): Milestone[];
+  /** Every copy flag, newest first. TEMPORARY dev tooling, see `CopyFlag`. */
+  copyFlags(): CopyFlag[];
+  /** Marks a flag resolved, with what the copy became. Written through the db layer, like `resolveCalendarRequest`. */
+  resolveCopyFlag(id: string, resolution: string): CopyFlag;
   /**
    * Milestones through `useMilestoneStore`'s own actions: a blank label is
    * refused as the sheet refuses it, and a date is stored as given (the tool
@@ -996,6 +1090,17 @@ export interface Replica {
   addMilestone(label: string, date: Date): Milestone;
   updateMilestone(id: string, patch: { label?: string; date?: Date }): Milestone;
   deleteMilestone(id: string): Milestone;
+  /** Every meter reading, oldest first. See src/utils/meters.ts. */
+  meterReadings(): MeterReading[];
+  /**
+   * Through `useMeterReadingStore`'s own action, so a blank name or a reading
+   * that isn't a number is refused as the app refuses it. The tasks on that
+   * meter are held or released by the phone's own pass on its next sync.
+   */
+  logMeterReading(name: string, value: number, readAt: Date): MeterReading;
+  deleteMeterReading(id: string): MeterReading;
+  /** The daily word goal for the journal, or null when none is set. */
+  journalWordGoal(): number | null;
   /** Journal and dream entries between two day keys, inclusive, newest first. */
   journalEntries(fromDayKey: string, toDayKey: string, kind?: JournalKind): JournalEntry[];
   /**
@@ -1003,8 +1108,8 @@ export interface Replica {
    * text is refused as the sheet refuses it, and an entry's day is fixed once
    * written, as in the app.
    */
-  addJournalEntry(kind: JournalKind, text: string, at?: Date): JournalEntry;
-  updateJournalEntry(id: string, text: string): JournalEntry;
+  addJournalEntry(kind: JournalKind, text: string, at?: Date, meta?: { tags?: string[]; personIds?: string[] }): JournalEntry;
+  updateJournalEntry(id: string, change: { text?: string; tags?: string[]; personIds?: string[] }): JournalEntry;
   deleteJournalEntry(id: string): JournalEntry;
   /**
    * Finished focus sessions, newest first: `focus_session_log`, what Stats
@@ -1127,7 +1232,7 @@ export interface Replica {
    */
   moveFoodEntry(id: string, at: Date): { from: FoodLogEntry; to: FoodLogEntry };
   /** Log a copy of an entry at another moment, as `duplicateEntry`: a new meal, not tied to a planned one. */
-  duplicateFoodEntry(id: string, at: Date): FoodLogEntry;
+  duplicateFoodEntry(id: string, at: Date, amount?: FoodAmount): FoodLogEntry;
   /** Saved meals: several foods logged together under a name, newest first. */
   savedMeals(): SavedMeal[];
   /** A saved meal from logged entries, as the bulk bar's "Save as meal". */
@@ -1137,6 +1242,8 @@ export interface Replica {
   deleteSavedMeal(id: string): SavedMeal;
   /** The daily figures the food log's totals are read against, as the person set them. */
   nutritionTargets(): Partial<Record<NutrientKey, number>>;
+  /** The nutrients whose target is a Stay under limit. */
+  nutritionLimits(): NutrientKey[];
   /** Set or clear (null) targets, through the settings store's own setter. Each is checked against the Settings stepper's range. */
   setNutritionTargets(changes: Partial<Record<NutrientKey, number | null>>): Partial<Record<NutrientKey, number>>;
   updateMoodLog(id: string, patch: MoodPatch): MoodLog;
@@ -1144,8 +1251,64 @@ export interface Replica {
   updateMedicationLog(id: string, patch: DosePatch): MedicationLog;
   /** Move a medicine out of "what you take", or back. Deletes no doses. Returns the name as the log spells it. */
   setMedicationArchived(name: string, archived: boolean): string;
+  /**
+   * Add a medicine to the list with no dose, as the app's Add medication does.
+   * `added` is false when it was already listed. An archived one is restored.
+   */
+  addMedication(name: string): { name: string; added: boolean };
+  /**
+   * Take a listed medicine with no doses off the list, with its limit and supply,
+   * as the page's Remove does. Refuses one that has doses: those are the record.
+   * Returns the spelling that was listed.
+   */
+  removeMedication(name: string): string;
+  /**
+   * Set (or, with null, clear) the limit the person gave for a listed medicine:
+   * hours apart, most doses in 24 hours, most of one unit in 24 hours. A cap
+   * left out keeps what it was; null for a cap removes it. The notification
+   * switch is untouched (it needs the phone's permission). Returns the spelling
+   * listed and the limit as the app words it, or null when none remains.
+   */
+  setMedicationLimit(
+    name: string,
+    limit: { minHours?: number | null; maxPer24h?: number | null; maxAmount24h?: { amount: number; unit: string } | null } | null,
+  ): { medicine: string; limit: string | null };
+  /**
+   * Set (or, with null, clear) how many of a listed medicine the person has, as
+   * the page's Left field does. The count is as of now: what is left afterwards
+   * is this less the doses recorded from here on. Returns the spelling listed
+   * and how many are left.
+   */
+  setMedicationSupply(
+    name: string,
+    supply: { count: number; unit?: string; refillCount?: number | null; reorderAt?: number } | null,
+  ): { medicine: string; left: string | null };
+  /**
+   * How a medicine is taken (`asNeeded`: true, false, or null to read it off the
+   * doses) and the amounts usually taken (the whole list, first is the default;
+   * empty clears it). A field left out is
+   * unchanged. Refuses a medicine that is not listed. Returns the spelling listed.
+   */
+  setMedicationProfile(
+    name: string,
+    profile: { asNeeded?: boolean | null; usualDoses?: { amount: number; unit: string }[]; strength?: { amount: number; unit: string } | null },
+  ): string;
+  /**
+   * Set (or, with null, clear) what one serving of a medicine contains. Doses
+   * recorded after it add those nutrients to the food log; earlier doses keep
+   * what they added. Returns the name in the spelling already in the log.
+   */
+  setSupplementPanel(name: string, panel: import('../../src/utils/medicationSettings').SupplementPanel | null): string;
   /** Correct a mood context tag's text on every check-in that has it, as the app's rename does. Returns how many changed. */
   renameMoodTag(from: string, to: string): number;
+  /**
+   * Rename a medicine on every dose, and in its limit, supply, archive state and
+   * the tasks, chain steps and templates that record it, as the app's Rename
+   * does (`useMedicationStore.renameMedication`). A `to` that is already another
+   * medicine combines the two. `fill` records an amount on doses that have none.
+   * Returns the medicine's name as the log spelled it, and how many doses changed.
+   */
+  renameMedication(from: string, to: string, fill: { amount: number; unit: string } | null): { from: string; doses: number };
   deleteMedicationLog(id: string): MedicationLog;
   /** Every calendar request, oldest first (`CalendarRequest`). */
   calendarRequests(): CalendarRequest[];
@@ -1178,6 +1341,19 @@ export interface Replica {
    * The name is not checked here; the tool refuses one that isn't a category.
    */
   setGeneratorCategory(kind: GeneratedKind, category: string | null): void;
+  /**
+   * The rest of a generator's "Task settings": the defaults Backfill shares
+   * (`generatedTaskDefaults`) and the tags, time of day and question
+   * (`generatedTaskExtras`), each null when nothing is set.
+   */
+  generatorTaskSettings(kind: GeneratedKind): { defaults: TaskFieldDefaults | null; extras: GeneratedTaskExtras | null };
+  /** Replace either half through the settings store's own setter; undefined leaves that half alone. */
+  setGeneratorTaskSettings(
+    kind: GeneratedKind,
+    change: { defaults?: TaskFieldDefaults | null; extras?: GeneratedTaskExtras | null },
+  ): void;
+  /** The lead-day settings a generator's locked fields are described with. */
+  taskSettingsContext(): import('../../src/utils/generatedTaskSettings').TaskSettingsContext;
   /**
    * Delete a category: its tasks and stacks move to `moveTo` (or become
    * uncategorized), every setting that filed something under it is re-pointed
@@ -1653,15 +1829,22 @@ export interface Replica {
    * never stored, so a reader sums `entries` (`rewards.coinBalance`).
    */
   rewardState(): { entries: CoinEntry[]; rewards: Reward[] };
+  /** The start of the person's current logical day, for a claim limit's day count. */
+  currentDayStart(): Date;
   /**
    * A new reward, through `useRewardStore.addReward`. Refused while rewards are
    * off, because the Rewards screen is hidden then and a reward made here would
    * sit on a screen the person cannot open. Never a wish-list reward: those
    * read their title off a list item and are made in the app.
    */
-  addReward(title: string, cost: number, details: { linkUrl?: string | null; note?: string | null; oneTime?: boolean }): Reward;
-  /** Change a reward's cost, or its title, link, note or one-time flag. A wish-list reward is refused: its title, note and link live on the list item. */
-  updateReward(id: string, patch: { title?: string; cost?: number; linkUrl?: string | null; note?: string | null; oneTime?: boolean }): Reward;
+  addReward(title: string, cost: number, details: { linkUrl?: string | null; note?: string | null; oneTime?: boolean; priceMinor?: number | null; guardsTaskId?: string | null; claimEveryDays?: number | null }): Reward;
+  /**
+   * Change a reward's cost, or its title, link, note, one-time flag or the
+   * habit it guards. A wish-list reward is refused: its title, note and link
+   * live on the list item. A guarded habit must be a live "don't do this"
+   * habit no other reward guards, on a reward that isn't one-time.
+   */
+  updateReward(id: string, patch: { title?: string; cost?: number; linkUrl?: string | null; note?: string | null; oneTime?: boolean; priceMinor?: number | null; guardsTaskId?: string | null; claimEveryDays?: number | null }): Reward;
   /** Delete a reward. Coins already spent on it stay spent, as in the app. */
   deleteReward(id: string): Reward;
   /**
@@ -1703,8 +1886,13 @@ export interface Replica {
    * Log a slip against a "don't do this" habit, and take back today's latest one.
    * A habit with a penalty is refused: the slip charges an app block on the
    * phone, which only the phone can set.
+   *
+   * On a habit a reward guards (`src/utils/rewardGuard.ts`), a slip the balance
+   * covers claims the reward instead, records nothing on the habit and returns
+   * the spend as `claim` (`unclaimReward` takes it back); one it doesn't is
+   * charged the reward's price down to zero.
    */
-  logSlip(id: string): Task;
+  logSlip(id: string): { task: Task; claim: CoinEntry | null };
   undoSlip(id: string): Task;
   /**
    * Move a project's dated tasks by the days its event (or any date) moved,
@@ -1893,8 +2081,26 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const standingSwaps = require('../../src/utils/standingSwaps') as StandingSwapsModule;
   const moodHistory = require('../../src/utils/moodHistory') as MoodHistoryModule;
   const medication = require('../../src/utils/medicationLog') as MedicationModule;
+  // Medications added by name before any dose: part of the list alongside the logged ones.
+  const registeredMedications = (): string[] =>
+    medication.parseRegisteredMedications(db.dbGetSetting(medication.REGISTERED_MEDICATIONS_SETTING_KEY));
+  // The spelling a listed medicine goes by, or a refusal that points at add_medication.
+  const listedMedicationName = (
+    meds: typeof import('../../src/store/useMedicationStore').useMedicationStore,
+    name: string,
+  ): string => {
+    const key = medication.medicationKey(name);
+    const spelled = medication.medicationVocabulary(db.dbGetAllMedicationLogs(), [], registeredMedications())
+      .find(n => medication.medicationKey(n) === key)
+      ?? meds.getState().archived.find(k => k === key);
+    if (!spelled) throw new Error(`No medicine called "${name}" in the list. add_medication adds one; list_medication_logs shows them.`);
+    return spelled;
+  };
+  const medicationSettings = require('../../src/utils/medicationSettings') as MedicationSettingsModule;
+  const supplementDose = require('../../src/utils/supplementDose') as typeof import('../../src/utils/supplementDose'); // eslint-disable-line @typescript-eslint/no-require-imports
   const rewards = require('../../src/utils/rewards') as RewardsModule;
   const negativeHabits = require('../../src/utils/negativeHabits') as NegativeHabitsModule;
+  const rewardGuard = require('../../src/utils/rewardGuard') as RewardGuardModule;
   const syncEngine = require('../../src/utils/syncEngine') as SyncEngineModule;
   const syncLocal = require('../../src/utils/syncLocal') as SyncLocalModule;
   const httpTransport = require('../../src/utils/httpSyncTransport') as HttpTransportModule;
@@ -1925,6 +2131,12 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const { completesMealSlot, mealSlotSourceId, parseMealSlotSource } = require('../../src/utils/mealSlotTasks') as typeof import('../../src/utils/mealSlotTasks');
   const mealPlanGroceries = require('../../src/utils/mealPlanGroceries') as typeof import('../../src/utils/mealPlanGroceries');
 
+  /** See Replica.sunAnchorClock. One copy, for the patch and the quick-add reader both. */
+  const sunAnchorClock = (anchor: string, dueDate: string | null): string | null => {
+    const dayStart = dueDate ? dates.getTaskDayStart(new Date(dueDate)) : dates.getCurrentDayStart();
+    return sunAnchorHHMM(anchor, dayStart, visibility.sunLocationOn(dayStart));
+  };
+
   // ---- recipes ------------------------------------------------------------
 
   // ---- the food log -------------------------------------------------------
@@ -1942,6 +2154,32 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     const flagged = { ...entry, healthWritePending: true };
     db.dbInsertFoodLogEntry(flagged);
     return flagged;
+  }
+
+  /** The amount text a grams or quantity asks for, as the app's amount field would hold it. */
+  function foodAmountText(a: { grams?: number; quantity?: string }): string {
+    if (a.grams !== undefined && a.quantity !== undefined) throw new Error('Give a new amount as grams or as quantity, one of the two.');
+    if (a.grams !== undefined) {
+      if (!Number.isFinite(a.grams) || a.grams <= 0) throw new Error('grams is a positive number.');
+      return `${a.grams} g`;
+    }
+    return a.quantity ?? '';
+  }
+
+  /**
+   * The fields `entry` takes at a new amount, re-measured against its food
+   * record by `remeasureEntry` (the arithmetic the app's Edit runs). The linked
+   * row's panel is read here because the catalog is: a product's own panel when
+   * the entry names one, else the item's.
+   */
+  function remeasuredFields(entry: FoodLogEntry, amount: string): Pick<FoodLogEntry, 'quantity' | 'grams' | 'nutrition' | 'sourcePanel'> {
+    const { nutritionFor } = require('../../src/utils/foodNutrition') as typeof import('../../src/utils/foodNutrition'); // eslint-disable-line @typescript-eslint/no-require-imports
+    let linkedPanel: import('../../src/types').FoodNutrition | null = null;
+    if (entry.productId) linkedPanel = db.dbGetAllItemProducts().find(p => p.id === entry.productId)?.nutrition ?? null;
+    else if (entry.itemId) linkedPanel = nutritionFor(db.dbGetAllGroceryItems().find(i => i.id === entry.itemId));
+    const result = foodLog.remeasureEntry(entry, linkedPanel, amount);
+    if (!result.ok) throw new Error(result.reason);
+    return result.fields;
   }
 
   /** An entry that can be moved or copied: not water, which is one entry a day stepped up a glass at a time. */
@@ -2250,7 +2488,13 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     let created: Task[] = [];
     try {
       db.dbTransaction(() => {
-        created = templateApply.applyTemplateRun(template, byId, selected, anchors, options, {
+        // The medicines taken as of this run, for an item marked medicationChecklist.
+        const medications = medication.medicationVocabulary(
+          db.dbGetAllMedicationLogs(),
+          medication.parseArchivedMedications(db.dbGetSetting(medication.ARCHIVED_MEDICATIONS_SETTING_KEY)),
+          registeredMedications(),
+        );
+        created = templateApply.applyTemplateRun(template, byId, selected, anchors, { medications, ...options }, {
           addTask: draft => replica.createTask(draft as Partial<TaskDraft>),
           // A stub is a checklist line: no title rules, no category, no time-of-day seeding.
           addSubtask: (parentId, title) => {
@@ -2448,7 +2692,9 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         ...(waitsOn !== undefined ? { blockedByItemIds: waitsOn.map(k => itemIds.get(k)).filter((id): id is string => !!id) } : {}),
         conditions: (conditions ?? []).map(c => ({
           questionId: questionIds.get(c.question) ?? '',
-          values: c.values,
+          values: c.values ?? [],
+          ...(c.min !== undefined ? { min: c.min } : {}),
+          ...(c.max !== undefined ? { max: c.max } : {}),
         })),
         variants: (variants ?? []).map(v => ({
           questionId: questionIds.get(v.question) ?? '',
@@ -2464,7 +2710,71 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     });
     return { items, itemGroups, questions };
   }
-  const { useMedicationStore } = require('../../src/store/useMedicationStore') as typeof import('../../src/store/useMedicationStore');
+  const { useMedicationStore, setDoseEffects } = require('../../src/store/useMedicationStore') as typeof import('../../src/store/useMedicationStore');
+
+  // ---- supplement doses ---------------------------------------------------
+
+  /**
+   * What a supplement dose adds to the food log, for a dose recorded here.
+   *
+   * The app installs the food log store's version of this (`supplementDoseSync.ts`);
+   * this process can't load that store, so it writes the same entry through
+   * `buildFood`, flagged for the phone to write to Apple Health. Editing or
+   * removing a dose follows the rule `deleteFoodEntry` keeps: an entry already
+   * in Health is left alone, because only the phone can take its samples back
+   * out. The dose changes and the entry stays, until it is deleted in the app.
+   */
+  {
+    const supplement = supplementDose;
+    const entryOf = (log: MedicationLog): FoodLogEntry | null => {
+      const keys = new Set([dates.getLogicalDayKey(new Date(log.takenAt)), log.dayKey]);
+      for (const key of keys) {
+        const hit = supplement.entryForDose(db.dbGetFoodLogEntries(key, key), log.id);
+        if (hit) return hit;
+      }
+      return null;
+    };
+    const write = (log: MedicationLog): void => {
+      // From the database rather than the store: this process never loads the
+      // store's settings, and a panel set from the phone arrives by sync.
+      const map = medicationSettings.parseMedicationSettings(db.dbGetSetting(medicationSettings.MEDICATION_SETTINGS_KEY));
+      const panel = medicationSettings.prefsFor(map, log.name).nutrition;
+      if (!panel) return;
+      const helping = supplement.supplementHelping(panel, log);
+      if (!helping) return;
+      buildFood({
+        label: helping.label,
+        quantity: helping.quantity,
+        grams: null,
+        nutrition: helping.nutrition,
+        slot: null,
+        recipeId: null,
+        itemId: null,
+        productId: null,
+        mealPlanEntryId: null,
+        at: new Date(log.takenAt),
+      });
+    };
+    const drop = (entry: FoodLogEntry): boolean => {
+      if (entry.healthSampleIds.length > 0) return false;
+      db.dbDeleteFoodLogEntry(entry.id);
+      return true;
+    };
+    setDoseEffects({
+      added: write,
+      updated(before, after) {
+        if (before.name === after.name && before.amount === after.amount && before.unit === after.unit) return;
+        const existing = entryOf(before);
+        if (existing && drop(existing)) write(after);
+      },
+      removed(logs) {
+        for (const log of logs) {
+          const existing = entryOf(log);
+          if (existing) drop(existing);
+        }
+      },
+    });
+  }
   const { useRewardStore } = require('../../src/store/useRewardStore') as typeof import('../../src/store/useRewardStore');
   const { registerTaskSource } = require('../../src/utils/blockerRegistry') as typeof import('../../src/utils/blockerRegistry');
   const { registerPersonSource } = require('../../src/utils/peopleRegistry') as typeof import('../../src/utils/peopleRegistry');
@@ -2668,6 +2978,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     const { patch, waitsOn, onlyIfAnswer, errors } = taskFieldsPatch(fields, current, {
       newId: generateId,
       emptyFollowUpDraft: followUp.emptyFollowUpTaskDraft,
+      // The clock time a sun anchor resolves to on the task's day, which is
+      // what the task keeps as its fallback (see Task.windowStartSun). Null
+      // with no location saved, which the patch refuses with the reason.
+      sunClockFor: sunAnchorClock,
     }, { isSubtask });
     errors.unshift(...eventErrors);
 
@@ -2804,6 +3118,15 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     refresh();
     return updated;
   };
+  // A reward can guard a live avoid habit no other reward guards, and only
+  // while it isn't one-time (rewardGuard.canGuard).
+  const requireGuardable = (taskId: string, rewardId: string | null, oneTime: boolean): void => {
+    const habit = tasks().find(t => t.id === taskId);
+    if (!habit || !rewardGuard.isGuardableHabit(habit)) throw new Error('A reward can only guard an active "don\'t do this" habit, and that task is not one.');
+    if (oneTime) throw new Error('A one-time reward cannot guard a habit: once claimed it is gone, and the habit would have nothing to claim.');
+    const other = useRewardStore.getState().rewards.find(r => r.id !== rewardId && r.guardsTaskId === taskId && rewardGuard.canGuard(r));
+    if (other) throw new Error(`"${other.title}" already guards that habit.`);
+  };
   const requireNegativeHabit = (id: string): Task => {
     const task = tasks().find(t => t.id === id);
     if (!task) throw new Error(`No task with id ${id}.`);
@@ -2830,6 +3153,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       now: new Date(),
       allTasks: tasks(),
       subtasks: tasks().filter(t => t.parentId === id),
+      meterReadings: db.dbGetAllMeterReadings(),
     });
     // Unreachable: completionRefusal above is the same guard buildCompletion
     // runs. Narrowing rather than asserting, so a rule added to one and not
@@ -2842,6 +3166,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       ...built.nextSubtasks,
       ...(built.followUpTask ? [built.followUpTask] : []),
       ...built.followUpSubtasks,
+      ...(built.reviewTask ? [built.reviewTask] : []),
       ...built.rolledOver,
     ]) {
       db.dbInsertTask(row);
@@ -2853,7 +3178,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     // that exists to count exactly these. Read through `medicationFor` so a
     // chain step carrying its own medication records that one.
     const dose = missed || mode === 'other' ? null : medication.medicationFor(task);
-    if (dose) useMedicationStore.getState().addLog({ ...dose, taskId: id, at: new Date() });
+    if (dose) useMedicationStore.getState().addLog({ ...dose, taskId: id, at: new Date(), useUsualDose: true });
 
     // Coins, kept for the same reason: the ledger is a record, and a task
     // finished here should earn what it would have earned on the phone.
@@ -2886,6 +3211,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       completed: built.completed,
       nextTask: built.nextTask,
       followUpTask: built.followUpTask,
+      reviewTask: built.reviewTask,
       rolledOver: built.rolledOver,
       loggedDose: dose !== null,
     };
@@ -3200,6 +3526,8 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     deliverableOptions: (task: Task) => deliverables.deliverableOptionsFor(task),
 
     todayKey: () => dates.dayKeyOf(dates.getLogicalToday()),
+    windowToday: (task: Task) => visibility.windowBoundsFor(task),
+    sunAnchorClock,
     shiftDayKey: (key: string, days: number) =>
       dates.dayKeyOf(addDays(dates.dayKeyToDate(key), days)),
 
@@ -3235,6 +3563,41 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     medicationLogs: (from: string, to: string) =>
       db.dbGetAllMedicationLogs().filter(l => l.dayKey >= from && l.dayKey <= to),
     medicationSummary: (log: MedicationLog) => medication.medicationLogSummary(log),
+    medicationSettings: () => {
+      const logs = db.dbGetAllMedicationLogs();
+      const map = medicationSettings.parseMedicationSettings(db.dbGetSetting(medicationSettings.MEDICATION_SETTINGS_KEY));
+      const names = new Map(medication.medicationVocabulary(logs, [], registeredMedications()).map(n => [medication.medicationKey(n), n]));
+      const now = new Date();
+      // A medicine added by name with no settings and no doses has nothing in the
+      // map, but is on the list, so it is reported too.
+      const bare = registeredMedications()
+        .filter(n => !map[medication.medicationKey(n)] && !logs.some(l => medication.medicationKey(l.name) === medication.medicationKey(n)))
+        .map(name => ({ name, noDosesYet: true as const }));
+      const withSettings = Object.entries(map).map(([key, prefs]) => {
+        const name = names.get(key) ?? key;
+        const status = medicationSettings.limitStatus(logs, name, prefs.limit, now);
+        const left = medicationSettings.supplyRemaining(logs, name, prefs.supply);
+        return {
+          name,
+          limit: medicationSettings.describeLimit(prefs.limit) ?? undefined,
+          dosesInLast24h: prefs.limit ? status.inLast24h : undefined,
+          amountInLast24h: status.maxAmount24h && status.amountInLast24h !== null
+            ? `${status.amountInLast24h.toLocaleString('en-US', { maximumFractionDigits: 2 })} of ${medicationSettings.formatCapAmount(status.maxAmount24h)}`
+            : undefined,
+          withinLimitAgainAt: status.nextOkAt ? status.nextOkAt.toISOString() : undefined,
+          supplyLeft: left === null || !prefs.supply ? undefined : medicationSettings.describeSupplyLeft(left, prefs.supply.unit),
+          ...(prefs.nutrition ? (() => {
+            const d = supplementDose.describeSupplementPanel(prefs.nutrition);
+            return { nutrients: d.heading, nutrientsDetail: d.detail };
+          })() : {}),
+          ...(typeof prefs.asNeeded === 'boolean' ? { takenAsNeeded: prefs.asNeeded } : {}),
+          ...(prefs.usualDoses?.length ? { usualAmounts: prefs.usualDoses.map(d => medication.formatDose(d) ?? '') } : {}),
+          ...(prefs.strength ? { eachCountedUnitContains: medicationSettings.formatCapAmount(prefs.strength) } : {}),
+          ...(logs.some(l => medication.medicationKey(l.name) === key) ? {} : { noDosesYet: true as const }),
+        };
+      });
+      return [...withSettings, ...bare];
+    },
 
     // The same ranking the quick-search sheet gets, project names and all —
     // reimplementing it here would be a second answer to "what matches", which
@@ -3293,10 +3656,13 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         simpleMode: s.simpleMode,
         rewardsEnabled: s.rewardsEnabled,
         rewardGoalId: s.rewardGoalId,
+        rewardWeeklyBudgetMinor: s.rewardWeeklyBudgetMinor,
         bountyLimit: s.bountyLimit,
         completedRetentionDays: s.completedRetentionDays,
         // Read off the table, as requestCalendarEvent does, so the two agree.
         calendarRequestsOn: !!db.dbGetSetting('calendarRequestDeviceId'),
+        unitSystem: s.unitSystem,
+        weatherTasks: s.weatherTasks,
       };
     },
 
@@ -3330,7 +3696,11 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         const where = group?.screen ? `Menu › ${group.title}` : `Settings › ${group?.title ?? r.entry.groupId}`;
         return {
           label: r.entry.label,
-          path: `${where} › ${r.entry.section} › ${r.entry.label}`,
+          // A setting that lives on its own screen has no Settings row: its
+          // section already says which screen and which button.
+          path: r.entry.screen
+            ? `${r.entry.section} › ${r.entry.label}`
+            : `${where} › ${r.entry.section} › ${r.entry.label}`,
           ...(r.matchedVia ? { matchedVia: r.matchedVia } : {}),
         };
       });
@@ -3358,6 +3728,9 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         agentNotes: require('../../src/utils/agentNotes'),
         nutritionEstimate: require('../../src/utils/nutritionEstimate'),
         generatedTasks: require('../../src/utils/generatedTasks'),
+        generatedTaskSettings: require('../../src/utils/generatedTaskSettings'),
+        taskFieldDefaults: require('../../src/utils/taskFieldDefaults'),
+        deliverables: require('../../src/utils/deliverables'),
         titleRules: require('../../src/utils/titleRules'),
         weatherTasks: require('../../src/utils/weatherTasks'),
         eventTasks: require('../../src/utils/eventTasks'),
@@ -3383,6 +3756,14 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     },
     allMoodLogs: () => db.dbGetAllMoodLogs(),
     milestones: () => db.dbGetAllMilestones(),
+    copyFlags: () => db.dbGetAllCopyFlags(),
+    resolveCopyFlag(id: string, resolution: string): CopyFlag {
+      const flag = db.dbGetAllCopyFlags().find(f => f.id === id);
+      if (!flag) throw new Error(`No copy flag with id ${id}. list_copy_flags names them.`);
+      const next: CopyFlag = { ...flag, status: 'resolved', resolution: resolution.trim() };
+      db.dbUpdateCopyFlag(next);
+      return next;
+    },
     // The store, loaded per write and hydrated before acting: a handful of
     // rows, and a dry run's rollback must not leave it holding a milestone the
     // database no longer has.
@@ -3418,27 +3799,55 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       store.removeMilestone(id);
       return milestone;
     },
+    meterReadings: () => db.dbGetAllMeterReadings(),
+    logMeterReading(name: string, value: number, readAt: Date): MeterReading {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { useMeterReadingStore } = require('../../src/store/useMeterReadingStore') as typeof import('../../src/store/useMeterReadingStore');
+      const store = useMeterReadingStore.getState();
+      store.initialize();
+      const reading = store.logReading(name, value, readAt);
+      if (!reading) throw new Error('A reading needs a meter name and a number zero or above.');
+      return reading;
+    },
+    deleteMeterReading(id: string): MeterReading {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { useMeterReadingStore } = require('../../src/store/useMeterReadingStore') as typeof import('../../src/store/useMeterReadingStore');
+      const store = useMeterReadingStore.getState();
+      store.initialize();
+      const reading = store.readings.find(r => r.id === id);
+      if (!reading) throw new Error(`No meter reading with id ${id}. list_meter_readings names them.`);
+      store.removeReading(id);
+      return reading;
+    },
+    journalWordGoal(): number | null {
+      return useSettingsStore.getState().journalWordGoal;
+    },
     journalEntries(fromDayKey: string, toDayKey: string, kind?: JournalKind): JournalEntry[] {
       return db.dbGetAllJournalEntries()
         .filter(e => e.dayKey >= fromDayKey && e.dayKey <= toDayKey && (!kind || e.kind === kind));
     },
-    addJournalEntry(kind: JournalKind, text: string, at?: Date): JournalEntry {
+    addJournalEntry(kind: JournalKind, text: string, at?: Date, meta?: { tags?: string[]; personIds?: string[] }): JournalEntry {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { useJournalStore } = require('../../src/store/useJournalStore') as typeof import('../../src/store/useJournalStore');
       const store = useJournalStore.getState();
       store.initialize();
-      const entry = store.addEntry(kind, text, at);
+      const entry = store.addEntry(kind, text, at, null, meta);
       if (!entry) throw new Error('An entry needs some text.');
       return entry;
     },
-    updateJournalEntry(id: string, text: string): JournalEntry {
+    updateJournalEntry(id: string, change: { text?: string; tags?: string[]; personIds?: string[] }): JournalEntry {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { useJournalStore } = require('../../src/store/useJournalStore') as typeof import('../../src/store/useJournalStore');
       const store = useJournalStore.getState();
       store.initialize();
       if (!store.entries.some(e => e.id === id)) throw new Error(`No journal or dream entry with id ${id}. list_journal_entries names them.`);
-      if (!text.trim()) throw new Error('An entry needs some text. To remove it, delete it instead.');
-      store.updateEntry(id, text);
+      if (change.text !== undefined) {
+        if (!change.text.trim()) throw new Error('An entry needs some text. To remove it, delete it instead.');
+        store.updateEntry(id, change.text);
+      }
+      if (change.tags !== undefined || change.personIds !== undefined) {
+        store.setEntryMeta(id, { tags: change.tags, personIds: change.personIds });
+      }
       return useJournalStore.getState().entries.find(e => e.id === id)!;
     },
     deleteJournalEntry(id: string): JournalEntry {
@@ -3768,7 +4177,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       /* eslint-enable @typescript-eslint/no-require-imports */
       // The app's own reader for a model's estimate: unknown keys dropped, a
       // figure nobody stated left absent rather than zero.
-      const read = estimate.readNutritionEstimate({ label: input.label, quantity: input.quantity ?? '', amounts: input.amounts, basis: 'typical', confidence: 'medium' });
+      const read = estimate.readNutritionEstimate({ label: input.label, quantity: input.quantity ?? '', amounts: input.amounts, breakdown: input.breakdown, basis: 'typical', confidence: 'medium' });
       if (!read) throw new Error('A food entry needs a name and at least one nutrient amount (calorieKcal, proteinG, carbsG, fatG, ...).');
       const panel = estimate.estimateToPanel(read);
       if (!panel) throw new Error('A food entry needs at least one nutrient amount.');
@@ -3856,7 +4265,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       /* eslint-disable @typescript-eslint/no-require-imports */
       const { useMedicationStore: meds } = require('../../src/store/useMedicationStore') as typeof import('../../src/store/useMedicationStore');
       /* eslint-enable @typescript-eslint/no-require-imports */
-      const known = medication.medicationVocabulary(db.dbGetAllMedicationLogs(), []);
+      const known = medication.medicationVocabulary(db.dbGetAllMedicationLogs(), [], registeredMedications());
       const name = known.find(n => medication.medicationKey(n) === medication.medicationKey(input.name)) ?? input.name.trim();
       if ((input.amount == null) !== (input.unit == null || input.unit === '')) {
         throw new Error('Give amount and unit together ("400" and "mg"), or neither.');
@@ -3877,27 +4286,45 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const entry = db.dbGetFoodLogEntry(id);
       if (!entry) throw new Error(`No food entry with id ${id}.`);
       const estimated = entry.nutrition.source === 'estimated';
+      if (patch.grams !== undefined && estimated) {
+        throw new Error('grams re-measures an entry against a food record, and an estimated entry has none. Restate its quantity and amounts instead.');
+      }
+      const remeasures = !estimated && (patch.grams !== undefined || patch.quantity !== undefined);
+      if (remeasures && patch.amounts !== undefined) {
+        throw new Error('A measured entry\'s figures come from its food record, so give a new amount (grams or quantity) or new amounts, not both.');
+      }
+      if (patch.breakdown !== undefined && patch.amounts === undefined) {
+        throw new Error('A breakdown has to add up to the total, so give the amounts it splits with it.');
+      }
       const touchesFigures = patch.amounts !== undefined || patch.quantity !== undefined;
-      if (touchesFigures && !estimated) {
+      if (touchesFigures && !estimated && !remeasures) {
         throw new Error('Only an estimated entry has figures to restate. This one was measured against a food\'s own label or database record, so correct it in the app, which re-measures it.');
       }
-      if (touchesFigures && entry.healthSampleIds.length > 0) {
+      if ((touchesFigures || patch.grams !== undefined) && entry.healthSampleIds.length > 0) {
         throw new Error('That entry was written to Apple Health, which only the phone can correct. Edit it in the app.');
       }
       if (patch.label !== undefined && !patch.label.trim()) throw new Error('A food entry needs a name.');
 
       let nutrition = entry.nutrition;
-      if (patch.amounts !== undefined) {
+      let measured: Partial<FoodLogEntry> = {};
+      if (remeasures) {
+        measured = remeasuredFields(entry, foodAmountText(patch));
+        nutrition = measured.nutrition!;
+      } else if (patch.amounts !== undefined) {
         const estimate = require('../../src/utils/nutritionEstimate') as typeof import('../../src/utils/nutritionEstimate'); // eslint-disable-line @typescript-eslint/no-require-imports
-        const read = estimate.readNutritionEstimate({ label: patch.label ?? entry.label, quantity: patch.quantity ?? entry.quantity, amounts: patch.amounts, basis: 'typical', confidence: 'medium' });
+        const read = estimate.readNutritionEstimate({ label: patch.label ?? entry.label, quantity: patch.quantity ?? entry.quantity, amounts: patch.amounts, breakdown: patch.breakdown, basis: 'typical', confidence: 'medium' });
+        // Refused rather than trimmed: see `breakdownMismatch`.
+        const mismatch = read && patch.breakdown ? estimate.breakdownMismatch(read.amounts, estimate.readBreakdown(patch.breakdown)) : null;
+        if (mismatch) throw new Error(`The breakdown has to add up to the total. ${mismatch}. Fix the parts or the total and try again.`);
         const panel = read && estimate.estimateToPanel(read);
         if (!panel) throw new Error('A food entry needs at least one nutrient amount.');
         nutrition = panel;
       }
       const updated: FoodLogEntry = {
         ...entry,
+        ...measured,
         label: patch.label !== undefined ? patch.label.trim() : entry.label,
-        quantity: patch.quantity !== undefined ? patch.quantity.trim() : entry.quantity,
+        quantity: remeasures ? measured.quantity! : patch.quantity !== undefined ? patch.quantity.trim() : entry.quantity,
         slot: patch.slot === undefined ? entry.slot : patch.slot,
         nutrition,
       };
@@ -3918,9 +4345,12 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return { from: entry, to: moved! };
     },
 
-    duplicateFoodEntry(id: string, at: Date): FoodLogEntry {
+    duplicateFoodEntry(id: string, at: Date, amount?: FoodAmount): FoodLogEntry {
       const entry = foodEntryToCopy(id);
-      return insertFoodCopy(entry, at, entry.slot, null);
+      // The copy is a new row, so Health and the original's samples are not in
+      // play; only the figures change, re-measured as an edit would.
+      const copy = amount ? { ...entry, ...remeasuredFields(entry, foodAmountText(amount)) } : entry;
+      return insertFoodCopy(copy, at, entry.slot, null);
     },
 
     savedMeals(): SavedMeal[] {
@@ -3991,6 +4421,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return { ...useSettingsStore.getState().nutritionTargets };
     },
 
+    nutritionLimits(): NutrientKey[] {
+      return [...useSettingsStore.getState().nutritionLimits];
+    },
+
     setNutritionTargets(changes: Partial<Record<NutrientKey, number | null>>): Partial<Record<NutrientKey, number>> {
       const { NUTRITION_TARGET_RANGES } = require('../../src/utils/nutritionTargets') as typeof import('../../src/utils/nutritionTargets'); // eslint-disable-line @typescript-eslint/no-require-imports
       const keys = Object.keys(changes) as NutrientKey[];
@@ -4054,7 +4488,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     requestCalendarEvent(input: CalendarRequestInput): CalendarRequest {
       if (!db.dbGetSetting('calendarRequestDeviceId')) {
         throw new Error(
-          'No device is set to add events to the calendar. On the phone that should add them, pick a calendar in Settings › Reminders & Calendar › Add Claude’s events to.'
+          'No device is set to add events to the calendar. On the phone that should add them, pick a calendar in Settings › Calendar › Add Claude’s events to.'
         );
       }
       const request: CalendarRequest = {
@@ -4131,16 +4565,149 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return existing;
     },
 
+    setSupplementPanel(name, panel) {
+      const { useMedicationStore: meds } = require('../../src/store/useMedicationStore') as typeof import('../../src/store/useMedicationStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+      // Loaded first: the store holds the whole settings map and writes it back
+      // whole, so setting one medicine's panel from a store that never read the
+      // others would replace them.
+      meds.getState().initialize();
+      const key = medication.medicationKey(name);
+      if (!key) throw new Error('A medicine needs a name.');
+      const known = medication.medicationVocabulary(db.dbGetAllMedicationLogs(), [], registeredMedications());
+      const spelled = known.find(n => medication.medicationKey(n) === key) ?? name.trim();
+      meds.getState().setSupplementPanel(spelled, panel);
+      return spelled;
+    },
+
     setMedicationArchived(name: string, archived: boolean): string {
       const { useMedicationStore: meds } = require('../../src/store/useMedicationStore') as typeof import('../../src/store/useMedicationStore'); // eslint-disable-line @typescript-eslint/no-require-imports
       meds.getState().initialize();
       const key = medication.medicationKey(name);
-      const known = medication.medicationVocabulary(db.dbGetAllMedicationLogs(), []);
+      const known = medication.medicationVocabulary(db.dbGetAllMedicationLogs(), [], registeredMedications());
       const spelled = known.find(n => medication.medicationKey(n) === key) ?? meds.getState().archived.find(n => medication.medicationKey(n) === key);
       if (!spelled) throw new Error(`No medicine called "${name}" in the log. list_medication_logs shows them.`);
       if (archived) meds.getState().archiveMedication(spelled);
       else meds.getState().unarchiveMedication(spelled);
       return spelled;
+    },
+
+    addMedication(name: string): { name: string; added: boolean } {
+      const { useMedicationStore: meds } = require('../../src/store/useMedicationStore') as typeof import('../../src/store/useMedicationStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+      // Loaded first, for the reason `setSupplementPanel` gives.
+      meds.getState().initialize();
+      const key = medication.medicationKey(name);
+      if (!key) throw new Error('A medicine needs a name.');
+      const spelled = medication.medicationVocabulary(db.dbGetAllMedicationLogs(), [], registeredMedications())
+        .find(n => medication.medicationKey(n) === key);
+      const added = meds.getState().addMedication(name);
+      return { name: spelled ?? name.trim(), added: added && !spelled };
+    },
+
+    removeMedication(name: string): string {
+      const { useMedicationStore: meds } = require('../../src/store/useMedicationStore') as typeof import('../../src/store/useMedicationStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+      meds.getState().initialize();
+      const key = medication.medicationKey(name);
+      const spelled = medication.medicationVocabulary(db.dbGetAllMedicationLogs(), [], registeredMedications())
+        .find(n => medication.medicationKey(n) === key)
+        ?? meds.getState().archived.find(k => k === key);
+      if (!spelled) throw new Error(`No medicine called "${name}" in the list. list_medication_logs shows them.`);
+      if (!meds.getState().removeMedication(spelled)) {
+        throw new Error(`${spelled} has recorded doses, which are the person's record. Delete them one at a time with delete_medication_log, or archive_medication to move it out of "what you take".`);
+      }
+      return spelled;
+    },
+
+    setMedicationLimit(name, limit) {
+      const { useMedicationStore: meds } = require('../../src/store/useMedicationStore') as typeof import('../../src/store/useMedicationStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+      // Loaded first: the store writes the whole settings map back.
+      meds.getState().initialize();
+      const spelled = listedMedicationName(meds, name);
+      const current = medicationSettings.prefsFor(meds.getState().settings, spelled).limit;
+      if (limit === null) {
+        meds.getState().setLimit(spelled, null);
+      } else {
+        const next = {
+          minHours: limit.minHours === undefined ? current?.minHours ?? null : limit.minHours,
+          maxPer24h: limit.maxPer24h === undefined ? current?.maxPer24h ?? null : limit.maxPer24h,
+          maxAmount24h: limit.maxAmount24h === undefined ? current?.maxAmount24h ?? null : limit.maxAmount24h,
+          // The switch needs the phone's notification permission, so it stays as the person left it.
+          notify: current?.notify ?? false,
+        };
+        meds.getState().setLimit(spelled, next);
+      }
+      const after = medicationSettings.prefsFor(meds.getState().settings, spelled).limit;
+      return { medicine: spelled, limit: medicationSettings.describeLimit(after) };
+    },
+
+    setMedicationSupply(name, supply) {
+      const { useMedicationStore: meds } = require('../../src/store/useMedicationStore') as typeof import('../../src/store/useMedicationStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+      meds.getState().initialize();
+      const spelled = listedMedicationName(meds, name);
+      const current = medicationSettings.prefsFor(meds.getState().settings, spelled).supply;
+      if (supply === null) {
+        meds.getState().setSupply(spelled, null);
+      } else {
+        meds.getState().setSupply(spelled, {
+          count: supply.count,
+          unit: supply.unit ?? current?.unit ?? 'dose',
+          refillCount: supply.refillCount === undefined ? current?.refillCount ?? null : supply.refillCount,
+          reorderAt: supply.reorderAt ?? current?.reorderAt ?? 5,
+        });
+      }
+      const after = medicationSettings.prefsFor(meds.getState().settings, spelled).supply;
+      const left = medicationSettings.supplyRemaining(db.dbGetAllMedicationLogs(), spelled, after);
+      return { medicine: spelled, left: left === null || !after ? null : medicationSettings.describeSupplyLeft(left, after.unit) };
+    },
+
+    setMedicationProfile(name, profile) {
+      const { useMedicationStore: meds } = require('../../src/store/useMedicationStore') as typeof import('../../src/store/useMedicationStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+      meds.getState().initialize();
+      const key = medication.medicationKey(name);
+      const spelled = medication.medicationVocabulary(db.dbGetAllMedicationLogs(), [], registeredMedications())
+        .find(n => medication.medicationKey(n) === key)
+        ?? meds.getState().archived.find(k => k === key);
+      if (!spelled) throw new Error(`No medicine called "${name}" in the list. add_medication adds one; list_medication_logs shows them.`);
+      if (profile.asNeeded !== undefined) meds.getState().setAsNeeded(spelled, profile.asNeeded);
+      if (profile.usualDoses !== undefined) meds.getState().setUsualDoses(spelled, profile.usualDoses);
+      if (profile.strength !== undefined) meds.getState().setStrength(spelled, profile.strength);
+      return spelled;
+    },
+
+    renameMedication(from: string, to: string, fill: { amount: number; unit: string } | null): { from: string; doses: number } {
+      const { useMedicationStore: meds } = require('../../src/store/useMedicationStore') as typeof import('../../src/store/useMedicationStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const rename = require('../../src/utils/medicationRename') as typeof import('../../src/utils/medicationRename');
+      meds.getState().initialize();
+      const target = to.trim();
+      if (!target) throw new Error('A medicine needs a name.');
+      const fromKey = medication.medicationKey(from);
+      const spelled = medication.medicationVocabulary(db.dbGetAllMedicationLogs(), [], registeredMedications())
+        .find(n => medication.medicationKey(n) === fromKey)
+        ?? meds.getState().logs.find(l => medication.medicationKey(l.name) === fromKey)?.name;
+      if (!spelled) throw new Error(`No medicine called "${from}" in the log. list_medication_logs shows them.`);
+      // Spelled as the log already has it when the target is an existing medicine.
+      const toKey = medication.medicationKey(target);
+      const existing = meds.getState().logs.find(l => medication.medicationKey(l.name) === toKey && toKey !== fromKey);
+      const name = existing ? existing.name.trim() : target;
+      const doses = meds.getState().renameMedication(spelled, name, fill);
+      if (doses === null) throw new Error('Could not rename it.');
+      // Written through db, not the stores, as the rest of this file is (see createTemplate).
+      for (const t of db.dbGetAllTasks()) {
+        const next = rename.renamedTask(t, fromKey, name);
+        if (next) db.dbUpdateTask(next);
+      }
+      for (const template of db.dbGetAllTemplates()) {
+        let changed = false;
+        const items = template.items.map(i => {
+          const next = rename.renamedTemplateItem(i, fromKey, name);
+          if (!next) return i;
+          changed = true;
+          return next;
+        });
+        if (changed) db.dbUpdateTemplate({ ...template, items });
+      }
+      refresh();
+      return { from: spelled, doses };
     },
 
     renameMoodTag(from: string, to: string): number {
@@ -4167,7 +4734,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         throw new Error('Give amount and unit together ("400" and "mg"), or neither.');
       }
       if (patch.name !== undefined && !patch.name.trim()) throw new Error('A dose needs the medication\'s name.');
-      const known = medication.medicationVocabulary(db.dbGetAllMedicationLogs(), []);
+      const known = medication.medicationVocabulary(db.dbGetAllMedicationLogs(), [], registeredMedications());
       const name = patch.name === undefined ? undefined
         : known.find(n => medication.medicationKey(n) === medication.medicationKey(patch.name!)) ?? patch.name.trim();
       meds.getState().updateLog(id, {
@@ -4218,6 +4785,28 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     setGeneratorCategory(kind: GeneratedKind, category: string | null) {
       categoryStore.setGeneratedCategory(kind, category);
       refresh();
+    },
+
+    generatorTaskSettings(kind: GeneratedKind) {
+      const s = useSettingsStore.getState();
+      return { defaults: s.generatedTaskDefaults[kind] ?? null, extras: s.generatedTaskExtras[kind] ?? null };
+    },
+
+    setGeneratorTaskSettings(kind, change) {
+      const s = useSettingsStore.getState();
+      if (change.defaults !== undefined) s.setGeneratedTaskDefaults(kind, change.defaults);
+      if (change.extras !== undefined) s.setGeneratedTaskExtras(kind, change.extras);
+      refresh();
+    },
+
+    taskSettingsContext() {
+      const s = useSettingsStore.getState();
+      return {
+        groceryUseUpLeadDays: s.groceryUseUpLeadDays,
+        birthdayLeadDays: s.birthdayLeadDays,
+        birthdayGiftLeadDays: s.birthdayGiftLeadDays,
+        mealShortfallLeadDays: s.mealShortfallLeadDays,
+      };
     },
 
     deleteCategory(name: string, moveTo: string | null): DeletedCategory {
@@ -4373,10 +4962,16 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         if (!question) { errors.push(`There is no question named "${name}". Its questions: ${questions.filter(q => q.name).map(q => q.name).join(', ') || 'none'}.`); continue; }
         // A choice answer is spelled the way the option is, since a condition
         // compares the stored strings exactly.
-        const value = question.kind === 'choice'
-          ? question.options.find(o => o.trim().toLowerCase() === raw.trim().toLowerCase()) ?? raw
-          : raw;
-        if (question.kind === 'choice' && !question.options.includes(value)) errors.push(`"${name}" must be one of ${question.options.join(', ')}.`);
+        // A question that takes several answers gets them joined with commas,
+        // unless an option itself holds a comma and the whole string is one.
+        const spell = (text: string) => question.options.find(o => o.trim().toLowerCase() === text.trim().toLowerCase());
+        let value = question.kind === 'choice' ? spell(raw) ?? raw : raw;
+        if (question.kind === 'choice' && question.multiple && spell(raw) === undefined) {
+          const parts = raw.split(',').map(part => spell(part) ?? part.trim()).filter(Boolean);
+          const bad = parts.filter(part => !question.options.includes(part));
+          if (bad.length > 0 || parts.length === 0) errors.push(`"${name}" must be some of ${question.options.join(', ')}.`);
+          else value = templateQuestions.encodeAnswerValues(question.options.filter(o => parts.includes(o)));
+        } else if (question.kind === 'choice' && !question.options.includes(value)) errors.push(`"${name}" must be one of ${question.options.join(', ')}.`);
         if (question.kind === 'number' && !Number.isFinite(Number(value))) errors.push(`"${name}" must be a number.`);
         typed[question.id] = value;
       }
@@ -5990,7 +6585,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const content: Parameters<typeof store.updateProject>[1] = { ...rest } as never;
       if (taskDefaults !== undefined) {
         content.taskDefaults = taskDefaults === null ? null : parseTaskFieldDefaults(taskDefaults);
-        if (taskDefaults !== null && content.taskDefaults === null) throw new Error('taskDefaults: nothing in it is a value I can use. Priority is 0 to 4, difficulty is easy, normal or hard, and effort is 1 to 6.');
+        if (taskDefaults !== null && content.taskDefaults === null) throw new Error('taskDefaults: nothing in it is a value I can use. Priority is 0 to 4, difficulty is easy, normal or hard, effort is 0 to 6 (0 is no estimate), and showStreak, vacationPause and excludeFromSuggestions are true or false.');
       }
       if (content.defaultTaskCategory) {
         const errors: string[] = [];
@@ -6381,7 +6976,8 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           notes: source.notes, defaultTaskCategory: source.defaultTaskCategory, taskDefaults: source.taskDefaults ?? null,
           ongoing: source.ongoing, nudgeOptIn: source.nudgeOptIn, nudgeCadenceDays: source.nudgeCadenceDays,
           autoSchedule: source.autoSchedule, weekendSource: source.weekendSource, destination: source.destination,
-          personIds: source.personIds, links: source.links, inOrder: source.inOrder, showChecked: source.showChecked,
+          personIds: source.personIds, links: source.links, inOrder: source.inOrder, showChecked: source.showChecked, hideNextStep: source.hideNextStep,
+          groupOnToday: source.groupOnToday,
         });
         const sectionFor = new Map<string, string>();
         for (const section of blueprint.sections) {
@@ -6508,6 +7104,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return updated;
     },
 
+    currentDayStart(): Date {
+      return dates.getCurrentDayStart();
+    },
+
     rewardState(): { entries: CoinEntry[]; rewards: Reward[] } {
       return {
         entries: rewards.sortCoinEntries(db.dbGetAllCoinEntries()),
@@ -6520,6 +7120,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const name = title.trim();
       if (!name) throw new Error('A reward needs a title.');
       requireRewardCost(cost);
+      if (details.guardsTaskId) requireGuardable(details.guardsTaskId, null, !!details.oneTime);
       const reward = useRewardStore.getState().addReward(name, cost, details);
       if (!reward) throw new Error('Could not add the reward.');
       refresh();
@@ -6532,6 +7133,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (current.taskId) throw new Error('That reward is a wish-list item, so its title, note and link are the item\'s. Edit the item instead.');
       if (patch.title !== undefined && !patch.title.trim()) throw new Error('A reward needs a title.');
       if (patch.cost !== undefined) requireRewardCost(patch.cost);
+      if (patch.guardsTaskId) requireGuardable(patch.guardsTaskId, id, patch.oneTime ?? current.oneTime);
       useRewardStore.getState().updateReward(id, patch);
       refresh();
       return requireReward(id);
@@ -6550,6 +7152,8 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const reward = requireReward(id);
       const { entries } = useRewardStore.getState();
       if (reward.oneTime && rewards.lastClaimedAt(entries, id) !== null) throw new Error(`"${reward.title}" is a one-time reward and has already been claimed.`);
+      const wait = rewards.claimWaitDays(reward, entries, dates.getCurrentDayStart());
+      if (wait > 0) throw new Error(`"${reward.title}" can be claimed ${rewards.describeClaimLimit(reward.claimEveryDays!).toLowerCase()}. ${rewards.describeClaimWait(wait)}.`);
       // A wish-list reward is its list item: claiming it checks the item off, the
       // app's `claim` in RewardsScreen. Judged before any coin moves, so a
       // refusal leaves the balance alone.
@@ -6628,15 +7232,31 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return setBountyPushes(task, rewards.BOUNTY_WITHDRAWN);
     },
 
-    logSlip(id): Task {
+    logSlip(id): { task: Task; claim: CoinEntry | null } {
       const task = requireNegativeHabit(id);
       const dayStart = dates.getCurrentDayStart();
+      // The app's logSlip, step for step: a guarded slip the balance covers is
+      // the claim instead, and leaves the habit as it was.
+      let guard = useRewardStore.getState().slipGuardFor(task, dayStart)?.plan ?? null;
+      if (guard?.kind === 'claim') {
+        const claim = useRewardStore.getState().claimReward(guard.reward.id);
+        if (claim) {
+          refresh();
+          return { task, claim };
+        }
+        guard = useRewardStore.getState().slipGuardFor(task, dayStart)?.plan ?? null;
+      }
       const free = negativeHabits.nextSlipIsFree(task, dayStart);
       const updated = { ...task, ...negativeHabits.slipPatch(task, dayStart) };
       db.dbUpdateTask(updated);
-      if (!free) useRewardStore.getState().recordSlip(id, rewards.coinsForLoss(updated), visibility.displayTitleFor(updated));
+      if (!free && guard?.kind === 'charge') {
+        useRewardStore.getState().recordGuardCharge(id, guard.amount, visibility.displayTitleFor(updated),
+          rewardGuard.guardChargeSeed(id, dayStart, negativeHabits.slipsToday(task, dayStart)));
+      } else if (!free) {
+        useRewardStore.getState().recordSlip(id, rewards.coinsForLoss(updated), visibility.displayTitleFor(updated));
+      }
       refresh();
-      return updated;
+      return { task: updated, claim: null };
     },
 
     undoSlip(id): Task {
@@ -6647,7 +7267,12 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const free = negativeHabits.lastSlipWasFree(task, dayStart);
       const updated = { ...task, ...patch };
       db.dbUpdateTask(updated);
-      if (!free) useRewardStore.getState().takeBackSlip(id);
+      if (!free) {
+        // As the app's undoSlip: a guarded slip's charge is named by its slip.
+        const store = useRewardStore.getState();
+        const seed = rewardGuard.guardChargeSeed(id, dayStart, negativeHabits.slipsToday(task, dayStart) - 1);
+        if (!store.takeBackGuardCharge(seed) && !rewardGuard.guardingReward(store.rewards, id)) store.takeBackSlip(id);
+      }
       refresh();
       return updated;
     },

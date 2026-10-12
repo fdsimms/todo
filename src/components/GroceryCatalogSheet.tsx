@@ -263,7 +263,7 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
   const confirmPrune = () => {
     confirmDelete({
       title: `Forget ${pruneable.length} unused ${pruneable.length === 1 ? 'item' : 'items'}?`,
-      message: `${pruneable.map(i => i.name).slice(0, 6).join(', ')}${pruneable.length > 6 ? '…' : ''}\n\nThese have never been bought and haven't been added in months, usually typos. This can't be undone.`,
+      message: `${pruneable.map(i => i.name).slice(0, 6).join(', ')}${pruneable.length > 6 ? '…' : ''}\n\nThese have never been bought and haven’t been added in months. This can’t be undone.`,
       confirmLabel: 'Forget',
       onConfirm: () => {
         deleteItems(pruneable.map(i => i.id));
@@ -442,8 +442,8 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
                       ? 'Everything you buy at this store is already on the list.'
                       : 'Everything in your catalog is already on the list.'
                     : shopFilter
-                      ? 'Finish a trip at this store and the things you bought turn up here.'
-                      : 'Finish a shopping trip and the things you bought turn up here, best-first.'
+                      ? 'Finish a trip at this store and what you bought shows up here.'
+                      : 'Finish a shopping trip and what you bought shows up here.'
               }
             />
           }

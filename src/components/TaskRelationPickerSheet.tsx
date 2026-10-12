@@ -18,7 +18,7 @@ import { SheetScrim } from './SheetScrim';
 import { EmptyState } from './EmptyState';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, border, animation, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, border, animation, interaction, sheetBottomInset, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useShallow } from 'zustand/react/shallow';
 import { useTasksWhileOpen } from '../hooks/useTasksWhileOpen';
@@ -28,6 +28,7 @@ import { useCategoryStore } from '../store/useCategoryStore';
 import { fuzzySearch } from '../utils/fuzzySearch';
 import { canBeBlockedBy, canBeBlockerOf, canBeGateOf, resolverFor, sortByBlockerAffinity, type BlockerContext } from '../utils/blocking';
 import { displayTitleFor } from '../utils/visibilityUtils';
+import { canCarryMedication } from '../utils/medicationLog';
 import { categoryLabel } from '../utils/categoryLabel';
 import type { Task } from '../types';
 import { useSheetMotion } from '../hooks/useSheetMotion';
@@ -37,7 +38,7 @@ import { useFilterField } from '../hooks/useFilterField';
  * Which end of the relationship is being filled in: the task being edited is
  * either the one waiting, or the one everything else is waiting on.
  */
-export type TaskRelation = 'waitingOn' | 'blocks' | 'answer';
+export type TaskRelation = 'waitingOn' | 'blocks' | 'answer' | 'medication';
 
 interface Props {
   visible: boolean;
@@ -82,7 +83,7 @@ const COPY: Record<TaskRelation, {
     title: 'Waiting on',
     hint: 'This task stays out of your lists until the tasks you pick are done.',
     emptyTitle: 'Nothing to wait on',
-    emptySub: 'Tasks that would end up waiting on each other are left out.',
+    emptySub: 'Tasks that would wait on each other are left out.',
     action: title => `Wait on ${title}`,
   },
   blocks: {
@@ -92,15 +93,24 @@ const COPY: Record<TaskRelation, {
     // Says why the list is short rather than leaving it a mystery: a task
     // waits on one thing at a time, so anything already waiting on another
     // task is set from that task's own editor instead.
-    emptySub: 'Tasks that would end up waiting on each other are left out.',
+    emptySub: 'Tasks that would wait on each other are left out.',
     action: title => `Block ${title}`,
   },
   answer: {
     title: 'Only if',
-    hint: 'Pick a task that asks a question. You choose which answers show this task next.',
+    hint: 'Pick a task that asks a question, then choose which answers show this task.',
     emptyTitle: 'No questions to pick',
     emptySub: 'Only tasks that ask Yes/No or Pick one when completed are listed.',
     action: title => `Only if ${title}`,
+  },
+  // Not a blocking relation at all: borrowed for the dose sheet, which needs the
+  // same searchable list of tasks and nothing else from this file.
+  medication: {
+    title: 'Add to a task',
+    hint: 'Checking off the task you pick records the dose each time.',
+    emptyTitle: 'No repeating tasks',
+    emptySub: 'Only repeating tasks that do not already record a medication are listed.',
+    action: title => `Record doses when ${title} is checked off`,
   },
 };
 
@@ -143,7 +153,9 @@ export function TaskRelationPickerSheet({ visible, onClose, relation, taskId, co
         ? canBeBlockerOf(t, taskId, resolve)
         : relation === 'answer'
           ? canBeGateOf(t, taskId, resolve)
-          : canBeBlockedBy(t, taskId, resolve))
+          : relation === 'medication'
+            ? canCarryMedication(t)
+            : canBeBlockedBy(t, taskId, resolve))
     );
     // Rank before truncating, so a neighbour buried deep in the list still
     // reaches the visible rows.
@@ -351,7 +363,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     right: 0,
     bottom: 0,
     paddingHorizontal: spacing.md,
-    paddingBottom: 34,
+    paddingBottom: sheetBottomInset,
   },
   handleArea: {
     alignItems: 'center',

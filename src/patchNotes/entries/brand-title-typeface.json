@@ -1,1 +1,1 @@
-{ "message": "Screen titles and empty-screen messages are set in the app's own typeface, Bricolage, while the Typeface setting is on System. Picking any other typeface still uses it everywhere", "date": "2026-10-05" }
+{ "message": "Screen titles and empty-screen messages now use the app’s own typeface, Bricolage, while the Typeface setting is on System. Picking any other typeface still uses it everywhere.", "date": "2026-10-05" }

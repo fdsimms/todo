@@ -8,7 +8,7 @@ import type { Task, TaskDraft } from '../types';
 
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: {
-    getState: () => ({ dayResetTime: '00:00', vacationMode: false, newTaskDefaults: {}, activeHoursStart: '08:00', activeHoursEnd: '22:00' }),
+    getState: () => ({ dayResetTime: '00:00', vacationMode: false, newTaskDefaults: {}, activeHoursStart: '08:00', activeHoursEnd: '22:00', holidaySet: 'us', customHolidays: [] }),
   },
 }));
 jest.mock('../store/useCategoryStore', () => ({
@@ -33,6 +33,22 @@ describe('skipPatch', () => {
     expect(new Date(patch.dueDate!).getDate()).toBe(17);
     expect(patch.recurrenceCount).toBe(2);
     expect(patch).toMatchObject({ deferUntil: null, postponeCount: 0, recurrenceAnchorDay: task.recurrenceAnchorDay });
+  });
+
+  // Thursdays from Nov 21, 2030; the 28th is Thanksgiving.
+  it('moves an occurrence off a holiday and writes the rule\'s own day as the anchor', () => {
+    const task = make({ dueDate: new Date(2030, 10, 21, 9).toISOString(), recurrenceType: 'weekly', recurrenceDays: [4], recurrenceHolidays: 'move' });
+    expect(task.recurrenceHolidays).toBe('move');
+    const patch = skipPatch(task, '00:00')!;
+    expect(new Date(patch.dueDate!).getDate()).toBe(29);
+    expect(new Date(patch.recurrenceAnchorDate!).getDate()).toBe(28);
+  });
+
+  it('clears the anchor again on an ordinary skip', () => {
+    const task = { ...make({ dueDate: new Date(2030, 10, 29, 9).toISOString(), recurrenceType: 'weekly', recurrenceDays: [4], recurrenceHolidays: 'move' }), recurrenceAnchorDate: new Date(2030, 10, 28, 9).toISOString() };
+    const patch = skipPatch(task, '00:00')!;
+    expect(new Date(patch.dueDate!).getDate()).toBe(5);
+    expect(patch.recurrenceAnchorDate).toBeNull();
   });
 
   it('only moves a mid-chain step along when steps do not follow the schedule', () => {

@@ -8,6 +8,7 @@
 // The row is rendered on several screens, and `duplicateRow` marks the pinned
 // copy so two rows never claim one task id in the paint-select registry (see
 // the Pinning note in CLAUDE.md).
+import { countsUnits } from '../utils/streakUnits';
 import React, { useRef, useState, useMemo, useEffect } from 'react';
 import {
   View,
@@ -21,6 +22,8 @@ import {
   Keyboard,
   LayoutChangeEvent,
   Linking,
+  type NativeSyntheticEvent,
+  type TextLayoutEventData,
 } from 'react-native';
 import Reanimated, {
   useSharedValue,
@@ -34,15 +37,24 @@ import Reanimated, {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { PinIcon } from './PinIcon';
+import { LockedTaskRow } from './LockedTaskRow';
+import { useProjectLockStore } from '../store/useProjectLockStore';
+import { isProjectLockedAway } from '../utils/projectLock';
 import { CoinIcon } from './CoinIcon';
 import type { Task, GroceryItem, ItemSubLink, ItemProduct, Recipe, ChainItem } from '../types';
 import { MEAL_SLOT_ICONS, MEAL_SLOT_LABELS, PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
 import { useColors } from '../theme/ThemeContext';
+import { useTrayRaised } from './TaskGroupTray';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, checkboxRadius, type Colors, textScale } from '../theme';
 import { weatherWaitChipText } from '../utils/weatherWait';
+import { meterChipText } from '../utils/meters';
+import { useMeterReadingStore } from '../store/useMeterReadingStore';
+import { MeterReadingSheet } from './MeterReadingSheet';
 import { formatDeadlineLabel, isDeadlineTimePassed, formatScheduledDate, formatTaskDate, formatHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate, getTaskDayStart, getCurrentDayStart, liveStreakCount, getLogicalDayKey, dayKeyToDate, formatTimeOfDay, hoursUnlockLabel, getLogicalNow } from '../utils/dateUtils';
 import { isNegativeTask, isFailedToday, slipsToday, slipAllowanceOf } from '../utils/negativeHabits';
+import { negativeHoldNow, negativeHoldOffered } from '../utils/negativeHold';
+import type { NegativeHold } from '../utils/negativeHabits';
 import { scheduleMoveUpdates } from '../utils/taskMoves';
 import { confirmScheduleMove, confirmSegmentScope } from '../utils/scheduleMovePrompt';
 import { formatDuration, formatStopwatch } from '../utils/effort';
@@ -55,12 +67,15 @@ import {
 import { useHealthStore } from '../store/useHealthStore';
 import { activeSegment, segmentPhase, segmentRemaining, timerSegments } from '../utils/timerSegments';
 import { isStreakAtRecord } from '../utils/streakRecord';
-import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isMissableMealPlanTask, isTaskNew, isTaskVisible, isQuotaTask, isQuotaPartial, quotaRidesOutTheDay, isOnPaceQuota, quotaLeavesTodayAfterLog, quotaNextDueAt, formatQuotaNextDue, quotaFraction, quotaPaceFraction, quotaUnitsToPace, activeChainStepTitle, displayTitleFor, isTaskNotNeeded } from '../utils/visibilityUtils';
+import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isMissableMealPlanTask, isTaskNew, isTaskVisible, isQuotaTask, isQuotaPartial, quotaRidesOutTheDay, isOnPaceQuota, quotaLeavesTodayAfterLog, quotaNextDueAt, formatQuotaNextDue, quotaFraction, quotaPaceFraction, quotaUnitsToPace, activeChainStepTitle, displayTitleFor, isTaskNotNeeded, isPinnedOnToday } from '../utils/visibilityUtils';
 import { openTasksOf } from '../utils/openTasks';
 import { asksOnCompletion, deliverableKindFor, isTentativeAnswer, type DeliverableReasoning } from '../utils/deliverables';
+import type { ReviewAfter } from '../utils/decisionReview';
 import { offersMealLogOnCompletion } from '../utils/completionTap';
 import { describeTaskRecurrence } from '../utils/recurrenceLabels';
 import { chainPreview, isChainFinish, chainStepAdvancesInPlace, nextChainStep } from '../utils/chain';
+import { isAnsweredByRecord, recordLogUrl } from '../utils/recordTasks';
+import { useRecordTaskReady } from '../hooks/useRecordTaskReady';
 import { formatQuotaProgress } from '../utils/quotaUnit';
 import { clampSupplyReorderAt, describeSupply } from '../utils/supply';
 import { followUpTaskRule, completionsUntilFollowUpTask } from '../utils/followUpTask';
@@ -86,13 +101,16 @@ import { useNowTick } from '../hooks/useNowTick';
 import { useReduceMotion } from '../utils/useReduceMotion';
 import { useTaskStore, redoRestoringRows } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useRewardStore } from '../store/useRewardStore';
+import { guardingReward } from '../utils/rewardGuard';
 import { taskFieldsFromEvent } from '../utils/calendarEventImport';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { mealPlanNudgeDayKey } from '../utils/mealPlanNudge';
 import { activeMealSlotStepId, mealSlotOf, parseMealSlotSource } from '../utils/mealSlotTasks';
 import { calendarReviewEventsFor } from '../utils/calendarReviewTasks';
 import { useEventTaskContext } from '../hooks/useEventTaskContext';
-import { isNoticeTask } from '../utils/generatedTasks';
+import { automationEntryIdFor, isNoticeTask } from '../utils/generatedTasks';
+import { navigateToSettingsEntry } from '../navigation/openSettings';
 import { useCalendarStore } from '../store/useCalendarStore';
 import type { BusyEvent } from '../utils/calendarBusy';
 import { useGroceryStore } from '../store/useGroceryStore';
@@ -103,6 +121,7 @@ import { mealShortfallEntryId, mealShortfallRows } from '../utils/mealShortfallT
 import { usePlanMeal } from '../hooks/usePlanMeal';
 import { useSheetMount } from '../hooks/useSheetMount';
 import { CompletionOptionsMenu } from './CompletionOptionsMenu';
+import { NegativeHoldMenu } from './NegativeHoldMenu';
 import { SwipeActionButtons } from './SwipeActionButtons';
 import type { CardAnchor } from '../utils/cardAnchor';
 import { RotationPickSheet } from './RotationPickSheet';
@@ -142,6 +161,7 @@ import { NumberPadAccessory } from './NumberPadAccessory';
 import { SpotlightScrim, useSpotlightLinger } from './SpotlightOverlay';
 import { ProgressBar } from './ProgressBar';
 import { TextField } from './TextField';
+import { useActionMenu } from '../hooks/useActionMenu';
 
 const CHECKBOX_SIZE = 20;
 const SUBTASK_CHECKBOX_SIZE = 16;
@@ -163,7 +183,12 @@ const QUOTA_TOPPING_MS = animation.duration.normal;
 // taps in one place, rather than one tap here and three more from Later once
 // the row has gone. Every further tap pushes this out again, so the window is
 // the gap between taps, not a budget for the whole burst.
-const QUOTA_LINGER_MS = 4000;
+//
+// Kept short on purpose: a normal completion leaves about a second after the
+// last tap (COMPLETION_HOLD_MS in useTaskStore), and the send-off adds about
+// half a second of fade and collapse on top of this, so 500 lands the row's
+// exit at the same point. A longer linger reads as the target being stuck.
+const QUOTA_LINGER_MS = 500;
 // Stable reference for every row that isn't a calendarReview task, so
 // subscribing to the calendar store below doesn't re-render rows it has
 // nothing to say about — see the reviewProject/quietDays comment further down
@@ -323,7 +348,16 @@ function filedOfferLabel(parsed: ParsedCategoryAndTags, categories: Parameters<t
  * the compare silently: the row still works, it just goes back to re-rendering
  * every time.
  */
-export const TaskItem = React.memo(function TaskItem({
+// Whether a title plus its notes/deadline markers fit on the two lines the row
+// gives a title, remembered by the text that decided it. A row that remounts
+// (a list re-render, a tab return) starts from the last answer instead of
+// from "fits", so a long title doesn't flash its markers inline for a frame
+// before they move to the meta line again. The measurement still runs every
+// time and overwrites this, so a changed width corrects it.
+const markerFitCache = new Map<string, boolean>();
+const NBSP = '\u00A0';
+
+const TaskItemRow = React.memo(function TaskItem({
   task,
   onPress,
   rowKey,
@@ -360,6 +394,7 @@ export const TaskItem = React.memo(function TaskItem({
   onOpenProject,
   onOpenCategory,
 }: Props) {
+  const actionMenu = useActionMenu();
   // What a press reports back: this row, not necessarily this task (see the
   // prop's note). Everything else about the row still speaks in task ids.
   const rowId = rowKey ?? task.id;
@@ -396,6 +431,8 @@ export const TaskItem = React.memo(function TaskItem({
     planRotationItem,
     logSlip,
     undoSlip,
+    closeNegativeDay,
+    reopenNegativeDay,
     startQuotaRun,
     holdQuotaOnToday,
     releaseQuotaHold,
@@ -508,15 +545,13 @@ export const TaskItem = React.memo(function TaskItem({
   const handleContact = () => {
     if (!callUrl) return;
     haptics.tap();
-    Alert.alert(
-      contact.phoneNumber ?? '',
-      undefined,
-      [
-        { text: 'Call', onPress: handleCall },
-        ...(textUrl ? [{ text: 'Message', onPress: handleText }] : []),
-        { text: 'Cancel', style: 'cancel' as const },
+    actionMenu.open({
+      title: contact.phoneNumber ?? '',
+      actions: [
+        { key: 'call', label: 'Call', icon: 'call-outline', onPress: handleCall },
+        ...(textUrl ? [{ key: 'message', label: 'Message', icon: 'chatbubble-outline', onPress: handleText } as const] : []),
       ],
-    );
+    });
   };
 
   const handleEmail = async () => {
@@ -554,18 +589,30 @@ export const TaskItem = React.memo(function TaskItem({
   };
   const colors = useColors();
   const { shadows } = useTheme();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  // Inside a raised stack tray the card steps up a shade, or it would sit on
+  // a tray of its own colour.
+  const trayRaised = useTrayRaised();
+  const styles = useMemo(() => makeStyles(colors, trayRaised), [colors, trayRaised]);
   const reduceMotion = useReduceMotion();
   // ==== local state (expansion, completion animation, inline editing) ====
   const [showWhenPicker, setShowWhenPicker] = useState(false);
   const [showBreakdown, setShowBreakdown] = useState(false);
+  // What the hidden measurer last reported for this title and its markers
+  // (see `measuresMarkers`). Keyed so an answer about an old title never
+  // applies to a new one.
+  const [markerMeasure, setMarkerMeasure] = useState<{ key: string; fits: boolean } | null>(null);
   // The pin glyph flips on the tap, ahead of the store write: the write
   // re-renders the whole Today screen, and the glyph used to wait for that.
   // `pinWritesPending` counts taps whose write hasn't run, so a double tap
   // doesn't drop back to the stored value between its two writes.
   const [pinOverride, setPinOverride] = useState<boolean | null>(null);
+  // A pin on a pinEachOccurrence row that isn't due yet is stored but unlit, and
+  // there is nothing on this row to change until it is, so no button either.
+  const pinLit = isPinnedOnToday(task);
+  const pinWaiting = task.pinned && !pinLit;
   const pinWritesPending = useRef(0);
   const [showDeliverablePrompt, setShowDeliverablePrompt] = useState(false);
+  const [showMeterReading, setShowMeterReading] = useState(false);
   const [showMealPicker, setShowMealPicker] = useState(false);
   const { offerPrepTasksForEach } = usePlanMeal();
   // The postpone prompt's "Break it up" needs somewhere to send the user. With
@@ -654,6 +701,8 @@ export const TaskItem = React.memo(function TaskItem({
   const pendingDeliverableRef = useRef<string | null | undefined>(undefined);
   // The Why / Revisit if that came with it, held for the same reason.
   const pendingReasoningRef = useRef<DeliverableReasoning | undefined>(undefined);
+  // And when to ask how that answer turned out (decisionReview.ts), likewise.
+  const pendingReviewAfterRef = useRef<ReviewAfter | undefined>(undefined);
   // Set for the span of one completion that was confirmed through the
   // "log early" prompt below, so whichever runCompletion call eventually
   // fires it (the deliverable prompt and the completion-timer alert both
@@ -941,9 +990,11 @@ export const TaskItem = React.memo(function TaskItem({
     completingRef.current = false;
     const deliverableValue = pendingDeliverableRef.current;
     const deliverableReasoning = pendingReasoningRef.current;
+    const reviewAfter = pendingReviewAfterRef.current;
     pendingDeliverableRef.current = undefined;
     pendingReasoningRef.current = undefined;
-    completeTask(task.id, deliverableValue !== undefined ? { deliverableValue, deliverableReasoning } : undefined);
+    pendingReviewAfterRef.current = undefined;
+    completeTask(task.id, deliverableValue !== undefined ? { deliverableValue, deliverableReasoning, reviewAfter } : undefined);
   }, []);
 
   useEffect(() => {
@@ -1124,6 +1175,7 @@ export const TaskItem = React.memo(function TaskItem({
   const mountWhenPicker = useSheetMount(whenPickerOpen);
   const mountBreakdown = useSheetMount(showBreakdown);
   const mountDeliverablePrompt = useSheetMount(showDeliverablePrompt);
+  const mountMeterReading = useSheetMount(showMeterReading);
   const mealPickerOpen = showMealPicker && mealSlotChooseSource !== null;
   const mountMealPicker = useSheetMount(mealPickerOpen);
   const [showRotationPick, setShowRotationPick] = useState(false);
@@ -1134,6 +1186,12 @@ export const TaskItem = React.memo(function TaskItem({
   const [completionMenuAnchor, setCompletionMenuAnchor] = useState<CardAnchor | null>(null);
   const [showCompletionMenu, setShowCompletionMenu] = useState(false);
   const mountCompletionMenu = useSheetMount(showCompletionMenu);
+  // Long-pressing an avoid-task's box: count today now, log a slip, or take one
+  // back. `negativeMenuHold` is what the day allowed when the press landed.
+  const [negativeMenuAnchor, setNegativeMenuAnchor] = useState<CardAnchor | null>(null);
+  const [negativeMenuHold, setNegativeMenuHold] = useState<NegativeHold>('close');
+  const [showNegativeMenu, setShowNegativeMenu] = useState(false);
+  const mountNegativeMenu = useSheetMount(showNegativeMenu);
   // iPhone Mirroring: Return on the inline rename takes the title offer.
   const mirroringMode = useSettingsStore(s => s.mirroringMode);
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
@@ -1152,6 +1210,11 @@ export const TaskItem = React.memo(function TaskItem({
   // and only its *result* is subscribed to, so a task changing elsewhere in
   // the list doesn't re-render this row unless the day count itself moved.
   const reviewProjectId = projectReviewProjectId(task);
+  // A mood, journal, dream or weigh-in task: until its entry exists the checkbox
+  // opens the sheet instead of completing; once it does the row is ready and the
+  // tick completes it (see recordTasks.ts).
+  const recordReady = useRecordTaskReady(task);
+  const recordLog = isAnsweredByRecord(task) && !recordReady ? recordLogUrl(task) : null;
   const reviewProject = useProjectStore(s =>
     reviewProjectId ? s.projects.find(p => p.id === reviewProjectId) ?? null : null
   );
@@ -1171,11 +1234,14 @@ export const TaskItem = React.memo(function TaskItem({
   const calendarReviewRawEvents = useCalendarStore(s =>
     task.generatedKind === 'calendarReview' ? s.events : EMPTY_BUSY_EVENTS
   );
+  const calendarReviewReturnEvents = useCalendarStore(s =>
+    task.generatedKind === 'calendarReview' ? s.vacationReturnEvents : EMPTY_BUSY_EVENTS
+  );
   const calendarReviewEvents = useMemo(
     () => (task.generatedKind === 'calendarReview'
-      ? calendarReviewEventsFor(task, calendarReviewRawEvents)
+      ? calendarReviewEventsFor(task, calendarReviewRawEvents, calendarReviewReturnEvents)
       : EMPTY_BUSY_EVENTS),
-    [task, calendarReviewRawEvents]
+    [task, calendarReviewRawEvents, calendarReviewReturnEvents]
   );
 
   // The calendar event a rule-written task ("Prep for interview") came from,
@@ -1359,8 +1425,8 @@ export const TaskItem = React.memo(function TaskItem({
 
   const handleDiscardTimer = () => {
     Alert.alert(
-      'Discard timer',
-      `Discard the running timer for "${task.title}"? The elapsed time won't be saved.`,
+      'Discard timer?',
+      `The elapsed time for “${task.title}” won’t be saved.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -1488,6 +1554,7 @@ export const TaskItem = React.memo(function TaskItem({
 
   const slipped = isNegative && isFailedToday(task, getCurrentDayStart());
   const slipsLoggedToday = isNegative ? slipsToday(task, getCurrentDayStart()) : 0;
+  const negativeHoldAvailable = isNegative && negativeHoldOffered(task, getCurrentDayStart());
 
   // A quota task is logged a unit at a time rather than ticked off once, so
   // its circle becomes a fill meter and a tap logs one glass/rep/page instead
@@ -1600,7 +1667,7 @@ export const TaskItem = React.memo(function TaskItem({
   // are offered only when there is a next date to move to.
   const completionMenuOffered =
     !selectionMode && !isNegative && !completing && !showQuotaMeter && !isRotation &&
-    !completionLocked;
+    !completionLocked && !recordLog;
   const completionMenuRepeats = task.recurrenceType !== 'none';
   const openCompletionMenu = (e: { nativeEvent: { pageX: number; pageY: number } }) => {
     haptics.impactMedium();
@@ -1681,6 +1748,11 @@ export const TaskItem = React.memo(function TaskItem({
   // reason to do it today sits on the row you'd otherwise push.
   const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
   const bountyCoins = rewardsEnabled && isBountyLive(task) ? bountyCoinsFor(task) : 0;
+  // The reward an avoid habit's slip claims (Reward.guardsTaskId), named on the
+  // row so the shield's tap isn't a surprise. A string, so the row only
+  // re-renders when it changes.
+  const guardTitle = useRewardStore(s =>
+    rewardsEnabled && isNegative ? guardingReward(s.rewards, task.id)?.title ?? null : null);
 
   const activeChainItem =
     !task.completed && !isNegative && task.chainEnabled && task.chainItems.length > 0
@@ -1746,6 +1818,60 @@ export const TaskItem = React.memo(function TaskItem({
     [displayTitle, task.personIds]
   );
 
+  // ==== the notes and deadline markers that trail the title ====
+  // They sit inside the title's own Text, so they follow its last word
+  // wherever that wraps. Two edges that follows from:
+  //  - The last word and the first marker are joined by a no-break space, or
+  //    a marker could land alone at the start of line two.
+  //  - The title clamps at two lines with a tail ellipsis, which would cut the
+  //    markers off first, and the deadline is the one that matters. So a hidden
+  //    copy of the title with its markers is measured (`measuresMarkers`); when
+  //    that needs a third line, the markers move to the meta row instead.
+  const hasNotes = task.notes.length > 0;
+  const hasTitleMarkers = hasNotes || deadlineDays !== null;
+  // A list line is never clamped, so its markers always fit; an edited title
+  // has none.
+  const measuresMarkers = hasTitleMarkers && !listRow && !isEditingTitle;
+  const markerKey = `${displayTitle}\u0000${hasNotes ? 1 : 0}\u0000${deadlineLabel}`;
+  const markersFit = !measuresMarkers
+    ? true
+    : markerMeasure?.key === markerKey
+      ? markerMeasure.fits
+      : (markerFitCache.get(markerKey) ?? true);
+  const markersOnMeta = hasTitleMarkers && !markersFit;
+  const markerNodes = hasTitleMarkers ? (
+    <>
+      {hasNotes && (
+        <>
+          {NBSP}
+          <Ionicons name="document-text-outline" size={14} color={colors.textSecondary} />
+        </>
+      )}
+      {deadlineDays !== null && (
+        <>
+          {NBSP}
+          <Text style={[styles.deadlineBadgeText, { color: deadlineColor }]}>
+            <Ionicons name="flag" size={9} color={deadlineColor} />
+            {NBSP}
+            {deadlineLabel.replace(/ /g, NBSP)}
+          </Text>
+        </>
+      )}
+    </>
+  ) : null;
+  const handleMarkerLayout = (e: NativeSyntheticEvent<TextLayoutEventData>) => {
+    const fits = e.nativeEvent.lines.length <= 2;
+    if (markerFitCache.size > 500) markerFitCache.clear();
+    markerFitCache.set(markerKey, fits);
+    setMarkerMeasure((m) => (m && m.key === markerKey && m.fits === fits ? m : { key: markerKey, fits }));
+  };
+  // The content touchable's label replaces its children's, so the markers
+  // have to be said here or a screen reader never hears them.
+  const markerA11y = [
+    hasNotes ? 'has notes' : null,
+    deadlineDays !== null ? (deadlineClosed ? `deadline was ${deadlineLabel}` : `deadline ${deadlineLabel}`) : null,
+  ].filter(Boolean).join(', ');
+
   // The stamp outlives the date it explains — that's what lets the drip read a
   // cleared one as "not today" (see Task.autoScheduledAt) — so the chip asks
   // for both. A stamp with no date is a refusal, not a provenance note, and a
@@ -1764,6 +1890,10 @@ export const TaskItem = React.memo(function TaskItem({
   // A one-off waiting for a kind of day says so, because the date beside it is
   // only where the forecast currently puts it (see Task.weatherWait).
   const weatherWaitText = weatherWaitChipText(task, getLogicalDayKey(new Date()));
+  // A string or null, for the reason the health selectors above return a
+  // number: a row with no meter answers null for ever and never re-renders on
+  // a reading, and one with a meter only when its own sentence changes.
+  const meterText = useMeterReadingStore(s => (task.meterName && !task.completed ? meterChipText(task, s.readings) : null));
 
   // An "every N hours" task has no calendar grid — the row's own recurrence
   // caption just says the interval ("Every 8 hours"), never the clock time it
@@ -1804,7 +1934,7 @@ export const TaskItem = React.memo(function TaskItem({
    * the store's completion is what stamps it onto the row, and a separate
    * write would leave a window where the task is answered but not done.
    */
-  const runCompletion = async (deliverableValue?: string | null, deliverableReasoning?: DeliverableReasoning) => {
+  const runCompletion = async (deliverableValue?: string | null, deliverableReasoning?: DeliverableReasoning, reviewAfter?: ReviewAfter) => {
     if (completingRef.current || pacingOutRef.current) return;
     // A "Maybe" leaves the task open (see completeTask), so it skips the
     // send-off: the row fading out would say it had gone when it hasn't.
@@ -1843,6 +1973,7 @@ export const TaskItem = React.memo(function TaskItem({
     completingRef.current = true;
     pendingDeliverableRef.current = deliverableValue;
     pendingReasoningRef.current = deliverableReasoning;
+    pendingReviewAfterRef.current = reviewAfter;
     // Told up front, not at the end: the batched collapse holds for a row that
     // is still animating, so tapping the next task keeps the previous one's gap
     // open even though it finished a moment ago.
@@ -1908,6 +2039,7 @@ export const TaskItem = React.memo(function TaskItem({
       completingRef.current = false;
       pendingDeliverableRef.current = undefined;
       pendingReasoningRef.current = undefined;
+      pendingReviewAfterRef.current = undefined;
       // Leaves the row checked and fully visible, holding its slot: the send-off
       // is the batched collapse (see the collapseSignal effect above), which
       // fades and closes every row of the burst at once. The completed look has
@@ -1917,7 +2049,7 @@ export const TaskItem = React.memo(function TaskItem({
       // withHeldCompletions) and the row would render as ordinary work again.
       setAwaitingCollapse(true);
       completeTask(task.id, {
-        ...(deliverableValue !== undefined ? { deliverableValue, deliverableReasoning } : {}),
+        ...(deliverableValue !== undefined ? { deliverableValue, deliverableReasoning, reviewAfter } : {}),
         ...(logEarly ? { logEarly: true } : {}),
       });
       endQuotaHold();
@@ -1976,10 +2108,12 @@ export const TaskItem = React.memo(function TaskItem({
     });
     completingRef.current = false;
     const deliverableReasoning = pendingReasoningRef.current;
+    const reviewAfter = pendingReviewAfterRef.current;
     pendingDeliverableRef.current = undefined;
     pendingReasoningRef.current = undefined;
+    pendingReviewAfterRef.current = undefined;
     completeTask(task.id, {
-      ...(deliverableValue !== undefined ? { deliverableValue, deliverableReasoning } : {}),
+      ...(deliverableValue !== undefined ? { deliverableValue, deliverableReasoning, reviewAfter } : {}),
       ...(logEarly ? { logEarly: true } : {}),
       chainStepInPlace: true,
     });
@@ -1996,13 +2130,18 @@ export const TaskItem = React.memo(function TaskItem({
   // (handleSlipUndo), the same affordance a logged quota unit has.
   const handleSlip = async () => {
     await haptics.warning();
-    confirmSlip(task, penaltyShieldEnabled, getCurrentDayStart(), () => logSlip(task.id));
+    confirmSlip(task, penaltyShieldEnabled, getCurrentDayStart(), () => logSlip(task.id), useRewardStore.getState().slipGuardFor(task, getCurrentDayStart()));
   };
 
-  const handleSlipUndo = async () => {
-    if (slipsLoggedToday === 0) return;
-    await haptics.tap();
-    undoSlip(task.id);
+  // A long press on an avoid-task opens the menu of what today allows
+  // (negativeHoldNow), anchored where the finger is like the completion menu.
+  const handleNegativeHold = (e: { nativeEvent: { pageX: number; pageY: number } }) => {
+    const hold = negativeHoldNow(task, getCurrentDayStart());
+    if (!hold) return;
+    haptics.impactMedium();
+    setNegativeMenuHold(hold);
+    setNegativeMenuAnchor({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY });
+    setShowNegativeMenu(true);
   };
 
   const handleComplete = async () => {
@@ -2026,7 +2165,7 @@ export const TaskItem = React.memo(function TaskItem({
       const confirmed = await new Promise<boolean>(resolve => {
         Alert.alert(
           'Log early?',
-          `"${displayTitleFor(task)}" isn't due for another ${formatDuration(minutesEarly)}. Log it now anyway?`,
+          `“${displayTitleFor(task)}” isn’t due for another ${formatDuration(minutesEarly)}.`,
           [
             { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
             { text: 'Log now', onPress: () => resolve(true) },
@@ -2056,6 +2195,14 @@ export const TaskItem = React.memo(function TaskItem({
       handleOpenLink();
       return;
     }
+    // A mood, journal, dream or weigh-in task is answered by the entry it asks
+    // for. Ticking it before there is one would say it was done when nothing
+    // was recorded, so the tap opens the sheet until the row is ready.
+    if (recordLog) {
+      await haptics.tap();
+      handleOpenLink(recordLog);
+      return;
+    }
     // The question comes before the animation, not after it: the row has to
     // still be there to cancel back to. Answering (or explicitly skipping)
     // then runs the ordinary completion, so nothing downstream — the hold, the
@@ -2075,7 +2222,7 @@ export const TaskItem = React.memo(function TaskItem({
       await haptics.tap();
       Alert.alert(
         'Set a reminder?',
-        `Remind you about "${displayTitleFor(task)}" in ${formatDuration(task.completionTimerMinutes)}?`,
+        `Remind you about “${displayTitleFor(task)}” in ${formatDuration(task.completionTimerMinutes)}?`,
         [
           { text: 'No thanks', style: 'cancel', onPress: () => runCompletion() },
           {
@@ -2323,12 +2470,28 @@ export const TaskItem = React.memo(function TaskItem({
   const handleQuotaUndo = async () => {
     if (task.progressCount === 0) return;
     await haptics.tap();
-    // A rotation's count and its ledger have to move together — decrementing
-    // through the quota path would leave the ledger holding a pick the count
-    // no longer knows about, and "the count is how many distinct members the
-    // ledger holds" is the invariant everything downstream reads.
-    if (isRotation) unlogRotationUnit(task.id);
-    else unlogQuotaUnit(task.id);
+    // A long press is easy to do by accident while scrolling or reordering, and
+    // taking a unit off changes the count with nothing on screen to say so, so
+    // it asks first.
+    Alert.alert(
+      'Take one off?',
+      `Reduce “${displayTitleFor(task)}” from ${task.progressCount} to ${task.progressCount - 1}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Take one off',
+          style: 'destructive',
+          onPress: () => {
+            // A rotation's count and its ledger have to move together — decrementing
+            // through the quota path would leave the ledger holding a pick the count
+            // no longer knows about, and "the count is how many distinct members the
+            // ledger holds" is the invariant everything downstream reads.
+            if (isRotation) unlogRotationUnit(task.id);
+            else unlogQuotaUnit(task.id);
+          },
+        },
+      ],
+    );
   };
 
   // Widget checkbox taps queue a completion and open the app (see
@@ -2361,6 +2524,7 @@ export const TaskItem = React.memo(function TaskItem({
     completingRef.current = false;
     pendingDeliverableRef.current = undefined;
     pendingReasoningRef.current = undefined;
+    pendingReviewAfterRef.current = undefined;
     checkScale.setValue(0);
     circleScale.setValue(1);
     rowOpacity.setValue(1);
@@ -2389,6 +2553,7 @@ export const TaskItem = React.memo(function TaskItem({
     completingRef.current = false;
     pendingDeliverableRef.current = undefined;
     pendingReasoningRef.current = undefined;
+    pendingReviewAfterRef.current = undefined;
     // Nothing was completed, so the batch shouldn't keep waiting on this row.
     cancelCompletionAnimation(task.id);
     await haptics.tap();
@@ -2511,7 +2676,7 @@ export const TaskItem = React.memo(function TaskItem({
           : handleComplete
         }
         onLongPress={
-          isNegative ? (slipsLoggedToday > 0 ? handleSlipUndo : undefined)
+          isNegative ? (negativeHoldAvailable ? handleNegativeHold : undefined)
           : meterInteractive ? handleQuotaUndo
           : completionMenuOffered ? openCompletionMenu
           : undefined
@@ -2565,6 +2730,10 @@ export const TaskItem = React.memo(function TaskItem({
                       ? `${task.title}, pick a meal`
                     : reviewProjectId
                       ? `${task.title}, opens the project review`
+                    : recordLog
+                      ? `${task.title}, opens the entry sheet`
+                    : recordReady
+                      ? `${task.title}, entry saved, complete`
                     : asksOnComplete
                       ? `Complete ${task.title}, asks for an answer`
                     : offersMealLog
@@ -2573,7 +2742,7 @@ export const TaskItem = React.memo(function TaskItem({
         }
         accessibilityHint={
           isNegative
-            ? (slipsLoggedToday > 0 ? 'Double tap and hold to take one back' : undefined)
+            ? (negativeHoldAvailable ? 'Double tap and hold for more options' : undefined)
             : meterInteractive && task.progressCount > 0 ? 'Double tap and hold to take one back' : undefined
         }
       >
@@ -2595,6 +2764,7 @@ export const TaskItem = React.memo(function TaskItem({
           !completing &&
             !completionLocked &&
             (timerReady ||
+              recordReady ||
               mealPlanReady ||
               healthReady ||
               pantryCheckReady ||
@@ -2725,7 +2895,7 @@ export const TaskItem = React.memo(function TaskItem({
           {!completing && !isNegative && recurrenceNotYetDue && (
             <Ionicons name="repeat" size={iconSize.sm} color={colors.textSecondary} />
           )}
-          {!completing && !completionLocked && (asksOnComplete || mealSlotChooseSource || reviewProjectId) && (
+          {!completing && !completionLocked && (asksOnComplete || mealSlotChooseSource || reviewProjectId || recordLog) && (
             // xs like the lock, not sm like the repeat: a "?" is tall where
             // the repeat glyph is wide and short, so the same nominal size
             // fills far more of a 20pt box and reads as crowded. Shared with
@@ -2764,7 +2934,7 @@ export const TaskItem = React.memo(function TaskItem({
         accessibilityState={
           selectionMode ? { checked: selected } : expandable ? { expanded } : {}
         }
-        accessibilityLabel={displayTitle}
+        accessibilityLabel={markerA11y ? `${displayTitle}, ${markerA11y}` : displayTitle}
         accessibilityHint={
           selectionMode || !expandable
             ? undefined
@@ -2773,6 +2943,25 @@ export const TaskItem = React.memo(function TaskItem({
               : 'Double tap to expand details'
         }
       >
+        {measuresMarkers && (
+          // Lays the title out with its markers at the width the real one gets,
+          // only to count lines. Absolute and invisible, so it takes no space.
+          <View
+            pointerEvents="none"
+            style={[styles.markerMeasure, isNew && styles.markerMeasureNew]}
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+          >
+            <HighlightedText
+              text={displayTitle}
+              ranges={titleMentionRanges}
+              style={styles.title}
+              highlightStyle={styles.titleMention}
+              trailing={markerNodes}
+              onTextLayout={handleMarkerLayout}
+            />
+          </View>
+        )}
         {isEditingTitle ? (
           <TextField
             ref={titleInputRef}
@@ -2819,6 +3008,7 @@ export const TaskItem = React.memo(function TaskItem({
                     // Open, a list line shows all of itself: the editor was
                     // otherwise the only place a long question could be read.
                     numberOfLines={listRow ? undefined : 2}
+                    trailing={markersFit ? markerNodes : null}
                   />
                 </Animated.View>
               </TouchableOpacity>
@@ -2831,36 +3021,9 @@ export const TaskItem = React.memo(function TaskItem({
                   highlightStyle={styles.titleMention}
                   numberOfLines={2}
                   ellipsizeMode="tail"
+                  trailing={markersFit ? markerNodes : null}
                 />
               </Animated.View>
-            )}
-            {/* Notes only render once a row is expanded, so the collapsed row
-                otherwise gives no hint they exist. Icon-only, no text: this is
-                the quiet option (vs. a truncated preview line), matching how
-                little it needs to say — "there's something here" — against
-                the row-height cost a preview would add to every task with a
-                note. It rides the title rather than the meta line: a note is
-                part of what the task is, and a trailing icon after the stats
-                read as one more stat. */}
-            {task.notes.length > 0 && (
-              <View style={styles.notesMark} accessibilityLabel="Has notes">
-                <Ionicons name="document-text-outline" size={iconSize.xs} color={colors.textSecondary} />
-              </View>
-            )}
-            {deadlineDays !== null && (
-              <View
-                style={styles.deadlineBadge}
-                accessibilityLabel={
-                  deadlineClosed
-                    ? `Deadline was ${deadlineLabel}`
-                    : `Deadline ${deadlineLabel}`
-                }
-              >
-                <Ionicons name="flag" size={9} color={deadlineColor} />
-                <Text style={[styles.deadlineBadgeText, { color: deadlineColor }]} numberOfLines={1}>
-                  {deadlineLabel}
-                </Text>
-              </View>
             )}
           </View>
         )}
@@ -2884,8 +3047,24 @@ export const TaskItem = React.memo(function TaskItem({
             dismissLabel={activeTitleOffer.kind === 'filed' ? 'Hide suggestion' : 'Not a date'}
           />
         )}
-        {(isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || showStreakChip || isDrifting || bountyCoins > 0 || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || reminderTimeLabel !== null || travelNote !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0) && (
+        {(markersOnMeta || isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || showStreakChip || isDrifting || bountyCoins > 0 || guardTitle !== null || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || meterText !== null || reminderTimeLabel !== null || travelNote !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.generatedKind === 'calendarReview') && (
           <View style={styles.metaRow}>
+            {markersOnMeta && hasNotes && (
+              <View style={styles.metaChip} accessibilityLabel="Has notes">
+                <Ionicons name="document-text-outline" size={iconSize.xs} color={colors.textSecondary} />
+              </View>
+            )}
+            {markersOnMeta && deadlineDays !== null && (
+              <View
+                style={styles.metaChip}
+                accessibilityLabel={deadlineClosed ? `Deadline was ${deadlineLabel}` : `Deadline ${deadlineLabel}`}
+              >
+                <Ionicons name="flag" size={9} color={deadlineColor} />
+                <Text style={[styles.deadlineBadgeText, { color: deadlineColor }]} numberOfLines={1}>
+                  {deadlineLabel}
+                </Text>
+              </View>
+            )}
             {showCategory && task.category && (
               onOpenCategory ? (
                 <PressableScale
@@ -2989,6 +3168,23 @@ export const TaskItem = React.memo(function TaskItem({
                 <Text style={styles.subtaskBadgeText} numberOfLines={1}>{subtaskDoneCount}/{subtaskCount}</Text>
               </View>
             )}
+            {task.generatedKind === 'calendarReview' && (
+              // The row's only sign that it opens: the panel holds the events
+              // themselves, and a bare checkbox gives no hint of that. Shown
+              // at zero too, since the panel still carries "Sync now".
+              <View
+                style={styles.metaChip}
+                accessibilityLabel={`${calendarReviewEvents.length === 0 ? 'No events' : `${calendarReviewEvents.length} ${calendarReviewEvents.length === 1 ? 'event' : 'events'}`}, tap to expand`}
+              >
+                <Ionicons name="calendar-outline" size={9} color={colors.textSecondary} />
+                <Text style={styles.subtaskBadgeText} numberOfLines={1}>
+                  {calendarReviewEvents.length === 0
+                    ? 'No events'
+                    : `${calendarReviewEvents.length} ${calendarReviewEvents.length === 1 ? 'event' : 'events'}`}
+                </Text>
+                <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={9} color={colors.textSecondary} />
+              </View>
+            )}
             {supplyLabel !== null && (
               <View
                 style={styles.metaChip}
@@ -3016,7 +3212,7 @@ export const TaskItem = React.memo(function TaskItem({
                 style={styles.metaChip}
                 accessibilityLabel={
                   timerReady
-                    ? 'Timer done, ready to complete'
+                    ? (isQuota ? 'Timer done, ready to log' : 'Timer done, ready to complete')
                     : timerRunning
                       ? `${formatStopwatch(remainingSeconds)} left${liveSegment ? `, on ${liveSegment.title}` : ''}`
                       : timerPaused
@@ -3138,6 +3334,24 @@ export const TaskItem = React.memo(function TaskItem({
                 </Text>
               </View>
             )}
+            {/* The one chip on the row that is also a button: the reading is
+                what moves this task, so logging one is a tap from where it's
+                read rather than a trip into the editor. */}
+            {meterText !== null && (
+              <TouchableOpacity
+                style={styles.metaChip}
+                onPress={() => { haptics.tap(); setShowMeterReading(true); }}
+                activeOpacity={interaction.activeOpacity}
+                hitSlop={6}
+                accessibilityRole="button"
+                accessibilityLabel={`${meterText}. Log a reading`}
+              >
+                <Ionicons name="speedometer-outline" size={iconSize.xs} color={colors.textSecondary} />
+                <Text style={styles.scheduledLabel} numberOfLines={1}>
+                  {meterText}
+                </Text>
+              </TouchableOpacity>
+            )}
             {/* An "every N hours" task's own placement — see hoursUnlockTime's
                 comment above. Shown regardless of showDate, the same as the
                 reminder chip below: that flag is about a calendar date, and
@@ -3205,7 +3419,7 @@ export const TaskItem = React.memo(function TaskItem({
               <View style={styles.metaChip}>
                 <Ionicons name="time-outline" size={iconSize.xs} color={colors.textSecondary} />
                 <Text style={styles.windowLabelExpired} numberOfLines={1}>
-                  Expired at {formatHHMM(task.windowEnd!)}
+                  Expired at {formatHHMM(windowEnd ?? task.windowEnd!)}
                 </Text>
               </View>
             )}
@@ -3337,12 +3551,12 @@ export const TaskItem = React.memo(function TaskItem({
                 style={styles.metaChip}
                 accessibilityLabel={
                   projectTitle
-                    ? `Scheduled for you, because ${projectTitle} had gone quiet`
-                    : 'Scheduled for you, because this project had gone quiet'
+                    ? `Scheduled automatically because ${projectTitle} had gone quiet`
+                    : 'Scheduled automatically because this project had gone quiet'
                 }
               >
                 <Ionicons name="play-forward-outline" size={iconSize.xs} color={colors.accent} />
-                <Text style={styles.autoScheduledLabel} numberOfLines={1}>Scheduled for you</Text>
+                <Text style={styles.autoScheduledLabel} numberOfLines={1}>Scheduled automatically</Text>
               </View>
             )}
             {showStreakChip && (
@@ -3355,6 +3569,8 @@ export const TaskItem = React.memo(function TaskItem({
                     ? shownStreak > 0
                       ? `${shownStreak} clean ${shownStreak === 1 ? 'day' : 'days'}${atRecord ? ', the longest this task has had' : ''}`
                       : 'No clean days yet'
+                  : countsUnits(task)
+                    ? `Done ${shownStreak} ${shownStreak === 1 ? 'time' : 'times'}`
                   : atRecord
                     ? `${shownStreak} day streak, the longest this task has had`
                     : shownStreak > 0
@@ -3402,6 +3618,14 @@ export const TaskItem = React.memo(function TaskItem({
                 <Ionicons name="repeat-outline" size={iconSize.xs} color={colors.textSecondary} />
                 <Text style={styles.blockingLabel} numberOfLines={1}>
                   Moved {task.postponeCount}×
+                </Text>
+              </View>
+            )}
+            {guardTitle !== null && (
+              <View style={styles.metaChip} accessibilityLabel={`Linked to the reward ${guardTitle}`}>
+                <CoinIcon size={iconSize.xs} color={colors.textSecondary} />
+                <Text style={styles.blockingLabel} numberOfLines={1}>
+                  Linked to {guardTitle}
                 </Text>
               </View>
             )}
@@ -3468,7 +3692,7 @@ export const TaskItem = React.memo(function TaskItem({
       {chainStep && (
         <View
           style={styles.chainBadge}
-          accessibilityLabel={chainName ? `Step ${chainPosition} of "${chainName}"` : `Chain step ${chainPosition}`}
+          accessibilityLabel={chainName ? `Step ${chainPosition} of “${chainName}”` : `Chain step ${chainPosition}`}
         >
           <Ionicons name="git-commit" size={9} color={colors.accent} />
           <Animated.Text style={[styles.chainBadgeText, { opacity: chainStepOpacity, transform: [{ scale: chainStepAnim }] }]}>
@@ -3574,11 +3798,11 @@ export const TaskItem = React.memo(function TaskItem({
         </TouchableOpacity>
       )}
 
-      {!selectionMode && showActions && showPin && !notice && (
+      {!selectionMode && showActions && showPin && !notice && !pinWaiting && (
         <TouchableOpacity
           onPress={() => {
             haptics.tap();
-            setPinOverride(!(pinOverride ?? task.pinned));
+            setPinOverride(!(pinOverride ?? pinLit));
             pinWritesPending.current += 1;
             // A frame later, so the glyph commits and paints before the
             // screen-wide render the write causes. animateLayout goes with the
@@ -3594,15 +3818,15 @@ export const TaskItem = React.memo(function TaskItem({
           hitSlop={8}
           style={styles.pinBtn}
           accessibilityRole="button"
-          accessibilityState={{ selected: pinOverride ?? task.pinned }}
+          accessibilityState={{ selected: pinOverride ?? pinLit }}
           accessibilityLabel={
-            (pinOverride ?? task.pinned) ? `Unpin ${task.title}` : `Pin ${task.title}`
+            (pinOverride ?? pinLit) ? `Unpin ${task.title}` : `Pin ${task.title}`
           }
         >
           <PinIcon
-            filled={pinOverride ?? task.pinned}
+            filled={pinOverride ?? pinLit}
             size={iconSize.sm}
-            color={(pinOverride ?? task.pinned) ? colors.orangeText : colors.textSecondary}
+            color={(pinOverride ?? pinLit) ? colors.orangeText : colors.textSecondary}
           />
         </TouchableOpacity>
       )}
@@ -3887,8 +4111,8 @@ export const TaskItem = React.memo(function TaskItem({
                   accessibilityState={{ expanded: chainStepsExpanded }}
                   accessibilityLabel={
                     chainStepsExpanded
-                      ? `Collapse the ${chainStepPreview.total}-step chain${chainName ? ` "${chainName}"` : ''}`
-                      : `Show all ${chainStepPreview.total} steps of the chain${chainName ? ` "${chainName}"` : ''}, currently on ${chainStepPreview.currentTitle}`
+                      ? `Collapse the ${chainStepPreview.total}-step chain${chainName ? ` “${chainName}”` : ''}`
+                      : `Show all ${chainStepPreview.total} steps of the chain${chainName ? ` “${chainName}”` : ''}, currently on ${chainStepPreview.currentTitle}`
                   }
                 >
                   <Ionicons name="git-commit" size={12} color={colors.textSecondary} />
@@ -4015,7 +4239,7 @@ export const TaskItem = React.memo(function TaskItem({
                     />
                     <Text style={styles.expandMeta}>
                       {timerReady
-                        ? `Ready to complete · ${formatDuration(task.timedMinutes!)} done`
+                        ? `${isQuota ? 'Ready to log' : 'Ready to complete'} · ${formatDuration(task.timedMinutes!)} done`
                         : `${formatStopwatch(remainingSeconds)} left of ${formatDuration(task.timedMinutes!)}`}
                     </Text>
                   </View>
@@ -4233,7 +4457,7 @@ export const TaskItem = React.memo(function TaskItem({
                         startQuotaRun(task.id);
                       }}
                       hitSlop={8}
-                      accessibilityLabel={`Start today's run of ${task.title} now`}
+                      accessibilityLabel={`Start today’s run of ${task.title} now`}
                     >
                       <Ionicons name="play-circle-outline" size={iconSize.sm} color={colors.textSecondary} />
                     </PressableScale>
@@ -4339,7 +4563,7 @@ export const TaskItem = React.memo(function TaskItem({
                             updateTask(task.id, { chainIndex: chainStepIndex - 1 });
                           }}
                           hitSlop={8}
-                          accessibilityLabel={`Back a step in ${task.title}'s chain`}
+                          accessibilityLabel={`Back a step in ${task.title}’s chain`}
                         >
                           <Ionicons name="play-back-outline" size={iconSize.sm} color={colors.textSecondary} />
                         </PressableScale>
@@ -4352,7 +4576,7 @@ export const TaskItem = React.memo(function TaskItem({
                             updateTask(task.id, { chainIndex: chainStepIndex + 1 });
                           }}
                           hitSlop={8}
-                          accessibilityLabel={`Skip to the next step of ${task.title}'s chain, without completing ${chainStepPreview?.currentTitle ?? 'this step'}`}
+                          accessibilityLabel={`Skip to the next step of ${task.title}’s chain, without completing ${chainStepPreview?.currentTitle ?? 'this step'}`}
                         >
                           <Ionicons name="play-forward-outline" size={iconSize.sm} color={colors.textSecondary} />
                         </PressableScale>
@@ -4405,6 +4629,26 @@ export const TaskItem = React.memo(function TaskItem({
                   >
                     <Ionicons name="duplicate-outline" size={iconSize.sm} color={colors.textSecondary} />
                   </PressableScale>
+                  {/* Back to where the app was told to write this: the
+                      generator's row on Automations, or its rule list. In the
+                      panel rather than on the collapsed row, which is already
+                      spending its width on the row's own link and the pin. */}
+                  {task.generatedKind && !task.completed && (
+                    <PressableScale
+                      style={styles.iconActionBtn}
+                      onPress={async () => {
+                        await haptics.tap();
+                        // `null`: Automations is a tab screen, which
+                        // openSettingsTarget reaches through navigateToTab and
+                        // so needs no navigation object.
+                        navigateToSettingsEntry(null, automationEntryIdFor(task.generatedKind!));
+                      }}
+                      hitSlop={8}
+                      accessibilityLabel={`Open automation settings for ${task.title}`}
+                    >
+                      <Ionicons name="sparkles-outline" size={iconSize.sm} color={colors.textSecondary} />
+                    </PressableScale>
+                  )}
                   <PressableScale
                     style={[styles.iconActionBtn, styles.iconActionBtnAccent]}
                     onPress={() => onEdit(task.id)}
@@ -4565,6 +4809,18 @@ export const TaskItem = React.memo(function TaskItem({
           onSomeoneElse={() => { completeTask(task.id, { byOther: true }); afterCompletionMenuChoice(); }}
         />
       )}
+      {mountNegativeMenu && (
+        <NegativeHoldMenu
+          visible={showNegativeMenu}
+          anchor={negativeMenuAnchor}
+          hold={negativeMenuHold}
+          onClose={() => setShowNegativeMenu(false)}
+          onCount={() => closeNegativeDay(task.id)}
+          onReopen={() => reopenNegativeDay(task.id)}
+          onSlip={() => confirmSlip(task, penaltyShieldEnabled, getCurrentDayStart(), () => logSlip(task.id), useRewardStore.getState().slipGuardFor(task, getCurrentDayStart()))}
+          onUndoSlip={() => undoSlip(task.id)}
+        />
+      )}
       {mountWhenPicker && (
         <WhenPicker
           visible={whenPickerOpen}
@@ -4660,14 +4916,24 @@ export const TaskItem = React.memo(function TaskItem({
           onClose={() => setShowBreakdown(false)}
         />
       )}
+      {mountMeterReading && task.meterName && (
+        <MeterReadingSheet
+          visible={showMeterReading}
+          meterName={task.meterName}
+          meterUnit={task.meterUnit ?? null}
+          dueAt={task.meterDueAt ?? null}
+          onClose={() => setShowMeterReading(false)}
+        />
+      )}
       {mountDeliverablePrompt && (
         <DeliverablePromptSheet
           visible={showDeliverablePrompt}
           task={task}
-          onConfirm={(value, reasoning) => {
+          onConfirm={(value, reasoning, lookBack) => {
             setShowDeliverablePrompt(false);
-            runCompletion(value, reasoning);
+            runCompletion(value, reasoning, lookBack);
           }}
+          offerLookBack
           // Cancel leaves the task exactly as it was — the tap is taken back,
           // not turned into an unanswered completion.
           onCancel={() => setShowDeliverablePrompt(false)}
@@ -4698,16 +4964,17 @@ export const TaskItem = React.memo(function TaskItem({
           onPlan={itemId => planRotationItem(task.id, itemId)}
         />
       )}
+      {actionMenu.element}
     </>
   );
 });
 
-const makeStyles = (colors: Colors) => StyleSheet.create({
+const makeStyles = (colors: Colors, trayRaised: boolean) => StyleSheet.create({
   itemWrapper: {
     marginHorizontal: spacing.md,
     marginVertical: spacing.xxs,
     borderRadius: radius.md,
-    backgroundColor: colors.bgSecondary,
+    backgroundColor: trayRaised ? colors.bgTertiary : colors.bgSecondary,
   },
   // A group's children are inside TaskGroupTray, which already insets them by
   // its own padding — these rows drop their card margins entirely rather than
@@ -4736,7 +5003,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.bgSecondary,
+    backgroundColor: trayRaised ? colors.bgTertiary : colors.bgSecondary,
     paddingVertical: 10,
     paddingRight: spacing.md,
     gap: spacing.sm,
@@ -4814,10 +5081,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderColor: colors.accent,
     overflow: 'hidden', // clips the fill to the circle
   },
-  // The brim. Matches circleCompleting so a met target ends on the same green a
+  // The brim. Matches circleCompleting so a met target ends on the same gold a
   // ticked checkbox does, with the fill already that colour underneath it.
   circleQuotaDone: {
-    borderColor: colors.green,
+    // The same gold the fill ends on (`colors.done`), on both the ring and the
+    // box's own background. A green ring around a gold fill left the row's
+    // background showing through the antialiased seam between them, and the
+    // box's own fill means nothing is left to peek through at the corners.
+    borderColor: colors.done,
+    backgroundColor: colors.done,
   },
   // A broken day on a negative habit. Filled rather than outlined because it is
   // the one state on this row that wants to be legible at a glance from the top
@@ -4867,14 +5139,21 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // level (rather than sitting above it) is what makes the gap to the fill
   // read as "how far behind" instead of "how far until the next tick". Grey
   // rather than an alert colour — it's a ruler mark, not a warning, and the
-  // gap it sets up to read is the signal, not the line itself.
+  // gap it sets up to read is the signal, not the line itself. The 1pt edges
+  // are the card's own colour: a bare grey line over the accent fill had almost
+  // no contrast with it in any theme (the accent is deep in Light and pale in
+  // Dark/Black, and textSecondary lands near it either way), so the edges are
+  // what separate the line from the fill, and melt into the card above it.
   quotaPaceMark: {
     position: 'absolute',
     left: -border.md,
     right: -border.md,
-    height: 2,
-    marginBottom: -1,
-    backgroundColor: colors.textSecondary,
+    height: 4,
+    marginBottom: -2,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: colors.bgSecondary,
+    backgroundColor: colors.text,
   },
   content: {
     flex: 1,
@@ -4913,8 +5192,18 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   titleFlex: {
     flexShrink: 1,
   },
-  notesMark: {
-    flexShrink: 0,
+  // The hidden copy of the title that counts its lines (`measuresMarkers`).
+  // The left inset is the unread dot and its gap, which the real title row
+  // gives up and `content` doesn't.
+  markerMeasure: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    opacity: 0,
+  },
+  markerMeasureNew: {
+    paddingLeft: 12,
   },
   newDot: {
     width: 6,
@@ -5135,7 +5424,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     right: 0,
   },
   expandedPanel: {
-    backgroundColor: colors.bgSecondary,
+    backgroundColor: trayRaised ? colors.bgTertiary : colors.bgSecondary,
     borderBottomLeftRadius: radius.md,
     borderBottomRightRadius: radius.md,
     paddingHorizontal: spacing.md,
@@ -5427,13 +5716,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.xxs,
     flexShrink: 1,
   },
-  deadlineBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xxs,
-    flexShrink: 1,
-    maxWidth: 140,
-  },
   deadlineBadgeText: {
     fontSize: font.xxs,
     fontWeight: fontWeight.semibold,
@@ -5480,4 +5762,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   iconActionBtnAccent: {
     backgroundColor: colors.accentSubtle,
   },
+});
+
+/**
+ * The row every list renders. A task in a locked project draws as
+ * `LockedTaskRow` (dates kept, title and the rest hidden) and the real row,
+ * with all its hooks, mounts only once the project is unlocked.
+ */
+export const TaskItem = React.memo(function TaskItem(props: React.ComponentProps<typeof TaskItemRow>) {
+  const locked = useProjectLockStore(s => isProjectLockedAway(props.task.projectId, s.lockedIds, s.unlocked));
+  if (locked) return <LockedTaskRow task={props.task} indented={props.indented} />;
+  return <TaskItemRow {...props} />;
 });

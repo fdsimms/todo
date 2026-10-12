@@ -273,7 +273,7 @@ export function ruleMatchesTitle(rule: EventTaskRule, title: string): boolean {
  */
 export function describeEventRule(rule: EventTaskRule): string {
   const cues = rule.matches.map(m => m.trim()).filter(Boolean);
-  const words = cues.length > 0 ? cues.map(c => `"${c}"`) : ['"anything"'];
+  const words = cues.length > 0 ? cues.map(c => `“${c}”`) : ['“anything”'];
   const cue = words.length === 1
     ? words[0]
     : `${words.slice(0, -1).join(', ')} or ${words[words.length - 1]}`;
@@ -765,7 +765,7 @@ export function describeRuleMatches(summary: RuleMatchSummary): string | null {
   if (matched.length === 1) return '1 upcoming event matches';
   if (matched.length > 1) return `${matched.length} upcoming events match`;
   if (nearMisses.length > 0) {
-    return `No upcoming events match. Closest: "${nearMisses[0].event.title}"`;
+    return `No upcoming events match. Closest: “${nearMisses[0].event.title}”`;
   }
   return 'No upcoming events match';
 }

@@ -64,8 +64,8 @@ export function bulkDeletePrompt(ids: readonly string[], tasks: readonly Task[])
       missableIds,
       restIds,
       message: one
-        ? 'This task repeats. Mark just this one missed, or delete it and stop it repeating?'
-        : 'These tasks repeat. Mark them missed instead, or delete them and stop them repeating?',
+        ? 'This task repeats. Mark this one missed, or delete it and stop it repeating?'
+        : 'These tasks repeat. Mark them missed, or delete them and stop them repeating?',
       deleteLabel: wholeSelectionMissable ? 'Delete and stop repeating' : 'Delete anyway',
     };
   }
@@ -75,8 +75,8 @@ export function bulkDeletePrompt(ids: readonly string[], tasks: readonly Task[])
       missableIds,
       restIds,
       message: one
-        ? 'This came from your meal plan. Mark it missed to keep a record, or delete it outright?'
-        : 'These came from your meal plan. Mark them missed to keep a record, or delete them outright?',
+        ? 'This came from your meal plan. Mark it missed to keep a record, or delete it?'
+        : 'These came from your meal plan. Mark them missed to keep a record, or delete them?',
       deleteLabel: wholeSelectionMissable ? 'Delete' : 'Delete anyway',
     };
   }
@@ -84,7 +84,7 @@ export function bulkDeletePrompt(ids: readonly string[], tasks: readonly Task[])
     kind: 'missable',
     missableIds,
     restIds,
-    message: 'Some selected tasks repeat or came from your meal plan. Mark those missed, or delete your whole selection anyway?',
+    message: 'Some selected tasks repeat or came from your meal plan. Mark those missed, or delete the whole selection?',
     deleteLabel: 'Delete anyway',
   };
 }

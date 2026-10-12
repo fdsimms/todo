@@ -35,7 +35,7 @@ export function TripDatePrompt() {
     const to = formatDeadlineDate(prompt.awayStart);
     Alert.alert(
       'Move the leaving date?',
-      `You answered ${to}. ${project.title} leaves ${formatDeadlineDate(project.awayStart)} now.`,
+      `You answered ${to}. ${project.title} is set to leave ${formatDeadlineDate(project.awayStart)}.`,
       [
         { text: 'Keep it', style: 'cancel', onPress: clear },
         {

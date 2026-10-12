@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
+  Switch,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { TemplateQuestion, TemplateQuestionKind, TemplateQuestionSource } from '../types';
@@ -40,13 +41,13 @@ const KIND_OPTIONS: { value: TemplateQuestionKind; label: string }[] = [
 ];
 
 const KIND_NOTES: Record<TemplateQuestionKind, string> = {
-  choice: 'Pick one of the answers below. Items can be set to be included only for some of them.',
-  number: 'Type a count. Item titles can do arithmetic on it: "Pack {nights / 2} pairs of jeans", or cap it: "{nights + 1 max 7}".',
+  choice: 'Pick one of the answers below. Items can be limited to certain answers.',
+  number: 'Type a count. Item titles can do arithmetic on it: “Pack {nights / 2} pairs of jeans”, or cap it: “{nights + 1 max 7}”.',
   text: 'Type anything. Fills the blank of the same name in item titles and notes.',
   // Never creates a person, only picks from who's already been added — see
   // docs/arch/people.md. No "N of N" here: unlike choice, there's no fixed
   // answer list to name, and the sheet the answer is picked in says the rest.
-  people: "Pick who's coming when the template is applied. Every task the run creates names them.",
+  people: "Pick who’s coming when the template is applied. Every task the run creates names them.",
 };
 
 const SOURCE_OPTIONS: { value: TemplateQuestionSource; label: string }[] = [
@@ -57,8 +58,8 @@ const SOURCE_OPTIONS: { value: TemplateQuestionSource; label: string }[] = [
 
 const SOURCE_NOTES: Record<TemplateQuestionSource, string> = {
   none: 'The answer is typed in every time.',
-  nights: 'Starts at the number of nights between the run\'s start and end dates. The 3rd to the 10th is 7. You can still type over it.',
-  days: 'Starts at the number of days between the run\'s start and end dates, counting both. The 3rd to the 10th is 8. You can still type over it.',
+  nights: 'Starts at the number of nights between the run’s start and end dates. The 3rd to the 10th is 7. You can still type over it.',
+  days: 'Starts at the number of days between the run’s start and end dates, counting both. The 3rd to the 10th is 8. You can still type over it.',
 };
 
 /**
@@ -84,6 +85,8 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
   const [options, setOptions] = useState<string[]>([]);
   const [defaultValue, setDefaultValue] = useState('');
   const [fromDates, setFromDates] = useState<TemplateQuestionSource>('none');
+  const [multiple, setMultiple] = useState(false);
+  const [showForecast, setShowForecast] = useState(false);
   const [itemsSheetVisible, setItemsSheetVisible] = useState(false);
 
   useEffect(() => {
@@ -94,6 +97,8 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
     setOptions(question?.options ?? ['', '']);
     setDefaultValue(question?.defaultValue ?? '');
     setFromDates(question?.fromDates ?? 'none');
+    setMultiple(question?.multiple ?? false);
+    setShowForecast(question?.showForecast ?? false);
     setItemsSheetVisible(false);
   }, [visible, question]);
 
@@ -116,8 +121,8 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
     if (cleanedName === null) {
       haptics.warning();
       Alert.alert(
-        'That blank won\'t fill in',
-        'A blank\'s name starts with a letter and holds letters, numbers, spaces, hyphens and underscores, and can\'t look like a sum ("nights-2"). Try "nights" or "trip type".',
+        'That blank won’t fill in',
+        'A blank’s name starts with a letter and can hold letters, numbers, spaces, hyphens and underscores. It can’t look like a sum (“nights-2”). Try “nights” or “trip type”.',
       );
       return;
     }
@@ -126,7 +131,7 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
     // only way this question can fail the check below.
     if (!prompt.trim() && !cleanedName) {
       haptics.warning();
-      Alert.alert('Nothing to ask', 'Give the question something to say, or a blank for it to fill in.');
+      Alert.alert('Nothing to ask', 'Type the question, or name a blank for it to fill in.');
       return;
     }
     const values = {
@@ -136,6 +141,8 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
       options: kind === 'choice' ? cleanedOptions : [],
       defaultValue: kind === 'choice' || kind === 'people' ? '' : defaultValue.trim(),
       fromDates: kind === 'number' ? fromDates : ('none' as TemplateQuestionSource),
+      multiple: kind === 'choice' && multiple,
+      showForecast: kind === 'choice' && showForecast,
     };
     if (question) updateQuestion(templateId, question.id, values);
     else addQuestion(templateId, values);
@@ -146,8 +153,8 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
     if (!question) return;
     haptics.warning();
     confirmDelete({
-      title: 'Delete question',
-      message: 'Delete this question? Items that were only included for some of its answers go back to being included every time.',
+      title: 'Delete this question?',
+      message: 'Items that were only included for some of its answers will be included every time.',
       onConfirm: () => {
         animateLayout();
         deleteQuestion(templateId, question.id);
@@ -167,7 +174,7 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
       header={
         <SheetHeader
           bare
-          title={question ? 'Edit Question' : 'New Question'}
+          title={question ? 'Edit question' : 'New question'}
           left={<SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={60} />}
           right={<SheetHeaderButton label="Save" onPress={save} minWidth={60} />}
         />
@@ -197,7 +204,7 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
       {kind === 'choice' && (
         <View style={styles.sectionCard}>
           <Text style={styles.fieldLabel}>ANSWERS</Text>
-          <Text style={styles.note}>The first one is what a run starts on.</Text>
+          <Text style={styles.note}>The first answer is the default.</Text>
           {options.map((option, index) => (
             <View key={index} style={styles.optionRow}>
               <TextField
@@ -229,6 +236,40 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
         </View>
       )}
 
+      {kind === 'choice' && (
+        <View style={styles.sectionCard}>
+          <View style={styles.switchRow}>
+            <View style={styles.switchText}>
+              <Text style={styles.switchLabel}>Allow more than one answer</Text>
+              <Text style={styles.note}>
+                A run can pick several answers. An item is checked if it is set for any of them.
+              </Text>
+            </View>
+            <Switch
+              value={multiple}
+              onValueChange={next => { haptics.tap(); setMultiple(next); }}
+              trackColor={{ false: colors.bgTertiary, true: colors.accent }}
+              accessibilityLabel="Allow more than one answer"
+            />
+          </View>
+          <View style={styles.switchRow}>
+            <View style={styles.switchText}>
+              <Text style={styles.switchLabel}>Show the destination forecast</Text>
+              <Text style={styles.note}>
+                Shows the forecast for the trip’s dates under this question.
+                Needs a destination and dates, and Destination forecast turned on in Settings.
+              </Text>
+            </View>
+            <Switch
+              value={showForecast}
+              onValueChange={next => { haptics.tap(); setShowForecast(next); }}
+              trackColor={{ false: colors.bgTertiary, true: colors.accent }}
+              accessibilityLabel="Show the destination forecast"
+            />
+          </View>
+        </View>
+      )}
+
       {/* Which items are checked by default for which answer, all in one
           place instead of opening every item to tick its own pill. Only for
           a question that's already saved — there's no id yet to condition an
@@ -237,7 +278,7 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
         <View style={styles.sectionCard}>
           <Text style={styles.fieldLabel}>ITEMS</Text>
           <Text style={styles.note}>
-            Which items are checked by default for each answer, without opening them one at a time.
+            Choose which items are checked by default for each answer.
           </Text>
           <InlineAction
             icon="checkbox-outline"
@@ -299,7 +340,7 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
             <Text style={styles.brace}>{'}'}</Text>
           </View>
           <Text style={styles.note}>
-            Item titles holding this blank get the answer written into them. Leave it empty for a
+            The answer fills this blank in item titles. Leave it empty for a
             question that only decides which items are included.
           </Text>
         </View>
@@ -377,6 +418,19 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   note: {
     color: colors.textTertiary,
     fontSize: font.xs,
+  },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  switchText: {
+    flex: 1,
+    gap: spacing.xxs,
+  },
+  switchLabel: {
+    color: colors.text,
+    fontSize: font.md,
   },
   optionRow: {
     flexDirection: 'row',

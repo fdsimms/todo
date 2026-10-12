@@ -1,4 +1,4 @@
 {
-  "message": "More fixes for a day that starts after midnight. A reminder typed as a clock time in the small hours (\"remind me at 3am\") now lands on the right day, as does a repeating task's reminder when it moves to the next occurrence, a scheduled template or meal-plan nudge set for an early-morning time, and a time block proposed for a task whose window opens in the small hours. While vacation mode is on, tasks it hides no longer send reminders or hold apps, and a task hidden through its category keeps its streak when vacation ends.",
+  "message": "More fixes for a day that starts after midnight. A reminder typed as a clock time in the small hours (“remind me at 3am”) now lands on the right day, and so do a repeating task’s reminder when it moves to the next occurrence, a scheduled template or meal-plan nudge set for an early-morning time, and a time block proposed for a task whose window opens in the small hours. While vacation mode is on, tasks it hides no longer send reminders or block apps, and a task hidden through its category keeps its streak when vacation ends.",
   "date": "2026-10-05"
 }

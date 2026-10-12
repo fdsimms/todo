@@ -10,8 +10,10 @@ import {
 import { subDays } from 'date-fns/subDays';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
-import { MEAL_SLOTS, MEAL_SLOT_LABELS, NUTRIENT_KEYS, type FoodLogEntry, type FoodNutrition, type MealSlot, type NutrientKey } from '../types';
+import { MEAL_SLOTS, MEAL_SLOT_LABELS, EXTERNAL_NUTRIENT_KEYS, type FoodLogEntry, type FoodNutrition, type MealSlot, type NutrientKey } from '../types';
 import { useFoodLogStore } from '../store/useFoodLogStore';
+import { usePendingEstimateStore } from '../store/usePendingEstimateStore';
+import { MAX_PENDING_ESTIMATES, isQueueableFailure, type PendingEstimate } from '../utils/estimateQueue';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { describeAIError, estimateMealNutrition } from '../services/aiSuggestions';
 import {
@@ -61,6 +63,8 @@ import { recipeInBook } from '../utils/recipeUtils';
 import { haptics } from '../utils/haptics';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { CountStepper } from './CountStepper';
+import { LimitImpactLines } from './LimitImpactLines';
+import { useLimitImpact } from '../hooks/useLimitImpact';
 import { ESTIMATE_AMOUNT_OPTIONS, UNIT_OPTIONS, amountRefusal, amountText, factorFromTyped, type AmountUnit } from './EstimateAmountSheet';
 import { InlineAction } from './InlineAction';
 import { PressableScale } from './PressableScale';
@@ -199,11 +203,44 @@ interface Props {
    * what follows: close, or with "Add another" on, reset for the next food.
    */
   onLogged: (label: string) => void;
+  /**
+   * After the described meal was saved for later because the request could not
+   * be made (`usePendingEstimateStore`). Nothing was logged, so the host closes
+   * or resets without the "added" bookkeeping `onLogged` carries.
+   */
+  onQueued: () => void;
+  /**
+   * A queued meal being refined (`PendingEstimatesCard`'s Refine). The panel
+   * opens on its saved estimate, questions included, instead of asking again,
+   * and a successful Log removes the queued row. It is the same panel, so an
+   * answer or a typed amount re-asks the model exactly as it does for a fresh
+   * estimate, which needs the connection the queue was waiting for.
+   *
+   * Save for later is not offered while this is set: the meal is already
+   * queued, and a refinement that fails keeps the estimate on screen with its
+   * Log button, so nothing is lost.
+   */
+  reviewing?: PendingEstimate | null;
   /** The × in the panel's own header. */
   onDismiss: () => void;
+  /**
+   * When given, the host draws the Log button (pinned, so a tall estimate can't
+   * push it off screen) and this panel doesn't. Called with what to draw while
+   * there is an estimate to log, and with null when there isn't or the panel
+   * goes away. `run` is stable; it always logs what the panel shows now.
+   */
+  onLogAction?: (action: EstimateLogAction | null) => void;
 }
 
-export function EstimatePanel({ description: rawDescription, onDescriptionChange, slot, at, mealPlanEntryId, onPickRecipe, onLogged, onDismiss }: Props) {
+/** What a host needs to draw the panel's Log button itself. */
+export interface EstimateLogAction {
+  label: string;
+  accessibilityLabel: string;
+  loading: boolean;
+  run: () => void;
+}
+
+export function EstimatePanel({ description: rawDescription, onDescriptionChange, slot, at, mealPlanEntryId, onPickRecipe, onLogged, onQueued, reviewing = null, onDismiss, onLogAction }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -225,10 +262,18 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
   // ==== state ====
   // Capped where the old field capped it, since that is what the request accepts.
   const description = rawDescription.slice(0, ESTIMATE_DESCRIPTION_MAX_LENGTH);
-  const [estimate, setEstimate] = useState<NutritionEstimate | null>(null);
+  const [estimate, setEstimate] = useState<NutritionEstimate | null>(reviewing?.estimate ?? null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * The text of the first ask that just failed for a reason waiting can fix, or
+   * null. Set only alongside `error`, and only for a fresh ask: a failed
+   * refinement keeps the estimate it was refining, with its Log button, so
+   * there is nothing to save, and saving its text would fold the answers in a
+   * second time when the meal is refined later.
+   */
+  const [queueableText, setQueueableText] = useState<string | null>(null);
   const [chosenSlot, setChosenSlot] = useState<MealSlot | null>(slot);
   // Which recipe this estimate was just filed as, so the button can turn into
   // a confirmation instead of offering to file the same thing twice. Reset
@@ -256,14 +301,14 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
    * meal on screen; and the field differing from it is what brings the
    * estimate row back, to ask about the new text.
    */
-  const [estimatedFor, setEstimatedFor] = useState<string | null>(null);
+  const [estimatedFor, setEstimatedFor] = useState<string | null>(reviewing?.estimate ? reviewing.description : null);
   /**
    * The questions the first estimate asked, held apart from the estimate
    * itself. A re-ask with an answer folded in may come back asking fewer (or
    * none), and the other questions leaving the screen the moment one is
    * answered would strand them unanswerable.
    */
-  const [questions, setQuestions] = useState<NutritionEstimate['questions']>([]);
+  const [questions, setQuestions] = useState<NutritionEstimate['questions']>(reviewing?.estimate?.questions ?? []);
   /** Whether the full nutrient list and the per-ingredient split are open. */
   const [detailsOpen, setDetailsOpen] = useState(false);
   /**
@@ -427,6 +472,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
     const token = ++runTokenRef.current;
     setLoading(true);
     setError(null);
+    setQueueableText(null);
     setSavedRecipeId(null);
     try {
       const result = await estimateMealNutrition(text, context);
@@ -442,6 +488,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
       // than the whole card going blank over one bad request.
       if (fresh) setEstimate(null);
       setError(describeAIError(e));
+      setQueueableText(fresh && isQueueableFailure(e) ? text : null);
       return false;
     } finally {
       if (token === runTokenRef.current) setLoading(false);
@@ -466,6 +513,8 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
   // offers, they come first and the Estimate row is the way past them, which
   // is the "real data beats a guess" rule above.
   useEffect(() => {
+    // A queued meal opens on the estimate it already has.
+    if (reviewing?.estimate) return;
     if (recalled.length === 0 && catalogMatches.length === 0 && matches.length === 0) handleEstimate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -518,6 +567,31 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
     });
   };
 
+  /**
+   * Keeps the meal that could not be estimated, to be asked about when there is
+   * a connection and confirmed from the Food log screen. Writes nothing to the
+   * log: see `utils/estimateQueue.ts`.
+   */
+  const handleSaveForLater = () => {
+    if (queueableText == null) return;
+    const result = usePendingEstimateStore.getState().enqueue({
+      description: queueableText,
+      slot: chosenSlot,
+      at,
+      mealPlanEntryId: mealPlanEntryId ?? null,
+      context,
+    });
+    if (result === 'full') {
+      haptics.error();
+      setError(`You already have ${MAX_PENDING_ESTIMATES} meals waiting. Log or remove some on the Food log screen first.`);
+      setQueueableText(null);
+      return;
+    }
+    haptics.success();
+    Keyboard.dismiss();
+    onQueued();
+  };
+
   const handleLog = () => {
     if (!estimate) return;
     const nutrition = estimateToPanel(estimate, at);
@@ -534,10 +608,29 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
       mealPlanEntryId: mealPlanEntryId ?? null,
     });
     if (!written) { haptics.error(); return; }
+    // The queued row this was refined from is answered by the entry just
+    // written, so it leaves the queue with it rather than offering to log twice.
+    if (reviewing) usePendingEstimateStore.getState().discard(reviewing.id);
     haptics.success();
     Keyboard.dismiss();
     onLogged(estimate.label);
   };
+
+  // The host's pinned Log button calls through a ref, so what it logs is always
+  // the latest render's estimate and meal while the action it holds stays put.
+  const handleLogRef = useRef(handleLog);
+  handleLogRef.current = handleLog;
+  const hasEstimate = !!estimate;
+  const logCal = estimate?.amounts.calorieKcal;
+  const logLabel = logCal !== undefined ? `Log ${Math.round(logCal).toLocaleString()} cal` : 'Log';
+  const logA11y = logCal !== undefined ? `Log ${Math.round(logCal)} calories` : 'Log this meal';
+  useEffect(() => {
+    if (!onLogAction) return;
+    onLogAction(hasEstimate
+      ? { label: logLabel, accessibilityLabel: logA11y, loading, run: () => handleLogRef.current() }
+      : null);
+  }, [onLogAction, hasEstimate, logLabel, logA11y, loading]);
+  useEffect(() => () => onLogAction?.(null), [onLogAction]);
 
   // ==== staged rows: the amount step and the one-tap + ====
   /**
@@ -670,7 +763,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
       if (grams !== null && grams !== amount.baseline) change = { grams };
     }
 
-    const unmeasured = { error: 'That amount can\'t be measured for this food, so nothing was logged.' };
+    const unmeasured = { error: 'That amount can’t be measured for this food, so nothing was logged.' };
     if (staged.kind === 'recall') return recalledHelping(staged.food, change, at) ?? unmeasured;
 
     const food = staged.food;
@@ -772,7 +865,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
         mealPlanEntryId: mealPlanEntryId ?? null,
         at,
       });
-    if (!written) { haptics.error(); return 'Couldn\'t log this. Try again.'; }
+    if (!written) { haptics.error(); return 'Couldn’t log this. Try again.'; }
 
     haptics.success();
     Keyboard.dismiss();
@@ -856,12 +949,14 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
   };
 
   // ==== render ====
-  const shown = estimate ? NUTRIENT_KEYS.filter(k => estimate.amounts[k] !== undefined) : [];
+  const shown = estimate ? EXTERNAL_NUTRIENT_KEYS.filter(k => estimate.amounts[k] !== undefined) : [];
   const kcal = estimate?.amounts.calorieKcal;
   const macros = estimate ? MACRO_KEYS.filter(k => estimate.amounts[k] !== undefined) : [];
   // Everything stated beyond the headline number and the tiles, for the one
   // line that says the rest exists (and that the unstated rest is unknown).
   const otherStated = shown.filter(k => k !== 'calorieKcal' && !MACRO_KEYS.includes(k)).length;
+  // What logging this estimate would do to a Stay under limit.
+  const limitImpacts = useLimitImpact(estimate?.amounts, at);
 
   const staged: PendingRecallLog[] = [
     ...recalled.map(r => ({ kind: 'recall' as const, food: r.food, clause: r.clause })),
@@ -1036,7 +1131,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
             ask.kind === 'none'
               // Nothing to change, so the line says why rather than showing a
               // field that would be ignored.
-              ? `Logs ${preview.quantity}. Its figures can't be measured at another weight.`
+              ? `Logs ${preview.quantity}. Its figures can’t be measured at another weight.`
               : `${kcal !== undefined ? `${Math.round(kcal).toLocaleString()} cal` : 'No calories stated'}, ${preview.quantity}`
           )}
           error={pendingError}
@@ -1091,7 +1186,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
 
           {hasOffers && !estimate && (
             <>
-              <Text style={styles.label}>YOU'VE HAD THIS BEFORE</Text>
+              <Text style={styles.label}>YOU’VE HAD THIS BEFORE</Text>
               <View style={styles.offerList}>
                 {staged.map(renderStagedRow)}
                 {/* A recipe is logged in servings, a question this sheet
@@ -1156,12 +1251,25 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
 
           {!trimmed && !estimate && (
             <Text style={styles.listHint}>
-              Type what you ate in the search field. Anything you've logged before shows up
-              here, and anything new can be estimated.
+              Type what you ate. Foods you’ve logged before show up here, and new ones
+              can be estimated.
             </Text>
           )}
 
           {!!error && <Text style={styles.error}>{error}</Text>}
+          {queueableText != null && !loading && !reviewing && (
+            <View style={styles.queueRow}>
+              <InlineAction
+                label="Save for later"
+                icon="time-outline"
+                onPress={handleSaveForLater}
+                accessibilityLabel="Save this meal to estimate later"
+              />
+              <Text style={styles.queueHint}>
+                It is estimated when you are back online. Nothing is logged until you confirm it on the Food log screen.
+              </Text>
+            </View>
+          )}
 
           {estimate && (
             <View style={[styles.card, loading && styles.cardBusy]}>
@@ -1223,6 +1331,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
               )}
               {/* What the figures claim, stated rather than implied. */}
               <Text style={styles.claim}>{describeEstimate(estimate)}</Text>
+              <LimitImpactLines impacts={limitImpacts} style={styles.limitImpacts} />
 
               <TouchableOpacity
                 style={styles.disclosure}
@@ -1249,16 +1358,16 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
                   {/* Absent stays absent: a nutrient the model said nothing about
                       simply has no row, rather than a row reading zero. */}
                   <Text style={styles.hint}>
-                    {shown.length === NUTRIENT_KEYS.length
+                    {shown.length === EXTERNAL_NUTRIENT_KEYS.length
                       ? 'Every nutrient stated.'
-                      : `${shown.length} of ${NUTRIENT_KEYS.length} nutrients stated. The rest are unknown rather than zero.`}
+                      : `${shown.length} of ${EXTERNAL_NUTRIENT_KEYS.length} nutrients stated. The rest are unknown.`}
                   </Text>
                   {/* The same total, split into pieces small enough to check
                       against what you'd guess yourself rather than taken whole. */}
                   {estimate.breakdown.map((item, index) => (
                     <View key={`${item.label}-${index}`} style={styles.ingredient}>
                       <Text style={styles.ingredientLabel}>{item.label}</Text>
-                      {NUTRIENT_KEYS.filter(k => item.amounts[k] !== undefined).map(key => (
+                      {EXTERNAL_NUTRIENT_KEYS.filter(k => item.amounts[k] !== undefined).map(key => (
                         <NutrientLine key={key} styles={styles} nutrient={key} amount={item.amounts[key] as number} />
                       ))}
                     </View>
@@ -1267,7 +1376,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
               )}
 
               {savedRecipeId ? (
-                <Text style={styles.hint}>Saved to your recipe box, so you can log this again later.</Text>
+                <Text style={styles.hint}>Saved to your recipe box. You can log it again.</Text>
               ) : (
                 <InlineAction
                   label="Save as a recipe"
@@ -1330,7 +1439,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
             </>
           )}
 
-        {estimate && (
+        {estimate && !onLogAction && (
           <View>
             <TouchableOpacity
               style={[styles.action, loading && styles.actionOff]}
@@ -1452,6 +1561,7 @@ function makeStyles(colors: Colors) {
       fontSize: font.sm,
     },
     claim: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 18 },
+    limitImpacts: { marginTop: spacing.sm },
     figure: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
     figureLabel: { color: colors.text, fontSize: font.sm },
     figureValue: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
@@ -1503,7 +1613,7 @@ function makeStyles(colors: Colors) {
     offerAdd: {
       width: 32,
       height: 32,
-      borderRadius: 16,
+      borderRadius: radius.full,
       backgroundColor: colors.accentSubtle,
       alignItems: 'center',
       justifyContent: 'center',
@@ -1524,7 +1634,7 @@ function makeStyles(colors: Colors) {
     estimateIcon: {
       width: 32,
       height: 32,
-      borderRadius: 16,
+      borderRadius: radius.full,
       backgroundColor: colors.accentSubtle,
       alignItems: 'center',
       justifyContent: 'center',
@@ -1613,5 +1723,7 @@ function makeStyles(colors: Colors) {
     confirmPreview: { color: colors.textSecondary, fontSize: font.sm },
     confirmActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
     error: { color: colors.redText, fontSize: font.sm, lineHeight: 18 },
+    queueRow: { gap: spacing.xsm, alignItems: 'flex-start', marginTop: spacing.xsm },
+    queueHint: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 18 },
   });
 }

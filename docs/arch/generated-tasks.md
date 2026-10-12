@@ -603,6 +603,31 @@ one. Those three rules and the reasoning behind them are in
       only while the weather switch is on, since accepting it with nothing reading the forecast
       would be a field dropped without saying so. The MCP write only records the want: the phone
       holds the forecast, so the task leaves Today at its next sync.
+  - **A repeating task can skip a day it rained, and that is not a rule either.**
+    `Task.rainSkipMm` (`src/utils/rainSkip.ts`, applied by `applyRainSkips` in `useTaskStore`) is a
+    threshold in millimetres on one repeating task ("water the garden unless it rained 5 mm").
+    - **Rain is yesterday plus today**, from the same Open-Meteo request (`precipitation_sum` and
+      one `past_days`; `snapshotFromResponse` finds today by date, so day 0 is no longer assumed).
+      Today's figure is the day's forecast, so a morning look is partly a prediction. That reads
+      the ground rather than a calendar day, which is the question a watering task asks.
+    - **No figure decides nothing.** Neither day's rainfall is never read as dry or as wet, and a
+      snapshot from an earlier logical day is refused on its day key, like every weather pass.
+    - **It skips, never misses or completes**, through `skipPatch`: a miss is a claim about the
+      person in their Logbook. The streak is forgiven the way vacation forgives one (re-dated to
+      today, nothing credited), because the rain did the job.
+    - **Only today's occurrence, once a day.** `rainSkippedOn` is the pass's mark, so an occurrence
+      pulled back onto Today after a skip stays. A withheld task (`isWithheld`) is left alone.
+    - **It is recorded in Activity** as an app-written `moved` entry ("Skipped after rain"), the
+      only one an unattended pass writes, so a skip nobody saw has somewhere to be found.
+    - It runs from the catch-up passes and again whenever a snapshot lands
+      (`useWeatherWaitSync`), never in demo mode, and only does anything with the weather switch on,
+      since nothing else fetches the rainfall.
+    - **Set from the editor's repeat, a template item, quick add or MCP.** Quick add's phrase is
+      `parseRainSkipInput` ("unless it rains", optionally with an amount); a bare one takes
+      `defaultRainSkipMm` in the person's unit. It is offered only once the repeat is set and the
+      weather switch is on. The schedule phrase must reach the end of the title, so
+      `parseTaskInputAheadOfRainSkip` reads the repeat past a trailing rain phrase and keeps the
+      phrase for the next tooltip; otherwise "every 2 days unless it rains" would offer neither.
   - **It ships off**, like `pantryCheck` and `pantryReview`, and for a reason of its own on top of
     theirs: it's the one generator that also wants a location fix, which is not something to start
     reading without being asked.
@@ -705,6 +730,17 @@ one. Those three rules and the reasoning behind them are in
   - **There is no row cap**: unlike a shortfall it isn't competing for shelf space, and the window
     already bounds it.
 
+## A generated row links back to where it is defined
+
+Every row with a `generatedKind` carries a sparkles button in its expanded panel (beside duplicate, not on the collapsed row) that opens its generator on the
+Automations screen (`automationEntryIdFor` in `generatedTasks.ts`, opened with
+`navigateToSettingsEntry`). The four rule generators (weather, Screen Time, Health, calendar
+events) open at their rule list instead of the switch, since the rule is what wrote the row. It
+is separate from the row's own link on purpose: that one points at the task's subject (Apple
+Weather, the pantry), this one at the setting. A new generator needs no wiring as long as it has a
+`gen:<kind>` settings entry; `generatedTasks.test.ts` fails if a kind resolves to nothing. A `notice` row has no action bar,
+so it has no button either.
+
 ## An estimate set on one is kept on its generator
 
 Every generated task (and every follow-up task) is a fresh one-off row, so an
@@ -726,6 +762,32 @@ forecast changes nothing. `src/utils/ruleEstimate.ts` has the three homes:
 The write-back compares values, not the patch's keys, because an undo snapshot
 names both fields without changing them. Only a draft with no estimate of its
 own is ever filled, and a task somebody typed never is.
+
+## Task settings: a kind's task, field by field
+
+Every kind has a **Task settings** sheet in Settings (`GeneratedTaskSettingsSheet`, rules in
+`src/utils/generatedTaskSettings.ts`): its task laid out like a task, with the fields its generator
+writes shown locked and saying where each comes from, and the rest editable. It exists so the
+person can see how the automation works, not only switch it on.
+
+- **It is not a task row.** A hidden "prototype" `Task` would have to be excluded from every list,
+  sync, Search, Backfill, retention and the MCP replica, and missing one shows a phantom task.
+  What the sheet edits is three settings: the kind's own category setting, `generatedTaskDefaults`
+  (shared with Backfill), and `generatedTaskExtras` (tags, time of day, a question on completion).
+- **A setting fills a field the generator left alone and never overrides one it wrote.** The
+  extras are folded into the draft at the top of `newTaskFromDraft` (`generatedExtrasFill`); tags
+  add to the draft's, the rest only fill an empty slot. The locked rows are exactly the fields the
+  generator writes, several of which its drift rewrites, which is why they can't be offered.
+- **Changes apply to tasks created afterwards**, the rule the defaults already had: a live task
+  may have been edited, and rewriting it would undo that.
+- **A new generator needs an entry in `TASK_SETTINGS_SPECS`**, its owned fields read off its draft
+  builder; `generatedTaskSettings.test.ts` fails until every listed kind has one. A generator that
+  writes a time of day or a question itself (or whose task is never completed) lists it in `locks`,
+  and the sheet and the MCP server both leave that row out.
+- **Rule kinds' category is a fallback.** A rule can name its own category, which wins; the sheet's
+  hint says so (`categoryHint`).
+- **The MCP server reads and writes all of it** through `set_automation`'s `taskSettings` (see
+  `docs/arch/mcp-server.md`).
 
 ## Vacation mode: which of them stand down
 
@@ -1383,10 +1445,10 @@ particular the one this generator would be worst to get wrong.
   to read any. The rules sheet renders a notice card when the read is off, and
   turns it on from there — nobody is left with a toggle that visibly does
   nothing.
-- **Its category is its own** (`healthTaskCategory`), defaulting to the same
-  name `ensureHealthCategory` uses. `addCategory` is idempotent by name, so out
-  of the box the Today reading and the health tasks share one "Health" section
-  while the two settings stay independently clearable. Reusing `healthCategory`
+- **Its category is its own** (`healthTaskCategory`), defaulting to "Health",
+  not the name `ensureHealthCategory` uses ("Biostats"). The Today reading's
+  section is information rows only, and no generated task files into it. The
+  two settings stay independently clearable. Reusing `healthCategory`
   outright — the `calendarReview` move — was the tempting version and is wrong
   here: "don't show my step count on Today" is not the same instruction as
   "don't add health tasks", and one setting could not tell them apart.
@@ -1548,6 +1610,35 @@ in `src/utils/snackNudgeTasks.ts`; the pass is in `useTaskStore.ts`. It is
   One from a past day is dropped rather than deleted quietly.
 - Ships off, pauses on vacation, files under its own category setting (default
   Health).
+
+## `limitWarning`: a "don't do" task per Stay under limit
+
+For each nutrient the person marked Stay under (`nutritionLimits`),
+`reconcileLimitWarnings` keeps one negative task (`Task.polarity`): "Stay under
+35g sugar · 28g so far". Rules are in `src/utils/limitWarningTasks.ts`; the pass
+is in `useTaskStore.ts`, run beside the snack one on the same triggers.
+
+- **A negative task, because a limit is a commitment not to do something.** It
+  sits on Today all day, is never checked off, and its streak counts clean days,
+  which for a limit is "days within it". It has no date and no recurrence, like
+  the avoid-tasks a person makes by hand, and it is keyed by the nutrient so the
+  streak stays on one row for as long as the limit does.
+- **The app logs the slip.** When today's food log goes past the limit, the pass
+  records one slip (`syncLimitAutoSlip`), quietly: no undo entry, no coins and no
+  app block, since nobody tapped anything. `limitWarningAutoSlips` remembers the
+  day it did, so deleting the entry that took the day over takes that slip back,
+  and a slip the person logged is never added to or taken back.
+- **It reads the food log, not Apple Health**, for the reason the Health rule
+  can't: a rule sees one number from Health, and its threshold is a second figure
+  to keep in step with the target. The notes name the day's total and the foods
+  behind it, and the link button opens the Food log.
+- **Deleting it stops it for that nutrient** (`limitWarningDeclined`), until the
+  nutrient is set to Stay under again (`setNutritionLimits` clears it).
+  Archiving one stops it too (`blocksOnFinished`). Turning the automation off
+  removes them all, rather than leaving rows nothing keeps current.
+- Refuses in demo mode, for the snack suggestion's reason. Ships off, pauses on
+  vacation (the task hides and its streak holds), files under its own category
+  setting (default Health).
 
 ## `bookEvent`: booking a saved event again
 

@@ -98,6 +98,23 @@ describe('repeat', () => {
     expect(ok({ repeat: { every: 'week', weekdays: [3, 1, 1] } })).toMatchObject({ recurrenceType: 'weekly', recurrenceDays: [1, 3] });
   });
 
+  it('takes a holiday rule, reads it back, and refuses one on an hourly repeat', () => {
+    const written = ok({ repeat: { every: 'week', weekdays: [2], holidays: 'move' } });
+    expect(written).toMatchObject({ recurrenceType: 'weekly', recurrenceHolidays: 'move' });
+    expect(describeRepeat({ ...written, recurrenceInterval: 1, recurrenceDays: [2] } as Task)).toMatchObject({ every: 'week', holidays: 'move' });
+    expect(ok({ repeat: { every: 'week', weekdays: [2] } })).toMatchObject({ recurrenceHolidays: null });
+    expect(errorsOf({ repeat: { every: 'hours', interval: 4, holidays: 'skip' } })).toMatch(/no days to skip/);
+  });
+
+  it('takes a rain threshold, reads it back, and refuses one on an hourly repeat', () => {
+    const written = ok({ repeat: { every: 'day', interval: 2, skipAfterRainMm: 5 } });
+    expect(written).toMatchObject({ recurrenceType: 'daily', rainSkipMm: 5 });
+    expect(describeRepeat({ ...written, recurrenceDays: [] } as unknown as Task)).toMatchObject({ skipAfterRainMm: 5 });
+    expect(ok({ repeat: { every: 'day' } })).toMatchObject({ rainSkipMm: null });
+    expect(errorsOf({ repeat: { every: 'hours', interval: 4, skipAfterRainMm: 5 } })).toMatch(/no days to skip/);
+    expect(errorsOf({ repeat: { every: 'day', skipAfterRainMm: 0 } })).toMatch(/skipAfterRainMm/);
+  });
+
   it('counts hourly and daily repeats from completion, as the picker does, unless told otherwise', () => {
     expect(ok({ repeat: { every: 'hours', interval: 3 } })).toMatchObject({ recurrenceType: 'hours', recurrenceInterval: 3, recurrenceFromCompletion: true });
     expect(ok({ repeat: { every: 'day' } }).recurrenceFromCompletion).toBe(true);
@@ -181,6 +198,25 @@ describe('target', () => {
     expect(errorsOf({ target: { count: 3, per: 'week' }, repeat: { every: 'day' } })).toMatch(/repeats weekly/);
   });
 
+  it('takes a ramp-up and starts its run of hits at zero', () => {
+    expect(ok({ target: { count: 10, per: 'day', rampUp: { add: 2, every: 3, upTo: 30 } } })).toMatchObject({
+      targetCount: 10, quotaRampStep: 2, quotaRampEvery: 3, quotaRampGoal: 30, quotaRampHits: 0,
+    });
+    expect(ok({ target: { count: 10, per: 'day', rampUp: null } })).toMatchObject({
+      quotaRampStep: null, quotaRampEvery: null, quotaRampGoal: null,
+    });
+  });
+
+  it('refuses a ramp-up that cannot work', () => {
+    expect(errorsOf({ target: { count: 10, per: 'day', allowOvershoot: true, rampUp: { add: 1, every: 1 } } })).toMatch(/going past/);
+    expect(errorsOf({ target: { count: 10, per: 'day', rampUp: { add: 1, every: 1, upTo: 10 } } })).toMatch(/above the count/);
+    expect(errorsOf({ target: { count: 10, per: 'day', rampUp: { add: 0, every: 1 } } })).toMatch(/1 to 20/);
+  });
+
+  it('clears the ramp with the target', () => {
+    expect(ok({ target: null })).toMatchObject({ quotaRampStep: null, quotaRampHits: 0 });
+  });
+
   it('refuses a count outside the app\'s range', () => {
     expect(errorsOf({ target: { count: 1, per: 'day' } })).toMatch(/2 to 99/);
   });
@@ -195,7 +231,41 @@ describe('habit, window, follow-up, blockers', () => {
   it('takes a 24-hour window and refuses anything else', () => {
     expect(ok({ window: { start: '08:00', end: '13:30' } })).toMatchObject({ windowStart: '08:00', windowEnd: '13:30' });
     expect(errorsOf({ window: { start: '8am' } })).toMatch(/HH:MM/);
-    expect(ok({ window: null })).toMatchObject({ windowStart: null, windowEnd: null });
+    expect(ok({ window: null })).toMatchObject({ windowStart: null, windowEnd: null, windowStartSun: null, windowEndSun: null });
+  });
+
+  it('takes a bound that follows the sun, with the clock time it resolves to beside it', () => {
+    const asked: [string, string | null][] = [];
+    const sunDeps = {
+      ...deps,
+      sunClockFor: (anchor: string, dueDate: string | null) => {
+        asked.push([anchor, dueDate]);
+        return anchor === 'sunset-30' ? '18:12' : '06:41';
+      },
+    };
+    const { patch, errors } = taskFieldsPatch(
+      { dueDate: '2026-10-12T12:00:00', window: { start: 'sunrise+0', end: 'sunset-30' } }, null, sunDeps,
+    );
+    expect(errors).toEqual([]);
+    expect(patch).toMatchObject({
+      windowStart: '06:41', windowStartSun: 'sunrise',
+      windowEnd: '18:12', windowEndSun: 'sunset-30',
+    });
+    // Resolved on the task's own day, the one being written alongside it.
+    expect(asked.every(([, due]) => due === patch.dueDate)).toBe(true);
+  });
+
+  it('clears a bound\'s anchor when it is given a clock time instead', () => {
+    expect(ok({ window: { start: '08:00' } })).toMatchObject({ windowStart: '08:00', windowStartSun: null });
+  });
+
+  it('refuses an anchor it cannot resolve, and one it cannot read', () => {
+    // No sunClockFor at all, and one that answers null (no location saved).
+    expect(errorsOf({ window: { end: 'sunset' } })).toMatch(/no location is saved/);
+    const noPlace = { ...deps, sunClockFor: () => null };
+    expect(taskFieldsPatch({ window: { end: 'sunset' } }, null, noPlace).errors.join(' ')).toMatch(/Settings, Day & time/);
+    expect(errorsOf({ window: { end: 'dusk' } })).toMatch(/sunrise.*sunset/);
+    expect(errorsOf({ window: { end: 'sunset-500' } })).toMatch(/up to 180/);
   });
 
   it('sets a follow-up only on a repeating task', () => {
@@ -399,6 +469,42 @@ describe('supply', () => {
     expect(describeSupplyFields(existing({ supplyCount: null } as Partial<Task>))).toBeNull();
   });
 
+});
+
+describe('meter', () => {
+  const car = { name: 'Car', unit: 'miles', every: 5000, dueAt: 45000 };
+
+  it('makes a plain one-off due at a reading', () => {
+    expect(ok({ meter: car })).toMatchObject({
+      meterName: 'Car', meterUnit: 'miles', meterEvery: 5000, meterDueAt: 45000, meterLimitMonths: null,
+    });
+    expect(ok({ meter: { ...car, limitMonths: 6 } }).meterLimitMonths).toBe(6);
+  });
+
+  it('keeps the due reading on an update that leaves it out', () => {
+    const current = existing({ meterName: 'Car', meterEvery: 5000, meterDueAt: 45000 });
+    expect(ok({ meter: { name: 'Car', every: 3000 } }, current)).toMatchObject({ meterEvery: 3000, meterDueAt: 45000 });
+  });
+
+  it('refuses what the app would refuse', () => {
+    expect(errorsOf({ meter: { ...car, name: ' ' } })).toMatch(/meter.name is required/);
+    expect(errorsOf({ meter: { ...car, every: 0 } })).toMatch(/meter.every/);
+    expect(errorsOf({ meter: { name: 'Car', every: 5000 } })).toMatch(/meter.dueAt is required/);
+    expect(errorsOf({ meter: { ...car, limitMonths: 0 } })).toMatch(/limitMonths/);
+  });
+
+  it('is for a plain one-off only, judged as the task will be', () => {
+    expect(errorsOf({ meter: car }, existing({ recurrenceType: 'weekly' }))).toMatch(/plain one-off/);
+    expect(errorsOf({ meter: car, repeat: { every: 'day' } })).toMatch(/plain one-off/);
+    expect(errorsOf({ meter: car }, existing({ weatherWait: 'sunny' }))).toMatch(/plain one-off/);
+    expect(errorsOf({ meter: car, weatherWait: 'sunny' })).toMatch(/plain one-off/);
+  });
+
+  it('lets go of the app\'s own hold when the meter is cleared', () => {
+    const held = existing({ meterName: 'Car', meterEvery: 5000, meterDueAt: 45000, meterHeldUntil: '2026-12-10', deferUntil: '2026-12-10T05:00:00.000Z' });
+    expect(ok({ meter: null }, held)).toMatchObject({ meterName: null, meterDueAt: null, deferUntil: null, meterHeldUntil: null });
+    expect(ok({ meter: null }, existing())).not.toHaveProperty('deferUntil');
+  });
 });
 
 describe('weatherWait', () => {

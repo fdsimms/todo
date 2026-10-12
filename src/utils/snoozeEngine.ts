@@ -301,7 +301,7 @@ export function computeSnoozeSuggestion(
   }
 
   if (winner.tagRate > 0.2 && task.tags.length > 0) {
-    parts.push(`good for "${task.tags[0]}"`);
+    parts.push(`good for “${task.tags[0]}”`);
   } else if (winner.dowRate >= maxDowRate && winner.dowRate > 0.17) {
     parts.push('your productive day');
   }

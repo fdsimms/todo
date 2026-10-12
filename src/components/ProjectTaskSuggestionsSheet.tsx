@@ -180,7 +180,7 @@ export function ProjectTaskSuggestionsSheet({
           <EmptyState
             icon="sparkles-outline"
             title="No new suggestions"
-            subtitle="The AI didn’t come up with anything beyond what’s already here. Try regenerating."
+            subtitle="Nothing beyond what’s already here. Try regenerating."
             actionLabel="Regenerate"
             onAction={load}
           />

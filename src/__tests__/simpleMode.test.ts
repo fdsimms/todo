@@ -9,6 +9,7 @@ import {
   SIMPLE_FEATURES,
   SIMPLE_GROCERY_ROW_FEATURES,
   SIMPLE_HIDDEN_SCREENS,
+  hiddenResultsNote,
   addMenuItemShown,
   editorRowShown,
   featureHidden,
@@ -203,6 +204,14 @@ describe('screenShown', () => {
     expect(screenShown('Stacks', true, { stacks: 1, templates: 0 })).toBe(true);
     expect(screenShown('Templates', true, none)).toBe(false);
     expect(screenShown('Templates', true, { stacks: 0, templates: 1 })).toBe(true);
+    expect(screenShown('Meters', true, none)).toBe(false);
+    expect(screenShown('Meters', true, { stacks: 0, templates: 0, meters: 1 })).toBe(true);
+  });
+
+  it('hides the Due by usage row on a task without a meter, and keeps it on one with', () => {
+    expect(editorRowShown('meter', true, false)).toBe(false);
+    expect(editorRowShown('meter', true, true)).toBe(true);
+    expect(editorRowShown('meter', false, false)).toBe(true);
   });
 
   it('leaves the screens simplified mode has no opinion about', () => {
@@ -304,5 +313,36 @@ describe('every listed feature is actually gated somewhere', () => {
   it('spends most of the catalog at a real call site', () => {
     const atCallSites = ids.filter(id => haystack.includes(`'${id}'`));
     expect(atCallSites.length).toBeGreaterThan(SIMPLE_FEATURES.length / 3);
+  });
+});
+
+describe('hiddenResultsNote', () => {
+  const on = { simpleMode: true, kitchenEnabled: true };
+  const off = { simpleMode: false, kitchenEnabled: false };
+
+  it('says nothing when nothing is hidden', () => {
+    expect(hiddenResultsNote({ simpleMode: false, kitchenEnabled: true }, 'settings')).toBeNull();
+  });
+
+  it('names Simplified mode and where to turn it off', () => {
+    expect(hiddenResultsNote(on, 'screens')).toContain('Simplified mode hides some screens');
+    expect(hiddenResultsNote(on, 'screens')).toContain('Feature areas');
+  });
+
+  it('names the Groceries & meals switch for settings and screens', () => {
+    expect(hiddenResultsNote(off, 'settings')).toContain('Groceries & meals is off');
+    expect(hiddenResultsNote(off, 'screens')).toContain('Groceries & meals is off');
+  });
+
+  it('ignores the Groceries & meals switch for editor fields', () => {
+    expect(hiddenResultsNote(off, 'fields')).toBeNull();
+    expect(hiddenResultsNote({ simpleMode: true, kitchenEnabled: false }, 'fields'))
+      .toContain('Simplified mode hides some fields');
+  });
+
+  it('names both when both are hiding something', () => {
+    const both = hiddenResultsNote({ simpleMode: true, kitchenEnabled: false }, 'settings');
+    expect(both).toContain('Simplified mode');
+    expect(both).toContain('Groceries & meals');
   });
 });

@@ -1,4 +1,4 @@
-import type { GroceryItem, ItemSubLink } from '../types';
+import type { GroceryItem, ItemSubLink, NutrientKey } from '../types';
 import { substitutesFor } from './itemSubs';
 import { isNonFoodAisle } from './groceryAisles';
 
@@ -33,7 +33,15 @@ import { isNonFoodAisle } from './groceryAisles';
  * — rather than facts every item is expected to eventually have, which is
  * what makes a walk-through worth it.
  */
-export type ItemBackfillFieldId = 'variety' | 'substitutes' | 'nutrition' | 'scannedName';
+export type ItemBackfillFieldId = 'variety' | 'substitutes' | 'nutrition' | 'nutritionDetail' | 'scannedName';
+
+/**
+ * The three label lines the app began recording after it had already saved
+ * panels without them. An absent key is unknown and never a zero (see
+ * `FoodNutrition.amounts`), so a panel saved earlier cannot say whether its
+ * food has none of these or the app simply did not ask.
+ */
+export const LATER_LABEL_NUTRIENTS: readonly NutrientKey[] = ['transFatG', 'cholesterolMg', 'addedSugarG'];
 
 export interface ItemBackfillFieldDef {
   id: ItemBackfillFieldId;
@@ -52,22 +60,27 @@ export const ITEM_BACKFILL_FIELDS: ItemBackfillFieldDef[] = [
   {
     id: 'scannedName',
     label: 'Scanned name',
-    hint: 'Rename items that still have the name a barcode lookup gave them, like "Great Value 2% Reduced Fat Milk".',
+    hint: 'Rename items still named by a barcode lookup, like “Great Value 2% Reduced Fat Milk”.',
   },
   {
     id: 'substitutes',
     label: 'Substitutes',
-    hint: 'What you’d use instead if there’s none of this. It’s saved on the item, so every recipe calling for it can use it.',
+    hint: 'What you’d use if there’s none of this. Every recipe that calls for the item can use it.',
   },
   {
     id: 'variety',
     label: 'Counts as',
-    hint: 'The general ingredient this item counts as, like white onion for onion, so a recipe naming the general ingredient accepts it.',
+    hint: 'The general ingredient this item counts as, like white onion for onion. Recipes that name the general ingredient accept it.',
   },
   {
     id: 'nutrition',
     label: 'Nutrition',
     hint: 'What this food is made of, so a recipe or a logged meal can be counted.',
+  },
+  {
+    id: 'nutritionDetail',
+    label: 'Fat and sugar detail',
+    hint: 'Foods saved before trans fat, cholesterol and added sugars were recorded. Add them from the label, or say there are none.',
   },
 ];
 
@@ -101,12 +114,44 @@ export function isItemFieldMissing(
     // hide a real gap behind an answer to a different question.
     case 'nutrition':
       return item.nutrition == null && !isNonFoodAisle(item.aisle, nonFoodAisles);
+    // A saved panel with none of the three later lines. One of them present
+    // means the figures came from a source that already carried them, so the
+    // rest being absent is that source's answer rather than an old save, which
+    // is what keeps an apple (sugars, no added sugars) from queueing forever.
+    case 'nutritionDetail':
+      return needsLaterLabelLines(item) && !isNonFoodAisle(item.aisle, nonFoodAisles);
     // Not a missing value at all but a name nobody has chosen — see
     // `GroceryItem.nameFromScan`, and note that `renameItem` clearing the flag
     // is what takes a row out of this queue.
     case 'scannedName':
       return item.nameFromScan;
   }
+}
+
+/**
+ * Whether `fieldId` is a question for this item at all, set or not. Only
+ * `nutrition` has a gate that is about the item rather than the value: a
+ * non-food row is an answer ("not food"), so a redo has no figures to ask it for.
+ */
+export function isItemFieldApplicable(
+  item: GroceryItem,
+  fieldId: ItemBackfillFieldId,
+  nonFoodAisles: readonly string[] = []
+): boolean {
+  if (fieldId === 'nutritionDetail') return item.nutrition != null && item.nutrition.source !== 'estimated' && !isNonFoodAisle(item.aisle, nonFoodAisles);
+  return fieldId !== 'nutrition' || !isNonFoodAisle(item.aisle, nonFoodAisles);
+}
+
+/**
+ * Whether the item's panel was typed or looked up and carries none of
+ * `LATER_LABEL_NUTRIENTS`. An estimate is left out: it was never read off a
+ * label, and a model's guess is replaced by estimating again, not by typing
+ * figures into it.
+ */
+function needsLaterLabelLines(item: GroceryItem): boolean {
+  const panel = item.nutrition;
+  if (!panel || panel.source === 'estimated') return false;
+  return LATER_LABEL_NUTRIENTS.every(key => panel.amounts[key] === undefined);
 }
 
 /**
@@ -122,14 +167,20 @@ export function isItemBackfillDismissed(item: GroceryItem, fieldId: ItemBackfill
 // Every catalog row is a candidate — there's no `inCatalog`/archived state to
 // exclude any more (see GroceryItem's own note on why), so what's on the
 // shelf and what's only in history are the same pool.
+//
+// `fromScratch` is the screen's redo: every item the field applies to,
+// including ones that already have a value or were told never to be asked again.
 export function itemBackfillCandidates(
   items: GroceryItem[],
   fieldId: ItemBackfillFieldId,
   links: ItemSubLink[] = [],
-  nonFoodAisles: readonly string[] = []
+  nonFoodAisles: readonly string[] = [],
+  opts: { fromScratch?: boolean } = {}
 ): GroceryItem[] {
   return items
-    .filter(i => isItemFieldMissing(i, fieldId, links, items, nonFoodAisles) && !isItemBackfillDismissed(i, fieldId))
+    .filter(i => opts.fromScratch
+      ? isItemFieldApplicable(i, fieldId, nonFoodAisles)
+      : isItemFieldMissing(i, fieldId, links, items, nonFoodAisles) && !isItemBackfillDismissed(i, fieldId))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -139,7 +190,7 @@ export function itemBackfillFieldCounts(
   links: ItemSubLink[] = [],
   nonFoodAisles: readonly string[] = []
 ): Record<ItemBackfillFieldId, number> {
-  const counts = { variety: 0, substitutes: 0, nutrition: 0, scannedName: 0 } as Record<ItemBackfillFieldId, number>;
+  const counts = { variety: 0, substitutes: 0, nutrition: 0, nutritionDetail: 0, scannedName: 0 } as Record<ItemBackfillFieldId, number>;
   for (const i of items) {
     for (const field of ITEM_BACKFILL_FIELDS) {
       if (isItemFieldMissing(i, field.id, links, items, nonFoodAisles) && !isItemBackfillDismissed(i, field.id)) counts[field.id]++;

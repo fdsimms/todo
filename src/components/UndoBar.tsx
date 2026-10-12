@@ -193,7 +193,7 @@ export function UndoBar() {
         <InlineAction
           label={shown.mode === 'redo' ? 'Redo' : 'Undo'}
           onPress={handlePress}
-          accessibilityLabel={`${shown.mode === 'redo' ? 'Redo' : 'Undo'} "${shown.label}"`}
+          accessibilityLabel={`${shown.mode === 'redo' ? 'Redo' : 'Undo'} “${shown.label}”`}
         />
       </View>
     </View>

@@ -178,6 +178,9 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   // part of the other, since one asks about water already owed and this about
   // the day's food.
   'snackNudge',
+  // Beside it, reading the same food log against a limit rather than a goal:
+  // a "don't do" task per limit, slipped when the log goes past it.
+  'limitWarning',
   // Appended: the one generator whose source is a calendar event the person
   // keeps for re-adding (savedEvents.ts).
   'bookEvent',
@@ -249,6 +252,7 @@ export type GeneratedEnabledKey =
   | 'weighInTasks'
   | 'waterShortfallTasks'
   | 'snackNudgeTasks'
+  | 'limitWarningTasks'
   | 'bookEventTasks'
   | 'journalLogTasks'
   | 'dreamLogTasks';
@@ -430,7 +434,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     pausedOnVacation: true,
     enabledKey: 'waitingFollowUpTasks',
     label: 'Follow-up reminders for waiting tasks',
-    onHint: 'A task waiting on somebody, waited on long enough, adds a task to follow up',
+    onHint: 'A task that has waited on somebody long enough adds a task to follow up',
     offHint: 'A task waiting on somebody adds no follow-up task',
     icon: 'hourglass-outline',
     // Sourced on the waiting task itself (Task.id), not on the person — see
@@ -609,8 +613,8 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     pausedOnVacation: true,
     enabledKey: 'supplyReorderTasks',
     label: 'Reorder tasks for supplies',
-    onHint: 'A task running low on supplies adds a task to order more',
-    offHint: 'A task running low on supplies adds no task',
+    onHint: 'A supply running low adds a task to order more',
+    offHint: 'A supply running low adds no task',
     icon: 'cube-outline',
     // The first generator whose source is a *task*. Nothing about the
     // mechanism minds — generatedSourceId is a string and never asked what
@@ -688,7 +692,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     enabledKey: 'mealPlanNudgeEnabled',
     label: 'Plan meals for the week',
     onHint: 'Adds a stack once a week, with a task for each day of that week to plan its meals',
-    offHint: 'No weekly task to plan the week\'s meals',
+    offHint: 'No weekly task to plan the week’s meals',
     icon: 'calendar-outline',
     sourced: false,
     // A notice: seven rows saying how much of each day is planned, with the
@@ -706,9 +710,9 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     kind: 'calendarReview',
     pausedOnVacation: false,
     enabledKey: 'calendarReviewTasks',
-    label: 'Review tomorrow\'s calendar',
-    onHint: 'Adds a task each day to review tomorrow\'s events',
-    offHint: 'No daily task to review tomorrow\'s events',
+    label: 'Review tomorrow’s calendar',
+    onHint: 'Adds a task each day to review tomorrow’s events',
+    offHint: 'No daily task to review tomorrow’s events',
     icon: 'calendar-clear-outline',
     // Its source id is tomorrow's day key, the same "square on the calendar,
     // not a row" position mealPlanNudge is in — see the type's own note.
@@ -729,7 +733,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     pausedOnVacation: false,
     enabledKey: 'weatherTasks',
     label: 'Weather-based tasks',
-    onHint: "A rule that matches today's weather adds its task, like sunscreen on a sunny day",
+    onHint: "A rule that matches today’s weather adds its task, like sunscreen on a sunny day",
     offHint: 'Weather adds no tasks',
     icon: 'partly-sunny-outline',
     sourced: false,
@@ -768,12 +772,12 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
   // run while the app is not allowed to read any. The rules sheet says so
   // rather than leaving somebody with a switch that visibly does nothing.
   //
-  // `categorized: true` with the same default name `ensureHealthCategory` uses,
-  // deliberately: `addCategory` is idempotent by name, so out of the box the
-  // reading and the tasks share one "Health" section, and the two settings stay
-  // independently clearable. Reusing `healthCategory` outright — the
-  // `calendarReview` move — would have coupled them, and "don't show my step
-  // count on Today" is not the same instruction as "don't add health tasks".
+  // `categorized: true`, and deliberately not under the name `ensureHealthCategory`
+  // uses ("Biostats"): the reading's section is information rows only, and the
+  // tasks (this kind and the other health-adjacent generators below) file under
+  // "Health". Reusing `healthCategory` outright — the `calendarReview` move —
+  // would have coupled them, and "don't show my step count on Today" is not the
+  // same instruction as "don't add health tasks".
   health: {
     kind: 'health',
     pausedOnVacation: false,
@@ -853,8 +857,8 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     pausedOnVacation: false,
     enabledKey: 'moodLogTasks',
     label: 'Daily mood check-in',
-    onHint: 'Adds one task a day to log how you\'re feeling',
-    offHint: 'No daily task to log how you\'re feeling',
+    onHint: 'Adds one task a day to log how you’re feeling',
+    offHint: 'No daily task to log how you’re feeling',
     icon: 'happy-outline',
     // Its source id is the day key it asks about (or, with moodLogTimeSegments
     // configured, the day and the segment together — see moodLogSourceId),
@@ -998,6 +1002,27 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     categorized: true,
     defaultCategory: 'Health',
   },
+  // Ships off: Stay under limits are opt-in, and so is being told about one.
+  limitWarning: {
+    kind: 'limitWarning',
+    // Hidden on vacation with its streak held, like any "don't do" task marked
+    // to pause, and the pass logs no slips meanwhile.
+    pausedOnVacation: true,
+    enabledKey: 'limitWarningTasks',
+    label: 'Stay under limits as tasks',
+    onHint: 'Adds a daily “don’t do” task for each Stay under limit, and logs a slip when the food log goes past it',
+    offHint: 'No task for Stay under limits',
+    icon: 'nutrition-outline',
+    // Keyed by the nutrient; limitWarningDeclined is what keeps a deleted one
+    // from coming back until the nutrient is set to Stay under again.
+    sourced: true,
+    // Not a notice: it is a habit with a streak, a slip allowance and a penalty
+    // a person may want to set, so the editor stays reachable.
+    notice: false,
+    kitchen: false,
+    categorized: true,
+    defaultCategory: 'Health',
+  },
   // Ships off; giving a saved event a booking interval (Settings › Calendar ›
   // Saved events) is what turns it on, since that is already the opt-in.
   bookEvent: {
@@ -1087,6 +1112,19 @@ export function generatedTaskCounts(
     on: listed.filter(spec => flags[spec.enabledKey]).length,
     total: listed.length,
   };
+}
+
+/**
+ * Whether a piece of the Automations screen matches what was typed in its
+ * search field. Every word has to appear somewhere in the text (case blind),
+ * so "meal task" finds Meal tasks and "weather sunscreen" needs both. A blank
+ * query matches everything.
+ */
+export function matchesAutomationQuery(query: string, ...texts: string[]): boolean {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return true;
+  const haystack = texts.join(' ').toLowerCase();
+  return words.every(w => haystack.includes(w));
 }
 
 /**
@@ -1344,6 +1382,33 @@ export function generatedBy(
  */
 export function isNoticeTask(task: Pick<Task, 'generatedKind'>): boolean {
   return task.generatedKind !== null && GENERATED_KIND_SPECS[task.generatedKind].notice;
+}
+
+/**
+ * The generators whose tasks come from a list of rules the user wrote. Their
+ * Automations section is mostly that list, so a row about one opens at it
+ * rather than at the on/off switch above it.
+ */
+const RULE_LIST_ENTRY_IDS: Partial<Record<GeneratedKind, string>> = {
+  weather: 'weatherRules',
+  screenTime: 'screenTimeRules',
+  health: 'healthRules',
+  eventTask: 'eventRules',
+};
+
+/**
+ * The Settings entry a generated task's "where is this defined" button opens:
+ * the generator's own row on the Automations screen, or its rule list for the
+ * four that have one.
+ *
+ * `mealCook` is retired and folded into `mealSlot`, so it has no entry of its
+ * own; rows written before the fold still carry it and open the meal tasks row.
+ * Pure, so the test can check every kind in the registry resolves to a real
+ * entry (`settingsEntryTarget`) and a new generator can't ship with a dead button.
+ */
+export function automationEntryIdFor(kind: GeneratedKind): string {
+  if (kind === 'mealCook') return 'gen:mealSlot';
+  return RULE_LIST_ENTRY_IDS[kind] ?? `gen:${kind}`;
 }
 
 /**

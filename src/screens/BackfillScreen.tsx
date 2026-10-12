@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useWithoutLockedTasks } from '../hooks/useWithoutLockedTasks';
 import { View, Text, TouchableOpacity, ScrollView, FlatList, StyleSheet, Platform, Alert, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -17,6 +18,11 @@ import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { DetailHeader } from '../components/DetailHeader';
+import {
+  batchOptionsFor, taskBatchScopes, personBatchScopes, itemBatchScopes, recipeBatchScopes,
+  canBatchApply, canBatchDismiss, type BatchScope,
+} from '../utils/backfillBatch';
+import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { EmptyState } from '../components/EmptyState';
 import { PressableScale } from '../components/PressableScale';
 import { SegmentedControl } from '../components/SegmentedControl';
@@ -33,6 +39,9 @@ import { BirthdayPicker } from '../components/BirthdayPicker';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, lineHeight, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import {
+  resetToTask, resetToProject, resetToPeople, resetToRecipeDetail, resetToGroceryItem, resetToCategories,
+} from '../navigation/navigationRef';
 import { animateLayout } from '../utils/layoutAnimation';
 import { displayTitleFor, activeChainStepTitle } from '../utils/visibilityUtils';
 import { activeMealSlotStepId } from '../utils/mealSlotTasks';
@@ -41,21 +50,23 @@ import { formatDuration, EFFORT_MINUTES, minutesToEffort } from '../utils/effort
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { GENERATED_KIND_SPECS } from '../utils/generatedTasks';
 import {
-  GROUP_APPLY_FIELDS, backfillGroupKey, backfillGroupMembers, defaultsFromAnswer, defaultsDiffer,
+  defaultsFromAnswer, defaultsDiffer,
   NO_TASK_FIELD_DEFAULTS,
 } from '../utils/taskFieldDefaults';
 import { DIFFICULTY_SEGMENTS } from '../utils/rewards';
+import { hasAnyHolidays } from '../utils/holidays';
 import {
-  BACKFILL_FIELDS, backfillCandidates, backfillFieldCounts, estimatePatchFor, dismissBackfillField,
+  BACKFILL_FIELDS, backfillCandidates, backfillFieldCounts, backfillSeriesPeers, estimatePatchFor, dismissBackfillField,
   isFieldMissing, ESTIMATE_EFFORTS, backfillFieldsFor, type BackfillFieldId,
 } from '../utils/fieldBackfill';
 import {
   isSuggestibleBackfillField, suggestionTasks, suggestionExamples, type BackfillSuggestion,
 } from '../utils/backfillSuggest';
 import { useAiRoute } from '../hooks/useOnDeviceAi';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { describeAIError, suggestBackfillValues } from '../services/aiSuggestions';
 import {
-  CATEGORY_BACKFILL_FIELDS, categoryBackfillCandidates, categoryBackfillFieldCounts, dismissCategoryBackfillField,
+  CATEGORY_BACKFILL_FIELDS, categoryBackfillCandidates, categoryBackfillFieldCounts, dismissCategoryBackfillField, isCategoryFieldMissing,
   type CategoryBackfillFieldId,
 } from '../utils/categoryBackfill';
 import {
@@ -74,6 +85,10 @@ import {
   RECIPE_BACKFILL_FIELDS, recipeBackfillCandidates, recipeBackfillFieldCounts, dismissRecipeBackfillField,
   type RecipeBackfillFieldId,
 } from '../utils/recipeBackfill';
+import {
+  TASK_DISMISS_LABELS, CATEGORY_DISMISS_LABELS, PROJECT_DISMISS_LABELS, PERSON_DISMISS_LABELS,
+  ITEM_DISMISS_LABELS, RECIPE_DISMISS_LABELS, KEEP_AS_IS_LABEL,
+} from '../utils/backfillDismissCopy';
 import { useRecipeStore } from '../store/useRecipeStore';
 import {
   CADENCE_UNITS, CADENCE_UNIT_MAX, toCadenceParts, fromCadenceParts, withCadenceUnit, describeCadence, cadenceUnitLabel,
@@ -90,7 +105,7 @@ import { shorterNameSuggestions } from '../utils/scanResolve';
 import { describeFoodPanel } from '../utils/foodNutrition';
 import {
   EFFORT_LABELS, GROCERY_NAME_MAX_LENGTH,
-  type Difficulty, type Effort, type FoodNutrition, type Person, type ReminderKind, type Task, type TaskFieldDefaults,
+  type Difficulty, type Effort, type HolidayRule, type FoodNutrition, type GroceryItem, type Person, type Recipe, type ReminderKind, type Task, type TaskFieldDefaults,
 } from '../types';
 import { TextField } from '../components/TextField';
 
@@ -101,9 +116,18 @@ const FIELD_ICONS: Record<BackfillFieldId, keyof typeof Ionicons.glyphMap> = {
   category: 'folder-outline',
   streak: 'flame-outline',
   vacation: 'airplane-outline',
+  holidays: 'calendar-outline',
   reminder: 'notifications-outline',
   suggestions: 'color-wand-outline',
 };
+
+// The same two words the repeat picker's "On a holiday" group uses. "As usual"
+// is left off: it is the state a task is already in, and the dismissal below
+// the card ("Leave as usual") is how a person says so.
+const HOLIDAY_SEGMENTS: { value: HolidayRule | null; label: string }[] = [
+  { value: 'skip', label: 'Skip it' },
+  { value: 'move', label: 'Next day' },
+];
 
 // Filled counterparts of the row icons above, for the per-card CTA button —
 // same outline/filled split the task fields use (flame-outline in the list,
@@ -144,6 +168,7 @@ const ITEM_FIELD_ICONS: Record<ItemBackfillFieldId, keyof typeof Ionicons.glyphM
   substitutes: 'swap-horizontal-outline',
   variety: 'layers-outline',
   nutrition: 'nutrition-outline',
+  nutritionDetail: 'water-outline',
 };
 
 // Every recipe field is a count somebody types, so there is no filled/outline
@@ -191,7 +216,7 @@ type EntityKind = 'task' | 'category' | 'project' | 'person' | 'item' | 'recipe'
 const entityKindColumns = (count: number) => (count > 4 ? 3 : 2);
 // The two pools that belong to the groceries/recipes/meal plan area, and so
 // leave with it — the same drop the Groceries tab and the drawer's own
-// "Groceries & Meals" row already make. A queue walking the grocery catalog of
+// "Groceries & meals" row already make. A queue walking the grocery catalog of
 // an area you switched off is work the app is asking for on its own behalf.
 const KITCHEN_ENTITY_KINDS: ReadonlySet<EntityKind> = new Set<EntityKind>(['item', 'recipe']);
 const ENTITY_KIND_SEGMENTS = [
@@ -286,12 +311,14 @@ const DURATION_UNIT_SEGMENTS = [
  * `renameItem` returns false there, and the collision is the *common* case in
  * a queue full of rows that all want to be called "Yogurt". See `applyRename`.
  *
- * The header's redo icon (task fields only, for now) starts the same loop
- * over from scratch — every live task for the field, including ones already
- * set — for someone who wants to revisit a field wholesale rather than just
- * fill in the gaps. It's still one task at a time through the normal
- * apply/skip/dismiss actions, so a value is only ever replaced when you
- * reach that task and set a new one; nothing is cleared in bulk up front.
+ * The header's redo icon (every pool has it) starts the same loop over from
+ * scratch — every live item for the field, including ones already set — for
+ * someone who wants to revisit a field wholesale rather than just fill in the
+ * gaps. It's still one item at a time through the normal apply/skip/dismiss
+ * actions, so a value is only ever replaced when you reach that item and set a
+ * new one; nothing is cleared in bulk up front. The two on/off flags (a
+ * category's three, a project's weekend source) turn *off* on an item that is
+ * already on, since turning on is a no-op there.
  */
 type ActiveField =
   | { kind: 'task'; id: BackfillFieldId }
@@ -300,6 +327,18 @@ type ActiveField =
   | { kind: 'person'; id: PersonBackfillFieldId }
   | { kind: 'item'; id: ItemBackfillFieldId }
   | { kind: 'recipe'; id: RecipeBackfillFieldId };
+
+/** What the dismiss button for this step says, by pool and field. */
+function dismissLabelFor(field: ActiveField): string {
+  switch (field.kind) {
+    case 'task': return TASK_DISMISS_LABELS[field.id];
+    case 'category': return CATEGORY_DISMISS_LABELS[field.id];
+    case 'project': return PROJECT_DISMISS_LABELS[field.id];
+    case 'person': return PERSON_DISMISS_LABELS[field.id];
+    case 'item': return ITEM_DISMISS_LABELS[field.id];
+    case 'recipe': return RECIPE_DISMISS_LABELS[field.id];
+  }
+}
 
 /**
  * One line of the compact review shown once a field's queue empties: what got
@@ -330,10 +369,11 @@ export function BackfillScreen() {
   // this screen and its height has to be cleared like any other hidden-tab
   // screen — insets.bottom alone leaves the CTA sitting under the tab bar.
   const tabBarHeight = useBottomTabBarHeight();
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
   const { colors, shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const tasks = useTaskStore(useShallow(s => s.tasks));
+  const tasks = useWithoutLockedTasks(useTaskStore(useShallow(s => s.tasks)));
   const updateTask = useTaskStore(s => s.updateTask);
   const setLastAction = useTaskStore(s => s.setLastAction);
   const getCategoryByName = useCategoryStore(s => s.getCategoryByName);
@@ -369,6 +409,8 @@ export function BackfillScreen() {
   const simpleMode = useSettingsStore(s => s.simpleMode);
   const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
+  const holidaySet = useSettingsStore(s => s.holidaySet);
+  const customHolidays = useSettingsStore(s => s.customHolidays);
   const [active, setActive] = useState<ActiveField | null>(null);
   // Redo-from-scratch (task fields only): widens the queue to every live
   // task for the field instead of just the ones missing a value — see
@@ -472,7 +514,11 @@ export function BackfillScreen() {
   // comment describes.
   const suggestRoute = useAiRoute('backfillSuggestions');
 
-  const taskFields = useMemo(() => backfillFieldsFor(simpleMode, rewardsEnabled), [simpleMode, rewardsEnabled]);
+  const holidaysConfigured = hasAnyHolidays({ set: holidaySet, custom: customHolidays });
+  const taskFields = useMemo(
+    () => backfillFieldsFor(simpleMode, rewardsEnabled, holidaysConfigured),
+    [simpleMode, rewardsEnabled, holidaysConfigured]
+  );
   const entitySegments = useMemo(
     () => ENTITY_KIND_SEGMENTS.filter(seg => kitchenEnabled || !KITCHEN_ENTITY_KINDS.has(seg.value)),
     [kitchenEnabled]
@@ -502,12 +548,12 @@ export function BackfillScreen() {
     [tasks, active, fromScratch, skippedIds, categories]
   );
   const categoryQueue = useMemo(
-    () => active?.kind === 'category' ? categoryBackfillCandidates(categories, active.id).filter(c => !skippedIds.has(c.id)) : [],
-    [categories, active, skippedIds]
+    () => active?.kind === 'category' ? categoryBackfillCandidates(categories, active.id, { fromScratch }).filter(c => !skippedIds.has(c.id)) : [],
+    [categories, active, fromScratch, skippedIds]
   );
   const projectQueue = useMemo(
-    () => active?.kind === 'project' ? projectBackfillCandidates(projects, active.id).filter(p => !skippedIds.has(p.id)) : [],
-    [projects, active, skippedIds]
+    () => active?.kind === 'project' ? projectBackfillCandidates(projects, active.id, { fromScratch }).filter(p => !skippedIds.has(p.id)) : [],
+    [projects, active, fromScratch, skippedIds]
   );
   const currentTask = active?.kind === 'task'
     ? (manualCurrentId ? tasks.find(t => t.id === manualCurrentId) ?? (taskQueue[0] ?? null) : (taskQueue[0] ?? null))
@@ -516,18 +562,18 @@ export function BackfillScreen() {
     ? (manualCurrentId ? categories.find(c => c.id === manualCurrentId) ?? (categoryQueue[0] ?? null) : (categoryQueue[0] ?? null))
     : null;
   const personQueue = useMemo(
-    () => active?.kind === 'person' ? personBackfillCandidates(people, active.id).filter(p => !skippedIds.has(p.id)) : [],
-    [people, active, skippedIds]
+    () => active?.kind === 'person' ? personBackfillCandidates(people, active.id, { fromScratch }).filter(p => !skippedIds.has(p.id)) : [],
+    [people, active, fromScratch, skippedIds]
   );
   const itemQueue = useMemo(
     () => active?.kind === 'item'
-      ? itemBackfillCandidates(groceryItems, active.id, itemSubs, nonFoodAisles).filter(i => !skippedIds.has(i.id))
+      ? itemBackfillCandidates(groceryItems, active.id, itemSubs, nonFoodAisles, { fromScratch }).filter(i => !skippedIds.has(i.id))
       : [],
-    [groceryItems, active, skippedIds, itemSubs, nonFoodAisles]
+    [groceryItems, active, fromScratch, skippedIds, itemSubs, nonFoodAisles]
   );
   const recipeQueue = useMemo(
-    () => active?.kind === 'recipe' ? recipeBackfillCandidates(recipes, active.id).filter(r => !skippedIds.has(r.id)) : [],
-    [recipes, active, skippedIds]
+    () => active?.kind === 'recipe' ? recipeBackfillCandidates(recipes, active.id, { fromScratch }).filter(r => !skippedIds.has(r.id)) : [],
+    [recipes, active, fromScratch, skippedIds]
   );
   const currentProject = active?.kind === 'project'
     ? (manualCurrentId ? projects.find(p => p.id === manualCurrentId) ?? (projectQueue[0] ?? null) : (projectQueue[0] ?? null))
@@ -564,26 +610,45 @@ export function BackfillScreen() {
     [taskQueue, suggestions]
   );
 
-  // "Use this answer for everything in this list": a whole group (a project, or
-  // a kind of generated task) answered with one tap instead of one per task.
-  // Armed by a toggle on the card and spent by the next answer, so it can never
-  // stay on for a card the person didn't mean it for. Off in a redo-from-scratch
-  // run, where the queue holds tasks that already have a value it would replace.
-  const [groupApply, setGroupApply] = useState(false);
-  const groupMembers = useMemo(
-    () => active?.kind === 'task' && currentTask && !fromScratch && GROUP_APPLY_FIELDS.includes(active.id)
-      ? backfillGroupMembers(taskQueue, currentTask)
-      : [],
-    [active, currentTask, fromScratch, taskQueue],
-  );
-  const groupLabel = currentTask
-    ? currentTask.generatedKind
-      ? GENERATED_KIND_SPECS[currentTask.generatedKind].label
-      : currentTask.projectId ? projectNamesById.get(currentTask.projectId) ?? null : null
-    : null;
-  const groupApplies = groupApply && groupMembers.length > 1;
-  const currentGroupKey = currentTask ? backfillGroupKey(currentTask) : null;
-  useEffect(() => { setGroupApply(false); }, [currentGroupKey, active?.kind === 'task' ? active.id : null]);
+  // "Use this answer for everything in this set": a project, a category, a
+  // stack, a kind of generated task, a person's group, an aisle or a cookbook,
+  // answered with one tap instead of one per card. Armed by a toggle on the
+  // card and spent by the next answer, so it can never stay on for a card the
+  // person didn't mean it for. Off in a redo-from-scratch run, where the queue
+  // holds cards that already have a value it would replace. The sets are built
+  // in `backfillBatch.ts`; this only holds which one is armed.
+  const [batchScopeKey, setBatchScopeKey] = useState<string | null>(null);
+  const stacks = useTaskGroupStore(useShallow(s => s.groups));
+  const cookbooks = useRecipeStore(useShallow(s => s.cookbooks));
+  const batchOptions = useMemo(() => {
+    // Categories and projects have no set to answer for: nothing ties one to another.
+    if (fromScratch || !active || active.kind === 'category' || active.kind === 'project') return [];
+    if (!canBatchApply(active.kind, active.id) && !canBatchDismiss(active.kind, active.id)) return [];
+    if (active.kind === 'task' && currentTask) return batchOptionsFor(taskQueue, currentTask, taskBatchScopes);
+    if (active.kind === 'person' && currentPerson) return batchOptionsFor(personQueue, currentPerson, personBatchScopes);
+    if (active.kind === 'item' && currentItem) return batchOptionsFor(itemQueue, currentItem, itemBatchScopes);
+    if (active.kind === 'recipe' && currentRecipe) return batchOptionsFor(recipeQueue, currentRecipe, recipeBatchScopes);
+    return [];
+  }, [fromScratch, active, currentTask, currentPerson, currentItem, currentRecipe, taskQueue, personQueue, itemQueue, recipeQueue]);
+  const activeBatch = batchOptions.find(o => o.scope.key === batchScopeKey) ?? null;
+  // Whether the armed set is answered with the card's own value (the next
+  // answer goes to all of them) or only dismissed (a field whose members would
+  // never share a value, like an aisle's nutrition panels).
+  const batchAnswers = !!active && active.kind !== 'category' && active.kind !== 'project'
+    && canBatchApply(active.kind, active.id);
+  const scopeLabelFor = (scope: BatchScope): string | null => {
+    switch (scope.kind) {
+      case 'generated': return GENERATED_KIND_SPECS[scope.id as keyof typeof GENERATED_KIND_SPECS]?.label ?? null;
+      case 'project': return projectNamesById.get(scope.id) ?? null;
+      case 'category': return categoryLabel(scope.id, getCategoryByName);
+      case 'stack': return stacks.find(g => g.id === scope.id)?.title ?? null;
+      case 'personGroup': return personGroups.find(g => g.id === scope.id)?.name ?? null;
+      case 'aisle': return scope.id;
+      case 'cookbook': return cookbooks.find(c => c.id === scope.id)?.title ?? null;
+    }
+  };
+  const groupLabel = activeBatch ? scopeLabelFor(activeBatch.scope) : null;
+  useEffect(() => { setBatchScopeKey(null); }, [currentId, active?.kind, active?.id]);
   const canSuggest = active?.kind === 'task' && isSuggestibleBackfillField(active.id)
     && suggestRoute !== 'unavailable';
   const currentSuggestion = currentTask ? suggestions.get(currentTask.id) ?? null : null;
@@ -783,14 +848,14 @@ export function BackfillScreen() {
     clearSuggestions();
   };
 
-  // Widens the task queue to every live task for the field, including ones
-  // that already have a value or were dismissed — nothing is cleared by this
-  // alone, it just puts every task back in front of you to confirm or
+  // Widens the queue to every live item for the field, including ones that
+  // already have a value or were dismissed — nothing is cleared by this
+  // alone, it just puts every item back in front of you to confirm or
   // replace one at a time (see apply/dismiss below for how each one leaves
-  // the queue once you've actually reached it). Category and project fields
-  // have no redo-from-scratch mode of their own yet.
+  // the queue once you've actually reached it). Every pool has it: the header's
+  // redo icon is the same button on all six.
   const startOver = () => {
-    if (active?.kind !== 'task') return;
+    if (!active) return;
     haptics.tap();
     setFromScratch(true);
     setSkippedIds(new Set());
@@ -802,15 +867,36 @@ export function BackfillScreen() {
     // built to exclude tasks that already had one — so the answers that batch
     // came back with are about a queue this one isn't.
     clearSuggestions();
-    setSessionTotal(backfillCandidates(tasks, active.id, { fromScratch: true }).length);
+    const opts = { fromScratch: true };
+    setSessionTotal(
+      active.kind === 'task' ? backfillCandidates(tasks, active.id, opts).length
+      : active.kind === 'category' ? categoryBackfillCandidates(categories, active.id, opts).length
+      : active.kind === 'project' ? projectBackfillCandidates(projects, active.id, opts).length
+      : active.kind === 'person' ? personBackfillCandidates(people, active.id, opts).length
+      : active.kind === 'item' ? itemBackfillCandidates(groceryItems, active.id, itemSubs, nonFoodAisles, opts).length
+      : recipeBackfillCandidates(recipes, active.id, opts).length
+    );
   };
 
   const confirmStartOver = () => {
-    if (active?.kind !== 'task') return;
-    const label = BACKFILL_FIELDS.find(f => f.id === active.id)!.label.toLowerCase();
+    if (!active) return;
+    const label =
+      active.kind === 'task' ? BACKFILL_FIELDS.find(f => f.id === active.id)!.label
+      : active.kind === 'category' ? CATEGORY_BACKFILL_FIELDS.find(f => f.id === active.id)!.label
+      : active.kind === 'project' ? PROJECT_BACKFILL_FIELDS.find(f => f.id === active.id)!.label
+      : active.kind === 'person' ? PERSON_BACKFILL_FIELDS.find(f => f.id === active.id)!.shortLabel
+      : active.kind === 'item' ? ITEM_BACKFILL_FIELDS.find(f => f.id === active.id)!.label
+      : RECIPE_BACKFILL_FIELDS.find(f => f.id === active.id)!.label;
+    const noun =
+      active.kind === 'task' ? 'task'
+      : active.kind === 'category' ? 'category'
+      : active.kind === 'project' ? 'project'
+      : active.kind === 'person' ? 'person'
+      : active.kind === 'item' ? 'item'
+      : 'recipe';
     Alert.alert(
-      `Redo ${label} from scratch?`,
-      `Walks through every task again, one at a time, including ones that already have a ${label} set. Each task keeps its current value until you set a new one for it, so nothing is cleared upfront.`,
+      `Redo ${label.toLowerCase()} from scratch?`,
+      `Goes through every ${noun} again, including ones that already have this set. Each ${noun} keeps its current value until you change it.`,
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Start over', onPress: startOver },
@@ -830,8 +916,16 @@ export function BackfillScreen() {
   // item about to leave the front of the queue is captured regardless of
   // *how* it leaves (an explicit advance() vs. a category/project apply
   // that just mutates the store and lets the live filter drop it).
+  //
+  // In a from-scratch run it also advances for every pool but tasks (whose
+  // handlers call advance() themselves): the live filter that normally drops a
+  // category, project, person, item or recipe once it has a value keeps
+  // already-set ones, so without this the same card would stay at the front.
   const recordVisited = () => {
-    if (currentId) setHistory(prev => [...prev, currentId]);
+    if (!currentId) return;
+    setBatchScopeKey(null);
+    setHistory(prev => [...prev, currentId]);
+    if (fromScratch && active?.kind !== 'task') advance(currentId);
   };
 
   // Steps back to the item recorded just before the current one. It isn't
@@ -842,7 +936,7 @@ export function BackfillScreen() {
   const goBack = () => {
     if (history.length === 0) return;
     haptics.tap();
-    setGroupApply(false);
+    setBatchScopeKey(null);
     animateLayout();
     const prevId = history[history.length - 1];
     setHistory(h => h.slice(0, -1));
@@ -860,6 +954,16 @@ export function BackfillScreen() {
   // its one line instead of leaving the earlier answer sitting above it.
   const logSession = (entry: SessionEntry) => {
     setSessionLog(prev => [...prev.filter(e => e.itemId !== entry.itemId), entry]);
+  };
+
+  // What every answer outside the task pool files: a line in the session review
+  // (its own Undo) and one shake-to-undo entry covering all of `entries`, which is
+  // the one place a batch shows up as a single step. Tasks do this inline because
+  // their undo also carries a redo.
+  const commit = (label: string, entries: SessionEntry | SessionEntry[]) => {
+    const list = Array.isArray(entries) ? entries : [entries];
+    list.forEach(logSession);
+    setLastAction({ label, undo: () => list.forEach(e => e.undo()) });
   };
 
   // The review step's own Undo: fires the entry's captured undo, drops its
@@ -886,16 +990,38 @@ export function BackfillScreen() {
   // instead of a trip back into the task editor. Category and project fields
   // don't go through setLastAction/shake-to-undo yet — see applyCategory
   // and applyNudge below.
+  /**
+   * The other dates of a series this card stands for. The queue holds one card
+   * per series (`backfillCandidates`), so an answer has to reach the rest or
+   * they would come back as cards of their own. Empty for a task that is not in
+   * a series, and for a date that already has its own answer.
+   */
+  const seriesPeersOf = (task: Task): Task[] =>
+    active?.kind === 'task' ? backfillSeriesPeers(task, tasks, active.id, { fromScratch, categories }) : [];
+
+  /**
+   * Writes `patchFor(row)` to `task` and to the rest of its series, and returns
+   * every row as it was before, for the undo. A patch is built per row because a
+   * dismissal appends to that row's own list rather than copying this one's.
+   */
+  const writeWithPeers = (task: Task, patchFor: (row: Task) => Partial<Task>): Task[] => {
+    const rows = [task, ...seriesPeersOf(task)];
+    const snapshots = rows.map(row => ({ ...row }));
+    rows.forEach(row => updateTask(row.id, patchFor(row)));
+    return snapshots;
+  };
+  const restoreRows = (snapshots: Task[]) => () => snapshots.forEach(row => updateTask(row.id, row));
+
   const apply = (patch: Partial<Task>, valueText: string) => {
     if (!currentTask || active?.kind !== 'task') return;
-    if (groupApplies) { applyToGroup(task => patch, valueText); return; }
+    if (activeBatch && batchAnswers) { applyToGroup(task => patch, valueText); return; }
     haptics.tap();
     animateLayout();
     recordVisited();
     setManualCurrentId(null);
-    const snapshot = { ...currentTask };
     const fieldLabel = BACKFILL_FIELDS.find(f => f.id === active.id)!.label;
-    updateTask(currentTask.id, patch);
+    const snapshots = writeWithPeers(currentTask, () => patch);
+    const undo = restoreRows(snapshots);
     // Choosing and eating a given meal take about the same time every day,
     // so a size given to "Choose breakfast" here is remembered under its
     // step id and carried onto every future "Choose breakfast" at creation
@@ -907,14 +1033,14 @@ export function BackfillScreen() {
     }
     setLastAction({
       label: `${fieldLabel} set`,
-      undo: () => updateTask(snapshot.id, snapshot),
-      redo: redoRestoringRows([snapshot.id]),
+      undo,
+      redo: redoRestoringRows(snapshots.map(row => row.id)),
     });
     logSession({
       itemId: currentTask.id,
       title: displayTitleFor(currentTask),
       valueText,
-      undo: () => updateTask(snapshot.id, snapshot),
+      undo,
     });
     advance(currentTask.id);
   };
@@ -929,20 +1055,22 @@ export function BackfillScreen() {
    */
   const applyToGroup = (patchFor: (task: Task) => Partial<Task>, valueText: string, dismissed = false) => {
     if (active?.kind !== 'task') return;
-    const batch = groupMembers;
-    if (batch.length === 0) return;
+    if (!activeBatch) return;
+    const batch = activeBatch.members as Task[];
     const offerFor = batch[0];
     haptics.success();
     animateLayout();
     recordVisited();
     setManualCurrentId(null);
-    setGroupApply(false);
+    setBatchScopeKey(null);
     const fieldLabel = BACKFILL_FIELDS.find(f => f.id === active.id)!.label;
-    const snapshots = batch.map(t => ({ ...t }));
-    batch.forEach((task, i) => {
+    // Each card with the rest of its series: the card is the unit the person
+    // counts, the rows behind it are what gets written.
+    const snapshots: Task[] = [];
+    batch.forEach(task => {
       const patch = patchFor(task);
-      const snapshot = snapshots[i];
-      updateTask(task.id, patch);
+      const rowSnapshots = writeWithPeers(task, patchFor);
+      snapshots.push(...rowSnapshots);
       // Same carry-forward the single-task apply does: see apply()'s note on
       // mealSlotStepEstimates.
       if (active.id === 'estimate' && patch.estimatedMinutes != null) {
@@ -953,12 +1081,12 @@ export function BackfillScreen() {
         itemId: task.id,
         title: displayTitleFor(task),
         valueText,
-        undo: () => updateTask(snapshot.id, snapshot),
+        undo: restoreRows(rowSnapshots),
       });
     });
     setLastAction({
       label: `${fieldLabel} set on ${batch.length} ${batch.length === 1 ? 'task' : 'tasks'}`,
-      undo: () => { for (const snapshot of snapshots) updateTask(snapshot.id, snapshot); },
+      undo: restoreRows(snapshots),
       redo: redoRestoringRows(snapshots.map(t => t.id)),
     });
     setSkippedIds(prev => {
@@ -966,7 +1094,7 @@ export function BackfillScreen() {
       for (const task of batch) next.add(task.id);
       return next;
     });
-    offerGroupDefault(offerFor, defaultsFromAnswer(active.id, patchFor(offerFor), dismissed));
+    offerGroupDefault(offerFor, activeBatch.scope, defaultsFromAnswer(active.id, patchFor(offerFor), dismissed));
   };
 
   /**
@@ -975,10 +1103,13 @@ export function BackfillScreen() {
    * than part of the toggle, because answering the backlog and deciding what
    * future tasks start with are two different calls.
    */
-  const offerGroupDefault = (sample: Task, answer: Partial<TaskFieldDefaults> | null) => {
-    if (!answer) return;
-    const kind = sample.generatedKind;
-    const projectId = sample.projectId;
+  const offerGroupDefault = (sample: Task, scope: BatchScope, answer: Partial<TaskFieldDefaults> | null) => {
+    // Only the two sets that own a default can keep one: a category or a stack
+    // has nowhere to store it, and reading the sample's own project there would
+    // set a default for a set the person never chose.
+    if (!answer || (scope.kind !== 'generated' && scope.kind !== 'project')) return;
+    const kind = scope.kind === 'generated' ? sample.generatedKind : null;
+    const projectId = scope.kind === 'project' ? sample.projectId : null;
     const current = kind
       ? useSettingsStore.getState().generatedTaskDefaults[kind]
       : projectId ? useProjectStore.getState().getProjectById(projectId)?.taskDefaults : null;
@@ -986,7 +1117,7 @@ export function BackfillScreen() {
     const name = groupLabel ?? 'this group';
     Alert.alert(
       `Use this for new tasks in ${name}?`,
-      'New tasks there will start with this answer, so they will not come up here. You can change it later in the project editor or in Settings.',
+      'New tasks there start with this answer, so they won’t come up here. Change it later in the project editor or Settings.',
       [
         { text: 'Not now', style: 'cancel' },
         {
@@ -1056,7 +1187,7 @@ export function BackfillScreen() {
         // place, and every task in a small batch being unplaceable is a real
         // answer. Said in the error slot because it is the only slot that says
         // anything, and saying nothing would read as a button that did nothing.
-        setSuggestError('Nothing here could be suggested. Fill these in yourself.');
+        setSuggestError('No suggestions for these. Fill them in yourself.');
       } else {
         haptics.success();
       }
@@ -1092,17 +1223,17 @@ export function BackfillScreen() {
     const fieldLabel = BACKFILL_FIELDS.find(f => f.id === active.id)!.label;
     // One copy per task, shared by both recoveries below: the shake undo puts
     // the whole array back, each session-review row puts its own one back.
-    const snapshots = batch.map(t => ({ ...t }));
-    batch.forEach((task, i) => {
+    const snapshots: Task[] = [];
+    batch.forEach(task => {
       const suggestion = suggestions.get(task.id)!;
-      const snapshot = snapshots[i];
+      let rowSnapshots: Task[];
       let valueText: string;
       if (suggestion.field === 'category') {
-        updateTask(task.id, { category: suggestion.category });
+        rowSnapshots = writeWithPeers(task, () => ({ category: suggestion.category }));
         valueText = categoryLabel(suggestion.category, getCategoryByName);
       } else {
         const patch = estimatePatchFor(suggestion.effort);
-        updateTask(task.id, patch);
+        rowSnapshots = writeWithPeers(task, () => patch);
         // Same carry-forward the single-task apply does — see apply()'s note
         // on mealSlotStepEstimates.
         if (patch.estimatedMinutes != null) {
@@ -1113,16 +1244,17 @@ export function BackfillScreen() {
           ? formatDuration(patch.estimatedMinutes)
           : EFFORT_LABELS[suggestion.effort];
       }
+      snapshots.push(...rowSnapshots);
       logSession({
         itemId: task.id,
         title: displayTitleFor(task),
         valueText,
-        undo: () => updateTask(snapshot.id, snapshot),
+        undo: restoreRows(rowSnapshots),
       });
     });
     setLastAction({
       label: `${fieldLabel} set on ${batch.length} ${batch.length === 1 ? 'task' : 'tasks'}`,
-      undo: () => { for (const snapshot of snapshots) updateTask(snapshot.id, snapshot); },
+      undo: restoreRows(snapshots),
       redo: redoRestoringRows(snapshots.map(t => t.id)),
     });
     // One write rather than `advance` per task: in a from-scratch run the
@@ -1142,7 +1274,7 @@ export function BackfillScreen() {
     const label = BACKFILL_FIELDS.find(f => f.id === active.id)!.label.toLowerCase();
     Alert.alert(
       `Apply ${count} ${count === 1 ? 'suggestion' : 'suggestions'}?`,
-      `Sets the suggested ${label} on ${count} ${count === 1 ? 'task' : 'tasks'} at once. Each one is listed with its own Undo when the queue finishes, and a shake takes the whole batch back.`,
+      `Sets the suggested ${label} on ${count} ${count === 1 ? 'task' : 'tasks'}. Each one gets its own Undo when the queue finishes, and a shake undoes the whole batch.`,
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Apply all', onPress: applyAllSuggestions },
@@ -1161,25 +1293,25 @@ export function BackfillScreen() {
     setManualCurrentId(null);
     const categoryName = currentCategory.name;
     const fieldId = active.id;
-    switch (fieldId) {
-      case 'vacation': setCategoryHideOnVacation(categoryName, true); break;
-      case 'suggestions': setCategoryExcludeFromSuggestions(categoryName, true); break;
-      case 'newBanner': setCategoryExcludeFromNewTasksBanner(categoryName, true); break;
-    }
-    // Always off before this fires (that's what made the category a
-    // candidate), so the undo is just the same setter with the value flipped
-    // back — no snapshot needed the way the project/person cases below take.
-    logSession({
+    // Off in the normal queue (that's what made the category a candidate), so
+    // the button turns it on. A redo also reaches categories that are already
+    // on, and for those the same button turns it off, so the undo is the same
+    // setter with the value flipped back either way.
+    const turnOn = isCategoryFieldMissing(currentCategory, fieldId);
+    const set = (value: boolean) => {
+      switch (fieldId) {
+        case 'vacation': setCategoryHideOnVacation(categoryName, value); break;
+        case 'suggestions': setCategoryExcludeFromSuggestions(categoryName, value); break;
+        case 'newBanner': setCategoryExcludeFromNewTasksBanner(categoryName, value); break;
+      }
+    };
+    set(turnOn);
+    const fieldLabel = CATEGORY_BACKFILL_FIELDS.find(f => f.id === fieldId)!.label;
+    commit(turnOn ? `${fieldLabel} turned on` : `${fieldLabel} turned off`, {
       itemId: currentCategory.id,
       title: categoryLabel(categoryName, getCategoryByName),
-      valueText: CATEGORY_BACKFILL_FIELDS.find(f => f.id === fieldId)!.label,
-      undo: () => {
-        switch (fieldId) {
-          case 'vacation': setCategoryHideOnVacation(categoryName, false); break;
-          case 'suggestions': setCategoryExcludeFromSuggestions(categoryName, false); break;
-          case 'newBanner': setCategoryExcludeFromNewTasksBanner(categoryName, false); break;
-        }
-      },
+      valueText: turnOn ? fieldLabel : `Turned off: ${fieldLabel}`,
+      undo: () => set(!turnOn),
     });
   };
 
@@ -1200,7 +1332,7 @@ export function BackfillScreen() {
     // what was actually committed, so the two can't disagree.
     const fields = nudgeFieldsFor('scheduled', fromCadenceParts(nudgeDraft));
     updateProject(projectId, fields);
-    logSession({
+    commit('Reminder cadence set', {
       itemId: projectId,
       title: currentProject.title,
       valueText: describeCadence(fields.nudgeCadenceDays),
@@ -1210,7 +1342,8 @@ export function BackfillScreen() {
 
   // A plain flag, so unlike applyNudge above there is no draft to commit and
   // the undo is the one field. Doesn't call advance() either: setting the value
-  // is what drops the project out of the live queue.
+  // is what drops the project out of the live queue (a redo run advances in
+  // recordVisited instead).
   const applyWeekendSource = () => {
     if (!currentProject) return;
     haptics.tap();
@@ -1219,11 +1352,14 @@ export function BackfillScreen() {
     setManualCurrentId(null);
     const projectId = currentProject.id;
     const before = { weekendSource: currentProject.weekendSource };
-    updateProject(projectId, { weekendSource: true });
-    logSession({
+    // On in the normal queue's sense of missing (off); a redo also reaches
+    // projects that already have it on, and for those the button turns it off.
+    const turnOn = !currentProject.weekendSource;
+    updateProject(projectId, { weekendSource: turnOn });
+    commit(turnOn ? 'Weekend suggestion turned on' : 'Weekend suggestion turned off', {
       itemId: projectId,
       title: currentProject.title,
-      valueText: 'Suggested for a free weekend',
+      valueText: turnOn ? 'Suggested for a free weekend' : 'No longer suggested for a free weekend',
       undo: () => updateProject(projectId, before),
     });
   };
@@ -1247,7 +1383,7 @@ export function BackfillScreen() {
     };
     updatePerson(personId, { birthdayMonth: month, birthdayDay: day, birthYear: year });
     const bDate = new Date(year ?? 2000, month - 1, day);
-    logSession({
+    commit('Birthday set', {
       itemId: personId,
       title: displayNameOf(currentPerson),
       valueText: year ? format(bDate, 'MMM d, yyyy') : format(bDate, 'MMM d'),
@@ -1304,7 +1440,7 @@ export function BackfillScreen() {
         updatePerson(mate.id, personCadencePatch(mate, days));
       }
     }
-    logSession({
+    commit('Reminder cadence set', {
       itemId: personId,
       title: displayNameOf(currentPerson),
       valueText: includeGroup
@@ -1327,7 +1463,7 @@ export function BackfillScreen() {
     const personId = currentPerson.id;
     const before = { askAbout: currentPerson.askAbout };
     updatePerson(personId, { askAbout: text });
-    logSession({
+    commit('Ask-about note set', {
       itemId: personId,
       title: displayNameOf(currentPerson),
       valueText: text,
@@ -1340,23 +1476,31 @@ export function BackfillScreen() {
     if (!currentPerson || !text) return;
     haptics.tap();
     animateLayout();
+    // The armed set (a person's group, often one household) gets the same
+    // place; the card's own person is always among its members.
+    const targets = activeBatch && batchAnswers ? (activeBatch.members as Person[]) : [currentPerson];
     recordVisited();
     setManualCurrentId(null);
-    const personId = currentPerson.id;
-    const before = { location: currentPerson.location };
-    updatePerson(personId, { location: text });
-    logSession({
-      itemId: personId,
-      title: displayNameOf(currentPerson),
-      valueText: text,
-      undo: () => updatePerson(personId, before),
+    const entries: SessionEntry[] = targets.map(person => {
+      const before = { location: person.location };
+      updatePerson(person.id, { location: text });
+      return {
+        itemId: person.id,
+        title: displayNameOf(person),
+        valueText: text,
+        undo: () => updatePerson(person.id, before),
+      };
     });
+    commit(targets.length > 1 ? `Location set for ${targets.length} people` : 'Location set', entries);
+    if (targets.length > 1) {
+      setSkippedIds(prev => new Set([...prev, ...targets.map(p => p.id)]));
+    }
   };
 
   const skip = () => {
     if (!currentId) return;
     haptics.tap();
-    setGroupApply(false);
+    setBatchScopeKey(null);
     animateLayout();
     recordVisited();
     setManualCurrentId(null);
@@ -1371,9 +1515,10 @@ export function BackfillScreen() {
   // run of it).
   const dismiss = () => {
     if (!active) return;
-    if (active.kind === 'task' && currentTask && groupApplies) {
+    const dismissedText = dismissLabelFor(active);
+    if (active.kind === 'task' && currentTask && activeBatch) {
       const fieldId = active.id;
-      applyToGroup(task => dismissBackfillField(task, fieldId), 'Left unset', true);
+      applyToGroup(task => dismissBackfillField(task, fieldId), dismissedText, true);
       return;
     }
     haptics.tap();
@@ -1382,20 +1527,19 @@ export function BackfillScreen() {
     setManualCurrentId(null);
     if (active.kind === 'task') {
       if (!currentTask) return;
-      const snapshot = { ...currentTask };
-      const fieldLabel = BACKFILL_FIELDS.find(f => f.id === active.id)!.label;
-      const wasMissing = isFieldMissing(currentTask, active.id, categories);
-      updateTask(currentTask.id, dismissBackfillField(currentTask, active.id));
+      const fieldId = active.id;
+      const wasMissing = isFieldMissing(currentTask, fieldId, categories);
+      const snapshots = writeWithPeers(currentTask, row => dismissBackfillField(row, fieldId));
       setLastAction({
-        label: `${fieldLabel} left unset`,
-        undo: () => updateTask(snapshot.id, snapshot),
-        redo: redoRestoringRows([snapshot.id]),
+        label: dismissedText,
+        undo: restoreRows(snapshots),
+        redo: redoRestoringRows(snapshots.map(row => row.id)),
       });
       logSession({
         itemId: currentTask.id,
         title: displayTitleFor(currentTask),
-        valueText: wasMissing ? 'Left unset' : "Won't ask again",
-        undo: () => updateTask(snapshot.id, snapshot),
+        valueText: wasMissing ? dismissedText : KEEP_AS_IS_LABEL,
+        undo: restoreRows(snapshots),
       });
       advance(currentTask.id);
     } else if (active.kind === 'category') {
@@ -1406,10 +1550,10 @@ export function BackfillScreen() {
         categoryName,
         dismissCategoryBackfillField(currentCategory, active.id).backfillDismissedFields
       );
-      logSession({
+      commit(dismissedText, {
         itemId: currentCategory.id,
         title: categoryLabel(categoryName, getCategoryByName),
-        valueText: "Won't ask again",
+        valueText: dismissedText,
         undo: () => setCategoryBackfillDismissedFields(categoryName, beforeDismissed),
       });
     } else if (active.kind === 'project') {
@@ -1417,48 +1561,45 @@ export function BackfillScreen() {
       const projectId = currentProject.id;
       const before = { backfillDismissedFields: currentProject.backfillDismissedFields };
       updateProject(projectId, dismissProjectBackfillField(currentProject, active.id));
-      logSession({
+      commit(dismissedText, {
         itemId: projectId,
         title: currentProject.title,
-        valueText: "Won't ask again",
+        valueText: dismissedText,
         undo: () => updateProject(projectId, before),
       });
-    } else if (active.kind === 'person') {
-      if (!currentPerson) return;
-      const personId = currentPerson.id;
-      const before = { backfillDismissedFields: currentPerson.backfillDismissedFields };
-      updatePerson(personId, dismissPersonBackfillField(currentPerson, active.id));
-      logSession({
-        itemId: personId,
-        title: displayNameOf(currentPerson),
-        valueText: "Won't ask again",
-        undo: () => updatePerson(personId, before),
-      });
-    } else if (active.kind === 'item') {
-      if (!currentItem) return;
-      const itemId = currentItem.id;
-      const before = currentItem.backfillDismissedFields;
-      setItemBackfillDismissedFields(itemId, dismissItemBackfillField(currentItem, active.id).backfillDismissedFields);
-      logSession({
-        itemId,
-        title: currentItem.name,
-        valueText: "Won't ask again",
-        undo: () => setItemBackfillDismissedFields(itemId, before),
-      });
     } else {
-      if (!currentRecipe) return;
-      const recipeId = currentRecipe.id;
-      const before = currentRecipe.backfillDismissedFields;
-      setRecipeBackfillDismissedFields(
-        recipeId,
-        dismissRecipeBackfillField(currentRecipe, active.id).backfillDismissedFields
-      );
-      logSession({
-        itemId: recipeId,
-        title: currentRecipe.name,
-        valueText: "Won't ask again",
-        undo: () => setRecipeBackfillDismissedFields(recipeId, before),
-      });
+      // The other three pools can dismiss a whole armed set at once. Dismissing
+      // is about the field, never the card, so each member records it on itself.
+      const batch = activeBatch ? activeBatch.members : null;
+      let entries: SessionEntry[] = [];
+      if (active.kind === 'person') {
+        const fieldId = active.id;
+        const people = (batch as Person[] | null) ?? (currentPerson ? [currentPerson] : []);
+        entries = people.map(person => {
+          const before = { backfillDismissedFields: person.backfillDismissedFields };
+          updatePerson(person.id, dismissPersonBackfillField(person, fieldId));
+          return { itemId: person.id, title: displayNameOf(person), valueText: dismissedText, undo: () => updatePerson(person.id, before) };
+        });
+      } else if (active.kind === 'item') {
+        const fieldId = active.id;
+        const items = (batch as GroceryItem[] | null) ?? (currentItem ? [currentItem] : []);
+        entries = items.map(item => {
+          const before = item.backfillDismissedFields;
+          setItemBackfillDismissedFields(item.id, dismissItemBackfillField(item, fieldId).backfillDismissedFields);
+          return { itemId: item.id, title: item.name, valueText: dismissedText, undo: () => setItemBackfillDismissedFields(item.id, before) };
+        });
+      } else {
+        const fieldId = active.id;
+        const recipesToDismiss = (batch as Recipe[] | null) ?? (currentRecipe ? [currentRecipe] : []);
+        entries = recipesToDismiss.map(recipe => {
+          const before = recipe.backfillDismissedFields;
+          setRecipeBackfillDismissedFields(recipe.id, dismissRecipeBackfillField(recipe, fieldId).backfillDismissedFields);
+          return { itemId: recipe.id, title: recipe.name, valueText: dismissedText, undo: () => setRecipeBackfillDismissedFields(recipe.id, before) };
+        });
+      }
+      if (entries.length === 0) return;
+      commit(entries.length > 1 ? `${dismissedText} for ${entries.length}` : dismissedText, entries);
+      if (entries.length > 1) setSkippedIds(prev => new Set([...prev, ...entries.map(e => e.itemId)]));
     }
   };
 
@@ -1475,7 +1616,7 @@ export function BackfillScreen() {
     const before = currentItem.varietyOfKey;
     setVarietyOfKey(itemId, key);
     const label = groceryItems.find(i => i.nameKey === key)?.name ?? key;
-    logSession({
+    commit('Variety set', {
       itemId,
       title: currentItem.name,
       valueText: label,
@@ -1518,7 +1659,7 @@ export function BackfillScreen() {
     setManualCurrentId(null);
     const itemId = currentItem.id;
     const addedIds = added.map(s => s.item.id);
-    logSession({
+    commit('Substitutes added', {
       itemId,
       title: currentItem.name,
       valueText: describeSubstitutes(nowSubs)!,
@@ -1547,7 +1688,7 @@ export function BackfillScreen() {
     // item that already has a panel, and undo has to put that one back.
     const before = currentItem.nutrition;
     setItemNutrition(itemId, nutrition);
-    logSession({
+    commit(nutrition ? 'Nutrition figures set' : 'Nutrition figures cleared', {
       itemId,
       title,
       // The database's own name for the food when the search supplied one,
@@ -1585,8 +1726,8 @@ export function BackfillScreen() {
     const clash = groceryItems.find(i => i.id !== itemId && i.nameKey === key);
     if (clash) {
       Alert.alert(
-        `Merge into "${clash.name}"?`,
-        `You already have an item called "${clash.name}". Merging keeps that one and folds this row's history, boxes and stores into it.`,
+        `Merge into “${clash.name}”?`,
+        `You already have an item called “${clash.name}”. Merging keeps that one and adds this item’s history, boxes and stores to it.`,
         [
           { text: 'Cancel', style: 'cancel' },
           {
@@ -1607,7 +1748,7 @@ export function BackfillScreen() {
               logSession({
                 itemId,
                 title,
-                valueText: `Merged into "${clash.name}"`,
+                valueText: `Merged into “${clash.name}”`,
                 undo: () => revert?.(),
               });
             },
@@ -1621,7 +1762,7 @@ export function BackfillScreen() {
     recordVisited();
     setManualCurrentId(null);
     if (!renameItem(itemId, trimmed)) return;
-    logSession({
+    commit('Item renamed', {
       itemId,
       title,
       valueText: trimmed,
@@ -1650,51 +1791,44 @@ export function BackfillScreen() {
     if (!currentRecipe || active?.kind !== 'recipe' || recipeCountDraft == null) return;
     haptics.tap();
     animateLayout();
+    // The armed cookbook gets the same number; the card's own recipe is always
+    // among its members. Only the three fields a cookbook plausibly shares are
+    // batchable (`canBatchApply`), never the cooked weight of a particular dish.
+    const targets = activeBatch && batchAnswers ? (activeBatch.members as Recipe[]) : [currentRecipe];
     recordVisited();
     setManualCurrentId(null);
-    const recipeId = currentRecipe.id;
-    const title = currentRecipe.name;
     const value = recipeCountDraft;
-    if (active.id === 'servings') {
-      const before = currentRecipe.servings;
-      // Restored as a pair: the max is only ever meaningful alongside the
-      // count (see Recipe.servingsMax), and putting one back without the other
-      // would leave a range half-undone.
-      const beforeMax = currentRecipe.servingsMax;
-      setServings(recipeId, value);
-      logSession({
-        itemId: recipeId,
-        title,
-        valueText: `Serves ${value}`,
-        undo: () => setServings(recipeId, before, beforeMax),
-      });
-    } else if (active.id === 'cookTime') {
-      const before = currentRecipe.estimatedMinutes;
-      setEstimatedMinutes(recipeId, value);
-      logSession({
-        itemId: recipeId,
-        title,
-        valueText: formatDuration(value),
-        undo: () => setEstimatedMinutes(recipeId, before),
-      });
-    } else if (active.id === 'prepTime') {
-      const before = currentRecipe.prepMinutes;
-      setPrepMinutes(recipeId, value);
-      logSession({
-        itemId: recipeId,
-        title,
-        valueText: formatDuration(value),
-        undo: () => setPrepMinutes(recipeId, before),
-      });
-    } else {
-      const before = currentRecipe.cookedWeightG;
+    const fieldId = active.id;
+    const entries: SessionEntry[] = targets.map(recipe => {
+      const recipeId = recipe.id;
+      const title = recipe.name;
+      if (fieldId === 'servings') {
+        const before = recipe.servings;
+        // Restored as a pair: the max is only ever meaningful alongside the
+        // count (see Recipe.servingsMax), and putting one back without the other
+        // would leave a range half-undone.
+        const beforeMax = recipe.servingsMax;
+        setServings(recipeId, value);
+        return { itemId: recipeId, title, valueText: `Serves ${value}`, undo: () => setServings(recipeId, before, beforeMax) };
+      }
+      if (fieldId === 'cookTime') {
+        const before = recipe.estimatedMinutes;
+        setEstimatedMinutes(recipeId, value);
+        return { itemId: recipeId, title, valueText: formatDuration(value), undo: () => setEstimatedMinutes(recipeId, before) };
+      }
+      if (fieldId === 'prepTime') {
+        const before = recipe.prepMinutes;
+        setPrepMinutes(recipeId, value);
+        return { itemId: recipeId, title, valueText: formatDuration(value), undo: () => setPrepMinutes(recipeId, before) };
+      }
+      const before = recipe.cookedWeightG;
       setCookedWeight(recipeId, value);
-      logSession({
-        itemId: recipeId,
-        title,
-        valueText: `${value} g`,
-        undo: () => setCookedWeight(recipeId, before),
-      });
+      return { itemId: recipeId, title, valueText: `${value} g`, undo: () => setCookedWeight(recipeId, before) };
+    });
+    const fieldLabel = RECIPE_BACKFILL_FIELDS.find(f => f.id === fieldId)!.label;
+    commit(targets.length > 1 ? `${fieldLabel} set for ${targets.length} recipes` : `${fieldLabel} set`, entries);
+    if (targets.length > 1) {
+      setSkippedIds(prev => new Set([...prev, ...targets.map(r => r.id)]));
     }
   };
 
@@ -1778,7 +1912,7 @@ export function BackfillScreen() {
                   onPress={() => chooseCategoryField(field.id)}
                   activeOpacity={interaction.activeOpacity}
                   accessibilityRole="button"
-                  accessibilityLabel={`${field.label}, ${count === 0 ? 'every category already has this on' : `${count} ${count === 1 ? "category hasn't" : "categories haven't"} turned this on`}`}
+                  accessibilityLabel={`${field.label}, ${count === 0 ? 'every category already has this on' : `${count} ${count === 1 ? "category hasn’t" : "categories haven’t"} turned this on`}`}
                 >
                   <View style={styles.fieldIcon}>
                     <Ionicons name={CATEGORY_FIELD_ICONS[field.id].row} size={iconSize.md} color={colors.accent} />
@@ -1787,7 +1921,7 @@ export function BackfillScreen() {
                     <Text style={styles.fieldLabel}>{field.label}</Text>
                     <Text style={styles.fieldHint}>{field.hint}</Text>
                     <Text style={count === 0 ? styles.fieldCountDone : styles.fieldCount}>
-                      {count === 0 ? 'Every category already has this on' : `${count} ${count === 1 ? "category hasn't" : "categories haven't"} turned this on`}
+                      {count === 0 ? 'Every category already has this on' : `${count} ${count === 1 ? "category hasn’t" : "categories haven’t"} turned this on`}
                     </Text>
                   </View>
                   <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
@@ -1807,7 +1941,7 @@ export function BackfillScreen() {
                   onPress={() => chooseProjectField(field.id)}
                   activeOpacity={interaction.activeOpacity}
                   accessibilityRole="button"
-                  accessibilityLabel={`${field.label}, ${count === 0 ? 'every project already has this set' : `${count} ${count === 1 ? "project hasn't" : "projects haven't"} set this`}`}
+                  accessibilityLabel={`${field.label}, ${count === 0 ? 'every project already has this set' : `${count} ${count === 1 ? "project hasn’t" : "projects haven’t"} set this`}`}
                 >
                   <View style={styles.fieldIcon}>
                     <Ionicons name={PROJECT_FIELD_ICONS[field.id]} size={iconSize.md} color={colors.accent} />
@@ -1816,7 +1950,7 @@ export function BackfillScreen() {
                     <Text style={styles.fieldLabel}>{field.label}</Text>
                     <Text style={styles.fieldHint}>{field.hint}</Text>
                     <Text style={count === 0 ? styles.fieldCountDone : styles.fieldCount}>
-                      {count === 0 ? 'Every project already has this set' : `${count} ${count === 1 ? "project hasn't" : "projects haven't"} set this`}
+                      {count === 0 ? 'Every project already has this set' : `${count} ${count === 1 ? "project hasn’t" : "projects haven’t"} set this`}
                     </Text>
                   </View>
                   <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
@@ -1868,8 +2002,8 @@ export function BackfillScreen() {
             // prompt to start filing your friends, which is the failure mode.
             <EmptyState
               icon="people-outline"
-              title="Nobody added yet"
-              subtitle="People you add on the People screen show up here, so you can fill in birthdays and reminders for them a few at a time."
+              title="No people yet"
+              subtitle="People you add on the People screen show up here, so you can fill in their birthdays and reminders."
               bottomOffset={tabBarHeight}
             />
           )
@@ -1909,7 +2043,7 @@ export function BackfillScreen() {
             <EmptyState
               icon="basket-outline"
               title="Nothing in your catalog yet"
-              subtitle="Items you add on the Groceries screen show up here, so you can fill in varieties, substitutes and nutrition for them a few at a time."
+              subtitle="Items you add on the Groceries screen show up here, so you can fill in varieties, substitutes and nutrition."
               bottomOffset={tabBarHeight}
             />
           )
@@ -1950,7 +2084,7 @@ export function BackfillScreen() {
             <EmptyState
               icon="restaurant-outline"
               title="No recipes yet"
-              subtitle="Recipes you save show up here, so you can fill in how many they serve and how long they take a few at a time."
+              subtitle="Recipes you save show up here, so you can fill in how many they serve and how long they take."
               bottomOffset={tabBarHeight}
             />
           )
@@ -1961,30 +2095,95 @@ export function BackfillScreen() {
 
   const doneCount = Math.max(0, sessionTotal - queueLength);
 
+  // The header's redo icon, the same on every pool's page. Defined once so the
+  // six headers can't drift, which is how only tasks came to have it.
+  const redoLabel =
+    active.kind === 'task' ? BACKFILL_FIELDS.find(f => f.id === active.id)!.label
+    : active.kind === 'category' ? CATEGORY_BACKFILL_FIELDS.find(f => f.id === active.id)!.label
+    : active.kind === 'project' ? PROJECT_BACKFILL_FIELDS.find(f => f.id === active.id)!.label
+    : active.kind === 'person' ? PERSON_BACKFILL_FIELDS.find(f => f.id === active.id)!.shortLabel
+    : active.kind === 'item' ? ITEM_BACKFILL_FIELDS.find(f => f.id === active.id)!.label
+    : RECIPE_BACKFILL_FIELDS.find(f => f.id === active.id)!.label;
+  const redoButton = (
+    <TouchableOpacity
+      onPress={confirmStartOver}
+      hitSlop={8}
+      accessibilityRole="button"
+      accessibilityLabel={`Redo ${redoLabel.toLowerCase()} from scratch`}
+    >
+      <Ionicons name="refresh-outline" size={iconSize.md} color={colors.textSecondary} />
+    </TouchableOpacity>
+  );
+
+  // One row per set the card can be answered for, the same on every pool that
+  // has any (see `backfillBatch.ts`). Tapping a row arms that set and tapping
+  // it again disarms it; arming one disarms the others. It is spent by the next
+  // answer or skip, and the row says how many cards it will reach.
+  const scopePhrase = (scope: BatchScope): string => {
+    const name = scopeLabelFor(scope);
+    switch (scope.kind) {
+      case 'generated': return name ? `in ${name}` : 'of this kind';
+      case 'project': return name ? `in the ${name} project` : 'in this project';
+      case 'category': return name ? `in the ${name} category` : 'in this category';
+      case 'stack': return name ? `in the ${name} stack` : 'in this stack';
+      case 'personGroup': return name ? `in the ${name} group` : 'in this group';
+      case 'aisle': return name ? `in the ${name} aisle` : 'in this aisle';
+      case 'cookbook': return name ? `in the ${name} cookbook` : 'in this cookbook';
+    }
+  };
+  const batchToggle = batchOptions.length === 0 ? null : (
+    <View style={styles.groupApplyList}>
+      {batchOptions.map(option => {
+        const armed = option.scope.key === batchScopeKey;
+        const count = option.members.length;
+        const title = batchAnswers
+          ? `Use this answer for all ${count} ${scopePhrase(option.scope)}`
+          : `${active ? dismissLabelFor(active) : 'Skip'} for all ${count} ${scopePhrase(option.scope)}`;
+        return (
+          <PressableScale
+            key={option.scope.key}
+            style={styles.groupApplyRow}
+            onPress={() => { haptics.tap(); setBatchScopeKey(armed ? null : option.scope.key); }}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: armed }}
+            accessibilityLabel={title}
+          >
+            <Ionicons
+              name={armed ? 'checkbox' : 'square-outline'}
+              size={iconSize.md}
+              color={armed ? colors.accent : colors.controlBorder}
+            />
+            <View style={styles.groupApplyBody}>
+              <Text style={styles.groupApplyTitle}>{title}</Text>
+              {armed && (
+                <Text style={styles.groupApplyHint}>
+                  {batchAnswers
+                    ? `Leaving it unset also applies to all ${count}. A shake undoes it.`
+                    : `Applies to all ${count} when you tap “${active ? dismissLabelFor(active) : ''}”. A shake undoes it.`}
+                </Text>
+              )}
+            </View>
+          </PressableScale>
+        );
+      })}
+    </View>
+  );
+
   if (active.kind === 'task') {
     const field = BACKFILL_FIELDS.find(f => f.id === active.id)!;
     // In a from-scratch run, "dismiss" often lands on a task that already has
     // a value — the current value is left exactly as it is, so "leave
     // unset" would misdescribe what the button does there.
     const dismissLabel = currentTask && isFieldMissing(currentTask, active.id, categories)
-      ? `Leave ${field.label.toLowerCase()} unset`
-      : `Don't ask again`;
+      ? TASK_DISMISS_LABELS[active.id]
+      : KEEP_AS_IS_LABEL;
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <DetailHeader
           title={field.label}
           onBack={backToFields}
           backAccessibilityLabel="Back to fields"
-          actions={
-            <TouchableOpacity
-              onPress={confirmStartOver}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel={`Redo ${field.label.toLowerCase()} from scratch`}
-            >
-              <Ionicons name="refresh-outline" size={iconSize.md} color={colors.textSecondary} />
-            </TouchableOpacity>
-          }
+          actions={redoButton}
         />
         {sessionTotal > 0 && (
           <View style={styles.progressRow}>
@@ -2014,11 +2213,20 @@ export function BackfillScreen() {
 
         {currentTask ? (
           <ScrollView
+            ref={keyboardScroll.ref}
+            {...keyboardScroll.props}
             contentContainerStyle={[styles.reviewContent, { paddingBottom: tabBarHeight + spacing.lg }]}
             keyboardShouldPersistTaps="handled"
           >
             <View style={[styles.itemCard, shadows.card]}>
-              <Text style={styles.itemTitle} numberOfLines={3}>{displayTitleFor(currentTask)}</Text>
+              <SubjectTitle
+                text={displayTitleFor(currentTask)}
+                lines={3}
+                openLabel="Open this task"
+                onOpen={() => resetToTask(currentTask.id)}
+                colors={colors}
+                styles={styles}
+              />
               {!!currentTask.notes.trim() && (
                 <Text style={styles.itemNotes} numberOfLines={2}>{currentTask.notes.trim()}</Text>
               )}
@@ -2047,31 +2255,7 @@ export function BackfillScreen() {
               />
             )}
 
-            {groupMembers.length > 1 && (
-              <PressableScale
-                style={styles.groupApplyRow}
-                onPress={() => { haptics.tap(); setGroupApply(v => !v); }}
-                accessibilityRole="checkbox"
-                accessibilityState={{ checked: groupApplies }}
-                accessibilityLabel={`Use the next answer for all ${groupMembers.length} tasks${groupLabel ? ` in ${groupLabel}` : ''}`}
-              >
-                <Ionicons
-                  name={groupApplies ? 'checkbox' : 'square-outline'}
-                  size={iconSize.md}
-                  color={groupApplies ? colors.accent : colors.controlBorder}
-                />
-                <View style={styles.groupApplyBody}>
-                  <Text style={styles.groupApplyTitle}>
-                    {`Use the next answer for all ${groupMembers.length}${groupLabel ? ` in ${groupLabel}` : ''}`}
-                  </Text>
-                  {groupApplies && (
-                    <Text style={styles.groupApplyHint}>
-                      {`Leaving it unset also applies to all ${groupMembers.length}. A shake undoes it.`}
-                    </Text>
-                  )}
-                </View>
-              </PressableScale>
-            )}
+            {batchToggle}
 
             <FieldControl
               field={active.id}
@@ -2083,6 +2267,7 @@ export function BackfillScreen() {
               onCategory={applyTaskCategory}
               onStreak={() => apply({ showStreak: true }, 'Streak shown')}
               onVacation={() => apply({ vacationPause: true }, 'Paused on vacation')}
+              onHolidays={rule => apply({ recurrenceHolidays: rule }, rule === 'skip' ? 'Skips holidays' : 'Moves to the next day')}
               onReminder={() => { haptics.tap(); setReminderPickerOpen(true); }}
               onSuggestions={() => apply({ excludeFromSuggestions: true }, 'Excluded from suggestions')}
               customOpen={customOpen}
@@ -2107,7 +2292,7 @@ export function BackfillScreen() {
                 style={styles.skipButton}
                 onPress={dismiss}
                 accessibilityRole="button"
-                accessibilityLabel={`${dismissLabel} for this task`}
+                accessibilityLabel={`${dismissLabel} for this task, and don’t ask again`}
               >
                 <Text style={styles.skipText}>{dismissLabel}</Text>
               </PressableScale>
@@ -2128,7 +2313,7 @@ export function BackfillScreen() {
           <EmptyState
             icon="checkmark-circle-outline"
             title="All caught up"
-            subtitle={`Every task has a ${field.label.toLowerCase()} now. Pick another field to keep going.`}
+            subtitle={`Every task has a ${field.label.toLowerCase()} now. Pick another field.`}
             actionLabel="Choose another field"
             onAction={backToFields}
             bottomOffset={tabBarHeight}
@@ -2155,6 +2340,7 @@ export function BackfillScreen() {
     const currentCategoryTaskCount = currentCategory
       ? tasks.filter(t => t.category === currentCategory.name && !t.completed && !t.archived).length
       : 0;
+    const currentCategoryIsOn = !!currentCategory && !isCategoryFieldMissing(currentCategory, active.id);
 
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -2162,6 +2348,7 @@ export function BackfillScreen() {
           title={categoryField.label}
           onBack={backToFields}
           backAccessibilityLabel="Back to fields"
+          actions={redoButton}
         />
         {sessionTotal > 0 && (
           <View style={styles.progressRow}>
@@ -2191,13 +2378,20 @@ export function BackfillScreen() {
 
         {currentCategory ? (
           <ScrollView
+            ref={keyboardScroll.ref}
+            {...keyboardScroll.props}
             contentContainerStyle={[styles.reviewContent, { paddingBottom: tabBarHeight + spacing.lg }]}
             keyboardShouldPersistTaps="handled"
           >
             <View style={[styles.itemCard, shadows.card]}>
-              <Text style={styles.itemTitle} numberOfLines={2}>
-                {currentCategory.emoji ? `${currentCategory.emoji} ${currentCategory.name}` : currentCategory.name}
-              </Text>
+              <SubjectTitle
+                text={currentCategory.emoji ? `${currentCategory.emoji} ${currentCategory.name}` : currentCategory.name}
+                lines={2}
+                openLabel={`Open ${currentCategory.name}`}
+                onOpen={() => resetToCategories(currentCategory.name)}
+                colors={colors}
+                styles={styles}
+              />
               <View style={styles.metaRow}>
                 <View style={styles.metaChip}>
                   <Ionicons name="checkbox-outline" size={iconSize.xs} color={colors.textSecondary} />
@@ -2212,10 +2406,12 @@ export function BackfillScreen() {
               style={[styles.toggleButton, { backgroundColor: colors.accentFill }]}
               onPress={applyCategory}
               accessibilityRole="button"
-              accessibilityLabel={categoryField.label}
+              accessibilityLabel={currentCategoryIsOn ? `Turn off ${categoryField.label}` : categoryField.label}
             >
               <Ionicons name={CATEGORY_FIELD_ICONS[active.id].button} size={iconSize.md} color={colors.onAccent} />
-              <Text style={styles.toggleButtonText}>{categoryField.label}</Text>
+              <Text style={styles.toggleButtonText}>
+                {currentCategoryIsOn ? `Turn off: ${categoryField.label}` : categoryField.label}
+              </Text>
             </PressableScale>
 
             <View style={styles.actionRow}>
@@ -2231,9 +2427,9 @@ export function BackfillScreen() {
                 style={styles.skipButton}
                 onPress={dismiss}
                 accessibilityRole="button"
-                accessibilityLabel={`Leave "${categoryField.label}" off for this category and don't ask again`}
+                accessibilityLabel={`${dismissLabelFor(active)} for this category, and don’t ask again`}
               >
-                <Text style={styles.skipText}>Don't ask again</Text>
+                <Text style={styles.skipText}>{dismissLabelFor(active)}</Text>
               </PressableScale>
             </View>
           </ScrollView>
@@ -2252,7 +2448,7 @@ export function BackfillScreen() {
           <EmptyState
             icon="checkmark-circle-outline"
             title="All caught up"
-            subtitle="Every category already has this set. Pick another field to keep going."
+            subtitle="Every category already has this set. Pick another field."
             actionLabel="Choose another field"
             onAction={backToFields}
             bottomOffset={tabBarHeight}
@@ -2275,6 +2471,7 @@ export function BackfillScreen() {
           title={personField.shortLabel}
           onBack={backToFields}
           backAccessibilityLabel="Back to fields"
+          actions={redoButton}
         />
         {sessionTotal > 0 && (
           <View style={styles.progressRow}>
@@ -2304,6 +2501,8 @@ export function BackfillScreen() {
 
         {currentPerson ? (
           <ScrollView
+            ref={keyboardScroll.ref}
+            {...keyboardScroll.props}
             contentContainerStyle={[styles.reviewContent, { paddingBottom: tabBarHeight + spacing.lg }]}
             keyboardShouldPersistTaps="handled"
           >
@@ -2318,7 +2517,14 @@ export function BackfillScreen() {
                 birthday or a note already has, and it's what the cadence
                 offer and toggle below refer to by name. */}
             <View style={[styles.itemCard, shadows.card]}>
-              <Text style={styles.itemTitle} numberOfLines={2}>{displayNameOf(currentPerson)}</Text>
+              <SubjectTitle
+                text={displayNameOf(currentPerson)}
+                lines={2}
+                openLabel={`Open ${displayNameOf(currentPerson)}`}
+                onOpen={() => resetToPeople(currentPerson.id)}
+                colors={colors}
+                styles={styles}
+              />
               {!!currentPersonGroup && (
                 <View style={styles.metaRow}>
                   <View style={styles.metaChip}>
@@ -2388,7 +2594,7 @@ export function BackfillScreen() {
                     onPress={() => { haptics.tap(); animateLayout(); setPersonCadenceDraft(toCadenceParts(observedCadence)); }}
                     activeOpacity={interaction.activeOpacity}
                     accessibilityRole="button"
-                    accessibilityLabel={`Use every ${observedCadence} days`}
+                    accessibilityLabel={`Use every ${observedCadence} ${observedCadence === 1 ? 'day' : 'days'}`}
                   >
                     <Ionicons name="sparkles-outline" size={14} color={colors.accent} />
                     <Text style={styles.offerText}>{describeObservedCadence(observedCadence)}. Use that?</Text>
@@ -2445,7 +2651,7 @@ export function BackfillScreen() {
                     ? `Set a reminder for every ${describeCadence(cadenceDays).toLowerCase()}${applyCadenceToGroup && currentGroupmates.length > 0
                       ? `, also for ${currentGroupmates.map(displayNameOf).join(' and ')}`
                       : ''}`
-                    : 'Pick how long before a reminder first'}
+                    : 'Set the time before a reminder first'}
                 >
                   <Ionicons name="notifications" size={iconSize.md} color={colors.onAccent} />
                   <Text style={styles.toggleButtonText}>Set reminder</Text>
@@ -2506,6 +2712,8 @@ export function BackfillScreen() {
               </View>
             )}
 
+            {batchToggle}
+
             <View style={styles.actionRow}>
               <PressableScale
                 style={styles.skipButton}
@@ -2519,9 +2727,9 @@ export function BackfillScreen() {
                 style={styles.skipButton}
                 onPress={dismiss}
                 accessibilityRole="button"
-                accessibilityLabel={`Leave "${personField.shortLabel}" unset for this person and don't ask again`}
+                accessibilityLabel={`${dismissLabelFor(active)} for this person, and don’t ask again`}
               >
-                <Text style={styles.skipText}>Don't ask again</Text>
+                <Text style={styles.skipText}>{dismissLabelFor(active)}</Text>
               </PressableScale>
             </View>
           </ScrollView>
@@ -2540,7 +2748,7 @@ export function BackfillScreen() {
           <EmptyState
             icon="checkmark-circle-outline"
             title="All caught up"
-            subtitle="Nothing left to fill in for this field. Pick another to keep going."
+            subtitle="Nothing left to fill in for this field. Pick another field."
             actionLabel="Choose another field"
             onAction={backToFields}
             bottomOffset={tabBarHeight}
@@ -2571,6 +2779,7 @@ export function BackfillScreen() {
           title={projectField.label}
           onBack={backToFields}
           backAccessibilityLabel="Back to fields"
+          actions={redoButton}
         />
         {sessionTotal > 0 && (
           <View style={styles.progressRow}>
@@ -2600,11 +2809,20 @@ export function BackfillScreen() {
 
         {currentProject ? (
           <ScrollView
+            ref={keyboardScroll.ref}
+            {...keyboardScroll.props}
             contentContainerStyle={[styles.reviewContent, { paddingBottom: tabBarHeight + spacing.lg }]}
             keyboardShouldPersistTaps="handled"
           >
             <View style={[styles.itemCard, shadows.card]}>
-              <Text style={styles.itemTitle} numberOfLines={2}>{currentProject.title}</Text>
+              <SubjectTitle
+                text={currentProject.title}
+                lines={2}
+                openLabel="Open this project"
+                onOpen={() => resetToProject(currentProject.id)}
+                colors={colors}
+                styles={styles}
+              />
               <View style={styles.metaRow}>
                 <View style={styles.metaChip}>
                   <Ionicons name="checkbox-outline" size={iconSize.xs} color={colors.textSecondary} />
@@ -2663,10 +2881,14 @@ export function BackfillScreen() {
                   style={[styles.toggleButton, { backgroundColor: colors.accentFill }]}
                   onPress={applyWeekendSource}
                   accessibilityRole="button"
-                  accessibilityLabel={`Let the weekend task name "${currentProject.title}"`}
+                  accessibilityLabel={currentProject.weekendSource
+                    ? `Stop letting the weekend task name “${currentProject.title}”`
+                    : `Let the weekend task name “${currentProject.title}”`}
                 >
                   <Ionicons name="sunny" size={iconSize.md} color={colors.onAccent} />
-                  <Text style={styles.toggleButtonText}>Suggest it for a free weekend</Text>
+                  <Text style={styles.toggleButtonText}>
+                    {currentProject.weekendSource ? 'Stop suggesting it for a free weekend' : 'Suggest it for a free weekend'}
+                  </Text>
                 </PressableScale>
               </View>
             )}
@@ -2676,9 +2898,9 @@ export function BackfillScreen() {
                 style={styles.skipButton}
                 onPress={dismiss}
                 accessibilityRole="button"
-                accessibilityLabel={`Leave "${projectField.label}" off for this project and don't ask again`}
+                accessibilityLabel={`${dismissLabelFor(active)} for this project, and don’t ask again`}
               >
-                <Text style={styles.skipText}>Don't ask again</Text>
+                <Text style={styles.skipText}>{dismissLabelFor(active)}</Text>
               </PressableScale>
             </View>
           </ScrollView>
@@ -2697,7 +2919,7 @@ export function BackfillScreen() {
           <EmptyState
             icon="checkmark-circle-outline"
             title="All caught up"
-            subtitle="Every project already has this set. Pick another field to keep going."
+            subtitle="Every project already has this set. Pick another field."
             actionLabel="Choose another field"
             onAction={backToFields}
             bottomOffset={tabBarHeight}
@@ -2718,6 +2940,7 @@ export function BackfillScreen() {
           title={recipeField.label}
           onBack={backToFields}
           backAccessibilityLabel="Back to fields"
+          actions={redoButton}
         />
         {sessionTotal > 0 && (
           <View style={styles.progressRow}>
@@ -2747,11 +2970,20 @@ export function BackfillScreen() {
 
         {currentRecipe ? (
           <ScrollView
+            ref={keyboardScroll.ref}
+            {...keyboardScroll.props}
             contentContainerStyle={[styles.reviewContent, { paddingBottom: tabBarHeight + spacing.lg }]}
             keyboardShouldPersistTaps="handled"
           >
             <View style={[styles.itemCard, shadows.card]}>
-              <Text style={styles.itemTitle} numberOfLines={2}>{currentRecipe.name}</Text>
+              <SubjectTitle
+                text={currentRecipe.name}
+                lines={2}
+                openLabel="Open this recipe"
+                onOpen={() => resetToRecipeDetail(currentRecipe.id)}
+                colors={colors}
+                styles={styles}
+              />
               <View style={styles.metaRow}>
                 <View style={styles.metaChip}>
                   <Ionicons name="list-outline" size={iconSize.xs} color={colors.textSecondary} />
@@ -2802,6 +3034,8 @@ export function BackfillScreen() {
               </PressableScale>
             </View>
 
+            {batchToggle}
+
             <View style={styles.actionRow}>
               <PressableScale
                 style={styles.skipButton}
@@ -2815,9 +3049,9 @@ export function BackfillScreen() {
                 style={styles.skipButton}
                 onPress={dismiss}
                 accessibilityRole="button"
-                accessibilityLabel={`Leave "${recipeField.label}" unset for this recipe and don't ask again`}
+                accessibilityLabel={`${dismissLabelFor(active)} for this recipe, and don’t ask again`}
               >
-                <Text style={styles.skipText}>Don't ask again</Text>
+                <Text style={styles.skipText}>{dismissLabelFor(active)}</Text>
               </PressableScale>
             </View>
           </ScrollView>
@@ -2836,7 +3070,7 @@ export function BackfillScreen() {
           <EmptyState
             icon="checkmark-circle-outline"
             title="All caught up"
-            subtitle="Nothing left to fill in for this field. Pick another to keep going."
+            subtitle="Nothing left to fill in for this field. Pick another field."
             actionLabel="Choose another field"
             onAction={backToFields}
             bottomOffset={tabBarHeight}
@@ -2877,6 +3111,7 @@ export function BackfillScreen() {
         title={itemField.label}
         onBack={backToFields}
         backAccessibilityLabel="Back to fields"
+        actions={redoButton}
       />
       {sessionTotal > 0 && (
         <View style={styles.progressRow}>
@@ -2906,11 +3141,20 @@ export function BackfillScreen() {
 
       {currentItem ? (
         <ScrollView
+          ref={keyboardScroll.ref}
+          {...keyboardScroll.props}
           contentContainerStyle={[styles.reviewContent, { paddingBottom: tabBarHeight + spacing.lg }]}
           keyboardShouldPersistTaps="handled"
         >
           <View style={[styles.itemCard, shadows.card]}>
-            <Text style={styles.itemTitle} numberOfLines={2}>{currentItem.name}</Text>
+            <SubjectTitle
+              text={currentItem.name}
+              lines={2}
+              openLabel={`Open ${currentItem.name}`}
+              onOpen={() => resetToGroceryItem(currentItem.id)}
+              colors={colors}
+              styles={styles}
+            />
             <View style={styles.metaRow}>
               <View style={styles.metaChip}>
                 <Ionicons name="location-outline" size={iconSize.xs} color={colors.textSecondary} />
@@ -2988,7 +3232,7 @@ export function BackfillScreen() {
           {active.id === 'nutrition' && (
             <View style={styles.nutritionField}>
               <Text style={styles.renameHint}>
-                Look the food up, or copy the figures off the package. Either way you
+                Look up the food or copy the figures from the package. You
                 confirm what gets saved.
               </Text>
               <PressableScale
@@ -3016,6 +3260,27 @@ export function BackfillScreen() {
             </View>
           )}
 
+          {active.id === 'nutritionDetail' && (
+            <View style={styles.nutritionField}>
+              <Text style={styles.renameHint}>
+                Saved figures stay as they are. Open the panel to add trans fat,
+                cholesterol or added sugars from the label. A food with none of them
+                stays in this list until you choose Nothing more to add.
+              </Text>
+              <PressableScale
+                style={[styles.toggleButton, { backgroundColor: colors.accentFill }]}
+                onPress={() => { haptics.tap(); setNutritionPanelOpen(true); }}
+                accessibilityRole="button"
+                accessibilityLabel={`Add fat and sugar detail for ${currentItem.name}`}
+              >
+                <Ionicons name="create-outline" size={iconSize.md} color={colors.onAccent} />
+                <Text style={styles.toggleButtonText}>Open nutrition panel</Text>
+              </PressableScale>
+            </View>
+          )}
+
+          {batchToggle}
+
           <View style={styles.actionRow}>
             <PressableScale
               style={styles.skipButton}
@@ -3030,14 +3295,12 @@ export function BackfillScreen() {
               onPress={dismiss}
               accessibilityRole="button"
               accessibilityLabel={
-                // `scannedName` is the one field here that already has a value,
-                // so "leave it unset" would describe the wrong thing.
                 active.id === 'scannedName'
-                  ? `Keep the name "${currentItem.name}" and don't ask again`
-                  : `Leave "${itemField.label}" unset for this item and don't ask again`
+                  ? `Keep the name “${currentItem.name}” and don’t ask again`
+                  : `${dismissLabelFor(active)} for ${currentItem.name}, and don’t ask again`
               }
             >
-              <Text style={styles.skipText}>Don't ask again</Text>
+              <Text style={styles.skipText}>{dismissLabelFor(active)}</Text>
             </PressableScale>
           </View>
         </ScrollView>
@@ -3056,7 +3319,7 @@ export function BackfillScreen() {
         <EmptyState
           icon="checkmark-circle-outline"
           title="All caught up"
-          subtitle="Nothing left to fill in for this field. Pick another to keep going."
+          subtitle="Nothing left to fill in for this field. Pick another field."
           actionLabel="Choose another field"
           onAction={backToFields}
           bottomOffset={tabBarHeight}
@@ -3144,7 +3407,7 @@ function SessionReview({
               onPress={() => onUndo(item)}
               hitSlop={8}
               accessibilityRole="button"
-              accessibilityLabel={`Undo "${item.valueText}" for ${item.title}`}
+              accessibilityLabel={`Undo “${item.valueText}” for ${item.title}`}
             >
               <Text style={styles.reviewUndoText}>Undo</Text>
             </TouchableOpacity>
@@ -3180,6 +3443,37 @@ function SessionReview({
  * tapping a value on one and landing on an identical-looking card for the
  * next day reads as the tap having done nothing.
  */
+/**
+ * The title of the card being asked about, with a button that opens the thing
+ * itself. Every card has one, so a value can be checked against the real row
+ * before it's answered. The button is a fixed 34pt square beside a `flex: 1`
+ * title, so the name keeps the row.
+ */
+function SubjectTitle({
+  text, lines, openLabel, onOpen, colors, styles,
+}: {
+  text: string;
+  lines: number;
+  openLabel: string;
+  onOpen: () => void;
+  colors: Colors;
+  styles: ReturnType<typeof makeStyles>;
+}) {
+  return (
+    <View style={styles.subjectTitleRow}>
+      <Text style={[styles.itemTitle, styles.subjectTitleText]} numberOfLines={lines}>{text}</Text>
+      <PressableScale
+        style={styles.subjectOpenButton}
+        onPress={() => { haptics.tap(); onOpen(); }}
+        accessibilityRole="button"
+        accessibilityLabel={openLabel}
+      >
+        <Ionicons name="open-outline" size={iconSize.md} color={colors.accent} />
+      </PressableScale>
+    </View>
+  );
+}
+
 function TaskContextRow({
   task, categoryLabel, projectTitle, colors, styles,
 }: {
@@ -3244,6 +3538,7 @@ interface FieldControlProps {
   onCategory: (name: string | null) => void;
   onStreak: () => void;
   onVacation: () => void;
+  onHolidays: (rule: HolidayRule) => void;
   onReminder: () => void;
   onSuggestions: () => void;
   onDifficulty: (difficulty: Difficulty) => void;
@@ -3257,7 +3552,7 @@ interface FieldControlProps {
 }
 
 function FieldControl({
-  field, colors, styles, onEstimate, onPriority, onDifficulty, onCategory, onStreak, onVacation, onReminder, onSuggestions,
+  field, colors, styles, onEstimate, onPriority, onDifficulty, onCategory, onStreak, onVacation, onHolidays, onReminder, onSuggestions,
   customOpen, customText, customUnit, onOpenCustom, onCustomTextChange, onCustomUnitChange, onCustomSubmit,
 }: FieldControlProps) {
   if (field === 'estimate') {
@@ -3383,6 +3678,20 @@ function FieldControl({
         <Ionicons name="airplane" size={iconSize.md} color={colors.onAccent} />
         <Text style={styles.toggleButtonText}>Turn on vacation pause</Text>
       </PressableScale>
+    );
+  }
+
+  // Both answers are real: the unanswered state is "As usual", which the
+  // dismissal below the card records, so neither segment is pre-selected.
+  if (field === 'holidays') {
+    return (
+      <SegmentedControl<HolidayRule | null>
+        label="On a holiday"
+        value={null}
+        onChange={rule => { if (rule) onHolidays(rule); }}
+        options={HOLIDAY_SEGMENTS}
+        surface="page"
+      />
     );
   }
 
@@ -3564,6 +3873,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.xs,
   },
   itemTitle: { color: colors.text, fontSize: font.lg, lineHeight: lineHeight.lg, fontWeight: fontWeight.semibold },
+  subjectTitleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
+  subjectTitleText: { flex: 1 },
+  subjectOpenButton: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
   itemNotes: { color: colors.textSecondary, fontSize: font.sm, lineHeight: lineHeight.sm },
   // Wraps rather than squeezing, same call ArchivedRow's own meta row makes —
   // a task carrying a schedule, a category and a project has more than fits
@@ -3622,10 +3934,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.smd,
     paddingVertical: spacing.smd,
     paddingHorizontal: spacing.md,
-    marginBottom: spacing.md,
     borderRadius: radius.md,
     backgroundColor: colors.bgSecondary,
   },
+  groupApplyList: { gap: spacing.sm },
   groupApplyBody: { flex: 1 },
   groupApplyTitle: { fontSize: font.sm, fontWeight: fontWeight.medium, color: colors.text },
   groupApplyHint: { fontSize: font.xs, color: colors.textSecondary, marginTop: spacing.xxs },

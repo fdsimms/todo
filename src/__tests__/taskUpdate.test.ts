@@ -160,3 +160,33 @@ describe('nextPinnedOrder', () => {
     expect(nextPinnedOrder([{ ...make({}), pinned: true, pinnedOrder: 4 }, { ...make({}), pinned: false, pinnedOrder: 9 }])).toBe(5);
   });
 });
+
+describe('a window bound that follows the sun', () => {
+  const anchored = () => make({ windowStart: '19:02', windowStartSun: 'sunset', windowEnd: '06:10', windowEndSun: 'sunrise-15' });
+
+  it('drops the anchor when that bound is written as a clock time alone', () => {
+    const next = mergeTaskUpdate(anchored(), { windowStart: '20:00' }, ctx);
+    expect(next.windowStart).toBe('20:00');
+    expect(next.windowStartSun).toBeNull();
+    // The other bound wasn't named, so it keeps following the sun.
+    expect(next.windowEndSun).toBe('sunrise-15');
+  });
+
+  it('keeps an anchor written alongside its clock time, as the editor does', () => {
+    const next = mergeTaskUpdate(anchored(), { windowStart: '19:05', windowStartSun: 'sunset+5' }, ctx);
+    expect(next.windowStart).toBe('19:05');
+    expect(next.windowStartSun).toBe('sunset+5');
+  });
+
+  it('leaves both anchors alone on a patch that names neither bound', () => {
+    const next = mergeTaskUpdate(anchored(), { title: 'Walk the dog' }, ctx);
+    expect(next.windowStartSun).toBe('sunset');
+    expect(next.windowEndSun).toBe('sunrise-15');
+  });
+
+  it('carries the anchors onto a new task from a draft', () => {
+    const t = anchored();
+    expect(t.windowStartSun).toBe('sunset');
+    expect(make({ windowStart: '09:00' }).windowStartSun).toBeNull();
+  });
+});

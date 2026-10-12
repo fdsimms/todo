@@ -7,8 +7,10 @@ Read this before changing anything under `src/utils/moodLog.ts`,
 `src/screens/MoodScreen.tsx`, `src/screens/MoodHistoryScreen.tsx`,
 `src/screens/SymptomDetailScreen.tsx`, `src/components/MoodLogSheet.tsx`,
 `src/components/MilestoneSheet.tsx`, `src/utils/medicationLog.ts`,
-`src/store/useMedicationStore.ts`, `src/screens/MedicationScreen.tsx` or
-`src/components/MedicationLogSheet.tsx`.
+`src/store/useMedicationStore.ts`, `src/screens/MedicationScreen.tsx`,
+`src/screens/MedicationDetailScreen.tsx`, `src/components/MedicationLogSheet.tsx`,
+`src/utils/medicationSettings.ts`, `src/utils/medicationSummary.ts`,
+`src/utils/doseRecording.ts` or `src/components/MedicationSummarySheet.tsx`.
 
 The rules here are strong defaults with the reasoning
 attached: read the reason before deviating from one. Where this note and the
@@ -207,9 +209,23 @@ open the app. It reads a store rather than a snapshot some foreground effect
 fills in, so unlike the calendar, weather and screen-time passes beside it, it
 does real work in a background run. `useTaskStore.initialize()`'s fan-out loads
 the mood log, which is what makes that true.
-It carries `dundundun://mood?log=1` so the row opens the sheet that answers it —
-without that the only thing to do with a check-in is tick it, which marks the
-question answered while recording no answer.
+It carries `dundundun://mood?log=1` so the row opens the sheet that answers it.
+
+**The tick is gated on the entry, and the row reads ready when it exists.** The
+app knows from the mood log whether the question was answered, so a tick that
+completes the task regardless can only disagree with that: the question marked
+answered while no answer is recorded. The journal, dream and weigh-in reminders
+are the same shape, and `src/utils/recordTasks.ts` lists the four. Until the
+entry exists the checkbox opens the sheet (`'open-log'` in `completionTap.ts`)
+and `completeTask` refuses; `isRecordAnswered` (read by `useRecordTaskReady`)
+then makes the row ready, the green ring `health` and the pantry check use, and
+the tick completes it. Nothing completes the task on its own except the sheet's
+own save (`complete…TaskForToday`, `CompletionOptions.recorded`), which is the
+tick done for you at the one moment the person just did the thing. A missed mark
+claims nothing and is never gated. An entry saved some other way (Claude over
+MCP, another device) makes the row ready with no pass involved. A weigh-in is
+answered by a reading only Health can report, so `checkWeighInTasks` records the
+answer as a day key (`weighInAnsweredOn`, memory only) for the row to read.
 
 `moodLogTimeSegments` holds the check-in back until a part of the day, the
 same shape `calendarReviewTimeSegment` has for its one segment, read once at
@@ -455,6 +471,58 @@ task that keeps completing can't leave a medicine archived while it is still
 being logged. Don't add a separate restore step to any other write path: it
 goes through `addLog`.
 
+### Renaming a medication, and folding two into one
+
+`medicationKey` never folds names on its own, so "Ibuprofen 200" and "Ibuprofen 400"
+are two medications until a person renames one onto the other (the Rename action on
+the medication's page). Because a medication is only a name, the rename is a rewrite of
+every place the name is written: the doses, `medication_settings`, the archived and
+milestone-dismissed key lists, and the tasks, chain steps and template items that
+record a dose (`renameMedicationEverywhere`). Folding keeps the **target's** limit and
+supply, and a dose keeps its own `amount`/`unit`; the sheet can stamp a strength onto
+doses that recorded none, so combining doesn't lose what the old name was carrying.
+
+### A supplement's nutrients
+
+A medication can carry what one serving contains (`MedicationPrefs.nutrition`, a
+`SupplementPanel`, entered on its page). A dose recorded after that writes a
+food log entry with those figures scaled to the dose, so a multivitamin adds its
+vitamins and minerals to the day's totals and to Apple Health. The panel, the
+scaling rule and the dose-to-entry link are `src/utils/supplementDose.ts`; the
+wiring is `DoseEffects` in `useMedicationStore` and `supplementDoseSync.ts`.
+`docs/arch/health-data.md` has the Health side.
+
+**It is a nutrient feature that rides the dose, not a medication feature, and it
+leaves the section above alone.** Nothing here compares a supplement with how you
+felt, and the entry is not counted as a meal or a food. A dose in the panel's
+unit counts that many servings and any other dose counts one, which is
+`supplyRemaining`'s rule so the two answer a dose the same way. An edit only
+changes an entry that already exists, and the panel applies to doses recorded
+after it.
+
+### A task's dose defaults to the usual amount, and a capsule has a strength
+
+**A task that logs a dose and names no amount records the medication's default
+usual amount** (`DoseInput.useUsualDose`, set by `completeTask`, the quota and
+rotation unit logs and the MCP completion). It is read when the task is
+completed, not copied onto the task, so changing the usual amount changes the
+task with it; the editor stores only an override (`TaskDoseAmount`, whose preview
+line is `describeTaskDose`). A hand-recorded dose with no amount means exactly
+that and is never filled. The lookup is by the same medication name, so it can't
+attach one medicine's amount to another, which is the rule the chain-step
+section below protects.
+
+**`MedicationPrefs.strength` is what one capsule, tablet, puff or drop holds**
+("125 mcg"), typed on the medication's page. It is **stamped onto each counted
+dose as it is recorded** (`MedicationLog.strength`, `strength_amount` and
+`strength_unit`), never looked up at read time: reading it from the medication
+would re-read last month's capsules as 250 mcg the day a different product is
+bought. `amount` stays what was taken ("1 capsule"), so supply counting is
+unchanged, and `doseTotal` multiplies the two for display (`formatDose` appends
+"(125 mcg)") and for a limit in the strength's unit. A dose in mg or mcg
+directly never carries one, and a dose recorded before the strength was set is
+left alone.
+
 ### A chain step records its own dose
 
 `ChainItem.medicationName` is the third field on the pattern
@@ -496,6 +564,123 @@ argument: a phone holding half the doses answers "how often did I reach for
 it" with a number that is simply too low, and nothing about that number looks
 wrong.
 
+### A limit and a supply, both typed by the person
+
+`medicationSettings.ts` holds two things per medication, keyed by
+`medicationKey` in one synced setting (`medication_settings`, health-scoped
+like `medication_archived`): a **limit** (fewest hours apart, most in any 24
+hours, optionally a notification when the next dose is within it) and a
+**supply** (how many are left).
+
+- **The limit is the person's, never the app's.** Nothing here knows a dose of
+  anything, and every place it is shown says "the limit you set". It is
+  checked before a dose a person records now (`confirmWithinLimit`: the row's
+  quick button, the log sheet, quick add), never before one remembered from
+  another day, and never by Siri's path, which was already asked.
+- **The 24-hour cap is rolling, not per logical day.** A label says "no more
+  than 4 in 24 hours", and a per-day cap would allow four at 11pm and four more
+  after `dayResetTime`. For the same reason a limit is wall-clock time:
+  spacing is about a body, which keeps no day boundary.
+- **A limit can cap a total as well as a count** (`MedicationLimit.maxAmount24h`,
+  "at most 1,200 mg in 24 hours"), because a count treats a 200 mg dose and a
+  400 mg one as the same. It follows the supply's rule above: only doses
+  recorded in the cap's own unit are added up, plus a counted dose whose stamped
+  strength is in that unit (`amountInUnit`: "1 capsule" of 125 mcg is 125 mcg).
+  A dose with no amount, or in another unit with no strength to multiply by, is
+  counted as unmeasured (`LimitStatus.unmeasuredInLast24h`) and said so, never
+  converted by any other route. `limitStatus` takes the dose about to be recorded
+  (`planned`), since for a total the question is whether *that much* fits.
+- **Usual amounts are a list, and the first is the default** (`usualDoses`,
+  `defaultUsualDose`): quick picks in the dose sheet, and what a new dose and the
+  round button start from before there is a last dose. This, not a medication
+  per strength, is how one drug in several strengths is kept: the strength lives
+  on the dose, so the limit, the summary and the contrasts stay one record.
+- **A limit only judges doses from when it was set** (`MedicationLimit.since`,
+  restamped when a cap changes). A history judged against a rule typed
+  afterwards would report "too soon" for doses nobody had a rule for, in the
+  summary a clinician reads.
+- **The supply count is derived, never decremented**: the count typed and when,
+  less what doses since have used (`supplyRemaining`). The rewards ledger's
+  argument: a synced setting is last-write-wins, so two devices each
+  decrementing would lose a dose, and undo, delete and editing an amount
+  re-count themselves. A refill re-anchors (`refilledSupply`).
+- **Only doses with no `taskId` spend it.** A scheduled medicine already has a
+  task supply (`supply.ts`) spent by the completion; counting the same dose here
+  too would spend it twice. The detail page shows the task's count instead of
+  offering a second one, and a dose recorded by hand for that medicine spends
+  one from the task's count (`taskSupplyFor`, in `recordDose`). Taking that
+  dose back returns it only on the same day: older, and the task's count has
+  been restocked and spent since.
+- **A dose uses its amount only when it is in the supply's own unit** ("2
+  tablets" from a box of tablets). 400 mg uses one: the app can't know how many
+  tablets make 400 mg, and guessing is the invented number this log refuses.
+- **The refill offer is an Alert at the moment a dose crosses the threshold**
+  (`recordDose`), adding an ordinary task on yes and a decline stamp on no.
+  Deliberately not a generated task: a generator keyed off a medication name
+  would need its own kind, restock branch and opt-out in `completeTask`, all to
+  say something the person is looking at the screen to hear.
+
+Every dose a person records goes through `recordDose` (`doseRecording.ts`),
+which is what makes the notification move and the refill offer fire whichever
+way the dose came in.
+
+### Recording without the sheet
+
+- **The row's quick button** repeats the last dose recorded (`repeatDose`),
+  and is offered only on as-needed medicines: a scheduled one is recorded by
+  checking off its task, and a second way in is the "same fact twice".
+- **Quick add** reads "took ibuprofen 400mg" as a dose (`quickDose.ts`). Past
+  tense only, and only when the line names a medication already logged or
+  states an amount in a dose unit, so "took the car in" stays a task.
+- **Siri** ("log ibuprofen") and **the Medications widget**'s buttons both run
+  `LogMedicationIntent`, which queues the dose with the moment it was asked for
+  and opens the app; `processPendingDoses` records it. The entity resolves
+  against `siri_medication_index.json` (`medicationIndex.ts`), the pantry
+  index's shape. The widget is home screen only: a list of what somebody takes
+  does not belong on the lock screen.
+- **The log sheet's "When"** offers Now / 30 min / 1 hr / 2 hr ago for a dose
+  recorded today, because the limit is measured from it.
+
+### Today, and the milestone offer
+
+The screen's Today card lists open medication tasks on Today and doses tasks
+recorded today. It reads `visibleTasks()`, so it is exactly what Today shows
+rather than a second list, and its checkbox completes the task through the
+store like any other.
+
+A medication first recorded in the last `MILESTONE_OFFER_DAYS` with no milestone
+naming it gets an offer to mark that day (`milestoneOffers`). This is the
+honest form of "is it helping": `milestoneMoodContrast` compares two stretches
+of time, not days taken against days not, so it is not the backwards
+comparison above. "Not now" is remembered per medicine
+(`medication_milestone_dismissed`).
+
+### The summary for a visit
+
+`medicationSummary.ts` lays out a range of doses for a clinician to read, as a
+PDF (`expo-print`, always light, since it is paper) or as text to paste into a
+portal. It is the other half of the export's "nothing derived leaves" rule,
+not an exception to it: **a figure may be derived here as long as it states
+what it counts.**
+
+- No usual dose. Amounts are a breakdown ("400 mg ×24, 200 mg ×7"), or for a
+  scheduled dose that changed a few times a timeline ("50 mg (Jul 10 to Aug
+  20), then 100 mg (Aug 21 to Oct 8)").
+- No adherence percentage. A "days it was due" denominator is a guess for
+  anything not taken daily, so a scheduled medicine is "recorded 84 times,
+  marked missed 4 times" (`missedCountsByMedication`).
+- A limit is "Limit you set", with the day it was set when that is inside the
+  range, and "Sooner than that" is omitted when the limit post-dates the range
+  rather than claiming "Never".
+- Medicines are chosen per summary, current ones ticked: a summary for one
+  specialist need not list what another prescribed. Archived ones appear only
+  with doses in the range, unticked.
+- The name is typed for that summary and never stored.
+- "Since last" starts the day after the last one shared
+  (`medication_summary_last`), so two in a row never count a dose twice.
+
+It never puts a medicine against a symptom or a mood, for the reason above.
+
 ## Mood against what you ate
 
 The food log is the third dataset the insights read, after the task history and
@@ -527,8 +712,8 @@ measurement and isn't.
   number. One constant (`COMPLETE_DAY_SLOTS`) answers for both readers, because
   a day either stands for a day's eating or it doesn't.
 - **A nutrient only counts for a day every entry stated.** A total covering five
-  of seven entries is fine on the day's own card, where `describeFoodLogTotals`
-  prints the clause saying so. Across days there is nowhere to print one and the
+  of seven entries is fine on the day's own card, where tapping a row lists the
+  entries behind it. Across days there is nowhere to show that and the
   coverage varies day to day, so the variation reads as variation in the food.
   Stats' per-nutrient averages (`nutrientAverages`) apply the same rule for the
   same reason, since a month's average is an across-days read too; there, the

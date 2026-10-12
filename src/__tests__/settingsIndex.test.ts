@@ -97,7 +97,7 @@ describe('settings index', () => {
     // a generator added to GENERATED_KINDS grows a row on its own and only the
     // index has to be remembered separately. Comparing the two lists is what
     // makes that unrepresentable.
-    const toggleEntries = SETTINGS_ENTRIES.filter(e => e.id.startsWith('gen:') && !e.id.endsWith(':category') && !e.id.endsWith(':defaults'));
+    const toggleEntries = SETTINGS_ENTRIES.filter(e => e.id.startsWith('gen:') && !e.id.endsWith(':category') && !e.id.endsWith(':defaults') && !e.id.endsWith(':taskSettings'));
 
     it('indexes every generator that gets a row, in order, and nothing else', () => {
       expect(toggleEntries.map(e => e.label)).toEqual(GENERATED_KIND_LIST.map(s => s.label));
@@ -129,13 +129,13 @@ describe('settings index', () => {
       }
     });
 
-    it('gives a "File them under" row only to a generator that has one', () => {
-      // Nine rows share that label, so the entry is worthless without its
-      // section naming which generator it belongs to.
+    it('gives every generator one Task settings row, filed under its own name', () => {
+      // Its category and defaults are in that sheet, so the two rows that held
+      // them are gone.
       for (const spec of GENERATED_KIND_LIST) {
-        const entry = SETTINGS_ENTRIES.find(e => e.id === `gen:${spec.kind}:category`);
-        expect(entry !== undefined).toBe(spec.categorized);
-        if (entry) expect(entry.section).toBe(spec.label);
+        const entry = SETTINGS_ENTRIES.find(e => e.id === `gen:${spec.kind}:taskSettings`);
+        expect(entry?.section).toBe(spec.label);
+        expect(SETTINGS_ENTRIES.some(e => e.id === `gen:${spec.kind}:category` || e.id === `gen:${spec.kind}:defaults`)).toBe(false);
       }
     });
 
@@ -169,6 +169,24 @@ describe('settings index', () => {
 
     it('keeps every group on iOS', () => {
       expect(visibleSettingsGroups('ios')).toHaveLength(SETTINGS_GROUPS.length);
+    });
+
+    it('drops a group simplified mode leaves with no rows, and only that group', () => {
+      // On Android the only Focus row left in simplified mode is the timer's
+      // Live Activity, which is iOS-only, so the group would open onto nothing.
+      const android = visibleSettingsGroups('android', true, true).map(g => g.id);
+      expect(android).not.toContain('focus');
+      // On iOS that one row survives, so the group stays.
+      const ios = visibleSettingsGroups('ios', true, true).map(g => g.id);
+      expect(ios).toContain('focus');
+      // Off by default: a caller that doesn't pass the mode gets every group.
+      expect(visibleSettingsGroups('android').map(g => g.id)).toContain('focus');
+      // Every group it keeps has at least one row it will draw.
+      for (const id of ios) {
+        const group = SETTINGS_GROUPS.find(g => g.id === id)!;
+        if (group.screen) continue;
+        expect(visibleSettingsEntries('ios', true, true).some(e => e.groupId === id)).toBe(true);
+      }
     });
 
     it('takes the hidden groups’ entries with them', () => {
@@ -273,13 +291,13 @@ describe('settings index', () => {
       expect(SETTINGS_ENTRIES.filter(e => e.requires).length).toBeGreaterThan(0);
     });
 
-    // The screen renders "File them under" inside `on && spec.categorized`, so
-    // every derived category row is gated on its own generator's toggle.
-    it('gates every generator category row on its own generator', () => {
-      const categoryRows = SETTINGS_ENTRIES.filter(e => e.id.endsWith(':category'));
-      expect(categoryRows.length).toBeGreaterThan(0);
-      for (const row of categoryRows) {
-        expect(row.requires).toBe(row.id.replace(/:category$/, ''));
+    // The screen renders "Task settings" inside the generator's open options,
+    // so every derived row is gated on its own generator's toggle.
+    it('gates every generator Task settings row on its own generator', () => {
+      const rows = SETTINGS_ENTRIES.filter(e => e.id.endsWith(':taskSettings'));
+      expect(rows.length).toBeGreaterThan(0);
+      for (const row of rows) {
+        expect(row.requires).toBe(row.id.replace(/:taskSettings$/, ''));
       }
     });
 
@@ -374,7 +392,7 @@ describe('settings index', () => {
     // screen gates it, and the next row added to the section inherits the check.
     it('flags every row in a section simplified mode hides wholesale', () => {
       const focus = SETTINGS_ENTRIES.filter(
-        e => e.groupId === 'tasksProjects' && e.section === 'Focus sessions');
+        e => e.groupId === 'focus' && e.section === 'Focus sessions');
       expect(focus.length).toBeGreaterThan(1);
       expect(focus.filter(e => !e.simple)).toEqual([]);
     });
@@ -391,6 +409,11 @@ describe('settings index', () => {
     it('reads the group off the entry rather than trusting a caller', () => {
       expect(settingsEntryTarget('healthWrite'))
         .toEqual({ kind: 'group', groupId: 'health', entryId: 'healthWrite' });
+    });
+
+    it('sends a setting that lives on its own screen to that screen, with no row to focus', () => {
+      expect(settingsEntryTarget('groceryAislesStores')).toEqual({ kind: 'screen', route: 'Groceries' });
+      expect(settingsEntryTarget('projectCategories')).toEqual({ kind: 'screen', route: 'Projects' });
     });
 
     it('refuses an id no entry has, rather than landing somewhere arbitrary', () => {

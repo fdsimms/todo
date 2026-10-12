@@ -32,12 +32,15 @@ import {
 import { ScreenHeader } from '../components/ScreenHeader';
 import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
 import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { SegmentedControl } from '../components/SegmentedControl';
 import { SleepHoursChart, SleepStagesBar, SleepTimesChart } from '../components/SleepChart';
 import { SleepGoalSheet } from '../components/SleepGoalSheet';
 import { InlineAction } from '../components/InlineAction';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
 
 /**
  * Sleep, as Apple Health recorded it: when each day's main sleep started and
@@ -64,7 +67,9 @@ const SLEEP_RANGES: { days: SleepRangeDays; label: string; spoken: string }[] = 
 const DEFAULT_RANGE_DAYS: SleepRangeDays = 14;
 
 export function SleepScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
+  const scrollTop = useListScrollToTop();
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
   const screenSettings = useScreenSettings('Sleep', 'Sleep settings');
@@ -157,7 +162,7 @@ export function SleepScreen() {
         <EmptyState
           icon="moon-outline"
           title="Not available in demo mode"
-          subtitle="Sleep comes from Apple Health, which demo mode does not read. Leave demo mode to see your own sleep."
+          subtitle="Demo mode doesn’t read Apple Health. Leave demo mode to see your own sleep."
           bottomOffset={tabBarHeight}
         />
       </View>
@@ -171,7 +176,7 @@ export function SleepScreen() {
         <EmptyState
           icon="moon-outline"
           title="Apple Health is off"
-          subtitle="Turn on reading Apple Health in Settings to see your sleep here. Anything a watch or another app has already recorded shows up straight away."
+          subtitle="Turn on Read Apple Health in Settings to see your sleep here. Sleep already in Health shows up right away."
           actionLabel="Open Settings"
           onAction={() => { haptics.tap(); navigateToSettingsEntry(navigationRef, 'healthRead'); }}
           bottomOffset={tabBarHeight}
@@ -193,7 +198,7 @@ export function SleepScreen() {
           // gets no sleep until the access row is tapped. The button goes there.
           subtitle={loadingSleep || allNights === null
             ? undefined
-            : `Nothing recorded in the last ${SLEEP_HISTORY_DAYS} days, or Health is not sharing sleep with this app. If you allowed Health access before sleep was added, check Health access in Settings.`}
+            : `Nothing recorded in the last ${SLEEP_HISTORY_DAYS} days, or Health isn’t sharing sleep. If you allowed access before sleep was added, check Health access in Settings.`}
           actionLabel={loadingSleep || allNights === null ? undefined : 'Check Health access'}
           onAction={loadingSleep || allNights === null
             ? undefined
@@ -212,6 +217,9 @@ export function SleepScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {header}
       <ScrollView
+        ref={scrollTop.ref}
+        {...scrollTop.listProps}
+        refreshControl={pullSearch.refreshControl}
         style={styles.scroll}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: tabBarHeight + spacing.xl }]}
       >
@@ -299,8 +307,8 @@ export function SleepScreen() {
             <View style={styles.card}>
               <SleepTimesChart dayKeys={dayKeys} nights={visible} use24Hour={use24Hour} />
               <Text style={styles.chartCaption}>
-                Each bar is a day&apos;s main stretch of sleep, from falling asleep (top) to waking (bottom).
-                A blank day is one with nothing recorded.
+                Each bar is a day’s main stretch of sleep, from falling asleep (top) to waking (bottom).
+                Blank days have nothing recorded.
               </Text>
             </View>
 
@@ -349,8 +357,8 @@ export function SleepScreen() {
             </Text>
           )}
           <Text style={styles.chartCaption}>
-            Over the last {SLEEP_HISTORY_DAYS} days. Each day&apos;s sleep is the sleep that ended that day.
-            These are patterns between two numbers, not causes.
+            Over the last {SLEEP_HISTORY_DAYS} days. Each day’s sleep is the sleep that ended that day.
+            A pattern here doesn’t show cause.
           </Text>
         </View>
 
@@ -371,6 +379,8 @@ export function SleepScreen() {
         </TouchableOpacity>
       </ScrollView>
       <SleepGoalSheet visible={goalOpen} onClose={() => setGoalOpen(false)} />
+      <ScrollToTopButton {...scrollTop.buttonProps} />
+      {pullSearch.sheet}
     </View>
   );
 }

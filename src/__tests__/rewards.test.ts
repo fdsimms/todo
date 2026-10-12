@@ -9,7 +9,13 @@ import {
   REWARD_IDEAS,
   rewardIdeas,
   describeLastClaimed,
+  claimWaitDays,
+  cleanClaimLimit,
+  describeClaimLimit,
+  describeClaimWait,
   goalProgress,
+  goalBarFill,
+  savingForGoal,
   lastClaimedAt,
   rewardDisplay,
   rewardIsOpen,
@@ -18,6 +24,10 @@ import {
   describeRewardPace,
   earnRatePerDay,
   suggestRewardCost,
+  coinsForPrice,
+  coinsPerDollar,
+  describeExchangeRate,
+  parseWeeklyBudget,
   coinsForCompletion,
   coinsForLoss,
   fullBountyFor,
@@ -41,6 +51,7 @@ import {
   liveBountyCount,
   nextBountyPushes,
   parseBountyLimit,
+  suggestedBountyTasks,
 } from '../utils/rewards';
 import type { CoinEntry, ChainItem, Effort } from '../types';
 
@@ -434,11 +445,64 @@ describe('a reward on the list', () => {
     expect(rewardDisplay(reward({ note: 'n', linkUrl: 'ubereats://' }), null)).toEqual({ title: 'Old title', note: 'n', linkUrl: 'ubereats://' });
   });
 
-  it('says when it was last claimed by calendar day', () => {
-    const now = new Date(2026, 9, 3, 9);
-    expect(describeLastClaimed(new Date(2026, 9, 3, 1).toISOString(), now)).toBe('Claimed today');
-    expect(describeLastClaimed(new Date(2026, 9, 2, 23).toISOString(), now)).toBe('Claimed yesterday');
-    expect(describeLastClaimed(new Date(2026, 8, 28, 12).toISOString(), now)).toBe('Last claimed 5 days ago');
+  it('says when it was last claimed by calendar day under a midnight day start', () => {
+    const today = new Date(2026, 9, 3);
+    expect(describeLastClaimed(new Date(2026, 9, 3, 1).toISOString(), today)).toBe('Claimed today');
+    expect(describeLastClaimed(new Date(2026, 9, 2, 23).toISOString(), today)).toBe('Claimed yesterday');
+    expect(describeLastClaimed(new Date(2026, 8, 28, 12).toISOString(), today)).toBe('Last claimed 5 days ago');
+  });
+
+  // Before the day start is still the day before, as everywhere else.
+  it('counts a claim made before the day start toward the day before', () => {
+    const today = new Date(2026, 9, 3, 2, 30);
+    expect(describeLastClaimed(new Date(2026, 9, 3, 1).toISOString(), today)).toBe('Claimed yesterday');
+    expect(describeLastClaimed(new Date(2026, 9, 3, 2, 30).toISOString(), today)).toBe('Claimed today');
+    expect(describeLastClaimed(new Date(2026, 9, 4, 1).toISOString(), new Date(2026, 9, 3, 2, 30))).toBe('Claimed today');
+    expect(describeLastClaimed(new Date(2026, 9, 2, 1).toISOString(), today)).toBe('Last claimed 2 days ago');
+  });
+
+  describe('claim limit', () => {
+    const spend = (at: Date) => ({ id: 'e', kind: 'spend' as const, amount: 5, at: at.toISOString(), taskId: null, rewardId: 'r', label: 'R' });
+    const weekly = { id: 'r', claimEveryDays: 7 };
+
+    it('is free when there is no limit or no claim', () => {
+      const today = new Date(2026, 9, 12);
+      expect(claimWaitDays({ id: 'r', claimEveryDays: null }, [spend(today)], today)).toBe(0);
+      expect(claimWaitDays(weekly, [], today)).toBe(0);
+    });
+
+    it('counts logical days from the newest claim', () => {
+      const today = new Date(2026, 9, 12);
+      expect(claimWaitDays(weekly, [spend(new Date(2026, 9, 12, 8))], today)).toBe(7);
+      expect(claimWaitDays(weekly, [spend(new Date(2026, 9, 9, 8))], today)).toBe(4);
+      expect(claimWaitDays(weekly, [spend(new Date(2026, 9, 6, 8))], today)).toBe(1);
+      expect(claimWaitDays(weekly, [spend(new Date(2026, 9, 5, 8))], today)).toBe(0);
+      expect(claimWaitDays(weekly, [spend(new Date(2026, 8, 1)), spend(new Date(2026, 9, 11))], today)).toBe(6);
+    });
+
+    it('counts a claim before the day start toward the day before', () => {
+      const today = new Date(2026, 9, 12, 2, 0);
+      expect(claimWaitDays({ id: 'r', claimEveryDays: 1 }, [spend(new Date(2026, 9, 12, 1))], today)).toBe(0);
+      expect(claimWaitDays({ id: 'r', claimEveryDays: 1 }, [spend(new Date(2026, 9, 12, 3))], today)).toBe(1);
+    });
+
+    it('stores a whole number of days, none for a one-time reward', () => {
+      expect(cleanClaimLimit(14, false)).toBe(14);
+      expect(cleanClaimLimit(14, true)).toBeNull();
+      expect(cleanClaimLimit(0, false)).toBeNull();
+      expect(cleanClaimLimit(null, false)).toBeNull();
+      expect(cleanClaimLimit(99999, false)).toBe(720);
+    });
+
+    it('says it in plain terms', () => {
+      expect(describeClaimLimit(1)).toBe('Once a day');
+      expect(describeClaimLimit(7)).toBe('Once a week');
+      expect(describeClaimLimit(14)).toBe('Once every 2 weeks');
+      expect(describeClaimLimit(10)).toBe('Once every 10 days');
+      expect(describeClaimLimit(30)).toBe('Once a month');
+      expect(describeClaimWait(1)).toBe('Available again tomorrow');
+      expect(describeClaimWait(4)).toBe('Available again in 4 days');
+    });
   });
 
   it('measures progress toward a goal, clamped', () => {
@@ -500,6 +564,21 @@ describe('bounties', () => {
     expect(canPostBounty({ ...withBounty(30, null), completed: true })).toBe(false);
   });
 
+  it('suggests only drifting tasks a bounty can go on, in the order given, up to the cap', () => {
+    const t = (id: string, over: object = {}) => ({ id, ...withBounty(30, null), ...over });
+    const drifting = [
+      t('a'),
+      t('b', { polarity: 'negative' }),
+      t('c', { bountyPushes: BOUNTY_WITHDRAWN }),
+      t('d'),
+      t('e'),
+      t('f'),
+    ];
+    expect(suggestedBountyTasks(drifting).map(x => x.id)).toEqual(['a', 'd', 'e']);
+    expect(suggestedBountyTasks(drifting, 1).map(x => x.id)).toEqual(['a']);
+    expect(suggestedBountyTasks([])).toEqual([]);
+  });
+
   it('reads a stored limit back, clamped', () => {
     expect(parseBountyLimit(null)).toBe(DEFAULT_BOUNTY_LIMIT);
     expect(parseBountyLimit('')).toBe(DEFAULT_BOUNTY_LIMIT);
@@ -513,5 +592,72 @@ describe('bounties', () => {
     expect(describeBounty(withBounty(480, 0))).toBe('+12 coins extra when done. Moving it again drops it to +8 coins.');
     expect(describeBounty(withBounty(480, 2))).toBe('+4 coins extra when done. Moving it again ends the bounty.');
     expect(describeBounty(withBounty(480, null))).toBeNull();
+  });
+});
+
+describe('exchange rate', () => {
+  it('divides a week of earning by a week of spending', () => {
+    // 12 coins a day is 84 a week; $20 a week is 4.2 coins to the dollar.
+    expect(coinsPerDollar(12, 2000)).toBeCloseTo(4.2);
+  });
+
+  it('has no rate until both halves exist', () => {
+    expect(coinsPerDollar(null, 2000)).toBeNull();
+    expect(coinsPerDollar(0, 2000)).toBeNull();
+    expect(coinsPerDollar(12, null)).toBeNull();
+    expect(coinsPerDollar(12, 0)).toBeNull();
+  });
+
+  it('prices in clean coins and moves with the rate', () => {
+    expect(coinsForPrice(450, 10)).toBe(45);
+    expect(coinsForPrice(450, 20)).toBe(90);
+    expect(coinsForPrice(1, 0.1)).toBe(1);
+  });
+
+  it('reads a stored budget, refusing anything that is not a positive amount', () => {
+    expect(parseWeeklyBudget('2000')).toBe(2000);
+    expect(parseWeeklyBudget('')).toBeNull();
+    expect(parseWeeklyBudget(null)).toBeNull();
+    expect(parseWeeklyBudget('-5')).toBeNull();
+  });
+
+  it('describes the rate in whole coins once it is large', () => {
+    expect(describeExchangeRate(4.24, '$')).toBe('About 4.2 coins per $1');
+    expect(describeExchangeRate(12.4, '$')).toBe('About 12 coins per $1');
+    expect(describeExchangeRate(1, '$')).toBe('About 1 coin per $1');
+  });
+});
+
+describe('savingForGoal', () => {
+  const r = (over = {}) => ({ id: 'g', title: 'Headphones', cost: 110, note: null, linkUrl: null, oneTime: true, taskId: null, ...over }) as never;
+  const none = () => null;
+
+  it('returns the chosen reward and its title', () => {
+    expect(savingForGoal([r()], [], 'g', none)?.title).toBe('Headphones');
+  });
+
+  it('returns null with no goal, an unknown id, or a claimed one-time reward', () => {
+    expect(savingForGoal([r()], [], null, none)).toBeNull();
+    expect(savingForGoal([r()], [], 'x', none)).toBeNull();
+    const spend = { id: 's', kind: 'spend', amount: -110, at: '2026-10-01T00:00:00.000Z', rewardId: 'g' } as never;
+    expect(savingForGoal([r()], [spend], 'g', none)).toBeNull();
+  });
+
+  it('reads a wish list reward title off its item', () => {
+    const task = { title: 'Fancy headphones', notes: '', linkUrl: null, completed: false, archived: false };
+    expect(savingForGoal([r({ taskId: 't' })], [], 'g', () => task)?.title).toBe('Fancy headphones');
+  });
+});
+
+describe('goalBarFill', () => {
+  it('never drops below a sliver, so an empty goal still reads as a bar', () => {
+    expect(goalBarFill(0, 110)).toBe(0.05);
+    expect(goalBarFill(-10, 110)).toBe(0.05);
+    expect(goalBarFill(1, 110)).toBe(0.05);
+  });
+
+  it('follows the real progress above the floor, capped at full', () => {
+    expect(goalBarFill(55, 110)).toBe(0.5);
+    expect(goalBarFill(500, 110)).toBe(1);
   });
 });

@@ -1,15 +1,18 @@
 import React, { useState, useMemo } from 'react';
-import { View, Alert, AppState, type ScrollView } from 'react-native';
+import { Animated, View, Alert, AppState, type ScrollView } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { dbClearGtinLookups, dbCountGtinLookups } from '../../db/database';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { useAppLockStore } from '../../store/useAppLockStore';
+import { useJournalLockStore } from '../../store/useJournalLockStore';
 import { APP_LOCK_GRACE_OPTIONS, graceLabel } from '../../utils/appLock';
 import { authenticateForAppLock, getAppLockSupport, type AppLockSupport } from '../../utils/appLockAuth';
 import { useColors } from '../../theme/ThemeContext';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
+import { SettingsDisclosure } from './SettingsDisclosure';
 import { SettingsSegments } from './SettingsSegments';
+import { useSettingsFocusFlash } from './SettingsFocus';
 import { type SegmentOption } from '../../components/SegmentedControl';
 import { makeSettingsStyles } from './settingsStyles';
 import { AI_MODEL_OPTIONS, aiFeaturesFor } from '../../utils/aiFeatures';
@@ -24,6 +27,21 @@ interface Props {
 
 const GRACE_OPTIONS: SegmentOption<number>[] =
   APP_LOCK_GRACE_OPTIONS.map(o => ({ value: o.value, label: o.label }));
+
+/**
+ * One AI feature's row and its model picker, lit together when search opens
+ * onto it. The flash lives here rather than on `SettingsRow` because the
+ * picker sits beside the row, not inside it: a highlight on the row alone
+ * left the picker unlit underneath.
+ */
+function AiFeatureBlock({ entryId, children }: { entryId: string; children: React.ReactNode }) {
+  const { focused, setFocusRef, highlight } = useSettingsFocusFlash(entryId);
+  return (
+    <Animated.View ref={setFocusRef} style={focused && { backgroundColor: highlight }}>
+      {children}
+    </Animated.View>
+  );
+}
 
 export function PrivacyAiSettings({ scrollRef }: Props) {
   const appLockEnabled = useSettingsStore(s => s.appLockEnabled);
@@ -41,6 +59,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
   const goUpcApiKey = useSettingsStore(s => s.goUpcApiKey);
   const setGoUpcApiKey = useSettingsStore(s => s.setGoUpcApiKey);
   const aiFeatureConfig = useSettingsStore(s => s.aiFeatureConfig);
+  const aiFeatureList = useMemo(() => aiFeaturesFor(kitchenEnabled, simpleMode), [kitchenEnabled, simpleMode]);
   const setAiFeatureConfig = useSettingsStore(s => s.setAiFeatureConfig);
   const onDeviceAiEnabled = useSettingsStore(s => s.onDeviceAiEnabled);
   const setOnDeviceAiEnabled = useSettingsStore(s => s.setOnDeviceAiEnabled);
@@ -80,7 +99,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
   const confirmClearBarcodes = React.useCallback(() => {
     Alert.alert(
       'Forget saved barcodes?',
-      'Every barcode gets looked up again the next time you scan it. Nothing on your list or in your pantry changes.',
+      'Every barcode gets looked up again the next time you scan it. Your list and pantry aren’t changed.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -129,8 +148,8 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
     setLockSupport(support);
     if (support.capability === 'none' || support.capability === 'unsupported') {
       Alert.alert(
-        'Nothing to unlock with',
-        `Set up ${support.label} or a passcode for this device in the Settings app first. Without one there'd be no way back into the app.`
+        'App lock unavailable',
+        `Set up ${support.label} or a device passcode in Settings first. Without one, you couldn’t get back into the app.`
       );
       return;
     }
@@ -138,7 +157,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
     if ((await authenticateForAppLock('Turn on the app lock')) !== 'success') {
       Alert.alert(
         'App lock still off',
-        `${support.label} didn't confirm it was you, so nothing changed. Try again to turn the lock on.`
+        `${support.label} didn’t confirm it was you. Try again to turn on the lock.`
       );
       return;
     }
@@ -151,13 +170,51 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
     setAppLockEnabled(true);
   };
 
+  const journalLockEnabled = useSettingsStore(s => s.journalLockEnabled);
+  const setJournalLockEnabled = useSettingsStore(s => s.setJournalLockEnabled);
+
+  /** Same checks as the app lock: it authenticates first and refuses when nothing could pass the prompt. */
+  const onToggleJournalLock = async (next: boolean) => {
+    if (!next) {
+      setJournalLockEnabled(false);
+      return;
+    }
+    const support = await getAppLockSupport();
+    setLockSupport(support);
+    if (support.capability === 'none' || support.capability === 'unsupported') {
+      Alert.alert(
+        'Journal lock unavailable',
+        `Set up ${support.label} or a device passcode in Settings first. Without one, you couldn’t get back into your journal.`
+      );
+      return;
+    }
+    const { setPrompting } = useAppLockStore.getState();
+    setPrompting(true);
+    let result;
+    try {
+      result = await authenticateForAppLock('Turn on the journal lock');
+    } finally {
+      setPrompting(false);
+    }
+    if (result !== 'success') {
+      Alert.alert(
+        'Journal lock still off',
+        `${support.label} didn’t confirm it was you. Try again to turn on the lock.`
+      );
+      return;
+    }
+    // Unlocked first, for the reason the app lock is.
+    useJournalLockStore.getState().unlock();
+    setJournalLockEnabled(true);
+  };
+
   const lockLabel = lockSupport?.label ?? 'Face ID';
 
   return (
     <>
       <SettingsSection
         label="App lock"
-        footer={`All of the app's data is stored on this device. Requires ${lockLabel} to open the app, with your device passcode as the fallback. The grace period sets how long after leaving the app you can come back without unlocking again.`}
+        footer={`All app data stays on this device. Opening the app requires ${lockLabel}, with your device passcode as the fallback. Lock again after sets how long you can leave and return without unlocking.`}
       >
         <SettingsRow
           entryId="appLock"
@@ -167,14 +224,27 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
           hint={
             lockSupport && lockSupport.capability !== 'biometric' && !appLockEnabled
               ? lockSupport.capability === 'passcode'
-                ? `No ${lockSupport.label} enrolled. The lock would ask for this device's passcode`
-                : `Set up ${lockSupport.label} or a passcode in the Settings app first`
+                ? `No ${lockSupport.label} set up. The lock would ask for this device’s passcode`
+                : `Set up ${lockSupport.label} or a passcode in Settings first`
               : appLockEnabled
                 ? 'Asks when you open the app, and when you come back to it'
                 : 'Anyone holding an unlocked phone can read your tasks'
           }
           toggle={appLockEnabled}
           onPress={() => onToggleAppLock(!appLockEnabled)}
+          tight={appLockEnabled}
+        />
+        <View style={styles.sep} />
+        <SettingsRow
+          entryId="journalLock"
+          icon="book-outline"
+          iconColor={journalLockEnabled ? colors.accent : undefined}
+          label={`Require ${lockLabel} for the journal`}
+          hint={journalLockEnabled
+            ? 'Asks each time you open the journal or dreams, and shows nothing written until then'
+            : 'An extra check before the journal, dreams and their previews on the Mood screen'}
+          toggle={journalLockEnabled}
+          onPress={() => onToggleJournalLock(!journalLockEnabled)}
           tight={appLockEnabled}
         />
         {appLockEnabled && (
@@ -186,7 +256,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
               label="Lock again after"
               hint={appLockGraceSeconds === 0
                 ? 'Every time you leave the app, however briefly'
-                : `Leaving for less than ${graceLabel(appLockGraceSeconds).toLowerCase()} comes straight back in`}
+                : `Leaving for less than ${graceLabel(appLockGraceSeconds).toLowerCase()} doesn’t lock the app`}
               tight
             />
             <SettingsSegments
@@ -203,14 +273,14 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
 
       <SettingsSection
         label="AI suggestions"
-        footer="Get a key at console.anthropic.com. The key is kept in this device's keychain and never leaves it; using a suggestion sends that task's (or template's) title, notes, and your tag/category names to Anthropic."
+        footer="Get a key at console.anthropic.com. The key stays in this device’s keychain. Using a suggestion sends that task’s (or template’s) title, notes, and your tag and category names to Anthropic."
       >
         <SettingsRow
           entryId="apiKey"
           icon="sparkles-outline"
           iconColor={anthropicApiKey ? colors.purple : undefined}
           label="Anthropic API key"
-          hint="Required for any of the features below to work."
+          hint="Required for the features below."
         >
           <TextField
             style={[styles.apiKeyInput, { color: colors.text, borderBottomColor: colors.separator }]}
@@ -233,38 +303,59 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
 
       <SettingsSection
         label="AI features"
-        footer="Turn any of these off if you'd rather they never call out to Anthropic, or pick a different model per feature: a faster, cheaper model for quick suggestions, or a stronger one where it's worth the extra cost."
+        footer="Turn off any feature you don’t want sending requests to Anthropic. Pick a model for each: faster and cheaper for quick suggestions, or stronger where it’s worth the cost."
       >
-        {aiFeaturesFor(kitchenEnabled, simpleMode).map((feature, i) => {
+        <SettingsDisclosure
+          icon="options-outline"
+          label="Individual features"
+          value={`${aiFeatureList.filter(f => aiFeatureConfig[f.id].enabled).length} of ${aiFeatureList.length} on`}
+          entryIds={aiFeatureList.map(f => `ai:${f.id}`)}
+        >
+        {aiFeatureList.map((feature, i) => {
           const config = aiFeatureConfig[feature.id];
           return (
             <React.Fragment key={feature.id}>
               {i > 0 && <View style={styles.sep} />}
-              <SettingsRow
-                // Same shape settingsIndex derives its entry ids in — both
-                // sides map over AI_FEATURES, so neither can name a row the
-                // other doesn't have.
-                entryId={`ai:${feature.id}`}
-                icon="sparkles-outline"
-                iconColor={config.enabled ? colors.purple : undefined}
-                label={feature.label}
-                hint={feature.hint}
-                toggle={config.enabled}
-                onPress={() => setAiFeatureConfig(feature.id, { enabled: !config.enabled })}
-                tight={config.enabled}
-              />
-              {config.enabled && (
-                <SettingsSegments
-                  attached
-                  options={AI_MODEL_OPTIONS}
-                  selected={config.model}
-                  onSelect={model => setAiFeatureConfig(feature.id, { model })}
-                  accessibilityLabelFor={o => `${feature.label} model: ${o.label}`}
+              {/* Same shape settingsIndex derives its entry ids in — both
+                  sides map over AI_FEATURES, so neither can name a row the
+                  other doesn't have. The id sits on the block, not the row,
+                  so the highlight covers the model picker too. */}
+              <AiFeatureBlock entryId={`ai:${feature.id}`}>
+                <SettingsRow
+                  icon="sparkles-outline"
+                  iconColor={config.enabled ? colors.purple : undefined}
+                  label={feature.label}
+                  hint={feature.hint}
+                  toggle={config.enabled}
+                  onPress={() => setAiFeatureConfig(feature.id, { enabled: !config.enabled })}
+                  tight={config.enabled}
                 />
-              )}
+                {config.enabled && (
+                  <SettingsSegments
+                    attached
+                    options={AI_MODEL_OPTIONS}
+                    selected={config.model}
+                    onSelect={model => setAiFeatureConfig(feature.id, { model })}
+                    accessibilityLabelFor={o => `${feature.label} model: ${o.label}`}
+                  />
+                )}
+                {feature.id === 'nutritionEstimate' && config.enabled && (
+                  <SettingsRow
+                    entryId="ai:nutritionEstimate:webSearch"
+                    icon="globe-outline"
+                    iconColor={config.webSearch ? colors.purple : undefined}
+                    label="Search the web for brand figures"
+                    hint="Looks up a chain’s or brand’s published nutrition when the description names one. Each search is billed to your API key. Results still need your confirmation."
+                    toggle={!!config.webSearch}
+                    onPress={() => setAiFeatureConfig('nutritionEstimate', { webSearch: !config.webSearch })}
+                    accessibilityLabel="Search the web for brand nutrition figures"
+                  />
+                )}
+              </AiFeatureBlock>
             </React.Fragment>
           );
         })}
+        </SettingsDisclosure>
       </SettingsSection>
 
       {/* Its own section for the same reason barcode lookups get one below: no
@@ -282,7 +373,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
       {kitchenEnabled && (
       <SettingsSection
         label="On-device suggestions"
-        footer="Uses Apple Intelligence on this iPhone, which needs no key and sends nothing anywhere. It only answers when you haven't added an Anthropic API key above, unless a feature below is set to prefer it."
+        footer="Uses Apple Intelligence on this iPhone, which needs no key and sends nothing anywhere. It answers when there’s no Anthropic API key above, or when a feature below is set to prefer it."
       >
         <SettingsRow
           entryId="onDeviceAiEnabled"
@@ -295,7 +386,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
           // second feature routes here. The section label carries "on-device";
           // the hint carries what it actually does today.
           label="Use Apple Intelligence"
-          hint={onDeviceReason ?? 'Sorts groceries into aisles when you haven\'t added an API key.'}
+          hint={onDeviceReason ?? 'Sorts groceries into aisles when you haven’t added an API key.'}
           toggle={onDeviceAiEnabled}
           onPress={() => setOnDeviceAiEnabled(!onDeviceAiEnabled)}
           accessibilityLabel="Use Apple Intelligence"
@@ -342,8 +433,8 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
         <SettingsSection
           label="Barcode lookups"
           footer={simpleMode
-            ? 'Searching for a food by name sends the name you type to FoodData Central, the USDA\'s food database. It needs a free key.'
-            : 'Open Food Facts is a free product database run by volunteers, and needs no key. Scanning sends one barcode at a time and nothing else, with no account and no identifier attached. Answers are saved on this device, so a barcode is only looked up once. Turning this off still uses the barcodes already saved here. The two keys below add more places to look, and searching for a food by name needs the FoodData Central one.'}
+            ? 'Searching for a food by name sends the name you type to FoodData Central, the USDA’s food database. It needs a free key.'
+            : 'Open Food Facts is a free, volunteer-run product database that needs no key. A scan sends only the barcode, one at a time, with no account or identifier. Answers are saved on this device and still used when lookups are off.'}
         >
           <SettingsRow
             entryId="productLookupEnabled"
@@ -365,7 +456,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
                 icon="key-outline"
                 iconColor={fdcApiKey ? colors.accent : undefined}
                 label="FoodData Central key"
-                hint="Needed to search for a food by name. Get a free key by signing up at api.data.gov. This is the USDA's own food database, and it is also asked first for a scanned barcode."
+                hint="Needed to search for a food by name. Get a free key at api.data.gov. This USDA database is also checked first for scanned barcodes."
               >
                 <TextField
                   style={[styles.apiKeyInput, { color: colors.text, borderBottomColor: colors.separator }]}
@@ -389,7 +480,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
                 icon="key-outline"
                 iconColor={goUpcApiKey ? colors.accent : undefined}
                 label="Go-UPC key"
-                hint="Optional and paid. Asked only for barcodes the two free databases don't know."
+                hint="Optional and paid. Asked only for barcodes the two free databases don’t know."
               >
                 <TextField
                   style={[styles.apiKeyInput, { color: colors.text, borderBottomColor: colors.separator }]}
@@ -419,7 +510,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
                 entryId="clearGtinLookups"
                 icon="refresh-outline"
                 label="Forget saved barcodes"
-                hint={`${cachedBarcodes.toLocaleString()} saved on this device. Clear them to look everything up fresh.`}
+                hint={`${cachedBarcodes.toLocaleString()} saved on this device. Clear them to look up every barcode again.`}
                 onPress={confirmClearBarcodes}
                 accessibilityLabel="Forget saved barcodes"
               />

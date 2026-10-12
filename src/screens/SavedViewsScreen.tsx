@@ -1,4 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
+import { useWithoutLockedTasks } from '../hooks/useWithoutLockedTasks';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,6 +18,7 @@ import { getCurrentDayStart } from '../utils/dateUtils';
 import { isHeldBack } from '../utils/visibilityUtils';
 import { describeSavedView, filterTasksForView } from '../utils/savedViews';
 import type { SavedView } from '../types';
+import { useFabBottom } from '../components/Fab';
 
 /**
  * The saved views someone has kept (#2679), one row each.
@@ -37,12 +39,13 @@ import type { SavedView } from '../types';
  */
 export function SavedViewsScreen() {
   const insets = useSafeAreaInsets();
+  const fabBottom = useFabBottom();
   const navigation = useNavigation();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const views = useSavedViewStore(useShallow(s => s.views));
-  const allTasks = useTaskStore(s => s.tasks);
+  const allTasks = useWithoutLockedTasks(useTaskStore(s => s.tasks));
   const projects = useProjectStore(useShallow(s => s.projects));
 
   const [editorVisible, setEditorVisible] = useState(false);
@@ -97,7 +100,7 @@ export function SavedViewsScreen() {
         data={views}
         keyExtractor={v => v.id}
         onReorder={handleReorder}
-        scrollToTop={{ bottom: insets.bottom + spacing.lg }}
+        scrollToTop={{ bottom: fabBottom }}
         contentContainerStyle={[styles.listContent, views.length === 0 && styles.emptyContent]}
         renderItem={({ item, drag, isActive }) => {
           const count = counts.get(item.id) ?? 0;

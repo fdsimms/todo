@@ -102,10 +102,12 @@ import { forget, remember } from './memoryTools';
 import { deleteRule, listAutomations, saveRule, setAutomation, RULE_TYPES } from './automationTools';
 import { deleteCategory, reorderCategories, updateCategory } from './categoryTools';
 import { cancelCalendarRequest, changeCalendarEvent, listCalendarRequests, requestCalendarEvent } from './calendarTools';
-import { NUTRIENT_KEY_LIST, atFrom, deleteSavedMeal, duplicateFoodEntry, listSavedMeals, logSavedMeal, moveFoodEntry, saveMealFromEntries, setNutritionTargets, renameMoodTag, setMedicationArchived, logFood, logMedication, logMood, logWater, updateRecipe, deleteRecipe, updateFoodEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
+import { ESTIMATE_KEY_LIST, NUTRIENT_KEY_LIST, atFrom, deleteSavedMeal, duplicateFoodEntry, listSavedMeals, logSavedMeal, moveFoodEntry, saveMealFromEntries, setNutritionTargets, renameMedication, renameMoodTag, setMedicationArchived, addMedication, removeMedication, setMedicationProfile, setMedicationLimit, setMedicationSupply, logFood, logMedication, setSupplementNutrients, logMood, logWater, updateRecipe, deleteRecipe, updateFoodEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
 import { DEFAULT_PATTERN_DAYS, focusHistory, habitPatterns, moodInsights } from './patternTools';
 import { addMilestone, deleteMilestone, listMilestones, updateMilestone } from './milestoneTools';
-import { deleteJournalEntry, listJournalEntries, logJournalEntry, updateJournalEntry } from './journalTools';
+import { listCopyFlags, resolveCopyFlag } from './copyFlagTools';
+import { deleteMeterReading, listMeterReadings, logMeterReading } from './meterTools';
+import { deleteJournalEntry, listJournalEntries, logJournalEntry, searchJournalEntries, updateJournalEntry } from './journalTools';
 import { SAVED_VIEW_TASK_LIMIT, createSavedView, deleteSavedView, getSavedView, listSavedViews, updateSavedView } from './savedViewTools';
 import { setVacationMode } from './vacationTools';
 import { getSettings, updateSettings } from './settingsTools';
@@ -474,7 +476,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'list_food_log',
-    'Logged food over a range of days, with summed nutrients and, in produce, an estimate of vegetable and fruit servings per day: 80 g servings, beans count once a day, rounded to the nearest half. It is read from food names and weights, so a food not named as produce counts as none, and unmeasured is how many entries that day could not be weighed and are not counted. Say it is an estimate, and say when unmeasured is above zero. A nutrient nobody logged is absent rather than zero. Defaults to the last 7 days. Empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that nothing was logged.',
+    'Logged food over a range of days, with summed nutrients and, in produce, an estimate of vegetable and fruit servings per day: 80 g servings, beans count once a day, rounded to the nearest half. It is read from food names and weights, so a food not named as produce counts as none, and unmeasured is how many entries that day could not be weighed and are not counted. Say it is an estimate, and say when unmeasured is above zero. A nutrient nobody logged is absent rather than zero. An entry the person described and the app estimated may carry a breakdown, the same estimate split across what it named (for example the beer and the pretzel); it adds up to the entry\'s own figures, so do not add it to the totals again. Defaults to the last 7 days. Empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that nothing was logged.',
     logRange,
     async input => json(await withFresh(() => listFoodLog(replica, input)))
   );
@@ -489,8 +491,28 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
   server.tool(
     'list_journal_entries',
     'Journal entries and dreams the person wrote, over a range of days, newest first. kind narrows to one ("journal" or "dream"). Defaults to the last 7 days. Empty unless the person has turned on Include journal and dreams for the sync server on their phone (its own switch, separate from health logs), so an empty result is not evidence that nothing was written; if they want you to see it, tell them where the switch is. Quote or summarize only what they ask about; never interpret a dream or read meaning into an entry.',
-    { ...logRange, kind: z.enum(['journal', 'dream']).optional() },
+    {
+      ...logRange,
+      kind: z.enum(['journal', 'dream']).optional(),
+      tag: z.string().min(1).optional().describe('Only entries carrying this tag (a label the person typed).'),
+      personId: z.string().min(1).optional().describe('Only entries about this person, by id from list_people.'),
+    },
     async input => json(await withFresh(() => listJournalEntries(replica, input)))
+  );
+
+  server.tool(
+    'search_journal_entries',
+    'Find journal entries and dreams containing every word of a query, across everything written unless from/to narrow it. Use this instead of listing a long range to look for a word. Newest first, at most 50; total says how many matched. Same switch and same rules as list_journal_entries: quote only what the person asks about and never interpret an entry.',
+    {
+      query: z.string().min(1),
+      kind: z.enum(['journal', 'dream']).optional(),
+      tag: z.string().min(1).optional(),
+      personId: z.string().min(1).optional(),
+      from: dayKey.optional(),
+      to: dayKey.optional(),
+      limit: z.number().int().positive().max(50).optional(),
+    },
+    async input => json(await withFresh(() => searchJournalEntries(replica, input)))
   );
 
   server.tool(
@@ -502,7 +524,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'list_medication_logs',
-    'Doses recorded over a range of days, including as-needed ones. Defaults to the last 7 days. Empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that nothing was logged.',
+    'Doses recorded over a range of days, including as-needed ones, plus the limit and supply the person set for each medication (limitsAndSupply: their own limit, how many doses in the last 24 hours, the total against a limit on an amount, when the next is within it, and how many are left; also whether they take it as needed, their usual amount, and medicines added with no dose yet). A limit is the person\'s own, never a prescription; say it that way. Defaults to the last 7 days. Empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that nothing was logged.',
     logRange,
     async input => json(await withFresh(() => listMedicationLogs(replica, input)))
   );
@@ -512,6 +534,20 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     'The days something changed in the person\'s life that they have marked on the mood log ("Started sertraline", "New job"), each with its date. mood_insights reads mood before and after each one, under its own minimum-days rules; a start and a later stop are two milestones and are never paired. Empty unless the person has turned on Include health logs for the sync server on their phone.',
     {},
     async () => json(await withFresh(() => listMilestones(replica)))
+  );
+
+  server.tool(
+    'list_copy_flags',
+    'Lines of on-screen copy the person long-pressed in the app to mark as needing a manual pass, each with the exact text, the screen it was on and their note. Open flags by default. This is how copy fixes are requested: find the text in the source, rewrite it, then call resolve_copy_flag. Temporary dev tooling.',
+    { status: z.enum(['open', 'resolved', 'all']).optional().describe('Default open.') },
+    async input => json(await withFresh(() => listCopyFlags(replica, input)))
+  );
+
+  server.tool(
+    'list_meter_readings',
+    'The meters the person reads by hand (a car\'s odometer, an espresso machine\'s shot counter), each with its readings, the rate they imply when there are readings at least a week apart, and the open tasks due at a reading on it with what their row says ("Due at 45,000 miles · est. Dec 10"). Pass meter to see one.',
+    { meter: z.string().optional().describe('One meter by name, e.g. "Car".') },
+    async input => json(await withFresh(() => listMeterReadings(replica, input)))
   );
 
   server.tool(
@@ -742,7 +778,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'list_automations',
-    "Everything that adds tasks on its own: each automation (birthdays, weather, calendar events, Health, Screen Time, meal and pantry tasks, and the rest), whether it is on, what it does, and what it needs on the phone. Also every rule the person wrote for the ones that take rules, plus title rules, which file a new task by a word in its title. Use it before suggesting or changing an automation.",
+    "Everything that adds tasks on its own: each automation (birthdays, weather, calendar events, Health, Screen Time, meal and pantry tasks, and the rest), whether it is on, what it does, what it needs on the phone, what each new task of its kind starts with (taskSettings), and which fields the automation writes itself (setByApp). Also every rule the person wrote for the ones that take rules, plus title rules, which file a new task by a word in its title. Use it before suggesting or changing an automation.",
     {},
     async () => json(await withFresh(() => listAutomations(replica)))
   );
@@ -793,7 +829,11 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
       }
       const details = parseToolText(out);
       if (details && typeof details === 'object' && 'error' in details) return out;
-      const described = describeEffects(effects, replica.dayKeyOf);
+      const described = describeEffects(effects, replica.dayKeyOf, {
+        project: id => replica.projects().find(p => p.id === id)?.title,
+        task: id => replica.taskById(id)?.title,
+        stack: id => replica.stacks().find(g => g.id === id)?.title,
+      });
       const willDo = described.length > 0 ? described : ['Nothing in the app would change.'];
       return json({
         preview: true,
@@ -878,8 +918,10 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
  * The two are kept in step by `templatePlan.test.ts` exercising the same shapes.
  */
 const conditionSchema = z.object({
-  question: z.string().describe('The name of a choice question defined in this plan.'),
-  values: z.array(z.string()).min(1).describe('Which of that question\'s options switch this item on. Any one of them is enough.'),
+  question: z.string().describe('The name of a choice or number question defined in this plan.'),
+  values: z.array(z.string()).min(1).optional().describe('A choice question: which of its options switch this item on. Any one of them is enough.'),
+  min: z.number().optional().describe('A number question: the item is ticked when the answer is at least this. "More than 4 days" is min 5.'),
+  max: z.number().optional().describe('A number question: the item is ticked when the answer is at most this. Give min, max or both.'),
 });
 
 const variantSchema = z.object({
@@ -901,6 +943,10 @@ const itemSchema = z.object({
   deadlineTime: z.string().nullable().optional().describe('HH:MM (24-hour) the deadline closes at on its day. Needs deadlineOffsetDays; dropped without one.'),
   windowStart: z.string().nullable().optional().describe('HH:MM.'),
   windowEnd: z.string().nullable().optional().describe('HH:MM.'),
+  windowStartSun: z.string().nullable().optional()
+    .describe('Makes the window start follow the sun: "sunrise", "sunset", or either with a minutes offset of up to 180 ("sunset-30"). Needs windowStart beside it, the clock time to fall back to (roughly that event\'s time now).'),
+  windowEndSun: z.string().nullable().optional()
+    .describe('The same for the window end ("sunset" for "before dark"). Needs windowEnd beside it.'),
   reminderOffsetMinutes: z.number().int().nullable().optional(),
   timeSegments: z.array(z.enum(TIME_SEGMENTS as unknown as [TimeOfDay, ...TimeOfDay[]])).optional(),
   tags: z.array(z.string()).optional(),
@@ -916,12 +962,19 @@ const itemSchema = z.object({
   recurrenceMonth: z.number().int().min(1).max(12).nullable().optional().describe('Yearly: the month, 1 to 12.'),
   recurrenceCount: z.number().int().positive().nullable().optional().describe('Stop repeating after this many occurrences.'),
   recurrenceFromCompletion: z.boolean().optional(),
+  recurrenceHolidays: z.enum(['skip', 'move']).nullable().optional()
+    .describe('An occurrence the rule lands on a holiday: "skip" leaves it out, "move" puts it on the next day. Holidays are the set and days off chosen in Settings. Null or absent: it happens anyway.'),
+  rainSkipMm: z.number().positive().max(200).nullable().optional()
+    .describe('Repeating only, not hourly: skip a day\'s occurrence when at least this many millimetres of rain fell yesterday and today ("water the garden unless it rained"). Needs the weather switch on in the app. Null or absent: never skips.'),
   recurrenceWeekOrdinal: z.number().int().min(-1).max(4).refine(n => n !== 0).nullable().optional()
     .describe('Monthly only: "the 2nd Tuesday" is 2 with recurrenceDays [2]; -1 is the last. Not with recurrenceMonthDay.'),
   targetCount: z.number().int().min(2).nullable().optional().describe('A counted target: done N times a day (or a week with quotaPeriod). null for an ordinary task.'),
   targetUnit: z.string().nullable().optional().describe('What the target counts, e.g. "glasses".'),
   quotaPeriod: z.enum(['day', 'week']).optional().describe('What targetCount is per. Default day.'),
   allowOvershoot: z.boolean().optional().describe('With a target: let it be logged past the target.'),
+  quotaRampStep: z.number().int().min(1).max(20).nullable().optional().describe('With a plain target: raise targetCount by this much each time the ramp steps. null or absent: no ramp.'),
+  quotaRampEvery: z.number().int().min(1).max(60).nullable().optional().describe('With quotaRampStep: how many days (weeks, for a weekly target) the target has to be met before each increase. Default 1.'),
+  quotaRampGoal: z.number().int().min(2).max(99).nullable().optional().describe('With quotaRampStep: the count to stop at. null: climb to 99.'),
   quotaReminders: z.boolean().optional().describe('With a target: remind as each unit falls due.'),
   chainStepOnSchedule: z.boolean().optional().describe('On a repeating chain: each step waits for the next repeat instead of following straight away.'),
   phoneNumber: z.string().nullable().optional(),
@@ -932,6 +985,7 @@ const itemSchema = z.object({
   location: z.string().nullable().optional(),
   weatherWait: z.enum(['sunny', 'rainy', 'snowy', 'cold', 'hot']).nullable().optional().describe('Hold the task until the next day with this forecast. Only for a one-off item.'),
   pinEachOccurrence: z.boolean().optional(),
+  medicationChecklist: z.boolean().optional().describe('When the template runs, add one subtask per medication the person currently takes (their medication log, archived medicines left out) after the item\'s own subtasks. Turn it on for an item like "Medications"; the list is read at run time, never stored.'),
   chain: z.object({
     steps: z.array(z.object({
       title: z.string().min(1),
@@ -948,7 +1002,8 @@ const itemSchema = z.object({
   subtasks: z.array(z.object({ id: z.string(), title: z.string() })).optional(),
   groupKey: z.string().nullable().optional().describe('The key of a group defined in this plan. null takes the item out of its group.'),
   conditions: z.array(conditionSchema).optional()
-    .describe('Which answers to the run\'s questions tick this item by default. Several values in one entry mean any of them (OR). Entries on different questions must ALL match (AND), and there is no OR across questions: to tick an item for either of two questions, list it twice, once per question. An item with no matching answer stays in the run unticked and can still be ticked by hand; conditions never remove it. An item with conditions ignores its optional flag. Only choice questions can be named, and an unanswered question matches nothing.'),
+    .describe('Which answers to the run\'s questions tick this item by default. Several values in one entry mean any of them (OR). Entries on different questions must ALL match (AND) by default; set conditionsMatch to "any" to tick the item when any one entry matches. An item with no matching answer stays in the run unticked and can still be ticked by hand; conditions never remove it. An item with conditions ignores its optional flag. A choice question takes values, a number question takes min and/or max (both inclusive), so one item can need both a choice and a number (laundry line: laundry access = No and days min 5). Free-text and people questions cannot be named, and an unanswered question matches nothing.'),
+  conditionsMatch: z.enum(['all', 'any']).optional().describe('How several conditions on this item combine: "all" (the default) needs every one to match, "any" needs just one, so a passport for "flying or international" is one item with two conditions and conditionsMatch "any". Does nothing with fewer than two conditions.'),
   variants: z.array(variantSchema).optional().describe('A different title and/or notes for particular answers of a choice question, so one item can say "Pack 4 shirts" for one answer and "Pack 8" for another instead of two items. The item\'s own text is used for every other answer. Blanks work in it. With update_template, variants replace the item\'s whole list.'),
   key: z.string().optional().describe('Your own handle for this item, so another item\'s onlyIfAnswer can name it.'),
   deliverableKind: z.enum(DELIVERABLE_KINDS as unknown as [DeliverableKind, ...DeliverableKind[]]).nullable().optional()
@@ -985,7 +1040,9 @@ const questionsSchema = z.array(z.object({
   options: z.array(z.string()).optional().describe('Required for a choice, at least two. The first is the default.'),
   defaultValue: z.string().optional(),
   fromDates: z.enum(QUESTION_SOURCES as unknown as [string, ...string[]]).optional()
-    .describe('A number question can take its answer off the anchor dates. nights is end minus start (the 3rd to the 10th is 7); days counts both end days (8). A typed answer wins over the dates. Only a choice question can gate an item through conditions, so a number cannot express "only if days > 5": add a choice question for that.'),
+    .describe('A number question can take its answer off the anchor dates. nights is end minus start (the 3rd to the 10th is 7); days counts both end days (8). A typed answer wins over the dates. An item can be conditioned on a number with min/max ("only if days > 5" is min 6).'),
+  multiple: z.boolean().optional().describe('A choice question only: a run may pick several answers. An item with a condition on it is ticked when any picked answer is one of its values, and a variant applies when its answer is among those picked. A title shows the picks joined with ", ". Starts on the first option, and one pick always stays.'),
+  showForecast: z.boolean().optional().describe('A choice question only: the apply sheet states the destination forecast for the run\'s dates under this question ("Paris, 48 to 66°F, rain on 2 of 7 days"), to help whoever answers it. It only states; it never answers the question or ticks anything. Needs a destination and dates, and the Destination forecast setting on.'),
 })).optional();
 const scheduleSchema = z.object({
   frequency: z.enum(SCHEDULE_FREQUENCIES as unknown as [string, ...string[]]),
@@ -1024,6 +1081,14 @@ const taskFieldsShape = {
   estimatedMinutes: z.number().int().positive().nullable().optional(),
   weatherWait: z.enum(['sunny', 'rainy', 'snowy', 'cold', 'hot']).nullable().optional()
     .describe('Hold a one-off task until the first day in the next two weeks with this kind of forecast, e.g. "leave books on the curb on the next sunny day". The phone matches the forecast and moves the task, so it can take until the next sync to leave Today. Not for a repeating task, chain, set of dates or subtask. null stops waiting.'),
+  meter: z.object({
+    name: z.string().describe('What the reading is taken off, e.g. "Car". Tasks on the same meter share its readings.'),
+    unit: z.string().nullable().optional().describe('What it counts, for display, e.g. "miles".'),
+    every: z.number().positive().describe('How far the meter runs between occurrences, e.g. 5000.'),
+    dueAt: z.number().nonnegative().nullable().optional().describe('The reading this one is due at. Required when setting a meter up; optional on an update that keeps it.'),
+    limitMonths: z.number().int().min(1).max(60).nullable().optional().describe('Or after this many months, whichever comes first.'),
+  }).nullable().optional()
+    .describe('Make a one-off due at a meter reading rather than a date, e.g. "change the oil every 5,000 miles". The phone holds it until a logged reading reaches dueAt, the reading rate projects it, or limitMonths pass, so it can take until the next sync to move. Completing it writes the next one `every` further on. Log readings with log_meter_reading. Not for a repeating task, chain, set of dates, subtask or a task waiting on weather. null stops following the meter.'),
   pinned: z.boolean().optional().describe('Pin it to the top of Today.'),
   pinEachOccurrence: z.boolean().optional().describe('On a repeating task: every occurrence it spawns starts pinned, so the pin is not redone by hand each time. Does nothing on a task that does not repeat.'),
   deliverableKind: z.enum(DELIVERABLE_KINDS as unknown as [DeliverableKind, ...DeliverableKind[]]).nullable().optional()
@@ -1045,6 +1110,10 @@ const taskFieldsShape = {
       .describe('Count the next one from when it was done rather than on a fixed schedule. Defaults to true for daily and hourly, as the app does, false otherwise.'),
     endDate: z.string().nullable().optional().describe('ISO date: stop repeating after this.'),
     count: z.number().int().nullable().optional().describe('Stop after this many more times, this one included. Give endDate or count, not both.'),
+    holidays: z.enum(['skip', 'move']).nullable().optional()
+      .describe('An occurrence the rule lands on a holiday: "skip" leaves it out, "move" puts it on the next day (a trash pickup after a holiday). Holidays are the set and days off chosen in the app\'s Settings. Omit for "happens anyway". Not for hourly.'),
+    skipAfterRainMm: z.number().positive().max(200).nullable().optional()
+      .describe('Skip the day\'s occurrence when at least this much rain (millimetres, 25.4 to the inch) fell yesterday and today, e.g. 5 for "water the garden unless it rained". The phone reads the rainfall when the person has Weather-based tasks on; it does the skipping, so it can take until the next sync. Not for hourly.'),
   }).optional().describe('How it repeats. Replaces the whole rule. The first occurrence sits on dueDate; the rule places the ones after it, so set dueDate to the first matching day.'),
   chain: z.object({
     steps: z.array(z.object({
@@ -1064,6 +1133,12 @@ const taskFieldsShape = {
     per: z.enum(['day', 'week']),
     unit: z.string().nullable().optional().describe('E.g. "glasses". Optional.'),
     allowOvershoot: z.boolean().optional().describe('Per day only: keep counting past the target.'),
+    rampUp: z.object({
+      add: z.number().int().describe('How much to add to the count each time, 1 to 20.'),
+      every: z.number().int().describe('How many days (weeks, for a weekly target) the target has to be met before each increase, 1 to 60.'),
+      upTo: z.number().int().nullable().optional().describe('The count to stop at, above the current count and at most 99. Omit to climb to 99.'),
+    }).nullable().optional()
+      .describe('Raise the count as it keeps being met: "10 push-ups a day, add 2 after every 3 days I hit it, up to 30". A missed or short day neither counts nor resets the run. Not with allowOvershoot. null turns it off.'),
     firstWeek: z.enum(['fewer', 'full']).optional()
       .describe('create_task, per week only: "fewer" (the default) scales the first week to the days left in it, as the app does (3 a week set on a Thursday asks for 2 that week, then 3). "full" asks for the whole count from the start.'),
   }).nullable().optional()
@@ -1091,8 +1166,8 @@ const taskFieldsShape = {
   }).nullable().optional()
     .describe('A stock that goes down by one each time this repeating task is completed ("12 filters left"), and asks to reorder as it runs low. Needs a repeat, and not for a subtask. null removes it.'),
   window: z.object({
-    start: z.string().nullable().optional().describe('"HH:MM", 24-hour: it shows up from this time.'),
-    end: z.string().nullable().optional().describe('"HH:MM", 24-hour: after this it counts as missed for the day.'),
+    start: z.string().nullable().optional().describe('"HH:MM", 24-hour: it shows up from this time. Or follow the sun: "sunrise", "sunset", or either with a minutes offset of up to 180 ("sunset-30", "sunrise+45"), which moves with the sun each day.'),
+    end: z.string().nullable().optional().describe('"HH:MM", 24-hour: after this it counts as missed for the day. Or "sunrise"/"sunset" with an optional offset, as for start ("sunset" for "before dark").'),
   }).nullable().optional().describe('A time of day to do it in. null removes it.'),
   habit: z.enum(['do', 'avoid']).optional()
     .describe('"avoid" makes it a habit of NOT doing something ("no phone in bed"): it is never completed, and its streak counts the days you held off. Only for a plain task, not a chain or a target.'),
@@ -1392,13 +1467,20 @@ function registerWriteTools(
     }
   );
 
+  /** The parts of an estimated meal. The app reads each one as it reads the total, and drops what it cannot. */
+  const breakdownSchema = z
+    .array(z.object({ label: z.string().min(1), amounts: z.record(z.number().nonnegative()) }))
+    .max(12)
+    .describe('The total split across what the description named, one line per thing, each with its own amounts. For every nutrient the lines must add up to the total. Skip for a single item.');
+
   server.tool(
     'log_food',
-    `Log something the person ate, with your estimate of its nutrition for the whole amount eaten. Amounts are keyed ${NUTRIENT_KEY_LIST.join(', ')}; leave out any you cannot estimate (absent is not zero). Without apply: true it only shows the figures as the app read them: show the person, and log it once they agree, since the app never stores an estimate nobody looked at. The entry is marked as estimated. It is not in Apple Health when this returns: the phone writes it there the next time the app is opened, if Health writing is on there, so never say it is already in Health.`,
+    `Log something the person ate, with your estimate of its nutrition for the whole amount eaten. Amounts are keyed ${ESTIMATE_KEY_LIST.join(', ')}; leave out any you cannot estimate (absent is not zero). Vitamins and minerals are not estimated: a supplement's come from its label (set_supplement_nutrients). Without apply: true it only shows the figures as the app read them: show the person, and log it once they agree, since the app never stores an estimate nobody looked at. When the description names more than one thing (a drink, a pretzel and a dessert), also give a breakdown: one line per thing, each with its own amounts, adding up to the total for every nutrient (a breakdown that does not add up is refused). It is kept on the entry so the person can see what each part contributed; skip it for a single item. The entry is marked as estimated. It is not in Apple Health when this returns: the phone writes it there the next time the app is opened, if Health writing is on there, so never say it is already in Health.`,
     {
       label: z.string().min(1),
       quantity: z.string().optional().describe('How much, in words: "1 bowl", "2 slices".'),
       amounts: z.record(z.number().nonnegative()),
+      breakdown: breakdownSchema.optional(),
       slot: z.enum(KITCHEN_MEAL_SLOTS as unknown as [MealSlot, ...MealSlot[]]).nullable().optional(),
       at: z.string().optional().describe('When it was eaten: an ISO date-time, or YYYY-MM-DD. Default now.'),
       apply: z.boolean().optional(),
@@ -1430,14 +1512,16 @@ function registerWriteTools(
 
   server.tool(
     'duplicate_food_entry',
-    'Log the same food again ("had the same lunch today"): a copy of an entry at another moment, default now. The original stays.',
+    'Log the same food again ("had the same lunch today"): a copy of an entry at another moment, default now. The original stays. For "the same food, a different amount" give grams (or quantity, e.g. "2 servings") and the copy is re-measured from the food\'s own database or catalog record, exactly as changing the amount in the app does, so the nutrients are scaled for the new amount rather than copied. That works for a measured entry (list_food_log shows grams and a database-style label); an estimated entry has no record to measure against, so it can only be copied as it is. Leave both out to copy at the original amount.',
     {
       id: z.string().min(1),
       at: z.string().optional().describe('An ISO date-time, or YYYY-MM-DD for noon that day. Default now.'),
+      grams: z.number().positive().optional().describe('Weight of the new helping in grams. Give this or quantity.'),
+      quantity: z.string().min(1).optional().describe('The new amount as the app\'s amount field takes it, e.g. "2 servings" or "1 slice". Give this or grams.'),
     },
-    async ({ id, at }) => {
+    async ({ id, at, grams, quantity }) => {
       try {
-        return json(await withWrite(() => duplicateFoodEntry(replica, id, at)));
+        return json(await withWrite(() => duplicateFoodEntry(replica, id, at, { grams, quantity })));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not log that again.' });
       }
@@ -1538,7 +1622,7 @@ function registerWriteTools(
 
   server.tool(
     'log_medication',
-    'Record a dose taken: the medication, the amount and unit together (or neither), whether it was as-needed, and when. The name is matched to the spelling already in their log, but never folded into a different medicine or strength.',
+    'Record a dose taken: the medication, the amount and unit together (or neither), whether it was as-needed, and when. The name is matched to the spelling already in their log, but never folded into a different medicine or strength. If the medicine has a nutrient panel (set_supplement_nutrients), the dose also adds those nutrients to that day\'s food log.',
     {
       name: z.string().min(1),
       amount: z.number().positive().nullable().optional(),
@@ -1593,12 +1677,14 @@ function registerWriteTools(
 
   server.tool(
     'update_food_entry',
-    'Correct a food log entry: its name, its meal slot, and, for an entry that was estimated, its quantity and figures (amounts replaces every figure, so give the full set). An entry measured against a food\'s own label or database record is corrected in the app, which re-measures it, and one already written to Apple Health only on the phone.' + dayNote,
+    'Correct a food log entry: its name, its meal slot, and its amount. Two kinds of entry take an amount differently, so check list_food_log first. An entry that was estimated takes quantity and amounts (amounts replaces every figure, so give the full set; the old breakdown is dropped, since its lines would no longer add up, so give a new breakdown with it when the meal has parts). An entry measured against a food\'s own label or database record (it has grams and a database-style label) takes grams, or quantity such as "2 servings", and its nutrients are re-measured from that record, as changing the amount in the app does; do not restate its amounts. A dish logged from a recipe, and an entry whose record is gone, are changed in the app. One already written to Apple Health is changed only on the phone. To log a different amount as a new entry instead of changing this one, use duplicate_food_entry with grams.' + dayNote,
     {
       id: entryId,
       label: z.string().min(1).optional(),
-      quantity: z.string().optional(),
+      quantity: z.string().optional().describe('Estimated entry: the amount in words. Measured entry: the new amount to re-measure ("2 servings").'),
+      grams: z.number().positive().optional().describe('Measured entry only: the new weight in grams. The nutrients are re-scaled from its food record.'),
       amounts: z.record(z.number().nonnegative()).optional(),
+      breakdown: breakdownSchema.optional(),
       slot: z.enum(KITCHEN_MEAL_SLOTS as unknown as [MealSlot, ...MealSlot[]]).nullable().optional(),
     },
     async ({ id, ...patch }) => {
@@ -1695,6 +1781,8 @@ function registerWriteTools(
       kind: z.enum(['journal', 'dream']),
       text: z.string().min(1).max(5000),
       at: z.string().optional().describe('An ISO date-time, or YYYY-MM-DD for a day gone by. Default now.'),
+      tags: z.array(z.string().min(1)).max(8).optional().describe('Labels, only ones the person named. Never invent tags to describe what an entry means.'),
+      personIds: z.array(z.string().min(1)).optional().describe('People it is about, by id from list_people, only when the person said so.'),
     },
     async input => {
       try {
@@ -1707,11 +1795,16 @@ function registerWriteTools(
 
   server.tool(
     'update_journal_entry',
-    'Replace the text of a journal or dream entry, by its id from list_journal_entries. It cannot move an entry to another day; for a wrong date, delete it and write it again.',
-    { id: z.string().min(1), text: z.string().min(1).max(5000) },
-    async ({ id, text }) => {
+    'Replace the text, the tags or the people of a journal or dream entry, by its id from list_journal_entries. What you leave out stays as it was; tags and personIds replace the whole list. It cannot move an entry to another day; for a wrong date, delete it and write it again.',
+    {
+      id: z.string().min(1),
+      text: z.string().min(1).max(5000).optional(),
+      tags: z.array(z.string().min(1)).max(8).optional(),
+      personIds: z.array(z.string().min(1)).optional(),
+    },
+    async ({ id, ...change }) => {
       try {
-        return json(await withWrite(() => updateJournalEntry(replica, id, text)));
+        return json(await withWrite(() => updateJournalEntry(replica, id, change)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not change the entry.' });
       }
@@ -1748,6 +1841,22 @@ function registerWriteTools(
   );
 
   server.tool(
+    'resolve_copy_flag',
+    'Close a copy flag, by its id from list_copy_flags, once the copy has been changed in the source. Say what it became, or why it was left as it is. Temporary dev tooling.',
+    {
+      id: z.string().min(1),
+      resolution: z.string().min(1).max(500).describe('What the copy was changed to, or why it was left.'),
+    },
+    async ({ id, resolution }) => {
+      try {
+        return json(await withWrite(() => resolveCopyFlag(replica, id, resolution)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not resolve the flag.' });
+      }
+    }
+  );
+
+  server.tool(
     'update_milestone',
     'Change a milestone\'s label or date, by its id from list_milestones. Only what you name changes.',
     {
@@ -1773,6 +1882,36 @@ function registerWriteTools(
         return json(await withWrite(() => deleteMilestone(replica, id)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not delete the milestone.' });
+      }
+    }
+  );
+
+  server.tool(
+    'log_meter_reading',
+    'Record a reading of a meter the person tracks by hand, e.g. "the car is at 45,120 miles". Every task due at a reading on that meter uses it: one past its due reading surfaces on Today, and the readings set the estimate for the rest. Only a number they told you; never estimate one. The date defaults to today.',
+    {
+      meter: z.string().min(1).max(40).describe('The meter, as its tasks name it, e.g. "Car".'),
+      value: z.number().nonnegative().describe('The reading.'),
+      date: dayKey.optional().describe('The day it was read, YYYY-MM-DD. Default today.'),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => logMeterReading(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not log the reading.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_meter_reading',
+    'Delete a meter reading by its id from list_meter_readings. Readings are never edited: a wrong one is deleted and logged again.',
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => deleteMeterReading(replica, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete the reading.' });
       }
     }
   );
@@ -1860,15 +1999,27 @@ function registerWriteTools(
 
   server.tool(
     'set_automation',
-    'Turn an automation on or off, and/or choose the category its tasks file under (its "File them under" setting, shown as category in list_automations). Pass on, category or both. category: null files its tasks under none, which puts them in the loose block at the top of Today; prefer a real category. Applies on every synced device. Say what it will do (its "does" line) and anything it needs on the phone before turning it on.',
+    'Turn an automation on or off, choose the category its tasks file under (its "File them under" setting, shown as category in list_automations), and/or change what each new task of its kind starts with (taskSettings). Pass any of the three. category: null files its tasks under none, which puts them in the loose block at the top of Today; prefer a real category. taskSettings only fills fields the automation itself leaves alone (setByApp in list_automations names the ones it writes, which can\'t be changed), applies to tasks it adds from now on, and leaves tasks already added as they are. Applies on every synced device. Say what it will do (its "does" line) and anything it needs on the phone before turning it on.',
     {
       kind: z.string().min(1),
       on: z.boolean().optional(),
       category: z.string().nullable().optional().describe('A task category by name, from list_categories. It must already exist; null for none.'),
+      taskSettings: z.object({
+        priority: z.number().int().min(0).max(4).nullable().optional().describe('0 none, 1 low to 4 urgent; 0 is an answer ("no priority, don\'t ask"), null clears it.'),
+        effort: z.number().int().min(0).max(6).nullable().optional().describe('An estimate bucket 1-6, or 0 for "no estimate, don\'t ask"; null clears it.'),
+        difficulty: z.enum(['easy', 'normal', 'hard']).nullable().optional().describe('Only read when rewards are on.'),
+        skipInSuggestions: z.boolean().nullable().optional(),
+        tags: z.array(z.string()).nullable().optional().describe('Added to every new task of this kind. Replaces the list; null or [] clears it.'),
+        timeOfDay: z.enum(['morning', 'afternoon', 'evening', 'night']).nullable().optional().describe('Keeps these tasks off Today until that part of the day.'),
+        askOnCompletion: z.object({
+          kind: z.enum(['text', 'date', 'number', 'yesno', 'choice']),
+          options: z.array(z.string()).optional().describe('For choice: at least two.'),
+        }).nullable().optional().describe('A question to answer when one of these tasks is completed; null for none.'),
+      }).optional().describe('Fields left out stay as they are; null clears one.'),
     },
-    async ({ kind, on, category }) => {
+    async ({ kind, on, category, taskSettings }) => {
       try {
-        return json(await withWrite(() => setAutomation(replica, kind, { on, category })));
+        return json(await withWrite(() => setAutomation(replica, kind, { on, category, taskSettings })));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not change that automation.' });
       }
@@ -1997,7 +2148,7 @@ function registerWriteTools(
 
   server.tool(
     'quick_add',
-    `Add up to ${MAX_QUICK_ADD} tasks from lines of text, each read with the app's own quick-add grammar: "Pay rent tomorrow 5pm #home !high ~30m +Moving". Dates and repeats ("every other Monday"), #category or #tag, !priority, +project and an estimate are read out of the title; anything that matches nothing stays in the title and the row says so. Start a line with "remind me" to set a reminder at its time. Bullets and numbering are ignored, so a pasted list works. Without apply: true it only shows how each line reads.`,
+    `Add up to ${MAX_QUICK_ADD} tasks from lines of text, each read with the app's own quick-add grammar: "Pay rent tomorrow 5pm #home !high ~30m +Moving". Dates and repeats ("every other Monday"), #category or #tag, !priority, +project and an estimate are read out of the title, and a repeat can end in "unless it rains" to skip a day it rained; anything that matches nothing stays in the title and the row says so. Start a line with "remind me" to set a reminder at its time. Bullets and numbering are ignored, so a pasted list works. Without apply: true it only shows how each line reads.`,
     {
       lines: z.array(z.string()).min(1),
       apply: z.boolean().optional(),
@@ -2069,7 +2220,7 @@ function registerWriteTools(
       runName: z.string().optional().describe('Names the run, e.g. "Lisbon trip". Needed for the template to create its stack, project or parent task; without it the tasks are loose.'),
       startDate: z.string().optional().describe('YYYY-MM-DD: the anchor items count their start offsets from. For a trip, the first day away.'),
       endDate: z.string().optional().describe('YYYY-MM-DD: the end anchor. For a trip, the last day away.'),
-      answers: z.record(z.string()).optional().describe('Answers by question name, e.g. { "trip": "Work", "nights": "7" }. A number question left out is read off the dates.'),
+      answers: z.record(z.string()).optional().describe('Answers by question name, e.g. { "trip": "Work", "nights": "7" }. A number question left out is read off the dates. A question that allows several answers takes them joined with commas, e.g. "Outdoors, Camping".'),
       include: z.array(z.string()).optional().describe('Item ids to switch on (e.g. an optional item). A nested template\'s own item id switches on everything inside it.'),
       leaveOut: z.array(z.string()).optional().describe('Item ids to switch off. A nested template\'s own item id switches off everything inside it.'),
       projectId: z.string().optional().describe('An existing project to put the tasks in.'),
@@ -2121,6 +2272,8 @@ function registerWriteTools(
         .describe('ISO date-time, for recording something done earlier. Defaults to now.'),
       why: z.string().optional().describe('With an answer: why it was chosen, in a sentence. Shown under the answer in the project\'s Decisions.'),
       revisitIf: z.string().optional().describe('With an answer: what would reopen the decision ("the guest list goes over 25").'),
+      lookBackAfter: z.enum(['2w', '1m', '3m', '6m']).optional()
+        .describe('With an answer, when the person asks for it: add a task that long from now asking how the decision turned out. Its answer becomes the decision\'s outcome. Ignored without an answer.'),
     },
     async ({ id, ...rest }) => {
       try {
@@ -2231,6 +2384,25 @@ function registerWriteTools(
   );
 
   server.tool(
+    'set_supplement_nutrients',
+    'Set what one serving of a supplement contains, from its label, or clear it with clear: true. Every dose of that medicine recorded afterwards (here or on the phone) adds those vitamins and minerals to the day\'s food log, and the phone writes them to Apple Health if that is on; earlier doses keep what they added. servingAmount and servingUnit are the serving the label\'s figures are for (serving size 2 tablets: 2 and "tablet"); a dose recorded in that unit counts that many servings and any other dose counts one. amounts are keyed by nutrient name, each in the unit its name states (vitaminDMcg is micrograms, magnesiumMg milligrams). Leave out any nutrient the label does not list: a blank is unknown, and a 0 says the label stated none. Only from a label the person gave you, never estimated.',
+    {
+      name: z.string().min(1),
+      servingAmount: z.number().positive().optional(),
+      servingUnit: z.string().optional().describe('tablet, capsule, drop, spray, ml or g.'),
+      amounts: z.record(z.number()).optional().describe(`Nutrient names to amounts. Names: ${NUTRIENT_KEY_LIST.join(', ')}.`),
+      clear: z.literal(true).optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => setSupplementNutrients(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not set the nutrients.' });
+      }
+    }
+  );
+
+  server.tool(
     'archive_medication',
     'Move a medicine out of "what you take" on the Medication screen (it stops being offered), or bring it back with archived: false. No dose is deleted.',
     { name: z.string().min(1), archived: z.boolean().optional().describe('Default true.') },
@@ -2239,6 +2411,108 @@ function registerWriteTools(
         return json(await withWrite(() => setMedicationArchived(replica, name, archived ?? true)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not archive it.' });
+      }
+    }
+  );
+
+  server.tool(
+    'add_medication',
+    'Add a medicine to the person\'s list by name, before any dose is recorded, as Add medication does on the Medications screen. It stays listed with no doses, and one that is archived is brought back. Use it when they say they take, or are about to start, something; record actual doses with log_medication. Nothing is added twice: a name already listed (in any capitalization) changes nothing.',
+    { name: z.string().min(1) },
+    async ({ name }) => {
+      try {
+        return json(await withWrite(() => addMedication(replica, name)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not add it.' });
+      }
+    }
+  );
+
+  server.tool(
+    'set_medication_limit',
+    'Set the limit the person gave for a listed medicine, as its page does, or clear it with clear: true. Any of: minHours (fewest hours between two doses), maxPer24h (most doses in any 24 hours), maxAmount24h ({amount, unit}, e.g. 1200 and "mg": the most of one unit in any 24 hours, for a label stated as a total; only doses recorded in that unit are added up). A cap you leave out keeps its current value; null removes it. It is the person\'s own limit, never a prescription and never yours to work out: set it only from figures they gave you, copied from the label or what their doctor told them, and say back what you set. The phone asks before recording a dose that goes past it, and only doses recorded after you set it are judged. The "tell me when it is OK again" notification is a switch on the phone and is left as it is.',
+    {
+      name: z.string().min(1),
+      clear: z.literal(true).optional(),
+      minHours: z.number().positive().max(72).nullable().optional(),
+      maxPer24h: z.number().int().min(1).max(99).nullable().optional(),
+      maxAmount24h: z.object({ amount: z.number().positive(), unit: z.string() }).nullable().optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => setMedicationLimit(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not set the limit.' });
+      }
+    }
+  );
+
+  server.tool(
+    'set_medication_supply',
+    'Set how many of a listed medicine the person has, as the Left field on its page does, or stop tracking it with clear: true. count is how many they have right now, in unit (a countable unit such as tablet or capsule, or "dose", the default); what is left afterwards is that count less the doses recorded from now on, so it goes down on its own and a deleted dose puts one back. refillCount prefills the refill prompt and reorderAt is the count the phone offers a refill task at. Leave a field out to keep it. A scheduled task that records the medicine keeps its own supply, which this does not touch. Only from a count the person gave you.',
+    {
+      name: z.string().min(1),
+      clear: z.literal(true).optional(),
+      count: z.number().min(0).optional(),
+      unit: z.string().optional().describe('dose, or a countable unit such as tablet, capsule, drop or spray.'),
+      refillCount: z.number().positive().nullable().optional(),
+      reorderAt: z.number().int().min(1).optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => setMedicationSupply(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not set the supply.' });
+      }
+    }
+  );
+
+  server.tool(
+    'remove_medication',
+    'Take a medicine off the list, with its limit and supply, as Remove on its page does. Only one with no recorded doses: doses are the person\'s record, so a medicine that has any is refused (delete_medication_log removes a dose; archive_medication moves it out of "what you take"). Use it to put right an add_medication.',
+    { name: z.string().min(1) },
+    async ({ name }) => {
+      try {
+        return json(await withWrite(() => removeMedication(replica, name)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not remove it.' });
+      }
+    }
+  );
+
+  server.tool(
+    'set_medication_profile',
+    'Set how a listed medicine is taken and the amounts usually taken, as its page does. asNeeded: true for taken as needed (the Medications screen then offers a button that records another dose), false for on a schedule, null to go back to reading it off the recorded doses. usualAmounts is the whole list (e.g. [{amount: 400, unit: "mg"}, {amount: 200, unit: "mg"}], at most 6): the first is what a new dose starts from and what the round button records before any dose exists, and all of them are quick picks when recording a dose; [] clears them. strength is what one capsule, tablet, puff or drop contains (a dose of "1 capsule" then reads as 125 mcg and counts toward a limit in mcg). A field left out is unchanged. Only from what the person told you.',
+    {
+      name: z.string().min(1),
+      asNeeded: z.boolean().nullable().optional(),
+      usualAmounts: z.array(z.object({ amount: z.number().positive(), unit: z.string() })).max(6).optional(),
+      strength: z.object({ amount: z.number().positive(), unit: z.string() }).nullable().optional()
+        .describe('What one capsule, tablet, puff or drop contains, e.g. {amount: 125, unit: "mcg"}; null clears it. Doses recorded in a counted unit after this carry it, so "1 capsule" reads as 125 mcg; earlier doses keep what they were stamped with.'),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => setMedicationProfile(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not set it.' });
+      }
+    }
+  );
+
+  server.tool(
+    'rename_medication',
+    'Rename a medicine on every dose, and in its limit, supply, archive state and the tasks and templates that record it, as the Rename on its page in the app does. If `to` is already another medicine, the two are combined (that one keeps its own limit and supply): use it to turn "Ibuprofen 200" and "Ibuprofen 400" into one "Ibuprofen". Doses keep their own amounts. fillAmount and fillUnit (together) record an amount on the doses that have none, e.g. 200 and mg when the old name carried the strength. Only on the person\'s word: it changes their record of what they took.',
+    {
+      from: z.string().min(1),
+      to: z.string().min(1),
+      fillAmount: z.number().positive().optional(),
+      fillUnit: z.string().optional(),
+    },
+    async ({ from, to, fillAmount, fillUnit }) => {
+      try {
+        return json(await withWrite(() => renameMedication(replica, from, to, { amount: fillAmount, unit: fillUnit })));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not rename it.' });
       }
     }
   );
@@ -3037,8 +3311,11 @@ function registerWriteTools(
       taskDefaults: z.object({
         priority: z.number().int().min(0).max(4).nullable().optional().describe('0 means no priority on purpose, so the backfill screen stops asking. Null means ask.'),
         difficulty: z.enum(['easy', 'normal', 'hard']).nullable().optional(),
-        effort: z.number().int().min(1).max(6).nullable().optional().describe('The time estimate bucket, 1 (XXS) to 6 (XL).'),
-      }).nullable().optional().describe('Priority, difficulty and time estimate every new task in the project starts with, so a list like a wish list never reaches backfill. Null clears them. Existing tasks are not changed.'),
+        effort: z.number().int().min(0).max(6).nullable().optional().describe('The time estimate bucket, 1 (XXS) to 6 (XL). 0 means no estimate on purpose, so the backfill screen stops asking. Null means ask.'),
+        showStreak: z.boolean().nullable().optional().describe('true shows the streak chip on every repeating task, false leaves it off on purpose so the backfill screen stops asking. Null means ask.'),
+        vacationPause: z.boolean().nullable().optional().describe('true pauses every repeating task during vacation mode, false leaves it off on purpose so the backfill screen stops asking. Null means ask.'),
+        excludeFromSuggestions: z.boolean().nullable().optional().describe('true keeps every task out of suggested pins and focus sessions, false leaves it in on purpose so the backfill screen stops asking. Null means ask.'),
+      }).nullable().optional().describe('Priority, difficulty, time estimate, streak chip, vacation pause and skip-in-suggestions every new task in the project starts with, so a list like a wish list never reaches backfill. Null clears them. Existing tasks are not changed.'),
       kind: z.enum(['project', 'list']).optional(),
       completed: z.boolean().optional(),
       archived: z.boolean().optional(),
@@ -3054,6 +3331,8 @@ function registerWriteTools(
       nudgeOptIn: z.boolean().optional().describe('false keeps it out of every nudge, the Pull from projects sheet included.'),
       weekendSource: z.boolean().optional().describe('Somewhere the weekend nudge looks for something to do when a weekend is bare.'),
       showChecked: z.boolean().optional().describe('On a list: checked items stay on the page, struck through, instead of folding away.'),
+      hideNextStep: z.boolean().optional().describe('Leave the "Next:" line off its card on the Projects screen.'),
+      groupOnToday: z.boolean().optional().describe('Today shows its tasks and stacks for the day together under its name, at the top below the pinned tasks, instead of in their categories. A trip with a packing list is the usual case. Display only: it changes nothing about what is due.'),
     },
     async ({ id, moveTasks, moveTasksFrom, archiveRemaining, ...patch }) => {
       try {
@@ -3122,6 +3401,7 @@ function registerWriteTools(
       category: z.string().nullable().optional().describe('A category from list_categories, or null for none.'),
       projectId: z.string().nullable().optional().describe('The project whose page shows it as a section. Its tasks keep their own projects.'),
       checklist: z.boolean().optional(),
+      hideNextStep: z.boolean().optional().describe('Leave the "Next:" task off its collapsed header.'),
     },
     async ({ id, ...input }) => {
       try {
@@ -3271,10 +3551,13 @@ function registerWriteTools(
     "Add a reward the person can spend coins on, such as a treat or a night off. Ask them for the cost, or offer one based on how often they want it (get_rewards shows the balance and history to judge the pace). A reward is a note to themselves: claiming one unlocks nothing in the app. oneTime makes it disappear once claimed. Refused while rewards are switched off.",
     {
       title: z.string().min(1),
-      cost: z.number().int().min(1).describe('Coins, a whole number.'),
+      cost: z.number().int().min(1).optional().describe('Coins, a whole number. Give this or price.'),
+      price: z.number().positive().optional().describe('Dollars, like 4.5, for a reward that costs money. Converted to coins at the person\'s own rate (their weekly earning over their weekly reward budget), and repriced as their earning changes. Refused until they have set a weekly budget.'),
       note: z.string().nullable().optional().describe('A line of context, e.g. "the Thai place on 5th".'),
       link: z.string().nullable().optional().describe('A URL to open for it.'),
       oneTime: z.boolean().optional().describe('Claimed once, then gone from the list.'),
+      guardsHabitId: z.string().min(1).optional().describe('A "don\'t do this" habit (task id) this reward is the honest way to have, e.g. "No dessert unless claimed" for a dessert. A slip logged on it claims this reward, or costs the balance up to its price when it falls short. Not on a oneTime reward.'),
+      claimEveryDays: z.number().int().min(1).max(720).optional().describe('Limit claims to once per this many days: 7 for a week, 30 for a month. A claim inside the limit is refused until the days are up. Not on a oneTime reward.'),
     },
     async input => {
       try {
@@ -3287,14 +3570,17 @@ function registerWriteTools(
 
   server.tool(
     'update_reward',
-    "Change a reward's title, cost, note, link or one-time flag (ids from get_rewards). Coins already spent on it stay spent, and changing the cost never changes what was paid. A reward made from a wish-list item is refused: its title, note and link are the item's, so edit the item instead.",
+    "Change a reward's title, cost, note, link, one-time flag or guarded habit (ids from get_rewards). Coins already spent on it stay spent, and changing the cost never changes what was paid. A reward made from a wish-list item is refused: its title, note and link are the item's, so edit the item instead.",
     {
       id: z.string().min(1),
       title: z.string().min(1).optional(),
-      cost: z.number().int().min(1).optional(),
+      cost: z.number().int().min(1).optional().describe('Coins. Makes the reward coin-priced, dropping any dollar price.'),
+      price: z.number().positive().nullable().optional().describe('Dollars. Null drops the dollar price and keeps the current coin cost.'),
       note: z.string().nullable().optional(),
       link: z.string().nullable().optional(),
       oneTime: z.boolean().optional(),
+      guardsHabitId: z.string().min(1).nullable().optional().describe('The "don\'t do this" habit this reward guards, as on create_reward. Null unlinks it.'),
+      claimEveryDays: z.number().int().min(1).max(720).nullable().optional().describe('Limit claims to once per this many days, as on create_reward. Null removes the limit.'),
     },
     async ({ id, ...patch }) => {
       try {
@@ -3386,7 +3672,7 @@ function registerWriteTools(
 
   server.tool(
     'log_slip',
-    "Record that the person did the thing a \"don't do this\" habit is about, today. Only when they tell you they did. It resets the streak and costs coins when rewards are on, unless the habit has a slip allowance and today is still inside it: then the slip is counted and nothing else changes. A habit with a penalty is refused, because the slip also charges an app block that only the phone can set. undo_slip takes back today's latest slip and its coins.",
+    "Record that the person did the thing a \"don't do this\" habit is about, today. Only when they tell you they did. It resets the streak and costs coins when rewards are on, unless the habit has a slip allowance and today is still inside it: then the slip is counted and nothing else changes. On a habit a reward guards (get_rewards' guardsHabitId), a slip the balance covers claims that reward instead and leaves the streak alone (the result's claimed has the claimId for unclaim_reward), and one it doesn't costs the balance up to the reward's price, never below zero. A habit with a penalty is refused, because the slip also charges an app block that only the phone can set. undo_slip takes back today's latest slip and its coins.",
     { id: z.string().min(1) },
     async ({ id }) => {
       try {

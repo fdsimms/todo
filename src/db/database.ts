@@ -14,6 +14,8 @@ import type {
   CoinEntry,
   Reward,
   Milestone,
+  CopyFlag,
+  MeterReading,
   JournalEntry,
   EventPeopleLink,
   CalendarRequest,
@@ -74,6 +76,8 @@ import type {
 import { HEALTH_TARGET_METRICS } from '../utils/healthTarget';
 import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, NUTRIENT_KEYS, PERSON_NOTE_KINDS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES, isReceiptStyle } from '../types';
 import { generateId } from '../utils/id';
+import type { PendingEstimate } from '../utils/estimateQueue';
+import type { PendingRecipeEstimate } from '../utils/recipeEstimateQueue';
 import { parseTaskFieldDefaults, serializeTaskFieldDefaults } from '../utils/taskFieldDefaults';
 import { appendPriceObservation, parsePriceHistory } from '../utils/priceHistory';
 import { nextPurchaseIntervalDays } from '../utils/purchaseInterval';
@@ -104,6 +108,9 @@ import {
   withoutDeviceLocalColumns,
   backfillStatements,
   installStatements,
+  installSignature,
+  SYNC_INSTALL_SIGNATURE_KEY,
+  SYNC_TRIGGERS_PER_TABLE,
   updatedAtMigrations,
   type SyncTable,
 } from './syncTracking';
@@ -238,6 +245,29 @@ export function isUsingDemoDatabase(): boolean {
 }
 
 export function initDatabase(): void {
+  runInitDatabase();
+  initializedHandles.add(db);
+}
+
+// Handles whose schema and migrations have already run in this process, for
+// `ensureDatabaseReady`. A sync that applied rows reloads every store, and the
+// first thing each reload did was initDatabase(): ~400 statements to learn
+// nothing, since the schema cannot have changed under an open connection and
+// every data migration in it is behind a done flag. A demo database is a new
+// handle each time it is entered, so it still gets the full pass.
+const initializedHandles = new WeakSet<object>();
+
+/**
+ * `initDatabase()` unless this handle has already been through it. What a
+ * store's `initialize()` calls, so a reload after a sync is only the store
+ * loads. Anything that deliberately re-runs the migrations (resetting a done
+ * flag, a test) calls `initDatabase()` itself.
+ */
+export function ensureDatabaseReady(): void {
+  if (!initializedHandles.has(db)) initDatabase();
+}
+
+function runInitDatabase(): void {
   // synchronous = NORMAL is the setting WAL is designed around: a commit is
   // still atomic and the file can't be corrupted, and an app being killed
   // loses nothing, but the commit no longer waits on a disk sync. The default,
@@ -466,6 +496,31 @@ export function initDatabase(): void {
       created_at TEXT NOT NULL
     );
 
+    -- A line of on-screen copy marked as needing a manual pass — see CopyFlag
+    -- in types/index.ts. Temporary dev tooling: drop this table with the rest
+    -- of the feature before the app opens to real users.
+    CREATE TABLE IF NOT EXISTS copy_flags (
+      id TEXT PRIMARY KEY NOT NULL,
+      text TEXT NOT NULL,
+      screen TEXT NOT NULL,
+      note TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'open',
+      resolution TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL
+    );
+
+    -- Readings of a meter the user tracks by hand (an odometer, a shot
+    -- counter), keyed by the meter rather than a task so one entry serves every
+    -- task following it. Only ever inserted or deleted. See MeterReading.
+    CREATE TABLE IF NOT EXISTS meter_readings (
+      id TEXT PRIMARY KEY NOT NULL,
+      meter_key TEXT NOT NULL,
+      meter_name TEXT NOT NULL,
+      value REAL NOT NULL,
+      read_at TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
     -- Who a calendar event occurrence is with — see EventPeopleLink in
     -- types/index.ts and docs/arch/people.md. event_key is deliberately not
     -- UNIQUE: two phones can link the same occurrence before they sync, and
@@ -585,6 +640,41 @@ export function initDatabase(): void {
       id TEXT PRIMARY KEY NOT NULL,
       name TEXT NOT NULL,
       items TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    -- Meals described with no connection, waiting for an estimate and then
+    -- for a person to log it — see utils/estimateQueue.ts. Device-local: a
+    -- request belongs to the phone that lost its signal, so it is neither
+    -- synced nor backed up (BACKUP_EXCLUDED_TABLES). context and estimate are
+    -- JSON blobs read and written whole, the saved_meals call.
+    CREATE TABLE IF NOT EXISTS pending_estimates (
+      id TEXT PRIMARY KEY NOT NULL,
+      description TEXT NOT NULL,
+      slot TEXT,
+      at_iso TEXT NOT NULL,
+      meal_plan_entry_id TEXT,
+      context TEXT NOT NULL DEFAULT '[]',
+      status TEXT NOT NULL DEFAULT 'waiting',
+      estimate TEXT,
+      estimated_at TEXT,
+      error TEXT,
+      created_at TEXT NOT NULL
+    );
+
+    -- A recipe's nutrition estimate asked for with no connection — see
+    -- utils/recipeEstimateQueue.ts. One row per recipe, device-local like
+    -- pending_estimates. estimate_key is the sheet's fingerprint of what was
+    -- asked about, and the row is believed only while it still matches.
+    CREATE TABLE IF NOT EXISTS pending_recipe_estimates (
+      recipe_id TEXT PRIMARY KEY NOT NULL,
+      estimate_key TEXT NOT NULL,
+      title TEXT NOT NULL,
+      servings REAL,
+      lines TEXT NOT NULL DEFAULT '[]',
+      status TEXT NOT NULL DEFAULT 'waiting',
+      estimate TEXT,
+      error TEXT,
       created_at TEXT NOT NULL
     );
 
@@ -1740,6 +1830,10 @@ export function initDatabase(): void {
     // and read as a fallback in rowToTask, since dropping a column an
     // existing row's data lives in would lose that row's setting on upgrade.
     'ALTER TABLE tasks ADD COLUMN log_water_ml INTEGER',
+    // MedicationLog.strength: what one counted unit contained when the dose was
+    // taken. Null on every existing row, which reads as no strength stated.
+    'ALTER TABLE medication_logs ADD COLUMN strength_amount REAL',
+    'ALTER TABLE medication_logs ADD COLUMN strength_unit TEXT',
     // Freeform, non-symptom context ("vacation", "big deadline") — see
     // MoodLog.contextTags. Same shape as symptoms minus severity.
     "ALTER TABLE mood_logs ADD COLUMN context_tags TEXT NOT NULL DEFAULT '[]'",
@@ -1904,13 +1998,23 @@ export function initDatabase(): void {
     // Off on every existing list: checked lines fold away, as they always
     // have. See Project.showChecked.
     'ALTER TABLE projects ADD COLUMN show_checked INTEGER NOT NULL DEFAULT 0',
+    // Off on every existing project and section: the next task shows, as it
+    // always has. See Project.hideNextStep / TaskGroup.hideNextStep.
+    'ALTER TABLE projects ADD COLUMN hide_next_step INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE task_groups ADD COLUMN hide_next_step INTEGER NOT NULL DEFAULT 0',
     // NULL on every existing project: no event. See Project.eventDate.
     'ALTER TABLE projects ADD COLUMN event_date TEXT',
+    // Where the destination geocoded to; null until the trip page looks it up.
+    // See Project.destinationLatitude.
+    'ALTER TABLE projects ADD COLUMN destination_latitude REAL',
+    'ALTER TABLE projects ADD COLUMN destination_longitude REAL',
     // Off on every existing section. See TaskGroup.checklist.
     'ALTER TABLE task_groups ADD COLUMN checklist INTEGER NOT NULL DEFAULT 0',
     // Empty on every existing recipe: a method heading declared ahead of any
     // step is new. See Recipe.emptyStepSections.
     "ALTER TABLE recipes ADD COLUMN empty_step_sections TEXT NOT NULL DEFAULT '[]'",
+    // NULL on every existing reward: priced in coins only. See Reward.priceMinor.
+    'ALTER TABLE rewards ADD COLUMN price_minor INTEGER',
     // Nullable with no default, for log_meal's reason: NULL is "the setting
     // decides", and a DEFAULT 0 would record every meal ever planned as having
     // declined a freezer reminder. See MealPlanEntry.thawTask.
@@ -1988,6 +2092,56 @@ export function initDatabase(): void {
     "ALTER TABLE calendar_requests ADD COLUMN action TEXT NOT NULL DEFAULT 'create'",
     'ALTER TABLE calendar_requests ADD COLUMN target_request_id TEXT',
     'ALTER TABLE calendar_requests ADD COLUMN changes TEXT',
+    // A window bound that follows the sun ("sunset-30"). NULL on every
+    // existing row: a clock time stays a clock time. See Task.windowStartSun.
+    'ALTER TABLE tasks ADD COLUMN window_start_sun TEXT',
+    'ALTER TABLE tasks ADD COLUMN window_end_sun TEXT',
+    // 'skip' / 'move' for an occurrence the rule lands on a holiday; NULL on
+    // every existing row, which happens anyway. See Task.recurrenceHolidays.
+    'ALTER TABLE tasks ADD COLUMN recurrence_holidays TEXT',
+    // A one-off due at a meter reading ("every 5,000 miles"); NULL on every
+    // existing row, which follows no meter. See Task.meterName.
+    'ALTER TABLE tasks ADD COLUMN meter_name TEXT',
+    'ALTER TABLE tasks ADD COLUMN meter_unit TEXT',
+    'ALTER TABLE tasks ADD COLUMN meter_every REAL',
+    'ALTER TABLE tasks ADD COLUMN meter_due_at REAL',
+    'ALTER TABLE tasks ADD COLUMN meter_limit_months INTEGER',
+    'ALTER TABLE tasks ADD COLUMN meter_held_until TEXT',
+    // Skip an occurrence after rain (Task.rainSkipMm); NULL on every existing
+    // row, which never skips.
+    'ALTER TABLE tasks ADD COLUMN rain_skip_mm REAL',
+    'ALTER TABLE tasks ADD COLUMN rain_skipped_on TEXT',
+    // Ramp up a daily or weekly target (Task.quotaRampStep and friends). NULL
+    // on every existing row, which never ramps; hits start at 0.
+    'ALTER TABLE tasks ADD COLUMN quota_ramp_step INTEGER',
+    'ALTER TABLE tasks ADD COLUMN quota_ramp_every INTEGER',
+    'ALTER TABLE tasks ADD COLUMN quota_ramp_goal INTEGER',
+    'ALTER TABLE tasks ADD COLUMN quota_ramp_hits INTEGER NOT NULL DEFAULT 0',
+    // 0 on every existing row, which keeps the streak counting periods in a
+    // row. See Task.streakCountsUnits.
+    'ALTER TABLE tasks ADD COLUMN streak_counts_units INTEGER NOT NULL DEFAULT 0',
+    // The saved meal completing this task logs straight to the food log. NULL on
+    // every existing row, which is the feature being off. See Task.logSavedMealId.
+    'ALTER TABLE tasks ADD COLUMN log_saved_meal_id TEXT',
+    // The task whose completion wrote this entry, so un-completing it can take
+    // the entry back. NULL on every row but those. See FoodLogEntry.taskId.
+    'ALTER TABLE food_logs ADD COLUMN task_id TEXT',
+    // Null on every existing task: none of them is a look-back. See Task.reviewOfTaskId.
+    'ALTER TABLE tasks ADD COLUMN review_of_task_id TEXT',
+    // Null on every existing entry: all of them were open when written. See
+    // JournalEntry.openOn.
+    'ALTER TABLE journal_entries ADD COLUMN open_on TEXT',
+    // JournalEntry.tags / JournalEntry.personIds: JSON arrays of strings.
+    'ALTER TABLE journal_entries ADD COLUMN tags TEXT',
+    'ALTER TABLE journal_entries ADD COLUMN person_ids TEXT',
+    'CREATE INDEX IF NOT EXISTS idx_meter_readings_key ON meter_readings(meter_key, read_at)',
+    // Off on every existing project: Today keeps its category sections until
+    // a project asks for a band of its own. See Project.groupOnToday.
+    'ALTER TABLE projects ADD COLUMN group_on_today INTEGER NOT NULL DEFAULT 0',
+    // Null on every existing reward: none guards a habit. See Reward.guardsTaskId.
+    'ALTER TABLE rewards ADD COLUMN guards_task_id TEXT',
+    // Null on every existing reward: none is limited. See Reward.claimEveryDays.
+    'ALTER TABLE rewards ADD COLUMN claim_every_days INTEGER',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -2025,8 +2179,23 @@ export function initDatabase(): void {
   for (const sql of backfillStatements()) {
     try { db.runSync(sql); } catch (_) { /* table predates this install */ }
   }
-  for (const sql of installStatements()) {
-    try { db.runSync(sql); } catch (_) { /* trigger or index already current */ }
+  // The reinstall drops and recreates every trigger (so an edited body reaches
+  // an install holding the old one), which is ~350 statements written to the
+  // schema on each cold start. Skipped while the text it would run is what was
+  // last installed here and every trigger is still present; the backfill above
+  // stays unconditional, since it is an index lookup that touches no rows.
+  const signature = installSignature();
+  const triggersPresent = db.getFirstSync<{ n: number }>(
+    "SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'trigger' AND name LIKE '%\\_sync\\_%' ESCAPE '\\'"
+  )?.n ?? 0;
+  const trackingCurrent =
+    dbGetSetting(SYNC_INSTALL_SIGNATURE_KEY) === signature &&
+    triggersPresent >= SYNC_TRACKED_TABLES.length * SYNC_TRIGGERS_PER_TABLE;
+  if (!trackingCurrent) {
+    for (const sql of installStatements()) {
+      try { db.runSync(sql); } catch (_) { /* trigger or index already current */ }
+    }
+    dbSetSetting(SYNC_INSTALL_SIGNATURE_KEY, signature);
   }
   try { dbPruneSyncDeletions(); } catch (_) { /* nothing to prune */ }
 
@@ -2374,6 +2543,10 @@ export const BACKUP_TABLES = [
   'mood_logs',
   // Also points at nothing, for the same reason and beside the same neighbor.
   'milestones',
+  // Copy flags point at nothing.
+  'copy_flags',
+  // Meter readings point at nothing: the meter is a name, not a row.
+  'meter_readings',
   // Journal and dream entries: standalone, beside the mood log they grew out of.
   'journal_entries',
   // After people: a link names people by id, so they are restored first.
@@ -2465,6 +2638,16 @@ export const BACKUP_EXCLUDED_TABLES = [
   // from another day (or another phone) over a task list that has since moved
   // on; there is nothing here a user would miss having back.
   'focus_sessions',
+  // Meals waiting for an estimate (see utils/estimateQueue.ts). A request
+  // belongs to the phone that lost its signal, and restoring one onto another
+  // phone, or days later, would ask the model about a meal nobody is waiting
+  // on. Restore replaces the food log wholesale; a stale queue would sit beside
+  // it offering to log entries into a day that has been rewritten.
+  'pending_estimates',
+  // The recipe counterpart, excluded for the same reason and one more: its
+  // rows are believed only against a fingerprint of ingredient lines that a
+  // restore is about to rewrite.
+  'pending_recipe_estimates',
 ] as const;
 
 /** The live column names of a table, straight from the schema. */
@@ -3379,6 +3562,8 @@ function rowToTask(row: Record<string, unknown>): Task {
     timeSegments: parseTimeSegments(row.time_of_day),
     windowStart: (row.window_start as string) ?? null,
     windowEnd: (row.window_end as string) ?? null,
+    windowStartSun: (row.window_start_sun as string) ?? null,
+    windowEndSun: (row.window_end_sun as string) ?? null,
     recurrenceType: (row.recurrence_type as Task['recurrenceType']) ?? 'none',
     recurrenceInterval: (row.recurrence_interval as number) ?? 1,
     recurrenceDays: JSON.parse((row.recurrence_days as string) ?? '[]') as number[],
@@ -3393,6 +3578,22 @@ function rowToTask(row: Record<string, unknown>): Task {
     recurrenceEndDate: (row.recurrence_end_date as string) ?? null,
     recurrenceCount: (row.recurrence_count as number | null) ?? null,
     recurrenceFromCompletion: Boolean(row.recurrence_from_completion),
+    recurrenceHolidays: row.recurrence_holidays === 'skip' || row.recurrence_holidays === 'move' ? row.recurrence_holidays : null,
+    meterName: (row.meter_name as string | null) ?? null,
+    meterUnit: (row.meter_unit as string | null) ?? null,
+    meterEvery: (row.meter_every as number | null) ?? null,
+    meterDueAt: (row.meter_due_at as number | null) ?? null,
+    meterLimitMonths: (row.meter_limit_months as number | null) ?? null,
+    meterHeldUntil: (row.meter_held_until as string | null) ?? null,
+    rainSkipMm: (row.rain_skip_mm as number | null) ?? null,
+    rainSkippedOn: (row.rain_skipped_on as string | null) ?? null,
+    quotaRampStep: (row.quota_ramp_step as number | null) ?? null,
+    quotaRampEvery: (row.quota_ramp_every as number | null) ?? null,
+    quotaRampGoal: (row.quota_ramp_goal as number | null) ?? null,
+    quotaRampHits: (row.quota_ramp_hits as number | null) ?? 0,
+    streakCountsUnits: Boolean(row.streak_counts_units),
+    logSavedMealId: (row.log_saved_meal_id as string | null) || null,
+    reviewOfTaskId: (row.review_of_task_id as string | null) ?? null,
     targetCount: (row.target_count as number | null) ?? null,
     progressCount: (row.progress_count as number) ?? 0,
     targetUnit: (row.target_unit as string | null) ?? null,
@@ -3603,8 +3804,10 @@ export function dbInsertTask(task: Task): void {
       estimate_before_timing, waiting_on_person_since, waiting_follow_up_declined_at,
       reminder_tracks_visibility, recurrence_month,
       blocked_by_ids, deliverable_options, deliverable_sets_away, follow_up_on, extra_task_source_id,
-      pin_each_occurrence, bounty_pushes, difficulty, answer_gate, deliverable_why, deliverable_revisit_if, extra_task_at_end, weather_wait, wait_for_series_end, rotation_plan, slip_allowance, done_by_other_at
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      pin_each_occurrence, bounty_pushes, difficulty, answer_gate, deliverable_why, deliverable_revisit_if, extra_task_at_end, weather_wait, wait_for_series_end, rotation_plan, slip_allowance, done_by_other_at, window_start_sun, window_end_sun, recurrence_holidays,
+      meter_name, meter_unit, meter_every, meter_due_at, meter_limit_months, meter_held_until, rain_skip_mm, rain_skipped_on, review_of_task_id,
+      quota_ramp_step, quota_ramp_every, quota_ramp_goal, quota_ramp_hits, streak_counts_units, log_saved_meal_id
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deadlineTime ?? null, task.deferUntil,
@@ -3730,6 +3933,23 @@ export function dbInsertTask(task: Task): void {
       task.rotationPlan ? JSON.stringify(task.rotationPlan) : null,
       task.slipAllowance ?? null,
       task.doneByOtherAt ?? null,
+      task.windowStartSun ?? null, task.windowEndSun ?? null,
+      task.recurrenceHolidays ?? null,
+      task.meterName ?? null,
+      task.meterUnit ?? null,
+      task.meterEvery ?? null,
+      task.meterDueAt ?? null,
+      task.meterLimitMonths ?? null,
+      task.meterHeldUntil ?? null,
+      task.rainSkipMm ?? null,
+      task.rainSkippedOn ?? null,
+      task.reviewOfTaskId ?? null,
+      task.quotaRampStep ?? null,
+      task.quotaRampEvery ?? null,
+      task.quotaRampGoal ?? null,
+      task.quotaRampHits ?? 0,
+      task.streakCountsUnits ? 1 : 0,
+      task.logSavedMealId ?? null,
     ]
   );
 }
@@ -3766,7 +3986,9 @@ export function dbUpdateTask(task: Task): void {
       estimate_before_timing=?, waiting_on_person_since=?, waiting_follow_up_declined_at=?,
       reminder_tracks_visibility=?, recurrence_month=?,
       blocked_by_ids=?, deliverable_options=?, deliverable_sets_away=?, follow_up_on=?, extra_task_source_id=?,
-      pin_each_occurrence=?, bounty_pushes=?, difficulty=?, answer_gate=?, deliverable_why=?, deliverable_revisit_if=?, extra_task_at_end=?, weather_wait=?, wait_for_series_end=?, rotation_plan=?, slip_allowance=?, done_by_other_at=?
+      pin_each_occurrence=?, bounty_pushes=?, difficulty=?, answer_gate=?, deliverable_why=?, deliverable_revisit_if=?, extra_task_at_end=?, weather_wait=?, wait_for_series_end=?, rotation_plan=?, slip_allowance=?, done_by_other_at=?, window_start_sun=?, window_end_sun=?, recurrence_holidays=?,
+      meter_name=?, meter_unit=?, meter_every=?, meter_due_at=?, meter_limit_months=?, meter_held_until=?, rain_skip_mm=?, rain_skipped_on=?, review_of_task_id=?,
+      quota_ramp_step=?, quota_ramp_every=?, quota_ramp_goal=?, quota_ramp_hits=?, streak_counts_units=?, log_saved_meal_id=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -3893,6 +4115,23 @@ export function dbUpdateTask(task: Task): void {
       task.rotationPlan ? JSON.stringify(task.rotationPlan) : null,
       task.slipAllowance ?? null,
       task.doneByOtherAt ?? null,
+      task.windowStartSun ?? null, task.windowEndSun ?? null,
+      task.recurrenceHolidays ?? null,
+      task.meterName ?? null,
+      task.meterUnit ?? null,
+      task.meterEvery ?? null,
+      task.meterDueAt ?? null,
+      task.meterLimitMonths ?? null,
+      task.meterHeldUntil ?? null,
+      task.rainSkipMm ?? null,
+      task.rainSkippedOn ?? null,
+      task.reviewOfTaskId ?? null,
+      task.quotaRampStep ?? null,
+      task.quotaRampEvery ?? null,
+      task.quotaRampGoal ?? null,
+      task.quotaRampHits ?? 0,
+      task.streakCountsUnits ? 1 : 0,
+      task.logSavedMealId ?? null,
       task.id,
     ]
   );
@@ -4510,6 +4749,7 @@ function rowToTaskGroup(row: Record<string, unknown>): TaskGroup {
     onToday: Boolean(row.on_today),
     projectId: (row.project_id as string) ?? null,
     checklist: row.checklist === 1,
+    hideNextStep: row.hide_next_step === 1,
   };
 }
 
@@ -4523,22 +4763,22 @@ export function dbInsertTaskGroup(group: TaskGroup): void {
     // completed_at is deliberately absent: it held the old "stack dismissed
     // for today" stamp, which no longer exists (see TaskGroup). The column
     // stays on the table for installs that already have it, and stays null.
-    'INSERT INTO task_groups (id, title, notes, tags, category, sort_order, collapsed, on_today, project_id, checklist) VALUES (?,?,?,?,?,?,?,?,?,?)',
+    'INSERT INTO task_groups (id, title, notes, tags, category, sort_order, collapsed, on_today, project_id, checklist, hide_next_step) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
     [
       group.id, group.title, group.notes, JSON.stringify(group.tags),
       group.category ?? null, group.sortOrder, group.collapsed ? 1 : 0,
-      group.onToday ? 1 : 0, group.projectId ?? null, group.checklist ? 1 : 0,
+      group.onToday ? 1 : 0, group.projectId ?? null, group.checklist ? 1 : 0, group.hideNextStep ? 1 : 0,
     ]
   );
 }
 
 export function dbUpdateTaskGroup(group: TaskGroup): void {
   db.runSync(
-    'UPDATE task_groups SET title=?, notes=?, tags=?, category=?, sort_order=?, collapsed=?, on_today=?, project_id=?, checklist=? WHERE id=?',
+    'UPDATE task_groups SET title=?, notes=?, tags=?, category=?, sort_order=?, collapsed=?, on_today=?, project_id=?, checklist=?, hide_next_step=? WHERE id=?',
     [
       group.title, group.notes, JSON.stringify(group.tags),
       group.category ?? null, group.sortOrder, group.collapsed ? 1 : 0,
-      group.onToday ? 1 : 0, group.projectId ?? null, group.checklist ? 1 : 0, group.id,
+      group.onToday ? 1 : 0, group.projectId ?? null, group.checklist ? 1 : 0, group.hideNextStep ? 1 : 0, group.id,
     ]
   );
 }
@@ -6687,6 +6927,9 @@ function rowToJournalEntry(row: Record<string, unknown>): JournalEntry {
     loggedAt: row.logged_at as string,
     dayKey: row.day_key as string,
     text: row.text as string,
+    openOn: typeof row.open_on === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(row.open_on) ? row.open_on : null,
+    tags: parseStringList(row.tags),
+    personIds: parseStringList(row.person_ids),
   };
 }
 
@@ -6703,14 +6946,28 @@ export function dbGetAllJournalEntries(): JournalEntry[] {
 
 export function dbInsertJournalEntry(entry: JournalEntry): void {
   db.runSync(
-    'INSERT INTO journal_entries (id, kind, logged_at, day_key, text) VALUES (?, ?, ?, ?, ?)',
-    [entry.id, entry.kind, entry.loggedAt, entry.dayKey, entry.text]
+    'INSERT INTO journal_entries (id, kind, logged_at, day_key, text, open_on, tags, person_ids) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    [
+      entry.id, entry.kind, entry.loggedAt, entry.dayKey, entry.text, entry.openOn ?? null,
+      entry.tags?.length ? JSON.stringify(entry.tags) : null,
+      entry.personIds?.length ? JSON.stringify(entry.personIds) : null,
+    ]
   );
 }
 
-/** Only the words change: an entry's day is fixed once written, as a mood entry's is. */
+/**
+ * The words, the tags, the people and the day it opens change: an entry's day
+ * is fixed once written, as a mood entry's is. `openOn` only ever clears here
+ * (opened early).
+ */
 export function dbUpdateJournalEntry(entry: JournalEntry): void {
-  db.runSync('UPDATE journal_entries SET text=? WHERE id=?', [entry.text, entry.id]);
+  db.runSync('UPDATE journal_entries SET text=?, open_on=?, tags=?, person_ids=? WHERE id=?', [
+    entry.text,
+    entry.openOn ?? null,
+    entry.tags?.length ? JSON.stringify(entry.tags) : null,
+    entry.personIds?.length ? JSON.stringify(entry.personIds) : null,
+    entry.id,
+  ]);
 }
 
 export function dbDeleteJournalEntry(id: string): void {
@@ -6785,6 +7042,72 @@ export function dbUpdateMilestone(milestone: Milestone): void {
 
 export function dbDeleteMilestone(id: string): void {
   db.runSync('DELETE FROM milestones WHERE id = ?', [id]);
+}
+
+function rowToCopyFlag(row: Record<string, unknown>): CopyFlag {
+  return {
+    id: row.id as string,
+    text: row.text as string,
+    screen: row.screen as string,
+    note: row.note as string,
+    status: row.status === 'resolved' ? 'resolved' : 'open',
+    resolution: row.resolution as string,
+    createdAt: row.created_at as string,
+  };
+}
+
+/** Every copy flag, newest first. */
+export function dbGetAllCopyFlags(): CopyFlag[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    'SELECT * FROM copy_flags ORDER BY created_at DESC'
+  );
+  return rows.map(rowToCopyFlag);
+}
+
+export function dbInsertCopyFlag(flag: CopyFlag): void {
+  db.runSync(
+    `INSERT INTO copy_flags (id, text, screen, note, status, resolution, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [flag.id, flag.text, flag.screen, flag.note, flag.status, flag.resolution, flag.createdAt]
+  );
+}
+
+export function dbUpdateCopyFlag(flag: CopyFlag): void {
+  db.runSync(
+    `UPDATE copy_flags SET note=?, status=?, resolution=? WHERE id=?`,
+    [flag.note, flag.status, flag.resolution, flag.id]
+  );
+}
+
+export function dbDeleteCopyFlag(id: string): void {
+  db.runSync('DELETE FROM copy_flags WHERE id = ?', [id]);
+}
+
+function rowToMeterReading(row: Record<string, unknown>): MeterReading {
+  return {
+    id: row.id as string,
+    meterKey: row.meter_key as string,
+    meterName: row.meter_name as string,
+    value: row.value as number,
+    readAt: row.read_at as string,
+    createdAt: row.created_at as string,
+  };
+}
+
+export function dbGetAllMeterReadings(): MeterReading[] {
+  return db
+    .getAllSync<Record<string, unknown>>('SELECT * FROM meter_readings ORDER BY read_at ASC')
+    .map(rowToMeterReading);
+}
+
+export function dbInsertMeterReading(reading: MeterReading): void {
+  db.runSync(
+    'INSERT INTO meter_readings (id, meter_key, meter_name, value, read_at, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    [reading.id, reading.meterKey, reading.meterName, reading.value, reading.readAt, reading.createdAt]
+  );
+}
+
+export function dbDeleteMeterReading(id: string): void {
+  db.runSync('DELETE FROM meter_readings WHERE id = ?', [id]);
 }
 
 function rowToEventPeopleLink(row: Record<string, unknown>): EventPeopleLink {
@@ -6926,6 +7249,10 @@ function rowToMedicationLog(row: Record<string, unknown>): MedicationLog {
     asNeeded: row.as_needed === 1,
     taskId: (row.task_id as string | null) || null,
     note: (row.note as string) || null,
+    // Both columns or neither, like amount and unit above.
+    ...(typeof row.strength_amount === 'number' && Number.isFinite(row.strength_amount) && row.strength_amount > 0 && row.strength_unit
+      ? { strength: { amount: row.strength_amount, unit: row.strength_unit as string } }
+      : {}),
   };
 }
 
@@ -6938,18 +7265,18 @@ export function dbGetAllMedicationLogs(): MedicationLog[] {
 
 export function dbInsertMedicationLog(log: MedicationLog): void {
   db.runSync(
-    `INSERT INTO medication_logs (id, name, taken_at, day_key, amount, unit, as_needed, task_id, note)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO medication_logs (id, name, taken_at, day_key, amount, unit, as_needed, task_id, note, strength_amount, strength_unit)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [log.id, log.name, log.takenAt, log.dayKey, log.amount, log.unit,
-     log.asNeeded ? 1 : 0, log.taskId, log.note]
+     log.asNeeded ? 1 : 0, log.taskId, log.note, log.strength?.amount ?? null, log.strength?.unit ?? null]
   );
 }
 
 export function dbUpdateMedicationLog(log: MedicationLog): void {
   db.runSync(
-    `UPDATE medication_logs SET name=?, taken_at=?, day_key=?, amount=?, unit=?, as_needed=?, task_id=?, note=? WHERE id=?`,
+    `UPDATE medication_logs SET name=?, taken_at=?, day_key=?, amount=?, unit=?, as_needed=?, task_id=?, note=?, strength_amount=?, strength_unit=? WHERE id=?`,
     [log.name, log.takenAt, log.dayKey, log.amount, log.unit,
-     log.asNeeded ? 1 : 0, log.taskId, log.note, log.id]
+     log.asNeeded ? 1 : 0, log.taskId, log.note, log.strength?.amount ?? null, log.strength?.unit ?? null, log.id]
   );
 }
 
@@ -7015,6 +7342,9 @@ function rowToReward(row: Record<string, unknown>): Reward {
     note: (row.note as string | null) || null,
     oneTime: row.one_time === 1 || !!row.task_id,
     taskId: (row.task_id as string | null) || null,
+    priceMinor: row.price_minor == null ? null : Math.max(1, Math.round(Number(row.price_minor)) || 1),
+    guardsTaskId: (row.guards_task_id as string | null) || null,
+    claimEveryDays: row.claim_every_days == null ? null : Math.max(1, Math.round(Number(row.claim_every_days)) || 1),
   };
 }
 
@@ -7026,15 +7356,15 @@ export function dbGetAllRewards(): Reward[] {
 
 export function dbInsertReward(reward: Reward): void {
   db.runSync(
-    'INSERT INTO rewards (id, title, cost, created_at, link_url, note, one_time, task_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    [reward.id, reward.title, reward.cost, reward.createdAt, reward.linkUrl, reward.note, reward.oneTime ? 1 : 0, reward.taskId]
+    'INSERT INTO rewards (id, title, cost, created_at, link_url, note, one_time, task_id, price_minor, guards_task_id, claim_every_days) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [reward.id, reward.title, reward.cost, reward.createdAt, reward.linkUrl, reward.note, reward.oneTime ? 1 : 0, reward.taskId, reward.priceMinor, reward.guardsTaskId, reward.claimEveryDays]
   );
 }
 
 export function dbUpdateReward(reward: Reward): void {
   db.runSync(
-    'UPDATE rewards SET title=?, cost=?, link_url=?, note=?, one_time=?, task_id=? WHERE id=?',
-    [reward.title, reward.cost, reward.linkUrl, reward.note, reward.oneTime ? 1 : 0, reward.taskId, reward.id]
+    'UPDATE rewards SET title=?, cost=?, link_url=?, note=?, one_time=?, task_id=?, price_minor=?, guards_task_id=?, claim_every_days=? WHERE id=?',
+    [reward.title, reward.cost, reward.linkUrl, reward.note, reward.oneTime ? 1 : 0, reward.taskId, reward.priceMinor, reward.guardsTaskId, reward.claimEveryDays, reward.id]
   );
 }
 
@@ -7079,6 +7409,7 @@ function rowToFoodLogEntry(row: Record<string, unknown>): FoodLogEntry | null {
     itemId: (row.item_id as string) || null,
     productId: (row.product_id as string) || null,
     mealPlanEntryId: (row.meal_plan_entry_id as string) || null,
+    taskId: (row.task_id as string) || null,
     quantity: (row.quantity as string) ?? '',
     grams: typeof row.grams === 'number' && Number.isFinite(row.grams) ? row.grams : null,
     nutrition,
@@ -7147,15 +7478,15 @@ export function dbInsertFoodLogEntry(entry: FoodLogEntry): void {
   db.runSync(
     `INSERT INTO food_logs (id, day_key, at_iso, slot, label, recipe_id, item_id, product_id,
        meal_plan_entry_id, quantity, grams, nutrition, source_panel, health_sample_ids,
-       health_write_pending, sort_order, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       health_write_pending, sort_order, created_at, task_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       entry.id, entry.dayKey, entry.atISO, entry.slot, entry.label,
       entry.recipeId, entry.itemId, entry.productId, entry.mealPlanEntryId,
       entry.quantity, entry.grams, serializeFoodNutrition(entry.nutrition),
       serializeFoodNutrition(entry.sourcePanel ?? null),
       JSON.stringify(entry.healthSampleIds), entry.healthWritePending ? 1 : 0,
-      entry.sortOrder, entry.createdAt,
+      entry.sortOrder, entry.createdAt, entry.taskId ?? null,
     ]
   );
 }
@@ -7175,6 +7506,19 @@ export function dbUpdateFoodLogEntry(entry: FoodLogEntry): void {
       entry.sortOrder, entry.id,
     ]
   );
+}
+
+/**
+ * Every entry a task's completion wrote, on any day. The range read the screens
+ * use can't answer this: un-completing a task from last week has to find the
+ * entry dated last week.
+ */
+export function dbGetFoodLogEntriesForTask(taskId: string): FoodLogEntry[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    'SELECT * FROM food_logs WHERE task_id = ? ORDER BY at_iso ASC',
+    [taskId]
+  );
+  return rows.map(rowToFoodLogEntry).filter((e): e is FoodLogEntry => e !== null);
 }
 
 export function dbDeleteFoodLogEntry(id: string): void {
@@ -7295,6 +7639,164 @@ export function dbInsertSavedMeal(meal: SavedMeal): void {
 
 export function dbDeleteSavedMeal(id: string): void {
   db.runSync('DELETE FROM saved_meals WHERE id = ?', [id]);
+}
+
+// ─── Pending estimates (the offline food log queue) ──────────────────────────
+
+/**
+ * One queued row back into a `PendingEstimate`, resolve-or-shrug like the
+ * other JSON columns here. A `ready` row whose estimate won't parse reads as
+ * `waiting` again, so the figures are asked for afresh rather than the meal
+ * being lost.
+ */
+function rowToPendingEstimate(row: Record<string, unknown>): PendingEstimate | null {
+  const description = typeof row.description === 'string' ? row.description : '';
+  const atISO = typeof row.at_iso === 'string' ? row.at_iso : '';
+  if (!description || !atISO) return null;
+
+  let context: PendingEstimate['context'] = [];
+  try {
+    const parsed = JSON.parse((row.context as string) ?? '[]');
+    if (Array.isArray(parsed)) context = parsed;
+  } catch {
+    // No context is a valid, weaker request.
+  }
+
+  let estimate: PendingEstimate['estimate'] = null;
+  if (typeof row.estimate === 'string' && row.estimate) {
+    try {
+      const parsed = JSON.parse(row.estimate);
+      if (parsed && typeof parsed === 'object' && parsed.amounts && typeof parsed.label === 'string') estimate = parsed;
+    } catch {
+      // Falls through to the status check below.
+    }
+  }
+
+  let status: PendingEstimate['status'] = row.status === 'ready' || row.status === 'failed' ? row.status : 'waiting';
+  if (status === 'ready' && !estimate) status = 'waiting';
+
+  return {
+    id: row.id as string,
+    description,
+    slot: (MEAL_SLOTS as readonly string[]).includes(row.slot as string) ? (row.slot as MealSlot) : null,
+    atISO,
+    mealPlanEntryId: typeof row.meal_plan_entry_id === 'string' ? row.meal_plan_entry_id : null,
+    context,
+    status,
+    estimate: status === 'ready' ? estimate : null,
+    estimatedAtISO: status === 'ready' && typeof row.estimated_at === 'string' ? row.estimated_at : null,
+    error: typeof row.error === 'string' ? row.error : null,
+    createdAt: row.created_at as string,
+  };
+}
+
+/** Every queued meal, in the order they were eaten. */
+export function dbGetPendingEstimates(): PendingEstimate[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    'SELECT * FROM pending_estimates ORDER BY at_iso ASC, created_at ASC'
+  );
+  return rows.map(rowToPendingEstimate).filter((p): p is PendingEstimate => p !== null);
+}
+
+/** Inserts a row, or rewrites it in place when the id is already queued. */
+export function dbSavePendingEstimate(p: PendingEstimate): void {
+  db.runSync(
+    `INSERT OR REPLACE INTO pending_estimates
+       (id, description, slot, at_iso, meal_plan_entry_id, context, status, estimate, estimated_at, error, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      p.id,
+      p.description,
+      p.slot,
+      p.atISO,
+      p.mealPlanEntryId,
+      JSON.stringify(p.context),
+      p.status,
+      p.estimate ? JSON.stringify(p.estimate) : null,
+      p.estimatedAtISO,
+      p.error,
+      p.createdAt,
+    ]
+  );
+}
+
+export function dbDeletePendingEstimate(id: string): void {
+  db.runSync('DELETE FROM pending_estimates WHERE id = ?', [id]);
+}
+
+// ─── Pending recipe estimates ────────────────────────────────────────────────
+
+/**
+ * A queued recipe estimate back out of its row. A `ready` row whose estimate
+ * won't parse reads as `waiting` again, the call `rowToPendingEstimate` makes.
+ */
+function rowToPendingRecipeEstimate(row: Record<string, unknown>): PendingRecipeEstimate | null {
+  const recipeId = typeof row.recipe_id === 'string' ? row.recipe_id : '';
+  const estimateKey = typeof row.estimate_key === 'string' ? row.estimate_key : '';
+  const title = typeof row.title === 'string' ? row.title : '';
+  if (!recipeId || !estimateKey) return null;
+
+  let lines: string[] = [];
+  try {
+    const parsed = JSON.parse((row.lines as string) ?? '[]');
+    if (Array.isArray(parsed)) lines = parsed.filter((l): l is string => typeof l === 'string');
+  } catch {
+    // Fall through: no lines cannot be asked about.
+  }
+  if (lines.length === 0) return null;
+
+  let estimate: PendingRecipeEstimate['estimate'] = null;
+  if (typeof row.estimate === 'string' && row.estimate) {
+    try {
+      const parsed = JSON.parse(row.estimate);
+      if (parsed && typeof parsed === 'object' && parsed.amounts && typeof parsed.amounts === 'object') estimate = parsed;
+    } catch {
+      // Falls through to the status check below.
+    }
+  }
+  let status: PendingRecipeEstimate['status'] = row.status === 'ready' || row.status === 'failed' ? row.status : 'waiting';
+  if (status === 'ready' && !estimate) status = 'waiting';
+
+  return {
+    recipeId,
+    estimateKey,
+    title,
+    servings: typeof row.servings === 'number' && Number.isFinite(row.servings) ? row.servings : null,
+    lines,
+    status,
+    estimate: status === 'ready' ? estimate : null,
+    error: typeof row.error === 'string' ? row.error : null,
+    createdAt: row.created_at as string,
+  };
+}
+
+export function dbGetPendingRecipeEstimates(): PendingRecipeEstimate[] {
+  const rows = db.getAllSync<Record<string, unknown>>('SELECT * FROM pending_recipe_estimates ORDER BY created_at ASC');
+  return rows.map(rowToPendingRecipeEstimate).filter((p): p is PendingRecipeEstimate => p !== null);
+}
+
+/** Inserts a row, or replaces the recipe's existing one. */
+export function dbSavePendingRecipeEstimate(p: PendingRecipeEstimate): void {
+  db.runSync(
+    `INSERT OR REPLACE INTO pending_recipe_estimates
+       (recipe_id, estimate_key, title, servings, lines, status, estimate, error, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      p.recipeId,
+      p.estimateKey,
+      p.title,
+      p.servings,
+      JSON.stringify(p.lines),
+      p.status,
+      p.estimate ? JSON.stringify(p.estimate) : null,
+      p.error,
+      p.createdAt,
+    ]
+  );
+}
+
+export function dbDeletePendingRecipeEstimate(recipeId: string): void {
+  db.runSync('DELETE FROM pending_recipe_estimates WHERE recipe_id = ?', [recipeId]);
 }
 
 export function dbGetMealPlanEntry(id: string): MealPlanEntry | null {
@@ -7681,11 +8183,15 @@ function rowToProject(row: Record<string, unknown>): Project {
     awayListId: (row.away_list_id as string) ?? null,
     awayListDeclinedFor: (row.away_list_declined_for as string) ?? null,
     destination: (row.destination as string) ?? null,
+    destinationLatitude: (row.destination_latitude as number | null) ?? null,
+    destinationLongitude: (row.destination_longitude as number | null) ?? null,
     pausedUntil: (row.paused_until as string) ?? null,
     personIds: parseStringList(row.person_ids),
     links: parseProjectLinks(row.links),
     inOrder: row.in_order === 1,
     showChecked: row.show_checked === 1,
+    hideNextStep: row.hide_next_step === 1,
+    groupOnToday: row.group_on_today === 1,
     eventDate: (row.event_date as string) ?? null,
     taskDefaults: parseTaskFieldDefaults(row.task_defaults),
   };
@@ -7698,7 +8204,7 @@ export function dbGetAllProjects(): Project[] {
 
 export function dbInsertProject(project: Project): void {
   db.runSync(
-    'INSERT INTO projects (id, title, notes, target_end_date, category, default_task_category, sort_order, archived, archived_at, completed, completed_at, ongoing, created_at, nudge_cadence_days, auto_schedule, nudge_opt_in, weekend_source, review_declined_at, reviewed_at, backfill_dismissed_fields, kind, away_start, away_end, away_pauses, away_pause_declined_for, destination, away_list_id, away_list_declined_for, paused_until, person_ids, links, in_order, show_checked, event_date, task_defaults) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    'INSERT INTO projects (id, title, notes, target_end_date, category, default_task_category, sort_order, archived, archived_at, completed, completed_at, ongoing, created_at, nudge_cadence_days, auto_schedule, nudge_opt_in, weekend_source, review_declined_at, reviewed_at, backfill_dismissed_fields, kind, away_start, away_end, away_pauses, away_pause_declined_for, destination, away_list_id, away_list_declined_for, paused_until, person_ids, links, in_order, show_checked, hide_next_step, event_date, task_defaults, destination_latitude, destination_longitude, group_on_today) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
     [
       project.id, project.title, project.notes, project.deadline,
       project.category, project.defaultTaskCategory, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
@@ -7709,16 +8215,18 @@ export function dbInsertProject(project: Project): void {
       project.awayStart, project.awayEnd,
       project.awayPauses ? 1 : 0, project.awayPauseDeclinedFor, project.destination,
       project.awayListId, project.awayListDeclinedFor, project.pausedUntil,
-      JSON.stringify(project.personIds ?? []), JSON.stringify(project.links ?? []), project.inOrder ? 1 : 0, project.showChecked ? 1 : 0,
+      JSON.stringify(project.personIds ?? []), JSON.stringify(project.links ?? []), project.inOrder ? 1 : 0, project.showChecked ? 1 : 0, project.hideNextStep ? 1 : 0,
       project.eventDate ?? null,
       serializeTaskFieldDefaults(project.taskDefaults),
+      project.destinationLatitude ?? null, project.destinationLongitude ?? null,
+      project.groupOnToday ? 1 : 0,
     ]
   );
 }
 
 export function dbUpdateProject(project: Project): void {
   db.runSync(
-    'UPDATE projects SET title=?, notes=?, target_end_date=?, category=?, default_task_category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, ongoing=?, nudge_cadence_days=?, auto_schedule=?, nudge_opt_in=?, weekend_source=?, review_declined_at=?, reviewed_at=?, backfill_dismissed_fields=?, kind=?, away_start=?, away_end=?, away_pauses=?, away_pause_declined_for=?, destination=?, away_list_id=?, away_list_declined_for=?, paused_until=?, person_ids=?, links=?, in_order=?, show_checked=?, event_date=?, task_defaults=? WHERE id=?',
+    'UPDATE projects SET title=?, notes=?, target_end_date=?, category=?, default_task_category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, ongoing=?, nudge_cadence_days=?, auto_schedule=?, nudge_opt_in=?, weekend_source=?, review_declined_at=?, reviewed_at=?, backfill_dismissed_fields=?, kind=?, away_start=?, away_end=?, away_pauses=?, away_pause_declined_for=?, destination=?, away_list_id=?, away_list_declined_for=?, paused_until=?, person_ids=?, links=?, in_order=?, show_checked=?, hide_next_step=?, event_date=?, task_defaults=?, destination_latitude=?, destination_longitude=?, group_on_today=? WHERE id=?',
     [
       project.title, project.notes, project.deadline,
       project.category, project.defaultTaskCategory, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
@@ -7729,9 +8237,11 @@ export function dbUpdateProject(project: Project): void {
       project.awayStart, project.awayEnd,
       project.awayPauses ? 1 : 0, project.awayPauseDeclinedFor, project.destination,
       project.awayListId, project.awayListDeclinedFor, project.pausedUntil,
-      JSON.stringify(project.personIds ?? []), JSON.stringify(project.links ?? []), project.inOrder ? 1 : 0, project.showChecked ? 1 : 0,
+      JSON.stringify(project.personIds ?? []), JSON.stringify(project.links ?? []), project.inOrder ? 1 : 0, project.showChecked ? 1 : 0, project.hideNextStep ? 1 : 0,
       project.eventDate ?? null,
       serializeTaskFieldDefaults(project.taskDefaults),
+      project.destinationLatitude ?? null, project.destinationLongitude ?? null,
+      project.groupOnToday ? 1 : 0,
       project.id,
     ]
   );

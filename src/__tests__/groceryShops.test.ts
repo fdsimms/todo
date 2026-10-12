@@ -464,7 +464,7 @@ describe('describeShopDelete', () => {
       { ...link('bread', safeway.id, 1), lastPriceMinor: 300 },
     ];
     expect(describeShopDelete(costco.id, CATALOG, links, [], costco.id)).toBe(
-      '2 items are recorded as coming from here. Deleting the store forgets that. The items themselves stay.'
+      '2 items are recorded as coming from here. Deleting the store removes that record. The items stay.'
         + ' The prices recorded here for 1 item go too. Your shopping trip here ends. This can’t be undone.'
     );
   });

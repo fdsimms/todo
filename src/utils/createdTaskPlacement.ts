@@ -22,11 +22,11 @@ export function describeCreatedTaskPlacement(
 ): string {
   switch (destination) {
     case 'later':
-      return `Created "${task.title}" for ${formatTaskDate(task, dayResetTime) ?? 'later'}`;
+      return `Created “${task.title}” for ${formatTaskDate(task, dayResetTime) ?? 'later'}`;
     case 'unscheduled':
-      return `Created "${task.title}" in Unscheduled`;
+      return `Created “${task.title}” in Unscheduled`;
     case 'inbox':
-      return `Created "${task.title}" in Inbox`;
+      return `Created “${task.title}” in Inbox`;
   }
 }
 
@@ -45,10 +45,10 @@ export function describeMovedTaskPlacement(
 ): string {
   switch (destination) {
     case 'later':
-      return `Moved "${task.title}" to ${formatTaskDate(task, dayResetTime) ?? 'Later'}`;
+      return `Moved “${task.title}” to ${formatTaskDate(task, dayResetTime) ?? 'Later'}`;
     case 'unscheduled':
-      return `Moved "${task.title}" to Unscheduled`;
+      return `Moved “${task.title}” to Unscheduled`;
     case 'inbox':
-      return `Moved "${task.title}" to Inbox`;
+      return `Moved “${task.title}” to Inbox`;
   }
 }

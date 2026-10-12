@@ -65,11 +65,11 @@ describe('readRecipeNutritionEstimate', () => {
 describe('describeRecipeNutritionEstimate', () => {
   it('says the weaker claim out loud rather than hiding it', () => {
     expect(describeRecipeNutritionEstimate(estimate({ confidence: 'high' })))
-      .toBe('Read from the ingredient list, not measured.');
+      .toBe('Estimated from the ingredient list.');
     expect(describeRecipeNutritionEstimate(estimate({ confidence: 'medium' })))
-      .toBe('Read from the ingredient list, not measured. Close, not exact.');
+      .toBe('Estimated from the ingredient list. Likely close.');
     expect(describeRecipeNutritionEstimate(estimate({ confidence: 'low' })))
-      .toBe('Read from the ingredient list, not measured. A rough guess.');
+      .toBe('Estimated from the ingredient list. A rough guess.');
   });
 
   it('never advises, never judges the dish, and never quotes a figure', () => {

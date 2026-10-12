@@ -169,7 +169,7 @@ describe('cookQuestionContext', () => {
 describe('suggestedCookQuestions', () => {
   it('always offers the two questions any step can raise', () => {
     expect(suggestedCookQuestions('Stir.', [])).toEqual([
-      'How do I know when it\'s done?',
+      'How do I know when it’s done?',
       'Can I do this part ahead?',
     ]);
   });

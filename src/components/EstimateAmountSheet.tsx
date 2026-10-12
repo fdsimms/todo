@@ -282,12 +282,22 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel
                   the figures are what the choice is being made on. A
                   count already says its amount in the row above. */}
               {!counted && !!patch.quantity && <Text style={styles.amount}>{patch.quantity}</Text>}
+              {/* The parts scale with the total, so the choice can be checked
+                  against what each one comes to. */}
+              {(patch.nutrition.breakdown ?? []).map((line, index) => (
+                <View key={`${index}-${line.label}`} style={styles.partRow}>
+                  <Text style={[styles.amount, styles.partLabel]}>{line.label}</Text>
+                  {line.amounts.calorieKcal !== undefined && (
+                    <Text style={styles.amount}>{Math.round(line.amounts.calorieKcal).toLocaleString()} cal</Text>
+                  )}
+                </View>
+              ))}
             </View>
           )}
           <Text style={styles.hint}>
             {counted
-              ? `The estimate was ${wholeKcalText ? `${wholeKcalText} ` : ''}for ${whole?.servingText ?? ''}. The figures change with the count, so nothing new is guessed. Setting it back to ${formatQuantityAmount(counted.count, counted.decimal)} puts them back.`
-              : `The figures are the estimate for the whole meal${wholeKcalText ? ` (${wholeKcalText})` : ''}, scaled to your choice, so nothing new is guessed. ${wholeGrams ? `Entering ${Math.round(wholeGrams * 10) / 10} g puts them back.` : 'All puts them back.'}`}
+              ? `The estimate was ${wholeKcalText ? `${wholeKcalText} ` : ''}for ${whole?.servingText ?? ''}. The figures change with the count, so nothing is re-estimated. Setting it back to ${formatQuantityAmount(counted.count, counted.decimal)} puts them back.`
+              : `The figures are the estimate for the whole meal${wholeKcalText ? ` (${wholeKcalText})` : ''}, scaled to your choice, so nothing is re-estimated. ${wholeGrams ? `Entering ${Math.round(wholeGrams * 10) / 10} g puts them back.` : 'All puts them back.'}`}
           </Text>
         </View>
       </View>
@@ -361,5 +371,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   previewBlock: { gap: spacing.xxs, marginTop: spacing.xs },
   preview: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold },
   amount: { color: colors.textSecondary, fontSize: font.sm },
+  partRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  partLabel: { flex: 1, marginRight: spacing.md },
   hint: { color: colors.textSecondary, fontSize: font.xs, lineHeight: 16 },
 });

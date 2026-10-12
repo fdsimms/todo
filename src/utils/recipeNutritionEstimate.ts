@@ -1,5 +1,5 @@
 import type { NutrientKey } from '../types';
-import { NUTRIENT_KEYS } from '../types';
+import { EXTERNAL_NUTRIENT_KEYS } from '../types';
 
 /**
  * A model's estimate of what a whole recipe contains, read from its own
@@ -23,6 +23,12 @@ import { NUTRIENT_KEYS } from '../types';
  * the catalog, or anywhere else. Asking again after editing the recipe is the
  * only way to keep it current, which is the same trade a stored one would
  * have forced onto every other reader instead.
+ *
+ * **One bounded exception: an estimate asked for with no connection** is kept
+ * until one can be made (`recipeEstimateQueue.ts`). It is a cache the sheet
+ * declines to believe unless its fingerprint (`estimateKey`) still matches what
+ * is on screen, so it is still display-only, still never a total anything else
+ * reads, and still gone from view the moment the recipe changes.
  *
  * **No basis, no attribution.** `NutritionEstimate` (a restaurant meal) draws
  * a real distinction between a chain's published figures and the model's own
@@ -86,7 +92,7 @@ export function readRecipeNutritionEstimate(
   if (typeof source !== 'object' || source === null || Array.isArray(source)) return null;
 
   const amounts: Partial<Record<NutrientKey, number>> = {};
-  for (const key of NUTRIENT_KEYS) {
+  for (const key of EXTERNAL_NUTRIENT_KEYS) {
     const value = amount(source[key]);
     if (value !== undefined) amounts[key] = value;
   }
@@ -109,7 +115,7 @@ export function describeRecipeNutritionEstimate(estimate: RecipeNutritionEstimat
   const sure = estimate.confidence === 'high'
     ? ''
     : estimate.confidence === 'medium'
-      ? ' Close, not exact.'
+      ? ' Likely close.'
       : ' A rough guess.';
-  return `Read from the ingredient list, not measured.${sure}`;
+  return `Estimated from the ingredient list.${sure}`;
 }

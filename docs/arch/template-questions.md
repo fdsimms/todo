@@ -86,6 +86,39 @@ beside it.
 - **A choice defaults to its first option**, deliberately rather than to unanswered — the same call
   `RecipeComponent.choiceGroup` makes, so ordering the options *is* saying which is usual. An
   unanswered third state would be one every condition then had to have an opinion about.
+- **A choice can take several answers** (`TemplateQuestion.multiple`, an author's switch, off by
+  default so a Yes/No can't be given two). The run's answer is then a JSON array of the picked
+  options, the way a `'people'` answer is a set of ids, so the model stays one string per question.
+  `answerValues` reads either form without needing the question, which is what lets `applyItemVariant`
+  (answers by id only) match.
+  - **Any picked answer matches.** A condition lists values and matches when one is picked, and a
+    variant applies when its answer is among the picks (first variant wins, as before). Several
+    questions still AND.
+  - **It starts on the first option and the last pick can't be turned off.** An empty answer reads as
+    untouched and falls back to the first option (`resolveAnswers`), so letting the last one go would
+    look like a dead tap or quietly select something else. Same default rule as a single choice.
+  - **A title shows the picks joined with ", "** (`placeholderValuesFor`), never the stored JSON.
+  - **A `{x = Camping ? a : b}` switch matches any pick.** A multi-answer choice reaches the
+    placeholder engine in its stored form, and `readBlank` (`templateUtils`) decides how to read it: a
+    title gets the picks joined, a switch gets them as a set. A hand-typed blank that happens to be a
+    JSON array of strings reads the same way, the price of not threading a second map through every
+    substitution.
+  - Over MCP the answer is the picks joined with commas (`apply_template`), and `multiple` rides
+    `create_template`/`update_template` like any question field.
+- **A Yes/No pair is always shown Yes, then No** (`displayOptions`). The first option is the default,
+  so an author who wanted "International trip?" to start on No typed No first, which flipped that one
+  pair against every other. Only the display is reordered; the default is untouched.
+- **A question can show the destination's forecast under it** (`showForecast`, an author's switch).
+  It is the sentence `tripForecast.ts` already writes for the project page ("Paris, 48 to 66°F, rain
+  on 2 of 7 days"), fetched through `useDestinationForecast` for the run's place and dates, and
+  **it only states.** It never fills in the answer, ticks an item or becomes a condition, for the
+  reason `away-dates.md` gives: nobody should stake a coat on a ten-day forecast, and a reader
+  drawing their own conclusion from a range is both more useful and more honest.
+  - **Where and when.** The place is the project the run lands in (`Project.destination`), else a
+    `{destination}` blank the run answers (debounced, so typing doesn't geocode every key). The dates
+    are the two anchors picked above, else that project's away span. Neither: nothing is drawn.
+  - **No extra switch.** It rides `destinationForecastEnabled`, which the fetch already checks along
+    with demo mode, so nothing here adds a way to make that call.
 - **Answering re-decides the conditioned items and only those** (`reselectForAnswers`). Ticking one
   extra thing on by hand is safe whatever gets answered afterwards; a conditioned item is re-decided
   because that's what answering the question it rides on *means*.
@@ -95,9 +128,26 @@ beside it.
 - **Deleting a question takes it off the items conditioned on it.** Every reader shrugs a dangling
   condition off anyway (`liveConditions`, the house rule for cross-row pointers), but an item still
   carrying one would render an "Only when" with nothing under it.
-- **Only a choice can gate an item** — a number, free-text or people answer has no fixed set to
-  tick, so the item editor's Only when field lists choice questions alone, and hides itself entirely
-  when the template has none.
+- **A choice gates an item by its options, a number by a range, and nothing else gates one.** A
+  free-text or people answer has no fixed set to tick and no order to compare, so the item editor's
+  "Checked by default for" lists choice and number questions only, and hides itself when the
+  template has neither. A condition on a number carries `min` and/or `max` (both inclusive, either
+  may be left off) in place of `values`, so "longer than 4 days" is `min: 5`. It composes like
+  every other condition: several entries AND, so a laundry line can need `laundry access = No`
+  *and* `days` at least 5. It is a range rather than a comparison operator because the answers are
+  whole numbers and two bounds cover every case ("more than", "fewer than", "between") without an
+  expression language. A number answer that is blank or isn't a number matches nothing
+  (`numberInRange`), the same as an unanswered choice, and a range with neither bound is inert
+  (`liveConditions`). It is still a default tick, never a filter: the item stays on the list.
+  This reads the answer the run resolved (typed, else off the dates), so a trip's dates decide it
+  with nothing typed. Over MCP it is `min`/`max` on a condition in place of `values`, and the plan
+  validator refuses mixing the two.
+- **Several conditions are all-of by default, and an item can say any-of** (`TemplateItem.conditionsMatch`,
+  `'all' | 'any'`, absent reads as all). It is one switch over the item's whole list rather than nested
+  groups, because "passport if flying *or* international" is the case that came up and "this and
+  (that or the other)" is two items. Within one condition several values were always any-of, so this
+  is only about combining *different* questions. It does nothing with fewer than two live conditions,
+  and an item with conditions still ignores `optional` either way (`itemMatchesAnswers`).
 - **A `'people'` question is the one kind that fills no blank and offers no authored set.**
   `normalizeTemplateQuestion` forces its `name` to `''` (nothing for `placeholderValuesFor` to key
   on) the same way it forces `defaultValue` to `''` (nothing to default to but nobody). It still
@@ -105,3 +155,26 @@ beside it.
   of ids rather than a string a title could use, and gates nothing (see above). What that answer
   means and where it goes is `docs/arch/people.md`, "Templates that ask who" — this file stays about
   the question mechanism, that one's about the person it names.
+
+## An item that becomes your medicines
+
+`TemplateItem.medicationChecklist` makes a run add one subtask per medicine you currently take, after
+the item's own subtasks (`applyTemplateRun`). Built for a packing list's "Medications" line, and
+narrow on purpose.
+
+- **The list is read when the template runs and never stored on the item.** What "your medicines" is
+  changes whenever you start or stop one, and a copy typed into the template would go stale the
+  first time that happened. The source is `medicationVocabulary` over the medication log with the
+  archived list passed in, the same set the app already means by "what you take". The caller supplies
+  it as `TemplateRunOptions.medications` (`useTemplateStore.applyTemplate` and the MCP replica's
+  `runTemplateIn` both read it themselves), so the apply sheet, a scheduled run and an agent's run
+  agree and the pure run function stays store-free.
+- **It adds lines and never reads anything back.** The subtasks are plain checklist stubs: ticking
+  one is not a dose, and nothing here records, schedules or counts a medicine. That keeps it out of
+  the medication log's rules (`docs/arch/mood-log.md`), which only a person's own dose entry or a
+  task naming a medication may write to.
+- **A medicine the item already lists by hand is not added twice** (compared with `medicationKey`, so
+  case and surrounding space don't matter), and no medicines in the log means no extra lines, with
+  the item still created as written.
+- **The medicine names are not a blank.** They are added as written, so a name can't be altered by
+  `{blank}` substitution, and an item's own stubs still go through it as before.

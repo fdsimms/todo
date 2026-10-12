@@ -1,8 +1,10 @@
+import { slipsToday } from '../utils/negativeHabits';
 import { isStreakAtRecord } from '../utils/streakRecord';
 import { registerPausedProjectSource } from '../utils/projectPause';
 import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
 import { logTaskHealthValue, unlogTaskNutrientFromFoodLog } from '../utils/healthCompletionSync';
 import { useTaskStore } from '../store/useTaskStore';
+import { useProjectLockStore } from '../store/useProjectLockStore';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { useRewardStore } from '../store/useRewardStore';
@@ -30,6 +32,7 @@ import { useTemplateStore } from '../store/useTemplateStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
+import { useSavedMealsStore } from '../store/useSavedMealsStore';
 import { useUnattendedStore } from '../store/useUnattendedStore';
 import { useHealthStore } from '../store/useHealthStore';
 import { usePersonStore } from '../store/usePersonStore';
@@ -113,6 +116,10 @@ jest.mock('../db/database', () => ({
   dbDeleteMoodLog: jest.fn(),
   // Milestones ride the same fan-out immediately after the mood log.
   dbGetAllMilestones: jest.fn().mockReturnValue([]),
+  dbGetAllCopyFlags: jest.fn().mockReturnValue([]),
+  dbGetAllMeterReadings: jest.fn().mockReturnValue([]),
+  dbInsertMeterReading: jest.fn(),
+  dbDeleteMeterReading: jest.fn(),
   dbGetAllJournalEntries: jest.fn().mockReturnValue([]),
   dbInsertJournalEntry: jest.fn(),
   dbUpdateJournalEntry: jest.fn(),
@@ -148,8 +155,11 @@ jest.mock('../db/database', () => ({
   dbGetFoodLogEntries: jest.fn().mockReturnValue([]),
   dbCountFoodLogEntries: jest.fn().mockReturnValue(0),
   dbInsertFoodLogEntry: jest.fn(),
+  dbGetFoodLogEntriesForTask: jest.fn().mockReturnValue([]),
   dbUpdateFoodLogEntry: jest.fn(),
   dbGetSavedMeals: jest.fn().mockReturnValue([]),
+  dbGetPendingEstimates: jest.fn().mockReturnValue([]),
+  dbGetPendingRecipeEstimates: jest.fn().mockReturnValue([]),
   dbInsertSavedMeal: jest.fn(),
   dbDeleteSavedMeal: jest.fn(),
   dbDeleteFoodLogEntry: jest.fn(),
@@ -469,7 +479,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   penaltyCreditedAt: null,
   gatesApps: false,
   showStreak: false,
-  streakRequiresWindow: false,
+  streakRequiresWindow: false, streakCountsUnits: false,
   parentId: null,
   groupId: null,
   projectId: null,
@@ -1348,7 +1358,7 @@ describe('newTaskFromDraft: newTaskDefaults', () => {
     });
 
     it('seeds priority, difficulty and estimate from the project, beneath what the draft names', () => {
-      useProjectStore.setState({ projects: [makeProject({ id: 'proj1', taskDefaults: { priority: 0, difficulty: 'easy', effort: 2 } })] });
+      useProjectStore.setState({ projects: [makeProject({ id: 'proj1', taskDefaults: { priority: 0, difficulty: 'easy', effort: 2, showStreak: null, vacationPause: null, excludeFromSuggestions: null } })] });
       const seeded = useTaskStore.getState().addTask({ title: 'A cast iron pan', projectId: 'proj1' });
       expect(seeded).toMatchObject({ priority: 0, difficulty: 'easy', effort: 2, estimatedMinutes: 15 });
       expect(seeded.backfillDismissedFields).toContain('priority');
@@ -1357,15 +1367,42 @@ describe('newTaskFromDraft: newTaskDefaults', () => {
       expect(named.backfillDismissedFields).not.toContain('priority');
     });
 
+    it('seeds the yes/no defaults, with streak chip and vacation pause on repeating tasks only', () => {
+      useProjectStore.setState({ projects: [makeProject({ id: 'proj1', taskDefaults: { priority: null, difficulty: null, effort: null, showStreak: true, vacationPause: true, excludeFromSuggestions: false } })] });
+      const daily = useTaskStore.getState().addTask({ title: 'Stretch', projectId: 'proj1', recurrenceType: 'daily' });
+      expect(daily).toMatchObject({ showStreak: true, vacationPause: true, excludeFromSuggestions: false });
+      expect(daily.backfillDismissedFields).toEqual(['suggestions']);
+      const once = useTaskStore.getState().addTask({ title: 'Once', projectId: 'proj1' });
+      expect(once).toMatchObject({ showStreak: false, vacationPause: false });
+      const named = useTaskStore.getState().addTask({ title: 'Named', projectId: 'proj1', recurrenceType: 'daily', vacationPause: false });
+      expect(named.vacationPause).toBe(false);
+    });
+
     it('seeds a generated kind from Settings, ahead of its project', () => {
-      useProjectStore.setState({ projects: [makeProject({ id: 'proj1', taskDefaults: { priority: 1, difficulty: null, effort: null } })] });
+      useProjectStore.setState({ projects: [makeProject({ id: 'proj1', taskDefaults: { priority: 1, difficulty: null, effort: null, showStreak: null, vacationPause: null, excludeFromSuggestions: null } })] });
       useSettingsStore.getState.mockReturnValue({
         dayResetTime: '00:00', autoCompleteProjectsOnDone: false, activeHoursStart: '08:00', activeHoursEnd: '22:00', weekStartsOn: 0,
         newTaskDefaults: { category: null, priority: null, effort: null, difficulty: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
-        generatedTaskDefaults: { birthdayGift: { priority: 3, difficulty: 'easy', effort: null } },
+        generatedTaskDefaults: { birthdayGift: { priority: 3, difficulty: 'easy', effort: null, showStreak: null, vacationPause: null, excludeFromSuggestions: null } },
       });
       const gift = useTaskStore.getState().addTask({ title: 'Gift for Sam', projectId: 'proj1', generatedKind: 'birthdayGift' });
       expect(gift).toMatchObject({ priority: 3, difficulty: 'easy' });
+    });
+
+    it('adds a generated kind\'s tags, time of day and question beneath its draft', () => {
+      useSettingsStore.getState.mockReturnValue({
+        dayResetTime: '00:00', autoCompleteProjectsOnDone: false, activeHoursStart: '08:00', activeHoursEnd: '22:00', weekStartsOn: 0,
+        newTaskDefaults: { category: null, priority: null, effort: null, difficulty: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+        generatedTaskDefaults: {},
+        generatedTaskExtras: { groceryUseUp: { tags: ['cooking'], timeSegments: ['evening'], deliverableKind: 'yesno', deliverableOptions: [] } },
+      });
+      const useUp = useTaskStore.getState().addTask({ title: 'Use up spinach', tags: ['fridge'], generatedKind: 'groceryUseUp', generatedSourceId: 'g1' });
+      expect(useUp).toMatchObject({ tags: ['fridge', 'cooking'], timeSegments: ['evening'], deliverableKind: 'yesno' });
+      // Another kind, and a task nobody generated, are untouched.
+      const other = useTaskStore.getState().addTask({ title: 'Sam\'s birthday', generatedKind: 'birthday', generatedSourceId: 'p1#2026' });
+      expect(other).toMatchObject({ tags: [], timeSegments: [], deliverableKind: null });
+      const typed = useTaskStore.getState().addTask({ title: 'Use up spinach' });
+      expect(typed).toMatchObject({ tags: [], deliverableKind: null });
     });
 
     it('skipCategoryDefault bypasses the project default too', () => {
@@ -2027,6 +2064,18 @@ describe('completeTask', () => {
     expect(useTaskStore.getState().tasks.find(t => t.id === 't1')?.completed).toBe(true);
   });
 
+  it('adds the look-back an answer asks for, and takes it away when the completion is undone', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', title: 'Which contractor?', deliverableKind: 'text' } as Partial<Task>)] });
+    useTaskStore.getState().completeTask('t1', { deliverableValue: 'Bob', reviewAfter: '3m' });
+    const review = useTaskStore.getState().tasks.find(t => t.reviewOfTaskId === 't1');
+    expect(review).toMatchObject({ title: 'How did it turn out? Which contractor?', deliverableKind: 'text', completed: false });
+    expect(dbInsertTask).toHaveBeenCalledWith(expect.objectContaining({ id: review!.id }));
+
+    useTaskStore.getState().uncompleteTask('t1');
+    expect(useTaskStore.getState().tasks.some(t => t.reviewOfTaskId === 't1')).toBe(false);
+    expect(dbDeleteTask).toHaveBeenCalledWith(review!.id);
+  });
+
   it('reconciles the deadline calendar event for the completed row', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 't1', deadline: new Date(2025, 5, 20).toISOString() })] });
     useTaskStore.getState().completeTask('t1');
@@ -2385,7 +2434,7 @@ describe('completeTask', () => {
     useTaskStore.setState({ tasks: [task] });
     useTaskStore.getState().completeTask('last-one');
     const entry = useTaskStore.getState().lastAction!;
-    expect(entry.label).toBe("Last one, this won't repeat again");
+    expect(entry.label).toBe("Last one, so it won’t repeat again");
     expect(entry.destructive).toBe(true);
   });
 
@@ -2987,13 +3036,51 @@ describe('completeTask', () => {
         const yesterdayStart = new Date(2025, 5, 9, 0, 0, 0).toISOString();
         const task = makeTask({
           recurrenceType: 'daily', streakCount: 3, streakDate: yesterdayStart,
-          streakRequiresWindow: false, windowStart: '07:00', windowEnd: '09:00',
+          streakRequiresWindow: false, streakCountsUnits: false, windowStart: '07:00', windowEnd: '09:00',
         });
         useTaskStore.setState({ tasks: [task] });
         useTaskStore.getState().completeTask(task.id);
         const completed = useTaskStore.getState().tasks.find(t => t.id === task.id);
         expect(completed?.streakCount).toBe(4);
       });
+    });
+  });
+
+  describe('project lock', () => {
+    // Same date as the completion-hold block: noon-ish June 10, 2025.
+    const dueToday = new Date(2025, 5, 10, 0, 0, 0).toISOString();
+
+    afterEach(() => {
+      useProjectLockStore.setState({ lockedIds: [], unlocked: false });
+    });
+
+    it('keeps a locked project\'s tasks in the lists, since their rows draw redacted', () => {
+      useTaskStore.setState({
+        tasks: [
+          makeTask({ id: 'open', dueDate: dueToday }),
+          makeTask({ id: 'secret', dueDate: dueToday, projectId: 'p1' }),
+        ],
+      });
+      useProjectLockStore.setState({ lockedIds: ['p1'], unlocked: false });
+      expect(useTaskStore.getState().visibleTasks().map(t => t.id).sort()).toEqual(['open', 'secret']);
+    });
+
+    it('leaves a locked project\'s completed tasks out of the Logbook until unlocked', () => {
+      const done = { completed: true, completedAt: dueToday };
+      useTaskStore.setState({
+        tasks: [makeTask({ id: 'open', ...done }), makeTask({ id: 'secret', projectId: 'p1', ...done })],
+      });
+      useProjectLockStore.setState({ lockedIds: ['p1'], unlocked: false });
+      expect(useTaskStore.getState().completedTasks().map(t => t.id)).toEqual(['open']);
+
+      useProjectLockStore.getState().unlock();
+      expect(useTaskStore.getState().completedTasks().map(t => t.id).sort()).toEqual(['open', 'secret']);
+    });
+
+    it('bumps the task store when the lock changes so subscribed selectors re-run', () => {
+      const before = useTaskStore.getState().lockRevision;
+      useProjectLockStore.getState().unlock();
+      expect(useTaskStore.getState().lockRevision).toBeGreaterThan(before);
     });
   });
 
@@ -5105,7 +5192,7 @@ describe('checkPantryReviewTasks', () => {
     useTaskStore.getState().checkPantryReviewTasks();
 
     const [review] = reviewTasks();
-    expect(review.title).toBe("Review what's in the pantry");
+    expect(review.title).toBe("Review what’s in the pantry");
     expect(review.linkUrl).toBe('dundundun://kitchen?review=1');
     expect(review.category).toBe('Groceries');
     expect(review.dueDate).not.toBeNull();
@@ -5400,7 +5487,7 @@ describe('checkWaitingFollowUpTasks', () => {
   it('writes a follow-up task once a wait has gone on long enough', () => {
     useTaskStore.getState().checkWaitingFollowUpTasks();
     expect(followUps()).toHaveLength(1);
-    expect(followUps()[0].title).toBe('Follow up with Gideon about "Get the quote back"');
+    expect(followUps()[0].title).toBe('Follow up with Gideon about “Get the quote back”');
   });
 
   it('does nothing while the wait is younger than the threshold', () => {
@@ -5522,7 +5609,7 @@ describe('checkCalendarReviewTasks', () => {
     jest.useFakeTimers();
     jest.setSystemTime(NOW);
     useSettingsStore.getState.mockReturnValue(settings());
-    useCalendarStore.getState.mockReturnValue({ events: [], loaded: false });
+    useCalendarStore.getState.mockReturnValue({ events: [], vacationReturnEvents: [], loaded: false });
     useTaskStore.setState({ tasks: [] });
   });
 
@@ -5530,23 +5617,41 @@ describe('checkCalendarReviewTasks', () => {
     jest.useRealTimers();
     // Restore the file's shared default so a later describe block that never
     // touches the calendar store isn't left reading this block's last state.
-    useCalendarStore.getState.mockReturnValue({ events: [], loaded: false });
+    useCalendarStore.getState.mockReturnValue({ events: [], vacationReturnEvents: [], loaded: false });
+  });
+
+  it('writes a task when tomorrow only has an event from a calendar vacation is hiding', () => {
+    useCalendarStore.getState.mockReturnValue({ events: [], vacationReturnEvents: [tomorrowEvent()], loaded: true });
+
+    useTaskStore.getState().checkCalendarReviewTasks();
+
+    expect(reviewTasks()).toHaveLength(1);
+  });
+
+  it('writes a task from the return-day read alone when vacation hides every calendar', () => {
+    useCalendarStore.getState.mockReturnValue({
+      events: [], vacationReturnEvents: [tomorrowEvent()], vacationReturnLoaded: true, loaded: false,
+    });
+
+    useTaskStore.getState().checkCalendarReviewTasks();
+
+    expect(reviewTasks()).toHaveLength(1);
   });
 
   it('writes a task when tomorrow has an event', () => {
-    useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], loaded: true });
+    useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], vacationReturnEvents: [], loaded: true });
 
     useTaskStore.getState().checkCalendarReviewTasks();
 
     const [review] = reviewTasks();
-    expect(review.title).toBe('Review tomorrow\'s calendar');
+    expect(review.title).toBe('Review tomorrow’s calendar');
     expect(review.generatedSourceId).toBe('2026-08-26');
     expect(review.category).toBe('Calendar Events');
     expect(review.dueDate).not.toBeNull();
   });
 
   it('writes nothing when tomorrow has no events', () => {
-    useCalendarStore.getState.mockReturnValue({ events: [], loaded: true });
+    useCalendarStore.getState.mockReturnValue({ events: [], vacationReturnEvents: [], loaded: true });
 
     useTaskStore.getState().checkCalendarReviewTasks();
 
@@ -5555,7 +5660,7 @@ describe('checkCalendarReviewTasks', () => {
 
   it('holds the task back until the chosen time of day, when one is set', () => {
     useSettingsStore.getState.mockReturnValue(settings({ calendarReviewTimeSegment: 'evening' }));
-    useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], loaded: true });
+    useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], vacationReturnEvents: [], loaded: true });
 
     useTaskStore.getState().checkCalendarReviewTasks();
 
@@ -5564,7 +5669,7 @@ describe('checkCalendarReviewTasks', () => {
   });
 
   it('carries no time-of-day hold-back by default', () => {
-    useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], loaded: true });
+    useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], vacationReturnEvents: [], loaded: true });
 
     useTaskStore.getState().checkCalendarReviewTasks();
 
@@ -5574,7 +5679,7 @@ describe('checkCalendarReviewTasks', () => {
 
   it('is a no-op while the setting is off', () => {
     useSettingsStore.getState.mockReturnValue(settings({ calendarReviewTasks: false }));
-    useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], loaded: true });
+    useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], vacationReturnEvents: [], loaded: true });
 
     useTaskStore.getState().checkCalendarReviewTasks();
 
@@ -5583,7 +5688,7 @@ describe('checkCalendarReviewTasks', () => {
 
   it('is a no-op while calendar reading is off', () => {
     useSettingsStore.getState.mockReturnValue(settings({ calendarReadEnabled: false }));
-    useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], loaded: true });
+    useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], vacationReturnEvents: [], loaded: true });
 
     useTaskStore.getState().checkCalendarReviewTasks();
 
@@ -5592,7 +5697,7 @@ describe('checkCalendarReviewTasks', () => {
 
   it('writes an uncategorized task when "None" is chosen, same as every other generator', () => {
     useSettingsStore.getState.mockReturnValue(settings({ calendarReviewTaskCategory: null }));
-    useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], loaded: true });
+    useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], vacationReturnEvents: [], loaded: true });
 
     useTaskStore.getState().checkCalendarReviewTasks();
 
@@ -5606,7 +5711,7 @@ describe('checkCalendarReviewTasks', () => {
   it('treats an unread window as unknown, not as tomorrow being free', () => {
     const s = settings();
     useSettingsStore.getState.mockReturnValue(s);
-    useCalendarStore.getState.mockReturnValue({ events: [], loaded: false });
+    useCalendarStore.getState.mockReturnValue({ events: [], vacationReturnEvents: [], loaded: false });
 
     useTaskStore.getState().checkCalendarReviewTasks();
 
@@ -5617,7 +5722,7 @@ describe('checkCalendarReviewTasks', () => {
   });
 
   it('does not pile up a second task on the next sweep', () => {
-    useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], loaded: true });
+    useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], vacationReturnEvents: [], loaded: true });
 
     useTaskStore.getState().checkCalendarReviewTasks();
     useTaskStore.getState().checkCalendarReviewTasks();
@@ -5634,7 +5739,7 @@ describe('checkCalendarReviewTasks', () => {
   it('is a no-op in demo mode, however the setting is set', () => {
     setDemoModeActive(true);
     try {
-      useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], loaded: true });
+      useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], vacationReturnEvents: [], loaded: true });
 
       useTaskStore.getState().checkCalendarReviewTasks();
 
@@ -5651,7 +5756,7 @@ describe('checkCalendarReviewTasks', () => {
   // outcome was.
   it('does not hand back a task for a day already decided', () => {
     useSettingsStore.getState.mockReturnValue(settings({ calendarReviewLastDayKey: '2026-08-26' }));
-    useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], loaded: true });
+    useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], vacationReturnEvents: [], loaded: true });
 
     useTaskStore.getState().checkCalendarReviewTasks();
 
@@ -5671,7 +5776,7 @@ describe('checkCalendarReviewTasks', () => {
         generatedSourceId: '2026-08-25',
       })],
     });
-    useCalendarStore.getState.mockReturnValue({ events: [], loaded: true });
+    useCalendarStore.getState.mockReturnValue({ events: [], vacationReturnEvents: [], loaded: true });
 
     useTaskStore.getState().checkCalendarReviewTasks();
 
@@ -6265,6 +6370,205 @@ describe('applyWeatherWaits', () => {
   });
 });
 
+// ─── applyRainSkips ─────────────────────────────────────────────────────────
+
+describe('applyRainSkips', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
+    useSettingsStore: { getState: jest.Mock };
+  };
+  const { useWeatherStore } = jest.requireMock('../store/useWeatherStore') as {
+    useWeatherStore: { getState: jest.Mock };
+  };
+  const { useUnattendedStore } = require('../store/useUnattendedStore') as typeof import('../store/useUnattendedStore');
+
+  const NOW = new Date(2026, 9, 8, 9, 0, 0);
+  const TODAY_KEY = '2026-10-08';
+
+  beforeAll(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+  });
+  afterAll(() => jest.useRealTimers());
+
+  const withRain = (yesterday: number | null, today: number | null, dayKey = TODAY_KEY) =>
+    useWeatherStore.getState.mockReturnValue({
+      snapshot: { yesterdayPrecipitationMm: yesterday, todayPrecipitationMm: today, forecast: [] },
+      snapshotDayKey: dayKey,
+    });
+
+  beforeEach(() => {
+    useSettingsStore.getState.mockReturnValue({
+      dayResetTime: '00:00',
+      newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+      titleRules: [],
+      collapsedCategories: [],
+    });
+    useTaskStore.setState({ tasks: [] });
+  });
+
+  afterEach(() => {
+    useWeatherStore.getState.mockReturnValue({ snapshot: null, snapshotDayKey: null });
+  });
+
+  const addWatering = (overrides: Record<string, unknown> = {}) => {
+    const task = useTaskStore.getState().addTask({ title: 'Water the garden' });
+    useTaskStore.getState().updateTask(task.id, {
+      recurrenceType: 'daily', recurrenceInterval: 2,
+      dueDate: new Date(2026, 9, 8).toISOString(),
+      rainSkipMm: 5, ...overrides,
+    });
+    return task.id;
+  };
+  const read = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id)!;
+
+  it('skips today\'s occurrence to the next date once the rain reaches the threshold', () => {
+    withRain(3.5, 2);
+    const id = addWatering();
+    useTaskStore.getState().applyRainSkips();
+    expect(dayKeyOf(new Date(read(id).dueDate!))).toBe('2026-10-10');
+    expect(read(id).rainSkippedOn).toBe(TODAY_KEY);
+    expect(read(id).completed).toBe(false);
+  });
+
+  it('leaves it when it didn\'t rain enough, or there is no figure, or the reading is yesterday\'s', () => {
+    const id = addWatering();
+    withRain(1, 2);
+    useTaskStore.getState().applyRainSkips();
+    withRain(null, null);
+    useTaskStore.getState().applyRainSkips();
+    withRain(10, 10, '2026-10-07');
+    useTaskStore.getState().applyRainSkips();
+    expect(dayKeyOf(new Date(read(id).dueDate!))).toBe(TODAY_KEY);
+  });
+
+  it('never skips a row twice in a day, so pulling it back onto Today sticks', () => {
+    withRain(8, 0);
+    const id = addWatering();
+    useTaskStore.getState().applyRainSkips();
+    useTaskStore.getState().updateTask(id, { dueDate: new Date(2026, 9, 8).toISOString() });
+    useTaskStore.getState().applyRainSkips();
+    expect(dayKeyOf(new Date(read(id).dueDate!))).toBe(TODAY_KEY);
+  });
+
+  it('forgives the streak rather than breaking it', () => {
+    withRain(8, 0);
+    const id = addWatering({ streakCount: 6, streakDate: new Date(2026, 9, 6).toISOString() });
+    useTaskStore.getState().applyRainSkips();
+    expect(read(id).streakCount).toBe(6);
+    expect(read(id).streakDate).toBe(new Date(2026, 9, 8).toISOString());
+  });
+
+  it('records each skip in Activity', () => {
+    withRain(8, 0);
+    const before = useUnattendedStore.getState().entries.length;
+    addWatering();
+    useTaskStore.getState().applyRainSkips();
+    const entries = useUnattendedStore.getState().entries;
+    expect(entries.length).toBe(before + 1);
+    expect(entries[0]).toMatchObject({ action: 'moved', kind: null, title: 'Water the garden' });
+  });
+});
+
+// ─── applyMeterHolds ────────────────────────────────────────────────────────
+
+describe('a task due at a meter reading', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
+    useSettingsStore: { getState: jest.Mock };
+  };
+  const { useMeterReadingStore } = require('../store/useMeterReadingStore') as typeof import('../store/useMeterReadingStore');
+
+  const NOW = new Date(2026, 9, 8, 9, 0, 0);
+
+  beforeAll(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+  });
+  afterAll(() => jest.useRealTimers());
+
+  beforeEach(() => {
+    useSettingsStore.getState.mockReturnValue({
+      dayResetTime: '00:00',
+      newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+      titleRules: [],
+      collapsedCategories: [],
+    });
+    useTaskStore.setState({ tasks: [] });
+    useMeterReadingStore.setState({ readings: [] });
+  });
+
+  const addOilChange = (overrides: Record<string, unknown> = {}) => {
+    const task = useTaskStore.getState().addTask({ title: 'Change the oil' });
+    useTaskStore.getState().updateTask(task.id, {
+      meterName: 'Car', meterUnit: 'miles', meterEvery: 5000, meterDueAt: 45000, ...overrides,
+    });
+    return task.id;
+  };
+  const read = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id)!;
+  const log = (value: number, at: Date) => useMeterReadingStore.getState().logReading('Car', value, at);
+
+  it('holds the task until the day the readings project', () => {
+    log(40000, new Date(2026, 8, 1, 9));
+    log(41000, new Date(2026, 8, 21, 9));
+    const id = addOilChange();
+    useTaskStore.getState().applyMeterHolds();
+    expect(dayKeyOf(new Date(read(id).deferUntil!))).toBe('2026-12-10');
+    expect(read(id).meterHeldUntil).toBe('2026-12-10');
+  });
+
+  it('surfaces it on Today once a reading reaches it', () => {
+    log(40000, new Date(2026, 8, 1, 9));
+    log(41000, new Date(2026, 8, 21, 9));
+    const id = addOilChange();
+    useTaskStore.getState().applyMeterHolds();
+    log(45100, new Date(2026, 9, 8, 8));
+    useTaskStore.getState().applyMeterHolds();
+    expect(dayKeyOf(new Date(read(id).deferUntil!))).toBe('2026-10-08');
+    expect(useTaskStore.getState().visibleTasks().map(t => t.id)).toContain(id);
+  });
+
+  it('leaves a snooze the user set on a surfaced task alone', () => {
+    log(45100, new Date(2026, 9, 8, 8));
+    const id = addOilChange();
+    useTaskStore.getState().applyMeterHolds();
+    const saturday = new Date(2026, 9, 10).toISOString();
+    useTaskStore.getState().updateTask(id, { deferUntil: saturday });
+    useTaskStore.getState().applyMeterHolds();
+    expect(read(id).deferUntil).toBe(saturday);
+  });
+
+  it('writes the next one on completion, counted from the reading logged that day', () => {
+    log(44800, new Date(2026, 9, 8, 8));
+    const id = addOilChange();
+    useTaskStore.getState().completeTask(id);
+    const next = useTaskStore.getState().tasks.find(t => t.previousOccurrenceId === id)!;
+    expect(next).toBeDefined();
+    expect(next.completed).toBe(false);
+    expect(next.meterDueAt).toBe(49800);
+    expect(next.meterName).toBe('Car');
+    // Held until the pass looks, never left in Unscheduled.
+    expect(dayKeyOf(new Date(next.deferUntil!))).toBe('2026-10-09');
+    expect(next.meterHeldUntil).toBe('2026-10-09');
+  });
+
+  it('starts a meter set up before it was read, on the first reading', () => {
+    const id = addOilChange({ meterDueAt: null });
+    useTaskStore.getState().applyMeterHolds();
+    expect(read(id).meterDueAt).toBeNull();
+    log(41000, new Date(2026, 9, 8, 8));
+    useTaskStore.getState().applyMeterHolds();
+    expect(read(id).meterDueAt).toBe(46000);
+    // One reading and no limit: held until it asks for the next one.
+    expect(read(id).meterHeldUntil).toBe('2026-11-07');
+  });
+
+  it('takes the next one back out when the completion is undone', () => {
+    const id = addOilChange();
+    useTaskStore.getState().completeTask(id);
+    useTaskStore.getState().uncompleteTask(id);
+    expect(useTaskStore.getState().tasks.filter(t => t.meterName)).toHaveLength(1);
+  });
+});
+
 // ─── checkWeatherTasks, the day-ahead pass ──────────────────────────────────
 
 describe('checkWeatherTasks (day ahead)', () => {
@@ -6555,12 +6859,26 @@ describe('checkMoodTasks', () => {
       useTaskStore.getState().checkMoodTasks();
 
       const [check] = tasksOfKind('moodLog');
-      expect(check.title).toBe('Log how you\'re feeling');
+      expect(check.title).toBe('Log how you’re feeling');
       expect(check.generatedSourceId).toBe(TODAY);
       expect(check.category).toBe('Health');
       // Without the link the only thing to do with the row is tick it, which
       // marks the question answered without recording an answer.
       expect(check.linkUrl).toBe('dundundun://mood?log=1');
+    });
+
+    it('refuses a tick until the entry exists, then lets it through', () => {
+      useTaskStore.getState().checkMoodTasks();
+      const [check] = tasksOfKind('moodLog');
+      useTaskStore.getState().completeTask(check.id);
+      expect(tasksOfKind('moodLog')).toHaveLength(1);
+
+      // Logged over MCP or on another device: the row is ready, and the tick is
+      // the person's.
+      setLogs([entry(TODAY, 4)]);
+      expect(tasksOfKind('moodLog')).toHaveLength(1);
+      useTaskStore.getState().completeTask(check.id);
+      expect(tasksOfKind('moodLog')).toHaveLength(0);
     });
 
     it('writes nothing when the day has already been logged', () => {
@@ -6927,6 +7245,19 @@ describe('checkJournalTasks', () => {
     expect(tasksOfKind('dreamLog')).toHaveLength(0);
     expect(tasksOfKind('journalLog')).toHaveLength(1);
   });
+
+  it('refuses a tick on a reminder until its entry exists', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ dreamLogTasks: true }));
+    useTaskStore.getState().checkJournalTasks();
+    const [task] = tasksOfKind('dreamLog');
+    useTaskStore.getState().completeTask(task.id);
+    expect(tasksOfKind('dreamLog')).toHaveLength(1);
+
+    // Once the dream is written the row is ready, and the tick goes through.
+    setEntries([written('dream', TODAY)]);
+    useTaskStore.getState().completeTask(task.id);
+    expect(tasksOfKind('dreamLog')).toHaveLength(0);
+  });
 });
 
 describe('checkWeighInTasks', () => {
@@ -6975,12 +7306,37 @@ describe('checkWeighInTasks', () => {
 
   afterEach(() => {
     jest.useRealTimers();
-    useHealthStore.setState({ readRecentWeights: realRead });
+    useHealthStore.setState({ readRecentWeights: realRead, weighInAnsweredOn: null });
   });
 
   it('asks when the window has no weight in it', async () => {
     await on(8);
     expect(requests().map(t => t.generatedSourceId)).toEqual(['2026-09-08']);
+  });
+
+  it('marks a request answered once a weight lands in its window, and leaves it when the read says nothing', async () => {
+    await on(8);
+    expect(requests()).toHaveLength(1);
+    const id = requests()[0].id;
+    // Not answered yet: the tick is refused.
+    useTaskStore.getState().completeTask(id);
+    expect(requests()).toHaveLength(1);
+
+    // Health could not be asked: evidence of nothing.
+    useHealthStore.setState({ readRecentWeights: jest.fn().mockResolvedValue(null) });
+    await on(8);
+    expect(useHealthStore.getState().weighInAnsweredOn).toBeNull();
+
+    // Weighed on the scale and written to Health, outside the sheet: ready, and
+    // still the person's to tick.
+    useHealthStore.setState({
+      readRecentWeights: jest.fn().mockResolvedValue([{ dayKey: '2026-09-08', kilograms: 70 }]),
+    });
+    await on(8);
+    expect(useHealthStore.getState().weighInAnsweredOn).toBe('2026-09-08');
+    expect(requests()).toHaveLength(1);
+    useTaskStore.getState().completeTask(id);
+    expect(requests()).toHaveLength(0);
   });
 
   it('holds a deleted request for the whole window rather than asking again tomorrow', async () => {
@@ -7254,7 +7610,7 @@ describe('checkMealPlanNudge', () => {
 
     const groups = useTaskGroupStore.getState().groups;
     expect(groups).toHaveLength(1);
-    expect(groups[0].title).toBe("Plan this week's meals");
+    expect(groups[0].title).toBe("Plan this week’s meals");
     // A stack that appears unattended showing "0 of 7 done today" and no rows
     // hides the whole week behind a chevron nobody was told to tap.
     expect(groups[0].collapsed).toBe(false);
@@ -7285,7 +7641,7 @@ describe('checkMealPlanNudge', () => {
 
     expect(useTaskGroupStore.getState().groups).toHaveLength(1);
     expect(useTaskGroupStore.getState().groups[0].id).toBe(groupId);
-    expect(useTaskGroupStore.getState().groups[0].title).toBe("Plan this week's meals");
+    expect(useTaskGroupStore.getState().groups[0].title).toBe("Plan this week’s meals");
   });
 
   it('makes a new stack when the remembered one has been deleted', () => {
@@ -9254,6 +9610,21 @@ describe('pinned ordering', () => {
     useTaskStore.getState().updateTask('a', { pinned: true, title: 'edited' });
     expect(useTaskStore.getState().tasks.find(t => t.id === 'a')?.pinnedOrder).toBe(1);
     expect(useTaskStore.getState().pinnedTasks().map(t => t.id)).toEqual(['a', 'b']);
+  });
+
+  it('keeps a pin-each-occurrence successor out of the Pinned block until it is due', () => {
+    // The successor of a pinEachOccurrence task is spawned pinned, so without a
+    // clock gate it sat at the top of Today for the whole of its wait.
+    const later = new Date(2999, 0, 1, 9).toISOString();
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'future', pinned: true, pinEachOccurrence: true, recurrenceType: 'daily', dueDate: later }),
+        makeTask({ id: 'due', pinned: true, pinEachOccurrence: true, recurrenceType: 'daily', dueDate: new Date(2020, 0, 1, 9).toISOString() }),
+        makeTask({ id: 'manual', pinned: true, dueDate: later }),
+      ],
+    });
+    // The manual pin still ignores the clock, as it always has.
+    expect(useTaskStore.getState().pinnedTasks().map(t => t.id)).toEqual(['due', 'manual']);
   });
 
   it('keeps unpinning free of ranks', () => {
@@ -13346,6 +13717,37 @@ describe('quota tasks', () => {
       expect(dbUpdateTask).toHaveBeenCalled();
     });
 
+    it('restarts a per-unit countdown when a unit is logged', () => {
+      useTaskStore.setState({
+        tasks: [quota({ progressCount: 3, timedMinutes: 10, timerStartedAt: new Date().toISOString(), timerElapsedSeconds: 120 })],
+      });
+      useTaskStore.getState().logQuotaUnit('water');
+
+      const task = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(task.progressCount).toBe(4);
+      expect(task.timerStartedAt).toBeNull();
+      expect(task.timerElapsedSeconds).toBe(0);
+      expect(task.timedMinutes).toBe(10);
+    });
+
+    it('logs a unit without waiting for its countdown to run out', () => {
+      useTaskStore.setState({ tasks: [quota({ progressCount: 0, timedMinutes: 10 })] });
+      useTaskStore.getState().logQuotaUnit('water');
+      expect(useTaskStore.getState().tasks.find(t => t.id === 'water')!.progressCount).toBe(1);
+    });
+
+    it('does not record the last unit\'s countdown as the task\'s measured time', () => {
+      useTaskStore.setState({
+        tasks: [quota({ progressCount: 7, timedMinutes: 10, timerStartedAt: null, timerElapsedSeconds: 240 })],
+      });
+      useTaskStore.getState().logQuotaUnit('water');
+
+      const done = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(done.completed).toBe(true);
+      expect(done.timerElapsedSeconds).toBe(0);
+      expect(done.actualMinutes ?? null).toBeNull();
+    });
+
     it('completes the task on the unit that reaches the target', () => {
       useTaskStore.setState({ tasks: [quota({ progressCount: 7 })] });
       useTaskStore.getState().logQuotaUnit('water');
@@ -13849,6 +14251,96 @@ describe('quota tasks', () => {
         });
       });
 
+      describe('the limit task', () => {
+        const fatEntry = (satFatG: number, id = 'f1'): FoodLogEntry => ({
+          ...waterEntry(0),
+          id,
+          label: 'Ice cream',
+          nutrition: { ...panel(0), amounts: { satFatG } },
+        });
+        const limitTasks = () =>
+          useTaskStore.getState().tasks.filter(t => t.generatedKind === 'limitWarning' && !t.archived);
+        const on = () => ({
+          limitWarningTasks: true, limitWarningTaskCategory: 'Health', vacationMode: false,
+          nutritionTargets: { satFatG: 16 }, nutritionLimits: ['satFatG'],
+          limitWarnPercent: 75, limitWarningDeclined: [], limitWarningAutoSlips: {},
+          // The pass records its own slips; the mock keeps what it wrote.
+          setLimitWarningAutoSlips: (days: Record<string, string>) => withSettings({ limitWarningAutoSlips: days }),
+        });
+        const run = () => useTaskStore.getState().syncLimitWarningTasks();
+        const log = (...entries: FoodLogEntry[]) => (dbGetFoodLogEntries as jest.Mock).mockReturnValue(entries);
+        const todayStart = () => getCurrentDayStart();
+
+        beforeEach(() => {
+          jest.useFakeTimers({ now: new Date(2026, 9, 5, 16, 0) });
+          useTaskStore.setState({ tasks: [] });
+        });
+        afterEach(() => jest.useRealTimers());
+
+        it('keeps one "don\'t do" task per limit, there before anything is logged', () => {
+          withSettings(on());
+          log();
+          run();
+          expect(limitTasks()).toHaveLength(1);
+          const [task] = limitTasks();
+          expect(task).toMatchObject({
+            title: 'Stay under 16g sat fat', polarity: 'negative', showStreak: true,
+            generatedSourceId: 'satFatG', linkUrl: 'dundundun://foodlog', dueDate: null,
+          });
+        });
+
+        it('follows the total in its title and names the foods behind it', () => {
+          withSettings(on());
+          log(fatEntry(12));
+          run();
+          const [task] = limitTasks();
+          expect(task.title).toBe('Stay under 16g sat fat · 12g so far');
+          expect(task.notes).toMatch(/^Today: 12 of 16g, 4g left\.\n\nMost of it: Ice cream \(12g\)\./);
+          run();
+          expect(limitTasks()).toHaveLength(1);
+        });
+
+        it('logs a slip the moment the day goes over, once, and takes it back when the entry goes', () => {
+          withSettings(on());
+          log(fatEntry(12));
+          run();
+          expect(slipsToday(limitTasks()[0], todayStart())).toBe(0);
+          log(fatEntry(12), fatEntry(7, 'f2'));
+          run();
+          run();
+          expect(slipsToday(limitTasks()[0], todayStart())).toBe(1);
+          log(fatEntry(12));
+          run();
+          expect(slipsToday(limitTasks()[0], todayStart())).toBe(0);
+        });
+
+        it('never slips on top of, or takes back, a slip the person logged', () => {
+          withSettings(on());
+          log(fatEntry(12));
+          run();
+          useTaskStore.getState().logSlip(limitTasks()[0].id);
+          log(fatEntry(20));
+          run();
+          expect(slipsToday(limitTasks()[0], todayStart())).toBe(1);
+          log();
+          run();
+          expect(slipsToday(limitTasks()[0], todayStart())).toBe(1);
+        });
+
+        it('writes none for a declined limit, and takes them all away when switched off', () => {
+          withSettings({ ...on(), limitWarningDeclined: ['satFatG'] });
+          log();
+          run();
+          expect(limitTasks()).toHaveLength(0);
+          withSettings(on());
+          run();
+          expect(limitTasks()).toHaveLength(1);
+          withSettings({ ...on(), limitWarningTasks: false });
+          run();
+          expect(limitTasks()).toHaveLength(0);
+        });
+      });
+
       it('leaves the count alone when the task does not follow', () => {
         withSettings({ nutritionTargets: { waterMl: 2500 } });
         useTaskStore.setState({ tasks: [waterQuota()] });
@@ -13975,13 +14467,13 @@ describe('quota tasks', () => {
       useTaskStore.setState({ tasks: [quota({ pinned: true, progressCount: 1 })] });
       const store = useTaskStore.getState();
       store.logQuotaUnit('water'); // 1 -> 2, catches up to pace
-      jest.advanceTimersByTime(2000);
+      jest.advanceTimersByTime(600);
       store.logQuotaUnit('water'); // 2 -> 3, still on pace — resets the window
-      jest.advanceTimersByTime(2000);
+      jest.advanceTimersByTime(600);
 
       expect(useTaskStore.getState().tasks[0].pinned).toBe(true);
 
-      jest.advanceTimersByTime(2000);
+      jest.advanceTimersByTime(1000);
       expect(useTaskStore.getState().tasks[0].pinned).toBe(false);
     });
 
@@ -14136,6 +14628,48 @@ describe('quota tasks', () => {
   // A weekly target — "three times a week, any days". The clock in this
   // describe is Tuesday June 10 2025, and the week starts on Sunday (the mock's
   // weekStartsOn), so the current week runs Sun June 8 to Sat June 14.
+  describe('a weekly target whose streak counts every time', () => {
+    const counting = (overrides: Partial<Task> = {}) =>
+      quota({
+        quotaPeriod: 'week', recurrenceType: 'weekly', targetCount: 3, streakCountsUnits: true,
+        streakCount: 4, streakDate: new Date(2025, 5, 2, 12, 0, 0).toISOString(),
+        dueDate: new Date(2025, 5, 8, 12, 0, 0).toISOString(), ...overrides,
+      });
+
+    it('adds one per unit logged and takes it back on undo', () => {
+      useTaskStore.setState({ tasks: [counting({ progressCount: 0 })] });
+      useTaskStore.getState().logQuotaUnit('water');
+      expect(useTaskStore.getState().tasks.find(t => t.id === 'water')!.streakCount).toBe(5);
+      useTaskStore.getState().unlogQuotaUnit('water');
+      expect(useTaskStore.getState().tasks.find(t => t.id === 'water')!.streakCount).toBe(4);
+    });
+
+    it('counts the unit that completes the week too', () => {
+      useTaskStore.setState({ tasks: [counting({ progressCount: 2 })] });
+      useTaskStore.getState().logQuotaUnit('water');
+      const successor = useTaskStore.getState().tasks.find(t => t.id !== 'water' && !t.completed)!;
+      expect(successor.streakCount).toBe(5);
+    });
+
+    it('keeps the total through a week that fell short', () => {
+      useTaskStore.setState({
+        tasks: [counting({ progressCount: 1, dueDate: new Date(2025, 5, 3, 12, 0, 0).toISOString() })],
+      });
+      useTaskStore.getState().rolloverQuotas();
+      const successor = useTaskStore.getState().tasks.find(t => !t.completed)!;
+      expect(successor.streakCount).toBe(4);
+    });
+
+    it('still resets on a short week when the setting is off', () => {
+      useTaskStore.setState({
+        tasks: [counting({ streakCountsUnits: false, progressCount: 1, dueDate: new Date(2025, 5, 3, 12, 0, 0).toISOString() })],
+      });
+      useTaskStore.getState().rolloverQuotas();
+      const successor = useTaskStore.getState().tasks.find(t => !t.completed)!;
+      expect(successor.streakCount).toBe(0);
+    });
+  });
+
   describe('rolloverQuotas: a weekly target', () => {
     const weekly = (overrides: Partial<Task> = {}) =>
       quota({ quotaPeriod: 'week', recurrenceType: 'weekly', targetCount: 3, ...overrides });
@@ -16516,6 +17050,74 @@ describe('Task.logMealSlot offers to log an arbitrary task to the food log', () 
   });
 });
 
+describe('Task.logSavedMealId logs a named food when the task is completed', () => {
+  const nutrition: FoodNutrition = {
+    basis: 'perServing', servingGrams: null, servingText: null, amounts: { fiberG: 3 },
+    source: 'manual', sourceId: null, portions: [], recordedAt: '2026-04-01T08:00:00.000Z',
+  };
+  const metamucil = {
+    id: 'sm-1', name: 'Metamucil', createdAt: '2026-04-01T08:00:00.000Z',
+    items: [{ label: 'Metamucil', recipeId: null, itemId: null, productId: null, quantity: '1 serving', grams: null, nutrition }],
+  };
+  let addEntry: jest.Mock;
+  let removeEntriesForTask: jest.Mock;
+
+  beforeEach(() => {
+    addEntry = jest.fn().mockReturnValue({ id: 'e-1' });
+    removeEntriesForTask = jest.fn();
+    useFoodLogStore.setState({ pendingMealLog: null, pendingManualMealLog: null, addEntry, removeEntriesForTask });
+    useSavedMealsStore.setState({ meals: [metamucil] });
+  });
+
+  it('writes the saved meal with no sheet, stamped with the task and its slot', () => {
+    const task = useTaskStore.getState().addTask({ title: 'Metamucil', logMealSlot: 'breakfast', logSavedMealId: 'sm-1' });
+
+    useTaskStore.getState().completeTask(task.id);
+
+    expect(addEntry).toHaveBeenCalledTimes(1);
+    expect(addEntry.mock.calls[0][0]).toMatchObject({ label: 'Metamucil', slot: 'breakfast', taskId: task.id, nutrition });
+    // Kept out of shake-to-undo: the completion owns the undo bar.
+    expect(addEntry.mock.calls[0][1]).toEqual({ undoable: false });
+    expect(useFoodLogStore.getState().pendingManualMealLog).toBeNull();
+  });
+
+  it('falls back to the manual offer when the saved meal has been deleted', () => {
+    useSavedMealsStore.setState({ meals: [] });
+    const task = useTaskStore.getState().addTask({ title: 'Metamucil', logMealSlot: 'breakfast', logSavedMealId: 'sm-1' });
+
+    useTaskStore.getState().completeTask(task.id);
+
+    expect(addEntry).not.toHaveBeenCalled();
+    expect(useFoodLogStore.getState().pendingManualMealLog?.label).toBe('Metamucil');
+  });
+
+  it('logs nothing on a missed completion', () => {
+    const task = useTaskStore.getState().addTask({ title: 'Metamucil', logMealSlot: 'breakfast', logSavedMealId: 'sm-1' });
+
+    useTaskStore.getState().completeTask(task.id, { missed: true });
+
+    expect(addEntry).not.toHaveBeenCalled();
+  });
+
+  it('takes back what it logged when the task is unchecked', () => {
+    const task = useTaskStore.getState().addTask({ title: 'Metamucil', logMealSlot: 'breakfast', logSavedMealId: 'sm-1' });
+    useTaskStore.getState().completeTask(task.id);
+
+    useTaskStore.getState().uncompleteTask(task.id);
+
+    expect(removeEntriesForTask).toHaveBeenCalledWith(task.id);
+  });
+
+  it('leaves the food log alone when un-completing a task that names no food', () => {
+    const task = useTaskStore.getState().addTask({ title: 'Log breakfast', logMealSlot: 'breakfast' });
+    useTaskStore.getState().completeTask(task.id);
+
+    useTaskStore.getState().uncompleteTask(task.id);
+
+    expect(removeEntriesForTask).not.toHaveBeenCalled();
+  });
+});
+
 describe('completing a use-up task and its meal task for the same leftover', () => {
   // Regression: ticking off "Use up X" and the meal task that closes out the
   // same container within moments of each other used to set both pending
@@ -18599,6 +19201,50 @@ describe('negative habits', () => {
     });
   });
 
+  describe('closeNegativeDay', () => {
+    it('counts today now, offers an undo, and the rollover does not count it twice', () => {
+      seed(avoid({ streakCount: 3, streakDate: new Date(2026, 0, 9).toISOString() }));
+      useTaskStore.getState().closeNegativeDay('smoke');
+      expect(get().streakCount).toBe(4);
+      expect(useTaskStore.getState().lastAction?.label).toBe('Day logged, streak 4');
+      useTaskStore.getState().rolloverNegativeStreaks();
+      expect(get().streakCount).toBe(4);
+      useTaskStore.getState().lastAction?.undo();
+      expect(get().streakCount).toBe(3);
+    });
+
+    it('ignores a positive task and a day that is already closed', () => {
+      seed(makeTask({ id: 'ordinary', streakCount: 3, streakDate: new Date(2026, 0, 9).toISOString() }));
+      useTaskStore.getState().closeNegativeDay('ordinary');
+      expect(get('ordinary').streakCount).toBe(3);
+      seed(avoid({ streakCount: 3, streakDate: new Date(2026, 0, 9).toISOString() }));
+      useTaskStore.getState().closeNegativeDay('smoke');
+      useTaskStore.getState().closeNegativeDay('smoke');
+      expect(get().streakCount).toBe(4);
+    });
+  });
+
+  describe('an end time on an avoid-task', () => {
+    it('counts the day clean once it passes, and not before', () => {
+      seed(avoid({ windowEnd: '22:00', streakCount: 3, streakDate: new Date(2026, 0, 9).toISOString() }));
+      useTaskStore.getState().rolloverNegativeStreaks();
+      expect(get().streakCount).toBe(3); // 10:00
+      jest.setSystemTime(new Date(2026, 0, 10, 22, 30));
+      useTaskStore.getState().rolloverNegativeStreaks();
+      expect(get().streakCount).toBe(4);
+      useTaskStore.getState().rolloverNegativeStreaks();
+      expect(get().streakCount).toBe(4);
+    });
+
+    it('does not count it after a slip', () => {
+      seed(avoid({ windowEnd: '22:00', streakCount: 3, streakDate: new Date(2026, 0, 9).toISOString() }));
+      useTaskStore.getState().logSlip('smoke');
+      jest.setSystemTime(new Date(2026, 0, 10, 22, 30));
+      useTaskStore.getState().rolloverNegativeStreaks();
+      expect(get().streakCount).toBe(0);
+    });
+  });
+
   describe('rolloverNegativeStreaks', () => {
     it('credits the clean days that have gone by', () => {
       seed(avoid({ streakCount: 1, streakDate: new Date(2026, 0, 5).toISOString() }));
@@ -18633,6 +19279,54 @@ describe('negative habits', () => {
       jest.setSystemTime(new Date(2026, 0, 13, 10, 0, 0));
       useTaskStore.getState().rolloverNegativeStreaks();
       expect(get().streakCount).toBe(2); // Jan 11 and 12
+    });
+
+    // A "don't" habit is never completed, so the rollover is the only thing that
+    // can move its date. Left alone it read "2d ago" beside a running streak.
+    describe('its date', () => {
+      const daily = (over: Partial<Task> = {}) =>
+        avoid({ recurrenceType: 'daily', recurrenceInterval: 1, ...over });
+
+      it('moves a daily habit from a past day onto today', () => {
+        jest.setSystemTime(new Date(2026, 0, 10, 9, 0, 0));
+        seed(daily({ dueDate: new Date(2026, 0, 8, 9, 0, 0).toISOString() }));
+        useTaskStore.getState().rolloverNegativeStreaks();
+        expect(new Date(get().dueDate!)).toEqual(new Date(2026, 0, 10, 0, 0, 0));
+      });
+
+      it('leaves a date that is already today alone', () => {
+        jest.setSystemTime(new Date(2026, 0, 10, 9, 0, 0));
+        const due = new Date(2026, 0, 10, 9, 0, 0).toISOString();
+        seed(daily({ dueDate: due }));
+        useTaskStore.getState().rolloverNegativeStreaks();
+        expect(get().dueDate).toBe(due);
+      });
+
+      it('keeps a slip on today until the day turns', () => {
+        jest.setSystemTime(new Date(2026, 0, 10, 9, 0, 0));
+        const due = new Date(2026, 0, 10, 9, 0, 0).toISOString();
+        seed(daily({ dueDate: due, streakCount: 4, streakDate: new Date(2026, 0, 9).toISOString() }));
+        useTaskStore.getState().logSlip('smoke');
+        expect(get().dueDate).toBe(due);
+        jest.setSystemTime(new Date(2026, 0, 11, 9, 0, 0));
+        useTaskStore.getState().rolloverNegativeStreaks();
+        expect(new Date(get().dueDate!)).toEqual(new Date(2026, 0, 11, 0, 0, 0));
+      });
+
+      it('moves a from-completion habit onto today rather than tomorrow', () => {
+        jest.setSystemTime(new Date(2026, 0, 10, 9, 0, 0));
+        seed(daily({ recurrenceFromCompletion: true, dueDate: new Date(2026, 0, 7, 9, 0, 0).toISOString() }));
+        useTaskStore.getState().rolloverNegativeStreaks();
+        expect(new Date(get().dueDate!)).toEqual(new Date(2026, 0, 10, 0, 0, 0));
+      });
+
+      it('leaves a one-off habit alone', () => {
+        jest.setSystemTime(new Date(2026, 0, 10, 9, 0, 0));
+        const due = new Date(2026, 0, 2, 9, 0, 0).toISOString();
+        seed(avoid({ dueDate: due }));
+        useTaskStore.getState().rolloverNegativeStreaks();
+        expect(get().dueDate).toBe(due);
+      });
     });
   });
 });
@@ -19328,6 +20022,71 @@ describe('coins', () => {
     expect(balance()).toBe(-4);
     useTaskStore.getState().undoSlip('smoke');
     expect(balance()).toBe(-2);
+  });
+
+  describe('a habit a reward guards', () => {
+    const dessert = {
+      id: 'dessert', title: 'A dessert', cost: 10, createdAt: '2025-01-01T00:00:00.000Z',
+      linkUrl: null, note: null, oneTime: false, taskId: null, priceMinor: null, guardsTaskId: 'no-dessert', claimEveryDays: null,
+    };
+    const fund = (amount: number) => ({
+      id: `fund-${amount}`, kind: 'earn' as const, amount, at: '2025-06-01T10:00:00.000Z',
+      taskId: null, rewardId: null, label: 'Earned',
+    });
+    const seed = (coins: number, over: Partial<Task> = {}) => {
+      useRewardStore.setState({ entries: coins ? [fund(coins)] : [], rewards: [dessert], initialized: true });
+      useTaskStore.setState({
+        tasks: [makeTask({ id: 'no-dessert', title: 'No dessert unless claimed', polarity: 'negative', streakCount: 12, ...over })],
+      });
+    };
+    const habit = () => useTaskStore.getState().tasks.find(t => t.id === 'no-dessert')!;
+
+    it('claims the reward instead of logging a slip when the balance covers it', () => {
+      seed(25);
+      useTaskStore.getState().logSlip('no-dessert');
+      expect(balance()).toBe(15);
+      expect(habit().slipCount).toBe(0);
+      expect(habit().streakCount).toBe(12);
+      const spend = useRewardStore.getState().entries.find(e => e.kind === 'spend');
+      expect(spend?.rewardId).toBe('dessert');
+      const action = useTaskStore.getState().lastAction!;
+      expect(action.label).toBe('Claimed A dessert');
+      action.undo();
+      expect(balance()).toBe(25);
+    });
+
+    it('charges what is left and breaks the streak when it falls short', () => {
+      seed(6);
+      useTaskStore.getState().logSlip('no-dessert');
+      expect(balance()).toBe(0);
+      expect(habit().slipCount).toBe(1);
+      expect(habit().streakCount).toBe(0);
+      useTaskStore.getState().undoSlip('no-dessert');
+      expect(balance()).toBe(6);
+      expect(habit().streakCount).toBe(12);
+    });
+
+    // A charge floored to nothing writes no entry, so the undo of that slip
+    // must not take back an earlier slip's charge in its place.
+    it('takes back only its own slip’s charge', () => {
+      seed(6);
+      useTaskStore.getState().logSlip('no-dessert');
+      useTaskStore.getState().logSlip('no-dessert');
+      expect(balance()).toBe(0);
+      useTaskStore.getState().undoSlip('no-dessert');
+      expect(balance()).toBe(0);
+      expect(habit().slipCount).toBe(1);
+      useTaskStore.getState().undoSlip('no-dessert');
+      expect(balance()).toBe(6);
+    });
+
+    it('is an ordinary slip once the link is gone', () => {
+      seed(25);
+      useRewardStore.setState({ rewards: [{ ...dessert, guardsTaskId: null }] });
+      useTaskStore.getState().logSlip('no-dessert');
+      expect(habit().slipCount).toBe(1);
+      expect(useRewardStore.getState().entries.some(e => e.kind === 'spend')).toBe(false);
+    });
   });
 
   it('writes nothing while rewards are off', () => {

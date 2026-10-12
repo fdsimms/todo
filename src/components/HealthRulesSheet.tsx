@@ -115,13 +115,13 @@ export function HealthRulesSheet({ visible, onClose }: Props) {
       onClose={onClose}
       title="Health rules"
       caption={
-        'A rule adds its task on a day the reading crosses its number. Steps are only judged '
-        + 'from 6 PM, since a step count earlier in the day has not had its chance yet. A '
-        + 'nutrient rule is judged from whatever hour you set it to, and needs a nutrient logged '
-        + 'to Health, either by another food-logging app or by this one (turn on Health writing '
-        + 'in Settings and log a meal). A nutrient rule can also be set as a ceiling instead of a '
-        + 'floor, so it adds its task when the day goes over its number rather than under it. '
-        + 'Each rule adds its task at most once a day.'
+        'A rule adds its task on a day '
+        + 'a reading crosses its number, at most once a day. '
+        + 'Steps are checked from 6 PM. '
+        + 'Nutrient rules need nutrition logged to Health, '
+        + 'by another app or by this one '
+        + 'with Log to Health turned on '
+        + 'in Settings.'
       }
       rules={rules}
       categoryFallback={fallbackCategory}
@@ -210,8 +210,8 @@ export function HealthRulesSheet({ visible, onClose }: Props) {
                 describeValue={n => formatCheckpointHour(n ?? HEALTH_METRIC_EARLIEST_HOUR[rule.metric])}
               />
               <Text style={styles.hint}>
-                This rule won't add its task before this hour, since a nutrient goal is often
-                checked more than once a day.
+                This rule won’t add its task
+                before this hour.
               </Text>
             </>
           )}
@@ -227,8 +227,8 @@ export function HealthRulesSheet({ visible, onClose }: Props) {
           <RuleSheetNoticeCard
             icon="heart-outline"
             iconColor={colors.textSecondary}
-            title="Apple Health isn't being read"
-            hint="These rules do nothing until the app is reading Health. Nothing is written to Health and no copy is kept."
+            title="Apple Health isn’t being read"
+            hint="These rules do nothing until you turn this on. Nothing is written to Health and no copy is kept."
             action={
               <InlineAction
                 icon="heart-outline"

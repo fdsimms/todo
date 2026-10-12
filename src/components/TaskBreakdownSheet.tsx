@@ -170,7 +170,7 @@ export function TaskBreakdownSheet({ visible, taskId, onClose }: Props) {
       haptics.error();
       Alert.alert(
         'Couldn’t add these',
-        'This task couldn’t be found, so nothing was saved. Close this and open the task again, then retry.',
+        'This task couldn’t be found, so nothing was saved. Close this, reopen the task and try again.',
       );
       return;
     }
@@ -234,18 +234,18 @@ export function TaskBreakdownSheet({ visible, taskId, onClose }: Props) {
           ) : error ? (
             <View style={styles.note}>
               <EmptyNote icon="cloud-offline-outline">
-                {`Couldn’t figure out the steps. ${error} You can still type your own below.`}
+                {`Couldn’t suggest steps. ${error} You can still type your own below.`}
               </EmptyNote>
             </View>
           ) : cameBackEmpty ? (
             <View style={styles.note}>
               <EmptyNote icon="sparkles-outline">
-                Nothing came back beyond the steps already on this task. Say more about it below and regenerate, or type your own steps.
+                No new steps came back. Add details below and regenerate, or type your own steps.
               </EmptyNote>
             </View>
           ) : steps.length > 0 ? (
             <Text style={styles.intro}>
-              Tap to drop any you don’t want, then add the rest as subtasks. The first one is meant to be small
+              Tap to deselect any you don’t want, then add the rest as subtasks. The first one is meant to be small
               enough to start now.
             </Text>
           ) : null}
@@ -312,7 +312,7 @@ export function TaskBreakdownSheet({ visible, taskId, onClose }: Props) {
             maxLength={500}
             accessibilityLabel="What this task means"
           />
-          <Text style={styles.hint}>Sent with Regenerate so the steps fit what you actually mean.</Text>
+          <Text style={styles.hint}>Sent with Regenerate so the steps match what you mean.</Text>
 
           <TouchableOpacity
             style={[styles.regenerateBtn, loading && styles.regenerateDisabled]}

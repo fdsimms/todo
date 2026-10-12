@@ -824,7 +824,7 @@ export function priceStandingFor(
  */
 export function describePriceStanding(standing: PriceStanding | null): string | null {
   switch (standing) {
-    case 'lowest': return "The lowest you've paid";
+    case 'lowest': return "The lowest you’ve paid";
     case 'low': return 'Less than you usually pay';
     case 'usual': return 'About what you usually pay';
     case 'high': return 'More than usual';

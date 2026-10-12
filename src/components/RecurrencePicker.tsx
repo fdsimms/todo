@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
-import type { RecurrenceType } from '../types';
+import type { HolidayRule, RecurrenceType } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { ORDINAL_OPTIONS, MONTH_ABBREVIATIONS, recurrenceUnitLabel } from '../utils/recurrenceLabels';
@@ -11,6 +11,9 @@ import { CountStepper } from './CountStepper';
 import { SegmentedControl } from './SegmentedControl';
 import { haptics } from '../utils/haptics';
 import { ordinal } from '../utils/ordinal';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { HOLIDAY_SET_LABELS, hasAnyHolidays } from '../utils/holidays';
+import { formatRain, rainSkipOptions, rainUnitFor } from '../utils/rainSkip';
 
 export const RECURRENCE_LABELS: Record<RecurrenceType, string> = {
   none: 'Never',
@@ -100,7 +103,26 @@ interface Props {
    * the choice reads as an actual date rather than an abstract mechanism.
    */
   previewNextDate?: Date | null;
+
+  /**
+   * What an occurrence the rule lands on a holiday does (Task.recurrenceHolidays).
+   * Omit `onChangeHolidays` to leave the group out.
+   */
+  recurrenceHolidays?: HolidayRule | null;
+  onChangeHolidays?: (rule: HolidayRule | null) => void;
+  /**
+   * The rain that skips an occurrence, in millimetres (Task.rainSkipMm), or
+   * null for never. Omit `onChangeRainSkip` to leave the group out.
+   */
+  rainSkipMm?: number | null;
+  onChangeRainSkip?: (mm: number | null) => void;
 }
+
+const HOLIDAY_OPTIONS: { value: HolidayRule | null; label: string }[] = [
+  { value: null, label: 'As usual' },
+  { value: 'skip', label: 'Skip it' },
+  { value: 'move', label: 'Next day' },
+];
 
 /** The monthly day-anchor modes, as one closed set the picker can switch on. */
 type MonthAnchor = 'dueDate' | 'monthDay' | 'lastDay' | 'weekday';
@@ -170,9 +192,40 @@ export function RecurrencePicker({
   onSelectEndNever, onSelectEndCount,
   endDate,
   previewNextDate,
+  recurrenceHolidays, onChangeHolidays,
+  rainSkipMm, onChangeRainSkip,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  // Which days count, said where the choice is: with none set up the choice
+  // does nothing, and the hint says so rather than letting it look armed.
+  const holidaySet = useSettingsStore(s => s.holidaySet);
+  const customHolidays = useSettingsStore(s => s.customHolidays);
+  const holidayHint = !hasAnyHolidays({ set: holidaySet, custom: customHolidays })
+    ? 'No holidays are set up, so this does nothing yet. Choose them in Settings, Day & time.'
+    : `Uses ${[
+        holidaySet !== 'none' ? `${HOLIDAY_SET_LABELS[holidaySet]} holidays` : null,
+        customHolidays.length > 0 ? `${customHolidays.length} day${customHolidays.length === 1 ? '' : 's'} off of your own` : null,
+      ].filter(Boolean).join(' and ')}, set in Settings, Day & time.`;
+
+  // The rain thresholds in the user's own unit. A stored value that isn't a
+  // preset (one picked under the other unit) keeps a segment of its own, so
+  // the track never shows a selection the task doesn't have.
+  const weatherTasksOn = useSettingsStore(s => s.weatherTasks);
+  const rainUnit = rainUnitFor(useSettingsStore(s => s.unitSystem));
+  const rainOptions = useMemo(() => {
+    const presets = rainSkipOptions(rainUnit);
+    const extra = typeof rainSkipMm === 'number' && rainSkipMm > 0 && !presets.some(p => p.mm === rainSkipMm)
+      ? [{ mm: rainSkipMm, label: formatRain(rainSkipMm, rainUnit) }] : [];
+    return [
+      { value: null as number | null, label: 'Off' },
+      ...[...presets, ...extra].sort((a, b) => a.mm - b.mm).map(p => ({ value: p.mm as number | null, label: p.label })),
+    ];
+  }, [rainUnit, rainSkipMm]);
+  const rainHint = weatherTasksOn
+    ? 'Skips the day’s occurrence when this much rain fell yesterday and today, counting today’s forecast.'
+    : 'Turn on Weather-based tasks in Settings, with location access. Until then this does nothing.';
 
   const endMode: 'never' | 'date' | 'count' =
     endDate?.value ? 'date' : recurrenceCount !== null ? 'count' : 'never';
@@ -258,7 +311,7 @@ export function RecurrencePicker({
         </View>
         {recurrenceType === 'hours' && (
           <Text style={styles.groupHint}>
-            Hidden until this many hours after you check it off, not on a fixed calendar day.
+            Hides the task for this many hours after you check it off.
           </Text>
         )}
       </Group>
@@ -301,7 +354,7 @@ export function RecurrencePicker({
         <Group
           label="On which day"
           hint={recurrenceType === 'yearly' && recurrenceMonth === null
-            ? 'The month stays whatever month the due date falls in; this only sets the day within it.'
+            ? 'The month follows the due date. This sets the day.'
             : undefined}
           styles={styles}
         >
@@ -376,6 +429,27 @@ export function RecurrencePicker({
                 : `Falls on ${format(previewNextDate, 'EEEE, MMMM d, yyyy')}.`}
             </Text>
           )}
+        </Group>
+      )}
+
+      {recurrenceType !== 'hours' && !!onChangeHolidays && (
+        <Group label="On a holiday" hint={holidayHint} styles={styles}>
+          <SegmentedControl
+            label="On a holiday"
+            value={recurrenceHolidays ?? null}
+            onChange={onChangeHolidays}
+            options={HOLIDAY_OPTIONS}
+          />
+        </Group>
+      )}
+      {recurrenceType !== 'hours' && !!onChangeRainSkip && (
+        <Group label="When it rains" hint={rainHint} styles={styles}>
+          <SegmentedControl
+            label="Skip after this much rain"
+            value={typeof rainSkipMm === 'number' && rainSkipMm > 0 ? rainSkipMm : null}
+            onChange={onChangeRainSkip}
+            options={rainOptions}
+          />
         </Group>
       )}
 

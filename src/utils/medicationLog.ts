@@ -135,6 +135,23 @@ export function medicationFor(task: MedicationSource): MedicationDose | null {
 }
 
 /**
+ * Whether a task can be handed a medication to record on completion: an open,
+ * top-level, repeating task that doesn't already record one. Repeating because a
+ * scheduled dose recurs, and "doesn't already record one" because attaching
+ * would silently replace the medication it has (set that from the task's own
+ * editor instead).
+ */
+export function canCarryMedication(
+  task: Pick<Task, 'completed' | 'archived' | 'parentId' | 'recurrenceType' | 'medicationName'>,
+): boolean {
+  return !task.completed
+    && !task.archived
+    && !task.parentId
+    && task.recurrenceType !== 'none'
+    && !task.medicationName?.trim();
+}
+
+/**
  * The key two spellings of one medication agree on.
  *
  * Case and surrounding space only — the same refusal `symptomKey` makes, for a
@@ -148,16 +165,20 @@ export function medicationKey(name: string): string {
 }
 
 /**
- * Every medication you have ever logged, most-used first, then alphabetical.
+ * Every medication you have logged or added by name, most-used first, then
+ * alphabetical.
  *
- * Derived on read rather than stored, exactly as `symptomVocabulary` is: a
- * medication is named by having been taken, so the honest vocabulary is the
- * set of things that have been taken. Nothing to migrate, nothing to prune,
- * and something taken once two years ago drops off the suggestions by itself.
+ * A medication is named in either of two ways: by having been taken (a dose
+ * carries the name), or by being added to the list before any dose
+ * (`registered`, stored as `REGISTERED_MEDICATIONS_SETTING_KEY`). Taking the
+ * union is what lets a medication exist with no doses, and what keeps it
+ * listed after its last dose is deleted. A medication that was only ever taken
+ * still needs no registration, so nothing had to be migrated.
  */
 export function medicationVocabulary(
   logs: readonly MedicationLog[],
   archived: readonly string[] = [],
+  registered: readonly string[] = [],
 ): string[] {
   const counts = new Map<string, { name: string; count: number }>();
   for (const log of logs) {
@@ -168,6 +189,11 @@ export function medicationVocabulary(
     const seen = counts.get(key);
     if (seen) seen.count++;
     else counts.set(key, { name: log.name.trim(), count: 1 });
+  }
+  for (const name of registered) {
+    const key = medicationKey(name);
+    if (!key || archived.includes(key) || counts.has(key)) continue;
+    counts.set(key, { name: name.trim(), count: 0 });
   }
   return [...counts.values()]
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
@@ -193,6 +219,37 @@ export function parseArchivedMedications(raw: string | null): string[] {
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     return [...new Set(parsed.filter((k): k is string => typeof k === 'string' && k !== ''))];
+  } catch {
+    return [];
+  }
+}
+
+/** The settings key the added-by-name list is stored under (synced, see `SYNCED_SETTING_KEYS`). */
+export const REGISTERED_MEDICATIONS_SETTING_KEY = 'medication_registered';
+
+/**
+ * Read the stored added-by-name list back, tolerating anything that isn't one.
+ *
+ * Names rather than keys, unlike the archived list, because a medication with no
+ * doses has no logged spelling to show: the name typed when it was added is the
+ * only one there is. One entry per `medicationKey`, first spelling kept.
+ */
+export function parseRegisteredMedications(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const entry of parsed) {
+      if (typeof entry !== 'string') continue;
+      const name = entry.trim();
+      const key = medicationKey(name);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(name);
+    }
+    return out;
   } catch {
     return [];
   }
@@ -230,11 +287,55 @@ export function hasDoseOnDay(
  * no amount looks like in its own row, instead of concatenating a blank into
  * the middle of a sentence.
  */
-export function formatDose(log: MedicationLog): string | null {
+export function formatDose(log: Pick<MedicationLog, 'amount' | 'unit' | 'strength'>): string | null {
   if (log.amount === null || !log.unit) return null;
   const spec = DOSE_UNITS.find(u => u.value === log.unit);
   const unit = log.amount !== 1 && spec?.plural ? spec.plural : log.unit;
-  return `${log.amount} ${unit}`;
+  const total = doseTotal(log);
+  return total ? `${log.amount} ${unit} (${total.amount} ${total.unit})` : `${log.amount} ${unit}`;
+}
+
+/** The units a dose is counted in rather than measured: the ones with a plural, other than 'unit'. */
+export function isCountedUnit(unit: string | null | undefined): boolean {
+  if (!unit || unit === 'unit') return false;
+  return DOSE_UNITS.some(u => u.value === unit && u.plural !== null);
+}
+
+/** The units a strength can be stated in: the measured ones. */
+export const STRENGTH_UNITS: readonly string[] = DOSE_UNITS
+  .filter(u => u.plural === null)
+  .map(u => u.value);
+
+/** Two decimals is finer than any strength a label prints and hides float noise. */
+function roundTotal(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+/**
+ * How much a dose came to in the strength's own unit ("1 capsule" of a 125 mcg
+ * capsule is 125 mcg), or null when the dose has no stamped strength or isn't
+ * counted. Never guessed: a dose with no stamped strength has none to multiply.
+ */
+export function doseTotal(
+  log: Pick<MedicationLog, 'amount' | 'unit' | 'strength'>,
+): { amount: number; unit: string } | null {
+  if (log.amount === null || !isCountedUnit(log.unit) || !log.strength) return null;
+  if (!(log.strength.amount > 0) || !(log.amount > 0)) return null;
+  return { amount: roundTotal(log.amount * log.strength.amount), unit: log.strength.unit };
+}
+
+/**
+ * What a dose contributes to a total in `unit`: its own amount when it was
+ * recorded in that unit, its `doseTotal` when the stamped strength is in that
+ * unit, and null otherwise (unmeasured, never converted by any other route).
+ */
+export function amountInUnit(
+  log: Pick<MedicationLog, 'amount' | 'unit' | 'strength'>,
+  unit: string,
+): number | null {
+  if (log.unit === unit) return log.amount !== null && log.amount > 0 ? log.amount : null;
+  const total = doseTotal(log);
+  return total && total.unit === unit ? total.amount : null;
 }
 
 /**
@@ -268,6 +369,15 @@ export function isAsNeededMedication(
   return logs.some(l => medicationKey(l.name) === key && l.asNeeded);
 }
 
+/**
+ * The part of a medication's settings the tallies read. Structural so this
+ * module need not import `medicationSettings.ts`, which imports it.
+ */
+export type MedicationTallyPrefs = Record<string, {
+  asNeeded?: boolean | null;
+  usualDoses?: { amount: number; unit: string }[];
+}>;
+
 /** What one medication's history adds up to. Counting only — no comparisons. */
 export interface MedicationStat {
   key: string;
@@ -276,10 +386,16 @@ export interface MedicationStat {
   doses: number;
   /** Distinct days carrying at least one dose — not the same as `doses`. */
   days: number;
-  lastTakenAt: string;
+  /** Null for a medication that was added by name and has no doses yet. */
+  lastTakenAt: string | null;
   asNeeded: boolean;
   /** The dose phrase seen most often, or null when none was ever stated. */
   typicalDose: string | null;
+}
+
+function usualDoseText(prefs: MedicationTallyPrefs[string] | undefined): string | null {
+  const first = prefs?.usualDoses?.[0];
+  return first ? formatDose(first) : null;
 }
 
 /**
@@ -291,7 +407,11 @@ export interface MedicationStat {
  * comparison. Somebody who has taken something twice is entitled to see both
  * of those days.
  */
-export function medicationStats(logs: readonly MedicationLog[]): MedicationStat[] {
+export function medicationStats(
+  logs: readonly MedicationLog[],
+  registered: readonly string[] = [],
+  prefs: MedicationTallyPrefs = {},
+): MedicationStat[] {
   const byKey = new Map<string, MedicationLog[]>();
   for (const log of logs) {
     const key = medicationKey(log.name);
@@ -317,11 +437,29 @@ export function medicationStats(logs: readonly MedicationLog[]): MedicationStat[
       doses: sorted.length,
       days: new Set(sorted.map(e => e.dayKey)).size,
       lastTakenAt: sorted[0].takenAt,
-      asNeeded: sorted.some(e => e.asNeeded),
-      typicalDose,
+      // What you said wins; with no answer it is read off the doses.
+      asNeeded: prefs[key]?.asNeeded ?? sorted.some(e => e.asNeeded),
+      typicalDose: typicalDose ?? usualDoseText(prefs[key]),
     });
   }
-  return stats.sort((a, b) => b.lastTakenAt.localeCompare(a.lastTakenAt));
+  // A medication added by name with no doses yet is listed after the ones with
+  // a history, alphabetically, so it is findable without outranking them.
+  for (const name of registered) {
+    const key = medicationKey(name);
+    if (!key || byKey.has(key)) continue;
+    byKey.set(key, []);
+    stats.push({
+      key, name: name.trim(), doses: 0, days: 0, lastTakenAt: null,
+      asNeeded: prefs[key]?.asNeeded ?? false, typicalDose: usualDoseText(prefs[key]),
+    });
+  }
+  return stats.sort((a, b) => {
+    if (a.lastTakenAt === null || b.lastTakenAt === null) {
+      if (a.lastTakenAt === b.lastTakenAt) return a.name.localeCompare(b.name);
+      return a.lastTakenAt === null ? 1 : -1;
+    }
+    return b.lastTakenAt.localeCompare(a.lastTakenAt);
+  });
 }
 
 /**
@@ -414,4 +552,115 @@ export function frequencyTrend(
   if (recent + previous < MIN_TREND_DOSES) return null;
 
   return { recent, previous, days };
+}
+
+/**
+ * The dose a quick record repeats: the most recent one recorded for this
+ * medication, marked as needed. Most recent rather than most common, so the
+ * button does what the row's "last" says and a changed dose is picked up at
+ * once. As needed because the quick button is offered only on as-needed rows:
+ * a scheduled dose is recorded by checking off its task.
+ */
+export function repeatDose(
+  logs: readonly MedicationLog[],
+  name: string,
+  usual: { amount: number; unit: string } | null = null,
+): MedicationDose & { asNeeded: true } {
+  const key = medicationKey(name);
+  const last = logs
+    .filter(l => medicationKey(l.name) === key)
+    .sort((a, b) => b.takenAt.localeCompare(a.takenAt))[0];
+  return {
+    name: last?.name.trim() ?? name.trim(),
+    // The last dose wins; the usual amount is what stands in before there is one.
+    amount: last ? last.amount : usual?.amount ?? null,
+    unit: last ? last.unit : usual?.unit ?? null,
+    asNeeded: true,
+  };
+}
+
+/** A medication started recently enough to offer marking the day as a milestone. */
+export interface MilestoneOffer {
+  key: string;
+  name: string;
+  /** The day of its first recorded dose. */
+  firstDayKey: string;
+}
+
+/** How long after a first dose the milestone offer stays up. */
+export const MILESTONE_OFFER_DAYS = 14;
+
+/**
+ * Medications whose first recorded dose was in the last `MILESTONE_OFFER_DAYS`
+ * days, with no milestone naming them and no "not now" yet.
+ *
+ * The before/after mood read (`milestoneMoodContrast`) is the honest way to
+ * look at a medicine's start: it compares two stretches of time rather than
+ * days taken against days not, so it is not the backwards comparison this file
+ * refuses. All it needs is the day, and the first dose is that day, so the
+ * Medications screen offers it rather than leaving somebody to remember the
+ * Mood screen has a milestone button. A milestone "names" a medication when
+ * its label contains the name, which is all a person writing "Started
+ * sertraline" or "sertraline 50mg" would do.
+ */
+export function milestoneOffers(
+  logs: readonly MedicationLog[],
+  milestoneLabels: readonly string[],
+  dismissed: readonly string[],
+  todayKey: string,
+): MilestoneOffer[] {
+  const first = new Map<string, { name: string; dayKey: string }>();
+  for (const log of logs) {
+    const key = medicationKey(log.name);
+    if (!key) continue;
+    const seen = first.get(key);
+    if (!seen || log.dayKey < seen.dayKey) first.set(key, { name: log.name.trim(), dayKey: log.dayKey });
+  }
+  const cutoff = format(subDays(keyToDate(todayKey), MILESTONE_OFFER_DAYS - 1), 'yyyy-MM-dd');
+  const labels = milestoneLabels.map(l => l.toLowerCase());
+  const offers: MilestoneOffer[] = [];
+  for (const [key, { name, dayKey }] of first) {
+    if (dayKey < cutoff || dayKey > todayKey) continue;
+    if (dismissed.includes(key)) continue;
+    if (labels.some(l => l.includes(key))) continue;
+    offers.push({ key, name, firstDayKey: dayKey });
+  }
+  return offers.sort((a, b) => b.firstDayKey.localeCompare(a.firstDayKey));
+}
+
+/**
+ * The live task that counts a medication's supply, when a scheduled medicine
+ * has one (`supply.ts`): top-level, open, not archived, carrying a supply, and
+ * recording this medication. The most recently created wins when several do.
+ *
+ * A dose recorded by hand for a scheduled medicine (a catch-up, an extra one)
+ * spends one from it, the same one a completion spends, so the count doesn't
+ * drift high every time a dose goes in some other way than the checkbox.
+ */
+export function taskSupplyFor<T extends MedicationSource & Pick<Task,
+  'id' | 'completed' | 'archived' | 'parentId' | 'supplyCount' | 'createdAt'>>(
+  tasks: readonly T[],
+  name: string,
+): T | null {
+  const key = medicationKey(name);
+  if (!key) return null;
+  const matches = tasks.filter(t => !t.completed && !t.archived && !t.parentId && t.supplyCount !== null
+    && medicationKey(medicationFor(t)?.name ?? '') === key);
+  return matches.sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ?? null;
+}
+
+/**
+ * Whether a medication already has a repeating task that records it: top-level,
+ * open, not archived, and recurring. What decides if the detail page offers to
+ * make one, so a medication that is already scheduled isn't offered a second.
+ */
+export function hasScheduledTask<T extends MedicationSource & Pick<Task,
+  'completed' | 'archived' | 'parentId' | 'recurrenceType'>>(
+  tasks: readonly T[],
+  name: string,
+): boolean {
+  const key = medicationKey(name);
+  if (!key) return false;
+  return tasks.some(t => !t.completed && !t.archived && !t.parentId && t.recurrenceType !== 'none'
+    && medicationKey(medicationFor(t)?.name ?? '') === key);
 }

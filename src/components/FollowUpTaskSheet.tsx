@@ -221,7 +221,7 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
           label="Category"
           summary={category ? categoryLabel(category, categories) : undefined}
           emptySummary="Same as this task"
-          hint="Where the added task is filed. Left alone it lands in the same category as the task that adds it."
+          hint="Category for the added task. Defaults to this task’s category."
           expanded={fieldOpen('category')}
           onToggle={() => toggleField('category')}
         >
@@ -253,7 +253,7 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
               label="Project"
               summary={projects.find(p => p.id === projectId)?.title}
               emptySummary="Same as this task"
-              hint="Which project the added task counts toward. Left alone it follows the task that adds it."
+              hint="Project for the added task. Defaults to this task’s project."
               expanded={fieldOpen('project')}
               onToggle={() => toggleField('project')}
             >
@@ -283,7 +283,7 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
         <CollapsibleField
           label="Tags"
           summary={tags.length > 0 ? tags.join(', ') : undefined}
-          hint="Free-form labels on the added task. It never inherits the tags of the task that adds it."
+          hint="Free-form labels for the added task. It doesn’t copy this task’s tags."
           expanded={fieldOpen('tags')}
           onToggle={() => toggleField('tags')}
         >
@@ -339,7 +339,7 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
         <CollapsibleField
           label="Priority"
           summary={priority > 0 ? PRIORITY_LABELS[priority] : undefined}
-          hint="Ranks the added task against everything else on the day it lands."
+          hint="Ranks the added task against everything else on its day."
           expanded={fieldOpen('priority')}
           onToggle={() => toggleField('priority')}
         >
@@ -358,7 +358,7 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
           label="Effort"
           summary={estimatedMinutes !== null ? `${estimatedMinutes} min` : effort > 0 ? EFFORT_LABELS[effort] : undefined}
           emptySummary="Not set"
-          hint="Roughly how long the added task takes, so the day it lands on can be sized realistically."
+          hint="Roughly how long the added task takes, to help plan its day."
           expanded={fieldOpen('effort')}
           onToggle={() => toggleField('effort')}
         >
@@ -472,7 +472,7 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
           <Ionicons name="airplane-outline" size={18} color={vacationPause ? colors.accent : colors.textSecondary} />
           <View style={styles.optionContent}>
             <Text style={styles.optionLabel}>Vacation pause</Text>
-            <Text style={styles.optionHint}>Don't add it while vacation mode is on</Text>
+            <Text style={styles.optionHint}>Don’t add it while vacation mode is on</Text>
           </View>
           <View style={[styles.toggle, vacationPause && styles.toggleOn]}>
             <View style={[styles.toggleKnob, vacationPause && styles.toggleKnobOn]} />
@@ -483,7 +483,7 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
       <View style={styles.sectionCard}>
         <CollapsibleField
           label="Subtasks"
-          summary={subtasks.length > 0 ? `${subtasks.length} step${subtasks.length === 1 ? '' : 's'}` : undefined}
+          summary={subtasks.length > 0 ? `${subtasks.length} subtask${subtasks.length === 1 ? '' : 's'}` : undefined}
           hint="Checklist items created alongside the added task, always unchecked."
           expanded={fieldOpen('subtasks', true)}
           onToggle={() => toggleField('subtasks', true)}

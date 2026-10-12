@@ -75,8 +75,10 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { resolveActiveTrip } from '../utils/activeTrip';
 import { resetToGroceries } from '../navigation/navigationRef';
 import { useFilterField } from '../hooks/useFilterField';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { isPortionBox } from '../types';
 import { LazySheet } from '../components/LazySheet';
+import { useFabBottom } from '../components/Fab';
 
 /**
  * Everything the app currently thinks is in your kitchen, in one place — the
@@ -149,8 +151,10 @@ import { LazySheet } from '../components/LazySheet';
  * inventory, and stay out.
  */
 export function KitchenScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
+  const fabBottom = useFabBottom();
   const colors = useColors();
   // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
   const screenSettings = useScreenSettings('Kitchen', 'Pantry settings');
@@ -294,7 +298,7 @@ export function KitchenScreen() {
   // for.
   const suggestionHeader = shownSuggestions.length === 0 ? null : (
     <View style={styles.suggestWrap}>
-      <Text style={styles.sectionTitle}>Recipes for what's expiring</Text>
+      <Text style={styles.sectionTitle}>Recipes for what’s expiring</Text>
       {shownSuggestions.map(suggestion => (
         <TouchableOpacity
           key={suggestion.recipe.id}
@@ -687,12 +691,12 @@ export function KitchenScreen() {
         accessibilityLabel={`${entry.title}, ${entry.caption}`}
         accessibilityHint={
           entry.kind === 'leftover'
-            ? 'Opens the container, where you can close it out. Long press to move it between the fridge and the freezer'
+            ? 'Opens the container to close it out. Long press to move it between the fridge and the freezer'
             : isPortion
-              ? 'Opens the item, where you can take this portion out of the freezer. Long press to move it to another aisle or the freezer'
+              ? 'Opens the item to take this portion out of the freezer. Long press to move it to another aisle or the freezer'
               : entry.kind === 'product'
-                ? 'Opens the item, where you can correct this one. Long press to move it to another aisle or the freezer'
-                : 'Opens the item, where you can correct it further. Long press to move it to another aisle or the freezer'
+                ? 'Opens the item to correct this one. Long press to move it to another aisle or the freezer'
+                : 'Opens the item to correct it further. Long press to move it to another aisle or the freezer'
         }
       >
         <View style={styles.body}>
@@ -880,16 +884,17 @@ export function KitchenScreen() {
           says the mechanism rather than describing the feature. */}
       {entries.length > 0 && !typed && !hideHelpText && (
         <Text style={styles.caption}>
-          Worked out from what you buy, what you&apos;ve marked, and what
-          you&apos;ve put in the fridge. Tap ✕ to say you&apos;re out of something.
+          Based on what you buy, what you’ve marked, and what
+          you’ve put in the fridge. Tap ✕ to say you’re out of something.
         </Text>
       )}
 
       <ReorderableList
+        refreshControl={pullSearch.refreshControl}
         data={rows}
         keyExtractor={kitchenRowKey}
         renderItem={renderRow}
-        scrollToTop={{ bottom: tabBarHeight + spacing.md }}
+        scrollToTop={{ bottom: fabBottom }}
         // dragTick, not tap: a fast drag crosses several rows between frames
         // and unthrottled ticks run together into one long buzz. The lift
         // itself is fired by ReorderableList.
@@ -911,8 +916,8 @@ export function KitchenScreen() {
             title={typed ? 'Nothing matches' : 'Nothing in the pantry yet'}
             subtitle={
               typed
-                ? 'Nothing you probably have goes by that name. Add it above to say you do.'
-                : 'Finish a shopping trip and what you bought turns up here, along with anything you put in the fridge. Type a name above, or scan a barcode or a receipt, to add something you already have.'
+                ? 'Nothing in the pantry has that name. Add it above if you have it.'
+                : 'Finish a shopping trip and what you bought shows up here. To add something you already have, type a name above or scan a barcode or receipt.'
             }
             bottomOffset={tabBarHeight}
           />
@@ -1001,6 +1006,7 @@ export function KitchenScreen() {
           }
         />
       </LazySheet>
+      {pullSearch.sheet}
     </View>
   );
 }

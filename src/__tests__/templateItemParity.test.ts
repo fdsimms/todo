@@ -35,6 +35,7 @@ const NOT_SEEDED: Record<string, string[]> = {
     'waitingOnPersonSince', 'waitingFollowUpDeclinedAt', 'generatedKind', 'generatedSourceId', 'calendarEventId',
     'calendarEventExternalId', 'completionCalendarEventId', 'completionCalendarEventExternalId', 'timeBlockEventId',
     'timeBlockExternalId', 'reminderUtcOffsetMinutes', 'recurrenceAnchorDay', 'recurrenceAnchorDate',
+    'meterHeldUntil', 'rainSkippedOn', 'reviewOfTaskId',
   ],
 
   // A template has no calendar date of its own. These are written as offsets
@@ -60,6 +61,17 @@ const NOT_SEEDED: Record<string, string[]> = {
   // Names someone or something outside the template that a run can't know.
   'names a person or a date outside the template': ['waitingOnPersonId', 'followUpOn'],
 
+  // Points at a row in this person's own saved meals, which a template shared
+  // to another person (or run on another device before sync) can't resolve.
+  'names a saved meal outside the template': ['logSavedMealId'],
+
+  // The reading a task is due at is where one meter stood at one moment. A run
+  // can't know where the odometer is now, so a seeded "due at 45,000" would be
+  // wrong for every run but the first.
+  'a meter reading outside the template': [
+    'meterName', 'meterUnit', 'meterEvery', 'meterDueAt', 'meterLimitMonths',
+  ],
+
   // Read from and written to Apple Health. Withheld from templates for the
   // reason a medication is withheld over MCP: a template is a way to hand them
   // out unattended (docs/arch/health-data.md).
@@ -72,10 +84,11 @@ const NOT_SEEDED: Record<string, string[]> = {
   // quotaIntervalMinutes derives targetCount from the time window, which needs
   // the window and the interval edited together.
   'not offered on a template yet': [
-    'showStreak', 'streakRequiresWindow', 'deadlineMonthDay', 'deadlineOnCalendar', 'logCompletionToCalendar',
+    'showStreak', 'streakRequiresWindow', 'streakCountsUnits', 'deadlineMonthDay', 'deadlineOnCalendar', 'logCompletionToCalendar',
     'reminderKind', 'reminderTracksVisibility', 'reminderTimeAnchor', 'quotaIntervalMinutes', 'quotaAlwaysVisible',
     'timedMinutes', 'followUpTaskEveryN', 'followUpTaskTitle', 'followUpTaskDraft', 'followUpTaskOneAtATime',
     'followUpTaskAtEnd', 'seriesMonthDays', 'seriesRepeatMonths', 'seriesDefaults', 'slipAllowance',
+    'quotaRampHits',
   ],
 };
 

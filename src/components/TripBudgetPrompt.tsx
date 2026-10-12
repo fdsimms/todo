@@ -93,8 +93,8 @@ export function TripBudgetPrompt({ visible, budgetMinor, currencySymbol, onSave,
         <View style={styles.card}>
           <Text style={styles.title}>Trip budget</Text>
           <Text style={styles.hint}>
-            What you meant to spend. The running total shows either way; this is what
-            it gets compared to.
+            What you plan to spend. The running total is
+            compared to it.
           </Text>
 
           <View style={styles.field}>

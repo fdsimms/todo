@@ -38,4 +38,15 @@ describe('cardAnchorPlacement', () => {
     expect(p.width).toBe(280 - ANCHOR_EDGE * 2);
     expect(p.right).toBe(ANCHOR_EDGE);
   });
+
+  it('slides a tall card to the far edge instead of capping it against the touch', () => {
+    const p = cardAnchorPlacement({ x: 60, y: 500 }, window, insets, 300, 480);
+    expect(p.bottom).toBe(insets.bottom + ANCHOR_EDGE);
+    expect(p.maxHeight).toBe(844 - (insets.bottom + ANCHOR_EDGE) - insets.top - ANCHOR_EDGE);
+  });
+
+  it('leaves a card that fits beside the touch', () => {
+    const p = cardAnchorPlacement({ x: 60, y: 700 }, window, insets, 300, 200);
+    expect(p.bottom).toBe(844 - 700 + ANCHOR_GAP);
+  });
 });

@@ -13,6 +13,7 @@ const mockResetToKitchen = jest.fn();
 const mockResetToPeople = jest.fn();
 const mockResetToJournal = jest.fn();
 const mockResetToFoodLog = jest.fn();
+const mockResetToMedications = jest.fn();
 const mockResetToProjectPull = jest.fn();
 const mockResetToDeload = jest.fn();
 const mockResetToTask = jest.fn();
@@ -74,6 +75,7 @@ jest.mock('../navigation/navigationRef', () => ({
   resetToPeople: (...args: unknown[]) => mockResetToPeople(...args),
   resetToJournal: (...args: unknown[]) => mockResetToJournal(...args),
   resetToFoodLog: (...args: unknown[]) => mockResetToFoodLog(...args),
+  resetToMedications: (...args: unknown[]) => mockResetToMedications(...args),
   resetToProjectPull: (...args: unknown[]) => mockResetToProjectPull(...args),
   resetToFocusSession: (...args: unknown[]) => mockResetToFocusSession(...args),
   resetToDeload: (...args: unknown[]) => mockResetToDeload(...args),
@@ -108,8 +110,10 @@ import {
   isPeopleUrl,
   peopleUrlPersonId,
   isFoodLogUrl,
+  isMedicationsUrl,
   journalUrlKind,
   journalUrlWantsLog,
+  journalUrlEntryId,
   isProjectsUrl,
   projectsUrlPullId,
   projectsUrlPullDay,
@@ -833,6 +837,15 @@ describe('openInAppUrl', () => {
     expect(mockResetToGroceries).not.toHaveBeenCalled();
   });
 
+  it('opens Medications for the widget link', () => {
+    expect(isMedicationsUrl('dundundun://medications')).toBe(true);
+    expect(isMedicationsUrl('dundundun:///medications/')).toBe(true);
+    expect(isMedicationsUrl('dundundun://medications?x=1')).toBe(false);
+    expect(linkIconFor('dundundun://medications')).toBe('medkit-outline');
+    openInAppUrl('dundundun://medications');
+    expect(mockResetToMedications).toHaveBeenCalledTimes(1);
+  });
+
   // The Today widget's food log shortcut — a plain "open this screen" link,
   // the same shape recipes/mealplan/kitchen already take.
   it('opens the food log for the bare link', () => {
@@ -1030,8 +1043,17 @@ describe('journal and dreams links', () => {
   it('lands on the matching screen, opening the sheet when asked', () => {
     mockResetToJournal.mockClear();
     expect(openInAppUrl('dundundun://dreams?log=1')).toBe(true);
-    expect(mockResetToJournal).toHaveBeenCalledWith('dream', true);
+    expect(mockResetToJournal).toHaveBeenCalledWith('dream', true, null);
     expect(openInAppUrl('dundundun://journal')).toBe(true);
-    expect(mockResetToJournal).toHaveBeenLastCalledWith('journal', false);
+    expect(mockResetToJournal).toHaveBeenLastCalledWith('journal', false, null);
+  });
+
+  it('opens one entry by id, the link a note for later leaves on its day', () => {
+    expect(journalUrlEntryId('dundundun://journal?entry=n%201')).toBe('n 1');
+    expect(journalUrlEntryId('dundundun://journal?log=1')).toBeNull();
+    expect(journalUrlEntryId('dundundun://mood?entry=x')).toBeNull();
+    mockResetToJournal.mockClear();
+    expect(openInAppUrl('dundundun://journal?entry=abc')).toBe(true);
+    expect(mockResetToJournal).toHaveBeenCalledWith('journal', false, 'abc');
   });
 });

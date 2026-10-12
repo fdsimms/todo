@@ -42,8 +42,8 @@ export function SavedMealsSheet({ visible, meals, onLog, onDelete, onClose }: Pr
 
   const handleDelete = (meal: SavedMeal) => {
     Alert.alert(
-      `Forget "${meal.name}"?`,
-      'This does not touch anything already logged with it. Only the shortcut to log it again is removed.',
+      `Forget “${meal.name}”?`,
+      'Only the shortcut to log it again is removed. Anything already logged stays.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -70,7 +70,7 @@ export function SavedMealsSheet({ visible, meals, onLog, onDelete, onClose }: Pr
               icon="bookmark-outline"
               title="No saved meals yet"
               subtitle={
-                'Select a few entries on the food log and choose "Save as meal" to build a combination you can log again in one tap.'
+                'Select entries on the food log, then choose “Save as meal” to log them together in one tap.'
               }
             />
           </View>

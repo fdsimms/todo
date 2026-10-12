@@ -136,6 +136,14 @@ the two runs compare exactly, which is how to prove a refactor left a target unc
   an opaque token that only SwiftUI can render (see `modules/todo-screentime-bridge`). It is
   `String?`, so handle nil. In the *action* extension you get an `ApplicationToken` rather than
   an `Application`, and the name has to be reconstructed with `Application(token:)`.
+- **`LogDreamIntent` (`modules/todo-widget-bridge/ios/LogDreamIntent.swift`) is the free-text shape
+  with a timestamp.** `AddTaskIntent`'s phrase (nothing interpolated, Siri asks "What did you
+  dream?") plus `LogMedicationIntent`'s queued record (`{ text, at }`, so a dream said on waking files
+  under that day however late the app drains it). It only appends to `pending_dreams.json`; the app
+  writes it through `useJournalStore.addEntry` on the next foreground (`processPendingDreams`,
+  `src/utils/dreamQueue.ts`) and navigates nowhere, so the journal's Face ID lock stays closed.
+  Written without a compiler: it copies the two intents above line for line, and a build is
+  the first check on it.
 - **A spoken Siri phrase for an `AppShortcut` needs the `com.apple.developer.siri` entitlement
   *and* `NSSiriUsageDescription`, even though App Intents otherwise needs neither.** Without the
   entitlement (`plugins/withSiriShortcuts.js`, added via `withEntitlementsPlist`), the same
@@ -185,7 +193,7 @@ whose comments carry the reasons. The rules worth knowing before touching them:
   in every build, and do nothing without a paired watch that has the app.
 - **The watch can't read the App Group, so the data path is WatchConnectivity, both ways.** The
   watch is another device with its own containers. Out: the app builds a second copy of the
-  widget snapshot with `WATCH_LIMITS` (room for a whole shopping list), and
+  widget snapshot with `WATCH_CAPS` (room for a whole shopping list), and
   `WatchSession.swift` sends it as the session's application context, compressed. Back: a tap
   is a user-info transfer, which `WatchSession` appends to the widget's own quiet-tap queue (or
   AddTaskIntent's queue, for a dictated task) in the widget's shape, so

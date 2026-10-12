@@ -1,4 +1,5 @@
 import type {
+  FoodBreakdownLine,
   FoodNutrition,
   FoodNutritionSource,
   FoodPortion,
@@ -73,6 +74,27 @@ function readAmounts(value: unknown): Partial<Record<NutrientKey, number>> {
     if (amount !== null) amounts[key] = amount;
   }
   return amounts;
+}
+
+/**
+ * The component lines an estimated record carries, or nothing at all.
+ *
+ * A line with no label or no readable figures is dropped, and an estimate left
+ * with no lines reads as one that never had a breakdown rather than as an
+ * empty one.
+ */
+function readBreakdownField(value: unknown): { breakdown: FoodBreakdownLine[] } | Record<string, never> {
+  if (!Array.isArray(value)) return {};
+  const lines: FoodBreakdownLine[] = [];
+  for (const raw of value) {
+    const row = raw as { label?: unknown; amounts?: unknown } | null;
+    const label = typeof row?.label === 'string' ? row.label.trim() : '';
+    if (!label) continue;
+    const amounts = readAmounts(row?.amounts);
+    if (Object.keys(amounts).length === 0) continue;
+    lines.push({ label, amounts });
+  }
+  return lines.length > 0 ? { breakdown: lines } : {};
 }
 
 /**
@@ -155,6 +177,7 @@ export function parseFoodNutrition(raw: string | null | undefined): FoodNutritio
       ...(typeof parsed.foodCategory === 'string' && parsed.foodCategory !== ''
         ? { foodCategory: parsed.foodCategory }
         : {}),
+      ...readBreakdownField(parsed.breakdown),
     };
   } catch {
     return null;
@@ -293,9 +316,12 @@ export const NUTRIENT_LABEL: Record<NutrientKey, { label: string; unit: string }
   calorieKcal: { label: 'Calories', unit: 'cal' },
   fatG: { label: 'Total fat', unit: 'g' },
   satFatG: { label: 'Saturated fat', unit: 'g' },
+  transFatG: { label: 'Trans fat', unit: 'g' },
+  cholesterolMg: { label: 'Cholesterol', unit: 'mg' },
   carbsG: { label: 'Total carbohydrate', unit: 'g' },
   fiberG: { label: 'Dietary fiber', unit: 'g' },
   sugarG: { label: 'Total sugars', unit: 'g' },
+  addedSugarG: { label: 'Added sugars', unit: 'g' },
   proteinG: { label: 'Protein', unit: 'g' },
   sodiumMg: { label: 'Sodium', unit: 'mg' },
   calciumMg: { label: 'Calcium', unit: 'mg' },
@@ -303,6 +329,29 @@ export const NUTRIENT_LABEL: Record<NutrientKey, { label: string; unit: string }
   potassiumMg: { label: 'Potassium', unit: 'mg' },
   caffeineMg: { label: 'Caffeine', unit: 'mg' },
   waterMl: { label: 'Water', unit: 'ml' },
+  vitaminAMcg: { label: 'Vitamin A', unit: 'mcg' },
+  vitaminCMg: { label: 'Vitamin C', unit: 'mg' },
+  vitaminDMcg: { label: 'Vitamin D', unit: 'mcg' },
+  vitaminEMg: { label: 'Vitamin E', unit: 'mg' },
+  vitaminKMcg: { label: 'Vitamin K', unit: 'mcg' },
+  thiaminMg: { label: 'Thiamin (B1)', unit: 'mg' },
+  riboflavinMg: { label: 'Riboflavin (B2)', unit: 'mg' },
+  niacinMg: { label: 'Niacin (B3)', unit: 'mg' },
+  vitaminB6Mg: { label: 'Vitamin B6', unit: 'mg' },
+  folateMcg: { label: 'Folate', unit: 'mcg' },
+  vitaminB12Mcg: { label: 'Vitamin B12', unit: 'mcg' },
+  biotinMcg: { label: 'Biotin', unit: 'mcg' },
+  pantothenicAcidMg: { label: 'Pantothenic acid (B5)', unit: 'mg' },
+  magnesiumMg: { label: 'Magnesium', unit: 'mg' },
+  zincMg: { label: 'Zinc', unit: 'mg' },
+  phosphorusMg: { label: 'Phosphorus', unit: 'mg' },
+  seleniumMcg: { label: 'Selenium', unit: 'mcg' },
+  copperMg: { label: 'Copper', unit: 'mg' },
+  manganeseMg: { label: 'Manganese', unit: 'mg' },
+  chromiumMcg: { label: 'Chromium', unit: 'mcg' },
+  molybdenumMcg: { label: 'Molybdenum', unit: 'mcg' },
+  iodineMcg: { label: 'Iodine', unit: 'mcg' },
+  chlorideMg: { label: 'Chloride', unit: 'mg' },
 };
 
 /**
@@ -334,3 +383,38 @@ export const NUTRITION_BASIS_LABEL: Record<FoodNutrition['basis'], string> = {
   per100ml: 'per 100ml',
   perServing: 'per serving',
 };
+
+/**
+ * "Per serving (2 cookies): Saturated fat 2.5g · Total sugars 11g", the named
+ * nutrients of a stored panel as somebody holding the packet reads them.
+ *
+ * Per serving where the panel can say what a serving is (stated per serving, or
+ * per 100g with a serving weight), and per 100g or 100ml otherwise, since
+ * scaling to a serving nobody stated would be a guess. A nutrient the panel
+ * doesn't state says so rather than reading as zero. Null with nothing asked
+ * for or no panel, so a caller with no limits set draws nothing.
+ */
+export function describePanelFigures(
+  nutrition: FoodNutrition | null,
+  keys: readonly NutrientKey[],
+): string | null {
+  if (!nutrition || keys.length === 0) return null;
+  let factor = 1;
+  let heading: string;
+  if (nutrition.basis === 'perServing') {
+    heading = nutrition.servingText ? `Per serving (${nutrition.servingText})` : 'Per serving';
+  } else if (nutrition.basis === 'per100g' && nutrition.servingGrams) {
+    factor = nutrition.servingGrams / 100;
+    heading = `Per serving (${nutrition.servingText ?? `${nutrition.servingGrams}g`})`;
+  } else {
+    heading = nutrition.basis === 'per100ml' ? 'Per 100ml' : 'Per 100g';
+  }
+  const parts = keys.map(key => {
+    const amount = nutrition.amounts[key];
+    const { label, unit } = NUTRIENT_LABEL[key];
+    if (amount === undefined) return `${label} not stated`;
+    const value = Math.round(amount * factor * 10) / 10;
+    return `${label} ${value.toLocaleString()}${unit === 'cal' ? ' cal' : unit}`;
+  });
+  return `${heading}: ${parts.join(' · ')}`;
+}

@@ -25,8 +25,6 @@ const ITEMS: FabMenuItem[] = [
 ];
 
 interface Props {
-  /** Distance from the bottom of the screen — matches the resting FAB's position. */
-  bottom: number;
   onSelect: (type: AddTaskType) => void;
   disabled?: boolean;
   /** Fades the resting FAB (e.g. while a task is spotlighted). Ignored while the menu is open. */
@@ -46,7 +44,7 @@ interface Props {
  * plain "open quick add" in that mode. Read from the store here rather than
  * taken as a prop, the same way the button reads which corner it sits in.
  */
-export function AddTaskFab({ bottom, onSelect, disabled, opacity, drag, dragLabel }: Props) {
+export function AddTaskFab({ onSelect, disabled, opacity, drag, dragLabel }: Props) {
   const simpleMode = useSettingsStore(s => s.simpleMode);
   const items = useMemo(
     // Event is also dropped in a demo, where it would write to the real calendar.
@@ -61,7 +59,6 @@ export function AddTaskFab({ bottom, onSelect, disabled, opacity, drag, dragLabe
       items={items}
       onSelect={key => onSelect(key as AddTaskType)}
       accessibilityLabel="Add task"
-      bottom={bottom}
       disabled={disabled}
       opacity={opacity}
       drag={drag}

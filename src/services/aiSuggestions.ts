@@ -11,7 +11,8 @@ import {
   RECIPE_SOURCE_TYPES,
   SHOP_NAME_MAX_LENGTH,
   PREP_MAX_LENGTH,
-  NUTRIENT_KEYS,
+  EXTERNAL_NUTRIENT_KEYS,
+  PRINTED_NUTRIENT_KEYS,
 } from '../types';
 import { groceryNameKey } from '../utils/groceryParse';
 import { parsePriceInput } from '../utils/groceryPrice';
@@ -83,7 +84,7 @@ const LONG_REPLY_TIMEOUT_MS = 40_000;
 
 interface AnthropicResponse {
   stop_reason?: string;
-  content?: Array<{ type: string; input?: unknown }>;
+  content?: Array<{ type: string; name?: string; input?: unknown }>;
 }
 
 /**
@@ -2358,20 +2359,34 @@ function parseExtractedCalendarEvents(raw: unknown): ExtractedCalendarEvent[] {
 }
 
 /**
- * The nutrients a model-made estimate (a described meal, a whole recipe) may
+ * The nutrients a model-made estimate (a described meal, a whole recipe) must
  * state, shared so the two can't drift apart: the minerals were once added to
  * the label reader and left out of both of these.
+ *
+ * **Every food nutrient is required.** These were optional, with the prompt
+ * asking for "every one you can reasonably approximate", and in practice a
+ * restaurant meal came back with calories and macros and no saturated fat, so
+ * somebody watching a limit had a day total quietly missing its biggest
+ * contributors. An estimate is already labelled as one wherever it's shown
+ * (`source: 'estimated'`), so a rough figure costs nothing a missing one
+ * doesn't. Water is the exception: it isn't a figure anybody reads off a meal,
+ * and a guessed one would land in the day's water.
  */
+const ESTIMATE_REQUIRED_KEYS = EXTERNAL_NUTRIENT_KEYS.filter(key => key !== 'waterMl');
+
 const ESTIMATE_AMOUNTS_SCHEMA = {
   type: 'object' as const,
-  description: 'Every nutrient you can reasonably approximate, including saturated fat, fiber, sugars and the minerals. Omit only the ones you cannot judge at all, rather than sending zero.',
+  description: 'Every nutrient listed, each as your best approximation. A rough figure is expected and is better than none; give zero only when the food really contains essentially none (caffeine in a sandwich, cholesterol in a salad with no animal products).',
   properties: {
     calorieKcal: { type: 'number', description: 'Calories (kcal)' },
     fatG: { type: 'number', description: 'Total fat in grams' },
     satFatG: { type: 'number', description: 'Saturated fat in grams' },
+    transFatG: { type: 'number', description: 'Trans fat in grams' },
+    cholesterolMg: { type: 'number', description: 'Cholesterol in milligrams' },
     carbsG: { type: 'number', description: 'Total carbohydrate in grams' },
     fiberG: { type: 'number', description: 'Dietary fiber in grams' },
     sugarG: { type: 'number', description: 'Total sugars in grams' },
+    addedSugarG: { type: 'number', description: 'Added sugars in grams: sugar, syrups and honey added in making it, not the sugar naturally in fruit, milk or vegetables' },
     proteinG: { type: 'number', description: 'Protein in grams' },
     sodiumMg: { type: 'number', description: 'Sodium in milligrams' },
     calciumMg: { type: 'number', description: 'Calcium in milligrams' },
@@ -2380,10 +2395,21 @@ const ESTIMATE_AMOUNTS_SCHEMA = {
     caffeineMg: { type: 'number', description: 'Caffeine in milligrams' },
     waterMl: { type: 'number', description: 'Water in millilitres' },
   },
+  required: ESTIMATE_REQUIRED_KEYS,
 };
+
+/** A search turn runs several round trips server-side, so it gets longer than a plain call. */
+const WEB_SEARCH_TIMEOUT_MS = 60_000;
 
 /**
  * Reads a description of a meal into nutrition figures to confirm (#2426).
+ *
+ * **Brand lookup is opt-in.** With `aiFeatureConfig.nutritionEstimate.webSearch`
+ * on (off by default, billed per search), the request carries Anthropic's
+ * server-side web search so a named chain or brand is read off its published
+ * page rather than recalled. The result is unchanged in kind: still
+ * `estimated`, still confirmed on screen, with `basis: 'published'` and the
+ * source in `attribution`.
  *
  * **The case no database answers.** FoodData Central holds branded packaged
  * goods and Open Food Facts holds barcodes; neither holds menus, and eating
@@ -2463,14 +2489,19 @@ export async function estimateMealNutrition(
     .map(food => `- "${food.label}" (${food.quantity}): ${JSON.stringify(food.amounts)}`)
     .join('\n');
 
-  const data = await callAnthropic({
-    max_tokens: 900,
+  const useWebSearch = !!useSettingsStore.getState().aiFeatureConfig.nutritionEstimate.webSearch;
+
+  const ask = (search: boolean) => callAnthropic({
+    max_tokens: search ? 4000 : 2000,
     system: [
       'You estimate what one described meal contains, for somebody writing it down in a food diary.',
+      ...(search ? [
+        'You may search the web, but only when the description names a specific chain, restaurant or packaged brand whose published nutrition you are not sure of. Prefer the brand\'s own nutrition page. Do not search for a generic dish. When you find figures, use them, set basis to "published" and name the source in attribution. When the search finds nothing usable, estimate as usual with basis "typical". Always finish by calling estimate_meal.',
+      ] : []),
       'Give figures for the whole thing described, as one helping. Do not give per-100g figures.',
       'A line reading "Amount eaten: ..." is the amount the person actually had. Base every figure on exactly that amount and state it in quantity.',
-      'Give a figure for every nutrient you can reasonably approximate for the food, including saturated fat, fiber, sugars and sodium, even when the figure is an approximation. Omit a field only when you cannot judge it at all, and never send a zero to mean unknown: an omitted nutrient reads as unknown, and a zero reads as a measurement that the food contains none.',
-      'When the description names more than one component (separate foods, or an item plus a side), also split the total across a breakdown array, one entry per component named. Each entry states the nutrients you can approximate for that component, same rule as the total. Skip the breakdown entirely for a single named item, or when you cannot split it sensibly.',
+      'Give a figure for every nutrient in the schema, saturated fat, trans fat, cholesterol, added sugars and sodium included. Every one is required: when you are unsure, give your best approximation for a typical version of the food rather than leaving it out. A zero reads as a statement that the food contains essentially none, so use it only when that is true.',
+      'When the description names more than one component (separate foods, or an item plus a side), also split the total across a breakdown array, one entry per component named. Each entry states every nutrient for that component, same rule as the total, and for every nutrient the entries must add up to the total. Work the total out from the components rather than the other way round. Skip the breakdown entirely for a single named item, or when you cannot split it sensibly.',
       'Set basis to "published" only when you are recalling figures a specific chain or manufacturer publishes, and name them in attribution. Otherwise set it to "typical" and leave attribution empty.',
       ...(offered.length > 0 ? [
         'You may be given figures the user already has, for foods they have logged before, packets in their kitchen, and recipes they have saved. When the description refers to one of them, reason from those figures rather than recalling generic ones for the same food, including when only part of it was eaten or it was eaten alongside something else.',
@@ -2488,7 +2519,7 @@ export async function estimateMealNutrition(
         type: 'object',
         properties: {
           label: { type: 'string', description: 'What to call this in a food diary, e.g. "Cheeseburger and fries, Five Guys"' },
-          quantity: { type: 'string', description: 'The amount these figures are for. Always a concrete, checkable amount: a weight or volume, plus a household measure where one fits, e.g. "150 g (about 1/3 block)" or "1 burger and a regular fries (about 450 g)". Never a bare "1 serving". When the description states an amount, use exactly that.' },
+          quantity: { type: 'string', description: 'The amount these figures are for. Always a concrete, checkable amount: a weight or volume, plus a household measure where one fits, e.g. "150 g (about 1/3 block)" or "1 burger and a regular fries (about 450 g)". Never a bare "1 serving". Keep it to one short phrase: never list the components or their calories here, the breakdown carries those. When the description states an amount, use exactly that.' },
           amounts: ESTIMATE_AMOUNTS_SCHEMA,
           basis: {
             type: 'string',
@@ -2524,17 +2555,31 @@ export async function estimateMealNutrition(
         },
         required: ['label', 'quantity', 'amounts', 'basis', 'confidence'],
       },
-    }],
-    tool_choice: { type: 'tool', name: 'estimate_meal' },
+    }, ...(search ? [{ type: 'web_search_20250305', name: 'web_search', max_uses: 2 }] : [])],
+    // Forcing the tool would stop the model searching first, so a search run
+    // lets it choose and the prompt tells it to finish on estimate_meal.
+    tool_choice: search ? { type: 'auto' } : { type: 'tool', name: 'estimate_meal' },
     messages: [{
       role: 'user',
       content: known
         ? `The meal:\n${asked}\n\nFigures the user already has:\n${known}`
         : `The meal:\n${asked}`,
     }],
-  }, apiKey, model);
+  }, apiKey, model, search ? WEB_SEARCH_TIMEOUT_MS : undefined);
 
-  const toolUse = data.content?.find(c => c.type === 'tool_use');
+  const estimateCall = (data: AnthropicResponse | null) =>
+    data?.content?.find(c => c.type === 'tool_use' && c.name === 'estimate_meal');
+
+  let toolUse: ReturnType<typeof estimateCall>;
+  if (useWebSearch) {
+    // Search is a bonus, never a reason to lose the estimate: a failed search
+    // request, a turn that paused mid-search or one that ended without calling
+    // the tool all fall back to the plain forced call.
+    toolUse = estimateCall(await ask(true).catch(() => null));
+    if (!toolUse) toolUse = estimateCall(await ask(false));
+  } else {
+    toolUse = estimateCall(await ask(false));
+  }
   const estimate = readNutritionEstimate(
     toolUse?.input as RawNutritionEstimate | undefined,
     offered.length > 0,
@@ -2583,12 +2628,12 @@ export async function estimateRecipeNutrition(
     : "It doesn't say how many servings it makes.";
 
   const data = await callAnthropic({
-    max_tokens: 500,
+    max_tokens: 900,
     system: [
       'You estimate what a whole home-cooked recipe contains, from its ingredient list, for someone whose own grocery data can\'t total it yet.',
       'Give figures for the whole recipe as written — every ingredient line, at the quantity given — not per serving and not per 100g.',
       'Account for cooking loss and waste where it plainly matters: a marinade mostly poured off, water that boils away, a peel or bone that isn\'t eaten. Otherwise assume the ingredients as listed are what ends up in the dish.',
-      'Give a figure for every nutrient you can reasonably approximate for the dish, including saturated fat, fiber, sugars and sodium, even when the figure is an approximation. Omit a field only when you cannot judge it at all, and never send a zero to mean unknown: an omitted nutrient reads as unknown, and a zero reads as a measurement that the dish contains none.',
+      'Give a figure for every nutrient in the schema, saturated fat, trans fat, cholesterol, added sugars and sodium included. Every one is required: when you are unsure, give your best approximation rather than leaving it out. A zero reads as a statement that the dish contains essentially none, so use it only when that is true.',
       'Set confidence honestly. A short list of plain, easily-quantified ingredients is high; a long or vaguely-quantified list ("a handful of", "to taste") is low.',
       'Never comment on the dish. No opinion about whether it\'s healthy, heavy, large or small, no suggestion about what to change, and no advice of any kind. Return numbers and nothing else.',
     ].join('\n'),
@@ -2678,12 +2723,12 @@ export async function readLabelPhotoWithAi(image: RecipeImage): Promise<LabelRea
     'Give each nutrient\'s figure exactly as printed, value and unit together ("7g", "490mg", "<0.5g") — do not convert a unit or compute a figure from a percentage. Leave a field empty if the panel does not print that nutrient at all; only write a figure for one the panel actually states, including one it states as zero.',
     'A panel sometimes prints more than one column of figures side by side, typically "per 100g" and "per serving". Read every column it prints, left to right, and give what that column\'s own heading states — per100g, per100ml, or perServing. Leave a column\'s basis empty only when the panel genuinely does not head it.',
     'The serving line, when printed, states a size ("2 cookies", "1 oz (28g)") — give it verbatim in servingText, and the gram weight separately in servingGrams if it states one in parentheses.',
-    'Ignore the %DV column entirely; it is not a figure to report. Ignore "Calories from Fat", "Trans Fat", and "Added Sugars" — this app has no field for any of them.',
-    'The mineral rows at the foot of a US panel are read: give calcium, iron and potassium as printed, in the amount column and never the %DV one. Ignore every other vitamin and mineral row, vitamin D included — this app has no field for those.',
+    'Ignore the %DV column entirely; it is not a figure to report. Ignore "Calories from Fat" — this app has no field for it. Read "Trans Fat", "Cholesterol" and the "Includes Ng Added Sugars" line into their own fields, never into total fat or total sugars.',
+    'Read every vitamin and mineral row too, as printed, in the amount column and never the %DV one: calcium, iron, potassium, vitamins A, C, D, E and K, the B vitamins, folate, biotin, magnesium, zinc and the rest. Give the amount with its unit. If a row is printed only in IU, leave it empty rather than converting it: this app does not convert IU.',
     'If the photo does not show a nutrition panel at all, or is too illegible to make out real figures, return an empty columns array rather than guessing.',
   ].join('\n\n');
 
-  const nutrientProperties = Object.fromEntries(NUTRIENT_KEYS.map(key => [key, {
+  const nutrientProperties = Object.fromEntries(PRINTED_NUTRIENT_KEYS.map(key => [key, {
     type: 'string',
     description: `${NUTRIENT_LABEL[key].label}, exactly as printed with its unit. Empty string if the panel does not print this nutrient.`,
   }]));
@@ -2721,7 +2766,7 @@ export async function readLabelPhotoWithAi(image: RecipeImage): Promise<LabelRea
                   description: 'The salt figure, exactly as printed with its unit, for a panel that states salt rather than sodium. Empty string otherwise.',
                 },
               },
-              required: [...NUTRIENT_KEYS],
+              required: [...PRINTED_NUTRIENT_KEYS],
             },
           },
         },
@@ -2750,7 +2795,7 @@ export async function readLabelPhotoWithAi(image: RecipeImage): Promise<LabelRea
     const fields = raw as Record<string, unknown>;
 
     const amounts: Partial<Record<NutrientKey, number>> = {};
-    for (const key of NUTRIENT_KEYS) {
+    for (const key of PRINTED_NUTRIENT_KEYS) {
       const printed = fields[key];
       if (typeof printed !== 'string') continue;
       const amount = amountFromPrintedText(key, printed);

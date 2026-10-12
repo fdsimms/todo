@@ -211,7 +211,7 @@ export function birthdayTitle(person: Pick<Person, 'name' | 'nickname'>): string
  */
 export function birthdayGiftTitle(person: Pick<Person, 'name' | 'nickname'>): string {
   const who = person.nickname.trim() || person.name.trim();
-  return `Get ${who}'s birthday gift`;
+  return `Get ${who}’s birthday gift`;
 }
 
 /** What a birthday task carries in `linkUrl`: the person it is about. */
@@ -394,7 +394,9 @@ export function wantedBirthdayGiftTasks(
   const lead = clampBirthdayGiftLeadDays(leadDays);
   const wants: BirthdayGiftWant[] = [];
   for (const person of people) {
-    if (person.archived || person.birthdayTaskOptOut || person.birthdayGiftTaskOptOut) continue;
+    // A business is skipped for the reason wantedBirthdayTasks gives: it has
+    // no birthday field to edit, so a leftover date can't be switched off.
+    if (person.archived || person.birthdayTaskOptOut || person.birthdayGiftTaskOptOut || person.kind === 'business') continue;
     const date = nextBirthday(person, today);
     if (!date) continue;
     const away = differenceInCalendarDays(date, today);

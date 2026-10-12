@@ -1,4 +1,5 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useRef, useState, useCallback } from 'react';
+import { useWithoutLockedTasks } from '../hooks/useWithoutLockedTasks';
 import {
   View,
   Text,
@@ -29,12 +30,20 @@ import { SelectionDot } from '../components/SelectionDot';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { CategoryPickerSheet } from '../components/CategoryPicker';
 import { useRowSelection } from '../hooks/useRowSelection';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, flattenOverlay, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { groupRoster, isRelevantToGroupToday } from '../utils/visibilityUtils';
+import { reuseUnchangedLists } from '../utils/stableLists';
 import { categoryLabel } from '../utils/categoryLabel';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
+
+// One shared empty roster for a stack with no members, so its memoized row
+// isn't handed a fresh `[]` on every render.
+const NO_ROSTER: Task[] = [];
 
 /**
  * Every stack, whether or not it has work today.
@@ -47,6 +56,7 @@ import { categoryLabel } from '../utils/categoryLabel';
  * list of its own.
  */
 export function StacksScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
@@ -54,7 +64,7 @@ export function StacksScreen() {
 
   const groups = useTaskGroupStore(s => s.groups);
   const createGroup = useTaskGroupStore(s => s.createGroup);
-  const allTasks = useTaskStore(s => s.tasks);
+  const allTasks = useWithoutLockedTasks(useTaskStore(s => s.tasks));
   const bulkDeleteGroups = useTaskStore(s => s.bulkDeleteGroups);
   const bulkSetGroupCategory = useTaskStore(s => s.bulkSetGroupCategory);
   const categories = useCategoryStore(useShallow(s => s.categories));
@@ -63,7 +73,8 @@ export function StacksScreen() {
   const [editorVisible, setEditorVisible] = useState(false);
   // The "New stack" name field, open at the end of the list.
   const [naming, setNaming] = useState(false);
-  const keyboardScroll = useKeyboardInsetScroll<FlatList>();
+  const keyboardScroll = useKeyboardInsetScroll<FlatList>({ refreshing: pullSearch.pulling });
+  const scrollTop = useListScrollToTop(keyboardScroll);
   const listRef = keyboardScroll.ref;
 
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
@@ -88,6 +99,7 @@ export function StacksScreen() {
   // groupId, so counting rows makes an 8-task stack climb without bound (see
   // groupRoster). Built once for every stack rather than per row, since each
   // pass is a scan of the full task list.
+  const rostersPrev = useRef<Map<string, Task[]> | null>(null);
   const rostersByGroupId = useMemo(() => {
     const children = new Map<string, Task[]>();
     for (const t of allTasks) {
@@ -100,7 +112,9 @@ export function StacksScreen() {
     for (const [groupId, list] of children) {
       rosters.set(groupId, groupRoster(list));
     }
-    return rosters;
+    // Last time's roster for any stack whose members didn't change, so the
+    // memoized StackRow only re-renders for the stack a write touched.
+    return (rostersPrev.current = reuseUnchangedLists(rostersPrev.current, rosters));
   }, [allTasks]);
 
   const openEditor = useCallback((group: TaskGroup) => {
@@ -153,8 +167,8 @@ export function StacksScreen() {
     // members anywhere in the selection, offering a cascade choice would ask
     // the user to weigh a consequence that doesn't exist.
     const anyMembers = ids.some(id => (rostersByGroupId.get(id)?.length ?? 0) > 0);
-    const stackWord = ids.length === 1 ? 'Stack' : 'Stacks';
-    const possessive = ids.length === 1 ? 'Its' : 'Their';
+    const stackWord = ids.length === 1 ? 'stack' : 'stacks';
+    const possessive = ids.length === 1 ? 'its' : 'their';
     haptics.warning();
     const deleteThenClose = (cascade: boolean) => () => {
       animateLayout();
@@ -163,13 +177,13 @@ export function StacksScreen() {
     };
     Alert.alert(
       `Delete ${ids.length} ${stackWord}?`,
-      `You're about to delete ${ids.length} ${ids.length === 1 ? 'stack' : 'stacks'}. You can undo this by shaking your phone right after.`,
+      `This deletes ${ids.length} ${ids.length === 1 ? 'stack' : 'stacks'}. Shake your phone right after to undo.`,
       anyMembers
         ? [
             { text: 'Cancel', style: 'cancel' },
-            { text: `Delete ${stackWord} Only`, onPress: deleteThenClose(false) },
+            { text: `Delete ${stackWord} only`, onPress: deleteThenClose(false) },
             {
-              text: `Delete ${stackWord} and All ${possessive} Tasks`,
+              text: `Delete ${stackWord} and all ${possessive} tasks`,
               style: 'destructive',
               onPress: deleteThenClose(true),
             },
@@ -184,7 +198,7 @@ export function StacksScreen() {
   const renderStack = ({ item: group }: { item: TaskGroup }) => (
     <StackRow
       group={group}
-      roster={rostersByGroupId.get(group.id) ?? []}
+      roster={rostersByGroupId.get(group.id) ?? NO_ROSTER}
       categories={categories}
       colors={colors}
       styles={styles}
@@ -210,7 +224,7 @@ export function StacksScreen() {
         <EmptyState
           icon="layers-outline"
           title="No stacks yet"
-          subtitle="Group tasks that belong together, like a morning routine or a trip to pack for. Each one keeps its own schedule, but they show up together on Today."
+          subtitle="Group tasks that belong together, like a morning routine. Each task keeps its own schedule, and they show up together on Today."
           actionLabel="New stack"
           onAction={startNaming}
           bottomOffset={tabBarHeight}
@@ -218,8 +232,10 @@ export function StacksScreen() {
       ) : (
         <PaintSelectionProvider {...paintProps}>
           <FlatList
-            ref={keyboardScroll.ref}
+            ref={scrollTop.ref}
+            refreshControl={pullSearch.refreshControl}
             {...keyboardScroll.props}
+            {...scrollTop.listProps}
             data={groups}
             keyExtractor={g => g.id}
             // A paint gesture owns the touch for its duration — see the note
@@ -256,7 +272,6 @@ export function StacksScreen() {
         <Fab
           onPress={startNaming}
           accessibilityLabel="Add stack"
-          bottom={insets.bottom + tabBarHeight + spacing.md}
         />
       )}
 
@@ -291,6 +306,8 @@ export function StacksScreen() {
         group={editingGroup}
         onClose={closeEditor}
       />
+      <ScrollToTopButton {...scrollTop.buttonProps} />
+      {pullSearch.sheet}
     </View>
   );
 }

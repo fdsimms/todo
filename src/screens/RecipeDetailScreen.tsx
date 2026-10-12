@@ -127,6 +127,10 @@ import { dayKeyOf, getCurrentDayStart, getLogicalToday } from '../utils/dateUtil
 import { plannedMealLabel } from '../utils/recipePlanned';
 import { resetToMealPlan } from '../navigation/navigationRef';
 import { TextField } from '../components/TextField';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
+import { useActionMenu } from '../hooks/useActionMenu';
+import type { ActionMenuAction } from '../components/ActionMenu';
 
 type RootStackParamList = {
   /**
@@ -150,6 +154,7 @@ type MergedStepRow =
   | { kind: 'heading'; id: string; name: string; empty: boolean };
 
 export function RecipeDetailScreen() {
+  const actionMenu = useActionMenu();
   // ==== store bindings and layout insets ====
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
@@ -492,6 +497,7 @@ export function RecipeDetailScreen() {
   // the drag is silently dead — see the note on SortableList.onDragStateChange.
   const [dragging, setDragging] = useState(false);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+  const scrollTop = useListScrollToTop(keyboardScroll);
 
   // Bulk-selecting ingredients — same plain useRowSelection every non-task list
   // in the app reuses (Templates, Grocery), plus the ingredient-specific "Move
@@ -939,17 +945,16 @@ export function RecipeDetailScreen() {
   const handleMadeIt = () => {
     haptics.tap();
     const canLogFood = !!nutritionReading?.nutrition;
-    Alert.alert(
-      `Log ${recipe.name}`,
-      canLogFood
+    actionMenu.open({
+      title: `Log ${recipe.name}`,
+      message: canLogFood
         ? 'Log as cooked asks for a rating, any leftovers and the ingredients you used up. Add to food log records what you ate.'
         : 'Log as cooked asks for a rating, any leftovers and the ingredients you used up.',
-      [
-        { text: 'Log as cooked', onPress: () => cookRecipeNow(recipe) },
-        ...(canLogFood ? [{ text: 'Add to food log', onPress: handleLogToFoodLog }] : []),
-        { text: 'Cancel', style: 'cancel' as const },
+      actions: [
+        { key: 'cooked', label: 'Log as cooked', icon: 'restaurant-outline', onPress: () => cookRecipeNow(recipe) },
+        ...(canLogFood ? [{ key: 'food', label: 'Add to food log', icon: 'nutrition-outline', onPress: handleLogToFoodLog } as const] : []),
       ],
-    );
+    });
   };
 
   const handleLogToFoodLog = () => {
@@ -1069,7 +1074,7 @@ export function RecipeDetailScreen() {
       } else if (result.status === 'denied') {
         const what = source === 'camera' ? 'the camera' : 'your photos';
         Alert.alert(
-          `dundundun can't reach ${what}`,
+          `dundundun can’t reach ${what}`,
           result.canAskAgain
             ? `Allow access to ${what} to attach a photo to this recipe.`
             : `Turn on access to ${what} in Settings to attach a photo to this recipe.`,
@@ -1077,7 +1082,7 @@ export function RecipeDetailScreen() {
             ? [{ text: 'OK' }]
             : [
                 { text: 'Not now', style: 'cancel' },
-                { text: 'Open settings', onPress: () => Linking.openSettings() },
+                { text: 'Open Settings', onPress: () => Linking.openSettings() },
               ],
         );
       } else if (result.status === 'failed') {
@@ -1092,16 +1097,15 @@ export function RecipeDetailScreen() {
   const openImagePicker = () => {
     if (pickingImage) return;
     haptics.tap();
-    const options: Array<{ text: string; style?: 'default' | 'cancel' | 'destructive'; onPress?: () => void }> = [
-      { text: 'Take photo', onPress: () => pickImage('camera') },
-      { text: 'Choose from library', onPress: () => pickImage('library') },
-      { text: 'Paste image', onPress: () => pickImage('clipboard') },
+    const actions: ActionMenuAction[] = [
+      { key: 'camera', label: 'Take photo', icon: 'camera-outline', onPress: () => pickImage('camera') },
+      { key: 'library', label: 'Choose from library', icon: 'images-outline', onPress: () => pickImage('library') },
+      { key: 'paste', label: 'Paste image', icon: 'clipboard-outline', onPress: () => pickImage('clipboard') },
     ];
     if (recipe.imagePath) {
-      options.push({ text: 'Remove photo', style: 'destructive', onPress: () => setImage(recipe.id, null) });
+      actions.push({ key: 'remove', label: 'Remove photo', icon: 'trash-outline', destructive: true, onPress: () => setImage(recipe.id, null) });
     }
-    options.push({ text: 'Cancel', style: 'cancel' });
-    Alert.alert('Recipe photo', undefined, options);
+    actionMenu.open({ title: 'Recipe photo', actions });
   };
   // The row currently under the drag, by id — set from SortableList's
   // onHoverChange so an empty heading can light up as a live drop target the
@@ -1334,7 +1338,7 @@ export function RecipeDetailScreen() {
                   haptic
                   onPress={() => setEditingIngredient(ingredient)}
                   accessibilityLabel={
-                    `Did you mean ${catalogSuggestion.suggestedName}? It's in your grocery catalog.`
+                    `Did you mean ${catalogSuggestion.suggestedName}? It’s in your grocery catalog.`
                   }
                   accessibilityHint="Double tap to review the match"
                 >
@@ -1441,13 +1445,13 @@ export function RecipeDetailScreen() {
           }}
           accessibilityRole="button"
           accessibilityLabel={`${row.name}, no ingredients yet`}
-          accessibilityHint="Double tap to start adding ingredients under this heading, or drag a row here"
+          accessibilityHint="Double tap to start adding ingredients under this heading, or drag an ingredient here"
         >
           <Text style={[styles.emptySectionTitle, isTarget && styles.emptySectionTitleTarget]}>
             {row.name}
           </Text>
           <Text style={[styles.emptySectionHint, isTarget && styles.emptySectionHintTarget]}>
-            {isTarget ? 'Drop here' : 'Nothing here yet. Drag a row here'}
+            {isTarget ? 'Drop here' : 'Drag an ingredient here'}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -1713,7 +1717,7 @@ export function RecipeDetailScreen() {
             {row.name}
           </Text>
           <Text style={[styles.emptySectionHint, isTarget && styles.emptySectionHintTarget]}>
-            {isTarget ? 'Drop here' : 'Nothing here yet. Drag a step here'}
+            {isTarget ? 'Drop here' : 'Drag a step here'}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -1830,13 +1834,14 @@ export function RecipeDetailScreen() {
           paints rather than scrolls, the trade every selectable list makes. */}
       <PaintSelectionProvider {...paintProps}>
       <ScrollView
-        ref={keyboardScroll.ref}
+        ref={scrollTop.ref}
         // Same while a paint gesture owns the touch: iOS has to be told
         // directly (see PaintSelectionProvider).
         scrollEnabled={!dragging && !painting}
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
         {...keyboardScroll.props}
+        {...scrollTop.listProps}
       >
         {recipe.imagePath && photoOnDevice ? (
           <TouchableOpacity
@@ -1865,11 +1870,11 @@ export function RecipeDetailScreen() {
             activeOpacity={interaction.activeOpacity}
             onPress={openImagePicker}
             accessibilityRole="button"
-            accessibilityLabel="Recipe photo isn't on this device"
+            accessibilityLabel="Recipe photo isn’t on this device"
             accessibilityHint="Double tap to replace or remove it."
           >
             <Ionicons name="image-outline" size={iconSize.md} color={colors.textTertiary} />
-            <Text style={styles.heroMissingTitle}>Photo isn't on this device</Text>
+            <Text style={styles.heroMissingTitle}>Photo isn’t on this device</Text>
             <Text style={styles.heroMissingText}>It comes over when the device that took it syncs.</Text>
           </TouchableOpacity>
         ) : pickingImage ? (
@@ -2115,8 +2120,8 @@ export function RecipeDetailScreen() {
         )}
         {cookedWeightOpen && (
           <Text style={styles.inputHint}>
-            What the whole dish weighs, as written. Logging a plate of it is then measured from
-            what your plate weighs instead of from servings.
+            The weight of the whole dish, as entered. A plate of it is logged from
+            what your plate weighs, not from servings.
           </Text>
         )}
         {/* The one summary here that opens onto something. Its coverage clause
@@ -2131,7 +2136,7 @@ export function RecipeDetailScreen() {
             onPress={() => { haptics.tap(); setNutritionSheetOpen(true); }}
             accessibilityRole="button"
             accessibilityLabel={nutritionLine ?? 'Nutrition'}
-            accessibilityHint="Double tap for the whole panel, and to fill in the ingredients it couldn't count"
+            accessibilityHint="Double tap to open the full panel and fill in the ingredients it couldn’t count"
           >
             <Ionicons name="nutrition-outline" size={iconSize.sm} color={colors.textSecondary} />
             <Text style={styles.matchSummaryText}>{nutritionLine}</Text>
@@ -2154,7 +2159,7 @@ export function RecipeDetailScreen() {
             accessibilityLabel={
               `${catalogSummary.linked} of ${catalogSummary.total} ingredients are in your grocery catalog`
             }
-            accessibilityHint="Double tap to review the ones that aren't"
+            accessibilityHint="Double tap to review the ones that aren’t"
           >
             <Ionicons name="basket-outline" size={iconSize.sm} color={colors.textSecondary} />
             <Text style={styles.matchSummaryText}>
@@ -2167,7 +2172,7 @@ export function RecipeDetailScreen() {
         {mergedIngredientRows.length === 0 && components.length === 0 ? (
           <Text style={styles.hint}>
             Type one ingredient at a time, or paste a whole list. “2 lb chicken thighs”
-            keeps the quantity out of the name so the list stays tidy.
+            saves the quantity separately from the name.
           </Text>
         ) : (
           <View style={styles.card}>
@@ -2210,7 +2215,7 @@ export function RecipeDetailScreen() {
               </Text>
               <Text style={styles.pasteBannerDetail}>
                 {pasteResult.unresolved}{' '}
-                {pasteResult.unresolved === 1 ? "isn't" : "aren't"} in your grocery catalog.
+                {pasteResult.unresolved === 1 ? "isn’t" : "aren’t"} in your grocery catalog.
               </Text>
             </View>
             <TouchableOpacity
@@ -2221,7 +2226,7 @@ export function RecipeDetailScreen() {
               }}
               hitSlop={8}
               accessibilityRole="button"
-              accessibilityLabel="Review the ingredients that aren't in your grocery catalog"
+              accessibilityLabel="Review the ingredients that aren’t in your grocery catalog"
             >
               <Text style={styles.pasteBannerAction}>Review</Text>
             </TouchableOpacity>
@@ -2338,9 +2343,9 @@ export function RecipeDetailScreen() {
 
         {mergedStepRows.length === 0 ? (
           <Text style={styles.hint}>
-            Write the method as steps instead of one block of notes, and it stays legible
-            when the recipe's scaled or shown in a different unit. The notes field still works if you'd
-            rather leave it as one block.
+            Write the method as steps, and it stays legible when the recipe is
+            scaled or shown in a different unit. The notes field still works
+            if you’d rather leave it as one block.
           </Text>
         ) : (
           <View style={styles.card}>
@@ -2498,10 +2503,10 @@ export function RecipeDetailScreen() {
 
         {components.length === 0 ? (
           <Text style={styles.hint}>
-            Use another recipe as part of this one, like the mashed potatoes that go with both
+            Use another recipe as part of this one, like mashed potatoes with both
             the steak and the salmon. Its ingredients and prep tasks come along, and editing
-            it once updates every meal that uses it. Long press a component to make it an
-            either/or alternative, like mashed potatoes or roast potatoes.
+            it updates every meal that uses it. Long press a component to make it an
+            either/or alternative.
           </Text>
         ) : (
           <View style={styles.card}>
@@ -2523,8 +2528,8 @@ export function RecipeDetailScreen() {
 
         {recipe.prepTasks.length === 0 ? (
           <Text style={styles.hint}>
-            Add a reminder for anything that needs doing ahead of the meal (“Marinate the
-            chicken” a day before, say) and it'll turn into a Task once this recipe is
+            Add a prep task for anything that needs doing ahead of the meal, like “Marinate the
+            chicken” a day before. It becomes a task once this recipe is
             planned for a date.
           </Text>
         ) : (
@@ -2620,7 +2625,7 @@ export function RecipeDetailScreen() {
           selectedCount={selectedIds.size}
           totalCount={recipe.ingredients.length}
           category={{
-            title: 'Move to Aisle',
+            title: 'Move to aisle',
             noun: 'an aisle',
             options: aisleOrder,
             onSet: handleBulkSetAisle,
@@ -2670,6 +2675,7 @@ export function RecipeDetailScreen() {
         <RecipeNutritionSheet
           visible={nutritionSheetOpen}
           reading={nutritionReading}
+          recipeId={recipe.id}
           recipeName={recipe.name}
           servings={recipe.servings === null ? null : recipe.servings * normalizeScale(scale)}
           onClose={() => setNutritionSheetOpen(false)}
@@ -2764,6 +2770,8 @@ export function RecipeDetailScreen() {
           answering. Cook mode mounts its own for its copy of the row; both
           being mounted at once is fine (see NumberPadAccessory). */}
       <NumberPadAccessory />
+      <ScrollToTopButton {...scrollTop.buttonProps} />
+      {actionMenu.element}
     </View>
   );
 }

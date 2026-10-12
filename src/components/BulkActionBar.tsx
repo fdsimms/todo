@@ -192,7 +192,7 @@ export function BulkActionBar({
                 onPress={() => { haptics.tap(); allSelected ? onDeselectAll() : onSelectAll(); }}
               >
                 <Text style={styles.selectAllText}>
-                  {allSelected ? 'Deselect All' : 'Select All'}
+                  {allSelected ? 'Deselect all' : 'Select all'}
                 </Text>
               </TouchableOpacity>
               <Text style={styles.countText}>{selectedCount} selected</Text>

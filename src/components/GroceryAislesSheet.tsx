@@ -277,7 +277,7 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
     const { id, name } = tripShop;
     confirmDelete({
       title: `Use the usual order at ${name}?`,
-      message: `The order you set for ${name} is removed, and the list follows the usual order there.`,
+      message: `The order you set for ${name} is removed.`,
       confirmLabel: 'Use usual order',
       onConfirm: () => {
         setShopAisleOrder(id, null);
@@ -311,7 +311,7 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
       title: `Delete ${aisle}?`,
       message: filed > 0
         ? `${filed} ${filed === 1 ? 'item moves' : 'items move'} to ${OTHER_AISLE}. You can file them somewhere else afterward.`
-        : `Nothing is filed here. You can add it back at any time.`,
+        : `Nothing is filed here. You can add it back later.`,
       onConfirm: () => {
         deleteAisle(aisle);
         haptics.warning();
@@ -474,8 +474,8 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
           </>
         ) : (
           <Text style={styles.intro}>
-            Hold a row and drag it into the order you walk your store. Your list follows the same
-            order. Tap a name to rename it. Mark an aisle not food to keep it out of nutrition and
+            Hold and drag a row into the order you walk your store, and your list follows it.
+            Tap a name to rename it. Mark an aisle not food to keep it out of nutrition and
             food log prompts.{ownOrders ? ` ${ownOrders}` : ''}
           </Text>
         )}
@@ -682,9 +682,9 @@ function StoresTab({
   return (
     <>
       <Text style={styles.intro}>
-        The places you shop. Naming one when you finish a trip is what records which store has
-        which items, so you can filter the catalog by store. Set a store's aisles if it only sells
-        some of them, and it stops being asked about the rest.
+        Naming a store when you finish a trip records which items it has, so you can
+        filter the catalog by store. Limit a store to certain aisles and it won’t be
+        asked about the others.
       </Text>
 
       <ReorderableList
@@ -758,7 +758,7 @@ function StoresTab({
                   accessibilityRole="button"
                   accessibilityState={{ expanded: rangeOpen }}
                   accessibilityLabel={`Aisles ${shop.name} sells`}
-                  accessibilityHint="Limits this store to certain aisles, so it isn't asked about the rest"
+                  accessibilityHint="Limits this store to certain aisles, so it isn’t asked about the rest"
                 >
                   <Ionicons
                     // Stacked trays rather than a list glyph: the row already
@@ -780,7 +780,7 @@ function StoresTab({
                   activeOpacity={interaction.activeOpacity}
                   accessibilityRole="switch"
                   accessibilityState={{ checked: shop.excludeFromSuggestions }}
-                  accessibilityLabel={`Don't suggest ${shop.name}`}
+                  accessibilityLabel={`Don’t suggest ${shop.name}`}
                   accessibilityHint="Keeps this store out of suggestions, but it stays available to pick by hand"
                 >
                   <Ionicons
@@ -807,7 +807,7 @@ function StoresTab({
                 <Text style={styles.rangeHint}>
                   {scoped && !range
                     ? `Pick the aisles ${shop.name} sells. Until you pick one it still sells everything.`
-                    : `A store set to certain aisles isn’t asked whether it had things from the others, and isn’t suggested for them when you plan a trip.`}
+                    : `A store set to certain aisles isn’t asked about the others, and isn’t suggested for them when you plan a trip.`}
                 </Text>
                 <SegmentedControl
                   label={`What ${shop.name} sells`}
@@ -851,7 +851,7 @@ function StoresTab({
           <EmptyState
             icon="storefront-outline"
             title="No stores yet"
-            subtitle="Add the stores you go to. When you finish a trip you can say which one you were at."
+            subtitle="Add the stores you go to, then pick one when you finish a trip."
           />
         }
         ListFooterComponent={
@@ -906,7 +906,7 @@ function GroupByTab({ styles, groupBy, onChange }: GroupByTabProps) {
   return (
     <>
       <Text style={styles.intro}>
-        How the grocery list sorts what's still to buy.
+        How the grocery list groups what’s still to buy.
       </Text>
       <View style={styles.groupByCard}>
         <SegmentedControl
@@ -921,10 +921,10 @@ function GroupByTab({ styles, groupBy, onChange }: GroupByTabProps) {
         />
         <Text style={styles.groupByHint}>
           {groupBy === 'recipe'
-            ? 'Items are grouped by the recipe they were added from. Anything typed by hand, or added from more than one recipe at once, is under "No recipe."'
+            ? 'Grouped by the recipe each item was added from. Items typed by hand or added from several recipes at once are under “No recipe.”'
             : groupBy === 'store'
-              ? `Items are grouped by the store you usually buy them at, or the one store you\u2019ve linked them to. Each store keeps its own aisle order if it has one, or your usual order. Anything else is under "${NO_STORE_LABEL}." Away lists stay grouped by aisle.`
-              : 'Items are grouped by aisle, in the walk order set on the Aisles tab. A store with its own order uses it while you\u2019re shopping there.'}
+              ? `Grouped by the store you usually buy items at, or the one store you\u2019ve linked them to. Each store keeps its own aisle order if it has one, or your usual order. Anything else is under “${NO_STORE_LABEL}.” Away lists stay grouped by aisle.`
+              : 'Grouped by aisle, in the walk order set on the Aisles tab. A store with its own order uses it while you\u2019re shopping there.'}
         </Text>
       </View>
     </>

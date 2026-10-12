@@ -9,9 +9,11 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SheetModal } from './SheetModal';
+import { LimitImpactLines } from './LimitImpactLines';
+import { useLimitImpact } from '../hooks/useLimitImpact';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, radius, spacing, type Colors } from '../theme';
-import { MEAL_SLOTS, MEAL_SLOT_LABELS, type FoodNutrition, type MealSlot } from '../types';
+import { MEAL_SLOTS, MEAL_SLOT_LABELS, type FoodNutrition, type MealSlot, type NutrientKey } from '../types';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
@@ -155,6 +157,17 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
   const panelFor = (food: ScannedFood): FoodNutrition => weighedPanels[food.key] ?? food.panel;
 
   /**
+   * What an untouched card reads as: one serving, for a panel that has one.
+   * Derived rather than seeded into `answers`, so it follows `foods` and a
+   * weighed panel without a reset. A card the person has touched (even to
+   * clear it) has an `answers` entry and never falls back to this.
+   */
+  const defaultAmountFor = (food: ScannedFood): { number: string; answer: string } | null => {
+    const serving = foodUnitOptionsFor(panelFor(food)).find(o => o.key === 'serving');
+    return serving ? { number: '1', answer: composeFoodAmount('1', serving) } : null;
+  };
+
+  /**
    * What each answered card actually works out to. A typed amount that doesn't
    * resolve lands here as null, which is what greys its own card's figure out
    * rather than failing at Log — the person is looking at the field they typed.
@@ -165,7 +178,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
       { nutrition: FoodNutrition; grams: number | null; quantity: string; approximate: boolean } | null
     >();
     for (const food of foods) {
-      const answer = answers[food.key];
+      const answer = answers[food.key] ?? defaultAmountFor(food)?.answer;
       // A field typed into and then cleared is untouched again, not a refusal.
       // Left as an answer it rendered "That amount can't be measured against
       // this label." under an empty box, which reads as the label being at
@@ -178,6 +191,23 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
   }, [foods, answers, at, weighedPanels]);
 
   const loggable = foods.filter(f => resolved.get(f.key));
+
+  // Everything Log would add, summed, for one "puts you at" line per limit:
+  // the cards land together, so their effect on a limit is the batch's.
+  const batchAmounts = useMemo(() => {
+    const sum: Partial<Record<NutrientKey, number>> = {};
+    let any = false;
+    for (const food of foods) {
+      const outcome = resolved.get(food.key);
+      if (!outcome) continue;
+      any = true;
+      for (const [key, value] of Object.entries(outcome.nutrition.amounts) as [NutrientKey, number][]) {
+        sum[key] = (sum[key] ?? 0) + value;
+      }
+    }
+    return any ? sum : null;
+  }, [foods, resolved]);
+  const limitImpacts = useLimitImpact(batchAmounts, at);
 
   /**
    * Records a self-weighed portion for one card, the same move
@@ -280,7 +310,8 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
 
           {foods.map((food, foodIndex) => {
             const panel = panelFor(food);
-            const answer = answers[food.key] ?? '';
+            const defaultAmount = defaultAmountFor(food);
+            const answer = answers[food.key] ?? defaultAmount?.answer ?? '';
             // Only the whole package is still a tap: the panel's own serving is
             // the "serving" unit below, which is the default for any panel that
             // has one, so a "1 serving" button beside it was a second control
@@ -315,7 +346,9 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                 <View style={styles.inputRow}>
                   <TextField
                     style={styles.inputInRow}
-                    value={usingPills ? (amountNumbers[food.key] ?? '') : answer}
+                    value={usingPills
+                      ? (amountNumbers[food.key] ?? (answers[food.key] === undefined ? defaultAmount?.number : undefined) ?? '')
+                      : answer}
                     onChangeText={text => {
                       if (usingPills) {
                         setAmountNumbers(n => ({ ...n, [food.key]: text }));
@@ -464,7 +497,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                       />
                     </View>
                     <Text style={styles.weighHint}>
-                      Weigh it and enter the total weight. The app remembers it for next time.
+                      Weigh it and enter the total weight. It’s saved for this food.
                     </Text>
                   </View>
                 )}
@@ -473,8 +506,9 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
           })}
 
           <Text style={styles.footnote}>
-            Anything left blank isn't logged.
+            Anything left blank isn’t logged.
           </Text>
+          <LimitImpactLines impacts={limitImpacts} style={styles.limitImpacts} />
         </ScrollView>
       </View>
       <NumberPadAccessory />
@@ -514,6 +548,7 @@ function makeStyles(colors: Colors) {
     packageAction: { alignSelf: 'flex-start' },
     hint: { color: colors.textTertiary, fontSize: font.sm },
     outcome: { color: colors.textSecondary, fontSize: font.sm },
+    limitImpacts: { marginTop: spacing.md },
     outcomeRefused: { color: colors.textTertiary },
     approximateNote: { color: colors.textTertiary, fontSize: font.xs },
     weighForm: {

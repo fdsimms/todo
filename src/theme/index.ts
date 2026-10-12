@@ -226,21 +226,21 @@ export const darkColors: Colors = {
 
 /**
  * Dark: the brand's dark theme, and what `'system'` uses after dark. Near-black
- * surfaces with a slight plum bias (stored as `'darkPurple'`, the theme it
+ * surfaces with a purple bias (stored as `'darkPurple'`, the theme it
  * replaced), so a grey reads as chosen rather than inherited.
  */
 export const nightColors: Colors = {
-  bg: '#100E13',
-  bgSecondary: '#1B1820',
-  bgTertiary: '#27232D',
-  bgQuaternary: '#36313D',
-  bgSunken: '#0B0A0E',
-  stackEdge: '#25212B',
-  stackEdgeFar: '#1F1C24',
-  controlBorder: '#7B7388',
+  bg: '#16121F',
+  bgSecondary: '#1F1A2C',
+  bgTertiary: '#2A2338',
+  bgQuaternary: '#3A324A',
+  bgSunken: '#100C18',
+  stackEdge: '#282233',
+  stackEdgeFar: '#221D2F',
+  controlBorder: '#786798',
   text: PAPER,
-  textSecondary: '#B3ADBD',
-  textTertiary: '#8F889A',
+  textSecondary: '#ACA4BA',
+  textTertiary: '#9289A3',
   accent: VIOLET_MID,
   accentSubtle: 'rgba(155, 123, 255, 0.2)',
   accentText: VIOLET_PALE,
@@ -257,7 +257,7 @@ export const nightColors: Colors = {
   purple: '#BF5AF2',
   purpleText: '#C76FF4',
   purpleFill: '#B137EF',
-  separator: '#3A3541',
+  separator: '#3D3550',
   onAccent: INK,
   onFill: '#FFFFFF',
   done: '#FFB020',
@@ -268,8 +268,8 @@ export const nightColors: Colors = {
   warningText: '#FF9F0A',
   warningBg: 'rgba(255, 159, 10, 0.16)',
   onWarning: '#000000',
-  backdrop: 'rgba(8, 6, 12, 0.5)',
-  blurFallback: 'rgba(27, 24, 32, 0.85)',
+  backdrop: 'rgba(10, 6, 20, 0.5)',
+  blurFallback: 'rgba(31, 26, 44, 0.85)',
   timeMorning: '#FF9F0A',
   timeAfternoon: '#0A84FF',
   timeEvening: '#BF5AF2',
@@ -414,6 +414,13 @@ export const spacing = {
   lg: 24,
   xl: 32,
 };
+
+/**
+ * The gap a floating bottom sheet's card stack keeps above the screen's bottom
+ * edge, clearing the home indicator. A sheet that floats as cards (rather than
+ * docking to the edge) sets it as `sheetOuter`'s `paddingBottom`.
+ */
+export const sheetBottomInset = 34;
 
 export const radius = {
   sm: 8,

@@ -179,7 +179,7 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
       haptics.error();
       Alert.alert(
         'Couldn’t add that item',
-        'This template couldn’t be found, so nothing was saved. Go back to Templates and open it again, then retry.',
+        'Couldn’t find this template, so nothing was saved. Reopen it from Templates and try again.',
       );
       return;
     }
@@ -337,7 +337,7 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
           {activePanel === 'when' && (
             <View style={styles.panel}>
               <Text style={styles.panelHint}>
-                Template items have no fixed date. They're offset from a date you pick when applying the template.
+                Template items have no fixed date. They’re offset from a date you pick when applying the template.
               </Text>
               {/* One question — what the offset counts from — even though it
                   reads off two pieces of state, so it's one track. "No date"
@@ -436,7 +436,7 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
               onPress={handleOpenFull}
               activeOpacity={interaction.activeOpacity}
               accessibilityRole="button"
-              accessibilityLabel="Open the full editor with what's entered so far"
+              accessibilityLabel="Open the full editor with what’s entered so far"
             >
               <Ionicons name="create-outline" size={15} color={colors.textSecondary} />
               <Text style={styles.moreBtnText}>More details</Text>

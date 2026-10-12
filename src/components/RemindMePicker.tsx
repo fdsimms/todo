@@ -260,7 +260,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
                 value={nlText}
                 onChangeText={onNlChange}
                 onSubmitEditing={confirm}
-                placeholder='e.g. "tomorrow at 9am", "next monday"'
+                placeholder='e.g. “tomorrow at 9am”, “next monday”'
                 placeholderTextColor={colors.textTertiary}
                 returnKeyType="done"
                 autoCapitalize="none"
@@ -362,7 +362,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
                   </View>
                   <Text style={styles.beforeHint}>
                     Fires {format(getReminderOffsetDate(dueDate, beforeDays), 'MMM d')}, at the time below,
-                    and keeps counting back this many days on every future occurrence.
+                    and this many days before each future occurrence.
                   </Text>
                 </View>
                 <View style={styles.sectionGap} />
@@ -378,8 +378,8 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
                   </Text>
                   <Text style={styles.beforeHint}>
                     {visiblePreview
-                      ? `Fires ${format(visiblePreview, 'MMM d')} at ${format(visiblePreview, 'h:mm a')}, the exact moment this task next becomes visible. There's no time to set below, because it recomputes on its own if that moment changes.`
-                      : 'Fires the moment this task next becomes visible. There\'s no time to set below, because it recomputes on its own if that moment changes.'}
+                      ? `Fires ${format(visiblePreview, 'MMM d')} at ${format(visiblePreview, 'h:mm a')}, when this task next becomes visible. The time updates if that moment changes.`
+                      : 'Fires when this task next becomes visible. The time updates if that moment changes.'}
                   </Text>
                 </View>
                 <View style={styles.sectionGap} />
@@ -428,7 +428,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
                 Task.reminderTimeAnchor. */}
             <View style={styles.anchorSection}>
               <SegmentedControl<'wallClock' | 'fixed'>
-                label="If your timezone changes"
+                label="If your time zone changes"
                 value={selectedAnchor}
                 onChange={setSelectedAnchor}
                 options={[
@@ -438,8 +438,8 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
               />
               <Text style={styles.anchorHint}>
                 {selectedAnchor === 'wallClock'
-                  ? 'Fires at this time of day wherever your device is, even after you change timezones.'
-                  : 'Fires at this exact moment, unaffected by a timezone change.'}
+                  ? 'Fires at this time of day wherever your device is.'
+                  : 'Fires at this exact moment, even if your time zone changes.'}
               </Text>
             </View>
 
@@ -449,7 +449,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
             {alarmKitAvailable && (
               <>
                 <View style={styles.kindSection}>
-                  <Text style={styles.sectionLabel}>Ring As</Text>
+                  <Text style={styles.sectionLabel}>Ring as</Text>
                   <SegmentedControl<ReminderKind>
                     label="Ring as"
                     value={selectedKind}

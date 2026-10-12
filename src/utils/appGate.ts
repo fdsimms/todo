@@ -181,8 +181,8 @@ export function gateSubtitle(titles: readonly string[]): string | null {
 
   const [first, ...rest] = named;
   if (rest.length === 0) {
-    return `${first} isn't done yet. Finish it in dundundun to unblock.`;
+    return `${first} isn’t done yet. Finish it in dundundun to unblock.`;
   }
   const others = rest.length === 1 ? '1 more task' : `${rest.length} more tasks`;
-  return `${first} and ${others} are still to do. Finish them in dundundun to unblock.`;
+  return `${first} and ${others} aren’t done yet. Finish them in dundundun to unblock.`;
 }

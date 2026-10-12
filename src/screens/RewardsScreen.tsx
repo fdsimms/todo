@@ -15,9 +15,21 @@ import { CoinIcon } from '../components/CoinIcon';
 import { CoinBurst } from '../components/CoinBurst';
 import { TARGET_ICON } from '../components/TargetIcon';
 import { CountStepper } from '../components/CountStepper';
+import { SegmentedControl } from '../components/SegmentedControl';
+import {
+  CADENCE_UNITS,
+  CADENCE_UNIT_MAX,
+  cadenceUnitLabel,
+  fromCadenceParts,
+  toCadenceParts,
+  withCadenceUnit,
+  type CadenceUnit,
+} from '../utils/nudgeCadence';
 import { TextField } from '../components/TextField';
 import { ProjectPickerSheet } from '../components/ProjectPickerSheet';
+import { HabitPickerSheet } from '../components/HabitPickerSheet';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { useRewardStore } from '../store/useRewardStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
@@ -25,14 +37,20 @@ import { useProjectStore } from '../store/useProjectStore';
 import { useColors } from '../theme/ThemeContext';
 import { animation, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { formatPrice, parsePriceInput, priceToInput } from '../utils/groceryPrice';
 import { useReduceMotion } from '../utils/useReduceMotion';
 import { COIN_ICON } from '../constants/coinIcon';
 import { knownLinkAppFor, linkAppsFor } from '../constants/linkApps';
 import { linkIconFor, openInAppUrl } from '../utils/deepLinks';
 import { liveProjectSteps } from '../utils/projectOrder';
+import { canGuard, describeGuard } from '../utils/rewardGuard';
+import { getCurrentDayStart } from '../utils/dateUtils';
+import { displayTitleFor } from '../utils/visibilityUtils';
+import { driftingTaskList } from '../utils/postpone';
 import {
   MAX_BOUNTY_LIMIT,
   MIN_BOUNTY_LIMIT,
+  suggestedBountyTasks,
   bountyCoinsFor,
   describeBounty,
   isBountyLive,
@@ -41,22 +59,31 @@ import {
   STREAK_BONUS_CAP,
   STREAK_BONUS_EVERY,
   canClaimReward,
+  claimWaitDays,
   coinBalance,
+  coinsForPrice,
+  coinsPerDollar,
+  describeExchangeRate,
+  describeClaimLimit,
+  describeClaimWait,
   describeLastClaimed,
   describeRewardPace,
   earnRatePerDay,
   formatCoins,
-  goalProgress,
+  goalBarFill,
   lastClaimedAt,
   parseRewardCost,
   rewardDisplay,
   rewardIdeas,
   rewardIsOpen,
+  savingForGoal,
   type PricedRewardIdea,
   signedAmount,
   suggestRewardCost,
 } from '../utils/rewards';
 import type { CoinEntry, Reward, Task } from '../types';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
 
 /**
  * Coins and rewards — the screen for `src/utils/rewards.ts`.
@@ -106,11 +133,13 @@ function ShowMoreRow({ label, onPress, styles }: { label: string; onPress: () =>
 }
 
 export function RewardsScreen() {
+  const pullSearch = usePullToSearch();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const tabBarHeight = useBottomTabBarHeight();
   const insets = useSafeAreaInsets();
-  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ refreshing: pullSearch.pulling });
+  const scrollTop = useListScrollToTop(keyboardScroll);
 
   const enabled = useSettingsStore(s => s.rewardsEnabled);
   const setEnabled = useSettingsStore(s => s.setRewardsEnabled);
@@ -121,7 +150,12 @@ export function RewardsScreen() {
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const bountyLimit = useSettingsStore(s => s.bountyLimit);
   const setBountyLimit = useSettingsStore(s => s.setBountyLimit);
+  const budgetMinor = useSettingsStore(s => s.rewardWeeklyBudgetMinor);
+  const setBudgetMinor = useSettingsStore(s => s.setRewardWeeklyBudgetMinor);
+  const currencySymbol = useSettingsStore(s => s.currencySymbol);
   const withdrawBounty = useTaskStore(s => s.withdrawBounty);
+  const postBounty = useTaskStore(s => s.postBounty);
+  const driftThreshold = useSettingsStore(s => s.postponeCheckThreshold);
   const entries = useRewardStore(s => s.entries);
   const rewards = useRewardStore(s => s.rewards);
   const projects = useProjectStore(s => s.projects);
@@ -131,6 +165,14 @@ export function RewardsScreen() {
   // history, and every reader treats that as "nothing to say".
   const tasks = useTaskStore(s => s.tasks);
   const rate = useMemo(() => earnRatePerDay(tasks, new Date()), [tasks]);
+  // Coins per dollar: a week of your earning over a week of what you'd spend
+  // on rewards. Null until both exist, and dollar prices wait for it.
+  const exchange = useMemo(() => coinsPerDollar(rate, budgetMinor), [rate, budgetMinor]);
+  // Dollar-priced rewards follow the rate as your earning changes.
+  useEffect(() => {
+    if (enabled && exchange !== null) useRewardStore.getState().repriceDollarRewards(exchange);
+  }, [enabled, exchange]);
+  const [budgetText, setBudgetText] = useState(() => (budgetMinor === null ? '' : priceToInput(budgetMinor)));
   const taskById = useMemo(() => new Map(tasks.map(t => [t.id, t])), [tasks]);
   const sourceOf = useCallback((reward: Reward) => (reward.taskId ? taskById.get(reward.taskId) ?? null : null), [taskById]);
 
@@ -140,7 +182,11 @@ export function RewardsScreen() {
     () => rewards.filter(r => rewardIsOpen(r, entries, sourceOf(r))),
     [rewards, entries, sourceOf],
   );
-  const goal = openRewards.find(r => r.id === goalId) ?? null;
+  const savingGoal = useMemo(
+    () => savingForGoal(rewards, entries, goalId, sourceOf),
+    [rewards, entries, goalId, sourceOf],
+  );
+  const goal = savingGoal?.reward ?? null;
 
   // The hero coin hops when coins arrive while the screen is open, so a claim
   // undone or a completion drained in the background doesn't go unseen. Only a
@@ -202,10 +248,20 @@ export function RewardsScreen() {
     () => tasks.filter(t => !t.parentId && isBountyLive(t)).sort((a, b) => bountyCoinsFor(b) - bountyCoinsFor(a)),
     [tasks],
   );
+  // With none posted, offer the tasks already being put off (the ones the
+  // Stuck screen lists), most-moved first.
+  const suggestedBounties = useMemo(
+    () => (bounties.length === 0 ? suggestedBountyTasks(driftingTaskList(tasks, driftThreshold)) : []),
+    [bounties.length, tasks, driftThreshold],
+  );
+  const postSuggestedBounty = (task: Task) => {
+    const result = postBounty(task.id);
+    if (result === 'posted') haptics.success();
+  };
   const confirmWithdraw = (task: Task) => {
     Alert.alert(
       'Withdraw bounty?',
-      `The bounty on "${task.title}" ends, and it can't be posted on this task again.`,
+      `The bounty on “${task.title}” ends and can’t be posted on this task again.`,
       [
         { text: 'Keep it', style: 'cancel' },
         { text: 'Withdraw', style: 'destructive', onPress: () => { haptics.tap(); withdrawBounty(task.id); } },
@@ -218,10 +274,41 @@ export function RewardsScreen() {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [draftTitle, setDraftTitle] = useState('');
   const [draftCost, setDraftCost] = useState('');
+  const [draftPrice, setDraftPrice] = useState('');
   const [draftNote, setDraftNote] = useState('');
   const [draftLink, setDraftLink] = useState('');
   const [draftOneTime, setDraftOneTime] = useState(false);
-  const parsedCost = parseRewardCost(draftCost);
+  // "Limit claims" (Reward.claimEveryDays): a count and a unit, null count = no limit.
+  const [limitCount, setLimitCount] = useState<number | null>(null);
+  const [limitUnit, setLimitUnit] = useState<CadenceUnit>('weeks');
+  // The avoid habit this reward guards (Reward.guardsTaskId), picked in HabitPickerSheet.
+  const [draftGuard, setDraftGuard] = useState<string | null>(null);
+  const [habitPickerOpen, setHabitPickerOpen] = useState(false);
+  // Habits another reward already guards, kept out of the picker for the one being edited.
+  const editingId = draft?.mode === 'edit' ? draft.id : null;
+  const guardedElsewhere = useMemo(
+    () => new Set(rewards.filter(r => r.id !== editingId && r.guardsTaskId && canGuard(r)).map(r => r.guardsTaskId!)),
+    [rewards, editingId],
+  );
+  // The "every N days/weeks/months" stepper beside the presets. It only fills
+  // the cost field, the same as a preset does, so nothing about it is stored.
+  const [customCount, setCustomCount] = useState<number | null>(null);
+  const [customUnit, setCustomUnit] = useState<CadenceUnit>('weeks');
+  const applyCustomFrequency = (count: number | null, unit: CadenceUnit = customUnit) => {
+    setCustomCount(count);
+    const cost = count === null || rate === null
+      ? null
+      : suggestRewardCost(rate, fromCadenceParts({ count, unit }));
+    if (cost === null) return;
+    setDraftCost(String(cost));
+    setDraftPrice('');
+  };
+  // A dollar price, when one is typed, decides the cost: the coin field gives
+  // way to the converted figure rather than holding a second answer.
+  const parsedPrice = parsePriceInput(draftPrice);
+  const priceTyped = draftPrice.trim().length > 0;
+  const priceDriven = parsedPrice !== null && exchange !== null;
+  const parsedCost = priceDriven ? coinsForPrice(parsedPrice, exchange) : parseRewardCost(draftCost);
   // A reward made from a list item takes its title, note and link from the
   // item, so the form doesn't ask for them.
   const draftItem: Task | null = draft?.mode === 'item'
@@ -232,44 +319,57 @@ export function RewardsScreen() {
         return r?.taskId ? taskById.get(r.taskId) ?? null : null;
       })()
       : null;
-  const canSave = (draftItem !== null || draftTitle.trim().length > 0) && parsedCost !== null;
+  const canSave = (draftItem !== null || draftTitle.trim().length > 0) && parsedCost !== null
+    && (!priceTyped || priceDriven);
 
   const closeDraft = useCallback(() => {
     setDraft(null);
     setDraftTitle('');
     setDraftCost('');
+    setDraftPrice('');
     setDraftNote('');
     setDraftLink('');
     setDraftOneTime(false);
+    setLimitCount(null);
+    setLimitUnit('weeks');
+    setDraftGuard(null);
+    setCustomCount(null);
   }, []);
 
   const openDraft = useCallback((next: Draft, reward?: Reward) => {
     setDraft(next);
     setDraftTitle(reward?.title ?? '');
     setDraftCost(reward ? String(reward.cost) : '');
+    setDraftPrice(reward?.priceMinor != null ? priceToInput(reward.priceMinor) : '');
     setDraftNote(reward?.note ?? '');
     setDraftLink(reward?.linkUrl ?? '');
     setDraftOneTime(reward?.oneTime ?? next.mode === 'item');
+    setDraftGuard(reward?.guardsTaskId ?? null);
+    const limit = toCadenceParts(reward?.claimEveryDays ?? 0);
+    setLimitCount(limit.count);
+    setLimitUnit(limit.count === null ? 'weeks' : limit.unit);
+    setCustomCount(null);
   }, []);
 
   const saveDraft = useCallback(() => {
     if (!canSave || draft === null) return;
     haptics.tap();
     const store = useRewardStore.getState();
-    const details = { note: draftNote, linkUrl: draftLink, oneTime: draftOneTime };
+    const priceMinor = priceDriven ? parsedPrice : null;
+    const details = { note: draftNote, linkUrl: draftLink, oneTime: draftOneTime, priceMinor, guardsTaskId: draftOneTime ? null : draftGuard, claimEveryDays: draftOneTime ? null : fromCadenceParts({ count: limitCount, unit: limitUnit }) || null };
     if (draft.mode === 'new') {
       store.addReward(draftTitle, parsedCost!, details);
     } else if (draft.mode === 'item') {
       // The title is a snapshot for if the item is ever deleted; what shows is
       // the item's own (see rewardDisplay).
-      if (draftItem) store.addReward(draftItem.title, parsedCost!, { taskId: draftItem.id, oneTime: true });
+      if (draftItem) store.addReward(draftItem.title, parsedCost!, { taskId: draftItem.id, oneTime: true, priceMinor });
     } else {
       store.updateReward(draft.id, draftItem
-        ? { cost: parsedCost!, title: draftItem.title }
+        ? { cost: parsedCost!, title: draftItem.title, priceMinor }
         : { title: draftTitle, cost: parsedCost!, ...details });
     }
     closeDraft();
-  }, [canSave, draft, draftItem, draftTitle, draftNote, draftLink, draftOneTime, parsedCost, closeDraft]);
+  }, [canSave, draft, draftItem, draftTitle, draftNote, draftLink, draftOneTime, draftGuard, limitCount, limitUnit, parsedCost, parsedPrice, priceDriven, closeDraft]);
 
   // ==== actions on a reward ====
   const addIdea = useCallback((idea: PricedRewardIdea) => {
@@ -320,10 +420,10 @@ export function RewardsScreen() {
 
   const remove = useCallback((reward: Reward, title: string) => {
     Alert.alert(
-      `Delete "${title}"?`,
+      `Delete “${title}”?`,
       reward.taskId
-        ? 'Coins already spent on it stay spent. The item stays on your list.'
-        : 'Coins already spent on it stay spent.',
+        ? 'Coins already spent on it aren’t refunded. The item stays on your list.'
+        : 'Coins already spent on it aren’t refunded.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -386,7 +486,7 @@ export function RewardsScreen() {
         <View>
           <Text style={styles.rewardTitle}>{draftItem.title}</Text>
           <Text style={styles.hint}>
-            {`From ${list?.title ?? 'your list'}. Its title, notes and link are the reward's, and claiming it checks it off.`}
+            {`From ${list?.title ?? 'your list'}. The reward takes the item’s title, notes and link. Claiming it checks it off.`}
           </Text>
         </View>
       ) : (
@@ -401,12 +501,14 @@ export function RewardsScreen() {
           accessibilityLabel="Reward"
         />
       )}
-      <Text style={styles.fieldLabel}>How often do you want it?</Text>
-      {rate === null ? (
+      {/* How often you'd want it only prices a reward that comes back; a one-time one is claimed once. */}
+      {!draftOneTime && <Text style={styles.fieldLabel}>How often do you want it?</Text>}
+      {draftOneTime ? null : rate === null ? (
         <Text style={styles.hint}>
-          After a week of completed tasks, this can suggest a price from how fast you earn coins.
+          Price suggestions start after a week of completed tasks.
         </Text>
       ) : (
+        <>
         <View style={styles.presetRow}>
           {REWARD_FREQUENCIES.map(f => {
             const cost = suggestRewardCost(rate, f.days);
@@ -421,6 +523,7 @@ export function RewardsScreen() {
                 onPress={() => {
                   haptics.tap();
                   setDraftCost(String(cost));
+                  setDraftPrice('');
                 }}
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
@@ -432,17 +535,70 @@ export function RewardsScreen() {
             );
           })}
         </View>
+        <View style={styles.customRow}>
+          <CountStepper
+            value={customCount}
+            onChange={applyCustomFrequency}
+            min={1}
+            max={CADENCE_UNIT_MAX[customUnit]}
+            allowNull
+            start={1}
+            emptyLabel="Custom"
+            format={n => `Every ${n}`}
+            label="Custom reward frequency"
+            describeValue={n => (n === null ? 'Not set' : `Every ${n} ${n === 1 ? customUnit.replace(/s$/, '') : customUnit}`)}
+          />
+          <View style={styles.customUnit}>
+            <SegmentedControl
+              label="Custom reward frequency unit"
+              options={CADENCE_UNITS.map(unit => ({ value: unit, label: cadenceUnitLabel(unit) }))}
+              value={customUnit}
+              onChange={unit => {
+                const next = withCadenceUnit({ count: customCount, unit }, unit);
+                setCustomUnit(unit);
+                applyCustomFrequency(next.count, unit);
+              }}
+            />
+          </View>
+        </View>
+        </>
       )}
-      <TextField
-        style={styles.input}
-        value={draftCost}
-        onChangeText={setDraftCost}
-        placeholder="Cost in coins"
-        placeholderTextColor={colors.textTertiary}
-        keyboardType="number-pad"
-        returnKeyType="done"
-        accessibilityLabel="Cost in coins"
-      />
+      <Text style={styles.fieldLabel}>Price</Text>
+      <View style={styles.priceField}>
+        <Text style={styles.priceSymbol}>{currencySymbol}</Text>
+        <TextField
+          style={styles.priceInput}
+          value={draftPrice}
+          onChangeText={setDraftPrice}
+          placeholder="e.g. 4.50"
+          placeholderTextColor={colors.textTertiary}
+          keyboardType="decimal-pad"
+          returnKeyType="done"
+          accessibilityLabel="Price in dollars"
+        />
+      </View>
+      {priceTyped && parsedPrice === null && (
+        <Text style={styles.hint}>{`Enter an amount like ${currencySymbol}4.50.`}</Text>
+      )}
+      {parsedPrice !== null && exchange === null && (
+        <Text style={styles.hint}>Set a weekly budget under Exchange rate to price a reward in dollars.</Text>
+      )}
+      {priceDriven ? (
+        <Text style={styles.hint}>
+          {`${formatCoins(parsedCost!)} at ${describeExchangeRate(exchange, currencySymbol).toLowerCase()}. This changes as the coins you earn change.`}
+        </Text>
+      ) : (
+        <TextField
+          style={styles.input}
+          value={draftCost}
+          onChangeText={setDraftCost}
+          placeholder="Cost in coins"
+          placeholderTextColor={colors.textTertiary}
+          keyboardType="number-pad"
+          returnKeyType="done"
+          accessibilityLabel="Cost in coins"
+        />
+      )}
       {parsedCost !== null && describeRewardPace(rate, parsedCost) !== null && (
         <Text style={styles.hint}>{sentence(describeRewardPace(rate, parsedCost)!)}</Text>
       )}
@@ -512,9 +668,69 @@ export function RewardsScreen() {
               accessibilityLabel="One time only"
             />
           </View>
+          {!draftOneTime && (
+            <>
+              <Text style={styles.fieldLabel}>Limit claims</Text>
+              <Text style={styles.hint}>
+                {limitCount === null
+                  ? 'Claim it as often as you like.'
+                  : `${describeClaimLimit(fromCadenceParts({ count: limitCount, unit: limitUnit }))}. After you claim it, it can’t be claimed again until the time is up.`}
+              </Text>
+              <View style={styles.customRow}>
+                <CountStepper
+                  value={limitCount}
+                  onChange={setLimitCount}
+                  min={1}
+                  max={CADENCE_UNIT_MAX[limitUnit]}
+                  allowNull
+                  start={1}
+                  emptyLabel="No limit"
+                  format={n => `Once every ${n}`}
+                  label="Claim limit"
+                  describeValue={n => (n === null ? 'No limit' : `Once every ${n} ${n === 1 ? limitUnit.replace(/s$/, '') : limitUnit}`)}
+                />
+                <View style={styles.customUnit}>
+                  <SegmentedControl
+                    label="Claim limit unit"
+                    options={CADENCE_UNITS.map(unit => ({ value: unit, label: cadenceUnitLabel(unit) }))}
+                    value={limitUnit}
+                    onChange={unit => {
+                      setLimitCount(withCadenceUnit({ count: limitCount, unit }, unit).count);
+                      setLimitUnit(unit);
+                    }}
+                  />
+                </View>
+              </View>
+            </>
+          )}
+          {!draftOneTime && (() => {
+            // A one-time reward can't guard a habit (see canGuard), so the
+            // field goes while the switch is on.
+            const habit = draftGuard ? taskById.get(draftGuard) : undefined;
+            return (
+              <>
+                <Text style={styles.fieldLabel}>Linked habit</Text>
+                <Text style={styles.hint}>
+                  An Avoid this habit for having this without claiming it. A slip on the habit claims this reward, or takes your coins up to its price if you can’t afford it.
+                </Text>
+                {habit && <Text style={styles.guardName}>{displayTitleFor(habit)}</Text>}
+                <View style={[styles.rewardActions, styles.guardActions]}>
+                  <InlineAction
+                    label={habit ? 'Change habit' : 'Choose a habit'}
+                    icon="shield-checkmark-outline"
+                    variant="neutral"
+                    onPress={() => setHabitPickerOpen(true)}
+                  />
+                  {habit && (
+                    <InlineAction label="Unlink" variant="neutral" onPress={() => setDraftGuard(null)} />
+                  )}
+                </View>
+              </>
+            );
+          })()}
         </>
       )}
-      <View style={styles.rewardActions}>
+      <View style={[styles.rewardActions, styles.draftActions]}>
         <InlineAction label={draft?.mode === 'edit' ? 'Save' : 'Add'} icon="checkmark" onPress={saveDraft} disabled={!canSave} />
         <InlineAction label="Cancel" variant="neutral" onPress={closeDraft} />
         {draft?.mode === 'edit' && (() => {
@@ -545,26 +761,43 @@ export function RewardsScreen() {
     const affordable = canClaimReward(balance, reward.cost);
     const pace = describeRewardPace(rate, reward.cost);
     const claimedAt = lastClaimedAt(entries, reward.id);
+    const waitDays = claimWaitDays(reward, entries, getCurrentDayStart());
     const isGoal = goal?.id === reward.id;
+    const source = sourceOf(reward);
+    const sourceList = source ? projects.find(p => p.id === source.projectId) ?? list : null;
+    const guardHabit = reward.guardsTaskId && canGuard(reward) ? taskById.get(reward.guardsTaskId) : undefined;
     return (
       <View key={reward.id} style={styles.card}>
         <View>
           <Text style={styles.rewardTitle}>{shown.title}</Text>
+          {reward.taskId && <Text style={styles.hint}>{`From ${sourceList?.title ?? 'your list'}`}</Text>}
           {shown.note && <Text style={styles.note}>{shown.note}</Text>}
           <View style={styles.costRow}>
             <CoinIcon size={iconSize.sm} color={colors.done} filled />
             <Text style={styles.rewardCost}>
-              {reward.oneTime ? `${formatCoins(reward.cost)} · one time` : formatCoins(reward.cost)}
+              {[
+                reward.priceMinor !== null ? formatPrice(reward.priceMinor, currencySymbol) : null,
+                formatCoins(reward.cost),
+                reward.oneTime ? 'one time' : null,
+              ].filter(Boolean).join(' · ')}
             </Text>
           </View>
           {pace && <Text style={styles.hint}>{sentence(pace)}</Text>}
-          {claimedAt && <Text style={styles.hint}>{describeLastClaimed(claimedAt, new Date())}</Text>}
+          {reward.claimEveryDays && !reward.oneTime && <Text style={styles.hint}>{describeClaimLimit(reward.claimEveryDays)}</Text>}
+          {claimedAt && <Text style={styles.hint}>{describeLastClaimed(claimedAt, getCurrentDayStart())}</Text>}
+          {waitDays > 0 && <Text style={styles.hint}>{describeClaimWait(waitDays)}</Text>}
+          {guardHabit && <Text style={styles.hint}>{describeGuard(displayTitleFor(guardHabit))}</Text>}
         </View>
         <View style={styles.rewardActions}>
           <InlineAction
             label="Claim"
             icon="gift-outline"
-            onPress={() => (affordable
+            onPress={() => (waitDays > 0
+              ? Alert.alert(
+                `${shown.title} isn’t available yet`,
+                `${describeClaimLimit(reward.claimEveryDays!)}. ${describeClaimWait(waitDays)}.`,
+              )
+              : affordable
               ? claim(reward, shown.title)
               : Alert.alert(
                 'Not enough coins',
@@ -572,8 +805,10 @@ export function RewardsScreen() {
               ))}
             // Dimmed rather than disabled: a disabled pill swallows the tap
             // without saying why.
-            style={!affordable ? { opacity: 0.4 } : undefined}
-            accessibilityLabel={affordable
+            style={!affordable || waitDays > 0 ? { opacity: 0.4 } : undefined}
+            accessibilityLabel={waitDays > 0
+              ? `${shown.title}. ${describeClaimWait(waitDays)}`
+              : affordable
               ? `Claim ${shown.title} for ${formatCoins(reward.cost)}`
               : `${shown.title} needs ${formatCoins(reward.cost - balance)} more`}
           />
@@ -603,17 +838,19 @@ export function RewardsScreen() {
     );
   };
 
-  const goalShown = goal ? rewardDisplay(goal, sourceOf(goal)) : null;
+  const goalShown = savingGoal;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader title="Rewards" subtitle={formatCoins(balance)} actions={actions} />
       <ScrollView
-        ref={keyboardScroll.ref}
+        ref={scrollTop.ref}
+        refreshControl={pullSearch.refreshControl}
         contentContainerStyle={{ paddingBottom: tabBarHeight + spacing.xl }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         {...keyboardScroll.props}
+        {...scrollTop.listProps}
       >
         <View style={styles.balanceCard}>
           <View
@@ -633,9 +870,9 @@ export function RewardsScreen() {
               accessible
               accessibilityLabel={`Saving for ${goalShown.title}: ${Math.max(0, Math.min(balance, goal.cost))} of ${formatCoins(goal.cost)}`}
             >
-              <Text style={styles.goalLabel}>{`Saving for ${goalShown.title}`}</Text>
+              <Text style={styles.goalLabel}>{`Saving for: ${goalShown.title}`}</Text>
               <View style={styles.goalTrack}>
-                <View style={[styles.goalFill, { width: `${goalProgress(balance, goal.cost) * 100}%` }]} />
+                <View style={[styles.goalFill, { width: `${goalBarFill(balance, goal.cost) * 100}%` }]} />
               </View>
               <Text style={styles.goalMeta}>
                 {balance >= goal.cost
@@ -656,7 +893,7 @@ export function RewardsScreen() {
           <View style={styles.rulesCard}>
             <Text style={styles.rulesTitle}>How coins work</Text>
             <Text style={styles.rulesBody}>
-              {`A task earns 1 to 12 coins depending on how long it takes. Hard tasks earn double and easy ones half. It also earns 1 for every ${STREAK_BONUS_EVERY} in a row on its streak (up to ${STREAK_BONUS_CAP} extra). Marking a task missed or logging a slip costs what it would earn, but never more than the time amount, so a hard task costs no more to miss. Unchecking a task takes its coins back.`}
+              {`A task earns 1 to 12 coins depending on how long it takes. Hard tasks earn double and easy ones half. It also earns 1 for every ${STREAK_BONUS_EVERY} in a row on its streak (up to ${STREAK_BONUS_CAP} extra). Marking a task missed or logging a slip costs what it would earn, capped at the time amount, so a hard task costs no more to miss. Unchecking a task takes its coins back.`}
             </Text>
           </View>
         </CardSheet>
@@ -683,12 +920,45 @@ export function RewardsScreen() {
           </View>
         )}
 
+        <Text style={styles.sectionHeader}>Exchange rate</Text>
+        <Text style={styles.sectionHint}>
+          Set what you would spend on rewards in a week. Dollar prices convert at your weekly earning divided by that amount and update as it changes.
+        </Text>
+        <View style={styles.bountyLimit}>
+          <Text style={styles.historyLabel}>Weekly reward budget</Text>
+          <View style={[styles.priceField, styles.budgetInput]}>
+            <Text style={styles.priceSymbol}>{currencySymbol}</Text>
+            <TextField
+              style={styles.priceInput}
+              value={budgetText}
+              onChangeText={setBudgetText}
+              onEndEditing={() => {
+                const minor = parsePriceInput(budgetText);
+                setBudgetMinor(minor);
+                setBudgetText(minor === null ? '' : priceToInput(minor));
+              }}
+              placeholder="e.g. 20"
+              placeholderTextColor={colors.textTertiary}
+              keyboardType="decimal-pad"
+              returnKeyType="done"
+              accessibilityLabel="Weekly reward budget"
+            />
+          </View>
+        </View>
+        {budgetMinor !== null && (
+          <Text style={styles.sectionHint}>
+            {exchange !== null
+              ? describeExchangeRate(exchange, currencySymbol)
+              : 'The rate is set after a week of completed tasks.'}
+          </Text>
+        )}
+
         {showIdeas && (
           <>
             <Text style={styles.sectionHeader}>Ideas</Text>
             {rate === null && (
               <Text style={styles.sectionHint}>
-                {`Prices assume about ${DEFAULT_EARN_RATE_PER_DAY} coins a day until there's a week of completed tasks to go on.`}
+                {`Prices assume about ${DEFAULT_EARN_RATE_PER_DAY} coins a day until you have a week of completed tasks.`}
               </Text>
             )}
             <View style={styles.historyCard}>
@@ -712,12 +982,38 @@ export function RewardsScreen() {
 
         <Text style={styles.sectionHeader}>Bounties</Text>
         <Text style={styles.sectionHint}>
-          Extra coins for a task you keep putting off. Turn on Bounty in the task's editor. It pays the most if you do the task before moving it to a later day, and gets smaller each time you do.
+          Extra coins for a task you keep putting off. Turn on Bounty in the task’s editor. It pays the most if you never move the task to a later day, and less each time you do.
         </Text>
         {bounties.length === 0 ? (
-          <View style={styles.emptyNote}>
-            <EmptyNote icon={COIN_ICON}>No bounties posted.</EmptyNote>
-          </View>
+          <>
+            <View style={styles.emptyNote}>
+              <EmptyNote icon={COIN_ICON}>
+                {suggestedBounties.length > 0
+                  ? 'No bounties posted. These tasks have been moved the most.'
+                  : 'No bounties posted.'}
+              </EmptyNote>
+            </View>
+            {suggestedBounties.length > 0 && (
+              <View style={styles.historyCard}>
+                {suggestedBounties.map((task, i) => (
+                  <View key={task.id} style={[styles.historyRow, i > 0 && styles.historyDivider]}>
+                    <View style={styles.historyText}>
+                      <Text style={styles.historyLabel}>{task.title}</Text>
+                      <Text style={styles.historyMeta}>
+                        {`Moved ${task.postponeCount} times · +${formatCoins(bountyCoinsFor({ ...task, bountyPushes: 0 }))} extra when done`}
+                      </Text>
+                    </View>
+                    <InlineAction
+                      label="Post"
+                      icon="add"
+                      onPress={() => postSuggestedBounty(task)}
+                      accessibilityLabel={`Post a bounty on ${task.title}`}
+                    />
+                  </View>
+                ))}
+              </View>
+            )}
+          </>
         ) : (
           <View style={styles.historyCard}>
             {bounties.map((task, i) => (
@@ -802,7 +1098,7 @@ export function RewardsScreen() {
         <Text style={styles.sectionHeader}>History</Text>
         {history.length === 0 ? (
           <View style={styles.emptyNote}>
-            <EmptyNote icon="time-outline">Nothing yet. Complete a task to earn your first coins.</EmptyNote>
+            <EmptyNote icon="time-outline">No coins yet. Complete a task to earn some.</EmptyNote>
           </View>
         ) : (
           <View style={styles.historyCard}>
@@ -849,6 +1145,15 @@ export function RewardsScreen() {
         title="Rewards from a list"
         noneLabel="No list"
       />
+      <HabitPickerSheet
+        visible={habitPickerOpen}
+        onClose={() => setHabitPickerOpen(false)}
+        value={draftGuard}
+        onSelect={id => setDraftGuard(id)}
+        excludeIds={guardedElsewhere}
+      />
+      <ScrollToTopButton {...scrollTop.buttonProps} />
+      {pullSearch.sheet}
     </View>
   );
 }
@@ -910,6 +1215,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   rewardTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium },
   note: { color: colors.text, fontSize: font.sm, marginTop: spacing.xxs },
   rewardActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm },
+  // The form's Add/Cancel row sits under the One time only switch, which has no bottom margin of its own.
+  draftActions: { marginTop: spacing.md },
   fieldLabel: {
     color: colors.textSecondary,
     fontSize: font.xs,
@@ -922,6 +1229,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // Quick add's preset chips: shortcuts that fill the field beside them, not a
   // segmented control, because the field can hold any value (see SegmentedControl).
   presetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  customRow: {
+    flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap',
+    gap: spacing.sm, marginTop: spacing.sm,
+  },
+  customUnit: { flexGrow: 1, flexBasis: 200 },
   presetChip: {
     paddingHorizontal: 14,
     minHeight: interaction.pillHeight,
@@ -936,6 +1248,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd, marginTop: spacing.xs },
   switchText: { flex: 1 },
   switchLabel: { color: colors.text, fontSize: font.md },
+  guardName: { color: colors.text, fontSize: font.md, marginTop: spacing.xs },
+  guardActions: { marginTop: spacing.xs },
   costRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: spacing.xxs },
   rewardCost: { color: colors.textSecondary, fontSize: font.sm },
   amountRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
@@ -950,6 +1264,22 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   addRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingHorizontal: spacing.md, marginTop: spacing.sm },
   listPrompt: { gap: spacing.xxs },
   emptyNote: { marginHorizontal: spacing.md },
+  // The same box as `input`, with the currency symbol inside it so the field
+  // reads as money before anything is typed (the GroceryItemSheet price field).
+  priceField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.smd,
+    borderRadius: radius.sm,
+    backgroundColor: colors.bgTertiary,
+  },
+  priceSymbol: { color: colors.textSecondary, fontSize: font.md },
+  priceInput: { flex: 1, color: colors.text, fontSize: font.md, padding: 0 },
+  budgetInput: {
+    minWidth: 120,
+  },
   bountyLimit: {
     flexDirection: 'row',
     alignItems: 'center',

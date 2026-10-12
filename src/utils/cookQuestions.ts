@@ -148,7 +148,7 @@ export function suggestedCookQuestions(
 ): string[] {
   const named = ingredientNamedIn(stepText, ingredientNames);
   return [
-    'How do I know when it\'s done?',
+    'How do I know when it’s done?',
     'Can I do this part ahead?',
     ...(named ? [`What can I use instead of ${named}?`] : []),
   ];

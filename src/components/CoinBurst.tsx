@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Reanimated, { Easing, useAnimatedStyle, useSharedValue, withTiming, type SharedValue } from 'react-native-reanimated';
 import { useColors } from '../theme/ThemeContext';
@@ -33,8 +33,14 @@ export function CoinBurst({ burstKey, big = false }: Props) {
   const progress = useSharedValue(0);
   const pieces = useMemo(() => burstPieces(big ? BIG_COUNT : COUNT, big ? 190 : 150), [big]);
 
+  // A blurred tab is hidden, not unmounted, and showing it again re-runs every
+  // effect with the same props. Without this the last burst replayed on every
+  // return to the screen, so each key plays once.
+  const playedKey = useRef(0);
   useEffect(() => {
-    if (burstKey === 0 || reduceMotion) return;
+    if (burstKey === 0 || playedKey.current === burstKey) return;
+    playedKey.current = burstKey;
+    if (reduceMotion) return;
     progress.value = 0;
     progress.value = withTiming(1, { duration: FLIGHT_MS, easing: Easing.linear });
   }, [burstKey, reduceMotion, progress]);

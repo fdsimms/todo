@@ -23,6 +23,15 @@ interface TodoWidgetBridgeNativeModule {
   // string rather than an array because each entry is a record; read-and-clear,
   // same as the drains above — see src/utils/widgetSync.ts.
   drainPendingDisposals(): Promise<string>;
+  // The medications LogMedicationIntent's entity query matches a spoken name
+  // against — see src/utils/medicationIndex.ts.
+  writeMedicationIndex(jsonString: string): Promise<boolean>;
+  // Doses queued by LogMedicationIntent ("log ibuprofen"). A JSON string of
+  // records, read-and-clear — see src/utils/widgetSync.ts.
+  drainPendingDoses(): Promise<string>;
+  // Dreams queued by LogDreamIntent ("log a dream"). A JSON string of
+  // `{ text, at }` records, read-and-clear — see src/utils/widgetSync.ts.
+  drainPendingDreams(): Promise<string>;
   // Taps the widget applied without opening the app: CompleteTaskQuietlyIntent
   // and CheckGroceryItemIntent (targets/todo-widget/WidgetQuietIntents.swift).
   // A JSON string of records, read-and-clear — see src/utils/widgetQuietTaps.ts.
@@ -37,7 +46,7 @@ interface TodoWidgetBridgeNativeModule {
   // reconciliation this drives. Empty string means "no session wanted".
   syncFocusLiveActivity(jsonString: string): Promise<boolean>;
   // The Apple Watch's copy of the widget snapshot (WidgetSnapshot JSON, built
-  // with WATCH_LIMITS). Sent on over WatchConnectivity by WatchSession.swift;
+  // with WATCH_CAPS). Sent on over WatchConnectivity by WatchSession.swift;
   // a no-op without a paired watch that has the app.
   writeWatchSnapshot(jsonString: string): Promise<boolean>;
   // Fired when a watch tap or dictated task has just joined the queues the
@@ -77,6 +86,18 @@ export function writePantryIndex(jsonString: string): Promise<boolean> {
 
 export function drainPendingDisposals(): Promise<string> {
   return TodoWidgetBridge.drainPendingDisposals();
+}
+
+export function writeMedicationIndex(jsonString: string): Promise<boolean> {
+  return TodoWidgetBridge.writeMedicationIndex(jsonString);
+}
+
+export function drainPendingDoses(): Promise<string> {
+  return TodoWidgetBridge.drainPendingDoses();
+}
+
+export function drainPendingDreams(): Promise<string> {
+  return TodoWidgetBridge.drainPendingDreams();
 }
 
 export function drainQuietWidgetTaps(): Promise<string> {

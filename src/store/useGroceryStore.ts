@@ -662,7 +662,7 @@ interface GroceryStore extends UndoHistoryActions {
    *
    * `opts.registerUndo` files one undo for the batch, putting back both the
    * rows' aisles and the remembered filings this overwrote. Only the bulk
-   * bar's Move to Aisle passes it: the item sheet's picker is one row you can
+   * bar's Move to aisle passes it: the item sheet's picker is one row you can
    * see and re-pick, and the AI tidy is reviewed before it is applied.
    */
   setAisleMany: (assignments: Record<string, string>, opts?: { registerUndo?: boolean }) => void;
@@ -2237,7 +2237,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
 
     if (opts?.registerUndo !== false && (isNew || !wasOnList)) {
       get().setLastAction({
-        label: `Added "${item.name}"`,
+        label: `Added “${item.name}”`,
         // A minted row is taken back with the undo, unless something has been
         // recorded on it in the meantime; a re-listed one only parks. An empty
         // `preexisting` says "this id is new"; undoForAdds owns the split.
@@ -2622,7 +2622,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     }));
     if (before.name !== updated.name) {
       get().setLastAction({
-        label: `Renamed "${before.name}" to "${updated.name}"`,
+        label: `Renamed “${before.name}” to “${updated.name}”`,
         redo: () => { get().renameItem(id, name); },
         undo: () => {
           // Only the fields a rename writes, onto each row as it is now: a
@@ -2788,7 +2788,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const finalRetargetedSubKeys = new Set(finalRetargetedSubs.map(l => `${l.itemId}|${l.subItemId}`));
     const beforeStoreAliasesById = new Map(beforeStoreAliases.map(a => [a.id, a]));
     get().setLastAction({
-      label: `Merged "${fromItem.name}" into "${intoItem.name}"`,
+      label: `Merged “${fromItem.name}” into “${intoItem.name}”`,
       destructive: true,
       redo: () => {
         get().mergeItems(fromId, intoId);
@@ -3189,7 +3189,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         set(s => ({ items: s.items.map(i => (i.id === existing.id ? existing : i)) }));
       };
       if (opts?.registerUndo !== false) {
-        get().setLastAction({ label: `Added "${updated.name}" to the pantry`, undo });
+        get().setLastAction({ label: `Added “${updated.name}” to the pantry`, undo });
       }
       opts?.onUndo?.(undo);
       return updated;
@@ -3200,7 +3200,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     set(s => ({ items: [...s.items, item] }));
     const undo = () => get().deleteItem(item.id);
     if (opts?.registerUndo !== false) {
-      get().setLastAction({ label: `Added "${item.name}" to the pantry`, undo });
+      get().setLastAction({ label: `Added “${item.name}” to the pantry`, undo });
     }
     opts?.onUndo?.(undo);
     if (item.aisle === OTHER_AISLE) scheduleAutoAisleClassification(item.id, item.name);
@@ -3470,7 +3470,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     if (joins) joinList(id, listId, now);
     if (joins && opts.registerUndo !== false) {
       get().setLastAction({
-        label: `Added "${updated.name}" to the list`,
+        label: `Added “${updated.name}” to the list`,
         undo: () => {
           dbUpdateGroceryItem(item);
           set(s => ({ items: s.items.map(i => (i.id === id ? item : i)) }));

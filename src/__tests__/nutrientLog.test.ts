@@ -93,3 +93,19 @@ describe('nutrientHelping', () => {
     expect(nutrientHelping('waterMl', 1500)!.quantity).toBe('1.5 L');
   });
 });
+
+describe('a supplement dose\'s entry', () => {
+  it('counts as a nutrient logged on its own, though it states several', () => {
+    const e = entry(
+      { vitaminCMg: 90, zincMg: 11 },
+      { label: 'Multivitamin', nutrition: { ...entry({}).nutrition, amounts: { vitaminCMg: 90, zincMg: 11 }, sourceId: 'dose:d1' } },
+    );
+    expect(isNutrientOnlyEntry(e)).toBe(true);
+    // Still not the one-nutrient stepper entry, which is what nutrientOnlyKey names.
+    expect(nutrientOnlyKey(e)).toBeNull();
+  });
+
+  it('does not make an ordinary food one', () => {
+    expect(isNutrientOnlyEntry(entry({ vitaminCMg: 90, zincMg: 11 }, { label: 'Fortified cereal' }))).toBe(false);
+  });
+});

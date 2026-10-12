@@ -6,14 +6,18 @@ import { useSettingsStore, type WeekStart } from '../../store/useSettingsStore';
 import { useTaskStore } from '../../store/useTaskStore';
 import { setGeneratorEnabled } from '../../store/generatorSwitch';
 import { useCalendarStore } from '../../store/useCalendarStore';
-import { useCategoryStore } from '../../store/useCategoryStore';
+import { HEALTH_CATEGORY, useCategoryStore } from '../../store/useCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { categoryLabel } from '../../utils/categoryLabel';
+import { LIMIT_ROW_NAME, activeLimits, targetedNutrients } from '../../utils/nutritionTargets';
+import { NUTRIENT_LABEL } from '../../utils/foodNutrition';
 import { haptics } from '../../utils/haptics';
 import {
   CALENDAR_READ_KINDS,
+  GENERATED_KIND_SPECS,
   generatorSwitchedOn,
   listedGeneratedKinds,
+  matchesAutomationQuery,
   type GeneratedKind,
   type GeneratedKindSpec,
 } from '../../utils/generatedTasks';
@@ -59,6 +63,9 @@ import { useColors } from '../../theme/ThemeContext';
 import { interaction, spacing, type Colors } from '../../theme';
 import { CountStepper } from '../../components/CountStepper';
 import {
+  DEFAULT_MOOD_NUDGE_AFTER_DAYS, MOOD_NUDGE_AFTER_DAYS_MAX, MOOD_NUDGE_AFTER_DAYS_MIN,
+} from '../../utils/moodTasks';
+import {
   DEFAULT_BIRTHDAY_LEAD_DAYS,
   DEFAULT_BIRTHDAY_GIFT_LEAD_DAYS,
   MAX_BIRTHDAY_LEAD_DAYS,
@@ -77,8 +84,9 @@ import { readSavedPlaces, savedPlaceKey, type SavedPlace } from '../../utils/sav
 import { TRANSIT_LINES } from '../../utils/transitAlerts';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
-import { TaskFieldDefaultsFields } from '../../components/TaskFieldDefaultsFields';
-import { describeTaskFieldDefaults } from '../../utils/taskFieldDefaults';
+import { TASK_SETTINGS_SPECS, describeGeneratedTaskSettings, hasTaskSettingsSheet } from '../../utils/generatedTaskSettings';
+import { GeneratedTaskSettingsSheet } from '../../components/GeneratedTaskSettingsSheet';
+import { useSheetSubject } from '../../hooks/useSheetSubject';
 import { SettingsSegments } from './SettingsSegments';
 import { InlineTimePicker } from './InlineTimePicker';
 import { requestLocationPermission } from '../../utils/weatherLocation';
@@ -97,11 +105,13 @@ import { WeatherRulesSheet } from '../../components/WeatherRulesSheet';
 import { EventRulesSheet } from '../../components/EventRulesSheet';
 import { ScreenTimeRulesSheet } from '../../components/ScreenTimeRulesSheet';
 import { HealthRulesSheet } from '../../components/HealthRulesSheet';
+import { EmptyNote } from '../../components/EmptyNote';
 import { PillGroup, type PillGroupOption } from '../../components/PillGroup';
 import { type SegmentOption } from '../../components/SegmentedControl';
 import { makeSettingsStyles } from './settingsStyles';
 import { useSettingsFocus } from './SettingsFocus';
 import { navigateToSettingsEntry } from '../../navigation/openSettings';
+import { alertPermissionOff } from '../../utils/permissionAlert';
 
 // Map of this file (one component holding most of it; `grep -n '// ===='` is
 // the table of contents):
@@ -161,6 +171,10 @@ const timeSegmentChoices: { value: TimeOfDay | null; label: string }[] = [
 ];
 
 /** Weekday segments rotated to start at weekStartsOn, matching the calendar's header order. */
+function describeLowDays(days: number): string {
+  return days === 1 ? '1 low day' : `${days} low days in a row`;
+}
+
 function weekdayOptions(weekStartsOn: WeekStart): SegmentOption<number>[] {
   return Array.from({ length: 7 }, (_, i) => {
     const value = (weekStartsOn + i) % 7;
@@ -168,7 +182,7 @@ function weekdayOptions(weekStartsOn: WeekStart): SegmentOption<number>[] {
   });
 }
 
-export function GeneratedTasksSection() {
+export function GeneratedTasksSection({ query = '' }: { query?: string }) {
   // ==== state ====
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
@@ -180,6 +194,10 @@ export function GeneratedTasksSection() {
   // Names for the per-calendar leave-by rows. Filled by the calendar read, so a
   // picked calendar it hasn't reached yet shows a plain fallback.
   const calendarsById = useCalendarStore(state => state.calendarsById);
+  // The kind whose Task settings sheet is open, and the last one there was so
+  // the sheet still has a kind to draw while it closes.
+  const [taskSettingsKind, setTaskSettingsKind] = useState<GeneratedKind | null>(null);
+  const shownTaskSettingsKind = useSheetSubject(taskSettingsKind);
 
   // Built here rather than handed down, now that this is a screen of its own
   // rather than a section inside Tasks & projects. Not a segmented control: the
@@ -226,6 +244,28 @@ export function GeneratedTasksSection() {
       return next;
     });
   };
+  // Turning the Today rows on files them under the Health reading's own
+  // section when there is one, so the day's readings sit together, and
+  // otherwise under a category made for it. Same default the nutrition
+  // sheet's own toggle uses.
+  const toggleLimitsOnToday = (): void => {
+    haptics.tap();
+    if (s.limitsTodayCategory !== null) { s.setLimitsTodayCategory(null); return; }
+    const category = s.healthCategory ?? HEALTH_CATEGORY;
+    useCategoryStore.getState().addCategory(category);
+    s.setLimitsTodayCategory(category);
+  };
+  const toggleGoalsOnToday = () => {
+    haptics.tap();
+    if (s.goalsTodayCategory !== null) { s.setGoalsTodayCategory(null); return; }
+    const category = s.healthCategory ?? HEALTH_CATEGORY;
+    useCategoryStore.getState().addCategory(category);
+    s.setGoalsTodayCategory(category);
+  };
+  // Targets that are figures to reach: every target that isn't a limit, water aside.
+  const goalNutrients = targetedNutrients(s.nutritionTargets).filter(
+    key => key !== 'waterMl' && !s.nutritionLimits.includes(key),
+  );
   const [timePickerOpen, setTimePickerOpen] = useState(false);
   // The saved places a leave-by trip can start from. A plain setting read on
   // focus, as SavedPlacesRows does: places are added from the new-event card.
@@ -353,6 +393,7 @@ export function GeneratedTasksSection() {
       case 'weighIn': return s.weighInTaskCategory;
       case 'waterShortfall': return s.waterShortfallTaskCategory;
       case 'snackNudge': return s.snackNudgeTaskCategory;
+      case 'limitWarning': return s.limitWarningTaskCategory;
       case 'bookEvent': return s.bookEventTaskCategory;
     }
   };
@@ -390,6 +431,7 @@ export function GeneratedTasksSection() {
       case 'weighIn': s.setWeighInTaskCategory(category); break;
       case 'waterShortfall': s.setWaterShortfallTaskCategory(category); break;
       case 'snackNudge': s.setSnackNudgeTaskCategory(category); break;
+      case 'limitWarning': s.setLimitWarningTaskCategory(category); break;
       case 'bookEvent': s.setBookEventTaskCategory(category); break;
       case 'supplyReorder': s.setSupplyReorderTaskCategory(category); break;
       // Exhaustive, unlike the switches above it, which are only exhaustive
@@ -426,15 +468,15 @@ export function GeneratedTasksSection() {
       return `A stack appears ${WEEKDAY_NAMES[s.mealPlanNudgeWeekday]} at ${formatHHMM(s.mealPlanNudgeTime)}, with a task for each day of that week to plan its meals`;
     }
     if (spec.kind === 'calendarReview' && s.calendarReviewTimeSegment) {
-      return `Adds a task each day, held back until ${s.calendarReviewTimeSegment}, to review tomorrow's events`;
+      return `Adds a task each day, held back until ${s.calendarReviewTimeSegment}, to review tomorrow’s events`;
     }
     if (spec.kind === 'moodLog' && s.moodLogTimeSegments.length > 0) {
       const segmentNames = s.moodLogTimeSegments.map(seg =>
         timeSegmentChoices.find(o => o.value === seg)?.label.toLowerCase() ?? seg
       );
       return s.moodLogTimeSegments.length === 1
-        ? `Adds one task a day, held back until ${segmentNames[0]}, to log how you're feeling`
-        : `Adds a task each of these times a day, to log how you're feeling: ${segmentNames.join(', ')}`;
+        ? `Adds one task a day, held back until ${segmentNames[0]}, to log how you’re feeling`
+        : `Adds a task at each of these times to log how you’re feeling: ${segmentNames.join(', ')}`;
     }
     if (spec.kind === 'journalLog' && s.journalLogTimeSegments.length > 0) {
       const segmentNames = s.journalLogTimeSegments.map(seg =>
@@ -442,7 +484,7 @@ export function GeneratedTasksSection() {
       );
       return s.journalLogTimeSegments.length === 1
         ? `Adds one task a day, held back until ${segmentNames[0]}, to write in your journal`
-        : `Adds a task each of these times a day, to write in your journal: ${segmentNames.join(', ')}`;
+        : `Adds a task at each of these times to write in your journal: ${segmentNames.join(', ')}`;
     }
     return spec.onHint;
   };
@@ -469,7 +511,7 @@ export function GeneratedTasksSection() {
         entryId={entryId}
         icon="time-outline"
         label="Show the task"
-        hint="Held back until this part of the day arrives, same as a task's own Time of day field."
+        hint="Held back until this part of the day arrives, like a task’s Time of day field."
         value={timeSegmentChoices.find(o => o.value === value)?.label ?? 'Any time'}
         tight
       />
@@ -678,7 +720,7 @@ export function GeneratedTasksSection() {
             entryId="weekendNudgePlanThreshold"
             icon="checkmark-done-outline"
             label="How much counts as open"
-            hint="How many things can already be on Friday evening, Saturday or Sunday and the weekend still counts as open."
+            hint="How many things can already be planned for Friday evening, Saturday or Sunday while the weekend still counts as open."
             value={describeWeekendNudgePlanThreshold(s.weekendNudgePlanThreshold)}
             tight
           />
@@ -704,7 +746,7 @@ export function GeneratedTasksSection() {
             entryId="weighInEveryDays"
             icon="calendar-outline"
             label="Ask after"
-            hint="How long with nothing recorded in Apple Health before the task appears. It never appears on a day you have already recorded one."
+            hint="How long without a weight in Apple Health before the task appears. It doesn’t appear on a day you’ve already recorded one."
             value={s.weighInEveryDays === 1 ? '1 day' : `${s.weighInEveryDays} days`}
             tight
           />
@@ -815,8 +857,8 @@ export function GeneratedTasksSection() {
             label="Meals you eat"
             hint={
               s.mealSlotsEnabled.length === 0
-                ? "No meals picked, so no tasks are added. A planned meal can still show as a plain row, with Show the day's meals under Groceries & meals"
-                : "A task each day for each of these, whether or not a meal is planned. Any other planned meal can still show as a plain row, with Show the day's meals under Groceries & meals"
+                ? "No meals picked, so no tasks are added. Planned meals still show as plain rows if Show the day’s meals is on under Groceries & meals."
+                : "A task each day for each of these, planned or not. Other planned meals still show as plain rows if Show the day’s meals is on under Groceries & meals."
             }
             tight
           />
@@ -895,7 +937,7 @@ export function GeneratedTasksSection() {
             icon="airplane-outline"
             iconColor={s.mealPlanNudgeIgnoresVacation ? colors.accent : undefined}
             label="Also during vacation"
-            hint="Vacation mode normally pauses this along with the app's other automatic tasks. Turn this on to keep adding the weekly task anyway."
+            hint="Vacation mode pauses this along with other automatic tasks. Turn this on to keep adding the weekly task."
             toggle={s.mealPlanNudgeIgnoresVacation}
             onPress={() => s.setMealPlanNudgeIgnoresVacation(!s.mealPlanNudgeIgnoresVacation)}
           />
@@ -908,7 +950,7 @@ export function GeneratedTasksSection() {
             hint={
               s.mealPlanNudgeSlots.length === 0
                 ? 'No meals picked, so a day never reads as fully planned.'
-                : "Each day's task counts down against these. Planning only these meals is enough to mark the day done."
+                : "Each day’s task counts down against these. Planning only these meals is enough to mark the day done."
             }
             tight
           />
@@ -942,13 +984,40 @@ export function GeneratedTasksSection() {
 
     if (kind === 'moodLog') {
       return multiSegmentExtra('moodLogTimeSegments', s.moodLogTimeSegments, s.setMoodLogTimeSegments,
-        'Held back until each part of the day arrives. Pick more than one for several check-ins a day. An earlier one still unanswered is cleared once the next arrives.',
+        'Held back until each part of the day arrives. Pick more than one for several check-ins a day, and an unanswered one is cleared when the next arrives.',
+      );
+    }
+
+    if (kind === 'moodNudge') {
+      return (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="moodNudgeAfterDays"
+            icon="trending-down-outline"
+            label="Low days before the task"
+            hint="How many low-mood days in a row before the task is offered, at most once a week."
+            value={describeLowDays(s.moodNudgeAfterDays)}
+            tight
+          />
+          <View style={styles.cadenceRow}>
+            <CountStepper
+              value={s.moodNudgeAfterDays}
+              onChange={next => s.setMoodNudgeAfterDays(next ?? DEFAULT_MOOD_NUDGE_AFTER_DAYS)}
+              min={MOOD_NUDGE_AFTER_DAYS_MIN}
+              max={MOOD_NUDGE_AFTER_DAYS_MAX}
+              format={n => `${n}d`}
+              label="Low days in a row"
+              describeValue={n => describeLowDays(n ?? DEFAULT_MOOD_NUDGE_AFTER_DAYS)}
+            />
+          </View>
+        </>
       );
     }
 
     if (kind === 'journalLog') {
       return multiSegmentExtra('journalLogTimeSegments', s.journalLogTimeSegments, s.setJournalLogTimeSegments,
-        'Any time means one task a day. Pick parts of the day to get a task in each. An earlier one still unanswered is cleared once the next arrives.',
+        'Any time means one task a day. Pick parts of the day to get a task in each, and an unanswered one is cleared when the next arrives.',
       );
     }
 
@@ -982,7 +1051,7 @@ export function GeneratedTasksSection() {
             icon="list-outline"
             iconColor={activeEventRuleCount > 0 ? colors.accent : undefined}
             label="Rules"
-            hint="Which word in an event's title adds which task, and how far ahead."
+            hint="Which word in an event’s title adds which task, and how far ahead."
             value={
               activeEventRuleCount === 0
                 ? 'None'
@@ -1004,8 +1073,8 @@ export function GeneratedTasksSection() {
             icon="time-outline"
             label="Remind me"
             hint={s.travelEstimates
-              ? "Used for any event Apple Maps couldn't estimate a trip to."
-              : 'How long before the event the reminder goes off. Set it to how long the trip usually takes you.'}
+              ? "Used for events where Apple Maps can’t estimate the trip."
+              : 'How long before the event the reminder goes off. Set it to how long the trip takes.'}
             value={`${s.travelLeadMinutes} min before`}
             tight
           />
@@ -1028,7 +1097,7 @@ export function GeneratedTasksSection() {
             iconColor={s.travelEstimates ? colors.accent : undefined}
             label="Estimate travel time"
             hint={s.travelEstimates
-              ? "Sets each reminder from Apple Maps' estimate of the trip, plus 5 minutes. Sends the event's address and where the trip starts to Apple while the app is open."
+              ? "Sets each reminder from Apple Maps’ estimate of the trip, plus 5 minutes. Sends the event’s address and where the trip starts to Apple while the app is open."
               : 'Reminders use the time above. Nothing is sent anywhere.'}
             toggle={s.travelEstimates}
             onPress={async () => {
@@ -1039,9 +1108,9 @@ export function GeneratedTasksSection() {
                 s.setTravelEstimates(true);
                 return;
               }
-              Alert.alert(
+              alertPermissionOff(
                 'Location access is off',
-                'Estimating the trip needs to know where you are. Turn on location access for this app in the Settings app, then try again.',
+                'Estimating the trip needs your location. Turn on location access in Settings, then try again.',
               );
             }}
             tight={s.travelEstimates}
@@ -1063,8 +1132,8 @@ export function GeneratedTasksSection() {
                 icon="home-outline"
                 label="Start from"
                 hint={travelOrigin
-                  ? `Estimates the trip from ${travelOrigin.name}, whatever time the app checks. Sends that place's coordinates to Apple.`
-                  : "Estimates the trip from where your phone is when the app checks, which may not be where you'll leave from."}
+                  ? `Estimates the trip from ${travelOrigin.name}, whatever time the app checks. Sends that place’s coordinates to Apple.`
+                  : "Estimates the trip from where your phone is when the app checks, which may not be where you’ll leave from."}
                 value={travelOrigin?.name ?? 'Where I am'}
                 tight
               />
@@ -1077,9 +1146,9 @@ export function GeneratedTasksSection() {
                     // The phone's position is read under location access, so
                     // it is asked for here if it was never granted.
                     if (!(await requestLocationPermission())) {
-                      Alert.alert(
+                      alertPermissionOff(
                         'Location access is off',
-                        'Estimating from where you are needs location access. Turn it on for this app in the Settings app, then try again.',
+                        'Estimating from where you are needs location access. Turn it on in Settings, then try again.',
                       );
                       return;
                     }
@@ -1163,7 +1232,7 @@ export function GeneratedTasksSection() {
             entryId="transitAlerts"
             icon="subway-outline"
             label="Subway alerts"
-            hint="Adds MTA delays and planned work on your lines to the task, like “L delayed”. Reads the MTA's service alerts over the internet while the app is open."
+            hint="Adds MTA delays and planned work on your lines to the task, like “L delayed”. Reads the MTA’s service alerts over the internet while the app is open."
             toggle={s.transitAlerts}
             onPress={() => s.setTransitAlerts(!s.transitAlerts)}
           />
@@ -1247,28 +1316,44 @@ export function GeneratedTasksSection() {
     return null;
   };
 
+  // ==== search ====
+  // The generators narrow by name and by what they say they do. The three rows
+  // that aren't generators are matched on their own label and hint.
+  const shown = listed.filter(spec => matchesAutomationQuery(query, spec.label, spec.onHint, spec.offHint));
+  const showBackground = matchesAutomationQuery(
+    query, 'Add tasks while the app is closed', 'background refresh reminders widget',
+  );
+  const showUseUpCap = (s.groceryUseUpTasks || s.leftoverUseUpTasks)
+    && matchesAutomationQuery(query, 'Limit use-up tasks', 'at most use-up tasks at a time');
+  const showLimits = s.kitchenEnabled
+    && matchesAutomationQuery(query, 'Stay under limits on Today', 'how much of each limit is used so far today');
+  const nothingMatches = !showBackground && shown.length === 0 && !showUseUpCap && !showLimits;
+
   // ==== render ====
   return (
     <>
     <SettingsSection
       // No label: this is the whole of the screen, so its own header is
-      // already saying "Automations" directly above it.
-      footer="These are the only things that put a task in your list without you typing it. Each one can be turned off here, and deleting a task the app added tells it not to add that one again: the grocery item or the leftover it came from remembers your answer, and a meal task stays gone for the rest of the day. Activity shows what each one added."
+      // already saying "Automations" directly above it. No footer either: a
+      // paragraph under thirty rows is one nobody scrolls far enough to read.
     >
       {/* Above the generators rather than inside any one of them, because it
           applies to all of them at once: it changes when the whole list below
           gets a chance to run, not what any of them do. */}
+      {showBackground && (<>
       <SettingsRow
         entryId="backgroundRefreshEnabled"
         icon="moon-outline"
         iconColor={s.backgroundRefreshEnabled ? colors.accent : undefined}
         label="Add tasks while the app is closed"
-        hint="Lets iOS wake the app in the background to add the tasks below, top up reminders and update the widget, so they're ready when you next open it. iOS decides when this happens and can skip it entirely. Everything below still runs when you open the app."
+        hint="iOS can wake the app in the background to add the tasks below, refresh reminders and update the widget, but iOS chooses the timing and can skip it. Everything below still runs when you open the app."
         toggle={s.backgroundRefreshEnabled}
         onPress={() => s.setBackgroundRefreshEnabled(!s.backgroundRefreshEnabled)}
       />
-      <View style={sectionStyles.groupBreak} />
-      {listed.map((spec, i) => {
+      {shown.length > 0 && <View style={sectionStyles.groupBreak} />}
+      </>)}
+      {nothingMatches && <EmptyNote icon="search-outline">{`No automations match “${query.trim()}”.`}</EmptyNote>}
+      {shown.map((spec, i) => {
         const on = enabledOf(spec.kind);
         const open = on && isOpen(spec.kind);
         return (
@@ -1310,53 +1395,31 @@ export function GeneratedTasksSection() {
               ) : undefined}
             />
             {open && extrasFor(spec.kind)}
-            {open && (
+            {/* Its category, defaults and the rest of what each task starts
+                with, beside the fields the generator writes itself. */}
+            {open && hasTaskSettingsSheet(spec.kind) && (
               <>
                 <View style={styles.sep} />
                 <SettingsRow
-                  entryId={`gen:${spec.kind}:defaults`}
-                  icon="options-outline"
-                  label="Task defaults"
-                  hint="Priority, difficulty and time estimate these tasks start with, so they don't come up in Backfill."
-                  value={describeTaskFieldDefaults(s.generatedTaskDefaults[spec.kind]) ?? 'Ask each time'}
+                  entryId={`gen:${spec.kind}:taskSettings`}
+                  icon="create-outline"
+                  label="Task settings"
+                  hint={describeGeneratedTaskSettings(
+                    categoryOptions.find(o => o.value === categoryOf(spec.kind))?.label ?? null,
+                    s.generatedTaskDefaults[spec.kind],
+                    s.generatedTaskExtras[spec.kind],
+                  ) ?? 'Category, tags, priority and more for the tasks this adds'}
+                  alwaysShowHint
+                  chevron
                   tight
+                  onPress={() => setTaskSettingsKind(spec.kind)}
                 />
-                <View style={styles.pillGroupRow}>
-                  <TaskFieldDefaultsFields
-                    value={s.generatedTaskDefaults[spec.kind]}
-                    onChange={next => s.setGeneratedTaskDefaults(spec.kind, next)}
-                    showDifficulty={s.rewardsEnabled}
-                  />
-                </View>
-              </>
-            )}
-            {open && spec.categorized && (
-              <>
-                <View style={styles.sep} />
-                <SettingsRow
-                  entryId={`gen:${spec.kind}:category`}
-                  icon="pricetag-outline"
-                  label="File them under"
-                  hint="With none, they sit loose at the top of Today above your categories."
-                  value={categoryOptions.find(o => o.value === categoryOf(spec.kind))?.label ?? 'None'}
-                  tight
-                />
-                <View style={styles.pillGroupRow}>
-                  <PillGroup
-                    noun="category"
-                    options={categoryPills(
-                      categoryOf(spec.kind),
-                      category => setCategory(spec.kind, category),
-                      label => `${spec.label} category: ${label}`,
-                    )}
-                  />
-                </View>
               </>
             )}
           </React.Fragment>
         );
       })}
-      {(s.groceryUseUpTasks || s.leftoverUseUpTasks) && (
+      {showUseUpCap && (
         <>
           {/* Spans both use-up generators, so it sits below the loop rather
               than inside either generator's own extras — see useUpTaskCap. */}
@@ -1386,8 +1449,167 @@ export function GeneratedTasksSection() {
           </View>
         </>
       )}
+      {showLimits && (
+        <>
+          {/* Not a generator: these are read-only rows computed from the food
+              log, so they have no registry entry and no task defaults. They
+              answer to their own switch (limitsTodayCategory, null = off),
+              independent of the "don't do" task above. */}
+          <View style={sectionStyles.groupBreak} />
+          <SettingsRow
+            entryId="limitsToday"
+            icon="nutrition-outline"
+            iconColor={s.limitsTodayCategory !== null ? colors.accent : undefined}
+            label="Stay under limits on Today"
+            hint={
+              s.limitsTodayCategory !== null
+                ? 'Shows how much of each Stay under limit is used so far today.'
+                : 'Shows nothing on Today for Stay under limits.'
+            }
+            toggle={s.limitsTodayCategory !== null}
+            onPress={toggleLimitsOnToday}
+          />
+          {s.limitsTodayCategory !== null && (
+            <>
+              <View style={styles.sep} />
+              <SettingsRow
+                entryId="limitsTodayCategory"
+                icon="pricetag-outline"
+                label="Show them under"
+                hint="The category these rows sit in on Today."
+                value={categoryOptions.find(o => o.value === s.limitsTodayCategory)?.label ?? s.limitsTodayCategory}
+                tight
+              />
+              <View style={styles.pillGroupRow}>
+                <PillGroup
+                  noun="category"
+                  options={categoryPills(
+                    s.limitsTodayCategory,
+                    category => { if (category !== null) s.setLimitsTodayCategory(category); },
+                    label => `Stay under limits category: ${label}`,
+                  ).filter(o => !o.pinned)}
+                />
+              </View>
+              {activeLimits(s.nutritionTargets, s.nutritionLimits).length > 0 && (
+                <>
+                  <View style={styles.sep} />
+                  <SettingsRow
+                    entryId="limitsTodayNutrients"
+                    icon="list-outline"
+                    label="Nutrients shown"
+                    hint="Turn off a nutrient to leave its row off Today. Its limit still applies everywhere else."
+                    tight
+                  />
+                  <View style={styles.pillGroupRow}>
+                    <PillGroup
+                      noun="nutrient"
+                      options={activeLimits(s.nutritionTargets, s.nutritionLimits).map(key => {
+                        const label = LIMIT_ROW_NAME[key] ?? NUTRIENT_LABEL[key].label;
+                        const shown = !s.limitsTodayHidden.includes(key);
+                        return {
+                          key,
+                          label,
+                          selected: shown,
+                          accessibilityLabel: `${label} on Today: ${shown ? 'shown' : 'hidden'}`,
+                          onPress: () => {
+                            haptics.tap();
+                            s.setLimitsTodayHidden(
+                              shown ? [...s.limitsTodayHidden, key] : s.limitsTodayHidden.filter(k => k !== key),
+                            );
+                          },
+                        };
+                      })}
+                    />
+                  </View>
+                </>
+              )}
+            </>
+          )}
+          {goalNutrients.length > 0 && (
+            <>
+              <View style={sectionStyles.groupBreak} />
+              <SettingsRow
+                entryId="goalsToday"
+                icon="trending-up-outline"
+                iconColor={s.goalsTodayCategory !== null ? colors.accent : undefined}
+                label="Nutrient goals on Today"
+                hint={
+                  s.goalsTodayCategory !== null
+                    ? 'Shows how much of each nutrient goal is reached so far today.'
+                    : 'Shows nothing on Today for nutrient goals.'
+                }
+                toggle={s.goalsTodayCategory !== null}
+                onPress={toggleGoalsOnToday}
+              />
+              {s.goalsTodayCategory !== null && (
+                <>
+                  <View style={styles.sep} />
+                  <SettingsRow
+                    entryId="goalsTodayCategory"
+                    icon="pricetag-outline"
+                    label="Show goals under"
+                    hint="The category these rows sit in on Today."
+                    value={categoryOptions.find(o => o.value === s.goalsTodayCategory)?.label ?? s.goalsTodayCategory}
+                    tight
+                  />
+                  <View style={styles.pillGroupRow}>
+                    <PillGroup
+                      noun="category"
+                      options={categoryPills(
+                        s.goalsTodayCategory,
+                        category => { if (category !== null) s.setGoalsTodayCategory(category); },
+                        label => `Nutrient goals category: ${label}`,
+                      ).filter(o => !o.pinned)}
+                    />
+                  </View>
+                  <View style={styles.sep} />
+                  <SettingsRow
+                    entryId="goalsTodayNutrients"
+                    icon="list-outline"
+                    label="Goals shown"
+                    hint="Turn off a nutrient to leave its row off Today."
+                    tight
+                  />
+                  <View style={styles.pillGroupRow}>
+                    <PillGroup
+                      noun="nutrient"
+                      options={goalNutrients.map(key => {
+                        const label = LIMIT_ROW_NAME[key] ?? NUTRIENT_LABEL[key].label;
+                        const shown = !s.goalsTodayHidden.includes(key);
+                        return {
+                          key,
+                          label,
+                          selected: shown,
+                          accessibilityLabel: `${label} goal on Today: ${shown ? 'shown' : 'hidden'}`,
+                          onPress: () => {
+                            haptics.tap();
+                            s.setGoalsTodayHidden(
+                              shown ? [...s.goalsTodayHidden, key] : s.goalsTodayHidden.filter(k => k !== key),
+                            );
+                          },
+                        };
+                      })}
+                    />
+                  </View>
+                </>
+              )}
+            </>
+          )}
+        </>
+      )}
     </SettingsSection>
     <WeatherRulesSheet visible={weatherRulesVisible} onClose={() => setWeatherRulesVisible(false)} />
+    {shownTaskSettingsKind && TASK_SETTINGS_SPECS[shownTaskSettingsKind] && (
+      <GeneratedTaskSettingsSheet
+        visible={taskSettingsKind !== null}
+        kind={shownTaskSettingsKind}
+        spec={TASK_SETTINGS_SPECS[shownTaskSettingsKind]!}
+        generatorLabel={GENERATED_KIND_SPECS[shownTaskSettingsKind].label}
+        category={categoryOf(shownTaskSettingsKind)}
+        onSetCategory={category => setCategory(shownTaskSettingsKind, category)}
+        onClose={() => setTaskSettingsKind(null)}
+      />
+    )}
     <EventRulesSheet visible={eventRulesVisible} onClose={() => setEventRulesVisible(false)} />
     <ScreenTimeRulesSheet visible={screenTimeRulesVisible} onClose={() => setScreenTimeRulesVisible(false)} />
     <HealthRulesSheet visible={healthRulesVisible} onClose={() => setHealthRulesVisible(false)} />

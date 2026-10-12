@@ -67,7 +67,7 @@ export function ReadyOfferBar() {
     placeReadyTasks(date);
   };
 
-  const label = titles.length === 1 ? `"${titles[0]}" is ready` : `${titles.length} tasks are ready`;
+  const label = titles.length === 1 ? `“${titles[0]}” is ready` : `${titles.length} tasks are ready`;
   const bottom = insets.bottom + TAB_BAR_HEIGHT + FAB_SIZE + spacing.lg;
 
   return (

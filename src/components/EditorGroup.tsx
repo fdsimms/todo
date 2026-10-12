@@ -53,9 +53,9 @@ interface Props {
 }
 
 /**
- * One card of an editor form: a group label followed by every row in it, in
- * order. No row hides and no group collapses — what a task holds and what it
- * doesn't are both on screen the same way.
+ * One card of an editor form: a group label followed by its rows, in order.
+ * No group collapses. A row hides only when Simplified mode drops it, and a
+ * task that already holds a value for one keeps it on screen.
  */
 /** Shared so the not-searching default doesn't mint a new array every render. */
 const NO_TERMS: string[] = [];
@@ -78,6 +78,7 @@ export function EditorGroup({
   );
 
   const searching = searchTerms.length > 0;
+  // Search runs over every row: a match is shown where it lives.
   const matches = useMemo(() => filterEditorRows(rows, searchTerms), [rows, searchTerms]);
 
   useEffect(() => {
@@ -94,7 +95,6 @@ export function EditorGroup({
   useEffect(() => () => {
     reportRef.current.onMatchCount?.(reportRef.current.groupKey, 0);
   }, []);
-
   // Simplified mode can empty a group outright — "Relationships" is Waiting on
   // and Blocks and nothing else — and a card with no rows in it is worse than
   // no card. The group goes with its last row.
@@ -103,7 +103,7 @@ export function EditorGroup({
   // A group with no search hit disappears entirely — the rows left on screen
   // are the answer, so a card standing there empty would be noise around it.
   const shown = searching ? matches : rows;
-  if (searching && shown.length === 0) return null;
+  if (shown.length === 0) return null;
 
   const sep = divider === 'full' ? styles.sepFull : styles.sep;
 

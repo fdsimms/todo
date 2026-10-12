@@ -4,6 +4,8 @@ import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { isAppLocked, useAppLockStore } from '../store/useAppLockStore';
+import { useJournalLockStore } from '../store/useJournalLockStore';
+import { useProjectLockStore } from '../store/useProjectLockStore';
 import { authenticateForAppLock } from '../utils/appLockAuth';
 import { setPrivacyShieldEnabled } from 'todo-privacy-shield';
 import { useColors } from '../theme/ThemeContext';
@@ -94,7 +96,7 @@ export function AppLockGate() {
           warnedUnavailable = true;
           Alert.alert(
             'App lock is inactive',
-            `This device has no Face ID, Touch ID or passcode set up, so there's nothing to unlock with. ${APP_NAME} is open as usual, and the lock starts working again once you set one up in the Settings app.`
+            `This device has no Face ID, Touch ID or passcode, so ${APP_NAME} opens without the lock until you set one up in Settings.`
           );
         }
       }
@@ -122,6 +124,9 @@ export function AppLockGate() {
         attemptUnlock();
       } else {
         noteInactive(Date.now());
+        // The journal lock has no grace period: leaving the app closes it.
+        useJournalLockStore.getState().lock();
+        useProjectLockStore.getState().lock();
       }
     });
     return () => sub.remove();

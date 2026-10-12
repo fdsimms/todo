@@ -6,13 +6,18 @@ import type { Task } from '../types';
 import type { DeliverableReasoning } from '../utils/deliverables';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useRewardStore } from '../store/useRewardStore';
 import { confirmSlip } from '../utils/slipConfirm';
+import { negativeHoldNow, negativeHoldOffered } from '../utils/negativeHold';
+import type { NegativeHold } from '../utils/negativeHabits';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { usePlanMeal } from '../hooks/usePlanMeal';
 import { useSheetMount } from '../hooks/useSheetMount';
 import { useColors } from '../theme/ThemeContext';
 import { animation, border, checkboxRadius, iconSize, interaction, spacing, type Colors } from '../theme';
 import { completionTapFor, offersMealLogOnCompletion } from '../utils/completionTap';
+import { recordLogUrl } from '../utils/recordTasks';
+import { useRecordTaskReady } from '../hooks/useRecordTaskReady';
 import { openInAppUrl } from '../utils/deepLinks';
 import { isQuotaPartial, quotaFraction } from '../utils/visibilityUtils';
 import { isFailedToday } from '../utils/negativeHabits';
@@ -25,6 +30,8 @@ import { dayKeyToDate } from '../utils/dateUtils';
 import { parseMealSlotSource } from '../utils/mealSlotTasks';
 import { DeliverablePromptSheet } from './DeliverablePromptSheet';
 import { RecipePickerSheet } from './RecipePickerSheet';
+import { NegativeHoldMenu } from './NegativeHoldMenu';
+import type { CardAnchor } from './CardSheet';
 
 export const TASK_CHECKBOX_SIZE = 20;
 
@@ -74,6 +81,9 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
   const uncompleteTask = useTaskStore(s => s.uncompleteTask);
   const logQuotaUnit = useTaskStore(s => s.logQuotaUnit);
   const logSlip = useTaskStore(s => s.logSlip);
+  const undoSlip = useTaskStore(s => s.undoSlip);
+  const closeNegativeDay = useTaskStore(s => s.closeNegativeDay);
+  const reopenNegativeDay = useTaskStore(s => s.reopenNegativeDay);
   const penaltyShieldEnabled = useSettingsStore(s => s.penaltyShieldEnabled);
   const mealLogPromptEnabled = useSettingsStore(s => s.mealLogPrompt);
   const planMeal = useMealPlanStore(s => s.planMeal);
@@ -86,9 +96,15 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
   // rather than by leaving the tree. See useSheetMount.
   const mountPrompt = useSheetMount(showPrompt);
   const mountMealPicker = useSheetMount(showMealPicker);
+  // An avoid-task's long press: the same menu the task row opens.
+  const [holdAnchor, setHoldAnchor] = useState<CardAnchor | null>(null);
+  const [holdKind, setHoldKind] = useState<NegativeHold>('close');
+  const [showHoldMenu, setShowHoldMenu] = useState(false);
+  const mountHoldMenu = useSheetMount(showHoldMenu);
   const scale = useRef(new Animated.Value(1)).current;
 
-  const action = completionTapFor(task);
+  const recordReady = useRecordTaskReady(task);
+  const action = completionTapFor(task, recordReady);
   // Ticks normally, then offerMealLog's "what did you eat?" sheet follows —
   // see offersMealLogOnCompletion's own doc comment for why this is a
   // separate flag rather than another `action` case.
@@ -148,7 +164,7 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
         // habit stays on the list either way — so the haptic and the box going
         // red are the whole of the feedback here.
         await haptics.warning();
-        confirmSlip(task, penaltyShieldEnabled, getCurrentDayStart(), () => logSlip(task.id));
+        confirmSlip(task, penaltyShieldEnabled, getCurrentDayStart(), () => logSlip(task.id), useRewardStore.getState().slipGuardFor(task, getCurrentDayStart()));
         return;
       case 'ask':
         // The question comes first and the completion only follows an answer,
@@ -177,6 +193,21 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
           }
         }
         return;
+      case 'open-log': {
+        // Same contract as 'review-project': until there is an entry the tap
+        // opens the sheet that records it. Once there is one, the tap is a
+        // plain 'complete'.
+        await haptics.tap();
+        const url = recordLogUrl(task);
+        if (url && !openInAppUrl(url)) {
+          try {
+            await Linking.openURL(url);
+          } catch {
+            // silently ignore — no toast infra for this row-level action
+          }
+        }
+        return;
+      }
       case 'log-unit':
         await haptics.impactLight();
         scale.setValue(1);
@@ -223,15 +254,30 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
     : action === 'ask' ? `Complete ${label}, asks for an answer`
     : action === 'pick-meal' ? `${label}, pick a meal`
     : action === 'review-project' ? `${label}, review what to pull in`
+    : action === 'open-log' ? `${label}, opens the entry sheet`
     : action === 'log-unit'
       ? `Log one of ${task.targetCount}${task.targetUnit ? ` ${task.targetUnit}` : ''}, ${formatQuotaProgress(task.progressCount, task.targetCount!, task.targetUnit)} done, ${label}`
     : action === 'uncomplete' ? `Mark ${label} as not done`
+    : recordReady ? `${label}, entry saved, complete`
     : `Complete ${label}`;
 
   return (
     <>
       <TouchableOpacity
         onPress={handlePress}
+        onLongPress={
+          action === 'slip' && negativeHoldOffered(task, getCurrentDayStart())
+            ? (e) => {
+                const hold = negativeHoldNow(task, getCurrentDayStart());
+                if (!hold) return;
+                haptics.impactMedium();
+                setHoldKind(hold);
+                setHoldAnchor({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY });
+                setShowHoldMenu(true);
+              }
+            : undefined
+        }
+        delayLongPress={interaction.delayLongPress}
         activeOpacity={interaction.activeOpacity}
         // The box is 20pt on the row's leading edge: out to the card edge on the
         // left (the row clips hit-testing at its own bounds, so more than
@@ -297,6 +343,18 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
         </Animated.View>
       </TouchableOpacity>
 
+      {mountHoldMenu && (
+        <NegativeHoldMenu
+          visible={showHoldMenu}
+          anchor={holdAnchor}
+          hold={holdKind}
+          onClose={() => setShowHoldMenu(false)}
+          onCount={() => closeNegativeDay(task.id)}
+          onReopen={() => reopenNegativeDay(task.id)}
+          onSlip={() => confirmSlip(task, penaltyShieldEnabled, getCurrentDayStart(), () => logSlip(task.id), useRewardStore.getState().slipGuardFor(task, getCurrentDayStart()))}
+          onUndoSlip={() => undoSlip(task.id)}
+        />
+      )}
       {mountPrompt && (
         <DeliverablePromptSheet
           visible={showPrompt}

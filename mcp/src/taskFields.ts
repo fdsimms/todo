@@ -37,6 +37,8 @@ import { followsRingGoal, hasHealthTarget, HEALTH_TARGET_METRICS, HEALTH_TARGET_
 import { isRotationTask, MAX_ROTATION_PER_WEEK, MIN_ROTATION_ITEMS, rotationItemFromInput, rotationMemberTitle, rotationPerWeek, rotationTargetTotal, type RotationMemberInput } from '../../src/utils/rotation';
 import { normalizeTargetUnit } from '../../src/utils/quotaUnit';
 import { canWaitForWeather } from '../../src/utils/weatherCondition';
+import { canFollowMeter, METER_NAME_MAX_LENGTH, NO_METER } from '../../src/utils/meters';
+import { formatSunAnchor, parseSunAnchor, SUN_OFFSET_LIMIT } from '../../src/utils/sunTimes';
 import { localDateInput } from './timeZone';
 
 export const REPEAT_EVERY = ['never', 'hours', 'day', 'week', 'month', 'year'] as const;
@@ -88,6 +90,10 @@ export interface RepeatInput {
   /** 1-12. Yearly only. */
   month?: number;
   fromCompletion?: boolean;
+  /** An occurrence the rule lands on a holiday: left out, or moved to the next day. */
+  holidays?: 'skip' | 'move' | null;
+  /** Skip an occurrence after this much rain over yesterday and today, in millimetres. Not hourly. */
+  skipAfterRainMm?: number | null;
   endDate?: string | null;
   count?: number | null;
 }
@@ -109,6 +115,8 @@ export interface TargetInput {
   per: 'day' | 'week';
   unit?: string | null;
   allowOvershoot?: boolean;
+  /** Raise the count as it keeps being met: add `add` after every `every` days (weeks, for a weekly target) it was hit, stopping at `upTo`. null clears it. */
+  rampUp?: { add: number; every: number; upTo?: number | null } | null;
   /** Creating a weekly target partway through a week: 'fewer' (the default) scales the first week to the days left, 'full' asks for the whole count. */
   firstWeek?: 'fewer' | 'full';
 }
@@ -134,6 +142,20 @@ export interface HealthTargetInput {
 }
 
 /** A stock that runs down as a repeating task is completed. Needs a repeat. */
+/** A task's meter, as Claude writes it. See the `meter` input below. */
+export interface MeterInput {
+  /** What the reading is taken off: "Car", "Espresso machine". Tasks on one meter share its readings. */
+  name: string;
+  /** What it counts, for display only: "miles", "hours". */
+  unit?: string | null;
+  /** How far it runs between occurrences. */
+  every: number;
+  /** The reading this one is due at. Optional on an update that keeps the current one. */
+  dueAt?: number | null;
+  /** "Or after this many months", whichever comes first. */
+  limitMonths?: number | null;
+}
+
 export interface SupplyInput {
   count: number;
   unit?: string | null;
@@ -143,6 +165,7 @@ export interface SupplyInput {
 }
 
 export interface WindowInput {
+  /** "HH:MM", or a sun anchor: "sunrise", "sunset", "sunset-30", "sunrise+45". */
   start?: string | null;
   end?: string | null;
 }
@@ -198,6 +221,14 @@ export interface TaskFieldsInput {
    * so this only records the want. null stops waiting.
    */
   weatherWait?: WeatherConditionInput | null;
+  /**
+   * Makes a plain one-off due at a meter reading rather than a date: "change
+   * the oil every 5,000 miles". The phone holds the task until a logged reading
+   * reaches `dueAt`, the reading rate projects it, or `limitMonths` pass, and
+   * completing it writes the next one `every` further on. null stops following
+   * the meter.
+   */
+  meter?: MeterInput | null;
   pinned?: boolean;
   pinEachOccurrence?: boolean;
   deliverableKind?: DeliverableKind | null;
@@ -244,6 +275,12 @@ export interface ReminderRuleInput extends ReminderRule {
 export interface TaskFieldsDeps {
   newId(): string;
   emptyFollowUpDraft(): FollowUpTaskDraft;
+  /**
+   * The "HH:MM" a sun anchor resolves to on the task's day (its due date, else
+   * today), or null when it can't be worked out: no location saved, or no such
+   * event that day. Absent, a sun anchor is refused.
+   */
+  sunClockFor?(anchor: string, dueDate: string | null): string | null;
 }
 
 export interface TaskFieldsResult {
@@ -271,6 +308,8 @@ const NO_REPEAT: Partial<Task> = {
   recurrenceFromCompletion: false,
   recurrenceEndDate: null,
   recurrenceCount: null,
+  recurrenceHolidays: null,
+  rainSkipMm: null,
   chainStepOnSchedule: false,
 };
 
@@ -310,6 +349,11 @@ function repeatFields(r: RepeatInput, errors: string[]): Partial<Task> {
   if (r.endDate != null && r.count != null) errors.push('repeat.endDate and repeat.count are two ways to end a repeat; give one.');
   if (r.endDate != null && !isIsoDate(r.endDate)) errors.push('repeat.endDate must be an ISO date.');
   if (r.count != null && !inRange(r.count, LIMITS.count)) errors.push(`repeat.count must be ${LIMITS.count[0]} to ${LIMITS.count[1]}.`);
+  if (r.holidays != null && r.every === 'hours') errors.push('An hourly repeat has no days to skip, so it cannot take repeat.holidays.');
+  if (r.skipAfterRainMm != null) {
+    if (r.every === 'hours') errors.push('An hourly repeat has no days to skip, so it cannot take repeat.skipAfterRainMm.');
+    else if (!(r.skipAfterRainMm > 0 && r.skipAfterRainMm <= 200)) errors.push('repeat.skipAfterRainMm must be more than 0 and at most 200 millimetres, or null.');
+  }
 
   return {
     recurrenceType: type,
@@ -326,6 +370,8 @@ function repeatFields(r: RepeatInput, errors: string[]): Partial<Task> {
     recurrenceFromCompletion: r.every === 'hours' ? true : r.fromCompletion ?? r.every === 'day',
     recurrenceEndDate: r.endDate == null ? null : localDateInput(r.endDate),
     recurrenceCount: r.count ?? null,
+    recurrenceHolidays: r.every === 'hours' ? null : r.holidays ?? null,
+    rainSkipMm: r.every === 'hours' ? null : r.skipAfterRainMm ?? null,
   };
 }
 
@@ -434,6 +480,10 @@ export function taskFieldsPatch(
         quotaReminders: false,
         quotaAlwaysVisible: false,
         quotaPeriod: 'day',
+        quotaRampStep: null,
+        quotaRampEvery: null,
+        quotaRampGoal: null,
+        quotaRampHits: 0,
       } satisfies Partial<Task>);
     } else {
       const t = input.target;
@@ -459,6 +509,22 @@ export function taskFieldsPatch(
       patch.targetCount = t.count;
       patch.quotaPeriod = t.per;
       if (t.unit !== undefined) patch.targetUnit = t.unit;
+      // Ramp up: the app's own rule (src/utils/quotaRamp.ts). Only a plain count
+      // can ramp, so going past the target is refused alongside it.
+      if (t.rampUp === null) {
+        Object.assign(patch, { quotaRampStep: null, quotaRampEvery: null, quotaRampGoal: null, quotaRampHits: 0 } satisfies Partial<Task>);
+      } else if (t.rampUp) {
+        const r = t.rampUp;
+        if (!Number.isInteger(r.add) || r.add < 1 || r.add > 20) errors.push('target.rampUp.add must be a whole number from 1 to 20.');
+        if (!Number.isInteger(r.every) || r.every < 1 || r.every > 60) errors.push('target.rampUp.every must be a whole number from 1 to 60.');
+        if (r.upTo != null && (!Number.isInteger(r.upTo) || r.upTo <= t.count || r.upTo > 99)) errors.push('target.rampUp.upTo must be a whole number above the count, at most 99.');
+        if (patch.allowOvershoot ?? t.allowOvershoot) errors.push('A target that ramps up cannot also allow going past the target.');
+        else {
+          Object.assign(patch, {
+            quotaRampStep: r.add, quotaRampEvery: r.every, quotaRampGoal: r.upTo ?? null, quotaRampHits: 0,
+          } satisfies Partial<Task>);
+        }
+      }
     }
   }
 
@@ -643,14 +709,40 @@ export function taskFieldsPatch(
   // ---- window ---------------------------------------------------------------
   if (input.window !== undefined) {
     if (input.window === null) {
-      Object.assign(patch, { windowStart: null, windowEnd: null });
+      Object.assign(patch, { windowStart: null, windowEnd: null, windowStartSun: null, windowEndSun: null });
     } else {
+      // A bound is a clock time or a sun anchor. An anchor is written with the
+      // clock time it resolves to on the task's day beside it, the fallback
+      // every reader that isn't sun-aware keeps (see Task.windowStartSun), and
+      // a clock time clears any anchor the bound had.
+      const dueDate = patch.dueDate !== undefined ? patch.dueDate : current?.dueDate ?? null;
       for (const key of ['start', 'end'] as const) {
         const v = input.window[key];
-        if (v != null && !HHMM.test(v)) errors.push(`window.${key} must be a 24-hour "HH:MM" time.`);
+        if (v === undefined) continue;
+        const clockKey = key === 'start' ? 'windowStart' : 'windowEnd';
+        const sunKey = key === 'start' ? 'windowStartSun' : 'windowEndSun';
+        if (v === null) {
+          patch[clockKey] = null;
+          patch[sunKey] = null;
+        } else if (HHMM.test(v)) {
+          patch[clockKey] = v;
+          patch[sunKey] = null;
+        } else {
+          const anchor = parseSunAnchor(v);
+          if (!anchor) {
+            errors.push(`window.${key} must be a 24-hour "HH:MM" time, or "sunrise"/"sunset" with an optional minutes offset of up to ${SUN_OFFSET_LIMIT} ("sunset-30").`);
+            continue;
+          }
+          const text = formatSunAnchor(anchor);
+          const clock = deps.sunClockFor?.(text, dueDate) ?? null;
+          if (!clock) {
+            errors.push(`window.${key} can't follow the sun yet: no location is saved for sunrise and sunset times on that day. The person sets one in Settings, Day & time.`);
+            continue;
+          }
+          patch[clockKey] = clock;
+          patch[sunKey] = text;
+        }
       }
-      if (input.window.start !== undefined) patch.windowStart = input.window.start;
-      if (input.window.end !== undefined) patch.windowEnd = input.window.end;
     }
   }
 
@@ -709,6 +801,51 @@ export function taskFieldsPatch(
         errors.push('weatherWait is only for a plain one-off task: not a repeating task, a chain, a set of dates or a subtask.');
       } else {
         patch.weatherWait = input.weatherWait;
+      }
+    }
+  }
+
+  // ---- meter ---------------------------------------------------------------
+  // The same "plain one-off" check weatherWait makes, against the task as it
+  // will be once this patch lands, plus the wait itself: the two passes would
+  // each own deferUntil.
+  if (input.meter !== undefined) {
+    if (input.meter === null) {
+      Object.assign(patch, NO_METER);
+      // The hold was the app's own, so stopping the meter lets the task go.
+      if (current?.meterHeldUntil && input.deferUntil === undefined) {
+        patch.deferUntil = null;
+        patch.meterHeldUntil = null;
+      }
+    } else {
+      const m = input.meter;
+      const name = (m.name ?? '').trim();
+      const dueAt = m.dueAt ?? current?.meterDueAt ?? null;
+      const after = {
+        ...current,
+        recurrenceType: patch.recurrenceType ?? current?.recurrenceType ?? 'none',
+        chainEnabled: patch.chainEnabled ?? current?.chainEnabled ?? false,
+        weatherWait: patch.weatherWait !== undefined ? patch.weatherWait : current?.weatherWait ?? null,
+        parentId: current?.parentId ?? (context.isSubtask ? 'subtask' : null),
+      };
+      if (!name) errors.push('meter.name is required: what the reading is taken off, like "Car".');
+      else if (name.length > METER_NAME_MAX_LENGTH) errors.push(`meter.name can be at most ${METER_NAME_MAX_LENGTH} characters.`);
+      if (!(typeof m.every === 'number' && m.every > 0)) errors.push('meter.every must be a positive number: how far the meter runs between times.');
+      if (dueAt === null || !(dueAt >= 0)) errors.push('meter.dueAt is required: the reading this one is due at.');
+      if (m.limitMonths != null && !(Number.isInteger(m.limitMonths) && m.limitMonths > 0 && m.limitMonths <= 60)) {
+        errors.push('meter.limitMonths must be a whole number of months from 1 to 60, or null.');
+      }
+      if (!canFollowMeter(after)) {
+        errors.push('meter is only for a plain one-off task: not a repeating task, a chain, a set of dates, a subtask, a task waiting on weather or a habit you are avoiding.');
+      }
+      if (!errors.length) {
+        Object.assign(patch, {
+          meterName: name,
+          meterUnit: m.unit?.trim() || null,
+          meterEvery: m.every,
+          meterDueAt: dueAt,
+          meterLimitMonths: m.limitMonths ?? null,
+        } satisfies Partial<Task>);
       }
     }
   }
@@ -829,6 +966,8 @@ export function describeRepeat(t: Task): RepeatInput | null {
   if (t.recurrenceFromCompletion) out.fromCompletion = true;
   if (t.recurrenceEndDate) out.endDate = t.recurrenceEndDate;
   if (t.recurrenceCount != null) out.count = t.recurrenceCount;
+  if (t.recurrenceHolidays) out.holidays = t.recurrenceHolidays;
+  if (t.rainSkipMm) out.skipAfterRainMm = t.rainSkipMm;
   return out;
 }
 

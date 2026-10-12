@@ -2,10 +2,16 @@ import type { ChainItem, MedicationLog } from '../types';
 import {
   DOSE_UNITS,
   MIN_TREND_DOSES,
+  STRENGTH_UNITS,
+  amountInUnit,
+  doseTotal,
+  isCountedUnit,
+  canCarryMedication,
   doseCountInWindow,
   dosesOnDay,
   formatDose,
   frequencyTrend,
+  hasScheduledTask,
   hasDoseOnDay,
   isAsNeededMedication,
   logsOnDay,
@@ -14,7 +20,11 @@ import {
   medicationLogSummary,
   medicationStats,
   medicationVocabulary,
+  parseRegisteredMedications,
+  milestoneOffers,
   parseArchivedMedications,
+  repeatDose,
+  taskSupplyFor,
   type MedicationSource,
 } from '../utils/medicationLog';
 
@@ -36,6 +46,22 @@ function dose(overrides: Partial<MedicationLog> = {}): MedicationLog {
     ...overrides,
   };
 }
+
+describe('canCarryMedication', () => {
+  const base = { completed: false, archived: false, parentId: null, recurrenceType: 'daily' as const, medicationName: null };
+
+  it('accepts an open repeating task with no medication', () => {
+    expect(canCarryMedication(base)).toBe(true);
+  });
+
+  it('refuses a one-off, a finished or archived task, a subtask, and one already recording a medication', () => {
+    expect(canCarryMedication({ ...base, recurrenceType: 'none' })).toBe(false);
+    expect(canCarryMedication({ ...base, completed: true })).toBe(false);
+    expect(canCarryMedication({ ...base, archived: true })).toBe(false);
+    expect(canCarryMedication({ ...base, parentId: 'p' })).toBe(false);
+    expect(canCarryMedication({ ...base, medicationName: 'Sertraline' })).toBe(false);
+  });
+});
 
 describe('medicationKey', () => {
   it('folds case and surrounding space', () => {
@@ -373,5 +399,175 @@ describe('medicationFor', () => {
       chainIndex: 0,
       chainItems: [step({ id: 'a', medicationName: 'Ignored' }), step({ id: 'b' })],
     }))).toEqual({ name: 'Sertraline', amount: null, unit: null });
+  });
+});
+
+describe('repeatDose', () => {
+  it('repeats the most recent dose of that medication, as needed', () => {
+    const logs = [
+      dose({ takenAt: '2026-09-10T09:00:00.000Z', amount: 200, unit: 'mg' }),
+      dose({ takenAt: '2026-09-11T09:00:00.000Z', amount: 400, unit: 'mg', asNeeded: false }),
+      dose({ name: 'Other', takenAt: '2026-09-12T09:00:00.000Z', amount: 1, unit: 'tablet' }),
+    ];
+    expect(repeatDose(logs, 'ibuprofen')).toEqual({ name: 'Ibuprofen', amount: 400, unit: 'mg', asNeeded: true });
+  });
+
+  it('falls back to the name alone', () => {
+    expect(repeatDose([], ' Ibuprofen ')).toEqual({ name: 'Ibuprofen', amount: null, unit: null, asNeeded: true });
+  });
+});
+
+describe('milestoneOffers', () => {
+  const today = '2026-09-20';
+
+  it('offers a medication first taken in the last two weeks', () => {
+    const logs = [dose({ name: 'Sertraline', dayKey: '2026-09-15' }), dose({ name: 'Sertraline', dayKey: '2026-09-18' })];
+    expect(milestoneOffers(logs, [], [], today)).toEqual([
+      { key: 'sertraline', name: 'Sertraline', firstDayKey: '2026-09-15' },
+    ]);
+  });
+
+  it('skips one started longer ago, dismissed, or already named by a milestone', () => {
+    const logs = [
+      dose({ name: 'Old', dayKey: '2026-09-01' }),
+      dose({ name: 'Old', dayKey: '2026-09-19' }),
+      dose({ name: 'Dismissed', dayKey: '2026-09-19' }),
+      dose({ name: 'Sertraline', dayKey: '2026-09-19' }),
+    ];
+    expect(milestoneOffers(logs, ['Started SERTRALINE'], ['dismissed'], today)).toEqual([]);
+  });
+});
+
+describe('taskSupplyFor', () => {
+  const task = (over: Record<string, unknown>) => ({
+    id: 't', completed: false, archived: false, parentId: null, supplyCount: 10, createdAt: '2026-09-01T00:00:00.000Z',
+    medicationName: 'Sertraline', medicationAmount: 50, medicationUnit: 'mg', chainItems: [], chainIndex: 0,
+    ...over,
+  }) as unknown as Parameters<typeof taskSupplyFor>[0][number];
+
+  it('finds the newest live task counting this medication', () => {
+    const tasks = [
+      task({ id: 'old' }),
+      task({ id: 'new', createdAt: '2026-09-05T00:00:00.000Z' }),
+      task({ id: 'done', completed: true, createdAt: '2026-09-09T00:00:00.000Z' }),
+      task({ id: 'nosupply', supplyCount: null, createdAt: '2026-09-09T00:00:00.000Z' }),
+      task({ id: 'other', medicationName: 'Ibuprofen', createdAt: '2026-09-09T00:00:00.000Z' }),
+    ];
+    expect(taskSupplyFor(tasks, ' sertraline ')?.id).toBe('new');
+    expect(taskSupplyFor(tasks, 'Melatonin')).toBeNull();
+  });
+});
+
+describe('medications added by name', () => {
+  it('are in the vocabulary with no doses, after the ones with doses', () => {
+    const logs = [dose({ name: 'Ibuprofen' })];
+    expect(medicationVocabulary(logs, [], ['Zinc', 'ibuprofen'])).toEqual(['Ibuprofen', 'Zinc']);
+  });
+
+  it('leave out an archived one', () => {
+    expect(medicationVocabulary([], ['zinc'], ['Zinc'])).toEqual([]);
+  });
+
+  it('appear in the stats with no doses, last, and no last-taken date', () => {
+    const stats = medicationStats([dose({ name: 'Ibuprofen' })], ['Zinc']);
+    expect(stats.map(s => s.name)).toEqual(['Ibuprofen', 'Zinc']);
+    expect(stats[1]).toMatchObject({ doses: 0, days: 0, lastTakenAt: null, asNeeded: false, typicalDose: null });
+  });
+
+  it('parse back, tolerating junk and keeping the first spelling per key', () => {
+    expect(parseRegisteredMedications(null)).toEqual([]);
+    expect(parseRegisteredMedications('nope')).toEqual([]);
+    expect(parseRegisteredMedications('["Zinc"," zinc ",3,"","Iron"]')).toEqual(['Zinc', 'Iron']);
+  });
+});
+
+describe('how a medication is taken, and its usual amount', () => {
+  it('lets a stated answer override what the doses say', () => {
+    const logs = [dose({ name: 'Ibuprofen', asNeeded: true })];
+    expect(medicationStats(logs)[0].asNeeded).toBe(true);
+    expect(medicationStats(logs, [], { ibuprofen: { asNeeded: false } })[0].asNeeded).toBe(false);
+    expect(medicationStats([dose({ name: 'Ibuprofen' })], [], { ibuprofen: { asNeeded: true } })[0].asNeeded).toBe(true);
+  });
+
+  it('marks a medication with no doses as needed when told so', () => {
+    expect(medicationStats([], ['Zinc'], { zinc: { asNeeded: true } })[0].asNeeded).toBe(true);
+  });
+
+  it('shows the usual amount until a dose states one', () => {
+    const usual = { zinc: { usualDoses: [{ amount: 50, unit: 'mg' }, { amount: 25, unit: 'mg' }] } };
+    expect(medicationStats([], ['Zinc'], usual)[0].typicalDose).toBe('50 mg');
+    const logs = [dose({ name: 'Zinc', amount: 25, unit: 'mg' })];
+    expect(medicationStats(logs, [], usual)[0].typicalDose).toBe('25 mg');
+  });
+
+  it('records the usual amount before any dose, and the last dose after', () => {
+    expect(repeatDose([], 'Zinc', { amount: 50, unit: 'mg' })).toMatchObject({ amount: 50, unit: 'mg' });
+    const logs = [dose({ name: 'Zinc', amount: 25, unit: 'mg' })];
+    expect(repeatDose(logs, 'Zinc', { amount: 50, unit: 'mg' })).toMatchObject({ amount: 25, unit: 'mg' });
+  });
+});
+
+describe('hasScheduledTask', () => {
+  const task = (over: Record<string, unknown>) => ({
+    completed: false, archived: false, parentId: null, recurrenceType: 'daily',
+    medicationName: 'Vitamin D', medicationAmount: null, medicationUnit: null, chainItems: [], chainIndex: 0,
+    ...over,
+  }) as unknown as Parameters<typeof hasScheduledTask>[0][number];
+
+  it('is true for an open repeating task recording the medication', () => {
+    expect(hasScheduledTask([task({})], ' vitamin d ')).toBe(true);
+  });
+
+  it('ignores one-off, finished, archived, subtask and other-medication tasks', () => {
+    const tasks = [
+      task({ recurrenceType: 'none' }),
+      task({ completed: true }),
+      task({ archived: true }),
+      task({ parentId: 'p' }),
+      task({ medicationName: 'Zinc' }),
+    ];
+    expect(hasScheduledTask(tasks, 'Vitamin D')).toBe(false);
+    expect(hasScheduledTask([], '')).toBe(false);
+  });
+});
+
+describe('strength', () => {
+  const capsule = (amount: number | null, strength?: { amount: number; unit: string } | null) =>
+    ({ amount, unit: amount === null ? null : 'capsule', strength });
+
+  it('reads a capsule dose as its total in the strength unit', () => {
+    expect(formatDose(capsule(1, { amount: 125, unit: 'mcg' }))).toBe('1 capsule (125 mcg)');
+    expect(formatDose(capsule(2, { amount: 125, unit: 'mcg' }))).toBe('2 capsules (250 mcg)');
+    expect(doseTotal(capsule(1.5, { amount: 100, unit: 'mg' }))).toEqual({ amount: 150, unit: 'mg' });
+  });
+
+  it('leaves a dose with no stamped strength as it was', () => {
+    expect(formatDose(capsule(1))).toBe('1 capsule');
+    expect(formatDose(capsule(1, null))).toBe('1 capsule');
+    expect(doseTotal(capsule(1))).toBeNull();
+  });
+
+  it('never multiplies a measured dose, even one that carries a strength', () => {
+    const mg = { amount: 400, unit: 'mg', strength: { amount: 125, unit: 'mcg' } };
+    expect(formatDose(mg)).toBe('400 mg');
+    expect(doseTotal(mg)).toBeNull();
+  });
+
+  it('knows which units are counted and which can state a strength', () => {
+    expect(isCountedUnit('capsule')).toBe(true);
+    expect(isCountedUnit('puff')).toBe(true);
+    expect(isCountedUnit('unit')).toBe(false);
+    expect(isCountedUnit('mg')).toBe(false);
+    expect(isCountedUnit(null)).toBe(false);
+    expect([...STRENGTH_UNITS]).toEqual(['mg', 'mcg', 'g', 'ml']);
+  });
+
+  it('contributes to a total only in the unit it was stated in', () => {
+    const c = capsule(2, { amount: 125, unit: 'mcg' });
+    expect(amountInUnit(c, 'mcg')).toBe(250);
+    expect(amountInUnit(c, 'mg')).toBeNull();
+    expect(amountInUnit(c, 'capsule')).toBe(2);
+    expect(amountInUnit(capsule(2), 'mcg')).toBeNull();
+    expect(amountInUnit({ amount: 400, unit: 'mg' }, 'mg')).toBe(400);
   });
 });

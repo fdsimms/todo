@@ -130,30 +130,26 @@ const MIN_LABEL_ROWS = 3;
  * all, and which are therefore dropped whole.
  *
  * **This runs before the matching below and that ordering is the point.** Every
- * one of these contains a word the matcher would otherwise take: "Trans Fat" and
- * "Polyunsaturated Fat" both end in fat, "Includes 2g Added Sugars" ends in
- * sugars, and the old US "Calories from Fat 30" line contains both. Matched
+ * one of these contains a word the matcher would otherwise take: "Polyunsaturated
+ * Fat" ends in fat, "Includes 2g Sugar Alcohols" names sugar, and the old US
+ * "Calories from Fat 30" line contains both. Matched
  * loosely they do not merely get ignored, they overwrite a figure that was
  * right — the total fat row read as 0g because the trans fat row below it was
- * the last one to match.
+ * the last one to match. Trans fat, cholesterol and added sugars have since left
+ * this list for keys of their own, claimed first in `ROW_TARGETS` for the same
+ * reason; an "Includes" row is still dropped unless it is the added sugars one.
  *
- * The vitamin rows are here rather than unmatched because the rest of a
- * micronutrient panel is the next widening of `NutrientKey` that could happen,
- * and a rule that quietly starts matching them would be a surprise rather than
- * a feature. Calcium, iron and potassium have since left this list for
- * `ROW_TARGETS`, which is what #2430 decided; vitamin D stays ignored, and the
- * note on `NutrientKey` says why it is the one mandatory row with no field.
+ * The vitamin rows used to be here, back when `NutrientKey` had no field for
+ * them. The vitamins and minerals have since left this list for `ROW_TARGETS`
+ * (a supplement's label states them all), and an unmatched "Vitamin" row now
+ * simply matches nothing.
  */
 const IGNORED_ROW: readonly RegExp[] = [
-  /\btrans\b/,
-  /\badded\s*sugars?\b/,
-  /\bincludes\b/,
-  /\bcholesterol\b/,
+  /\bincludes\b(?!.*\badded\b)/,
   /\bmono-?\s*unsaturated\b/,
   /\bpoly-?\s*unsaturated\b/,
   /\bsugar\s*alcohols?\b/,
   /\bcalories\s*from\b/,
-  /\bvitamin\b/,
   /\bdaily\s*values?\b/,
   /\bservings?\s*per\s*(container|pack)/,
 ];
@@ -161,7 +157,7 @@ const IGNORED_ROW: readonly RegExp[] = [
 /**
  * Which nutrient a row's wording names, tried in order.
  *
- * **Most specific first, because the words nest.** "Saturated Fat" and "of
+ * **Most specific first, because the words nest.** "Trans Fat", "Saturated Fat" and "of
  * which saturates" have to be claimed before anything looks for fat, and
  * "Total Sugars" before anything looks for carbohydrate — a panel prints the
  * breakdown indented under its total, so both wordings appear and the general
@@ -175,6 +171,10 @@ const IGNORED_ROW: readonly RegExp[] = [
  * factor rather than an equality.
  */
 const ROW_TARGETS: readonly { target: NutrientKey | 'salt'; pattern: RegExp }[] = [
+  // Ahead of fat and sugars, which their own wording contains.
+  { target: 'transFatG', pattern: /\btrans\b/ },
+  { target: 'addedSugarG', pattern: /\badded\s*sugars?\b/ },
+  { target: 'cholesterolMg', pattern: /\bcholesterol\b/ },
   { target: 'satFatG', pattern: /\bsaturat/ },
   { target: 'fiberG', pattern: /\bfib(er|re)\b/ },
   { target: 'sugarG', pattern: /\bsugars?\b/ },
@@ -189,6 +189,37 @@ const ROW_TARGETS: readonly { target: NutrientKey | 'salt'; pattern: RegExp }[] 
   { target: 'potassiumMg', pattern: /\bpotassium\b/ },
   { target: 'caffeineMg', pattern: /\bcaffeine\b/ },
   { target: 'waterMl', pattern: /\bwater\b/ },
+  // The vitamins and minerals, which a supplement's label states in full. The
+  // hyphen in "Vitamin B-6" has become a space by the time these run
+  // (`normalizeRow`), so the digit patterns allow one, and B12 is claimed
+  // before B1 for the reason the fat rows are claimed before total fat.
+  // Each unit beside the figure is read like any other row's: a row printed
+  // only in IU has no figure at all (see `PRINTED_VALUE`), so the nutrient
+  // stays unstated rather than being converted by a factor that differs per
+  // vitamin.
+  { target: 'vitaminB12Mcg', pattern: /\bvitamin\s*b\s*12\b|\bcobalamin\b/ },
+  { target: 'vitaminB6Mg', pattern: /\bvitamin\s*b\s*6\b|\bpyridox/ },
+  { target: 'thiaminMg', pattern: /\bthiamine?\b|\bvitamin\s*b\s*1\b/ },
+  { target: 'riboflavinMg', pattern: /\briboflavin\b|\bvitamin\s*b\s*2\b/ },
+  { target: 'niacinMg', pattern: /\bniacin\b|\bvitamin\s*b\s*3\b/ },
+  { target: 'pantothenicAcidMg', pattern: /\bpantothen|\bvitamin\s*b\s*5\b/ },
+  { target: 'folateMcg', pattern: /\bfolate\b|\bfolic\s*acid\b|\bvitamin\s*b\s*9\b/ },
+  { target: 'biotinMcg', pattern: /\bbiotin\b/ },
+  { target: 'vitaminAMcg', pattern: /\bvitamin\s*a\b/ },
+  { target: 'vitaminCMg', pattern: /\bvitamin\s*c\b|\bascorbic\b/ },
+  { target: 'vitaminDMcg', pattern: /\bvitamin\s*d\s*\d?\b/ },
+  { target: 'vitaminEMg', pattern: /\bvitamin\s*e\b/ },
+  { target: 'vitaminKMcg', pattern: /\bvitamin\s*k\s*\d?\b/ },
+  { target: 'magnesiumMg', pattern: /\bmagnesium\b/ },
+  { target: 'zincMg', pattern: /\bzinc\b/ },
+  { target: 'phosphorusMg', pattern: /\bphosphorus\b/ },
+  { target: 'seleniumMcg', pattern: /\bselenium\b/ },
+  { target: 'copperMg', pattern: /\bcopper\b/ },
+  { target: 'manganeseMg', pattern: /\bmanganese\b/ },
+  { target: 'chromiumMcg', pattern: /\bchromium\b/ },
+  { target: 'molybdenumMcg', pattern: /\bmolybdenum\b/ },
+  { target: 'iodineMcg', pattern: /\biodine\b|\biodide\b/ },
+  { target: 'chlorideMg', pattern: /\bchloride\b/ },
 ];
 
 /**
@@ -206,11 +237,21 @@ const ROW_TARGETS: readonly { target: NutrientKey | 'salt'; pattern: RegExp }[] 
  * second column that is not a portion at all — and on a row whose own figure
  * came through unlabelled it could be taken as the figure. The `%` is left in
  * by `normalizeRow` for exactly this lookahead to find.
+ *
+ * **A figure in IU is refused the same way.** A supplement prints "Vitamin D3
+ * 25 mcg (1000 IU)" and, on an older label, only "1000 IU". The IU is a
+ * different quantity per vitamin (40 per mcg of D, about 1.5 per mg of E) and
+ * read without its unit it would land in the field as 1000 mcg, forty times too
+ * much, so it is never a figure. A row with nothing else on it yields none and
+ * the nutrient stays unstated.
  */
-const PRINTED_VALUE = /(?:^|\s|<)(\d+(?:[.,]\d+)?)\s*(kcal|kj|mg|mcg|µg|ug|ml|g|l)?\b(?!\s*%)/gi;
+const PRINTED_VALUE = /(?:^|\s|<)(\d+(?:[.,]\d+)?)\s*(kcal|kj|mg|mcg|µg|ug|ml|g|l)?\b(?!\s*(?:%|iu\b))/gi;
 
 /** A gram weight in parentheses on the serving line: "2 cookies (30g)". */
 const PAREN_GRAMS = /\((\d+(?:[.,]\d+)?)\s*g\)/i;
+
+/** A bare gram weight anywhere on the serving line: "1 bar/35g", "35 g". */
+const LINE_GRAMS = /(?:^|[\s/(])(\d+(?:[.,]\d+)?)\s*g(?:rams?)?\b/i;
 
 /** How the serving line names itself, either vocabulary. */
 const SERVING_ROW = /\b(serving\s*size|portion\s*size)\b/;
@@ -238,7 +279,15 @@ function basisOfPhrase(phrase: string): FoodNutrition['basis'] {
  * against this same text.
  */
 function normalizeRow(text: string): string {
-  return text.toLowerCase().replace(/[^a-z0-9.,<%\s]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return text
+    .toLowerCase()
+    // "Vitamin B-6" and "Vitamin B 12" would otherwise leave a bare 6 or 12 in
+    // the row, which the value reader takes for the row's figure. The digits
+    // are glued to the letter so they are part of the name.
+    .replace(/\bvitamin\s*b[\s-]*(\d{1,2})\b/g, 'vitamin b$1')
+    .replace(/[^a-z0-9.,<%\s]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /** Every figure printed on a row, left to right. */
@@ -399,7 +448,11 @@ function readColumnBases(texts: readonly string[], count: number): (FoodNutritio
  */
 function readServing(printed: string): { text: string | null; grams: number | null } {
   const stripped = printed.replace(/^.*?\b(serving|portion)\s*size\b\s*:?\s*/i, '').trim();
-  const grams = PAREN_GRAMS.exec(printed);
+  // The parenthesized form is the US convention and the surest reading; any
+  // other gram figure on the line ("1 bar (1.2 oz/35g)", "1 bar 35g", "35 g
+  // (1 bar)") is the fallback, since a label states the weight in whichever
+  // shape its printer liked and a miss leaves the person typing it in.
+  const grams = PAREN_GRAMS.exec(printed) ?? LINE_GRAMS.exec(stripped);
   return {
     text: stripped || null,
     grams: grams ? Number(grams[1].replace(',', '.')) : null,

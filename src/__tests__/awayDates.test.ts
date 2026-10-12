@@ -11,6 +11,11 @@ import {
   isAwayDay,
   isProjectAwayNow,
   nextAwayProject,
+  tripPlaceOn,
+  tripSunLocationOn,
+  registerAwayProjectSource,
+  destinationPinFields,
+  destinationPinUpdate,
 } from '../utils/awayDates';
 
 jest.mock('../store/useSettingsStore', () => ({
@@ -437,5 +442,62 @@ describe('departureMoveFromAnswer', () => {
     expect(departureMoveFromAnswer({ awayStart: new Date(2026, 5, 14, 9).toISOString(), awayEnd: null }, answer)).toBeNull();
     expect(departureMoveFromAnswer({ awayStart: null, awayEnd: null }, answer)).toBeNull();
     expect(departureMoveFromAnswer({ awayStart: set, awayEnd: new Date(2026, 5, 13, 12).toISOString() }, answer)).toBeNull();
+  });
+});
+
+describe('the place a trip puts the sun', () => {
+  const lisbon = {
+    awayStart: noon(2026, 11, 3), awayEnd: noon(2026, 11, 10), archived: false, completed: false,
+    destinationLatitude: 38.72, destinationLongitude: -9.14,
+  };
+
+  it('is the destination on a day the trip covers, and nothing either side of it', () => {
+    expect(tripPlaceOn([lisbon], new Date(2026, 10, 5))).toEqual({ latitude: 38.72, longitude: -9.14 });
+    expect(tripPlaceOn([lisbon], new Date(2026, 10, 2))).toBeNull();
+    // The return day is home again.
+    expect(tripPlaceOn([lisbon], new Date(2026, 10, 10))).toBeNull();
+  });
+
+  it('is nothing for a trip with no coordinates, or one that is history', () => {
+    const mums = { ...lisbon, destinationLatitude: null, destinationLongitude: null };
+    expect(tripPlaceOn([mums], new Date(2026, 10, 5))).toBeNull();
+    expect(tripPlaceOn([{ ...lisbon, archived: true }], new Date(2026, 10, 5))).toBeNull();
+  });
+
+  it('goes to the trip that started first when two overlap', () => {
+    const porto = { ...lisbon, awayStart: noon(2026, 11, 4), destinationLatitude: 41.15, destinationLongitude: -8.61 };
+    expect(tripPlaceOn([porto, lisbon], new Date(2026, 10, 5))).toEqual({ latitude: 38.72, longitude: -9.14 });
+  });
+
+  it('reads the registered project source, and answers nothing without one', () => {
+    registerAwayProjectSource(() => [lisbon as never]);
+    expect(tripSunLocationOn(new Date(2026, 10, 5))).toEqual({ latitude: 38.72, longitude: -9.14 });
+    registerAwayProjectSource(null);
+    expect(tripSunLocationOn(new Date(2026, 10, 5))).toBeNull();
+  });
+});
+
+describe('keeping a trip\'s coordinates with its destination', () => {
+  const trip = { destination: 'Lisbon', destinationLatitude: 38.72, destinationLongitude: -9.14 };
+
+  it('clears them when the destination changes, and only then', () => {
+    expect(destinationPinFields(trip, { destination: 'Porto' })).toEqual({ destinationLatitude: null, destinationLongitude: null });
+    expect(destinationPinFields(trip, { destination: null })).toEqual({ destinationLatitude: null, destinationLongitude: null });
+    expect(destinationPinFields(trip, { destination: 'Lisbon' })).toEqual({});
+    expect(destinationPinFields(trip, {})).toEqual({});
+  });
+
+  it('leaves a patch that writes them itself alone', () => {
+    expect(destinationPinFields(trip, { destination: 'Porto', destinationLatitude: 41.15, destinationLongitude: -8.61 })).toEqual({});
+  });
+
+  it('writes a lookup back only for the words it asked about, rounded, and only when it moved', () => {
+    const bare = { destination: 'Porto', destinationLatitude: null, destinationLongitude: null };
+    expect(destinationPinUpdate(bare, 'Porto', { latitude: 41.14961, longitude: -8.61099 }))
+      .toEqual({ destinationLatitude: 41.15, destinationLongitude: -8.61 });
+    // The destination was edited while the lookup was in flight.
+    expect(destinationPinUpdate(bare, 'Lisbon', { latitude: 38.72, longitude: -9.14 })).toBeNull();
+    // Already stored: opening the page again writes nothing.
+    expect(destinationPinUpdate(trip, 'Lisbon', { latitude: 38.7223, longitude: -9.1393 })).toBeNull();
   });
 });

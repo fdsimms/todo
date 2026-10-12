@@ -331,3 +331,35 @@ describe('applyTemplateRun', () => {
     });
   });
 });
+
+describe('a medicines checklist', () => {
+  const run = (tpl: TaskTemplate, medications?: string[]) => {
+    const { sink, calls } = makeSink();
+    applyTemplateRun(tpl, byId(tpl), select('m'), NO_ANCHORS, medications ? { medications } : undefined, sink);
+    return calls;
+  };
+
+  it('adds one subtask per medicine, after the item\'s own', () => {
+    const tpl = makeTemplate({ items: [item('m', 'Medications', { medicationChecklist: true, subtasks: [{ id: 's1', title: 'Pill case' }] })] });
+    const calls = run(tpl, ['Metformin', 'Vitamin D']);
+    expect(calls.addSubtask.map(s => s.title)).toEqual(['Pill case', 'Metformin', 'Vitamin D']);
+    expect(new Set(calls.addSubtask.map(s => s.parentId))).toEqual(new Set(['task-1']));
+  });
+
+  it('skips a medicine the item already lists by hand, in any case', () => {
+    const tpl = makeTemplate({ items: [item('m', 'Medications', { medicationChecklist: true, subtasks: [{ id: 's1', title: 'metformin' }] })] });
+    expect(run(tpl, ['Metformin', 'Vitamin D']).addSubtask.map(s => s.title)).toEqual(['metformin', 'Vitamin D']);
+  });
+
+  it('adds nothing to an item that is not marked, or when no medicines are supplied', () => {
+    expect(run(makeTemplate({ items: [item('m', 'Medications')] }), ['Metformin']).addSubtask).toEqual([]);
+    expect(run(makeTemplate({ items: [item('m', 'Medications', { medicationChecklist: true })] })).addSubtask).toEqual([]);
+  });
+
+  it('flattens onto the run task under a task container, like any other stub', () => {
+    const tpl = makeTemplate({ applyContainer: 'task', items: [item('m', 'Medications', { medicationChecklist: true })] });
+    const { sink, calls } = makeSink();
+    applyTemplateRun(tpl, byId(tpl), select('m'), NO_ANCHORS, { runName: 'Lisbon', medications: ['Metformin'] }, sink);
+    expect(calls.addSubtask).toEqual([{ parentId: 'task-1', title: 'Metformin' }]);
+  });
+});

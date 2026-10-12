@@ -22,7 +22,7 @@ import { QuickAddProjectModal, type ProjectDraft } from '../components/QuickAddP
 import { ScreenHeader } from '../components/ScreenHeader';
 import { TipHost } from '../components/TipHost';
 import { EmptyState } from '../components/EmptyState';
-import { Fab, FAB_SIZE, type FabDragHandlers } from '../components/Fab';
+import { Fab, FAB_SIZE, type FabDragHandlers, useFabBottom } from '../components/Fab';
 import {
   FabDropZone,
   FabDropZoneProvider,
@@ -52,7 +52,10 @@ import { useRowSelection } from '../hooks/useRowSelection';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, flattenOverlay, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
+import { useProjectLockStore, isProjectHidden } from '../store/useProjectLockStore';
+import { unlockProjects } from '../hooks/useProjectAccess';
+import { isProjectLockedAway } from '../utils/projectLock';
+import { navigateToSettingsEntry } from '../navigation/openSettings';
 import { useScreenSettings } from '../hooks/useScreenSettings';
 import { animateLayout } from '../utils/layoutAnimation';
 import {
@@ -67,6 +70,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { SearchField } from '../components/SearchField';
 import { useFilterField } from '../hooks/useFilterField';
 import { useLogicalDayKey } from '../hooks/useLogicalDayKey';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import type { Project } from '../types';
 import { LazySheet } from '../components/LazySheet';
 
@@ -93,7 +97,9 @@ function AddProjectFabWithDropLabel({
 }
 
 export function ProjectsScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
+  const fabBottom = useFabBottom();
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
   // The page's own settings, from the last row of its "…" menu. See SCREEN_SETTINGS.
@@ -118,6 +124,8 @@ export function ProjectsScreen() {
   const projectSort = useSettingsStore(s => s.projectSortOption);
   const setProjectSort = useSettingsStore(s => s.setProjectSortOption);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  const lockedIds = useProjectLockStore(s => s.lockedIds);
+  const projectsUnlocked = useProjectLockStore(s => s.unlocked);
   const hideListPreviews = useSettingsStore(s => s.hideListPreviews);
   // Re-renders the list when the day rolls over, so a card's "Due tomorrow"
   // becomes "Due today" without waiting for some unrelated store write.
@@ -177,7 +185,7 @@ export function ProjectsScreen() {
       progress: projectProgress(p.id, allTasks),
       // Not for a list: "Next" reads as an order to work in, and a list of
       // books or gift ideas has none.
-      next: projectFilter === 'active' && p.kind !== 'list' ? projectNextStepTitle(p.id, allTasks, taskGroups, p.inOrder) : null,
+      next: projectFilter === 'active' && p.kind !== 'list' && !p.hideNextStep ? projectNextStepTitle(p.id, allTasks, taskGroups, p.inOrder) : null,
       // A list shows its first lines instead, which is what it's for.
       preview: projectFilter === 'active' && p.kind === 'list' && !hideListPreviews
         ? projectListPreview(p.id, allTasks, taskGroups).join(', ') || null
@@ -283,7 +291,7 @@ export function ProjectsScreen() {
     };
     Alert.alert(
       `Delete ${ids.length} ${plural}?`,
-      `${their} tasks can stay in your list without a project, or be deleted with ${them}. You can undo this by shaking your phone right after.`,
+      `${their} tasks can stay in your list without a project, or be deleted with ${them}. Shake your phone right after to undo.`,
       [
         { text: 'Cancel', style: 'cancel' },
         { text: `Delete ${plural} only`, onPress: () => run(false) },
@@ -479,6 +487,14 @@ export function ProjectsScreen() {
 
   const handleOpenProject = useCallback((project: Project) => {
     if (selectionMode) { toggleSelection(project.id); return; }
+    // The page asks for Face ID itself, but asking here first keeps a cancel
+    // on this list rather than pushing a locked page nobody asked to see.
+    if (isProjectHidden(project.id)) {
+      unlockProjects().then(ok => {
+        if (ok) (navigation as any).navigate('ProjectDetail', { projectId: project.id });
+      });
+      return;
+    }
     (navigation as any).navigate('ProjectDetail', { projectId: project.id });
   }, [selectionMode, toggleSelection, navigation]);
 
@@ -488,7 +504,14 @@ export function ProjectsScreen() {
     (navigation as any).navigate('ProjectDetail', { projectId: project.id, addLine: Date.now() });
   }, [navigation]);
 
-  const handleEditProject = useCallback((project: Project) => setEditingProject(project), []);
+  // A locked project's settings are as private as its tasks.
+  const handleEditProject = useCallback((project: Project) => {
+    if (isProjectHidden(project.id)) {
+      unlockProjects().then(ok => { if (ok) setEditingProject(project); });
+      return;
+    }
+    setEditingProject(project);
+  }, []);
 
   const renderRow = (item: ProjectListItem, drag?: () => void, isActive?: boolean) => {
     if (item.type === 'header') {
@@ -514,17 +537,21 @@ export function ProjectsScreen() {
     // for "every task done" to mean anything against.
     const allDone = projectFilter === 'active' && !project.ongoing
       && progress.total > 0 && progress.done === progress.total;
+    // A locked project keeps its row, so there is a sign the tasks exist, but
+    // says nothing about what is in it: no progress, next step or dates.
+    const locked = isProjectLockedAway(project.id, lockedIds, projectsUnlocked);
     return (
       <ProjectRow
         project={project}
+        locked={locked}
         progress={progress}
-        pastWindow={pastWindow}
-        captionText={caption?.text ?? null}
+        pastWindow={pastWindow && !locked}
+        captionText={locked ? null : caption?.text ?? null}
         captionOverdue={caption?.overdue ?? false}
         captionSoon={caption?.soon ?? false}
-        progressNote={projectProgressNote(project, progress)}
-        nextStep={facts?.next ?? null}
-        preview={facts?.preview ?? null}
+        progressNote={locked ? null : projectProgressNote(project, progress)}
+        nextStep={locked ? null : facts?.next ?? null}
+        preview={locked ? null : facts?.preview ?? null}
         projectFilter={projectFilter}
         allDone={allDone}
         selectionMode={selectionMode}
@@ -618,10 +645,10 @@ export function ProjectsScreen() {
             title={projectFilter === 'archived' ? 'No archived projects' : projectFilter === 'completed' ? 'No completed projects' : 'No projects yet'}
             subtitle={
               projectFilter === 'archived'
-                ? 'Projects you archive will show up here'
+                ? 'Archived projects appear here.'
                 : projectFilter === 'completed'
-                  ? 'Projects you mark complete will show up here'
-                  : 'Start a themed collection, like a summer bucket list, and pick tasks off it over time'
+                  ? 'Completed projects appear here.'
+                  : 'Start a themed collection, like a summer bucket list, and pick tasks off it over time.'
             }
             // The button is hidden on these two lists, so this is the way back.
             actionLabel={projectFilter === 'active' ? 'New project' : 'Show active projects'}
@@ -631,9 +658,10 @@ export function ProjectsScreen() {
         )
       ) : (
         <ReorderableList
+          refreshControl={pullSearch.refreshControl}
           data={projectListItems}
           keyExtractor={item => item.key}
-          scrollToTop={{ bottom: insets.bottom + tabBarHeight + spacing.md }}
+          scrollToTop={{ bottom: fabBottom }}
           // The user can't scroll during an add-button drag (the button's
           // responder has the touch); the drag scrolls it instead, through the
           // control below. Same while a paint gesture owns the touch — see
@@ -673,11 +701,10 @@ export function ProjectsScreen() {
           channel={fabIntentChannel}
           onPress={() => setQuickAddVisible(true)}
           accessibilityLabel="Add project"
-          bottom={insets.bottom + tabBarHeight + spacing.md}
           // Placing a new project by hand is a hand-set order, so it goes
           // wherever a row drag does (see canReorder).
           drag={canReorder ? fabDrag : undefined}
-          dragHint="Drag onto the list to add a project at that spot. Drop it back on the button to cancel."
+          dragHint="Drop on the list to add a project there. Drop on the button to cancel."
         />
       )}
 
@@ -686,7 +713,7 @@ export function ProjectsScreen() {
           selectedCount={selectedIds.size}
           totalCount={visibleProjects.length}
           category={{
-            title: 'Move to Category',
+            title: 'Move to category',
             options: bulkCategoryOptions,
             onSet: handleBulkSetCategory,
             onCreate: name => addProjectCategory(name),
@@ -721,11 +748,12 @@ export function ProjectsScreen() {
           sort={projectSort}
           onSortChange={setProjectSort}
           anchor={optionsMenuAnchor}
-          onOpenSettings={screenSettings.hasSettings ? () => screenSettings.open(optionsMenuAnchor) : undefined}
-          settingsHint={screenSettings.sheet.entries.map(e => e.label).join(', ')}
+          onOpenSettings={screenSettings.link
+            ? () => navigateToSettingsEntry(navigation, screenSettings.link!.entryId)
+            : undefined}
+          settingsHint={screenSettings.link?.hint}
         />
       </LazySheet>
-      <ScreenSettingsSheet {...screenSettings.sheet} />
 
       <LazySheet open={categoriesSheetVisible}>
         <ProjectCategoriesSheet
@@ -753,6 +781,7 @@ export function ProjectsScreen() {
           onClose={handleEditorClose}
         />
       </LazySheet>
+      {pullSearch.sheet}
     </View>
   );
 }
@@ -772,11 +801,13 @@ export function ProjectsScreen() {
  * follows on Today.
  */
 const ProjectRow = React.memo(function ProjectRow({
-  project, progress, pastWindow, captionText, captionOverdue, captionSoon, progressNote, nextStep, preview, projectFilter, allDone,
+  project, locked, progress, pastWindow, captionText, captionOverdue, captionSoon, progressNote, nextStep, preview, projectFilter, allDone,
   selectionMode, selected, isActive, drag, colors, styles,
   onPress, onToggleSelect, onSwipeSelect, onQuickUnarchive, onQuickUncomplete, onQuickComplete, onEdit, onAddLine,
 }: {
   project: Project;
+  /** Behind Face ID right now: the row names the project and nothing else. */
+  locked: boolean;
   progress: { done: number; total: number };
   pastWindow: boolean;
   // Two primitives rather than the caption object, which is rebuilt on every
@@ -844,8 +875,8 @@ const ProjectRow = React.memo(function ProjectRow({
             // caption and next step are read too: they're the rest of what the
             // card shows.
             [
-              project.title + (project.kind === 'list' ? ', list' : ''),
-              progressNote ?? `${progress.done} of ${progress.total} done`,
+              project.title + (project.kind === 'list' ? ', list' : '') + (locked ? ', locked' : ''),
+              locked ? null : progressNote ?? `${progress.done} of ${progress.total} done`,
               nextStep ? `next: ${nextStep}` : null,
               preview,
               captionText,
@@ -854,6 +885,8 @@ const ProjectRow = React.memo(function ProjectRow({
           accessibilityHint={
             selectionMode
               ? 'Double tap to select project'
+              : locked
+                ? 'Double tap to unlock with Face ID and view this project.'
               : drag
                 ? `Double tap to view ${project.kind === 'list' ? 'this list' : 'tasks in this project'}. Long press to reorder.`
                 : `Double tap to view ${project.kind === 'list' ? 'this list' : 'tasks in this project'}.`
@@ -869,6 +902,7 @@ const ProjectRow = React.memo(function ProjectRow({
                 <Ionicons name="list-outline" size={14} color={colors.textTertiary} />
               )}
               <Text style={styles.projectName} numberOfLines={1}>{project.title}</Text>
+              {locked && <Ionicons name="lock-closed" size={14} color={colors.textTertiary} />}
               {/* Nothing a row can do to itself while a selection is being
                   built — each of these acts on one project and would fight the
                   bar. The dot takes the slot they vacate, which is the trailing
@@ -897,7 +931,7 @@ const ProjectRow = React.memo(function ProjectRow({
                     <Ionicons name="arrow-undo-outline" size={16} color={colors.accent} />
                   </TouchableOpacity>
                 )}
-                {allDone && (
+                {allDone && !locked && (
                   <TouchableOpacity
                     onPress={() => onQuickComplete(project)}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -935,7 +969,9 @@ const ProjectRow = React.memo(function ProjectRow({
                 </>
               )}
             </View>
-            {progressNote ? (
+            {locked ? (
+              <Text style={styles.rangeText} numberOfLines={1}>Locked. Unlock with Face ID to see its tasks.</Text>
+            ) : progressNote ? (
               <Text style={styles.rangeText} numberOfLines={1}>{progressNote}</Text>
             ) : (
               <View style={styles.progressRow}>

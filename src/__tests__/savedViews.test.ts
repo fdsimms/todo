@@ -331,25 +331,21 @@ describe('savedViewClauseLabel', () => {
 
 describe('clausesFromFilters', () => {
   it('carries the filter sheet\'s own state across, so nothing is rebuilt by hand', () => {
-    expect(clausesFromFilters({ priorities: [3, 4], efforts: [1], hasReminder: true })).toEqual([
+    expect(clausesFromFilters({ priorities: [3, 4], efforts: [1] })).toEqual([
       { kind: 'priority', values: [3, 4] },
       { kind: 'effort', values: [1] },
-      { kind: 'hasReminder', hasReminder: true },
     ]);
   });
 
   // A filter nobody set is not a predicate, same rule matchesClause applies to
   // an empty value list.
   it('contributes nothing for a filter that is not set', () => {
-    expect(clausesFromFilters({ priorities: [], efforts: [], hasReminder: false })).toEqual([]);
-    expect(clausesFromFilters({ priorities: [], efforts: [], hasReminder: true })).toEqual([
-      { kind: 'hasReminder', hasReminder: true },
-    ]);
+    expect(clausesFromFilters({ priorities: [], efforts: [] })).toEqual([]);
   });
 
   it('copies the arrays rather than aliasing the store\'s', () => {
     const priorities: Priority[] = [4];
-    const [clause] = clausesFromFilters({ priorities, efforts: [], hasReminder: false });
+    const [clause] = clausesFromFilters({ priorities, efforts: [] });
     expect(clause).toEqual({ kind: 'priority', values: [4] });
     expect((clause as { values: Priority[] }).values).not.toBe(priorities);
   });

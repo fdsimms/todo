@@ -92,7 +92,7 @@ export function NutritionBarcodeScanSheet({ visible, onClose, onFound }: Props) 
       haptics.warning();
       setError(record
         ? `Found “${record.name}”, but it has no nutrition label on file. Try a photo, or type the figures in below.`
-        : "That barcode isn't in either database. Try a photo, or type the figures in below.");
+        : "That barcode isn’t in either database. Try a photo, or type the figures in below.");
       setLooking(false);
     } catch (e) {
       if (!stillHere()) return;

@@ -71,12 +71,24 @@ away, off by default, and each opens its sheet through
   day, any time; one or more parts of the day hold back a task per part, with
   only the current one live and "answered" meaning an entry since that part
   began.
+- **Several parts of the day make it a day written in snippets.** The task
+  then reads "Add to today's journal" (`journalLogTitle`), and each answer is
+  its own row, stitched together only when read: the screen draws a day as one
+  page (no rule between entries, just their times) and the sheet shows the
+  day's earlier entries above the field (`entriesOnDay`). Appending to one row
+  per day was the other option and was turned down: two devices adding a
+  snippet before they sync would each rewrite that row, and one snippet would
+  lose. Rewriting the snippets into prose with a model was turned down too, by
+  the "nothing is derived" rule above.
 - **The dream reminder is once a day, with no part of the day.** A dream is
   written once, on waking, and whenever the list is first looked at is close
   enough to that.
 - **Saving a new entry for today completes that kind's reminder**
   (`completeJournalTaskForToday`); a backdated or edited one does not, for the
   mood sheet's reason.
+  Until an entry exists the reminder's checkbox opens the sheet and
+  `completeTask` refuses a tick; afterwards the row reads ready (`recordTasks.ts`;
+  see the mood log's "The two generators").
 
 ## Read back beside the mood log
 
@@ -122,3 +134,107 @@ its height to `EditorSheet` (`keyboardAccessoryHeight`, then `accessoryHeight`
 on `useKeyboardInsetScroll`). That takes the hook's JS-owned inset path and
 adds the bar to the keyboard's inset, which keeps a caret typing near the
 bottom of a long entry above the bar rather than behind it.
+
+## Notes to your future self
+
+A new journal entry written for today can be sealed until a later day ("Hide until" in the sheet, reading "Not hidden" until a day is picked,
+`JournalEntry.openOn`). Until then it is kept, synced and counts as a day written, but nobody reads
+its words: the Journal shows only "2 notes for later" and the next date, and the other readers
+leave it out.
+
+- **One rule, read everywhere: `openEntries`.** The Journal list, search, stats and export, the
+  sheet's "so far", the mood day page, Looking back and Claude's journal tools all filter through
+  it. A new reader of journal entries does the same. Over MCP a sealed note is a count
+  (`sealedNotes`), and updating or deleting one by id is refused.
+- **It opens by day, with a task to say so.** Saving a sealed note adds a plain task due on its
+  day whose link is `dundundun://journal?entry=<id>` (`sealedNoteTaskDraft`), which opens that
+  note. It's a task the person asked for, so it isn't a generated one. Deleting the note or opening
+  it early (the sealed card's "Open it now", `openNow`) deletes the task with it
+  (`dropSealedNoteReminder`).
+- **It still files under the day it was written**, which can be a year down the page, so a note
+  shows under "Just opened" at the top for a week from its day (`justOpened`).
+- **Only a page written now can be sealed.** A backdated entry is filling in a day that has gone,
+  and a dream is about last night, so the row shows for neither. Opening early is the only change
+  to `openOn` after it's written, and it only ever clears it.
+
+## Tags and people
+
+An entry can carry `tags` (labels the person typed) and `personIds` (people it is about), both
+JSON-array columns (`tags`, `person_ids`) that sync like the rest of the row. Both are chosen,
+never detected, which is what keeps them inside the "nothing is derived" rule.
+
+- **Tags are listed A to Z, not by use** (`journalTagsIn`): ordering them by how often they appear
+  would rank the person's own labels against each other. Case is kept as typed, and two tags that
+  differ only by case are one (`journalTagKey`). The vocabulary the sheet offers is built from
+  open entries only, so a sealed note's labels aren't shown before its day.
+- **A tap on a tag on an entry narrows the list to it**, with the active tag as a removable pill
+  under the search field, rather than a row of chips to scroll.
+- **A person's page lists the entries about them** (`entriesAboutPerson`), newest first and with
+  no count, behind the journal lock (`useJournalAccess`) and through `openEntries`. A deleted
+  person's id stays on the entry and reads as nobody; the export skips it.
+- **Editing is `setEntryMeta`**, separate from `updateEntry` (which refuses an unchanged text).
+
+## Reading it back: on this day, the month, a random page
+
+`onThisDay` finds the same month and day in earlier years (a Feb 29 page appears only on a Feb 29)
+and the Journal shows it as a card at the top of the list. `daysWrittenInMonth` fills the month
+grid (`JournalMonthSheet`), where a day with nothing on it is plain and untappable, never "missed".
+`randomJournalDay` draws from the days written and leaves today out while anything older exists.
+A tapped day or a random one opens `JournalDaySheet`. All three go through `openEntries`.
+
+## Drafts
+
+A new entry's unsaved words are kept per kind in the settings table (`journalDraft_<kind>`,
+`src/utils/journalDraft.ts`), written 600ms after typing pauses and cleared on save and on Discard.
+It is not synced, and the sheet that shows it sits behind the journal lock, so it is as exposed
+as the entries themselves. An edit has no draft. A Cancel that discards still asks first; the draft
+is for an interruption (a crash, a call, the system reclaiming the app), not a way round that.
+
+## Your own prompts
+
+`journalCustomPrompts` (Settings › Health › Journal) are offered before the built-in
+`JOURNAL_PROMPTS` when "Suggest a prompt" is tapped, up to 20. Device-local, like the draft:
+a prompt can be personal ("what am I not telling Sam?") and is not on the synced-settings allowlist.
+
+## Hide until: shortcuts
+
+`sealShortcuts` offers a month, six months, a year and New Year's Day beside the date picker. There
+is no "on my birthday": the app doesn't hold the person's own birthday, only other people's.
+
+## Saying a dream to Siri
+
+`LogDreamIntent` queues `{ text, at }` in the App Group and the app writes it as a dream on the
+next foreground (`docs/native-targets.md`). It can only add: nothing reads the journal, and the app
+navigates nowhere, so the Face ID lock is untouched. The queue file holds the words in plain
+text until the app drains it, the same as a task title queued by `AddTaskIntent`. Saying one for
+today answers that day's dream reminder.
+
+## Markdown export
+
+The share action offers Markdown beside CSV (`journalExportMarkdown`): a heading per day, each
+entry under its time, oldest first. The entry's own text goes out as typed, with its `#` headings
+pushed down two levels to stay under the day's. Tags and people are a line under the entry.
+
+## Word counts and a word goal
+
+`countWords` (`journal.ts`) counts the words as `JournalText` draws them, so a
+bullet, a `#` or the `**` round bold is never a word. The entry sheet shows the
+count under the field as it is typed, the screen shows each day's total in its
+heading, and `journalWordGoal` (a setting, journal only) turns both into "312 of
+500 words" with the days that reached it in the subtitle.
+
+- **The goal is a day's, so the day's other snippets count toward it**, in the
+  sheet and on the screen alike. A search filters entries, never the total.
+- **A sealed note adds nothing before its day**, like every other reader
+  (`openEntries`).
+- **It is a goal the person typed in, and nothing is said about a day that
+  fell short.** A day under the goal is not counted, never "missed", and
+  `JOURNAL_WORD_GOAL_RANGE` is an absurdity check, not advice. Dreams have no
+  goal: a dream is written down as it is remembered.
+- **It is set from the Journal's target icon** (`JournalWordGoalSheet`) and
+  from Settings › Health.
+- **The goal syncs** (`journalWordGoal` is on the synced-settings allowlist, with
+  `stepGoal`), so Claude sees it as `wordGoal` beside each entry's `words` in
+  `list_journal_entries`.
+- **`GoalStepperSheet` is the one goal sheet.** `JournalWordGoalSheet` and
+  `SleepGoalSheet` only supply their setting, range and wording.

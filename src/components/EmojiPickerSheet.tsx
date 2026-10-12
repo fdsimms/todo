@@ -16,7 +16,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeBlurView } from './SafeBlurView';
 import { SheetScrim } from './SheetScrim';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, border, animation, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, border, animation, interaction, sheetBottomInset, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { EMOJI_GROUPS, searchEmoji } from '../utils/emojiCatalog';
 import { firstEmoji } from '../utils/emojiInput';
@@ -292,7 +292,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   backdropDim: { backgroundColor: colors.backdrop },
   sheetOuter: {
     position: 'absolute', left: 0, right: 0, bottom: 0,
-    paddingHorizontal: spacing.md, paddingBottom: 34,
+    paddingHorizontal: spacing.md, paddingBottom: sheetBottomInset,
   },
   handleArea: { alignItems: 'center', paddingTop: spacing.sm, paddingBottom: spacing.sm },
   handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.bgQuaternary },

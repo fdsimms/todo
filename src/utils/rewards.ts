@@ -1,6 +1,7 @@
 import type { CoinEntry, Difficulty, Reward, Task } from '../types';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { estimatedMinutesFor, minutesToEffort, type EstimateSource } from './effort';
+import { CADENCE_UNIT_DAYS, CADENCE_UNIT_MAX, toCadenceParts } from './nudgeCadence';
 
 /**
  * Coins and rewards: a light, Habitica-style economy over tasks you already
@@ -242,6 +243,22 @@ export function canPostBounty(
   );
 }
 
+/** How many tasks the Rewards screen suggests posting a bounty on. */
+export const SUGGESTED_BOUNTY_COUNT = 3;
+
+/**
+ * Tasks worth offering a bounty on while none is posted: the ones already
+ * being put off (`drifting`, worst first, as `driftingTaskList` returns them)
+ * that a bounty can go on at all. The order is the caller's, so the task moved
+ * the most comes first; nothing here ranks by age or push count itself.
+ */
+export function suggestedBountyTasks<T extends Parameters<typeof canPostBounty>[0]>(
+  drifting: readonly T[],
+  max: number = SUGGESTED_BOUNTY_COUNT,
+): T[] {
+  return drifting.filter(canPostBounty).slice(0, max);
+}
+
 /**
  * The count after a schedule write. Only a push moves it, and it stops at the
  * expiry. Unlike `nextPostponeCount`, a pull back to today leaves it alone.
@@ -437,9 +454,52 @@ export function earnRatePerDay(tasks: readonly EarnHistoryTask[], now: Date): nu
  */
 export function suggestRewardCost(ratePerDay: number | null, days: number): number | null {
   if (ratePerDay === null || !(ratePerDay > 0)) return null;
-  const raw = ratePerDay * days;
+  return cleanCoins(ratePerDay * days);
+}
+
+/** Rounds a raw coin figure to the clean steps a price reads in, within 1..MAX_REWARD_COST. */
+function cleanCoins(raw: number): number {
   const step = raw < 20 ? 1 : raw < 100 ? 5 : raw < 1000 ? 10 : 50;
   return Math.min(MAX_REWARD_COST, Math.max(1, Math.round(raw / step) * step));
+}
+
+// ==== Pricing a reward in dollars ====
+//
+// A reward that costs real money gets a dollar price, and the coin cost is that
+// price at an exchange rate: the coins you earn in a week divided by what you'd
+// spend on rewards in a week. Both halves are the person's own: the earning
+// rate is the same one `suggestRewardCost` reads, and the budget is typed, so
+// the rate is never a number the app made up. Because the earning rate moves,
+// so does the rate, and `cost` is rewritten from the price when it does (see
+// `repriceDollarRewards` in `useRewardStore`). That is the one place a saved
+// price moves by itself, and only for a reward the person priced in dollars.
+
+/** Reads the stored weekly budget: a positive whole number of minor units, or null. */
+export function parseWeeklyBudget(stored: string | null | undefined): number | null {
+  const n = Number(stored);
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+}
+
+/**
+ * Coins per whole dollar: a week of earning over a week of spending. Null when
+ * either half is missing, which leaves dollar prices unconverted rather than
+ * guessed.
+ */
+export function coinsPerDollar(ratePerDay: number | null, weeklyBudgetMinor: number | null): number | null {
+  if (ratePerDay === null || !(ratePerDay > 0)) return null;
+  if (weeklyBudgetMinor === null || !(weeklyBudgetMinor > 0)) return null;
+  return (ratePerDay * 7) / (weeklyBudgetMinor / 100);
+}
+
+/** The clean coin cost of a dollar price at an exchange rate. */
+export function coinsForPrice(priceMinor: number, rate: number): number {
+  return cleanCoins((priceMinor / 100) * rate);
+}
+
+/** "About 12 coins per $1", for the line under the budget field. */
+export function describeExchangeRate(rate: number, symbol: string): string {
+  const perDollar = rate >= 10 ? Math.round(rate) : Math.round(rate * 10) / 10;
+  return `About ${perDollar} ${perDollar === 1 ? 'coin' : 'coins'} per ${symbol}1`;
 }
 
 /**
@@ -562,16 +622,103 @@ export function rewardDisplay(
   return { title: reward.title, note: reward.note, linkUrl: reward.linkUrl };
 }
 
-/** "Claimed today", "Claimed yesterday", "Last claimed 5 days ago", by calendar day. */
-export function describeLastClaimed(at: string, now: Date): string {
-  const days = differenceInCalendarDays(now, new Date(at));
+/**
+ * "Claimed today", "Claimed yesterday", "Last claimed 5 days ago", by logical
+ * day: `todayStart` is the start of the current one (`getCurrentDayStart`), so
+ * a claim at 1am under a 2am day start counts as the day before, as it does
+ * for a guarded slip's "already claimed it today" (`claimedSince`).
+ */
+export function describeLastClaimed(at: string, todayStart: Date): string {
+  const days = claimDaysAgo(at, todayStart);
   if (days <= 0) return 'Claimed today';
   if (days === 1) return 'Claimed yesterday';
   return `Last claimed ${days} days ago`;
+}
+
+/** How many logical days before `todayStart`'s day a claim at `at` falls. */
+function claimDaysAgo(at: string, todayStart: Date): number {
+  // The claim's own logical day: its time pulled back by the day start's
+  // clock time, which rolls one made before the reset onto the date before.
+  const claimDay = new Date(at);
+  claimDay.setHours(claimDay.getHours() - todayStart.getHours(), claimDay.getMinutes() - todayStart.getMinutes());
+  return differenceInCalendarDays(todayStart, claimDay);
+}
+
+// ==== A claim limit ====
+
+/** The most a limit can be: 24 months, the nudge cadence's own ceiling. */
+export const MAX_CLAIM_EVERY_DAYS = CADENCE_UNIT_MAX.months * CADENCE_UNIT_DAYS.months;
+
+/**
+ * A limit as it is stored: a whole number of days from 1 to the ceiling, or
+ * null. A one-time or wish list reward takes none, since it is claimed once.
+ */
+export function cleanClaimLimit(days: number | null | undefined, oneTime: boolean): number | null {
+  if (oneTime || days == null || !Number.isFinite(days) || days < 1) return null;
+  return Math.min(MAX_CLAIM_EVERY_DAYS, Math.round(days));
+}
+
+/**
+ * Logical days before a limited reward can be claimed again, 0 when it can be
+ * now. Counted in logical days from the newest claim, so a claim on Monday
+ * under "once a week" is free again the next Monday, and a claim at 1am under
+ * a 2am day start counts as the day before. Read off the ledger, so undoing
+ * the claim frees it.
+ */
+export function claimWaitDays(
+  reward: Pick<Reward, 'id' | 'claimEveryDays'>,
+  entries: readonly CoinEntry[],
+  todayStart: Date,
+): number {
+  if (!reward.claimEveryDays) return 0;
+  const last = lastClaimedAt(entries, reward.id);
+  if (last === null) return 0;
+  return Math.max(0, reward.claimEveryDays - claimDaysAgo(last, todayStart));
+}
+
+/** "Once a week", "Once every 3 days": the card's line and the form's summary. */
+export function describeClaimLimit(days: number): string {
+  const { count, unit } = toCadenceParts(days);
+  if (count === null) return '';
+  const noun = unit.replace(/s$/, '');
+  return count === 1 ? `Once a ${noun}` : `Once every ${count} ${unit}`;
+}
+
+/** "Available again tomorrow" / "Available again in 3 days". */
+export function describeClaimWait(waitDays: number): string {
+  return waitDays <= 1 ? 'Available again tomorrow' : `Available again in ${waitDays} days`;
+}
+
+/** The share of a goal bar's track that is always filled, so an empty goal still reads as a bar. */
+export const GOAL_BAR_MIN_FILL = 0.05;
+
+/**
+ * The width of a goal bar's fill, 0..1: `goalProgress` with a floor. Display
+ * only; the text beside the bar still states the real figures.
+ */
+export function goalBarFill(balance: number, cost: number): number {
+  return Math.max(goalProgress(balance, cost), GOAL_BAR_MIN_FILL);
 }
 
 /** How far the balance is toward a goal's cost, 0..1. */
 export function goalProgress(balance: number, cost: number): number {
   if (!(cost > 0)) return 0;
   return Math.min(1, Math.max(0, balance / cost));
+}
+
+/**
+ * The reward being saved for, if it can still be claimed: the `rewardGoalId`
+ * reward, ignored when it was claimed (one-time), deleted, or its wish list
+ * item is gone. Today's progress strip and the Rewards screen both read it.
+ */
+export function savingForGoal(
+  rewards: readonly Reward[],
+  entries: readonly CoinEntry[],
+  goalId: string | null,
+  sourceOf: (reward: Reward) => RewardSourceTask | null | undefined,
+): { reward: Reward; title: string } | null {
+  if (!goalId) return null;
+  const reward = rewards.find(r => r.id === goalId);
+  if (!reward || !rewardIsOpen(reward, entries, sourceOf(reward))) return null;
+  return { reward, title: rewardDisplay(reward, sourceOf(reward)).title };
 }

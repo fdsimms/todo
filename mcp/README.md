@@ -85,10 +85,15 @@ only the fallback until the first sync.
 | `habit_patterns` | Each habit's streak, pace, how often done or missed, and when it actually gets done; how timed work compares with estimates. |
 | `mood_insights` | The Mood screen's findings, held to its minimum-days rules, with those rules stated. |
 | `focus_history` | Finished focus sessions over a range, as the Stats screen reads them: minutes worked and rested, how stretches ran against their plan (once there are enough), breaks taken, and each session's steps. History only: a session in progress stays on the phone. |
+| `list_copy_flags` | Lines of on-screen copy the person flagged in the app as needing a manual pass (temporary dev tooling), with the text, screen and their note. |
 | `list_milestones` | The days something changed that the person marked on the mood log, each with its date. Empty unless health logs reach the server. |
-| `list_journal_entries` | Journal entries and dreams over a range of days, optionally one kind. Empty unless health logs reach the server. |
-| `log_journal_entry` / `update_journal_entry` / `delete_journal_entry` | **Write.** A journal entry or a dream, in the person's words. An entry's day is fixed once written. |
+| `list_journal_entries` | Journal entries and dreams over a range of days, optionally one kind, a tag or a person, each with its word count, tags and people. Empty unless journal sync reaches the server. |
+| `search_journal_entries` | Journal entries and dreams containing every word of a query, across everything written unless a range is given. At most 50, newest first. |
+| `log_journal_entry` / `update_journal_entry` / `delete_journal_entry` | **Write.** A journal entry or a dream, in the person's words, with tags and people only when they named them. An entry's day is fixed once written. |
+| `resolve_copy_flag` | **Write.** Closes a copy flag once the copy has been changed in the source, with what it became. |
 | `add_milestone` / `update_milestone` / `delete_milestone` | **Write.** A milestone by label and day; the day is anchored at noon as the app's sheet does. |
+| `list_meter_readings` | The meters the person reads by hand, each with its readings, the rate they imply, and the open tasks due at a reading on it. |
+| `log_meter_reading` / `delete_meter_reading` | **Write.** A reading of a meter ("Car", 45,120). Every task on that meter uses it; the phone moves them on its next sync. |
 | `list_saved_views` | The person's saved views, each with its clauses in words and how many open tasks it holds right now. |
 | `get_saved_view` | One view by id or name, with the tasks it holds (up to 100). |
 | `create_saved_view` / `update_saved_view` / `delete_saved_view` | **Write.** A view by name, icon and clauses, checked by the app's own parser; a clause it would drop is refused instead. An update can also move it in the list. |
@@ -100,13 +105,16 @@ only the fallback until the first sync.
 | `rename_cookbook` / `merge_cookbooks` / `delete_cookbook` | **Write.** Renames a cookbook on every recipe in it, joins two copies of one book, or deletes one (its recipes stay). |
 | `save_index_entry` / `delete_index_entry` / `recipe_from_index_entry` | **Write.** Adds, changes or removes a dish in a cookbook's index, or makes the saved recipe for one. |
 | `reorder_up_next` / `log_cook_time` | **Write.** Orders the Up next shelf; records how long cooking a recipe took. |
-| `log_food` | **Write.** Something eaten, with estimated nutrition. Previews unless `apply: true`; marked estimated; written to Apple Health by the phone on its next foreground, not by the server. Refuses water, which is `log_water`'s. |
+| `log_food` | **Write.** Something eaten, with estimated nutrition, and optionally a `breakdown` of the parts it named (kept on the entry, and refused if it does not add up to the total; `update_food_entry` takes one too when it restates amounts). Previews unless `apply: true`; marked estimated; written to Apple Health by the phone on its next foreground, not by the server. Refuses water, which is `log_water`'s. |
 | `log_water` | **Write.** A glass of water, in ml or fl oz, added onto the day's single water entry the way the app's stepper does. Reports the day's total in the person's own unit. Written to Apple Health by the phone on its next foreground, not by the server. |
 | `log_mood` / `log_medication` | **Write.** A mood check-in, or a dose taken, in the spellings already in the log. |
-| `archive_medication` / `rename_mood_tag` | **Write.** Archive or restore a medicine in the medicines list; rename a mood context tag on every check-in that has it. |
-| `list_automations` | Every automation, whether it is on and what it needs on the phone, and every rule written for them. |
+| `archive_medication` / `rename_medication` / `rename_mood_tag` | **Write.** Archive or restore a medicine in the medicines list; rename a medicine on every dose and in its limit, supply and tasks (naming an existing medicine combines the two); rename a mood context tag on every check-in that has it. |
+| `add_medication` / `remove_medication` / `set_medication_profile` | **Write.** Add a medicine to the list by name before any dose (an archived one is brought back); remove one that has no doses; set whether it is taken as needed, on a schedule, or read off the doses, and the amounts usually taken (a list, the first being the default), and what one capsule or tablet contains (`strength`, stamped on doses recorded after it). `list_medication_logs` reports both, and medicines with no dose yet. |
+| `set_medication_limit` / `set_medication_supply` | **Write.** The limit the person gave for a medicine (hours apart, doses in 24 hours, a total amount in 24 hours; clear or change one cap at a time) and how many they have (counted from now; it then goes down with each dose). Only from figures the person gave; the notify switch stays on the phone. |
+| `set_supplement_nutrients` | **Write.** What one serving of a supplement contains, from its label (or cleared). Each later dose adds those vitamins and minerals to the day's food log. |
+| `list_automations` | Every automation, whether it is on, what it needs on the phone, what its tasks start with and which fields it writes itself, and every rule written for them. |
 | `get_settings` / `update_settings` | Read and **Write.** The person's preferences that sync (the day, task defaults, feature areas, rewards, kitchen, automation parameters), each with what it does. Device-local settings are changed on the device. |
-| `set_automation` / `save_rule` / `delete_rule` | **Write.** Turn an automation on or off and choose the category its tasks file under; add, change or delete a weather, calendar event, Health, Screen Time or title rule. |
+| `set_automation` / `save_rule` / `delete_rule` | **Write.** Turn an automation on or off, choose the category its tasks file under, and set what each new task of its kind starts with (priority, estimate, tags, time of day, a question on completion); add, change or delete a weather, calendar event, Health, Screen Time or title rule. |
 | `delete_category` | **Write.** Delete a task category. Its tasks and stacks move to `moveTo` (or `uncategorize: true`), and every automation that filed under it is re-pointed. Previews unless `apply: true`; not undoable from here. |
 | `remember` / `forget` | **Write.** Add or remove a note the person wants every conversation to start with. They are in the app under Settings › Data & reset › Sync. |
 | `batch_update_tasks` | **Write.** Edit, complete or reschedule up to 100 tasks. Previews unless `apply: true`; one refused change refuses the batch. |
@@ -129,13 +137,13 @@ only the fallback until the first sync.
 | `get_pantry_item` | One item's whole pantry state (on hand and why, use-by, opened, frozen, running low, staple, shelf life, waste history, boxes). `unknown` means the app has no opinion, not that it is out. |
 | `pantry_review` | The app's review deck: items whose "probably have it" has lapsed or gone stale. |
 | `use_up_recipes` | What is at or past its use-by day, and the recipes that would use it. |
-| `list_food_log` | Logged food over a day range, with summed nutrients and the person's daily targets. |
+| `list_food_log` | Logged food over a day range, with summed nutrients and the person's daily targets. An estimated meal shows its `breakdown` (the same estimate split across what it named). |
 | `list_saved_meals` | Foods the person logs together under one name. |
-| `move_food_entry` / `duplicate_food_entry` | **Write.** Moves an entry to another day (not once it is in Apple Health), or logs it again. |
+| `move_food_entry` / `duplicate_food_entry` | **Write.** Moves an entry to another day (not once it is in Apple Health), or logs it again; the copy can take `grams` or `quantity` and is re-measured from the food's record. |
 | `save_meal_from_entries` / `log_saved_meal` / `delete_saved_meal` | **Write.** Saves entries as a meal, logs a saved meal in one go, or deletes one. |
 | `set_nutrition_targets` | **Write.** The daily figures the food log reads totals against, only as the person gives them. |
 | `list_mood_logs` | Mood check-ins: rating, symptoms, context tags, notes. |
-| `list_medication_logs` | Doses recorded, scheduled and as-needed. |
+| `list_medication_logs` | Doses recorded, scheduled and as-needed, plus the limit and supply set for each medication (`limitsAndSupply`). |
 | `list_templates` | Stored templates: name, item count, groups, and the questions a run asks. |
 | `get_template` | One template in full, in the shape `create_template` and `update_template` take, with a `version` for `update_template`'s `expectedVersion`. |
 | `template_library_check` | Every template checked at once: broken pointers, unused questions, items copied across templates, near-copies. Suggests edits; changes nothing. |
@@ -144,10 +152,10 @@ only the fallback until the first sync.
 | `apply_template` | **Write.** Runs a template: creates its tasks (and stack, project or parent task) from dates and answers, the way the apply sheet does. Reports what it left out and why, and any blanks left empty. |
 | `delete_template` | **Write.** Deletes a template. Templates have no archive, so it cannot be undone from here. |
 | `reorder_templates` | **Write.** Puts the listed templates first, in the order given. |
-| `create_task` | **Write.** Adds one task, with the app's own defaults and title rules applied. Takes every repeat rule the app has, chains, daily or weekly targets, time windows, blockers, follow-ups and "don't do this" habits, the people it is about, a link, phone, email and location, vacation pause, a medication its completion records, and a deadline or reminder placed by rule. |
+| `create_task` | **Write.** Adds one task, with the app's own defaults and title rules applied. Takes every repeat rule the app has, chains, daily or weekly targets (optionally ramping up), time windows, blockers, follow-ups and "don't do this" habits, the people it is about, a link, phone, email and location, vacation pause, a medication its completion records, and a deadline or reminder placed by rule. |
 | `update_task` | **Write.** Edits a task by the app's own rules (`src/utils/taskUpdate.ts`), including the "this and later dates" fan-out on a dated series. A fixed deadline replaces a deadline rule and the result says so; a target on a task that follows the water goal is refused. |
 | `create_project` | **Write.** A project and its whole plan in one transaction: steps, their checklists, and which steps wait on which. |
-| `update_project` | **Write.** Rename, re-date, re-file, complete (optionally archiving what is left) or archive a project, pause it until a day, set its people, links, step order and nudge settings, set or clear its away dates and destination (what scheduled vacation mode and the away grocery list run on), or set the priority, difficulty and estimate its new tasks start with (`taskDefaults`). |
+| `update_project` | **Write.** Rename, re-date, re-file, complete (optionally archiving what is left) or archive a project, pause it until a day, set its people, links, step order and nudge settings, set or clear its away dates and destination (what scheduled vacation mode and the away grocery list run on), or set the priority, difficulty, estimate, streak chip, vacation pause and skip-in-suggestions its new tasks start with (`taskDefaults`). |
 | `list_stacks` | Stacks and the open tasks in each, in order. A task's `stackId` says which one it is in. |
 | `create_stack` | **Write.** A new stack, optionally with its first tasks. Its category is settled before anything is written, because it is imposed on every member. |
 | `assign_to_stack` | **Write.** Files open tasks in a stack, or takes them out with a null `stackId`. Reports each category it changed. |
@@ -156,7 +164,7 @@ only the fallback until the first sync.
 | `save_meal_as_recipe` / `copy_meals` | **Write.** Saves a typed meal as a recipe; copies a week, a slot of a week, or one meal onto other days. |
 | `add_person_history` | **Write.** Records something done with someone, as the app's "Add to history" does: a completed task naming them. The only write to the people section. |
 | `complete_task` | **Write.** Ticks one off, spawning whatever that spawns: the next occurrence, the next chain step, the next set of a dated series. |
-| `update_food_entry` | **Write.** Corrects a food log entry (estimated ones can restate figures). |
+| `update_food_entry` | **Write.** Corrects a food log entry (estimated ones can restate figures; measured ones take `grams` or `quantity` and are re-measured from the food's record). |
 | `delete_food_entry` | **Write.** Deletes a food log entry not yet written to Apple Health. |
 | `update_mood_log` | **Write.** Corrects a mood check-in. |
 | `delete_mood_log` | **Write.** Deletes a mood check-in. |
@@ -190,8 +198,8 @@ only the fallback until the first sync.
 | `start_fresh_project` | **Write.** A new copy of a project with every task open and every date cleared. |
 | `save_project_as_template` | **Write.** A template that recreates a project, dated from its own date. |
 | `get_rewards` | The coin balance, the reward being saved for, every reward with what it still needs, live bounties and the latest coin history. |
-| `create_reward` | **Write.** Adds a reward at a cost in coins. Refused while rewards are off. |
-| `update_reward` | **Write.** Changes a reward's title, cost, note, link or one-time flag. A wish-list reward is refused. |
+| `create_reward` | **Write.** Adds a reward at a cost in coins, or at a dollar `price` converted at the person's own rate (refused until they set a weekly reward budget). `guardsHabitId` links an avoid habit it guards. Refused while rewards are off. |
+| `update_reward` | **Write.** Changes a reward's title, cost, note, link, one-time flag or the avoid habit it guards. A wish-list reward is refused. |
 | `delete_reward` | **Write.** Deletes a reward. Coins already spent on it stay spent. |
 | `claim_reward` | **Write.** Spends a reward's cost. Returns a `claimId`. Refused when the balance is short or a one-time reward was already claimed. A wish-list reward also checks its item off, with no extra coins. |
 | `unclaim_reward` | **Write.** Takes a claim back by its `claimId`, and reopens the wish-list item the claim checked off. |
@@ -199,7 +207,7 @@ only the fallback until the first sync.
 | `set_bounty` | **Write.** Posts extra coins on a task, or withdraws the live bounty. Same limits as the app. |
 | `mark_done_by_other` | **Write.** Closes a task as done by somebody else: completes it and creates a repeat's next occurrence, with no coins and no streak change. Works on a one-off. `reopen_task` undoes it. |
 | `mark_missed` | **Write.** Marks a repeating task's occurrence missed: breaks the streak, creates the next occurrence, costs coins. `reopen_task` undoes it. |
-| `log_slip` / `undo_slip` | **Write.** Logs or takes back today's slip on a "don't do this" habit. A habit with a penalty is refused. |
+| `log_slip` / `undo_slip` | **Write.** Logs or takes back today's slip on a "don't do this" habit. On a habit a reward guards, a slip the balance covers claims the reward instead, and one it doesn't costs the balance up to the reward's price. A habit with a penalty is refused. |
 | `update_recipe` | **Write.** Changes a recipe or moves it to another cookbook; ingredients, steps, components and prep tasks each replace the whole list. |
 | `delete_recipe` | **Write.** Deletes a recipe. Not undoable from here. |
 | `defer_task` | **Write.** Moves a task to a date, or clears its date. |

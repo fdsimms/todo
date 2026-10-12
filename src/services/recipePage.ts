@@ -81,7 +81,7 @@ const MESSAGES: Record<RecipePageErrorCode, string> = {
   timeout: 'That page took too long to load. Try again.',
   offline: 'Couldn’t reach that page. Check your connection.',
   blocked: 'That site wouldn’t let dundundun read the page. Open it in a browser, copy the recipe, and paste it instead.',
-  notFound: 'That page isn’t there any more. Check the link.',
+  notFound: 'That page isn’t there anymore. Check the link.',
   serverError: 'That site is having problems. Try again shortly.',
   notHtml: 'That link isn’t a web page. Paste the recipe text instead.',
   tooLarge: 'That page is too big to read. Paste the recipe text instead.',

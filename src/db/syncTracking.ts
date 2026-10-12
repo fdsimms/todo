@@ -75,6 +75,14 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   // differently on each phone, and a milestone is written once and rarely
   // edited, so last-writer-wins is a no-op on almost every row.
   { name: 'milestones', key: ['id'] },
+  // Copy flags (CopyFlag): temporary dev tooling. They have to travel so the
+  // MCP server can read what the phone flagged and resolve it.
+  { name: 'copy_flags', key: ['id'] },
+  // Meter readings (MeterReading): an odometer entry has to travel, or a task
+  // due at 45,000 miles surfaces on one phone and not the other. Rows are
+  // inserted or deleted, never edited, so two devices logging at once both
+  // keep theirs.
+  { name: 'meter_readings', key: ['id'] },
   // Journal and dream entries (JournalEntry). Same reasoning as mood_logs: a
   // diary that reads differently on each phone is half a diary on each, and an
   // entry is written once and rarely edited.
@@ -298,6 +306,16 @@ export const SYNC_EXCLUDED_TABLES = [
   // has, and syncing the row would create it: whichever device wrote last
   // would move the other one's cursor mid-stretch.
   'focus_sessions',
+  // Meals described with no connection (utils/estimateQueue.ts). A request
+  // belongs to the phone that lost its signal, and syncing one would have a
+  // second phone with a connection estimate it, then offer to log it a second
+  // time on a day the first phone may already have logged by hand. It also
+  // holds a typed description that was never confirmed as a record of anything.
+  'pending_estimates',
+  // The recipe counterpart: a request that belongs to the phone that lost its
+  // signal, and a cache believed only against a fingerprint of ingredient
+  // lines (utils/recipeEstimateQueue.ts) that another device may have edited.
+  'pending_recipe_estimates',
 ] as const;
 
 /**
@@ -370,6 +388,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // when a generator's switch is missing from this list.
   'titleRules',
   'generatedTaskDefaults',
+  'generatedTaskExtras',
   'weatherRules',
   'eventRules',
   'healthRules',
@@ -397,6 +416,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'weighInTasks',
   'waterShortfallTasks',
   'snackNudgeTasks',
+  'limitWarningTasks',
   'bookEventTasks',
 
   // Behaviour.
@@ -415,6 +435,9 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // mean the same thing on every device.
   'rewardGoalId',
   'rewardListProjectId',
+  // The weekly spend that sets the coin-to-dollar rate. Synced because
+  // dollar-priced rewards rewrite their synced `cost` from it.
+  'rewardWeeklyBudgetMinor',
   // Synced with the bounties it limits, which ride on synced task rows.
   'bountyLimit',
   'autoRemoveExpiredTasks',
@@ -498,6 +521,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'snackNudgeTaskCategory',
   'snackNudgeFromHour',
   'snackNudgeSharePercent',
+  'limitWarningTaskCategory',
   'supplyReorderTaskCategory',
   'travelTaskCategory',
   'travelLeadMinutes',
@@ -516,6 +540,24 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // health record (HEALTH_SYNC_SETTING_KEYS), since a calorie target says
   // something about a body.
   'nutritionTargets',
+  // Which of those targets are ceilings, and how close counts as close.
+  // Travels with the targets, and with the health record for the same reason.
+  'nutritionLimits',
+  'limitWarnPercent',
+  'limitsTodayCategory',
+  'limitsTodayHidden',
+  'goalsTodayCategory',
+  'goalsTodayHidden',
+  // The steps row's goal on Today. A typed-in preference.
+  'stepGoal',
+  // Which Health readings Today draws a row for.
+  'healthTodayHidden',
+  // The journal's daily word goal. A typed-in preference, and a count of words
+  // rather than anything written, so it needs no switch of its own.
+  'journalWordGoal',
+  // The limit tasks deleted for good, and the slips the app logged on them.
+  'limitWarningDeclined',
+  'limitWarningAutoSlips',
   'waterUnit',
 
   // Vocabularies the user builds. These are data as much as preference — a
@@ -531,17 +573,34 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // Which medications you have archived. A statement about what you take, and
   // a device without it would list a medicine you stopped on the other one.
   'medication_archived',
+  // Medications added by name before any dose. Same reasoning as the archived
+  // list: it says what you take, and a device without it lists one fewer.
+  'medication_registered',
+  // The limits and supply counts you set per medication, and when you last
+  // made a summary for a visit. Same reasoning: they say what you take.
+  'medication_settings',
+  'medication_summary_last',
+  'medication_milestone_dismissed',
   // Named places ("Home") and the address behind each. A name, text and an
   // optional map pin, so they mean the same on every device.
   'savedPlaces',
   // Events kept for re-adding ("Optometrist"). The calendar is held by name,
   // not id, so an entry means the same on every device (`savedEvents.ts`).
   'savedEvents',
+  // Where sunrise and sunset are worked out for (sunTimes.ts). A sun-anchored
+  // window on a task syncs, so the place it is measured from has to as well,
+  // or one task would surface at two different times on two devices.
+  'sunLocation',
+  // Which days a recurring task treats as holidays (holidays.ts). A task that
+  // skips them has to skip the same days on every device.
+  'holidaySet',
+  'customHolidays',
 
   // Vacation mode is a statement about the person, not the device.
   'vacationMode',
   'vacationStart',
   'vacationEnd',
+  'vacationEndedAt',
   // Which trip switched it on, so a peer doesn't read a mode it can see as one
   // nobody owns and turn it off. Rides with the three above for the same
   // reason: it is a statement about the person, not the device.
@@ -559,7 +618,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
  *   ergonomics of one device. A Mac has no haptics and no thumb reach, and
  *   which maps apps are installed differs from phone to phone. Whether a phone
  *   is driven through iPhone Mirroring is a fact about that phone.
- * - `appLockEnabled`, `appLockGraceSeconds` — syncing these would let a
+ * - `appLockEnabled`, `appLockGraceSeconds`, `journalLockEnabled`, `lockedProjectIds` — syncing these would let a
  *   device turn the lock off on another one. Security settings are per-device
  *   by design.
  * - `dailyAgendaEnabled`, `dailyAgendaTime`, `reminderMeetingNudgeEnabled` —
@@ -642,8 +701,11 @@ export function isSyncedSettingKey(key: string): boolean {
  * and "started sertraline" is as common a one as "new job".
  * `journal_entries` are not here but in `JOURNAL_SYNC_TABLES` below, with a
  * switch of their own.
- * `medication_archived` is here because it is a list of medicine names, which
- * says what somebody takes as plainly as the dose log does. What is not here,
+ * `medication_archived` and `medication_registered` are here because they are lists of medicine names, which
+ * says what somebody takes as plainly as the dose log does, and
+ * `medication_settings` (a limit and a pill count per medicine name) ,
+ * `medication_summary_last` and `medication_milestone_dismissed` (medicine
+ * names again) sit beside it for the same reason. What is not here,
  * and why: a task's `medication_name` rides on a task, and a task titled "Take
  * sertraline" says the same thing whatever column is withheld; `saved_meals`
  * are shortcuts for logging, not a record of what was eaten.
@@ -652,7 +714,13 @@ export function isSyncedSettingKey(key: string): boolean {
  * a peer on an older build that still sends them does no harm.
  */
 export const HEALTH_SYNC_TABLES: readonly string[] = ['mood_logs', 'milestones', 'medication_logs', 'food_logs'];
-export const HEALTH_SYNC_SETTING_KEYS: readonly string[] = ['medication_archived', 'nutritionTargets'];
+export const HEALTH_SYNC_SETTING_KEYS: readonly string[] = [
+  'medication_archived', 'medication_registered', 'medication_settings', 'medication_summary_last',
+  'medication_milestone_dismissed', 'nutritionTargets', 'nutritionLimits', 'limitWarnPercent',
+  'limitWarningAutoSlips',
+  // A typed-in goal that sleep is read against; it travels with the record it is read against.
+  'sleepGoalMinutes',
+];
 
 /**
  * The journal and the dream log: withheld from iCloud with the health record,
@@ -882,6 +950,35 @@ export function backfillStatements(): string[] {
   return SYNC_TRACKED_TABLES.map(
     t => `UPDATE ${t.name} SET updated_at = ${NOW_EXPR} WHERE updated_at IS NULL`
   );
+}
+
+/** The settings key `installSignature()` is kept under: device-local, never in SYNCED_SETTING_KEYS. */
+export const SYNC_INSTALL_SIGNATURE_KEY = 'sync_tracking_signature';
+
+/** Triggers `installStatements()` leaves behind per tracked table (the four in `changeTrackingStatements`). */
+export const SYNC_TRIGGERS_PER_TABLE = 4;
+
+/**
+ * A fingerprint of everything `installStatements()` would run (FNV-1a over the
+ * statement text). Dropping and recreating ~150 triggers writes the schema on
+ * every cold start, so `initDatabase` stores this after installing and skips
+ * the reinstall while it still matches *and* the triggers are all there. Edit
+ * a trigger body or add a tracked table and the text changes, so the new rules
+ * still reach an install that has the old ones, which is why they are dropped
+ * and recreated at all.
+ */
+export function installSignature(): string {
+  let h = 0x811c9dc5;
+  for (const sql of installStatements()) {
+    for (let i = 0; i < sql.length; i++) {
+      h ^= sql.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+    // A boundary, so two statements can't hash like one longer one.
+    h ^= 0x3b;
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16);
 }
 
 /** Every statement needed to install tracking, in order. */

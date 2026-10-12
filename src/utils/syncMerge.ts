@@ -135,43 +135,43 @@ export function parsePayload(text: string): ParsedPayload {
   try {
     raw = JSON.parse(text);
   } catch {
-    return { ok: false, error: "That update isn't valid JSON, so this app didn't write it." };
+    return { ok: false, error: "That update isn’t valid JSON, so dundundun didn’t write it." };
   }
 
-  if (!isPlainObject(raw)) return { ok: false, error: "That doesn't look like an update from another device." };
+  if (!isPlainObject(raw)) return { ok: false, error: "That doesn’t look like an update from another device." };
 
-  if (typeof raw.format !== 'number') return { ok: false, error: "That update doesn't look right. It has no format version." };
+  if (typeof raw.format !== 'number') return { ok: false, error: "That update doesn’t look right. It has no format version." };
   if (raw.format > SYNC_FORMAT) {
-    return { ok: false, error: `That update came from a newer version of the app (format ${raw.format}), so this device can't read it yet.` };
+    return { ok: false, error: `That update came from a newer version of the app (format ${raw.format}), so this device can’t read it yet.` };
   }
   if (typeof raw.deviceId !== 'string' || raw.deviceId === '') {
-    return { ok: false, error: "That update doesn't say which device it came from." };
+    return { ok: false, error: "That update doesn’t say which device it came from." };
   }
   if (typeof raw.until !== 'string' || raw.until === '') {
-    return { ok: false, error: "That update doesn't say what stretch of time it covers." };
+    return { ok: false, error: "That update doesn’t say what period it covers." };
   }
   if (raw.since !== null && typeof raw.since !== 'string') {
-    return { ok: false, error: "That update's dates are damaged." };
+    return { ok: false, error: "That update’s dates are damaged." };
   }
   if (!isPlainObject(raw.tables)) return { ok: false, error: 'That update is missing its data.' };
 
   for (const [table, rows] of Object.entries(raw.tables)) {
-    if (!Array.isArray(rows)) return { ok: false, error: `That update's "${table}" data is damaged.` };
+    if (!Array.isArray(rows)) return { ok: false, error: `That update’s “${table}” data is damaged.` };
     for (const row of rows) {
-      if (!isPlainObject(row)) return { ok: false, error: `That update's "${table}" data is damaged.` };
+      if (!isPlainObject(row)) return { ok: false, error: `That update’s “${table}” data is damaged.` };
       // Without a stamp there is nothing to compare, and defaulting one would
       // silently make a peer's row either always win or always lose.
       if (typeof row.updated_at !== 'string') {
-        return { ok: false, error: `That update's "${table}" data has an entry with no timestamp.` };
+        return { ok: false, error: `That update’s “${table}” data has an entry with no timestamp.` };
       }
     }
   }
 
   if (!Array.isArray(raw.deletions)) return { ok: false, error: "That update is missing its list of deleted items." };
   for (const d of raw.deletions) {
-    if (!isPlainObject(d)) return { ok: false, error: "That update's list of deleted items is damaged." };
+    if (!isPlainObject(d)) return { ok: false, error: "That update’s list of deleted items is damaged." };
     if (typeof d.table !== 'string' || typeof d.rowKey !== 'string' || typeof d.deletedAt !== 'string') {
-      return { ok: false, error: "That update's list of deleted items is damaged." };
+      return { ok: false, error: "That update’s list of deleted items is damaged." };
     }
   }
 
@@ -179,10 +179,10 @@ export function parsePayload(text: string): ParsedPayload {
   // write, named by the sender, so a bad name or a value that isn't a string
   // rejects the payload rather than being skipped past.
   if (raw.images !== undefined) {
-    if (!isPlainObject(raw.images)) return { ok: false, error: "That update's photos are damaged." };
+    if (!isPlainObject(raw.images)) return { ok: false, error: "That update’s photos are damaged." };
     for (const [name, data] of Object.entries(raw.images)) {
       if (!isSyncImageName(name) || typeof data !== 'string' || data === '' || data.length > MAX_SYNC_IMAGE_CHARS) {
-        return { ok: false, error: "That update's photos are damaged." };
+        return { ok: false, error: "That update’s photos are damaged." };
       }
     }
   }

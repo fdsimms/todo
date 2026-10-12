@@ -6,6 +6,7 @@ import { mealLogNudgeEntryId } from './mealLogNudgeTasks';
 import { isRotationTask } from './rotation';
 import { isNegativeTask } from './negativeHabits';
 import { projectReviewProjectId } from './projectReviewTasks';
+import { isAnsweredByRecord } from './recordTasks';
 
 /**
  * What a tap on a task's checkbox should do, for the surfaces that show a
@@ -28,6 +29,8 @@ export type CompletionTap =
   | 'pick-meal'
   /** A quiet project's review task — open the pull sheet, not the checkmark. */
   | 'review-project'
+  /** A task a record answers (mood, journal, dream, weigh-in) with no entry yet — open its sheet. Once the entry exists the tap is an ordinary 'complete'. */
+  | 'open-log'
   /** A rotation (see utils/rotation.ts) — ask which member was done, then log that. */
   | 'pick'
   /** A daily target below its count: this tap logs one unit, not the lot. */
@@ -61,9 +64,14 @@ export type CompletionTap =
  *   It is deliberately not below `locked`: a negative habit is never "not due
  *   yet" — it applies every day — so there is nothing for that gate to refuse.
  */
-export function completionTapFor(task: Task): CompletionTap {
+export function completionTapFor(task: Task, recordReady = false): CompletionTap {
   if (task.completed) return 'uncomplete';
   if (isNegativeTask(task)) return 'slip';
+  // Above every question below: the app knows from the saved entry whether
+  // this was done, so a tap can't say so before there is one (see recordTasks.ts).
+  // `recordReady` is the caller's `useRecordTaskReady`; a caller with no way to
+  // read it leaves it false and the tap opens the sheet, which is always safe.
+  if (isAnsweredByRecord(task) && !recordReady) return 'open-log';
   if (isRecurrenceNotYetDue(task)) return 'locked';
   // Ahead of the quota branch because it is the more specific claim about the
   // same tap: a rotation *is* a quota, so that branch would answer 'log-unit'
@@ -109,7 +117,8 @@ export function completionTapFor(task: Task): CompletionTap {
  */
 export function offersMealLogOnCompletion(task: Task, mealLogPromptEnabled: boolean): boolean {
   if (task.completed) return false;
-  if (task.logMealSlot) return true;
+  // A named food is logged by the tick itself, so no sheet follows it.
+  if (task.logMealSlot && !task.logSavedMealId) return true;
   if (!mealLogPromptEnabled) return false;
   return (mealSlotOf(task) !== null && completesMealSlot(task)) || mealLogNudgeEntryId(task) !== null;
 }

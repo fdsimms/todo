@@ -47,7 +47,14 @@ import { useEventPeopleStore } from '../store/useEventPeopleStore';
 import { useEventCreatedToastStore } from '../store/useEventCreatedToastStore';
 import { useTitleSelection } from '../hooks/useTitleSelection';
 import { groupMentionTokens } from '../utils/peopleRegistry';
-import { DEFAULT_EVENT_MINUTES, describeEventRepeat, parseQuickEvent, type EventRecurrence } from '../utils/quickEvent';
+import {
+  DEFAULT_EVENT_MINUTES,
+  EVENT_REPEAT_PRESETS,
+  describeEventRepeatShort,
+  eventRepeatPresetKey,
+  parseQuickEvent,
+  type EventRecurrence,
+} from '../utils/quickEvent';
 import { calendarCovers, firstFreeSlot, overlappingEvents } from '../utils/eventConflicts';
 import { eventMemoryKey, readEventMemory, rememberEvent, writeEventMemory, type EventMemory } from '../utils/eventMemory';
 import {
@@ -170,7 +177,7 @@ interface Props {
  * people named are linked once it is (`useEventPeopleStore.saveEvent`).
  *
  * **The rows Apple's form used to ask for are chips here** (calendar, alert,
- * Busy/Free) and start as the last saved event left them
+ * repeat, and All day and Busy/Free as switches) and start as the last saved event left them
  * (`quickEventDefaults.ts`), so a usual event is a title and a day. A trailing
  * "at Joe's" and "alert 30m" in the line fill the place and the alert as you
  * type, and they win over a chip's earlier pick the way a typed day wins over
@@ -347,6 +354,11 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   const [startOverride, setStartOverride] = useState<Date | null>(null);
   const [allDay, setAllDay] = useState(false);
   const [pickerVisible, setPickerVisible] = useState(false);
+  const [endPickerVisible, setEndPickerVisible] = useState(false);
+  const [repeatPickerVisible, setRepeatPickerVisible] = useState(false);
+  // The "+ Notes" chip was tapped. Notes already in the field (a seed, an event
+  // being edited) show it without this, which is also why only a tap focuses it.
+  const [notesOpen, setNotesOpen] = useState(false);
   // The phrase the tooltip's ✕ was pressed on, by position and text, so a
   // different phrase brings the tooltip back. Same mechanism as quick add.
   const [dismissedSignature, setDismissedSignature] = useState<string | null>(null);
@@ -380,12 +392,12 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   const loadForEdit = async (target: QuickEventEditTarget) => {
     const event = await readEventForEdit(target.eventId, target.occurrenceStart);
     if (!event) {
-      Alert.alert("This event isn't on your calendar any more", 'It may have been deleted in another app.');
+      Alert.alert("This event isn’t on your calendar anymore", 'It may have been deleted in another app.');
       dismiss();
       return;
     }
     if (!event.editable) {
-      Alert.alert("This event can't be changed here", "Its calendar is read-only. Edit it in the app it came from.");
+      Alert.alert("This event can’t be changed here", "Its calendar is read-only. Edit it in the app it came from.");
       dismiss();
       return;
     }
@@ -457,6 +469,9 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     setOriginalPeople([]);
     if (editing) void loadForEdit(editing);
     setPickerVisible(false);
+    setEndPickerVisible(false);
+    setRepeatPickerVisible(false);
+    setNotesOpen(false);
     setDismissedSignature(null);
     setPersonOverrides({});
     scaleAnim.setValue(0.95);
@@ -580,13 +595,9 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   );
   const dayLabel = (d: Date) => d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
   const describeStart = (d: Date) => (allDay ? dayLabel(d) : `${dayLabel(d)}, ${formatTimeOfDay(d, use24Hour)}`);
-  const when = allDay
-    ? describeStart(effectiveStart)
-    : `${describeStart(effectiveStart)}–${formatTimeOfDay(effectiveEnd, use24Hour)}`;
   // "12:00–12:30 PM" for a conflicting event, on the card's own clock setting.
   const describeSpan = (event: { start: string; end: string }) =>
     `${formatTimeOfDay(new Date(event.start), use24Hour)}–${formatTimeOfDay(new Date(event.end), use24Hour)}`;
-  const whenSet = phrase !== null || startOverride !== null;
   const effectiveRepeat = phrase ? draft.repeat : repeatPick;
   // The people the line names plus any the opener already knew (a person's page).
   const allPersonIds = [...new Set([...draft.personIds, ...(seed?.personIds ?? []), ...originalPeople])];
@@ -636,6 +647,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   );
   const isBusy = effectiveAvailability === 'busy';
   const alertSet = effectiveAlert !== null;
+  const showNotes = notesOpen || notesOrLink.trim() !== '';
   const canAdd = draft.title.trim().length > 0 && !busy && (!isEditing || original !== null);
 
   // ==== place suggestions ====
@@ -738,7 +750,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     const suggested = typed && typed.length <= 24 && typed.toLowerCase() !== text.toLowerCase() ? typed : '';
     Alert.prompt(
       'Save place',
-      'Name it to type the name instead of the address, like "home" or "gym".',
+      'Give it a name you can type instead of the address, like “home” or “gym”.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -825,6 +837,37 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     setPickerVisible(false);
   };
 
+  // Takes a live phrase's words out of the line and keeps what it read, for a
+  // pick that replaces one part of it and mustn't leave the rest behind.
+  const commitPhrase = () => {
+    if (!phrase) return;
+    const next = withTrailingSpace(phrase.lineWithout);
+    setText(next);
+    titleCaret.moveCaret(next);
+    setStartOverride(rawStart);
+    setRepeatPick(draft.repeat);
+    if (draft.durationMinutes !== null) setDurationPick(draft.durationMinutes);
+  };
+
+  // The end is stored as a length from the start, so a picked end is one. A
+  // typed "for 2h" would outrank it, so it comes out of the line like a typed alert.
+  const pickEnd = (date: Date) => {
+    setEndPickerVisible(false);
+    const minutes = Math.round((date.getTime() - effectiveStart.getTime()) / 60000);
+    if (minutes < 1) {
+      Alert.alert('The end has to be after the start', 'Pick a later time.');
+      return;
+    }
+    if (phrase) commitPhrase();
+    else if (draft.durationSpan) cutFromLine(draft.durationSpan);
+    setDurationPick(minutes);
+  };
+
+  const pickRepeat = (key: string) => {
+    if (phrase) commitPhrase();
+    setRepeatPick(EVENT_REPEAT_PRESETS.find(p => p.key === key)?.rule ?? null);
+  };
+
   // ==== the exit: write the event ====
   const next = async () => {
     if (!canAdd) return;
@@ -856,8 +899,8 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     if (!saved && isDemoModeActive()) return;
     if (!saved) {
       Alert.alert(
-        "Couldn't add the event",
-        'Check that this app can add events to your calendar in the Settings app, then try again. The event is still here.'
+        "Couldn’t add the event",
+        'Check that calendar access is on in Settings, then try again. The event is still here.'
       );
       return;
     }
@@ -934,8 +977,8 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     if (!id) {
       if (isDemoModeActive()) return;
       Alert.alert(
-        "Couldn't save the event",
-        'Check that this app can edit your calendar in the Settings app, then try again. Your changes are still here.'
+        "Couldn’t save the event",
+        'Check that calendar access is on in Settings, then try again. Your changes are still here.'
       );
       return;
     }
@@ -965,7 +1008,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
               title: original.title,
             });
             if (!deleted) {
-              Alert.alert("Couldn't delete the event", 'Check that this app can edit your calendar in the Settings app, then try again.');
+              Alert.alert("Couldn’t delete the event", 'Check that calendar access is on in Settings, then try again.');
               return;
             }
             onDeleted?.();
@@ -989,6 +1032,10 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     ...ALERT_CHOICES.map(m => ({ key: String(m), label: describeAlert(m, allDay) })),
   ];
 
+  const repeatOptions: EventOption[] = [
+    { key: 'none', label: 'Never' },
+    ...EVENT_REPEAT_PRESETS.map(p => ({ key: p.key, label: p.label })),
+  ];
   const travelModeOptions: EventOption[] = [
     { key: 'default', label: `Settings default (${TRAVEL_MODE_LABELS[defaultTravelMode]})` },
     ...TRAVEL_MODES.map(m => ({ key: m, label: TRAVEL_MODE_LABELS[m] })),
@@ -1263,7 +1310,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
                   onPress={() => { haptics.tap(); animateLayout(); setSavedDismissedKey(savedPlaceKey(savedInUse.name)); }}
                   hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                   accessibilityRole="button"
-                  accessibilityLabel={`Use "${savedInUse.name}" as typed`}
+                  accessibilityLabel={`Use “${savedInUse.name}” as typed`}
                 >
                   <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
                 </TouchableOpacity>
@@ -1296,6 +1343,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
               </View>
             )}
 
+            {showNotes && (
             <View style={styles.locationRow}>
               <Ionicons name="document-text-outline" size={iconSize.sm} color={colors.textSecondary} />
               <TextField
@@ -1309,9 +1357,11 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
                 blurOnSubmit={false}
                 autoCapitalize="none"
                 keyboardAppearance={isDark ? 'dark' : 'light'}
+                autoFocus={notesOpen}
                 accessibilityLabel="Notes or link"
               />
             </View>
+            )}
 
             {namedPeople.length > 0 && (
               <View style={styles.captionRow}>
@@ -1320,36 +1370,33 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
               </View>
             )}
 
-            {effectiveRepeat && (
-              <View style={styles.captionRow}>
-                <Ionicons name="repeat-outline" size={13} color={colors.textSecondary} />
-                <Text style={styles.captionText} numberOfLines={1}>{describeEventRepeat(effectiveRepeat)}</Text>
-                {!phrase && (
-                  <TouchableOpacity
-                    onPress={() => { haptics.tap(); animateLayout(); setRepeatPick(null); }}
-                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                    accessibilityRole="button"
-                    accessibilityLabel="Don't repeat"
-                  >
-                    <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
-                  </TouchableOpacity>
-                )}
-              </View>
-            )}
-
-            <View style={styles.toolbar}>
+            <View style={styles.whenRow}>
               <TouchableOpacity
-                style={[styles.toolChip, styles.toolChipWide, whenSet && styles.toolChipSet]}
+                style={styles.whenBlock}
                 // Keyboard down first, or the title's token bar is lost behind the
                 // picker's window — see the category chip in QuickAddModal.
                 onPress={() => { haptics.tap(); Keyboard.dismiss(); setPickerVisible(true); }}
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
-                accessibilityLabel={`${allDay ? 'Date' : 'Date and time'}: ${when}`}
+                accessibilityLabel={allDay ? `Date: ${dayLabel(effectiveStart)}` : `Starts: ${describeStart(effectiveStart)}`}
               >
-                <Ionicons name="calendar-outline" size={iconSize.sm} color={whenSet ? colors.accent : colors.textSecondary} />
-                <Text style={[styles.toolChipText, whenSet && styles.toolChipTextSet]} numberOfLines={1}>{when}</Text>
+                <Text style={styles.whenLabel}>{allDay ? 'Date' : 'Starts'}</Text>
+                <Text style={styles.whenValue} numberOfLines={1}>{dayLabel(effectiveStart)}</Text>
+                <Text style={styles.whenSub} numberOfLines={1}>{allDay ? 'All day' : formatTimeOfDay(effectiveStart, use24Hour)}</Text>
               </TouchableOpacity>
+              {!allDay && (
+                <TouchableOpacity
+                  style={styles.whenBlock}
+                  onPress={() => { haptics.tap(); Keyboard.dismiss(); setEndPickerVisible(true); }}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Ends: ${describeStart(effectiveEnd)}`}
+                >
+                  <Text style={styles.whenLabel}>Ends</Text>
+                  <Text style={styles.whenValue} numberOfLines={1}>{dayLabel(effectiveEnd)}</Text>
+                  <Text style={styles.whenSub} numberOfLines={1}>{formatTimeOfDay(effectiveEnd, use24Hour)}</Text>
+                </TouchableOpacity>
+              )}
             </View>
 
             <View style={styles.toolbar}>
@@ -1428,18 +1475,21 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
 
             <View style={styles.toolbar}>
               <TouchableOpacity
-                style={[styles.toolChip, styles.toolChipWide, allDay && styles.toolChipSet]}
+                style={[styles.toolChip, styles.toolChipWide]}
                 onPress={() => { haptics.tap(); setAllDay(v => !v); }}
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="switch"
                 accessibilityLabel="All day"
                 accessibilityState={{ checked: allDay }}
               >
-                <Ionicons name="sunny-outline" size={iconSize.sm} color={allDay ? colors.accent : colors.textSecondary} />
-                <Text style={[styles.toolChipText, allDay && styles.toolChipTextSet]}>All day</Text>
+                <Ionicons name="sunny-outline" size={iconSize.sm} color={colors.textSecondary} />
+                <Text style={[styles.toolChipText, styles.switchLabel]} numberOfLines={1}>All day</Text>
+                <View style={[styles.switchTrack, allDay && styles.switchTrackOn]}>
+                  <View style={[styles.switchKnob, allDay && styles.switchKnobOn]} />
+                </View>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.toolChip, styles.toolChipWide, isBusy && styles.toolChipSet]}
+                style={[styles.toolChip, styles.toolChipWide]}
                 onPress={() => { haptics.tap(); setAvailabilityPick(isBusy ? 'free' : 'busy'); }}
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="switch"
@@ -1447,10 +1497,45 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
                 accessibilityHint="On blocks this time on your calendar. Off leaves the time free."
                 accessibilityState={{ checked: isBusy }}
               >
-                <Ionicons name={isBusy ? 'eye' : 'eye-outline'} size={iconSize.sm} color={isBusy ? colors.accent : colors.textSecondary} />
-                <Text style={[styles.toolChipText, isBusy && styles.toolChipTextSet]}>Busy</Text>
+                <Ionicons name={isBusy ? 'eye' : 'eye-outline'} size={iconSize.sm} color={colors.textSecondary} />
+                <Text style={[styles.toolChipText, styles.switchLabel]} numberOfLines={1}>Busy</Text>
+                <View style={[styles.switchTrack, isBusy && styles.switchTrackOn]}>
+                  <View style={[styles.switchKnob, isBusy && styles.switchKnobOn]} />
+                </View>
               </TouchableOpacity>
             </View>
+
+            {(!showNotes || !isEditing) && (
+              <View style={styles.toolbar}>
+                {!showNotes && (
+                  <TouchableOpacity
+                    style={styles.toolChip}
+                    onPress={() => { haptics.tap(); animateLayout(); setNotesOpen(true); }}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityLabel="Add notes or a link"
+                  >
+                    <Ionicons name="add" size={iconSize.sm} color={colors.textSecondary} />
+                    <Text style={styles.toolChipText}>Notes</Text>
+                  </TouchableOpacity>
+                )}
+                {/* An edit changes one occurrence, so there is no repeat to set. */}
+                {!isEditing && (
+                  <TouchableOpacity
+                    style={[styles.toolChip, effectiveRepeat !== null && styles.toolChipSet]}
+                    onPress={() => { haptics.tap(); Keyboard.dismiss(); setRepeatPickerVisible(true); }}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Repeat: ${effectiveRepeat ? describeEventRepeatShort(effectiveRepeat) : 'never'}`}
+                  >
+                    <Ionicons name="repeat-outline" size={iconSize.sm} color={effectiveRepeat ? colors.accent : colors.textSecondary} />
+                    <Text style={[styles.toolChipText, effectiveRepeat !== null && styles.toolChipTextSet]} numberOfLines={1}>
+                      {effectiveRepeat ? describeEventRepeatShort(effectiveRepeat) : 'Repeat'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
 
             {conflicts.length > 0 && (
               <View style={styles.conflictBlock}>
@@ -1498,7 +1583,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
                   onPress={() => { haptics.tap(); animateLayout(); setMemoryDismissedKey(memoryKey); }}
                   hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                   accessibilityRole="button"
-                  accessibilityLabel="Don't fill in from last time"
+                  accessibilityLabel="Don’t fill in from last time"
                 >
                   <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
                 </TouchableOpacity>
@@ -1537,12 +1622,28 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
         onConfirm={pickStart}
         onCancel={() => setPickerVisible(false)}
       />
+      <CalendarPicker
+        visible={endPickerVisible}
+        value={effectiveEnd}
+        mode="datetime"
+        title="Ends"
+        onConfirm={pickEnd}
+        onCancel={() => setEndPickerVisible(false)}
+      />
+      <EventOptionSheet
+        visible={repeatPickerVisible}
+        title="Repeat"
+        options={repeatOptions}
+        selectedKey={eventRepeatPresetKey(effectiveRepeat) ?? 'none'}
+        onSelect={pickRepeat}
+        onClose={() => setRepeatPickerVisible(false)}
+      />
       <EventOptionSheet
         visible={calendarPickerVisible}
         title="Calendar"
         options={calendarOptions}
         selectedKey={effectiveCalendar?.id ?? null}
-        emptyText="No calendar on this device can be added to. Turn on calendar access, or add a calendar you can edit, in the Settings app."
+        emptyText="No calendar on this device can take new events. Turn on calendar access or add an editable calendar in Settings."
         onSelect={id => {
           setCalendarPick(id);
         }}
@@ -1607,12 +1708,12 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
   body: { flexShrink: 1, position: 'relative' },
   savedPlaceName: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   inputWrap: { flex: 1, position: 'relative' },
-  input: { fontSize: font.md, color: colors.text, paddingVertical: spacing.sm },
+  input: { fontSize: font.xl, fontWeight: fontWeight.semibold, color: colors.text, paddingVertical: spacing.sm },
   inputOverlay: { position: 'absolute', top: 0, left: 0, right: 0 },
   inputHidden: { color: 'transparent' },
   inputHighlight: { color: colors.accent, fontWeight: fontWeight.semibold, backgroundColor: colors.accentSubtle },
   measureWrap: { position: 'absolute', top: 0, left: 0, opacity: 0 },
-  measureText: { fontSize: font.md },
+  measureText: { fontSize: font.xl, fontWeight: fontWeight.semibold },
   addBtn: {
     width: interaction.pillHeight,
     height: interaction.pillHeight,
@@ -1745,4 +1846,22 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
   toolChipSet: { backgroundColor: colors.accentSubtle },
   toolChipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium, flexShrink: 1 },
   toolChipTextSet: { color: colors.accent },
+  // Starts and Ends: two halves of one row, each a tap target for its own picker.
+  whenRow: { flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.sm },
+  whenBlock: {
+    flex: 1,
+    paddingHorizontal: 10,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: colors.bgTertiary,
+  },
+  whenLabel: { color: colors.textTertiary, fontSize: font.xxs, fontWeight: fontWeight.semibold, letterSpacing: 0.6, textTransform: 'uppercase' },
+  whenValue: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold, marginTop: 1 },
+  whenSub: { color: colors.textSecondary, fontSize: font.xs },
+  // The All day and Busy chips carry a switch at their trailing edge, so the label takes the room.
+  switchLabel: { flex: 1, color: colors.text },
+  switchTrack: { width: 30, height: 18, borderRadius: 9, backgroundColor: colors.controlBorder, justifyContent: 'center', paddingHorizontal: 2 },
+  switchTrackOn: { backgroundColor: colors.accentFill },
+  switchKnob: { width: 14, height: 14, borderRadius: 7, backgroundColor: colors.onFill, alignSelf: 'flex-start' },
+  switchKnobOn: { backgroundColor: colors.onAccent, alignSelf: 'flex-end' },
 });

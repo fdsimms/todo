@@ -1,9 +1,17 @@
-import React, { createContext, useContext, useEffect, useReducer, useState } from 'react';
+import React, { createContext, useContext, useEffect, useReducer, useState, useSyncExternalStore } from 'react';
 import { StyleSheet, type TextStyle } from 'react-native';
 import * as Font from 'expo-font';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { resolveFontFace, type AppFont } from './fonts';
 import { textScale } from './index';
+import {
+  flaggableText,
+  getFlagModeVersion,
+  isFlagMode,
+  isTextFlagged,
+  requestCapture,
+  subscribeFlagMode,
+} from '../utils/copyFlagMode';
 import { BRAND_FONT_ASSETS, FONT_ASSETS, PREVIEW_FONT_ASSETS } from './fontAssets';
 
 /**
@@ -30,6 +38,29 @@ type AppFontProps = { style?: unknown; [key: string]: unknown };
 const PATCHED_COMPONENTS = ['Text', 'TextInput'] as const;
 
 let patched = false;
+
+/**
+ * TEMPORARY dev tooling (see `CopyFlag`, `src/utils/copyFlagMode.ts`). While
+ * flag mode is on, a `Text` gets a long-press that captures its string, and one
+ * whose string already has an open flag is underlined. Off, it returns the
+ * props untouched and attaches no responder, so taps and parent long-presses
+ * behave exactly as before.
+ */
+function withCopyFlagging(props: AppFontProps): AppFontProps {
+  useSyncExternalStore(subscribeFlagMode, getFlagModeVersion);
+  if (!isFlagMode()) return props;
+  const text = flaggableText(props.children);
+  if (!text) return props;
+  const theirs = props.onLongPress as ((e: unknown) => void) | undefined;
+  return {
+    ...props,
+    onLongPress: (e: unknown) => {
+      theirs?.(e);
+      requestCapture(text);
+    },
+    style: isTextFlagged(text) ? [props.style, { textDecorationLine: 'underline' }] : props.style,
+  };
+}
 
 /**
  * Replace `Text` and `TextInput` on the `react-native` module object with
@@ -60,8 +91,12 @@ function applyFontPatch() {
     const Base = RN[name];
     if (!Base) continue;
 
-    const WithAppFont = (incoming: AppFontProps) => {
+    const isText = name === 'Text';
+    const WithAppFont = (rendered: AppFontProps) => {
       const fontId = useContext(AppFontContext);
+      // TEMPORARY dev tooling (see CopyFlag): flag copy mode. `isText` is fixed
+      // per wrapper, so the hook order never changes.
+      const incoming = isText ? withCopyFlagging(rendered) : rendered;
       // The Dynamic Type cap (see textScale), set here so every Text and
       // TextInput in the app gets it, react-navigation's included. Ahead of the
       // spread, so a call site that names its own cap (a badge) keeps it.

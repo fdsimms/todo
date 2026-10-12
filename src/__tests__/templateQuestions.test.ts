@@ -12,6 +12,9 @@ import {
   questionLabel,
   describeQuestion,
   describeConditions,
+  describeConditionAnswers,
+  numberInRange,
+  setItemConditionRange,
   applyItemVariant,
   setVariantText,
   variantText,
@@ -19,8 +22,12 @@ import {
   personIdsFromAnswer,
   personIdsToAnswer,
   personIdsForAnswers,
+  answerValues,
+  encodeAnswerValues,
+  toggleAnswer,
+  displayOptions,
 } from '../utils/templateQuestions';
-import { normalizeTemplateItem, normalizeTemplateQuestion, buildApplyTree } from '../utils/templateUtils';
+import { normalizeTemplateItem, normalizeTemplateQuestion, buildApplyTree, substitutePlaceholders } from '../utils/templateUtils';
 import type { TaskTemplate, TemplateItem, TemplateQuestion } from '../types';
 
 const makeQuestion = (overrides: Partial<TemplateQuestion> = {}): TemplateQuestion => ({
@@ -232,10 +239,83 @@ describe('conditions', () => {
     expect(itemMatchesAnswers(item, questions, { 'q-type': 'Vacation' })).toBe(true);
   });
 
+  describe('on a number question', () => {
+    const days = makeQuestion({ id: 'q-days', name: 'days', prompt: 'How many days?', kind: 'number', options: [] });
+    const qs = [makeQuestion(), days];
+    const longer = makeItem({ conditions: [{ questionId: 'q-days', values: [], min: 5 }] });
+
+    it('matches an answer inside the range, both ends included', () => {
+      expect(itemMatchesAnswers(longer, qs, { 'q-days': '5' })).toBe(true);
+      expect(itemMatchesAnswers(longer, qs, { 'q-days': '12' })).toBe(true);
+      expect(itemMatchesAnswers(longer, qs, { 'q-days': '4' })).toBe(false);
+      const between = makeItem({ conditions: [{ questionId: 'q-days', values: [], min: 2, max: 4 }] });
+      expect([1, 2, 4, 5].map(n => itemMatchesAnswers(between, qs, { 'q-days': String(n) }))).toEqual([false, true, true, false]);
+    });
+
+    it('matches nothing for an answer that is blank or not a number', () => {
+      expect(numberInRange('', { min: 0 })).toBe(false);
+      expect(numberInRange('soon', { min: 0 })).toBe(false);
+      expect(itemMatchesAnswers(longer, qs, {})).toBe(false);
+    });
+
+    it('is inert with neither bound, and ANDs with a choice condition', () => {
+      const empty = makeItem({ conditions: [{ questionId: 'q-days', values: [] }] });
+      expect(liveConditions(empty.conditions, qs)).toEqual([]);
+      expect(itemMatchesAnswers(empty, qs, {})).toBe(true);
+
+      const both = makeItem({ conditions: [{ questionId: 'q-type', values: ['Work'] }, { questionId: 'q-days', values: [], min: 5 }] });
+      expect(itemMatchesAnswers(both, qs, { 'q-type': 'Work', 'q-days': '6' })).toBe(true);
+      expect(itemMatchesAnswers(both, qs, { 'q-type': 'Work', 'q-days': '3' })).toBe(false);
+      expect(itemMatchesAnswers(both, qs, { 'q-type': 'Vacation', 'q-days': '6' })).toBe(false);
+    });
+
+    it('is re-decided when the answer moves, and summarised in words', () => {
+      const nodes = buildApplyTree([longer], 't', new Map());
+      expect([...initialLeafSelection(nodes, qs, { 'q-days': '3' })]).toEqual([]);
+      expect([...reselectForAnswers(nodes, qs, { 'q-days': '7' }, new Set())]).toEqual([longer.id]);
+      expect(describeConditions(longer.conditions, qs)).toBe('How many days? 5 or more');
+      expect(describeConditionAnswers({ questionId: 'q', values: [], max: 3 })).toBe('3 or fewer');
+      expect(describeConditionAnswers({ questionId: 'q', values: [], min: 2, max: 4 })).toBe('2 to 4');
+    });
+
+    it('writes a range, drops it with no bounds, and lifts a reversed one', () => {
+      expect(setItemConditionRange([], 'q-days', 5, null)).toEqual([{ questionId: 'q-days', values: [], min: 5 }]);
+      expect(setItemConditionRange([{ questionId: 'q-days', values: [], min: 5 }], 'q-days', null, null)).toEqual([]);
+      expect(setItemConditionRange([], 'q-days', 6, 3)).toEqual([{ questionId: 'q-days', values: [], min: 6, max: 6 }]);
+    });
+
+    it('survives normalizing a stored item', () => {
+      const item = normalizeTemplateItem({ title: 'x', conditions: [{ questionId: 'q-days', values: [], min: 5, max: 'bad' }] } as never);
+      expect(item.conditions).toEqual([{ questionId: 'q-days', values: [], min: 5 }]);
+    });
+  });
+
   it('matches any one of a condition\'s values', () => {
     const item = makeItem({ conditions: [{ questionId: 'q-type', values: ['Work', 'Vacation'] }] });
     expect(itemMatchesAnswers(item, questions, { 'q-type': 'Vacation' })).toBe(true);
     expect(itemMatchesAnswers(item, questions, { 'q-type': 'Day trip' })).toBe(false);
+  });
+
+  it('ticks on any one condition when the item says any', () => {
+    const flying = makeQuestion({ id: 'q-fly', name: 'flying', prompt: 'Flying?', options: ['Yes', 'No'] });
+    const intl = makeQuestion({ id: 'q-intl', name: 'international', prompt: 'International?', options: ['Yes', 'No'] });
+    const qs = [flying, intl];
+    const conditions = [{ questionId: 'q-fly', values: ['Yes'] }, { questionId: 'q-intl', values: ['Yes'] }];
+    const all = makeItem({ conditions });
+    const any = makeItem({ conditions, conditionsMatch: 'any' });
+    const answers = (fly: string, int: string) => ({ 'q-fly': fly, 'q-intl': int });
+    expect([['Yes', 'Yes'], ['Yes', 'No'], ['No', 'Yes'], ['No', 'No']].map(([f, i]) => itemMatchesAnswers(all, qs, answers(f, i))))
+      .toEqual([true, false, false, false]);
+    expect([['Yes', 'Yes'], ['Yes', 'No'], ['No', 'Yes'], ['No', 'No']].map(([f, i]) => itemMatchesAnswers(any, qs, answers(f, i))))
+      .toEqual([true, true, true, false]);
+    expect(describeConditions(conditions, qs, 'any')).toBe('Flying? Yes or International? Yes');
+    expect(describeConditions(conditions, qs)).toBe('Flying? Yes · International? Yes');
+  });
+
+  it('reads an item stored without conditionsMatch as all', () => {
+    expect(normalizeTemplateItem({ title: 'x' } as never).conditionsMatch).toBe('all');
+    expect(normalizeTemplateItem({ title: 'x', conditionsMatch: 'any' } as never).conditionsMatch).toBe('any');
+    expect(normalizeTemplateItem({ title: 'x', conditionsMatch: 'bogus' } as never).conditionsMatch).toBe('all');
   });
 
   it('requires every condition to match', () => {
@@ -462,5 +542,86 @@ describe('item variants', () => {
     } as unknown as Partial<TemplateItem>);
     expect(n.variants).toEqual([{ questionId: 'q', answer: 'A', title: 'x' }]);
     expect(normalizeTemplateItem({}).variants).toEqual([]);
+  });
+});
+
+const NO_DATES = { start: null, end: null };
+
+describe('a question that takes several answers', () => {
+  const trip = makeQuestion({ options: ['Work', 'Beach', 'Outdoors', 'Camping'], multiple: true });
+
+  it('reads a stored answer as its set, and a plain one as itself', () => {
+    expect(answerValues('')).toEqual([]);
+    expect(answerValues('Work')).toEqual(['Work']);
+    expect(answerValues('["Work","Beach"]')).toEqual(['Work', 'Beach']);
+    // An option that merely starts with a bracket is still just itself.
+    expect(answerValues('[draft] Work')).toEqual(['[draft] Work']);
+    expect(encodeAnswerValues([])).toBe('');
+  });
+
+  it('starts on the first option, like any choice', () => {
+    expect(answerValues(defaultAnswer(trip, NO_DATES))).toEqual(['Work']);
+    expect(defaultAnswer({ ...trip, multiple: false }, NO_DATES)).toBe('Work');
+  });
+
+  it('toggles a pick in the question\'s own option order, and keeps the last one', () => {
+    let answer = defaultAnswer(trip, NO_DATES);
+    answer = toggleAnswer(trip, answer, 'Camping');
+    answer = toggleAnswer(trip, answer, 'Beach');
+    expect(answerValues(answer)).toEqual(['Work', 'Beach', 'Camping']);
+    answer = toggleAnswer(trip, answer, 'Work');
+    answer = toggleAnswer(trip, answer, 'Beach');
+    expect(answerValues(answer)).toEqual(['Camping']);
+    expect(toggleAnswer(trip, answer, 'Camping')).toBe(answer);
+  });
+
+  it('a single-answer choice still just takes the tapped option', () => {
+    expect(toggleAnswer({ ...trip, multiple: false }, 'Work', 'Beach')).toBe('Beach');
+  });
+
+  it('matches a condition on any picked answer, and a variant on any too', () => {
+    const answers = { [trip.id]: encodeAnswerValues(['Beach', 'Camping']) };
+    const camping = makeItem({ conditions: [{ questionId: trip.id, values: ['Camping', 'Winter'] }] });
+    const work = makeItem({ conditions: [{ questionId: trip.id, values: ['Work'] }] });
+    expect(itemMatchesAnswers(camping, [trip], answers)).toBe(true);
+    expect(itemMatchesAnswers(work, [trip], answers)).toBe(false);
+    const withVariant = makeItem({ variants: [{ questionId: trip.id, answer: 'Camping', title: 'Pack tent' }] });
+    expect(applyItemVariant(withVariant, answers).title).toBe('Pack tent');
+  });
+
+  it('fills a title with the picks joined, never the stored JSON', () => {
+    const answers = { [trip.id]: encodeAnswerValues(['Work', 'Beach']) };
+    expect(substitutePlaceholders('Packing for {trip type}', placeholderValuesFor([trip], answers))).toBe('Packing for Work, Beach');
+    // One pick reads as itself.
+    expect(substitutePlaceholders('{trip type}', { 'trip type': encodeAnswerValues(['Work']) })).toBe('Work');
+  });
+
+  it('lets a count switch match any pick', () => {
+    const values = (picks: string[]) => placeholderValuesFor([trip], { [trip.id]: encodeAnswerValues(picks) });
+    const token = 'Pack {trip type = camping ? 2 : 4} layers';
+    expect(substitutePlaceholders(token, values(['Beach', 'Camping']))).toBe('Pack 2 layers');
+    expect(substitutePlaceholders(token, values(['Camping']))).toBe('Pack 2 layers');
+    expect(substitutePlaceholders(token, values(['Work', 'Beach']))).toBe('Pack 4 layers');
+  });
+
+  it('is only ever a choice, and survives normalizing', () => {
+    expect(normalizeTemplateQuestion({ kind: 'choice', multiple: true }).multiple).toBe(true);
+    expect(normalizeTemplateQuestion({ kind: 'number', multiple: true }).multiple).toBe(false);
+    expect(normalizeTemplateQuestion({}).showForecast).toBe(false);
+    expect(normalizeTemplateQuestion({ showForecast: true }).showForecast).toBe(true);
+  });
+});
+
+describe('displayOptions', () => {
+  it('always shows a Yes/No pair as Yes then No, leaving the default alone', () => {
+    const flipped = makeQuestion({ options: ['No', 'Yes'] });
+    expect(displayOptions(flipped)).toEqual(['Yes', 'No']);
+    expect(defaultAnswer(flipped, NO_DATES)).toBe('No');
+    expect(displayOptions(makeQuestion({ options: ['yes', 'no'] }))).toEqual(['yes', 'no']);
+  });
+
+  it('leaves every other set in the author\'s order', () => {
+    expect(displayOptions(makeQuestion({ options: ['No', 'Maybe'] }))).toEqual(['No', 'Maybe']);
+    expect(displayOptions(makeQuestion({ options: ['Work', 'Beach', 'City'] }))).toEqual(['Work', 'Beach', 'City']);
   });
 });

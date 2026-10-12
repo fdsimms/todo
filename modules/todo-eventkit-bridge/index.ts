@@ -12,8 +12,13 @@ export interface ExternalEventMatch {
   calendarId: string | null;
 }
 
+interface Subscription {
+  remove(): void;
+}
+
 interface TodoEventKitBridgeNativeModule {
   isAvailable(): boolean;
+  addListener?(event: 'onEventStoreChanged', listener: () => void): Subscription;
   externalIdentifiers(localIds: string[]): Promise<Record<string, string>>;
   eventsWithExternalIdentifier(externalId: string): Promise<unknown>;
   searchPlaces?(query: string): Promise<unknown>;
@@ -38,6 +43,26 @@ if (Platform.OS === 'ios') {
     nativeModule = requireNativeModule<TodoEventKitBridgeNativeModule>('TodoEventKitBridge');
   } catch {
     nativeModule = null;
+  }
+}
+
+/**
+ * Called whenever the device's Calendar database changes (an event or reminder
+ * added, edited or deleted, by anything). It says nothing about what changed:
+ * the caller reads again. Returns the unsubscribe.
+ *
+ * Does nothing where the module isn't linked, and on a build from before this
+ * event existed, so a caller keeps the foreground refresh it already had. Apple
+ * does not document which event stores receive the notification, so a quiet
+ * listener is not proof the calendar is quiet.
+ */
+export function addEventStoreChangeListener(listener: () => void): () => void {
+  if (!nativeModule || typeof nativeModule.addListener !== 'function') return () => {};
+  try {
+    const subscription = nativeModule.addListener('onEventStoreChanged', () => listener());
+    return () => subscription.remove();
+  } catch {
+    return () => {};
   }
 }
 

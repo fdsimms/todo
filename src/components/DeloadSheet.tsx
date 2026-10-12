@@ -12,7 +12,7 @@ import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeBlurView } from './SafeBlurView';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, lineHeight, border, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, lineHeight, border, interaction, sheetBottomInset, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { formatDuration } from '../utils/effort';
@@ -297,10 +297,10 @@ export function DeloadSheet({ visible, todaysTasks, notes, onClose }: Props) {
           ))}
 
           {plan.proposals.length === 0 ? (
-            <Text style={styles.emptyHint}>Nothing on today to move.</Text>
+            <Text style={styles.emptyHint}>Nothing to move today.</Text>
           ) : plan.proposals.every(p => p.suggested === null && p.tomorrow === null) ? (
             <Text style={styles.emptyHint}>
-              Nothing on today can move: everything here is pinned, urgent, or already underway.
+              Nothing today can move: everything here is pinned, urgent, or already underway.
             </Text>
           ) : (
             <>
@@ -397,7 +397,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     right: 0,
     bottom: 0,
     paddingHorizontal: spacing.md,
-    paddingBottom: 34,
+    paddingBottom: sheetBottomInset,
   },
   handleArea: { alignItems: 'center', paddingTop: spacing.sm, paddingBottom: spacing.sm },
   handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.bgQuaternary },

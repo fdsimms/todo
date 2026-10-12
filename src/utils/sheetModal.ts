@@ -70,12 +70,17 @@ export interface PresentationLevel {
   readonly own: Map<string, PresentationLevel>;
   /** Ids that outrank everything else here. See `claimPresentation`. */
   readonly claims: Set<string>;
+  /**
+   * Ids of sheets that have been handed `visible: false` but whose native
+   * dismissal hasn't finished. See `beginDismissal`.
+   */
+  readonly dismissing: Set<string>;
   /** Notified whenever either of those changes. See `subscribePresentation`. */
   readonly listeners: Set<() => void>;
 }
 
 export function createPresentationLevel(): PresentationLevel {
-  return { presented: new Map(), own: new Map(), claims: new Set(), listeners: new Set() };
+  return { presented: new Map(), own: new Map(), claims: new Set(), dismissing: new Set(), listeners: new Set() };
 }
 
 /**
@@ -123,7 +128,29 @@ export function subscribePresentation(level: PresentationLevel, fn: () => void):
  * expects and the order RN's own bookkeeping stays consistent under.
  */
 export function canHideSheet(level: PresentationLevel): boolean {
-  return level.presented.size === 0;
+  return level.presented.size === 0 && level.dismissing.size === 0;
+}
+
+/**
+ * Marks a sheet as mid-dismissal at `level`, from the commit it is handed
+ * `visible: false` until iOS reports the dismissal finished (`endDismissal`).
+ *
+ * **Leaving the registry is not the same as being gone.** A sheet releases its
+ * place at the React commit, but the slide-down animation runs for a few
+ * hundred ms after it. The sheet underneath used to dismiss the moment the
+ * place was released, so its dismissal was issued while its presented
+ * controller was still animating off, and UIKit drops a dismissal requested
+ * mid-dismissal ("dismiss ... while a presentation or dismiss is in
+ * progress"). RN had already marked the sheet closed, so what was left was an
+ * empty sheet nothing could dismiss: logging a scanned food from the add sheet.
+ * `canHideSheet` therefore waits for this as well as for the registry.
+ */
+export function beginDismissal(level: PresentationLevel, id: string): void {
+  if (!level.dismissing.has(id)) level.dismissing.add(id);
+}
+
+export function endDismissal(level: PresentationLevel, id: string): void {
+  if (level.dismissing.delete(id)) notify(level);
 }
 
 /**

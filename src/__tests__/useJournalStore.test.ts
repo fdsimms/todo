@@ -49,6 +49,24 @@ describe('addEntry', () => {
   });
 });
 
+describe('a note to your future self', () => {
+  it('is sealed until a later day, and a day already here seals nothing', () => {
+    expect(state().addEntry('journal', 'Hello, me', undefined, '2027-08-17')!.openOn).toBe('2027-08-17');
+    expect(state().addEntry('journal', 'Now', undefined, '2026-08-17')!.openOn).toBeNull();
+    expect(state().addEntry('journal', 'Then', undefined, '2026-01-01')!.openOn).toBeNull();
+  });
+
+  it('opens early when asked, and only a sealed one changes', () => {
+    const note = state().addEntry('journal', 'Hello, me', undefined, '2027-08-17')!;
+    state().openNow(note.id);
+    expect(state().entries.find(e => e.id === note.id)!.openOn).toBeNull();
+    expect(dbUpdateJournalEntry).toHaveBeenCalledWith(expect.objectContaining({ id: note.id, openOn: null }));
+    (dbUpdateJournalEntry as jest.Mock).mockClear();
+    state().openNow(note.id);
+    expect(dbUpdateJournalEntry).not.toHaveBeenCalled();
+  });
+});
+
 describe('updateEntry', () => {
   it('changes the words and never the day', () => {
     const entry = state().addEntry('journal', 'First', new Date(2026, 7, 12, 12))!;
@@ -71,5 +89,40 @@ describe('removeEntry', () => {
     state().removeEntry(entry.id);
     expect(state().entries).toEqual([]);
     expect(dbDeleteJournalEntry).toHaveBeenCalledWith(entry.id);
+  });
+});
+
+describe('tags and people', () => {
+  it('stores cleaned tags and people on a new entry', () => {
+    const entry = state().addEntry('journal', 'Dinner', undefined, null, {
+      tags: [' work ', 'Work', 'home'],
+      personIds: ['p1', 'p1', ''],
+    })!;
+    expect(entry.tags).toEqual(['work', 'home']);
+    expect(entry.personIds).toEqual(['p1']);
+    expect(dbInsertJournalEntry).toHaveBeenCalledWith(entry);
+  });
+
+  it('gives an entry with none empty lists, not undefined', () => {
+    const entry = state().addEntry('journal', 'Plain')!;
+    expect(entry.tags).toEqual([]);
+    expect(entry.personIds).toEqual([]);
+  });
+
+  it('replaces only what setEntryMeta is given, and writes it', () => {
+    const entry = state().addEntry('journal', 'Dinner', undefined, null, { tags: ['a'], personIds: ['p1'] })!;
+    (dbUpdateJournalEntry as jest.Mock).mockClear();
+    state().setEntryMeta(entry.id, { tags: ['b', 'B'] });
+    const next = state().entries[0];
+    expect(next).toMatchObject({ text: 'Dinner', tags: ['b'], personIds: ['p1'] });
+    expect(dbUpdateJournalEntry).toHaveBeenCalledWith(next);
+    state().setEntryMeta(entry.id, { personIds: [] });
+    expect(state().entries[0].personIds).toEqual([]);
+    expect(state().entries[0].tags).toEqual(['b']);
+  });
+
+  it('ignores an unknown id', () => {
+    state().setEntryMeta('nope', { tags: ['x'] });
+    expect(dbUpdateJournalEntry).not.toHaveBeenCalled();
   });
 });

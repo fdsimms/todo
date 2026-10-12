@@ -16,7 +16,9 @@
  *   no `frequencyTrend`, no "usually 400 mg". That last one is the sharpest
  *   version of `moodExport`'s rule: a typical dose is a *mode* over a history,
  *   and a spreadsheet cell holding one with none of that context reads as a
- *   prescription rather than as a summary of what happened.
+ *   prescription rather than as a summary of what happened. The summary for a
+ *   visit (`medicationSummary.ts`) is where derived figures go, each one
+ *   stating what it counts; this file stays the raw record.
  * - **`amount` and `unit` are separate columns.** "400 mg" in one cell cannot
  *   be summed, sorted or charted, and a record whose whole point is a quantity
  *   should hand over the quantity as a number. It also keeps the "no amount

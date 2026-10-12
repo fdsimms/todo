@@ -24,6 +24,9 @@ import {
 import { entriesInCookbook } from '../utils/cookbookIndex';
 import type { CookbookIndexEntry, Recipe } from '../types';
 import { useFilterField } from '../hooks/useFilterField';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 
 type RootStackParamList = {
   CookbookDetail: { cookbookId: string };
@@ -38,7 +41,9 @@ type RootStackParamList = {
  * corrected.
  */
 export function CookbookDetailScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
+  const scrollTop = useListScrollToTop();
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<RootStackParamList, 'CookbookDetail'>>();
   const { cookbookId } = route.params;
@@ -179,6 +184,9 @@ export function CookbookDetailScreen() {
       </Text>
 
       <FlatList
+        ref={scrollTop.ref}
+        {...scrollTop.listProps}
+        refreshControl={pullSearch.refreshControl}
         data={recipes}
         keyExtractor={r => r.id}
         renderItem={renderItem}
@@ -197,7 +205,7 @@ export function CookbookDetailScreen() {
         ListEmptyComponent={
           <View style={styles.note}>
             <EmptyNote icon="restaurant-outline">
-              No recipes from this book yet. Link one from its Source row, or find one already in your box.
+              No recipes from this book yet. Link a recipe to it from the recipe’s Source row.
             </EmptyNote>
           </View>
         }
@@ -210,7 +218,7 @@ export function CookbookDetailScreen() {
             {indexEntries.length === 0 ? (
               <View style={styles.note}>
                 <EmptyNote icon="list-outline">
-                  Add the dishes this book's index lists, with the ingredients it lists them under. Cook with… finds them by ingredient, and they stay out of your recipe box.
+                  Add the dishes in this book’s index with the ingredients it lists. Cook with… finds them by ingredient, and they stay out of your recipe box.
                 </EmptyNote>
               </View>
             ) : (
@@ -279,7 +287,7 @@ export function CookbookDetailScreen() {
               </TouchableOpacity>
             )}
             ListEmptyComponent={
-              <EmptyState icon="search" title="No matching recipes" subtitle="Recipes already in this book won't show here" />
+              <EmptyState icon="search" title="No matching recipes" subtitle="Recipes already in this book won’t show here" />
             }
             ListFooterComponent={
               linkableTotal > linkable.length ? (
@@ -291,6 +299,8 @@ export function CookbookDetailScreen() {
           />
         </View>
       </SheetModal>
+      <ScrollToTopButton {...scrollTop.buttonProps} />
+      {pullSearch.sheet}
     </View>
   );
 }

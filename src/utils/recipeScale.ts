@@ -357,5 +357,5 @@ export function rescaleForRecipe(
 export function describeUnscaled(count: number, factor: number): string | null {
   if (isUnscaled(factor) || count <= 0) return null;
   const lines = count === 1 ? '1 ingredient' : `${count} ingredients`;
-  return `${lines} couldn't be scaled automatically. Adjust by eye`;
+  return `${lines} couldn’t be scaled automatically. Adjust by eye`;
 }

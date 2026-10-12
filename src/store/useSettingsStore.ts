@@ -11,6 +11,7 @@ import {
   type WeightGoal,
 } from '../utils/weightGoal';
 import { parseSleepGoal } from '../utils/sleepLog';
+import { parseJournalWordGoal, parseJournalCustomPrompts, cleanJournalPrompts } from '../utils/journal';
 import {
   parseWaterExerciseBoost,
   serializeWaterExerciseBoost,
@@ -36,7 +37,9 @@ import {
 } from '../utils/snackNudgeTasks';
 import { DEFAULT_APP_FONT, isAppFont, pickRandomAppFont, type AppFont } from '../theme/fonts';
 import { parseGeneratorEstimates, type GeneratorEstimates } from '../utils/ruleEstimate';
-import type { SortOption, RecipeSortOption, ProjectSortOption, Priority, Effort, Difficulty, GeneratedKind, TaskFieldDefaults, MealSlot, TimeOfDay, TitleRule, WeatherRule, EventTaskRule, ScreenTimeRule, HealthRule, NutrientKey, ReminderCapture } from '../types';
+import type { SortOption, RecipeSortOption, ProjectSortOption, Priority, Effort, Difficulty, GeneratedKind, GeneratedTaskExtras, TaskFieldDefaults, MealSlot, TimeOfDay, TitleRule, WeatherRule, EventTaskRule, ScreenTimeRule, HealthRule, NutrientKey, ReminderCapture } from '../types';
+import { clampStepGoal, parseStepGoal } from '../utils/stepGoal';
+import { parseHealthRowKeys, serializeHealthRowKeys, type HealthRowKey } from '../utils/dayContextRows';
 import {
   parseNutritionTargets,
   serializeNutritionTargets,
@@ -46,8 +49,13 @@ import {
   parseHealthWriteNutrients,
   serializeHealthWriteNutrients,
   DEFAULT_HEALTH_WRITE_NUTRIENTS,
+  parseNutritionLimits,
+  serializeNutritionLimits,
+  clampLimitWarnPercent,
+  DEFAULT_LIMIT_WARN_PERCENT,
   type NutritionTargets,
 } from '../utils/nutritionTargets';
+import { parseAutoSlips } from '../utils/limitWarningTasks';
 import {
   DEFAULT_CURRENCY_SYMBOL,
   CURRENCY_SYMBOL_MAX_LENGTH,
@@ -90,7 +98,7 @@ import {
   DEFAULT_MEAL_PLAN_NUDGE_TIME, DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY, MEAL_PLAN_NUDGE_SLOTS,
 } from '../utils/mealPlanNudge';
 import { DEFAULT_POSTPONE_THRESHOLD, parsePostponeThreshold } from '../utils/postpone';
-import { DEFAULT_BOUNTY_LIMIT, parseBountyLimit } from '../utils/rewards';
+import { DEFAULT_BOUNTY_LIMIT, parseBountyLimit, parseWeeklyBudget } from '../utils/rewards';
 import {
   FOCUS_DEFAULTS,
   parseFocusDefaultWorkMinutes,
@@ -106,7 +114,10 @@ import { UNIT_SYSTEMS, type UnitSystem } from '../utils/unitConvert';
 import { MAX_HOUSEHOLD_SERVINGS } from '../utils/recipeScale';
 import { parseTitleRules } from '../utils/titleRules';
 import { parseGeneratedTaskDefaults, hasTaskFieldDefaults } from '../utils/taskFieldDefaults';
+import { hasGeneratedTaskExtras, parseGeneratedTaskExtras } from '../utils/generatedTaskSettings';
 import { parseWeatherRules, defaultWeatherRules } from '../utils/weatherTasks';
+import { parseSunLocation, roundSunLocation, type SunLocation } from '../utils/sunTimes';
+import { parseCustomHolidays, parseHolidaySet, type HolidaySet } from '../utils/holidays';
 import {
   parseEventRules,
   defaultEventRules,
@@ -129,7 +140,9 @@ import { parseTransitLines } from '../utils/transitAlerts';
 import { parseScreenTimeRules, defaultScreenTimeRules, serializeScreenTimeRules } from '../utils/screenTimeRules';
 import { parseHealthRules, defaultHealthRules, serializeHealthRules } from '../utils/healthRules';
 import { parseReminderCaptures, serializeReminderCaptures } from '../utils/reminderCaptures';
-import { DEFAULT_MOOD_NUDGE_AFTER_DAYS } from '../utils/moodTasks';
+import {
+  DEFAULT_MOOD_NUDGE_AFTER_DAYS, MOOD_NUDGE_AFTER_DAYS_MAX, MOOD_NUDGE_AFTER_DAYS_MIN,
+} from '../utils/moodTasks';
 import type { LastTipShown } from '../utils/tips';
 
 export type PatchNoteQaStatus = 'pass' | 'fail';
@@ -326,7 +339,6 @@ interface SettingsStore {
   // between them, so flipping through them with this on is a real answer to
   // "which of my tasks have one", not a partial one. Same persisted-view-state
   // reasoning as filterPriorities/filterEfforts above.
-  filterHasReminder: boolean;
   // Recipes' own sort & filter, same persisted-view-state reasoning as
   // sortOption/filterPriorities/filterEfforts above — RecipeSortFilterSheet is
   // the recipe box's counterpart to Today's SortFilterSheet. 'default' keeps
@@ -402,9 +414,14 @@ interface SettingsStore {
   // someone's lock off.
   appLockEnabled: boolean;
   appLockGraceSeconds: number; // how long backgrounded before it re-locks
+  journalLockEnabled: boolean; // an extra Face ID before the journal and dreams are shown
   vacationMode: boolean;
   vacationStart: string | null;
   vacationEnd: string | null; // optional ISO date — vacation mode auto-turns-off once this passes
+  // When vacation mode last turned off (ISO instant). State, not a preference:
+  // the morning check-in skips tasks whose day fell before it, since vacation
+  // hid them and nobody could have done them. Null until a vacation has ended.
+  vacationEndedAt: string | null;
   /**
    * The project whose away dates switched vacation mode on, or null when a
    * person did it themselves.
@@ -529,6 +546,11 @@ interface SettingsStore {
   // src/utils/rewards.ts). Few on purpose: a bounty on every task is just a
   // bigger base rate.
   bountyLimit: number;
+  // What you'd spend on rewards in a week, in minor units (cents), or null for
+  // unset. Divides the weekly earning rate into the coins-per-dollar exchange
+  // rate that prices dollar-priced rewards (see `coinsPerDollar` in
+  // src/utils/rewards.ts).
+  rewardWeeklyBudgetMinor: number | null;
   // Keep those same apps blocked while a task marked as a gate is outstanding.
   // The other direction from the penalty: not what failing costs afterwards,
   // but what has to happen before the apps unblock at all. See
@@ -622,6 +644,12 @@ interface SettingsStore {
    * redundant hasn't thereby said they know the app has a meal plan.
    */
   tipsEnabled: boolean;
+  /**
+   * The first-run questions were answered or skipped on this device
+   * (`src/utils/firstRun.ts`). Progress rather than a preference, so a settings
+   * reset leaves it alone, and not synced: it is a fact about this install.
+   */
+  firstRunDone: boolean;
   /**
    * Tip ids already dismissed or marked read. Progress rather than a
    * preference, so it stays out of DEFAULT_SETTINGS/resetToDefaults for the
@@ -1123,6 +1151,10 @@ interface SettingsStore {
    * a line on a chart and a count under it.
    */
   sleepGoalMinutes: number | null;
+  /** Words a journal day is read against, or null for no goal. */
+  journalWordGoal: number | null;
+  /** The person's own writing prompts, offered before the built-in ones. */
+  journalCustomPrompts: string[];
 
   /**
    * A minutes-of-exercise threshold and a millilitre amount: on a day today's
@@ -1187,6 +1219,11 @@ interface SettingsStore {
   // the calendar's own "Nowhere" gives, and one setting rather than two that
   // could contradict each other.
   healthCategory: string | null;
+  // The steps row's goal, or null for none (the default). Apple Health holds no
+  // step goal an app can read, so this is typed in; see `src/utils/stepGoal.ts`.
+  stepGoal: number | null;
+  // Health readings left off Today's rows. Hidden list, so none is off by default.
+  healthTodayHidden: HealthRowKey[];
 
   // The `health` generator: whether it runs, where its tasks file, and the
   // rules themselves. Separate from `healthReadEnabled` above because they are
@@ -1347,7 +1384,46 @@ interface SettingsStore {
   foodLogPinnedNutrients: NutrientKey[];
 
   /**
-   * Which of the thirteen nutrients a logged meal is allowed to write to
+   * The nutrients whose target is a ceiling ("Stay under") rather than a
+   * figure to reach — see the Limits section of src/utils/nutritionTargets.ts.
+   * Empty by default, so every target reads the way it always did until
+   * somebody says otherwise. Kept out of DEFAULT_SETTINGS/resetToDefaults for
+   * foodLogPinnedNutrients' reason.
+   */
+  nutritionLimits: NutrientKey[];
+  /**
+   * The share of a limit, as a percent, at which a day reads as close to it:
+   * the bar turns orange, Today's row says so, and the limit warning task can
+   * appear. One number for all three so they never disagree about "close".
+   */
+  limitWarnPercent: number;
+  /**
+   * The category Today files a row per limit under ("Sat fat 9 of 16g, 7g
+   * left"), or null for no rows. Same double duty `healthCategory` does: the
+   * section and the off switch. Off by default; the Nutrition sheet's "Show on
+   * Today" sets it. See `limitContextRows`.
+   */
+  limitsTodayCategory: string | null;
+  // Limits left off Today's rows. A hidden list rather than a shown one, so a
+  // nutrient set to Stay under later appears there until it's turned off.
+  limitsTodayHidden: NutrientKey[];
+  // Today's rows for nutrient targets that are not Stay under, filed under this
+  // category (null = no rows), and the ones left off.
+  goalsTodayCategory: string | null;
+  goalsTodayHidden: NutrientKey[];
+  // Opt-in, off by default: a task the first time a day's food log passes
+  // limitWarnPercent of a limit. See src/utils/limitWarningTasks.ts.
+  limitWarningTasks: boolean;
+  limitWarningTaskCategory: string | null;
+  // The limits whose task was deleted: none is written back for them until the
+  // nutrient is set to Stay under again (setNutritionLimits clears it).
+  limitWarningDeclined: NutrientKey[];
+  // Per limit, the logical day the app last logged a slip on itself, so a
+  // deleted entry can take back that slip and never one the person logged.
+  limitWarningAutoSlips: Partial<Record<NutrientKey, string>>;
+
+  /**
+   * Which of the nutrients a logged meal is allowed to write to
    * Health — see src/utils/healthFoodSync.ts.
    *
    * **Defaults to all of them**, matching what this file always wrote before
@@ -1506,6 +1582,15 @@ interface SettingsStore {
   // from, or null for where the phone is. Read through travelOriginFor, which
   // also answers null for a place that was removed or has no map pin.
   travelOriginPlaceId: string | null;
+  // Where sunrise and sunset are worked out for, for a time window that follows
+  // the sun (Task.windowStartSun). Rounded to about a kilometer, set only from
+  // a tap, and null until then: a sun anchor needs one to resolve.
+  sunLocation: SunLocation | null;
+  // Which public holidays a recurring task set to skip or move off them
+  // treats as holidays, plus the user's own days off (YYYY-MM-DD keys). Both
+  // sync: a task skips the same days on every device. See src/utils/holidays.ts.
+  holidaySet: HolidaySet;
+  customHolidays: string[];
   // eventTaskHandled's shape and reason, keyed by occurrence alone since there
   // is one rule. Written by checkTravelTasks, never by anything a person taps.
   travelTaskHandled: HandledEventTasks;
@@ -1770,6 +1855,12 @@ interface SettingsStore {
   // utils/taskFieldDefaults.ts. Kept out of DEFAULT_SETTINGS/resetToDefaults
   // for the reason titleRules is (a record doesn't round-trip through String).
   generatedTaskDefaults: Record<string, TaskFieldDefaults>;
+  // Tags, time of day and an on-completion question each kind of generated
+  // task starts with, keyed by kind: the half of a kind's "Task settings" that
+  // no generator writes. Same contract and same reason to sit outside
+  // DEFAULT_SETTINGS as generatedTaskDefaults. See
+  // utils/generatedTaskSettings.ts.
+  generatedTaskExtras: Record<string, GeneratedTaskExtras>;
   // The top-level screen (a bottom-tab or drawer route name — see
   // RESTORABLE_SCREENS in AppNavigator.tsx) the app was on when it last left
   // the foreground. State, not a preference — kept out of DEFAULT_SETTINGS/
@@ -1831,7 +1922,6 @@ interface SettingsStore {
   setSortOption: (sort: SortOption) => void;
   setFilterPriorities: (priorities: Priority[]) => void;
   setFilterEfforts: (efforts: Effort[]) => void;
-  setFilterHasReminder: (on: boolean) => void;
   setRecipeSortOption: (sort: RecipeSortOption) => void;
   setProjectSortOption: (sort: ProjectSortOption) => void;
   setRecipeLovedOnly: (lovedOnly: boolean) => void;
@@ -1844,6 +1934,7 @@ interface SettingsStore {
   setPostponeCheckThreshold: (count: number) => void;
   setAppLockEnabled: (on: boolean) => void;
   setAppLockGraceSeconds: (seconds: number) => void;
+  setJournalLockEnabled: (on: boolean) => void;
   setVacationMode: (on: boolean, endDate?: string | null) => void;
   setVacationEnd: (endDate: string | null) => void;
   setVacationDrivenBy: (projectId: string | null) => void;
@@ -1864,6 +1955,7 @@ interface SettingsStore {
   setRewardGoalId: (id: string | null) => void;
   setRewardListProjectId: (id: string | null) => void;
   setBountyLimit: (count: number) => void;
+  setRewardWeeklyBudgetMinor: (minor: number | null) => void;
   setGateShieldEnabled: (on: boolean) => void;
   setPenaltyShieldUntil: (until: string | null, reason?: string | null) => void;
   setCompletedRetentionDays: (days: RetentionDays) => void;
@@ -1875,6 +1967,7 @@ interface SettingsStore {
   setHideHelpText: (on: boolean) => void;
   setMirroringMode: (on: boolean) => void;
   setTipsEnabled: (on: boolean) => void;
+  setFirstRunDone: (done: boolean) => void;
   /**
    * Records a tip as promoted, which spends that logical day's one slot.
    *
@@ -1915,6 +2008,8 @@ interface SettingsStore {
   setWeightGoal: (goal: WeightGoal | null) => void;
   /** Sets the sleep goal in minutes, or clears it with null. */
   setSleepGoalMinutes: (minutes: number | null) => void;
+  setJournalWordGoal: (words: number | null) => void;
+  setJournalCustomPrompts: (prompts: string[]) => void;
   /** Sets the water exercise boost, or clears it with null. */
   setWaterExerciseBoost: (boost: WaterExerciseBoost | null) => void;
   setActiveEnergyBoost: (boost: ActiveEnergyBoost | null) => void;
@@ -1930,6 +2025,9 @@ interface SettingsStore {
    */
   syncWeightGoalCalorieTarget: (currentKg: number | null) => void;
   setHealthCategory: (category: string | null) => void;
+  /** Replaces the whole set of Health readings left off Today's rows. */
+  setHealthTodayHidden: (keys: HealthRowKey[]) => void;
+  setStepGoal: (goal: number | null) => void;
   setHealthTasks: (on: boolean) => void;
   setHealthTaskCategory: (category: string | null) => void;
   setHealthRules: (rules: HealthRule[]) => void;
@@ -1977,6 +2075,18 @@ interface SettingsStore {
   setNutritionTargets: (values: NutritionTargets) => void;
   /** Replaces the whole set of nutrients shown above the fold on the Food log. */
   setFoodLogPinnedNutrients: (keys: NutrientKey[]) => void;
+  /** Replaces the whole set of nutrients whose target is a limit. */
+  setNutritionLimits: (keys: NutrientKey[]) => void;
+  setLimitWarnPercent: (percent: number) => void;
+  setLimitsTodayCategory: (category: string | null) => void;
+  /** Replaces the whole set of limits left off Today's rows. */
+  setLimitsTodayHidden: (keys: NutrientKey[]) => void;
+  setGoalsTodayCategory: (category: string | null) => void;
+  setGoalsTodayHidden: (keys: NutrientKey[]) => void;
+  setLimitWarningTasks: (on: boolean) => void;
+  setLimitWarningTaskCategory: (category: string | null) => void;
+  setLimitWarningDeclined: (keys: NutrientKey[]) => void;
+  setLimitWarningAutoSlips: (days: Partial<Record<NutrientKey, string>>) => void;
   setMealShortfallLeadDays: (days: number) => void;
   setMealShortfallTaskCategory: (category: string | null) => void;
   setMealLogNudgeTasks: (on: boolean) => void;
@@ -2003,6 +2113,9 @@ interface SettingsStore {
   setTravelEstimates: (on: boolean) => void;
   setTravelMode: (mode: TravelMode) => void;
   setTravelOriginPlaceId: (id: string | null) => void;
+  setSunLocation: (location: SunLocation | null) => void;
+  setHolidaySet: (set: HolidaySet) => void;
+  setCustomHolidays: (dayKeys: string[]) => void;
   setTravelLeadForCalendar: (calendarId: string, minutes: number | null) => void;
   setTravelEventPref: (eventId: string, pref: TravelEventPref | null) => void;
   setTravelTaskHandled: (handled: HandledEventTasks) => void;
@@ -2067,6 +2180,8 @@ interface SettingsStore {
   setNewTaskDefaults: (patch: Partial<NewTaskDefaults>) => void;
   /** Null clears the kind's defaults. */
   setGeneratedTaskDefaults: (kind: GeneratedKind, defaults: TaskFieldDefaults | null) => void;
+  /** Null clears the kind's extras. */
+  setGeneratedTaskExtras: (kind: GeneratedKind, extras: GeneratedTaskExtras | null) => void;
   pushRecentSearch: (query: string) => void;
   clearRecentSearches: () => void;
   setTitleRules: (rules: TitleRule[]) => void;
@@ -2138,6 +2253,7 @@ const DEFAULT_SETTINGS = {
   rewardGoalId: null,
   rewardListProjectId: null,
   bountyLimit: DEFAULT_BOUNTY_LIMIT,
+  rewardWeeklyBudgetMinor: null,
   gateShieldEnabled: false,
   penaltyShieldUntil: null,
   penaltyShieldReason: null,
@@ -2530,12 +2646,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   sortOption: 'default',
   filterPriorities: [],
   filterEfforts: [],
-  filterHasReminder: false,
   recipeSortOption: 'default',
   recipeLovedOnly: false,
   projectSortOption: 'manual',
   titleRules: [],
   generatedTaskDefaults: {},
+  generatedTaskExtras: {},
   dailyAgendaEnabled: false,
   dailyAgendaTime: '08:00',
   dailyAgendaSpoken: false,
@@ -2547,9 +2663,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   aiFeatureConfig: defaultAiFeatureConfig(),
   appLockEnabled: false,
   appLockGraceSeconds: DEFAULT_APP_LOCK_GRACE_SECONDS,
+  journalLockEnabled: false,
   vacationMode: false,
   vacationStart: null,
   vacationEnd: null,
+  vacationEndedAt: null,
   vacationDrivenBy: null,
   activeListDrivenBy: null,
   destinationForecastEnabled: false,
@@ -2570,6 +2688,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   rewardGoalId: null,
   rewardListProjectId: null,
   bountyLimit: DEFAULT_BOUNTY_LIMIT,
+  rewardWeeklyBudgetMinor: null,
   gateShieldEnabled: false,
   penaltyShieldUntil: null,
   penaltyShieldReason: null,
@@ -2583,6 +2702,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   mirroringMode: false,
   tipsEnabled: true,
   seenTips: [],
+  firstRunDone: false,
   lastTipShown: null,
   timerLiveActivity: true,
   tripLiveActivity: true,
@@ -2614,6 +2734,16 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   mealLogPrompt: true,
   nutritionTargets: {},
   foodLogPinnedNutrients: [...DEFAULT_FOOD_LOG_PINNED_NUTRIENTS],
+  nutritionLimits: [],
+  limitWarnPercent: DEFAULT_LIMIT_WARN_PERCENT,
+  limitsTodayCategory: null,
+  limitsTodayHidden: [],
+  goalsTodayCategory: null,
+  goalsTodayHidden: [],
+  limitWarningTasks: false,
+  limitWarningTaskCategory: null,
+  limitWarningDeclined: [],
+  limitWarningAutoSlips: {},
   healthWriteNutrients: [...DEFAULT_HEALTH_WRITE_NUTRIENTS],
   keepOpenAfterFoodLog: false,
   mealShortfallLeadDays: MEAL_SHORTFALL_LEAD_DAYS_DEFAULT,
@@ -2654,10 +2784,14 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   waterUnit: 'ml',
   weightGoal: null,
   sleepGoalMinutes: null,
+  journalWordGoal: null,
+  journalCustomPrompts: [],
   waterExerciseBoost: null,
   activeEnergyBoost: null,
   bodyProfile: { ...EMPTY_BODY_PROFILE },
   healthCategory: null,
+  stepGoal: null,
+  healthTodayHidden: [],
   healthTasks: false,
   healthTaskCategory: null,
   healthRules: [],
@@ -2701,6 +2835,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   travelEstimates: false,
   travelMode: 'driving',
   travelOriginPlaceId: null,
+  sunLocation: null,
+  holidaySet: 'us',
+  customHolidays: [],
   travelTaskHandled: {},
   transitAlerts: false,
   transitLines: [],
@@ -2817,7 +2954,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       storedSort && SORT_OPTIONS.includes(storedSort) ? storedSort : 'default';
     const filterPriorities = parseFilterArray<Priority>(dbGetSetting('filterPriorities'), 4);
     const filterEfforts = parseFilterArray<Effort>(dbGetSetting('filterEfforts'), 6);
-    const filterHasReminder = dbGetSetting('filterHasReminder') === 'true';
     const storedProjectSort = dbGetSetting('projectSortOption') as ProjectSortOption | null;
     const projectSortOption: ProjectSortOption =
       storedProjectSort && PROJECT_SORT_VALUES.includes(storedProjectSort) ? storedProjectSort : 'manual';
@@ -2834,6 +2970,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const backgroundRefreshEnabled = dbGetSetting('backgroundRefreshEnabled') !== 'false';
     const appLockEnabled = dbGetSetting('appLockEnabled') === 'true';
     const appLockGraceSeconds = parseGraceSeconds(dbGetSetting('appLockGraceSeconds'));
+    const journalLockEnabled = dbGetSetting('journalLockEnabled') === 'true';
     // `!== 'false'` rather than `=== 'true'`: this defaults on, so an install
     // that predates the setting starts with it rather than without it.
     const postponeCheckEnabled = dbGetSetting('postponeCheckEnabled') !== 'false';
@@ -2841,6 +2978,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const vacationMode = dbGetSetting('vacationMode') === 'true';
     const vacationStart = dbGetSetting('vacationStart') ?? null;
     const vacationEnd = dbGetSetting('vacationEnd') || null;
+    const vacationEndedAt = dbGetSetting('vacationEndedAt') || null;
     const vacationDrivenBy = dbGetSetting('vacationDrivenBy') || null;
     const activeListDrivenBy = dbGetSetting('activeListDrivenBy') || null;
     const destinationForecastEnabled = dbGetSetting('destinationForecastEnabled') === 'true';
@@ -2864,6 +3002,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const rewardGoalId = dbGetSetting('rewardGoalId') || null;
     const rewardListProjectId = dbGetSetting('rewardListProjectId') || null;
     const bountyLimit = parseBountyLimit(dbGetSetting('bountyLimit'));
+    const rewardWeeklyBudgetMinor = parseWeeklyBudget(dbGetSetting('rewardWeeklyBudgetMinor'));
     const gateShieldEnabled = dbGetSetting('gateShieldEnabled') === 'true';
     const penaltyShieldUntil = dbGetSetting('penaltyShieldUntil') || null;
     const penaltyShieldReason = dbGetSetting('penaltyShieldReason') || null;
@@ -3034,6 +3173,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // a future build can never stop the settings loading.
     const weightGoal = parseWeightGoal(dbGetSetting('weightGoal'));
     const sleepGoalMinutes = parseSleepGoal(dbGetSetting('sleepGoalMinutes'));
+    const journalWordGoal = parseJournalWordGoal(dbGetSetting('journalWordGoal'));
+    const journalCustomPrompts = parseJournalCustomPrompts(dbGetSetting('journalCustomPrompts'));
     const waterExerciseBoost = parseWaterExerciseBoost(dbGetSetting('waterExerciseBoost'));
     const activeEnergyBoost = parseActiveEnergyBoost(dbGetSetting('activeEnergyBoost'));
     const bodyProfile = parseBodyProfile(dbGetSetting('bodyProfile'));
@@ -3041,6 +3182,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // creates the category from here — see ensureHealthCategory, which runs
     // once the categories themselves have loaded.
     const healthCategory = dbGetSetting('healthCategory') || null;
+    const stepGoal = parseStepGoal(dbGetSetting('stepGoal'));
+    const healthTodayHidden = parseHealthRowKeys(dbGetSetting('healthTodayHidden'));
     const healthTasks = dbGetSetting('healthTasks') === 'true';
     const healthTaskCategory = dbGetSetting('healthTaskCategory') || null;
     // Absent means never answered, so the shipped defaults apply; a stored but
@@ -3084,6 +3227,16 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const mealLogPrompt = dbGetSetting('mealLogPrompt') !== 'false';
     const nutritionTargets = parseNutritionTargets(dbGetSetting('nutritionTargets'));
     const foodLogPinnedNutrients = parseFoodLogPinnedNutrients(dbGetSetting('foodLogPinnedNutrients'));
+    const nutritionLimits = parseNutritionLimits(dbGetSetting('nutritionLimits'));
+    const limitWarnPercent = clampLimitWarnPercent(parseInt(dbGetSetting('limitWarnPercent') ?? '', 10));
+    const limitWarningTasks = dbGetSetting('limitWarningTasks') === 'true';
+    const limitsTodayCategory = dbGetSetting('limitsTodayCategory') || null;
+    const limitsTodayHidden = parseNutritionLimits(dbGetSetting('limitsTodayHidden'));
+    const goalsTodayCategory = dbGetSetting('goalsTodayCategory') || null;
+    const goalsTodayHidden = parseNutritionLimits(dbGetSetting('goalsTodayHidden'));
+    const limitWarningTaskCategory = dbGetSetting('limitWarningTaskCategory') || null;
+    const limitWarningDeclined = parseNutritionLimits(dbGetSetting('limitWarningDeclined'));
+    const limitWarningAutoSlips = parseAutoSlips(dbGetSetting('limitWarningAutoSlips'));
     const healthWriteNutrients = parseHealthWriteNutrients(dbGetSetting('healthWriteNutrients'));
     const keepOpenAfterFoodLog = dbGetSetting('keepOpenAfterFoodLog') === 'true';
     const mealShortfallTaskCategory = dbGetSetting('mealShortfallTaskCategory') || null;
@@ -3160,6 +3313,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const storedTravelMode = dbGetSetting('travelMode');
     const travelMode: TravelMode = TRAVEL_MODES.find(m => m === storedTravelMode) ?? 'driving';
     const travelOriginPlaceId = dbGetSetting('travelOriginPlaceId') || null;
+    const sunLocation = parseSunLocation(dbGetSetting('sunLocation'));
+    const holidaySet = parseHolidaySet(dbGetSetting('holidaySet'));
+    const customHolidays = parseCustomHolidays(dbGetSetting('customHolidays'));
     // Pruned on load for eventTaskHandled's reason, directly above.
     const travelTaskHandled = pruneHandledEventTasks(
       parseHandledEventTasks(dbGetSetting('travelTaskHandled')),
@@ -3256,6 +3412,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // `!== 'false'`, same as postponeCheckEnabled above: defaults on, so an
     // install that predates the setting gets tips rather than silence.
     const tipsEnabled = dbGetSetting('tipsEnabled') !== 'false';
+    const firstRunDone = dbGetSetting('firstRunDone') === 'true';
     // Both stored as JSON, and both fall back to "nothing seen yet" on a parse
     // failure rather than throwing. The cost of getting this wrong is one
     // extra tip, which is the right way round to fail.
@@ -3309,6 +3466,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
             preferOnDevice: typeof stored.preferOnDevice === 'boolean'
               ? stored.preferOnDevice
               : aiFeatureConfig[id].preferOnDevice,
+            webSearch: typeof stored.webSearch === 'boolean'
+              ? stored.webSearch
+              : aiFeatureConfig[id].webSearch,
           };
         }
       } catch {
@@ -3318,6 +3478,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const titleRules = parseTitleRules(dbGetSetting('titleRules'));
     const generatedTaskDefaults = parseGeneratedTaskDefaults(dbGetSetting('generatedTaskDefaults'));
+    const generatedTaskExtras = parseGeneratedTaskExtras(dbGetSetting('generatedTaskExtras'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
     const recentScreens = parseRecentScreens(dbGetSetting('recentScreens'));
     // One field per line and sorted by field name, deliberately. Not to be
@@ -3378,6 +3539,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       confirmBeforeDeleting,
       cookRecapEnabled,
       currencySymbol,
+      customHolidays,
       dailyAgendaEnabled,
       dailyAgendaSpoken,
       dailyAgendaTime,
@@ -3396,8 +3558,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       eventTasks,
       fabHand,
       filterEfforts,
-      filterHasReminder,
       filterPriorities,
+      firstRunDone,
       focusBreaksEnabled,
       focusDefaultWorkMinutes,
       focusHideTimers,
@@ -3412,7 +3574,10 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       foodLogPinnedNutrients,
       gateShieldEnabled,
       generatedTaskDefaults,
+      generatedTaskExtras,
       generatorEstimates,
+      goalsTodayCategory,
+      goalsTodayHidden,
       groceryImportConfirmedListId,
       groceryImportDelete,
       groceryImportEnabled,
@@ -3428,16 +3593,21 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       healthRules,
       healthTaskCategory,
       healthTasks,
+      healthTodayHidden,
       healthWriteEnabled,
       healthWriteNutrients,
       hideCategories,
       hideHelpText,
       hideListPreviews,
+      holidaySet,
       householdServings,
+      journalCustomPrompts,
+      journalLockEnabled,
       journalLogLastDayKey,
       journalLogTaskCategory,
       journalLogTasks,
       journalLogTimeSegments,
+      journalWordGoal,
       keepOpenAfterFoodLog,
       kitchenEnabled,
       lastDeloadAppliedDayKey,
@@ -3445,6 +3615,13 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       lastVisitedScreen,
       leftoverUseUpTaskCategory,
       leftoverUseUpTasks,
+      limitsTodayCategory,
+      limitsTodayHidden,
+      limitWarningAutoSlips,
+      limitWarningDeclined,
+      limitWarningTaskCategory,
+      limitWarningTasks,
+      limitWarnPercent,
       mapsApp,
       mealCalendarId,
       mealCookTaskCategory,
@@ -3482,6 +3659,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       morningStart,
       newTaskDefaults,
       nightStart,
+      nutritionLimits,
       nutritionTargets,
       onDeviceAiEnabled,
       pantryCheckTaskCategory,
@@ -3519,6 +3697,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       rewardGoalId,
       rewardListProjectId,
       rewardsEnabled,
+      rewardWeeklyBudgetMinor,
       runningLowAddsToList,
       screenTimeRules,
       screenTimeTaskCategory,
@@ -3534,6 +3713,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       snackNudgeTaskCategory,
       snackNudgeTasks,
       sortOption,
+      stepGoal,
+      sunLocation,
       supplyReorderTaskCategory,
       supplyReorderTasks,
       tabRoutes,
@@ -3559,6 +3740,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       useUpTaskCap,
       vacationDrivenBy,
       vacationEnd,
+      vacationEndedAt,
       vacationHiddenCalendarIds,
       vacationMode,
       vacationStart,
@@ -3762,10 +3944,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ filterEfforts: efforts });
   },
 
-  setFilterHasReminder(on: boolean) {
-    dbSetSetting('filterHasReminder', on ? 'true' : 'false');
-    set({ filterHasReminder: on });
-  },
 
   setProjectSortOption(sort: ProjectSortOption) {
     dbSetSetting('projectSortOption', sort);
@@ -3831,6 +4009,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ appLockGraceSeconds: seconds });
   },
 
+  setJournalLockEnabled(on: boolean) {
+    dbSetSetting('journalLockEnabled', on ? 'true' : 'false');
+    set({ journalLockEnabled: on });
+  },
+
   setVacationMode(on: boolean, endDate?: string | null) {
     if (on) {
       const start = new Date().toISOString();
@@ -3840,9 +4023,13 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       dbSetSetting('vacationEnd', end ?? '');
       set({ vacationMode: true, vacationStart: start, vacationEnd: end });
     } else {
+      // Stamped only on an actual on-to-off change, so a redundant off call
+      // (a peer's sync, an expiry check) can't push the end later.
+      const endedAt = get().vacationMode ? new Date().toISOString() : get().vacationEndedAt;
       dbSetSetting('vacationMode', 'false');
       dbSetSetting('vacationEnd', '');
-      set({ vacationMode: false, vacationStart: null, vacationEnd: null });
+      dbSetSetting('vacationEndedAt', endedAt ?? '');
+      set({ vacationMode: false, vacationStart: null, vacationEnd: null, vacationEndedAt: endedAt });
     }
   },
 
@@ -3999,6 +4186,62 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setFoodLogPinnedNutrients(keys: NutrientKey[]) {
     dbSetSetting('foodLogPinnedNutrients', serializeFoodLogPinnedNutrients(keys));
     set({ foodLogPinnedNutrients: keys });
+  },
+
+  setNutritionLimits(keys: NutrientKey[]) {
+    dbSetSetting('nutritionLimits', serializeNutritionLimits(keys));
+    // Setting a nutrient to Stay under again is asking for its task again, so
+    // a task deleted for it before is no longer declined.
+    const added = keys.filter(k => !get().nutritionLimits.includes(k));
+    const declined = get().limitWarningDeclined.filter(k => !added.includes(k));
+    if (declined.length !== get().limitWarningDeclined.length) get().setLimitWarningDeclined(declined);
+    set({ nutritionLimits: parseNutritionLimits(serializeNutritionLimits(keys)) });
+  },
+
+  setLimitWarnPercent(percent: number) {
+    const clamped = clampLimitWarnPercent(percent);
+    dbSetSetting('limitWarnPercent', String(clamped));
+    set({ limitWarnPercent: clamped });
+  },
+
+  setLimitsTodayCategory(category: string | null) {
+    dbSetSetting('limitsTodayCategory', category ?? '');
+    set({ limitsTodayCategory: category });
+  },
+
+  setGoalsTodayCategory(category: string | null) {
+    dbSetSetting('goalsTodayCategory', category ?? '');
+    set({ goalsTodayCategory: category });
+  },
+
+  setGoalsTodayHidden(keys: NutrientKey[]) {
+    dbSetSetting('goalsTodayHidden', serializeNutritionLimits(keys));
+    set({ goalsTodayHidden: parseNutritionLimits(serializeNutritionLimits(keys)) });
+  },
+
+  setLimitsTodayHidden(keys: NutrientKey[]) {
+    dbSetSetting('limitsTodayHidden', serializeNutritionLimits(keys));
+    set({ limitsTodayHidden: parseNutritionLimits(serializeNutritionLimits(keys)) });
+  },
+
+  setLimitWarningTasks(on: boolean) {
+    dbSetSetting('limitWarningTasks', String(on));
+    set({ limitWarningTasks: on });
+  },
+
+  setLimitWarningTaskCategory(category: string | null) {
+    dbSetSetting('limitWarningTaskCategory', category ?? '');
+    set({ limitWarningTaskCategory: category });
+  },
+
+  setLimitWarningDeclined(keys: NutrientKey[]) {
+    dbSetSetting('limitWarningDeclined', serializeNutritionLimits(keys));
+    set({ limitWarningDeclined: parseNutritionLimits(serializeNutritionLimits(keys)) });
+  },
+
+  setLimitWarningAutoSlips(days: Partial<Record<NutrientKey, string>>) {
+    dbSetSetting('limitWarningAutoSlips', JSON.stringify(days));
+    set({ limitWarningAutoSlips: days });
   },
 
   setHealthWriteNutrients(keys: NutrientKey[]) {
@@ -4158,6 +4401,23 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ travelOriginPlaceId: id });
   },
 
+  setHolidaySet(holidaySet: HolidaySet) {
+    dbSetSetting('holidaySet', holidaySet);
+    set({ holidaySet });
+  },
+
+  setCustomHolidays(dayKeys: string[]) {
+    const clean = parseCustomHolidays(JSON.stringify(dayKeys));
+    dbSetSetting('customHolidays', JSON.stringify(clean));
+    set({ customHolidays: clean });
+  },
+
+  setSunLocation(location: SunLocation | null) {
+    const rounded = location ? roundSunLocation(location) : null;
+    dbSetSetting('sunLocation', rounded ? JSON.stringify(rounded) : '');
+    set({ sunLocation: rounded });
+  },
+
   // Null puts the calendar back on the default lead, by removing its entry
   // rather than storing the default: a stored copy would stop following the
   // default when the user next changed it.
@@ -4297,8 +4557,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
 
   // Floored at 1: a nudge after zero low days would fire on any day with a
   // mood on it at all, which is not what any answer to this question means.
+  // Capped at two weeks, the longest run the setting row offers.
   setMoodNudgeAfterDays(days: number) {
-    const clamped = Math.max(1, Math.round(days));
+    const clamped = Math.min(MOOD_NUDGE_AFTER_DAYS_MAX, Math.max(MOOD_NUDGE_AFTER_DAYS_MIN, Math.round(days)));
     dbSetSetting('moodNudgeAfterDays', String(clamped));
     set({ moodNudgeAfterDays: clamped });
   },
@@ -4520,6 +4781,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ bountyLimit: clamped });
   },
 
+  setRewardWeeklyBudgetMinor(minor: number | null) {
+    const next = minor !== null && minor > 0 ? Math.round(minor) : null;
+    dbSetSetting('rewardWeeklyBudgetMinor', next === null ? '' : String(next));
+    set({ rewardWeeklyBudgetMinor: next });
+  },
+
   setGateShieldEnabled(on: boolean) {
     dbSetSetting('gateShieldEnabled', on ? 'true' : 'false');
     set({ gateShieldEnabled: on });
@@ -4586,6 +4853,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setTipsEnabled(on: boolean) {
     dbSetSetting('tipsEnabled', on ? 'true' : 'false');
     set({ tipsEnabled: on });
+  },
+
+  setFirstRunDone(done: boolean) {
+    dbSetSetting('firstRunDone', done ? 'true' : 'false');
+    set({ firstRunDone: done });
   },
 
   // Separate from markTipSeen because they answer different questions: this
@@ -4935,6 +5207,18 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ sleepGoalMinutes: value });
   },
 
+  setJournalWordGoal(words: number | null) {
+    const value = words === null ? null : parseJournalWordGoal(String(words));
+    dbSetSetting('journalWordGoal', value === null ? '' : String(value));
+    set({ journalWordGoal: value });
+  },
+
+  setJournalCustomPrompts(prompts: string[]) {
+    const value = cleanJournalPrompts(prompts);
+    dbSetSetting('journalCustomPrompts', JSON.stringify(value));
+    set({ journalCustomPrompts: value });
+  },
+
   setWaterExerciseBoost(boost: WaterExerciseBoost | null) {
     dbSetSetting('waterExerciseBoost', boost === null ? '' : serializeWaterExerciseBoost(boost));
     set({ waterExerciseBoost: boost });
@@ -4966,6 +5250,17 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setHealthCategory(category: string | null) {
     dbSetSetting('healthCategory', category ?? '');
     set({ healthCategory: category });
+  },
+
+  setHealthTodayHidden(keys: HealthRowKey[]) {
+    dbSetSetting('healthTodayHidden', serializeHealthRowKeys(keys));
+    set({ healthTodayHidden: parseHealthRowKeys(serializeHealthRowKeys(keys)) });
+  },
+
+  setStepGoal(goal: number | null) {
+    const next = goal === null ? null : clampStepGoal(goal);
+    dbSetSetting('stepGoal', next === null ? '' : String(next));
+    set({ stepGoal: next });
   },
 
   setHealthTasks(on: boolean) {
@@ -5177,6 +5472,15 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       if (hasTaskFieldDefaults(defaults)) next[kind] = defaults; else delete next[kind];
       dbSetSetting('generatedTaskDefaults', JSON.stringify(next));
       return { generatedTaskDefaults: next };
+    });
+  },
+
+  setGeneratedTaskExtras(kind: GeneratedKind, extras: GeneratedTaskExtras | null) {
+    set(state => {
+      const next = { ...state.generatedTaskExtras };
+      if (hasGeneratedTaskExtras(extras)) next[kind] = extras; else delete next[kind];
+      dbSetSetting('generatedTaskExtras', JSON.stringify(next));
+      return { generatedTaskExtras: next };
     });
   },
 

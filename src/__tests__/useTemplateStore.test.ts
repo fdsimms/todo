@@ -6,6 +6,7 @@ import {
   dbGetAllTemplates,
   dbTransaction,
 } from '../db/database';
+import { useMedicationStore } from '../store/useMedicationStore';
 import type { TaskTemplate, TemplateItem, TaskDraft } from '../types';
 
 jest.mock('../db/database', () => ({
@@ -241,6 +242,23 @@ describe('item CRUD', () => {
 });
 
 describe('applyTemplate', () => {
+  it('hands the run the medicines you take, archived ones left out', () => {
+    useMedicationStore.setState({
+      logs: [
+        { id: 'l1', name: 'Metformin', dayKey: '2026-10-01' },
+        { id: 'l2', name: 'Metformin', dayKey: '2026-10-02' },
+        { id: 'l3', name: 'Amoxicillin', dayKey: '2026-09-01' },
+        { id: 'l4', name: 'Vitamin D', dayKey: '2026-10-02' },
+      ] as never,
+      archived: ['amoxicillin'],
+    });
+    useTemplateStore.setState({
+      templates: [makeTemplate({ items: [makeItem({ id: 'm', title: 'Medications', medicationChecklist: true })] })],
+    });
+    useTemplateStore.getState().applyTemplate('tpl-1', new Set(['m']), { start: null, end: null });
+    expect(mockAddSubtask.mock.calls.map(c => c[1])).toEqual(['Metformin', 'Vitamin D']);
+  });
+
   it("points an item's answer gate at the task its question item became, and drops it when that item wasn't ticked", () => {
     useTemplateStore.setState({
       templates: [makeTemplate({

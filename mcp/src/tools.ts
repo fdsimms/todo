@@ -19,7 +19,8 @@
  */
 import { format } from 'date-fns/format';
 import type { FoodLogEntry, GroceryItem, GroceryListEntry, MedicationLog, MoodLog, Project, Task, TaskTemplate } from '../../src/types';
-import type { AnswerEdit, Replica } from './replica';
+import type { AnswerEdit, MedicationSettingsView, Replica } from './replica';
+import type { ReviewAfter } from '../../src/utils/decisionReview';
 import { describeTemplateChanges, resolveRef, templateToPlan, templateVersion, templateWarnings, type TemplatePatch, type TemplatePlan } from './templatePlan';
 import { isRotationTask } from '../../src/utils/rotation';
 import { roundToHalf } from '../../src/utils/produceServings';
@@ -172,7 +173,7 @@ export interface GetTaskResult {
    * food log's water goal divided by what one unit logs, worked out by the app
    * each day: update_task refuses to set it.
    */
-  target?: { count: number; per: 'day' | 'week'; done: number; unit?: string; allowOvershoot?: boolean; followsWaterTarget?: true };
+  target?: { count: number; per: 'day' | 'week'; done: number; unit?: string; allowOvershoot?: boolean; followsWaterTarget?: true; rampUp?: { add: number; every: number; upTo?: number; hitsSoFar: number } };
   /** A countdown the task runs once started, in minutes. */
   timed?: TimedInput;
   /** The members of a rotation, and which this week's picks have covered. */
@@ -191,6 +192,8 @@ export interface GetTaskResult {
   excludeFromSuggestions?: true;
   /** A completion outside the task's own time window counts as done but does not extend the streak (`streakRequiresWindow`). */
   streakRequiresWindow?: true;
+  /** A weekly target's streak totals every unit logged instead of weeks in a row (`streakCountsUnits`). */
+  streakCountsUnits?: true;
   /**
    * Read-only, deliberately: a gate or penalty blocks apps on the phone, so
    * only the person sets one. (`medication` below is writable: it makes
@@ -228,6 +231,8 @@ export interface GetTaskResult {
     logsMedication?: { name: string; amount?: number; unit?: string };
     logsHealth?: { metric: string; amount?: number };
     logsMealSlot?: string;
+    /** The saved meal's id, when completing the task logs it straight away (`logSavedMealId`). */
+    logsSavedMealId?: string;
   };
   /** A countdown (`minutes`) or an Apple Health reading (`healthTarget`) the task reads as ready at; `measuredMinutes` is how long it actually took. */
   timer?: { minutes: number };
@@ -305,6 +310,7 @@ function taskExtras(replica: Replica, task: Task): Partial<GetTaskResult> {
     };
   }
   if (task.logMealSlot) onCompletion.logsMealSlot = task.logMealSlot;
+  if (task.logSavedMealId) onCompletion.logsSavedMealId = task.logSavedMealId;
   if (Object.keys(onCompletion).length > 0) out.onCompletion = onCompletion;
 
   if (task.timedMinutes != null) out.timer = { minutes: task.timedMinutes };
@@ -366,6 +372,16 @@ export function getTask(replica: Replica, id: string): GetTaskResult | null {
           ...(task.targetUnit ? { unit: task.targetUnit } : {}),
           ...(task.allowOvershoot ? { allowOvershoot: true } : {}),
           ...(task.followWaterTarget ? { followsWaterTarget: true as const } : {}),
+          ...(task.quotaRampStep
+            ? {
+                rampUp: {
+                  add: task.quotaRampStep,
+                  every: task.quotaRampEvery ?? 1,
+                  ...(task.quotaRampGoal != null ? { upTo: task.quotaRampGoal } : {}),
+                  hitsSoFar: task.quotaRampHits ?? 0,
+                },
+              }
+            : {}),
         }
       : undefined,
     timed: task.timedMinutes != null && task.timedMinutes > 0 ? { minutes: task.timedMinutes } : undefined,
@@ -385,6 +401,7 @@ export function getTask(replica: Replica, id: string): GetTaskResult | null {
     reminderRule: describeReminderRule(task) ?? undefined,
     excludeFromSuggestions: task.excludeFromSuggestions ? true : undefined,
     streakRequiresWindow: task.streakRequiresWindow ? true : undefined,
+    streakCountsUnits: task.streakCountsUnits ? true : undefined,
     gatesApps: task.gatesApps ? true : undefined,
     penalty: task.penaltyMinutes != null
       ? {
@@ -401,8 +418,18 @@ export function getTask(replica: Replica, id: string): GetTaskResult | null {
           ...(task.medicationUnit ? { unit: task.medicationUnit } : {}),
         }
       : undefined,
+    // Today's times, with a bound that follows the sun resolved for today, and
+    // the anchor itself as `startFollows`/`endFollows` so it can be read back.
     window: task.windowStart || task.windowEnd
-      ? { ...(task.windowStart ? { start: task.windowStart } : {}), ...(task.windowEnd ? { end: task.windowEnd } : {}) }
+      ? (() => {
+          const today = replica.windowToday(task);
+          return {
+            ...(today.start ? { start: today.start } : {}),
+            ...(today.end ? { end: today.end } : {}),
+            ...(task.windowStartSun ? { startFollows: task.windowStartSun } : {}),
+            ...(task.windowEndSun ? { endFollows: task.windowEndSun } : {}),
+          };
+        })()
       : undefined,
     habit: task.polarity === 'negative' ? 'avoid' : undefined,
     slipAllowance: task.polarity === 'negative' && negativeHabits.slipAllowanceOf(task) > 0 ? negativeHabits.slipAllowanceOf(task) : undefined,
@@ -639,6 +666,13 @@ export interface SerializedFoodEntry {
   quantity?: string;
   grams?: number;
   recipeId?: string;
+  /**
+   * What an estimated meal's total was made of, one line per thing it named.
+   * Absent for an entry that was measured or that the model did not split.
+   * The lines are the same estimate split apart and add up to the entry's own
+   * figures, so they are never a second source to sum beside them.
+   */
+  breakdown?: { label: string; amounts: Record<string, number> }[];
 }
 
 export interface FoodLogResult {
@@ -661,6 +695,8 @@ export interface FoodLogResult {
   produce: { dayKey: string; vegetable: number; fruit: number; unmeasured: number }[];
   /** The daily targets the person set, by nutrient. Nothing here is a recommendation. */
   targets: Record<string, number>;
+  /** The targeted nutrients the person marked Stay under: a ceiling, not a goal. */
+  limits: string[];
 }
 
 export function listFoodLog(replica: Replica, input: LogRangeInput = {}): FoodLogResult {
@@ -686,6 +722,7 @@ export function listFoodLog(replica: Replica, input: LogRangeInput = {}): FoodLo
       quantity: e.quantity || undefined,
       grams: e.grams ?? undefined,
       recipeId: e.recipeId ?? undefined,
+      breakdown: e.nutrition?.breakdown?.length ? e.nutrition.breakdown : undefined,
     })),
     totals: {
       total: totals.total as Record<string, number>,
@@ -695,6 +732,8 @@ export function listFoodLog(replica: Replica, input: LogRangeInput = {}): FoodLo
     produce,
     // The figures the person set to read a day's totals against; absent for a nutrient with none.
     targets: replica.nutritionTargets(),
+    // Which of those are limits to stay under rather than figures to reach.
+    limits: replica.nutritionLimits(),
   };
 }
 
@@ -918,9 +957,9 @@ export interface CompleteTaskResult {
 export function completeTask(
   replica: Replica,
   id: string,
-  options?: { deliverableValue?: string | null; completedAt?: string; why?: string; revisitIf?: string },
+  options?: { deliverableValue?: string | null; completedAt?: string; why?: string; revisitIf?: string; lookBackAfter?: ReviewAfter },
 ): CompleteTaskResult {
-  const { why, revisitIf, ...rest } = options ?? {};
+  const { why, revisitIf, lookBackAfter, ...rest } = options ?? {};
   // Reasoning only means something next to an answer; `in` keeps the
   // "was an answer sent at all" test the refusal makes intact.
   const result = replica.completeTask(id, options === undefined ? undefined : {
@@ -928,6 +967,7 @@ export function completeTask(
     ...(why !== undefined || revisitIf !== undefined
       ? { deliverableReasoning: { why: why ?? null, revisitIf: revisitIf ?? null } }
       : {}),
+    ...(lookBackAfter ? { reviewAfter: lookBackAfter } : {}),
   });
   const spawned: string[] = [];
   if (result.nextTask) {
@@ -938,6 +978,9 @@ export function completeTask(
   }
   if (result.followUpTask) {
     spawned.push(`This completion earned the follow-up task "${result.followUpTask.title}".`);
+  }
+  if (result.reviewTask) {
+    spawned.push(`A look-back task "${result.reviewTask.title}" was created, due ${replica.dayKeyOf(result.reviewTask.dueDate!)}. Its answer is shown as this decision's outcome.`);
   }
   if (result.rolledOver.length > 0) {
     spawned.push(`The last date of the series was completed, so the next set of ${result.rolledOver.length} was created.`);
@@ -1050,11 +1093,14 @@ export function archiveTask(replica: Replica, id: string, archived: boolean): Se
 export function listMedicationLogs(
   replica: Replica,
   input: LogRangeInput = {}
-): { range: DayRange; logs: SerializedMedicationLog[] } {
+): { range: DayRange; logs: SerializedMedicationLog[]; limitsAndSupply: MedicationSettingsView[] } {
   const range = resolveRange(replica, input);
 
   return {
     range,
+    // The limits and supply counts the person set, whatever the range: they
+    // are standing settings, not entries in it.
+    limitsAndSupply: replica.medicationSettings(),
     logs: replica.medicationLogs(range.from, range.to).map((log: MedicationLog) => ({
       id: log.id,
       dayKey: log.dayKey,
@@ -1063,6 +1109,7 @@ export function listMedicationLogs(
       summary: replica.medicationSummary(log),
       amount: log.amount ?? undefined,
       unit: log.unit ?? undefined,
+      ...(log.strength ? { eachContained: `${log.strength.amount} ${log.strength.unit}` } : {}),
       asNeeded: log.asNeeded ? true : undefined,
     })),
   };

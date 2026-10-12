@@ -38,7 +38,7 @@ export function StepLink({ step, taskLinkUrl, onPress }: Props) {
   const label = own
     ? `Link for ${step.title}, ${own}`
     : taskLinkUrl
-      ? `Link for ${step.title}, currently the task's link`
+      ? `Link for ${step.title}, currently the task’s link`
       : `Set a link for ${step.title}`;
 
   return (

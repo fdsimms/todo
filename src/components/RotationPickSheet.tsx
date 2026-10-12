@@ -13,7 +13,7 @@ import { displayTitleFor } from '../utils/visibilityUtils';
 import { haptics } from '../utils/haptics';
 import { openInAppUrl } from '../utils/deepLinks';
 import { plannedRotationItem, rotationLastDoneLabel, rotationMembers } from '../utils/rotation';
-import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, iconSize, interaction, sheetBottomInset, type Colors } from '../theme';
 import type { Task } from '../types';
 
 interface Props {
@@ -156,7 +156,7 @@ export function RotationPickSheet({ visible, task, onPick, onCancel, onPlan }: P
           style={styles.linkButton}
           accessibilityRole="button"
           accessibilityLabel={isPlanned
-            ? `Remove ${member.item.title} from today's plan`
+            ? `Remove ${member.item.title} from today’s plan`
             : `Plan ${member.item.title} for today`}
         >
           <Ionicons
@@ -238,7 +238,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     right: 0,
     bottom: 0,
     paddingHorizontal: spacing.md,
-    paddingBottom: 34,
+    paddingBottom: sheetBottomInset,
   },
   card: {
     backgroundColor: colors.bgSecondary,

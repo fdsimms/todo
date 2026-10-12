@@ -593,7 +593,7 @@ export function describeShopDelete(
 
   const sentences: string[] = [];
   if (itemCount > 0) {
-    sentences.push(`${itemCount} ${itemCount === 1 ? 'item is' : 'items are'} recorded as coming from here. Deleting the store forgets that. The items themselves stay.`);
+    sentences.push(`${itemCount} ${itemCount === 1 ? 'item is' : 'items are'} recorded as coming from here. Deleting the store removes that record. The items stay.`);
   }
   if (priced > 0) {
     sentences.push(`The prices recorded here for ${priced} ${priced === 1 ? 'item go' : 'items go'} too.`);

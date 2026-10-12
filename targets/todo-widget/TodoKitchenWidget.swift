@@ -97,7 +97,7 @@ struct KitchenWidgetEntryView: View {
 
     private var title: String {
         switch entry.configuration.mode {
-        case .meals: return "Today's meals"
+        case .meals: return "Today’s meals"
         case .useUp: return "Use up soon"
         case .both: return "Kitchen"
         }
@@ -105,9 +105,9 @@ struct KitchenWidgetEntryView: View {
 
     private var emptyStateMessage: String {
         switch entry.result {
-        case .noAppGroupAccess: return "Can't access shared data (App Group)"
+        case .noAppGroupAccess: return "Can’t access shared data (App Group)"
         case .noSnapshotYet: return "Open the app to get started"
-        case .decodeFailed: return "Couldn't read task data"
+        case .decodeFailed: return "Couldn’t read kitchen data"
         case .success:
             switch entry.configuration.mode {
             case .meals: return "Nothing planned today"

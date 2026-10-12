@@ -100,7 +100,7 @@ export function AddGuestsSheet({ visible, onClose, onAdd }: Props) {
             placeholder="e.g. Yes, No, Maybe"
             placeholderTextColor={colors.textTertiary}
             returnKeyType="done"
-            accessibilityLabel="The answers to pick from, separated by commas"
+            accessibilityLabel="Answer choices, separated by commas"
           />
           <Text style={styles.hint}>
             Adds a task for each name. Checking one off asks for their answer, and the project page counts them.

@@ -69,6 +69,28 @@ describe('isPersonFieldMissing', () => {
   });
 });
 
+describe('personBackfillCandidates fromScratch', () => {
+  it('includes people who already have a value or were dismissed, in the user’s own order', () => {
+    const people: Person[] = [
+      { ...basePerson, id: 'a', sortOrder: 2, birthdayMonth: 3, birthdayDay: 4 },
+      { ...basePerson, id: 'b', sortOrder: 1, backfillDismissedFields: ['birthday'] },
+      { ...basePerson, id: 'c', sortOrder: 3 },
+      { ...basePerson, id: 'd', sortOrder: 4, archived: true },
+    ];
+    expect(personBackfillCandidates(people, 'birthday').map(p => p.id)).toEqual(['c']);
+    expect(personBackfillCandidates(people, 'birthday', { fromScratch: true }).map(p => p.id))
+      .toEqual(['b', 'a', 'c']);
+  });
+
+  it('leaves a business out of the fields that do not apply to one, but not location', () => {
+    const people: Person[] = [{ ...basePerson, id: 'biz', kind: 'business', location: 'Portland' }];
+    for (const field of ['birthday', 'cadence', 'askAbout'] as const) {
+      expect(personBackfillCandidates(people, field, { fromScratch: true })).toEqual([]);
+    }
+    expect(personBackfillCandidates(people, 'location', { fromScratch: true }).map(p => p.id)).toEqual(['biz']);
+  });
+});
+
 describe('personBackfillCandidates', () => {
   it('excludes archived people', () => {
     const people: Person[] = [

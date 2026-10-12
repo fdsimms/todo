@@ -36,7 +36,7 @@ import type { PantryReviewDeck } from './pantryReview';
  * Logbook, none of which render a meta line, so "Pantry" alone would read as a
  * task to go and do something to the pantry.
  */
-export const PANTRY_REVIEW_TITLE = 'Review what\'s in the pantry';
+export const PANTRY_REVIEW_TITLE = 'Review what’s in the pantry';
 
 /**
  * Where the row goes: the Pantry screen, with the deck already open.

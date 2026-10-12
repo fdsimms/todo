@@ -27,6 +27,8 @@ import type { SerializedTask } from './serialize';
 import type { TaskFieldsInput } from './taskFields';
 import { describeRepeat, type RepeatInput } from './taskFields';
 import { completeTask, deferTask, getTask, updateTask } from './tools';
+import { knownMeterNames, meterFieldsFromInput, meterKey } from '../../src/utils/meters';
+import { canSkipForRain, defaultRainSkipMm, rainUnitFor } from '../../src/utils/rainSkip';
 import { localDateInput } from './timeZone';
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
@@ -162,6 +164,8 @@ export interface QuickAddRow {
   project?: string;
   estimatedMinutes?: number;
   reminderTime?: string;
+  /** "every 5,000 miles on the car": due by usage. No dueAt while the meter has never been read. */
+  meter?: { name: string; unit: string; every: number; dueAt?: number };
   /** Anything in the line that was read but not used, so nothing is dropped unsaid. */
   notes?: string[];
   /** After applying: the task as created. */
@@ -211,7 +215,9 @@ function readLine(replica: Replica, line: string): { row: QuickAddRow; draft: Pa
     text = est.cleanTitle;
     draft.estimatedMinutes = est.minutes;
   }
-  const sched = p.parseTaskInput(text, lib.dates.getLogicalNow(dayResetTime), new Date());
+  // Read past a trailing "unless it rains", which the rain phrase below takes
+  // once the repeat is set (parseTaskInputAheadOfRainSkip).
+  const sched = p.parseTaskInputAheadOfRainSkip(text, lib.dates.getLogicalNow(dayResetTime), new Date());
   if (sched) {
     text = sched.cleanTitle;
     const s = sched.schedule;
@@ -242,6 +248,46 @@ function readLine(replica: Replica, line: string): { row: QuickAddRow; draft: Pa
     notes.push('"remind me" needs a time to remind at; none was found.');
   }
 
+  // "after sunset" / "expires at dark": a window bound that follows the sun,
+  // read as quick add reads it and only where the time can be worked out.
+  const sun = p.parseSunWindowInput(text);
+  if (sun) {
+    const clock = replica.sunAnchorClock(sun.anchor, draft.dueDate ?? null);
+    if (clock) {
+      text = sun.cleanTitle;
+      if (sun.bound === 'start') { draft.windowStart = clock; draft.windowStartSun = sun.anchor; }
+      else { draft.windowEnd = clock; draft.windowEndSun = sun.anchor; }
+    } else {
+      notes.push(`"${text.slice(sun.matchStart, sun.matchEnd)}" needs a location to work sunrise and sunset out from, and none is saved, so it stays in the title.`);
+    }
+  }
+
+  // "every 5,000 miles on the car": due by usage, on a line that doesn't
+  // already repeat. The due reading comes from the meter's last reading, as
+  // the sheet takes it; an unread meter starts on its first one.
+  const meterHit = !draft.recurrenceType || draft.recurrenceType === 'none' ? p.parseMeterInput(text) : null;
+  if (meterHit) {
+    const readings = replica.meterReadings();
+    const known = knownMeterNames(readings).find(n => meterKey(n) === meterKey(meterHit.meterName));
+    const name = known?.trim() ?? meterHit.meterName.charAt(0).toUpperCase() + meterHit.meterName.slice(1);
+    text = meterHit.cleanTitle;
+    Object.assign(draft, meterFieldsFromInput(
+      { name, unit: meterHit.unit, everyText: String(meterHit.every), dueText: '', limitMonths: null },
+      readings,
+    ));
+    if (draft.meterDueAt === null) notes.push(`${name} has no reading yet, so the task starts when one is logged (log_meter_reading).`);
+  }
+
+  // "unless it rains": skip a day it rained, on a repeat with days to skip.
+  // A bare phrase takes the sheet's default in the person's unit.
+  const rain = p.parseRainSkipInput(text);
+  if (rain && canSkipForRain({ recurrenceType: draft.recurrenceType ?? 'none' })) {
+    const { unitSystem, weatherTasks } = replica.settings();
+    text = rain.cleanTitle;
+    draft.rainSkipMm = rain.mm ?? defaultRainSkipMm(rainUnitFor(unitSystem));
+    if (!weatherTasks) notes.push('Weather is switched off in the app\'s settings, so nothing reads rainfall and the task will not skip until it is on.');
+  }
+
   for (const m of text.matchAll(/(^|\s)([#+!][\p{L}\p{N}_-]+)/gu)) {
     notes.push(`"${m[2]}" matched nothing the app knows, so it stays in the title.`);
   }
@@ -254,7 +300,12 @@ function readLine(replica: Replica, line: string): { row: QuickAddRow; draft: Pa
     ...(draft.deadline ? { deadline: draft.deadline } : {}),
     ...(draft.timeSegments?.length ? { timeSegments: draft.timeSegments } : {}),
     ...(draft.windowStart || draft.windowEnd
-      ? { window: { ...(draft.windowStart ? { start: draft.windowStart } : {}), ...(draft.windowEnd ? { end: draft.windowEnd } : {}) } }
+      ? { window: {
+          ...(draft.windowStart ? { start: draft.windowStart } : {}),
+          ...(draft.windowEnd ? { end: draft.windowEnd } : {}),
+          ...(draft.windowStartSun ? { startFollows: draft.windowStartSun } : {}),
+          ...(draft.windowEndSun ? { endFollows: draft.windowEndSun } : {}),
+        } }
       : {}),
     ...(draft.recurrenceType && draft.recurrenceType !== 'none'
       ? { repeat: describeRepeat({ ...(draft as Task), recurrenceType: draft.recurrenceType }) ?? undefined }
@@ -265,6 +316,9 @@ function readLine(replica: Replica, line: string): { row: QuickAddRow; draft: Pa
     ...(pj ? { project: pj.title } : {}),
     ...(draft.estimatedMinutes ? { estimatedMinutes: draft.estimatedMinutes } : {}),
     ...(draft.reminderTime ? { reminderTime: draft.reminderTime } : {}),
+    ...(draft.meterName && draft.meterEvery
+      ? { meter: { name: draft.meterName, unit: draft.meterUnit ?? '', every: draft.meterEvery, ...(draft.meterDueAt != null ? { dueAt: draft.meterDueAt } : {}) } }
+      : {}),
     ...(notes.length > 0 ? { notes } : {}),
   };
   if (!draft.title) return { row: { ...row, problem: 'Nothing is left for a title once the date and tags are read out.' }, draft: null };
@@ -404,11 +458,13 @@ export function planDay(replica: Replica, input: { startAt?: string; endAt?: str
       if (t.priority >= 3) why.push('high priority');
       // Already on Today means it can start whenever the plan starts, short
       // of its own window; otherwise not before the moment the app shows it.
+      // Today's times, a bound that follows the sun resolved for today.
+      const window = replica.windowToday(t);
       const earliest = replica.isVisible(t)
-        ? Math.max(from, t.windowStart ? dayMinutesOf(t.windowStart) : 0)
+        ? Math.max(from, window.start ? dayMinutesOf(window.start) : 0)
         : Math.max(from, clockMinutes(replica.visibleAt(t), todayStart));
-      const latest = t.windowEnd ? dayMinutesOf(t.windowEnd) : to;
-      if (t.windowStart || t.windowEnd) why.push(`time window ${t.windowStart ?? ''}–${t.windowEnd ?? ''}`);
+      const latest = window.end ? dayMinutesOf(window.end) : to;
+      if (window.start || window.end) why.push(`time window ${window.start ?? ''}–${window.end ?? ''}`);
       return { t, minutes: est ?? assumed, estimated: est != null, earliest, latest, why };
     })
     .sort((a, b) =>

@@ -62,6 +62,19 @@ describe('categoryBackfillCandidates', () => {
   });
 });
 
+describe('categoryBackfillCandidates fromScratch', () => {
+  it('includes categories already on and ones dismissed for the field', () => {
+    const categories: Category[] = [
+      { ...baseCategory, id: 'a', name: 'A', hideOnVacation: true },
+      { ...baseCategory, id: 'b', name: 'B', backfillDismissedFields: ['vacation'] },
+      { ...baseCategory, id: 'c', name: 'C' },
+    ];
+    expect(categoryBackfillCandidates(categories, 'vacation').map(c => c.id)).toEqual(['c']);
+    expect(categoryBackfillCandidates(categories, 'vacation', { fromScratch: true }).map(c => c.id))
+      .toEqual(['a', 'b', 'c']);
+  });
+});
+
 describe('isCategoryBackfillDismissed / dismissCategoryBackfillField', () => {
   it('is false until the field has been dismissed', () => {
     expect(isCategoryBackfillDismissed(baseCategory, 'vacation')).toBe(false);

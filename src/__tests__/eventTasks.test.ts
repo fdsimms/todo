@@ -401,21 +401,21 @@ describe('defaultEventRules', () => {
 
 describe('describeEventRule', () => {
   it('reads the rule back as a sentence', () => {
-    expect(describeEventRule(rule({ leadDays: 0 }))).toBe('"flight" · same day');
-    expect(describeEventRule(rule({ leadDays: 1 }))).toBe('"flight" · 1 day before');
-    expect(describeEventRule(rule({ leadDays: 3 }))).toBe('"flight" · 3 days before');
+    expect(describeEventRule(rule({ leadDays: 0 }))).toBe('“flight” · same day');
+    expect(describeEventRule(rule({ leadDays: 1 }))).toBe('“flight” · 1 day before');
+    expect(describeEventRule(rule({ leadDays: 3 }))).toBe('“flight” · 3 days before');
   });
 
   it('says so when a rule has no cue yet', () => {
-    expect(describeEventRule(rule({ matches: [] }))).toBe('"anything" · same day');
+    expect(describeEventRule(rule({ matches: [] }))).toBe('“anything” · same day');
   });
 
   it('joins several keywords with "or"', () => {
-    expect(describeEventRule(rule({ matches: ['flight'], leadDays: 0 }))).toBe('"flight" · same day');
+    expect(describeEventRule(rule({ matches: ['flight'], leadDays: 0 }))).toBe('“flight” · same day');
     expect(describeEventRule(rule({ matches: ['flight', 'layover'] })))
-      .toBe('"flight" or "layover" · same day');
+      .toBe('“flight” or “layover” · same day');
     expect(describeEventRule(rule({ matches: ['flight', 'layover', 'airport'] })))
-      .toBe('"flight", "layover" or "airport" · same day');
+      .toBe('“flight”, “layover” or “airport” · same day');
   });
 });
 
@@ -570,7 +570,7 @@ describe('describeRuleMatches', () => {
 
   it('names the closest event when nothing matched', () => {
     expect(describeRuleMatches(summarize('dentist', ['Dentsit checkup'])))
-      .toBe('No upcoming events match. Closest: "Dentsit checkup"');
+      .toBe('No upcoming events match. Closest: “Dentsit checkup”');
   });
 
   it('says so plainly when there is nothing close either', () => {
@@ -732,9 +732,9 @@ describe('follow-up rule storage and wording', () => {
   });
 
   it('describes the timing', () => {
-    expect(describeEventRule(rule({ afterEvent: true }))).toBe('"flight" · after it ends');
+    expect(describeEventRule(rule({ afterEvent: true }))).toBe('“flight” · after it ends');
     expect(describeEventRule(rule({ afterEvent: true, skipIfUpcoming: true })))
-      .toBe('"flight" · after it ends, unless another is booked');
+      .toBe('“flight” · after it ends, unless another is booked');
   });
 
   it('reads the wide window only while an enabled follow-up rule needs it', () => {

@@ -9,7 +9,7 @@ import { rotationCoveredOf } from '../utils/rotation';
 import { useSheetMotion } from '../hooks/useSheetMotion';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { displayTitleFor } from '../utils/visibilityUtils';
-import { spacing, radius, font, fontWeight, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, sheetBottomInset, type Colors } from '../theme';
 import type { Task } from '../types';
 
 interface Props {
@@ -108,7 +108,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     right: 0,
     bottom: 0,
     paddingHorizontal: spacing.md,
-    paddingBottom: 34,
+    paddingBottom: sheetBottomInset,
   },
   card: {
     backgroundColor: colors.bgSecondary,

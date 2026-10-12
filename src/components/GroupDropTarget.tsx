@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { Animated, StyleSheet, Easing } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, border, animation } from '../theme';
+import { TRAY_MARGIN_Y } from './TaskGroupTray';
 
 interface Props {
   /** True while a dragged task is aimed at this group. */
@@ -69,13 +70,16 @@ const styles = StyleSheet.create({
   wrapper: { position: 'relative' },
   // Traces the stack's tray (TaskGroupTray's margins and radius) — the
   // highlight has to land on the region it is offering to drop into, and the
-  // tray is now that region's visible edge.
+  // tray is now that region's visible edge. Vertically that is the tray's own
+  // margin, not a deeper inset: a collapsed stack's card edges hang in the
+  // room the tray makes at its bottom, and a border inset past that room cut
+  // straight through them.
   highlight: {
     position: 'absolute',
     left: spacing.md,
     right: spacing.md,
-    top: spacing.sm,
-    bottom: spacing.sm,
+    top: TRAY_MARGIN_Y,
+    bottom: TRAY_MARGIN_Y,
     borderRadius: radius.lg,
     borderWidth: border.sm * 2,
   },

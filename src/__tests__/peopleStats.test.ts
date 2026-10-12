@@ -45,7 +45,7 @@ function task(over: Partial<Task> = {}): Task {
     penaltyFiredAt: null,
     penaltyCreditedAt: null,
     gatesApps: false,
-    showStreak: false, streakRequiresWindow: false,
+    showStreak: false, streakRequiresWindow: false, streakCountsUnits: false,
     parentId: null, groupId: null, projectId: null,
     chainEnabled: false, chainIndex: 0, chainItems: [], chainStepOnSchedule: false, vacationPause: false, excludeFromSuggestions: false,
     followUpTaskEveryN: null, followUpTaskTitle: null, followUpTaskDraft: null,
@@ -119,11 +119,11 @@ describe('describeTimeTogether', () => {
   });
 
   it('is singular for one', () => {
-    expect(describeTimeTogether(1)).toBe('You spent time with people on 1 occasion this year.');
+    expect(describeTimeTogether(1)).toBe('You completed 1 task involving people this year.');
   });
 
   it('is plural otherwise', () => {
-    expect(describeTimeTogether(11)).toBe('You spent time with people on 11 occasions this year.');
+    expect(describeTimeTogether(11)).toBe('You completed 11 tasks involving people this year.');
   });
 });
 

@@ -103,7 +103,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   penaltyCreditedAt: null,
   gatesApps: false,
   showStreak: false,
-  streakRequiresWindow: false,
+  streakRequiresWindow: false, streakCountsUnits: false,
   parentId: null,
   groupId: null,
   projectId: null,
@@ -268,6 +268,22 @@ describe('isMorningCheckInCandidate', () => {
     jest.setSystemTime(new Date(localIso('2025-06-10T01:30')));
     const task = makeTask({ dueDate: localIso('2025-06-08T00:00'), deadline: DEADLINE });
     expect(isMorningCheckInCandidate(task, '02:00')).toBe(true);
+  });
+});
+
+describe('vacationEndedAt', () => {
+  const dueOn = (day: string) => makeTask({ dueDate: localIso(`${day}T00:00`) });
+
+  it('skips a task whose day fell before the vacation ended', () => {
+    expect(isMorningCheckInCandidate(dueOn('2025-06-05'), DAY_RESET, localIso('2025-06-09T12:00'))).toBe(false);
+  });
+
+  it('still asks about a task dated the day vacation turned off', () => {
+    expect(isMorningCheckInCandidate(dueOn('2025-06-09'), DAY_RESET, localIso('2025-06-09T12:00'))).toBe(true);
+  });
+
+  it('asks about everything overdue when no vacation has ended', () => {
+    expect(isMorningCheckInCandidate(dueOn('2025-06-05'), DAY_RESET, null)).toBe(true);
   });
 });
 

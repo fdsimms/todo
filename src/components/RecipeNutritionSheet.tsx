@@ -21,6 +21,9 @@ import {
   describeRecipeNutritionEstimate, type RecipeNutritionEstimate,
 } from '../utils/recipeNutritionEstimate';
 import { describeAIError, estimateRecipeNutrition, recipeNutritionEstimateAvailable } from '../services/aiSuggestions';
+import { usePendingRecipeEstimateStore } from '../store/usePendingRecipeEstimateStore';
+import { isQueueableFailure } from '../utils/estimateQueue';
+import { liveFor } from '../utils/recipeEstimateQueue';
 import { EditorSheet } from './EditorSheet';
 import { GroceryItemSheet } from './GroceryItemSheet';
 import { InlineAction } from './InlineAction';
@@ -115,6 +118,11 @@ interface Props {
    * catalog write because the screen's memo watches the same store.
    */
   reading: RecipeNutritionReading;
+  /**
+   * Which recipe this is, for the offline queue only: an estimate saved for later
+   * is filed under it (`utils/recipeEstimateQueue.ts`).
+   */
+  recipeId: string;
   /** For the AI estimate's prompt only — see `runEstimate` below. */
   recipeName: string;
   /** Scaled to whatever the page's scale chips currently say. */
@@ -128,7 +136,7 @@ function formatAmount(key: NutrientKey, amount: number): string {
   return String(Math.round(amount * 10) / 10);
 }
 
-export function RecipeNutritionSheet({ visible, reading, recipeName, servings, onClose }: Props) {
+export function RecipeNutritionSheet({ visible, reading, recipeId, recipeName, servings, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation();
@@ -172,6 +180,8 @@ export function RecipeNutritionSheet({ visible, reading, recipeName, servings, o
   const [estimate, setEstimate] = useState<RecipeNutritionEstimate | null>(null);
   const [estimating, setEstimating] = useState(false);
   const [estimateError, setEstimateError] = useState<string | null>(null);
+  /** Whether the failure on screen is one waiting can fix, so Save for later is offered. */
+  const [queueable, setQueueable] = useState(false);
 
   const { nutrition, gaps, excluded } = reading;
 
@@ -192,7 +202,17 @@ export function RecipeNutritionSheet({ visible, reading, recipeName, servings, o
   useEffect(() => {
     setEstimate(null);
     setEstimateError(null);
+    setQueueable(false);
   }, [estimateKey]);
+
+  // An estimate saved while offline, believed only while its fingerprint is the
+  // one on screen: `liveFor` is the one place that comparison is made, so a row
+  // for an edited or rescaled recipe is simply not shown.
+  const queuedRows = usePendingRecipeEstimateStore(s => s.pending);
+  const queuedRow = useMemo(() => liveFor(queuedRows, recipeId, estimateKey), [queuedRows, recipeId, estimateKey]);
+  // What an estimate asked now would send, and what a saved one sent.
+  const askedLines = () => reading.lines.map(line =>
+    line.prep ? `${line.quantity} ${line.name}, ${line.prep}` : `${line.quantity} ${line.name}`);
   // What the request in flight was asked about, read back after the await:
   // the reset above clears a guess when the recipe changes, but a reply
   // already on its way landed after it, so one recipe's estimate sat under
@@ -207,20 +227,23 @@ export function RecipeNutritionSheet({ visible, reading, recipeName, servings, o
     haptics.tap();
     setEstimating(true);
     setEstimateError(null);
+    setQueueable(false);
     const askedFor = estimateKey;
     const stillHere = () => visibleRef.current && estimateKeyRef.current === askedFor;
     try {
-      const lines = reading.lines.map(line =>
-        line.prep ? `${line.quantity} ${line.name}, ${line.prep}` : `${line.quantity} ${line.name}`);
-      const next = await estimateRecipeNutrition(recipeName, servings, lines);
+      const next = await estimateRecipeNutrition(recipeName, servings, askedLines());
       if (!stillHere()) return;
       setEstimate(next);
+      // An estimate made now answers a saved one for this same reading, which
+      // would otherwise sit behind it asking again at the next launch.
+      if (queuedRow) usePendingRecipeEstimateStore.getState().discard(recipeId);
       haptics.success();
     } catch (e) {
       if (!stillHere()) return;
       // The reason, not a blanket "try again": no key, demo mode and a
       // reply with nothing usable in it are not fixed by waiting.
       setEstimateError(describeAIError(e));
+      setQueueable(isQueueableFailure(e));
       haptics.error();
     } finally {
       // Cleared whichever way it went: the spinner belongs to this sheet, not
@@ -228,6 +251,28 @@ export function RecipeNutritionSheet({ visible, reading, recipeName, servings, o
       setEstimating(false);
     }
   };
+
+  /**
+   * Keeps this reading's estimate to be made when there is a connection. The
+   * sheet shows the result the next time it opens on the same reading.
+   */
+  const saveForLater = () => {
+    haptics.success();
+    usePendingRecipeEstimateStore.getState().enqueue({
+      recipeId,
+      estimateKey,
+      title: recipeName,
+      servings,
+      lines: askedLines(),
+    });
+    setEstimateError(null);
+    setQueueable(false);
+  };
+
+  // What is on screen: one made just now, else one saved while offline that is
+  // ready for this exact reading.
+  const savedEstimate = !estimate && queuedRow?.status === 'ready' ? queuedRow.estimate : null;
+  const shownEstimate = estimate ?? savedEstimate;
 
   // Per serving where the recipe said how many it makes, and the whole dish
   // where it didn't — the same choice `describeNutrition` makes, so the sheet
@@ -331,7 +376,7 @@ export function RecipeNutritionSheet({ visible, reading, recipeName, servings, o
   const countLine =
     gaps.total === 0
       ? null
-      : `Counted from ${gaps.covered} of ${gaps.total} ingredients.`;
+      : `Counted from ${gaps.covered} of ${gaps.total} ${gaps.total === 1 ? 'ingredient' : 'ingredients'}.`;
 
   return (
     <EditorSheet
@@ -408,35 +453,38 @@ export function RecipeNutritionSheet({ visible, reading, recipeName, servings, o
             ))}
           </View>
           <Text style={styles.hint}>
-            Added up from the ingredients' own labels, so these are as good as those
-            labels are. A nutrient too few of them state is left out rather than counted
-            as zero.
+            Added up from the ingredients’ own labels. A nutrient too few ingredients
+            state is left out instead of
+            counted as zero.
           </Text>
         </>
       ) : (
         <View style={styles.card}>
           <Text style={styles.emptyTotal}>
-            Too few of these ingredients have figures to total the dish yet. Fill some in
-            below and the panel appears here.
+            Too few ingredients have figures to total this dish. Fill some in below
+            to see the nutrition panel here.
           </Text>
           {recipeNutritionEstimateAvailable() && (
             <View style={styles.estimateBlock}>
-              {estimate ? (
+              {shownEstimate ? (
                 <>
                   {/* Said outright because the real panel above this reads
                       per serving whenever the recipe says how many it makes,
                       and the model is asked for the whole dish: unlabeled,
                       a four-serving stew's estimate read as one bowl. */}
                   <Text style={styles.estimateLabel}>WHOLE RECIPE, ESTIMATED</Text>
-                  {NUTRIENT_KEYS.filter(key => estimate.amounts[key] !== undefined).map(key => (
+                  {NUTRIENT_KEYS.filter(key => shownEstimate.amounts[key] !== undefined).map(key => (
                     <View key={key} style={styles.nutrientRow}>
                       <Text style={styles.nutrientLabel}>{NUTRIENT_LABEL[key].label}</Text>
                       <Text style={styles.nutrientAmount}>
-                        {formatAmount(key, estimate.amounts[key] as number)} {NUTRIENT_LABEL[key].unit}
+                        {formatAmount(key, shownEstimate.amounts[key] as number)} {NUTRIENT_LABEL[key].unit}
                       </Text>
                     </View>
                   ))}
-                  <Text style={styles.hint}>{describeRecipeNutritionEstimate(estimate)}</Text>
+                  <Text style={styles.hint}>
+                    {describeRecipeNutritionEstimate(shownEstimate)}
+                    {savedEstimate ? ' Estimated while you were offline.' : ''}
+                  </Text>
                   <View style={styles.gapActions}>
                     <InlineAction
                       label="Estimate again"
@@ -454,12 +502,55 @@ export function RecipeNutritionSheet({ visible, reading, recipeName, servings, o
                     icon="sparkles"
                     onPress={runEstimate}
                     disabled={estimating}
-                    accessibilityLabel="Estimate this recipe's nutrition with AI"
+                    accessibilityLabel="Estimate this recipe’s nutrition with AI"
                   />
                   {estimating && <ActivityIndicator color={colors.textSecondary} />}
                 </View>
               )}
               {!!estimateError && <Text style={styles.gapReason}>{estimateError}</Text>}
+              {queueable && !queuedRow && !estimating && (
+                <View style={styles.gapActions}>
+                  <InlineAction
+                    label="Save for later"
+                    icon="time-outline"
+                    onPress={saveForLater}
+                    accessibilityLabel="Save this recipe's estimate to make later"
+                  />
+                  <Text style={styles.gapReason}>
+                    It is estimated when you open the app online. Reopen this sheet to see it.
+                  </Text>
+                </View>
+              )}
+              {queuedRow?.status === 'waiting' && !shownEstimate && (
+                <View style={styles.gapActions}>
+                  <Text style={styles.gapReason}>
+                    Waiting for a connection. It is estimated when you open the app online.
+                  </Text>
+                  <InlineAction
+                    label="Cancel"
+                    variant="neutral"
+                    onPress={() => { haptics.tap(); usePendingRecipeEstimateStore.getState().discard(recipeId); }}
+                    accessibilityLabel="Cancel the saved estimate"
+                  />
+                </View>
+              )}
+              {queuedRow?.status === 'failed' && !shownEstimate && (
+                <View style={styles.gapActions}>
+                  <Text style={styles.gapReason}>{queuedRow.error ?? 'This could not be estimated.'}</Text>
+                  <InlineAction
+                    label="Try again"
+                    icon="refresh-outline"
+                    onPress={() => { haptics.tap(); void usePendingRecipeEstimateStore.getState().retry(recipeId); }}
+                    accessibilityLabel="Try the saved estimate again"
+                  />
+                  <InlineAction
+                    label="Remove"
+                    variant="neutral"
+                    onPress={() => { haptics.tap(); usePendingRecipeEstimateStore.getState().discard(recipeId); }}
+                    accessibilityLabel="Remove the saved estimate"
+                  />
+                </View>
+              )}
             </View>
           )}
         </View>
@@ -537,8 +628,8 @@ export function RecipeNutritionSheet({ visible, reading, recipeName, servings, o
                     : weighing
                       ? `No weight recorded for ${weighing.text}.`
                       : unfixable === 'noAmount'
-                        ? "This amount doesn't have a number in it, so there's nothing to relate to a weight. Edit the ingredient in the recipe to give it one, like \"3 cloves\" instead of \"several\"."
-                        : "This amount can't be matched to its figures. Check the serving size on them."}
+                        ? "This amount has no number, so it can’t be converted to a weight. Edit the ingredient to add one, like “3 cloves” instead of “several”."
+                        : "This amount can’t be matched to its figures. Check their serving size."}
                 </Text>
 
                 {weighingId === line.id && weighing ? (
@@ -593,7 +684,7 @@ export function RecipeNutritionSheet({ visible, reading, recipeName, servings, o
                         icon="create-outline"
                         variant="neutral"
                         onPress={() => { haptics.tap(); setEditingLine(line); }}
-                        accessibilityLabel={`Edit ${line.name}'s amount in the recipe`}
+                        accessibilityLabel={`Edit ${line.name}’s amount in the recipe`}
                       />
                     ) : (
                       <InlineAction
@@ -603,18 +694,18 @@ export function RecipeNutritionSheet({ visible, reading, recipeName, servings, o
                       />
                     )}
                     <InlineAction
-                      label="Don't count this"
+                      label="Don’t count this"
                       variant="neutral"
                       onPress={() => excludeLine(line)}
-                      accessibilityLabel={`Leave ${line.name} out of this recipe's nutrition total`}
+                      accessibilityLabel={`Leave ${line.name} out of this recipe’s nutrition total`}
                     />
                   </View>
                 )}
               </View>
             ))}
             <Text style={styles.hint}>
-              Figures are saved against the food in your grocery catalog, so filling one in
-              here also fills it in for every other recipe that calls for it.
+              Figures are saved to the food in your grocery catalog and apply
+              to every recipe that uses it.
             </Text>
           </View>
         </>
@@ -638,18 +729,18 @@ export function RecipeNutritionSheet({ visible, reading, recipeName, servings, o
                     accessibilityLabel={`Add ${line.name} to your grocery catalog`}
                   />
                   <InlineAction
-                    label="Don't count this"
+                    label="Don’t count this"
                     variant="neutral"
                     onPress={() => excludeLine(line)}
-                    accessibilityLabel={`Leave ${line.name} out of this recipe's nutrition total`}
+                    accessibilityLabel={`Leave ${line.name} out of this recipe’s nutrition total`}
                   />
                 </View>
               </View>
             ))}
             <Text style={styles.hint}>
-              These lines don't match anything in your grocery catalog, so there's nowhere
-              to keep figures for them yet. Adding one lets you set a brand, a price or
-              figures for it. Most one-off ingredients are fine left as they are.
+              These lines don’t match anything in your grocery catalog, so figures can’t be
+              saved for them. Add one to set a brand, price or figures.
+              One-off ingredients can stay as they are.
             </Text>
           </View>
         </>
@@ -664,17 +755,17 @@ export function RecipeNutritionSheet({ visible, reading, recipeName, servings, o
                 <Text style={styles.gapName} numberOfLines={1}>{line.name}</Text>
                 <View style={styles.gapActions}>
                   <InlineAction
-                    label="Count it after all"
+                    label="Count this"
                     variant="neutral"
                     onPress={() => includeLine(line)}
-                    accessibilityLabel={`Count ${line.name} in this recipe's nutrition total again`}
+                    accessibilityLabel={`Count ${line.name} in this recipe’s nutrition total again`}
                   />
                 </View>
               </View>
             ))}
             <Text style={styles.hint}>
-              Marked "don't count this", so it's left out of the total above rather than missing
-              any figures.
+              Marked “Don’t count this”, so these are left out of the total above and don’t
+              count as missing figures.
             </Text>
           </View>
         </>

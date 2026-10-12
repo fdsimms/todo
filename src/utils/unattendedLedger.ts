@@ -52,9 +52,10 @@ export const UNATTENDED_ACTION_SPECS: Record<UnattendedAction, UnattendedActionS
   created: { action: 'created', verb: 'Added', icon: 'add-circle-outline', adds: true },
   cleared: { action: 'cleared', verb: 'Cleared', icon: 'close-circle-outline', adds: false },
   expired: { action: 'expired', verb: 'Expired', icon: 'hourglass-outline', adds: false },
-  purged: { action: 'purged', verb: 'Purged', icon: 'trash-outline', adds: false },
-  // The four only an agent writes (see UnattendedActor). An edit or a move
-  // neither adds nor takes away, so neither is drawn as news.
+  purged: { action: 'purged', verb: 'Deleted', icon: 'trash-outline', adds: false },
+  // Only an agent writes these, but for one: the rain skip writes `moved` (see
+  // UnattendedActor). An edit or a move neither adds nor takes away, so
+  // neither is drawn as news.
   edited: { action: 'edited', verb: 'Edited', icon: 'create-outline', adds: false },
   moved: { action: 'moved', verb: 'Moved', icon: 'calendar-outline', adds: false },
   completed: { action: 'completed', verb: 'Completed', icon: 'checkmark-circle-outline', adds: false },
@@ -94,7 +95,10 @@ export function unattendedIcon(entry: Pick<UnattendedEntry, 'action' | 'kind'> &
 export function unattendedSource(entry: Pick<UnattendedEntry, 'action' | 'kind'> & Partial<Pick<UnattendedEntry, 'actor'>>): string {
   if (entry.actor === 'agent') return AGENT_SOURCE;
   if (entry.kind !== null) return isKnownKind(entry.kind) ? GENERATED_KIND_SPECS[entry.kind].label : 'Automatic task';
-  return entry.action === 'purged' ? 'Completed task cleanup' : 'Expired task sweep';
+  if (entry.action === 'purged') return 'Completed task cleanup';
+  // The one app-written move: an occurrence skipped because it rained (rainSkip.ts).
+  if (entry.action === 'moved') return 'Skipped after rain';
+  return 'Expired task sweep';
 }
 
 /**
@@ -196,17 +200,31 @@ export function unattendedKinds(entries: readonly UnattendedEntry[]): GeneratedK
   return [...seen];
 }
 
+/** The Activity filter's key for Claude's rows. Not a `GeneratedKind`, and not shaped like one. */
+export const AGENT_FILTER = 'agent';
+
+/** What the Activity screen can narrow to: one generator, everything Claude did, or (null) nothing. */
+export type ActivityFilter = GeneratedKind | typeof AGENT_FILTER | null;
+
+/** Whether an agent wrote any of these, which is what decides if "Claude" is worth offering as a filter. */
+export function hasAgentEntries(entries: readonly UnattendedEntry[]): boolean {
+  return entries.some(e => e.actor === 'agent');
+}
+
 /**
- * Narrows a ledger to one generator, for the filter on the screen.
+ * Narrows a ledger to one generator, or to Claude's rows, for the filter on
+ * the screen.
  *
  * `null` means no filter rather than "the entries with no kind" — the two
  * sweeps are reached by their own action, not by a null kind, because a filter
- * offering "nothing" as a choice reads as a bug.
+ * offering "nothing" as a choice reads as a bug. Claude's rows are matched by
+ * `actor`, not `kind`, since an agent's entry has no generator.
  */
 export function filterUnattended(
   entries: readonly UnattendedEntry[],
-  kind: GeneratedKind | null,
+  filter: ActivityFilter,
 ): UnattendedEntry[] {
-  if (kind === null) return [...entries];
-  return entries.filter(e => e.kind === kind);
+  if (filter === null) return [...entries];
+  if (filter === AGENT_FILTER) return entries.filter(e => e.actor === 'agent');
+  return entries.filter(e => e.actor !== 'agent' && e.kind === filter);
 }

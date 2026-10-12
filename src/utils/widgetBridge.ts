@@ -48,11 +48,23 @@ export interface WidgetBridge {
    * see widgetQuietTaps.ts). A string for the same reason as the line above.
    */
   drainQuietWidgetTaps: () => Promise<string>;
+  /**
+   * The medications Siri can hear, and the doses it queued (`{ id, name, at }`
+   * as JSON) — see medicationIndex.ts. Optional because a binary built before
+   * LogMedicationIntent has neither, and a JS update can reach it first.
+   */
+  writeMedicationIndex?: (jsonString: string) => Promise<boolean>;
+  drainPendingDoses?: () => Promise<string>;
+  /**
+   * Dreams queued by LogDreamIntent (`{ text, at }` as JSON) — see
+   * dreamQueue.ts. Optional for the reason the dose drain is.
+   */
+  drainPendingDreams?: () => Promise<string>;
   drainSharedLinks: () => Promise<string[]>;
   syncTimerLiveActivities: (jsonString: string) => Promise<boolean>;
   syncTripLiveActivity: (jsonString: string) => Promise<boolean>;
   syncFocusLiveActivity: (jsonString: string) => Promise<boolean>;
-  /** The Apple Watch's copy of the snapshot, built with `WATCH_LIMITS`. */
+  /** The Apple Watch's copy of the snapshot, built with `WATCH_CAPS`. */
   writeWatchSnapshot: (jsonString: string) => Promise<boolean>;
   /**
    * Called when a watch tap or a task dictated on the watch has just joined

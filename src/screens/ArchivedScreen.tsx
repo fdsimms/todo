@@ -1,7 +1,8 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { useRoute } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { useTaskStore } from '../store/useTaskStore';
@@ -25,6 +26,9 @@ import { describeTaskRecurrence } from '../utils/recurrenceLabels';
 import { useRowSelection } from '../hooks/useRowSelection';
 import type { Task } from '../types';
 import { useFilterField } from '../hooks/useFilterField';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 
 // A quiet, out-of-the-way home for recurring tasks paused indefinitely (see
 // archiveTask/unarchiveTask in useTaskStore) — reached only via the side
@@ -37,7 +41,9 @@ import { useFilterField } from '../hooks/useFilterField';
 // selection mode and the per-row context are for — a hundred rows of title and
 // archive date is a list you can't answer any question about.
 export function ArchivedScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
+  const scrollTop = useListScrollToTop<FlatList<Task>>();
   const tabBarHeight = useBottomTabBarHeight();
   const archivedTasks = useTaskStore(useShallow(s => s.archivedTasks()));
   const unarchiveTask = useTaskStore(s => s.unarchiveTask);
@@ -52,6 +58,7 @@ export function ArchivedScreen() {
   const searchFilter = useFilterField();
   const query = searchFilter.query;
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
+  const [flashId, setFlashId] = useState<string | null>(null);
 
   const {
     selectionMode, selectedIds, enterSelectionMode, toggleSelection,
@@ -83,6 +90,31 @@ export function ArchivedScreen() {
     );
   }, [sorted, query]);
 
+  // A search result for a paused task lands here (see TodayScreen.locateTask):
+  // clear the filter so the row exists, scroll to it and tint it for a moment.
+  // Stamped like the other one-shot params so a second visit to the same task
+  // still applies.
+  const route = useRoute<any>();
+  const [handledFocus, setHandledFocus] = useState<number | undefined>(undefined);
+  const [pendingFocusId, setPendingFocusId] = useState<string | null>(null);
+  useEffect(() => {
+    const stamp = route.params?.at as number | undefined;
+    if (stamp === undefined || stamp === handledFocus) return;
+    setHandledFocus(stamp);
+    searchFilter.clear();
+    setPendingFocusId((route.params?.focusTaskId as string | undefined) ?? null);
+  }, [route.params?.at, route.params?.focusTaskId, handledFocus]);
+  useEffect(() => {
+    if (pendingFocusId === null) return;
+    const index = filtered.findIndex(t => t.id === pendingFocusId);
+    if (index < 0) return;
+    setPendingFocusId(null);
+    scrollTop.ref.current?.scrollToIndex({ index, animated: true, viewPosition: 0.3 });
+    setFlashId(pendingFocusId);
+    const timer = setTimeout(() => setFlashId(null), 1200);
+    return () => clearTimeout(timer);
+  }, [pendingFocusId, filtered]);
+
   const restore = useCallback((id: string) => {
     haptics.tap();
     animateLayout();
@@ -111,7 +143,7 @@ export function ArchivedScreen() {
     haptics.warning();
     Alert.alert(
       `Delete ${ids.length} ${plural}?`,
-      `This removes ${ids.length === 1 ? 'it' : 'them'} for good, along with the history. You can undo by shaking your phone right after.`,
+      `This deletes ${ids.length === 1 ? 'it' : 'them'} along with the history. Shake your phone right after to undo.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -146,9 +178,11 @@ export function ArchivedScreen() {
     if (!selectionMode) enterSelectionMode(taskId);
   }, [selectionMode, enterSelectionMode]);
 
+  // The tab bar floats over the screen rather than reserving space, so the
+  // list always clears it; selection mode stacks the bulk bar on top of that.
   const listBottomPadding = selectionMode
     ? tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm
-    : 40;
+    : tabBarHeight + spacing.md;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -181,6 +215,15 @@ export function ArchivedScreen() {
 
       <PaintSelectionProvider {...paintProps}>
         <FlatList
+          ref={scrollTop.ref}
+          {...scrollTop.listProps}
+          // Rows are variable height (the meta line wraps), so a jump past what
+          // has been measured lands approximately and is corrected once it has.
+          onScrollToIndexFailed={info => {
+            scrollTop.ref.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: false });
+            setTimeout(() => scrollTop.ref.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0.3 }), 100);
+          }}
+          refreshControl={pullSearch.refreshControl}
           data={filtered}
           keyExtractor={item => item.id}
           // A paint gesture owns the touch for its duration — see the note in
@@ -201,6 +244,7 @@ export function ArchivedScreen() {
               projectTitle={item.projectId ? projectNamesById.get(item.projectId) ?? null : null}
               selectionMode={selectionMode}
               selected={selectedIds.has(item.id)}
+              flashing={flashId === item.id}
               onPress={handleRowPress}
               onLongPress={handleRowLongPress}
               onToggleSelect={toggleSelection}
@@ -215,14 +259,14 @@ export function ArchivedScreen() {
               <EmptyState
                 icon="search-outline"
                 title="No matches"
-                subtitle={`Nothing archived matches "${query.trim()}".`}
+                subtitle={`Nothing archived matches “${query.trim()}”.`}
                 bottomOffset={tabBarHeight}
               />
             ) : (
               <EmptyState
                 icon="archive-outline"
                 title="No archived tasks"
-                subtitle="Pause a recurring task without losing its history. Archive it from the task editor and pick back up any time."
+                subtitle="Archive a recurring task from its editor to pause it and keep its history. Restore it later."
                 bottomOffset={tabBarHeight}
               />
             )
@@ -257,6 +301,8 @@ export function ArchivedScreen() {
         task={editingTask}
         onClose={() => setEditorVisible(false)}
       />
+      <ScrollToTopButton {...scrollTop.buttonProps} />
+      {pullSearch.sheet}
     </View>
   );
 }
@@ -277,6 +323,8 @@ interface RowProps {
   projectTitle: string | null;
   selectionMode: boolean;
   selected: boolean;
+  /** Tinted briefly after a search result lands on this row. */
+  flashing: boolean;
   // Each takes the task it acts on rather than the screen closing over it once
   // per row, so one stable function serves every row and the memo holds.
   onPress: (task: Task) => void;
@@ -289,7 +337,7 @@ interface RowProps {
 }
 
 const ArchivedRow = React.memo(function ArchivedRow({
-  task, categoryLabel, projectTitle, selectionMode, selected,
+  task, categoryLabel, projectTitle, selectionMode, selected, flashing,
   onPress, onLongPress, onToggleSelect, onRestore, styles, colors, cardShadow,
 }: RowProps) {
   const paintRef = usePaintSelectionRow(task.id);
@@ -301,7 +349,7 @@ const ArchivedRow = React.memo(function ArchivedRow({
   const pausedOn = task.archivedAt ? format(new Date(task.archivedAt), 'MMM d') : null;
 
   return (
-    <View ref={paintRef} style={[styles.card, cardShadow, selected && styles.cardSelected]}>
+    <View ref={paintRef} style={[styles.card, cardShadow, (selected || flashing) && styles.cardSelected]}>
       <TouchableOpacity
         style={styles.cardBody}
         onPress={() => onPress(task)}

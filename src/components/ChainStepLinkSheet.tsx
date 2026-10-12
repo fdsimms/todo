@@ -117,7 +117,7 @@ export function ChainStepLinkSheet({
         <View style={styles.body}>
           <Text style={styles.hint}>
             {taskLinkUrl
-              ? "Leave it empty and this step opens the task's link."
+              ? "Leave it empty and this step opens the task’s link."
               : 'Leave it empty and this step opens nothing.'}
           </Text>
           <View style={styles.chipRow}>
@@ -146,7 +146,7 @@ export function ChainStepLinkSheet({
               onChangeText={setCustomText}
               onSubmitEditing={commitCustomText}
               onBlur={commitCustomText}
-              placeholder="e.g. https://... or app://"
+              placeholder="e.g. https://example.com or app://"
               placeholderTextColor={colors.textTertiary}
               keyboardType="url"
               autoCapitalize="none"

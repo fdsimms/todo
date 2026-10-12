@@ -12,7 +12,7 @@ import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeBlurView } from './SafeBlurView';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, lineHeight, border, interaction, iconSize, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, lineHeight, border, interaction, iconSize, sheetBottomInset, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { formatDuration, sumEstimatedMinutes } from '../utils/effort';
 import {
@@ -267,8 +267,8 @@ export function SuggestedPinsSheet({ visible, tasks, pinnedTasks, onClose, onCon
 
           {slots.length === 0 ? (
             <Text style={styles.emptyHint}>
-              Nothing to suggest: everything on today is pinned already or sits in a category
-              you've excluded.
+              Nothing to suggest. Everything on Today is already pinned or in a category
+              you’ve excluded.
             </Text>
           ) : (
             <Text style={styles.hint}>Tap to include or skip, or swap a row for the next best task.</Text>
@@ -313,7 +313,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     right: 0,
     bottom: 0,
     paddingHorizontal: spacing.md,
-    paddingBottom: 34,
+    paddingBottom: sheetBottomInset,
   },
   handleArea: { alignItems: 'center', paddingTop: spacing.sm, paddingBottom: spacing.sm },
   handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.bgQuaternary },

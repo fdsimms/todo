@@ -7,6 +7,8 @@ import type {
   RecurrenceType,
   Recipe,
   MealPlanEntry,
+  MedicationLog,
+  NutrientKey,
   Shop,
   Task,
 } from '../types';
@@ -27,6 +29,17 @@ import { occupiesTime, type BusyEvent } from './calendarBusy';
 import { eventTaskEventOf } from './eventTasks';
 import { addDays } from 'date-fns/addDays';
 import { widgetTapNeedsApp } from './widgetQuietTaps';
+import { formatDose, medicationStats, repeatDose } from './medicationLog';
+import { NUTRIENT_LABEL } from './foodNutrition';
+import {
+  LIMIT_ROW_NAME,
+  activeLimits,
+  describeLimit,
+  limitStatus,
+  targetProgress,
+  type LimitStatus,
+  type NutritionTargets,
+} from './nutritionTargets';
 
 /**
  * Everything the iOS widgets read, and the one place its shape is decided.
@@ -61,7 +74,7 @@ import { widgetTapNeedsApp } from './widgetQuietTaps';
  * Its copy is still capped, because it travels as one WatchConnectivity
  * context with a size ceiling: compressed, these caps keep it well under.
  */
-export interface SnapshotLimits {
+export interface SnapshotCaps {
   visibleTasks: number;
   pinnedTasks: number;
   upcomingTasks: number;
@@ -69,7 +82,7 @@ export interface SnapshotLimits {
   groceryItemsPerList: number;
 }
 
-export const WIDGET_LIMITS: SnapshotLimits = {
+export const WIDGET_CAPS: SnapshotCaps = {
   visibleTasks: 50,
   pinnedTasks: 10,
   upcomingTasks: 30,
@@ -77,7 +90,7 @@ export const WIDGET_LIMITS: SnapshotLimits = {
   groceryItemsPerList: 10,
 };
 
-export const WATCH_LIMITS: SnapshotLimits = {
+export const WATCH_CAPS: SnapshotCaps = {
   visibleTasks: 80,
   pinnedTasks: 20,
   upcomingTasks: 30,
@@ -246,6 +259,101 @@ export interface WidgetSnapshot {
    * list would be "no more meetings today".
    */
   upcomingEvents: WidgetEvent[] | null;
+  /**
+   * The as-needed medications the Medications widget offers a button for,
+   * most recently taken first, or null when the medication log hasn't loaded
+   * in this process (the widget asks for the app rather than saying "none").
+   */
+  medications: WidgetMedication[] | null;
+  /**
+   * Today's food log against each Stay under limit, for the Limits widget, or
+   * null when the food log hasn't loaded in this process (the widget asks for
+   * the app rather than drawing a day of nothing). Empty when nothing is a
+   * limit. About the logical day it was written in only: the widget drops it
+   * at `nextDayStart`.
+   */
+  limits: WidgetLimit[] | null;
+}
+
+/**
+ * One limit on the Limits widget, worded here so the widget formats nothing:
+ * "Sat fat", "9 of 16g", "7g left". `fraction` is the bar, 0 to 1.
+ */
+export interface WidgetLimit {
+  id: string;
+  label: string;
+  value: string;
+  detail: string;
+  fraction: number;
+  status: LimitStatus;
+}
+
+/** How many limits the widget carries. A medium widget shows four. */
+export const MAX_WIDGET_LIMITS = 4;
+
+/**
+ * Each Stay under limit against today's totals, in label order, the same
+ * figures and wording Today's limit rows use (`limitContextRows`).
+ */
+export function buildWidgetLimits(
+  totals: Partial<Record<NutrientKey, number>>,
+  targets: NutritionTargets,
+  limits: readonly NutrientKey[],
+  warnPercent: number,
+): WidgetLimit[] {
+  return activeLimits(targets, limits).slice(0, MAX_WIDGET_LIMITS).map(key => {
+    const total = totals[key] ?? 0;
+    const target = targets[key]!;
+    const unit = NUTRIENT_LABEL[key].unit;
+    const suffix = unit === 'cal' ? ' cal' : unit;
+    const rounded = Math.round(total * 10) / 10;
+    return {
+      id: key,
+      label: LIMIT_ROW_NAME[key] ?? NUTRIENT_LABEL[key].label,
+      value: `${rounded.toLocaleString('en-US')} of ${target.toLocaleString('en-US')}${suffix}`,
+      detail: describeLimit(key, total, targets) ?? '',
+      fraction: targetProgress(key, total, targets),
+      status: limitStatus(key, total, targets, warnPercent),
+    };
+  });
+}
+
+/**
+ * One as-needed medication on the Medications widget. `id` is its
+ * `medicationKey`, the same id `LogMedicationIntent`'s entity carries, so the
+ * widget's button can hand the intent an entity without reading the Siri
+ * index. `dose` is what the button records (the last dose, `repeatDose`), so
+ * the row can say so before it is tapped.
+ */
+export interface WidgetMedication {
+  id: string;
+  name: string;
+  dose: string | null;
+  lastTakenAt: string;
+}
+
+/** How many medications the widget carries. A medium widget shows six. */
+export const MAX_WIDGET_MEDICATIONS = 6;
+
+/**
+ * The as-needed, non-archived medications, most recently taken first. Only
+ * as-needed ones for the reason the Medications screen's quick button is only
+ * on those: a scheduled dose is recorded by checking off its task, and the
+ * Today widget already has that checkbox.
+ */
+export function buildWidgetMedications(
+  logs: readonly MedicationLog[],
+  archived: readonly string[],
+): WidgetMedication[] {
+  return medicationStats(logs)
+    .filter(stat => stat.asNeeded && stat.lastTakenAt !== null && !archived.includes(stat.key))
+    .slice(0, MAX_WIDGET_MEDICATIONS)
+    .map(stat => ({
+      id: stat.key,
+      name: stat.name,
+      dose: formatDose(repeatDose(logs, stat.name)),
+      lastTakenAt: stat.lastTakenAt as string,
+    }));
 }
 
 /**
@@ -333,7 +441,7 @@ function groceryRows(
 export function buildGroceries(
   input: GroceryInput,
   now: Date,
-  limits: SnapshotLimits = WIDGET_LIMITS,
+  caps: SnapshotCaps = WIDGET_CAPS,
 ): WidgetGroceries {
   // The home list is not a row in `lists` (its id is null), so it is named
   // here rather than found — same shape `listPickerRows` builds.
@@ -342,12 +450,12 @@ export function buildGroceries(
     .slice()
     .sort((a, b) => Number(b === input.activeListId) - Number(a === input.activeListId));
 
-  const lists = ordered.slice(0, limits.groceryLists).map(id => ({
+  const lists = ordered.slice(0, caps.groceryLists).map(id => ({
     id,
     name: id === null ? HOME_LIST_NAME : listNameFor(id, input.lists),
     remaining: listRemainingCount(input.listEntries, id),
     total: listCount(input.listEntries, id),
-    ...groceryRows(input, id, limits.groceryItemsPerList),
+    ...groceryRows(input, id, caps.groceryItemsPerList),
   }));
 
   const shop = resolveActiveTrip(input.tripShopId, input.tripStartedAt, input.shops, now);
@@ -417,8 +525,17 @@ export interface SnapshotInput {
   upcoming: readonly { task: Task; visibleAt: Date }[];
   /** The "what did you eat?" setting, which decides whether a tap needs the app. */
   mealLogPrompt: boolean;
-  /** The widget's caps unless given; the watch's copy passes `WATCH_LIMITS`. */
-  limits?: SnapshotLimits;
+  /** The medication log and its archived names, or null before it has loaded. */
+  medications?: { logs: readonly MedicationLog[]; archived: readonly string[] } | null;
+  /** Today's food log totals and the limits to read them against, or null before the log has loaded. */
+  limits?: {
+    totals: Partial<Record<NutrientKey, number>>;
+    targets: NutritionTargets;
+    limits: readonly NutrientKey[];
+    warnPercent: number;
+  } | null;
+  /** How many rows cross: the widget's caps unless given; the watch's copy passes `WATCH_CAPS`. */
+  caps?: SnapshotCaps;
 }
 
 /**
@@ -432,7 +549,7 @@ export function buildUpcomingTasks(
   staleAfter: Date,
   events: readonly BusyEvent[] | null = null,
   mealLogPrompt = true,
-  maxTasks = WIDGET_LIMITS.upcomingTasks,
+  maxTasks = WIDGET_CAPS.upcomingTasks,
 ): WidgetUpcomingTask[] {
   return upcoming
     .filter(({ task, visibleAt }) =>
@@ -470,17 +587,17 @@ export function buildUpcomingEvents(
 }
 
 export function buildWidgetSnapshot(input: SnapshotInput): WidgetSnapshot {
-  const limits = input.limits ?? WIDGET_LIMITS;
+  const caps = input.caps ?? WIDGET_CAPS;
   const staleAfter = addDays(input.dayEnd, 1);
   return {
     updatedAt: input.now.toISOString(),
     visibleTasks: input.visibleTasks
       .filter(isWidgetWorthy)
-      .slice(0, limits.visibleTasks)
+      .slice(0, caps.visibleTasks)
       .map(t => toWidgetTask(t, input.events, input.mealLogPrompt)),
     pinnedTasks: input.pinnedTasks
       .filter(isWidgetWorthy)
-      .slice(0, limits.pinnedTasks)
+      .slice(0, caps.pinnedTasks)
       .map(t => toWidgetTask(t, input.events, input.mealLogPrompt)),
     upcomingTasks: buildUpcomingTasks(
       input.upcoming,
@@ -488,7 +605,7 @@ export function buildWidgetSnapshot(input: SnapshotInput): WidgetSnapshot {
       staleAfter,
       input.events,
       input.mealLogPrompt,
-      limits.upcomingTasks,
+      caps.upcomingTasks,
     ),
     nextDayStart: input.dayEnd.toISOString(),
     staleAfter: staleAfter.toISOString(),
@@ -502,9 +619,15 @@ export function buildWidgetSnapshot(input: SnapshotInput): WidgetSnapshot {
       input.dayResetTime
     ),
     doneToday: input.doneToday,
-    groceries: input.grocery ? buildGroceries(input.grocery, input.now, limits) : null,
+    groceries: input.grocery ? buildGroceries(input.grocery, input.now, caps) : null,
     meals: input.meals ? buildMeals(input.meals, input.recipes) : [],
     kitchen: input.kitchen ? buildKitchen(input.kitchen) : [],
     upcomingEvents: input.events ? buildUpcomingEvents(input.events, input.now, input.dayEnd) : null,
+    medications: input.medications
+      ? buildWidgetMedications(input.medications.logs, input.medications.archived)
+      : null,
+    limits: input.limits
+      ? buildWidgetLimits(input.limits.totals, input.limits.targets, input.limits.limits, input.limits.warnPercent)
+      : null,
   };
 }

@@ -1,14 +1,21 @@
 import React, { useMemo } from 'react';
-import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Platform, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
 import { font, radius, spacing, type Colors } from '../theme';
 import { DOSE_UNITS } from '../utils/medicationLog';
 import { ChoiceMenuChip, type ChoiceGroup } from './ChoiceMenuChip';
 import { TextField } from './TextField';
+import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 
 const NO_UNIT_KEY = 'none';
 /** The units that are a measure, as against a form you count. */
 const MEASURED_UNITS = new Set(['mg', 'mcg', 'g', 'ml']);
+
+/** Only the measured units, for a strength: "each capsule contains 125 mcg". */
+const MEASURED_UNIT_GROUPS: ChoiceGroup[] = [
+  { options: DOSE_UNITS.filter(u => MEASURED_UNITS.has(u.value)).map(u => ({ key: u.value, label: u.value })) },
+  { options: [{ key: NO_UNIT_KEY, label: 'No unit' }] },
+];
 
 const DOSE_UNIT_GROUPS: ChoiceGroup[] = [
   { heading: 'MEASURED', options: DOSE_UNITS.filter(u => MEASURED_UNITS.has(u.value)).map(u => ({ key: u.value, label: u.value })) },
@@ -24,6 +31,11 @@ interface Props {
   /** For `SheetModal`'s development warnings. */
   name: string;
   style?: StyleProp<ViewStyle>;
+  /** Which units the menu offers. Measured only is for a strength, which is never a count. */
+  units?: 'all' | 'measured';
+  placeholder?: string;
+  /** What the chip says until a unit is picked. */
+  unitPlaceholder?: string;
 }
 
 /**
@@ -33,29 +45,39 @@ interface Props {
  * (the task editor and a chain step's sheet) use this, so the unit list, its
  * grouping and the way a unit is cleared can't drift apart.
  */
-export function DoseAmountField({ amount, onChangeAmount, unit, onChangeUnit, name, style }: Props) {
+export function DoseAmountField({
+  amount, onChangeAmount, unit, onChangeUnit, name, style, units = 'all', placeholder = 'e.g. 125', unitPlaceholder = 'Choose unit',
+}: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
-    <View style={[styles.row, style]}>
-      <TextField
-        style={styles.input}
-        value={amount}
-        onChangeText={onChangeAmount}
-        placeholder="e.g. 50"
-        placeholderTextColor={colors.textTertiary}
-        keyboardType="decimal-pad"
-        returnKeyType="done"
-        accessibilityLabel="How much, optional"
-      />
-      <ChoiceMenuChip
-        groups={DOSE_UNIT_GROUPS}
-        selectedKey={unit}
-        onSelect={key => onChangeUnit(key === NO_UNIT_KEY ? null : key)}
-        noun="Unit"
-        name={name}
-      />
-    </View>
+    <>
+      <View style={[styles.row, style]}>
+        <TextField
+          style={styles.input}
+          value={amount}
+          onChangeText={onChangeAmount}
+          placeholder={placeholder}
+          placeholderTextColor={colors.textTertiary}
+          keyboardType="decimal-pad"
+          inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
+          returnKeyType="done"
+          accessibilityLabel="How much, optional"
+        />
+        <ChoiceMenuChip
+          groups={units === 'measured' ? MEASURED_UNIT_GROUPS : DOSE_UNIT_GROUPS}
+          selectedKey={unit}
+          onSelect={key => onChangeUnit(key === NO_UNIT_KEY ? null : key)}
+          noun="Unit"
+          fallbackLabel={unitPlaceholder}
+          name={name}
+        />
+      </View>
+      {/* Mounted here rather than left to the host: this field is used by
+          sheets that don't render the Done bar themselves (a chain step's
+          medication sheet). Several copies are fine, newest one wins. */}
+      <NumberPadAccessory />
+    </>
   );
 }
 

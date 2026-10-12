@@ -7,6 +7,7 @@ import {
   daysWithoutMeal,
   describeAddedToList,
   describeWeekPlan,
+  describeDinnerCoverage,
   describeWeekRange,
   earliestUnplannedSlot,
   entriesForDay,
@@ -32,6 +33,8 @@ import {
   titleForEntry,
   upcomingDays,
   weekCopyDrafts,
+  withoutPastDays,
+  copiedLabel,
   buildMealPlanEntry,
 } from '../utils/mealPlan';
 import { recipeNameKey } from '../utils/recipeUtils';
@@ -828,6 +831,27 @@ describe('describeWeekPlan', () => {
   });
 });
 
+describe('describeDinnerCoverage', () => {
+  const week = ['2026-08-03', '2026-08-04', '2026-08-05', '2026-08-06', '2026-08-07', '2026-08-08', '2026-08-09'];
+
+  it('counts nights with a dinner, not dinners', () => {
+    expect(describeDinnerCoverage([
+      entry('2026-08-05', 'dinner'),
+      entry('2026-08-05', 'dinner', { title: 'Salad' }),
+      entry('2026-08-06', 'dinner'),
+      entry('2026-08-06', 'lunch'),
+    ], week)).toBe('2 of 7 dinners');
+  });
+
+  it('says nothing for a week with no dinners planned', () => {
+    expect(describeDinnerCoverage([entry('2026-08-05', 'lunch')], week)).toBeNull();
+  });
+
+  it('ignores a dinner outside the week', () => {
+    expect(describeDinnerCoverage([entry('2026-08-12', 'dinner')], week)).toBeNull();
+  });
+});
+
 describe('describeWeekRange', () => {
   const week = (y: number, m: number, d: number) =>
     Array.from({ length: 7 }, (_, i) => new Date(y, m, d + i));
@@ -950,5 +974,29 @@ describe('replacedMealEntry', () => {
     // As written names no head count, so the new recipe starts at the household's.
     const plain = entry('2026-03-02', 'dinner', { recipeId: 'a' });
     expect(replacedMealEntry(plain, { recipeId: 'b', title: 'B' }, recipes, 4).recipeScale).toBe(2);
+  });
+});
+
+describe('withoutPastDays', () => {
+  const drafts = ['2026-10-05', '2026-10-08', '2026-10-10', '2026-10-11'].map(date => ({ date }));
+
+  it('drops the days before today from the week in progress', () => {
+    const { kept, skipped } = withoutPastDays(drafts, '2026-10-10', '2026-10-11');
+    expect(kept.map(d => d.date)).toEqual(['2026-10-10', '2026-10-11']);
+    expect(skipped).toBe(2);
+  });
+
+  it('keeps every day of a week that is entirely past', () => {
+    const { kept, skipped } = withoutPastDays(drafts, '2026-10-20', '2026-10-11');
+    expect(kept).toHaveLength(4);
+    expect(skipped).toBe(0);
+  });
+});
+
+describe('copiedLabel', () => {
+  it('names the meals left out, and only when there were some', () => {
+    expect(copiedLabel('Copied 4 meals', 0)).toBe('Copied 4 meals');
+    expect(copiedLabel('Copied 4 meals', 1)).toBe('Copied 4 meals, 1 on a day already past left out');
+    expect(copiedLabel('Copied 4 meals', 3)).toBe('Copied 4 meals, 3 on days already past left out');
   });
 });

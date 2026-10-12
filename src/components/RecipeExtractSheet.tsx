@@ -535,7 +535,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   const sourceMeta = [
     input.page?.url ?? (typedUrl || null),
     recipeHasAttribution(recipe)
-      ? (keepsExistingLink ? 'replaces the source and author, not the link' : 'replaces what’s there')
+      ? (keepsExistingLink ? 'replaces the source and author, keeps the link' : 'replaces what’s there')
       : null,
   ].filter(Boolean).join(' · ');
 
@@ -552,7 +552,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
       <>
         <Text style={styles.groupLabel}>OTHER RECIPES THIS ONE USES</Text>
         <Text style={styles.groupHint}>
-          Link the ones you already have, or photograph the page for the ones you don't.
+          Link the ones you already have, or photograph the page for the ones you don’t.
         </Text>
         {/* Its own bottom margin: the ingredient rows below have none of their
             own, and a 2pt gap would read as one continuous list. */}
@@ -612,7 +612,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
           {...keyboardScroll.props}
         >
           <RecipeSourcePicker
-            intro={`Open a recipe link, paste a recipe, or photograph the page. Its servings and shopping list get added to ${recipe?.name ?? 'this recipe'} instead of just going on the grocery list.`}
+            intro={`Open a recipe link, paste a recipe, or photograph the page. Its servings and shopping list are added to ${recipe?.name ?? 'this recipe'}.`}
             mode={input.mode}
             onChangeMode={input.setMode}
             text={input.text}
@@ -647,9 +647,9 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
             icon="checkmark-circle-outline"
             title="Nothing found"
             subtitle={input.usingPhoto
-              ? `Nothing readable turned up in ${input.photos.length > 1 ? 'those photos' : 'that photo'}. Try again in better light, or paste the text instead.`
+              ? `Nothing readable in ${input.photos.length > 1 ? 'those photos' : 'that photo'}. Try again in better light, or paste the text instead.`
               : input.usingLink
-              ? 'No recipe turned up on that page. Copy the recipe from it and paste it instead.'
+              ? 'No recipe found on that page. Copy the recipe and paste it instead.'
               : 'No servings or shopping items turned up in that text.'}
             actionLabel={input.usingPhoto ? 'Try another photo' : undefined}
             onAction={input.usingPhoto ? () => { setExtracted(null); input.clearPhoto(); } : undefined}
@@ -666,7 +666,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
         {...keyboardScroll.props}
       >
         <Text style={styles.intro}>
-          Uncheck anything you don't want added. Tap any line to change it before it's added.
+          Uncheck anything you don’t want added. Tap a line to edit it before it’s added.
         </Text>
 
         {foundDetails && (

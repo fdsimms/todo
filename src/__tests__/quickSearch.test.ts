@@ -83,7 +83,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   penaltyCreditedAt: null,
   gatesApps: false,
   showStreak: false,
-  streakRequiresWindow: false,
+  streakRequiresWindow: false, streakCountsUnits: false,
   parentId: null,
   groupId: null,
   projectId: null,
@@ -261,6 +261,16 @@ describe('quickSearch', () => {
     });
   });
 
+  describe('tasks held for later', () => {
+    it('sorts them behind tasks on Today even when they score higher', () => {
+      const tasks = [
+        makeTask({ id: 'later', title: 'Water', deferUntil: '2999-01-01T00:00:00.000Z' }),
+        makeTask({ id: 'today', title: 'Drink the water', dueDate: new Date(2020, 0, 1).toISOString() }),
+      ];
+      expect(quickSearch(tasks, 'water').results.map(r => r.task.id)).toEqual(['today', 'later']);
+    });
+  });
+
   describe('holding a task ticked from the card', () => {
     it('leaves a held task exactly where it sat before it was ticked', () => {
       // The whole point of the hold: ticking a row must not move it. A held
@@ -329,6 +339,34 @@ describe('quickSearch', () => {
   });
 
   describe('stacks and projects', () => {
+    it('puts a task that starts with the query ahead of a stack that only contains it mid-word', () => {
+      const out = quickSearch(
+        [makeTask({ id: 't1', title: 'Look into flights' })],
+        'lo',
+        new Map(),
+        QUICK_SEARCH_LIMIT,
+        new Set(),
+        [makeGroup({ id: 'g1', title: 'Cardiologist' })],
+        new Map()
+      );
+      expect(out.results.map(r => r.task.id)).toEqual(['t1']);
+      expect(out.groupResults.map(g => g.group.id)).toEqual(['g1']);
+    });
+
+    it('still leads with a stack whose word starts with the query', () => {
+      const out = quickSearch(
+        [makeTask({ id: 't1', title: 'Look into flights' })],
+        'lo',
+        new Map(),
+        1,
+        new Set(),
+        [makeGroup({ id: 'g1', title: 'Long term' })],
+        new Map()
+      );
+      expect(out.groupResults.map(g => g.group.id)).toEqual(['g1']);
+      expect(out.results).toEqual([]);
+    });
+
     const makeGroup = (overrides: Partial<TaskGroup> = {}): TaskGroup => ({
       id: 'g1',
       title: 'Supplements',

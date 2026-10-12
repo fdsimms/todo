@@ -4,7 +4,7 @@ import {
   dayKeyOf,
   getDeadlineFromMonthDay,
   getDeadlineFromOffset,
-  getNextDueDate,
+  getNextOccurrence,
 } from './dateUtils';
 
 /**
@@ -216,8 +216,9 @@ function stepOccurrence(
   cursorKey: string,
   dayResetTime?: string,
 ): { date: Date; key: string; cursor: Task } | null {
-  const next = getNextDueDate(cursor, dayResetTime);
-  if (next == null) return null;
+  const occurrence = getNextOccurrence(cursor, dayResetTime);
+  if (occurrence == null) return null;
+  const next = occurrence.date;
   const key = dayKeyOf(next);
   if (key <= cursorKey) return null;
   return {
@@ -230,8 +231,11 @@ function stepOccurrence(
       // *this* occurrence's grid is measured from (#1953), so carrying it onto
       // the cursor would make every step compute the same next date off the
       // same anchor — the walk would stall on one day rather than advancing.
-      // The projected date it just produced is the next cell's own anchor.
-      recurrenceAnchorDate: null,
+      // The projected date it just produced is the next cell's own anchor,
+      // unless a holiday moved it off the rule's day (Task.recurrenceHolidays):
+      // then the rule's day is, exactly as on the real successor, or every
+      // projected step would drift onto the moved day.
+      recurrenceAnchorDate: occurrence.gridDate?.toISOString() ?? null,
       recurrenceCount: cursor.recurrenceCount !== null ? cursor.recurrenceCount - 1 : null,
     },
   };
@@ -384,6 +388,18 @@ export function dotsFor(marks: readonly DayMark[]): DayDot[] {
     dots.push({ kind, state });
   }
   return dots;
+}
+
+/**
+ * Whether a day holds a deadline still to hit: a real row, not ticked off.
+ *
+ * The one mark the calendar draws besides its shade, because the shade counts
+ * work landing on the day and a deadline isn't any (`buildDayLoads` skips it),
+ * so a day with only a deadline would otherwise look empty. A projected one
+ * doesn't count: it's a guess about a row that doesn't exist yet.
+ */
+export function hasOpenDeadline(bucket: DayBucket | undefined): boolean {
+  return bucket?.dots.some(dot => dot.kind === 'deadline' && dot.state === 'solid') ?? false;
 }
 
 export interface DayDetail {

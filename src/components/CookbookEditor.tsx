@@ -89,8 +89,8 @@ export function CookbookEditor({ visible, cookbookId: liveCookbookId, onClose }:
     if (trimmedTitle !== cookbook.title || trimmedAuthor !== cookbook.author) {
       if (!renameCookbook(cookbookId, trimmedTitle, trimmedAuthor)) {
         Alert.alert(
-          'A cookbook with this title already exists',
-          'Another cookbook already has this title and author.'
+          'Cookbook already exists',
+          'Another cookbook has this title and author.'
         );
         return;
       }
@@ -107,8 +107,8 @@ export function CookbookEditor({ visible, cookbookId: liveCookbookId, onClose }:
       // line of it is only a page of this book (see dbDeleteCookbook).
       message: [
         recipeCount > 0
-          ? `Unlink "${cookbook?.title}" from ${recipeCount} ${recipeCount === 1 ? 'recipe' : 'recipes'}? They'll keep their author and title text, just not the link to this book.`
-          : `Delete "${cookbook?.title}"?`,
+          ? `Unlink “${cookbook?.title}” from ${recipeCount} ${recipeCount === 1 ? 'recipe' : 'recipes'}? Recipes keep their author and title text but lose the link to this book.`
+          : `Delete “${cookbook?.title}”?`,
         indexCount > 0
           ? `The ${indexCount} ${indexCount === 1 ? 'dish' : 'dishes'} in its index will be deleted.`
           : null,
@@ -126,7 +126,7 @@ export function CookbookEditor({ visible, cookbookId: liveCookbookId, onClose }:
     haptics.warning();
     confirmDelete({
       title: 'Merge these books?',
-      message: `"${loser.title}" will be deleted, and its recipes and index will move to "${cookbook.title}".`,
+      message: `“${loser.title}” will be deleted, and its recipes and index will move to “${cookbook.title}”.`,
       confirmLabel: 'Merge',
       onConfirm: () => { haptics.success(); mergeCookbooks(cookbookId, loser.id); },
     });

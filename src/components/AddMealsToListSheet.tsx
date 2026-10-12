@@ -273,7 +273,7 @@ export function AddMealsToListSheet({
     // revert is set here — the optional chaining below is belt-and-braces.
     if (pantryUndoTimerRef.current) clearTimeout(pantryUndoTimerRef.current);
     setPantryUndo({
-      label: `"${row.name}" marked in pantry`,
+      label: `“${row.name}” marked in pantry`,
       undo: () => {
         revert?.();
         // Only if the tap itself is what unticked it — a row the user had
@@ -529,7 +529,7 @@ export function AddMealsToListSheet({
                                       <InlineAction
                                         icon="archive-outline"
                                         onPress={() => markAlreadyHave(row)}
-                                        accessibilityLabel={`${row.name} is in the pantry, skip it and remember it for next time`}
+                                        accessibilityLabel={`Mark ${row.name} as in your pantry and skip buying it`}
                                       />
                                     )}
                                   </View>
@@ -543,12 +543,12 @@ export function AddMealsToListSheet({
                   )}
                   {category === 'needToBuy' && (
                     <Text style={styles.sectionHint}>
-                      Tap the pantry icon on anything you already have to skip buying it and remember that for next time.
+                      Tap the pantry icon on anything you already have to skip buying it and mark it as in your pantry.
                     </Text>
                   )}
                   {category === 'alreadyOnList' && (
                     <Text style={styles.sectionHint}>
-                      Already on the list. Check one to top up its quantity.
+                      Already on the list. Check one to increase its quantity.
                     </Text>
                   )}
                 </View>

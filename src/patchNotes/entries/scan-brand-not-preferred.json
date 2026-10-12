@@ -1,1 +1,1 @@
-{ "message": "Scanning a barcode now remembers the brand without making it the one your list asks for, so re-adding the item puts just the item on the list. To ask for a brand, pick it under Products on the item. To stop asking for one, choose No preference.", "date": "2026-10-08" }
+{ "message": "Scanning a barcode now remembers the brand without making it the one your list asks for, so re-adding the item puts only the item on the list. To ask for a brand, pick it under Products on the item. To stop asking for one, choose No preference.", "date": "2026-10-08" }

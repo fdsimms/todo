@@ -73,12 +73,57 @@ import CoreLocation
 /// the optional `MKAnnotation` requirement).
 public class TodoEventKitBridgeModule: Module {
   private lazy var store = EKEventStore()
+  /// The observer for `EKEventStoreChanged`, held only while JS is listening
+  /// for `onEventStoreChanged` (see `OnStartObserving` below).
+  private var storeObserver: NSObjectProtocol?
   /// The search in flight, cancelled when the next keystroke's search starts so
   /// a slow answer for "jo" can't land after the one for "joe's".
   private var currentSearch: MKLocalSearch?
 
+  /// `object: nil` on purpose. Apple's page says the notification is posted
+  /// "whenever changes are made to the Calendar database" and does not say
+  /// which `EKEventStore` instances are told, and the store expo-calendar reads
+  /// through is not this module's. Hearing any store in the process is the
+  /// only choice that does not depend on that. The module's own store is
+  /// touched first so this process holds at least one for as long as someone
+  /// listens.
+  private func startObservingStoreChanges() {
+    guard storeObserver == nil else { return }
+    _ = store
+    storeObserver = NotificationCenter.default.addObserver(
+      forName: .EKEventStoreChanged,
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      self?.sendEvent("onEventStoreChanged")
+    }
+  }
+
+  private func stopObservingStoreChanges() {
+    guard let observer = storeObserver else { return }
+    NotificationCenter.default.removeObserver(observer)
+    storeObserver = nil
+  }
+
   public func definition() -> ModuleDefinition {
     Name("TodoEventKitBridge")
+
+    /// Fired when the Calendar database changes, from anywhere: the Calendar
+    /// app, a sync, or this app's own writes. It carries nothing, because
+    /// EventKit describes no individual change; the listener's job is to read
+    /// again, as Apple says to on receipt. expo-calendar exposes no such
+    /// notification, which is why this lives here.
+    Events("onEventStoreChanged")
+
+    /// Observing runs only while something in JS is listening, so an app that
+    /// never turns the calendar read on pays nothing.
+    OnStartObserving {
+      self.startObservingStoreChanges()
+    }
+
+    OnStopObserving {
+      self.stopObservingStoreChanges()
+    }
 
     Function("isAvailable") { () -> Bool in
       return true

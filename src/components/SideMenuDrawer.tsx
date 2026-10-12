@@ -32,6 +32,7 @@ import {
 } from '../utils/navHubs';
 import { currentTabName } from '../navigation/navigationRef';
 import { tipsFor } from '../utils/tips';
+import { hiddenResultsNote } from '../utils/simpleMode';
 import { useFilterField } from '../hooks/useFilterField';
 import { useNavMenuOptions } from '../hooks/useNavMenuOptions';
 
@@ -89,6 +90,9 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
 
   // Its own array until a visit changes it, so it needs no useShallow.
   const recentScreens = useSettingsStore(s => s.recentScreens);
+  const simpleMode = useSettingsStore(s => s.simpleMode);
+  const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
+  const hiddenNote = hiddenResultsNote({ simpleMode, kitchenEnabled }, 'screens');
 
   // The screen actually on show, read as the drawer opens. `activeTab` alone
   // isn't it: a hub's own pill row and a link both switch screens without
@@ -199,9 +203,14 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
             }),
           ]
         : [
-            Animated.spring(translateX, {
+            // A timed curve, not a spring: a spring only reports done once it
+            // has fully settled, and this callback is what unmounts the Modal.
+            // Until then the (invisible) Modal swallows every touch, so the tab
+            // bar was dead for a second or two after the menu looked closed.
+            // Same reasoning as `useSheetMotion`'s exit.
+            Animated.timing(translateX, {
               toValue: -DRAWER_WIDTH,
-              ...animation.spring.snappy,
+              duration: animation.duration.sheetExit,
               useNativeDriver: true,
             }),
             Animated.timing(backdropOpacity, {
@@ -266,7 +275,7 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
           />
           <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.backdrop }]} />
         </Animated.View>
-        <SheetScrim onPress={onClose} label="Close the menu" />
+        <SheetScrim onPress={onClose} label="Close menu" />
 
         <Animated.View
           style={[
@@ -409,6 +418,7 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
             {searching && results.length === 0 && (
               <Text style={[styles.noResults, { color: colors.textSecondary }]}>
                 No screen matches that.
+                {hiddenNote ? `\n\n${hiddenNote}` : ''}
               </Text>
             )}
           </ScrollView>

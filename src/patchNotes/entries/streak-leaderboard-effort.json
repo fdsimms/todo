@@ -1,0 +1,4 @@
+{
+  "message": "The streak leaderboard on Stats now ranks a streak by its length times how much the task is worth (its time estimate and difficulty), so a 29-day run of a hard task ranks above a 29-day run of an easy one. Tasks rated Trivial are left off the leaderboard.",
+  "date": "2026-10-08"
+}

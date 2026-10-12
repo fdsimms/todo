@@ -16,13 +16,16 @@
  * Health from here, since a Node process has no HealthKit: the entry is flagged
  * (`healthWritePending`) and the phone writes it on its next foreground.
  */
-import { NUTRIENT_KEYS, type FoodLogEntry, type MealSlot, type NutrientKey } from '../../src/types';
+import { EXTERNAL_NUTRIENT_KEYS, NUTRIENT_KEYS, type FoodLogEntry, type MealSlot, type NutrientKey } from '../../src/types';
 import type { RecipeInput, RecipePatch, Replica } from './replica';
 import { getRecipe, type RecipeDetail } from './kitchenTools';
 // Pure over its arguments (types, the target ranges and the unit maths), so
 // safe to import for its value here; the replica loads the same module for the
 // write.
 import { describeWater, waterToMl, type WaterUnit } from '../../src/utils/waterLog';
+import { MAX_USUAL_DOSES, PANEL_UNITS, SUPPLY_UNITS } from '../../src/utils/medicationSettings';
+import { DOSE_UNITS, STRENGTH_UNITS } from '../../src/utils/medicationLog';
+import { describeSupplementPanel } from '../../src/utils/supplementDose';
 
 /** A bare date as noon that day (the app's anchor for a backdated entry), else the instant given; now when absent. */
 export function atFrom(value: string | undefined): Date | undefined {
@@ -34,6 +37,13 @@ export function atFrom(value: string | undefined): Date | undefined {
 }
 
 export const NUTRIENT_KEY_LIST = NUTRIENT_KEYS as readonly NutrientKey[];
+
+/**
+ * What an agent may estimate for a meal: not the vitamins and minerals, which
+ * are read off a label and never guessed (`EXTERNAL_NUTRIENT_KEYS`). A figure
+ * for one of those is reported back as ignored rather than silently dropped.
+ */
+export const ESTIMATE_KEY_LIST = EXTERNAL_NUTRIENT_KEYS;
 
 // ---------------------------------------------------------------------------
 // save_recipe
@@ -61,6 +71,8 @@ export interface LogFoodInput {
   label: string;
   quantity?: string;
   amounts: Record<string, number>;
+  /** The total split across what the description named. Optional, and each line is checked as the total is. */
+  breakdown?: { label: string; amounts: Record<string, number> }[];
   slot?: MealSlot | null;
   at?: string;
   apply?: boolean;
@@ -76,6 +88,10 @@ export interface LogFoodResult {
   amounts: Partial<Record<NutrientKey, number>>;
   /** Keys that were given but are not nutrients the app records. */
   ignored?: string[];
+  /** The parts as the app read them, when any survived. */
+  breakdown?: { label: string; amounts: Partial<Record<NutrientKey, number>> }[];
+  /** How many given parts were dropped (no name, no readable figures, or past the limit). */
+  breakdownDropped?: number;
   id?: string;
   note: string;
 }
@@ -83,9 +99,9 @@ export interface LogFoodResult {
 export function logFood(replica: Replica, input: LogFoodInput): LogFoodResult {
   const at = atFrom(input.at);
   const read = replica.lib().nutritionEstimate.readNutritionEstimate({
-    label: input.label, quantity: input.quantity ?? '', amounts: input.amounts, basis: 'typical', confidence: 'medium',
+    label: input.label, quantity: input.quantity ?? '', amounts: input.amounts, breakdown: input.breakdown, basis: 'typical', confidence: 'medium',
   });
-  if (!read) throw new Error(`A food entry needs a name and at least one amount, keyed by ${NUTRIENT_KEY_LIST.join(', ')}.`);
+  if (!read) throw new Error(`A food entry needs a name and at least one amount, keyed by ${ESTIMATE_KEY_LIST.join(', ')}.`);
   // Water is one entry a day, stepped (waterLog.ts), and an entry stating only
   // waterMl is what the app reads as that entry (isWaterEntry). Logged here it
   // would be a second water row beside the day's, so it is sent to the tool
@@ -95,13 +111,24 @@ export function logFood(replica: Replica, input: LogFoodInput): LogFoodResult {
   if (stated.length === 1 && stated[0] === 'waterMl') {
     throw new Error('Water is one entry a day, stepped up a glass at a time: use log_water for it rather than log_food.');
   }
-  const ignored = Object.keys(input.amounts ?? {}).filter(k => !(NUTRIENT_KEY_LIST as readonly string[]).includes(k));
+  // Refused rather than trimmed: the model is the one who can fix its own
+  // arithmetic, and a split that does not add up must not reach the entry.
+  const given = replica.lib().nutritionEstimate.readBreakdown(input.breakdown);
+  const mismatch = replica.lib().nutritionEstimate.breakdownMismatch(read.amounts, given);
+  if (mismatch) throw new Error(`The breakdown has to add up to the total. ${mismatch}. Fix the parts or the total and try again.`);
+  const ignored = Object.keys(input.amounts ?? {}).filter(k => !(ESTIMATE_KEY_LIST as readonly string[]).includes(k));
   const base = {
     label: read.label,
     ...(input.quantity ? { quantity: input.quantity } : {}),
     ...(input.slot ? { slot: input.slot } : {}),
     amounts: read.amounts,
     ...(ignored.length > 0 ? { ignored } : {}),
+    ...(read.breakdown.length > 0 ? { breakdown: read.breakdown } : {}),
+    // Said rather than silently shortened, so a part that did not take is not
+    // assumed to be on the entry.
+    ...((input.breakdown?.length ?? 0) > read.breakdown.length
+      ? { breakdownDropped: (input.breakdown?.length ?? 0) - read.breakdown.length }
+      : {}),
   };
   if (!input.apply) {
     return {
@@ -110,7 +137,7 @@ export function logFood(replica: Replica, input: LogFoodInput): LogFoodResult {
       note: 'A preview. Show the person these estimated figures; log it with apply: true once they agree. It will be marked as estimated, and the phone will write it to Apple Health the next time the app is opened (if Health writing is on there).',
     };
   }
-  const entry = replica.logFood({ label: input.label, quantity: input.quantity, amounts: input.amounts, slot: input.slot ?? null, at });
+  const entry = replica.logFood({ label: input.label, quantity: input.quantity, amounts: input.amounts, breakdown: input.breakdown, slot: input.slot ?? null, at });
   return {
     applied: true,
     ...base,
@@ -208,10 +235,16 @@ export function logMedication(
 export function updateFoodEntry(
   replica: Replica,
   id: string,
-  patch: { label?: string; quantity?: string; amounts?: Record<string, number>; slot?: MealSlot | null },
+  patch: { label?: string; quantity?: string; amounts?: Record<string, number>; breakdown?: { label: string; amounts: Record<string, number> }[]; slot?: MealSlot | null; grams?: number },
 ) {
   const entry = replica.updateFoodEntry(id, patch);
-  return { id: entry.id, day: entry.dayKey, label: entry.label, quantity: entry.quantity || undefined, slot: entry.slot ?? undefined };
+  // A re-measured entry says what it came to, so the preview and the person
+  // can check the figure the new amount produced.
+  const remeasured = entry.nutrition.source !== 'estimated' && (patch.grams !== undefined || patch.quantity !== undefined);
+  return {
+    id: entry.id, day: entry.dayKey, label: entry.label, quantity: entry.quantity || undefined, slot: entry.slot ?? undefined,
+    ...(remeasured ? { grams: entry.grams ?? undefined, calorieKcal: entry.nutrition.amounts.calorieKcal } : {}),
+  };
 }
 
 export function deleteFoodEntry(replica: Replica, id: string) {
@@ -231,8 +264,13 @@ export function moveFoodEntry(replica: Replica, id: string, at: string) {
   return { moved: foodRow(to), fromDay: from.dayKey, note: `It has a new id. ${NOT_IN_HEALTH_YET}` };
 }
 
-export function duplicateFoodEntry(replica: Replica, id: string, at: string | undefined) {
-  return { logged: foodRow(replica.duplicateFoodEntry(id, atFrom(at) ?? new Date())), note: NOT_IN_HEALTH_YET };
+export function duplicateFoodEntry(replica: Replica, id: string, at: string | undefined, amount?: { grams?: number; quantity?: string }) {
+  const entry = replica.duplicateFoodEntry(id, atFrom(at) ?? new Date(), amount?.grams !== undefined || amount?.quantity !== undefined ? amount : undefined);
+  const measured = amount?.grams !== undefined || amount?.quantity !== undefined;
+  return {
+    logged: { ...foodRow(entry), ...(measured ? { grams: entry.grams ?? undefined, calorieKcal: entry.nutrition.amounts.calorieKcal } : {}) },
+    note: NOT_IN_HEALTH_YET,
+  };
 }
 
 export function listSavedMeals(replica: Replica) {
@@ -321,9 +359,203 @@ export function deleteRecipe(replica: Replica, id: string) {
   };
 }
 
+/**
+ * Set, replace or clear what one serving of a supplement contains.
+ *
+ * The figures are checked the way the app's own sheet checks them
+ * (`buildSupplementPanel`): a key this build has no unit for is reported and
+ * left out, a negative or non-numeric figure is refused rather than dropped,
+ * and a blank is not a zero. The unit in each key's name is the unit given
+ * (`vitaminDMcg` is micrograms, `magnesiumMg` milligrams).
+ */
+export function setSupplementNutrients(
+  replica: Replica,
+  input: { name: string; servingAmount?: number; servingUnit?: string; amounts?: Record<string, number>; clear?: boolean },
+) {
+  if (input.clear) {
+    const medicine = replica.setSupplementPanel(input.name, null);
+    return { medicine, cleared: true, note: 'Doses already recorded keep what they added.' };
+  }
+  const amount = input.servingAmount;
+  if (amount === undefined || !Number.isFinite(amount) || amount <= 0) {
+    throw new Error('servingAmount is the serving the label\'s figures are for, a positive number (for "serving size 2 tablets": 2).');
+  }
+  if (!PANEL_UNITS.includes(input.servingUnit ?? '')) {
+    throw new Error(`servingUnit is one of ${PANEL_UNITS.join(', ')}.`);
+  }
+  const given = input.amounts ?? {};
+  const known = new Set<string>(NUTRIENT_KEYS);
+  const ignored = Object.keys(given).filter(k => !known.has(k));
+  const amounts: Partial<Record<NutrientKey, number>> = {};
+  for (const key of NUTRIENT_KEYS) {
+    const value = given[key];
+    if (value === undefined) continue;
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+      throw new Error(`${key} is a number of zero or more, in the unit its name states. Leave a nutrient out if the label does not list it.`);
+    }
+    amounts[key] = value;
+  }
+  if (Object.keys(amounts).length === 0) {
+    throw new Error(`Give at least one nutrient in amounts, keyed by name: ${NUTRIENT_KEYS.join(', ')}.`);
+  }
+  const panel = { servingAmount: amount, servingUnit: input.servingUnit as string, amounts };
+  const medicine = replica.setSupplementPanel(input.name, panel);
+  const described = describeSupplementPanel(panel);
+  return {
+    medicine,
+    nutrients: described.heading,
+    detail: described.detail,
+    ...(ignored.length > 0 ? { ignored } : {}),
+    note: 'Doses recorded from now on add these to the day\'s food log, and the phone writes them to Apple Health if that is on. Earlier doses are unchanged.',
+  };
+}
+
 /** Archive a medicine, or bring one back. See `Replica.setMedicationArchived`. */
 export function setMedicationArchived(replica: Replica, name: string, archived: boolean): { medicine: string; archived: boolean } {
   return { medicine: replica.setMedicationArchived(name, archived), archived };
+}
+
+/** Add a medicine to the list before any dose. See `Replica.addMedication`. */
+export function addMedication(replica: Replica, name: string): { medicine: string; added: boolean; note: string } {
+  const out = replica.addMedication(name);
+  return {
+    medicine: out.name,
+    added: out.added,
+    note: out.added
+      ? 'On their list with no doses. Record doses with log_medication whenever it is taken.'
+      : 'Already on their list. Nothing changed.',
+  };
+}
+
+/** Take a medicine with no doses off the list. See `Replica.removeMedication`. */
+export function removeMedication(replica: Replica, name: string): { removed: string } {
+  return { removed: replica.removeMedication(name) };
+}
+
+/** How a medicine is taken and the amounts usually taken. See `Replica.setMedicationProfile`. */
+export function setMedicationProfile(
+  replica: Replica,
+  input: { name: string; asNeeded?: boolean | null; usualAmounts?: { amount: number; unit: string }[]; strength?: { amount: number; unit: string } | null },
+): { medicine: string; asNeeded?: boolean | null; usualAmounts?: string[]; strength?: string | null } {
+  if (input.asNeeded === undefined && input.usualAmounts === undefined && input.strength === undefined) {
+    throw new Error('Give asNeeded, usualAmounts, strength, or any of them.');
+  }
+  if (input.strength) {
+    const unit = input.strength.unit?.trim();
+    if (!(Number.isFinite(input.strength.amount) && input.strength.amount > 0)) throw new Error('strength.amount must be a number greater than 0.');
+    if (!unit || !STRENGTH_UNITS.includes(unit)) throw new Error(`strength.unit must be one of: ${STRENGTH_UNITS.join(', ')}.`);
+    input = { ...input, strength: { amount: input.strength.amount, unit } };
+  }
+  let usualDoses: { amount: number; unit: string }[] | undefined;
+  if (input.usualAmounts !== undefined) {
+    if (input.usualAmounts.length > MAX_USUAL_DOSES) throw new Error(`At most ${MAX_USUAL_DOSES} usual amounts.`);
+    usualDoses = input.usualAmounts.map(d => {
+      const unit = d.unit?.trim();
+      if (!(Number.isFinite(d.amount) && d.amount > 0)) throw new Error('Each usual amount must be a number greater than 0.');
+      if (!unit || !DOSE_UNITS.some(u => u.value === unit)) {
+        throw new Error(`Each usual amount needs a unit, one of: ${DOSE_UNITS.map(u => u.value).join(', ')}.`);
+      }
+      return { amount: d.amount, unit };
+    });
+  }
+  const medicine = replica.setMedicationProfile(input.name, {
+    ...(input.asNeeded !== undefined ? { asNeeded: input.asNeeded } : {}),
+    ...(usualDoses !== undefined ? { usualDoses } : {}),
+    ...(input.strength !== undefined ? { strength: input.strength } : {}),
+  });
+  return {
+    medicine,
+    ...(input.strength !== undefined ? { strength: input.strength ? `${input.strength.amount} ${input.strength.unit}` : null } : {}),
+    ...(input.asNeeded !== undefined ? { asNeeded: input.asNeeded } : {}),
+    ...(usualDoses !== undefined ? { usualAmounts: usualDoses.map(d => `${d.amount} ${d.unit}`) } : {}),
+  };
+}
+
+/** Set or clear the limit the person gave. See `Replica.setMedicationLimit`. */
+export function setMedicationLimit(
+  replica: Replica,
+  input: {
+    name: string;
+    clear?: true;
+    minHours?: number | null;
+    maxPer24h?: number | null;
+    maxAmount24h?: { amount: number; unit: string } | null;
+  },
+): { medicine: string; limit: string | null; note: string } {
+  const given = input.minHours !== undefined || input.maxPer24h !== undefined || input.maxAmount24h !== undefined;
+  if (input.clear && given) throw new Error('Give clear: true on its own, or the caps to set.');
+  if (!input.clear && !given) throw new Error('Give minHours, maxPer24h or maxAmount24h, or clear: true.');
+  if (input.minHours != null && !(input.minHours > 0 && input.minHours <= 72)) throw new Error('minHours must be between 0 and 72.');
+  if (input.maxPer24h != null && !(Number.isInteger(input.maxPer24h) && input.maxPer24h >= 1 && input.maxPer24h <= 99)) {
+    throw new Error('maxPer24h must be a whole number from 1 to 99.');
+  }
+  const cap = input.maxAmount24h;
+  if (cap != null) {
+    if (!(Number.isFinite(cap.amount) && cap.amount > 0)) throw new Error('maxAmount24h.amount must be a number greater than 0.');
+    if (!DOSE_UNITS.some(u => u.value === cap.unit)) {
+      throw new Error(`maxAmount24h.unit must be one of: ${DOSE_UNITS.map(u => u.value).join(', ')}.`);
+    }
+  }
+  const out = replica.setMedicationLimit(input.name, input.clear ? null : {
+    ...(input.minHours !== undefined ? { minHours: input.minHours } : {}),
+    ...(input.maxPer24h !== undefined ? { maxPer24h: input.maxPer24h } : {}),
+    ...(input.maxAmount24h !== undefined ? { maxAmount24h: input.maxAmount24h } : {}),
+  });
+  return {
+    ...out,
+    note: out.limit
+      ? 'This is the person\'s own limit: the phone asks before a dose that goes past it, and the visit summary reports doses that did. Only doses recorded from now on are judged against it. The notification when the next dose is OK is a switch on the phone.'
+      : 'No limit is set for this medicine now.',
+  };
+}
+
+/** Set or clear how many the person has. See `Replica.setMedicationSupply`. */
+export function setMedicationSupply(
+  replica: Replica,
+  input: { name: string; clear?: true; count?: number; unit?: string; refillCount?: number | null; reorderAt?: number },
+): { medicine: string; left: string | null; note: string } {
+  if (input.clear) {
+    if (input.count !== undefined || input.unit !== undefined || input.refillCount !== undefined || input.reorderAt !== undefined) {
+      throw new Error('Give clear: true on its own, or the supply to set.');
+    }
+  } else if (input.count === undefined) {
+    throw new Error('Give count (how many they have now), or clear: true.');
+  }
+  if (input.count !== undefined && !(Number.isFinite(input.count) && input.count >= 0)) throw new Error('count must be a number of zero or more.');
+  if (input.unit !== undefined && !SUPPLY_UNITS.includes(input.unit)) {
+    throw new Error(`unit must be one of: ${SUPPLY_UNITS.join(', ')}.`);
+  }
+  if (input.refillCount != null && !(input.refillCount > 0)) throw new Error('refillCount must be greater than 0.');
+  if (input.reorderAt !== undefined && !(Number.isInteger(input.reorderAt) && input.reorderAt >= 1)) {
+    throw new Error('reorderAt must be a whole number of 1 or more.');
+  }
+  const out = replica.setMedicationSupply(input.name, input.clear ? null : {
+    count: input.count!,
+    ...(input.unit !== undefined ? { unit: input.unit } : {}),
+    ...(input.refillCount !== undefined ? { refillCount: input.refillCount } : {}),
+    ...(input.reorderAt !== undefined ? { reorderAt: input.reorderAt } : {}),
+  });
+  return {
+    ...out,
+    note: out.left
+      ? 'Counted from now: what is left is this count less the doses recorded from here on, so deleting or editing a dose puts it back. Doses from a scheduled task spend that task\'s own supply instead.'
+      : 'No supply is tracked for this medicine now.',
+  };
+}
+
+/** Rename a medicine everywhere, or combine it into another. See `Replica.renameMedication`. */
+export function renameMedication(
+  replica: Replica,
+  from: string,
+  to: string,
+  fill?: { amount?: number; unit?: string },
+): { from: string; to: string; doses: number } {
+  const hasAmount = fill?.amount !== undefined;
+  const hasUnit = !!fill?.unit?.trim();
+  if (hasAmount !== hasUnit) throw new Error('Give fillAmount and fillUnit together ("200" and "mg"), or neither.');
+  if (hasAmount && !(Number.isFinite(fill!.amount) && fill!.amount! > 0)) throw new Error('fillAmount must be a number greater than 0.');
+  const out = replica.renameMedication(from, to, hasAmount ? { amount: fill!.amount!, unit: fill!.unit!.trim() } : null);
+  return { from: out.from, to: to.trim(), doses: out.doses };
 }
 
 /** Correct a mood context tag everywhere it was logged. */

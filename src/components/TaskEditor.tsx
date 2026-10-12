@@ -4,7 +4,8 @@
 //
 //   ==== <name> ====        the section banners through the logic half
 //   <EditorGroup label=     the cards, in render order: Kind, Schedule,
-//                           Relationships, Organize, Priority & effort,
+//                           Organize (the Subtasks card follows it),
+//                           Priority & effort, Relationships, On completion,
 //                           Task actions, Streaks
 //   makeStyles              styles, at the bottom
 //
@@ -46,8 +47,8 @@ import { addDays } from 'date-fns/addDays';
 import { subDays } from 'date-fns/subDays';
 import { subMinutes } from 'date-fns/subMinutes';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
-import type { Task, Priority, Effort, FollowUpTaskDraft, RecurrenceType, ChainItem, RotationItem, DeliverableKind, TimeOfDay, ReminderKind, Polarity, Difficulty, QuotaPeriod, WeatherCondition, NutrientKey, MealSlot, AnswerGate } from '../types';
-import { PRIORITY_LABELS, EFFORT_LABELS, TITLE_MAX_LENGTH, NUTRIENT_KEYS, MEAL_SLOTS, MEAL_SLOT_LABELS } from '../types';
+import type { Task, Priority, Effort, FollowUpTaskDraft, RecurrenceType, HolidayRule, ChainItem, RotationItem, DeliverableKind, TimeOfDay, ReminderKind, Polarity, Difficulty, QuotaPeriod, WeatherCondition, NutrientKey, MealSlot, AnswerGate } from '../types';
+import { PRIORITY_LABELS, EFFORT_LABELS, TITLE_MAX_LENGTH, HEALTH_WRITABLE_NUTRIENTS, MINERAL_KEYS, VITAMIN_KEYS, MEAL_SLOTS, MEAL_SLOT_LABELS } from '../types';
 import { NUTRIENT_LABEL, mlToFlOz, flOzToMl } from '../utils/foodNutrition';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, border, interaction, animation, checkboxRadius, iconSize, type Colors, textScale } from '../theme';
@@ -70,7 +71,8 @@ import {
   HEALTH_TARGET_LABELS, HEALTH_TARGET_METRICS, HEALTH_TARGET_RANGES, describeHealthGoalAmount, followsRingGoal,
 } from '../utils/healthTarget';
 import type { HealthTargetMetric } from '../types';
-import { featureShown, taskKindsForMode } from '../utils/simpleMode';
+import { featureShown, hiddenResultsNote, taskKindsForMode } from '../utils/simpleMode';
+import { QUOTA_RAMP_MAX_EVERY, QUOTA_RAMP_MAX_STEP, QUOTA_RAMP_MAX_TARGET, canRampQuota, describeQuotaRamp } from '../utils/quotaRamp';
 import { MAX_TARGET_UNIT_LENGTH, formatQuotaProgress, formatQuotaTarget, normalizeTargetUnit } from '../utils/quotaUnit';
 import {
   MIN_FOLLOW_UP_TASK_EVERY_N, MAX_FOLLOW_UP_TASK_EVERY_N,
@@ -88,17 +90,21 @@ import { useProjectStore } from '../store/useProjectStore';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useMedicationStore } from '../store/useMedicationStore';
+import { useSavedMealsStore } from '../store/useSavedMealsStore';
+import { slotForHour } from '../utils/mealLog';
 import { categoryLabel } from '../utils/categoryLabel';
+import { askForReminderPermissionIfNeeded } from '../utils/reminderPermission';
 import { useShallow } from 'zustand/react/shallow';
 import { isStreakAtRecord, nextStreakRecord, streakHint } from '../utils/streakRecord';
 import { formatDeadlineDate, formatDeadlineLabel, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, describeDeadlineOffset, describeReminderOffset, describeReminderTracksVisibility, getTaskDayStart, getCurrentDayStart, getLogicalNow, getLogicalToday, seriesMonthDaysFrom, getNextDueDate, dayKeyOf, dayKeyToDate } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInput, describeSchedule, detectContactIntent, matchPersonMentions, getEditorMentionSuggestions, withTrailingSpace, parseCategoryAndTagsInput, type MentionSuggestionCandidate, type ParsedCategoryAndTags } from '../utils/parseTaskInput';
+import { parseTaskInputAheadOfRainSkip, scheduleClockInstant, stripRemindPrefix, describeSchedule, detectContactIntent, matchPersonMentions, getEditorMentionSuggestions, withTrailingSpace, parseCategoryAndTagsInput, type MentionSuggestionCandidate, type ParsedCategoryAndTags } from '../utils/parseTaskInput';
 import { groupMentionTokens } from '../utils/peopleRegistry';
 import { mergeRanges } from '../utils/ranges';
 import { HighlightedText } from './HighlightedText';
-import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration, estimatedMinutesFor } from '../utils/effort';
+import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration, estimatedMinutesFor, effortTimeLabel } from '../utils/effort';
+import { previewCategoryDefault, previewSeededFields } from '../utils/taskFieldDefaults';
 import { apportionedMinutes, timerSegments } from '../utils/timerSegments';
 import { CollapsibleField } from './CollapsibleField';
 import { PillGroup } from './PillGroup';
@@ -131,16 +137,27 @@ import { FollowUpTaskSheet } from './FollowUpTaskSheet';
 import { CalendarChoiceSheet } from './CalendarChoiceSheet';
 import { QuickEventSheet } from './QuickEventSheet';
 import { TaskRelationPickerSheet } from './TaskRelationPickerSheet';
-import { blockerFields, blockerIdsOf, describeBlocks } from '../utils/blocking';
-import { displayTitleFor, isMissableMealPlanTask, getVisibleAt, onLogicalDay, isQuotaTask } from '../utils/visibilityUtils';
+import { blockerFields, blockerIdsOf, describeBlocks, resolverFor, canBeBlockerOf } from '../utils/blocking';
+import { pickTitleSuggestion, suggestionMatch, describeTitleSuggestion } from '../utils/titleSuggestion';
+import { rainUnitFor } from '../utils/rainSkip';
+import { clampSupplyCount } from '../utils/supply';
+import { displayTitleFor, isMissableMealPlanTask, getVisibleAt, onLogicalDay, isQuotaTask, sunLocationOn } from '../utils/visibilityUtils';
 import { firstWeekAnchor, proratedFrom, proratedWeeklyTarget, quotaProrationPatch, weekDaysLeft } from '../utils/quotaSchedule';
 import { nextChainStepTitle } from '../utils/chain';
 import { RecurrencePicker } from './RecurrencePicker';
 import { ChoiceMenuChip, type ChoiceGroup } from './ChoiceMenuChip';
-import { DoseAmountField } from './DoseAmountField';
-import { SegmentedControl } from './SegmentedControl';
+import { TaskDoseAmount } from './TaskDoseAmount';
+import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { WEATHER_CONDITIONS, weatherConditionLabel } from '../utils/weatherTasks';
+import { useMeterReadingStore } from '../store/useMeterReadingStore';
+import { METER_NAME_MAX_LENGTH, NO_METER, canFollowMeter, describeLatestReading, formatMeterAmount, formatMeterValue, knownMeterNames, meterFieldsFromInput, meterInputFromTask, meterSetupGap, parseMeterNumber, type MeterInput } from '../utils/meters';
 import { InlineTimePicker } from '../screens/settings/InlineTimePicker';
+import { SunBoundPanel } from './SunBoundPanel';
+import {
+  formatSunAnchor, parseSunAnchor, shortSunAnchor, sunAnchorHHMM, roundSunLocation,
+  type SunAnchor, type SunEvent, type SunLocation,
+} from '../utils/sunTimes';
+import { getCurrentLocation, requestLocationPermission } from '../utils/weatherLocation';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { describeRecurrence } from '../utils/recurrenceLabels';
 import { knownLinkAppFor, linkAppsFor } from '../constants/linkApps';
@@ -198,6 +215,9 @@ export interface TaskDraft {
   windowStart?: string | null;
   /** `"HH:MM"`, carried over when quick add parses "only today" or "expires friday". */
   windowEnd?: string | null;
+  /** A bound that follows the sun ("sunset-30"); see Task.windowStartSun. */
+  windowStartSun?: string | null;
+  windowEndSun?: string | null;
   /** Carried over when quick add reads "don't …" or "no snacking" as a habit to avoid. */
   polarity?: Polarity;
   /** Carried over from quick add's Difficulty chip. */
@@ -217,6 +237,9 @@ export interface TaskDraft {
   recurrenceMonth: number | null;
   recurrenceWeekOrdinal: number | null;
   recurrenceFromCompletion: boolean;
+  recurrenceHolidays?: HolidayRule | null;
+  // Task.rainSkipMm, from quick add's "unless it rains" or a duplicate.
+  rainSkipMm?: number | null;
   recurrenceEndDate: Date | null;
   recurrenceCount: number | null;
   /** Carried over when the draft already names a specific time — an imported event's appointment time, for instance. */
@@ -246,6 +269,7 @@ export interface TaskDraft {
   medicationAmount?: number | null;
   medicationUnit?: string | null;
   logMealSlot?: MealSlot | null;
+  logSavedMealId?: string | null;
   phoneNumber?: string | null;
   emailAddress?: string | null;
   location?: string | null;
@@ -255,6 +279,8 @@ export interface TaskDraft {
   quotaPeriod?: QuotaPeriod;
   /** Carried over when quick add parses "on the next sunny day". */
   weatherWait?: WeatherCondition | null;
+  /** Carried over when quick add parses "every 5,000 miles on the car". The due reading is left for the editor. */
+  meter?: { name: string; unit: string; every: number } | null;
   allowOvershoot?: boolean;
   quotaIntervalMinutes?: number | null;
   quotaReminders?: boolean;
@@ -266,6 +292,14 @@ export interface TaskDraft {
   supplyReorderAt?: number;
   supplyLeadDays?: number | null;
   supplyGroceryItemId?: string | null;
+}
+
+/** The meter a quick-add draft carried, as the editor's typed fields; empty without one. */
+function meterInputFromDraft(draft: Pick<TaskDraft, 'meter'> | null | undefined): MeterInput {
+  const m = draft?.meter;
+  return m
+    ? { name: m.name, unit: m.unit, everyText: formatMeterValue(m.every), dueText: '', limitMonths: null }
+    : meterInputFromTask(null);
 }
 
 interface Props {
@@ -327,22 +361,50 @@ const LOG_HEALTH_VALUE_STEPS: Record<NutrientKey, { step: number; max: number }>
   carbsG: { step: 5, max: 150 },
   fatG: { step: 5, max: 100 },
   satFatG: { step: 1, max: 50 },
+  transFatG: { step: 1, max: 20 },
+  cholesterolMg: { step: 10, max: 500 },
   fiberG: { step: 1, max: 30 },
   sugarG: { step: 1, max: 50 },
+  addedSugarG: { step: 1, max: 50 },
   sodiumMg: { step: 100, max: 3000 },
   calciumMg: { step: 50, max: 1500 },
   ironMg: { step: 1, max: 30 },
   potassiumMg: { step: 50, max: 2000 },
   caffeineMg: { step: 10, max: 500 },
   waterMl: { step: 50, max: 1000 },
+  vitaminAMcg: { step: 50, max: 3000 },
+  vitaminCMg: { step: 10, max: 2000 },
+  vitaminDMcg: { step: 5, max: 250 },
+  vitaminEMg: { step: 1, max: 1000 },
+  vitaminKMcg: { step: 5, max: 1000 },
+  thiaminMg: { step: 0.5, max: 100 },
+  riboflavinMg: { step: 0.5, max: 100 },
+  niacinMg: { step: 1, max: 200 },
+  vitaminB6Mg: { step: 0.5, max: 100 },
+  folateMcg: { step: 50, max: 2000 },
+  vitaminB12Mcg: { step: 1, max: 1000 },
+  biotinMcg: { step: 5, max: 10000 },
+  pantothenicAcidMg: { step: 1, max: 200 },
+  magnesiumMg: { step: 10, max: 1000 },
+  zincMg: { step: 1, max: 100 },
+  phosphorusMg: { step: 25, max: 1500 },
+  seleniumMcg: { step: 5, max: 400 },
+  copperMg: { step: 0.1, max: 10 },
+  manganeseMg: { step: 0.1, max: 10 },
+  chromiumMcg: { step: 5, max: 1000 },
+  molybdenumMcg: { step: 5, max: 1000 },
+  iodineMcg: { step: 5, max: 1100 },
+  chlorideMg: { step: 50, max: 3000 },
 };
 
-// The nutrient menu's sections. Anything in `NUTRIENT_KEYS` that no section
+// The nutrient menu's sections, over what a completion can write to Health
+// (`HEALTH_WRITABLE_NUTRIENTS`). Anything in it that no section
 // names lands in a trailing unlabelled one, so a nutrient added later is
 // offered here rather than silently missing.
 const LOG_NUTRIENT_SECTIONS: Array<{ heading: string; keys: NutrientKey[] }> = [
   { heading: 'MACROS', keys: ['calorieKcal', 'proteinG', 'carbsG', 'fatG', 'satFatG', 'fiberG', 'sugarG'] },
-  { heading: 'MINERALS', keys: ['sodiumMg', 'calciumMg', 'ironMg', 'potassiumMg'] },
+  { heading: 'MINERALS', keys: ['sodiumMg', 'calciumMg', 'ironMg', 'potassiumMg', ...MINERAL_KEYS] },
+  { heading: 'VITAMINS', keys: [...VITAMIN_KEYS] },
   { heading: 'DRINKS', keys: ['caffeineMg', 'waterMl'] },
 ];
 const LOG_NUTRIENT_GROUPS: ChoiceGroup[] = (() => {
@@ -350,9 +412,9 @@ const LOG_NUTRIENT_GROUPS: ChoiceGroup[] = (() => {
   const option = (key: NutrientKey) => ({ key, label: NUTRIENT_LABEL[key].label });
   const groups: ChoiceGroup[] = LOG_NUTRIENT_SECTIONS.map(sec => ({
     heading: sec.heading,
-    options: sec.keys.filter(k => NUTRIENT_KEYS.includes(k)).map(option),
+    options: sec.keys.filter(k => HEALTH_WRITABLE_NUTRIENTS.includes(k)).map(option),
   }));
-  const rest = NUTRIENT_KEYS.filter(k => !named.has(k));
+  const rest = HEALTH_WRITABLE_NUTRIENTS.filter(k => !named.has(k));
   return rest.length > 0 ? [...groups, { options: rest.map(option) }] : groups;
 })();
 
@@ -381,6 +443,15 @@ function categoryTagsLabel(parsed: ParsedCategoryAndTags, categories: Parameters
  * render it from a busy screen pass a stable `onClose` so this holds.
  */
 export const TaskEditor = React.memo(TaskEditorSheet);
+
+// What a Start or End pill can follow: the clock, or the sun.
+const WINDOW_KIND_OPTIONS: SegmentOption<'time' | SunEvent>[] = [
+  { value: 'time', label: 'Time' },
+  { value: 'sunrise', label: 'Sunrise' },
+  { value: 'sunset', label: 'Sunset' },
+];
+
+const NO_TASKS: Task[] = [];
 
 function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   // ==== store bindings ====
@@ -426,13 +497,14 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const groceryItems = useGroceryStore(useShallow(s => s.items));
   const addGroceryItem = useGroceryStore(s => s.addToPantry);
   // Every medication ever logged, for the "Log a dose" name field's own
-  // suggestions below — see medicationVocabulary for why this is derived
+  // suggestions below — see medicationVocabulary for what it unions
   // rather than a registry.
   const medicationLogs = useMedicationStore(useShallow(s => s.logs));
   const archivedMedications = useMedicationStore(useShallow(s => s.archived));
+  const registeredMedications = useMedicationStore(useShallow(s => s.registered));
   const medicationSuggestions = useMemo(
-    () => medicationVocabulary(medicationLogs, archivedMedications),
-    [medicationLogs, archivedMedications]
+    () => medicationVocabulary(medicationLogs, archivedMedications, registeredMedications),
+    [medicationLogs, archivedMedications, registeredMedications]
   );
   // Archived people are out of the picker but never stripped off a task that
   // already names them: filing somebody away is about the list, not about
@@ -567,6 +639,15 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const [windowStart, setWindowStart] = useState<string | null>(null);
   const [windowEnd, setWindowEnd] = useState<string | null>(null);
   const [windowPickerMode, setWindowPickerMode] = useState<'none' | 'start' | 'end'>('none');
+  // A bound that follows the sun ("sunset-30"), alongside the clock time it
+  // resolved to (see Task.windowStartSun), and which of Time / Sunrise /
+  // Sunset the open pill is set to.
+  const [windowStartSun, setWindowStartSun] = useState<string | null>(null);
+  const [windowEndSun, setWindowEndSun] = useState<string | null>(null);
+  const [windowPickerKind, setWindowPickerKind] = useState<'time' | SunEvent>('time');
+  // The "Use my current location" read, and why a sun bound couldn't be set.
+  const [sunLocationStatus, setSunLocationStatus] = useState<'idle' | 'asking' | 'failed'>('idle');
+  const [sunUnavailable, setSunUnavailable] = useState(false);
   const [windowPickerDate, setWindowPickerDate] = useState(new Date());
   const [penaltyMinutes, setPenaltyMinutes] = useState<number | null>(null);
   const [gatesApps, setGatesApps] = useState(false);
@@ -591,11 +672,26 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const [recurrenceMonth, setRecurrenceMonth] = useState<number | null>(null);
   const [recurrenceWeekOrdinal, setRecurrenceWeekOrdinal] = useState<number | null>(null);
   const [recurrenceFromCompletion, setRecurrenceFromCompletion] = useState(false);
+  const [recurrenceHolidays, setRecurrenceHolidays] = useState<HolidayRule | null>(null);
+  // See Task.rainSkipMm: millimetres, whatever unit the picker shows.
+  const [rainSkipMm, setRainSkipMm] = useState<number | null>(null);
   const [recurrenceEndDate, setRecurrenceEndDate] = useState<Date | null>(null);
   const [recurrenceCount, setRecurrenceCount] = useState<number | null>(null);
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
   const [priority, setPriority] = useState<Priority>(0);
   const [effort, setEffort] = useState<Effort>(0);
+  // Whether the person has answered these two on a new task. An untouched row
+  // is an unanswered question, not an answer of None: it is left out of the
+  // draft on save so the project's, then Settings', default applies, the same
+  // way it does from quick add. A 0 sent with the draft would be an answer and
+  // beat every default behind it. Picking None is touching it.
+  const [priorityTouched, setPriorityTouched] = useState(false);
+  const [effortTouched, setEffortTouched] = useState(false);
+  // The same for the three toggles a project's defaults can turn on. An untouched
+  // one is left out of a new task's draft so the default can fill it.
+  const [streakTouched, setStreakTouched] = useState(false);
+  const [vacationTouched, setVacationTouched] = useState(false);
+  const [suggestionsTouched, setSuggestionsTouched] = useState(false);
   const [estimatedMinutes, setEstimatedMinutes] = useState<number | null>(null);
   const [customEffortOpen, setCustomEffortOpen] = useState(false);
   const [customEffortText, setCustomEffortText] = useState('');
@@ -636,6 +732,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const [medicationAmount, setMedicationAmount] = useState('');
   const [medicationUnit, setMedicationUnit] = useState<string | null>(null);
   const [logMealSlot, setLogMealSlot] = useState<MealSlot | null>(null);
+  const [logSavedMealId, setLogSavedMealId] = useState<string | null>(null);
+  const savedMeals = useSavedMealsStore(s => s.meals);
   // Every task this one waits on, in order. Several are allowed, and it waits
   // for all of them (Task.blockedByIds); stored through blockerFields on save.
   const [blockerIds, setBlockerIds] = useState<string[]>([]);
@@ -730,20 +828,41 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const [locationText, setLocationText] = useState('');
   const [streakEditorOpen, setStreakEditorOpen] = useState(false);
   const [streakDraft, setStreakDraft] = useState(0);
+  // The `task` prop is a snapshot taken when the sheet opened, and the streak
+  // is written straight to the store by Apply, so read it live or the row keeps
+  // showing the old count until the sheet is reopened.
+  const liveStreakTask = useTaskStore(s => (task ? s.tasks.find(t => t.id === task.id) ?? task : null));
   const [showStreak, setShowStreak] = useState(false);
   const [polarity, setPolarity] = useState<Polarity>('positive');
   const [slipAllowance, setSlipAllowance] = useState<number | null>(null);
   const [quotaPeriod, setQuotaPeriod] = useState<QuotaPeriod>('day');
+  // Ramp up (Task.quotaRampStep and friends). Step null = off.
+  const [quotaRampStep, setQuotaRampStep] = useState<number | null>(null);
+  const [quotaRampEvery, setQuotaRampEvery] = useState(1);
+  const [quotaRampGoal, setQuotaRampGoal] = useState<number | null>(null);
   // See Task.weatherWait. The row opens its picker in place, like the other
   // rows with controls of their own.
   const [weatherWait, setWeatherWait] = useState<WeatherCondition | null>(null);
   const [weatherWaitOpen, setWeatherWaitOpen] = useState(false);
   const weatherTasksOn = useSettingsStore(s => s.weatherTasks);
+  const rainUnit = rainUnitFor(useSettingsStore(s => s.unitSystem));
+  // Every task, for "after <task>" in the title to name one. Read only while open.
+  const allTasks = useTaskStore(s => (visible ? s.tasks : NO_TASKS));
+  // See Task.meterName. Held as typed text (MeterInput) so a half-typed
+  // "45,0" isn't snapped to a number under the cursor; meterFieldsFromInput
+  // turns it into fields on save.
+  const [meterInput, setMeterInput] = useState<MeterInput>(() => meterInputFromTask(null));
+  const [meterOpen, setMeterOpen] = useState(false);
+  const [meterReadingText, setMeterReadingText] = useState('');
+  const meterReadings = useMeterReadingStore(s => s.readings);
+  const logMeterReading = useMeterReadingStore(s => s.logReading);
+  const meterFields = useMemo(() => meterFieldsFromInput(meterInput, meterReadings), [meterInput, meterReadings]);
   // Whether "follow the water target" can mean anything for this task right
   // now: a daily target that logs water, with an amount per unit to divide by.
   const followsWaterTarget =
     targetCount !== null && quotaPeriod === 'day' && logHealthMetric === 'waterMl' && logHealthAmount !== null;
   const [streakRequiresWindow, setStreakRequiresWindow] = useState(false);
+  const [streakCountsUnits, setStreakCountsUnits] = useState(false);
 
   // Every picker section starts collapsed to its current value; opening one is
   // an explicit tap, so the form reads as a list of named fields rather than a
@@ -751,6 +870,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const [openFields, setOpenFields] = useState<Partial<Record<FieldKey, boolean>>>({});
   const [showTimeOfDay, setShowTimeOfDay] = useState(false);
   const [showTimeWindow, setShowTimeWindow] = useState(false);
+  const [showPaceWindow, setShowPaceWindow] = useState(false);
 
   const [newTag, setNewTag] = useState('');
   const [addingTag, setAddingTag] = useState(false);
@@ -774,10 +894,21 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const [chainEnabled, setChainEnabled] = useState(false);
   // Only a plain one-off may wait for weather (canWaitForWeather): a repeat, a
   // chain or a set of dates already has a schedule that this would fight.
-  const weatherWaitAllowed = recurrenceType === 'none' && !chainEnabled && extraDates.length === 0;
+  const weatherWaitAllowed = recurrenceType === 'none' && !chainEnabled && extraDates.length === 0 && !meterInput.name.trim();
+  // The same plain one-off, for the same reason, and never both at once: each
+  // pass owns deferUntil (see canFollowMeter). Nor an avoid-task, which is
+  // never completed and so could never be due at anything.
+  const meterAllowed = recurrenceType === 'none' && !chainEnabled && extraDates.length === 0 && weatherWait === null && polarity !== 'negative';
   const [chainItems, setChainItems] = useState<ChainItem[]>([]);
   const [rotationEnabled, setRotationEnabled] = useState(false);
   const [rotationItems, setRotationItems] = useState<RotationItem[]>([]);
+  // Whether "ramp up" can mean anything right now: a plain count that nothing
+  // else is writing (no cadence, no water goal, no overshoot, no rotation).
+  const offersRamp = canRampQuota({
+    targetCount, quotaIntervalMinutes, allowOvershoot,
+    followWaterTarget: followsWaterTarget && followWaterTarget,
+    rotationEnabled, rotationItems, recurrenceType: 'daily',
+  });
   // Which step's "ask on completion" sheet is open, by id rather than index —
   // the list under it can be reordered or shortened while the sheet is up.
   const [questionStepId, setQuestionStepId] = useState<string | null>(null);
@@ -796,6 +927,10 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const [chainItemTitleEdit, setChainItemTitleEdit] = useState('');
 
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  // Subscribed for the re-render alone: the location itself is read per day
+  // through sunLocationOn (see daySunLocation).
+  useSettingsStore(s => s.sunLocation);
+  const setSunLocation = useSettingsStore(s => s.setSunLocation);
   const mirroringMode = useSettingsStore(s => s.mirroringMode);
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
   const penaltyShieldEnabled = useSettingsStore(s => s.penaltyShieldEnabled);
@@ -803,6 +938,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const defaultReminderLeadMinutes = useSettingsStore(s => s.defaultReminderLeadMinutes);
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const simpleMode = useSettingsStore(s => s.simpleMode);
+  const hiddenFieldsNote = hiddenResultsNote({ simpleMode, kitchenEnabled: true }, 'fields');
   const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
   const reminderMeetingNudgeEnabled = useSettingsStore(s => s.reminderMeetingNudgeEnabled);
   const deadlineCalendarId = useSettingsStore(s => s.deadlineCalendarId);
@@ -861,6 +997,11 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   // it isn't the same phrase anymore, rather than staying dismissed forever.
   const [dismissedScheduleSignature, setDismissedScheduleSignature] = useState<string | null>(null);
   const mentionSuggestionAnim = useRef(new Animated.Value(0)).current;
+  const titleSuggestionAnim = useRef(new Animated.Value(0)).current;
+  const hadTitleSuggestion = useRef(false);
+  const [dismissedSuggestionSignature, setDismissedSuggestionSignature] = useState<string | null>(null);
+  // A clock time the schedule phrase named ("at 5pm"), offered as a reminder.
+  const [reminderOffer, setReminderOffer] = useState<Date | null>(null);
   const hadMentionSuggestion = useRef(false);
 
   const categoryTagsTooltipAnim = useRef(new Animated.Value(0)).current;
@@ -964,6 +1105,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       setTimeSegments(task.timeSegments ?? []);
       setWindowStart(task.windowStart ?? null);
       setWindowEnd(task.windowEnd ?? null);
+      setWindowStartSun(task.windowStartSun ?? null);
+      setWindowEndSun(task.windowEndSun ?? null);
       setPenaltyMinutes(task.penaltyMinutes ?? null);
       setGatesApps(task.gatesApps ?? false);
       setPenaltyCutoffTime(task.penaltyCutoffTime ?? null);
@@ -996,8 +1139,11 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       setRecurrenceMonth(task.recurrenceMonth ?? null);
       setRecurrenceWeekOrdinal(task.recurrenceWeekOrdinal ?? null);
       setRecurrenceFromCompletion(task.recurrenceFromCompletion);
+      setRecurrenceHolidays(task.recurrenceHolidays ?? null);
+      setRainSkipMm(task.rainSkipMm ?? null);
       setRecurrenceEndDate(task.recurrenceEndDate ? new Date(task.recurrenceEndDate) : null);
       setRecurrenceCount(task.recurrenceCount ?? null);
+      setPriorityTouched(true); setEffortTouched(true);
       setPriority(task.priority); setEffort(task.effort); setEstimatedMinutes(task.estimatedMinutes ?? null); setPinned(task.pinned); setPinEachOccurrence(task.pinEachOccurrence ?? false);
       setActualMinutes(task.actualMinutes ?? null);
       setTimedMinutes(task.timedMinutes ?? null);
@@ -1011,13 +1157,18 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       setVacationPause(task.vacationPause ?? false);
       setExcludeFromSuggestions(task.excludeFromSuggestions ?? false);
       setWeatherWait(task.weatherWait ?? null); setWeatherWaitOpen(false);
+      setMeterInput(meterInputFromTask(task)); setMeterOpen(false); setMeterReadingText('');
       setDifficulty(task.difficulty ?? null);
       setBounty(isBountyLive(task));
       setShowStreak(task.showStreak ?? false);
       setPolarity(task.polarity ?? 'positive');
       setSlipAllowance(task.slipAllowance ?? null);
       setQuotaPeriod(task.quotaPeriod ?? 'day');
+      setQuotaRampStep(task.quotaRampStep ?? null);
+      setQuotaRampEvery(task.quotaRampEvery ?? 1);
+      setQuotaRampGoal(task.quotaRampGoal ?? null);
       setStreakRequiresWindow(task.streakRequiresWindow ?? false);
+      setStreakCountsUnits(task.streakCountsUnits ?? false);
       setLinkUrl(task.linkUrl ?? null);
       setCompletionTimerMinutes(task.completionTimerMinutes ?? null);
       setCompletionTimerNote(task.completionTimerNote ?? null);
@@ -1027,6 +1178,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       setMedicationAmount(task.medicationAmount !== null ? String(task.medicationAmount) : '');
       setMedicationUnit(task.medicationUnit ?? null);
       setLogMealSlot(task.logMealSlot ?? null);
+      setLogSavedMealId(task.logSavedMealId ?? null);
       setPhoneNumber(task.phoneNumber ?? null);
       setEmailAddress(task.emailAddress ?? null);
       setLocation(task.location ?? null);
@@ -1054,15 +1206,19 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       // because the one before it was. A new field goes in both branches.
       setTitle(initialDraft?.title ?? ''); titleCaret.resetCaret(initialDraft?.title ?? ''); setNotes(initialDraft?.notes ?? ''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
-      setDueDate(initialDraft?.dueDate ?? null); setExtraDates(initialDraft?.extraDates ?? []); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setDeadlineTime(null); setDeadlineTimePickerOpen(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(initialDraft?.windowEnd ?? null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day'); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setProrateFirstWeek(true); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setWeatherWait(initialDraft?.weatherWait ?? null); setWeatherWaitOpen(false); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
+      setDueDate(initialDraft?.dueDate ?? null); setExtraDates(initialDraft?.extraDates ?? []); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setDeadlineTime(null); setDeadlineTimePickerOpen(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(initialDraft?.windowEnd ?? null); setWindowStartSun(initialDraft?.windowStartSun ?? null); setWindowEndSun(initialDraft?.windowEndSun ?? null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day');  setStreakCountsUnits(false); setQuotaRampStep(null); setQuotaRampEvery(1); setQuotaRampGoal(null); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setProrateFirstWeek(true); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setWeatherWait(initialDraft?.weatherWait ?? null); setWeatherWaitOpen(false); setMeterInput(meterInputFromDraft(initialDraft)); setMeterOpen(false); setMeterReadingText(''); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceMonthDay(initialDraft?.recurrenceMonthDay ?? null);
       setRecurrenceMonth(initialDraft?.recurrenceMonth ?? null);
       setRecurrenceWeekOrdinal(initialDraft?.recurrenceWeekOrdinal ?? null);
       setRecurrenceFromCompletion(initialDraft?.recurrenceFromCompletion ?? false);
+      setRecurrenceHolidays(initialDraft?.recurrenceHolidays ?? null);
+      setRainSkipMm(initialDraft?.rainSkipMm ?? null);
       setRecurrenceEndDate(initialDraft?.recurrenceEndDate ?? null);
       setRecurrenceCount(initialDraft?.recurrenceCount ?? null);
+      setPriorityTouched(initialDraft?.priority !== undefined);
+      setEffortTouched(initialDraft?.effort !== undefined || initialDraft?.estimatedMinutes != null);
       setPriority(initialDraft?.priority ?? 0); setEffort(initialDraft?.effort ?? 0); setEstimatedMinutes(initialDraft?.estimatedMinutes ?? null); setPinned(false); setPinEachOccurrence(false);
       setActualMinutes(null);
       setTimedMinutes(initialDraft?.timedMinutes ?? null);
@@ -1095,6 +1251,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       );
       setMedicationUnit(initialDraft?.medicationUnit ?? null);
       setLogMealSlot(initialDraft?.logMealSlot ?? null);
+      setLogSavedMealId(initialDraft?.logSavedMealId ?? null);
       setPhoneNumber(initialDraft?.phoneNumber ?? null);
       setEmailAddress(initialDraft?.emailAddress ?? null);
       setLocation(initialDraft?.location ?? null);
@@ -1153,6 +1310,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       timeSegments: task ? (task.timeSegments ?? []) : (initialDraft?.timeSegments ?? []),
       windowStart: task ? (task.windowStart ?? null) : (initialDraft?.windowStart ?? null),
       windowEnd: task ? (task.windowEnd ?? null) : (initialDraft?.windowEnd ?? null),
+      windowStartSun: task ? (task.windowStartSun ?? null) : (initialDraft?.windowStartSun ?? null),
+      windowEndSun: task ? (task.windowEndSun ?? null) : (initialDraft?.windowEndSun ?? null),
       penaltyMinutes: task ? (task.penaltyMinutes ?? null) : (initialDraft?.penaltyMinutes ?? null),
       gatesApps: task ? (task.gatesApps ?? false) : (initialDraft?.gatesApps ?? false),
       penaltyCutoffTime: task ? (task.penaltyCutoffTime ?? null) : (initialDraft?.penaltyCutoffTime ?? null),
@@ -1165,6 +1324,9 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       quotaAlwaysVisible: task ? (task.quotaAlwaysVisible ?? false) : (initialDraft?.quotaAlwaysVisible ?? false),
       followWaterTarget: task ? (task.followWaterTarget ?? false) : (initialDraft?.followWaterTarget ?? false),
       quotaPeriod: task ? (task.quotaPeriod ?? 'day') : (initialDraft?.quotaPeriod ?? 'day'),
+      quotaRampStep: task ? (task.quotaRampStep ?? null) : null,
+      quotaRampEvery: task ? (task.quotaRampStep ? (task.quotaRampEvery ?? 1) : null) : null,
+      quotaRampGoal: task ? (task.quotaRampStep ? (task.quotaRampGoal ?? null) : null) : null,
       supplyCount: task ? (task.supplyCount ?? null) : null,
       supplyUnit: task ? (task.supplyUnit ?? '') : '',
       supplyRefillCount: task ? (task.supplyRefillCount ?? null) : null,
@@ -1195,6 +1357,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       recurrenceMonth: task ? (task.recurrenceMonth ?? null) : (initialDraft?.recurrenceMonth ?? null),
       recurrenceWeekOrdinal: task ? (task.recurrenceWeekOrdinal ?? null) : (initialDraft?.recurrenceWeekOrdinal ?? null),
       recurrenceFromCompletion: task ? task.recurrenceFromCompletion : (initialDraft?.recurrenceFromCompletion ?? false),
+      recurrenceHolidays: task ? (task.recurrenceHolidays ?? null) : (initialDraft?.recurrenceHolidays ?? null),
+      rainSkipMm: task ? (task.rainSkipMm ?? null) : (initialDraft?.rainSkipMm ?? null),
       recurrenceEndDate: task ? (task.recurrenceEndDate ?? null) : (initialDraft?.recurrenceEndDate?.toISOString() ?? null),
       recurrenceCount: task ? (task.recurrenceCount ?? null) : (initialDraft?.recurrenceCount ?? null),
       priority: task ? task.priority : (initialDraft?.priority ?? 0),
@@ -1215,12 +1379,18 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       vacationPause: task?.vacationPause ?? false,
       excludeFromSuggestions: task?.excludeFromSuggestions ?? false,
       weatherWait: task ? (task.weatherWait ?? null) : (initialDraft?.weatherWait ?? null),
+      // Through the same function the live snapshot uses, so a meter saved
+      // half set up doesn't read as edited the moment the sheet opens.
+      ...(task
+        ? (canFollowMeter(task) ? meterFieldsFromInput(meterInputFromTask(task), useMeterReadingStore.getState().readings) : NO_METER)
+        : meterFieldsFromInput(meterInputFromDraft(initialDraft), useMeterReadingStore.getState().readings)),
       difficulty: task ? (task.difficulty ?? null) : (initialDraft?.difficulty ?? null),
       bounty: task ? isBountyLive(task) : false,
       polarity: task ? (task.polarity ?? 'positive') : (initialDraft?.polarity ?? 'positive'),
       slipAllowance: task ? (task.slipAllowance ?? null) : null,
       showStreak: task ? (task.showStreak ?? false) : initialDraft?.polarity === 'negative',
       streakRequiresWindow: task?.streakRequiresWindow ?? false,
+      streakCountsUnits: task?.streakCountsUnits ?? false,
       linkUrl: task ? (task.linkUrl ?? null) : (initialDraft?.linkUrl ?? null),
       completionTimerMinutes: task ? (task.completionTimerMinutes ?? null) : (initialDraft?.completionTimerMinutes ?? null),
       completionTimerNote: task ? (task.completionTimerNote ?? null) : (initialDraft?.completionTimerNote ?? null),
@@ -1235,6 +1405,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       })(),
       medicationUnit: task ? (task.medicationUnit ?? null) : (initialDraft?.medicationUnit ?? null),
       logMealSlot: task ? (task.logMealSlot ?? null) : (initialDraft?.logMealSlot ?? null),
+      logSavedMealId: task ? (task.logSavedMealId ?? null) : (initialDraft?.logSavedMealId ?? null),
       phoneNumber: task ? (task.phoneNumber ?? null) : (initialDraft?.phoneNumber ?? null),
       emailAddress: task ? (task.emailAddress ?? null) : (initialDraft?.emailAddress ?? null),
       location: task ? (task.location ?? null) : (initialDraft?.location ?? null),
@@ -1270,7 +1441,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   // same way the quick-add modal does. The phrase is highlighted and
   // described in a banner below the title; nothing is applied until tapped.
   const parsedSchedule = useMemo(
-    () => (title.trim() ? parseTaskInput(title, getLogicalNow(dayResetTime), new Date()) : null),
+    () => (title.trim() ? parseTaskInputAheadOfRainSkip(title, getLogicalNow(dayResetTime), new Date()) : null),
     [title, dayResetTime]
   );
   // The banner's own ✕ answers "not a date" for this one phrase — comparing
@@ -1311,13 +1482,6 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
     ).map((m): [number, number] => [m.start, m.end])),
     [title, people, personIds]
   );
-  const titleHighlightRanges = useMemo(() => {
-    const ranges = [...titleMentionRanges];
-    if (activeParsedSchedule) ranges.push([activeParsedSchedule.matchStart, scheduleMatchEnd]);
-    if (activeCategoryTags) ranges.push([activeCategoryTags.matchStart, activeCategoryTags.matchEnd]);
-    return mergeRanges(ranges);
-  }, [titleMentionRanges, activeParsedSchedule, scheduleMatchEnd, activeCategoryTags]);
-  const hasTitleOverlay = activeParsedSchedule != null || activeCategoryTags != null || titleMentionRanges.length > 0;
 
   // Unlike quick add, nothing here ever resolves a fresh "@name" on its own —
   // so a token that would be a unique, fully-typed match anywhere else still
@@ -1330,6 +1494,85 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       : null),
     [title, activeParsedSchedule, activeCategoryTags, people, personIds]
   );
+
+  // ==== the rest of the title: priority, project, link, phone, email, timer, ... ====
+  // Everything quick add reads out of a typed line after the schedule phrase,
+  // the "#word" token and the "@name" suggestion, through the same
+  // pickTitleSuggestion, so the two can't disagree about what a line means.
+  // One suggestion at a time and nothing applied until tapped, like the
+  // banners above. What a form's state would decide (is the kind plain, is
+  // there a repeat, is the weather switch on) is passed in as the context.
+  const titleKind = taskKindOf({ chainEnabled, targetCount, timedMinutes, healthMetric, healthTarget, rotationEnabled });
+  const titleSunDayStart = dueDate ? getTaskDayStart(dueDate, dayResetTime) : getCurrentDayStart();
+  const titleSunLocation = sunLocationOn(titleSunDayStart);
+  // Tasks "after <task>" can name. The cycle check is per candidate, so it
+  // only runs while the title has an "after" to match.
+  const titleWaitCandidates = useMemo(() => {
+    if (!visible || !/\bafter\b/i.test(title)) return [];
+    const resolve = resolverFor(allTasks);
+    const taken = new Set([...blockerIds, ...blocksIds]);
+    const seen = new Set<string>();
+    return allTasks.filter(t => {
+      if (taken.has(t.id) || !canBeBlockerOf(t, task?.id ?? null, resolve)) return false;
+      if (t.seriesId) {
+        if (seen.has(t.seriesId)) return false;
+        seen.add(t.seriesId);
+      }
+      return true;
+    });
+  }, [visible, title, allTasks, blockerIds, blocksIds, task?.id]);
+  const titleSuggestion = useMemo(() => {
+    if (activeParsedSchedule || activeCategoryTags || titleMentionSuggestion) return null;
+    return pickTitleSuggestion(title, {
+      plainKind: titleKind === 'task',
+      estimateOffered: titleKind !== 'timed',
+      recurrenceType,
+      recurrenceInterval,
+      recurrenceDays,
+      hasSeries: extraDates.length > 0,
+      hasChainSteps: chainItems.length > 0,
+      projects: projects.filter(p => !p.completedAt),
+      waitCandidates: titleWaitCandidates,
+      weatherTasksOn,
+      weatherWait,
+      polarity,
+      hasMeter: meterInput.name.trim() !== '',
+      knownMeters: knownMeterNames(meterReadings),
+      hasRainSkip: rainSkipMm !== null,
+      rainUnit,
+      sunClock: anchor => sunAnchorHHMM(anchor, titleSunDayStart, titleSunLocation),
+    });
+    // titleSunLocation is read through sunLocationOn, whose input is the saved
+    // location the editor already subscribes to.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    title, activeParsedSchedule, activeCategoryTags, titleMentionSuggestion, titleKind, recurrenceType,
+    recurrenceInterval, recurrenceDays, extraDates, chainItems, projects, titleWaitCandidates, weatherTasksOn,
+    weatherWait, polarity, meterInput.name, meterReadings, rainSkipMm, rainUnit, titleSunDayStart.getTime(),
+    titleSunLocation,
+  ]);
+  const titleSuggestionMatch = titleSuggestion ? suggestionMatch(title, titleSuggestion) : null;
+  const titleSuggestionSignature = titleSuggestionMatch
+    ? `${titleSuggestionMatch.matchStart}|${titleSuggestionMatch.matchedText}`
+    : null;
+  const activeTitleSuggestion = titleSuggestionSignature !== null && titleSuggestionSignature === dismissedSuggestionSignature
+    ? null
+    : titleSuggestion;
+  const activeSuggestionMatch = activeTitleSuggestion ? titleSuggestionMatch : null;
+  const titleSuggestionDescription = activeTitleSuggestion ? describeTitleSuggestion(activeTitleSuggestion, rainUnit, hhmm => formatHHMM(hhmm, use24HourTime)) : null;
+
+  const titleHighlightRanges = useMemo(() => {
+    const ranges = [...titleMentionRanges];
+    if (activeParsedSchedule) ranges.push([activeParsedSchedule.matchStart, scheduleMatchEnd]);
+    if (activeCategoryTags) ranges.push([activeCategoryTags.matchStart, activeCategoryTags.matchEnd]);
+    // A match that is the whole line (a chain) gets no highlight: see quick
+    // add's highlightRanges for why the overlay can't stand in for a long line.
+    if (activeSuggestionMatch && !activeSuggestionMatch.wholeLine) {
+      ranges.push([activeSuggestionMatch.matchStart, activeSuggestionMatch.matchStart + activeSuggestionMatch.matchedText.length]);
+    }
+    return mergeRanges(ranges);
+  }, [titleMentionRanges, activeParsedSchedule, scheduleMatchEnd, activeCategoryTags, activeSuggestionMatch]);
+  const hasTitleOverlay = titleHighlightRanges.length > 0;
 
   // "Call Kristen", "Text the plumber", "Email the landlord" — a title that
   // implies a contact action with no data to power it. Purely a discoverability
@@ -1356,6 +1599,14 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
     }
     hadMentionSuggestion.current = titleMentionSuggestion != null;
   }, [titleMentionSuggestion]);
+
+  useEffect(() => {
+    if (activeTitleSuggestion && !hadTitleSuggestion.current) {
+      titleSuggestionAnim.setValue(0);
+      Animated.spring(titleSuggestionAnim, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: true }).start();
+    }
+    hadTitleSuggestion.current = activeTitleSuggestion != null;
+  }, [activeTitleSuggestion]);
 
   useEffect(() => {
     if (activeCategoryTags && !hadCategoryTagsParse.current) {
@@ -1409,10 +1660,24 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
     if (!parsedSchedule) return;
     haptics.success();
     animateLayout();
-    const nextTitle = withTrailingSpace(parsedSchedule.cleanTitle);
+    // "remind me to ... at 4pm": the request is the reminder, so the words go
+    // with the phrase (stripRemindPrefix), and only when there is a clock time.
+    const remindTitle = parsedSchedule.schedule.explicitClockTime ? stripRemindPrefix(parsedSchedule.cleanTitle) : null;
+    const nextTitle = withTrailingSpace(remindTitle ?? parsedSchedule.cleanTitle);
     setTitle(nextTitle);
     titleCaret.moveCaret(nextTitle);
     setDueDate(parsedSchedule.schedule.dueDate);
+    if (parsedSchedule.schedule.extraDates?.length) setExtraDates(parsedSchedule.schedule.extraDates);
+    // "after 5pm" / "before 9am": a window bound, which the phrase otherwise
+    // dropped on the floor here while quick add kept it.
+    if (parsedSchedule.schedule.windowStart != null) {
+      setWindowStart(parsedSchedule.schedule.windowStart);
+      setWindowStartSun(null);
+    }
+    if (parsedSchedule.schedule.windowEnd != null) {
+      setWindowEnd(parsedSchedule.schedule.windowEnd);
+      setWindowEndSun(null);
+    }
     if (parsedSchedule.schedule.deadline) {
       setDeadline(parsedSchedule.schedule.deadline);
       setDeadlineOffsetDays(null);
@@ -1427,6 +1692,178 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
     setRecurrenceEndDate(parsedSchedule.schedule.recurrenceEndDate ? new Date(parsedSchedule.schedule.recurrenceEndDate) : null);
     setRecurrenceCount(parsedSchedule.schedule.recurrenceCount ?? null);
     setRecurrenceFromCompletion(parsedSchedule.schedule.recurrenceFromCompletion ?? false);
+    // A literal clock time ("5pm") is otherwise only a time-of-day bucket, so
+    // it is offered as a reminder rather than scheduling a notification
+    // unasked; "remind me to ..." already chose, so that one is set.
+    const clockAt = scheduleClockInstant(parsedSchedule.schedule, dayResetTime);
+    if (clockAt && remindTitle) {
+      setReminderTime(clockAt);
+      setReminderOffsetDays(null);
+      setReminderTracksVisibility(false);
+      setReminderTouched(true);
+      setReminderOffer(null);
+      void askForReminderPermissionIfNeeded();
+    } else if (clockAt && !reminderTime) {
+      setReminderOffer(clockAt);
+    } else {
+      setReminderOffer(null);
+    }
+  };
+
+  const acceptReminderOffer = () => {
+    if (!reminderOffer) return;
+    haptics.success();
+    setReminderTime(reminderOffer);
+    setReminderOffsetDays(null);
+    setReminderTracksVisibility(false);
+    setReminderTouched(true);
+    setReminderOffer(null);
+    void askForReminderPermissionIfNeeded();
+  };
+
+  const dismissReminderOffer = () => {
+    haptics.tap();
+    setReminderOffer(null);
+  };
+
+  // Apply whichever suggestion the rest of the title offers (see
+  // titleSuggestion) and, for the ones that name a field, strip the phrase.
+  // Typing "for 15 minutes", "8 times a day" or "->" is describing a kind of
+  // task in your own words, so accepting one switches the Kind control the
+  // same way picking it would (applyKind). Mirrors quick add's apply* handlers.
+  const applyTitleSuggestion = () => {
+    const s = activeTitleSuggestion;
+    if (!s) return;
+    haptics.success();
+    animateLayout();
+    const strip = (cleanTitle: string) => {
+      const nextTitle = withTrailingSpace(cleanTitle);
+      setTitle(nextTitle);
+      titleCaret.moveCaret(nextTitle);
+    };
+    switch (s.kind) {
+      case 'priority':
+        strip(s.hit.cleanTitle);
+        setPriority(s.hit.priority);
+        setPriorityTouched(true);
+        break;
+      case 'project':
+        strip(s.hit.cleanTitle);
+        setProject(s.hit.projectId);
+        break;
+      case 'chain': {
+        const [first, ...rest] = s.hit.steps;
+        setTitle(first.title);
+        titleCaret.moveCaret(first.title);
+        applyKind('chain');
+        if (first.estimatedMinutes !== null) setEstimatedMinutes(first.estimatedMinutes);
+        if (first.linkUrl !== null) setLinkUrl(first.linkUrl);
+        setChainItems(rest.map(step => ({
+          id: generateId(),
+          title: step.title,
+          estimatedMinutes: step.estimatedMinutes,
+          linkUrl: step.linkUrl,
+        })));
+        break;
+      }
+      case 'link':
+        strip(s.hit.cleanTitle);
+        setLinkUrl(s.hit.url);
+        break;
+      case 'phone':
+        strip(s.hit.cleanTitle);
+        setPhoneNumber(s.hit.number);
+        setPhoneText(s.hit.number);
+        break;
+      case 'email':
+        strip(s.hit.cleanTitle);
+        setEmailAddress(s.hit.address);
+        setEmailText(s.hit.address);
+        break;
+      case 'duration':
+        strip(s.hit.cleanTitle);
+        applyKind('timed');
+        setTimedMinutes(s.hit.minutes);
+        break;
+      case 'supply':
+        strip(s.hit.cleanTitle);
+        setSupplyCount(clampSupplyCount(s.hit.count));
+        setSupplyUnit(s.hit.unit ?? '');
+        break;
+      case 'target':
+        strip(s.hit.cleanTitle);
+        applyKind('target');
+        setTargetCount(s.hit.count);
+        setQuotaPeriod(s.hit.period);
+        setRecurrenceType(s.hit.period === 'week' ? 'weekly' : 'daily');
+        break;
+      case 'estimate':
+        strip(s.hit.cleanTitle);
+        setEffortTouched(true);
+        setEstimatedMinutes(s.hit.minutes);
+        setEffort(minutesToEffort(s.hit.minutes));
+        break;
+      case 'weather':
+        strip(s.hit.cleanTitle);
+        setWeatherWait(s.hit.condition);
+        break;
+      case 'sun':
+        strip(s.hit.cleanTitle);
+        // The anchor and the clock time it resolves to on this day, as
+        // commitWindowSun writes them.
+        if (s.hit.bound === 'start') {
+          setWindowStartSun(s.hit.anchor);
+          setWindowStart(s.hit.clock);
+          applyDefaultReminderLead(s.hit.clock);
+          applyDerivedTargetCount({ windowStart: s.hit.clock });
+        } else {
+          setWindowEndSun(s.hit.anchor);
+          setWindowEnd(s.hit.clock);
+          applyDerivedTargetCount({ windowEnd: s.hit.clock });
+        }
+        break;
+      case 'meter':
+        strip(s.hit.cleanTitle);
+        setMeterInput({
+          name: s.hit.meterName,
+          unit: s.hit.unit,
+          everyText: formatMeterValue(s.hit.every),
+          dueText: '',
+          limitMonths: null,
+        });
+        break;
+      case 'rain':
+        strip(s.hit.cleanTitle);
+        setRainSkipMm(s.hit.mm);
+        break;
+      case 'waiting':
+        strip(s.hit.cleanTitle);
+        setBlockerIds(prev => (prev.includes(s.hit.taskId) ? prev : [...prev, s.hit.taskId]));
+        break;
+      case 'subtasks':
+        strip(s.hit.cleanTitle);
+        if (task) {
+          for (const sub of s.hit.subtasks) addSubtask(task.id, sub);
+        } else {
+          setDraftSubtasks(prev => [
+            ...prev,
+            ...s.hit.subtasks.map(t => ({ id: generateId(), title: t, completed: false, timedMinutes: null })),
+          ]);
+        }
+        break;
+      case 'avoid':
+        // Strips nothing: "No snacking after 8pm" is the habit's name.
+        setPolarity('negative');
+        break;
+    }
+  };
+
+  // "No, that's just part of the title" for the suggestion above.
+  const dismissTitleSuggestion = () => {
+    if (!titleSuggestionSignature) return;
+    haptics.tap();
+    animateLayout();
+    setDismissedSuggestionSignature(titleSuggestionSignature);
   };
 
   // "No, that's just part of the title" — leaves the title and every other
@@ -1461,6 +1898,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
     if (!mirroringMode) return;
     if (activeParsedSchedule) applyParsedSchedule();
     else if (activeCategoryTags) applyCategoryTagsBanner();
+    else if (activeTitleSuggestion) applyTitleSuggestion();
   };
 
   // The banner's own ✕ — same as dismissParsedSchedule, just hides the
@@ -1545,7 +1983,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       if (archivedMatch) {
         Alert.alert(
           'Resume archived task?',
-          `You archived "${archivedMatch.title}" a while ago. Resume it instead of creating a new one? History and stats carry over, but the streak restarts.`,
+          `You archived “${archivedMatch.title}”. Resume it instead of creating a new one? History and stats carry over, but the streak restarts.`,
           [
             { text: 'Create new', onPress: () => proceedWithSave(effectiveChainItems, effectiveDraftSubtasks) },
             {
@@ -1608,7 +2046,10 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       // Like the calendar flag: a time with no deadline to close at is dropped.
       deadlineTime: deadline ? deadlineTime : null,
       logCompletionToCalendar,
-      timeSegments, windowStart, windowEnd, targetCount: savedTargetCount,
+      // An avoid-task has no start: it is on Today all day, and its end is when
+      // the day counts as clean.
+      timeSegments, windowStart: polarity === 'negative' ? null : windowStart, windowEnd,
+      windowStartSun: polarity === 'negative' ? null : windowStartSun, windowEndSun, targetCount: savedTargetCount,
       penaltyMinutes,
       // Meaningless on an avoid-task, which is never completed and so could
       // never satisfy a gate. Cleared rather than carried so flipping the
@@ -1640,6 +2081,13 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       // behind on a task that stopped being a target would decide the span of a
       // count that no longer exists.
       quotaPeriod: savesRotation ? 'week' : targetCount !== null ? quotaPeriod : 'day',
+      // Cleared with whatever stops a ramp being the target's writer (see
+      // canRampQuota): left behind it would fight the cadence, the water goal
+      // or the day's overshoot for the count.
+      quotaRampStep: offersRamp && !savesRotation ? quotaRampStep : null,
+      quotaRampEvery: offersRamp && !savesRotation && quotaRampStep ? quotaRampEvery : null,
+      quotaRampGoal: offersRamp && !savesRotation && quotaRampStep ? quotaRampGoal : null,
+      quotaRampHits: task?.quotaRampHits ?? 0,
       // A supply counts down by riding onto the successor a completion spawns,
       // so it means nothing on a one-off — cleared with the repeat rather than
       // left to sit at its starting number for ever, the same reset showStreak
@@ -1651,7 +2099,14 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       supplyReorderAt: recurrenceType !== 'none' && supplyCount !== null ? supplyReorderAt : DEFAULT_SUPPLY_REORDER_AT,
       supplyLeadDays: recurrenceType !== 'none' && supplyCount !== null ? supplyLeadDays : null,
       supplyGroceryItemId: recurrenceType !== 'none' && supplyCount !== null ? supplyGroceryItemId : null,
-      deferUntil: deferUntil?.toISOString() ?? null,
+      // A hold the meter pass wrote goes with the meter: left behind, it would
+      // keep a task that no longer follows anything hidden until that day.
+      // A defer that doesn't match is the user's own and stays.
+      deferUntil: !(meterAllowed && meterFields.meterName) && task?.meterHeldUntil && deferUntil
+        && dayKeyOf(deferUntil) === task.meterHeldUntil
+        ? null
+        : deferUntil?.toISOString() ?? null,
+      ...(meterAllowed && meterFields.meterName ? {} : { meterHeldUntil: null }),
       reminderTime: reminderTime?.toISOString() ?? null,
       reminderKind,
       reminderOffsetDays,
@@ -1669,6 +2124,9 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       recurrenceEndDate: recurrenceType !== 'none' ? (recurrenceEndDate?.toISOString() ?? null) : null,
       recurrenceCount: recurrenceType !== 'none' ? recurrenceCount : null,
       recurrenceFromCompletion,
+      // Only a rule with days to land on can skip one.
+      recurrenceHolidays: recurrenceType !== 'none' && recurrenceType !== 'hours' ? recurrenceHolidays : null,
+      rainSkipMm: recurrenceType !== 'none' && recurrenceType !== 'hours' ? rainSkipMm : null,
       sortOrder: task?.sortOrder ?? 0,
       pinned, priority, effort, estimatedMinutes, actualMinutes, timedMinutes,
       // Cleared with the schedule: it only means anything on a repeating task.
@@ -1704,6 +2162,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       vacationPause,
       excludeFromSuggestions,
       weatherWait: weatherWaitAllowed ? weatherWait : null,
+      ...(meterAllowed ? meterFields : NO_METER),
       difficulty,
       // Only the edge is written: posting starts the count at 0, and turning a
       // live bounty off spends it. Anything else leaves the row's count to
@@ -1725,6 +2184,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       // for such a task), so this doesn't also need timeSegments/windowEnd to
       // still be set — only the editor's own row is gated on that.
       streakRequiresWindow: recurrenceType !== 'none' && streakRequiresWindow,
+      streakCountsUnits: recurrenceType !== 'none' && quotaPeriod === 'week' && targetCount !== null && streakCountsUnits,
       linkUrl: resolveLinkUrl(),
       completionTimerMinutes,
       completionTimerNote,
@@ -1737,6 +2197,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       medicationAmount: resolveMedicationAmount(),
       medicationUnit: resolveMedicationAmount() !== null ? medicationUnit : null,
       logMealSlot,
+      // A food needs a slot to be logged under, so clearing the slot clears it.
+      logSavedMealId: logMealSlot !== null ? logSavedMealId : null,
       phoneNumber: resolvePhoneNumber(),
       emailAddress: resolveEmailAddress(),
       location: resolveLocation(),
@@ -1841,7 +2303,17 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         // groupId only rides along on the create path; for an existing task the
         // store methods above own the move, since they place it in the stack's
         // order and cascade the category as well as setting the field.
-        const newData = { ...data, groupId };
+        // An untouched Priority or Effort row is left out so a default can fill
+        // it (see priorityTouched); `estimatedMinutes` is already null when unset.
+        const newData = {
+          ...data,
+          groupId,
+          ...(priorityTouched ? {} : { priority: undefined }),
+          ...(effortTouched ? {} : { effort: undefined }),
+          ...(streakTouched ? {} : { showStreak: undefined }),
+          ...(vacationTouched ? {} : { vacationPause: undefined }),
+          ...(suggestionsTouched ? {} : { excludeFromSuggestions: undefined }),
+        };
         if (allDates.length >= 2) {
           const rows = addTaskSeries(newData, allDates, repeat);
           // The set's earliest date is what the waiters wait on: blockedById
@@ -1889,8 +2361,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         Alert.alert(
           isSeries ? 'Update task on several dates' : 'Update recurring task',
           isSeries
-            ? 'This task falls on more than one date. Apply this change to just this date, or to this and its later dates?'
-            : 'This task repeats. Apply this change to just this task, or to it and every future repeat?',
+            ? 'Apply this change to this date only, or to this and later dates?'
+            : 'Apply this change to this task only, or to it and every future repeat?',
           [
             { text: 'Cancel', style: 'cancel' },
             { text: isSeries ? 'This date' : 'This task', onPress: () => commitSave('occurrence') },
@@ -1909,9 +2381,9 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   // for the next real completion instead of leaving it to see a gap and
   // reset anyway. Reset always clears the anchor.
   const applyStreakChange = (rawCount: number) => {
-    if (!task) return;
+    if (!task || !liveStreakTask) return;
     const clamped = Math.max(0, Math.round(rawCount));
-    if (clamped === task.streakCount) {
+    if (clamped === liveStreakTask.streakCount) {
       setStreakEditorOpen(false);
       return;
     }
@@ -1921,23 +2393,23 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
     let newStreakDate: string | null;
     if (clamped === 0) {
       newStreakDate = null;
-    } else if (task.streakDate) {
-      const delta = clamped - task.streakCount;
+    } else if (liveStreakTask.streakDate) {
+      const delta = clamped - liveStreakTask.streakCount;
       // streakDate is a stored anchor, not a fresh "now" moment — getTaskDayStart
       // is the one that doesn't second-guess it if dayResetTime has changed
       // since it was written (see getStreakOutcome in dateUtils.ts).
-      const shifted = addDays(getTaskDayStart(new Date(task.streakDate), dayResetTime), delta);
+      const shifted = addDays(getTaskDayStart(new Date(liveStreakTask.streakDate), dayResetTime), delta);
       newStreakDate = (shifted > yesterday ? yesterday : shifted).toISOString();
     } else {
       newStreakDate = yesterday.toISOString();
     }
 
-    const increasing = clamped > task.streakCount;
+    const increasing = clamped > liveStreakTask.streakCount;
     Alert.alert(
       clamped === 0 ? 'Reset streak?' : `Set streak to ${clamped} day${clamped === 1 ? '' : 's'}?`,
       clamped === 0
         ? 'This clears the current streak count and history.'
-        : `This manually ${increasing ? 'credits' : 'reduces'} the streak, as if it had been ${increasing ? 'completed' : 'not completed'} on schedule. Only do this to fix a task you actually completed but forgot to mark done.`,
+        : `This ${increasing ? 'adds to' : 'reduces'} the streak as if the task ${increasing ? 'had been' : 'had not been'} completed on schedule. Use this only to fix a task you completed but forgot to check off.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -1952,7 +2424,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
               // takes it like any other ending. Correcting up needs nothing:
               // bestStreakOf already counts the live run, so a streak set to 50
               // is a record of 50 the moment it lands.
-              priorBestStreak: nextStreakRecord(task, clamped),
+              priorBestStreak: nextStreakRecord(liveStreakTask, clamped),
             });
             setStreakEditorOpen(false);
           },
@@ -1973,6 +2445,12 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   // becoming a weekly target in this edit, or already is a scaled-down one;
   // a weekly target whose week is already running keeps its count.
   const wasProrated = task ? proratedFrom(task) !== null : false;
+  // What the row has logged so far, for the period it was saved with. Null for
+  // a new target, or once the period is switched here: the count belongs to the
+  // stretch it was logged in, so it can't be read against the other one.
+  const loggedProgress = task && task.targetCount !== null && (task.quotaPeriod ?? 'day') === quotaPeriod
+    ? task.progressCount
+    : null;
   const prorationAnchor = (() => {
     if (task && wasProrated && task.quotaStartedAt) {
       return getTaskDayStart(new Date(task.quotaStartedAt), dayResetTime);
@@ -2042,11 +2520,12 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       recurrenceFromCompletion,
       recurrenceEndDate: recurrenceEndDate?.toISOString() ?? null,
       recurrenceCount,
+      recurrenceHolidays,
       dueDate: dueDate.toISOString(),
     }, dayResetTime);
   }, [
     task, dueDate, recurrenceType, recurrenceInterval, recurrenceDays, recurrenceMonthDay, recurrenceMonth,
-    recurrenceWeekOrdinal, recurrenceFromCompletion, recurrenceEndDate, recurrenceCount,
+    recurrenceWeekOrdinal, recurrenceFromCompletion, recurrenceEndDate, recurrenceCount, recurrenceHolidays,
     dayResetTime,
   ]);
 
@@ -2181,6 +2660,9 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       setReminderTracksVisibility(tracksVisibility ?? false);
       if (anchor) setReminderTimeAnchor(anchor);
       setReminderTouched(true);
+      // The person just chose a reminder, which is the moment to ask for the
+      // permission it needs if it has never been asked.
+      void askForReminderPermissionIfNeeded();
     }
     setPickerMode('none');
   };
@@ -2210,13 +2692,111 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const commitWindowValue = (which: 'start' | 'end', date: Date) => {
     const hhmm = dateToHHMM(date);
     if (which === 'start') {
+      setWindowStartSun(null);
       setWindowStart(hhmm);
       applyDefaultReminderLead(hhmm);
       applyDerivedTargetCount({ windowStart: hhmm });
     } else {
+      setWindowEndSun(null);
       setWindowEnd(hhmm);
       applyDerivedTargetCount({ windowEnd: hhmm });
     }
+  };
+
+  // ==== sun-anchored window bounds ====
+  // A bound can follow sunrise or sunset instead of the clock. Picking one
+  // commits straight away (there's no spinner to settle), writing the anchor
+  // and, as the clock field, the time it resolves to on the task's own day,
+  // which is what every reader that isn't sun-aware keeps (Task.windowStartSun).
+  const windowSunOf = (which: 'start' | 'end') => (which === 'start' ? windowStartSun : windowEndSun);
+
+  /** The day a sun bound is resolved on for the editor: the due day, else today. */
+  const windowDayStart = () => (dueDate ? getTaskDayStart(dueDate, dayResetTime) : getCurrentDayStart());
+  // Where that day's sun is worked out for: a trip's destination on a day a
+  // trip covers, else home (sunLocationOn). Read each render; the editor
+  // subscribes to `sunLocation` so a location saved from the panel below
+  // re-renders it.
+  const daySunLocation = sunLocationOn(windowDayStart());
+
+  const commitWindowSun = (which: 'start' | 'end', anchor: SunAnchor, loc: SunLocation) => {
+    const text = formatSunAnchor(anchor);
+    const hhmm = sunAnchorHHMM(text, windowDayStart(), loc);
+    // A polar day or night: no sunset to follow on that day. Said inline
+    // rather than saving an anchor that would quietly fall back to a clock.
+    if (!hhmm) { setSunUnavailable(true); return; }
+    setSunUnavailable(false);
+    if (which === 'start') {
+      setWindowStartSun(text);
+      setWindowStart(hhmm);
+      applyDefaultReminderLead(hhmm);
+      applyDerivedTargetCount({ windowStart: hhmm });
+    } else {
+      setWindowEndSun(text);
+      setWindowEnd(hhmm);
+      applyDerivedTargetCount({ windowEnd: hhmm });
+    }
+  };
+
+  const chooseWindowKind = (kind: 'time' | SunEvent) => {
+    if (windowPickerMode === 'none') return;
+    const which = windowPickerMode;
+    setWindowPickerKind(kind);
+    setSunUnavailable(false);
+    if (kind === 'time') {
+      // Back to a clock time: the anchor goes and the time it last resolved to
+      // stays, already loaded in the spinner.
+      const current = which === 'start' ? windowStart : windowEnd;
+      if (which === 'start') setWindowStartSun(null); else setWindowEndSun(null);
+      setWindowPickerDate(hhmmToDate(current ?? (which === 'start' ? '08:00' : '13:00')));
+      return;
+    }
+    // With no location saved, the panel offers to save one first, and nothing
+    // is written until there is one.
+    if (!daySunLocation) return;
+    const existing = parseSunAnchor(windowSunOf(which));
+    commitWindowSun(which, { event: kind, offsetMinutes: existing?.offsetMinutes ?? 0 }, daySunLocation);
+  };
+
+  /** Moves the open sun bound to before / at / after its event, keeping the minutes. */
+  const setWindowSunSide = (side: 'before' | 'at' | 'after') => {
+    if (windowPickerMode === 'none' || windowPickerKind === 'time' || !daySunLocation) return;
+    const existing = parseSunAnchor(windowSunOf(windowPickerMode));
+    const minutes = Math.abs(existing?.offsetMinutes ?? 0) || 30;
+    const offsetMinutes = side === 'at' ? 0 : side === 'before' ? -minutes : minutes;
+    commitWindowSun(windowPickerMode, { event: windowPickerKind, offsetMinutes }, daySunLocation);
+  };
+
+  const setWindowSunMinutes = (minutes: number) => {
+    if (windowPickerMode === 'none' || windowPickerKind === 'time' || !daySunLocation) return;
+    const existing = parseSunAnchor(windowSunOf(windowPickerMode));
+    const sign = (existing?.offsetMinutes ?? 0) < 0 ? -1 : 1;
+    commitWindowSun(windowPickerMode, { event: windowPickerKind, offsetMinutes: sign * minutes }, daySunLocation);
+  };
+
+  // What the location read below was started for, so the answer is applied
+  // only if the same pill is still open on the same choice when it lands.
+  const sunPickRef = useRef({ visible, which: windowPickerMode, kind: windowPickerKind });
+  sunPickRef.current = { visible, which: windowPickerMode, kind: windowPickerKind };
+
+  const saveCurrentLocationForSun = async () => {
+    const asked = { which: windowPickerMode, kind: windowPickerKind };
+    setSunLocationStatus('asking');
+    const granted = await requestLocationPermission();
+    const loc = granted ? await getCurrentLocation() : null;
+    if (!loc) { setSunLocationStatus('failed'); return; }
+    setSunLocation(loc);
+    setSunLocationStatus('idle');
+    const now = sunPickRef.current;
+    if (!now.visible || now.which !== asked.which || now.kind !== asked.kind) return;
+    if (asked.which === 'none' || asked.kind === 'time') return;
+    commitWindowSun(asked.which, { event: asked.kind, offsetMinutes: 0 }, roundSunLocation(loc));
+  };
+
+  /** A bound as the pills and the row's summary show it. */
+  const windowBoundLabel = (hhmm: string | null, sun: string | null): string | null => {
+    const anchor = parseSunAnchor(sun);
+    if (anchor) return shortSunAnchor(anchor);
+    return hhmm ? formatHHMM(hhmm) : null;
   };
 
   // The cutoff a positive task has to beat. Defaults to 09:00 rather than the
@@ -2237,12 +2817,17 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
     // Switching pills before hitting Set commits the pill being left instead
     // of discarding it, so dialing in Start and tapping End keeps the Start
     // time you'd already picked.
-    if (windowPickerMode !== 'none' && windowPickerMode !== which) {
+    // A sun bound has already been written as it was picked, so only a
+    // spinner still waiting on Set has anything to commit.
+    if (windowPickerMode !== 'none' && windowPickerMode !== which && windowPickerKind === 'time') {
       commitWindowValue(windowPickerMode, windowPickerDate);
     }
     const current = which === 'start' ? windowStart : windowEnd;
     const fallback = which === 'start' ? '08:00' : '13:00';
     setWindowPickerDate(hhmmToDate(current ?? fallback));
+    setWindowPickerKind(parseSunAnchor(windowSunOf(which))?.event ?? 'time');
+    setSunUnavailable(false);
+    setSunLocationStatus('idle');
     setWindowPickerMode(which);
   };
 
@@ -2274,7 +2859,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   };
 
   const confirmWindowPicker = () => {
-    if (windowPickerMode !== 'none') {
+    if (windowPickerMode !== 'none' && windowPickerKind === 'time') {
       commitWindowValue(windowPickerMode, windowPickerDate);
     }
     setWindowPickerMode('none');
@@ -2394,6 +2979,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       logCompletionToCalendar,
       timeSegments,
       windowStart, windowEnd,
+      windowStartSun, windowEndSun,
       penaltyMinutes, gatesApps, penaltyCutoffTime,
       targetCount,
       prorateFirstWeek,
@@ -2409,6 +2995,9 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       // behind on a task that stopped being a target would decide the span of a
       // count that no longer exists.
       quotaPeriod: targetCount !== null ? quotaPeriod : 'day',
+      quotaRampStep: offersRamp ? quotaRampStep : null,
+      quotaRampEvery: offersRamp && quotaRampStep ? quotaRampEvery : null,
+      quotaRampGoal: offersRamp && quotaRampStep ? quotaRampGoal : null,
       supplyCount, supplyUnit, supplyRefillCount, supplyReorderAt, supplyLeadDays, supplyGroceryItemId,
       deferUntil: deferUntil?.toISOString() ?? null,
       reminderTime: reminderTime?.toISOString() ?? null,
@@ -2418,6 +3007,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       reminderTimeAnchor,
       reminderUtcOffsetMinutes: reminderTime ? reminderTime.getTimezoneOffset() : null,
       recurrenceType, recurrenceInterval, recurrenceDays, recurrenceMonthDay, recurrenceMonth, recurrenceWeekOrdinal, recurrenceFromCompletion,
+      recurrenceHolidays,
+      rainSkipMm: recurrenceType !== 'none' && recurrenceType !== 'hours' ? rainSkipMm : null,
       recurrenceEndDate: recurrenceEndDate?.toISOString() ?? null,
       recurrenceCount,
       priority, effort, estimatedMinutes, actualMinutes, timedMinutes, healthMetric, healthTarget,
@@ -2425,12 +3016,14 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       pinned, pinEachOccurrence: recurrenceType !== 'none' ? pinEachOccurrence : false, chainEnabled, chainItems, rotationItems, chainIndex, chainStepOnSchedule, vacationPause,
       excludeFromSuggestions,
       weatherWait: weatherWaitAllowed ? weatherWait : null,
+      ...(meterAllowed ? meterFields : NO_METER),
       difficulty,
       bounty,
       polarity,
       slipAllowance,
       showStreak,
       streakRequiresWindow,
+      streakCountsUnits,
       linkUrl,
       completionTimerMinutes,
       completionTimerNote,
@@ -2440,6 +3033,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       medicationAmount,
       medicationUnit,
       logMealSlot,
+      logSavedMealId,
       phoneNumber,
       emailAddress,
       location,
@@ -2476,7 +3070,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
     if (task.recurrenceType !== 'none') {
       Alert.alert(
         'Delete recurring task',
-        'This task repeats. Mark just this one missed, or delete it and stop it repeating?',
+        'This task repeats. Mark this one missed, or delete it and stop it repeating?',
         [
           { text: 'Cancel', style: 'cancel' },
           {
@@ -2505,7 +3099,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
     if (isMissableMealPlanTask(task)) {
       Alert.alert(
         'Delete meal task',
-        'This came from your meal plan. Mark it missed to keep a record, or delete it outright?',
+        'This came from your meal plan. Mark it missed to keep a record, or delete it?',
         [
           { text: 'Cancel', style: 'cancel' },
           {
@@ -2547,7 +3141,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
     if (seriesId && remaining > 1) {
       Alert.alert(
         'Delete task on several dates',
-        `This task falls on ${remaining} remaining dates. Delete just this one, or all of them?`,
+        `This task has ${remaining} dates left. Delete this date only, or all of them?`,
         [
           { text: 'Cancel', style: 'cancel' },
           {
@@ -2580,7 +3174,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
     }
     confirmDelete({
       title: 'Delete task?',
-      message: `Delete "${task.title}"?`,
+      message: `Delete “${task.title}”?`,
       onConfirm: () => {
         haptics.success();
         deleteTask(task.id);
@@ -2596,6 +3190,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const customDurationActive = timedMinutes != null && !(DURATION_PRESETS as readonly number[]).includes(timedMinutes);
 
   const applyEffortPreset = (e: Effort) => {
+    setEffortTouched(true);
     setEffort(e);
     setEstimatedMinutes(EFFORT_MINUTES[e]);
     setCustomEffortOpen(false);
@@ -2619,6 +3214,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   };
 
   const applyCustomEffort = (text: string, unit: 'min' | 'hr') => {
+    setEffortTouched(true);
     const n = parseFloat(text);
     if (!Number.isFinite(n) || n <= 0) {
       // Empty/invalid clears the estimate back to unknown.
@@ -2690,8 +3286,10 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
     };
     return getVisibleAt(previewTask);
   }, [task, canTrackVisibility, deferUntil, timeSegments, dueDate, windowStart, category]);
-  const timeWindowSummary = (windowStart || windowEnd)
-    ? `${windowStart ? formatHHMM(windowStart) : 'Any'}–${windowEnd ? formatHHMM(windowEnd) : 'Any'}`
+  const timeWindowSummary = polarity === 'negative'
+    ? (windowBoundLabel(windowEnd, windowEndSun) ?? undefined)
+    : (windowStart || windowEnd)
+    ? `${windowBoundLabel(windowStart, windowStartSun) ?? 'Any'} to ${windowBoundLabel(windowEnd, windowEndSun) ?? 'Any'}`
     : undefined;
   // Says what happens and when, because the two halves are set separately and
   // a bare "2h" on the collapsed row reads as how long the task takes.
@@ -2706,6 +3304,35 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const effortSummary = effort > 0 && effortSummaryMinutes != null
     ? formatDuration(effortSummaryMinutes)
     : undefined;
+  // What a new task starts with in the three fields a default can fill, shown
+  // on a row that hasn't been answered. Only for a new task: an existing one
+  // already holds its values. Read off the same functions the save uses.
+  const newTaskDefaults = useSettingsStore(s => s.newTaskDefaults);
+  const defaultsPreview = useMemo(() => {
+    if (task) return null;
+    const chosenProject = project ? projects.find(p => p.id === project) : undefined;
+    const seeded = previewSeededFields(chosenProject?.taskDefaults, newTaskDefaults, polarity === 'negative', recurrenceType);
+    return {
+      priority: seeded.priority,
+      effort: seeded.effort,
+      showStreak: seeded.showStreak,
+      vacationPause: seeded.vacationPause,
+      excludeFromSuggestions: seeded.excludeFromSuggestions,
+      category: previewCategoryDefault(chosenProject?.defaultTaskCategory, newTaskDefaults.category),
+    };
+  }, [task, project, projects, newTaskDefaults, polarity, recurrenceType]);
+  const defaultPriorityLabel = defaultsPreview && !priorityTouched && defaultsPreview.priority > 0
+    ? `Default: ${PRIORITY_LABELS[defaultsPreview.priority]}` : undefined;
+  const defaultEffortLabel = defaultsPreview && !effortTouched && defaultsPreview.effort > 0
+    ? `Default: ${effortTimeLabel(defaultsPreview.effort, EFFORT_LABELS[defaultsPreview.effort])}` : undefined;
+  // What each toggle shows: the default on a new task nobody has touched, else
+  // what was set. Read by the rows and by their taps, so a tap flips what is on
+  // screen rather than the untouched state underneath it.
+  const streakShown = streakTouched || !defaultsPreview ? showStreak : showStreak || defaultsPreview.showStreak;
+  const vacationShown = vacationTouched || !defaultsPreview ? vacationPause : defaultsPreview.vacationPause;
+  const suggestionsShown = suggestionsTouched || !defaultsPreview ? excludeFromSuggestions : defaultsPreview.excludeFromSuggestions;
+  const defaultCategoryLabel = defaultsPreview && !category && selectedGroup === null && defaultsPreview.category
+    ? `Default: ${categoryLabel(defaultsPreview.category, categories)}` : undefined;
   const subtasks: (Task | DraftSubtask)[] = task ? subtasksOf(task.id) : draftSubtasks;
   // The stretches of the countdown the subtasks have been given, in their own
   // order. Empty unless at least one subtask carries minutes, which is what
@@ -2801,7 +3428,9 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
    * a kind switch can't quietly promote a plain task back to a timed one.
    */
   const retotalDuration = (nextSubtasks: (Task | DraftSubtask)[]) => {
-    if (timedMinutes === null) return;
+    // Timed only: on a target `timedMinutes` is the per-unit countdown, which
+    // a stretch left on a subtask must not overwrite.
+    if (timedMinutes === null || kind !== 'timed') return;
     const total = apportionedMinutes(nextSubtasks);
     if (total === null || total === timedMinutes) return;
     setTimedMinutes(total);
@@ -2862,6 +3491,76 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   };
 
   // ==== render. Everything below is JSX; grep `label="…"` for a card ====
+  // The Start / End pills and their pickers, shared by the Time window row and
+  // a daily target's Pace window row: both edit the same windowStart/windowEnd.
+  const windowControls = (
+      <>
+        <View style={styles.windowPillRow}>
+          {polarity !== 'negative' && (
+          <TouchableOpacity
+            style={[
+              styles.timePill, styles.windowPill,
+              !!windowStart && styles.timePillActive,
+              windowPickerMode === 'start' && styles.timePillEditing,
+            ]}
+            onPress={() => openWindowPicker('start')}
+          >
+            <Text style={[styles.timePillText, !!windowStart && styles.timePillTextActive]}>
+              {windowBoundLabel(windowStart, windowStartSun) ?? 'Start'}
+            </Text>
+          </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            style={[
+              styles.timePill, styles.windowPill,
+              !!windowEnd && styles.timePillActive,
+              windowPickerMode === 'end' && styles.timePillEditing,
+            ]}
+            onPress={() => openWindowPicker('end')}
+          >
+            <Text style={[styles.timePillText, !!windowEnd && styles.timePillTextActive]}>
+              {windowBoundLabel(windowEnd, windowEndSun) ?? 'End'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+        {windowPickerMode !== 'none' && (
+          <View style={styles.windowKindRow}>
+            <SegmentedControl
+              options={WINDOW_KIND_OPTIONS}
+              value={windowPickerKind}
+              onChange={chooseWindowKind}
+              label={windowPickerMode === 'start' ? 'Start at' : 'End at'}
+            />
+          </View>
+        )}
+        {windowPickerMode !== 'none' && windowPickerKind === 'time' && (
+          <InlineTimePicker
+            value={windowPickerDate}
+            onChange={setWindowPickerDate}
+            onCancel={() => setWindowPickerMode('none')}
+            onConfirm={confirmWindowPicker}
+          />
+        )}
+        {windowPickerMode !== 'none' && windowPickerKind !== 'time' && (
+          <SunBoundPanel
+            event={windowPickerKind}
+            anchor={parseSunAnchor(windowSunOf(windowPickerMode))}
+            resolved={windowPickerMode === 'start' ? windowStart : windowEnd}
+            dayLabel={dueDate && getTaskDayStart(dueDate, dayResetTime).getTime() !== getCurrentDayStart().getTime()
+              ? `On ${format(dueDate, 'MMM d')}`
+              : 'Today'}
+            hasLocation={!!daySunLocation}
+            locationStatus={sunLocationStatus}
+            unavailable={sunUnavailable}
+            onSide={setWindowSunSide}
+            onMinutes={setWindowSunMinutes}
+            onUseLocation={saveCurrentLocationForSun}
+            onDone={() => setWindowPickerMode('none')}
+          />
+        )}
+      </>
+  );
+
   return (
     <EditorSheet
       visible={visible}
@@ -3193,7 +3892,10 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       )}
 
       {searching && totalMatches === 0 && (
-        <Text style={styles.searchEmpty}>No fields match “{searchQuery.trim()}”.</Text>
+        <Text style={styles.searchEmpty}>
+          No fields match “{searchQuery.trim()}”.
+          {hiddenFieldsNote ? `\n\n${hiddenFieldsNote}` : ''}
+        </Text>
       )}
 
       {titleVisible && (
@@ -3254,7 +3956,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                 ? 'repeat'
                 : activeParsedSchedule.schedule.deadline ? 'flag-outline' : 'calendar-outline'
             }
-            label={describeSchedule(activeParsedSchedule.schedule, getLogicalNow(dayResetTime))}
+            label={`${describeSchedule(activeParsedSchedule.schedule, getLogicalNow(dayResetTime))}${activeParsedSchedule.schedule.explicitClockTime && stripRemindPrefix(activeParsedSchedule.cleanTitle) !== null ? ' · Reminder' : ''}`}
             onApply={applyParsedSchedule}
             onDismiss={dismissParsedSchedule}
             dismissLabel="Not a date"
@@ -3283,6 +3985,50 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             dismissLabel="Hide suggestion"
           />
         </Animated.View>
+      )}
+
+      {/* Everything else a title can say — priority, project, link, phone,
+          email, timer, supply, target, estimate, weather, sun, meter, rain,
+          waiting on, subtasks, avoid. One at a time; tap to apply, or ✕ to
+          say it is just part of the title. */}
+      {titleVisible && activeTitleSuggestion && titleSuggestionDescription && (
+        <Animated.View
+          style={[styles.scheduleBanner, {
+            opacity: titleSuggestionAnim,
+            transform: [
+              { translateY: titleSuggestionAnim.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] }) },
+              { scale: titleSuggestionAnim.interpolate({ inputRange: [0, 1], outputRange: [0.95, 1] }) },
+            ],
+          }]}
+        >
+          <TitleSuggestionBanner
+            icon={titleSuggestionDescription.icon as React.ComponentProps<typeof TitleSuggestionBanner>['icon']}
+            label={titleSuggestionDescription.label}
+            onApply={applyTitleSuggestion}
+            onDismiss={dismissTitleSuggestion}
+            dismissLabel="Not that"
+          />
+        </Animated.View>
+      )}
+
+      {/* A clock time the date phrase named, offered as a reminder. */}
+      {titleVisible && !!reminderOffer && (
+        <View style={styles.reminderOfferRow}>
+          <InlineAction
+            icon="notifications-outline"
+            label={`Remind me at ${formatTimeOfDay(reminderOffer, use24HourTime)}?`}
+            variant="neutral"
+            surface="page"
+            onPress={acceptReminderOffer}
+          />
+          <InlineAction
+            icon="close"
+            label="No thanks"
+            variant="neutral"
+            surface="page"
+            onPress={dismissReminderOffer}
+          />
+        </View>
       )}
 
       {/* Mention suggestions — a still-typed or already-resolvable "@name"; tap one to link them */}
@@ -3321,8 +4067,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       )}
 
       {/* Contact nudge — "Call Kristen"/"Text the plumber"/"Email the
-          landlord" with no number/email on the task yet. Tap reveals the
-          matching row in "More" below rather than setting anything itself.
+          landlord" with no number/email on the task yet. Tap opens the
+          matching field below rather than setting anything itself.
           Suppressed while searching: it's an unprompted suggestion, and a
           search is the one moment the user has said what they're after. */}
       {!searching && (showPhoneNudge || showEmailNudge) && (
@@ -3407,7 +4153,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                 />
                 <Text style={styles.kindHint}>
                   {polarity === 'negative'
-                    ? 'Never completed. It stays on Today every day and counts the days you get through without it. Tap its shield to record a slip, which resets the count.'
+                    ? 'Never completed. Stays on Today every day and counts the days you go without it. Tap the shield to record a slip, which resets the count. Long press it to count today early or log a slip.'
                     : 'Completed when you do it, like any other task.'}
                 </Text>
                 {polarity === 'negative' && (
@@ -3426,7 +4172,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                     <Text style={styles.kindHint}>
                       {slipAllowance === null
                         ? 'The first slip of a day resets the count.'
-                        : 'Slips up to this number are recorded but keep the count, and block no apps. The next one resets it.'}
+                        : 'Slips up to this number are recorded but don’t reset the count or block apps. The next one resets it.'}
                     </Text>
                   </View>
                 )}
@@ -3451,8 +4197,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
               emptySummary="Untimed"
               hint={
                 durationSegments.length > 0
-                  ? "Counts down on the task's row while you work, passing through each subtask's minutes in turn."
-                  : "Counts down on the task's row while you work. When it runs out the task is marked ready to complete."
+                  ? "Counts down on the task’s row while you work, passing through each subtask’s minutes in turn."
+                  : "Counts down on the task’s row while you work, then marks the task ready to complete."
               }
               expanded={fieldOpen('duration')}
               onToggle={toggleDuration}
@@ -3475,7 +4221,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                     <Text style={styles.splitTotalValue}>{formatDuration(timedMinutes ?? 0)}</Text>
                   </View>
                   <Text style={styles.splitNote}>
-                    Set each stretch on the subtask rows below. Clear all of them to set one duration here instead.
+                    Set each subtask’s time on its row below. Clear all of them to set one duration here.
                   </Text>
                 </View>
               ) : (<>
@@ -3546,15 +4292,17 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
           }] : []),
           ...(kind === 'target' ? [{
             key: 'dailyTarget', label: quotaPeriod === 'week' ? 'Weekly target' : 'Daily target', set: true,
-            keywords: ['quota', 'goal', 'times a day', 'times a week', 'weekly', 'prorate', 'this week', 'fewer', 'count', 'interval', 'cadence', 'every', 'minutes', 'nudge', 'notify', 'break', 'pace'],
+            keywords: ['quota', 'goal', 'times a day', 'times a week', 'weekly', 'prorate', 'this week', 'fewer', 'count', 'interval', 'cadence', 'every', 'minutes', 'nudge', 'notify', 'break', 'pace', 'window', 'hours', 'between', 'start', 'end'],
             node: (<>
               <EditorRow
                 icon="speedometer-outline"
                 label={quotaPeriod === 'week' ? 'Weekly target' : 'Daily target'}
                 hint={quotaPeriod === 'week'
-                  ? "Log it several times a week, on whichever days work. The task hides while you're on pace and comes back when you fall behind."
-                  : "Log it several times a day. The task hides while you're on pace and comes back when you fall behind."}
-                value={targetCount !== null ? formatQuotaTarget(targetCount, targetUnit) : undefined}
+                  ? "Log it several times a week, on any days. The task hides while you’re on pace and comes back when you fall behind."
+                  : "Log it several times a day. The task hides while you’re on pace and comes back when you fall behind."}
+                value={targetCount !== null
+                  ? (loggedProgress !== null ? formatQuotaProgress(loggedProgress, targetCount, targetUnit) : formatQuotaTarget(targetCount, targetUnit))
+                  : undefined}
                 expanded={showTargetCount}
                 onPress={() => { animateLayout(); setShowTargetCount(v => !v); }}
                 onClear={targetCount !== null ? () => { setTargetCount(null); setTargetUnit(''); setShowTargetCount(false); } : undefined}
@@ -3616,6 +4364,16 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                       />
                     )}
                   </View>
+                  {loggedProgress !== null && targetCount !== null && quotaIntervalMinutes === null && (
+                    <View
+                      style={styles.targetProgressTrack}
+                      accessible
+                      accessibilityRole="progressbar"
+                      accessibilityLabel={`Logged ${formatQuotaProgress(loggedProgress, targetCount, targetUnit)} so far this ${quotaPeriod}`}
+                    >
+                      <View style={[styles.targetProgressFill, { width: `${Math.min(100, (loggedProgress / targetCount) * 100)}%` }]} />
+                    </View>
+                  )}
                   {/* Says what the row will read as rather than what the field is
                       for: the unit's whole job is how the meter comes out, and a
                       preview answers "plural or singular?" without a rule to
@@ -3625,7 +4383,12 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                       ? 'Not a target'
                       : quotaIntervalMinutes !== null
                         ? quotaCadenceCaption
-                        : `Shows as ${formatQuotaProgress(0, targetCount, targetUnit)} a ${quotaPeriod}`}
+                        : loggedProgress !== null && loggedProgress > 0
+                          // The row's real count, not a zero: the preview used to
+                          // read "0/6" on a target already half done, which looked
+                          // like opening the editor had reset it.
+                          ? `Logged ${formatQuotaProgress(loggedProgress, targetCount, targetUnit)} so far this ${quotaPeriod}`
+                          : `Shows as ${formatQuotaProgress(0, targetCount, targetUnit)} a ${quotaPeriod}`}
                   </Text>
                   {targetCount !== null && (
                     <>
@@ -3662,8 +4425,54 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                       />
                       <Text style={styles.targetStepperCaption}>
                         {quotaPeriod === 'week'
-                          ? 'Any days of the week. The count resets when the week does.'
+                          ? 'Any days of the week. The count resets each week.'
                           : 'The count resets each day.'}
+                      </Text>
+                      <View style={styles.sep} />
+                      {quotaPeriod === 'day' && (
+                        <>
+                          {/* The same windowStart/windowEnd as the Time window
+                              row under Schedule, surfaced here because it is
+                              what the daily pace is measured across. */}
+                          <EditorRow
+                            icon="timer-outline"
+                            label="Pace window"
+                            hint="The hours the target is spread across. Without one, your active hours are used. The task also expires when the window ends."
+                            value={timeWindowSummary ?? `Active hours, ${formatHHMM(activeHoursStart, use24HourTime)} to ${formatHHMM(activeHoursEnd, use24HourTime)}`}
+                            expanded={showPaceWindow}
+                            onPress={() => { animateLayout(); setShowPaceWindow(v => !v); }}
+                            onClear={(windowStart || windowEnd)
+                              ? () => { setWindowStart(null); setWindowEnd(null); setWindowStartSun(null); setWindowEndSun(null); setWindowPickerMode('none'); applyDerivedTargetCount({ windowStart: null, windowEnd: null }); }
+                              : undefined}
+                          />
+                          {showPaceWindow && windowControls}
+                          <View style={styles.sep} />
+                        </>
+                      )}
+                      {/* A countdown for each unit, kept in `timedMinutes`. It
+                          restarts every time a unit is logged and never blocks
+                          logging one early. */}
+                      <View style={styles.targetStepperRow}>
+                        <CountStepper
+                          value={timedMinutes}
+                          onChange={next => {
+                            setTimedMinutes(next);
+                            setDurationText(next !== null ? String(next) : '');
+                            setDurationUnit('min');
+                          }}
+                          min={1}
+                          max={180}
+                          allowNull
+                          emptyLabel="Off"
+                          format={n => `${n} min`}
+                          label="Time per unit"
+                          describeValue={n => (n === null ? 'off' : `${n} minutes for each unit`)}
+                        />
+                      </View>
+                      <Text style={styles.targetStepperCaption}>
+                        {timedMinutes === null
+                          ? 'Optional countdown timer for each unit, such as 10 minutes per round.'
+                          : `A ${formatDuration(timedMinutes)} countdown timer for each unit. It restarts when you log a unit.`}
                       </Text>
                     </>
                   )}
@@ -3706,13 +4515,13 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                           emptyLabel="Off"
                           format={n => `${n} min`}
                           label="How often one falls due"
-                          describeValue={n => (n === null ? 'off' : `every ${n} minutes`)}
+                          describeValue={n => (n === null ? 'off' : `every ${n} ${n === 1 ? 'minute' : 'minutes'}`)}
                         />
                       </View>
                       <Text style={styles.targetStepperCaption}>
                         {quotaIntervalMinutes === null
                           ? 'Set this to space them evenly instead of picking a number.'
-                          : 'Set a time window under Schedule to say when the day starts and ends.'}
+                          : 'Set a pace window above to say when the day starts and ends.'}
                       </Text>
                       <View style={styles.sep} />
                       <TouchableOpacity
@@ -3726,7 +4535,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                         <Ionicons name="notifications-outline" size={18} color={quotaReminders ? colors.accent : colors.textSecondary} />
                         <View style={styles.optionContent}>
                           <Text style={styles.optionLabel}>Notify me when each one is due</Text>
-                          <Text style={styles.optionHint}>Send a notification at each one, instead of only showing the task on Today</Text>
+                          <Text style={styles.optionHint}>Send a notification at each one, as well as showing the task on Today</Text>
                         </View>
                         <View style={[styles.toggle, quotaReminders && styles.toggleOn]}>
                           <View style={[styles.toggleKnob, quotaReminders && styles.toggleKnobOn]} />
@@ -3752,12 +4561,68 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                       <Ionicons name="trending-up-outline" size={18} color={allowOvershoot ? colors.accent : colors.textSecondary} />
                       <View style={styles.optionContent}>
                         <Text style={styles.optionLabel}>Allow going past target</Text>
-                        <Text style={styles.optionHint}>Keep logging past {targetCount}×. It stays on Today and completes at day's end with whatever count you reached</Text>
+                        <Text style={styles.optionHint}>Keep logging past {targetCount}×. It stays on Today and completes at day’s end with the count you reached</Text>
                       </View>
                       <View style={[styles.toggle, allowOvershoot && styles.toggleOn]}>
                         <View style={[styles.toggleKnob, allowOvershoot && styles.toggleKnobOn]} />
                       </View>
                     </TouchableOpacity>
+                  )}
+                  {offersRamp && (
+                    <>
+                      <View style={styles.sep} />
+                      <View style={styles.targetStepperRow}>
+                        <Text style={styles.stepperSentence}>Add</Text>
+                        <CountStepper
+                          value={quotaRampStep}
+                          onChange={next => setQuotaRampStep(next)}
+                          min={1}
+                          max={QUOTA_RAMP_MAX_STEP}
+                          allowNull
+                          emptyLabel="Off"
+                          format={n => `${n}`}
+                          label="Ramp up amount"
+                          describeValue={n => (n === null ? 'off' : `add ${n} each time`)}
+                        />
+                      </View>
+                      {quotaRampStep !== null && (
+                        <>
+                          <View style={styles.targetStepperRow}>
+                            <Text style={styles.stepperSentence}>
+                              After every
+                            </Text>
+                            <CountStepper
+                              value={quotaRampEvery}
+                              onChange={next => setQuotaRampEvery(next ?? 1)}
+                              min={1}
+                              max={QUOTA_RAMP_MAX_EVERY}
+                              format={n => `${n} ${quotaPeriod === 'week' ? (n === 1 ? 'week' : 'weeks') : (n === 1 ? 'day' : 'days')}`}
+                              label="Hits needed before each increase"
+                              describeValue={n => `${n ?? 1} ${quotaPeriod === 'week' ? 'weeks' : 'days'} you hit the target`}
+                            />
+                          </View>
+                          <View style={styles.targetStepperRow}>
+                            <Text style={styles.stepperSentence}>Up to</Text>
+                            <CountStepper
+                              value={quotaRampGoal}
+                              onChange={next => setQuotaRampGoal(next)}
+                              min={Math.max(MIN_TARGET_COUNT, (targetCount ?? 0) + 1)}
+                              max={QUOTA_RAMP_MAX_TARGET}
+                              allowNull
+                              emptyLabel="No limit"
+                              format={n => `${n}`}
+                              label="Ramp up goal"
+                              describeValue={n => (n === null ? 'no limit' : `stop at ${n}`)}
+                            />
+                          </View>
+                        </>
+                      )}
+                      <Text style={styles.targetStepperCaption}>
+                        {describeQuotaRamp({ quotaRampStep, quotaRampEvery, quotaRampGoal, quotaPeriod })
+                          ?? 'Ramp up: raise the target as you keep hitting it.'}
+                        {quotaRampStep !== null ? `. A missed or short ${quotaPeriod === 'week' ? 'week' : 'day'} doesn’t count or reset it.` : ''}
+                      </Text>
+                    </>
                   )}
                   {targetCount !== null && (
                     <TouchableOpacity
@@ -3773,8 +4638,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                         <Text style={styles.optionLabel}>Stay visible even when on pace</Text>
                         <Text style={styles.optionHint}>
                           {quotaPeriod === 'week'
-                            ? "Keep showing this on Today every day, instead of hiding it while you're keeping up with it"
-                            : "Keep showing this on Today all day, instead of hiding it while you're keeping up with it"}
+                            ? "Keep this on Today every day, even while you’re on pace"
+                            : "Keep this on Today all day, even while you’re on pace"}
                         </Text>
                       </View>
                       <View style={[styles.toggle, quotaAlwaysVisible && styles.toggleOn]}>
@@ -3796,7 +4661,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                 // Says what it will and will not do, in that order, because the
                 // second half is the part somebody would otherwise assume. This
                 // hint is the only in-app documentation the kind has.
-                hint="The task reads as ready once Apple Health reaches this today. It is never checked off for you."
+                hint="The task shows as ready once Apple Health reaches this today. You still check it off."
                 value={healthTarget !== null && healthMetric !== null
                   ? (followsRingGoal(healthMetric) && healthFollowGoal
                     ? 'Your Fitness goal'
@@ -3854,7 +4719,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                       <View style={styles.optionContent}>
                         <Text style={styles.optionLabel}>Follow my Fitness goal</Text>
                         <Text style={styles.optionHint}>
-                          Uses the goal you set for this ring in Fitness. The number above is used until that goal has been read.
+                          Uses the goal you set for this ring in Fitness. Until it’s read, the number above applies.
                         </Text>
                       </View>
                       <View style={[styles.toggle, healthFollowGoal && styles.toggleOn]}>
@@ -3880,8 +4745,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                         : 'Nothing in the set yet'
                   }
                   hint={
-                    'A set of things to get through each week, in any order. Each one has its own number of times a week. '
-                    + 'Checking the task off asks which one you did, and it stays on Today until every one is done. Reschedule it on a day you don\'t want to do one.'
+                    'A set of things to do each week, in any order, each with its own weekly target. '
+                    + 'Checking the task off asks which one you did. It stays on Today until every one is done. To skip a day, reschedule it.'
                   }
                   expanded={fieldOpen('rotationSet', true)}
                   onToggle={() => toggleField('rotationSet', true)}
@@ -3992,7 +4857,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                     )}
                     {rotationItems.length > 1 && (
                       <Text style={styles.chainCurrentHint}>
-                        Drag to reorder. This is the order the picker lists them in, and nothing ever re-ranks it.
+                        Drag to reorder. The picker lists them in this order.
                       </Text>
                     )}
                   </View>
@@ -4180,7 +5045,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                     )}
                     {chainItems.length > 0 && (
                       <Text style={styles.chainCurrentHint}>
-                        Times are per step; a step left blank uses the task's own estimate.
+                        Times are per step. A step left blank uses the task’s estimate.
                       </Text>
                     )}
                     {chainItems.length > 1 && (
@@ -4205,10 +5070,10 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                         />
                         <Text style={styles.chainCurrentHint}>
                           {recurrenceType === 'none'
-                            ? 'Steps follow each other as you finish them. Add a repeat to spread them over days instead.'
+                            ? 'Steps follow each other as you finish them. Add a repeat to spread them over days.'
                             : chainStepOnSchedule
-                              ? 'One step per repeat. The chain rotates through its steps rather than running straight through.'
-                              : 'Finishing a step brings up the next one immediately; the repeat starts the whole chain over.'}
+                              ? 'One step per repeat. The chain rotates through its steps.'
+                              : 'Finishing a step brings up the next one immediately. The repeat starts the whole chain over.'}
                         </Text>
                       </View>
                     )}
@@ -4223,7 +5088,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                           const prefix = 'Tap a number to set the current position.';
                           if (chainIndex === chainItems.length - 1) {
                             return recurrenceType === 'none'
-                              ? `${prefix} This is the last step. The chain ends here.`
+                              ? `${prefix} Last step. The chain ends here.`
                               : `${prefix} Last step. The chain starts over on the next repeat.`;
                           }
                           return `${prefix} Next up: ${chainItems[(chainIndex + 1) % chainItems.length]?.title}`;
@@ -4235,389 +5100,6 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                 </CollapsibleField>
             </>),
           }] : []),
-          // Not one of the four kinds, and deliberately a row of its own below
-          // them: the kinds are exclusive (bakedFields clears the other three)
-          // and this isn't — a chain step or a timed task can end in a
-          // decision too. It sits in this group because it answers the same
-          // question the kinds do, "what does completing this mean", which is
-          // what someone opens this group looking for.
-          {
-            key: 'deliverable', label: 'Ask on completion', set: deliverableKind !== null,
-            keywords: ['decision', 'decide', 'answer', 'value', 'capture', 'record', 'prompt', 'question'],
-            node: (
-              <>
-              <CollapsibleField
-                label="Ask on completion"
-                summary={deliverableKind ? deliverableMeta(deliverableKind).label : undefined}
-                emptySummary="Nothing"
-                hint={
-                  deliverableKind
-                    ? deliverableMeta(deliverableKind).hint
-                    : 'Asks you to record an answer when you complete the task, and keeps it in the Logbook.'
-                }
-                expanded={fieldOpen('deliverable')}
-                onToggle={() => toggleField('deliverable')}
-              >
-                <DeliverableKindPicker
-                  value={deliverableKind}
-                  onChange={kind => { setDeliverableKind(kind); closeField('deliverable'); }}
-                />
-              </CollapsibleField>
-              {/* Outside the collapsible, so the options stay in view once a
-                  pick closes it: a Pick-one with no options is a question
-                  with nothing to pick. */}
-              {deliverableKind === 'choice' && (
-                <TextField
-                  style={[styles.fieldBox, styles.followUpTaskTitleInput]}
-                  value={deliverableOptionsText}
-                  onChangeText={setDeliverableOptionsText}
-                  placeholder="e.g. Yes, No, Maybe"
-                  placeholderTextColor={colors.textTertiary}
-                  returnKeyType="done"
-                  accessibilityLabel="Options to pick from, separated by commas"
-                />
-              )}
-              {/* Fewer than two options and completing asks nothing
-                  (deliverableOptionsFor), so say so where they're typed. */}
-              {deliverableKind === 'choice' && parseDeliverableOptions(deliverableOptionsText).length < 2 && (
-                <Text style={styles.choiceOptionsHint}>
-                  Add at least two options, separated by commas. With fewer, completing the task asks nothing.
-                </Text>
-              )}
-              {deliverableKind === 'date' && project !== null && (
-                <TouchableOpacity
-                  style={styles.optionRow}
-                  onPress={() => { haptics.tap(); setDeliverableSetsAway(v => !v); }}
-                  activeOpacity={interaction.activeOpacity}
-                  accessibilityRole="switch"
-                  accessibilityState={{ checked: deliverableSetsAway }}
-                  accessibilityLabel="Use the answer as the project's leaving date"
-                >
-                  <Ionicons
-                    name="airplane-outline"
-                    size={18}
-                    color={deliverableSetsAway ? colors.accent : colors.textSecondary}
-                  />
-                  <View style={styles.optionContent}>
-                    <Text style={styles.optionLabel}>Sets the leaving date</Text>
-                    <Text style={styles.optionHint}>
-                      The date you answer becomes the project's Leaving date, if it doesn't have one yet
-                    </Text>
-                  </View>
-                  <View style={[styles.toggle, deliverableSetsAway && styles.toggleOn]}>
-                    <View style={[styles.toggleKnob, deliverableSetsAway && styles.toggleKnobOn]} />
-                  </View>
-                </TouchableOpacity>
-              )}
-              </>
-            ),
-          },
-          // Another "what does completing this mean" question, and — like
-          // deliverable above — not gated on any other field: it answers to
-          // completion itself, not to a deadline the way the calendar toggle
-          // in the Schedule group does.
-          {
-            key: 'logCompletionToCalendar', label: 'Log to calendar',
-            keywords: ['calendar', 'event', 'log', 'history', 'record'],
-            node: (
-              <TouchableOpacity
-                style={styles.optionRow}
-                onPress={() => {
-                  haptics.tap();
-                  // With no calendar named yet the row asks for one rather
-                  // than doing nothing. It used to send the reader to
-                  // Settings, which from a sheet guarding unsaved edits meant
-                  // abandoning the task to follow the instruction.
-                  if (!completionCalendarId) { setCalendarPickerFor('completion'); return; }
-                  setLogCompletionToCalendar(v => !v);
-                }}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole={completionCalendarId ? 'switch' : 'button'}
-                accessibilityLabel="Log this task's completion to your calendar"
-                accessibilityState={completionCalendarId ? { checked: logCompletionToCalendar } : {}}
-              >
-                <Ionicons
-                  name="calendar-outline"
-                  size={18}
-                  color={logCompletionToCalendar ? colors.accent : colors.textSecondary}
-                />
-                <View style={styles.optionContent}>
-                  <Text style={styles.optionLabel}>Log to calendar</Text>
-                  <Text style={styles.optionHint}>
-                    {completionCalendarId
-                      ? 'A calendar event when you complete this task'
-                      : 'Pick a calendar to write to'}
-                  </Text>
-                </View>
-                {completionCalendarId ? (
-                  <View style={[styles.toggle, logCompletionToCalendar && styles.toggleOn]}>
-                    <View style={[styles.toggleKnob, logCompletionToCalendar && styles.toggleKnobOn]} />
-                  </View>
-                ) : (
-                  <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
-                )}
-              </TouchableOpacity>
-            ),
-          },
-          // A third "what does completing this mean" question, same family as
-          // the calendar toggle right above — opt-in, gated on a Settings
-          // switch it can't turn on for itself, same disabled/hint shape.
-          // A metric-and-number pair rather than a toggle, unlike the
-          // calendar row: the calendar event's content is fixed (the task's
-          // own title), but "how much of what" has no single obvious answer
-          // to bake in — this used to log dietary water only.
-          {
-            key: 'logHealthValue', label: 'Log to Health',
-            set: logHealthMetric !== null && logHealthAmount !== null,
-            keywords: ['water', 'hydration', 'drink', 'health', 'apple health', 'nutrient', 'protein', 'sodium', 'calories', 'sugar', 'fiber', 'fat', 'carbs', 'caffeine'],
-            node: (() => {
-              // Water is the one nutrient with a second unit worth offering —
-              // nobody asks for a stepper in fl oz of sodium. logHealthAmount
-              // stays in ml regardless (see waterLogUnit above); this only
-              // decides what the stepper displays and steps in.
-              const isWater = (logHealthMetric ?? 'waterMl') === 'waterMl';
-              const useFlOz = isWater && waterLogUnit === 'flOz';
-              const range = useFlOz ? LOG_HEALTH_WATER_FL_OZ_STEPS : LOG_HEALTH_VALUE_STEPS[logHealthMetric ?? 'waterMl'];
-              const unitLabel = useFlOz ? 'fl oz' : NUTRIENT_LABEL[logHealthMetric ?? 'waterMl'].unit;
-              const isSet = logHealthMetric !== null && logHealthAmount !== null;
-              return (
-                <CollapsibleField
-                  label="Log to Health"
-                  summary={
-                    isSet
-                      ? `${useFlOz ? Math.round(mlToFlOz(logHealthAmount)) : logHealthAmount}${useFlOz ? ' ' : ''}${unitLabel} of ${NUTRIENT_LABEL[logHealthMetric].label.toLowerCase()} ${targetCount !== null ? 'per unit logged' : 'when completed'}`
-                      : undefined
-                  }
-                  hint={
-                    healthWriteEnabled
-                      ? targetCount !== null
-                        ? `Adds to today’s ${isWater ? 'water' : NUTRIENT_LABEL[logHealthMetric ?? 'waterMl'].label.toLowerCase()} in the food log, and writes it to Apple Health, each time you log a unit toward the daily target.`
-                        : `Adds to today’s ${isWater ? 'water' : NUTRIENT_LABEL[logHealthMetric ?? 'waterMl'].label.toLowerCase()} in the food log, and writes it to Apple Health, each time you complete this task.`
-                      : 'Turn on writing to Health in Settings › Health first'
-                  }
-                  expanded={healthWriteEnabled && fieldOpen('logHealthValue')}
-                  onToggle={() => { if (!healthWriteEnabled) return; toggleField('logHealthValue'); }}
-                  // Turning this off used to mean holding − on the amount
-                  // stepper all the way down past its floor — real, but not
-                  // discoverable, especially from a large amount. This mirrors
-                  // EditorRow's onClear (a close-circle beside the value) for
-                  // the fields built on that component instead of this one.
-                  right={isSet ? (
-                    <TouchableOpacity
-                      onPress={() => {
-                        haptics.tap();
-                        setLogHealthAmount(null);
-                        closeField('logHealthValue');
-                      }}
-                      hitSlop={8}
-                      accessibilityRole="button"
-                      accessibilityLabel="Clear log to health"
-                    >
-                      <Ionicons name="close-circle" size={16} color={colors.textSecondary} />
-                    </TouchableOpacity>
-                  ) : undefined}
-                >
-                  <ChoiceMenuChip
-                    variant="field"
-                    name="TaskEditor nutrient menu"
-                    noun="Nutrient"
-                    groups={LOG_NUTRIENT_GROUPS}
-                    selectedKey={logHealthMetric ?? 'waterMl'}
-                    onSelect={key => {
-                      const next = key as NutrientKey;
-                      haptics.tap();
-                      setLogHealthMetric(next);
-                      // Re-defaulted rather than carried over, same reasoning
-                      // the health-target metric switch above uses: 250 of
-                      // whatever the old metric was is not a meaningful amount
-                      // of the new one, so switching starts back at one step.
-                      setLogHealthAmount(LOG_HEALTH_VALUE_STEPS[next].step);
-                    }}
-                  />
-                  <View style={styles.logHealthAmountRow}>
-                    <CountStepper
-                      value={logHealthAmount === null ? null : (useFlOz ? Math.round(mlToFlOz(logHealthAmount)) : logHealthAmount)}
-                      onChange={next => {
-                        const ml = next === null ? null : (useFlOz ? Math.round(flOzToMl(next)) : next);
-                        setLogHealthAmount(ml);
-                        // Stepping up from Off before ever touching the picker
-                        // above still has to turn the row on for some metric —
-                        // water, the same default this feature started as.
-                        if (ml !== null && logHealthMetric === null) setLogHealthMetric('waterMl');
-                      }}
-                      min={range.step}
-                      max={range.max}
-                      step={range.step}
-                      allowNull
-                      emptyLabel="Off"
-                      label="Log to Health"
-                      format={n => (useFlOz ? `${n} fl oz` : `${n}${unitLabel}`)}
-                      describeValue={n => (n === null ? 'off' : `${n} ${useFlOz ? 'fluid ounces' : unitLabel}`)}
-                    />
-                    {isWater && (
-                      <View style={styles.pillRow}>
-                        {(['ml', 'flOz'] as const).map(u => {
-                          const active = waterLogUnit === u;
-                          return (
-                            <TouchableOpacity
-                              key={u}
-                              style={[styles.pill, active && styles.pillActiveNeutral]}
-                              onPress={() => { haptics.tap(); setWaterLogUnit(u); }}
-                              activeOpacity={interaction.activeOpacity}
-                              accessibilityRole="button"
-                              accessibilityState={{ selected: active }}
-                              accessibilityLabel={u === 'ml' ? 'Milliliters' : 'Fluid ounces'}
-                            >
-                              <Text style={[styles.pillText, active && styles.pillTextActive]}>
-                                {u === 'ml' ? 'ml' : 'fl oz'}
-                              </Text>
-                            </TouchableOpacity>
-                          );
-                        })}
-                      </View>
-                    )}
-                  </View>
-                  {followsWaterTarget && (
-                    <TouchableOpacity
-                      style={styles.optionRow}
-                      onPress={() => { haptics.tap(); setFollowWaterTarget(v => !v); }}
-                      activeOpacity={interaction.activeOpacity}
-                      accessibilityRole="switch"
-                      accessibilityLabel="Follow the water target"
-                      accessibilityState={{ checked: followWaterTarget }}
-                    >
-                      <Ionicons name="water-outline" size={18} color={followWaterTarget ? colors.accent : colors.textSecondary} />
-                      <View style={styles.optionContent}>
-                        <Text style={styles.optionLabel}>Follow the water target</Text>
-                        <Text style={styles.optionHint}>
-                          Sets the daily target from your water target in the food log, including the extra for exercise, divided by the amount above. The target you set here is replaced.
-                        </Text>
-                      </View>
-                      <View style={[styles.toggle, followWaterTarget && styles.toggleOn]}>
-                        <View style={[styles.toggleKnob, followWaterTarget && styles.toggleKnobOn]} />
-                      </View>
-                    </TouchableOpacity>
-                  )}
-                </CollapsibleField>
-              );
-            })(),
-          },
-          // The fourth "what does completing this mean" row, and the closest
-          // relative of the Health one right above: a name-and-amount pair
-          // that turns a completion into a quantity recorded elsewhere. It
-          // needs no Settings switch, because what it writes is the app's own
-          // log rather than somebody else's database.
-          //
-          // Nothing is asked at the tick — the dose is what this row already
-          // says it is. That is the whole point: a repeating task carrying a
-          // medication *is* how a scheduled dose gets logged here, so asking
-          // again would be recording the same fact twice. See
-          // docs/arch/mood-log.md.
-          {
-            key: 'medication', label: 'Log a dose', set: medicationName !== null,
-            keywords: ['medication', 'medicine', 'pill', 'tablet', 'dose', 'drug', 'supplement', 'vitamin', 'mg', 'prescription'],
-            node: (
-              <CollapsibleField
-                label="Log a dose"
-                summary={
-                  medicationName
-                    ? [medicationName, resolveMedicationAmount() !== null ? `${resolveMedicationAmount()} ${medicationUnit}` : null]
-                        .filter(Boolean).join(', ')
-                    : undefined
-                }
-                hint="Records a dose in your medication log each time you complete this task. Unchecking it takes the dose back."
-                expanded={fieldOpen('medication')}
-                onToggle={() => toggleField('medication')}
-              >
-                <TextField
-                  style={styles.fieldBox}
-                  value={medicationName ?? ''}
-                  onChangeText={text => setMedicationName(text || null)}
-                  placeholder="e.g. Sertraline"
-                  placeholderTextColor={colors.textTertiary}
-                  maxLength={MEDICATION_NAME_MAX_LENGTH}
-                  returnKeyType="done"
-                  accessibilityLabel="What this task records a dose of"
-                />
-                {/* Picking one of these is what makes it the *same* medication
-                    as an earlier dose — medicationKey does no fuzzy matching
-                    (see docs/arch/mood-log.md), so retyping "Sertraline" as
-                    "sertraline" would otherwise split one medicine's history
-                    into two untallied entries. */}
-                {medicationSuggestions.length > 0 && (
-                  <PillGroup
-                    noun="medication"
-                    surface="card"
-                    options={medicationSuggestions.map(name => ({
-                      key: medicationKey(name),
-                      label: name,
-                      selected: !!medicationName && medicationKey(name) === medicationKey(medicationName),
-                      onPress: () => { haptics.tap(); setMedicationName(name); },
-                    }))}
-                  />
-                )}
-                {/* Hidden until there's something to be the amount *of*, the
-                    same rule the daily target's unit field follows: on its own
-                    it labels nothing. */}
-                {medicationName !== null && (
-                  <>
-                    <DoseAmountField
-                      name="TaskEditor dose unit menu"
-                      style={styles.medicationAmountInput}
-                      amount={medicationAmount}
-                      onChangeAmount={setMedicationAmount}
-                      unit={medicationUnit}
-                      onChangeUnit={setMedicationUnit}
-                    />
-                  </>
-                )}
-              </CollapsibleField>
-            ),
-          },
-          // The fifth "what does completing this mean" row. Unlike the two
-          // above it never writes anything by itself — a plain task names no
-          // food and no amount, so completing it raises the same manual
-          // search-sheet offer a meal-plan task's own completion does (see
-          // offerMealLog in useTaskStore.ts), prefilled with this slot and
-          // the task's own title. It needs no Settings switch for the same
-          // reason the medication row above doesn't: picking a slot here is
-          // itself the opt-in.
-          {
-            key: 'logMealSlot', label: 'Log to food log', set: logMealSlot !== null,
-            keywords: ['food', 'meal', 'eat', 'nutrition', 'breakfast', 'lunch', 'dinner', 'snack', 'diet'],
-            node: (
-              <CollapsibleField
-                label="Log to food log"
-                summary={logMealSlot ? `Offers to log ${MEAL_SLOT_LABELS[logMealSlot].toLowerCase()} when completed` : undefined}
-                hint="Offers to add an entry to your food log, for the slot below, each time you complete this task."
-                expanded={fieldOpen('logMealSlot')}
-                onToggle={() => toggleField('logMealSlot')}
-                right={logMealSlot !== null ? (
-                  <TouchableOpacity
-                    onPress={() => {
-                      haptics.tap();
-                      setLogMealSlot(null);
-                      closeField('logMealSlot');
-                    }}
-                    hitSlop={8}
-                    accessibilityRole="button"
-                    accessibilityLabel="Clear log to food log"
-                  >
-                    <Ionicons name="close-circle" size={16} color={colors.textSecondary} />
-                  </TouchableOpacity>
-                ) : undefined}
-              >
-                <SegmentedControl<MealSlot>
-                  options={MEAL_SLOTS.map(slot => ({ value: slot, label: MEAL_SLOT_LABELS[slot] }))}
-                  value={logMealSlot ?? 'breakfast'}
-                  onChange={next => { haptics.tap(); setLogMealSlot(next); }}
-                  columns={2}
-                  label="Meal"
-                  surface="card"
-                />
-              </CollapsibleField>
-            ),
-          },
         ]}
       />
 
@@ -4629,7 +5111,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         rows={[
           {
             key: 'date', label: 'Date',
-            keywords: ['when', 'schedule', 'today', 'tomorrow', 'defer', 'start', 'do it'],
+            keywords: ['when', 'schedule', 'today', 'tomorrow', 'defer', 'start', 'do it', 'due', 'due date', 'postpone', 'reschedule', 'push', 'move', 'snooze'],
             node: (
               <>
             <EditorRow
@@ -4672,9 +5154,165 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                 />
                 <Text style={styles.seriesRepeatHint}>
                   {weatherTasksOn
-                    ? 'Shows up on the first day the forecast matches, within the next 14 days. If the task has a Date, it looks from that day on.'
-                    : 'Turn on Weather-based tasks in Settings, with location access, so the app can read the forecast. Until then this task is not held.'}
+                    ? 'Shows up on the first day the forecast matches, within the next 14 days. If the task has a Date, the search starts on that day.'
+                    : 'Turn on Weather-based tasks in Settings, with location access. Until then, this task isn’t held.'}
                 </Text>
+              </>
+            )}
+              </>
+            ),
+          }] : []),
+          ...(meterAllowed || meterInput.name.trim() ? [{
+            key: 'meter', label: 'Due by usage', set: !!meterFields.meterName,
+            keywords: ['meter', 'usage', 'miles', 'mileage', 'odometer', 'hours', 'km', 'kilometers', 'oil change', 'service', 'every', 'reading', 'shots', 'counter'],
+            node: (
+              <>
+            <EditorRow
+              icon="speedometer-outline"
+              label="Due by usage"
+              hint="Due at a meter reading."
+              value={meterFields.meterName
+                ? (meterFields.meterEvery !== null
+                    ? `Every ${formatMeterAmount(meterFields.meterEvery, meterFields.meterUnit)}`
+                    : 'Not set up yet')
+                : undefined}
+              expanded={meterOpen}
+              onPress={() => setMeterOpen(open => !open)}
+              onClear={meterInput.name.trim() ? () => {
+                setMeterInput(meterInputFromTask(null)); setMeterOpen(false); setMeterReadingText('');
+                // The pass's hold goes with the meter (see the save path).
+                if (task?.meterHeldUntil && deferUntil && dayKeyOf(deferUntil) === task.meterHeldUntil) setDeferUntil(null);
+              } : undefined}
+            />
+            {meterOpen && (
+              <>
+                {!meterAllowed && (
+                  <Text style={styles.supplyFieldHint}>
+                    Only a task that doesn’t repeat, isn’t a chain and has one date can be due by usage. This one won’t be held.
+                  </Text>
+                )}
+                <View style={styles.supplyFieldRow}>
+                  <Text style={styles.supplyFieldLabel}>Meter</Text>
+                </View>
+                <View style={styles.meterPills}>
+                  <PillGroup
+                    noun="meter"
+                    surface="card"
+                    filterPlaceholder="Find or name a meter…"
+                    createMaxLength={METER_NAME_MAX_LENGTH}
+                    options={[
+                      ...(meterInput.name.trim() && !knownMeterNames(meterReadings).some(n => n.trim().toLowerCase() === meterInput.name.trim().toLowerCase())
+                        ? [meterInput.name.trim()] : []),
+                      ...knownMeterNames(meterReadings),
+                    ].map(n => ({
+                      key: n.trim().toLowerCase(),
+                      label: n.trim(),
+                      selected: n.trim().toLowerCase() === meterInput.name.trim().toLowerCase(),
+                      onPress: () => { haptics.tap(); setMeterInput(m => ({ ...m, name: n.trim() })); },
+                    }))}
+                    onCreate={value => {
+                      if (!value.trim()) return 'Give the meter a name, like Car.';
+                      setMeterInput(m => ({ ...m, name: value.trim() }));
+                    }}
+                  />
+                </View>
+                <Text style={styles.supplyFieldHint}>
+                  What you read the number off. Tasks on the same meter share its readings.
+                </Text>
+                {!!meterInput.name.trim() && (
+                  <>
+                    <View style={styles.supplyFieldRow}>
+                      <Text style={styles.supplyFieldLabel}>Every</Text>
+                      <View style={styles.meterAmountRow}>
+                        <TextField
+                          style={[styles.fieldBox, styles.meterNumberInput]}
+                          value={meterInput.everyText}
+                          onChangeText={everyText => setMeterInput(m => ({ ...m, everyText }))}
+                          placeholder="e.g. 5,000"
+                          placeholderTextColor={colors.textTertiary}
+                          keyboardType="decimal-pad"
+                          accessibilityLabel="How far the meter runs between times"
+                        />
+                        <TextField
+                          style={[styles.fieldBox, styles.meterUnitInput]}
+                          value={meterInput.unit}
+                          onChangeText={unit => setMeterInput(m => ({ ...m, unit }))}
+                          placeholder="e.g. miles"
+                          placeholderTextColor={colors.textTertiary}
+                          maxLength={MAX_TARGET_UNIT_LENGTH}
+                          autoCapitalize="none"
+                          accessibilityLabel="What the meter counts, optional"
+                        />
+                      </View>
+                    </View>
+                    <View style={styles.supplyFieldRow}>
+                      <Text style={styles.supplyFieldLabel}>Next due at</Text>
+                      <TextField
+                        style={[styles.fieldBox, styles.meterNumberInput]}
+                        value={meterInput.dueText}
+                        onChangeText={dueText => setMeterInput(m => ({ ...m, dueText }))}
+                        placeholder={meterFields.meterDueAt !== null ? formatMeterAmount(meterFields.meterDueAt, null) : 'e.g. 45,000'}
+                        placeholderTextColor={colors.textTertiary}
+                        keyboardType="decimal-pad"
+                        accessibilityLabel="The reading it is next due at"
+                      />
+                    </View>
+                    <Text style={styles.supplyFieldHint}>
+                      {meterSetupGap(meterFields)
+                        ?? (meterInput.dueText.trim()
+                          ? 'Checking it off sets the next due reading this far ahead.'
+                          : `Left empty, it’s the last reading plus the interval: ${formatMeterAmount(meterFields.meterDueAt!, meterFields.meterUnit)}.`)}
+                    </Text>
+                    <View style={styles.supplyFieldRow}>
+                      <Text style={styles.supplyFieldLabel}>Or after</Text>
+                      <CountStepper
+                        value={meterInput.limitMonths}
+                        onChange={limitMonths => setMeterInput(m => ({ ...m, limitMonths }))}
+                        min={1}
+                        max={60}
+                        allowNull
+                        emptyLabel="No limit"
+                        format={n => `${n} mo`}
+                        label="Time limit in months"
+                        describeValue={n => (n === null ? 'no time limit' : `${n} ${n === 1 ? 'month' : 'months'}`)}
+                      />
+                    </View>
+                    <Text style={styles.supplyFieldHint}>
+                      Due at whichever comes first, so a meter nobody reads still comes up.
+                    </Text>
+                    <View style={styles.supplyFieldRow}>
+                      <Text style={styles.supplyFieldLabel}>Reading now</Text>
+                      <View style={styles.meterAmountRow}>
+                        <TextField
+                          style={[styles.fieldBox, styles.meterNumberInput]}
+                          value={meterReadingText}
+                          onChangeText={setMeterReadingText}
+                          placeholder="e.g. 41,200"
+                          placeholderTextColor={colors.textTertiary}
+                          keyboardType="decimal-pad"
+                          accessibilityLabel={`Current reading of ${meterInput.name.trim()}`}
+                        />
+                        <InlineAction
+                          icon="add"
+                          label="Log"
+                          disabled={parseMeterNumber(meterReadingText) === null}
+                          onPress={() => {
+                            const value = parseMeterNumber(meterReadingText);
+                            if (value === null) return;
+                            if (logMeterReading(meterInput.name, value)) {
+                              haptics.success();
+                              setMeterReadingText('');
+                            }
+                          }}
+                        />
+                      </View>
+                    </View>
+                    <Text style={styles.supplyFieldHint}>
+                      {describeLatestReading(meterReadings, meterInput.name, meterFields.meterUnit)
+                        ?? 'No readings yet. Two readings at least a week apart estimate when it’s due.'}
+                    </Text>
+                  </>
+                )}
               </>
             )}
               </>
@@ -4688,7 +5326,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="calendar-number-outline"
               label="More dates"
-              hint="The same task on several days. Each date can be checked off separately."
+              hint="The same task on several set days, each checked off separately. For an ongoing schedule, use Repeat."
               value={
                 extraDates.length > 0
                   ? `${extraDates.length + (dueDate ? 1 : 0)} dates · ${extraDates.map(d => format(d, 'MMM d')).join(', ')}`
@@ -4723,7 +5361,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
               <Text style={styles.seriesRepeatHint}>
                 {`Comes back on the ${seriesMonthDaysFrom([...(dueDate ? [dueDate] : []), ...extraDates])
                   .map(d => (d === -1 ? 'last day' : ordinal(d)))
-                  .join(' and ')} of every month, once all of this month's are done.`}
+                  .join(' and ')} of every month, once all of this month’s are done.`}
               </Text>
             )}
               </>
@@ -4737,7 +5375,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="flag-outline"
               label="Deadline"
-              hint={deadlineOffsetDays === null && deadlineMonthDay === null ? 'A target date to hit, separate from Date' : undefined}
+              hint={deadlineOffsetDays === null && deadlineMonthDay === null ? 'The date it needs to be done by. Date is the day it first appears on Today' : undefined}
               value={
                 deadlineOffsetDays !== null
                   ? (deadline ? `${formatDeadlineLabel(deadline.toISOString(), deadlineTime)} (${describeDeadlineOffset(deadlineOffsetDays)})` : 'Set a Date first')
@@ -4964,7 +5602,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="time-outline"
               label="Time of day"
-              hint="Hold it back until a part of the day."
+              hint="Hidden until this part of the day arrives: morning, afternoon, evening or night."
               value={timeOfDaySummary}
               expanded={showTimeOfDay}
               onPress={() => { animateLayout(); setShowTimeOfDay(v => !v); }}
@@ -4997,62 +5635,25 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             ),
           },
           {
-            key: 'timeWindow', label: 'Time window', set: !!windowStart || !!windowEnd,
-            keywords: ['from', 'until', 'between', 'hours', 'expires', 'window'],
+            key: 'timeWindow', label: polarity === 'negative' ? 'Day ends at' : 'Time window', set: polarity === 'negative' ? !!windowEnd : (!!windowStart || !!windowEnd),
+            keywords: ['from', 'until', 'between', 'hours', 'expires', 'window', 'end', 'after', 'cutoff', 'time box', 'sunrise', 'sunset', 'dark', 'daylight'],
             node: (
               <>
             <EditorRow
               icon="timer-outline"
               label="Time window"
-              hint="Only active for part of the day, then expires."
+              hint="Shows the task only between two clock times, then it expires. Removing expired tasks is set in Settings."
               value={timeWindowSummary}
               caption={windowStartMeeting
-                ? `Starts during ${windowStartMeeting.title ? `"${windowStartMeeting.title}"` : 'a calendar event'}, which runs until ${formatTimeOfDay(windowStartMeeting.until, use24HourTime)}`
+                ? `Starts during ${windowStartMeeting.title ? `“${windowStartMeeting.title}”` : 'a calendar event'}, which runs until ${formatTimeOfDay(windowStartMeeting.until, use24HourTime)}`
                 : undefined}
               expanded={showTimeWindow}
               onPress={() => { animateLayout(); setShowTimeWindow(v => !v); }}
               onClear={(windowStart || windowEnd)
-                ? () => { setWindowStart(null); setWindowEnd(null); setWindowPickerMode('none'); applyDerivedTargetCount({ windowStart: null, windowEnd: null }); }
+                ? () => { setWindowStart(null); setWindowEnd(null); setWindowStartSun(null); setWindowEndSun(null); setWindowPickerMode('none'); applyDerivedTargetCount({ windowStart: null, windowEnd: null }); }
                 : undefined}
             />
-            {showTimeWindow && (
-              <>
-                <View style={styles.windowPillRow}>
-                  <TouchableOpacity
-                    style={[
-                      styles.timePill, styles.windowPill,
-                      !!windowStart && styles.timePillActive,
-                      windowPickerMode === 'start' && styles.timePillEditing,
-                    ]}
-                    onPress={() => openWindowPicker('start')}
-                  >
-                    <Text style={[styles.timePillText, !!windowStart && styles.timePillTextActive]}>
-                      {windowStart ? formatHHMM(windowStart) : 'Start'}
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.timePill, styles.windowPill,
-                      !!windowEnd && styles.timePillActive,
-                      windowPickerMode === 'end' && styles.timePillEditing,
-                    ]}
-                    onPress={() => openWindowPicker('end')}
-                  >
-                    <Text style={[styles.timePillText, !!windowEnd && styles.timePillTextActive]}>
-                      {windowEnd ? formatHHMM(windowEnd) : 'End'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-                {windowPickerMode !== 'none' && (
-                  <InlineTimePicker
-                    value={windowPickerDate}
-                    onChange={setWindowPickerDate}
-                    onCancel={() => setWindowPickerMode('none')}
-                    onConfirm={confirmWindowPicker}
-                  />
-                )}
-              </>
-            )}
+            {showTimeWindow && windowControls}
               </>
             ),
           },
@@ -5081,7 +5682,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                 <View style={styles.optionContent}>
                   <Text style={styles.optionLabel}>Block apps until this is done</Text>
                   <Text style={styles.optionHint}>
-                    The apps you picked in Settings stay blocked while this is on Today and not done. Finishing it, or moving it to another day, unblocks them.
+                    Blocks the apps you picked in Settings while this task is on Today. Finishing it or moving it to another day unblocks them.
                   </Text>
                 </View>
                 <View style={[styles.toggle, gatesApps && styles.toggleOn]}>
@@ -5101,8 +5702,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                   icon="lock-closed-outline"
                   label={polarity === 'negative' ? 'Block apps on a slip' : 'Block apps if missed'}
                   hint={polarity === 'negative'
-                    ? 'Blocks the apps you picked in Settings as soon as you log one.'
-                    : 'Blocks the apps you picked in Settings if this is still undone at the cutoff.'}
+                    ? 'Blocks the apps you picked in Settings as soon as you log a slip.'
+                    : 'Blocks the apps you picked in Settings if this isn’t done by the cutoff.'}
                   value={penaltySummary}
                   expanded={showPenalty}
                   onPress={() => { animateLayout(); setShowPenalty(v => !v); }}
@@ -5215,7 +5816,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
           }] : []),
           {
             key: 'remindMe', label: 'Remind me',
-            keywords: ['notification', 'notify', 'alert', 'alarm', 'ping', 'time'],
+            keywords: ['reminder', 'notification', 'notify', 'alert', 'alarm', 'ping', 'time'],
             node: (
               <>
             <EditorRow
@@ -5238,7 +5839,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                   : undefined
               }
               caption={reminderNudge
-                ? `Actually sends at ${formatTimeOfDay(reminderNudge.time, use24HourTime)}, moved past ${reminderNudge.meetingTitle ? `"${reminderNudge.meetingTitle}"` : 'a calendar event'}`
+                ? `Sends at ${formatTimeOfDay(reminderNudge.time, use24HourTime)}, moved past ${reminderNudge.meetingTitle ? `“${reminderNudge.meetingTitle}”` : 'a calendar event'}`
                 : undefined}
               onPress={() => openPicker('reminder')}
               onClear={reminderTime ? () => { setReminderTime(null); setReminderKind('notification'); setReminderOffsetDays(null); setReminderTracksVisibility(false); setReminderTimeAnchor('wallClock'); setReminderTouched(true); } : undefined}
@@ -5256,7 +5857,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
               summary={completionTimerMinutes !== null
                 ? [`${formatDuration(completionTimerMinutes)} after completing`, completionTimerNote || null].filter(Boolean).join(': ')
                 : undefined}
-              hint="Asks to set a reminder this long after you complete the task, e.g. a two-hour wait before eating after a medication."
+              hint="Offers to set a reminder this long after you complete the task, such as a two-hour wait before eating."
               expanded={fieldOpen('completionTimer')}
               onToggle={() => toggleField('completionTimer')}
             >
@@ -5277,7 +5878,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                   style={[styles.fieldBox, styles.completionTimerNoteInput]}
                   value={completionTimerNote ?? ''}
                   onChangeText={text => setCompletionTimerNote(text || null)}
-                  placeholder="e.g. Don't eat for 2 hours"
+                  placeholder="e.g. Don’t eat for 2 hours"
                   placeholderTextColor={colors.textTertiary}
                   maxLength={COMPLETION_TIMER_NOTE_MAX_LENGTH}
                   returnKeyType="done"
@@ -5289,53 +5890,14 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             ),
           },
           {
-            key: 'location', label: 'Location',
-            keywords: ['address', 'place', 'venue', 'where'],
-            node: (
-              <>
-            <EditorRow
-              icon="location-outline"
-              label="Location"
-              hint="Where this task happens, like an appointment's address or a venue."
-              value={location ?? undefined}
-              expanded={showLocationField}
-              onPress={() => {
-                // Same pattern as Phone/Email: no presets, so it opens with
-                // what's already there.
-                setLocationText(location ?? '');
-                setShowLocationField(v => !v);
-              }}
-              onClear={location ? () => { setLocation(null); setLocationText(''); setShowLocationField(false); } : undefined}
-            />
-            {showLocationField && (
-              <View style={[styles.linkCustomRow, styles.linkCustomRowSpaced]}>
-                <Ionicons name="location-outline" size={16} color={colors.textSecondary} />
-                <TextField
-                  style={styles.linkCustomInput}
-                  value={locationText}
-                  onChangeText={setLocationText}
-                  onSubmitEditing={commitLocation}
-                  onBlur={commitLocation}
-                  placeholder="e.g. 156 William Street"
-                  placeholderTextColor={colors.textTertiary}
-                  autoCorrect={false}
-                  returnKeyType="done"
-                  autoFocus
-                />
-              </View>
-            )}
-              </>
-            ),
-          },
-          {
             key: 'repeat', label: 'Repeat',
-            keywords: ['recurring', 'recurrence', 'every', 'daily', 'weekly', 'monthly', 'schedule'],
+            keywords: ['recurring', 'recurrence', 'every', 'daily', 'weekly', 'monthly', 'schedule', 'after completion', 'from completion', 'interval', 'ends', 'weekdays', 'count'],
             node: (
               <>
             <EditorRow
               icon="repeat"
               label="Repeat"
-              hint="Come back on a schedule after each completion."
+              hint="Comes back on a schedule after each completion. For a few set days, use More dates."
               // The picker has no read-back line of its own — this row, sitting
               // directly above it, is where the whole rule reads as a sentence.
               value={recurrenceType !== 'none' ? describeRecurrence({
@@ -5365,6 +5927,10 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                 seedMonth={() => (dueDate ?? getLogicalToday()).getMonth() + 1}
                 recurrenceFromCompletion={recurrenceFromCompletion}
                 onChangeFromCompletion={setRecurrenceFromCompletion}
+                recurrenceHolidays={recurrenceHolidays}
+                onChangeHolidays={setRecurrenceHolidays}
+                rainSkipMm={rainSkipMm}
+                onChangeRainSkip={setRainSkipMm}
                 recurrenceCount={recurrenceCount}
                 onChangeCount={setRecurrenceCount}
                 weekOrdinal={{
@@ -5513,7 +6079,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                         <Text style={styles.supplyFieldHint}>
                           {supplyPreview?.orderBy
                             ? `How long it takes to arrive, so the order goes in by ${format(supplyPreview.orderBy, 'MMM d')}.`
-                            : 'How long it takes to arrive, so the order goes in early enough to get here in time.'}
+                            : 'How long it takes to arrive, so the order is placed in time.'}
                         </Text>
 
                         {kitchenEnabled && (
@@ -5572,6 +6138,671 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
               </>
             ),
           }] : []),
+        ]}
+      />
+
+      {/* Organize — collapsed to the chosen value until you tap in */}
+      <EditorGroup
+        label="Organize"
+        divider="full"
+        searchTerms={searchTerms}
+        onMatchCount={reportMatches}
+        rows={[
+          // Only when there is something to pick. An empty picker would teach
+          // nothing — stacks are created from the + menu on Today, not here.
+          ...(allGroups.length > 0 ? [{
+            key: 'stack', label: 'Stack', set: !!selectedGroup,
+            keywords: ['group', 'together', 'bundle'],
+            node: (
+              <>
+              <CollapsibleField
+                label="Stack"
+                summary={selectedGroup ? selectedGroup.title : undefined}
+                hint="Groups this task with others you do together. The stack sets the category for everything in it."
+                expanded={fieldOpen('stack')}
+                onToggle={() => toggleField('stack')}
+              >
+                <View style={styles.pillRow}>
+                  <TouchableOpacity
+                    style={[styles.pill, !groupId && styles.pillActiveNeutral]}
+                    onPress={() => { haptics.tap(); setGroupId(null); closeField('stack'); }}
+                  >
+                    <Text style={[styles.pillText, !groupId && styles.pillTextActive]}>None</Text>
+                  </TouchableOpacity>
+                  {allGroups.map(g => (
+                    <TouchableOpacity
+                      key={g.id}
+                      style={[styles.pill, groupId === g.id && styles.pillActiveNeutral]}
+                      onPress={() => {
+                        haptics.tap();
+                        setGroupId(g.id);
+                        // A stack owns its members' category (see addExistingToGroup),
+                        // so adopt it here rather than letting the locked row keep
+                        // showing a value the save is about to overwrite.
+                        setCategory(g.category);
+                        closeField('stack');
+                      }}
+                    >
+                      <Text style={[styles.pillText, groupId === g.id && styles.pillTextActive]} numberOfLines={1}>{g.title}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </CollapsibleField>
+              </>
+            ),
+          }] : []),
+          {
+            key: 'category', label: 'Category',
+            keywords: ['section', 'bucket', 'list'],
+            node: (
+              <>
+          <CollapsibleField
+            label="Category"
+            summary={category ? categoryLabel(category, categories) : undefined}
+            emptySummary={defaultCategoryLabel}
+            hint="One home for the task. Drives the Categories screen and its filters."
+            expanded={fieldOpen('category')}
+            onToggle={() => toggleField('category')}
+            // A stack owns its members' category, so there's nothing to pick
+            // here while the task is in one — the value would be overwritten
+            // by the next cascade. Changing it means changing the stack's,
+            // or leaving the stack.
+            locked={selectedGroup !== null}
+            lockedHint={selectedGroup ? `From the ${selectedGroup.title} stack.` : undefined}
+          >
+            {/* The same picker quick add and the bulk bar open as a sheet,
+                inline here: this sheet scrolls, so the list needs no scroll of
+                its own and every category is one glance away rather than one
+                remembered name away. */}
+            <CategoryPickerList
+              value={category}
+              onSelect={cat => { setCategory(cat); closeField('category'); }}
+            />
+          </CollapsibleField>
+              </>
+            ),
+          },
+          ...(projects.length > 0 ? [{
+            key: 'project', label: 'Project',
+            keywords: ['progress', 'goal'],
+            node: (
+              <>
+              <CollapsibleField
+                label="Project"
+                summary={projects.find(p => p.id === project)?.title}
+                hint="Files the task under a project so it counts toward that project’s progress."
+                expanded={fieldOpen('project')}
+                onToggle={() => toggleField('project')}
+              >
+                {/* The user's own project order, finished projects left out
+                    (bar the one this task is already in), and capped with a
+                    find field once there are many: a flat row of every
+                    project ever made pushed the rest of the card away. */}
+                <PillGroup
+                  noun="project"
+                  surface="card"
+                  filterPlaceholder="Find a project"
+                  options={[
+                    {
+                      key: '',
+                      label: 'None',
+                      selected: !project,
+                      pinned: true,
+                      onPress: () => { haptics.tap(); setProject(null); closeField('project'); },
+                    },
+                    ...projects
+                      .filter(p => !p.completed || p.id === project)
+                      .sort((a, b) => a.sortOrder - b.sortOrder)
+                      .map(p => ({
+                        key: p.id,
+                        label: p.title,
+                        selected: project === p.id,
+                        onPress: () => { haptics.tap(); setProject(p.id); closeField('project'); },
+                      })),
+                  ]}
+                />
+              </CollapsibleField>
+              </>
+            ),
+          }] : []),
+          {
+            key: 'tags', label: 'Tags',
+            keywords: ['labels', 'hashtag', 'filter'],
+            node: (
+              <>
+          <CollapsibleField
+            label="Tags"
+            summary={tags.length > 0 ? tags.join(', ') : undefined}
+            hint="Free-form labels. A task can carry several, and you can filter or search by them."
+            expanded={fieldOpen('tags')}
+            onToggle={() => toggleField('tags')}
+          >
+            <View style={styles.tagRow}>
+              {tags.map(tag => (
+                <TouchableOpacity
+                  key={tag}
+                  style={[styles.tagChip, { backgroundColor: tagColor(tag) + '33' }]}
+                  onPress={() => { haptics.tap(); setTags(prev => prev.filter(t => t !== tag)); }}
+                >
+                  <View style={[styles.tagDot, { backgroundColor: tagColor(tag) }]} />
+                  <Text style={[styles.tagChipText, { color: tagColor(tag) }]}>{tag}</Text>
+                  <Ionicons name="close" size={12} color={tagColor(tag)} />
+                </TouchableOpacity>
+              ))}
+              {addingTag ? (
+                <TextField
+                  autoFocus
+                  style={styles.tagInput}
+                  value={newTag}
+                  onChangeText={setNewTag}
+                  onSubmitEditing={addTagFromInput}
+                  onBlur={addTagFromInput}
+                  placeholder="Tag name"
+                  placeholderTextColor={colors.textTertiary}
+                  returnKeyType="done"
+                  autoCapitalize="none"
+                />
+              ) : (
+                <InlineAction icon="add" label="Add tag" variant="neutral" onPress={() => setAddingTag(true)} />
+              )}
+            </View>
+            {allTags.filter(t => !tags.includes(t)).length > 0 && (
+              <View style={styles.tagSuggestions}>
+                {allTags.filter(t => !tags.includes(t)).slice(0, 6).map(tag => (
+                  <TouchableOpacity
+                    key={tag}
+                    style={styles.tagSuggestion}
+                    onPress={() => { haptics.tap(); setTags(prev => [...prev, tag]); }}
+                  >
+                    <Text style={styles.tagSuggestionText}>{tag}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </CollapsibleField>
+              </>
+            ),
+          },
+          ...(people.length > 0 ? [{
+            key: 'people', label: 'People', set: personIds.length > 0,
+            keywords: ['who', 'friend', 'family', 'with', 'together'],
+            node: (
+              <>
+              <CollapsibleField
+                label="People"
+                summary={personIds.length > 0
+                  ? people.filter(p => personIds.includes(p.id)).map(displayNameOf).join(', ')
+                  : undefined}
+                hint="Who this is with. Checking it off adds it to their history."
+                expanded={fieldOpen('people')}
+                onToggle={() => toggleField('people')}
+              >
+                <View style={styles.pillRow}>
+                  {people.map(p => {
+                    const on = personIds.includes(p.id);
+                    return (
+                      <TouchableOpacity
+                        key={p.id}
+                        style={[styles.pill, on && styles.pillActiveNeutral]}
+                        // Multi-select, so the field deliberately does not
+                        // collapse on a tap the way the single-choice ones do:
+                        // "beach with Gideon and Tessa" is two taps, and
+                        // closing after the first would hide the second.
+                        onPress={() => {
+                          haptics.tap();
+                          setPersonIds(prev => on ? prev.filter(id => id !== p.id) : [...prev, p.id]);
+                        }}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: on }}
+                      >
+                        <Text style={[styles.pillText, on && styles.pillTextActive]}>{displayNameOf(p)}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </CollapsibleField>
+              </>
+            ),
+          }] : []),
+          {
+            key: 'location', label: 'Location',
+            keywords: ['address', 'place', 'venue', 'where'],
+            node: (
+              <>
+            <EditorRow
+              icon="location-outline"
+              label="Location"
+              hint="Where this task happens, like an appointment’s address or a venue."
+              value={location ?? undefined}
+              expanded={showLocationField}
+              onPress={() => {
+                // Same pattern as Phone/Email: no presets, so it opens with
+                // what's already there.
+                setLocationText(location ?? '');
+                setShowLocationField(v => !v);
+              }}
+              onClear={location ? () => { setLocation(null); setLocationText(''); setShowLocationField(false); } : undefined}
+            />
+            {showLocationField && (
+              <View style={[styles.linkCustomRow, styles.linkCustomRowSpaced]}>
+                <Ionicons name="location-outline" size={16} color={colors.textSecondary} />
+                <TextField
+                  style={styles.linkCustomInput}
+                  value={locationText}
+                  onChangeText={setLocationText}
+                  onSubmitEditing={commitLocation}
+                  onBlur={commitLocation}
+                  placeholder="e.g. 156 William Street"
+                  placeholderTextColor={colors.textTertiary}
+                  autoCorrect={false}
+                  returnKeyType="done"
+                  autoFocus
+                />
+              </View>
+            )}
+              </>
+            ),
+          },
+          {
+            key: 'vacation', label: 'Vacation pause', set: vacationShown,
+            keywords: ['away', 'holiday', 'skip', 'break', 'time off'],
+            node: (
+              <>
+            <TouchableOpacity
+              style={styles.optionRow}
+              onPress={() => { haptics.tap(); setVacationTouched(true); setVacationPause(!vacationShown); }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="switch"
+              accessibilityLabel="Vacation pause"
+              accessibilityState={{ checked: vacationShown }}
+            >
+              <Ionicons name="airplane-outline" size={18} color={vacationShown ? colors.accent : colors.textSecondary} />
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel}>Vacation pause</Text>
+                <Text style={styles.optionHint}>Hide the task and keep its streak during vacation mode, which you turn on in Settings.</Text>
+              </View>
+              <View style={[styles.toggle, vacationShown && styles.toggleOn]}>
+                <View style={[styles.toggleKnob, vacationShown && styles.toggleKnobOn]} />
+              </View>
+            </TouchableOpacity>
+              </>
+            ),
+          },
+        ]}
+      />
+
+
+      {/* Priority + Effort */}
+      {/* Subtasks — its own card rather than a row inside "Priority & effort", which it
+          was never about — and a plain card rather than an EditorGroup,
+          because a group caption reading SUBTASKS above a field also reading
+          SUBTASKS is the same name twice. The field's own label is the
+          section heading, and its "2/5 done" summary is what a fold would
+          otherwise cost. */}
+      {subtasksVisible && (
+      <View style={styles.optionsCard}>
+        <CollapsibleField
+          label="Subtasks"
+          summary={subtasks.length > 0 ? `${subtasks.filter(s => s.completed).length}/${subtasks.length} done` : undefined}
+          emptySummary="None"
+          expanded={fieldOpen('subtasks', true)}
+          onToggle={() => toggleField('subtasks', true)}
+        >
+          <SortableList
+            onDragStateChange={setDraggingRow}
+            data={subtasks}
+            onReorder={(newData) => reorderDraftSubtasks(newData.map(s => s.id))}
+            renderItem={(sub, _i, drag) => (
+              <View style={styles.subtaskRow}>
+                <TouchableOpacity
+                  onPress={() => toggleDraftSubtask(sub.id)}
+                  hitSlop={6}
+                  style={styles.subtaskCheck}
+                  accessibilityRole="checkbox"
+                  accessibilityLabel={sub.title}
+                  accessibilityState={{ checked: sub.completed }}
+                >
+                  <View style={[styles.subtaskBox, sub.completed && styles.subtaskBoxDone]}>
+                    {sub.completed && (
+                      <Ionicons name="checkmark" size={11} color={colors.onDone} />
+                    )}
+                  </View>
+                  </TouchableOpacity>
+                  {editingSubtaskId === sub.id ? (
+                    <TextField
+                      ref={subtaskTitleEditRef}
+                      style={styles.subtaskTitleInput}
+                      value={subtaskTitleEdit}
+                      onChangeText={setSubtaskTitleEdit}
+                      onBlur={() => saveSubtaskTitle(sub)}
+                      onSubmitEditing={() => saveSubtaskTitleAndFocusAdd(sub)}
+                      returnKeyType="next"
+                      maxLength={TITLE_MAX_LENGTH}
+                      blurOnSubmit={false}
+                      autoFocus
+                    />
+                  ) : (
+                    <TouchableOpacity
+                      style={styles.subtaskTitleWrapper}
+                      onPress={() => handleSubtaskTitleTap(sub)}
+                      onLongPress={drag}
+                      delayLongPress={interaction.delayLongPress}
+                      activeOpacity={interaction.activeOpacity}
+                      hitSlop={{ top: 8, bottom: 8, left: 0, right: 8 }}
+                    >
+                      <Text style={[styles.subtaskTitle, sub.completed && styles.subtaskDone]}>
+                        {sub.title}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                  {/* A timed task's countdown runs through its subtasks in this
+                      order, so the minutes belong on the rows that carry the
+                      order — not in the Duration field, which only totals them. */}
+                  {kind === 'timed' && (
+                    <StepMinutes
+                      value={sub.timedMinutes ?? null}
+                      label={sub.title}
+                      what="Timer"
+                      onChange={mins => setSubtaskMinutes(sub.id, mins)}
+                    />
+                  )}
+                  <TouchableOpacity
+                    onPress={() => deleteDraftSubtask(sub.id)}
+                    hitSlop={8}
+                    style={styles.subtaskDelete}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Delete subtask ${sub.title}`}
+                  >
+                    <Ionicons name="close" size={14} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                </View>
+              )}
+            />
+            {/* Always here, pinned at the end of the list — adding a subtask is a
+                burst, not a one-off edit gated behind a button tap. */}
+            <View style={styles.subtaskInputRow}>
+              {/* An empty copy of the row checkbox, so the field being typed
+                  into lines up with the subtasks above it. */}
+              <View style={styles.subtaskCheck}>
+                <View style={styles.subtaskBox} />
+              </View>
+              <TextField
+                ref={newSubtaskInputRef}
+                style={styles.subtaskInput}
+                value={newSubtaskTitle}
+                onChangeText={setNewSubtaskTitle}
+                placeholder="Add subtask"
+                placeholderTextColor={colors.textTertiary}
+                maxLength={TITLE_MAX_LENGTH}
+                returnKeyType="next"
+                // Adding subtasks is a burst, not one edit: submitting keeps
+                // the field focused so the keyboard never drops between them.
+                // This used to blur on submit and refocus on a 50ms timer,
+                // which dismissed and reopened the keyboard on every entry.
+                blurOnSubmit={false}
+                onSubmitEditing={() => {
+                  commitSubtask(newSubtaskTitle);
+                  setNewSubtaskTitle('');
+                }}
+                onBlur={() => commitPendingSubtask()}
+              />
+            </View>
+          </CollapsibleField>
+      </View>
+      )}
+
+      {/* The heading has to answer for its own rows: simplified mode takes the
+          Effort row away, and a card headed "Priority & effort" with only a
+          Priority row in it names a field that isn't there. `EditorGroup` can
+          drop a row but it can't rename the group around it, so the one group
+          whose label lists its contents says so here. */}
+      <EditorGroup
+        label={featureShown('effortRating', simpleMode, !!effort) ? 'Priority & effort' : 'Priority'}
+        divider="full"
+        searchTerms={searchTerms}
+        onMatchCount={reportMatches}
+        rows={[
+          {
+            key: 'priority', label: 'Priority',
+            keywords: ['important', 'urgent', 'rank', 'flag', 'high', 'low'],
+            node: (
+              <>
+          <CollapsibleField
+            label="Priority"
+            summary={priority > 0 ? PRIORITY_LABELS[priority] : undefined}
+            emptySummary={defaultPriorityLabel}
+            hint="Ranks the task against everything else on Today."
+            expanded={fieldOpen('priority')}
+            onToggle={() => toggleField('priority')}
+          >
+            <SegmentedControl
+              label="Priority"
+              value={priority}
+              onChange={p => { setPriority(p); setPriorityTouched(true); closeField('priority'); }}
+              // Five with "Medium" among them doesn't fit one row once each
+              // carries a dot; 3 + 2 does, and keeps every cell the same width.
+              columns={3}
+              options={PRIORITY_SEGMENTS}
+            />
+          </CollapsibleField>
+              </>
+            ),
+          },
+          {
+            key: 'effort', label: 'Effort', set: !!effort,
+            keywords: ['estimate', 'how long', 'minutes', 'size', 'workload', 'duration', 'time estimate', 'length', 'hours'],
+            node: (
+              <>
+          <CollapsibleField
+            label="Effort"
+            summary={effortSummary}
+            emptySummary={defaultEffortLabel ?? 'Not set'}
+            hint="Roughly how long this takes, used to size a day’s list. It doesn’t run a timer."
+            expanded={fieldOpen('effort')}
+            onToggle={() => toggleField('effort')}
+          >
+            <View style={styles.pillRow}>
+              {([0, 1, 2, 3, 4, 5, 6] as Effort[]).map(e => {
+                const active = !customEffortActive && effort === e;
+                const presetMins = EFFORT_MINUTES[e];
+                return (
+                  <TouchableOpacity
+                    key={e}
+                    style={[styles.pill, active && styles.pillActiveNeutral]}
+                    onPress={() => { haptics.tap(); applyEffortPreset(e); closeField('effort'); }}
+                  >
+                    <Text style={[styles.pillText, active && styles.pillTextActive]}>
+                      {e === 0 ? '—' : EFFORT_LABELS[e]}
+                    </Text>
+                    {presetMins != null ? (
+                      <Text style={styles.pillHint}>{formatDuration(presetMins)}</Text>
+                    ) : null}
+                  </TouchableOpacity>
+                );
+              })}
+              <TouchableOpacity
+                style={[styles.pill, customEffortActive && styles.pillCustomActive]}
+                onPress={openCustomEffort}
+              >
+                {customEffortActive && estimatedMinutes != null ? (
+                  <View style={styles.pillCustomInner}>
+                    <Ionicons name="checkmark" size={iconSize.sm} color={colors.accentText} />
+                    <Text style={styles.pillCustomText}>{formatDuration(estimatedMinutes)}</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.pillText}>Custom</Text>
+                )}
+                <Text style={styles.pillHint}>exact</Text>
+              </TouchableOpacity>
+            </View>
+            {customEffortOpen && (
+              <View style={styles.customEffortRow}>
+                <TextField
+                  style={[styles.customEffortInput, customEffortActive && customEffortText !== '' && styles.customInputActive]}
+                  value={customEffortText}
+                  onChangeText={t => { setCustomEffortText(t); applyCustomEffort(t, customEffortUnit); }}
+                  keyboardType="number-pad"
+                  placeholder="Amount"
+                  placeholderTextColor={colors.textTertiary}
+                  inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
+                  autoFocus
+                />
+                <View style={styles.unitToggle}>
+                  <SegmentedControl
+                    label="Effort unit"
+                    value={customEffortUnit}
+                    onChange={u => { setCustomEffortUnit(u); applyCustomEffort(customEffortText, u); }}
+                    options={DURATION_UNIT_SEGMENTS}
+                  />
+                </View>
+              </View>
+            )}
+          </CollapsibleField>
+              </>
+            ),
+          },
+          // Only the coin rules read it, so it's offered only while they run:
+          // a rating that changes nothing on screen is a question with no
+          // answer. A rating set earlier stays put while rewards are off.
+          ...(rewardsEnabled && polarity !== 'negative' ? [{
+            key: 'difficulty', label: 'Difficulty', set: difficulty !== null,
+            keywords: ['hard', 'easy', 'dread', 'avoid', 'coins', 'reward', 'aversion'],
+            node: (
+              <>
+          <CollapsibleField
+            label="Difficulty"
+            summary={DIFFICULTY_SEGMENTS.find(d => d.value === difficulty)?.label}
+            emptySummary="Not set"
+            hint={DIFFICULTY_HINT}
+            expanded={fieldOpen('difficulty')}
+            onToggle={() => toggleField('difficulty')}
+          >
+            <SegmentedControl
+              label="Difficulty"
+              value={difficulty}
+              onChange={d => { setDifficulty(d); closeField('difficulty'); }}
+              options={DIFFICULTY_PICKER_SEGMENTS}
+            />
+          </CollapsibleField>
+              </>
+            ),
+          }] : []),
+          {
+            key: 'pin', label: 'Pin to Today',
+            keywords: ['pinned', 'top', 'stick', 'favourite', 'favorite', 'repeat', 'recurring', 'every', 'occurrence', 'always'],
+            node: (
+              <>
+            <TouchableOpacity
+              style={styles.optionRow}
+              onPress={() => { haptics.tap(); setPinned(v => !v); }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="switch"
+              accessibilityLabel="Pin to Today"
+              accessibilityState={{ checked: pinned }}
+            >
+              <PinIcon filled={pinned} size={18} color={pinned ? colors.orangeText : colors.textSecondary} />
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel}>Pin to Today</Text>
+                <Text style={styles.optionHint}>Show this at the top of Today, above everything else</Text>
+              </View>
+              <View style={[styles.toggle, pinned && styles.toggleOn]}>
+                <View style={[styles.toggleKnob, pinned && styles.toggleKnobOn]} />
+              </View>
+            </TouchableOpacity>
+            {recurrenceType !== 'none' && (
+              <TouchableOpacity
+                style={styles.optionRow}
+                onPress={() => { haptics.tap(); setPinEachOccurrence(v => !v); }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="switch"
+                accessibilityLabel="Pin every occurrence"
+                accessibilityState={{ checked: pinEachOccurrence }}
+              >
+                <PinIcon filled={pinEachOccurrence} size={18} color={pinEachOccurrence ? colors.orangeText : colors.textSecondary} />
+                <View style={styles.optionContent}>
+                  <Text style={styles.optionLabel}>Pin every occurrence</Text>
+                  <Text style={styles.optionHint}>Each new occurrence starts out pinned to Today</Text>
+                </View>
+                <View style={[styles.toggle, pinEachOccurrence && styles.toggleOn]}>
+                  <View style={[styles.toggleKnob, pinEachOccurrence && styles.toggleKnobOn]} />
+                </View>
+              </TouchableOpacity>
+            )}
+              </>
+            ),
+          },
+          ...(rewardsEnabled && task && (isBountyLive(task) || canPostBounty(task)) && polarity !== 'negative' ? [{
+            key: 'bounty', label: 'Bounty',
+            keywords: ['reward', 'coins', 'dread', 'procrastinate', 'putting off', 'incentive', 'bonus'],
+            node: (
+              <>
+            <TouchableOpacity
+              style={styles.optionRow}
+              onPress={() => {
+                if (!bounty && !isBountyLive(task)) {
+                  // The slot check is made here, where the switch is, rather
+                  // than refused silently on save.
+                  const taken = liveBountyCount(useTaskStore.getState().tasks);
+                  if (taken >= bountyLimit) {
+                    haptics.warning();
+                    Alert.alert(
+                      bountyLimit === 1 ? 'You already have a bounty out' : `You already have ${taken} bounties out`,
+                      'Finish or withdraw one first, or allow more on the Rewards screen.',
+                    );
+                    return;
+                  }
+                }
+                haptics.tap();
+                setBounty(v => !v);
+              }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="switch"
+              accessibilityLabel="Bounty"
+              accessibilityState={{ checked: bounty }}
+            >
+              <CoinIcon size={18} color={bounty ? colors.accent : colors.textSecondary} />
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel}>Bounty</Text>
+                <Text style={styles.optionHint}>
+                  {bounty && isBountyLive(task)
+                    ? describeBounty(task)
+                    : bounty
+                      ? `+${formatCoins(bountyCoinsFor({ ...task, bountyPushes: 0 }))} extra when done. Each time it’s moved to a later day, the bounty gets smaller.`
+                      : 'Extra coins for a task you keep putting off. Worth the most if you do it before moving it again.'}
+                </Text>
+              </View>
+              <View style={[styles.toggle, bounty && styles.toggleOn]}>
+                <View style={[styles.toggleKnob, bounty && styles.toggleKnobOn]} />
+              </View>
+            </TouchableOpacity>
+              </>
+            ),
+          }] : []),
+          {
+            key: 'excludeFromSuggestions', label: 'Skip in suggestions', set: excludeFromSuggestions,
+            keywords: ['pin', 'focus', 'suggest', 'exclude', 'hide', 'shortlist'],
+            node: (
+              <>
+            <TouchableOpacity
+              style={styles.optionRow}
+              onPress={() => { haptics.tap(); setSuggestionsTouched(true); setExcludeFromSuggestions(!suggestionsShown); }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="switch"
+              accessibilityLabel="Skip in suggestions"
+              accessibilityState={{ checked: suggestionsShown }}
+            >
+              <Ionicons name="color-wand-outline" size={18} color={suggestionsShown ? colors.accent : colors.textSecondary} />
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel}>Skip in suggestions</Text>
+                <Text style={styles.optionHint}>Keep this out of suggested pins and focus sessions</Text>
+              </View>
+              <View style={[styles.toggle, suggestionsShown && styles.toggleOn]}>
+                <View style={[styles.toggleKnob, suggestionsShown && styles.toggleKnobOn]} />
+              </View>
+            </TouchableOpacity>
+              </>
+            ),
+          },
         ]}
       />
 
@@ -5656,7 +6887,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                     <View style={styles.optionContent}>
                       <Text style={styles.optionLabel}>Wait until it ends</Text>
                       <Text style={styles.optionHint}>
-                        Stay hidden until the last repeat of a repeating task is done, not just the next one. A task that repeats with no end never releases this one.
+                        Stay hidden until every repeat of the repeating task is done. A task that repeats with no end never releases this one.
                       </Text>
                     </View>
                     <View style={[styles.toggle, waitForSeriesEnd && styles.toggleOn]}>
@@ -5680,7 +6911,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="git-branch-outline"
               label="Only if"
-              hint="Show this task only if another task's question gets one of the answers you pick. Any other answer marks it not needed."
+              hint="Show this task only if another task’s question gets one of the answers you pick. Any other answer marks it not needed."
               value={answerGate
                 ? `${gateQuestion ? displayTitleFor(gateQuestion) : 'Task no longer exists'}${answerGate.answers.length > 0 ? `: ${answerGate.answers.join(' or ')}` : ''}`
                 : undefined}
@@ -5754,7 +6985,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
               <CollapsibleField
                 label="Waiting on someone"
                 summary={waitingPerson ? displayNameOf(waitingPerson) : undefined}
-                hint="Stay hidden until they come back to you. Nothing clears this on its own."
+                hint="Stay hidden until they come back to you. You clear this yourself."
                 expanded={fieldOpen('waitingOnPerson')}
                 onToggle={() => toggleField('waitingOnPerson')}
               >
@@ -5795,7 +7026,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                   label="Follow up on"
                   hint={followUpOn
                     ? undefined
-                    : 'Adds a task to follow up with them on this day. Without one, the follow-up comes after a week if that is on in Automations'}
+                    : 'Adds a task to follow up with them on this day. Without a date, the follow-up comes after a week if that is on in Automations'}
                   value={followUpOn ? formatDeadlineDate(followUpOn.toISOString()) : undefined}
                   onPress={() => setShowFollowUpPicker(true)}
                   onClear={followUpOn ? () => setFollowUpOn(null) : undefined}
@@ -6041,7 +7272,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="sparkles-outline"
               label="Follow-up frequency"
-              hint={`How often "${displayTitleFor(followUpSourceParent)}" adds a task like this one.`}
+              hint={`How often “${displayTitleFor(followUpSourceParent)}” adds a task like this one.`}
               value={followUpTaskSummary(followUpSourceParent.followUpTaskEveryN)}
               expanded={showFollowUpSource}
               onPress={() => { animateLayout(); setShowFollowUpSource(v => !v); }}
@@ -6089,603 +7320,457 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         ]}
       />
 
-      {/* Organize — collapsed to the chosen value until you tap in */}
+      {/* On completion — what finishing the task asks or writes down. Kept off the Kind card:
+          these only matter to some tasks, and they sat between choosing a kind and setting a date. */}
       <EditorGroup
-        label="Organize"
-        divider="full"
+        label="On completion"
         searchTerms={searchTerms}
         onMatchCount={reportMatches}
         rows={[
-          // Only when there is something to pick. An empty picker would teach
-          // nothing — stacks are created from the + menu on Today, not here.
-          ...(allGroups.length > 0 ? [{
-            key: 'stack', label: 'Stack', set: !!selectedGroup,
-            keywords: ['group', 'together', 'bundle'],
-            node: (
-              <>
-              <CollapsibleField
-                label="Stack"
-                summary={selectedGroup ? selectedGroup.title : undefined}
-                hint="Groups this task with others you do together. The stack sets the shared category for everything in it."
-                expanded={fieldOpen('stack')}
-                onToggle={() => toggleField('stack')}
-              >
-                <View style={styles.pillRow}>
-                  <TouchableOpacity
-                    style={[styles.pill, !groupId && styles.pillActiveNeutral]}
-                    onPress={() => { haptics.tap(); setGroupId(null); closeField('stack'); }}
-                  >
-                    <Text style={[styles.pillText, !groupId && styles.pillTextActive]}>None</Text>
-                  </TouchableOpacity>
-                  {allGroups.map(g => (
-                    <TouchableOpacity
-                      key={g.id}
-                      style={[styles.pill, groupId === g.id && styles.pillActiveNeutral]}
-                      onPress={() => {
-                        haptics.tap();
-                        setGroupId(g.id);
-                        // A stack owns its members' category (see addExistingToGroup),
-                        // so adopt it here rather than letting the locked row keep
-                        // showing a value the save is about to overwrite.
-                        setCategory(g.category);
-                        closeField('stack');
-                      }}
-                    >
-                      <Text style={[styles.pillText, groupId === g.id && styles.pillTextActive]} numberOfLines={1}>{g.title}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </CollapsibleField>
-              </>
-            ),
-          }] : []),
+          // Not one of the four kinds, and deliberately a row of its own below
+          // them: the kinds are exclusive (bakedFields clears the other three)
+          // and this isn't — a chain step or a timed task can end in a
+          // decision too. It sits in this group because it answers the same
+          // question the kinds do, "what does completing this mean", which is
+          // what someone opens this group looking for.
           {
-            key: 'category', label: 'Category',
-            keywords: ['section', 'bucket', 'list'],
-            node: (
-              <>
-          <CollapsibleField
-            label="Category"
-            summary={category ? categoryLabel(category, categories) : undefined}
-            hint="One home for the task. Drives the Categories screen and its filters."
-            expanded={fieldOpen('category')}
-            onToggle={() => toggleField('category')}
-            // A stack owns its members' category, so there's nothing to pick
-            // here while the task is in one — the value would be overwritten
-            // by the next cascade. Changing it means changing the stack's,
-            // or leaving the stack.
-            locked={selectedGroup !== null}
-            lockedHint={selectedGroup ? `From the ${selectedGroup.title} stack.` : undefined}
-          >
-            {/* The same picker quick add and the bulk bar open as a sheet,
-                inline here: this sheet scrolls, so the list needs no scroll of
-                its own and every category is one glance away rather than one
-                remembered name away. */}
-            <CategoryPickerList
-              value={category}
-              onSelect={cat => { setCategory(cat); closeField('category'); }}
-            />
-          </CollapsibleField>
-              </>
-            ),
-          },
-          ...(projects.length > 0 ? [{
-            key: 'project', label: 'Project',
-            keywords: ['progress', 'goal'],
+            key: 'deliverable', label: 'Ask on completion', set: deliverableKind !== null,
+            keywords: ['decision', 'decide', 'answer', 'value', 'capture', 'record', 'prompt', 'question'],
             node: (
               <>
               <CollapsibleField
-                label="Project"
-                summary={projects.find(p => p.id === project)?.title}
-                hint="Files the task under a project so it counts toward that project's progress."
-                expanded={fieldOpen('project')}
-                onToggle={() => toggleField('project')}
+                label="Ask on completion"
+                summary={deliverableKind ? deliverableMeta(deliverableKind).label : undefined}
+                emptySummary="Nothing"
+                hint={
+                  deliverableKind
+                    ? deliverableMeta(deliverableKind).hint
+                    : 'Asks for an answer when you complete the task and keeps it in the Logbook.'
+                }
+                expanded={fieldOpen('deliverable')}
+                onToggle={() => toggleField('deliverable')}
               >
-                {/* The user's own project order, finished projects left out
-                    (bar the one this task is already in), and capped with a
-                    find field once there are many: a flat row of every
-                    project ever made pushed the rest of the card away. */}
-                <PillGroup
-                  noun="project"
-                  surface="card"
-                  filterPlaceholder="Find a project"
-                  options={[
-                    {
-                      key: '',
-                      label: 'None',
-                      selected: !project,
-                      pinned: true,
-                      onPress: () => { haptics.tap(); setProject(null); closeField('project'); },
-                    },
-                    ...projects
-                      .filter(p => !p.completed || p.id === project)
-                      .sort((a, b) => a.sortOrder - b.sortOrder)
-                      .map(p => ({
-                        key: p.id,
-                        label: p.title,
-                        selected: project === p.id,
-                        onPress: () => { haptics.tap(); setProject(p.id); closeField('project'); },
-                      })),
-                  ]}
+                <DeliverableKindPicker
+                  value={deliverableKind}
+                  onChange={kind => { setDeliverableKind(kind); closeField('deliverable'); }}
                 />
               </CollapsibleField>
-              </>
-            ),
-          }] : []),
-          {
-            key: 'tags', label: 'Tags',
-            keywords: ['labels', 'hashtag', 'filter'],
-            node: (
-              <>
-          <CollapsibleField
-            label="Tags"
-            summary={tags.length > 0 ? tags.join(', ') : undefined}
-            hint="Free-form labels. A task can carry several, and you can filter or search by them."
-            expanded={fieldOpen('tags')}
-            onToggle={() => toggleField('tags')}
-          >
-            <View style={styles.tagRow}>
-              {tags.map(tag => (
-                <TouchableOpacity
-                  key={tag}
-                  style={[styles.tagChip, { backgroundColor: tagColor(tag) + '33' }]}
-                  onPress={() => { haptics.tap(); setTags(prev => prev.filter(t => t !== tag)); }}
-                >
-                  <View style={[styles.tagDot, { backgroundColor: tagColor(tag) }]} />
-                  <Text style={[styles.tagChipText, { color: tagColor(tag) }]}>{tag}</Text>
-                  <Ionicons name="close" size={12} color={tagColor(tag)} />
-                </TouchableOpacity>
-              ))}
-              {addingTag ? (
+              {/* Outside the collapsible, so the options stay in view once a
+                  pick closes it: a Pick-one with no options is a question
+                  with nothing to pick. */}
+              {deliverableKind === 'choice' && (
                 <TextField
-                  autoFocus
-                  style={styles.tagInput}
-                  value={newTag}
-                  onChangeText={setNewTag}
-                  onSubmitEditing={addTagFromInput}
-                  onBlur={addTagFromInput}
-                  placeholder="Tag name"
+                  style={[styles.fieldBox, styles.followUpTaskTitleInput]}
+                  value={deliverableOptionsText}
+                  onChangeText={setDeliverableOptionsText}
+                  placeholder="e.g. Yes, No, Maybe"
                   placeholderTextColor={colors.textTertiary}
                   returnKeyType="done"
-                  autoCapitalize="none"
+                  accessibilityLabel="Options to pick from, separated by commas"
                 />
-              ) : (
-                <InlineAction icon="add" label="Add tag" variant="neutral" onPress={() => setAddingTag(true)} />
               )}
-            </View>
-            {allTags.filter(t => !tags.includes(t)).length > 0 && (
-              <View style={styles.tagSuggestions}>
-                {allTags.filter(t => !tags.includes(t)).slice(0, 6).map(tag => (
-                  <TouchableOpacity
-                    key={tag}
-                    style={styles.tagSuggestion}
-                    onPress={() => { haptics.tap(); setTags(prev => [...prev, tag]); }}
-                  >
-                    <Text style={styles.tagSuggestionText}>{tag}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-          </CollapsibleField>
-              </>
-            ),
-          },
-          ...(people.length > 0 ? [{
-            key: 'people', label: 'People', set: personIds.length > 0,
-            keywords: ['who', 'friend', 'family', 'with', 'together'],
-            node: (
-              <>
-              <CollapsibleField
-                label="People"
-                summary={personIds.length > 0
-                  ? people.filter(p => personIds.includes(p.id)).map(displayNameOf).join(', ')
-                  : undefined}
-                hint="Who this is with. Checking it off adds it to their history."
-                expanded={fieldOpen('people')}
-                onToggle={() => toggleField('people')}
-              >
-                <View style={styles.pillRow}>
-                  {people.map(p => {
-                    const on = personIds.includes(p.id);
-                    return (
-                      <TouchableOpacity
-                        key={p.id}
-                        style={[styles.pill, on && styles.pillActiveNeutral]}
-                        // Multi-select, so the field deliberately does not
-                        // collapse on a tap the way the single-choice ones do:
-                        // "beach with Gideon and Tessa" is two taps, and
-                        // closing after the first would hide the second.
-                        onPress={() => {
-                          haptics.tap();
-                          setPersonIds(prev => on ? prev.filter(id => id !== p.id) : [...prev, p.id]);
-                        }}
-                        accessibilityRole="checkbox"
-                        accessibilityState={{ checked: on }}
-                      >
-                        <Text style={[styles.pillText, on && styles.pillTextActive]}>{displayNameOf(p)}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </CollapsibleField>
-              </>
-            ),
-          }] : []),
-        ]}
-      />
-
-      {/* Priority + Effort */}
-      {/* Subtasks — its own card rather than a row inside "Priority & effort", which it
-          was never about — and a plain card rather than an EditorGroup,
-          because a group caption reading SUBTASKS above a field also reading
-          SUBTASKS is the same name twice. The field's own label is the
-          section heading, and its "2/5 done" summary is what a fold would
-          otherwise cost. */}
-      {subtasksVisible && (
-      <View style={styles.optionsCard}>
-        <CollapsibleField
-          label="Subtasks"
-          summary={subtasks.length > 0 ? `${subtasks.filter(s => s.completed).length}/${subtasks.length} done` : undefined}
-          emptySummary="None"
-          expanded={fieldOpen('subtasks', true)}
-          onToggle={() => toggleField('subtasks', true)}
-        >
-          <SortableList
-            onDragStateChange={setDraggingRow}
-            data={subtasks}
-            onReorder={(newData) => reorderDraftSubtasks(newData.map(s => s.id))}
-            renderItem={(sub, _i, drag) => (
-              <View style={styles.subtaskRow}>
+              {/* Fewer than two options and completing asks nothing
+                  (deliverableOptionsFor), so say so where they're typed. */}
+              {deliverableKind === 'choice' && parseDeliverableOptions(deliverableOptionsText).length < 2 && (
+                <Text style={styles.choiceOptionsHint}>
+                  Add at least two options, separated by commas. With fewer, completing the task asks nothing.
+                </Text>
+              )}
+              {deliverableKind === 'date' && project !== null && (
                 <TouchableOpacity
-                  onPress={() => toggleDraftSubtask(sub.id)}
-                  hitSlop={6}
-                  style={styles.subtaskCheck}
-                  accessibilityRole="checkbox"
-                  accessibilityLabel={sub.title}
-                  accessibilityState={{ checked: sub.completed }}
+                  style={styles.optionRow}
+                  onPress={() => { haptics.tap(); setDeliverableSetsAway(v => !v); }}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="switch"
+                  accessibilityState={{ checked: deliverableSetsAway }}
+                  accessibilityLabel="Use the answer as the project’s leaving date"
                 >
-                  <View style={[styles.subtaskBox, sub.completed && styles.subtaskBoxDone]}>
-                    {sub.completed && (
-                      <Ionicons name="checkmark" size={11} color={colors.onDone} />
-                    )}
-                  </View>
-                  </TouchableOpacity>
-                  {editingSubtaskId === sub.id ? (
-                    <TextField
-                      ref={subtaskTitleEditRef}
-                      style={styles.subtaskTitleInput}
-                      value={subtaskTitleEdit}
-                      onChangeText={setSubtaskTitleEdit}
-                      onBlur={() => saveSubtaskTitle(sub)}
-                      onSubmitEditing={() => saveSubtaskTitleAndFocusAdd(sub)}
-                      returnKeyType="next"
-                      maxLength={TITLE_MAX_LENGTH}
-                      blurOnSubmit={false}
-                      autoFocus
-                    />
-                  ) : (
-                    <TouchableOpacity
-                      style={styles.subtaskTitleWrapper}
-                      onPress={() => handleSubtaskTitleTap(sub)}
-                      onLongPress={drag}
-                      delayLongPress={interaction.delayLongPress}
-                      activeOpacity={interaction.activeOpacity}
-                      hitSlop={{ top: 8, bottom: 8, left: 0, right: 8 }}
-                    >
-                      <Text style={[styles.subtaskTitle, sub.completed && styles.subtaskDone]}>
-                        {sub.title}
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                  {/* A timed task's countdown runs through its subtasks in this
-                      order, so the minutes belong on the rows that carry the
-                      order — not in the Duration field, which only totals them. */}
-                  {kind === 'timed' && (
-                    <StepMinutes
-                      value={sub.timedMinutes ?? null}
-                      label={sub.title}
-                      what="Timer"
-                      onChange={mins => setSubtaskMinutes(sub.id, mins)}
-                    />
-                  )}
-                  <TouchableOpacity
-                    onPress={() => deleteDraftSubtask(sub.id)}
-                    hitSlop={8}
-                    style={styles.subtaskDelete}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Delete subtask ${sub.title}`}
-                  >
-                    <Ionicons name="close" size={14} color={colors.textSecondary} />
-                  </TouchableOpacity>
-                </View>
-              )}
-            />
-            {/* Always here, pinned at the end of the list — adding a subtask is a
-                burst, not a one-off edit gated behind a button tap. */}
-            <View style={styles.subtaskInputRow}>
-              {/* An empty copy of the row checkbox, so the field being typed
-                  into lines up with the subtasks above it. */}
-              <View style={styles.subtaskCheck}>
-                <View style={styles.subtaskBox} />
-              </View>
-              <TextField
-                ref={newSubtaskInputRef}
-                style={styles.subtaskInput}
-                value={newSubtaskTitle}
-                onChangeText={setNewSubtaskTitle}
-                placeholder="Add subtask"
-                placeholderTextColor={colors.textTertiary}
-                maxLength={TITLE_MAX_LENGTH}
-                returnKeyType="next"
-                // Adding subtasks is a burst, not one edit: submitting keeps
-                // the field focused so the keyboard never drops between them.
-                // This used to blur on submit and refocus on a 50ms timer,
-                // which dismissed and reopened the keyboard on every entry.
-                blurOnSubmit={false}
-                onSubmitEditing={() => {
-                  commitSubtask(newSubtaskTitle);
-                  setNewSubtaskTitle('');
-                }}
-                onBlur={() => commitPendingSubtask()}
-              />
-            </View>
-          </CollapsibleField>
-      </View>
-      )}
-
-      {/* The heading has to answer for its own rows: simplified mode takes the
-          Effort row away, and a card headed "Priority & effort" with only a
-          Priority row in it names a field that isn't there. `EditorGroup` can
-          drop a row but it can't rename the group around it, so the one group
-          whose label lists its contents says so here. */}
-      <EditorGroup
-        label={featureShown('effortRating', simpleMode, !!effort) ? 'Priority & effort' : 'Priority'}
-        divider="full"
-        searchTerms={searchTerms}
-        onMatchCount={reportMatches}
-        rows={[
-          {
-            key: 'priority', label: 'Priority',
-            keywords: ['important', 'urgent', 'rank', 'flag', 'high', 'low'],
-            node: (
-              <>
-          <CollapsibleField
-            label="Priority"
-            summary={priority > 0 ? PRIORITY_LABELS[priority] : undefined}
-            hint="Ranks the task against everything else on Today."
-            expanded={fieldOpen('priority')}
-            onToggle={() => toggleField('priority')}
-          >
-            <SegmentedControl
-              label="Priority"
-              value={priority}
-              onChange={p => { setPriority(p); closeField('priority'); }}
-              // Five with "Medium" among them doesn't fit one row once each
-              // carries a dot; 3 + 2 does, and keeps every cell the same width.
-              columns={3}
-              options={PRIORITY_SEGMENTS}
-            />
-          </CollapsibleField>
-              </>
-            ),
-          },
-          {
-            key: 'effort', label: 'Effort', set: !!effort,
-            keywords: ['estimate', 'how long', 'minutes', 'size', 'workload'],
-            node: (
-              <>
-          <CollapsibleField
-            label="Effort"
-            summary={effortSummary}
-            emptySummary="Not set"
-            hint="Roughly how long this takes, so a day's list can be sized realistically."
-            expanded={fieldOpen('effort')}
-            onToggle={() => toggleField('effort')}
-          >
-            <View style={styles.pillRow}>
-              {([0, 1, 2, 3, 4, 5, 6] as Effort[]).map(e => {
-                const active = !customEffortActive && effort === e;
-                const presetMins = EFFORT_MINUTES[e];
-                return (
-                  <TouchableOpacity
-                    key={e}
-                    style={[styles.pill, active && styles.pillActiveNeutral]}
-                    onPress={() => { haptics.tap(); applyEffortPreset(e); closeField('effort'); }}
-                  >
-                    <Text style={[styles.pillText, active && styles.pillTextActive]}>
-                      {e === 0 ? '—' : EFFORT_LABELS[e]}
-                    </Text>
-                    {presetMins != null ? (
-                      <Text style={styles.pillHint}>{formatDuration(presetMins)}</Text>
-                    ) : null}
-                  </TouchableOpacity>
-                );
-              })}
-              <TouchableOpacity
-                style={[styles.pill, customEffortActive && styles.pillCustomActive]}
-                onPress={openCustomEffort}
-              >
-                {customEffortActive && estimatedMinutes != null ? (
-                  <View style={styles.pillCustomInner}>
-                    <Ionicons name="checkmark" size={iconSize.sm} color={colors.accentText} />
-                    <Text style={styles.pillCustomText}>{formatDuration(estimatedMinutes)}</Text>
-                  </View>
-                ) : (
-                  <Text style={styles.pillText}>Custom</Text>
-                )}
-                <Text style={styles.pillHint}>exact</Text>
-              </TouchableOpacity>
-            </View>
-            {customEffortOpen && (
-              <View style={styles.customEffortRow}>
-                <TextField
-                  style={[styles.customEffortInput, customEffortActive && customEffortText !== '' && styles.customInputActive]}
-                  value={customEffortText}
-                  onChangeText={t => { setCustomEffortText(t); applyCustomEffort(t, customEffortUnit); }}
-                  keyboardType="number-pad"
-                  placeholder="Amount"
-                  placeholderTextColor={colors.textTertiary}
-                  inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
-                  autoFocus
-                />
-                <View style={styles.unitToggle}>
-                  <SegmentedControl
-                    label="Effort unit"
-                    value={customEffortUnit}
-                    onChange={u => { setCustomEffortUnit(u); applyCustomEffort(customEffortText, u); }}
-                    options={DURATION_UNIT_SEGMENTS}
+                  <Ionicons
+                    name="airplane-outline"
+                    size={18}
+                    color={deliverableSetsAway ? colors.accent : colors.textSecondary}
                   />
-                </View>
-              </View>
-            )}
-          </CollapsibleField>
+                  <View style={styles.optionContent}>
+                    <Text style={styles.optionLabel}>Sets the leaving date</Text>
+                    <Text style={styles.optionHint}>
+                      The date you answer becomes the project’s Leaving date, if it doesn’t have one yet
+                    </Text>
+                  </View>
+                  <View style={[styles.toggle, deliverableSetsAway && styles.toggleOn]}>
+                    <View style={[styles.toggleKnob, deliverableSetsAway && styles.toggleKnobOn]} />
+                  </View>
+                </TouchableOpacity>
+              )}
               </>
             ),
           },
-          // Only the coin rules read it, so it's offered only while they run:
-          // a rating that changes nothing on screen is a question with no
-          // answer. A rating set earlier stays put while rewards are off.
-          ...(rewardsEnabled && polarity !== 'negative' ? [{
-            key: 'difficulty', label: 'Difficulty', set: difficulty !== null,
-            keywords: ['hard', 'easy', 'dread', 'avoid', 'coins', 'reward', 'aversion'],
-            node: (
-              <>
-          <CollapsibleField
-            label="Difficulty"
-            summary={DIFFICULTY_SEGMENTS.find(d => d.value === difficulty)?.label}
-            emptySummary="Not set"
-            hint={DIFFICULTY_HINT}
-            expanded={fieldOpen('difficulty')}
-            onToggle={() => toggleField('difficulty')}
-          >
-            <SegmentedControl
-              label="Difficulty"
-              value={difficulty}
-              onChange={d => { setDifficulty(d); closeField('difficulty'); }}
-              options={DIFFICULTY_PICKER_SEGMENTS}
-            />
-          </CollapsibleField>
-              </>
-            ),
-          }] : []),
+          // Another "what does completing this mean" question, and — like
+          // deliverable above — not gated on any other field: it answers to
+          // completion itself, not to a deadline the way the calendar toggle
+          // in the Schedule group does.
           {
-            key: 'pin', label: 'Pin to Today',
-            keywords: ['pinned', 'top', 'stick', 'favourite', 'favorite', 'repeat', 'recurring', 'every', 'occurrence', 'always'],
+            key: 'logCompletionToCalendar', label: 'Log to calendar', set: logCompletionToCalendar,
+            keywords: ['calendar', 'event', 'log', 'history', 'record'],
             node: (
-              <>
-            <TouchableOpacity
-              style={styles.optionRow}
-              onPress={() => { haptics.tap(); setPinned(v => !v); }}
-              activeOpacity={interaction.activeOpacity}
-              accessibilityRole="switch"
-              accessibilityLabel="Pin to Today"
-              accessibilityState={{ checked: pinned }}
-            >
-              <PinIcon filled={pinned} size={18} color={pinned ? colors.orangeText : colors.textSecondary} />
-              <View style={styles.optionContent}>
-                <Text style={styles.optionLabel}>Pin to Today</Text>
-                <Text style={styles.optionHint}>Hoist this to the top of Today, above everything else</Text>
-              </View>
-              <View style={[styles.toggle, pinned && styles.toggleOn]}>
-                <View style={[styles.toggleKnob, pinned && styles.toggleKnobOn]} />
-              </View>
-            </TouchableOpacity>
-            {recurrenceType !== 'none' && (
               <TouchableOpacity
                 style={styles.optionRow}
-                onPress={() => { haptics.tap(); setPinEachOccurrence(v => !v); }}
+                onPress={() => {
+                  haptics.tap();
+                  // With no calendar named yet the row asks for one rather
+                  // than doing nothing. It used to send the reader to
+                  // Settings, which from a sheet guarding unsaved edits meant
+                  // abandoning the task to follow the instruction.
+                  if (!completionCalendarId) { setCalendarPickerFor('completion'); return; }
+                  setLogCompletionToCalendar(v => !v);
+                }}
                 activeOpacity={interaction.activeOpacity}
-                accessibilityRole="switch"
-                accessibilityLabel="Pin every occurrence"
-                accessibilityState={{ checked: pinEachOccurrence }}
+                accessibilityRole={completionCalendarId ? 'switch' : 'button'}
+                accessibilityLabel="Log this task’s completion to your calendar"
+                accessibilityState={completionCalendarId ? { checked: logCompletionToCalendar } : {}}
               >
-                <PinIcon filled={pinEachOccurrence} size={18} color={pinEachOccurrence ? colors.orangeText : colors.textSecondary} />
+                <Ionicons
+                  name="calendar-outline"
+                  size={18}
+                  color={logCompletionToCalendar ? colors.accent : colors.textSecondary}
+                />
                 <View style={styles.optionContent}>
-                  <Text style={styles.optionLabel}>Pin every occurrence</Text>
-                  <Text style={styles.optionHint}>Each new occurrence starts out pinned to Today</Text>
+                  <Text style={styles.optionLabel}>Log to calendar</Text>
+                  <Text style={styles.optionHint}>
+                    {completionCalendarId
+                      ? 'A calendar event when you complete this task'
+                      : 'Pick a calendar to write to'}
+                  </Text>
                 </View>
-                <View style={[styles.toggle, pinEachOccurrence && styles.toggleOn]}>
-                  <View style={[styles.toggleKnob, pinEachOccurrence && styles.toggleKnobOn]} />
-                </View>
+                {completionCalendarId ? (
+                  <View style={[styles.toggle, logCompletionToCalendar && styles.toggleOn]}>
+                    <View style={[styles.toggleKnob, logCompletionToCalendar && styles.toggleKnobOn]} />
+                  </View>
+                ) : (
+                  <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+                )}
               </TouchableOpacity>
-            )}
-              </>
             ),
           },
-          ...(rewardsEnabled && task && (isBountyLive(task) || canPostBounty(task)) && polarity !== 'negative' ? [{
-            key: 'bounty', label: 'Bounty',
-            keywords: ['reward', 'coins', 'dread', 'procrastinate', 'putting off', 'incentive', 'bonus'],
-            node: (
-              <>
-            <TouchableOpacity
-              style={styles.optionRow}
-              onPress={() => {
-                if (!bounty && !isBountyLive(task)) {
-                  // The slot check is made here, where the switch is, rather
-                  // than refused silently on save.
-                  const taken = liveBountyCount(useTaskStore.getState().tasks);
-                  if (taken >= bountyLimit) {
-                    haptics.warning();
-                    Alert.alert(
-                      bountyLimit === 1 ? 'You already have a bounty out' : `You already have ${taken} bounties out`,
-                      'Finish or withdraw one first, or allow more on the Rewards screen.',
-                    );
-                    return;
-                  }
-                }
-                haptics.tap();
-                setBounty(v => !v);
-              }}
-              activeOpacity={interaction.activeOpacity}
-              accessibilityRole="switch"
-              accessibilityLabel="Bounty"
-              accessibilityState={{ checked: bounty }}
-            >
-              <CoinIcon size={18} color={bounty ? colors.accent : colors.textSecondary} />
-              <View style={styles.optionContent}>
-                <Text style={styles.optionLabel}>Bounty</Text>
-                <Text style={styles.optionHint}>
-                  {bounty && isBountyLive(task)
-                    ? describeBounty(task)
-                    : bounty
-                      ? `+${formatCoins(bountyCoinsFor({ ...task, bountyPushes: 0 }))} extra when done. Each time it's moved to a later day, the bounty gets smaller.`
-                      : 'Extra coins for a task you keep putting off. Worth the most if you do it before moving it again.'}
-                </Text>
-              </View>
-              <View style={[styles.toggle, bounty && styles.toggleOn]}>
-                <View style={[styles.toggleKnob, bounty && styles.toggleKnobOn]} />
-              </View>
-            </TouchableOpacity>
-              </>
-            ),
-          }] : []),
+          // A third "what does completing this mean" question, same family as
+          // the calendar toggle right above — opt-in, gated on a Settings
+          // switch it can't turn on for itself, same disabled/hint shape.
+          // A metric-and-number pair rather than a toggle, unlike the
+          // calendar row: the calendar event's content is fixed (the task's
+          // own title), but "how much of what" has no single obvious answer
+          // to bake in — this used to log dietary water only.
           {
-            key: 'excludeFromSuggestions', label: 'Skip in suggestions',
-            keywords: ['pin', 'focus', 'suggest', 'exclude', 'hide', 'shortlist'],
+            key: 'logHealthValue', label: 'Log to Health',
+            set: logHealthMetric !== null && logHealthAmount !== null,
+            keywords: ['water', 'hydration', 'drink', 'health', 'apple health', 'nutrient', 'protein', 'sodium', 'calories', 'sugar', 'fiber', 'fat', 'carbs', 'caffeine'],
+            node: (() => {
+              // Water is the one nutrient with a second unit worth offering —
+              // nobody asks for a stepper in fl oz of sodium. logHealthAmount
+              // stays in ml regardless (see waterLogUnit above); this only
+              // decides what the stepper displays and steps in.
+              const isWater = (logHealthMetric ?? 'waterMl') === 'waterMl';
+              const useFlOz = isWater && waterLogUnit === 'flOz';
+              const range = useFlOz ? LOG_HEALTH_WATER_FL_OZ_STEPS : LOG_HEALTH_VALUE_STEPS[logHealthMetric ?? 'waterMl'];
+              const unitLabel = useFlOz ? 'fl oz' : NUTRIENT_LABEL[logHealthMetric ?? 'waterMl'].unit;
+              const isSet = logHealthMetric !== null && logHealthAmount !== null;
+              return (
+                <CollapsibleField
+                  label="Log to Health"
+                  summary={
+                    isSet
+                      ? `${useFlOz ? Math.round(mlToFlOz(logHealthAmount)) : logHealthAmount}${useFlOz ? ' ' : ''}${unitLabel} of ${NUTRIENT_LABEL[logHealthMetric].label.toLowerCase()} ${targetCount !== null ? 'per unit logged' : 'when completed'}`
+                      : undefined
+                  }
+                  hint={
+                    healthWriteEnabled
+                      ? targetCount !== null
+                        ? `Adds to today’s ${isWater ? 'water' : NUTRIENT_LABEL[logHealthMetric ?? 'waterMl'].label.toLowerCase()} in the food log and Apple Health each time you log a unit.`
+                        : `Adds to today’s ${isWater ? 'water' : NUTRIENT_LABEL[logHealthMetric ?? 'waterMl'].label.toLowerCase()} in the food log and Apple Health each time you complete this task.`
+                      : 'Turn on writing to Health in Settings › Health first'
+                  }
+                  expanded={healthWriteEnabled && fieldOpen('logHealthValue')}
+                  onToggle={() => { if (!healthWriteEnabled) return; toggleField('logHealthValue'); }}
+                  // Turning this off used to mean holding − on the amount
+                  // stepper all the way down past its floor — real, but not
+                  // discoverable, especially from a large amount. This mirrors
+                  // EditorRow's onClear (a close-circle beside the value) for
+                  // the fields built on that component instead of this one.
+                  right={isSet ? (
+                    <TouchableOpacity
+                      onPress={() => {
+                        haptics.tap();
+                        setLogHealthAmount(null);
+                        closeField('logHealthValue');
+                      }}
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel="Clear log to Health"
+                    >
+                      <Ionicons name="close-circle" size={16} color={colors.textSecondary} />
+                    </TouchableOpacity>
+                  ) : undefined}
+                >
+                  <ChoiceMenuChip
+                    variant="field"
+                    name="TaskEditor nutrient menu"
+                    noun="Nutrient"
+                    groups={LOG_NUTRIENT_GROUPS}
+                    selectedKey={logHealthMetric ?? 'waterMl'}
+                    onSelect={key => {
+                      const next = key as NutrientKey;
+                      haptics.tap();
+                      setLogHealthMetric(next);
+                      // Re-defaulted rather than carried over, same reasoning
+                      // the health-target metric switch above uses: 250 of
+                      // whatever the old metric was is not a meaningful amount
+                      // of the new one, so switching starts back at one step.
+                      setLogHealthAmount(LOG_HEALTH_VALUE_STEPS[next].step);
+                    }}
+                  />
+                  <View style={styles.logHealthAmountRow}>
+                    <CountStepper
+                      value={logHealthAmount === null ? null : (useFlOz ? Math.round(mlToFlOz(logHealthAmount)) : logHealthAmount)}
+                      onChange={next => {
+                        const ml = next === null ? null : (useFlOz ? Math.round(flOzToMl(next)) : next);
+                        setLogHealthAmount(ml);
+                        // Stepping up from Off before ever touching the picker
+                        // above still has to turn the row on for some metric —
+                        // water, the same default this feature started as.
+                        if (ml !== null && logHealthMetric === null) setLogHealthMetric('waterMl');
+                      }}
+                      min={range.step}
+                      max={range.max}
+                      step={range.step}
+                      allowNull
+                      emptyLabel="Off"
+                      label="Log to Health"
+                      format={n => (useFlOz ? `${n} fl oz` : `${n}${unitLabel}`)}
+                      describeValue={n => (n === null ? 'off' : `${n} ${useFlOz ? 'fluid ounces' : unitLabel}`)}
+                    />
+                    {isWater && (
+                      <View style={styles.pillRow}>
+                        {(['ml', 'flOz'] as const).map(u => {
+                          const active = waterLogUnit === u;
+                          return (
+                            <TouchableOpacity
+                              key={u}
+                              style={[styles.pill, active && styles.pillActiveNeutral]}
+                              onPress={() => { haptics.tap(); setWaterLogUnit(u); }}
+                              activeOpacity={interaction.activeOpacity}
+                              accessibilityRole="button"
+                              accessibilityState={{ selected: active }}
+                              accessibilityLabel={u === 'ml' ? 'Milliliters' : 'Fluid ounces'}
+                            >
+                              <Text style={[styles.pillText, active && styles.pillTextActive]}>
+                                {u === 'ml' ? 'ml' : 'fl oz'}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    )}
+                  </View>
+                  {followsWaterTarget && (
+                    <TouchableOpacity
+                      style={styles.optionRow}
+                      onPress={() => { haptics.tap(); setFollowWaterTarget(v => !v); }}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="switch"
+                      accessibilityLabel="Follow the water target"
+                      accessibilityState={{ checked: followWaterTarget }}
+                    >
+                      <Ionicons name="water-outline" size={18} color={followWaterTarget ? colors.accent : colors.textSecondary} />
+                      <View style={styles.optionContent}>
+                        <Text style={styles.optionLabel}>Follow the water target</Text>
+                        <Text style={styles.optionHint}>
+                          Sets the daily target from your water target in the food log, including the extra for exercise, divided by the amount above. The target you set here is replaced.
+                        </Text>
+                      </View>
+                      <View style={[styles.toggle, followWaterTarget && styles.toggleOn]}>
+                        <View style={[styles.toggleKnob, followWaterTarget && styles.toggleKnobOn]} />
+                      </View>
+                    </TouchableOpacity>
+                  )}
+                </CollapsibleField>
+              );
+            })(),
+          },
+          // The fourth "what does completing this mean" row, and the closest
+          // relative of the Health one right above: a name-and-amount pair
+          // that turns a completion into a quantity recorded elsewhere. It
+          // needs no Settings switch, because what it writes is the app's own
+          // log rather than somebody else's database.
+          //
+          // Nothing is asked at the tick — the dose is what this row already
+          // says it is. That is the whole point: a repeating task carrying a
+          // medication *is* how a scheduled dose gets logged here, so asking
+          // again would be recording the same fact twice. See
+          // docs/arch/mood-log.md.
+          {
+            key: 'medication', label: 'Log a dose', set: medicationName !== null,
+            keywords: ['medication', 'medicine', 'pill', 'tablet', 'dose', 'drug', 'supplement', 'vitamin', 'mg', 'prescription'],
             node: (
-              <>
-            <TouchableOpacity
-              style={styles.optionRow}
-              onPress={() => { haptics.tap(); setExcludeFromSuggestions(v => !v); }}
-              activeOpacity={interaction.activeOpacity}
-              accessibilityRole="switch"
-              accessibilityLabel="Skip in suggestions"
-              accessibilityState={{ checked: excludeFromSuggestions }}
-            >
-              <Ionicons name="color-wand-outline" size={18} color={excludeFromSuggestions ? colors.accent : colors.textSecondary} />
-              <View style={styles.optionContent}>
-                <Text style={styles.optionLabel}>Skip in suggestions</Text>
-                <Text style={styles.optionHint}>Keep this out of suggested pins and focus sessions</Text>
-              </View>
-              <View style={[styles.toggle, excludeFromSuggestions && styles.toggleOn]}>
-                <View style={[styles.toggleKnob, excludeFromSuggestions && styles.toggleKnobOn]} />
-              </View>
-            </TouchableOpacity>
-              </>
+              <CollapsibleField
+                label="Log a dose"
+                summary={
+                  medicationName
+                    ? [medicationName, resolveMedicationAmount() !== null ? `${resolveMedicationAmount()} ${medicationUnit}` : null]
+                        .filter(Boolean).join(', ')
+                    : undefined
+                }
+                hint="Completing this task adds a dose to your medication log. Unchecking it removes the dose."
+                expanded={fieldOpen('medication')}
+                onToggle={() => toggleField('medication')}
+              >
+                <Text style={styles.medicationLabel}>MEDICATION</Text>
+                <TextField
+                  style={styles.fieldBox}
+                  value={medicationName ?? ''}
+                  onChangeText={text => setMedicationName(text || null)}
+                  placeholder="e.g. Sertraline"
+                  placeholderTextColor={colors.textTertiary}
+                  maxLength={MEDICATION_NAME_MAX_LENGTH}
+                  returnKeyType="done"
+                  accessibilityLabel="What this task records a dose of"
+                />
+                {/* Picking one of these is what makes it the *same* medication
+                    as an earlier dose — medicationKey does no fuzzy matching
+                    (see docs/arch/mood-log.md), so retyping "Sertraline" as
+                    "sertraline" would otherwise split one medicine's history
+                    into two untallied entries. */}
+                {medicationSuggestions.length > 0 && (
+                  <>
+                    <Text style={styles.medicationCaption}>Or reuse one you&apos;ve logged before</Text>
+                    <PillGroup
+                      noun="medication"
+                      surface="card"
+                      options={medicationSuggestions.map(name => ({
+                        key: medicationKey(name),
+                        label: name,
+                        selected: !!medicationName && medicationKey(name) === medicationKey(medicationName),
+                        onPress: () => {
+                          haptics.tap();
+                          // An amount typed for one medicine is not another's.
+                          if (!medicationName || medicationKey(name) !== medicationKey(medicationName)) {
+                            setMedicationAmount('');
+                            setMedicationUnit(null);
+                          }
+                          setMedicationName(name);
+                        },
+                      }))}
+                    />
+                  </>
+                )}
+                {/* Hidden until there's something to be the amount *of*, the
+                    same rule the daily target's unit field follows: on its own
+                    it labels nothing. */}
+                {medicationName !== null && (
+                  <>
+                    <TaskDoseAmount
+                      menuName="TaskEditor dose unit menu"
+                      medication={medicationName}
+                      amount={medicationAmount}
+                      onChangeAmount={setMedicationAmount}
+                      unit={medicationUnit}
+                      onChangeUnit={setMedicationUnit}
+                    />
+                  </>
+                )}
+              </CollapsibleField>
             ),
+          },
+          // The fifth "what does completing this mean" row. With no food named
+          // it never writes anything by itself: a plain task names no food and
+          // no amount, so completing it raises the same manual
+          // search-sheet offer a meal-plan task's own completion does (see
+          // offerMealLog in useTaskStore.ts), prefilled with this slot and
+          // the task's own title. Naming a saved meal is what changes that:
+          // the meal is the food and the amount, so completing the task writes
+          // it (Task.logSavedMealId). It needs no Settings switch for the same
+          // reason the medication row above doesn't: picking a slot here is
+          // itself the opt-in.
+          {
+            key: 'logMealSlot', label: 'Log to food log', set: logMealSlot !== null,
+            keywords: ['food', 'meal', 'eat', 'nutrition', 'breakfast', 'lunch', 'dinner', 'snack', 'diet', 'saved meal', 'supplement', 'fiber'],
+            node: (() => {
+              const chosenMeal = logSavedMealId ? savedMeals.find(m => m.id === logSavedMealId) ?? null : null;
+              return (
+                <CollapsibleField
+                  label="Log to food log"
+                  summary={
+                    chosenMeal && logMealSlot
+                      ? `Logs ${chosenMeal.name} when completed`
+                      : logMealSlot ? `Offers to log ${MEAL_SLOT_LABELS[logMealSlot].toLowerCase()} when completed` : undefined
+                  }
+                  hint="Adds a food log entry each time you complete this task, under the meal below. Pick a saved meal to log it right away, or leave it on Ask each time to choose the food then. Unchecking the task removes what it logged."
+                  expanded={fieldOpen('logMealSlot')}
+                  onToggle={() => toggleField('logMealSlot')}
+                  right={logMealSlot !== null ? (
+                    <TouchableOpacity
+                      onPress={() => {
+                        haptics.tap();
+                        setLogMealSlot(null);
+                        setLogSavedMealId(null);
+                        closeField('logMealSlot');
+                      }}
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel="Clear log to food log"
+                    >
+                      <Ionicons name="close-circle" size={16} color={colors.textSecondary} />
+                    </TouchableOpacity>
+                  ) : undefined}
+                >
+                  <SegmentedControl<MealSlot>
+                    options={MEAL_SLOTS.map(slot => ({ value: slot, label: MEAL_SLOT_LABELS[slot] }))}
+                    value={logMealSlot ?? 'breakfast'}
+                    onChange={next => { haptics.tap(); setLogMealSlot(next); }}
+                    columns={2}
+                    label="Meal"
+                    surface="card"
+                  />
+                  {/* Saved meals are the one open set here, built from the food
+                      log's Save as meal, so this is a PillGroup rather than a
+                      track. "Ask each time" is pinned for the reason PillGroup
+                      pins every option meaning no choice. With none saved the
+                      row says how to make one rather than showing an empty set. */}
+                  <Text style={styles.kindHint}>Food</Text>
+                  {savedMeals.length === 0 ? (
+                    <Text style={styles.kindHint}>
+                      No saved meals yet. In the food log, select an entry and choose Save as meal, then pick it here.
+                    </Text>
+                  ) : (
+                    <PillGroup
+                      noun="saved meal"
+                      surface="card"
+                      filterPlaceholder="Find a saved meal…"
+                      options={[
+                        {
+                          key: '',
+                          label: 'Ask each time',
+                          selected: !chosenMeal,
+                          pinned: true,
+                          onPress: () => { haptics.tap(); setLogSavedMealId(null); },
+                        },
+                        ...savedMeals.map(meal => ({
+                          key: meal.id,
+                          label: meal.name,
+                          selected: meal.id === chosenMeal?.id,
+                          onPress: () => {
+                            haptics.tap();
+                            setLogSavedMealId(meal.id);
+                            if (logMealSlot === null) setLogMealSlot(slotForHour(new Date().getHours()));
+                          },
+                        })),
+                      ]}
+                    />
+                  )}
+                </CollapsibleField>
+              );
+            })(),
           },
         ]}
       />
+
       {/* Ways to act on the task from its row, rather than things about the
           task itself — the one group here whose rows produce a button on the
           list rather than changing how the task behaves. */}
@@ -6695,7 +7780,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         onMatchCount={reportMatches}
         rows={[
           {
-            key: 'link', label: 'Link',
+            key: 'link', label: 'Link', set: !!linkUrl || showLinkPicker,
             keywords: ['url', 'website', 'open', 'app', 'address'],
             node: (
               <>
@@ -6759,14 +7844,14 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             ),
           },
           {
-            key: 'phone', label: 'Phone',
+            key: 'phone', label: 'Phone', set: !!phoneNumber || showPhoneField,
             keywords: ['call', 'text', 'number', 'sms', 'contact'],
             node: (
               <>
             <EditorRow
               icon="call-outline"
               label="Phone"
-              hint="Call or text this number straight from the task row."
+              hint="Call or text this number from the task row."
               value={phoneNumber ?? undefined}
               expanded={showPhoneField}
               onPress={() => {
@@ -6813,14 +7898,14 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             ),
           },
           {
-            key: 'email', label: 'Email',
+            key: 'email', label: 'Email', set: !!emailAddress || showEmailField,
             keywords: ['mail', 'contact', 'compose', 'address'],
             node: (
               <>
             <EditorRow
               icon="mail-outline"
               label="Email"
-              hint="Compose an email to this address straight from the task row."
+              hint="Compose an email to this address from the task row."
               value={emailAddress ?? undefined}
               expanded={showEmailField}
               onPress={() => {
@@ -6857,48 +7942,23 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         ]}
       />
 
-      {/* Vacation pause sits with the streak rather than under a general
-          "More", because keeping a streak alive through a week away is what
-          it's for. */}
+      {/* Streaks — a task that repeats, once it has one. Vacation pause used to sit here because
+          keeping a streak alive through a week away is what it is for, but it applies to every task, so it
+          is in Organize now. */}
       <EditorGroup
         label="Streaks"
         searchTerms={searchTerms}
         onMatchCount={reportMatches}
         rows={[
-          {
-            key: 'vacation', label: 'Vacation pause', set: vacationPause,
-            keywords: ['away', 'holiday', 'skip', 'break', 'time off'],
-            node: (
-              <>
-            <TouchableOpacity
-              style={styles.optionRow}
-              onPress={() => { haptics.tap(); setVacationPause(v => !v); }}
-              activeOpacity={interaction.activeOpacity}
-              accessibilityRole="switch"
-              accessibilityLabel="Vacation pause"
-              accessibilityState={{ checked: vacationPause }}
-            >
-              <Ionicons name="airplane-outline" size={18} color={vacationPause ? colors.accent : colors.textSecondary} />
-              <View style={styles.optionContent}>
-                <Text style={styles.optionLabel}>Vacation pause</Text>
-                <Text style={styles.optionHint}>Hide and protect streak during vacation mode</Text>
-              </View>
-              <View style={[styles.toggle, vacationPause && styles.toggleOn]}>
-                <View style={[styles.toggleKnob, vacationPause && styles.toggleKnobOn]} />
-              </View>
-            </TouchableOpacity>
-              </>
-            ),
-          },
           ...(task && task.recurrenceType !== 'none' ? [{
-            key: 'streak', label: 'Streak', set: task.streakCount > 0,
+            key: 'streak', label: 'Streak', set: liveStreakTask!.streakCount > 0,
             keywords: ['run', 'days in a row', 'count'],
             node: (
               <>
                 <TouchableOpacity
                   style={styles.optionRow}
                   onPress={() => {
-                    setStreakDraft(task.streakCount);
+                    setStreakDraft(liveStreakTask!.streakCount);
                     setStreakEditorOpen(o => !o);
                   }}
                   activeOpacity={interaction.activeOpacity}
@@ -6907,15 +7967,15 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                     name="flame-outline"
                     size={18}
                     color={
-                      isStreakAtRecord(task) ? colors.red
-                      : task.streakCount > 0 ? colors.orangeText
+                      isStreakAtRecord(liveStreakTask!) ? colors.red
+                      : liveStreakTask!.streakCount > 0 ? colors.orangeText
                       : colors.textSecondary
                     }
                   />
                   <View style={styles.optionContent}>
                     <Text style={styles.optionLabel}>Streak</Text>
                     <Text style={styles.optionHint}>
-                      {streakHint(task)}
+                      {streakHint(liveStreakTask!)}
                     </Text>
                   </View>
                   <Ionicons name={streakEditorOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textSecondary} />
@@ -6931,11 +7991,11 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                     />
                     <Text style={styles.intervalLabel}>day{streakDraft === 1 ? '' : 's'}</Text>
                     <TouchableOpacity
-                      style={[styles.streakApplyBtn, streakDraft === task.streakCount && styles.streakApplyBtnDisabled]}
+                      style={[styles.streakApplyBtn, streakDraft === liveStreakTask!.streakCount && styles.streakApplyBtnDisabled]}
                       onPress={() => applyStreakChange(streakDraft)}
-                      disabled={streakDraft === task.streakCount}
+                      disabled={streakDraft === liveStreakTask!.streakCount}
                     >
-                      <Text style={[styles.streakApplyText, streakDraft === task.streakCount && styles.streakApplyTextDisabled]}>
+                      <Text style={[styles.streakApplyText, streakDraft === liveStreakTask!.streakCount && styles.streakApplyTextDisabled]}>
                         {streakDraft === 0 ? 'Reset' : 'Apply'}
                       </Text>
                     </TouchableOpacity>
@@ -6945,7 +8005,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             ),
           }] : []),
           ...(recurrenceType !== 'none' ? [{
-            key: 'showStreak', label: 'Show streak on row', set: showStreak,
+            key: 'showStreak', label: 'Show streak on row', set: streakShown,
             keywords: ['badge', 'flame', 'display', 'hide'],
             node: (
               <>
@@ -6953,20 +8013,21 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                   style={styles.optionRow}
                   onPress={() => {
                     haptics.tap();
-                    setShowStreak(v => !v);
+                    setStreakTouched(true);
+                    setShowStreak(!streakShown);
                   }}
                   activeOpacity={interaction.activeOpacity}
                   accessibilityRole="switch"
                   accessibilityLabel="Show streak on row"
-                  accessibilityState={{ checked: showStreak }}
+                  accessibilityState={{ checked: streakShown }}
                 >
-                  <Ionicons name="flame" size={18} color={showStreak ? colors.orangeText : colors.textSecondary} />
+                  <Ionicons name="flame" size={18} color={streakShown ? colors.orangeText : colors.textSecondary} />
                   <View style={styles.optionContent}>
                     <Text style={styles.optionLabel}>Show streak on row</Text>
-                    <Text style={styles.optionHint}>Keep the streak count visible on the task itself, not just in here</Text>
+                    <Text style={styles.optionHint}>Show the streak count on the task row</Text>
                   </View>
-                  <View style={[styles.toggle, showStreak && styles.toggleOn]}>
-                    <View style={[styles.toggleKnob, showStreak && styles.toggleKnobOn]} />
+                  <View style={[styles.toggle, streakShown && styles.toggleOn]}>
+                    <View style={[styles.toggleKnob, streakShown && styles.toggleKnobOn]} />
                   </View>
                 </TouchableOpacity>
               </>
@@ -6995,10 +8056,40 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                   <Ionicons name="alarm-outline" size={18} color={streakRequiresWindow ? colors.orangeText : colors.textSecondary} />
                   <View style={styles.optionContent}>
                     <Text style={styles.optionLabel}>Streak requires on-time completion</Text>
-                    <Text style={styles.optionHint}>Completing outside this task's time window still counts as done, but restarts the streak instead of continuing it</Text>
+                    <Text style={styles.optionHint}>Completing outside this task’s time window still counts as done, but restarts the streak</Text>
                   </View>
                   <View style={[styles.toggle, streakRequiresWindow && styles.toggleOn]}>
                     <View style={[styles.toggleKnob, streakRequiresWindow && styles.toggleKnobOn]} />
+                  </View>
+                </TouchableOpacity>
+              </>
+            ),
+          }] : []),
+          // A weekly target only (see Task.streakCountsUnits): the chip then
+          // totals every unit logged instead of weeks in a row.
+          ...(recurrenceType !== 'none' && quotaPeriod === 'week' && targetCount !== null ? [{
+            key: 'streakCountsUnits', label: 'Streak counts every time', set: streakCountsUnits,
+            keywords: ['total', 'count', 'weekly', 'week', 'target', 'times', 'units'],
+            node: (
+              <>
+                <TouchableOpacity
+                  style={styles.optionRow}
+                  onPress={() => {
+                    haptics.tap();
+                    setStreakCountsUnits(v => !v);
+                  }}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="switch"
+                  accessibilityLabel="Streak counts every time"
+                  accessibilityState={{ checked: streakCountsUnits }}
+                >
+                  <Ionicons name="repeat-outline" size={18} color={streakCountsUnits ? colors.orangeText : colors.textSecondary} />
+                  <View style={styles.optionContent}>
+                    <Text style={styles.optionLabel}>Streak counts every time</Text>
+                    <Text style={styles.optionHint}>Count each time you log this task instead of the weeks in a row you hit the target. A short week doesn’t reset it</Text>
+                  </View>
+                  <View style={[styles.toggle, streakCountsUnits && styles.toggleOn]}>
+                    <View style={[styles.toggleKnob, streakCountsUnits && styles.toggleKnobOn]} />
                   </View>
                 </TouchableOpacity>
               </>
@@ -7036,7 +8127,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                     <Text style={styles.optionHint}>
                       {task.archived
                         ? 'Hidden from every list. Resuming resets your streak'
-                        : 'Hide indefinitely, keeping history. Find it later in Archived'}
+                        : 'Hide the task and keep its history. Find it later in Archived'}
                     </Text>
                   </View>
                   <View style={[styles.toggle, task.archived && styles.toggleOn]}>
@@ -7047,7 +8138,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
           <TouchableOpacity style={styles.optionRow} onPress={handleDelete} activeOpacity={interaction.activeOpacity}>
             <Ionicons name="trash-outline" size={18} color={colors.red} />
             <View style={styles.optionContent}>
-              <Text style={[styles.optionLabel, { color: colors.redText }]}>Delete Task</Text>
+              <Text style={[styles.optionLabel, { color: colors.redText }]}>Delete task</Text>
             </View>
           </TouchableOpacity>
         </View>
@@ -7126,6 +8217,13 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     fontSize: font.sm,
     fontWeight: '600',
     flexShrink: 1,
+  },
+  reminderOfferRow: {
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.md,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
   },
   contactNudgeRow: {
     marginHorizontal: spacing.md,
@@ -7236,6 +8334,8 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.sm,
   },
   windowPill: { flex: 1 },
+  // Time / Sunrise / Sunset for the open pill, above whichever control it picks.
+  windowKindRow: { paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
   // Margin on both sides: the pill row below supplies its own top padding, but
   // the row above this one ends flush, so without the top margin the stepper
   // sits against it.
@@ -7259,6 +8359,11 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   },
   /** The static words either side of a stepper, e.g. "Every [4th] completion". */
   stepperSentence: { color: colors.textSecondary, fontSize: font.md },
+  targetProgressTrack: {
+    height: 6, borderRadius: 3, overflow: 'hidden', backgroundColor: colors.bgTertiary,
+    marginHorizontal: spacing.md, marginTop: spacing.xs,
+  },
+  targetProgressFill: { height: 6, borderRadius: 3, backgroundColor: colors.accent },
   targetStepperCaption: {
     color: colors.textSecondary, fontSize: font.sm,
     paddingHorizontal: spacing.md, paddingTop: spacing.xs, paddingBottom: spacing.sm,
@@ -7308,8 +8413,19 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   },
   /** Daily target's unit: one word, so it takes the rest of the stepper's line. */
   targetUnitInput: { flex: 1 },
+  /** The meter's name grid, inset like the fields under it. */
+  meterPills: { paddingHorizontal: spacing.md, paddingTop: spacing.xs },
+  /** A number beside its unit, or beside the Log button. */
+  meterAmountRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexShrink: 1 },
+  meterNumberInput: { minWidth: 96, textAlign: 'right' },
+  meterUnitInput: { minWidth: 80 },
   /** Sits below the medication's name. */
-  medicationAmountInput: { marginTop: spacing.sm },
+  medicationLabel: {
+    color: colors.textSecondary, fontSize: font.xxs, fontWeight: '700',
+    textTransform: 'uppercase', letterSpacing: 0.8,
+    marginTop: spacing.sm, marginBottom: spacing.xsm, marginLeft: spacing.xxs,
+  },
+  medicationCaption: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.smd, marginBottom: spacing.xsm, marginLeft: spacing.xxs },
   /** Sits below the completion timer's stepper. */
   completionTimerNoteInput: { marginTop: spacing.sm },
   /** The count in its read-out state, where a cadence is deriving it. */

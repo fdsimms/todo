@@ -42,7 +42,17 @@ interface SavedMealsStore {
    * item with no figures can't exist here, since `dbGetSavedMeals` already
    * dropped it on read, but the check costs nothing to keep in step with it).
    */
-  logMeal: (meal: SavedMeal, slot: MealSlot | null, at: Date) => FoodLogEntry[];
+  logMeal: (
+    meal: SavedMeal,
+    slot: MealSlot | null,
+    at: Date,
+    /**
+     * `taskId` stamps each entry with the task whose completion is logging it,
+     * and `undoable: false` keeps the entries out of shake-to-undo, for that
+     * caller: the completion already has the undo bar.
+     */
+    opts?: { taskId?: string; undoable?: boolean },
+  ) => FoodLogEntry[];
 }
 
 export const useSavedMealsStore = create<SavedMealsStore>((set, get) => ({
@@ -92,11 +102,12 @@ export const useSavedMealsStore = create<SavedMealsStore>((set, get) => ({
     set(s => ({ meals: s.meals.filter(m => m.id !== id) }));
   },
 
-  logMeal(meal, slot, at) {
+  logMeal(meal, slot, at, opts) {
     const addEntry = useFoodLogStore.getState().addEntry;
     const written: FoodLogEntry[] = [];
     for (const item of meal.items) {
       const entry = addEntry({
+        taskId: opts?.taskId,
         label: item.label,
         quantity: item.quantity,
         grams: item.grams,
@@ -109,7 +120,7 @@ export const useSavedMealsStore = create<SavedMealsStore>((set, get) => ({
         itemId: item.itemId,
         productId: item.productId,
         at,
-      });
+      }, opts?.undoable === false ? { undoable: false } : undefined);
       if (entry) written.push(entry);
     }
     return written;

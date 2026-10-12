@@ -127,7 +127,7 @@ export function TemplateSuggestionsSheet({ visible, templateId, templateName, ex
       haptics.error();
       Alert.alert(
         'Couldn’t add these',
-        'This template couldn’t be found, so nothing was saved. Go back to Templates and open it again, then retry.',
+        'This template couldn’t be found, so nothing was saved. Reopen it from Templates and try again.',
       );
       return;
     }
@@ -177,7 +177,7 @@ export function TemplateSuggestionsSheet({ visible, templateId, templateName, ex
         {loading ? (
           <View style={styles.centered}>
             <ActivityIndicator size="large" color={colors.purple} />
-            <Text style={styles.loadingText}>Generating ideas for “{templateName}”…</Text>
+            <Text style={styles.loadingText}>Generating tasks for “{templateName}”…</Text>
           </View>
         ) : error ? (
           <EmptyState
@@ -191,7 +191,7 @@ export function TemplateSuggestionsSheet({ visible, templateId, templateName, ex
           <EmptyState
             icon="sparkles-outline"
             title="No new suggestions"
-            subtitle="The AI didn’t come up with anything beyond what’s already here. Try regenerating."
+            subtitle="Nothing beyond what’s already here. Try regenerating."
             actionLabel="Regenerate"
             onAction={load}
           />

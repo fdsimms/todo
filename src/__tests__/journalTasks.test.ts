@@ -1,5 +1,12 @@
 import type { Task } from '../types';
-import { journalLogUrl, journalTaskDayKey, journalTaskSourceId } from '../utils/journalTasks';
+import {
+  JOURNAL_LOG_TITLE,
+  JOURNAL_SNIPPET_TITLE,
+  journalLogTitle,
+  journalLogUrl,
+  journalTaskDayKey,
+  journalTaskSourceId,
+} from '../utils/journalTasks';
 
 const task = (generatedKind: string, generatedSourceId: string) =>
   ({ generatedKind, generatedSourceId }) as Pick<Task, 'generatedKind' | 'generatedSourceId'>;
@@ -24,5 +31,12 @@ describe('journalLogUrl', () => {
   it('opens the sheet for its own kind', () => {
     expect(journalLogUrl('journal')).toBe('dundundun://journal?log=1');
     expect(journalLogUrl('dream')).toBe('dundundun://dreams?log=1');
+  });
+});
+
+describe('journalLogTitle', () => {
+  it('asks for an entry once a day, and to add to the day when it fires per part of the day', () => {
+    expect(journalLogTitle([])).toBe(JOURNAL_LOG_TITLE);
+    expect(journalLogTitle(['morning', 'evening'])).toBe(JOURNAL_SNIPPET_TITLE);
   });
 });

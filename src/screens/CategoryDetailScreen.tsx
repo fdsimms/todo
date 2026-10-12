@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useCallback } from 'react';
+import { useWithoutLockedTasks } from '../hooks/useWithoutLockedTasks';
 import {
   View,
   Text,
@@ -19,6 +20,7 @@ import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useStableCallback } from '../hooks/useStableCallback';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useElevatedCellRenderer } from '../hooks/useElevatedCellRenderer';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { PaintSelectionProvider } from '../components/PaintSelection';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
@@ -36,6 +38,9 @@ import { haptics } from '../utils/haptics';
 import { confirmBulkSetWhen } from '../utils/scheduleMovePrompt';
 import { animateLayout } from '../utils/layoutAnimation';
 import type { Task } from '../types';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
+import { reuseUnchangedLists } from '../utils/stableLists';
 
 type RootStackParamList = {
   CategoryDetail: { category: string };
@@ -46,13 +51,14 @@ type RootStackParamList = {
 const NO_SUBTASKS: Task[] = [];
 
 export function CategoryDetailScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RootStackParamList, 'CategoryDetail'>>();
   const { category } = route.params;
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const tasksByCategory = useTaskStore(s => s.tasksByCategory);
-  const allTasks = useTaskStore(s => s.tasks);
+  const allTasks = useWithoutLockedTasks(useTaskStore(s => s.tasks));
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
   const bulkMarkMissed = useTaskStore(s => s.bulkMarkMissed);
@@ -104,7 +110,8 @@ export function CategoryDetailScreen() {
       },
     });
   };
-  const keyboardScroll = useKeyboardInsetScroll<FlatList>();
+  const keyboardScroll = useKeyboardInsetScroll<FlatList>({ refreshing: pullSearch.pulling });
+  const scrollTop = useListScrollToTop(keyboardScroll);
   // Lifts the expanded row's cell above the row below it — see
   // useElevatedCellRenderer for why a genuine FlatList needs this and
   // ReorderableList's own lists don't.
@@ -126,6 +133,7 @@ export function CategoryDetailScreen() {
   // Every subtask on this screen, grouped once. Each row used to filter the
   // whole task list for its own children inline, which is O(tasks) per row and
   // — worse — handed the memoized row a fresh array on every render.
+  const subtasksPrev = useRef<Map<string, Task[]> | null>(null);
   const subtasksByParent = useMemo(() => {
     const map = new Map<string, Task[]>();
     for (const t of allTasks) {
@@ -134,7 +142,7 @@ export function CategoryDetailScreen() {
       if (list) list.push(t);
       else map.set(t.parentId, [t]);
     }
-    return map;
+    return (subtasksPrev.current = reuseUnchangedLists(subtasksPrev.current, map));
   }, [allTasks]);
   const subtasksOf = (id: string): Task[] => subtasksByParent.get(id) ?? NO_SUBTASKS;
 
@@ -258,12 +266,14 @@ export function CategoryDetailScreen() {
         >
         <PaintSelectionProvider {...paintProps}>
           <FlatList
-            ref={keyboardScroll.ref}
+            ref={scrollTop.ref}
+            refreshControl={pullSearch.refreshControl}
             scrollEnabled={!painting && !draggingSubtask}
             data={categoryTasks}
             keyExtractor={t => t.id}
             CellRendererComponent={elevatedCell}
             {...keyboardScroll.props}
+            {...scrollTop.listProps}
             contentContainerStyle={[{ flexGrow: 1 }, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
             renderItem={({ item }) => {
               const subs = subtasksOf(item.id);
@@ -313,7 +323,6 @@ export function CategoryDetailScreen() {
           <Fab
             onPress={() => setQuickAddVisible(true)}
             accessibilityLabel="Add task"
-            bottom={insets.bottom + spacing.xl}
           />
         )}
 
@@ -359,6 +368,8 @@ export function CategoryDetailScreen() {
           seed={quickAddSeed}
           seedLabel={category}
         />
+        <ScrollToTopButton {...scrollTop.buttonProps} />
+      {pullSearch.sheet}
       </View>
     </SpotlightProvider>
   );

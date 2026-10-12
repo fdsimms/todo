@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect, useId } from 'react';
+import { useProjectAccess } from '../hooks/useProjectAccess';
 import {
   View,
   Text,
@@ -22,11 +23,10 @@ import { useAnswerFirstCompletion } from '../hooks/useAnswerFirstCompletion';
 import { DeliverablePromptQueue } from '../components/DeliverablePromptQueue';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore, projectDecisions, projectProgress, projectCompletedRows, isProjectPastWindow, projectAnswerTallies, answerTallyParts } from '../store/useProjectStore';
+import { decisionOutcomes } from '../utils/decisionReview';
 import { AddGuestsSheet } from '../components/AddGuestsSheet';
 import { describeProjectActivity, overdueRoutines, projectActivity, projectCardCaption, projectProgressNote } from '../utils/projectList';
-import { nextPullCandidate } from '../utils/projectPull';
 import { isPausedOn, isPlanning } from '../utils/projectPause';
-import { ProjectPullSheet } from '../components/ProjectPullSheet';
 import { LookAheadSheet } from '../components/LookAheadSheet';
 import { LinkedText } from '../components/LinkedText';
 import { format } from 'date-fns/format';
@@ -52,6 +52,9 @@ import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { confirmBulkSetWhen } from '../utils/scheduleMovePrompt';
 import { alphabeticalPageOrder, buildProjectListItems, filterProjectListItems, filterTasksByTitle, orderWithInserted, projectCopyText, type ProjectListItem } from '../utils/projectStacks';
 import { ProjectEditor } from '../components/ProjectEditor';
+import { ProjectPageMenu } from '../components/ProjectPageMenu';
+import { LazySheet } from '../components/LazySheet';
+import type { CardAnchor } from '../components/CardSheet';
 import { BulkActionBar } from '../components/BulkActionBar';
 import { QuickAddModal } from '../components/QuickAddModal';
 import { useStableCallback } from '../hooks/useStableCallback';
@@ -60,10 +63,11 @@ import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
 import { TemplateAppliedToast } from '../components/TemplateAppliedToast';
 import { ProjectTaskSuggestionsSheet } from '../components/ProjectTaskSuggestionsSheet';
 import { EmptyState } from '../components/EmptyState';
+import { ScreenHeader } from '../components/ScreenHeader';
 import { InlineAction } from '../components/InlineAction';
 import { ProjectDecisions } from '../components/ProjectDecisions';
 import { DeliverablePromptSheet } from '../components/DeliverablePromptSheet';
-import { FabMenu, FAB_SIZE, type FabDragHandlers, type FabMenuItem } from '../components/Fab';
+import { FabMenu, FAB_SIZE, type FabDragHandlers, type FabMenuItem, useFabBottom } from '../components/Fab';
 import {
   FabDropZone,
   FabDropZoneProvider,
@@ -91,14 +95,9 @@ import { useTitleSelection } from '../hooks/useTitleSelection';
 import { TitleTokenAccessory } from '../components/TitleTokenAccessory';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useCategoryStore } from '../store/useCategoryStore';
-import { awayNights, awaySpanOf } from '../utils/awayDates';
-import { geocodePlace } from '../services/geocode';
-import { fetchDestinationForecast } from '../services/weatherLookup';
-import {
-  describeForecastGap,
-  describeTripForecast,
-  summarizeTripForecast,
-} from '../utils/tripForecast';
+import { awayNights, awaySpanOf, destinationPinUpdate } from '../utils/awayDates';
+import { useDestinationForecast } from '../hooks/useDestinationForecast';
+import type { GeocodedPlace } from '../services/geocode';
 import { addMenuItemShown } from '../utils/simpleMode';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, iconSize, type Colors } from '../theme';
@@ -114,6 +113,7 @@ import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { useFilterField } from '../hooks/useFilterField';
 import { useLogicalDayKey } from '../hooks/useLogicalDayKey';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { TextField } from '../components/TextField';
 
 type RootStackParamList = {
@@ -381,8 +381,10 @@ function NewLineField({
   );
 }
 
-export function ProjectDetailScreen() {
+function ProjectDetailContent() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
+  const fabBottom = useFabBottom();
   const navigation = useNavigation();
   // A task row's category chip opens that category's page. Stable, because
   // TaskItem is memoized.
@@ -435,6 +437,8 @@ export function ProjectDetailScreen() {
   const addExistingToGroup = useTaskStore(s => s.addExistingToGroup);
 
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [pageMenuVisible, setPageMenuVisible] = useState(false);
+  const [pageMenuAnchor, setPageMenuAnchor] = useState<CardAnchor | null>(null);
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editingGroup, setEditingGroup] = useState<TaskGroup | null>(null);
@@ -611,46 +615,24 @@ export function ProjectDetailScreen() {
   // Presentation only — see Project.kind.
   const isList = project?.kind === 'list';
 
-  /**
-   * The destination forecast line, fetched on open and never stored.
-   *
-   * A read with no store, the shape `useWeatherStore`'s own daily snapshot
-   * takes one feature over: a forecast written onto the project would go stale
-   * and then be believed. Held in component state so it lives exactly as long
-   * as the screen does.
-   *
-   * Every refusal upstream (the switch off, demo mode, no network, a place no
-   * gazetteer knows, a trip further out than the forecast reaches) comes back
-   * as null and draws nothing. There is no error state, deliberately: a line
-   * that could not be fetched has nothing to say, and saying so would be a
-   * second row about the app rather than about the trip.
-   */
-  const [forecastLine, setForecastLine] = useState<string | null>(null);
-  const [forecastGap, setForecastGap] = useState<string | null>(null);
-  const destinationForecastEnabled = useSettingsStore(s => s.destinationForecastEnabled);
-  const unitSystem = useSettingsStore(s => s.unitSystem);
+  // The destination forecast line (see useDestinationForecast): fetched on
+  // open and never stored.
   const awaySpan = project ? awaySpanOf(project) : null;
   const destination = project?.destination ?? null;
   const spanStartKey = awaySpan ? dayKeyOf(awaySpan.start) : null;
   const spanEndKey = awaySpan?.end ? dayKeyOf(addDays(awaySpan.end, -1)) : spanStartKey;
-
-  useEffect(() => {
-    setForecastLine(null);
-    setForecastGap(null);
-    if (!destinationForecastEnabled || !destination || !spanStartKey || !spanEndKey) return;
-    let live = true;
-    void (async () => {
-      const place = await geocodePlace(destination);
-      if (!live || !place) return;
-      const days = await fetchDestinationForecast(place, spanStartKey, spanEndKey);
-      if (!live || !days) return;
-      const summary = summarizeTripForecast(days);
-      const nights = awayNights(awaySpan);
-      setForecastLine(describeTripForecast(summary, place.name, unitSystem === 'metric'));
-      setForecastGap(describeForecastGap(summary, nights));
-    })();
-    return () => { live = false; };
-  }, [destinationForecastEnabled, destination, spanStartKey, spanEndKey, unitSystem]);
+  // The geocode behind it also pins the trip's coordinates on the project, so
+  // sunrise and sunset can follow the trip (Project.destinationLatitude). Re-read
+  // rather than taken from this render, and only written while the destination
+  // is still the one asked about and the place has actually moved.
+  const pinDestination = useCallback((place: GeocodedPlace, askedFor: string) => {
+    const current = useProjectStore.getState().projects.find(p => p.id === projectId);
+    const pin = current ? destinationPinUpdate(current, askedFor, place) : null;
+    if (pin) useProjectStore.getState().updateProject(projectId, pin);
+  }, [projectId]);
+  const { line: forecastLine, gap: forecastGap } = useDestinationForecast(
+    destination, spanStartKey, spanEndKey, awayNights(awaySpan), pinDestination,
+  );
   // One row per member, as progress counts them — see projectCompletedRows.
   const completedProjectTasks = useMemo(() => {
     if (!project) return [];
@@ -669,7 +651,7 @@ export function ProjectDetailScreen() {
   // it. With completed tasks present, ListFooterComponent renders and carries
   // its own bottom padding; stacking this on top of it would double the gap.
   const baseListBottomPadding = completedProjectTasks.length === 0
-    ? insets.bottom + FAB_SIZE + spacing.lg
+    ? fabBottom + FAB_SIZE + spacing.lg
     : undefined;
   // Same identity-grouped count the Projects list badges its quick-complete
   // action with — a recurring member never reads done here either. Memoized
@@ -701,6 +683,7 @@ export function ProjectDetailScreen() {
   // answer first. It does its own filtering (members, unarchived, collapsed by
   // identity), so it takes the whole task list rather than projectTasks.
   const decisions = useMemo(() => projectDecisions(projectId, allTasks), [projectId, allTasks]);
+  const decisionOutcomeMap = useMemo(() => decisionOutcomes(allTasks), [allTasks]);
   const answerTask = answerTaskId !== null ? allTasks.find(t => t.id === answerTaskId) ?? null : null;
   // Held so the sheet can close through `visible` rather than by leaving
   // the tree while still on screen. See useSheetSubject.
@@ -975,8 +958,10 @@ export function ProjectDetailScreen() {
     if (expandedTaskId !== null) { setExpandedTaskId(null); return; }
     const group = useTaskGroupStore.getState().getGroupById(groupId);
     if (!group) return;
+    // Finished rows count too, to match `empty` in the render: a section whose
+    // only members are done is not empty, so it has to be able to collapse.
     const hasRows = useTaskStore.getState().tasks.some(
-      t => t.groupId === groupId && t.projectId === projectId && t.parentId === null && !t.completed && !t.archived,
+      t => t.groupId === groupId && t.projectId === projectId && t.parentId === null && !t.archived,
     );
     if (!hasRows) return;
     haptics.tap();
@@ -1570,14 +1555,6 @@ export function ProjectDetailScreen() {
     ? `Away ${format(new Date(project.awayStart), 'MMM d')}${project.awayEnd ? ` to ${format(new Date(project.awayEnd), 'MMM d')}` : ''}`
       + (project.destination ? ` · ${project.destination}` : '')
     : null;
-  // What a pull scoped to this project would offer first; the button that
-  // opens that sheet only shows when there is something to offer. The sheet
-  // was reachable only from Today's menu.
-  const pullable = useMemo(
-    () => (project && !project.completed && !project.archived ? nextPullCandidate(project, allTasks) : null),
-    [project, allTasks],
-  );
-  const [pullOpen, setPullOpen] = useState(false);
   const [lookAheadOpen, setLookAheadOpen] = useState(false);
   const tripAhead = !!awaySpan && !project?.completed && !project?.archived
     && awaySpan.start.getTime() > Date.now();
@@ -1628,7 +1605,14 @@ export function ProjectDetailScreen() {
     () => projectAnswerTallies(projectId, allTasks).map(answerTallyParts).filter(parts => parts.length > 0),
     [projectId, allTasks],
   );
-  const showSummary = !!project && (routinesToCatchUp.length > 0 || summaryProgress !== null || summaryCaption !== null || tripLine !== null || !!pullable || paused || activityLine !== null || answerTallies.length > 0);
+  const showSummary = !!project && (routinesToCatchUp.length > 0 || summaryProgress !== null || summaryCaption !== null || tripLine !== null || paused || activityLine !== null || answerTallies.length > 0);
+  // A list whose summary is only its count (and a date, if it has one) draws it
+  // as a caption over the items rather than as a card, so the page doesn't open
+  // on the same stats card a project does. Anything that needs the card (a
+  // button, a trip, a pause, a tally) keeps it.
+  const summaryCaptionOnly = isList && showSummary && routinesToCatchUp.length === 0 && tripLine === null
+    && !paused && activityLine === null && answerTallies.length === 0
+    && !project!.archived && !project!.completed;
 
   /**
    * One task per guest, each asking the given options on completion, under a
@@ -1715,32 +1699,6 @@ export function ProjectDetailScreen() {
           onBack={onClose}
           actions={
             <View style={styles.detailHeaderActions}>
-              {/*
-                The kind, right where its effect shows. Same shape as Recipes'
-                own grid-outline toggle in its header. The editor has the same
-                choice with its explanation; this is the quick way.
-              */}
-              {!!project && (
-                <TouchableOpacity
-                  onPress={() => {
-                    haptics.tap();
-                    // The store brings the kind's own defaults along (a list
-                    // never finishes and is never pulled; a project gets both
-                    // back), so either direction lands where creating that
-                    // kind fresh would. See kindSwitchFields.
-                    updateProject(project.id, { kind: isList ? 'project' : 'list' });
-                  }}
-                  hitSlop={8}
-                  accessibilityRole="switch"
-                  accessibilityState={{ checked: isList }}
-                  // A fixed name with the state beside it, as a switch reads:
-                  // the label used to change with the state, so VoiceOver said
-                  // "Keep as a list, switch, on" and the reverse when off.
-                  accessibilityLabel="Show as a list, without dates"
-                >
-                  <Ionicons name="list-outline" size={20} color={isList ? colors.accent : colors.textSecondary} />
-                </TouchableOpacity>
-              )}
               {/* Share, whose sheet includes Copy: a list of questions or gift
                   ideas is usually headed for a message, not the clipboard.
                   Long-press still copies in one step. */}
@@ -1778,6 +1736,19 @@ export function ProjectDetailScreen() {
                     three dots promise a menu of choices first. */}
                 <Ionicons name="create-outline" size={20} color={colors.textSecondary} />
               </TouchableOpacity>
+              {!!project && (
+                <TouchableOpacity
+                  hitSlop={12}
+                  onPress={(e) => {
+                    setPageMenuAnchor({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY });
+                    setPageMenuVisible(true);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Project options"
+                >
+                  <Ionicons name="ellipsis-horizontal" size={20} color={colors.textSecondary} />
+                </TouchableOpacity>
+              )}
             </View>
           }
         />
@@ -1827,13 +1798,14 @@ export function ProjectDetailScreen() {
           scroller={scrollControl}
         >
           <ReorderableList
+            refreshControl={pullSearch.refreshControl}
             // The user can't scroll during an add-button drag (the button's
             // responder has the touch); the drag scrolls it instead, through
             // scrollControl below.
             scrollEnabled={!painting && !draggingSubtask && !fabDragging && draggingSectionId === null}
             scrollControlRef={scrollControl}
             rowScrollerRef={listScroller}
-            scrollToTop={{ bottom: insets.bottom + spacing.xl }}
+            scrollToTop={{ bottom: fabBottom }}
             data={shownListItems}
             keyExtractor={projectListItemKey}
             // Two rows need lifting over their neighbours: an expanded row,
@@ -1930,8 +1902,8 @@ export function ProjectDetailScreen() {
             ListHeaderComponent={
               <>
                 {showSummary && (
-                  <View style={styles.summaryCard}>
-                    <Text style={styles.summaryText}>
+                  <View style={summaryCaptionOnly ? styles.summaryCaptionOnly : styles.summaryCard}>
+                    <Text style={summaryCaptionOnly ? styles.summaryCaptionText : styles.summaryText}>
                       {summaryProgress}
                       {summaryProgress && summaryCaption ? ' · ' : ''}
                       {summaryCaption && (
@@ -1984,7 +1956,7 @@ export function ProjectDetailScreen() {
                             haptics.tap();
                             navigateToTab('Logbook', { projectId, openProjectHistory: Date.now() });
                           }}
-                          accessibilityLabel="Open this project's history"
+                          accessibilityLabel="Open this project’s history"
                         />
                       </View>
                     )}
@@ -2006,7 +1978,7 @@ export function ProjectDetailScreen() {
                         </View>
                       </>
                     )}
-                    {!selectionMode && (!!pullable || tripAhead || paused) && (
+                    {!selectionMode && (tripAhead || paused) && (
                       <View style={styles.summaryActions}>
                         {paused && (
                           <InlineAction
@@ -2019,19 +1991,10 @@ export function ProjectDetailScreen() {
                               : 'Resume this project now'}
                           />
                         )}
-                        {!!pullable && (
-                          <InlineAction
-                            icon="arrow-down-circle-outline"
-                            label="Pull a task"
-                            variant="neutral"
-                            onPress={() => { haptics.tap(); setPullOpen(true); }}
-                            accessibilityLabel="Pull a task from this project into your days"
-                          />
-                        )}
                         {tripAhead && (
                           <InlineAction
                             icon="calendar-outline"
-                            label="What's due before you leave"
+                            label="What’s due before you leave"
                             variant="neutral"
                             onPress={() => { haptics.tap(); setLookAheadOpen(true); }}
                           />
@@ -2113,7 +2076,7 @@ export function ProjectDetailScreen() {
                       label="Sort A to Z"
                       variant="neutral"
                       onPress={sortListAToZ}
-                      accessibilityLabel="Sort this list's items from A to Z"
+                      accessibilityLabel="Sort this list’s items from A to Z"
                     />
                   </View>
                 )}
@@ -2141,6 +2104,7 @@ export function ProjectDetailScreen() {
                 <ProjectDecisions
                   label={isList ? 'Answers' : 'Decisions'}
                   decisions={decisions}
+                  outcomes={decisionOutcomeMap}
                   onPress={selectionMode ? undefined : task => setAnswerTaskId(task.id)}
                 />
               </>
@@ -2161,7 +2125,12 @@ export function ProjectDetailScreen() {
                 // buildProjectListItems) — the membership walk can't produce a
                 // group row without the task that led it there.
                 const checkedHere = checkedBySection.get(group.id) ?? NO_GROUP_CHILDREN;
-                const empty = children.length === 0 && checkedHere.length === 0;
+                // A finished member counts as something under the header even
+                // while completed rows are hidden: a section holding only done
+                // tasks is not empty, and reading as empty would both claim it
+                // has no items and lock its chevron.
+                const doneHere = allChildren.some(t => t.completed && !t.archived && t.parentId === null && t.projectId === projectId);
+                const empty = children.length === 0 && checkedHere.length === 0 && !doneHere;
                 // Collapse hides rows, and an empty stack has none to hide —
                 // collapsed it would be a bare title with no way to reach the
                 // button that fills it in. The header takes the same value so
@@ -2221,7 +2190,7 @@ export function ProjectDetailScreen() {
                         <View style={styles.emptyStackRow}>
                           <Text style={styles.emptyStackText}>{isList ? 'No items in this section yet' : group.checklist ? 'No lines in this section yet' : 'No tasks in this section yet'}</Text>
                           <InlineAction
-                            label={isList ? 'Add an item' : group.checklist ? 'Add a line' : 'Add task'}
+                            label={isList ? 'Add an item' : group.checklist ? 'Add a line' : 'Add a task'}
                             icon="add"
                             onPress={() => openAddToSection(group)}
                             accessibilityLabel={group.title.trim() ? `Add ${isList ? 'an item' : group.checklist ? 'a line' : 'a task'} to the ${group.title.trim()} section` : `Add ${isList ? 'an item' : group.checklist ? 'a line' : 'a task'} to this section`}
@@ -2276,9 +2245,10 @@ export function ProjectDetailScreen() {
                         {!selectionMode && sectionLine?.groupId !== group.id && (
                           <View style={styles.sectionAddRow}>
                             <InlineAction
-                              label={isList ? 'Add an item' : group.checklist ? 'Add a line' : 'Add task'}
+                              label={isList ? 'Add an item' : group.checklist ? 'Add a line' : 'Add a task'}
                               icon="add"
                               variant="neutral"
+                              surface="tray"
                               onPress={() => openAddToSection(group)}
                               accessibilityLabel={group.title.trim() ? `Add ${isList ? 'an item' : group.checklist ? 'a line' : 'a task'} to the ${group.title.trim()} section` : `Add ${isList ? 'an item' : group.checklist ? 'a line' : 'a task'} to this section`}
                             />
@@ -2291,6 +2261,7 @@ export function ProjectDetailScreen() {
                                 label="Sort A to Z"
                                 icon="swap-vertical-outline"
                                 variant="neutral"
+                                surface="tray"
                                 onPress={() => sortSectionAToZ(group, children)}
                                 accessibilityLabel={`Sort ${group.title.trim() || 'this section'} A to Z`}
                               />
@@ -2320,7 +2291,7 @@ export function ProjectDetailScreen() {
                 <EmptyState
                   icon={isList ? 'list-outline' : 'briefcase-outline'}
                   title={isList ? 'Nothing on this list yet' : 'No tasks yet'}
-                  subtitle={isList ? 'Add an item above. Paste several at once to add them all' : "Add a new task, or pull in one you've already written down"}
+                  subtitle={isList ? 'Add an item above, or paste several at once.' : "Add a new task, or add an existing one."}
                   actionLabel={isList ? 'Add an item' : 'New task'}
                   onAction={() => isList ? setTopLineOpen(v => v ?? 0) : openTaskLine()}
                 />
@@ -2331,7 +2302,7 @@ export function ProjectDetailScreen() {
             // the box the empty state centres in.
             ListFooterComponent={
               completedProjectTasks.length === 0 && (!showInlineNewTask || isList) && !namingSection && taskLineOpen === null ? null : (
-              <View style={[styles.detailFooter, { paddingBottom: insets.bottom + FAB_SIZE + spacing.lg }]}>
+              <View style={[styles.detailFooter, { paddingBottom: fabBottom + FAB_SIZE + spacing.lg }]}>
                 {/* Where the new section will land: after everything else. */}
                 {namingSection && (
                   <InlineNameField
@@ -2386,8 +2357,11 @@ export function ProjectDetailScreen() {
                     {/* A packing list is checked off and then used again, so a
                         list can put every line back in one go, without opening
                         the checked lines first. Several at once raises the
-                        Undo bar (bulkUncompleteTasks). */}
-                    {isList && !selectionMode && (
+                        Undo bar (bulkUncompleteTasks). Both act on the checked
+                        lines, so they appear only while those lines are shown:
+                        collapsed, the buttons would act on rows the person
+                        can't see. */}
+                    {isList && !selectionMode && completedShown && (
                       <View style={styles.uncheckAllRow}>
                         <InlineAction
                           icon="refresh"
@@ -2574,7 +2548,7 @@ export function ProjectDetailScreen() {
                 );
               }}
               ListEmptyComponent={
-                <EmptyState icon="search" title="No matching tasks" subtitle="Tasks already in a project, or completed, won't show here" />
+                <EmptyState icon="search" title="No matching tasks" subtitle="Completed tasks and tasks already in a project aren’t listed." />
               }
             />
           </View>
@@ -2586,12 +2560,11 @@ export function ProjectDetailScreen() {
             channel={fabIntentChannel}
             items={addMenuItems}
             onSelect={handleAddMenuSelect}
-            bottom={insets.bottom + spacing.xl}
             accessibilityLabel={isList ? 'Add to this list' : 'Add task to project'}
             drag={fabDrag}
             dragHint={isList
-              ? 'Drag onto the list to add an item at that spot. Drop it on a section to add it there, or back on the button to cancel.'
-              : 'Drag onto the list to add a task at that spot. Drop it on a section to add it there, or back on the button to cancel.'}
+              ? 'Drop on the list to add an item at that spot. Drop on a section to add it there. Drop on the button to cancel.'
+              : 'Drop on the list to add a task at that spot. Drop on a section to add it there. Drop on the button to cancel.'}
           />
         )}
 
@@ -2646,7 +2619,7 @@ export function ProjectDetailScreen() {
           <TemplateAppliedToast
             count={templateAppliedCount}
             noun={isList ? 'item' : 'task'}
-            bottom={insets.bottom + spacing.xl + FAB_SIZE + spacing.md}
+            bottom={fabBottom + FAB_SIZE + spacing.md}
             onDismiss={() => setTemplateAppliedCount(null)}
           />
         )}
@@ -2667,21 +2640,24 @@ export function ProjectDetailScreen() {
           />
         )}
 
-        <ProjectPullSheet
-          visible={pullOpen}
-          // Read only while open: it filters the whole list, and this screen
-          // renders on every row tap.
-          todaysTasks={pullOpen ? useTaskStore.getState().visibleTasks() : NO_SUBTASKS}
-          scopeProjectIds={project ? [project.id] : undefined}
-          onClose={() => setPullOpen(false)}
-        />
-
         <LookAheadSheet
           visible={lookAheadOpen}
           tripProjectId={project?.id ?? null}
           onClose={() => setLookAheadOpen(false)}
         />
 
+        <LazySheet open={pageMenuVisible}>
+          {!!project && <ProjectPageMenu
+            visible={pageMenuVisible}
+            onClose={() => setPageMenuVisible(false)}
+            anchor={pageMenuAnchor}
+            project={project}
+            // The store brings the kind's own defaults along (a list never
+            // finishes and is never pulled; a project gets both back). See
+            // kindSwitchFields.
+            onConvert={() => updateProject(project.id, { kind: isList ? 'project' : 'list' })}
+          />}
+        </LazySheet>
         <ProjectEditor
           visible={editingProject !== null}
           project={editingProject}
@@ -2713,6 +2689,7 @@ export function ProjectDetailScreen() {
             setExpandedTaskId(null);
           }}
         />
+        {pullSearch.sheet}
       </View>
     </SpotlightProvider>
   );
@@ -2747,6 +2724,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.sm,
   },
   summaryText: { color: colors.textSecondary, fontSize: font.sm },
+  // A list's count with no card behind it; the section-label treatment every
+  // other caption in the app uses.
+  summaryCaptionOnly: { marginHorizontal: spacing.md + spacing.xs, marginTop: spacing.md, marginBottom: spacing.sm },
+  summaryCaptionText: {
+    color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold,
+    textTransform: 'uppercase', letterSpacing: 0.8,
+  },
   // A count that opens who it counts. Underlined rather than accent-tinted:
   // it's a word in a sentence, and accent text there reads as a link out.
   tallyCount: { textDecorationLine: 'underline', textDecorationColor: colors.textTertiary },
@@ -2947,3 +2931,38 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.xs,
   },
 });
+
+/**
+ * The project lock in front of the page. The content is a separate component
+ * so none of its stores, searches or sheets mount while locked, the same split
+ * as the journal screen. Opened from anywhere (a task's project chip, search),
+ * so the gate lives here rather than at the Projects list.
+ */
+export function ProjectDetailScreen() {
+  const route = useRoute<RouteProp<RootStackParamList, 'ProjectDetail'>>();
+  const { projectId } = route.params;
+  const { locked, unlock } = useProjectAccess(projectId);
+  const title = useProjectStore(s => s.projects.find(p => p.id === projectId)?.title);
+  const colors = useColors();
+  const insets = useSafeAreaInsets();
+
+  // Asks as soon as the screen is shown, as the app lock does. A cancel leaves
+  // the button below for another go.
+  useEffect(() => {
+    if (locked) unlock();
+  }, [locked, unlock]);
+
+  if (!locked) return <ProjectDetailContent />;
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: insets.top }}>
+      <ScreenHeader title={title ?? 'Project'} />
+      <EmptyState
+        icon="lock-closed-outline"
+        title="This project is locked"
+        subtitle="Unlock with Face ID to see its tasks."
+        actionLabel="Unlock"
+        onAction={() => { unlock(); }}
+      />
+    </View>
+  );
+}

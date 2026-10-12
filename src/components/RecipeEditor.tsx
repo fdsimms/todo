@@ -248,7 +248,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
     // returning false — surfacing it here rather than silently discarding the
     // edit, which is what a plain `if (trimmed)` would do.
     if (name.trim() && name.trim() !== recipe.name && !renameRecipe(recipe.id, name)) {
-      Alert.alert('That name is taken', 'Another recipe already goes by that name.');
+      Alert.alert('That name is taken', 'Another recipe already has that name.');
       return;
     }
     const book = cookbooks.find(c => c.id === recipe.cookbookId);
@@ -319,8 +319,8 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
     const message = usedBy.length === 0
       ? base
       : usedBy.length === 1
-        ? `${base} It's used as a component of “${usedBy[0].name}”, which will show it as missing until you remove it there.`
-        : `${base} It's used as a component of ${usedBy.length} other recipes (${usedBy.map(r => r.name).join(', ')}), which will show it as missing until you remove it there.`;
+        ? `${base} It’s used as a component of “${usedBy[0].name}”, which will show it as missing until you remove it there.`
+        : `${base} It’s used as a component of ${usedBy.length} other recipes (${usedBy.map(r => r.name).join(', ')}), which will show it as missing until you remove it there.`;
     confirmDelete({
       title: 'Delete recipe',
       message,
@@ -384,7 +384,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
           // number appearing twice (same for every row below whose control
           // unfolds in place rather than opening a picker).
           value={servingsOpen ? undefined : (formatServingsRange(servings, servingsMax) ?? undefined)}
-          hint="How many the quantities below are written for. Set an upper number too for a range, like a recipe that says “serves 4-6”."
+          hint="How many the quantities below are written for. Set an upper number for a range, like “serves 4-6”."
           expanded={servingsOpen}
           onPress={() => { animateLayout(); setServingsOpen(v => !v); }}
           onClear={servings !== null
@@ -435,7 +435,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
           icon="restaurant-outline"
           label="Yield"
           value={yieldOpen ? undefined : (recipeYield.trim() || undefined)}
-          hint="What it makes, when a serving count isn't the right unit, e.g. “3 cups”, “2 dozen cookies”, “1 loaf”."
+          hint="What it makes when servings aren’t the right unit, e.g. “3 cups”, “2 dozen cookies”, “1 loaf”."
           expanded={yieldOpen}
           onPress={() => { animateLayout(); setYieldOpen(v => !v); }}
           onClear={recipeYield.trim() ? () => { setRecipeYieldDraft(''); setYieldOpen(false); } : undefined}
@@ -459,7 +459,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
           value={cookedWeightOpen
             ? undefined
             : (cookedWeight.trim() ? `${cookedWeight.trim()} g` : undefined)}
-          hint="What the whole finished dish weighs, as written. Logging a plate of it is then measured from what your plate weighs instead of from servings."
+          hint="What the whole finished dish weighs, as written. You can then log a plate by weight instead of servings."
           expanded={cookedWeightOpen}
           onPress={() => { animateLayout(); setCookedWeightOpen(v => !v); }}
           onClear={cookedWeight.trim()
@@ -487,7 +487,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
           value={leftoverKeepOpen
             ? undefined
             : (leftoverKeepDays === null ? undefined : describeKeepDays(leftoverKeepDays))}
-          hint={`How long this dish keeps in the fridge. Logging its leftovers starts at this many days instead of the usual ${LEFTOVER_KEEP_DAYS_DEFAULT}.`}
+          hint={`How long this dish keeps in the fridge. Its leftovers use this many days instead of the usual ${LEFTOVER_KEEP_DAYS_DEFAULT}.`}
           expanded={leftoverKeepOpen}
           onPress={() => { animateLayout(); setLeftoverKeepOpen(v => !v); }}
           onClear={leftoverKeepDays !== null
@@ -547,7 +547,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
         <CollapsibleField
           label="Rating"
           summary={vote ? RECIPE_VOTE_LABELS[vote] : undefined}
-          hint="Whether you'd cook this again. Offered automatically the first time you mark it cooked. Also used to sort the recipe box."
+          hint="Whether you’d cook this again. Offered the first time you mark it cooked. Also used to sort the recipe box."
           expanded={voteOpen}
           onToggle={() => setVoteOpen(v => !v)}
         >
@@ -567,7 +567,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
         <CollapsibleField
           label="Tags"
           summary={tags.length > 0 ? tags.join(', ') : undefined}
-          hint="Free-form labels, like “weeknight”, “vegetarian”, “thai”. Filter the recipe box by them, and combine two to narrow it."
+          hint="Your own labels, like “weeknight”, “vegetarian”, “thai”. Filter the recipe box by them, and combine two to narrow it."
           expanded={tagsOpen}
           onToggle={() => setTagsOpen(v => !v)}
         >
@@ -629,7 +629,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
           icon="alarm-outline"
           label="Prep time"
           value={prepOpen ? undefined : (prepMinutes !== null ? formatDuration(prepMinutes) : undefined)}
-          hint="Chopping, marinating, mise en place, all before the cook clock starts. Its own timer on the recipe page, independent of the cook timer."
+          hint="Chopping, marinating and other work before the cook clock starts. It has its own timer on the recipe page."
           expanded={prepOpen}
           onPress={() => { animateLayout(); setPrepOpen(v => !v); }}
           onClear={prepMinutes !== null ? () => { setPrepMinutesDraft(null); setPrepOpen(false); } : undefined}
@@ -653,7 +653,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
           icon="time-outline"
           label="Cook time"
           value={durationOpen ? undefined : (estimatedMinutes !== null ? formatDuration(estimatedMinutes) : undefined)}
-          hint="How long this takes once the cook clock starts. Doubles as the cook timer's countdown on the recipe page."
+          hint="How long this takes once the cook clock starts. Also sets the cook timer’s countdown on the recipe page."
           expanded={durationOpen}
           onPress={() => { animateLayout(); setDurationOpen(v => !v); }}
           onClear={estimatedMinutes !== null ? () => { setEstimatedMinutesDraft(null); setDurationOpen(false); } : undefined}
@@ -685,7 +685,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
           icon="person-outline"
           label="Author"
           value={authorOpen ? undefined : (author.trim() || undefined)}
-          hint="Who it's from: a person, not a publication."
+          hint="The person this recipe is from."
           expanded={authorOpen}
           onPress={() => { animateLayout(); setAuthorOpen(v => !v); }}
           onClear={author.trim() ? () => { setAuthorDraft(''); setAuthorOpen(false); } : undefined}
@@ -724,7 +724,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
           label="Source"
           value={sourceOpen ? undefined : (sourceValue || undefined)}
           caption={sourceDetail || undefined}
-          hint="Where it's from: a site, a magazine, a cookbook."
+          hint="Where it’s from: a site, a magazine, a cookbook."
           expanded={sourceOpen}
           onPress={() => { animateLayout(); setSourceOpen(v => !v); }}
           // Clears all three, since all three are what the row now reads as —
@@ -840,7 +840,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
           style={styles.notesInput}
           value={notes}
           onChangeText={setNotesDraft}
-          placeholder="e.g. method, timings, what you'd change next time"
+          placeholder="e.g. method, timings, what you’d change next time"
           placeholderTextColor={colors.textTertiary}
           multiline
           textAlignVertical="top"

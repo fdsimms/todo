@@ -167,7 +167,7 @@ export function TitleRulesSheet({ visible, onClose }: Props) {
             <EmptyState
               icon="funnel-outline"
               title="No title rules"
-              subtitle="Pick a word, and anything you add starting with it files itself. A rule for “expense” can set the category, tags and priority every time, so you don’t have to."
+              subtitle="A rule sets the category, tags and priority of new tasks that start with a word you pick, like “expense”."
               actionLabel="New rule"
               onAction={() => setEditingId(null)}
             />
@@ -176,9 +176,9 @@ export function TitleRulesSheet({ visible, onClose }: Props) {
           <ScrollView contentContainerStyle={styles.list}>
             {!hideHelpText && (
               <Text style={styles.caption}>
-                A rule fills in a task as you type it. It never overrides something you picked
-                yourself, and it only applies as a task is created. Renaming a task later doesn't
-                refile it. A new rule offers to file the tasks you already have that match it.
+                A rule fills in a task as you type it, without overriding anything you picked.
+                Renaming a task later doesn’t refile it, but a new rule offers to
+                file matching tasks you already have.
               </Text>
             )}
             {backlog && (
@@ -201,8 +201,8 @@ export function TitleRulesSheet({ visible, onClose }: Props) {
                     Today (see applyTitleRulesToDraft's note on projectId). */}
                 <Text style={styles.backlogBody}>
                   {backlog.filed
-                    ? 'Only the fields left blank were filled in. From here on the rule applies as you add a task, not to tasks you rename.'
-                    : `${describeBacklogRule(backlog.rule)}. File them the same way? Only the fields you left blank get filled in. Completed and archived tasks are left alone.`}
+                    ? 'Only blank fields were filled in. From now on the rule applies when you add a task.'
+                    : `${describeBacklogRule(backlog.rule)}. File them the same way? Only blank fields are filled in. Completed and archived tasks are left alone.`}
                 </Text>
                 <View style={styles.backlogActions}>
                   {!backlog.filed && (
@@ -273,7 +273,7 @@ export function TitleRulesSheet({ visible, onClose }: Props) {
               style={styles.addBtn}
             />
             <Text style={styles.footnote}>
-              When two rules want to set the same thing, the longer, more specific word wins:
+              When two rules set the same field, the longer word wins:
               “expense report” beats “expense”. Tags from every matching rule are added
               together.
             </Text>

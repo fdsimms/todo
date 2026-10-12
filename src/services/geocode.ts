@@ -17,10 +17,11 @@ import { useSettingsStore } from '../store/useSettingsStore';
  * a place somebody typed to a third party. That is a thing to opt into rather
  * than a thing to find out about.
  *
- * **Nothing is stored.** The coordinates are handed straight to the forecast
- * and forgotten; `Project.destination` stays the free text it was. A geocoded
- * pair written back onto the row would be a second, staler answer to a question
- * this can just ask again, and "Mum's" would have nothing to write.
+ * **This returns the place and stores nothing itself.** The trip page keeps
+ * the coordinates on the project as a cache of the destination's text
+ * (`Project.destinationLatitude`, cleared whenever the text changes), because
+ * sunrise and sunset follow a trip and are worked out where no request can be
+ * waited on. The forecast is never kept. See docs/arch/away-dates.md.
  */
 
 const GEOCODE_URL = 'https://geocoding-api.open-meteo.com/v1/search';

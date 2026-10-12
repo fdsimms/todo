@@ -129,5 +129,27 @@ struct DundundunShortcuts: AppShortcutsProvider {
             shortTitle: "Mark Gone Bad",
             systemImageName: "trash"
         )
+        // The medication is an AppEntity (LogMedicationIntent.swift), so it can
+        // be said inside the sentence, the same way the pantry item is above.
+        AppShortcut(
+            intent: LogMedicationIntent(),
+            phrases: [
+                "Log \(\.$medication) in \(.applicationName)",
+                "I took \(\.$medication) in \(.applicationName)",
+            ],
+            shortTitle: "Log a Dose",
+            systemImageName: "pills"
+        )
+        // Free text again, so no parameter in the phrase: Siri asks what the
+        // dream was (LogDreamIntent.swift), the same way Add Task asks.
+        AppShortcut(
+            intent: LogDreamIntent(),
+            phrases: [
+                "Log a dream in \(.applicationName)",
+                "Write down a dream in \(.applicationName)",
+            ],
+            shortTitle: "Log a Dream",
+            systemImageName: "moon.stars"
+        )
     }
 }

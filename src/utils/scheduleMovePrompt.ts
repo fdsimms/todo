@@ -39,7 +39,7 @@ export function confirmScheduleMove(
     const { task, choice } = asked[0];
     Alert.alert(
       'When should the next one be?',
-      `Moving “${task.title}” to ${day(date)}. Keep the rest of its schedule as it is, or count the schedule from the new date?`,
+      `Moving “${task.title}” to ${day(date)}. Keep the rest of its schedule, or count it from the new date?`,
       [
         { text: `Next on ${day(choice.keepNext)}`, onPress: () => proceed(false) },
         { text: `Next on ${day(choice.restartNext)}`, onPress: () => proceed(true) },
@@ -88,8 +88,8 @@ export function confirmSegmentScope(
     'Change time of day',
     one
       ? isSeries
-        ? 'This task falls on more than one date. Apply the new time of day to just this date, or to this and its later dates?'
-        : 'This task repeats. Apply the new time of day to just this task, or to it and every future repeat?'
+        ? 'This task falls on more than one date. Apply the new time of day to this date only, or to this and later dates?'
+        : 'This task repeats. Apply the new time of day to this task only, or to it and all future repeats?'
       : `${asked.length} of these repeat. Apply the new time of day to just these tasks, or to them and every future repeat?`,
     [
       { text: isSeries ? 'This date' : 'This task', onPress: () => proceed('occurrence') },

@@ -273,10 +273,10 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
             icon="calendar-outline"
             title="Nothing found"
             subtitle={mode === 'photo'
-              ? 'Nothing that looked like an event turned up in that photo. Try again in better light, or paste the text instead.'
+              ? 'No event found in that photo. Try again in better light, or paste the text instead.'
               : aiAvailable
-                ? 'Nothing that looked like an event turned up in that text.'
-                : 'No date turned up in that text. Reading a paste without Claude needs a date it can recognize, like "September 28, 2026" or "9/28/2026".'}
+                ? 'No event found in that text.'
+                : 'No date found in that text. Without Claude, the text needs a date like “September 28, 2026” or “9/28/2026”.'}
             actionLabel={mode === 'photo' ? 'Try another photo' : undefined}
             onAction={mode === 'photo' ? () => { setTriedEmpty(false); setPhoto(null); } : undefined}
           />
@@ -305,8 +305,8 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
       <>
         <Text style={styles.intro}>
           {aiAvailable
-            ? 'Paste a confirmation, or photograph one, and dundundun will read out the title, date, time, and location for you to review before it\'s added.'
-            : 'Paste a confirmation and dundundun will read out the date, time, and location for you to review before it\'s added. This reads one event at a time. Turn on “Import event from photo or text” in Settings to read photos too.'}
+            ? 'Paste or photograph a confirmation, then review the title, date, time and location before it’s added.'
+            : 'Paste a confirmation, then review the date, time and location before it’s added. Turn on “Import event from photo or text” in Settings to read photos too.'}
         </Text>
 
         {aiAvailable && (
@@ -368,8 +368,8 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
                 {renderPhotoButton('library', 'Choose a photo', 'images-outline')}
                 {renderPhotoButton('clipboard', 'Paste image', 'copy-outline')}
                 <Text style={styles.photoHint}>
-                  Works on an appointment page, a booking confirmation, or a ticket: anything with
-                  the details readable.
+                  Works on an appointment page, booking confirmation or ticket if the details
+                  are readable.
                 </Text>
               </>
             )}

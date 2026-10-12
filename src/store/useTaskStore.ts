@@ -3,6 +3,7 @@ import { addDays } from 'date-fns/addDays';
 import type { Task, TaskDraft, Priority, TimeOfDay, TitleRule, Person, QuotaPeriod, Polarity, Difficulty, MealPlanEntry, FoodLogEntry } from '../types';
 import {
   initDatabase,
+  ensureDatabaseReady,
   dbGetAllTasks,
   dbInsertTask,
   dbUpdateTask,
@@ -116,8 +117,9 @@ import { generatedBy, generatedSourceOf, generatedTaskCountOf, generatorPausedFo
 import { setGeneratorEnabled } from './generatorSwitch';
 import { featureHidden } from '../utils/simpleMode';
 import { CALENDAR_REVIEW_TITLE, calendarReviewDayKey, wantsCalendarReview } from '../utils/calendarReviewTasks';
-import { MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, moodLogDayKey, moodLogSourceId, moodNudgeNotes, wantsMoodNudge } from '../utils/moodTasks';
-import { DREAM_LOG_TITLE, JOURNAL_LOG_TITLE, JOURNAL_TASK_KIND, journalLogUrl, journalTaskDayKey, journalTaskSourceId } from '../utils/journalTasks';
+import { isAnsweredByRecord, isRecordAnswered } from '../utils/recordTasks';
+import { MOOD_LOG_LINK_URL, MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, moodLogDayKey, moodLogSourceId, moodNudgeNotes, wantsMoodNudge } from '../utils/moodTasks';
+import { DREAM_LOG_TITLE, JOURNAL_TASK_KIND, journalLogTitle, journalLogUrl, journalTaskDayKey, journalTaskSourceId } from '../utils/journalTasks';
 import {
   WEIGH_IN_LINK_URL,
   WEIGH_IN_TITLE,
@@ -146,11 +148,16 @@ import { assumedMinutesFor, buildDayLoads } from '../utils/dayLoad';
 import { hasLogOnDay, hasLoggedSince } from '../utils/moodLog';
 import { useFoodLogStore } from './useFoodLogStore';
 import { useSavedMealsStore } from './useSavedMealsStore';
+import { usePendingEstimateStore } from './usePendingEstimateStore';
+import { usePendingRecipeEstimateStore } from './usePendingRecipeEstimateStore';
 import { useMoodStore } from './useMoodStore';
 import { useJournalStore } from './useJournalStore';
 import { useMilestoneStore } from './useMilestoneStore';
+import { useCopyFlagStore } from './useCopyFlagStore';
+import { useMeterReadingStore } from './useMeterReadingStore';
 import { useMedicationStore } from './useMedicationStore';
 import { useRewardStore } from './useRewardStore';
+import { guardChargeSeed, guardingReward } from '../utils/rewardGuard';
 import {
   canPostBounty,
   coinsForCompletion,
@@ -161,9 +168,10 @@ import {
   BOUNTY_WITHDRAWN,
 } from '../utils/rewards';
 import { medicationFor } from '../utils/medicationLog';
+import { installSupplementDoseEffects } from '../utils/supplementDoseSync';
 import { eventsIn } from '../utils/calendarBusy';
 import { isDemoModeActive } from '../utils/demoState';
-import type { Category, JournalKind, MealSlot, Project, TaskGroup, WeatherCondition, WeatherRule } from '../types';
+import type { Category, JournalKind, MealSlot, Project, TaskGroup, WeatherCondition, WeatherRule, NutrientKey } from '../types';
 import { awayPauseDriver, departureFromAnswer, departureMoveFromAnswer, isProjectAwayNow } from '../utils/awayDates';
 import { generateId } from '../utils/id';
 import {
@@ -182,6 +190,7 @@ import {
   ruleEstimateDraft, withRuleEstimate, withGeneratorEstimate, holdsKindEstimate,
 } from '../utils/ruleEstimate';
 import { chainStepDatedByAnswer, cleanDeliverableReasoning, deliverableDate, deliverableKindFor, isTentativeAnswer, reasoningOf, type DeliverableReasoning } from '../utils/deliverables';
+import type { ReviewAfter } from '../utils/decisionReview';
 import { totalMinutes } from '../utils/recipeUtils';
 import { normalizeTargetUnit } from '../utils/quotaUnit';
 import {
@@ -209,7 +218,7 @@ import {
   supplyRestockReleasesItem,
   wantedSupplyReorders,
 } from '../utils/supply';
-import { getNextDueDate, getCurrentDayStart, getLogicalDayKey, getLogicalToday, getLogicalTomorrow, getTaskDayStart, getEffectiveTaskDate, dayKeyOf, dayKeyToDate, getDeadlineFromOffset, getDeadlineFromMonthDay, getReminderOffsetDate, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor, captureReminderOffset, reanchorReminderToWallClock } from '../utils/dateUtils';
+import { getNextDueDate, getNextOccurrence, getCurrentDayStart, getLogicalDayKey, getLogicalToday, getLogicalTomorrow, getTaskDayStart, getEffectiveTaskDate, dayKeyOf, dayKeyToDate, getDeadlineFromOffset, getDeadlineFromMonthDay, getReminderOffsetDate, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor, captureReminderOffset, reanchorReminderToWallClock } from '../utils/dateUtils';
 import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
 import { MEAL_SLOT_TASK_DAYS, completesMealSlot, loggedMealSlotTasks, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource, slotEntryForTask, staleMealSlotTasks } from '../utils/mealSlotTasks';
 import { wantsMealLogPrompt } from '../utils/mealLog';
@@ -217,13 +226,15 @@ import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOve
 import { isRotationTask, rotationCoversNew, rotationPick, rotationPlanFor, rotationUnpick, rotationUnpickUncovers } from '../utils/rotation';
 import { MIN_TARGET_COUNT, MAX_TARGET_COUNT, taskKindOf } from '../utils/taskKinds';
 import { nextStreakRecord } from '../utils/streakRecord';
-import { isNegativeTask, slipPatch, undoSlipPatch, cleanDayPatch, nextSlipIsFree, lastSlipWasFree } from '../utils/negativeHabits';
+import { countsUnits } from '../utils/streakUnits';
+import { isNegativeTask, slipsToday, slipPatch, undoSlipPatch, cleanDayPatch, nextSlipIsFree, lastSlipWasFree, closeDayPatch, reopenDayPatch, windowCloseDayPatch } from '../utils/negativeHabits';
 import { creditShieldUntil, extendShieldUntil, penaltyChargeFor, penaltyCreditFor, slipPenaltyUntil, uncreditShieldUntil } from '../utils/penaltyShield';
 // One name per line, deliberately, and not to be re-joined. See the note
 // on the settings load in useSettingsStore.ts: this is a list every new
 // visibility helper is added to, so one line is a guaranteed conflict.
 import {
   isTaskVisible,
+  isPinnedOnToday,
   isTaskNew,
   isTaskDeferred,
   isUpcomingToday,
@@ -234,6 +245,7 @@ import {
   isInPausedProject,
   isVisibleApartFromVacation,
   isTaskExpired,
+  effectiveWindowEnd,
   isTaskSweepable,
   isRecurrenceNotYetDue,
   isLiveRecurring,
@@ -256,8 +268,11 @@ import {
   displayTitleFor,
   getVisibleAt,
   beginVisibleAtPass,
+  windowBoundsFor,
+  sunLocationOn,
 } from '../utils/visibilityUtils';
 import { openTasksOf } from '../utils/openTasks';
+import { isProjectHidden, useProjectLockStore } from './useProjectLockStore';
 import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
 import { categoryLabel } from '../utils/categoryLabel';
 import {
@@ -327,6 +342,12 @@ import {
 import {
   loggedKcalToday, snackNudgeApplies, snackNudgeTitle, SNACK_NUDGE_NOTES,
 } from '../utils/snackNudgeTasks';
+import {
+  limitReadings, limitWarningKeyOf, limitWarningTitle, LIMIT_WARNING_LINK, limitWarningNotes,
+  shouldAutoSlip, shouldTakeBackAutoSlip,
+} from '../utils/limitWarningTasks';
+import type { LimitReading } from '../utils/limitWarningTasks';
+import { foodLogTotals } from '../utils/foodLog';
 import { effectiveCalorieTargetKcal } from '../utils/activeEnergyBoost';
 import { effectiveWaterTargetMl } from '../utils/waterExerciseBoost';
 import {
@@ -348,6 +369,8 @@ import { useCalendarStore } from './useCalendarStore';
 import { useWeatherStore } from './useWeatherStore';
 import { classifyWeather } from '../utils/weatherCondition';
 import { decideWeatherWait } from '../utils/weatherWait';
+import { recentRainMm, shouldSkipForRain } from '../utils/rainSkip';
+import { canFollowMeter, decideMeterHold, meterHoldPatch, meterStartPatch } from '../utils/meters';
 import {
   weatherSourceId,
   parseWeatherSourceId,
@@ -376,7 +399,7 @@ import {
   describeTravelEstimate,
 } from '../utils/travelTasks';
 import { describeDisruptions, journeyDisruptions } from '../utils/transitAlerts';
-import { carryClockTime, dateToHHMM } from '../utils/clockTime';
+import { carryClockTime, dateToHHMM, onLogicalDay } from '../utils/clockTime';
 import { deadlineOnto, reminderOnto as reminderOntoDay, skipPatch } from '../utils/taskSkip';
 import { datesAnchorStep, datesReconcile } from '../utils/taskDates';
 import { duplicateRows } from '../utils/taskDuplicate';
@@ -727,6 +750,17 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
       useSettingsStore.getState()
         .setSnackNudgeDeclinedDayKey(value === false ? dayKeyOf(getCurrentDayStart()) : null);
       return;
+    // The task is the limit's for as long as it is one, so deleting it stops
+    // it for that nutrient rather than for a day. Setting the nutrient to Stay
+    // under again clears this (setNutritionLimits); undo clears it too.
+    case 'limitWarning': {
+      const key = limitWarningKeyOf(sourceId);
+      if (!key) return;
+      const settings = useSettingsStore.getState();
+      const rest = settings.limitWarningDeclined.filter(k => k !== key);
+      settings.setLimitWarningDeclined(value === false ? [...rest, key] : rest);
+      return;
+    }
     // On the saved event itself, scoped to the cycle the task was for: the
     // next appointment added from it starts a fresh one. Undo clears it.
     case 'bookEvent': {
@@ -892,8 +926,13 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
  * the meal's own name so finding it is a tap rather than a retype. Both
  * check the same per-meal "no" first, because both are the same offer with
  * two different ways of answering "how much".
+ *
+ * Exported for the meal plan's own tick (`setCooked`), which is the third
+ * moment: a meal with no cook or meal task behind it (a snack, or a slot
+ * whose task is switched off) finishes without any task completing, and used
+ * to end with no offer at all.
  */
-function offerMealLog(loggable: MealPlanEntry, asked = false): void {
+export function offerMealLog(loggable: MealPlanEntry, asked = false): void {
   if (!wantsMealLogPrompt(loggable, useSettingsStore.getState().mealLogPrompt)) return;
   // Already logged, so there is nothing to offer. The meal's own square is not
   // the only way food gets into that slot (`mealLogCoverage.ts` says why the
@@ -1197,7 +1236,7 @@ let pendingUnpinIds: string[] = [];
 // a live burst (four glasses at once): unpinning instantly would drop the
 // pinned row out from under the next tap exactly as an unheld quota row used
 // to (see QUOTA_HOLD_BACKSTOP_MS above).
-const QUOTA_PACE_UNPIN_HOLD_MS = 4000;
+const QUOTA_PACE_UNPIN_HOLD_MS = COMPLETION_HOLD_MS;
 let quotaPaceUnpinTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingPaceUnpinIds: string[] = [];
 
@@ -1298,6 +1337,15 @@ function liveListRows(tasks: Task[], heldIds: string[]): Task[] {
   if (heldIds.length === 0) return openTasksOf(tasks);
   const held = new Set(heldIds);
   return withHeldCompletions(tasks.filter(t => !t.completed || held.has(t.id)), heldIds);
+}
+
+// A task whose project is behind Face ID and not yet unlocked. A display rule
+// only: the task stays due and keeps repeating (see utils/projectLock.ts). The
+// list lenses keep such a task, since its row draws itself redacted
+// (LockedTaskRow); only lists that print a title with no row (the Logbook, the
+// archive) leave it out.
+function isLockedAway(task: Pick<Task, 'projectId'>): boolean {
+  return isProjectHidden(task.projectId);
 }
 
 // A daily target whose row is still playing out its send-off (see
@@ -1457,6 +1505,8 @@ interface TaskStore extends UndoHistoryActions {
   // Ids of tasks completed within the last COMPLETION_HOLD_MS — see
   // withHeldCompletions above.
   completionHoldIds: string[];
+  /** Mirrors useProjectLockStore.revision so a lock change re-runs the list selectors. */
+  lockRevision: number;
   // The subset of those rows that has been told to shrink away. Set in one
   // go once the burst settles, so every row completed in it closes its gap
   // together (see COMPLETION_COLLAPSE_MS) — TaskItem watches for its own id
@@ -1466,7 +1516,12 @@ interface TaskStore extends UndoHistoryActions {
   // pace, so the row can be tapped again — see QUOTA_HOLD_BACKSTOP_MS.
   quotaHoldIds: string[];
 
-  initialize: () => void;
+  /**
+   * Loads every data store from the database. `reload` is for a reload after a
+   * sync applied rows: the schema and migrations already ran this launch, so
+   * only the loads are repeated.
+   */
+  initialize: (opts?: { reload?: boolean }) => void;
   // Marks a completion as animating so the batched collapse waits for it.
   // Called when the row's completion animation starts, i.e. a beat before the
   // completeTask that follows it.
@@ -1654,7 +1709,11 @@ interface TaskStore extends UndoHistoryActions {
     deliverableValue?: string | null;
     /** Why that answer, and what would reopen it. See CompletionOptions.deliverableReasoning. */
     deliverableReasoning?: DeliverableReasoning;
+    /** Ask how the answer turned out after this long. See CompletionOptions.reviewAfter. */
+    reviewAfter?: ReviewAfter | null;
     neutral?: boolean;
+    /** See CompletionOptions.recorded (taskCompletion.ts); set only by the complete…TaskForToday actions. */
+    recorded?: boolean;
     /** See CompletionOptions.byOther (taskCompletion.ts) — somebody else did it. */
     byOther?: boolean;
     completedAt?: string;
@@ -1721,6 +1780,11 @@ interface TaskStore extends UndoHistoryActions {
    * the event. Repeated taps on the same day keep counting, which is how a
    * frequency-logged habit ("how many, not whether") works without needing a
    * second kind of task behind it. See src/utils/negativeHabits.ts.
+   *
+   * On a habit a reward guards (`Reward.guardsTaskId`), a slip the balance
+   * covers claims the reward instead and records nothing on the habit, and one
+   * it doesn't is charged the reward's price down to zero. See
+   * src/utils/rewardGuard.ts.
    */
   logSlip: (id: string) => void;
   /**
@@ -1745,8 +1809,19 @@ interface TaskStore extends UndoHistoryActions {
    */
   sweepTaskPenalties: () => void;
   /**
+   * Counts today clean now rather than when the day ends: "after 10pm there is
+   * no way I use the pots and pans". Credits every day since the anchor through
+   * today and moves the anchor to today, so the next rollover adds nothing twice
+   * (see `closeDayPatch`). Offers an undo, and does nothing on a day already
+   * closed or broken.
+   */
+  closeNegativeDay: (id: string) => void;
+  /** Takes a closed day back, so it is credited by the rollover if it ends clean. */
+  reopenNegativeDay: (id: string) => void;
+  /**
    * Credits the clean days that have gone by since each negative habit was last
-   * accounted for.
+   * accounted for, and moves a repeating one's date onto today once its day has
+   * passed (see negativeHabitDuePatch).
    *
    * The one pass in the app that advances a streak without a completion, and it
    * has to be: a negative streak is made of days on which nothing happened, so
@@ -1779,6 +1854,8 @@ interface TaskStore extends UndoHistoryActions {
   syncWaterQuotaTasks: () => void;
   /** The `snackNudge` pass, called from the food log's writes and the catch-up sweep. */
   syncSnackNudgeTasks: () => void;
+  /** The `limitWarning` pass, called beside the snack one. */
+  syncLimitWarningTasks: () => void;
   /** The `bookEvent` pass: "Book <saved event>" once its interval is nearly up. */
   checkBookEventTasks: () => void;
   /**
@@ -1958,6 +2035,19 @@ interface TaskStore extends UndoHistoryActions {
    * `src/utils/weatherWait.ts` for the decision.
    */
   applyWeatherWaits: () => void;
+  /**
+   * Holds every task due at a meter reading until a reading reaches it, the
+   * reading rate projects it, or its time limit runs out, and surfaces it once
+   * one does. Reads `useMeterReadingStore`; see `src/utils/meters.ts`.
+   */
+  applyMeterHolds: () => void;
+  /**
+   * Skips today's occurrence of every repeating task whose rain threshold the
+   * day's rainfall has reached, forgiving its streak and recording each in
+   * Activity. Reads the snapshot `useWeatherStore` already holds and never
+   * fetches; see `src/utils/rainSkip.ts`.
+   */
+  applyRainSkips: () => void;
   checkEventTasks: () => void;
   /**
    * "Leave for X" for each upcoming event with a location, its reminder at the
@@ -2461,6 +2551,101 @@ function reconcileSnackNudge(tasks: Task[]): void {
 }
 
 /**
+ * The `limitWarning` generator's whole pass: one "don't do" task per Stay under
+ * limit, and the slip it logs itself. See `src/utils/limitWarningTasks.ts`.
+ *
+ * Run beside the snack one, on every food log write for today and on every
+ * catch-up sweep, so the title follows the total as it is logged and the slip
+ * lands the moment an entry takes the day over.
+ */
+function reconcileLimitWarnings(tasks: Task[]): void {
+  const settings = useSettingsStore.getState();
+  // The demo seed's task has no food log behind it; see reconcileSnackNudge.
+  if (isDemoModeActive()) return;
+  // Off means stop tracking: the tasks go, rather than sitting on Today with
+  // nothing keeping them current.
+  if (!settings.limitWarningTasks || !settings.limitWarningTaskCategory) {
+    liveGeneratedTasksOfKind(tasks, 'limitWarning')
+      .forEach(t => dropGeneratedTask('limitWarning', t.generatedSourceId));
+    return;
+  }
+  if (generatorPausedForVacation('limitWarning', settings.vacationMode)) return;
+
+  const todayKey = dayKeyOf(getCurrentDayStart());
+  const dayStart = getCurrentDayStart();
+  const todayEntries = dbGetFoodLogEntries(todayKey, todayKey);
+  const readings = limitReadings(
+    foodLogTotals(todayEntries).total, settings.nutritionTargets, settings.nutritionLimits, settings.limitWarnPercent,
+  );
+
+  // A nutrient no longer a limit (or a row from an older shape of this
+  // generator): dropped without an opt-out, since nobody declined it.
+  liveGeneratedTasksOfKind(tasks, 'limitWarning')
+    .filter(t => !readings.some(r => r.key === limitWarningKeyOf(t.generatedSourceId)))
+    .forEach(t => dropGeneratedTask('limitWarning', t.generatedSourceId));
+
+  for (const reading of readings) {
+    reconcileGeneratedTask({
+      kind: 'limitWarning',
+      sourceId: reading.key,
+      wanted: !settings.limitWarningDeclined.includes(reading.key),
+      // Archiving one is how a person stops tracking it, the way they would a
+      // "don't do" task of their own, so an archived row is never replaced.
+      blocksOnFinished: true,
+      drift: existing => {
+        const title = limitWarningTitle(reading);
+        const notes = limitWarningNotes(todayEntries, reading);
+        const patch: Partial<Task> = {};
+        if (existing.title !== title) patch.title = title;
+        if (existing.notes !== notes) patch.notes = notes;
+        return Object.keys(patch).length > 0 ? patch : null;
+      },
+      draft: () => ({
+        title: limitWarningTitle(reading),
+        notes: limitWarningNotes(todayEntries, reading),
+        linkUrl: LIMIT_WARNING_LINK,
+        polarity: 'negative',
+        showStreak: true,
+        category: settings.limitWarningTaskCategory,
+        ...generatedBy('limitWarning', reading.key),
+      }),
+    });
+    syncLimitAutoSlip(reading, todayKey, dayStart);
+  }
+}
+
+/**
+ * Logs or takes back the slip the app owns for one limit today. Quiet on
+ * purpose, unlike `logSlip`: nobody tapped anything, so there is no undo entry
+ * for shake-to-undo to find under the food log's own, no coins and no app
+ * block. The broken streak is the record.
+ */
+function syncLimitAutoSlip(reading: LimitReading, todayKey: string, dayStart: Date): void {
+  const task = liveGeneratedTask(useTaskStore.getState().tasks, 'limitWarning', reading.key);
+  if (!task || !isNegativeTask(task)) return;
+  const settings = useSettingsStore.getState();
+  const autoToday = settings.limitWarningAutoSlips[reading.key] === todayKey;
+  const slips = slipsToday(task, dayStart);
+  let patch: Partial<Task> | null = null;
+  let nextAuto: string | null | undefined;
+  if (shouldAutoSlip(reading, slips, autoToday)) {
+    patch = slipPatch(task, dayStart);
+    nextAuto = todayKey;
+  } else if (shouldTakeBackAutoSlip(reading, slips, autoToday)) {
+    patch = undoSlipPatch(task, dayStart);
+    nextAuto = null;
+  }
+  if (!patch) return;
+  const updated = { ...task, ...patch };
+  dbUpdateTask(updated);
+  useTaskStore.setState(s => ({ tasks: s.tasks.map(t => (t.id === task.id ? updated : t)) }));
+  const days = { ...settings.limitWarningAutoSlips };
+  if (nextAuto) days[reading.key] = nextAuto;
+  else delete days[reading.key];
+  settings.setLimitWarningAutoSlips(days);
+}
+
+/**
  * The reminders of the tasks whose answer gate rides on `questionId`, put in
  * step with its answer: a branch that was just ruled out has its reminder
  * cancelled, and one an answer correction brought back has it rescheduled.
@@ -2485,6 +2670,40 @@ export function redoRestoringRows(ids: string[]): () => void {
   return () => after.forEach(t => useTaskStore.getState().updateTask(t.id, t));
 }
 
+/**
+ * The date a negative habit moves to once its day has gone by, or null when it
+ * should stay put. Used by `rolloverNegativeStreaks` only.
+ *
+ * A "don't" habit is never completed, so nothing else ever advances its date:
+ * left alone it sat on "2d ago" beside a streak that was running fine. Once the
+ * rollover reaches a new logical day the row is moved to the occurrence owed
+ * today, the same grid `redateRoutines` steps. A slip doesn't move it, so a
+ * habit slipped today reads as due today until the day turns. One-offs and
+ * hour-based repeats have no next day to move to, so they are left alone.
+ */
+function negativeHabitDuePatch(task: Task, todayStart: Date, resetTime: string): Partial<Task> | null {
+  if (!task.dueDate || task.recurrenceType === 'none' || task.recurrenceType === 'hours') return null;
+  if (getTaskDayStart(new Date(task.dueDate), resetTime) >= todayStart) return null;
+  // From-completion measures from the day it was last done rather than a grid,
+  // and a "don't" habit owes today's occurrence, not tomorrow's successor.
+  const next = task.recurrenceFromCompletion
+    ? (task.recurrenceEndDate && todayStart > new Date(task.recurrenceEndDate) ? null : todayStart)
+    : getNextDueDate(task, resetTime, { catchUp: true });
+  if (!next) return null;
+  // Written the way `updateTask` writes any dueDate: the pinned grid anchor
+  // belonged to the occurrence being left behind.
+  return { dueDate: next.toISOString(), recurrenceAnchorDate: null };
+}
+
+/** Whether the entry a mood, journal, dream or weigh-in task asks for exists right now. */
+function recordTaskAnswered(task: Task): boolean {
+  return isRecordAnswered(task, {
+    moodLogs: useMoodStore.getState().logs,
+    journalEntries: useJournalStore.getState().entries,
+    weighInAnsweredOn: useHealthStore.getState().weighInAnsweredOn,
+  });
+}
+
 export const useTaskStore = create<TaskStore>((set, get) => ({
   tasks: [],
   tagRegistry: [],
@@ -2506,9 +2725,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const snapshots = get().tasks.filter(t => taskIds.includes(t.id) && !t.completed).map(t => ({ ...t }));
     if (snapshots.length === 0) return;
     for (const task of snapshots) {
-      const next = task.recurrenceFromCompletion ? today : getNextDueDate(task, resetTime, { catchUp: true });
-      if (!next) continue;
-      get().updateTask(task.id, { dueDate: next.toISOString(), deferUntil: null }, { skipPostponeCount: true });
+      const occurrence = task.recurrenceFromCompletion ? { date: today, gridDate: null } : getNextOccurrence(task, resetTime, { catchUp: true });
+      if (!occurrence) continue;
+      // The rule's own day as the anchor when a holiday moved this one off it.
+      get().updateTask(task.id, {
+        dueDate: occurrence.date.toISOString(),
+        recurrenceAnchorDate: occurrence.gridDate?.toISOString() ?? null,
+        deferUntil: null,
+      }, { skipPostponeCount: true });
     }
     get().setLastAction({
       label: snapshots.length === 1 ? 'Routine moved' : `${snapshots.length} routines moved`,
@@ -2535,6 +2759,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
   ...undoHistoryActions(set, get),
   completionHoldIds: [],
+  lockRevision: 0,
   completionCollapseIds: [],
   quotaHoldIds: [],
 
@@ -2550,8 +2775,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     armCompletionCollapse();
   },
 
-  initialize() {
-    initDatabase();
+  initialize(opts) {
+    if (opts?.reload) ensureDatabaseReady();
+    else initDatabase();
     useCategoryStore.getState().initialize();
     // After the categories load, because it may add one: an install that
     // already had the calendar read on predates events having a section to
@@ -2598,6 +2824,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // milestones are read against it, so a device swap that left them out of
     // step would date a before/after split against the wrong person's phone.
     useMilestoneStore.getState().initialize();
+    // Temporary dev tooling (see CopyFlag): on the fan-out so a demo session
+    // doesn't show real flags, and so a flag the MCP resolved shows up after a pull.
+    useCopyFlagStore.getState().initialize();
+    // Meter readings: a task due at 45,000 miles is held or released on them,
+    // so they have to swap with the database the tasks came from.
+    useMeterReadingStore.getState().initialize();
     // The journal grew out of the mood entry's note, so it sits beside it on
     // the fan-out for the same swap-the-database reason.
     useJournalStore.getState().initialize();
@@ -2606,6 +2838,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // report a demo session's invented doses as a real person's record of what
     // they have taken.
     useMedicationStore.getState().initialize();
+    // What a supplement dose adds to the food log. Here because this is where
+    // the app's stores come up together, and the medication store can't import
+    // the food log's itself (see `DoseEffects`).
+    installSupplementDoseEffects();
     // The coin ledger. Same fan-out, so a demo session's invented coins never
     // sit on top of a real balance.
     useRewardStore.getState().initialize();
@@ -2617,6 +2853,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // saved meal left pointed at the previous database would offer a demo
     // session's invented combination as something to log again for real.
     useSavedMealsStore.getState().initialize();
+    // Meals waiting for an estimate (`utils/estimateQueue.ts`). Device-local and
+    // read from the live database, so a demo session never shows the real queue
+    // and the real queue never reaches the scratch file.
+    usePendingEstimateStore.getState().initialize();
+    // The recipe counterpart, for the same demo-mode reason.
+    usePendingRecipeEstimateStore.getState().initialize();
     // On the same fan-out for the plainest version of the reason: the ledger is
     // an account of what the app did to *this* database, so one left pointed at
     // the previous one would report a demo session's invented generators against
@@ -3103,11 +3345,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
     const { activeHoursStart, activeHoursEnd, dayResetTime } = useSettingsStore.getState();
     const { events, loaded } = useCalendarStore.getState();
-    const fields = timeBlockFieldsFor(get().tasks.find(t => t.id === id) ?? task, {
+    const blockTask = get().tasks.find(t => t.id === id) ?? task;
+    const fields = timeBlockFieldsFor(blockTask, {
       now: new Date(),
       dayResetTime,
       activeHoursStart,
       activeHoursEnd,
+      // The day the block is proposed on, which is the day proposeTimeBlockStart picks.
+      sunLocation: sunLocationOn(blockTask.dueDate ? getTaskDayStart(new Date(blockTask.dueDate), dayResetTime) : getCurrentDayStart()),
       events: loaded ? events : null,
     });
     return fields ? { mode: 'create', fields } : null;
@@ -3440,6 +3685,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // is precisely the row that is supposed to sit there all day. `logSlip` is
     // the action this polarity has instead.
     if (isNegativeTask(task)) return;
+    // A task a record answers (mood, journal, dream, weigh-in) completes only
+    // once that record exists (the tick on a ready row) or from the sheet's own
+    // save; see recordTasks.ts. A missed mark claims nothing, so the sweep still
+    // closes one out.
+    if (isAnsweredByRecord(task) && !missed && !options?.recorded) {
+      if (!recordTaskAnswered(task)) return;
+      options = { ...options, recorded: true };
+    }
     // Recurring tasks shown early in Later (deferred to, or due on, a future
     // day) can't be completed ahead of schedule — doing so would generate the
     // next occurrence off today instead of the task's real day. Non-recurring
@@ -3467,7 +3720,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // If a timer is still running — or a countdown was paused with time banked
     // on it — stop it first so the session's time is saved.
     if (task.timerStartedAt !== null || task.timerElapsedSeconds > 0) {
-      get().stopTimer(id);
+      if (isQuotaTask(task)) {
+        // A target's countdown belongs to one unit, so the unit that completes
+        // it spends the clock like any other. Stopping would write that single
+        // unit's minutes over the task as its measured time.
+        get().resetTimer(id);
+      } else {
+        get().stopTimer(id);
+      }
       task = get().tasks.find(t => t.id === id)!;
     }
 
@@ -3501,12 +3761,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       now,
       allTasks: get().tasks,
       subtasks: get().subtasksOf(task.id),
+      meterReadings: useMeterReadingStore.getState().readings,
     });
     // The three guards above already refused everything buildCompletion
     // refuses, so this is unreachable; it is here because the two run the same
     // rule and only one of them may be the authority on it.
     if (!built) return;
-    const { completed, nextTask, nextSubtasks, followUpTask, followUpSubtasks, rolledOver } = built;
+    const { completed, nextTask, nextSubtasks, followUpTask, followUpSubtasks, reviewTask, rolledOver } = built;
 
     if (task.pinned) pendingUnpinIds.push(id);
 
@@ -3555,6 +3816,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         ...completedDose,
         taskId: id,
         at: completedAt,
+        useUsualDose: true,
       });
     }
 
@@ -3575,6 +3837,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
     if (followUpTask) dbInsertTask(followUpTask);
     followUpSubtasks.forEach(sub => dbInsertTask(sub));
+    if (reviewTask) dbInsertTask(reviewTask);
     rolledOver.forEach(row => {
       dbInsertTask(row);
       scheduleTaskReminder(row);
@@ -3588,6 +3851,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         ...rolledOver,
         ...(followUpTask ? [followUpTask] : []),
         ...followUpSubtasks,
+        ...(reviewTask ? [reviewTask] : []),
       ],
       // See the option's own doc comment: a row that already animated its own
       // transition to the successor's look has nothing left for the hold to
@@ -3719,12 +3983,28 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (!missed) {
       const loggableEntryId = cookedEntryId ?? logNudgeEntryId;
       const loggable = loggableEntryId ? dbGetMealPlanEntry(loggableEntryId) : null;
+      const loggedSavedMeal = !loggable && task.logSavedMealId
+        ? useSavedMealsStore.getState().meals.find(m => m.id === task.logSavedMealId) ?? null
+        : null;
       if (loggable) {
         // A "Log dinner" nudge ticked is a request to log it, so a recipe with
         // no figures goes on to the search sheet rather than completing with
         // nothing opened (see PendingMealLog.asked). The Eat step is the app
         // volunteering, and stays quiet for one.
         offerMealLog(loggable, !cookedEntryId);
+      } else if (loggedSavedMeal) {
+        // A task that names its food ("Metamucil") has nothing left to ask: the
+        // saved meal is the food and the amount, so the tick writes it. Stamped
+        // with this task so uncompleteTask takes it back, and kept out of
+        // shake-to-undo since the completion already owns the undo bar. A saved
+        // meal that has since been deleted isn't found above and falls through
+        // to the manual offer below, so the tick is never a silent no-op.
+        useSavedMealsStore.getState().logMeal(
+          loggedSavedMeal,
+          task.logMealSlot ?? null,
+          completedAt,
+          { taskId: id, undoable: false },
+        );
       } else if (task.logMealSlot) {
         // An arbitrary task ("Log breakfast", "Pack lunch") opted into the
         // same offer, but names no recipe and no meal-plan entry — so it
@@ -3931,7 +4211,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       label: missed
         ? 'Task marked missed'
         : finishedRecurrence
-          ? 'Last one, this won\'t repeat again'
+          ? 'Last one, so it won’t repeat again'
           : 'Task completed',
       redo: () => get().completeTask(id, options),
       undo: () => {
@@ -3987,6 +4267,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       if (isQuotaTask(task) && !isMissed(task)) medication.removeLatestLogForTask(id);
       else medication.removeLogsForTask(id);
     }
+    // What a named food logged on completion goes with it, for the reason the
+    // dose does above: a task ticked by mistake means the food was not eaten.
+    // Matched on FoodLogEntry.taskId, so it finds the entries on whatever day
+    // they were written and touches nothing the person logged by hand.
+    if (task.logSavedMealId) useFoodLogStore.getState().removeEntriesForTask(id);
     dbUpdateTask(updated);
     // Reopened, so a deadline it still carries is live again.
     reconcileDeadlineEvent(updated);
@@ -4003,7 +4288,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // its last outstanding date inserts every date of the next set at once
     // (see completeTask). Matching only the first left next month on the board
     // after the completion that conjured it had been taken back.
-    const followUps = get().tasks.filter(t => t.previousOccurrenceId === id && !t.completed);
+    // A look-back the completion asked for goes the same way: the answer it
+    // was to look back on is no longer given (see decisionReview.ts).
+    const followUps = get().tasks.filter(t => (t.previousOccurrenceId === id || t.reviewOfTaskId === id) && !t.completed);
     const followUpIds = new Set(followUps.map(f => f.id));
     const followUpSubtasks = followUps.flatMap(f => get().subtasksOf(f.id));
     followUps.forEach(f => {
@@ -4133,6 +4420,24 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const task = get().tasks.find(t => t.id === id);
     if (!task || !isNegativeTask(task) || task.archived) return;
     const dayStart = getCurrentDayStart();
+    // A habit a reward guards: a slip you can pay for is the claim instead,
+    // and leaves the habit untouched. See rewardGuard.ts.
+    const planGuard = () => useRewardStore.getState().slipGuardFor(task, dayStart)?.plan ?? null;
+    let guard = planGuard();
+    if (guard?.kind === 'claim') {
+      const reward = guard.reward;
+      const claim = useRewardStore.getState().claimReward(reward.id);
+      if (claim) {
+        get().setLastAction({
+          label: `Claimed ${reward.title}`,
+          undo: () => useRewardStore.getState().unclaim(claim.id),
+          redo: () => get().logSlip(id),
+        });
+        return;
+      }
+      // Refused after all (a claim synced in a moment ago): plan again, as a charge.
+      guard = planGuard();
+    }
     // A slip inside the day's allowance is recorded and nothing else: no block,
     // no coins, and slipPatch leaves the streak alone.
     const free = nextSlipIsFree(task, dayStart);
@@ -4156,7 +4461,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // A slip costs coins too, when rewards are on. Unlike the block, this one
     // *is* refunded by undoSlip: the refund removes this slip's own entry, so
     // a log-and-undo round trip nets zero rather than buying anything back.
-    useRewardStore.getState().recordSlip(id, coinsForLoss(updated), displayTitleFor(updated));
+    // On a guarded habit the reward's price, floored at the balance, replaces it.
+    if (guard?.kind === 'charge') {
+      useRewardStore.getState().recordGuardCharge(id, guard.amount, displayTitleFor(updated), guardChargeSeed(id, dayStart, slipsToday(task, dayStart)));
+    } else {
+      useRewardStore.getState().recordSlip(id, coinsForLoss(updated), displayTitleFor(updated));
+    }
     // A tap here costs a run that may be weeks long, so the undo is offered
     // rather than buried — the same affordance a logged quota unit gets, for a
     // mis-tap that is considerably more expensive.
@@ -4179,7 +4489,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const updated = { ...task, ...patch };
     dbUpdateTask(updated);
     set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
-    if (!free) useRewardStore.getState().takeBackSlip(id);
+    if (free) return;
+    // A guarded slip's charge is named by its slip, and one floored to zero
+    // wrote nothing, so a guarded habit never falls back to "the newest loss".
+    const rewardStore = useRewardStore.getState();
+    const seed = guardChargeSeed(id, dayStart, slipsToday(task, dayStart) - 1);
+    if (!rewardStore.takeBackGuardCharge(seed) && !guardingReward(rewardStore.rewards, id)) rewardStore.takeBackSlip(id);
   },
 
   sweepTaskPenalties() {
@@ -4221,16 +4536,51 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (until !== settings.penaltyShieldUntil) settings.setPenaltyShieldUntil(until, reason);
   },
 
+  closeNegativeDay(id) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task || !isNegativeTask(task) || task.archived) return;
+    const patch = closeDayPatch(task, getCurrentDayStart());
+    if (!patch) return;
+    const updated = { ...task, ...patch };
+    dbUpdateTask(updated);
+    set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+    get().setLastAction({
+      label: `Day logged, streak ${updated.streakCount}`,
+      undo: () => get().reopenNegativeDay(id),
+      redo: () => get().closeNegativeDay(id),
+    });
+  },
+
+  reopenNegativeDay(id) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task || !isNegativeTask(task)) return;
+    const patch = reopenDayPatch(task, getCurrentDayStart());
+    if (!patch) return;
+    const updated = { ...task, ...patch };
+    dbUpdateTask(updated);
+    set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+  },
+
   rolloverNegativeStreaks() {
     const todayStart = getCurrentDayStart();
+    const now = new Date();
+    const resetTime = useSettingsStore.getState().dayResetTime;
     const patched = get().tasks.flatMap(t => {
       if (!isNegativeTask(t) || t.archived) return [];
       // Vacation protects the run rather than growing it, which is the call
       // every other streak here makes. Read through isWithheld so a category
       // paused for vacation, or a paused project, covers its habits too,
       // exactly as it does for the tasks the quota rollover skips.
-      const patch = cleanDayPatch(t, todayStart, { paused: isWithheld(t) });
-      return patch ? [{ ...t, ...patch }] : [];
+      const paused = isWithheld(t);
+      const streak = cleanDayPatch(t, todayStart, { paused });
+      const rolled = streak ? { ...t, ...streak } : t;
+      // The habit's own end time counts today as clean once it passes, on the
+      // rolled row so a catch-up and a close land in one write.
+      const end = effectiveWindowEnd(t);
+      const closing = windowCloseDayPatch(rolled, todayStart, end ? onLogicalDay(todayStart, end) : null, now, { paused });
+      const due = negativeHabitDuePatch(t, todayStart, resetTime);
+      if (!streak && !closing && !due) return [];
+      return [{ ...rolled, ...closing, ...due }];
     });
     if (patched.length === 0) return;
     dbTransaction(() => patched.forEach(dbUpdateTask));
@@ -4257,7 +4607,21 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       get().completeTask(id);
       return;
     }
-    const updated = { ...task, progressCount: task.progressCount + 1 };
+    // A target with a per-unit countdown spends it on the unit just logged, so
+    // the next one starts from a full clock whether or not this one ran out.
+    // Logging never waits on the countdown, which only says when it's ready.
+    const hadCountdown = task.timerStartedAt !== null || task.timerElapsedSeconds > 0;
+    if (hadCountdown) cancelTimerAlarm(id);
+    const updated = {
+      ...task,
+      progressCount: task.progressCount + 1,
+      ...(hadCountdown ? { timerStartedAt: null, timerElapsedSeconds: 0 } : {}),
+      // streakDate is stamped too: the first unit of a task that has never
+      // completed would otherwise leave a total with no date to read it by.
+      ...(countsUnits(task)
+        ? { streakCount: task.streakCount + 1, streakDate: task.streakDate ?? getCurrentDayStart().toISOString() }
+        : {}),
+    };
     dbUpdateTask(updated);
     set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
     // Same reasoning as the dose below: a daily target is several units, not
@@ -4269,7 +4633,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (task.logHealthMetric) void logTaskHealthValue(updated);
     const unitDose = medicationFor(task);
     if (unitDose) {
-      useMedicationStore.getState().addLog({ ...unitDose, taskId: id });
+      useMedicationStore.getState().addLog({ ...unitDose, taskId: id, useUsualDose: true });
     }
     get().setLastAction({
       label: 'Logged',
@@ -4335,7 +4699,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (task.logHealthMetric) void logTaskHealthValue(updated);
     const unitDose = medicationFor(task);
     if (unitDose) {
-      useMedicationStore.getState().addLog({ ...unitDose, taskId: id });
+      useMedicationStore.getState().addLog({ ...unitDose, taskId: id, useUsualDose: true });
     }
     get().setLastAction({
       label: 'Logged',
@@ -4383,7 +4747,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   unlogQuotaUnit(id) {
     const task = get().tasks.find(t => t.id === id);
     if (!task || !isQuotaTask(task) || task.progressCount === 0) return;
-    const updated = { ...task, progressCount: task.progressCount - 1 };
+    const updated = {
+      ...task,
+      progressCount: task.progressCount - 1,
+      ...(countsUnits(task) && task.streakCount > 0 ? { streakCount: task.streakCount - 1 } : {}),
+    };
     dbUpdateTask(updated);
     set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
     // The unit being taken back is the dose that unit recorded, and only that
@@ -4475,6 +4843,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   syncSnackNudgeTasks() {
     reconcileSnackNudge(get().tasks);
+  },
+
+  syncLimitWarningTasks() {
+    reconcileLimitWarnings(get().tasks);
   },
 
   checkBookEventTasks() {
@@ -4585,14 +4957,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // `nextStreak` reused for both fields the same way completeTask does,
       // so nextStreakRecord folds nothing when it's unchanged.
       const neutral = task.quotaPeriod !== 'week' && !isCategoryScheduledDay(task.category, new Date(ownPeriodStart));
-      const nextStreak = neutral ? task.streakCount : 0;
+      // A weekly target counting units is a total, so a short week keeps it.
+      const keepsStreak = neutral || countsUnits(task);
+      const nextStreak = keepsStreak ? task.streakCount : 0;
       closed.push({
         ...task,
         completed: true,
         completedAt: ownDayEnd.toISOString(),
         // progressCount deliberately left as-is — that's the record.
         streakCount: nextStreak,
-        streakDate: neutral ? task.streakDate : null,
+        streakDate: keepsStreak ? task.streakDate : null,
         previousStreakCount: task.streakCount,
         previousStreakDate: task.streakDate,
         // A partial day closes the run out, so the run it ends is a candidate
@@ -4635,7 +5009,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         // forward exactly as it stood — a non-work day never happened, so
         // the successor picking it up must not read as day one either.
         streakCount: nextStreak,
-        streakDate: neutral ? task.streakDate : null,
+        streakDate: keepsStreak ? task.streakDate : null,
         previousStreakCount: 0,
         previousStreakDate: null,
         // Not 0, unlike everything else reset on this successor: the streak
@@ -4643,6 +5017,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         // where the task continues.
         priorBestStreak: nextStreakRecord(task, nextStreak),
         timerStartedAt: null,
+        // A target's per-unit countdown banked on the day it closes must not
+        // carry onto the next day's first unit.
+        timerElapsedSeconds: 0,
         previousOccurrenceId: task.id,
         seriesDefaults: null,
         // The rest of what buildCompletion resets on a successor, which this
@@ -4845,10 +5222,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // over once its own span has closed.
       if (taskDay < todayStart) return true;
       if (taskDay > todayStart) return false;
+      const window = windowBoundsFor(t, todayStart);
       return isQuotaRunOver(
         quotaRunSpan({
-          windowStart: t.windowStart,
-          windowEnd: t.windowEnd,
+          windowStart: window.start,
+          windowEnd: window.end,
           quotaStartedAt: t.quotaStartedAt,
           activeHoursStart,
           activeHoursEnd,
@@ -6359,8 +6737,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
     const calendar = useCalendarStore.getState();
     // Not the same question as `events` being empty — see CalendarState.loaded.
-    // An unread window must not be read as "tomorrow is free".
-    if (!calendar.loaded) return;
+    // An unread window must not be read as "tomorrow is free". (Or the
+    // return-day read alone, when vacation hides every calendar: then that
+    // read is the whole of tomorrow.)
+    if (!calendar.loaded && !calendar.vacationReturnLoaded) return;
 
     const tomorrowStart = getLogicalTomorrow(settings.dayResetTime);
     const tomorrowKey = dayKeyOf(tomorrowStart);
@@ -6385,7 +6765,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (settings.calendarReviewLastDayKey === tomorrowKey) return;
     settings.setCalendarReviewLastDayKey(tomorrowKey);
 
-    const tomorrowEvents = eventsIn(calendar.events, tomorrowStart, addDays(tomorrowStart, 1));
+    // Includes the calendars vacation is hiding when vacation ends tomorrow:
+    // the hiding is for the days you're away, not the one you're back.
+    const tomorrowEvents = eventsIn(
+      [...calendar.events, ...calendar.vacationReturnEvents], tomorrowStart, addDays(tomorrowStart, 1));
     if (!wantsCalendarReview(tomorrowEvents)) return;
 
     const dueDate = getCurrentDayStart();
@@ -6407,6 +6790,64 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       }),
     });
     // No setLastAction, same reasoning as checkMealPlanNudge above.
+  },
+
+  applyRainSkips() {
+    // The forecast is a fact about the real world; a skip written into the
+    // demo database would be invented weather moving invented tasks.
+    if (isDemoModeActive()) return;
+    const weather = useWeatherStore.getState();
+    const todayKey = dayKeyOf(getCurrentDayStart());
+    // A reading from before the day rolled is not an answer for today.
+    if (weather.snapshotDayKey !== todayKey) return;
+    const rain = recentRainMm(weather.snapshot);
+    if (rain === null) return;
+    const { dayResetTime } = useSettingsStore.getState();
+    const skipped: Task[] = [];
+    for (const task of get().tasks) {
+      if (!task.rainSkipMm || task.completed || task.archived) continue;
+      // A task nobody can see isn't acted on because a day went by.
+      if (isWithheld(task)) continue;
+      const placed = getEffectiveTaskDate(task, dayResetTime);
+      const taskDayKey = placed ? dayKeyOf(getTaskDayStart(new Date(placed), dayResetTime)) : null;
+      if (!shouldSkipForRain(task, rain, taskDayKey, todayKey)) continue;
+      const patch = skipPatch(task, dayResetTime);
+      if (!patch) continue;
+      get().updateTask(task.id, {
+        ...patch,
+        rainSkippedOn: todayKey,
+        // The rain did the job, so the gap reads as no gap: the vacation
+        // forgiveness, re-dating the streak to today and crediting nothing.
+        ...(task.streakCount > 0 ? { streakDate: getCurrentDayStart().toISOString() } : {}),
+      }, SKIP_POSTPONE);
+      skipped.push(task);
+    }
+    if (skipped.length > 0) {
+      // The effect, recorded: Activity names each task the rain moved, so a
+      // skip nobody saw happen has somewhere to be found and pulled back.
+      useUnattendedStore.getState().recordMany(skipped.map(t => ({
+        action: 'moved' as const, kind: null, title: t.title, taskId: t.id,
+      })));
+    }
+  },
+
+  applyMeterHolds() {
+    const following = get().tasks.filter(t => t.meterName && !t.completed && !t.archived);
+    if (following.length === 0) return;
+    const readings = useMeterReadingStore.getState().readings;
+    const todayKey = dayKeyOf(getCurrentDayStart());
+    for (const row of following) {
+      // A meter set up before it had a reading (quick add on a meter never
+      // read) starts the first time one arrives, by the rule the editor uses
+      // for an empty "Next due at". A plain one-off only, like the hold.
+      const start = canFollowMeter(row) ? meterStartPatch(row, readings) : null;
+      if (start) get().updateTask(row.id, start);
+      const task = start ? { ...row, ...start } : row;
+      const patch = meterHoldPatch(task, decideMeterHold(task, readings, todayKey), todayKey);
+      // Idempotent: meterHoldPatch returns null for a hold already in place,
+      // which is what keeps the subscription that re-runs this from looping.
+      if (patch) get().updateTask(task.id, patch);
+    }
   },
 
   applyWeatherWaits() {
@@ -6490,7 +6931,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // already spent. `todayWeatherCode` is Open-Meteo's own summary for the
     // whole day, so this is a look-ahead rather than a second live reading.
     const conditions = Array.from(new Set([
-      ...classifyWeather(weather.snapshot.weatherCode, weather.snapshot.tempF),
+      ...classifyWeather(weather.snapshot.weatherCode, weather.snapshot.tempF, weather.snapshot.isDay ?? true),
       ...(weather.snapshot.todayWeatherCode != null
         ? classifyWeather(weather.snapshot.todayWeatherCode, weather.snapshot.tempF)
         : []),
@@ -6517,7 +6958,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // anyway, and reading the hours is what lets "cold" answer to the small
     // hours rather than to a single temperature standing for the whole day.
     const tomorrowConditions = Array.from(new Set(
-      (tomorrowHours ?? []).flatMap(h => classifyWeather(h.weatherCode, h.tempF)),
+      (tomorrowHours ?? []).flatMap(h => classifyWeather(h.weatherCode, h.tempF, h.isDay ?? true)),
     ));
     const aheadOpen = nowHour >= WEATHER_AHEAD_FROM_HOUR && !!tomorrowHours;
 
@@ -6568,11 +7009,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // Hours exist but none of the condition's runs is still ahead: the
       // weather has already happened, so a row for it is a chore about nothing.
       const windowPassed = !window && !tomorrow && !!hours && hours.length > 0
-        && hours.some(h => classifyWeather(h.weatherCode, h.tempF).includes(rule.condition));
+        && hours.some(h => classifyWeather(h.weatherCode, h.tempF, h.isDay ?? true).includes(rule.condition));
       if (existing && windowPassed) {
         dropGeneratedTask('weather', sourceId);
         return;
       }
+      // The sun has set on a sunny day whose rule hadn't been looked at yet
+      // (the day-level code still says sunny): nothing is left to write a row
+      // about. Only sunny, because that is the one condition night ends; the
+      // others keep writing a row for weather that already happened.
+      if (windowPassed && rule.condition === 'sunny') return;
       if (tomorrow && !window) {
         if (existing) dropGeneratedTask('weather', sourceId);
         return;
@@ -7153,6 +7599,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         .filter(task => moodLogDayKey(task) !== todayKey || task.generatedSourceId !== sourceId)
         .forEach(task => deleteGeneratedTaskQuietly(task.id));
 
+      // Whether this slot is already answered. Read for the write below only: a
+      // live check-in whose entry arrived some other way is made ready by
+      // `isRecordAnswered` on its row, not completed here.
+      const answered = sourceId !== null && (segment
+        ? hasLoggedSince(logs, timeSegmentThreshold(segment).toISOString())
+        : hasLogOnDay(logs, todayKey));
+
       // Recorded before the "already logged" check below and unconditionally,
       // for the reason calendarReviewLastDayKey is: a slot already decided
       // must not be re-diagnosed on every later sweep, or a check-in swiped
@@ -7167,9 +7620,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         // The any-time case asks "was the day logged at all"; a segment asks
         // the narrower "was anything logged since this segment began" — an
         // entry from this morning must not silence the evening check-in.
-        const answered = segment
-          ? hasLoggedSince(logs, timeSegmentThreshold(segment).toISOString())
-          : hasLogOnDay(logs, todayKey);
         if (!answered) {
           reconcileGeneratedTask({
             kind: 'moodLog',
@@ -7191,7 +7641,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
               // this the only thing to do with a check-in is tick it, which
               // completes the task without logging anything — the question
               // marked answered and no answer recorded.
-              linkUrl: 'dundundun://mood?log=1',
+              linkUrl: MOOD_LOG_LINK_URL,
               ...generatedBy('moodLog', sourceId),
             }),
           });
@@ -7264,13 +7714,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       liveGeneratedTasksOfKind(get().tasks, generatedKind)
         .filter(task => journalTaskDayKey(task, kind) !== todayKey || task.generatedSourceId !== sourceId)
         .forEach(task => deleteGeneratedTaskQuietly(task.id));
-      if (sourceId === null || lastKey === sourceId) return;
-      // Stamped before deciding, so a swiped-away reminder stays away for its slot.
-      setLastKey(sourceId);
+      if (sourceId === null) return;
       const written = entries.filter(e => e.kind === kind);
       const answered = segment
         ? hasLoggedSince(written, timeSegmentThreshold(segment).toISOString())
         : hasLogOnDay(written, todayKey);
+      if (lastKey === sourceId) return;
+      // Stamped before deciding, so a swiped-away reminder stays away for its slot.
+      setLastKey(sourceId);
       if (answered) return;
       reconcileGeneratedTask({
         kind: generatedKind,
@@ -7291,7 +7742,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
     if (settings.journalLogTasks && settings.journalLogTaskCategory) {
       run('journal', settings.journalLogTaskCategory, settings.journalLogTimeSegments,
-        settings.journalLogLastDayKey, settings.setJournalLogLastDayKey, JOURNAL_LOG_TITLE);
+        settings.journalLogLastDayKey, settings.setJournalLogLastDayKey,
+        journalLogTitle(settings.journalLogTimeSegments));
     }
     if (settings.dreamLogTasks && settings.dreamLogTaskCategory) {
       run('dream', settings.dreamLogTaskCategory, [],
@@ -7470,9 +7922,24 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       .filter(task => weighInDayKey(task) !== todayKey)
       .forEach(task => dropGeneratedTask('weighIn', task.generatedSourceId));
 
+    const everyDays = clampWeighInEveryDays(settings.weighInEveryDays);
+
+    // A request already on the list reads ready once a reading lands in its
+    // window, however it got there (the Health app, a smart scale). Only the
+    // answer is kept, as a day key, for the row to read; the tick is still the
+    // person's. A null read says nothing either way, so the marker is left alone.
+    const liveRequest = liveGeneratedTasksOfKind(get().tasks, 'weighIn')
+      .find(task => weighInDayKey(task) === todayKey);
+    if (liveRequest) {
+      const recent = await useHealthStore.getState().readRecentWeights(everyDays);
+      if (recent !== null) {
+        useHealthStore.getState().setWeighInAnsweredOn(wantsWeighIn(recent) ? null : todayKey);
+      }
+      return;
+    }
+
     if (settings.weighInLastDayKey === todayKey) return;
 
-    const everyDays = clampWeighInEveryDays(settings.weighInEveryDays);
     // A deleted request holds for the window from the day it was deleted on,
     // rather than until tomorrow. Checked before the read, which it makes
     // unnecessary, and without spending the mark, which has nothing to say
@@ -7533,7 +8000,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const task = liveGeneratedTasksOfKind(get().tasks, 'weighIn')
       .find(t => weighInDayKey(t) === todayKey);
     if (!task) return;
-    get().completeTask(task.id);
+    get().completeTask(task.id, { recorded: true });
   },
 
   completeJournalTaskForToday(kind) {
@@ -7541,7 +8008,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const task = liveGeneratedTasksOfKind(get().tasks, JOURNAL_TASK_KIND[kind])
       .find(t => journalTaskDayKey(t, kind) === todayKey);
     if (!task) return;
-    get().completeTask(task.id);
+    get().completeTask(task.id, { recorded: true });
   },
 
   completeMoodLogTaskForToday() {
@@ -7549,7 +8016,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const task = liveGeneratedTasksOfKind(get().tasks, 'moodLog')
       .find(t => moodLogDayKey(t) === todayKey);
     if (!task) return;
-    get().completeTask(task.id);
+    get().completeTask(task.id, { recorded: true });
   },
 
   skipNextRecurrence(id) {
@@ -7906,7 +8373,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       previousStreakDate: null,
       priorBestStreak: 0,
       showStreak: false,
-      streakRequiresWindow: false,
+      streakRequiresWindow: false, streakCountsUnits: false,
       polarity: 'positive',
       slipCount: 0,
       slipDate: null,
@@ -7919,6 +8386,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       medicationAmount: null,
       medicationUnit: null,
       logMealSlot: null,
+      logSavedMealId: null,
       estimateBeforeTiming: null,
       parentId,
       groupId: null,
@@ -8026,7 +8494,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // clearing it: the split is gone, but the task is still a timed task of
     // that length, and a null here would quietly demote it to a plain one.
     const parent = subtask.parentId ? get().tasks.find(t => t.id === subtask.parentId) : undefined;
-    const retotal = parent != null && parent.timedMinutes != null && segmentMinutesOf(subtask) !== null;
+    // Not on a target, whose `timedMinutes` is the per-unit countdown rather
+    // than a total of its subtasks' stretches.
+    const retotal = parent != null && parent.timedMinutes != null && !isQuotaTask(parent) && segmentMinutesOf(subtask) !== null;
     const previousTotal = parent?.timedMinutes ?? null;
 
     dbDeleteTask(id);
@@ -8131,7 +8601,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       previousStreakDate: null,
       priorBestStreak: 0,
       showStreak: false,
-      streakRequiresWindow: false,
+      streakRequiresWindow: false, streakCountsUnits: false,
       polarity: 'positive',
       slipCount: 0,
       slipDate: null,
@@ -8144,6 +8614,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       medicationAmount: null,
       medicationUnit: null,
       logMealSlot: null,
+      logSavedMealId: null,
       estimateBeforeTiming: null,
       parentId: null,
       groupId,
@@ -8572,7 +9043,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       projects: s.projects.map(p => (p.category === name ? { ...p, category: null } : p)),
     }));
     get().setLastAction({
-      label: `Category "${name}" deleted`,
+      label: `Category “${name}” deleted`,
       destructive: true,
       redo: () => get().deleteProjectCategory(name),
       undo: () => {
@@ -8718,6 +9189,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       links: source.links,
       inOrder: source.inOrder,
       showChecked: source.showChecked,
+      hideNextStep: source.hideNextStep,
+      groupOnToday: source.groupOnToday,
     });
 
     const sectionFor = new Map<string, string>();
@@ -9513,8 +9986,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // It comes back the moment the blocker clears, exactly as that row does.
       // A paused project's task is the other non-clock hide: the pause is the
       // person saying "not until then", which pinning doesn't answer.
-      .filter(t => !t.parentId && t.pinned && !t.completed && !t.archived
-        && !isHeldBack(t) && !isWithheld(t))
+      //
+      // The one clock gate pinning does not override is a pinEachOccurrence
+      // task, whose pin counts only while its occurrence is visible (see
+      // isPinnedOnToday). Its successor is spawned pinned, so without that gate
+      // a daily task finished today would sit at the top of Today all day.
+      .filter(t => !t.parentId && !t.completed && !t.archived
+        && !isHeldBack(t) && !isWithheld(t) && isPinnedOnToday(t))
       // sortOrder breaks ties rather than being the sort: every row starts at
       // pinnedOrder 0, so an install that has never dragged a pin (or upgraded
       // into the column) reads exactly as it did before. See Task.pinnedOrder.
@@ -9532,12 +10010,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       done = tasks.filter(t => !t.parentId && t.completed && t.completedAt);
       completedTasksCache.set(tasks, done);
     }
-    return done;
+    // Not cached: the lock changes without the task array doing so.
+    return useProjectLockStore.getState().lockedIds.length === 0 ? done : done.filter(t => !isLockedAway(t));
   },
 
   archivedTasks() {
     return openTasksOf(get().tasks)
-      .filter(t => !t.parentId && t.archived && !t.completed)
+      .filter(t => !t.parentId && t.archived && !t.completed && !isLockedAway(t))
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
@@ -9581,7 +10060,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     }));
 
     get().setLastAction({
-      label: `Deleted tag "${tag}"`,
+      label: `Deleted tag “${tag}”`,
       destructive: true,
       undo: () => {
         if (wasRegistered) {
@@ -9746,6 +10225,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const settings = useSettingsStore.getState();
     if (settings.calendarEventCategory === name) settings.setCalendarEventCategory(trimmed);
     if (settings.healthCategory === name) settings.setHealthCategory(trimmed);
+    if (settings.limitsTodayCategory === name) settings.setLimitsTodayCategory(trimmed);
+    if (settings.goalsTodayCategory === name) settings.setGoalsTodayCategory(trimmed);
     if (settings.newTaskDefaults.category === name) settings.setNewTaskDefaults({ category: trimmed });
     const titleRules = renameInTitleRules(settings.titleRules, name, trimmed);
     if (titleRules !== settings.titleRules) settings.setTitleRules(titleRules);
@@ -9783,3 +10264,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 // src/utils/blockerRegistry.ts for why this is a getter rather than a snapshot.
 registerTaskSource(() => useTaskStore.getState().tasks);
 registerPersonTaskSource(() => useTaskStore.getState().tasks);
+
+// The list selectors above read the project lock at call time, and a selector
+// only re-runs when this store changes, so a lock or unlock writes here too.
+useProjectLockStore.subscribe((state, prev) => {
+  if (state.revision !== prev.revision) useTaskStore.setState({ lockRevision: state.revision });
+});

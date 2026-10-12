@@ -17,14 +17,23 @@ function waitSignature(tasks: ReturnType<typeof useTaskStore.getState>['tasks'])
  * the task store already imports that one, and the pass is idempotent, so the
  * write it makes coming back through the task subscription settles on the
  * second look.
+ *
+ * A landed forecast also runs `applyRainSkips`, which reads the same snapshot
+ * (its rainfall) and has nothing else to wait for: a task's threshold is only
+ * judged against a reading for today, so a fresh reading is its only trigger.
  */
 export function useWeatherWaitSync(): void {
   useEffect(() => {
     const apply = () => useTaskStore.getState().applyWeatherWaits();
     apply();
 
+    const skipForRain = () => useTaskStore.getState().applyRainSkips();
+    skipForRain();
     const unsubscribeWeather = useWeatherStore.subscribe((state, prev) => {
-      if (state.snapshot !== prev.snapshot) apply();
+      if (state.snapshot !== prev.snapshot) {
+        apply();
+        skipForRain();
+      }
     });
 
     let signature = waitSignature(useTaskStore.getState().tasks);

@@ -18,7 +18,7 @@ jest.mock('../db/database', () => ({
   dbDeleteReward: jest.fn(),
 }));
 
-const settings = { rewardsEnabled: true };
+const settings = { rewardsEnabled: true, dayResetTime: '00:00' };
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: { getState: () => settings },
 }));
@@ -230,5 +230,107 @@ describe('rewards', () => {
     state().deleteReward(r.id);
     expect(dbDeleteReward).toHaveBeenCalledWith(r.id);
     expect(state().balance()).toBe(2);
+  });
+});
+
+describe('a reward guarding a habit', () => {
+  it('stores the habit it guards', () => {
+    const r = state().addReward('A dessert', 110, { guardsTaskId: 'no-dessert' })!;
+    expect(r.guardsTaskId).toBe('no-dessert');
+    state().updateReward(r.id, { guardsTaskId: null });
+    expect(state().rewards[0].guardsTaskId).toBeNull();
+  });
+
+  it('never lets a one-time or list reward guard one', () => {
+    expect(state().addReward('Boots', 300, { oneTime: true, guardsTaskId: 'h' })!.guardsTaskId).toBeNull();
+    expect(state().addReward('Headphones', 300, { taskId: 't1', guardsTaskId: 'h' })!.guardsTaskId).toBeNull();
+  });
+
+  it('drops the habit when an edit makes the reward one-time', () => {
+    const r = state().addReward('A dessert', 110, { guardsTaskId: 'no-dessert' })!;
+    state().updateReward(r.id, { oneTime: true });
+    expect(state().rewards[0].guardsTaskId).toBeNull();
+  });
+
+  it('writes a guarded slip’s charge under its seed, and takes back only that', () => {
+    state().recordGuardCharge('no-dessert', 6, 'No dessert', 'seed-0');
+    state().recordGuardCharge('no-dessert', 0, 'No dessert', 'seed-1');
+    expect(state().balance()).toBe(-6);
+    state().takeBackGuardCharge('seed-1');
+    expect(state().balance()).toBe(-6);
+    state().takeBackGuardCharge('seed-0');
+    expect(state().balance()).toBe(0);
+  });
+
+  it('reads the plan a slip on the habit would follow', () => {
+    state().recordEarn('t1', 120, 'Run', AT);
+    state().addReward('A dessert', 110, { guardsTaskId: 'no-dessert' });
+    const habit = { id: 'no-dessert', polarity: 'negative' as const, slipCount: 0, slipDate: null, slipAllowance: null,
+      streakCount: 0, streakDate: null, previousStreakCount: 0, previousStreakDate: null, priorBestStreak: 0 };
+    const guard = state().slipGuardFor(habit, new Date(2026, 0, 1))!;
+    expect(guard).toMatchObject({ balance: 120, claimedToday: false, plan: { kind: 'claim' } });
+    expect(state().slipGuardFor({ ...habit, id: 'other' }, new Date(2026, 0, 1))).toBeNull();
+  });
+});
+
+describe('dollar-priced rewards', () => {
+  it('keeps the price beside the coin cost', () => {
+    const r = state().addReward('Coffee', 45, { priceMinor: 450 })!;
+    expect(r.priceMinor).toBe(450);
+    expect(state().addReward('Episode', 10)!.priceMinor).toBeNull();
+  });
+
+  it('rewrites only dollar-priced costs when the rate moves', () => {
+    const coffee = state().addReward('Coffee', 45, { priceMinor: 450 })!;
+    const episode = state().addReward('Episode', 10)!;
+    expect(state().repriceDollarRewards(20)).toBe(1);
+    expect(state().rewards.find(r => r.id === coffee.id)!.cost).toBe(90);
+    expect(state().rewards.find(r => r.id === episode.id)!.cost).toBe(10);
+  });
+
+  it('writes nothing when the clean cost is unchanged or there is no rate', () => {
+    state().addReward('Coffee', 45, { priceMinor: 450 });
+    expect(state().repriceDollarRewards(10)).toBe(0);
+    expect(state().repriceDollarRewards(0)).toBe(0);
+  });
+
+  it('claims at the repriced cost', () => {
+    state().recordEarn('t1', 100, 'Run', AT);
+    const r = state().addReward('Coffee', 45, { priceMinor: 450 })!;
+    state().repriceDollarRewards(20);
+    expect(state().claimReward(r.id)).toMatchObject({ amount: 90 });
+  });
+
+  it('clears the price when an edit passes null', () => {
+    const r = state().addReward('Coffee', 45, { priceMinor: 450 })!;
+    state().updateReward(r.id, { priceMinor: null });
+    expect(state().rewards[0].priceMinor).toBeNull();
+  });
+});
+
+describe('claim limit', () => {
+  it('refuses a second claim inside the limit and allows it once undone or elapsed', () => {
+    state().addReward('Coffee', 5, { claimEveryDays: 7 });
+    const r = state().rewards[0];
+    expect(r.claimEveryDays).toBe(7);
+    useRewardStore.setState({ entries: [{ id: 'e', kind: 'earn', amount: 50, at: AT, taskId: 't', rewardId: null, label: 'x' }] });
+    const first = state().claimReward(r.id)!;
+    expect(first).not.toBeNull();
+    expect(state().claimReward(r.id)).toBeNull();
+    state().unclaim(first.id);
+    expect(state().claimReward(r.id)).not.toBeNull();
+    // A claim from long ago no longer holds it.
+    useRewardStore.setState(s => ({ entries: s.entries.filter(e => e.kind !== 'spend').concat({ id: 'old', kind: 'spend', amount: 5, at: '2026-01-01T09:00:00.000Z', taskId: null, rewardId: r.id, label: 'Coffee' }) }));
+    expect(state().claimReward(r.id)).not.toBeNull();
+  });
+
+  it('drops the limit on a one-time reward and keeps it across an edit', () => {
+    const r = state().addReward('Boots', 300, { oneTime: true, claimEveryDays: 7 })!;
+    expect(r.claimEveryDays).toBeNull();
+    const c = state().addReward('Tea', 3, { claimEveryDays: 14 })!;
+    state().updateReward(c.id, { title: 'Green tea' });
+    expect(state().rewards.find(x => x.id === c.id)!.claimEveryDays).toBe(14);
+    state().updateReward(c.id, { claimEveryDays: null });
+    expect(state().rewards.find(x => x.id === c.id)!.claimEveryDays).toBeNull();
   });
 });

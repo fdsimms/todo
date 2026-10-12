@@ -12,6 +12,7 @@ import { SafeBlurView } from '../components/SafeBlurView';
 import { GlassLayer, glassSupported } from '../components/GlassLayer';
 import { TodayScreen } from '../screens/TodayScreen';
 import { TagsScreen } from '../screens/TagsScreen';
+import { MetersScreen } from '../screens/MetersScreen';
 import { PeopleScreen } from '../screens/PeopleScreen';
 import { CategoriesScreen } from '../screens/CategoriesScreen';
 import { GroceryScreen } from '../screens/GroceryScreen';
@@ -32,6 +33,7 @@ import { JournalScreen, DreamsScreen } from '../screens/JournalScreen';
 import { MoodHistoryScreen } from '../screens/MoodHistoryScreen';
 import { MoodDayScreen } from '../screens/MoodDayScreen';
 import { SymptomDetailScreen } from '../screens/SymptomDetailScreen';
+import { MedicationDetailScreen } from '../screens/MedicationDetailScreen';
 import { ArchivedScreen } from '../screens/ArchivedScreen';
 import { UnattendedLogScreen } from '../screens/UnattendedLogScreen';
 import { AutomationsScreen } from '../screens/AutomationsScreen';
@@ -51,6 +53,7 @@ import { KitchenScreen } from '../screens/KitchenScreen';
 import { TemplateDetailScreen } from '../screens/TemplateDetailScreen';
 import { ProjectDetailScreen } from '../screens/ProjectDetailScreen';
 import { CategoryDetailScreen } from '../screens/CategoryDetailScreen';
+import { StackDetailScreen } from '../screens/StackDetailScreen';
 import { PersonDetailScreen } from '../screens/PersonDetailScreen';
 import { TipsScreen } from '../screens/TipsScreen';
 import { SideMenuDrawer } from '../components/SideMenuDrawer';
@@ -85,6 +88,7 @@ import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { usePersonStore } from '../store/usePersonStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
+import { useMeterReadingStore } from '../store/useMeterReadingStore';
 import { useMoodStore } from '../store/useMoodStore';
 
 const Tab = createBottomTabNavigator();
@@ -97,15 +101,15 @@ const EDGE_WIDTH = 20;
 const SCREEN_BOOKKEEPING_DELAY_MS = 300;
 
 // Screens only reachable via the drawer — hidden from the tab bar. There are
-// seventeen of these against four visible tabs, so how they're hidden matters.
+// seventeen of these against at most six visible buttons, so how they're hidden matters.
 //
 // `tabBarButton: () => null` alone was the whole of this under React Navigation
 // v6, where `BottomTabItem` returned the button's own return value as the item
 // — so null rendered nothing and occupied nothing. v7 wraps that return value
 // in a `View` carrying `styles.bottomItem` (`flex: 1`), which renders whether
 // or not the button does: on its own, `() => null` would leave seventeen empty
-// but space-claiming flex slots, and the four real icons would each get 1/21 of
-// the bar instead of 1/4. `tabBarItemStyle` lands on that same wrapper after
+// but space-claiming flex slots, and the real icons would each get a tiny share of
+// the bar instead of an even split. `tabBarItemStyle` lands on that same wrapper after
 // `flex: 1` in the style array, so `display: 'none'` is what actually takes it
 // out of the layout (and out of the accessibility tree with it). The null
 // button stays because it's still the cheaper render — otherwise each hidden
@@ -139,6 +143,7 @@ const TAB_SCREENS: Record<string, React.ComponentType<any>> = {
   Calendar: freezeWhenBlurred(CalendarScreen),
   Categories: freezeWhenBlurred(CategoriesScreen),
   Tags: freezeWhenBlurred(TagsScreen),
+  Meters: freezeWhenBlurred(MetersScreen),
   People: freezeWhenBlurred(PeopleScreen),
   Stacks: freezeWhenBlurred(StacksScreen),
   Templates: freezeWhenBlurred(TemplatesScreen),
@@ -191,7 +196,7 @@ const KITCHEN_SCREENS: ReadonlySet<string> = new Set(
 // A new pushed route missing from here highlights nothing and blanks the
 // drawer's current selection.
 const PUSHED_ROUTES = new Set([
-  'Settings', 'SettingsGroup', 'TemplateDetail', 'ProjectDetail', 'CategoryDetail',
+  'Settings', 'SettingsGroup', 'TemplateDetail', 'ProjectDetail', 'CategoryDetail', 'StackDetail',
   // Saved views has no menu row (see NAV_EXTRA_DESTINATIONS): it is opened
   // from Today's filter sheet, and from the drawer's find field, which is why
   // handleDrawerNavigate below has to leave the tab highlight alone for these.
@@ -203,6 +208,8 @@ const PUSHED_ROUTES = new Set([
   // and neither would survive a cold-launch restore with nothing to say what
   // it was showing.
   'MoodHistory', 'MoodDay', 'SymptomDetail',
+  // One medication's page, reached from Medications for the same reason.
+  'MedicationDetail',
 ]);
 
 function MorePlaceholder() {
@@ -351,7 +358,7 @@ const MainTabs = React.memo(function MainTabs({
           tabBarAccessibilityLabel: cookingRecipeId
             ? 'More, a cook timer is running, opens cook mode'
             : timerRunning
-              ? 'More, opens menu, a prep timer is running'
+              ? 'More, a prep timer is running, opens menu'
               : 'More, opens menu',
           tabBarIcon: ({ color, focused }) => (
             <TabIconPlate focused={focused}>
@@ -406,6 +413,7 @@ function initialScreenFromSettings(): string {
     journal: useJournalStore.getState().entries.filter(e => e.kind === 'journal').length,
     dreams: useJournalStore.getState().entries.filter(e => e.kind === 'dream').length,
     foodLog: useFoodLogStore.getState().totalCount,
+    meters: useMeterReadingStore.getState().readings.length,
   })) return 'Today';
   // Restored but unproven until it has stayed up (a restore to Today needs no guard).
   if (lastVisitedScreen !== 'Today') markScreenUnproven(lastVisitedScreen);
@@ -614,6 +622,11 @@ export default function AppNavigator() {
             options={{ presentation: 'card' }}
           />
           <RootStack.Screen
+            name="StackDetail"
+            component={StackDetailScreen}
+            options={{ presentation: 'card' }}
+          />
+          <RootStack.Screen
             name="SavedViews"
             component={SavedViewsScreen}
             options={{ presentation: 'card' }}
@@ -636,6 +649,11 @@ export default function AppNavigator() {
           <RootStack.Screen
             name="SymptomDetail"
             component={SymptomDetailScreen}
+            options={{ presentation: 'card' }}
+          />
+          <RootStack.Screen
+            name="MedicationDetail"
+            component={MedicationDetailScreen}
             options={{ presentation: 'card' }}
           />
           <RootStack.Screen

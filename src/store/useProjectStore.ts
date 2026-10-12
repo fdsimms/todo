@@ -14,7 +14,7 @@ import {
 } from '../db/database';
 import { generateId } from '../utils/id';
 import { PLANNING_PAUSE_KEY, registerPausedProjectSource } from '../utils/projectPause';
-import { registerAwayProjectSource } from '../utils/awayDates';
+import { destinationPinFields, registerAwayProjectSource } from '../utils/awayDates';
 import { deliverableKindFor, deliverableOptionsFor } from '../utils/deliverables';
 import { blockerIdsOf, isNotNeeded, resolverFor, type TaskResolver } from '../utils/blocking';
 
@@ -142,6 +142,9 @@ export function projectDecisions(projectId: string, tasks: Task[]): Task[] {
     // question (see deliverableKindFor), and a decision made at a step is a
     // decision the project should list.
     if (deliverableKindFor(member) === null || member.deliverableValue === null) continue;
+    // A look-back's answer is how another decision turned out, and is read
+    // beside that one (decisionOutcomes), not listed as a decision of its own.
+    if (member.reviewOfTaskId) continue;
     const key = memberKey(member, byId);
     const held = latest.get(key);
     if (!held || answeredAt(member) > answeredAt(held)) latest.set(key, member);
@@ -329,7 +332,7 @@ interface ProjectStore {
   initialized: boolean;
   initialize: () => void;
   createProject: (title: string, options?: CreateProjectOptions) => Project;
-  updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'deadline' | 'eventDate' | 'category' | 'defaultTaskCategory' | 'taskDefaults' | 'nudgeCadenceDays' | 'autoSchedule' | 'nudgeOptIn' | 'weekendSource' | 'reviewDeclinedAt' | 'reviewedAt' | 'backfillDismissedFields' | 'kind' | 'ongoing' | 'awayStart' | 'awayEnd' | 'awayPauses' | 'awayPauseDeclinedFor' | 'destination' | 'awayListId' | 'awayListDeclinedFor' | 'pausedUntil' | 'personIds' | 'links' | 'inOrder' | 'showChecked'>>) => void;
+  updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'deadline' | 'eventDate' | 'category' | 'defaultTaskCategory' | 'taskDefaults' | 'nudgeCadenceDays' | 'autoSchedule' | 'nudgeOptIn' | 'weekendSource' | 'reviewDeclinedAt' | 'reviewedAt' | 'backfillDismissedFields' | 'kind' | 'ongoing' | 'awayStart' | 'awayEnd' | 'awayPauses' | 'awayPauseDeclinedFor' | 'destination' | 'awayListId' | 'awayListDeclinedFor' | 'pausedUntil' | 'personIds' | 'links' | 'inOrder' | 'showChecked' | 'hideNextStep' | 'groupOnToday' | 'destinationLatitude' | 'destinationLongitude'>>) => void;
   /** Filing several projects at once from the Projects screen's bulk bar. */
   bulkSetProjectCategory: (ids: string[], category: string | null) => void;
   getProjectById: (id: string) => Project | null;
@@ -468,6 +471,8 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       links: [],
       inOrder: false,
       showChecked: false,
+      hideNextStep: false,
+      groupOnToday: false,
     };
     dbInsertProject(project);
     set(s => ({ projects: [...s.projects, project] }));
@@ -484,7 +489,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       patch,
       useSettingsStore.getState().defaultProjectNudgeCadenceDays,
     );
-    const updated = { ...project, ...kindSwitch, ...patch };
+    const updated = { ...project, ...kindSwitch, ...destinationPinFields(project, patch), ...patch };
     dbUpdateProject(updated);
     set(s => ({ projects: s.projects.map(p => (p.id === id ? updated : p)) }));
   },

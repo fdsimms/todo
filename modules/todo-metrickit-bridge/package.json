@@ -1,0 +1,7 @@
+{
+  "name": "todo-metrickit-bridge",
+  "version": "1.0.0",
+  "description": "Local Expo module that hands the app the daily launch, hang, memory and CPU reports iOS builds about it (MetricKit), as the raw JSON MetricKit writes, falling back to nothing everywhere it isn't linked.",
+  "main": "index.ts",
+  "private": true
+}

@@ -16,6 +16,7 @@ import { bestStreakOf, isStreakAtRecord } from '../utils/streakRecord';
 import { isCleanToday, isFailedToday } from '../utils/negativeHabits';
 import { MIN_ROTATION_ITEMS, plannedRotationItem, rotationTargetTotal } from '../utils/rotation';
 import { useTaskStore } from '../store/useTaskStore';
+import { useMeterReadingStore } from '../store/useMeterReadingStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { usePersonStore } from '../store/usePersonStore';
 import { usePersonGroupStore } from '../store/usePersonGroupStore';
@@ -42,7 +43,10 @@ import { shopWalkOrder } from '../utils/groceryShops';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { findWithPantry, pantryIngredients } from '../utils/cookbookIndex';
 import { useFoodLogStore } from '../store/useFoodLogStore';
+import { isNutrientOnlyEntry } from '../utils/nutrientLog';
+import { supplementDoseIdOf } from '../utils/supplementDose';
 import { useSavedMealsStore } from '../store/useSavedMealsStore';
+import { usePendingEstimateStore } from '../store/usePendingEstimateStore';
 import { currentEstimateFactor, describeFoodLogEntry, foodLogEntryEdit, foodLogTotals, recallAmount, scalePanelToAmount, wholeEstimate } from '../utils/foodLog';
 import { foodLastAmounts, helpingAgain, recentUnlinkedHelpings } from '../utils/foodLogRecents';
 import { isWaterEntry } from '../utils/waterLog';
@@ -91,7 +95,8 @@ import { useMoodStore } from '../store/useMoodStore';
 import { useMilestoneStore } from '../store/useMilestoneStore';
 import { useJournalStore } from '../store/useJournalStore';
 import { useMedicationStore } from '../store/useMedicationStore';
-import { frequencyTrend, medicationFor } from '../utils/medicationLog';
+import { frequencyTrend, medicationFor, milestoneOffers } from '../utils/medicationLog';
+import { limitStatus, prefsFor, supplyRemaining } from '../utils/medicationSettings';
 import { canClaimReward, isBountyLive } from '../utils/rewards';
 import { useRewardStore } from '../store/useRewardStore';
 import { linkFor } from '../constants/linkApps';
@@ -102,7 +107,7 @@ import { followedWaterTaskDoneOn, WATER_SHORTFALL_NOTES, waterShortfallTitle } f
 import { isMissed, isRealCompletion, mostMissed } from '../utils/missed';
 import { goalDirection } from '../utils/weightGoal';
 import { lookBacks } from '../utils/moodHistory';
-import { entriesOfKind, journalStats } from '../utils/journal';
+import { daysReachingWordGoal, entriesOfKind, journalStats, onThisDay } from '../utils/journal';
 import { parseJournalMarkdown } from '../utils/journalMarkdown';
 import { isStaleNote } from '../utils/personNotes';
 import { personBackfillFieldCounts, PERSON_BACKFILL_FIELDS } from '../utils/peopleBackfill';
@@ -129,9 +134,12 @@ import {
   mealCookCounts,
   mostCookedRecipes,
 } from '../utils/cookingStats';
+import { buildTodayProjectBands } from '../utils/todayProjectBands';
 import { buildKitchenSections, describeKitchen, FREEZER_SECTION, kitchenInventory, useUpEntries } from '../utils/kitchenInventory';
 import { useUpRecipes } from '../utils/useUpRecipes';
 import { recipeIndex } from '../utils/mealPlan';
+import { decisionOutcomes, pendingReviewOf } from '../utils/decisionReview';
+import { journalEntryLink, sealedEntries } from '../utils/journal';
 import { collectPlannedIngredients } from '../utils/mealPlanGroceries';
 import { overlapSeedFromPlanned, rankOverlapRecipes } from '../utils/recipeOverlap';
 import { probablyHaveReason } from '../utils/grocerySuggest';
@@ -557,6 +565,9 @@ describe('demo mode', () => {
     expect(s.completedTasks().length).toBeGreaterThan(0); // Logbook / Stats
     expect(useProjectStore.getState().projects.length).toBeGreaterThan(0);
     expect(useTaskGroupStore.getState().groups.length).toBeGreaterThan(0);
+    // A stack with enough tasks on one future day to fold into a row on Later.
+    const poconos = useTaskGroupStore.getState().groups.find(g => g.title === 'Pack for Poconos');
+    expect(s.deferredTasks().filter(t => t.groupId === poconos?.id).length).toBeGreaterThanOrEqual(3);
     expect(useCategoryStore.getState().categories.length).toBeGreaterThan(0);
     expect(s.tagRegistry.length).toBeGreaterThan(0);
     expect(useSavedViewStore.getState().views.length).toBeGreaterThan(0);
@@ -937,6 +948,43 @@ describe('demo mode', () => {
     useDemoStore.getState().exitDemoMode();
   });
 
+  it('seeds a repeating task that moves off holidays', () => {
+    useDemoStore.getState().enterDemoMode();
+    const trash = useTaskStore.getState().tasks.filter(t => t.title === 'Take out the trash' && !t.completed);
+    expect(trash).toHaveLength(1);
+    expect(trash[0].recurrenceHolidays).toBe('move');
+    useDemoStore.getState().exitDemoMode();
+  });
+
+  it('seeds a repeating task that skips after rain', () => {
+    useDemoStore.getState().enterDemoMode();
+    const garden = useTaskStore.getState().tasks.find(t => t.title === 'Water the garden' && !t.completed);
+    expect(garden?.rainSkipMm).toBe(5);
+    expect(garden?.recurrenceType).toBe('daily');
+    useDemoStore.getState().exitDemoMode();
+  });
+
+  it('seeds a task due at a meter reading, held on the estimate its readings give', () => {
+    useDemoStore.getState().enterDemoMode();
+    const oil = useTaskStore.getState().tasks.find(t => t.title === 'Change the oil');
+    expect(oil?.meterName).toBe('Car');
+    expect(oil?.meterDueAt).toBe(40500);
+    expect(useMeterReadingStore.getState().readings.filter(r => r.meterKey === 'car')).toHaveLength(2);
+    // 1,100 miles to go at 40 a day: held on the estimate, off Today.
+    expect(oil?.meterHeldUntil).not.toBeNull();
+    expect(useTaskStore.getState().visibleTasks().some(t => t.id === oil?.id)).toBe(false);
+    useDemoStore.getState().exitDemoMode();
+  });
+
+  it('seeds a time window that closes at sunset, with a location of its own', () => {
+    useDemoStore.getState().enterDemoMode();
+    const walk = useTaskStore.getState().tasks.find(t => t.title === 'Walk the dog before dark');
+    expect(walk?.windowEndSun).toBe('sunset');
+    expect(walk?.windowEnd).toMatch(/^\d{2}:\d{2}$/);
+    expect(useSettingsStore.getState().sunLocation).toEqual({ latitude: 40.68, longitude: -73.94 });
+    useDemoStore.getState().exitDemoMode();
+  });
+
   // Same reasoning: nothing seeded carrying logCompletionToCalendar reads as
   // a feature the app doesn't have.
   it('seeds a task that logs its completion to the calendar', () => {
@@ -1081,6 +1129,14 @@ describe('demo mode', () => {
     expect(finished!.progressCount).toBe(8);
   });
 
+  it('seeds a daily target with a countdown per unit', () => {
+    useDemoStore.getState().enterDemoMode();
+    const sit = useTaskStore.getState().tasks.find(t => t.title === 'Meditate');
+    expect(sit).toBeDefined();
+    expect(sit!.targetCount).toBe(3);
+    expect(sit!.timedMinutes).toBe(10);
+  });
+
   it('seeds a daily target that stays visible on pace, on pace', () => {
     useDemoStore.getState().enterDemoMode();
     const { tasks } = useTaskStore.getState();
@@ -1095,6 +1151,16 @@ describe('demo mode', () => {
     expect(alwaysVisible!.progressCount).toBe(alwaysVisible!.targetCount);
     expect(isQuotaOnPace(alwaysVisible!)).toBe(true);
     expect(isTaskVisible(alwaysVisible!)).toBe(true);
+  });
+
+  it('seeds a target that ramps up', () => {
+    useDemoStore.getState().enterDemoMode();
+    const pushUps = useTaskStore.getState().tasks.find(t => t.title === 'Push-ups');
+    expect(pushUps).toBeDefined();
+    expect(pushUps!.targetCount).toBe(10);
+    expect(pushUps!.quotaRampStep).toBe(2);
+    expect(pushUps!.quotaRampEvery).toBe(3);
+    expect(pushUps!.quotaRampGoal).toBe(30);
   });
 
   // The same counting mechanism over a week — "three times a week, any days".
@@ -1269,6 +1335,10 @@ describe('demo mode', () => {
     expect(varied.length).toBeGreaterThan(0);
     expect(varied[0].variants[0].questionId).toBe(choice.id);
     expect(choice.options).toContain(varied[0].variants[0].answer);
+
+    // A choice that takes several answers, and one that asks for the forecast.
+    expect(choice.multiple).toBe(true);
+    expect(asking.questions.some(q => q.kind === 'choice' && q.showForecast)).toBe(true);
 
     // And a people question — no name to fill a blank with, no options, no
     // default: normalizeTemplateQuestion forces all three empty for this kind.
@@ -1557,6 +1627,21 @@ describe('demo mode', () => {
   // The only stack in the seed with no members at all. Every other screen
   // finds a stack through its children, so without one homed on a project
   // there's nothing in demo mode that shows a stack can be empty.
+  it('seeds a project grouped on Today, with a stack in its band', () => {
+    useDemoStore.getState().enterDemoMode();
+
+    const kitchen = useProjectStore.getState().projects.find(p => p.title === 'Kitchen refresh');
+    expect(kitchen?.groupOnToday).toBe(true);
+
+    const visible = useTaskStore.getState().visibleTasks();
+    const groups = useTaskGroupStore.getState().groups
+      .map(group => ({ group, children: visible.filter(t => t.groupId === group.id) }))
+      .filter(g => g.children.length > 0);
+    const { bands } = buildTodayProjectBands(visible, groups, useProjectStore.getState().projects);
+    const band = bands.find(b => b.project.id === kitchen!.id);
+    expect(band?.items.some(i => i.type === 'group' && i.group.title === 'Contractor quotes')).toBe(true);
+  });
+
   it('seeds an empty stack homed on a project', () => {
     useDemoStore.getState().enterDemoMode();
 
@@ -2098,6 +2183,18 @@ describe('demo seed — people', () => {
     expect(journalStats(entriesOfKind(entries, 'dream'), month).dayCount).toBeGreaterThanOrEqual(2);
     // One uses the light formatting, so demo mode shows it drawn.
     expect(entries.some(e => parseJournalMarkdown(e.text).some(b => b.type === 'bullet'))).toBe(true);
+    // And one day written in several snippets, which the screen draws as one page.
+    const perDay = new Map<string, number>();
+    entriesOfKind(entries, 'journal').forEach(e => perDay.set(e.dayKey, (perDay.get(e.dayKey) ?? 0) + 1));
+    expect(Math.max(...perDay.values())).toBeGreaterThanOrEqual(3);
+  });
+
+  it('seeds journal tags, a person link, a page from a year ago and a custom prompt', () => {
+    const entries = useJournalStore.getState().entries;
+    expect(entries.some(e => (e.tags ?? []).includes('work'))).toBe(true);
+    expect(entries.some(e => (e.personIds ?? []).length > 0)).toBe(true);
+    expect(onThisDay(entries, 'journal', dayKeyOf(getCurrentDayStart())).length).toBeGreaterThan(0);
+    expect(useSettingsStore.getState().journalCustomPrompts.length).toBeGreaterThan(0);
   });
 
   it('seeds context tags, so the Mood screen has something to show for the feature', () => {
@@ -2132,12 +2229,16 @@ describe('demo seed — people', () => {
     // Every optional field, a goal, and a wish list feeding the screen.
     expect(rewards.some(r => r.linkUrl && r.note)).toBe(true);
     expect(rewards.some(r => r.oneTime && !r.taskId)).toBe(true);
+    expect(rewards.some(r => r.claimEveryDays === 7)).toBe(true);
     const listId = useSettingsStore.getState().rewardListProjectId;
     const list = useProjectStore.getState().projects.find(p => p.id === listId);
     expect(list?.kind).toBe('list');
     const fromList = rewards.find(r => r.taskId);
     expect(useTaskStore.getState().tasks.find(t => t.id === fromList?.taskId)?.projectId).toBe(listId);
     expect(rewards.some(r => r.id === useSettingsStore.getState().rewardGoalId)).toBe(true);
+    // A reward guarding an avoid habit.
+    const guard = rewards.find(r => r.guardsTaskId);
+    expect(useTaskStore.getState().tasks.find(t => t.id === guard?.guardsTaskId)?.polarity).toBe('negative');
     // A bounty, on a task that has already been put off.
     const bounty = useTaskStore.getState().tasks.find(t => isBountyLive(t));
     expect(bounty?.title).toBe('Clear the gutters');
@@ -2165,6 +2266,9 @@ describe('demo seed — people', () => {
     expect(logs.some(l => l.taskId !== null && l.amount !== null)).toBe(true);
     // And one archived medication, so the Archived section has a row.
     expect(useMedicationStore.getState().archived).toEqual(['amoxicillin']);
+    // And one added by name with no doses, so the list shows that state too.
+    expect(useMedicationStore.getState().registered).toEqual(['Allergy tablets']);
+    expect(logs.some(l => l.name === 'Allergy tablets')).toBe(false);
   });
 
   it('seeds an hours-recurrence task, hidden behind its own deferUntil', () => {
@@ -2217,6 +2321,71 @@ describe('demo seed — people', () => {
     expect(logTask!.logMealSlot).toBe('breakfast');
   });
 
+  it('seeds a task that names a saved meal and logs it on completion', () => {
+    const task = useTaskStore.getState().tasks.find(t => t.title === 'Have my usual breakfast');
+    expect(task).toBeDefined();
+    expect(task!.logMealSlot).toBe('breakfast');
+    const meal = useSavedMealsStore.getState().meals.find(m => m.name === 'Usual breakfast');
+    expect(task!.logSavedMealId).toBe(meal!.id);
+  });
+
+  it('seeds a limit and a supply on an as-needed medication', () => {
+    const { logs, settings } = useMedicationStore.getState();
+    const { limit, supply } = prefsFor(settings, 'Ibuprofen');
+    expect(limit).toMatchObject({ minHours: 6, maxPer24h: 3, maxAmount24h: { amount: 1200, unit: 'mg' } });
+    // And two usual strengths, the first being the default.
+    expect(prefsFor(settings, 'Ibuprofen').usualDoses).toEqual([{ amount: 400, unit: 'mg' }, { amount: 200, unit: 'mg' }]);
+    expect(limitStatus(logs, 'Ibuprofen', limit, new Date()).inLast24h).toBe(0);
+    expect(supplyRemaining(logs, 'Ibuprofen', supply)).toBe(9);
+  });
+
+  it('seeds a task that records the usual amount, read through the capsule strength', () => {
+    const { logs, settings } = useMedicationStore.getState();
+    expect(prefsFor(settings, 'Vitamin D').usualDoses).toEqual([{ amount: 1, unit: 'capsule' }]);
+    expect(prefsFor(settings, 'Vitamin D').strength).toEqual({ amount: 125, unit: 'mcg' });
+    const doses = logs.filter(l => l.name === 'Vitamin D' && l.taskId);
+    expect(doses.length).toBeGreaterThan(0);
+    for (const d of doses) {
+      expect([d.amount, d.unit, d.strength]).toEqual([1, 'capsule', { amount: 125, unit: 'mcg' }]);
+    }
+  });
+
+  it('seeds a supplement with its label typed in, whose doses reach the food log', () => {
+    const { logs, settings } = useMedicationStore.getState();
+    const panel = prefsFor(settings, 'Multivitamin').nutrition;
+    expect(panel).toMatchObject({ servingAmount: 1, servingUnit: 'tablet' });
+    expect(panel!.amounts.magnesiumMg).toBe(50);
+    const doses = logs.filter(l => l.name === 'Multivitamin');
+    expect(doses.length).toBeGreaterThanOrEqual(3);
+
+    // One entry per dose, each linked to it, none of them a meal.
+    const entries = useFoodLogStore.getState().recentEntries('0000-01-01', '9999-12-31')
+      .filter(e => e.label === 'Multivitamin');
+    expect(entries).toHaveLength(doses.length);
+    expect(new Set(entries.map(supplementDoseIdOf))).toEqual(new Set(doses.map(d => d.id)));
+    expect(entries.every(e => e.slot === null && isNutrientOnlyEntry(e))).toBe(true);
+    expect(entries[0].nutrition.amounts.vitaminDMcg).toBe(25);
+  });
+
+  it('seeds a medication started recently enough to offer a milestone', () => {
+    const logs = useMedicationStore.getState().logs;
+    const labels = useMilestoneStore.getState().milestones.map(m => m.label);
+    const offers = milestoneOffers(logs, labels, [], dayKeyOf(new Date()));
+    expect(offers.map(o => o.name)).toContain('Melatonin');
+  });
+
+  it('seeds a taper: a daily chain whose steps each record a smaller dose', () => {
+    const template = useTemplateStore.getState().templates.find(t => t.name === 'Prednisone taper');
+    expect(template).toBeDefined();
+    const item = template!.items[0];
+    expect(item.recurrenceType).toBe('daily');
+    expect(item.chainStepOnSchedule).toBe(true);
+    expect(item.recurrenceCount).toBe(item.chainItems.length);
+    const doses = item.chainItems.map(c => c.medicationAmount);
+    expect(doses[0]).toBeGreaterThan(doses[doses.length - 1]!);
+    expect(new Set(item.chainItems.map(c => c.medicationName))).toEqual(new Set(['Prednisone']));
+  });
+
   it('seeds enough as-needed doses for the frequency card to draw', () => {
     // frequencyTrend needs the log to have been running for both of its
     // fortnights and MIN_TREND_DOSES across them, so a seed that only covered
@@ -2245,6 +2414,21 @@ describe('demo seed — people', () => {
     expect(targetedNutrients(targets).length).toBeGreaterThan(0);
     expect(targets.calorieKcal).toBeGreaterThan(0);
     expect(targetedNutrients(targets).length).toBeLessThan(NUTRIENT_KEYS.length);
+  });
+
+  it('seeds a decision whose look-back has been answered, and one still waiting', () => {
+    const { tasks } = useTaskStore.getState();
+    const tile = tasks.find(t => t.title === 'Pick a tile')!;
+    expect(decisionOutcomes(tasks).get(tile.id)?.text).toBe('Easy to clean, and no regrets on the white');
+    const budget = tasks.find(t => t.title === 'Set the budget')!;
+    expect(pendingReviewOf(tasks, budget.id)?.title).toBe('How did it turn out? Set the budget');
+  });
+
+  it('seeds a note to your future self, sealed, with its reminder', () => {
+    const today = dayKeyOf(getCurrentDayStart());
+    const sealed = sealedEntries(useJournalStore.getState().entries, today);
+    expect(sealed).toHaveLength(1);
+    expect(useTaskStore.getState().tasks.some(t => t.linkUrl === journalEntryLink(sealed[0].id) && !t.completed)).toBe(true);
   });
 
   it('seeds a meal that has opted out of being logged', () => {
@@ -2306,6 +2490,13 @@ describe('demo seed — people', () => {
     expect(meal).toBeDefined();
     expect(meal?.items.length).toBeGreaterThan(0);
     expect(meal?.items.every(i => Object.keys(i.nutrition.amounts).length > 0)).toBe(true);
+  });
+
+  it('seeds a meal waiting for a connection, so the offline queue reads as a feature the app has', () => {
+    const pending = usePendingEstimateStore.getState().pending;
+    expect(pending).toHaveLength(1);
+    expect(pending[0].status).toBe('waiting');
+    expect(pending[0].estimate).toBeNull();
   });
 
   it('seeds a food that is in the catalog only because it was eaten', () => {
@@ -2486,7 +2677,7 @@ describe('demo seed — people', () => {
    * and `foodDayInputs` refuses a day logged this thinly, so no average ever
    * sees it.
    */
-  const seededFood = () => useFoodLogStore.getState().windowEntries.filter(e => !isWaterEntry(e));
+  const seededFood = () => useFoodLogStore.getState().windowEntries.filter(e => !isWaterEntry(e) && !isNutrientOnlyEntry(e));
 
   it('leaves today out of the seeded food log, so nothing averages a partial day', () => {
     const window = cookingWindow(getLogicalToday(), 30);
@@ -2619,6 +2810,11 @@ describe('demo seed — people', () => {
     // the whole until the amount is changed.
     expect(wholeEstimate(eatenOut[0])).not.toBeNull();
     expect(currentEstimateFactor(eatenOut[0])).toBe(1);
+    // The split the estimate showed is kept on the entry, and adds up to it.
+    const lines = eatenOut[0].nutrition.breakdown ?? [];
+    expect(lines.length).toBeGreaterThan(1);
+    expect(lines.reduce((sum, l) => sum + (l.amounts.calorieKcal ?? 0), 0))
+      .toBe(eatenOut[0].nutrition.amounts.calorieKcal);
   });
 
   it('seeds figures from more than one source, so the provenance stat has content', () => {
@@ -2665,7 +2861,8 @@ describe('demo seed — people', () => {
     // and not others. Without that the coverage clause never renders.
     const yesterdayKey = dayKeyOf(subDays(getCurrentDayStart(), 1));
     useFoodLogStore.getState().loadRange(yesterdayKey, yesterdayKey);
-    const totals = foodLogTotals(useFoodLogStore.getState().entries);
+    // Foods only: the seeded multivitamin states vitamins and no calories, and is not a meal.
+    const totals = foodLogTotals(useFoodLogStore.getState().entries.filter(e => !isNutrientOnlyEntry(e)));
     expect(totals.reported.calorieKcal).toBe(totals.entries);
     expect(totals.reported.fiberG).toBeGreaterThan(0);
     expect(totals.reported.fiberG! < totals.entries).toBe(true);
@@ -4132,7 +4329,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
 
     const review = tasks.find(t => t.generatedKind === 'pantryReview');
     expect(review).toBeDefined();
-    expect(review!.title).toBe("Review what's in the pantry");
+    expect(review!.title).toBe("Review what’s in the pantry");
     // Tapping it lands on the Pantry screen with the deck already up.
     expect(review!.linkUrl).toBe('dundundun://kitchen?review=1');
     expect(review!.category).toBe('Groceries');
@@ -4287,7 +4484,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
 
     const review = tasks.find(t => t.generatedKind === 'calendarReview');
     expect(review).toBeDefined();
-    expect(review!.title).toBe('Review tomorrow\'s calendar');
+    expect(review!.title).toBe('Review tomorrow’s calendar');
     // Filed under the day's own events category — this generator has no
     // category setting of its own (see GeneratedKindSpec.categorized).
     expect(review!.category).toBe('Calendar Events');
@@ -4302,6 +4499,11 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(tpl).toBeDefined();
     expect(tpl!.anchorsAreAway).toBe(true);
     expect(tpl!.applyContainer).toBe('project');
+  });
+
+  it('seeds a template item that turns into a checklist of your medicines', () => {
+    const tpl = useTemplateStore.getState().templates.find(t => t.name === 'Trip prep');
+    expect(tpl!.items.some(i => i.medicationChecklist === true)).toBe(true);
   });
 
   it('seeds a trip carrying away dates', () => {
@@ -4328,6 +4530,8 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // in demo mode regardless.
     expect(trip!.destination).toBe('Lisbon');
     expect(useSettingsStore.getState().destinationForecastEnabled).toBe(false);
+    // Where it is, so sun-timed windows follow the trip on those days.
+    expect([trip!.destinationLatitude, trip!.destinationLongitude]).toEqual([38.72, -9.14]);
     // And it buys from the away list, the other half of a nomination that is
     // invisible without one. Inert for awayPauses' reason: the trip is ahead,
     // so the demo opens on Groceries rather than on somebody else's trolley.
@@ -4380,15 +4584,17 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
   it('seeds project task defaults and a task that starts with them', () => {
     const { tasks } = useTaskStore.getState();
     const gift = useProjectStore.getState().projects.find(p => p.title === 'Gift ideas');
-    expect(gift?.taskDefaults).toEqual({ priority: 0, difficulty: 'easy', effort: 2 });
-    const dad = tasks.find(t => t.title === 'Something for Dad\'s birthday');
+    expect(gift?.taskDefaults).toEqual({ priority: 0, difficulty: 'easy', effort: 2, showStreak: null, vacationPause: null, excludeFromSuggestions: true });
+    const dad = tasks.find(t => t.title === 'Something for Dad’s birthday');
     expect(dad).toBeDefined();
     expect(dad!.difficulty).toBe('easy');
     expect(dad!.estimatedMinutes).toBe(15);
     // "No priority" is an answer, so Backfill has nothing to ask about it.
     expect(dad!.priority).toBe(0);
     expect(dad!.backfillDismissedFields).toContain('priority');
-    expect(useSettingsStore.getState().generatedTaskDefaults.birthdayGift).toEqual({ priority: 2, difficulty: null, effort: 3 });
+    expect(dad!.excludeFromSuggestions).toBe(true);
+    expect(useSettingsStore.getState().generatedTaskDefaults.birthdayGift).toEqual({ priority: 2, difficulty: null, effort: 3, showStreak: null, vacationPause: null, excludeFromSuggestions: null });
+    expect(useSettingsStore.getState().generatedTaskExtras.birthday).toEqual({ tags: ['people'], timeSegments: [], deliverableKind: 'yesno', deliverableOptions: [] });
   });
 
   it('seeds a weather task and the rules alongside it', () => {
@@ -4529,6 +4735,17 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     });
   });
 
+  it('seeds a Stay under limit, shown on Today, and a warning for it', () => {
+    const settings = useSettingsStore.getState();
+    expect(settings.nutritionLimits).toEqual(['satFatG']);
+    expect(settings.nutritionTargets.satFatG).toBeGreaterThan(0);
+    expect(settings.limitsTodayCategory).toBe('Biostats');
+    const task = useTaskStore.getState().tasks.find(t => t.generatedKind === 'limitWarning');
+    expect(task?.category).toBe('Health');
+    expect(task?.generatedSourceId).toBe('satFatG');
+    expect(task?.polarity).toBe('negative');
+  });
+
   it('seeds a snack suggestion under the Health category', () => {
     const task = useTaskStore.getState().tasks.find(t => t.generatedKind === 'snackNudge');
     expect(task).toBeDefined();
@@ -4566,6 +4783,15 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(goal!.rateKgPerWeek).toBeGreaterThan(0);
     expect(goal!.startDayKey < dayKeyOf(getCurrentDayStart())).toBe(true);
     expect(settings.sleepGoalMinutes).toBe(450);
+  });
+
+  it('seeds a journal word goal that some of the seeded days reach', () => {
+    const goal = useSettingsStore.getState().journalWordGoal;
+    expect(goal).toBe(25);
+    const entries = useJournalStore.getState().entries.filter(e => e.kind === 'journal' && !e.openOn);
+    const reached = daysReachingWordGoal(entries, goal!);
+    expect(reached).toBeGreaterThan(0);
+    expect(reached).toBeLessThan(new Set(entries.map(e => e.dayKey)).size);
   });
 
   it('seeds a health-target task, the fifth kind', () => {
@@ -4678,7 +4904,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(groupIds.size).toBe(1);
     const group = groups.find(g => g.id === nudgeTasks[0].groupId);
     expect(group).toBeDefined();
-    expect(group!.title).toBe("Plan this week's meals");
+    expect(group!.title).toBe("Plan this week’s meals");
     // A stack that arrives unattended opens itself; nothing else would show
     // the seven rows this feature is.
     expect(group!.collapsed).toBe(false);

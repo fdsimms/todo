@@ -6,7 +6,7 @@ import { effectiveWindowEndTime, onLogicalDay } from './clockTime';
 import type { ExpiredTaskGraceDays } from './expiredTaskGrace';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
-import { isAwayPauseInForce } from './awayDates';
+import { isAwayPauseInForce, tripSunLocationOn } from './awayDates';
 import { activeChainStep } from './chain';
 import { blockerIdsOf, isBlocked, isNotNeeded, isWaitingOnPerson, waitIdsOf } from './blocking';
 import { resolveBlocker } from './blockerRegistry';
@@ -15,6 +15,7 @@ import { proratedFrom, quotaRunSpan, quotaWeekSpan } from './quotaSchedule';
 import { isNegativeTask } from './negativeHabits';
 import { isRotationTask } from './rotation';
 import { isProjectPaused, projectPausedUntil } from './projectPause';
+import { windowBounds, type SunLocation, type WindowFields } from './sunTimes';
 
 /**
  * True while this task is waiting on another task that isn't done yet — the
@@ -329,6 +330,41 @@ function getWindowThreshold(hhmm: string, pass?: VisibleAtPass): Date {
   return onLogicalDay(pass ? pass.todayStart : getCurrentDayStart(), hhmm);
 }
 
+/**
+ * A task's window as clock times on the logical day starting at `dayStart`
+ * (today's by default), with a bound that follows the sun resolved for that
+ * day. **Every reader of a window's times goes through this** rather than
+ * `task.windowStart`/`windowEnd`, which for an anchored bound only hold the
+ * time it resolved to when it was set (see Task.windowStartSun). A presence
+ * check ("does it have a start at all") can still read the stored field, which
+ * is never null while an anchor is set.
+ */
+export function windowBoundsFor(
+  task: WindowFields,
+  dayStart?: Date,
+): { start: string | null; end: string | null } {
+  if (!task.windowStartSun && !task.windowEndSun) {
+    return { start: task.windowStart, end: task.windowEnd };
+  }
+  // Resolved here rather than as a default parameter: a default is evaluated
+  // on every call, and most tasks have no sun anchor and never need the day.
+  const day = dayStart ?? getCurrentDayStart();
+  return windowBounds(task, day, sunLocationOn(day));
+}
+
+/**
+ * Where sunrise and sunset are worked out for on the logical day starting at
+ * `dayStart`: a trip's destination while a trip with one covers that day
+ * (`tripSunLocationOn`), otherwise the saved home location, otherwise null.
+ * Every reader resolving a sun anchor asks this rather than the setting, so a
+ * walk "before dark" in Lisbon goes by Lisbon's sunset on those days and by
+ * home's on the rest.
+ */
+export function sunLocationOn(dayStart: Date = getCurrentDayStart()): SunLocation | null {
+  const { dayResetTime, sunLocation } = useSettingsStore.getState();
+  return tripSunLocationOn(dayStart, dayResetTime) ?? sunLocation;
+}
+
 // Whether `deferUntil` still holds a task back right now. Every other
 // recurrence steps in whole days, so the four call sites below all
 // day-truncate deferUntil before comparing it — "6pm today" and "11pm today"
@@ -385,8 +421,13 @@ export function hasDayArrived(task: Task): boolean {
 // next date, so "03:00–05:00" under a 4 AM reset is the inverted one, and
 // "22:00–02:00" is a window that closes. Compared as raw minutes the first
 // kept its end and was expired, hidden and swept all day.
-export function effectiveWindowEnd(task: Task): string | null {
-  return effectiveWindowEndTime(task.windowStart, task.windowEnd, useSettingsStore.getState().dayResetTime);
+//
+// `dayStart` says which day's window: today's by default, the task's own day
+// for the two readers measuring a close that has already happened (a sun
+// anchor resolves differently on each day).
+export function effectiveWindowEnd(task: Task, dayStart?: Date): string | null {
+  const { start, end } = windowBoundsFor(task, dayStart);
+  return effectiveWindowEndTime(start, end, useSettingsStore.getState().dayResetTime);
 }
 
 // Order used only to find the boundary *after* the latest segment a task is
@@ -425,7 +466,7 @@ function streakWindowAnchor(task: Task): Date {
 // against.
 function streakWindowEnd(task: Task): Date | null {
   const dayStart = streakWindowAnchor(task);
-  const explicitEnd = effectiveWindowEnd(task);
+  const explicitEnd = effectiveWindowEnd(task, dayStart);
   // onLogicalDay for getWindowThreshold's reason; the next segment is never
   // morning, so it rolls the same way getTimeOfDayThreshold's do.
   if (explicitEnd) return onLogicalDay(dayStart, explicitEnd);
@@ -456,7 +497,7 @@ export function isTaskWindowActive(task: Task): boolean {
   if (isCategoryHiddenOnVacation(task.category)) return false;
   if (!hasDayArrived(task)) return false;
   const now = new Date();
-  if (now < getWindowThreshold(task.windowStart)) return false;
+  if (now < getWindowThreshold(windowBoundsFor(task).start ?? task.windowStart)) return false;
   const end = effectiveWindowEnd(task);
   if (end && now >= getWindowThreshold(end)) return false;
   return true;
@@ -491,8 +532,12 @@ function isVacationPauseInForce(): boolean {
 // "deferred" — they move to their own Expired bucket and stay there until the
 // user deals with them (delete, or skip/reschedule a recurring task).
 export function isTaskExpired(task: Task): boolean {
+  if (task.completed || task.archived) return false;
   const end = effectiveWindowEnd(task);
-  if (task.completed || task.archived || !end) return false;
+  if (!end) return false;
+  // An avoid-task's end time says when its day counts as clean, never that it
+  // lapsed: expiry deletes, and a standing commitment is not late for anything.
+  if (isNegativeTask(task)) return false;
   const paused = isVacationPauseInForce();
   if (paused && task.vacationPause) return false;
   if (paused && categoryHidesOnVacation(task.category)) return false;
@@ -518,12 +563,16 @@ export function isTaskExpired(task: Task): boolean {
 // "placed"). Such a task re-expires every day with no fixed day to measure a
 // grace period from, so it only sweeps under Immediately, matching how the
 // old boolean setting treated it.
+//
+// The end is resolved on that same day, not today: a bound that follows the
+// sun closed at that day's sunset, which can be minutes away from today's.
 function windowClosedAt(task: Task, end: string): Date {
   const anchor = task.dueDate ?? task.deferUntil;
   if (!anchor) return getWindowThreshold(end);
   const { dayResetTime } = useSettingsStore.getState();
+  const dayStart = getTaskDayStart(new Date(anchor), dayResetTime);
   // onLogicalDay rather than hhmmToDate, for getWindowThreshold's reason.
-  return onLogicalDay(getTaskDayStart(new Date(anchor), dayResetTime), end);
+  return onLogicalDay(dayStart, effectiveWindowEnd(task, dayStart) ?? end);
 }
 
 // True once an expired task is old enough for sweepExpiredTasks to actually
@@ -624,13 +673,15 @@ function getQuotaSpan(task: Task): { start: Date; end: Date } {
       weekStartsOn,
     });
   }
+  const dayStart = getCurrentDayStart();
+  const window = windowBoundsFor(task, dayStart);
   return quotaRunSpan({
-    windowStart: task.windowStart,
-    windowEnd: task.windowEnd,
+    windowStart: window.start,
+    windowEnd: window.end,
     quotaStartedAt: task.quotaStartedAt,
     activeHoursStart,
     activeHoursEnd,
-    dayStart: getCurrentDayStart(),
+    dayStart,
   });
 }
 
@@ -654,9 +705,16 @@ export function quotaExpectedByNow(task: Task): number {
 // Whether being on pace takes this target off Today. A rotation never does:
 // its members are a checklist for the week, so the row stays up until each is
 // done, and a day you don't want to do it is rescheduled by hand rather than
-// being decided for you by a pace ramp. Anything else follows its own opt-out.
+// being decided for you by a pace ramp. A weekly target may leave for a later
+// *day* when it is ahead, but not for a later time today: its next unit
+// falling due this afternoon is not worth a row tucked into Later today, so it
+// stays up. Anything else follows its own opt-out.
 export function quotaHidesWhenOnPace(task: Task): boolean {
-  return !task.quotaAlwaysVisible && !isRotationTask(task);
+  if (task.quotaAlwaysVisible || isRotationTask(task)) return false;
+  if (task.quotaPeriod === 'week' && isQuotaTask(task)) {
+    return getTaskDayStart(quotaNextDueAt(task)).getTime() !== getCurrentDayStart().getTime();
+  }
+  return true;
 }
 
 export function isQuotaOnPace(task: Task): boolean {
@@ -817,7 +875,7 @@ export function isVisibleApartFromVacation(task: Task): boolean {
     if (now < threshold) return false;
   }
 
-  if (task.windowStart && now < getWindowThreshold(task.windowStart)) return false;
+  if (task.windowStart && now < getWindowThreshold(windowBoundsFor(task).start ?? task.windowStart)) return false;
 
   if (isTaskExpired(task)) return false;
 
@@ -852,6 +910,15 @@ export function isTaskVisible(task: Task): boolean {
   if (task.vacationPause && useSettingsStore.getState().vacationMode) return false;
   if (isCategoryHiddenOnVacation(task.category)) return false;
   return isVisibleApartFromVacation(task);
+}
+
+// Whether a task's pin is lit right now. A pinEachOccurrence task is spawned
+// pinned, so the stored flag says what the person wants; the pin only counts
+// once the occurrence is visible on Today. Until then the row shows an unlit
+// pin and the Pinned block leaves it out. Manual pins ignore the clock, as
+// they always have.
+export function isPinnedOnToday(task: Task): boolean {
+  return task.pinned && (!task.pinEachOccurrence || isTaskVisible(task));
 }
 
 // True for a recurring task that's showing up in Later ahead of its own day
@@ -1010,7 +1077,14 @@ export function isUpcomingToday(task: Task): boolean {
   // headerless bucket of Later Today rather than under Morning/Afternoon: the
   // pace ramp reaches across the whole day, so no one segment is where it
   // belongs. isOnPaceQuota has already run every gate below.
-  if (isOnPaceQuota(task)) return true;
+  //
+  // Only while the next unit falls due on *this* logical day, though. A weekly
+  // target's next unit is usually days away ("next Thu"), and listing it under
+  // Later Today contradicted the row's own label; it belongs in Later, which
+  // sorts it by quotaNextDueAt.
+  if (isOnPaceQuota(task)) {
+    return getTaskDayStart(quotaNextDueAt(task)).getTime() === getCurrentDayStart().getTime();
+  }
   if (task.completed || task.archived || task.timeSegments.length === 0) return false;
   if (task.vacationPause && useSettingsStore.getState().vacationMode) return false;
   if (isCategoryHiddenOnVacation(task.category)) return false;
@@ -1052,7 +1126,7 @@ export function getVisibleAt(task: Task, pass: VisibleAtPass = beginVisibleAtPas
     if (task.timeSegments.length > 0) {
       return earliestSegmentThreshold(task.timeSegments, { ...pass, todayStart: base })!;
     }
-    if (task.windowStart) return onLogicalDay(base, task.windowStart);
+    if (task.windowStart) return onLogicalDay(base, windowBoundsFor(task, base).start ?? task.windowStart);
     return base;
   };
 
@@ -1072,7 +1146,7 @@ export function getVisibleAt(task: Task, pass: VisibleAtPass = beginVisibleAtPas
     const threshold = earliestSegmentThreshold(task.timeSegments, pass)!;
     if (threshold > now) candidates.push(threshold);
   } else if (task.windowStart && candidates.length === 0) {
-    const threshold = getWindowThreshold(task.windowStart, pass);
+    const threshold = getWindowThreshold(windowBoundsFor(task, todayStart).start ?? task.windowStart, pass);
     if (threshold > now) candidates.push(threshold);
   }
 
@@ -1225,7 +1299,7 @@ export function displayTitleFor(task: Task): string {
 }
 
 // True when the task's category has opted out of being flagged "new" — no
-// row dot, no entry in the "new todos" banner. Mirrors isCategoryHiddenOnVacation.
+// row dot, no entry in the "new tasks" banner. Mirrors isCategoryHiddenOnVacation.
 function isCategoryExcludedFromNewTasksBanner(category: string | null): boolean {
   if (!category) return false;
   const cat = useCategoryStore.getState().getCategoryByName(category);

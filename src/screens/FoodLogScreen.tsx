@@ -55,7 +55,16 @@ import {
 } from '../utils/produceServings';
 import { recipeProduceResolver } from '../utils/recipeProduce';
 import { standingSwapMap } from '../utils/standingSwaps';
-import { describeAgainstTarget, targetProgress, targetStatus, type TargetStatus } from '../utils/nutritionTargets';
+import {
+  describeAgainstTarget,
+  describeLimit,
+  isActiveLimit,
+  limitStatus,
+  targetProgress,
+  targetStatus,
+  type LimitStatus,
+  type TargetStatus,
+} from '../utils/nutritionTargets';
 import { effectiveWaterTargetMl, waterExerciseBoostApplies } from '../utils/waterExerciseBoost';
 import { activeEnergyBoostKcal } from '../utils/activeEnergyBoost';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -79,6 +88,8 @@ import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
 import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
 import { FoodLogEntrySheet, type FoodLogEntrySheetHandle } from '../components/FoodLogEntrySheet';
 import { SavedMealsSheet } from '../components/SavedMealsSheet';
+import { PendingEstimatesCard } from '../components/PendingEstimatesCard';
+import type { PendingEstimate } from '../utils/estimateQueue';
 import { NutrientContributorsSheet } from '../components/NutrientContributorsSheet';
 import { NutritionTargetsSheet } from '../components/NutritionTargetsSheet';
 import { CsvExportSheet } from '../components/CsvExportSheet';
@@ -100,9 +111,12 @@ import { SelectionDot } from '../components/SelectionDot';
 import { PaintSelectionProvider, usePaintSelectionRow } from '../components/PaintSelection';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { CountStepper } from '../components/CountStepper';
-import { Fab, FAB_SIZE, type FabDragHandlers } from '../components/Fab';
+import { Fab, FAB_SIZE, type FabDragHandlers, useFabBottom } from '../components/Fab';
 import { useRowSelection } from '../hooks/useRowSelection';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { LazySheet } from '../components/LazySheet';
+import { ActionMenu, type ActionMenuAction, type ActionMenuChoice } from '../components/ActionMenu';
+import type { CardAnchor } from '../components/CardSheet';
 
 /**
  * A day of eating, read back.
@@ -165,11 +179,13 @@ function atTimeOf(entry: FoodLogEntry, day: Date): Date {
 }
 
 export function FoodLogScreen() {
+  const pullSearch = usePullToSearch();
   const colors = useColors();
   // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
   const screenSettings = useScreenSettings('FoodLog', 'Food log settings');
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const tabBarHeight = useBottomTabBarHeight();
+  const fabBottom = useFabBottom();
   const route = useRoute<{
     key: string;
     name: string;
@@ -208,6 +224,8 @@ export function FoodLogScreen() {
   const logSavedMeal = useSavedMealsStore(s => s.logMeal);
   const nutritionTargets = useSettingsStore(useShallow(s => s.nutritionTargets));
   const foodLogPinnedNutrients = useSettingsStore(useShallow(s => s.foodLogPinnedNutrients));
+  const nutritionLimits = useSettingsStore(useShallow(s => s.nutritionLimits));
+  const limitWarnPercent = useSettingsStore(s => s.limitWarnPercent);
   const waterUnit = useSettingsStore(s => s.waterUnit);
   const setWaterUnit = useSettingsStore(s => s.setWaterUnit);
   const waterExerciseBoost = useSettingsStore(useShallow(s => s.waterExerciseBoost));
@@ -247,7 +265,16 @@ export function FoodLogScreen() {
   const [dayKey, setDayKey] = useState(() => dayKeyOf(getCurrentDayStart()));
   const [addingSlot, setAddingSlot] = useState<MealSlot | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  /**
+   * A queued meal opened from the Waiting to be logged card to be refined. It
+   * rides the add sheet, which is already the one place an estimate is made,
+   * with the meal's own slot and moment in place of the day being viewed.
+   */
+  const [reviewing, setReviewing] = useState<PendingEstimate | null>(null);
+  const reviewingAt = useMemo(() => (reviewing ? new Date(reviewing.atISO) : null), [reviewing]);
   const [scanOpen, setScanOpen] = useState(false);
+  // The food whose nutrition label is being photographed from the picker.
+  const [labelName, setLabelName] = useState<string | null>(null);
   // The add sheet, so a log made from a sheet raised over it (scan, saved
   // meal) can apply "Add another" to it.
   const addSheetRef = useRef<FoodLogEntrySheetHandle>(null);
@@ -272,6 +299,9 @@ export function FoodLogScreen() {
    * the meal's own figures moves with it.
    */
   const [linkingEntry, setLinkingEntry] = useState<FoodLogEntry | null>(null);
+  /** The entry whose "…" menu is open, and the touch it opened from. */
+  const [menuEntry, setMenuEntry] = useState<FoodLogEntry | null>(null);
+  const [menuAnchor, setMenuAnchor] = useState<CardAnchor | null>(null);
   /**
    * The entry being corrected, which reopens the add sheet on it rather than
    * on an empty form. Null the rest of the time.
@@ -280,7 +310,8 @@ export function FoodLogScreen() {
   /** The entry whose day is being corrected, opening the "Re-date" picker on it. */
   const [redatingEntry, setRedatingEntry] = useState<FoodLogEntry | null>(null);
   /** The entry being copied onto another day, opening the "Duplicate to" picker on it. */
-  const [duplicatingEntry, setDuplicatingEntry] = useState<FoodLogEntry | null>(null);
+  // One entry from its row's menu, or the bulk bar's whole selection.
+  const [duplicating, setDuplicating] = useState<FoodLogEntry[] | null>(null);
   /**
    * The estimated entry whose amount is being changed, opening "Change
    * amount" on it. See `estimateAmountPatch` for why an estimate gets this and
@@ -482,8 +513,8 @@ export function FoodLogScreen() {
     },
   };
 
-  // "Breakfast"/"Lunch"/… for the bulk bar's Move panel — its built-in "None"
-  // chip (`allowNone`) already covers the unslotted "Other" section, so it's
+  // "Breakfast"/"Lunch"/… for the bulk bar's Move panel — its no-value chip
+  // (`allowNone`, labelled "Other" here) already covers the unslotted section, so it's
   // not repeated here. The reverse lookup turns a tapped chip back into a
   // MealSlot.
   const mealSlotOptions = useMemo(() => MEAL_SLOTS.map(s => MEAL_SLOT_LABELS[s]), []);
@@ -509,7 +540,7 @@ export function FoodLogScreen() {
   const handleDelete = useCallback((id: string, label: string) => {
     Alert.alert(
       `Forget ${label}?`,
-      'This removes it from the day\'s totals.',
+      'This removes it from the day’s totals.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -536,7 +567,7 @@ export function FoodLogScreen() {
   const handleRename = useCallback((entry: FoodLogEntry) => {
     Alert.prompt(
       'Rename entry',
-      'What this was. It does not change the figures.',
+      'What this was. The figures stay the same.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -567,68 +598,96 @@ export function FoodLogScreen() {
     moveEntry(entry.id, atTimeOf(entry, date));
   }, [moveEntry, exitSelection]);
 
-  /** Copies an entry onto another day, leaving the original where it is. */
-  const handleDuplicate = useCallback((entry: FoodLogEntry, date: Date) => {
+  /**
+   * Copies entries onto another day, leaving the originals where they are.
+   * Several at once is "the same breakfast as yesterday": select it on
+   * yesterday and duplicate it to today, rather than one row at a time.
+   */
+  const handleDuplicate = useCallback((list: readonly FoodLogEntry[], date: Date) => {
     haptics.success();
     exitSelection();
-    duplicateEntry(entry.id, atTimeOf(entry, date));
+    for (const entry of list) duplicateEntry(entry.id, atTimeOf(entry, date));
   }, [duplicateEntry, exitSelection]);
+
+  const handleBulkDuplicate = () => {
+    const picked = dayEntries.filter(e => selectedIds.has(e.id));
+    if (picked.length > 0) setDuplicating(picked);
+  };
+
+  /**
+   * The menu's first item, without the menu: Edit where the entry can be
+   * re-measured, Change amount for a described meal, Rename otherwise. The
+   * expanded row offers it directly, since a correction is the usual reason
+   * to open one and the menu put it a tap further away.
+   */
+  const handleEditEntry = useCallback((entry: FoodLogEntry) => {
+    if (foodLogEntryEdit(entry)) setEditingEntry(entry);
+    else if (wholeEstimate(entry)) setAmountEntry(entry);
+    else handleRename(entry);
+  }, [handleRename]);
 
   // The "…" on a row is a real menu, not a synonym for delete: an accidental
   // tap must not open a destructive confirm with nothing to say what's about
   // to happen. Move reuses the same slot list the bulk bar's own panel does.
-  const handleOpenMenu = useCallback((entry: FoodLogEntry) => {
-    const moveButtons = MEAL_SLOTS
+  const handleOpenMenu = useCallback((entry: FoodLogEntry, anchor?: CardAnchor) => {
+    setMenuAnchor(anchor ?? null);
+    setMenuEntry(entry);
+  }, []);
+
+  const menuActions = useMemo<ActionMenuAction[]>(() => {
+    const entry = menuEntry;
+    if (!entry) return [];
+    const moveChoices: ActionMenuChoice[] = MEAL_SLOTS
       .filter(s => s !== entry.slot)
       .map(s => ({
-        text: MEAL_SLOT_LABELS[s],
-        onPress: () => { haptics.tap(); moveEntries([entry.id], s); },
+        key: s,
+        label: MEAL_SLOT_LABELS[s],
+        onPress: () => moveEntries([entry.id], s),
       }));
     if (entry.slot !== null) {
-      moveButtons.push({ text: 'Other', onPress: () => { haptics.tap(); moveEntries([entry.id], null); } });
+      moveChoices.push({ key: 'other', label: 'Other', onPress: () => moveEntries([entry.id], null) });
     }
-    Alert.alert(entry.label, undefined, [
+    return [
       // Edit reopens the sheet and re-measures, which needs a panel to measure
       // against; `foodLogEntryEdit` is where that rule lives rather than here.
       // An entry without one still gets its words back, since renaming is the
       // one correction that claims nothing about how much was eaten.
       foodLogEntryEdit(entry)
-        ? { text: 'Edit', onPress: () => setEditingEntry(entry) }
-        : { text: 'Rename', onPress: () => handleRename(entry) },
+        ? { key: 'edit', label: 'Edit', icon: 'create-outline', onPress: () => setEditingEntry(entry) }
+        : { key: 'rename', label: 'Rename', icon: 'pencil-outline', onPress: () => handleRename(entry) },
       // A described meal has no panel for Edit to re-measure against, but
       // more or less of what the model stated needs none. See
       // `estimateAmountPatch`.
       ...(wholeEstimate(entry)
-        ? [{ text: 'Change amount…', onPress: () => setAmountEntry(entry) }]
+        ? [{ key: 'amount', label: 'Change amount…', icon: 'options-outline', onPress: () => setAmountEntry(entry) } as const]
         : []),
+      { key: 'move', label: 'Move to meal', icon: 'swap-vertical-outline', choices: moveChoices },
       {
-        text: 'Move to meal',
-        onPress: () => Alert.alert('Move to meal', undefined, [
-          ...moveButtons,
-          { text: 'Cancel', style: 'cancel' as const },
-        ]),
-      },
-      {
-        text: entry.itemId ? 'Link to a different grocery item' : 'Link to a grocery item',
+        key: 'link',
+        label: entry.itemId ? 'Link to a different grocery item' : 'Link to a grocery item',
+        icon: 'link-outline',
         onPress: () => setLinkingEntry(entry),
       },
       ...(entry.itemId
         ? [{
-          text: 'Remove the grocery item link',
+          key: 'unlink',
+          label: 'Remove the grocery item link',
+          icon: 'unlink-outline',
           onPress: () => {
             // The box goes with the row: a product is one of an item's boxes,
             // so an entry pointing at a box and not at the item is a pointer
             // with nothing above it.
             updateEntry(entry.id, { itemId: null, productId: null });
-            haptics.tap();
           },
-        }]
+        } as const]
         : []),
       {
         // For "I just ran out": a linked entry re-lists its own catalog row
         // (keeping its aisle, brand and store), and an unlinked one goes on by
         // name like a typed add. The store registers the undo either way.
-        text: 'Add to grocery list',
+        key: 'relist',
+        label: 'Add to grocery list',
+        icon: 'cart-outline',
         onPress: () => {
           const { items: catalog, addExisting, addByName } = useGroceryStore.getState();
           if (entry.itemId && catalog.some(i => i.id === entry.itemId)) addExisting(entry.itemId);
@@ -636,19 +695,18 @@ export function FoodLogScreen() {
           haptics.success();
         },
       },
-      { text: 'Re-date…', onPress: () => setRedatingEntry(entry) },
-      { text: 'Duplicate to…', onPress: () => setDuplicatingEntry(entry) },
-      { text: 'Forget', style: 'destructive', onPress: () => handleDelete(entry.id, entry.label) },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  }, [moveEntries, updateEntry, handleDelete, handleRename]);
+      { key: 'redate', label: 'Re-date…', icon: 'calendar-outline', onPress: () => setRedatingEntry(entry) },
+      { key: 'duplicate', label: 'Duplicate to…', icon: 'copy-outline', onPress: () => setDuplicating([entry]) },
+      { key: 'forget', label: 'Forget', icon: 'trash-outline', destructive: true, onPress: () => handleDelete(entry.id, entry.label) },
+    ];
+  }, [menuEntry, moveEntries, updateEntry, handleDelete, handleRename]);
 
   const handleBulkDelete = () => {
     const ids = Array.from(selectedIds);
     const count = ids.length;
     Alert.alert(
       `Forget ${count} ${count === 1 ? 'entry' : 'entries'}?`,
-      'This removes them from the day\'s totals.',
+      'This removes them from the day’s totals.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -1021,7 +1079,7 @@ export function FoodLogScreen() {
       // total.
       <View style={styles.totalsEmptyNote}>
         <EmptyNote icon="stats-chart-outline">
-          {`None of ${isToday ? "today's" : "this day's"} entries have nutrition on them yet. Link one to a food with nutrition to see totals here.`}
+          {`None of ${isToday ? "today’s" : "this day’s"} entries have nutrition yet. Link one to a food with nutrition to see totals here.`}
         </EmptyNote>
       </View>
     ) : null
@@ -1036,7 +1094,9 @@ export function FoodLogScreen() {
           accessibilityRole="button"
           accessibilityLabel={`See which entries contributed to ${NUTRIENT_LABEL[key].label.toLowerCase()}`}
         >
-          <Text style={styles.totalLabel}>{NUTRIENT_LABEL[key].label}</Text>
+          <View style={styles.totalLabelCol}>
+            <Text style={styles.totalLabel}>{NUTRIENT_LABEL[key].label}</Text>
+          </View>
           <View style={styles.totalRight}>
             {/* The target, when there is one, and nothing suggested
                 when there isn't — see nutritionTargets.ts. Reported
@@ -1058,7 +1118,9 @@ export function FoodLogScreen() {
             tracking sodium wants to stay under it), so `under` and
             `over` get different but equally neutral colors and only
             `met` — landing on the number chosen — gets green. See
-            `targetStatus`. */}
+            `targetStatus`. The exception is a target the person
+            marked Stay under: they told the app the direction, so
+            it reads through `limitStatus` and goes red past it. */}
         {effectiveTargets[key] !== undefined && (
           <View style={styles.targetTrack}>
             <View
@@ -1066,14 +1128,23 @@ export function FoodLogScreen() {
                 styles.targetFill,
                 {
                   width: `${targetProgress(key, totals.total[key], effectiveTargets) * 100}%`,
-                  backgroundColor: targetStatusColor(
-                    targetStatus(key, totals.total[key], effectiveTargets),
-                    colors,
-                  ),
+                  backgroundColor: isActiveLimit(key, effectiveTargets, nutritionLimits)
+                    ? limitStatusColor(limitStatus(key, totals.total[key], effectiveTargets, limitWarnPercent), colors)
+                    : targetStatusColor(targetStatus(key, totals.total[key], effectiveTargets), colors),
                 },
               ]}
             />
           </View>
+        )}
+        {isActiveLimit(key, effectiveTargets, nutritionLimits) && (
+          <Text
+            style={[
+              styles.limitNote,
+              limitStatus(key, totals.total[key], effectiveTargets, limitWarnPercent) === 'over' && styles.limitNoteOver,
+            ]}
+          >
+            {describeLimit(key, totals.total[key], effectiveTargets)}
+          </Text>
         )}
         {/* Said out loud rather than folded silently into the figure
             above: a target that moved is one the person should be
@@ -1258,8 +1329,16 @@ export function FoodLogScreen() {
         // left the empty state centered in negative space, drawn over the
         // water card with its button under the tab bar. `flexGrow` keeps it
         // centered in what's left whenever there is room.
-        <ScrollView style={styles.emptyScroll} contentContainerStyle={styles.emptyScrollContent}>
+        <ScrollView refreshControl={pullSearch.refreshControl} style={styles.emptyScroll} contentContainerStyle={styles.emptyScrollContent}>
           <View style={styles.plannedAlone}>
+            {/* An empty day used to show only the cards around the log, so
+                a first visit had nothing saying where food goes. */}
+            <View style={styles.totalsEmptyNote}>
+              <EmptyNote icon="restaurant-outline">
+                {`Nothing logged ${isToday ? 'today' : 'on this day'} yet. Tap + to add what you ate.`}
+              </EmptyNote>
+            </View>
+            <PendingEstimatesCard onRefine={setReviewing} />
             {plannedCard}
             {totalsCard}
             {produceCard}
@@ -1274,9 +1353,10 @@ export function FoodLogScreen() {
             scroller={foodScrollControl}
           >
           <ReorderableList
+            refreshControl={pullSearch.refreshControl}
             data={listItems}
             keyExtractor={foodListItemKey}
-            scrollToTop={{ bottom: tabBarHeight + spacing.md }}
+            scrollToTop={{ bottom: fabBottom }}
             scrollControlRef={foodScrollControl}
             // A paint gesture owns the touch for its duration, same reason
             // every other selectable list turns scrolling off for one, and
@@ -1288,6 +1368,7 @@ export function FoodLogScreen() {
             onReorder={handleReorder}
             ListHeaderComponent={
               <>
+              <PendingEstimatesCard onRefine={setReviewing} />
               {plannedCard}
               {totalsCard}
               {produceCard}
@@ -1339,6 +1420,7 @@ export function FoodLogScreen() {
                   onToggleSelect={toggleSelection}
                   onSwipeSelect={enterSelectionMode}
                   onOpenMenu={handleOpenMenu}
+                  onEdit={handleEditEntry}
                 />
                 </FabDropZone>
               );
@@ -1356,9 +1438,8 @@ export function FoodLogScreen() {
           slotByKey={dropTargetsByKey}
           onPress={() => { setAddingSlot(guessedSlot); setAddOpen(true); }}
           accessibilityLabel="Log something you ate"
-          bottom={tabBarHeight + spacing.md}
           drag={fabDrag}
-          dragHint="Drag onto a meal to log food there, or back to the button to cancel"
+          dragHint="Drop on a meal to log it there. Drop on the button to cancel."
         />
       )}
 
@@ -1367,12 +1448,14 @@ export function FoodLogScreen() {
           selectedCount={selectedIds.size}
           totalCount={dayEntries.length}
           category={{
-            title: 'Move to Meal',
+            title: 'Move to meal',
             noun: 'a meal',
             options: mealSlotOptions,
+            noneLabel: 'Other',
             onSet: handleBulkMove,
           }}
           actions={[
+            { key: 'duplicate', icon: 'copy', label: 'Duplicate', onPress: handleBulkDuplicate },
             { key: 'saveMeal', icon: 'bookmark', label: 'Save as meal', onPress: handleBulkSaveMeal },
             { key: 'delete', icon: 'trash', label: 'Delete', tone: 'destructive', onPress: handleBulkDelete },
           ]}
@@ -1384,17 +1467,21 @@ export function FoodLogScreen() {
         />
       )}
 
-      <LazySheet open={addOpen}>
+      <LazySheet open={addOpen || reviewing !== null}>
         <FoodLogEntrySheet
           ref={addSheetRef}
-          visible={addOpen}
-          slot={addingSlot}
-          at={loggingAt}
-          allowBurst
-          onClose={() => setAddOpen(false)}
+          visible={addOpen || reviewing !== null}
+          slot={reviewing ? reviewing.slot : addingSlot}
+          at={reviewingAt ?? loggingAt}
+          initialQuery={reviewing?.description}
+          mealPlanEntryId={reviewing?.mealPlanEntryId}
+          reviewing={reviewing}
+          allowBurst={reviewing === null}
+          onClose={() => { setAddOpen(false); setReviewing(null); }}
           canEstimate={estimateRoute !== 'unavailable'}
           onScan={scanShown ? () => setScanOpen(true) : undefined}
-          onSavedMeal={savedMeals.length > 0 ? () => setSavedMealsOpen(true) : undefined}
+          onPhotographLabel={scanShown ? setLabelName : undefined}
+          onSavedMeal={() => setSavedMealsOpen(true)}
           // Inside that sheet's own Modal, not beside it: as siblings these
           // presented from the root view controller, which was already
           // presenting the sheet, so iOS refused and Scan/Describe/Saved meals
@@ -1407,6 +1494,8 @@ export function FoodLogScreen() {
                 visible={scanOpen}
                 slot={addingSlot}
                 at={loggingAt}
+                labelName={labelName}
+                onLabelClose={() => setLabelName(null)}
                 onClose={() => setScanOpen(false)}
                 // Closes the "What did you eat?" sheet underneath too, only once
                 // a scan actually logs something — cancelling leaves it open,
@@ -1444,6 +1533,13 @@ export function FoodLogScreen() {
       </LazySheet>
       {/* Provenance only: the entry's own figures are a snapshot of what was
           eaten and must not follow the pointer. See `FoodLogPatch`. */}
+      <ActionMenu
+        visible={menuEntry !== null}
+        title={menuEntry?.label ?? ''}
+        actions={menuActions}
+        anchor={menuAnchor}
+        onClose={() => setMenuEntry(null)}
+      />
       <LazySheet open={linkingEntry !== null}>
         <CatalogLinkSheet
           visible={linkingEntry !== null}
@@ -1500,9 +1596,9 @@ export function FoodLogScreen() {
         <CsvExportSheet
           visible={exportOpen}
           onClose={() => setExportOpen(false)}
-          hint={'A spreadsheet file of your entries: the day, the time, the meal, what you '
+          hint={'A spreadsheet of your entries: day, time, meal, what you '
             + 'ate and how much, where the figures came from, and each nutrient. A figure that '
-            + 'was never recorded is left blank. Nothing else from the app is included.'}
+            + 'was never recorded is left blank.'}
           dialogTitle="Share your food log"
           select={entriesSince}
           toCsv={foodLogExportCsv}
@@ -1554,23 +1650,24 @@ export function FoodLogScreen() {
           onCancel={() => setRedatingEntry(null)}
         />
       </LazySheet>
-      <LazySheet open={duplicatingEntry !== null}>
+      <LazySheet open={duplicating !== null}>
         <WhenPicker
-          visible={duplicatingEntry !== null}
+          visible={duplicating !== null}
           value={getLogicalToday()}
-          title="Duplicate to"
+          title={duplicating && duplicating.length > 1 ? `Duplicate ${duplicating.length} entries to` : 'Duplicate to'}
           showTimeOfDay={false}
           showSuggest={false}
           allowFuture={false}
           onConfirm={date => {
-            const entry = duplicatingEntry;
-            setDuplicatingEntry(null);
-            if (!date || !entry) return;
-            handleDuplicate(entry, date);
+            const list = duplicating;
+            setDuplicating(null);
+            if (!date || !list) return;
+            handleDuplicate(list, date);
           }}
-          onCancel={() => setDuplicatingEntry(null)}
+          onCancel={() => setDuplicating(null)}
         />
       </LazySheet>
+      {pullSearch.sheet}
     </SafeAreaView>
   );
 }
@@ -1586,6 +1683,17 @@ export function FoodLogScreen() {
 function targetStatusColor(status: TargetStatus, colors: Colors): string {
   if (status === 'met') return colors.green;
   if (status === 'over') return colors.orange;
+  return colors.accent;
+}
+
+/**
+ * The bar's fill for a nutrient the person marked Stay under: the usual accent
+ * while there's room, orange once the day is close (`limitWarnPercent`), red
+ * past it. Theirs to have asked for, unlike `targetStatusColor`'s neutrality.
+ */
+function limitStatusColor(status: LimitStatus, colors: Colors): string {
+  if (status === 'over') return colors.red;
+  if (status === 'near') return colors.orange;
   return colors.accent;
 }
 
@@ -1685,10 +1793,13 @@ function makeStyles(colors: Colors) {
     waterUnitTextOn: { fontWeight: fontWeight.semibold },
     waterTarget: { color: colors.textSecondary, fontSize: font.xs },
     boostNote: { color: colors.textSecondary, fontSize: font.xs },
+    limitNote: { color: colors.textSecondary, fontSize: font.xs },
+    limitNoteOver: { color: colors.redText, fontWeight: fontWeight.semibold },
     totalBlock: { gap: spacing.xs },
     totalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     targetTrack: { height: 4, borderRadius: 2, backgroundColor: colors.separator, overflow: 'hidden' },
     targetFill: { height: '100%', borderRadius: 2, backgroundColor: colors.accent },
+    totalLabelCol: { flexShrink: 1 },
     totalLabel: { color: colors.text, fontSize: font.sm },
     totalRight: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm },
     totalValue: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
@@ -1747,6 +1858,17 @@ function makeStyles(colors: Colors) {
     entryNutrientRow: { flexDirection: 'row', justifyContent: 'space-between' },
     entryNutrientLabel: { color: colors.textSecondary, fontSize: font.sm },
     entryNutrientValue: { color: colors.text, fontSize: font.sm },
+    entryBreakdown: { marginTop: spacing.smd, gap: spacing.xxs },
+    entryBreakdownHeader: {
+      color: colors.textSecondary,
+      fontSize: font.xs,
+      fontWeight: fontWeight.semibold,
+      letterSpacing: 0.8,
+      marginBottom: spacing.xs,
+    },
+    // A component's name can be long, so it takes the row and the figure stays short.
+    entryBreakdownLabel: { flex: 1, marginRight: spacing.md },
+    entryEdit: { alignSelf: 'flex-start', marginTop: spacing.sm },
     dropSlot: { borderRadius: radius.md, backgroundColor: colors.bgTertiary, marginBottom: spacing.sm },
   });
 }
@@ -1793,7 +1915,7 @@ function LogFoodFabWithDropLabel({
 }
 
 const FoodLogRow = React.memo(function FoodLogRow({
-  entry, isActive, selectionMode, selected, drag, styles, colors, waterUnit, onToggleSelect, onSwipeSelect, onOpenMenu,
+  entry, isActive, selectionMode, selected, drag, styles, colors, waterUnit, onToggleSelect, onSwipeSelect, onOpenMenu, onEdit,
 }: {
   entry: FoodLogEntry;
   isActive: boolean;
@@ -1811,7 +1933,8 @@ const FoodLogRow = React.memo(function FoodLogRow({
   // is the same rule `renderTaskRow`'s `rowKey` exists for on Today.
   onToggleSelect: (entryId: string) => void;
   onSwipeSelect: (entryId: string) => void;
-  onOpenMenu: (entry: FoodLogEntry) => void;
+  onOpenMenu: (entry: FoodLogEntry, anchor?: CardAnchor) => void;
+  onEdit: (entry: FoodLogEntry) => void;
 }) {
   const paintRef = usePaintSelectionRow(entry.id);
   const [expanded, setExpanded] = useState(false);
@@ -1819,6 +1942,11 @@ const FoodLogRow = React.memo(function FoodLogRow({
   const toggleSelect = () => onToggleSelect(entry.id);
   const toggleExpand = () => { haptics.tap(); setExpanded(e => !e); };
   const statedKeys = NUTRIENT_KEYS.filter(key => entry.nutrition.amounts[key] !== undefined);
+  // An entry that stated nothing has no panel to expand, so its tap opens
+  // the menu rather than buzzing and doing nothing visible.
+  const canExpand = statedKeys.length > 0;
+  const breakdown = entry.nutrition.breakdown ?? [];
+  const openMenu = () => onOpenMenu(entry);
   const meta = describeFoodLogEntry(entry, waterEntryQuantity(entry, waterUnit));
   // Shared by the swipe and the iPhone Mirroring button.
   const swipeSelect = { onSelect: () => onSwipeSelect(entry.id), accessibilityLabel: `Select ${entry.label}` };
@@ -1836,13 +1964,13 @@ const FoodLogRow = React.memo(function FoodLogRow({
           // the touchable stays enabled either way so onLongPress still
           // starts a drag — a `disabled` row swallows every gesture, drag
           // included, not just the tap.
-          onPress={selectionMode ? toggleSelect : toggleExpand}
+          onPress={selectionMode ? toggleSelect : canExpand ? toggleExpand : openMenu}
           onLongPress={drag}
           delayLongPress={interaction.delayLongPress}
           accessibilityRole={selectionMode ? 'checkbox' : undefined}
-          accessibilityState={selectionMode ? { checked: selected } : { expanded }}
+          accessibilityState={selectionMode ? { checked: selected } : canExpand ? { expanded } : undefined}
           accessibilityLabel={`${entry.label}. ${meta}`}
-          accessibilityHint={selectionMode ? undefined : (expanded ? 'Hides nutrients' : 'Shows nutrients')}
+          accessibilityHint={selectionMode ? undefined : !canExpand ? 'Shows options' : (expanded ? 'Hides nutrients' : 'Shows nutrients')}
         >
           <View style={styles.entryText}>
             <Text style={styles.entryTitle}>{entry.label}</Text>
@@ -1856,7 +1984,7 @@ const FoodLogRow = React.memo(function FoodLogRow({
         ) : (
           <TouchableOpacity
             style={styles.entryMenuButton}
-            onPress={() => onOpenMenu(entry)}
+            onPress={e => onOpenMenu(entry, { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             accessibilityRole="button"
             accessibilityLabel={`More options for ${entry.label}`}
@@ -1866,7 +1994,7 @@ const FoodLogRow = React.memo(function FoodLogRow({
         )}
         <SwipeActionButtons enabled={!selectionMode} selectAction={swipeSelect} />
       </View>
-      {statedKeys.length > 0 && (
+      {canExpand && (
         <AnimatedCollapsible expanded={expanded}>
           <View style={styles.entryNutrients}>
             {statedKeys.map(key => (
@@ -1878,6 +2006,31 @@ const FoodLogRow = React.memo(function FoodLogRow({
                 </Text>
               </View>
             ))}
+            {breakdown.length > 0 && (
+              <View style={styles.entryBreakdown} accessibilityLabel="Made of">
+                <Text style={styles.entryBreakdownHeader}>MADE OF</Text>
+                {breakdown.map((line, index) => {
+                  const kcal = line.amounts.calorieKcal;
+                  return (
+                    <View key={`${index}-${line.label}`} style={styles.entryNutrientRow}>
+                      <Text style={[styles.entryNutrientLabel, styles.entryBreakdownLabel]}>{line.label}</Text>
+                      {kcal !== undefined && (
+                        <Text style={styles.entryNutrientValue}>{Math.round(kcal).toLocaleString()} cal</Text>
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+            <InlineAction
+              label="Edit"
+              icon="create-outline"
+              variant="neutral"
+              surface="card"
+              onPress={() => onEdit(entry)}
+              accessibilityLabel={`Edit ${entry.label}`}
+              style={styles.entryEdit}
+            />
           </View>
         </AnimatedCollapsible>
       )}

@@ -8,6 +8,8 @@ import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { DIFFICULTY_SEGMENTS } from '../utils/rewards';
 import { effortTimeLabel } from '../utils/effort';
 import { ESTIMATE_EFFORTS } from '../utils/fieldBackfill';
+import { featureHidden } from '../utils/simpleMode';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { NO_TASK_FIELD_DEFAULTS, hasTaskFieldDefaults } from '../utils/taskFieldDefaults';
 
 interface Props {
@@ -15,24 +17,32 @@ interface Props {
   onChange: (next: TaskFieldDefaults | null) => void;
   /** Whether to ask for a difficulty. Off with rewards, which are all that read one. */
   showDifficulty: boolean;
+  /**
+   * Leave out the two answers that only apply to a repeating task (streak
+   * chip, vacation pause), for a group that never repeats: a kind of
+   * generated task is always a one-off.
+   */
+  oneOffOnly?: boolean;
 }
 
 // `null` in a segmented control can't be a "no answer" the way a missing field
-// is, so each set leads with it as a named option. "Ask each time" is the state
-// every field starts in: the backfill screen asks about it as before.
+// is, so each set leads with it as a named option. "Not set" is the state every
+// field starts in: the task takes the app-wide default if there is one, and
+// otherwise the backfill screen asks about it later.
 const PRIORITY_OPTIONS: SegmentOption<Priority | null>[] = [
-  { value: null, label: 'Ask each time' },
+  { value: null, label: 'Not set' },
   { value: 0, label: 'No priority' },
   ...PRIORITY_SEGMENTS.filter(s => s.value !== 0),
 ];
 
 const DIFFICULTY_OPTIONS: SegmentOption<Difficulty | null>[] = [
-  { value: null, label: 'Ask each time' },
+  { value: null, label: 'Not set' },
   ...DIFFICULTY_SEGMENTS,
 ];
 
 const ESTIMATE_OPTIONS: SegmentOption<Effort | null>[] = [
-  { value: null, label: 'Ask each time' },
+  { value: null, label: 'Not set' },
+  { value: 0, label: 'No estimate' },
   ...ESTIMATE_EFFORTS.map(e => ({
     value: e as Effort | null,
     // The time, not the size letter: the letter is only a name for these
@@ -41,15 +51,28 @@ const ESTIMATE_OPTIONS: SegmentOption<Effort | null>[] = [
   })),
 ];
 
+// The yes/no questions. `true` and `false` are both answers (false means "leave
+// it off and don't ask"), so "Not set" is the only option that still lets
+// Backfill ask.
+const yesNoOptions = (yes: string, no: string): SegmentOption<boolean | null>[] => [
+  { value: null, label: 'Not set' },
+  { value: true, label: yes },
+  { value: false, label: no },
+];
+const STREAK_OPTIONS = yesNoOptions('Show', 'Don\u2019t show');
+const VACATION_OPTIONS = yesNoOptions('Pause', 'Don\u2019t pause');
+const SUGGESTION_OPTIONS = yesNoOptions('Skip', 'Allow');
+
 /**
- * The three answers the backfill screen asks about each task, as controls, for
+ * The answers the backfill screen asks about each task, as controls, for
  * a place that can answer them once for a whole group: a project's editor and a
  * kind of generated task in Settings. One component for both so the two can't
  * word or order them differently.
  */
-export function TaskFieldDefaultsFields({ value, onChange, showDifficulty }: Props) {
+export function TaskFieldDefaultsFields({ value, onChange, showDifficulty, oneOffOnly = false }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const simpleMode = useSettingsStore(st => st.simpleMode);
   const current = value ?? NO_TASK_FIELD_DEFAULTS;
   const set = (patch: Partial<TaskFieldDefaults>) => {
     const next = { ...current, ...patch };
@@ -84,6 +107,38 @@ export function TaskFieldDefaultsFields({ value, onChange, showDifficulty }: Pro
         onChange={effort => set({ effort })}
         columns={3}
         options={ESTIMATE_OPTIONS}
+      />
+      {!oneOffOnly && !featureHidden('streakOptions', simpleMode) && (
+        <>
+          <Text style={styles.label}>Streak chip (repeating tasks)</Text>
+          <SegmentedControl<boolean | null>
+            label="Default streak chip"
+            value={current.showStreak}
+            onChange={showStreak => set({ showStreak })}
+            columns={3}
+            options={STREAK_OPTIONS}
+          />
+        </>
+      )}
+      {!oneOffOnly && !featureHidden('vacationPause', simpleMode) && (
+        <>
+          <Text style={styles.label}>Vacation pause (repeating tasks)</Text>
+          <SegmentedControl<boolean | null>
+            label="Default vacation pause"
+            value={current.vacationPause}
+            onChange={vacationPause => set({ vacationPause })}
+            columns={3}
+            options={VACATION_OPTIONS}
+          />
+        </>
+      )}
+      <Text style={styles.label}>Skip in suggestions</Text>
+      <SegmentedControl<boolean | null>
+        label="Default skip in suggestions"
+        value={current.excludeFromSuggestions}
+        onChange={excludeFromSuggestions => set({ excludeFromSuggestions })}
+        columns={3}
+        options={SUGGESTION_OPTIONS}
       />
     </View>
   );

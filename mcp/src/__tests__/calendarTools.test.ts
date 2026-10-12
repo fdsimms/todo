@@ -131,7 +131,7 @@ describe('request_calendar_event', () => {
       ['cleared', 'event', 'Dentist', request.id],
     ]);
     expect(describeEffects(entries, logged.dayKeyOf)).toEqual([
-      'Ask the phone to add "Dentist" to the calendar the next time it syncs',
+      `Ask the phone to add "Dentist" to the calendar the next time it syncs: ${ahead()}, all day`,
       'Cancel the request to add "Dentist" to the calendar',
     ]);
   });

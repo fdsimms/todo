@@ -37,12 +37,15 @@ import {
 import { ScreenHeader } from '../components/ScreenHeader';
 import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
 import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { WeightChart } from '../components/WeightChart';
 import { LogWeightSheet } from '../components/LogWeightSheet';
 import { WeightGoalSheet } from '../components/WeightGoalSheet';
 import { SegmentedControl } from '../components/SegmentedControl';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
 
 /**
  * How much of the fetched window the chart actually draws.
@@ -75,6 +78,12 @@ const WEIGHT_CHART_RANGES: readonly {
  */
 const DEFAULT_RANGE_DAYS: WeightChartRangeDays = 180;
 
+// The goal bar's fill never drops below this share of the track. At the start
+// of a goal the true fraction is 0, and an empty track reads as a broken
+// element rather than a bar. Display only: the accessibility label still
+// reports the real percentage.
+const GOAL_BAR_MIN_FILL = 0.05;
+
 /**
  * Body weight over a selectable window, read from Apple Health.
  *
@@ -98,7 +107,9 @@ const DEFAULT_RANGE_DAYS: WeightChartRangeDays = 180;
  */
 
 export function WeightScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
+  const scrollTop = useListScrollToTop();
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
   // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
@@ -287,7 +298,7 @@ export function WeightScreen() {
         <EmptyState
           icon="scale-outline"
           title="Not available in demo mode"
-          subtitle="Weight comes from Apple Health, which demo mode does not read or write. Leave demo mode to see your own weigh-ins."
+          subtitle="Demo mode doesn’t read or write Apple Health. Leave demo mode to see your own weigh-ins."
           bottomOffset={tabBarHeight}
         />
       </View>
@@ -306,7 +317,7 @@ export function WeightScreen() {
         <EmptyState
           icon="scale-outline"
           title="Apple Health is off"
-          subtitle="Turn on reading Apple Health in Settings to see your weight here. Anything you have already recorded, on a scale or in another app, shows up straight away."
+          subtitle="Turn on Read Apple Health in Settings to see your weight here. Weigh-ins already in Health show up right away."
           actionLabel="Open Settings"
           onAction={() => { haptics.tap(); navigateToSettingsEntry(navigationRef, 'healthRead'); }}
           bottomOffset={tabBarHeight}
@@ -327,7 +338,7 @@ export function WeightScreen() {
           // the copy has to cover both without claiming either.
           subtitle={loadingWeight
             ? undefined
-            : `Nothing recorded in the last ${WEIGHT_HISTORY_DAYS} days, or Health is not sharing weight with this app. Record one and it is saved straight to Health.`}
+            : `Nothing recorded in the last ${WEIGHT_HISTORY_DAYS} days, or Health isn’t sharing weight. Record one and it’s saved to Health.`}
           actionLabel={loadingWeight ? undefined : 'Record a weight'}
           onAction={loadingWeight ? undefined : openLog}
           bottomOffset={tabBarHeight}
@@ -353,6 +364,9 @@ export function WeightScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {header}
       <ScrollView
+        ref={scrollTop.ref}
+        {...scrollTop.listProps}
+        refreshControl={pullSearch.refreshControl}
         style={styles.scroll}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: tabBarHeight + spacing.xl }]}
       >
@@ -420,7 +434,7 @@ export function WeightScreen() {
               {progress === null ? (
                 <Text style={styles.finding}>
                   Nothing recorded since you set this goal. Record a weight to see
-                  how it is going.
+                  your progress.
                 </Text>
               ) : (
                 <>
@@ -436,7 +450,7 @@ export function WeightScreen() {
                     accessible
                     accessibilityLabel={`${Math.round(progress.fraction * 100)} percent of the way from ${formatWeight(goal.startKg, unit)} to ${formatWeight(goal.targetKg, unit)}`}
                   >
-                    <View style={[styles.goalFill, { width: `${progress.fraction * 100}%` }]} />
+                    <View style={[styles.goalFill, { width: `${Math.max(progress.fraction, GOAL_BAR_MIN_FILL) * 100}%` }]} />
                   </View>
 
                   {progress.reached ? (
@@ -512,7 +526,7 @@ export function WeightScreen() {
                 Each dot is a day you weighed in. The line breaks where more than
                 two weeks passed without one. The fainter line is a 7-day average.
                 {goal !== null && ' The dashed lines are your target and the pace you set.'}
-                {' '}Touch and drag along the line to see a day's exact reading.
+                {' '}Touch and drag along the line to see a day’s exact reading.
               </Text>
             </>
           )}
@@ -520,7 +534,7 @@ export function WeightScreen() {
 
         {change !== null && (
           <>
-            <Text style={styles.sectionTitle}>ACROSS THIS WINDOW</Text>
+            <Text style={styles.sectionTitle}>ACROSS THIS RANGE</Text>
             <View style={styles.card}>
               {/* Two readings and the distance between them, with the sample
                   size stated. Not a trend line, and not a verdict: see the
@@ -563,6 +577,8 @@ export function WeightScreen() {
         currentKg={latest?.kilograms ?? null}
         onLogWeight={openLog}
       />
+      <ScrollToTopButton {...scrollTop.buttonProps} />
+      {pullSearch.sheet}
     </View>
   );
 }

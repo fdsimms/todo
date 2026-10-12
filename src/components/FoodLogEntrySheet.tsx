@@ -25,6 +25,8 @@ import {
   View,
 } from 'react-native';
 import { SheetModal } from './SheetModal';
+import { LimitImpactLines } from './LimitImpactLines';
+import { useLimitImpact } from '../hooks/useLimitImpact';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import { useStoreWhileOpen } from '../hooks/useStoreWhileOpen';
@@ -45,7 +47,9 @@ import {
   foodLogEntryEdit,
   foodUnitOptionsFor,
   helpingNutrition,
+  isDescriptionDraft,
   keptDatabasePanel,
+  panelToKeep,
   wholeEstimate,
   type EstimateAmountPatch,
   matchMealPlanEntry,
@@ -79,9 +83,11 @@ import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { CatalogLinkPicker } from './CatalogLinkPicker';
 import { EmptyState } from './EmptyState';
 import { InlineAction } from './InlineAction';
+import { NutritionPanelSheet } from './NutritionPanelSheet';
 import { PressableScale } from './PressableScale';
 import { navigateToFoodSearchSettings } from './NutritionSearchSheet';
-import { EstimatePanel } from './EstimatePanel';
+import { EstimatePanel, type EstimateLogAction } from './EstimatePanel';
+import type { PendingEstimate } from '../utils/estimateQueue';
 import { useFoodDatabaseSearch } from '../hooks/useFoodDatabaseSearch';
 import type { RankedFood } from '../utils/foodSearchMatch';
 import { EstimateAmountSheet } from './EstimateAmountSheet';
@@ -204,6 +210,15 @@ interface Props {
    */
   mealPlanEntryId?: string | null;
   /**
+   * A meal queued while offline, opened on its saved estimate to be refined
+   * (`PendingEstimatesCard`'s Refine). The sheet opens with the estimate panel
+   * already up on that estimate, so a caller also passes the meal's own `slot`,
+   * `at`, `mealPlanEntryId` and `initialQuery` (its description). Logging it
+   * removes the queued row; dismissing the panel drops the review and leaves
+   * the row where it was.
+   */
+  reviewing?: PendingEstimate | null;
+  /**
    * Whether "Add another" may keep this sheet open after a save instead of
    * closing it, for a caller with an open-ended run of foods to log rather
    * than one thing to log and be done.
@@ -241,6 +256,15 @@ interface Props {
    * is the step this removes.
    */
   onScan?: () => void;
+  /**
+   * Photographs the nutrition panel of a packaged food that has no barcode
+   * entry, handing off to `ScanToLogFlow`'s label panel with the name to file
+   * it under. Takes the name from the search field, or asks for one when the
+   * field is empty, since the figures are saved against a catalog row and a
+   * row needs a name. Omitted by a caller with nowhere to send it, same split
+   * `onScan` draws.
+   */
+  onPhotographLabel?: (name: string) => void;
   /**
    * Opens the saved-meals list — the fourth way in, beside searching,
    * describing and scanning. Logs several entries at once rather than one,
@@ -395,7 +419,7 @@ const NO_RECIPES: Recipe[] = [];
 const NO_SUBS: ItemSubLink[] = [];
 
 export function FoodLogEntrySheet({
-  visible, slot, at, initialQuery, mealPlanEntryId, editing, allowBurst, onClose, canEstimate, onScan, onSavedMeal, onDeclineMeal,
+  visible, slot, at, initialQuery, mealPlanEntryId, editing, reviewing, allowBurst, onClose, canEstimate, onScan, onPhotographLabel, onSavedMeal, onDeclineMeal,
   overlays, ref,
 }: Props) {
   const colors = useColors();
@@ -493,11 +517,22 @@ export function FoodLogEntrySheet({
   // over (it resets by remounting; see `EstimatePanel`).
   const [estimateOpen, setEstimateOpen] = useState(false);
   const [estimateKey, setEstimateKey] = useState(0);
+  /**
+   * Which queued meal the open panel is refining, or null. Cleared when the
+   * panel is dismissed, so tapping Estimate again afterwards asks afresh
+   * instead of reopening the saved estimate.
+   */
+  const [reviewId, setReviewId] = useState<string | null>(null);
+  // The open estimate's Log button, drawn at the foot of the sheet rather than
+  // at the end of the card, which a long estimate pushes below the fold.
+  const [estimateLog, setEstimateLog] = useState<EstimateLogAction | null>(null);
   // The earlier estimated helping whose amount is being changed before it is
   // logged again (`openHelping`).
   const [amountHelping, setAmountHelping] = useState<FoodLogEntry | null>(null);
   /** Whether the "which item is this" picker is open under a database food. */
   const [catalogPickOpen, setCatalogPickOpen] = useState(false);
+  // The label panel for the food on screen, opened from "Edit nutrition facts".
+  const [factsOpen, setFactsOpen] = useState(false);
   // What was typed for each of a dish's amount-varies lines, keyed by the
   // recipe ingredient's own id. See `varyingLines` below.
   const [varyingAmounts, setVaryingAmounts] = useState<Record<string, string>>({});
@@ -518,8 +553,17 @@ export function FoodLogEntrySheet({
     setPantryAnswer(null);
     closeDatabase();
     setEstimateOpen(false);
+    setReviewId(null);
+    if (reviewing?.estimate) {
+      // Opens straight onto the saved estimate: the field already holds the
+      // description, so the panel is the whole point of this open.
+      setEstimateKey(k => k + 1);
+      setReviewId(reviewing.id);
+      setEstimateOpen(true);
+    }
     setCatalogPickOpen(false);
     setBurstAdded([]);
+    quickLogKey.current = null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, slot]);
 
@@ -645,16 +689,41 @@ export function FoodLogEntrySheet({
    * an old amount the food can no longer measure opens on the default above
    * rather than on a refusal.
    */
-  const choose = (candidate: Candidate) => {
-    setPicked(candidate);
+  /**
+   * Back from the amount step to the list, keeping what was typed. Picking
+   * the wrong row used to mean Cancel, which closed the whole sheet, and a
+   * retyped search. Only for a new entry: a correction's food is the entry
+   * itself (see `foodLogEntryEdit`), so it has nothing to go back to.
+   */
+  const changeFood = () => {
+    haptics.tap();
+    searchFilter.seed(query);
+    setPicked(null);
+    setAmount('');
+    setAmountUnit(null);
+    setAmountNumber('');
+    setRecalledAmount(null);
+    setVaryingAmounts({});
+    setPantryAnswer(null);
+    setCatalogPickOpen(false);
+  };
+
+  /** The amount a food was last logged in, re-measured against what it has now. */
+  const recallFor = (candidate: Candidate) => {
     const weigh = candidate.kind === 'dish' && candidate.cookedGrams !== null;
-    const options = candidate.kind === 'food' && candidate.panel ? foodUnitOptionsFor(candidate.panel) : [];
-    const recalled = recallAmount(
+    return recallAmount(
       lastAmounts.get(candidate.key),
       candidate.kind === 'food' && candidate.panel
         ? { kind: 'food', panel: candidate.panel, name: candidate.label }
         : { kind: 'dish', weighed: weigh, served: !!candidate.servingPanel },
     );
+  };
+
+  const choose = (candidate: Candidate) => {
+    setPicked(candidate);
+    const weigh = candidate.kind === 'dish' && candidate.cookedGrams !== null;
+    const options = candidate.kind === 'food' && candidate.panel ? foodUnitOptionsFor(candidate.panel) : [];
+    const recalled = recallFor(candidate);
     setRecalledAmount(recalled?.amount ?? null);
     pickedAmountRef.current = recalled ? recalled.amount : (candidate.kind === 'dish' && !weigh ? '1' : '');
     if (recalled) {
@@ -665,9 +734,13 @@ export function FoodLogEntrySheet({
       return;
     }
     setDishMeasure(weigh ? 'weight' : 'servings');
-    setAmount(candidate.kind === 'dish' && !weigh ? '1' : '');
+    // A food with a serving of its own starts at one of them.
+    const serving = options.find(o => o.key === 'serving' && o.key === options[0]?.key);
+    const start = serving ? composeFoodAmount('1', serving) : candidate.kind === 'dish' && !weigh ? '1' : '';
+    pickedAmountRef.current = start;
+    setAmount(start);
     setAmountUnit(options[0]?.key ?? null);
-    setAmountNumber('');
+    setAmountNumber(serving ? '1' : '');
   };
 
   /**
@@ -870,6 +943,9 @@ export function FoodLogEntrySheet({
     return scalePanelToAmount(picked.panel, amount, null, undefined, picked.label);
   }, [picked, amount, dishMeasure, recipes, items, itemProducts, varyingResolved, swaps]);
 
+  // What this entry would do to a Stay under limit, said before Log is tapped.
+  const limitImpacts = useLimitImpact(built?.nutrition.amounts, at, { editing });
+
   // What's actually offered to weigh, which `weighableLine` decides rather
   // than the shape of the typed amount alone.
   //
@@ -970,6 +1046,36 @@ export function FoodLogEntrySheet({
    * thing next week meant searching for it again, and the weigh-it offer below
    * had no row to write a portion to at all.
    */
+  // ==== correcting the food's own nutrition facts ====
+  /**
+   * Whether the food's figures live on a row this sheet can write to: a box
+   * (`productId`) or the catalog row that holds the panel (`panelItemId`, never
+   * `itemId`, for the reason `handleSaveWeighedPortion` gives). A database food
+   * nobody filed has no row, so its figures are the database's and not ours to
+   * retype.
+   */
+  const factsEditable = picked?.kind === 'food' && !!picked.panel
+    && (!!picked.productId || !!picked.panelItemId);
+
+  /**
+   * A mistyped label (16,000 mg of sodium for 160) lives on the catalog row and
+   * was copied into every entry logged from it, so correcting only this entry
+   * would leave the row wrong for the next scan. The panel is fixed at its
+   * source and `picked` takes it, which re-measures the amount through `built`
+   * exactly as a changed amount would; Save then revises the entry. Other
+   * entries already logged from the row keep the figures they were written with.
+   */
+  const handleSaveFacts = (panel: FoodNutrition | null) => {
+    setFactsOpen(false);
+    // Clearing every figure would leave nothing to measure an amount against.
+    if (!picked || !panel) return;
+    if (picked.productId) setProductNutrition(picked.productId, panel);
+    else if (picked.panelItemId) setItemNutrition(picked.panelItemId, panel);
+    else return;
+    setPicked({ ...picked, panel });
+    haptics.success();
+  };
+
   // ==== filing a database food into the grocery catalog ====
   const unfiled = !!picked && picked.fromDatabase && !!picked.panel && picked.itemId === null;
 
@@ -1040,7 +1146,7 @@ export function FoodLogEntrySheet({
     const described = picked.label;
     Alert.prompt(
       'Add as a new item',
-      'The name it will have in your grocery catalog. It is not added to your shopping list.',
+      'Name for this item in your grocery catalog. It isn’t added to your shopping list.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -1135,6 +1241,23 @@ export function FoodLogEntrySheet({
     onClose();
   };
 
+  /**
+   * A described meal saved for later instead of logged. Nothing went in the
+   * log, so it skips `afterSave`'s "added" list; with "Add another" on it only
+   * resets the field for the next food.
+   */
+  const afterQueue = () => {
+    haptics.success();
+    if (burstMode) {
+      searchFilter.seed(initialQuery ?? '');
+      closeDatabase();
+      setEstimateOpen(false);
+      return;
+    }
+    Keyboard.dismiss();
+    onClose();
+  };
+
   // A food logged from a sheet raised over this one (a scan, a saved meal). It is
   // the same save as one made here, so it takes the same path: stay open for
   // the next food with "Add another" on, and the caller closes this sheet only
@@ -1167,7 +1290,7 @@ export function FoodLogEntrySheet({
       // Null for everything else, which on a correction also clears one that
       // no longer describes how the helping was measured: it was re-measured
       // against a row, or it is a different food now.
-      sourcePanel: picked.fromDatabase && picked.itemId === null ? picked.panel : null,
+      sourcePanel: picked.fromDatabase && picked.panel ? panelToKeep(picked.panel, picked.itemId !== null) : null,
       slot: chosenSlot,
       recipeId: picked.recipeId,
       itemId: picked.itemId,
@@ -1253,12 +1376,14 @@ export function FoodLogEntrySheet({
   // as a picked dish carries `servingPanel` rather than pointing at one.
   const handleDbPick = (nutrition: FoodNutrition, description: string) => {
     setPicked(databaseCandidate(`db:${description}`, description, nutrition));
-    pickedAmountRef.current = '';
-    setAmount('');
     setRecalledAmount(null);
     const options = foodUnitOptionsFor(nutrition);
+    const serving = options.find(o => o.key === 'serving' && o.key === options[0]?.key);
+    const start = serving ? composeFoodAmount('1', serving) : '';
+    pickedAmountRef.current = start;
+    setAmount(start);
     setAmountUnit(options[0]?.key ?? null);
-    setAmountNumber('');
+    setAmountNumber(serving ? '1' : '');
   };
 
   // The dirty check and confirm behind both Cancel and "Open Settings" from
@@ -1279,7 +1404,7 @@ export function FoodLogEntrySheet({
         || answeredExtra
       : picked
         ? amount.trim() !== pickedAmountRef.current.trim() || answeredExtra
-        : !!amount.trim() || estimateOpen;
+        : !!amount.trim() || estimateOpen || isDescriptionDraft(query);
     if (!dirty) { Keyboard.dismiss(); onClosed(); return; }
     Alert.alert(
       'Discard changes?',
@@ -1343,22 +1468,103 @@ export function FoodLogEntrySheet({
     setEstimateOpen(true);
   };
 
+  const startLabelPhoto = () => {
+    if (!onPhotographLabel) return;
+    haptics.tap();
+    Keyboard.dismiss();
+    const typed = query.trim();
+    if (typed) { onPhotographLabel(typed); return; }
+    Alert.prompt(
+      'Name this food',
+      'What the food on the label is called. Its nutrition facts are saved under this name.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Next',
+          onPress: (text?: string) => {
+            const name = (text ?? '').trim();
+            if (name) onPhotographLabel(name);
+          },
+        },
+      ],
+      'plain-text',
+    );
+  };
+
+  /**
+   * The + on a food logged before: the same pick the row's body makes, then
+   * the same Save the amount step's Add makes, at the amount it was last
+   * logged in. Nothing is measured here, so a quick log can't disagree with
+   * a typed one: `choose` sets the amount, `built` measures it, and the
+   * effect below saves once both have committed. When the result needs
+   * something only the amount step can ask (an amount-varies line, or an
+   * amount the food can no longer measure), it stops on that step instead
+   * of logging without it.
+   */
+  const quickLogKey = useRef<string | null>(null);
+  const quickLog = (candidate: Candidate) => {
+    haptics.tap();
+    quickLogKey.current = candidate.key;
+    choose(candidate);
+  };
+  useEffect(() => {
+    const key = quickLogKey.current;
+    if (!key || picked?.key !== key) return;
+    quickLogKey.current = null;
+    if (built && varyingLines.length === 0) handleSave();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [picked, built, varyingLines]);
+
   // ==== render. Everything below is JSX ====
-  const renderRow = ({ item }: { item: Candidate }) => (
-    <TouchableOpacity
-      style={styles.row}
-      activeOpacity={interaction.activeOpacity}
-      onPress={() => { haptics.tap(); choose(item); }}
-      accessibilityRole="button"
-      accessibilityLabel={`Log ${item.label}`}
-    >
-      <View style={styles.rowText}>
-        <Text style={styles.rowTitle}>{item.label}</Text>
-        {!!item.detail && <Text style={styles.rowMeta}>{item.detail}</Text>}
+  const renderRow = ({ item }: { item: Candidate }) => {
+    const recalled = editing ? null : recallFor(item);
+    const body = (
+      <>
+        <View style={styles.rowText}>
+          <Text style={styles.rowTitle}>{item.label}</Text>
+          {!!item.detail && <Text style={styles.rowMeta}>{item.detail}</Text>}
+        </View>
+        {!recalled && <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />}
+      </>
+    );
+    if (!recalled) {
+      return (
+        <TouchableOpacity
+          style={styles.row}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => { haptics.tap(); choose(item); }}
+          accessibilityRole="button"
+          accessibilityLabel={`Log ${item.label}`}
+        >
+          {body}
+        </TouchableOpacity>
+      );
+    }
+    // Laid out like an earlier helping's row: the body opens the amount, the
+    // plus logs it at last time's amount.
+    return (
+      <View style={[styles.row, styles.helpingRow]}>
+        <TouchableOpacity
+          style={[styles.helpingBody, styles.quickBody]}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => { haptics.tap(); choose(item); }}
+          accessibilityRole="button"
+          accessibilityLabel={`Log ${item.label}`}
+        >
+          {body}
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.helpingAdd}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => quickLog(item)}
+          accessibilityRole="button"
+          accessibilityLabel={`Log ${item.label} again, ${recalled.amount}`}
+        >
+          <Ionicons name="add-circle-outline" size={iconSize.md} color={colors.accent} />
+        </TouchableOpacity>
       </View>
-      <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
-    </TouchableOpacity>
-  );
+    );
+  };
 
   // While searching, what matches the catalog comes first and the earlier
   // helpings follow it: someone typing "oat milk" wants the food, not the
@@ -1438,7 +1644,10 @@ export function FoodLogEntrySheet({
             if (dish) choose(dish);
           }}
           onLogged={label => { setEstimateOpen(false); afterSave(label); }}
-          onDismiss={() => setEstimateOpen(false)}
+          onQueued={afterQueue}
+          reviewing={reviewing && reviewId === reviewing.id ? reviewing : null}
+          onDismiss={() => { setEstimateOpen(false); setReviewId(null); }}
+          onLogAction={setEstimateLog}
         />
       )}
       {dbOpen && (
@@ -1476,7 +1685,7 @@ export function FoodLogEntrySheet({
           )}
           {db.searched && !db.error && db.ranked.length === 0 && (
             <Text style={[styles.lookupNoteText, styles.lookupNote]}>
-              No matching foods. Try a plainer name: this database files foods as "Onions, raw" rather than by brand.
+              No matching foods. Try a plainer name, like “Onions, raw”. This database doesn’t list foods by brand.
             </Text>
           )}
           {dbRows.map(row => (
@@ -1528,7 +1737,9 @@ export function FoodLogEntrySheet({
       <View style={styles.root}>
         <View style={styles.header}>
           <View style={styles.headerRow}>
-            <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />
+            {picked && !editing
+              ? <SheetHeaderButton label="Back" role="cancel" onPress={changeFood} minWidth={64} />
+              : <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />}
             {!picked && (
               <Text style={styles.headerTitle} numberOfLines={1}>
                 {editing ? 'What was it?' : 'What did you eat?'}
@@ -1663,12 +1874,12 @@ export function FoodLogEntrySheet({
               {picked.kind === 'dish'
                 ? dishWeightHint
                 : foodUnitOptions.length > 0 && amountUnit !== 'other'
-                  ? 'Type the amount and pick its unit beside it. Anything else is refused rather than guessed at.'
+                  ? 'Type the amount and pick its unit beside it.'
                   : picked.panel
                     ? `${amountHint(picked.panel)}${
                       picked.panel.basis === 'per100ml'
                         ? ' Type an amount by volume and you can weigh it once to add its weight.'
-                        : ' Type an amount by volume or count and you can weigh it once to add it.'
+                        : ' Type an amount by volume or count and you can weigh it once to add its weight.'
                     }`
                     : 'A weight, like 100g.'}
             </Text>
@@ -1679,7 +1890,7 @@ export function FoodLogEntrySheet({
                   ? (dishMeasure === 'weight'
                     ? `Enter what was on your plate, in grams, up to the ${picked.cookedGrams} g the whole dish weighs.`
                     : 'Enter how many servings you had.')
-                  : `This food has no way to measure that amount, so the figures would be a guess. ${
+                  : `Can’t measure that amount of this food, so the figures would be a guess. ${
                     picked.panel ? amountHint(picked.panel) : 'Try a weight, or an amount it states a portion for.'
                   }`}
               </Text>
@@ -1722,7 +1933,7 @@ export function FoodLogEntrySheet({
                   />
                 </View>
                 <Text style={styles.weighHint}>
-                  Weigh it and enter the total weight. The app remembers it for next time.
+                  Weigh it and enter the total weight. The app remembers it.
                 </Text>
               </View>
             )}
@@ -1738,6 +1949,7 @@ export function FoodLogEntrySheet({
                 {built.grams !== null ? `, ${built.grams} g` : ''}
               </Text>
             )}
+            {!!built && <LimitImpactLines impacts={limitImpacts} style={styles.limitImpacts} />}
             {/* This label states no density of its own, so the weight behind
                 a volume amount is approximated from water's — right for most
                 drinks, off for anything syrupy or creamy. See
@@ -1746,13 +1958,24 @@ export function FoodLogEntrySheet({
               <Text style={styles.hint}>Approximate: no manufacturer serving data.</Text>
             )}
 
+            {factsEditable && (
+              <View style={styles.fileRow}>
+                <InlineAction
+                  label="Edit nutrition facts"
+                  icon="create-outline"
+                  variant="neutral"
+                  onPress={() => { haptics.tap(); Keyboard.dismiss(); setFactsOpen(true); }}
+                />
+              </View>
+            )}
+
             {unfiled && (
               <>
                 <Text style={[styles.label, styles.labelSpaced]}>KEEP THIS FOOD</Text>
                 <Text style={styles.hint}>
-                  Your grocery catalog has nothing for this yet, so these figures
-                  go on the entry and nowhere else. File it and it's here to pick
-                  next time instead of to search for.
+                  Your grocery catalog doesn’t have this food yet, so the figures
+                  are saved on this entry only. File it to pick it here next time
+                  instead of searching.
                 </Text>
                 <View style={styles.fileRow}>
                   <InlineAction
@@ -1761,7 +1984,7 @@ export function FoodLogEntrySheet({
                     onPress={() => { haptics.tap(); fileAsNewItem(); }}
                   />
                   <InlineAction
-                    label={catalogPickOpen ? 'Never mind' : 'Something I already have'}
+                    label={catalogPickOpen ? 'Cancel' : 'Link to an existing item'}
                     icon="albums-outline"
                     variant="neutral"
                     onPress={() => { haptics.tap(); setCatalogPickOpen(o => !o); }}
@@ -1787,8 +2010,8 @@ export function FoodLogEntrySheet({
               <>
                 <Text style={[styles.label, styles.labelSpaced]}>ANYTHING ELSE?</Text>
                 <Text style={styles.hint}>
-                  These have no fixed amount in the recipe, so they're not in the figures
-                  above. Say how much you had of any you want counted, and skip the rest.
+                  These have no fixed amount in the recipe, so they’re not in the figures
+                  above. Enter how much you had of any you want counted.
                 </Text>
                 {varyingResolved.map(({ line, typed, resolved }) => (
                   <View key={line.id} style={styles.varyingRow}>
@@ -1802,7 +2025,7 @@ export function FoodLogEntrySheet({
                       accessibilityLabel={`How much ${line.name} you had`}
                     />
                     {!!typed && !resolved && (
-                      <Text style={styles.error}>Can't measure that against this food's own figures.</Text>
+                      <Text style={styles.error}>Can’t measure that amount for this food.</Text>
                     )}
                   </View>
                 ))}
@@ -1813,7 +2036,7 @@ export function FoodLogEntrySheet({
             <SegmentedControl<MealSlot | null>
               options={[
                 ...MEAL_SLOTS.map(s => ({ value: s as MealSlot | null, label: MEAL_SLOT_LABELS[s] })),
-                { value: null, label: 'None' },
+                { value: null, label: 'Other' },
               ]}
               value={chosenSlot}
               onChange={setChosenSlot}
@@ -1843,11 +2066,16 @@ export function FoodLogEntrySheet({
                 keyboard away; the controls inside handle their own taps. */}
             <Pressable onPress={Keyboard.dismiss} accessible={false}>
             <View style={styles.searchRow}>
-              <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} />
+              <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} style={{ marginTop: spacing.xsm }} />
               <TextInput
                 key={searchFilter.fieldKey}
                 {...searchFilter.props}
                 style={styles.searchInput}
+                // A description is often a whole meal ("regular nacho fries and
+                // 2 cinna bon bites"), so the field wraps and grows rather than
+                // scrolling sideways. Return still puts the keyboard away.
+                multiline
+                submitBehavior="blurAndSubmit"
                 placeholder={canEstimate ? 'A food, a recipe, or what you ate' : 'Search foods and recipes'}
                 inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
                 placeholderTextColor={colors.textTertiary}
@@ -1900,8 +2128,16 @@ export function FoodLogEntrySheet({
                 />
               )}
             </View>
-            {!!onSavedMeal && (
+            {(!!onSavedMeal || !!onPhotographLabel) && (
             <View style={styles.actionRow}>
+              {!!onPhotographLabel && (
+                <InlineAction
+                  label="Photograph a label"
+                  icon="camera-outline"
+                  variant="neutral"
+                  onPress={startLabelPhoto}
+                />
+              )}
               {!!onSavedMeal && (
                 <InlineAction
                   label="Log a saved meal"
@@ -1918,9 +2154,9 @@ export function FoodLogEntrySheet({
                 activeOpacity={interaction.activeOpacity}
                 onPress={() => { haptics.tap(); Keyboard.dismiss(); onDeclineMeal(); }}
                 accessibilityRole="button"
-                accessibilityLabel="Don't ask about this meal"
+                accessibilityLabel="Don’t ask about this meal"
               >
-                <Text style={styles.declineMealText}>Don't ask about this meal</Text>
+                <Text style={styles.declineMealText}>Don’t ask about this meal</Text>
               </TouchableOpacity>
             )}
             </Pressable>
@@ -1960,15 +2196,15 @@ export function FoodLogEntrySheet({
                     : (helpings.length > 0 ? 'Nothing in your catalog matches' : 'No matching food')}
                   subtitle={
                     (candidates.length === 0
-                      ? 'A food can be logged once it has nutrition on it.'
-                      : 'Only foods and recipes with nutrition on them can be logged.')
+                      ? 'A food can be logged once it has nutrition.'
+                      : 'Only foods and recipes with nutrition can be logged.')
                     + (hasFdcKey
                       ? (candidates.length === 0
-                        ? ' Type a food above and tap Food database, or open a grocery item to attach nutrition to it there.'
-                        : ' Tap Food database to search for it, or open a grocery item to attach nutrition to it there.')
+                        ? ' Type a food above and tap Food database, or add nutrition to a grocery item.'
+                        : ' Tap Food database to search for it, or add nutrition to a grocery item.')
                       // Without a key the search can only fail, so the next
                       // step is the key, not the search.
-                      : ' Searching a food database by name needs a free FoodData Central key, which you can add in Settings. You can also open a grocery item to add its nutrition there.')
+                      : ' To search a food database, add a free FoodData Central key in Settings. You can also add nutrition to a grocery item.')
                   }
                   // With nothing typed there is nothing to search for, so the
                   // button would do nothing; the subtitle says what to type.
@@ -1982,6 +2218,20 @@ export function FoodLogEntrySheet({
                 other one-off affordances above. At the foot of the sheet
                 rather than among the ways to find a food, because it isn't
                 one: it says what happens after a save. */}
+            {estimateOpen && !!estimateLog && (
+              <View style={styles.estimateLogBar}>
+                <TouchableOpacity
+                  style={[styles.estimateLogButton, estimateLog.loading && styles.estimateLogOff]}
+                  activeOpacity={interaction.activeOpacity}
+                  disabled={estimateLog.loading}
+                  onPress={estimateLog.run}
+                  accessibilityRole="button"
+                  accessibilityLabel={estimateLog.accessibilityLabel}
+                >
+                  <Text style={styles.estimateLogText}>{estimateLog.label}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
             {!!allowBurst && !editing && (
               <View style={styles.burstFooter}>
                 <Text style={styles.burstLabel}>Log several</Text>
@@ -2010,6 +2260,15 @@ export function FoodLogEntrySheet({
         allowUnchanged
         onSave={patch => { if (amountHelping) logHelpingAtAmount(amountHelping, patch); }}
         onClose={() => setAmountHelping(null)}
+      />
+      {/* Inside this Modal for the same reason: it is raised from a sheet that
+          holds a typed amount. */}
+      <NutritionPanelSheet
+        visible={factsOpen}
+        foodName={picked?.label ?? ''}
+        nutrition={picked?.panel ?? null}
+        onClose={() => setFactsOpen(false)}
+        onSave={handleSaveFacts}
       />
       {overlays}
       <NumberPadAccessory />
@@ -2126,6 +2385,7 @@ function makeStyles(colors: Colors) {
     hint: { color: colors.textSecondary, fontSize: font.xs, lineHeight: 16, marginTop: spacing.xs },
     error: { color: colors.redText, fontSize: font.sm, lineHeight: 18, marginTop: spacing.sm },
     preview: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold, marginTop: spacing.sm },
+    limitImpacts: { marginTop: spacing.xs },
     // Wraps rather than truncating: the first pill carries the food's own name,
     // which can be a database description several words long.
     fileRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
@@ -2175,7 +2435,7 @@ function makeStyles(colors: Colors) {
     declineMealText: { color: colors.textSecondary, fontSize: font.sm },
     searchRow: {
       flexDirection: 'row',
-      alignItems: 'center',
+      alignItems: 'flex-start',
       gap: spacing.sm,
       marginHorizontal: spacing.md,
       marginTop: spacing.md,
@@ -2185,8 +2445,35 @@ function makeStyles(colors: Colors) {
       backgroundColor: colors.bgSecondary,
       borderRadius: radius.md,
     },
-    searchInput: { flex: 1, color: colors.text, fontSize: font.md, padding: 0 },
+    // Two lines tall at rest, growing to about five. Min/max heights rather than
+    // a fixed one so a larger system text size still fits its lines.
+    searchInput: {
+      flex: 1,
+      color: colors.text,
+      fontSize: font.md,
+      padding: 0,
+      minHeight: 52,
+      maxHeight: 130,
+      textAlignVertical: 'top',
+      paddingTop: spacing.xsm,
+    },
     // The "Log several" switch, a bar across the foot of the search half.
+    estimateLogBar: {
+      paddingHorizontal: spacing.md,
+      paddingTop: spacing.smd,
+      paddingBottom: spacing.smd,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.separator,
+      backgroundColor: colors.bgSecondary,
+    },
+    estimateLogButton: {
+      backgroundColor: colors.accentFill,
+      borderRadius: radius.md,
+      paddingVertical: spacing.md,
+      alignItems: 'center',
+    },
+    estimateLogOff: { opacity: interaction.activeOpacity * 0.6 },
+    estimateLogText: { color: colors.onAccent, fontSize: font.md, fontWeight: fontWeight.semibold },
     burstFooter: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -2289,6 +2576,7 @@ function makeStyles(colors: Colors) {
     helpingRow: { paddingHorizontal: 0, paddingVertical: 0, gap: 0, alignItems: 'stretch' },
     helpingBody: { flex: 1, justifyContent: 'center', paddingLeft: spacing.md, paddingVertical: spacing.md },
     helpingAdd: { justifyContent: 'center', paddingHorizontal: spacing.md },
+    quickBody: { flexDirection: 'row', alignItems: 'center' },
     helpingsLabel: { marginBottom: spacing.sm },
     listLabel: { marginTop: spacing.md, marginBottom: spacing.sm },
   });

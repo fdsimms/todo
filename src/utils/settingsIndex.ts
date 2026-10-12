@@ -37,6 +37,7 @@
 
 import { AI_FEATURES, type AiFeatureId } from './aiFeatures';
 import { GENERATED_KIND_LIST, type GeneratedKind } from './generatedTasks';
+import { hasTaskSettingsSheet } from './generatedTaskSettings';
 
 export type SettingsGroupId =
   | 'featureAreas'
@@ -44,7 +45,9 @@ export type SettingsGroupId =
   | 'dayTime'
   | 'notifications'
   | 'capture'
+  | 'calendar'
   | 'tasksProjects'
+  | 'focus'
   | 'generated'
   | 'health'
   | 'kitchen'
@@ -105,11 +108,18 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
   { id: 'appearance', title: 'Appearance', icon: 'color-palette-outline', tint: 'accent' },
   { id: 'dayTime', title: 'Day & time', icon: 'sunny-outline', tint: 'orange' },
   { id: 'notifications', title: 'Notifications', icon: 'notifications-outline', tint: 'red' },
-  // Both EventKit integrations live here rather than in two groups: they share
-  // a framework, a platform gate and the same caveat (no change notification,
-  // so both refresh on foreground).
-  { id: 'capture', title: 'Reminders & Calendar', icon: 'download-outline', tint: 'green', iosOnly: true },
+  // The two EventKit integrations were one group of 31 settings, with seven
+  // sections between them. They are two subjects (what comes in from Reminders
+  // and Siri, and what is read from and written to the calendar), and they
+  // still share a framework, a platform gate and the same caveat (no change
+  // notification, so both refresh on foreground), so they sit side by side.
+  // The id stays `capture`: it is what a saved route or link already names.
+  { id: 'capture', title: 'Reminders & Siri', icon: 'download-outline', tint: 'green', iosOnly: true },
+  { id: 'calendar', title: 'Calendar', icon: 'calendar-outline', tint: 'orange', iosOnly: true },
   { id: 'tasksProjects', title: 'Tasks & projects', icon: 'checkbox-outline', tint: 'purple' },
+  // Focus sessions, app blocking and the timers' Lock Screen activity: 17 rows
+  // that were the biggest section of Tasks & projects.
+  { id: 'focus', title: 'Focus & app blocking', icon: 'timer-outline', tint: 'accent' },
   // Its own group rather than one section of fourteen inside Tasks & projects,
   // which is where half that screen's rows were. It answers the question people
   // actually have about these (*what writes tasks into my list*), and it grows
@@ -151,6 +161,15 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
 export interface SettingsEntry {
   id: string;
   groupId: SettingsGroupId;
+  /**
+   * The screen this setting lives on instead of a row in Settings: a sheet only
+   * its own screen can open (grocery aisles, a project's categories). It is
+   * indexed so a search finds it, and opening it goes to that screen, with
+   * `section` naming the way in. It has no row to wire, so
+   * `settingsEntryWiring.test.ts` skips it, and it is never listed by a
+   * screen's gear (`SCREEN_SETTINGS`), which jumps to a row.
+   */
+  screen?: string;
   /**
    * The row's label as rendered. Where a label is computed at runtime (the app
    * lock names whatever the device authenticates with) this is the common case
@@ -339,6 +358,8 @@ const GENERATED_KEYWORDS: Record<GeneratedKind, string[]> = {
     'generated', 'automatic'],
   snackNudge: ['eat', 'calories', 'kcal', 'hungry', 'afternoon', 'target', 'food log',
     'generated', 'automatic'],
+  limitWarning: ["don't do", 'avoid', 'slip', 'streak', 'saturated fat', 'sugar', 'cholesterol',
+    'sodium', 'food log', 'generated', 'automatic'],
   bookEvent: ['appointment', 'checkup', 'doctor', 'dentist', 'optometrist', 'remind', 'yearly',
     'generated', 'automatic'],
   journalLog: ['diary', 'write', 'writing', 'reflect', 'entry', 'track', 'generated', 'automatic'],
@@ -385,22 +406,13 @@ const GENERATED_ENTRIES: SettingsEntry[] = GENERATED_KIND_LIST.flatMap(spec => {
       section: 'Automations',
       keywords: GENERATED_KEYWORDS[spec.kind],
     },
-    {
+    // Its category and defaults live in the Task settings sheet.
+    ...(hasTaskSettingsSheet(spec.kind) ? [{
       ...shared,
-      id: `gen:${spec.kind}:defaults`,
-      label: 'Task defaults',
+      id: `gen:${spec.kind}:taskSettings`,
+      label: 'Task settings',
       section: spec.label,
-      keywords: ['priority', 'difficulty', 'estimate', 'time', 'backfill'],
-      requires: `gen:${spec.kind}`,
-    },
-    ...(spec.categorized ? [{
-      ...shared,
-      id: `gen:${spec.kind}:category`,
-      label: 'File them under',
-      section: spec.label,
-      keywords: ['category', 'where', 'section'],
-      // Rendered only under a generator that's switched on, the same way the
-      // screen renders it — see SettingsEntry.requires.
+      keywords: ['priority', 'difficulty', 'estimate', 'category', 'file them under', 'tags', 'time of day', 'ask on completion', 'backfill'],
       requires: `gen:${spec.kind}`,
     }] : []),
   ];
@@ -432,8 +444,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['tutorial', 'onboarding', 'learn', 'discover', 'banner', 'suggestion', 'help'] },
 
   // Day & time
-  { id: 'dayReset', groupId: 'dayTime', label: 'Morning', section: 'When the day turns over',
-    keywords: ['day start', 'day reset', 'today', 'streaks', 'midnight'] },
+  { id: 'dayReset', groupId: 'dayTime', label: 'Day starts', section: 'When the day turns over',
+    keywords: ['morning', 'day reset', 'rollover', 'today', 'streaks', 'midnight'] },
   { id: 'afternoon', groupId: 'dayTime', label: 'Afternoon starts', section: 'When the day turns over' },
   { id: 'evening', groupId: 'dayTime', label: 'Evening starts', section: 'When the day turns over' },
   { id: 'night', groupId: 'dayTime', label: 'Night starts', section: 'When the day turns over' },
@@ -441,6 +453,12 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['daily target', 'pace', 'active hours'] },
   { id: 'activeEnd', groupId: 'dayTime', label: 'Awake until', section: 'Awake hours',
     keywords: ['active hours'] },
+  { id: 'sunLocation', groupId: 'dayTime', label: 'Location for sun times', section: 'Sunrise and sunset',
+    keywords: ['sunrise', 'sunset', 'dark', 'daylight', 'dusk', 'dawn', 'time window', 'coordinates', 'where'] },
+  { id: 'holidaySet', groupId: 'dayTime', label: 'Public holidays', section: 'Holidays',
+    keywords: ['federal', 'thanksgiving', 'christmas', 'skip', 'repeat', 'day off'] },
+  { id: 'customHolidays', groupId: 'dayTime', label: 'Your own days off', section: 'Holidays',
+    keywords: ['company', 'vacation day', 'pto', 'skip', 'repeat'] },
   { id: 'use24HourTime', groupId: 'dayTime', label: '24-hour time', section: 'How times read',
     keywords: ['clock', 'am', 'pm', 'format'] },
   { id: 'weekStartsOn', groupId: 'dayTime', label: 'Week starts on', section: 'How times read',
@@ -514,42 +532,42 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // Calendar (iOS). "Google" earns a keyword on every row: it's what people
   // will search for, and it appears in none of the labels — the app reads
   // EventKit calendars and never asks which service is behind one.
-  { id: 'calendarRead', groupId: 'capture', label: 'Read my calendar', section: 'Calendar',
+  { id: 'calendarRead', groupId: 'calendar', label: 'Read my calendar', section: 'Calendar',
     keywords: ['google', 'gcal', 'ical', 'icloud', 'outlook', 'events', 'meetings', 'busy', 'schedule'] },
-  { id: 'calendarPermission', groupId: 'capture', label: 'Calendar access', section: 'Calendar',
+  { id: 'calendarPermission', groupId: 'calendar', label: 'Calendar access', section: 'Calendar',
     keywords: ['permission', 'allow', 'google'] },
-  { id: 'calendarList', groupId: 'capture', label: 'Calendars', section: 'Calendar',
+  { id: 'calendarList', groupId: 'calendar', label: 'Calendars', section: 'Calendar',
     keywords: ['which calendar', 'google', 'work', 'shared', 'subscribed'] },
-  { id: 'calendarToday', requires: 'calendarRead', groupId: 'capture', label: 'Today', section: 'Calendar',
+  { id: 'calendarToday', requires: 'calendarRead', groupId: 'calendar', label: 'Today', section: 'Calendar',
     keywords: ['events', 'booked', 'busy', 'free', 'google'] },
-  { id: 'calendarSyncNow', requires: 'calendarRead', groupId: 'capture', label: 'Sync now', section: 'Calendar',
+  { id: 'calendarSyncNow', requires: 'calendarRead', groupId: 'calendar', label: 'Sync now', section: 'Calendar',
     keywords: ['refresh', 'force', 'manual', 'reload', 'events', 'stale'] },
-  { id: 'calendarVacationHidden', groupId: 'capture', label: 'Hide during vacation', section: 'Calendar',
+  { id: 'calendarVacationHidden', groupId: 'calendar', label: 'Hide during vacation', section: 'Calendar',
     keywords: ['away', 'exclude', 'work calendar', 'trip'] },
-  { id: 'calendarEventsOnToday', requires: 'calendarRead', groupId: 'capture', label: 'Show events on Today', section: 'Calendar',
+  { id: 'calendarEventsOnToday', requires: 'calendarRead', groupId: 'calendar', label: 'Show events on Today', section: 'Calendar',
     keywords: ['hide events', 'rows', 'list', 'feed', 'off', 'agenda'] },
-  { id: 'calendarEventCategory', requires: 'calendarRead', groupId: 'capture', label: 'Show events under', section: 'Calendar',
+  { id: 'calendarEventCategory', requires: 'calendarRead', groupId: 'calendar', label: 'Show events under', section: 'Calendar',
     keywords: ['category', 'section', 'file', 'where'] },
-  { id: 'reminderMeetingNudge', requires: 'calendarRead', groupId: 'capture', label: 'Move reminders out of meetings', section: 'Calendar',
+  { id: 'reminderMeetingNudge', requires: 'calendarRead', groupId: 'calendar', label: 'Move reminders out of meetings', section: 'Calendar',
     keywords: ['notification', 'event', 'busy', 'nudge', 'delay', 'push back'] },
-  { id: 'mapsApp', groupId: 'capture', label: 'Directions', section: 'Calendar',
+  { id: 'mapsApp', groupId: 'calendar', label: 'Directions', section: 'Adding events and directions',
     keywords: ['maps', 'apple maps', 'google maps', 'waze', 'navigation', 'navigate', 'location', 'address', 'route'] },
-  { id: 'placeSuggestions', groupId: 'capture', label: 'Suggest places', section: 'Calendar',
+  { id: 'placeSuggestions', groupId: 'calendar', label: 'Suggest places', section: 'Adding events and directions',
     keywords: ['location', 'address', 'apple maps', 'autocomplete', 'search', 'venue', 'restaurant'] },
-  { id: 'savedPlaces', groupId: 'capture', label: 'Saved places', section: 'Calendar',
+  { id: 'savedPlaces', groupId: 'calendar', label: 'Saved places', section: 'Adding events and directions',
     keywords: ['home', 'work', 'location', 'address', 'event', 'name', 'bookmark', 'favorite'] },
-  { id: 'savedEvents', groupId: 'capture', label: 'Saved events', section: 'Calendar',
+  { id: 'savedEvents', groupId: 'calendar', label: 'Saved events', section: 'Adding events and directions',
     keywords: ['appointment', 'regular', 'repeat', 'bookmark', 'favorite', 'book', 'checkup', 'reminder'] },
-  { id: 'calendarPeopleHistory', requires: 'calendarRead', groupId: 'capture', label: 'Match events to people', section: 'Calendar',
+  { id: 'calendarPeopleHistory', requires: 'calendarRead', groupId: 'calendar', label: 'Match events to people', section: 'Calendar',
     keywords: ['friends', 'family', 'history', 'together', 'name', 'title', 'suggest', 'past'] },
-  { id: 'deadlineCalendar', groupId: 'capture', label: 'Write deadlines to', section: 'Deadlines on your calendar',
+  { id: 'deadlineCalendar', groupId: 'calendar', label: 'Write deadlines to', section: 'Deadlines on your calendar',
     keywords: ['all-day', 'event', 'export', 'google', 'sync'] },
-  { id: 'completionCalendar', groupId: 'capture', label: 'Write completions to', section: 'Completions on your calendar',
+  { id: 'completionCalendar', groupId: 'calendar', label: 'Write completions to', section: 'Completions on your calendar',
     keywords: ['event', 'export', 'google', 'sync', 'log', 'history', 'record'] },
-  { id: 'mealCalendar', groupId: 'capture', label: 'Write meals to', section: 'Meals on your calendar',
+  { id: 'mealCalendar', groupId: 'calendar', label: 'Write meals to', section: 'Meals on your calendar',
     keywords: ['all-day', 'event', 'export', 'google', 'sync', 'meal plan', 'dinner', 'share', 'household', 'family'],
     kitchen: true },
-  { id: 'claudeCalendar', groupId: 'capture', label: 'Add Claude’s events to', section: 'Claude’s events on your calendar',
+  { id: 'claudeCalendar', groupId: 'calendar', label: 'Add Claude’s events to', section: 'Claude’s events on your calendar',
     keywords: ['mcp', 'agent', 'ai', 'assistant', 'appointment', 'sync server', 'calendar'] },
 
   { id: 'healthRead', groupId: 'health', label: 'Read Apple Health', section: 'Apple Health',
@@ -558,8 +576,12 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['permission', 'allow', 'authorize', 'grant'] },
   { id: 'healthToday', requires: 'healthRead', groupId: 'health', label: 'Steps today', section: 'Apple Health',
     keywords: ['count', 'reading', 'walked'] },
+  { id: 'stepGoal', requires: 'healthRead', groupId: 'health', label: 'Daily step goal', section: 'Apple Health',
+    keywords: ['steps', 'target', 'walking', 'progress', 'bar'] },
   { id: 'healthCategory', requires: 'healthRead', groupId: 'health', label: 'Show Health readings under', section: 'Apple Health',
     keywords: ['category', 'section', 'today', 'where', 'hide', 'nowhere', 'steps', 'rings', 'calories', 'activity'] },
+  { id: 'healthTodayRows', requires: 'healthRead', groupId: 'health', label: 'Readings shown', section: 'Apple Health',
+    keywords: ['hide', 'choose', 'active calories', 'activity'] },
   { id: 'healthWrite', groupId: 'health', label: 'Log to Health', section: 'Log to Health',
     keywords: ['hydration', 'drink', 'water', 'weight', 'write', 'healthkit', 'food', 'meal', 'nutrition'] },
   { id: 'healthWriteAccess', requires: 'healthWrite', groupId: 'health', label: 'Water-write access', section: 'Log to Health',
@@ -575,6 +597,10 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['kg', 'kilograms', 'lb', 'pounds', 'scale', 'body', 'mass', 'metric', 'imperial'] },
   { id: 'sleepGoal', groupId: 'health', label: 'Sleep goal', section: 'Sleep',
     keywords: ['hours', 'asleep', 'bedtime', 'night', 'rest', 'target'] },
+  { id: 'journalWordGoal', groupId: 'health', label: 'Word goal', section: 'Journal',
+    keywords: ['journal', 'diary', 'writing', 'words', 'word count', 'target', 'daily', 'length'] },
+  { id: 'journalPrompts', groupId: 'health', label: 'Your prompts', section: 'Journal',
+    keywords: ['journal', 'diary', 'writing', 'question', 'suggest', 'custom', 'idea'] },
 
   // App permissions — one row per system permission the app ever asks for,
   // read-only status plus a link to fix it. Health, Calendar and Notifications
@@ -620,7 +646,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['default', 'new task', 'easy', 'hard', 'coins', 'rewards'] },
   { id: 'newTaskTimeOfDay', groupId: 'tasksProjects', label: 'Time of day', section: 'New tasks',
     keywords: ['default', 'new task', 'morning', 'afternoon', 'evening', 'night', 'segment'] },
-  { id: 'newTaskDestination', groupId: 'tasksProjects', label: 'Where quick-add lands', section: 'New tasks',
+  { id: 'newTaskDestination', groupId: 'tasksProjects', label: 'Where quick add lands', section: 'New tasks',
     keywords: ['default', 'new task', 'inbox', 'today', 'unscheduled', 'goes', 'files'] },
   { id: 'openEditorAfterQuickAdd', groupId: 'tasksProjects', label: 'Open editor after quick add', section: 'New tasks',
     keywords: ['new task', 'sheet', 'stay', 'straight to', 'full form'] },
@@ -631,7 +657,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['keyword', 'expense', 'automatic', 'auto file', 'category', 'project', 'tag',
       'starts with', 'parse', 'shortcut', 'prefix', 'why did this', 'link', 'url', 'app'] },
   // Sits under the generator's own section, beside gen:weather and
-  // gen:weather:category (see GENERATED_ENTRIES) — this is the row that opens
+  // gen:weather:taskSettings (see GENERATED_ENTRIES) — this is the row that opens
   // the rule editor those two can't.
   { id: 'weatherRules', requires: 'gen:weather', groupId: 'generated', label: 'Rules', section: 'Weather-based tasks',
     keywords: ['sunny', 'rainy', 'snowy', 'cold', 'hot', 'sunscreen', 'umbrella', 'coat',
@@ -684,50 +710,61 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // thing, and it appears nowhere in the UI copy (which says what each setting
   // does in literal terms instead), so without it the whole section is
   // unfindable by the only word someone is likely to type.
-  { id: 'focusWorkCapMinutes', groupId: 'tasksProjects', label: 'Work stretch length', section: 'Focus sessions', simple: true,
+  { id: 'focusWorkCapMinutes', groupId: 'focus', label: 'Work stretch length', section: 'Focus sessions', simple: true,
     keywords: ['pomodoro', 'focus', 'timer', 'deep work', 'block', 'session', 'cap'] },
-  { id: 'focusDefaultWorkMinutes', groupId: 'tasksProjects', label: 'Length without an estimate', section: 'Focus sessions', simple: true,
+  { id: 'focusDefaultWorkMinutes', groupId: 'focus', label: 'Length without an estimate', section: 'Focus sessions', simple: true,
     keywords: ['pomodoro', 'focus', 'unestimated', 'default', 'fallback'] },
-  { id: 'focusBreaksEnabled', groupId: 'tasksProjects', label: 'Breaks in focus sessions', section: 'Focus sessions', simple: true,
+  { id: 'focusBreaksEnabled', groupId: 'focus', label: 'Breaks in focus sessions', section: 'Focus sessions', simple: true,
     keywords: ['pomodoro', 'rest', 'no breaks', 'skip breaks', 'default'] },
-  { id: 'focusRestAfterMinutes', groupId: 'tasksProjects', label: 'Break after this much work', section: 'Focus sessions', simple: true,
+  { id: 'focusRestAfterMinutes', groupId: 'focus', label: 'Break after this much work', section: 'Focus sessions', simple: true,
     keywords: ['pomodoro', 'focus', 'rest', 'interval', 'how often'] },
-  { id: 'focusRestAfterTasks', groupId: 'tasksProjects', label: 'Break after this many tasks', section: 'Focus sessions', simple: true,
+  { id: 'focusRestAfterTasks', groupId: 'focus', label: 'Break after this many tasks', section: 'Focus sessions', simple: true,
     keywords: ['pomodoro', 'focus', 'rest', 'how many'] },
-  { id: 'focusRestMinutes', groupId: 'tasksProjects', label: 'Break length', section: 'Focus sessions', simple: true,
+  { id: 'focusRestMinutes', groupId: 'focus', label: 'Break length', section: 'Focus sessions', simple: true,
     keywords: ['pomodoro', 'focus', 'rest', 'short break'] },
-  { id: 'focusLongRestEvery', groupId: 'tasksProjects', label: 'Long break every', section: 'Focus sessions', simple: true,
+  { id: 'focusLongRestEvery', groupId: 'focus', label: 'Long break every', section: 'Focus sessions', simple: true,
     keywords: ['pomodoro', 'focus', 'rest', 'how often'] },
-  { id: 'focusLongRestMinutes', requires: 'focusLongRestEvery', groupId: 'tasksProjects', label: 'Long break length', section: 'Focus sessions', simple: true,
+  { id: 'focusLongRestMinutes', requires: 'focusLongRestEvery', groupId: 'focus', label: 'Long break length', section: 'Focus sessions', simple: true,
     keywords: ['pomodoro', 'focus', 'rest'] },
-  { id: 'focusHideTimers', groupId: 'tasksProjects', label: 'Hide timers while focusing', section: 'Focus sessions', simple: true,
+  { id: 'focusHideTimers', groupId: 'focus', label: 'Hide timers while focusing', section: 'Focus sessions', simple: true,
     keywords: ['pomodoro', 'session', 'countdown', 'clock'] },
-  { id: 'focusLiveActivity', iosOnly: true, groupId: 'tasksProjects', label: 'Live Activity while focusing', section: 'Focus sessions', simple: true,
+  { id: 'focusLiveActivity', iosOnly: true, groupId: 'focus', label: 'Live Activity while focusing', section: 'Focus sessions', simple: true,
     keywords: ['pomodoro', 'session', 'lock screen', 'dynamic island', 'widget'] },
   // "Screen time" is the name most people have for this and appears nowhere in
   // the copy, same argument as "pomodoro" on the rows above. So are "block"
   // and "distraction", which is what somebody is actually looking for.
-  { id: 'focusShield', iosOnly: true, groupId: 'tasksProjects', label: 'Block apps while focusing', section: 'Focus sessions', simple: true,
+  { id: 'focusShield', iosOnly: true, groupId: 'focus', label: 'Block apps while focusing', section: 'Focus sessions', simple: true,
     keywords: ['screen time', 'pomodoro', 'distraction', 'shield', 'social media', 'restrict'] },
-  { id: 'focusShieldApps', iosOnly: true, requires: 'focusShield', groupId: 'tasksProjects', label: 'Apps to block', section: 'Focus sessions', simple: true,
+  { id: 'focusShieldApps', iosOnly: true, requires: 'focusShield', groupId: 'focus', label: 'Apps to block', section: 'Focus sessions', simple: true,
     keywords: ['screen time', 'distraction', 'which apps', 'picker', 'choose'] },
-  { id: 'gateShield', iosOnly: true, groupId: 'tasksProjects', label: 'Block apps until a task is done', section: 'Focus sessions', simple: true,
+  { id: 'gateShield', iosOnly: true, groupId: 'focus', label: 'Block apps until a task is done', section: 'Focus sessions', simple: true,
     keywords: ['screen time', 'gate', 'first', 'before', 'unlock', 'precondition', 'accountability', 'restrict', 'morning'] },
-  { id: 'penaltyShield', iosOnly: true, groupId: 'tasksProjects', label: 'Block apps when you fail a task', section: 'Focus sessions', simple: true,
+  { id: 'penaltyShield', iosOnly: true, groupId: 'focus', label: 'Block apps when you fail a task', section: 'Focus sessions', simple: true,
     keywords: ['screen time', 'penalty', 'punish', 'consequence', 'miss', 'missed', 'slip', 'deadline', 'cutoff', 'accountability', 'restrict'] },
-  { id: 'penaltyShieldApps', iosOnly: true, requires: 'penaltyShield', groupId: 'tasksProjects', label: 'Apps to block', section: 'Focus sessions', simple: true,
+  { id: 'penaltyShieldApps', iosOnly: true, requires: 'penaltyShield', groupId: 'focus', label: 'Apps to block', section: 'Focus sessions', simple: true,
     keywords: ['screen time', 'penalty', 'which apps', 'picker', 'choose'] },
-  { id: 'penaltyShieldActive', iosOnly: true, requires: 'penaltyShield', groupId: 'tasksProjects', label: 'Blocked until', section: 'Focus sessions', simple: true,
+  { id: 'penaltyShieldActive', iosOnly: true, requires: 'penaltyShield', groupId: 'focus', label: 'Blocked until', section: 'Focus sessions', simple: true,
     keywords: ['screen time', 'penalty', 'locked out', 'how long', 'end early', 'unblock'] },
-  { id: 'timerLiveActivity', iosOnly: true, groupId: 'tasksProjects', label: 'Live Activity while timing', section: 'Timers',
+  { id: 'timerLiveActivity', iosOnly: true, groupId: 'focus', label: 'Live Activity while timing', section: 'Timers',
     keywords: ['lock screen', 'dynamic island', 'timer', 'stopwatch', 'cooking', 'recipe', 'countdown', 'completion timer', 'reminder'] },
   { id: 'autoRemoveExpired', groupId: 'tasksProjects', label: 'Auto-remove expired tasks', section: 'Time-limited tasks',
     keywords: ['window', 'delete'], simple: true },
-  { id: 'vacationMode', groupId: 'tasksProjects', label: 'Vacation mode', section: 'Vacation',
+  { id: 'vacationMode', groupId: 'dayTime', label: 'Vacation mode', section: 'Vacation',
     keywords: ['holiday', 'pause', 'away', 'streaks'], simple: true },
-  { id: 'vacationEnd', requires: 'vacationMode', groupId: 'tasksProjects', label: 'End date', section: 'Vacation',
+  { id: 'vacationEnd', requires: 'vacationMode', groupId: 'dayTime', label: 'End date', section: 'Vacation',
     keywords: ['vacation end', 'return'], simple: true },
-  { id: 'destinationForecastEnabled', groupId: 'tasksProjects', label: 'Destination forecast',
+  // Settings that live only on their own screen, found here by search and
+  // opened by going to that screen (`SettingsEntry.screen`).
+  { id: 'groceryAislesStores', screen: 'Groceries', groupId: 'kitchen', label: 'Aisles, stores and sorting',
+    section: 'On the Groceries screen, in the settings button',
+    keywords: ['shop', 'supermarket', 'order', 'layout', 'walk', 'grouping'] },
+  { id: 'projectCategories', screen: 'Projects', groupId: 'tasksProjects', label: 'Project categories',
+    section: 'On the Projects screen, in the … menu',
+    keywords: ['rename', 'delete', 'reorder', 'sections', 'groups', 'folders'] },
+  { id: 'todayCategoryOrder', screen: 'Today', groupId: 'tasksProjects', label: 'Category order',
+    section: 'On the Today screen, in the … menu',
+    keywords: ['sections', 'reorder', 'move', 'headers', 'sort', 'arrange'] },
+  { id: 'destinationForecastEnabled', groupId: 'dayTime', label: 'Destination forecast',
     section: 'Trips',
     keywords: ['weather', 'trip', 'away', 'packing', 'travel', 'rain'] },
   // The master switch for the groceries/recipes/meal plan area. Unflagged, and
@@ -737,6 +774,15 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'kitchenEnabled', groupId: 'featureAreas', label: 'Groceries & meals', section: 'Feature areas',
     keywords: ['grocery', 'recipes', 'meal plan', 'shopping', 'food', 'cooking',
       'hide', 'remove', 'disable', 'turn off', 'menu', 'drawer', 'tab bar'] },
+  // The first-launch questions again. Unflagged like its neighbours: it is the
+  // way back to two of the switches around it.
+  { id: 'firstRunSetup', groupId: 'featureAreas', label: 'Run setup again', section: 'Feature areas',
+    keywords: ['onboarding', 'welcome', 'first run', 'first launch', 'questions', 'wizard', 'start over', 'getting started'] },
+  // Coins and rewards. Unflagged for the same reason as the two around it: the
+  // switch that brings the feature back can't be hidden by the feature.
+  { id: 'rewardsEnabled', groupId: 'featureAreas', label: 'Coins and rewards', section: 'Feature areas',
+    keywords: ['bounty', 'bounties', 'points', 'gamify', 'earn', 'spend', 'prize',
+      'hide', 'remove', 'disable', 'turn off', 'difficulty'] },
   // The other master switch, and unflagged for the same reason. Keyworded for
   // the features it removes as well as for what it is: someone who wants
   // chains or the focus timer gone will search for those, not for "simplified".
@@ -772,6 +818,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['days before', 'lead', 'ahead', 'warning', 'shop', 'meal'], kitchen: true },
   { id: 'birthdayLeadDays', requires: 'gen:birthday', groupId: 'generated', label: 'Show the task', section: 'Birthday reminders',
     keywords: ['birthday', 'days before', 'lead', 'early', 'notice', 'warning'] },
+  { id: 'moodNudgeAfterDays', requires: 'gen:moodNudge', groupId: 'generated', label: 'Low days before the task', section: 'Nudge after low days',
+    keywords: ['mood', 'run', 'streak', 'how many days', 'threshold', 'sensitivity', 'fewer', 'less often'] },
   { id: 'weekendNudgeLeadDays', requires: 'gen:weekendNudge', groupId: 'generated', label: 'Show the task', section: 'Nudge for an empty weekend',
     keywords: ['weekend', 'thursday', 'friday', 'days before', 'lead', 'early', 'notice', 'warning'] },
   { id: 'weekendNudgePlanThreshold', requires: 'gen:weekendNudge', groupId: 'generated', label: 'How much counts as open', section: 'Nudge for an empty weekend',
@@ -790,7 +838,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['meal plan', 'away', 'trip', 'pause'], kitchen: true },
   { id: 'mealPlanNudgeSlots', requires: 'gen:mealPlanNudge', groupId: 'generated', label: 'Meals to plan for', section: 'Plan meals for the week',
     keywords: ['meal plan', 'breakfast', 'lunch', 'dinner', 'snack', 'which meals', 'only dinner'], kitchen: true },
-  { id: 'calendarReviewTimeSegment', requires: 'gen:calendarReview', groupId: 'generated', label: 'Show the task', section: 'Review tomorrow\'s calendar',
+  { id: 'calendarReviewTimeSegment', requires: 'gen:calendarReview', groupId: 'generated', label: 'Show the task', section: 'Review tomorrow’s calendar',
     keywords: ['morning', 'afternoon', 'evening', 'night', 'time of day', 'hold back', 'when'] },
   { id: 'moodLogTimeSegments', requires: 'gen:moodLog', groupId: 'generated', label: 'Show the task', section: 'Daily mood check-in',
     keywords: ['morning', 'afternoon', 'evening', 'night', 'time of day', 'hold back', 'when',
@@ -802,6 +850,21 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // either one's extras — and so its section can't be one generator's name.
   { id: 'useUpTaskCap', requires: ['gen:groceryUseUp', 'gen:leftoverUseUp'], groupId: 'generated', label: 'Limit use-up tasks', section: 'Automations',
     keywords: ['cap', 'how many', 'most', 'too many', 'flood', 'expiry', 'leftovers'], kitchen: true },
+
+  // The Today rows for Stay under limits sit below the generator loop and are
+  // not generators, so they have no `gen:` entry of their own.
+  { id: 'limitsToday', groupId: 'generated', label: 'Stay under limits on Today', section: 'Automations',
+    keywords: ['sat fat', 'sugar', 'sodium', 'nutrition', 'food log', 'health', 'budget', 'left'], kitchen: true },
+  { id: 'limitsTodayCategory', groupId: 'generated', label: 'Show them under', section: 'Stay under limits on Today',
+    keywords: ['category', 'where', 'section', 'limit', 'health'], kitchen: true },
+  { id: 'goalsToday', groupId: 'generated', label: 'Nutrient goals on Today', section: 'Automations',
+    keywords: ['protein', 'fiber', 'calories', 'target', 'food log', 'nutrition', 'reach', 'left'], kitchen: true },
+  { id: 'goalsTodayCategory', groupId: 'generated', label: 'Show goals under', section: 'Nutrient goals on Today',
+    keywords: ['category', 'where', 'section', 'health'], kitchen: true },
+  { id: 'goalsTodayNutrients', groupId: 'generated', label: 'Goals shown', section: 'Nutrient goals on Today',
+    keywords: ['choose', 'hide', 'protein', 'fiber', 'calories', 'nutrient'], kitchen: true },
+  { id: 'limitsTodayNutrients', groupId: 'generated', label: 'Nutrients shown', section: 'Stay under limits on Today',
+    keywords: ['choose', 'hide', 'sat fat', 'sodium', 'sugar', 'caffeine', 'cholesterol', 'limit'], kitchen: true },
 
   // `kitchen`-gated to match the row itself, which is hidden with the
   // groceries area: the only feature routed on-device today lives there, so a
@@ -822,6 +885,11 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['claude', 'model', 'on device', 'grocery', 'offline', 'foundation models',
       'apple intelligence'] },
 
+  { id: 'ai:nutritionEstimate:webSearch', groupId: 'privacyAi', label: 'Search the web for brand figures',
+    section: 'Meal estimates', kitchen: true, simple: true, requires: 'ai:nutritionEstimate',
+    keywords: ['claude', 'web search', 'internet', 'chain', 'restaurant', 'menu', 'nutrition', 'calories',
+      'published', 'network', 'privacy'] },
+
   { id: 'productLookupEnabled', groupId: 'privacyAi', label: 'Look up food databases', section: 'Barcode lookups',
     keywords: ['upc', 'ean', 'gtin', 'open food facts', 'pantry', 'unpack', 'network', 'privacy',
       'nutrition', 'calories', 'usda', 'food data central', 'search food'],
@@ -840,7 +908,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // No `kitchen` flags below: the group itself is `kitchenOnly`, so the group
   // gate drops every one of these and flagging them again would be a second
   // copy of one answer. `simple` still applies — that's a different switch.
-  { id: 'mealsOnToday', groupId: 'kitchen', label: 'Show the day\'s meals', section: 'Meals on Today',
+  { id: 'mealsOnToday', groupId: 'kitchen', label: 'Show the day’s meals', section: 'Meals on Today',
     keywords: ['meal plan', 'dinner', 'menu', 'today', 'hide meals', 'leftovers', 'takeaway'] },
   { id: 'cookRecapEnabled', groupId: 'kitchen', label: 'Ask after cooking', section: 'Meals on Today',
     keywords: ['rate', 'rating', 'review', 'leftovers', 'used up', 'out of', 'sheet', 'prompt', 'cooked'] },
@@ -849,7 +917,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'mealLogPrompt', groupId: 'kitchen', label: 'Ask what you ate', section: 'Meals on Today',
     keywords: ['food log', 'calories', 'nutrition', 'diary', 'eaten', 'leftovers', 'prompt'] },
   { id: 'nutritionTargets', groupId: 'kitchen', label: 'Daily targets', section: 'Meals on Today',
-    keywords: ['calories', 'protein', 'goal', 'nutrition', 'food log', 'macros', 'aim'] },
+    keywords: ['calories', 'protein', 'goal', 'nutrition', 'food log', 'macros', 'aim',
+      'limit', 'stay under', 'saturated fat', 'sugar', 'added sugar', 'cholesterol', 'trans fat'] },
   // Simplified mode takes scaling away, and this row with it unless one is set.
   { id: 'householdServings', groupId: 'kitchen', label: 'Usually cooking for', section: 'Meal plan',
     keywords: ['household', 'family', 'people', 'servings', 'serves', 'portions', 'scale', 'batch',
@@ -878,6 +947,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['touch id', 'biometric', 'lock', 'passcode', 'privacy', 'security'] },
   { id: 'appLockGrace', requires: 'appLock', groupId: 'privacyAi', label: 'Lock again after', section: 'App lock',
     keywords: ['grace', 'timeout'] },
+  { id: 'journalLock', groupId: 'privacyAi', label: 'Require Face ID for the journal', section: 'App lock',
+    keywords: ['touch id', 'biometric', 'lock', 'passcode', 'privacy', 'dreams', 'diary', 'security'] },
   { id: 'apiKey', groupId: 'privacyAi', label: 'Anthropic API key', section: 'AI suggestions',
     keywords: ['ai', 'claude', 'suggestions'] },
   ...AI_FEATURE_ENTRIES,
@@ -912,10 +983,14 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
 
   // About
   { id: 'version', groupId: 'about', label: 'Version', section: 'About', keywords: ['build'] },
-  { id: 'patchNotes', groupId: 'about', label: "What's New", section: 'About',
+  { id: 'patchNotes', groupId: 'about', label: "What’s New", section: 'About',
     keywords: ['changelog', 'patch notes', 'updates', 'release'] },
   { id: 'tabDiagnostics', groupId: 'about', label: 'Show tab diagnostics', section: 'About',
     keywords: ['debug', 'blank screen'] },
+  { id: 'perfLog', groupId: 'about', label: 'Copy performance log', section: 'About',
+    keywords: ['debug', 'speed', 'slow', 'launch time', 'startup', 'diagnostics', 'hangs', 'memory', 'metrickit'] },
+  { id: 'flagCopy', groupId: 'about', label: 'Flag copy', section: 'About',
+    keywords: ['debug', 'text', 'wording', 'rewrite'] },
 ];
 
 /**
@@ -925,10 +1000,25 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
  * `visibleSettingsEntries`: a caller that doesn't care (a test, a platform
  * check) gets the whole list, the way it did before the setting existed.
  */
-export function visibleSettingsGroups(platformOS: string, kitchenEnabled = true): SettingsGroup[] {
+export function visibleSettingsGroups(
+  platformOS: string,
+  kitchenEnabled = true,
+  /**
+   * Simplified mode drops a group whose every row it hides. Omitted means the
+   * mode is off, so a caller with no store to read gets the whole list. Only
+   * the index list passes it: `visibleSettingsEntries` needs the groups the
+   * rows live in, and a hidden group's rows are already filtered by `simple`.
+   */
+  simpleMode = false,
+): SettingsGroup[] {
   return SETTINGS_GROUPS.filter(g =>
     (!g.iosOnly || platformOS === 'ios')
-    && (!g.kitchenOnly || kitchenEnabled));
+    && (!g.kitchenOnly || kitchenEnabled)
+    && (!simpleMode || g.screen || SETTINGS_ENTRIES.some(e =>
+      e.groupId === g.id
+      && !e.simple
+      && (kitchenEnabled || !e.kitchen)
+      && (!e.iosOnly || platformOS === 'ios'))));
 }
 
 /**
@@ -979,8 +1069,8 @@ export function settingsGroup(id: SettingsGroupId): SettingsGroup | undefined {
 export type IndexedSettingsGroup = SettingsGroup & { id: IndexedSettingsGroupId };
 export type IndexedSettingsGroupId = Exclude<SettingsGroupId, 'generated'>;
 
-export function settingsIndexGroups(platformOS: string, kitchenEnabled = true): IndexedSettingsGroup[] {
-  return visibleSettingsGroups(platformOS, kitchenEnabled)
+export function settingsIndexGroups(platformOS: string, kitchenEnabled = true, simpleMode = false): IndexedSettingsGroup[] {
+  return visibleSettingsGroups(platformOS, kitchenEnabled, simpleMode)
     .filter((g): g is IndexedSettingsGroup => !g.screen);
 }
 
@@ -1016,5 +1106,7 @@ export function settingsGroupTarget(groupId: SettingsGroupId, entryId?: string):
  */
 export function settingsEntryTarget(entryId: string): SettingsTarget | null {
   const entry = SETTINGS_ENTRIES.find(e => e.id === entryId);
-  return entry ? settingsGroupTarget(entry.groupId, entryId) : null;
+  if (!entry) return null;
+  if (entry.screen) return { kind: 'screen', route: entry.screen };
+  return settingsGroupTarget(entry.groupId, entryId);
 }

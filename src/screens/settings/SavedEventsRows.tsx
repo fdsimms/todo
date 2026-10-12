@@ -90,7 +90,7 @@ export function SavedEventsRows() {
         iconColor={events.length > 0 ? colors.accent : undefined}
         label="Saved events"
         hint={anyInterval && !bookEventTasks
-          ? 'Booking reminders are off. Turn on "Book saved events" in Automations to get them.'
+          ? 'Booking reminders are off. Turn on “Book saved events” in Automations to get them.'
           : 'Listed when you start a new event. Tapping one fills in everything but the day.'}
         value={events.length > 0 ? String(events.length) : undefined}
         expanded={open}

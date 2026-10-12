@@ -7,13 +7,16 @@ import Reanimated, {
   Easing,
   type SharedValue,
 } from 'react-native-reanimated';
-import { useColors } from '../theme/ThemeContext';
+import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, animation, type Colors } from '../theme';
 import { SpotlightScrim } from './SpotlightOverlay';
 import { AnimatedCollapsible } from './AnimatedCollapsible';
 
 /** Inner padding of the tray, and so the inset of everything inside it. */
 export const TRAY_PAD = spacing.sm;
+
+/** The tray's vertical margin, which is also how far a highlight around it sits from its row's edge. */
+export const TRAY_MARGIN_Y = spacing.xxs;
 
 /**
  * How far the card edges under a collapsed stack reach below its header (see
@@ -29,6 +32,18 @@ export const STACK_EDGE_DEPTH = spacing.smd;
  */
 const TrayFoldContext = createContext<SharedValue<number> | null>(null);
 
+/**
+ * Whether the enclosing tray is drawn raised (one step lighter than the page).
+ * Rows and the header read it to step up a shade, or they would vanish into a
+ * tray of their own colour.
+ */
+const TrayRaisedContext = createContext(false);
+
+/** True inside a raised tray: cards use `bgTertiary` where they'd use `bgSecondary`. */
+export function useTrayRaised(): boolean {
+  return useContext(TrayRaisedContext);
+}
+
 /** The tray's fold progress, or null outside a tray. */
 export function useTrayFold(): SharedValue<number> | null {
   return useContext(TrayFoldContext);
@@ -42,6 +57,14 @@ interface Props {
    * Omitted (a tray with no stack header, like Stuck's), it never folds.
    */
   collapsed?: boolean;
+  /**
+   * Draw the tray one step lighter than the page instead of recessed. In the
+   * dark themes `bgSunken` is darker than the page and reads as a black slab
+   * rather than a region. The cards inside then step up again (`bgTertiary`)
+   * to stay visible, which task rows and the header do through
+   * `useTrayRaised`. Defaults to on in the dark themes, off in Light.
+   */
+  raised?: boolean;
   children: React.ReactNode;
 }
 
@@ -77,8 +100,10 @@ interface Props {
  * hold them. Both run on AnimatedCollapsible's clock, so the deck forms as the
  * rows fold away under it.
  */
-export function TaskGroupTray({ collapsed = false, children }: Props) {
+export function TaskGroupTray({ collapsed = false, raised: raisedProp, children }: Props) {
   const colors = useColors();
+  const { isDark } = useTheme();
+  const raised = raisedProp ?? isDark;
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const fold = useSharedValue(collapsed ? 1 : 0);
 
@@ -93,6 +118,7 @@ export function TaskGroupTray({ collapsed = false, children }: Props) {
 
   return (
     <TrayFoldContext.Provider value={fold}>
+    <TrayRaisedContext.Provider value={raised}>
     <View style={styles.tray}>
       {/* Drawn *under* the children, so it dims only the tray surface they
           don't cover — its padding and the gaps between the cards. The header
@@ -108,7 +134,7 @@ export function TaskGroupTray({ collapsed = false, children }: Props) {
           carries the tray's colour and rounds the scrim's corners to match,
           and fades out with both when the stack folds, since the page under
           a folded stack is dimmed already. */}
-      <Reanimated.View style={[styles.surface, surfaceStyle]} pointerEvents="none">
+      <Reanimated.View style={[styles.surface, raised && styles.surfaceRaised, surfaceStyle]} pointerEvents="none">
         <SpotlightScrim />
       </Reanimated.View>
       {children}
@@ -116,6 +142,7 @@ export function TaskGroupTray({ collapsed = false, children }: Props) {
         <View style={styles.edgeRoom} />
       </AnimatedCollapsible>
     </View>
+    </TrayRaisedContext.Provider>
     </TrayFoldContext.Provider>
   );
 }
@@ -123,8 +150,8 @@ export function TaskGroupTray({ collapsed = false, children }: Props) {
 const makeStyles = (colors: Colors) => StyleSheet.create({
   tray: {
     marginHorizontal: spacing.md,
-    marginTop: spacing.xxs,
-    marginBottom: spacing.xxs,
+    marginTop: TRAY_MARGIN_Y,
+    marginBottom: TRAY_MARGIN_Y,
     paddingHorizontal: TRAY_PAD,
     // No vertical padding: the gaps above and below the children live inside
     // TaskGroupBody, where AnimatedCollapsible takes them away with the rest
@@ -138,6 +165,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.lg,
     overflow: 'hidden',
     backgroundColor: colors.bgSunken,
+  },
+  surfaceRaised: {
+    backgroundColor: colors.bgSecondary,
   },
   edgeRoom: {
     height: STACK_EDGE_DEPTH,

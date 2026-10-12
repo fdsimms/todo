@@ -68,6 +68,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     projects: () => [],
     projectProgress: () => ({ done: 0, total: 0 }),
     projectDecisions: () => [],
+    journalWordGoal: () => null,
     categories: () => [],
     groceryItems: () => [],
     groceryListEntries: () => [],
@@ -113,6 +114,8 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     // through getLogicalToday; what is tested here is the counting, not the
     // clock.
     todayKey: () => '2026-09-11',
+    windowToday: (task: Task) => ({ start: task.windowStart, end: task.windowEnd }),
+    sunAnchorClock: () => null,
     shiftDayKey: (key: string, days: number) => {
       const d = new Date(`${key}T00:00:00Z`);
       d.setUTCDate(d.getUTCDate() + days);
@@ -124,6 +127,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     moodLogs: () => [],
     medicationLogs: () => [],
     medicationSummary: (log: MedicationLog) => log.name,
+    medicationSettings: () => [],
     // No store configured is the ordinary state for a replica pointed at a
     // file somebody copied, and the tool layer never calls this anyway.
     sync: async () => null,
@@ -185,6 +189,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     logSavedMeal: () => { throw new Error('not stubbed'); },
     deleteSavedMeal: () => { throw new Error('not stubbed'); },
     nutritionTargets: () => ({}),
+    nutritionLimits: () => [],
     setNutritionTargets: () => { throw new Error('not stubbed'); },
     setMealCooked: () => { throw new Error('not stubbed'); },
     saveMealAsRecipe: () => { throw new Error('not stubbed'); },
@@ -202,7 +207,14 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     logCookTime: () => { throw new Error('not stubbed'); },
     requestCalendarChange: () => { throw new Error('not stubbed'); },
     setMedicationArchived: () => { throw new Error('not stubbed'); },
+    addMedication: () => { throw new Error('not stubbed'); },
+    removeMedication: () => { throw new Error('not stubbed'); },
+    setMedicationLimit: () => { throw new Error('not stubbed'); },
+    setMedicationSupply: () => { throw new Error('not stubbed'); },
+    setMedicationProfile: () => { throw new Error('not stubbed'); },
+    setSupplementPanel: () => { throw new Error('not stubbed'); },
     renameMoodTag: () => { throw new Error('not stubbed'); },
+    renameMedication: () => { throw new Error('not stubbed'); },
     settingValues: () => ({}),
     applySettings: () => { throw new Error('not stubbed'); },
     activeTrip: () => null,
@@ -244,6 +256,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     createStack: () => { throw new Error('not stubbed'); },
     setTaskStack: () => { throw new Error('not stubbed'); },
     rewardState: () => ({ entries: [], rewards: [] }),
+    currentDayStart: () => new Date(2026, 0, 1),
     addReward: () => { throw new Error('not stubbed'); },
     updateReward: () => { throw new Error('not stubbed'); },
     deleteReward: () => { throw new Error('not stubbed'); },
@@ -269,8 +282,8 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     settings: () => ({
       dayResetTime: '00:00', weekStartsOn: 0, vacationMode: false, vacationStart: null, vacationEnd: null, vacationDrivenBy: null, waterUnit: 'ml',
       morningStart: '06:00', afternoonStart: '12:00', eveningStart: '18:00', nightStart: '21:00', activeHoursStart: '08:00', activeHoursEnd: '22:00',
-      kitchenEnabled: true, simpleMode: false, rewardsEnabled: false, rewardGoalId: null, bountyLimit: 1, completedRetentionDays: null,
-      calendarRequestsOn: false,
+      kitchenEnabled: true, simpleMode: false, rewardsEnabled: false, rewardGoalId: null, rewardWeeklyBudgetMinor: null, bountyLimit: 1, completedRetentionDays: null,
+      calendarRequestsOn: false, unitSystem: 'metric', weatherTasks: true,
     }),
     lookAhead: () => { throw new Error('not stubbed'); },
     logicalDayKeyOf: (iso: string) => iso.slice(0, 10),
@@ -284,9 +297,14 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     lib: () => { throw new Error('not stubbed'); },
     allMoodLogs: () => [],
     milestones: () => [],
+    copyFlags: () => [],
+    resolveCopyFlag: () => { throw new Error('not stubbed'); },
     addMilestone: () => { throw new Error('not stubbed'); },
     updateMilestone: () => { throw new Error('not stubbed'); },
     deleteMilestone: () => { throw new Error('not stubbed'); },
+    meterReadings: () => [],
+    logMeterReading: () => { throw new Error('not stubbed'); },
+    deleteMeterReading: () => { throw new Error('not stubbed'); },
     journalEntries: () => [],
     addJournalEntry: () => { throw new Error('not stubbed'); },
     updateJournalEntry: () => { throw new Error('not stubbed'); },
@@ -309,6 +327,9 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     setGeneratorEnabled: () => {},
     generatorCategory: () => null,
     setGeneratorCategory: () => {},
+    generatorTaskSettings: () => ({ defaults: null, extras: null }),
+    setGeneratorTaskSettings: () => {},
+    taskSettingsContext: () => ({ groceryUseUpLeadDays: 2, birthdayLeadDays: 3, birthdayGiftLeadDays: 10, mealShortfallLeadDays: 2 }),
     deleteCategory: () => { throw new Error('not used'); },
     dryRun: () => { throw new Error('not stubbed'); },
     withBatch: (_id, fn) => fn(),
@@ -701,6 +722,28 @@ describe('listFoodLog', () => {
     ]);
   });
 
+  it('shows what an estimated entry was made of, and nothing for one that was not split', () => {
+    const lines = [
+      { label: 'Birch beer', amounts: { calorieKcal: 250 } },
+      { label: 'Soft pretzel', amounts: { calorieKcal: 300 } },
+    ];
+    const nutrition = (breakdown?: typeof lines) => ({
+      basis: 'perServing', servingGrams: null, servingText: null, amounts: { calorieKcal: 550 },
+      source: 'estimated', sourceId: null, portions: [], recordedAt: '2026-09-11T08:00:00.000Z',
+      ...(breakdown ? { breakdown } : {}),
+    }) as FoodLogEntry['nutrition'];
+    const result = listFoodLog(
+      stubReplica({
+        foodLogEntries: () => [
+          entry({ id: 'f1', label: 'Lunch', nutrition: nutrition(lines) }),
+          entry({ id: 'f2', label: 'Toast', nutrition: nutrition() }),
+        ],
+      })
+    );
+    expect(result.entries[0].breakdown).toEqual(lines);
+    expect('breakdown' in result.entries[1] && result.entries[1].breakdown).toBeFalsy();
+  });
+
   it('estimates vegetable and fruit servings per day, and says what it could not weigh', () => {
     const result = listFoodLog(
       stubReplica({
@@ -799,6 +842,12 @@ describe('listMedicationLogs', () => {
       stubReplica({ medicationLogs: () => [dose({ id: 'd1', name: 'Levothyroxine' })] })
     );
     expect(result.logs[0].asNeeded).toBeUndefined();
+  });
+
+  it('carries the limits and supply the person set, whatever the range', () => {
+    const view = { name: 'Ibuprofen', limit: 'At least 6 hours apart', dosesInLast24h: 1, supplyLeft: '9 doses left' };
+    const result = listMedicationLogs(stubReplica({ medicationSettings: () => [view] }));
+    expect(result.limitsAndSupply).toEqual([view]);
   });
 });
 

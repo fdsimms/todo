@@ -639,7 +639,7 @@ export function FinishShoppingSheet({
             {countLabel}.{' '}
             {away
               ? 'Nothing here is added to your pantry, prices or purchase history.'
-              : 'Everything stays in your catalog for next time.'}
+              : 'Everything stays in your catalog.'}
           </Text>
 
           {/* Above the questions it answers, because that's what it is: the
@@ -669,7 +669,7 @@ export function FinishShoppingSheet({
           <>
           <Text style={styles.label}>WHERE DID YOU SHOP?</Text>
           <Text style={styles.hint}>
-            Optional. Naming a store is what lets you see which store has which items later.
+            Optional. Name the store to see later which store has which items.
           </Text>
 
           {/* The store list has no ceiling — it's entirely user-built — so the
@@ -713,8 +713,8 @@ export function FinishShoppingSheet({
 
           {shops.length === 0 && (
             <EmptyNote icon="storefront-outline">
-              No stores yet. Add one and this trip gets filed against it. After a trip or two,
-              the catalog can show you what each store carries.
+              No stores yet. Add one and this trip is filed under it. After a trip or two,
+              the catalog shows what each store carries.
             </EmptyNote>
           )}
 
@@ -746,7 +746,7 @@ export function FinishShoppingSheet({
               <Text style={styles.label}>ANYTHING THEY DIDN’T HAVE?</Text>
               <Text style={styles.hint}>
                 Optional. Check off what {selectedShop.name} didn’t stock. Everything here stays on your
-                list either way; this only records why.
+                list either way.
                 {withheldCount > 0
                   ? ` ${withheldCount} more ${withheldCount === 1 ? 'is' : 'are'} in aisles ${selectedShop.name} doesn’t sell, so ${withheldCount === 1 ? "it isn’t" : "they aren’t"} listed.`
                   : ''}
@@ -847,8 +847,8 @@ export function FinishShoppingSheet({
 
               <Text style={styles.note}>
                 {unavailable.length > 0
-                  ? `Filed as “not at ${selectedShop.name}”, so planning your next trip sends you somewhere else for ${unavailable.length === 1 ? 'it' : 'them'}. Buying ${unavailable.length === 1 ? 'it' : 'one'} there later clears it.`
-                  : 'Leave them unchecked if you simply didn’t get to them. That’s the usual reason, and it’s what nothing checked means.'}
+                  ? `Filed as “not at ${selectedShop.name}”, so your next trip uses another store for ${unavailable.length === 1 ? 'it' : 'them'}. Buying ${unavailable.length === 1 ? 'it' : 'one'} there later clears it.`
+                  : 'Leave them unchecked if you didn’t get to them.'}
               </Text>
             </>
           )}
@@ -861,9 +861,9 @@ export function FinishShoppingSheet({
             <>
               <Text style={styles.label}>WHAT DID THEY COST?</Text>
               <Text style={styles.hint}>
-                Optional. Fill in what you remember and it shows next time this is on your list
-                {selectedShop ? `, along with what ${selectedShop.name} charges` : ''}. Skip any
-                you don’t know and the last price stays.
+                Optional. Prices you enter show next time an item is on your list
+                {selectedShop ? `, along with what ${selectedShop.name} charges` : ''}. Items left blank
+                keep their last price.
                 {freezerShown ? ' Tap the snowflake on anything going in the freezer.' : ''}
               </Text>
 

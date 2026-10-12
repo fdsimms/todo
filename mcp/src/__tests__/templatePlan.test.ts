@@ -96,6 +96,14 @@ describe('what the normalizers would have swallowed', () => {
       .toContain('recurrenceType must be one of');
   });
 
+  it('holds a rain skip to the range and repeats a task can take', () => {
+    expect(errors(plan({ items: [{ title: 'Water', recurrenceType: 'daily', rainSkipMm: 5 }] }))).toEqual([]);
+    expect(errors(plan({ items: [{ title: 'Water', recurrenceType: 'daily', rainSkipMm: 0 }] })))
+      .toEqual(['item "Water" rainSkipMm must be more than 0 and at most 200 millimetres, or null.']);
+    expect(errors(plan({ items: [{ title: 'Water', recurrenceType: 'hours', rainSkipMm: 5 }] })))
+      .toEqual(['item "Water" repeats hourly, which has no days to skip, so it cannot take rainSkipMm.']);
+  });
+
   it('needs a completion choice to offer two options', () => {
     expect(errors(plan({ items: [{ title: 'Pick', deliverableKind: 'choice', deliverableOptions: ['Only'] }] }))[0])
       .toContain('needs at least two deliverableOptions');
@@ -112,6 +120,14 @@ describe('what the normalizers would have swallowed', () => {
   it('knows effort runs to 6, not to 4 like priority', () => {
     expect(errors(plan({ items: [{ title: 'Pack', effort: 6 }] }))).toEqual([]);
     expect(errors(plan({ items: [{ title: 'Pack', effort: 7 as never }] }))[0]).toContain('effort must be 0 to 6');
+  });
+
+  it('takes a window bound that follows the sun, with its clock fallback', () => {
+    expect(errors(plan({ items: [{ title: 'Walk', windowEnd: '18:40', windowEndSun: 'sunset-30' }] }))).toEqual([]);
+    expect(errors(plan({ items: [{ title: 'Walk', windowEndSun: 'sunset' }] }))).toEqual([
+      'item "Walk" windowEndSun needs windowEnd beside it, the clock time to fall back to.',
+    ]);
+    expect(errors(plan({ items: [{ title: 'Walk', windowEnd: '18:40', windowEndSun: 'dusk' }] }))[0]).toContain('"sunrise" or "sunset"');
   });
 
   it('refuses a time that is not HH:MM', () => {
@@ -172,7 +188,7 @@ describe('cross-references', () => {
 
   it('tells a missing question apart from one that cannot gate an item', () => {
     // Two different mistakes: a typo, and a misunderstanding of what a
-    // condition can ride on. Only a choice can gate an item.
+    // condition can ride on. Only a choice or a number can gate an item.
     const missing = errors(plan({ items: [{ title: 'Laptop', conditions: [{ question: 'trip', values: ['Work'] }] }] }));
     expect(missing[0]).toContain('which the plan does not define');
 
@@ -182,7 +198,23 @@ describe('cross-references', () => {
         items: [{ title: 'Laptop', conditions: [{ question: 'trip', values: ['Work'] }] }],
       })
     );
-    expect(notAChoice[0]).toContain('Only a choice can gate an item');
+    expect(notAChoice[0]).toContain('neither a choice nor a number question');
+  });
+
+  it('accepts a range on a number question and refuses the mixes that cannot work', () => {
+    const questions: TemplatePlan['questions'] = [
+      { name: 'days', prompt: 'How many days?', kind: 'number' },
+      { name: 'trip', prompt: 'p', kind: 'choice', options: ['Work', 'Holiday'] },
+    ];
+    const withCondition = (condition: NonNullable<NonNullable<TemplatePlan['items']>[number]['conditions']>[number]) =>
+      errors(plan({ questions, items: [{ title: 'Laundry line', conditions: [condition] }] }));
+
+    expect(withCondition({ question: 'days', min: 5 })).toEqual([]);
+    expect(withCondition({ question: 'days', min: 2, max: 4 })).toEqual([]);
+    expect(withCondition({ question: 'days' })[0]).toContain('no min or max');
+    expect(withCondition({ question: 'days', min: 5, max: 2 })[0]).toContain('below min 5');
+    expect(withCondition({ question: 'days', values: ['5'], min: 5 })[0]).toContain('Use min and max');
+    expect(withCondition({ question: 'trip', min: 5, values: ['Work'] })[0]).toContain('not a number question');
   });
 
   it('refuses a condition on a value that is not one of the options', () => {
@@ -235,6 +267,19 @@ describe('fromDates', () => {
     expect(errors(plan({ questions: [{ name: 'n', prompt: 'p', kind: 'number', fromDates: 'days' }] }))).toEqual([]);
     expect(errors(plan({ questions: [{ name: 't', prompt: 'p', kind: 'text', fromDates: 'days' }] }))).toEqual([
       'fromDates only applies to a number question, not "t".',
+    ]);
+  });
+});
+
+describe('multiple and showForecast', () => {
+  it('belong to a choice question only', () => {
+    const choice = { name: 'trip', prompt: 'p', kind: 'choice' as const, options: ['A', 'B'] };
+    expect(errors(plan({ questions: [{ ...choice, multiple: true, showForecast: true }] }))).toEqual([]);
+    expect(errors(plan({ questions: [{ name: 'n', prompt: 'p', kind: 'number', multiple: true }] }))).toEqual([
+      'multiple and showForecast only apply to a choice question, not "n".',
+    ]);
+    expect(errors(plan({ questions: [{ name: 't', prompt: 'p', kind: 'text', showForecast: true }] }))).toEqual([
+      'multiple and showForecast only apply to a choice question, not "t".',
     ]);
   });
 });
@@ -330,6 +375,20 @@ describe('an edit to an existing template', () => {
     expect(asPlan.items![1].conditions).toEqual([{ question: 'trip', values: ['Work'] }]);
     expect(validateTemplatePlan(asPlan, [stored], 't1')).toEqual([]);
   });
+
+  it('writes a number range back as min and max, without an empty values list', () => {
+    const stored = template({
+      id: 't1',
+      name: 'Trip',
+      questions: [{ id: 'q1', name: 'days', prompt: 'Days?', kind: 'number', options: [], defaultValue: '', fromDates: 'days' }],
+      items: [
+        { id: 'i1', title: 'Laundry line', groupId: null, conditions: [{ questionId: 'q1', values: [], min: 5 }], answerGate: null, refTemplateId: null, refTemplateName: '' },
+      ] as unknown as TaskTemplate['items'],
+    });
+    const asPlan = templateToPlan(stored);
+    expect(asPlan.items![0].conditions).toEqual([{ question: 'days', min: 5 }]);
+    expect(validateTemplatePlan(asPlan, [stored], 't1')).toEqual([]);
+  });
 });
 
 describe('a question with no name', () => {
@@ -386,8 +445,9 @@ describe('templateWarnings', () => {
       { title: 'C', dueOffsetDays: 0, deferOffsetDays: 2 },
       { title: 'D', windowStart: '22:00', windowEnd: '02:00' },
       { title: 'E', category: 'Nowhere' },
+      { title: 'F', rainSkipMm: 5 },
     ]), ['Home']);
-    expect(warnings.map(w => w.slice(0, 10))).toEqual(['item "A" h', 'item "B" w', 'item "C" i', 'item "D" h', 'item "E" i']);
+    expect(warnings.map(w => w.slice(0, 10))).toEqual(['item "A" h', 'item "B" w', 'item "C" i', 'item "D" h', 'item "E" i', 'item "F" s']);
   });
 
   it('is quiet for an ordinary template', () => {

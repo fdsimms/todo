@@ -6,6 +6,7 @@ import type { BusyEvent } from './calendarBusy';
 import { freeGapsIn } from './calendarBusy';
 import { activeChainStep } from './chain';
 import { estimatedMinutesFor } from './effort';
+import { windowBounds, type SunLocation } from './sunTimes';
 
 /**
  * Where a task's time block should go, and whether it can have one at all —
@@ -54,6 +55,8 @@ export interface TimeBlockContext {
   activeHoursStart: string;
   /** "HH:MM" — and the latest. */
   activeHoursEnd: string;
+  /** Where a window that follows the sun is worked out for (sunTimes.ts). */
+  sunLocation?: SunLocation | null;
   /**
    * The device calendar's events, or **null when the calendar couldn't be
    * read** — the feature is off, permission was refused, or the read failed.
@@ -150,7 +153,7 @@ export function proposeTimeBlockStart(
 
   // Rule 1 — an explicit start time the user set on the task itself.
   if (task.windowStart) {
-    const wanted = timeOnDay(day, task.windowStart);
+    const wanted = timeOnDay(day, windowBounds(task, day, ctx.sunLocation ?? null).start ?? task.windowStart);
     if (wanted >= earliest) return wanted;
   }
 

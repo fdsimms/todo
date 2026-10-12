@@ -47,6 +47,7 @@ import type {
   TimeOfDay,
 } from '../../src/types';
 import { deliverableOptionsFor } from '../../src/utils/deliverables';
+import { parseSunAnchor, SUN_OFFSET_LIMIT } from '../../src/utils/sunTimes';
 import { RUN_PLACEHOLDER, itemPlaceholders, placeholderKey, wouldCreateCycle } from '../../src/utils/templateUtils';
 import { MIN_ROTATION_ITEMS, rotationMemberTitle, rotationMemberToInput, type RotationMemberInput } from '../../src/utils/rotation';
 
@@ -90,13 +91,21 @@ export interface QuestionPlan {
   defaultValue?: string;
   /** A number question can take its answer off the anchor dates instead. */
   fromDates?: TemplateQuestionSource;
+  /** A choice only: a run may pick several answers, and an item matches any of them. */
+  multiple?: boolean;
+  /** A choice only: the apply sheet states the destination forecast under the question. */
+  showForecast?: boolean;
 }
 
 export interface ConditionPlan {
-  /** A choice question's `name`, or its `key` when it has none. Only a choice can gate an item. */
+  /** A choice question's `name` (or its `key` when it has none), or a number question's `name`. */
   question: string;
-  /** Which of that question's options switch this item on. */
-  values: string[];
+  /** Choice only: which of that question's options switch this item on. */
+  values?: string[];
+  /** Number only: the item matches when the answer is at least this. */
+  min?: number;
+  /** Number only: the item matches when the answer is at most this. */
+  max?: number;
 }
 
 /**
@@ -247,6 +256,7 @@ export function validateTemplatePlan(
 
   const questions = plan.questions ?? [];
   const choices = new Map<string, string[]>();
+  const numbers = new Set<string>();
   const questionNames = new Set<string>();
   const questionKeys = new Set<string>();
   for (const question of questions) {
@@ -265,6 +275,12 @@ export function validateTemplatePlan(
       // The normalizer drops it silently for every other kind, which reads as
       // the answer simply not coming off the dates rather than as a mistake.
       errors.push(`fromDates only applies to a number question, not "${question.name}".`);
+    }
+
+    if ((question.multiple || question.showForecast) && question.kind !== 'choice') {
+      // Dropped silently by the normalizer for every other kind, which reads as
+      // the flag simply not taking rather than as a mistake.
+      errors.push(`multiple and showForecast only apply to a choice question, not "${question.name ?? question.key ?? question.prompt}".`);
     }
 
     if (question.kind === 'people') {
@@ -300,6 +316,7 @@ export function validateTemplatePlan(
       if (options.length < 2) errors.push(`choice question "${question.name}" needs at least two options.`);
       else choices.set(question.name, options);
     }
+    if (question.kind === 'number') numbers.add(question.name);
   }
 
   const items = plan.items ?? [];
@@ -340,7 +357,7 @@ export function validateTemplatePlan(
     if (item.groupKey != null && !groupKeys.has(item.groupKey)) {
       errors.push(`item "${label}" names group "${item.groupKey}", which the plan does not define.`);
     }
-    errors.push(...conditionErrors(item, label, choices, questionNames));
+    errors.push(...conditionErrors(item, label, choices, numbers, questionNames));
     errors.push(...variantErrors(item, label, choices, questionNames));
     errors.push(...refErrors(item, label, existing, selfId));
     errors.push(...rangeErrors(item, label));
@@ -385,10 +402,26 @@ function conditionErrors(
   item: ItemPlan,
   label: string,
   choices: Map<string, string[]>,
+  numbers: Set<string>,
   questionNames: Set<string>
 ): string[] {
   const errors: string[] = [];
   for (const condition of item.conditions ?? []) {
+    if (numbers.has(condition.question)) {
+      const { min, max } = condition;
+      if (min === undefined && max === undefined) {
+        errors.push(`item "${label}" has a condition on "${condition.question}" with no min or max.`);
+      } else if (min !== undefined && max !== undefined && max < min) {
+        errors.push(`item "${label}" has a condition on "${condition.question}" with max ${max} below min ${min}, which no answer can satisfy.`);
+      }
+      if ((condition.values ?? []).length > 0) {
+        errors.push(`item "${label}" gives values for "${condition.question}", which is a number question. Use min and max.`);
+      }
+      continue;
+    }
+    if (condition.min !== undefined || condition.max !== undefined) {
+      errors.push(`item "${label}" gives a min or max for "${condition.question}", which is not a number question. Use values.`);
+    }
     const options = choices.get(condition.question);
     if (!options) {
       // Two different mistakes, and the distinction is worth the words: naming
@@ -396,7 +429,7 @@ function conditionErrors(
       // can gate an item.
       errors.push(
         questionNames.has(condition.question)
-          ? `item "${label}" is conditioned on "${condition.question}", which is not a choice question. Only a choice can gate an item.`
+          ? `item "${label}" is conditioned on "${condition.question}", which is neither a choice nor a number question. Only those can gate an item.`
           : `item "${label}" is conditioned on "${condition.question}", which the plan does not define.`
       );
       continue;
@@ -513,6 +546,11 @@ function rangeErrors(item: ItemPlan, label: string): string[] {
   positive(item.estimatedMinutes, 'estimatedMinutes');
   positive(item.completionTimerMinutes, 'completionTimerMinutes');
   positive(item.recurrenceCount, 'recurrenceCount');
+  if (item.rainSkipMm != null) {
+    if (!(item.rainSkipMm > 0 && item.rainSkipMm <= 200)) errors.push(`item "${label}" rainSkipMm must be more than 0 and at most 200 millimetres, or null.`);
+    // The same refusal the task's repeat.skipAfterRainMm makes (taskFields.ts).
+    if (item.recurrenceType === 'hours') errors.push(`item "${label}" repeats hourly, which has no days to skip, so it cannot take rainSkipMm.`);
+  }
   if (item.recurrenceMonth != null && (item.recurrenceMonth < 1 || item.recurrenceMonth > 12)) {
     errors.push(`item "${label}" recurrenceMonth must be 1 to 12.`);
   }
@@ -551,6 +589,11 @@ function rangeErrors(item: ItemPlan, label: string): string[] {
   }
   if (item.targetCount != null && item.targetCount < 2) errors.push(`item "${label}" targetCount must be 2 or more (one is just a task).`);
   if (item.quotaPeriod !== undefined && !['day', 'week'].includes(item.quotaPeriod)) errors.push(`item "${label}" quotaPeriod must be day or week.`);
+  if (item.quotaRampStep != null) {
+    if (item.targetCount == null) errors.push(`item "${label}" has quotaRampStep but no targetCount, so there is nothing to ramp.`);
+    if (item.allowOvershoot) errors.push(`item "${label}" cannot ramp up and allow going past the target.`);
+    if (item.quotaRampGoal != null && item.targetCount != null && item.quotaRampGoal <= item.targetCount) errors.push(`item "${label}" quotaRampGoal must be above targetCount.`);
+  }
   if (item.recurrenceMonthDay != null && (item.recurrenceMonthDay < 1 || item.recurrenceMonthDay > 31)) {
     errors.push(`item "${label}" recurrenceMonthDay must be 1 to 31.`);
   }
@@ -560,6 +603,17 @@ function rangeErrors(item: ItemPlan, label: string): string[] {
   for (const field of ['windowStart', 'windowEnd', 'deadlineTime'] as const) {
     const value = item[field];
     if (value != null && !HHMM.test(value)) errors.push(`item "${label}" ${field} must be HH:MM.`);
+  }
+  // A sun anchor overrides its clock bound and needs it beside it: the clock
+  // time is what a task falls back to on a day the anchor can't be resolved.
+  for (const [sunField, clockField] of [['windowStartSun', 'windowStart'], ['windowEndSun', 'windowEnd']] as const) {
+    const value = item[sunField];
+    if (value == null) continue;
+    if (!parseSunAnchor(value)) {
+      errors.push(`item "${label}" ${sunField} must be "sunrise" or "sunset", with an optional minutes offset of up to ${SUN_OFFSET_LIMIT} ("sunset-30").`);
+    } else if (item[clockField] == null) {
+      errors.push(`item "${label}" ${sunField} needs ${clockField} beside it, the clock time to fall back to.`);
+    }
   }
   for (const segment of (item.timeSegments ?? []) as TimeOfDay[]) {
     if (!['morning', 'afternoon', 'evening'].includes(segment)) {
@@ -632,6 +686,8 @@ export function templateToPlan(template: TaskTemplate): TemplatePlan & { id: str
       ...(q.options.length ? { options: q.options } : {}),
       ...(q.defaultValue ? { defaultValue: q.defaultValue } : {}),
       ...(q.fromDates !== 'none' ? { fromDates: q.fromDates } : {}),
+      ...(q.multiple ? { multiple: true } : {}),
+      ...(q.showForecast ? { showForecast: true } : {}),
     })),
     items: template.items.map(item => {
       const { groupId, conditions, variants, refTemplateId, refTemplateName, answerGate, blockedByItemIds, chainEnabled, chainItems, chainIndex, rotationEnabled, rotationItems, ...fields } = item;
@@ -646,8 +702,15 @@ export function templateToPlan(template: TaskTemplate): TemplatePlan & { id: str
         ...(gateTargets.has(item.id) ? { key: item.id } : {}),
         ...(groupId ? { groupKey: groupId } : {}),
         ...(() => {
-          const live = conditions.filter(c => questionHandle.has(c.questionId) && c.values.length > 0);
-          return live.length ? { conditions: live.map(c => ({ question: questionHandle.get(c.questionId)!, values: c.values })) } : {};
+          const live = conditions.filter(c => questionHandle.has(c.questionId) && (c.values.length > 0 || c.min !== undefined || c.max !== undefined));
+          return live.length
+            ? { conditions: live.map(c => ({
+                question: questionHandle.get(c.questionId)!,
+                ...(c.values.length > 0 ? { values: c.values } : {}),
+                ...(c.min !== undefined ? { min: c.min } : {}),
+                ...(c.max !== undefined ? { max: c.max } : {}),
+              })) }
+            : {};
         })(),
         // A variant on a deleted question is left out for the reason a
         // condition on one is: every reader already ignores it.
@@ -733,6 +796,9 @@ export function templateWarnings(
     }
     if (item.reminderOffsetMinutes != null && item.dueOffsetDays == null) {
       warnings.push(`${label(item)} has reminderOffsetMinutes but no dueOffsetDays, so there is no date to remind before and no reminder is set.`);
+    }
+    if (item.rainSkipMm != null && item.recurrenceType === 'none') {
+      warnings.push(`${label(item)} skips after rain but does not repeat, so there is no occurrence to skip and rainSkipMm has no effect.`);
     }
     if (item.weatherWait && (item.recurrenceType !== 'none' || item.chainEnabled)) {
       warnings.push(`${label(item)} waits for weather but repeats or is a chain; only a one-off can wait, so the wait is dropped.`);

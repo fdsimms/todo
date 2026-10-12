@@ -38,6 +38,16 @@ says why). Splitting that countdown up — "violin practice" as 5 min scales, 10
   stretch stranded by a kind switch can't promote a plain task.
 - **Completed subtasks keep their stretch.** The run's length can't depend on what's been ticked, or
   the countdown would shorten under the user mid-session.
+- **A daily or weekly target can carry a countdown per unit, in the same field.** On a target,
+  `timedMinutes` is the length of one unit's countdown, not a whole-task duration, and the task
+  still reads as a target (`taskKindOf`'s precedence), so there is no fifth kind. `bakedFields`'
+  target arm sets it from `unitMinutes` and every other kind clears it. The clock is spent
+  rather than finished: `logQuotaUnit` resets it (and cancels its alarm) so the next unit starts
+  full, the unit that completes the task resets instead of `stopTimer` (which would write one
+  unit's minutes over the task as its measured time), and `rolloverQuotas` clears banked seconds
+  on the successor. Logging never waits on the countdown, same as completing a timed task early.
+  Subtask stretches don't apply: the editor and `deleteSubtask` only re-total a task that isn't a
+  target, or a stretch left on a subtask would overwrite the per-unit length.
 - **The minutes are typed on the subtask rows, not in Duration.** The timer runs through them in
   subtask order, and the rows are where that order is dragged. Duration shows the split read-only
   and totals it — two controls setting one number is the confusion, not the fix. `StepMinutes` is

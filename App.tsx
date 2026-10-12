@@ -7,7 +7,10 @@ import * as SplashScreen from 'expo-splash-screen';
 import AppNavigator from './src/navigation/AppNavigator';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { AppLockGate } from './src/components/AppLockGate';
+import { FirstRunHost } from './src/components/FirstRunSheet';
+import { FlagCopyHost } from './src/components/FlagCopyHost';
 import { useTaskStore } from './src/store/useTaskStore';
+import { useProjectLockStore } from './src/store/useProjectLockStore';
 import { useSettingsStore } from './src/store/useSettingsStore';
 import { requestNotificationPermissions, isAlarmKitAvailable, requestAlarmAuthorization } from './src/utils/notifications';
 import { useDailyAgendaSync } from './src/utils/dailyAgendaSync';
@@ -28,6 +31,7 @@ import { useRemindersImportSync } from './src/utils/remindersImportSync';
 import { useCalendarSync } from './src/store/useCalendarStore';
 import { useWeatherSync } from './src/store/useWeatherStore';
 import { useWeatherWaitSync } from './src/hooks/useWeatherWaitSync';
+import { useMeterHoldSync } from './src/hooks/useMeterHoldSync';
 import { useTravelTaskSync } from './src/hooks/useTravelTaskSync';
 import { useEventTaskSync } from './src/hooks/useEventTaskSync';
 import { useReminderMeetingResync } from './src/hooks/useReminderMeetingResync';
@@ -37,19 +41,29 @@ import { useAppShieldSync } from './src/hooks/useAppShieldSync';
 import { useSyncStore } from './src/store/useSyncStore';
 import { useSyncOnForeground } from './src/utils/useSyncOnForeground';
 import { runStartupSequence, runStartupStep } from './src/utils/startup';
+import { markMilestone } from './src/utils/perfLog';
+import { collectDeviceMetrics, savePerfRun } from './src/utils/perfReport';
+import { startDeviceMetrics } from './src/utils/deviceMetrics';
 import { backfillCalendarExternalIds } from './src/utils/calendarIdBackfill';
 import { drainCalendarRequests } from './src/utils/calendarRequestDrain';
 import { expiryPasses, catchUpPasses, retentionPasses } from './src/utils/maintenancePasses';
 import { useBackgroundRefresh } from './src/utils/backgroundRefresh';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { preloadAppFont, preloadBrandFonts } from './src/theme/AppFont';
+import { animation } from './src/theme';
 import { AppState, View } from 'react-native';
 import { runPendingHealthFoodWrites } from './src/utils/pendingHealthFoodWrites';
+import { usePendingEstimateStore } from './src/store/usePendingEstimateStore';
+import { usePendingRecipeEstimateStore } from './src/store/usePendingRecipeEstimateStore';
 
 // Held open until `AppGate` below knows which font to render in and has it
 // loaded, so the first frame the user ever sees is already in the right
 // typeface instead of a system-font flash that swaps a few frames later.
 SplashScreen.preventAutoHideAsync().catch(() => {});
+// The splash is full-bleed gold in Light, so a cut to the page reads as a
+// flash; fading lets it hand over to the first screen. iOS only (Android's
+// system splash has its own exit).
+SplashScreen.setOptions({ fade: true, duration: animation.duration.normal });
 
 // Disables react-native-screens' native optimizations app-wide, called once
 // before any navigator mounts. Workaround for a crash in
@@ -73,6 +87,12 @@ function AppContent() {
     <View style={{ flex: 1 }}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <AppNavigator />
+      {/* The one-time setup questions on a new install. A sheet, so it presents
+          above the navigator whatever screen it opened on. */}
+      <FirstRunHost />
+      {/* TEMPORARY dev tooling: flag copy mode's capture sheet. Remove before
+          the app opens to real users (see CopyFlag). */}
+      <FlagCopyHost />
       {/* Inside ThemeProvider (it's a themed screen) and last, so its overlay
           sits above the navigator. */}
       <AppLockGate />
@@ -113,8 +133,10 @@ function AppGate() {
     (async () => {
       runStartupStep('initialize tasks', () => useTaskStore.getState().initialize());
       runStartupStep('load settings', () => useSettingsStore.getState().initialize());
+      runStartupStep('load project locks', () => useProjectLockStore.getState().initialize());
       runStartupStep('load sync state', () => useSyncStore.getState().initialize());
       await Promise.all([preloadAppFont(useSettingsStore.getState().appFont), preloadBrandFonts()]);
+      markMilestone('splash can hide');
       if (!cancelled) setReady(true);
     })();
     return () => { cancelled = true; };
@@ -175,6 +197,13 @@ function AppRoot() {
       // Health. Async and not awaited, idempotent, and a no-op with the switch
       // off. See pendingHealthFoodWrites.ts.
       ['write pending Health meals', runPendingHealthFoodWrites],
+      // Meals described offline get their estimate now there may be a
+      // connection. They are only estimated here, never logged: a person
+      // confirms each one on the Food log screen.
+      ['estimate meals saved offline', () => { void usePendingEstimateStore.getState().drain(); }],
+      // And the recipe estimates saved offline, which only the recipe's own
+      // sheet shows (utils/recipeEstimateQueue.ts).
+      ['estimate recipes saved offline', () => { void usePendingRecipeEstimateStore.getState().drain(); }],
       // Read back any cooking step timer that was still counting down when the
       // app was last closed, and re-arm its alarm (#1712). After useSettingsStore.initialize,
       // which opens the database this reads from; before the permission
@@ -189,13 +218,31 @@ function AppRoot() {
         if (isAlarmKitAvailable()) requestAlarmAuthorization();
       }],
     ]);
+    // Everything above was timed under its own name (runStartupStep). Saved
+    // here, after the sequence, so the one write is not part of what it times.
+    markMilestone('launch steps done');
+    // The reports iOS builds about the app (launch time, hangs, memory) come
+    // in about once a day and only while something is listening, so listening
+    // starts at every launch. Read straight after, for any already delivered.
+    runStartupSequence([
+      ['start device metrics', startDeviceMetrics],
+      ['read device metrics', () => { collectDeviceMetrics(); }],
+    ]);
+    savePerfRun('launch');
   }, [initSecrets]);
 
   // The launch step above covers a cold start; this covers the app coming back
   // to the front, where a meal an agent logged in the meantime has since synced.
+  // It is also when a meal saved offline is asked about again: the drain stops
+  // at the first request that fails for want of a connection, so a phone that
+  // is still offline costs one request per return to the app.
   useEffect(() => {
     const sub = AppState.addEventListener('change', state => {
-      if (state === 'active') runPendingHealthFoodWrites();
+      if (state === 'active') {
+        runPendingHealthFoodWrites();
+        void usePendingEstimateStore.getState().drain();
+        void usePendingRecipeEstimateStore.getState().drain();
+      }
     });
     return () => sub.remove();
   }, []);
@@ -234,6 +281,7 @@ function AppRoot() {
   // permission itself (see getCurrentLocation).
   useWeatherSync();
   useWeatherWaitSync();
+  useMeterHoldSync();
   // Keeps the MTA subway alerts current while the app is in front (inert
   // until travel tasks, the transit switch and a line are all on), and re-runs
   // the travel task check when the calendar window or the alerts land.

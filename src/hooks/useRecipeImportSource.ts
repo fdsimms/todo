@@ -32,7 +32,7 @@ export function alertPhotoAccessDenied(
 ): void {
   const what = source === 'camera' ? 'the camera' : 'your photos';
   Alert.alert(
-    `dundundun can't reach ${what}`,
+    `dundundun can’t access ${what}`,
     canAskAgain
       ? `Allow access to ${what} to ${purpose}.`
       : `Turn on access to ${what} in Settings to ${purpose}.`,
@@ -40,7 +40,7 @@ export function alertPhotoAccessDenied(
       ? [{ text: 'OK' }]
       : [
           { text: 'Not now', style: 'cancel' },
-          { text: 'Open settings', onPress: () => Linking.openSettings() },
+          { text: 'Open Settings', onPress: () => Linking.openSettings() },
         ],
   );
 }

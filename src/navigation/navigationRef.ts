@@ -1,5 +1,6 @@
 import { createNavigationContainerRef } from '@react-navigation/native';
-import type { JournalKind, MealSlot } from '../types';
+import type { JournalKind, MealSlot, MoodLevel } from '../types';
+import type { TemplateRunDestination } from '../utils/templateRunDestination';
 
 // Shared with AppNavigator's <NavigationContainer ref={navigationRef}>, so
 // code outside the component tree (deep link handling) can navigate without
@@ -123,6 +124,11 @@ export function resetToFoodLog(): void {
   runWhenReady(() => navigateToTab('FoodLog'));
 }
 
+// Where `dundundun://medications` lands: the Medications widget's own tap.
+export function resetToMedications(): void {
+  runWhenReady(() => navigateToTab('Medications'));
+}
+
 // Where `dundundun://recipe?id=…` lands — a meal-slot cook task's own link
 // once the slot holds a recipe (mealSlotTasks.recipeLinkUrl). Recipes first,
 // always, so the back chevron on RecipeDetail has somewhere to go — the same
@@ -232,9 +238,11 @@ export function openQuickSearchFromKeyboard(): void {
   runWhenReady(() => navigateToTab('Today', { openQuickSearch: Date.now() }));
 }
 
-export function showTodayViewModeFromKeyboard(mode: 'today' | 'later' | 'unscheduled' | 'inbox'): void {
+export function showTodayViewMode(mode: 'today' | 'later' | 'unscheduled' | 'inbox'): void {
   runWhenReady(() => navigateToTab('Today', { showViewMode: mode, showViewModeAt: Date.now() }));
 }
+
+export const showTodayViewModeFromKeyboard = showTodayViewMode;
 
 // `dundundun://addevent` — the Today widget's event shortcut. The event
 // counterpart of openQuickAddFromShortcut above: lands on Today and pops
@@ -315,28 +323,48 @@ export function resetToFocusSession(): void {
  */
 /**
  * Where `dundundun://journal` and `dundundun://dreams` land, with `log=1`
- * opening the writing sheet. `resetToMood`'s shape, `returnTo` included.
+ * opening the writing sheet and `entry=<id>` opening that entry (a note to
+ * your future self, from its reminder). `resetToMood`'s shape, `returnTo`
+ * included.
  */
-export function resetToJournal(kind: JournalKind, openLog = false): void {
+export function resetToJournal(kind: JournalKind, openLog = false, entryId: string | null = null): void {
   const route = kind === 'dream' ? 'Dreams' : 'Journal';
   runWhenReady(() => {
-    const returnTo = openLog ? currentTabName() : undefined;
+    const opensSheet = openLog || entryId !== null;
+    const returnTo = opensSheet ? currentTabName() : undefined;
     navigateToTab(
       route,
-      openLog
-        ? { openLog: Date.now(), returnTo: returnTo !== route ? returnTo : undefined }
+      opensSheet
+        ? {
+            openLog: Date.now(),
+            ...(entryId ? { openEntry: entryId } : {}),
+            returnTo: returnTo !== route ? returnTo : undefined,
+          }
         : undefined
     );
   });
 }
 
-export function resetToMood(openLog = false): void {
+/**
+ * `prefill` opens a new entry with a mood or symptom already picked (search's
+ * "feeling tired"), offered exactly as if it had been tapped, so it comes back
+ * off with one more tap.
+ */
+export function resetToMood(
+  openLog = false,
+  prefill?: { mood: MoodLevel | null; symptom: string | null }
+): void {
   runWhenReady(() => {
     const returnTo = openLog ? currentTabName() : undefined;
     navigateToTab(
       'Mood',
       openLog
-        ? { openLog: Date.now(), returnTo: returnTo !== 'Mood' ? returnTo : undefined }
+        ? {
+            openLog: Date.now(),
+            returnTo: returnTo !== 'Mood' ? returnTo : undefined,
+            prefillMood: prefill?.mood ?? undefined,
+            prefillSymptom: prefill?.symptom ?? undefined,
+          }
         : undefined
     );
   });
@@ -440,9 +468,47 @@ export function resetToTask(taskId: string): void {
   });
 }
 
+/**
+ * Takes a search result to the row the task lives on (Today, Later,
+ * Unscheduled, Inbox or Archived) and scrolls it into view, rather than
+ * opening its editor. Today decides where that is, because it owns the lists.
+ */
+export function resetToLocateTask(taskId: string): void {
+  runWhenReady(() => {
+    navigateToTab('Today', { locateTask: Date.now(), locateTaskId: taskId });
+  });
+}
+
+/**
+ * The category list, with one category's editor open when a name is given.
+ * There is no page for a single category, so its editor is the destination.
+ * Stamped like the other handoffs so the same category opened twice opens twice.
+ */
+export function resetToCategories(categoryName?: string | null): void {
+  runWhenReady(() => {
+    navigateToTab(
+      'Categories',
+      categoryName ? { openCategory: categoryName, openCategoryStamp: Date.now() } : undefined
+    );
+  });
+}
+
+/** One catalog item's sheet on the grocery screen (the param Search results use). */
+export function resetToGroceryItem(itemId: string): void {
+  runWhenReady(() => {
+    navigateToTab('Groceries', { openItem: itemId, openItemStamp: Date.now() });
+  });
+}
+
 /** One project's own page (`dundundun://project?id=…`). */
 export function resetToProject(projectId: string): void {
   runWhenReady(() => {
     navigateToTab('ProjectDetail', { projectId });
   });
+}
+
+/** Where a template run landed: its project's page, or the Today sub-view holding it. */
+export function goToTemplateRun(destination: TemplateRunDestination): void {
+  if (destination.kind === 'project') resetToProject(destination.projectId);
+  else showTodayViewMode(destination.mode);
 }

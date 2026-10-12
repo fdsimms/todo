@@ -9,6 +9,7 @@ import {
   dbDeleteFoodLogEntry,
   dbGetFoodLogEntries,
   dbGetFoodLogEntry,
+  dbGetFoodLogEntriesForTask,
   dbGetPendingHealthFoodEntries,
   dbInsertFoodLogEntry,
   dbUpdateFoodLogEntry,
@@ -93,6 +94,8 @@ export interface FoodLogDraft {
   itemId?: string | null;
   productId?: string | null;
   mealPlanEntryId?: string | null;
+  /** The task whose completion is writing this entry. See `FoodLogEntry.taskId`. */
+  taskId?: string | null;
   /**
    * The panel the helping was measured against, for a food no catalog row
    * holds. See `FoodLogEntry.sourcePanel`; null or absent for anything linked.
@@ -347,6 +350,12 @@ interface FoodLogStore extends UndoHistoryActions {
   removeEntry: (id: string, opts?: { undoable?: boolean }) => void;
   /** Forget several entries at once — the bulk bar's Delete. */
   removeEntries: (ids: string[]) => void;
+  /**
+   * Forget what a task's completion logged (`FoodLogEntry.taskId`), on any day.
+   * Never offers an undo of its own: the un-completing action that calls it has
+   * the undo bar, and a second "Deleted ..." would replace it.
+   */
+  removeEntriesForTask: (taskId: string) => void;
   /** Re-slot several entries at once — the bulk bar's Move to meal. */
   moveEntries: (ids: string[], slot: MealSlot | null) => void;
   /**
@@ -497,6 +506,7 @@ function restoreEntries(rows: FoodLogEntry[], get: () => FoodLogStore, set: Food
   if (rows.some(r => r.dayKey === todayKey)) {
     useTaskStore.getState().syncWaterQuotaTasks();
     useTaskStore.getState().syncSnackNudgeTasks();
+    useTaskStore.getState().syncLimitWarningTasks();
   }
 }
 
@@ -513,6 +523,8 @@ function syncWaterQuotaTasksIfToday(dayKey: string): void {
   // The snack suggestion reads the same log, so a write that lands is also the
   // moment it should come on or go away.
   useTaskStore.getState().syncSnackNudgeTasks();
+  // And the Stay under warnings, off the same totals.
+  useTaskStore.getState().syncLimitWarningTasks();
   // And the meal's own task: food logged into lunch answers "Choose lunch".
   useTaskStore.getState().syncLoggedMealSlotTasks();
 }
@@ -723,7 +735,7 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
 
     if (opts?.undoable !== false) {
       get().setLastAction({
-        label: `Logged "${entry.label}"`,
+        label: `Logged “${entry.label}”`,
         // removeEntry also retracts what was written to Health.
         undo: () => get().removeEntry(entry.id),
         redo: () => { get().addEntry(draft); },
@@ -764,7 +776,7 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     if (patch.slot !== undefined) useTaskStore.getState().syncLoggedMealSlotTasks();
     const before = priorFields(entry, patch);
     get().setLastAction({
-      label: `Edited "${entry.label}"`,
+      label: `Edited “${entry.label}”`,
       undo: () => get().updateEntry(id, before),
       redo: () => get().updateEntry(id, patch),
     });
@@ -786,7 +798,7 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
 
     const before = priorFields(current, patch);
     get().setLastAction({
-      label: `Edited "${current.label}"`,
+      label: `Edited “${current.label}”`,
       // Through reviseEntry again, so Health is retracted and rewritten to the
       // figures being restored rather than left stating the edit.
       undo: () => get().reviseEntry(id, before),
@@ -916,7 +928,7 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     if (removed) syncWaterQuotaTasksIfToday(removed.dayKey);
     if (removed && opts?.undoable !== false) {
       get().setLastAction({
-        label: `Deleted "${removed.label}"`,
+        label: `Deleted “${removed.label}”`,
         destructive: true,
         undo: () => restoreEntries([removed], get, set),
         redo: () => get().removeEntry(id),
@@ -946,14 +958,21 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     if (removed.some(e => e.dayKey === todayKey)) {
       useTaskStore.getState().syncWaterQuotaTasks();
       useTaskStore.getState().syncSnackNudgeTasks();
+      useTaskStore.getState().syncLimitWarningTasks();
     }
     if (removed.length > 0) {
       get().setLastAction({
-        label: removed.length === 1 ? `Deleted "${removed[0].label}"` : `${removed.length} entries deleted`,
+        label: removed.length === 1 ? `Deleted “${removed[0].label}”` : `${removed.length} entries deleted`,
         destructive: true,
         undo: () => restoreEntries(removed, get, set),
         redo: () => get().removeEntries(ids),
       });
+    }
+  },
+
+  removeEntriesForTask(taskId) {
+    for (const entry of dbGetFoodLogEntriesForTask(taskId)) {
+      get().removeEntry(entry.id, { undoable: false });
     }
   },
 
@@ -1036,7 +1055,7 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     // id and drops the re-dated copy; redoing runs the move again from it.
     if (moved) {
       get().setLastAction({
-        label: `Moved "${current.label}"`,
+        label: `Moved “${current.label}”`,
         undo: () => {
           get().removeEntry(moved.id);
           restoreEntries([current], get, set);

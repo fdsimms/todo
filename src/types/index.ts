@@ -1,6 +1,9 @@
 // 'hours' is the one type with no calendar grid of its own — see
 // getNextDueDate and the "hours" note on Task.recurrenceInterval. It always
 // behaves as recurrenceFromCompletion regardless of that flag's stored value.
+// What a recurring task does on a holiday. See Task.recurrenceHolidays.
+export type HolidayRule = 'skip' | 'move';
+
 export type RecurrenceType = 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly' | 'hours';
 export type Priority = 0 | 1 | 2 | 3 | 4;
 export type Effort = 0 | 1 | 2 | 3 | 4 | 5 | 6;
@@ -47,12 +50,43 @@ export type Difficulty = 'trivial' | 'easy' | 'normal' | 'hard';
  * `priority: 0` is an answer, not an absence: it means "these have no
  * priority, don't ask", and a task created under it is stamped as dismissed for
  * the priority backfill, since a priority of 0 otherwise reads as missing.
+ * `effort: 0` is the same answer for the time estimate.
+ *
+ * The last three are the backfill screen's yes/no questions. `true` turns the
+ * setting on, `false` leaves it off and stamps the question as dismissed so
+ * Backfill never asks, and `null` is "no default, ask me". Streak chip and
+ * vacation pause only mean something on a repeating task, so a default for
+ * either is applied to repeating tasks only.
  */
 export interface TaskFieldDefaults {
   priority: Priority | null;
   difficulty: Difficulty | null;
-  /** An estimate bucket, 1 to 6. The minutes come from `EFFORT_MINUTES`. */
+  /** An estimate bucket, 1 to 6, or 0 for "no estimate, don't ask". The minutes come from `EFFORT_MINUTES`. */
   effort: Effort | null;
+  /** `Task.showStreak`, for repeating tasks. */
+  showStreak: boolean | null;
+  /** `Task.vacationPause`, for repeating tasks. */
+  vacationPause: boolean | null;
+  /** `Task.excludeFromSuggestions`. */
+  excludeFromSuggestions: boolean | null;
+}
+
+/**
+ * The rest of a kind of generated task's "Task settings", beside its
+ * `TaskFieldDefaults` and its own category setting: fields the generator never
+ * writes, applied to each new task beneath whatever the generator's draft
+ * names (see `generatedExtrasFill` in `src/utils/generatedTaskSettings.ts`).
+ * Empty arrays and a null kind mean "nothing set".
+ */
+export interface GeneratedTaskExtras {
+  /** Added to the draft's own tags, never replacing them. */
+  tags: string[];
+  /** Used only when the draft names no time of day. */
+  timeSegments: TimeOfDay[];
+  /** `Task.deliverableKind`, used only when the draft asks nothing. */
+  deliverableKind: DeliverableKind | null;
+  /** `Task.deliverableOptions`, for a `'choice'` kind only. */
+  deliverableOptions: string[];
 }
 
 /**
@@ -85,7 +119,7 @@ export interface Category {
   // but bad company for whatever else lands in a shortlist.
   excludeFromSuggestions: boolean;
   // Keep tasks in this category from counting as "new" — no entry in the
-  // "you have X new todos" banner, and no dot on their own row (see
+  // "you have X new tasks" banner, and no dot on their own row (see
   // isTaskNew). Both read the same signal, so this turns it off at the
   // source rather than hiding it from only one of the two places it shows.
   // For categories that surface tasks constantly (routines, recurring
@@ -774,13 +808,16 @@ export interface TaskGroup {
   // a project's section; ignored anywhere else. Optional for rows built before
   // it existed.
   checklist?: boolean;
+  // Leaves the "Next: ..." part off this stack's collapsed header.
+  // Presentation only. Optional for rows built before it existed.
+  hideNextStep?: boolean;
 }
 
 /**
  * A saved view: a named, reusable lens over the task list (#2679).
  *
  * The filter state this joins was three settings on `useSettingsStore` —
- * `filterPriorities`, `filterEfforts`, `filterHasReminder` — plus a sort, all
+ * `filterPriorities`, `filterEfforts` — plus a sort, all
  * of them global and shared by Today, Later, Unscheduled and Inbox. One state,
  * no name, nothing kept, so "under 10 minutes and nothing blocked" had to be
  * re-derived by hand every time or never got asked at all.
@@ -1033,7 +1070,9 @@ export type UnattendedSubject =
   // A saved view (`SavedView`), created or deleted by an agent. Record only.
   | 'view'
   // A switch in Settings an agent flipped (vacation mode). Record only: the switch is one tap.
-  | 'setting';
+  | 'setting'
+  // A meter reading (`MeterReading`) an agent logged or deleted. Record only.
+  | 'meter';
 
 /**
  * What an agent's edit or move changed: the fields it touched, as they were
@@ -1460,6 +1499,21 @@ export interface Project {
    */
   showChecked: boolean;
   /**
+   * Leaves the "Next: ..." line off this project's card on the Projects
+   * screen. Presentation only. Optional for rows built before it existed.
+   */
+  hideNextStep?: boolean;
+  /**
+   * Gathers what this project has on Today under its own name, at the top of
+   * the Today view below the pinned block, rather than leaving its tasks and
+   * stacks in their category sections (`buildTodayProjectBands`). A trip's
+   * packing day is the case it exists for: its sections arrive as stacks,
+   * and without it nothing on Today said they were one trip's. Presentation
+   * only: what is on the day is decided exactly as before, and Later,
+   * Unscheduled and Inbox ignore it. Optional for rows built before it existed.
+   */
+  groupOnToday?: boolean;
+  /**
    * Where the trip goes, as free text.
    *
    * `Task.location` carries a note saying nothing in the app plots it and that
@@ -1468,12 +1522,25 @@ export interface Project {
    * is the one thing packing actually turns on. It also gives a trip template's
    * `{destination}` blank somewhere to live between runs.
    *
-   * Free text, and geocoded only when the reader asks (see
-   * `src/services/geocode.ts`) — never stored back as coordinates. "Mum's" is a
-   * destination and is not a place any gazetteer knows, and a field that only
-   * accepted what a geocoder recognised would refuse half the trips people take.
+   * Free text, geocoded when a reader asks (see `src/services/geocode.ts`).
+   * "Mum's" is a destination and is not a place any gazetteer knows, and a
+   * field that only accepted what a geocoder recognised would refuse half the
+   * trips people take.
    */
   destination: string | null;
+  /**
+   * Where `destination` geocoded to, kept so sunrise and sunset can follow the
+   * trip (`tripSunLocationOn`): those are worked out synchronously in every
+   * list pass, which can't wait on a request. Rounded like `sunLocation`.
+   *
+   * **A cache of the text, never a second answer to it.** Written only by the
+   * trip page's own geocode, against the destination it asked about, and
+   * cleared whenever the destination changes (`destinationPinFields`), so it
+   * can't outlive the words it came from. Null for a place no geocoder knows
+   * ("Mum's"), and until the page has looked it up; sun times then use home.
+   */
+  destinationLatitude?: number | null;
+  destinationLongitude?: number | null;
 }
 
 /**
@@ -1876,6 +1943,46 @@ export interface JournalEntry {
   dayKey: string;
   /** What was written. Never empty: the store refuses a blank entry. */
   text: string;
+  /**
+   * A note to your future self: the logical day it opens, or null for an
+   * entry that is open as soon as it's written (every entry before this, and
+   * most after). Until that day it is sealed: kept, synced and counted as
+   * written, but every reader shows it only as "a note for later", never its
+   * words. Read through `openEntries` (utils/journal.ts), the one rule every
+   * reader uses. Optional so a row or fixture from before it reads as open.
+   */
+  openOn?: string | null;
+  /**
+   * Labels the person put on the entry ("recurring", "work"). Typed by them
+   * and never detected from the words, so the app still derives nothing from
+   * what was written. Optional so a row from before tags reads as untagged.
+   */
+  tags?: string[];
+  /**
+   * The people the entry is about (`Person.id`), picked by the person. The
+   * person's page lists these entries and nothing more: a count of pages is
+   * not a ranking. Optional so an older row reads as about nobody.
+   */
+  personIds?: string[];
+}
+
+/**
+ * One reading of a meter the user tracks by hand: an odometer, a hobbs meter,
+ * an espresso machine's shot counter. Readings are keyed by the meter, not by
+ * a task, so a single entry serves every task following that meter
+ * (`Task.meterName`). Rows are only ever added or deleted, never merged, so
+ * two devices logging at once both keep their reading. See src/utils/meters.ts.
+ */
+export interface MeterReading {
+  id: string;
+  /** `meterKey(name)`: trimmed and lowercased, so "Car" and "car " are one meter. */
+  meterKey: string;
+  /** The name as it was typed, for display. */
+  meterName: string;
+  value: number;
+  /** When the reading was taken. */
+  readAt: string;
+  createdAt: string;
 }
 
 /**
@@ -1897,6 +2004,26 @@ export interface JournalEntry {
  * or deleted, not filed away, and there is no "gone stale" state for a fact
  * about a single day in the past.
  */
+/**
+ * A line of on-screen copy marked as needing a manual pass. TEMPORARY dev
+ * tooling: made by long-pressing text while flag mode is on (Settings › About),
+ * read and resolved by Claude over MCP, then fixed in the repo. Remove the table,
+ * store, sheet and tools before the app opens to real users.
+ */
+export interface CopyFlag {
+  id: string;
+  /** The string as rendered, which is what Claude greps the source for. */
+  text: string;
+  /** The route name it was flagged on. */
+  screen: string;
+  /** What is wrong with it, in the person's words. May be empty. */
+  note: string;
+  status: 'open' | 'resolved';
+  /** What it was changed to, or why it was left. Set when resolved. */
+  resolution: string;
+  createdAt: string;
+}
+
 export interface Milestone {
   id: string;
   /** What happened, in your own words — "Started sertraline", "New job". */
@@ -1982,6 +2109,15 @@ export interface MedicationLog {
    */
   taskId: string | null;
   note: string | null;
+  /**
+   * What one counted unit (a capsule, a tablet) contained when this dose was
+   * taken, or absent when it stated nothing. Stamped from the medication's
+   * strength at write time and then left alone, so switching to a 250 mcg
+   * product later does not re-read last month's capsules as 250 mcg. Only
+   * meaningful on a dose whose `unit` is counted; `amount` stays what was taken
+   * ("1 capsule") and the total is `doseTotal`'s product of the two.
+   */
+  strength?: { amount: number; unit: string } | null;
 }
 
 /**
@@ -2051,6 +2187,30 @@ export interface Reward {
    * key, like every other provenance pointer in the ledger.
    */
   taskId: string | null;
+  /**
+   * A real-money price in minor units (cents), for a reward that costs money.
+   * When set, `cost` is derived from it at the current exchange rate
+   * (`repriceCoinsFor` in `src/utils/rewards.ts`) and rewritten whenever the
+   * rate moves, so `cost` stays the one figure every reader claims, sorts and
+   * saves toward. Null for a reward priced in coins only.
+   */
+  priceMinor: number | null;
+  /**
+   * The "don't do this" habit this reward is the honest way to have ("No
+   * dessert unless claimed" for "A dessert"). A slip logged on it claims the
+   * reward when the balance covers it, and otherwise is charged the reward's
+   * price down to zero. Never set on a one-time or wish list reward. Rules in
+   * `src/utils/rewardGuard.ts`. No foreign key, like `taskId`.
+   */
+  guardsTaskId: string | null;
+  /**
+   * The reward can be claimed once per this many days (a week is 7, a month
+   * 30; the form picks days, weeks or months). Null is no limit. Whether it is
+   * waiting is read off the ledger's newest claim (`claimWaitDays`), so undoing
+   * the claim frees it with nothing else to reset. Never set on a one-time or
+   * wish list reward, which are claimed once anyway.
+   */
+  claimEveryDays: number | null;
 }
 
 /**
@@ -2222,6 +2382,10 @@ export type GeneratedKind =
   // coming straight back is snackNudgeDeclinedDayKey, and a completed one blocks
   // a second through `blocksOnFinished`.
   | 'snackNudge'
+  // A "don't do" task per Stay under limit, slipped automatically when the food
+  // log goes past it — see src/utils/limitWarningTasks.ts. Keyed by the
+  // nutrient; deleting one adds it to limitWarningDeclined.
+  | 'limitWarning'
   // "Book Optometrist" once a saved event's own interval has nearly passed
   // since the last one — see src/utils/savedEventTasks.ts. Sourced by the saved
   // event and the cycle (`key|day`), and declined on the saved event itself.
@@ -2369,10 +2533,37 @@ export interface Task {
   // this slot and the task's title, rather than writing a FoodLogEntry
   // outright — see FoodLogEntrySheet.tsx.
   logMealSlot: MealSlot | null;
+  // A saved meal (`SavedMeal`) completing this task logs straight to the food
+  // log, in `logMealSlot`'s slot: "Metamucil" logs that you took Metamucil with
+  // no sheet to answer. Null or absent means the offer above is all that
+  // happens. Optional so a row or fixture from before it reads as off.
+  //
+  // Resolve-or-shrug, the same call `MealPlanEntry.recipeId` makes: a saved
+  // meal that has since been deleted falls back to the manual offer rather than
+  // logging nothing, so the tick is never silently a no-op. Each entry written
+  // carries `FoodLogEntry.taskId`, and uncompleting the task takes them back.
+  // Rides ...effective onto the next occurrence like logMealSlot does.
+  logSavedMealId?: string | null;
   deferUntil: string | null;
   timeSegments: TimeOfDay[];
   windowStart: string | null; // "HH:MM" — task only becomes visible/active from this time on its day
   windowEnd: string | null;   // "HH:MM" — task expires (moves to Expired) after this time on its day
+  /**
+   * A window bound that follows the sun instead of the clock: "sunset",
+   * "sunset-30", "sunrise+15" (see src/utils/sunTimes.ts). Null for a plain
+   * clock time, which is every row written before this existed.
+   *
+   * **It overrides `windowStart`/`windowEnd` for that bound, and doesn't
+   * replace them.** A reader resolves it for the day it's asking about through
+   * `windowBoundsFor`, and the clock field keeps the time it resolved to when
+   * it was set: that is what a reader with no day of its own, an older build on
+   * another device, and a day the sun times can't be worked out (no location
+   * saved, a polar day) all read instead. So anything writing the clock field
+   * for a bound without naming its anchor clears the anchor (`updateTask`), or
+   * the anchor would silently outrank the time just typed.
+   */
+  windowStartSun?: string | null;
+  windowEndSun?: string | null;
 
   recurrenceType: RecurrenceType;
   // The count of days/weeks/months/years for every type but 'hours', which
@@ -2435,6 +2626,31 @@ export interface Task {
   recurrenceEndDate: string | null;
   recurrenceCount: number | null; // occurrences remaining (including this one); null = unlimited
   recurrenceFromCompletion: boolean;
+  /**
+   * What the next occurrence does when the rule lands it on a holiday
+   * (`src/utils/holidays.ts`: the set chosen in Settings plus the user's own
+   * days off). `'skip'` drops it for the rule's following date; `'move'` puts
+   * it on the next day that isn't one, the way a trash pickup slides a day
+   * after a holiday. Null, as on every row written before this existed, is
+   * "happens anyway".
+   *
+   * Applied where the engine produces a date (`getNextOccurrence`), so the
+   * successor, a skip and the month grid all agree. A move keeps the rule's
+   * own date in `recurrenceAnchorDate`, the pull-forward mechanism, so one
+   * moved occurrence doesn't drag the rest of the schedule with it. The
+   * occurrence the user dated themselves is never moved: this governs the
+   * dates the rule picks.
+   */
+  recurrenceHolidays?: HolidayRule | null;
+  // Skip this occurrence when it has rained enough: a threshold in
+  // millimetres over yesterday and today, read from the forecast the weather
+  // switch already fetches. Null = never. Repeating tasks only (not 'hours').
+  // See src/utils/rainSkip.ts.
+  rainSkipMm?: number | null;
+  // The day key the app last skipped this row for rain. The pass's mark: it
+  // never skips a row twice on one day, so pulling a skipped occurrence back
+  // onto Today sticks.
+  rainSkippedOn?: string | null;
 
   // Quota — a habit logged N times a day (8 glasses of water) rather than done
   // once. Deliberately not N tasks, N subtasks, or N taps on an ever-present
@@ -2541,10 +2757,12 @@ export interface Task {
    * sixth `RecurrenceType` the whole engine would have to learn.
    *
    * Everything that made a daily target work still works, because all of it
-   * reads the *span* rather than the day: the pace ramp, the hide-while-ahead,
-   * the meter, the completion that spawns the next occurrence. Only the span
-   * differs (see `quotaWeekSpan`), which is the reason this is affordable at
-   * all. The pace across a week is linear rather than following active hours
+   * reads the *span* rather than the day: the pace ramp, the meter, the
+   * completion that spawns the next occurrence. Only the span differs (see
+   * `quotaWeekSpan`), which is the reason this is affordable at all. The one
+   * exception is hide-while-ahead: a weekly target ahead of pace leaves Today
+   * only for a later day, never for a later time today, so it stays up while
+   * its next unit falls due today (`quotaHidesWhenOnPace`). The pace across a week is linear rather than following active hours
    * each day — by Wednesday lunchtime you are owed about half of it — because a
    * week-long ramp is answering "am I going to run out of week", and the hour
    * of the day doesn't change that answer.
@@ -2556,6 +2774,25 @@ export interface Task {
    * Pairs with weekly recurrence, which is what spawns next week's occupant.
    */
   quotaPeriod: QuotaPeriod;
+
+  /**
+   * Ramp up — a plain daily or weekly target that raises its own `targetCount`
+   * ("add 1 after every 7 days you hit it, up to 20"). The rule is
+   * `src/utils/quotaRamp.ts`; `completeTask` applies it when it spawns the next
+   * occurrence. All four are optional and absent reads as off, like `rainSkipMm`.
+   *
+   * `quotaRampStep` is the amount added (null/0 = no ramp). `quotaRampEvery` is
+   * how many occurrences that met the target it takes, counted in the task's own
+   * period (days, or weeks for a weekly target). `quotaRampGoal` is the ceiling
+   * (null = climb to the app's maximum). `quotaRampHits` is the running count
+   * toward the next step, and rides each successor.
+   *
+   * A missed or short occurrence neither steps nor resets it: the ramp waits.
+   */
+  quotaRampStep?: number | null;
+  quotaRampEvery?: number | null;
+  quotaRampGoal?: number | null;
+  quotaRampHits?: number;
 
   /**
    * Rotation — the set of named things a quota is counting, when the units are
@@ -3039,6 +3276,18 @@ export interface Task {
    * `src/utils/deliverables.ts` for the terms a second destination has to meet.
    */
   deliverableSetsAway?: boolean;
+  /**
+   * On a look-back task ("How did it turn out?"), the answered row it looks
+   * back on; null on every other task. Its own answer is that decision's
+   * outcome, read beside the original answer by joining on this
+   * (`decisionOutcomes`), so the decision's row is never written again. See
+   * src/utils/decisionReview.ts.
+   *
+   * Points at the completed row, not at a successor: that row is the one
+   * holding the answer, and retention never purges an answered row.
+   * Resolve-or-shrug like every cross-row pointer.
+   */
+  reviewOfTaskId?: string | null;
 
   // Which generator wrote this task, and the row it was projected from — both
   // null on every task a person typed. See src/utils/generatedTasks.ts for the
@@ -3419,6 +3668,13 @@ export interface Task {
   // late against, and this is inert on it.
   streakRequiresWindow: boolean;
 
+  // Opt-in per task, for a weekly target (quotaPeriod 'week'): the streak chip
+  // counts every unit logged, as a running total, instead of the weeks in a row
+  // the whole target was hit. A missed or short week costs nothing, since
+  // there is no run to break. Inert on any other task, which is the only place
+  // the editor offers it. See countsUnits in src/utils/streakUnits.ts.
+  streakCountsUnits: boolean;
+
   // Series — one commitment that falls on several hand-picked dates (e.g.
   // walking the neighbour's dog on the 10th and the 15th). Every date is its
   // own real row sharing this id, deliberately rather than one row holding a
@@ -3583,6 +3839,31 @@ export interface Task {
   // `canWaitForWeather`); a repeating task, chain step or series member never
   // carries it. See src/utils/weatherWait.ts.
   weatherWait?: WeatherCondition | null;
+
+  // A one-off due at a reading rather than a date: "change the oil every 5,000
+  // miles". The readings belong to the meter, not the task (`MeterReading`,
+  // keyed by `meterKey(meterName)`), so one odometer entry speaks for every
+  // task on the car. While set, the meter pass owns `deferUntil` the way the
+  // weather pass does: it holds the task until a reading reaches `meterDueAt`,
+  // the date the reading rate projects, or `meterLimitMonths` after the task
+  // was made, whichever comes first. Completing it writes the next one, due
+  // `meterEvery` further on. Only a plain one-off may follow a meter (see
+  // `canFollowMeter`). See src/utils/meters.ts and docs/arch/meters.md.
+  meterName?: string | null;
+  // What the meter counts, as the user wrote it ("miles", "hours", "shots").
+  // Display only: nothing converts it.
+  meterUnit?: string | null;
+  // How far the meter runs between occurrences.
+  meterEvery?: number | null;
+  // The reading this occurrence is due at.
+  meterDueAt?: number | null;
+  // "Or every 6 months, whichever comes first": a time limit counted from the
+  // task's createdAt, so a meter nobody reads still surfaces. Null = none.
+  meterLimitMonths?: number | null;
+  // The day key of the last hold the meter pass wrote into `deferUntil`, so it
+  // only ever moves its own: a defer that doesn't match is the user's snooze
+  // and is left alone. Null when the pass has written nothing.
+  meterHeldUntil?: string | null;
 
   // On a recurring task: every occurrence it spawns starts pinned. Completing
   // a pinned task clears its pin and a successor is a new row that starts
@@ -3892,6 +4173,16 @@ export interface TemplateQuestion {
   // 'number' only: fill the answer from the run's anchor dates. A typed answer
   // always wins — this is where the field starts, not what it's pinned to.
   fromDates: TemplateQuestionSource;
+  // 'choice' only: more than one answer may be picked. The run's answer is then
+  // a JSON array of the picked options (the way a 'people' answer is a set of
+  // ids), and a condition or variant naming any one of them matches. Still
+  // starts on the first option, and at least one stays picked. See
+  // `answerValues` in templateQuestions.ts.
+  multiple?: boolean;
+  // Show the destination's forecast for the run's dates under this question
+  // ("What's the weather like?"). A sentence only: it never answers the
+  // question, ticks anything or conditions an item. See docs/arch/away-dates.md.
+  showForecast?: boolean;
 }
 
 /** A template item's answer gate: the item that asks, and the answers that show this one. See `TemplateItem.answerGate`. */
@@ -3913,7 +4204,15 @@ export interface TemplateItemCondition {
   questionId: string;
   // Which answers include the item. An empty list is inert (it would
   // otherwise mean "no answer includes this", which nothing can act on).
+  // Empty on a condition over a number question, which uses min/max instead.
   values: string[];
+  // A number question has no fixed set of answers to tick, so a condition on
+  // one is a range: the item matches when the answer is at least `min` and at
+  // most `max` (both inclusive, either may be left off). "Longer than 4 days"
+  // is `min: 5`. Neither set is inert, like an empty `values`. Ignored on a
+  // condition over a choice question.
+  min?: number;
+  max?: number;
 }
 
 /**
@@ -3957,6 +4256,11 @@ export interface TemplateItem {
   deadlineTime?: string | null;
   windowStart: string | null; // "HH:MM" — carried through unchanged, no date component
   windowEnd: string | null;   // "HH:MM"
+  // Task.windowStartSun / windowEndSun, carried through unchanged beside the
+  // clock fallback above. Optional so a template stored before them reads as
+  // a plain clock window.
+  windowStartSun?: string | null;
+  windowEndSun?: string | null;
   // Task.linkUrl, seeded onto the task: a booking page, the form to fill in.
   // Optional so a template stored before it reads as having none.
   linkUrl?: string | null;
@@ -3987,6 +4291,12 @@ export interface TemplateItem {
   recurrenceMonthDay: number | null;
   recurrenceMonth: number | null;
   recurrenceFromCompletion: boolean;
+  // Task.recurrenceHolidays, carried through. Optional so a template stored
+  // before it reads as happening anyway.
+  recurrenceHolidays?: HolidayRule | null;
+  // Task.rainSkipMm, carried through. Optional, like recurrenceHolidays: a
+  // template stored before it reads as never skipping.
+  rainSkipMm?: number | null;
   recurrenceCount: number | null;
   // Seeds Task.recurrenceWeekOrdinal: "the 2nd Tuesday" on a monthly repeat
   // (1-4, or -1 for the last), read with recurrenceDays[0]. Optional, like the
@@ -4001,6 +4311,11 @@ export interface TemplateItem {
   targetCount?: number | null;
   targetUnit?: string | null;
   quotaPeriod?: QuotaPeriod;
+  // Task.quotaRampStep/Every/Goal, seeded: "push-ups, adding 2 every 3 days".
+  // The running hit count is per task and never seeded.
+  quotaRampStep?: number | null;
+  quotaRampEvery?: number | null;
+  quotaRampGoal?: number | null;
   allowOvershoot?: boolean;
   quotaReminders?: boolean;
 
@@ -4036,6 +4351,12 @@ export interface TemplateItem {
   weatherWait?: WeatherCondition | null;
   // Seeds Task.pinEachOccurrence on the task this item creates.
   pinEachOccurrence?: boolean;
+  // Adds one subtask per medication you currently take, read from the
+  // medication log when the template runs, after the item's own subtasks. The
+  // list is never stored on the item: it is whatever "what you take" is on the
+  // day of the run (`medicationVocabulary`, archived ones left out), so a
+  // packing list stays right as medicines come and go. Absent reads as false.
+  medicationChecklist?: boolean;
   estimatedMinutes: number | null;
   // Seeds Task.completionTimerMinutes — a routine (like a recurring
   // medication) that always wants the same "remind me N later" offer
@@ -4129,6 +4450,13 @@ export interface TemplateItem {
   // suppresses what's under it (its items answer to their own template's
   // questions, not to this one's).
   conditions: TemplateItemCondition[];
+  // How several conditions combine: 'all' (every one must match, the default
+  // and what an item stored before this reads as) or 'any' (one is enough),
+  // so "bring a passport if flying or international" is one item rather than
+  // two. One switch over the whole list rather than nested groups: it covers
+  // every case an item has asked for, and "this and (that or the other)" is a
+  // second item. Meaningless with fewer than two live conditions.
+  conditionsMatch?: 'all' | 'any';
 
   // Alternative title/notes for particular answers; see TemplateItemVariant.
   // Empty for every item stored before this shipped, which is "no variants".
@@ -4420,7 +4748,36 @@ export interface GroceryListEntry {
 }
 
 /**
- * The thirteen nutrients a food can be recorded as holding, keyed the way the
+ * The vitamins and minerals a supplement panel can state. Part of `NutrientKey`;
+ * split out so the panel form can group them and the barcode parsers can say
+ * (by not listing any) that none of them is read from a source.
+ *
+ * Each has an Apple Health dietary type, which is the list's other constraint:
+ * a key with no write type would be a nutrient the food log records and the
+ * Health record can never hold.
+ */
+export type MicronutrientKey =
+  | 'vitaminAMcg' | 'vitaminCMg' | 'vitaminDMcg' | 'vitaminEMg' | 'vitaminKMcg'
+  | 'thiaminMg' | 'riboflavinMg' | 'niacinMg' | 'vitaminB6Mg' | 'folateMcg'
+  | 'vitaminB12Mcg' | 'biotinMcg' | 'pantothenicAcidMg'
+  | 'magnesiumMg' | 'zincMg' | 'phosphorusMg' | 'seleniumMcg' | 'copperMg'
+  | 'manganeseMg' | 'chromiumMcg' | 'molybdenumMcg' | 'iodineMcg' | 'chlorideMg';
+
+/** The vitamins, in the order a supplement panel prints them. */
+export const VITAMIN_KEYS: readonly MicronutrientKey[] = [
+  'vitaminAMcg', 'vitaminCMg', 'vitaminDMcg', 'vitaminEMg', 'vitaminKMcg',
+  'thiaminMg', 'riboflavinMg', 'niacinMg', 'vitaminB6Mg', 'folateMcg',
+  'vitaminB12Mcg', 'biotinMcg', 'pantothenicAcidMg',
+];
+
+/** The minerals, in the order a supplement panel prints them. */
+export const MINERAL_KEYS: readonly MicronutrientKey[] = [
+  'magnesiumMg', 'zincMg', 'phosphorusMg', 'seleniumMcg', 'copperMg',
+  'manganeseMg', 'chromiumMcg', 'molybdenumMcg', 'iodineMcg', 'chlorideMg',
+];
+
+/**
+ * The nutrients a food can be recorded as holding, keyed the way the
  * health rules already key theirs.
  *
  * **Eight of these are `HealthRuleMetric`'s own nutrient keys, character for
@@ -4454,16 +4811,19 @@ export interface GroceryListEntry {
  * panel is not, which is a decision about the data rather than about the
  * design.
  *
- * **Vitamin D is the fourth mandatory one and is deliberately absent.** It is
- * present on 57% of that sample and above zero on 16%, so 41% of products
- * state an explicit zero — the shape of a bulk-defaulted field rather than a
- * measurement. It cannot be filtered the way `OFF_UNINFORMATIVE_ZERO` filters
- * choline either, because that rule earns its refusal by the field never once
- * carrying a real value, and vitamin D does carry one 16% of the time. A zero
- * that is sometimes true and usually a default is a figure this app cannot
- * read honestly, and a wrong zero written to a health record is the failure
- * `docs/arch/health-data.md` is entirely about. So it waits for a source that
- * states it properly.
+ * **The vitamins and minerals after `caffeineMg` and `waterMl` are typed by
+ * hand, or read off a photographed label, and that is what lets them in.** The measurement above is why the barcode
+ * sources can't fill them, not a reason to keep them out: a supplement's panel
+ * is typed once, by someone holding the bottle, and then every dose of it
+ * adds the same figures (`supplementDose.ts`). A photographed label is print
+ * the person checks against the bottle before saving, so it may fill them too
+ * (`PRINTED_NUTRIENT_KEYS`). `nutritionParse.ts` maps none of them, so a scanned or searched food never states a figure it can't vouch
+ * for. Vitamin D is the clearest case: 41% of products state an explicit zero,
+ * the shape of a bulk-defaulted field, and a wrong zero written to a health
+ * record is the failure `docs/arch/health-data.md` is entirely about. A typed
+ * 25 mcg off a bottle is a different claim from that, and an absent key is
+ * still unknown, never zero, so a day's vitamin D total counts only the
+ * entries that stated it.
  *
  * **The three are written to Health and never read from it**, which is
  * `carbsG` and `fatG`'s arrangement rather than a new one: a rule metric costs
@@ -4472,27 +4832,76 @@ export interface GroceryListEntry {
  * meal reaching the Health app with the label's mineral block missing reads as
  * incomplete rather than deliberate.
  *
+ * **`transFatG`, `cholesterolMg` and `addedSugarG` are the three a person
+ * watching their cholesterol reads first**, and every US label prints them, so
+ * the barcode sources carry them about as often as saturated fat. They are
+ * recorded, and cholesterol is written to Health with the rest of a meal. Trans
+ * fat and added sugars are never written: HealthKit has no type for either. So
+ * those two sit outside `HEALTH_WRITABLE_NUTRIENTS` below, which is the list
+ * every Health-facing reader walks instead of this one. Cholesterol's share
+ * type arrived after people had already allowed nutrition, so for them it reads
+ * as not yet asked until they allow it, the minerals' arrangement.
+ *
  * The unit is in the name, the same convention the health metrics use, because
  * a figure stored in one unit and read in another is the bug with no symptom
  * until somebody's sodium reads a thousand times too high.
  */
 export type NutrientKey =
-  | 'calorieKcal' | 'proteinG' | 'carbsG' | 'fatG' | 'satFatG'
-  | 'fiberG' | 'sugarG' | 'sodiumMg'
+  | 'calorieKcal' | 'proteinG' | 'carbsG' | 'fatG' | 'satFatG' | 'transFatG'
+  | 'cholesterolMg' | 'fiberG' | 'sugarG' | 'addedSugarG' | 'sodiumMg'
   | 'calciumMg' | 'ironMg' | 'potassiumMg'
-  | 'caffeineMg' | 'waterMl';
+  | 'caffeineMg' | 'waterMl'
+  | MicronutrientKey;
 
 /**
- * Every `NutrientKey`, in the order a nutrition label prints them — which is
+ * Every `NutrientKey`, in the order a nutrition label prints them (trans fat
+ * and cholesterol under saturated fat, added sugars under total sugars), which is
  * why the three minerals sit together after sodium, where a US panel prints
- * its own mineral block, and why caffeine and water trail the lot: no label
- * prints either.
+ * its own mineral block. Caffeine and water follow, since no label prints either,
+ * and the manual-only vitamins and minerals (`MicronutrientKey`) come last.
  */
 export const NUTRIENT_KEYS: readonly NutrientKey[] = [
-  'calorieKcal', 'fatG', 'satFatG', 'carbsG', 'fiberG', 'sugarG', 'proteinG', 'sodiumMg',
+  'calorieKcal', 'fatG', 'satFatG', 'transFatG', 'cholesterolMg',
+  'carbsG', 'fiberG', 'sugarG', 'addedSugarG', 'proteinG', 'sodiumMg',
   'calciumMg', 'ironMg', 'potassiumMg',
   'caffeineMg', 'waterMl',
+  ...VITAMIN_KEYS, ...MINERAL_KEYS,
 ];
+
+/**
+ * The nutrients asked for from a source that states a default or a model that
+ * estimates: a barcode source, a model's estimate of a meal or a recipe. Every
+ * `NutrientKey` except the vitamins and minerals (see the note on
+ * `NutrientKey`). A model asked to estimate a restaurant meal's selenium would
+ * produce a confident figure with nothing behind it, and it would be written to
+ * a health record, so the request never names them and a reply that does is
+ * read past.
+ *
+ * A photographed label is the exception, and reads `PRINTED_NUTRIENT_KEYS`.
+ */
+export const EXTERNAL_NUTRIENT_KEYS: readonly NutrientKey[] = NUTRIENT_KEYS.filter(
+  key => !(VITAMIN_KEYS as readonly string[]).includes(key) && !(MINERAL_KEYS as readonly string[]).includes(key),
+);
+
+/**
+ * The nutrients a photographed label can state: all of them. A label photo is a
+ * transcription of print, not an estimate and not a source's default, so a
+ * supplement's vitamin rows are read like any other and the person checks the
+ * fields against the bottle before saving.
+ */
+export const PRINTED_NUTRIENT_KEYS: readonly NutrientKey[] = NUTRIENT_KEYS;
+
+/**
+ * The nutrients a logged meal can carry into Apple Health: one per row of the
+ * bridge's `nutrientWriteTable`, and so every key above except the two
+ * HealthKit has no type for (see `NutrientKey`). The Health settings'
+ * per-nutrient choice, the default write selection, the write itself and a
+ * task's "log to Health" picker all walk this, so a key the native side would
+ * silently skip is never offered as though it were written.
+ */
+export const HEALTH_WRITABLE_NUTRIENTS: readonly NutrientKey[] = NUTRIENT_KEYS.filter(
+  key => key !== 'transFatG' && key !== 'addedSugarG',
+);
 
 /**
  * Nothing but an identity, whose constraint does the work: it accepts a union
@@ -4694,6 +5103,25 @@ export interface FoodNutrition {
    * Absent for every source that states no category, which is the ordinary case.
    */
   foodCategory?: string | null;
+  /**
+   * What an estimated meal's total was made of, one line per thing the
+   * description named ("birch beer", "soft pretzel"), kept so the split the
+   * person saw before logging is still there on the row afterwards.
+   *
+   * Only an `estimated` panel carries one, and only when the model split the
+   * meal. Each line states figures and nothing else: no source and no
+   * confidence, since the claim is still the meal's (`nutritionEstimate.ts`).
+   * It scales with the total in `estimateAmountPatch` and is dropped by every
+   * path that builds a panel from more than one food (`combineFoodNutrition`),
+   * because that panel is no longer the estimate the lines were split from.
+   */
+  breakdown?: FoodBreakdownLine[];
+}
+
+/** One component of an estimated meal. See `FoodNutrition.breakdown`. */
+export interface FoodBreakdownLine {
+  label: string;
+  amounts: Partial<Record<NutrientKey, number>>;
 }
 
 /**
@@ -4762,6 +5190,14 @@ export interface FoodLogEntry {
   itemId: string | null;
   productId: string | null;
   mealPlanEntryId: string | null;
+  /**
+   * The task whose completion wrote this entry (`Task.logSavedMealId`), so
+   * un-completing it can take the entry back, the way `MedicationLog.taskId`
+   * does for a dose. Provenance only and free to dangle: deleting the task
+   * leaves the entry, because the food was still eaten. Optional because absent
+   * and null read the same everywhere.
+   */
+  taskId?: string | null;
   /** The amount as entered — "1 serving", "2 cups", "340g". */
   quantity: string;
   /** What that amount resolved to in grams, or null when nothing could resolve it. */
@@ -7656,7 +8092,31 @@ export interface ContextRow {
    * hours (`startsInLabel`). Absent on every other row.
    */
   startsIn?: string | null;
+  /**
+   * How a Stay under limit's row reads against it (`limitContextRows`): the
+   * glyph goes orange once the day is close and the row red once it is past.
+   * Absent on every other row.
+   */
+  tone?: 'near' | 'over';
+  /**
+   * The nutrient a limit or goal row is about, so a tap can open that
+   * nutrient's food contribution breakdown. Absent on every other row.
+   */
+  nutrientKey?: NutrientKey;
+  /**
+   * A drawing that goes with the figure, for a health reading that is measured
+   * against something: a bar for a limit or the Move goal, the three rings for
+   * the Activity summary. The title stays the full sentence either way, since
+   * it is what a screen reader and a collapsed section read. Absent on a row
+   * with nothing to measure against (steps, every event and meal).
+   */
+  visual?: ContextVisual;
 }
+
+export type ContextVisual =
+  /** `fraction` is clamped to 0..1; `move` draws it in the Move ring's red. */
+  | { type: 'bar'; fraction: number; hue?: 'move' }
+  | { type: 'rings'; rings: import('../utils/activityRings').ActivityRings };
 
 export const PRIORITY_LABELS = ['None', 'Low', 'Medium', 'High', 'Urgent'] as const;
 export const PRIORITY_COLORS = [

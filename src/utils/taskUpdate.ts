@@ -44,7 +44,7 @@ import { blockerFields, blockerIdsOf } from './blocking';
 // isLiveRecurring / CLAUDE.md recurrence docs for why).
 export const CONTENT_FIELDS: (keyof Task)[] = [
   'title', 'notes', 'tags', 'category', 'priority', 'effort', 'difficulty',
-  'estimatedMinutes', 'timedMinutes', 'healthMetric', 'healthTarget', 'healthFollowGoal', 'windowStart', 'windowEnd', 'timeSegments', 'reminderTime', 'reminderKind', 'reminderOffsetDays', 'reminderTracksVisibility', 'linkUrl', 'phoneNumber', 'emailAddress', 'location', 'completionTimerMinutes', 'completionTimerNote',
+  'estimatedMinutes', 'timedMinutes', 'healthMetric', 'healthTarget', 'healthFollowGoal', 'windowStart', 'windowEnd', 'windowStartSun', 'windowEndSun', 'timeSegments', 'reminderTime', 'reminderKind', 'reminderOffsetDays', 'reminderTracksVisibility', 'linkUrl', 'phoneNumber', 'emailAddress', 'location', 'completionTimerMinutes', 'completionTimerNote',
   // The question, not the answer — `deliverableValue` is per-occurrence data
   // like progressCount and is deliberately absent, or a scope:'occurrence'
   // edit would capture one date's answer as the default for every date after.
@@ -90,7 +90,7 @@ export const SCHEDULE_FIELDS = [
 // shortened from eight hours to four would keep nudging every 20 minutes but go
 // on expecting 24 of them, so the task would read as behind from the first
 // minute of every day.
-export const QUOTA_SPAN_FIELDS = ['windowStart', 'windowEnd', 'quotaIntervalMinutes', 'quotaStartedAt'] as const;
+export const QUOTA_SPAN_FIELDS = ['windowStart', 'windowEnd', 'windowStartSun', 'windowEndSun', 'quotaIntervalMinutes', 'quotaStartedAt'] as const;
 
 // Editing the set is editing the target, the same way editing the span is —
 // so it joins QUOTA_SPAN_FIELDS in triggering a re-derive rather than needing
@@ -400,6 +400,18 @@ export function mergeTaskUpdate(t: Task, patch: Partial<Task>, ctx: TaskUpdateCo
     ...(!('recurrenceAnchorDate' in updates) && scheduleChanged(t, updates, ctx.dayResetTime)
       ? { recurrenceAnchorDate: null }
       : {}),
+    // A window bound written as a clock time with no sun anchor beside it is
+    // "this time, now", so the anchor goes: left in place it would outrank the
+    // time just written (see Task.windowStartSun). Named rather than changed,
+    // unlike the grid anchor above, because the one writer that keeps an
+    // anchor (the editor) always names it, and every other writer of a window
+    // means the clock time it wrote.
+    ...('windowStart' in updates && !('windowStartSun' in updates) && t.windowStartSun
+      ? { windowStartSun: null }
+      : {}),
+    ...('windowEnd' in updates && !('windowEndSun' in updates) && t.windowEndSun
+      ? { windowEndSun: null }
+      : {}),
     // Two rules that ride onto the successor a completion spawns, and so
     // mean nothing on a task that no longer spawns one. Both were enforced
     // at creation (canHoldSupply / canHoldFollowUpTask in newTaskFromDraft)
@@ -474,7 +486,7 @@ export function mergeTaskUpdate(t: Task, patch: Partial<Task>, ctx: TaskUpdateCo
   // seenAt, because both the banner's OK and TaskItem's mark-on-tap only
   // fire for a row already showing as new. So its seenAt keeps whatever
   // stale value it had, and the first move into a category that doesn't
-  // suppress hands the user a week-old task in the "you have N new todos"
+  // suppress hands the user a week-old task in the "you have N new tasks"
   // banner. Stamping seenAt on that transition is the honest answer: they
   // are holding the task right now, so they have seen it.
   //

@@ -666,7 +666,7 @@ export function describePullEmpty(state: PullEmptyState): string {
       // mode, where a change of mind is honoured (see classifyProject).
       return count === total
         ? 'You cleared what was scheduled today. Nothing new until tomorrow.'
-        : `${projects(count)} of ${total} had today's suggestion cleared.${rest}`;
+        : `${projects(count)} of ${total} had today’s suggestion cleared.${rest}`;
     case 'auto-scheduled':
       return `${count === 1 ? 'One quiet project is' : `${projects(count)} are quiet and`} on auto-schedule. The next task gets dated without you.${rest}`;
     case 'has-schedule':
@@ -679,8 +679,8 @@ export function describePullEmpty(state: PullEmptyState): string {
         : `${projects(count)} of ${total} have only tasks that are waiting on another task.${rest}`;
     case 'no-pullable':
       return count === total
-        ? "What's left can't be pulled. Mid-chain steps and checklist lines are checked off rather than dated, and a project worked in order waits for its first open task."
-        : `${projects(count)} of ${total} have nothing that can be pulled: mid-chain steps, checklist lines, or a first task in order that's waiting.${rest}`;
+        ? "What’s left can’t be pulled. Mid-chain steps and checklist lines are checked off rather than dated, and a project worked in order waits for its first open task."
+        : `${projects(count)} of ${total} have nothing that can be pulled: mid-chain steps, checklist lines, or a first task in order that’s waiting.${rest}`;
     case 'no-live-tasks':
       return count === total
         ? 'Nothing left to do in any project.'

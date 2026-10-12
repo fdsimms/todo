@@ -567,7 +567,7 @@ export function CookModeSheet({
           <EmptyState
             icon="book-outline"
             title="No method written down"
-            subtitle="Add steps to this recipe, or write the method into its notes, and cook mode has something to read out."
+            subtitle="Add steps or write the method in the recipe’s notes to use cook mode."
           />
         ) : (
           <>
@@ -677,7 +677,7 @@ export function CookModeSheet({
                         style={styles.askInput}
                         value={question}
                         onChangeText={setQuestion}
-                        placeholder="e.g. how do I know when it's done?"
+                        placeholder="e.g. how do I know when it’s done?"
                         placeholderTextColor={colors.textTertiary}
                         maxLength={COOK_QUESTION_MAX_LENGTH}
                         returnKeyType="send"
@@ -880,7 +880,7 @@ export function CookModeSheet({
                 accessibilityRole="button"
                 accessibilityLabel="Start cooking"
               >
-                <Text style={styles.controlPrimaryText}>Start Cooking</Text>
+                <Text style={styles.controlPrimaryText}>Start cooking</Text>
                 <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.onAccent} />
               </TouchableOpacity>
             </View>

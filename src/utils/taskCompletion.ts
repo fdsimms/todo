@@ -35,21 +35,28 @@
  * interleave `dbUpdateTask(completed)` with the successor's computation.
  * Nothing read the database in between, so the rows are identical.
  */
-import type { Task } from '../types';
+import type { MeterReading, Task } from '../types';
+import { addDays } from 'date-fns/addDays';
 import { useSettingsStore } from '../store/useSettingsStore';
 import {
-  getNextDueDate,
+  getNextOccurrence,
   getCurrentDayStart,
   getStreakOutcome,
   getNextSeriesDates,
   getDeadlineFromOffset,
   getDeadlineFromMonthDay,
   getReminderOffsetDate,
+  dayKeyOf,
+  dayKeyToDate,
 } from './dateUtils';
-import { carryClockTime } from './clockTime';
+import { canFollowMeter, hasMeter, nextMeterDueAt } from './meters';
+import { carryClockTime, logicalDayStart } from './clockTime';
+import { canReviewDecision, reviewTaskDraft, type ReviewAfter } from './decisionReview';
 import { isRecurrenceNotYetDue, isQuotaTask, quotaRidesOutTheDay, isCompletionOnTime, hasNoDateSignal, getVisibleAt } from './visibilityUtils';
 import { isNegativeTask } from './negativeHabits';
+import { isAnsweredByRecord } from './recordTasks';
 import { nextStreakRecord } from './streakRecord';
+import { countsUnits } from './streakUnits';
 import {
   followUpTaskRule,
   followUpTaskEndRule,
@@ -61,6 +68,7 @@ import { normalizeTitle } from './taskInstances';
 import { chainStepDatedByAnswer, cleanDeliverableReasoning, deliverableDate, type DeliverableReasoning } from './deliverables';
 import { parseMealSlotSource, mealSlotStepTimeSegments } from './mealSlotTasks';
 import { derivedId, spawnSeed } from './syncIds';
+import { advanceQuotaRamp } from './quotaRamp';
 import { newTaskFromDraft, buildSeriesRow } from './taskDraft';
 
 /** The five things a caller can say about a completion. Identical to `completeTask`'s. */
@@ -88,7 +96,19 @@ export interface CompletionOptions {
    * no answer has nothing to hang on.
    */
   deliverableReasoning?: DeliverableReasoning;
+  /**
+   * Come back after this long and ask how the answer turned out: adds a
+   * look-back task pointing at the completed row (see decisionReview.ts).
+   * Ignored without a real answer, on a miss, and on a look-back itself.
+   */
+  reviewAfter?: ReviewAfter | null;
   neutral?: boolean;
+  /**
+   * Internal: the record this task asks for was just saved. Only the four
+   * `complete…TaskForToday` actions set it; see `isAnsweredByRecord` for why no
+   * other completion of those tasks is allowed.
+   */
+  recorded?: boolean;
   /**
    * The person says somebody else did it. Stamps `Task.doneByOtherAt`, and
    * closes the occurrence the way `neutral` does (no coins, the streak neither
@@ -128,6 +148,12 @@ export interface CompletionContext {
   allTasks: readonly Task[];
   /** The completing task's own subtasks, carried onto a successor. */
   subtasks: readonly Task[];
+  /**
+   * Every meter reading, for a task due at one (`Task.meterName`): the next
+   * occurrence counts on from a reading logged the day this one was done.
+   * Omitted counts on from where this one was due. See `nextMeterDueAt`.
+   */
+  meterReadings?: readonly MeterReading[];
 }
 
 /**
@@ -147,6 +173,8 @@ export interface CompletionRows {
   /** The every-Nth-completion task, if this completion earned one. */
   followUpTask: Task | null;
   followUpSubtasks: Task[];
+  /** "How did it turn out?", when the answer asked to be looked back on. */
+  reviewTask: Task | null;
   /** The next set of a repeating dated series, once its last date lands. */
   rolledOver: Task[];
   /** True when the recurrence's own schedule applied on this completion. */
@@ -180,6 +208,11 @@ export function completionRefusal(task: Task, options?: CompletionOptions): stri
   if (task.completed) return 'That task is already completed.';
   if (isNegativeTask(task)) {
     return 'That task is a habit you are avoiding rather than one you finish, so it has no completion. Record a slip against it instead.';
+  }
+  // A record answers these, so a tick would mark the question answered with
+  // nothing recorded. A missed mark claims nothing and still goes through.
+  if (isAnsweredByRecord(task) && !options?.missed && !options?.recorded) {
+    return 'That task is answered by saving the entry it asks for, so it has no manual completion. Record the entry instead.';
   }
   if (isRecurrenceNotYetDue(task)) {
     if (task.recurrenceType === 'hours' && options?.logEarly) return null;
@@ -309,7 +342,13 @@ export function buildCompletion(
   const streakBreaks = missed && recurs && datesBySchedule;
   // Named once because the record's fold compares against it (see
   // nextStreakRecord) and the completed row and its successor must agree.
-  const nextStreak = streakBreaks ? 0 : streakAdvances ? newStreakCount : task.streakCount;
+  //
+  // A weekly target counting units (countsUnits) is a total: the completing
+  // unit adds one and a miss leaves it alone. logQuotaUnit added the rest.
+  const unitTotal = countsUnits(task) && recurs && datesBySchedule;
+  const nextStreak = unitTotal
+    ? (missed || neutral ? task.streakCount : task.streakCount + 1)
+    : streakBreaks ? 0 : streakAdvances ? newStreakCount : task.streakCount;
 
   // "Follow-up task" — every Nth completion adds a separate one-off task (see
   // Task.followUpTaskEveryN). The tally is advanced here, not derived from the
@@ -410,7 +449,12 @@ export function buildCompletion(
 
   let nextTask: Task | null = null;
   let nextSubtasks: Task[] = [];
-  const spawnsNext = chainAdvances ? (recurs || !atChainEnd) : recurs;
+  // A task due at a meter reading is a one-off, but the meter keeps running:
+  // the oil needs changing again 5,000 miles on. So completing one writes the
+  // next, the way a recurrence does, with the reading in place of a date.
+  // See src/utils/meters.ts.
+  const meterSpawn = !recurs && !chainAdvances && hasMeter(task) && canFollowMeter(task);
+  const spawnsNext = chainAdvances ? (recurs || !atChainEnd) : (recurs || meterSpawn);
   if (spawnsNext) {
     // The recurrence's schedule only decides the date at the point it
     // actually applies (see advancesBySchedule above) — everywhere else
@@ -418,11 +462,12 @@ export function buildCompletion(
     // catchUp: this is placing a real row, and a successor dated before
     // today is one the user has to complete again to get rid of. See
     // getNextDueDate.
-    const nextDue = recurs && datesBySchedule ? getNextDueDate(task, dayResetTime, { catchUp: true, completedAt, coversCompletionDay: !missed }) : null;
+    const nextOccurrence = recurs && datesBySchedule ? getNextOccurrence(task, dayResetTime, { catchUp: true, completedAt, coversCompletionDay: !missed }) : null;
+    const nextDue = nextOccurrence?.date ?? null;
     // Skip the spawn only when we actually consulted the schedule and it
     // says the series has ended — a mid-chain step never consults it, so
     // it always spawns regardless of recurrenceEndDate/recurrenceCount.
-    if (!advancesBySchedule || nextDue !== null) {
+    if (meterSpawn || !advancesBySchedule || nextDue !== null) {
       // A "this task only" edit (see updateTask) stores what content fields
       // should revert to for the next occurrence in seriesDefaults — apply
       // it before spreading so the clone below reflects the series' real
@@ -602,13 +647,25 @@ export function buildCompletion(
         // came off the grid, so it is the grid's anchor again (#1953). This
         // one is explicit because the successor is built as a row rather than
         // patched through updateTask, so the rule there doesn't reach it.
-        recurrenceAnchorDate: null,
+        //
+        // The one exception is a successor a holiday moved off the rule's own
+        // day (Task.recurrenceHolidays): that day is the anchor, so the one
+        // after steps from the rule rather than from the day it was moved to.
+        recurrenceAnchorDate: nextOccurrence?.gridDate && effectiveDue === nextDue
+          ? nextOccurrence.gridDate.toISOString()
+          : null,
         timeSegments: nextTimeSegments,
         // Stays pinned through an immediate chain step, and starts pinned when
         // the task asked for every occurrence to (pinEachOccurrence); resets
         // otherwise. The inherited pinnedOrder keeps its place in the section.
         pinned: chainStepStaysPinned || (recurs && !!task.pinEachOccurrence),
         progressCount: 0, // a quota starts the new day empty
+        // A ramp-up target steps on the closing of an occurrence that met it, and
+        // only that: a miss, a neutral close or somebody else's completion leaves
+        // the count and the run of hits exactly as they were (src/utils/quotaRamp.ts).
+        ...(isQuotaTask(task) && task.quotaRampStep
+          ? advanceQuotaRamp(effective, !missed && !neutral)
+          : {}),
         // The ledger is per-period, so it does not ride `...effective` onto the
         // next one. `activeRotationLog` would ignore a stale stamp anyway
         // (that is what makes a missed week self-clean), but leaving one on a
@@ -762,6 +819,18 @@ export function buildCompletion(
         // reconcile here to create one, deliberately.
         timeBlockEventId: null,
         timeBlockExternalId: null,
+        // Due the meter's interval on, and held until the meter pass has
+        // looked: a row with no date signal at all would sit in Unscheduled
+        // until then. The hold is marked as the pass's own (meterHeldUntil),
+        // so the pass is free to move it the moment it runs.
+        ...(meterSpawn ? (() => {
+          const holdKey = dayKeyOf(addDays(getCurrentDayStart(), 1));
+          return {
+            meterDueAt: nextMeterDueAt(task, context.meterReadings ?? [], dayKeyOf(completedAt)),
+            deferUntil: dayKeyToDate(holdKey).toISOString(),
+            meterHeldUntil: holdKey,
+          };
+        })() : {}),
       };
 
       // Subtasks belong to the series, not a single occurrence — carry them
@@ -920,12 +989,30 @@ export function buildCompletion(
     }
   }
 
+  // Asked for at answer time, never by itself (decisionReview.ts). Counted
+  // from the logical day the decision was made, and derived by id so two
+  // devices replaying one completion write one look-back.
+  let reviewTask: Task | null = null;
+  const reviewAfter = options?.reviewAfter;
+  if (reviewAfter && !missed && !neutral && canReviewDecision(task, completed.deliverableValue)) {
+    const decidedDay = logicalDayStart(completedAt, dayResetTime);
+    const maxOrder = allTasks.reduce((m, t) => Math.max(m, t.sortOrder), 0);
+    reviewTask = newTaskFromDraft(
+      reviewTaskDraft(completed, reviewAfter, decidedDay),
+      now.toISOString(),
+      maxOrder + 1,
+      false,
+      derivedId(spawnSeed.review(id)),
+    );
+  }
+
   return {
     completed,
     nextTask,
     nextSubtasks,
     followUpTask,
     followUpSubtasks,
+    reviewTask,
     rolledOver,
     advancesBySchedule,
     recurs,

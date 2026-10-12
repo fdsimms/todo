@@ -138,7 +138,7 @@ export function SavedViewEditorSheet({ visible, view, onClose, onCreated, onDele
     if (!view) return;
     confirmDelete({
       title: 'Delete view?',
-      message: `"${view.name}" will be removed. The tasks it matched are not touched.`,
+      message: `“${view.name}” will be removed. Its tasks aren’t touched.`,
       onConfirm: () => {
         removeView(view.id);
         onClose();
@@ -315,10 +315,10 @@ export function SavedViewEditorSheet({ visible, view, onClose, onCreated, onDele
 
           <Text style={styles.groupLabel}>MATCHES</Text>
           <Text style={styles.groupHint}>
-            A task has to pass every one of these. Anything left on Any is not part of the view.
+            A task has to match every one of these. Anything left on Any is ignored.
           </Text>
           <View style={styles.card}>
-            {field('category', 'Only tasks filed under one of these categories.', (
+            {field('category', 'Tasks filed under one of these categories.', (
               <PillGroup
                 options={pillOptions('category', categoryClause?.values ?? [], categories.map(c => ({ value: c.name, label: c.name })))}
                 noun="category"
@@ -366,7 +366,7 @@ export function SavedViewEditorSheet({ visible, view, onClose, onCreated, onDele
                 pluralNoun="effort sizes"
               />
             ))}
-            {field('maxMinutes', 'Tasks estimated at this long or less. A task with no estimate and no effort is left out, since nothing says it is quick.', (
+            {field('maxMinutes', 'Tasks estimated at this long or less. Tasks with no estimate or effort size are left out.', (
               <CountStepper
                 value={minutesClause?.minutes ?? null}
                 onChange={next => setClause('maxMinutes', next === null ? null : { kind: 'maxMinutes', minutes: next })}
@@ -398,7 +398,7 @@ export function SavedViewEditorSheet({ visible, view, onClose, onCreated, onDele
           )}
           {view !== null && (
             <Text style={styles.deleteHint}>
-              Deleting a view leaves every task it matched exactly where it is. A view only ever filtered them.
+              Deleting a view doesn’t touch its tasks.
             </Text>
           )}
         </ScrollView>

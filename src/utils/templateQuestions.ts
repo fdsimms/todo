@@ -23,7 +23,9 @@ import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { startOfDay } from 'date-fns/startOfDay';
 import type { TaskTemplate, TemplateItem, TemplateItemCondition, TemplateItemVariant, TemplateQuestion } from '../types';
 import type { ApplyTreeNode, TemplateAnchors } from './templateUtils';
-import { placeholderKey } from './templateUtils';
+import { placeholderKey, answerValues, encodeAnswerValues } from './templateUtils';
+
+export { answerValues, encodeAnswerValues };
 
 /**
  * Every question asked by a run of this tree, in the order it should be shown:
@@ -88,7 +90,10 @@ export function answerFromDates(question: TemplateQuestion, anchors: TemplateAnc
 export function defaultAnswer(question: TemplateQuestion, anchors: TemplateAnchors): string {
   const fromDates = answerFromDates(question, anchors);
   if (fromDates !== null) return fromDates;
-  if (question.kind === 'choice') return question.options[0] ?? '';
+  if (question.kind === 'choice') {
+    const first = question.options[0] ?? '';
+    return question.multiple && first ? encodeAnswerValues([first]) : first;
+  }
   // Deliberately not the choice rule above, and this is the one place that
   // matters most: a 'people' question always starts at nobody, never at a
   // guessed answer. checkScheduledTemplates() calls resolveAnswers with
@@ -142,9 +147,47 @@ export function placeholderValuesFor(
     // apply sheet doesn't also ask for it as an undeclared blank.
     const key = placeholderKey(question.name);
     if (key in values) continue;
+    // A multi-answer choice stays in its stored form: the placeholder engine
+    // reads it as the picks joined in a title ("Outdoors, Camping") and as a
+    // set for a `{x = Camping ? …}` switch (see readBlank in templateUtils).
     values[key] = answers[question.id] ?? '';
   }
   return values;
+}
+
+/**
+ * The answer string after tapping one option of a choice question.
+ *
+ * A single-answer choice takes the option. A multi-answer one toggles it in the
+ * picked set, kept in the question's own option order so the stored answer
+ * doesn't depend on the order of the taps. **The last pick can't be switched
+ * off**: an empty answer reads as untouched and falls back to the first option
+ * (`resolveAnswers`), so letting it go would make the tap look like it did
+ * nothing, or quietly select something else.
+ */
+export function toggleAnswer(question: TemplateQuestion, current: string, option: string): string {
+  if (!question.multiple) return option;
+  const picked = answerValues(current);
+  const next = picked.includes(option) ? picked.filter(v => v !== option) : [...picked, option];
+  if (next.length === 0) return current;
+  return encodeAnswerValues(question.options.filter(o => next.includes(o)));
+}
+
+/**
+ * The options of a choice in the order the apply sheet shows them. Only a
+ * Yes/No pair is reordered: it always reads Yes then No, however its author
+ * typed it. The first option is the default (`defaultAnswer`), and an author
+ * who wanted "International trip?" to start on No put No first, which left that
+ * one pair flipped against every other Yes/No in the same sheet. The default
+ * is untouched; only where the pills sit changes.
+ */
+export function displayOptions(question: TemplateQuestion): string[] {
+  const { options } = question;
+  if (options.length !== 2) return options;
+  const key = (o: string) => o.trim().toLowerCase();
+  const yes = options.find(o => key(o) === 'yes');
+  const no = options.find(o => key(o) === 'no');
+  return yes !== undefined && no !== undefined ? [yes, no] : options;
 }
 
 /**
@@ -163,9 +206,32 @@ export function liveConditions(
   conditions: readonly TemplateItemCondition[],
   questions: readonly TemplateQuestion[],
 ): TemplateItemCondition[] {
-  return conditions.filter(
-    c => c.values.length > 0 && questions.some(q => q.id === c.questionId)
-  );
+  return conditions.filter(c => {
+    const question = questions.find(q => q.id === c.questionId);
+    if (!question) return false;
+    return hasRange(c) || c.values.length > 0;
+  });
+}
+
+/** True when a condition names at least one bound, which makes it a range over a number answer rather than a set of options. */
+function hasRange(c: TemplateItemCondition): boolean {
+  return c.min !== undefined || c.max !== undefined;
+}
+
+/**
+ * Does a number answer fall inside a range condition? Both bounds are
+ * inclusive and either may be absent. An answer that isn't a number (blank, or
+ * text typed into the field) matches nothing, the same way an unanswered choice
+ * does: a range can't say anything about a number nobody gave.
+ */
+export function numberInRange(answer: string, range: { min?: number; max?: number }): boolean {
+  const text = answer.trim();
+  if (text === '') return false;
+  const n = Number(text);
+  if (!Number.isFinite(n)) return false;
+  if (range.min !== undefined && n < range.min) return false;
+  if (range.max !== undefined && n > range.max) return false;
+  return true;
 }
 
 /**
@@ -179,7 +245,7 @@ export function liveConditions(
  * matches, so a template with no variants costs nothing.
  */
 export function applyItemVariant(item: TemplateItem, answers: Record<string, string>): TemplateItem {
-  const match = item.variants.find(v => (answers[v.questionId] ?? '') === v.answer);
+  const match = item.variants.find(v => answerValues(answers[v.questionId] ?? '').includes(v.answer));
   if (!match) return item;
   return {
     ...item,
@@ -227,13 +293,24 @@ export function describeVariants(
   return live.length > 0 ? live.map(v => v.answer).join(', ') : null;
 }
 
-/** True if the run's answers include this item — every live condition matched, with any one of its values enough. */
+/**
+ * True if the run's answers include this item: every live condition matched, or
+ * just one when the item says `conditionsMatch: 'any'`. Within one condition any
+ * one of its values (or a number inside its range) is enough either way.
+ */
 export function itemMatchesAnswers(
   item: TemplateItem,
   questions: readonly TemplateQuestion[],
   answers: Record<string, string>,
 ): boolean {
-  return liveConditions(item.conditions, questions).every(c => c.values.includes(answers[c.questionId] ?? ''));
+  const matches = (c: TemplateItemCondition) => {
+    const answer = answers[c.questionId] ?? '';
+    if (hasRange(c)) return numberInRange(answer, c);
+    const picked = answerValues(answer);
+    return c.values.some(v => picked.includes(v));
+  };
+  const live = liveConditions(item.conditions, questions);
+  return item.conditionsMatch === 'any' ? live.some(matches) : live.every(matches);
 }
 
 /**
@@ -373,6 +450,7 @@ export function describeQuestion(question: TemplateQuestion): string {
   const parts: string[] = [];
   if (question.kind === 'choice') {
     parts.push(question.options.length > 0 ? question.options.join(' · ') : 'No answers yet');
+    if (question.multiple) parts.push('Pick any');
   } else if (question.kind === 'number') {
     parts.push(
       question.fromDates === 'none'
@@ -423,6 +501,7 @@ export function toggleItemCondition(
 export function describeConditions(
   conditions: readonly TemplateItemCondition[],
   questions: readonly TemplateQuestion[],
+  match: 'all' | 'any' = 'all',
 ): string | null {
   const parts = liveConditions(conditions, questions).map(c => {
     const question = questions.find(q => q.id === c.questionId)!;
@@ -430,7 +509,41 @@ export function describeConditions(
     // No colon after a prompt that already ends in a question mark — "What kind
     // of trip?: Work" is two punctuation marks doing one job. A question and
     // its answer separated by a space reads as exactly what it is.
-    return `${label}${label.endsWith('?') ? '' : ':'} ${c.values.join(' or ')}`;
+    return `${label}${label.endsWith('?') ? '' : ':'} ${describeConditionAnswers(c)}`;
   });
-  return parts.length > 0 ? parts.join(' · ') : null;
+  return parts.length > 0 ? parts.join(match === 'any' ? ' or ' : ' · ') : null;
+}
+
+/**
+ * What a condition asks for, as the words after its question: the ticked
+ * options ("Work or City") for a choice, a range ("5 or more", "2 to 4") for a
+ * number. Shared by the item editor's summary and the template page's row.
+ */
+export function describeConditionAnswers(c: TemplateItemCondition): string {
+  if (c.min === undefined && c.max === undefined) return c.values.join(' or ');
+  if (c.min !== undefined && c.max !== undefined) return c.min === c.max ? `${c.min}` : `${c.min} to ${c.max}`;
+  return c.min !== undefined ? `${c.min} or more` : `${c.max} or fewer`;
+}
+
+/**
+ * An item's condition on a number question with its range set to `min`/`max`.
+ * A range with neither bound drops the condition entirely, the way unticking
+ * the last option of a choice does (`toggleItemCondition`): "included for no
+ * range" is a state nothing could act on, and it's how this says "every run"
+ * again. A reversed range (min above max) is lifted to a single value rather
+ * than stored, since no answer could ever fall inside it.
+ */
+export function setItemConditionRange(
+  conditions: readonly TemplateItemCondition[],
+  questionId: string,
+  min: number | null,
+  max: number | null,
+): TemplateItemCondition[] {
+  const rest = conditions.filter(c => c.questionId !== questionId);
+  if (min === null && max === null) return rest;
+  const hi = min !== null && max !== null && max < min ? min : max;
+  return [
+    ...rest,
+    { questionId, values: [], ...(min !== null ? { min } : {}), ...(hi !== null ? { max: hi } : {}) },
+  ];
 }

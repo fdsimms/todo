@@ -31,6 +31,9 @@ default (`rewardsEnabled`), switched on from the Rewards screen (its own menu ro
 - **The balance can go below zero.** Losses are taken in full, and unticking a task whose coins
   were already spent still takes them back. Refusing the undo would overrule a correction, and
   flooring the balance would make a miss free once you were broke.
+- **One loss has a floor: a guarded slip's charge** (see "A reward guarding a habit" below) takes
+  the balance to zero and stops. That charge is the reward's whole price, often far more than a slip
+  costs, so the floor keeps it a price rather than a debt. Every other loss still goes below zero.
 - **Coins never touch the app shield.** See `penaltyCreditFor`: anything that hands out unblocked
   minutes is a rewards feature wearing the penalty's clothes. A reward is a note to yourself, and
   claiming one unlocks nothing in the app.
@@ -82,6 +85,9 @@ Rewards screen.
 - **It belongs to the occurrence**, like `postponeCount`: every successor and skip writes it null.
 - **Few at once** (`bountyLimit`, 1 by default, up to 5). Bounties on everything would just be a
   higher base rate. An expired bounty frees its slot.
+- **With none posted, the Rewards screen offers up to three** (`suggestedBountyTasks`): the Stuck
+  screen's drifting tasks, most-moved first, that `canPostBounty` allows. Offered, never posted
+  unasked; the Post button goes through `postBounty` like the editor does.
 - **A miss costs the base value only.** The bounty rides on the completion's own entry, so the undo
   takes it back with no extra bookkeeping.
 
@@ -90,7 +96,9 @@ Rewards screen.
 A typed number is a guess, and a wrong guess is how this kind of system goes stale: too cheap and a
 reward stops meaning anything, too dear and it's never reached. So the add/edit form prices a reward
 in **time**: pick how often you want it (`REWARD_FREQUENCIES`) and the cost is `earnRatePerDay` times
-that, rounded by `suggestRewardCost`. Each reward then shows `describeRewardPace` ("about every 6
+that, rounded by `suggestRewardCost`. A stepper and unit track under the presets take any whole number
+of days, weeks or months (the project nudge cadence's `CadenceUnit`s, a month being 30 days); like a
+preset it only fills the cost field and stores nothing. Each reward then shows `describeRewardPace` ("about every 6
 days at your current pace").
 
 - **The rate comes from completed tasks, not the ledger**, run through the same coin rules, so it
@@ -109,6 +117,25 @@ days at your current pace").
   frequency, not a price, so it's priced by the same rule; until there's a week of history that rule
   uses `DEFAULT_EARN_RATE_PER_DAY`, which prices ideas only and never describes a pace.
 
+## Pricing in dollars
+
+A reward that costs real money can carry a dollar price (`Reward.priceMinor`, minor units). The
+exchange rate is `coinsPerDollar`: the coins earned in a week (`earnRatePerDay` times 7) divided by
+the **weekly reward budget** the person types (`rewardWeeklyBudgetMinor`). Both halves are theirs,
+so the rate is never a number the app invented, and there is no rate until both exist.
+
+- **`cost` stays the one coin figure.** Claiming, sorting, the goal, the pace line and the MCP
+  replica all keep reading `cost`. A dollar-priced reward has its `cost` rewritten from the price by
+  `repriceDollarRewards` when the rate moves, so nothing downstream needed to learn about dollars.
+- **This is the one place a saved cost moves on its own**, and it was asked for: a dollar price
+  should follow what you earn. A reward priced in coins is never touched, which keeps "a price
+  never changes on its own" true for everything else in this file.
+- **Repricing runs from the Rewards screen** (an effect on the rate), so a phone that hasn't opened
+  it lately, or the MCP replica, can claim at the last repriced cost.
+- **A typed price replaces the coin field** in the form rather than sitting beside it, so there is
+  never a second answer to the same question. A price that can't be converted (no budget yet) blocks
+  saving and says why, instead of quietly saving the coin field's value.
+
 ## A reward's details
 
 - **Link and note** are plain optional fields. The link takes the same values as `Task.linkUrl` (a
@@ -124,6 +151,46 @@ days at your current pace").
   link, so editing it edits the reward. Claiming checks the item off with `{ neutral: true }`, or
   checking off the thing you just spent coins on would also earn coins; the undo takes both back.
   Checking it off by hand (you bought it without coins) retires the reward. Always one-time.
+
+## Limiting claims
+
+A repeatable reward can be limited to one claim every N days, weeks or months (`Reward.claimEveryDays`,
+stored in days, a month being 30 as in the nudge cadence). "A dessert, once a week." Rules in
+`src/utils/rewards.ts` under "A claim limit".
+
+- **Waiting is read off the ledger**, like one-time (`claimWaitDays`): the newest spend naming the
+  reward, counted in logical days. Undoing the claim removes the spend and frees it, with nothing to
+  reset. There is no "available on" date stored.
+- **Enforced in `claimReward`**, not only by the dimmed button, so a second device, the MCP replica
+  and a claim made before a sync all hit the same refusal. The button stays tappable and says why.
+- **It doesn't touch the balance or the price.** A limit is not a cost; don't turn it into one.
+- **A one-time or wish list reward takes none** (`cleanClaimLimit`); turning one one-time drops it.
+- **A slip on a guarded habit inside the limit is a real slip**, charged like one the balance can't
+  cover (`planGuardedSlip`): the claim it would have made is refused, so it can't be the way out.
+
+## A reward guarding a habit
+
+A reward can name an "Avoid this" habit it is the honest way to have (`Reward.guardsTaskId`): "No
+dessert unless claimed" for "A dessert". Rules in `src/utils/rewardGuard.ts`, read by the slip's
+confirmation (`slipConfirm.ts`), `useTaskStore.logSlip` and the MCP replica through one function
+(`useRewardStore.slipGuardFor`), so what the prompt offers and what the tap does can't disagree.
+
+- **Claiming touches nothing on the habit.** You claim, then have it. The habit is only for having
+  it without claiming.
+- **A slip the balance covers is the claim.** It spends the reward's cost and records no slip, so
+  the streak stands; the undo is the claim's. Paying after is the same outcome as paying first; what
+  this exists to stop is never paying.
+- **A slip it doesn't cover is a real slip, charged the reward's price down to zero.** The streak
+  breaks and the charge replaces the habit's own slip cost. The charge is keyed by habit, day and
+  which slip of the day it was (`guardChargeSeed`), because a charge floored to nothing writes no
+  entry, and "the newest loss on this habit" would then undo an earlier slip's charge.
+- **The tap always asks first**, since either answer moves real coins. A slip inside the habit's own
+  allowance is free and asks nothing, as before.
+- **Only a repeatable, coin reward can guard.** A one-time reward would leave the habit charging a
+  price nobody can claim once it was gone, and a wish list item is bought once. Turning a reward
+  one-time drops its habit. One habit has one guarding reward; the picker leaves out the rest.
+- **Both ends name the link.** The reward's card says which habit pays for it, and the habit's row
+  carries a "Linked to A dessert" chip, so the shield's tap is never a surprise.
 
 ## Where it shows
 

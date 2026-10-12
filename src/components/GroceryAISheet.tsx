@@ -312,7 +312,7 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
         <View style={styles.centered}>
           <ActivityIndicator color={colors.purple} />
           <Text style={styles.loadingText}>
-            {mode === 'tidy' ? 'Working out where these live…'
+            {mode === 'tidy' ? 'Sorting into aisles…'
               : recipeInput.fetching ? 'Opening the page…'
               : recipeInput.usingPhoto ? `Reading the photo${recipeInput.photos.length > 1 ? 's' : ''}…`
               : 'Reading the recipe…'}
@@ -344,7 +344,7 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
           {...keyboardScroll.props}
         >
           <RecipeSourcePicker
-            intro="Open a recipe link, paste a recipe, or photograph the page. You’ll get back what to buy, named the way a store labels it rather than the way the recipe chops it."
+            intro="Open a recipe link, paste a recipe, or photograph the page. You get the items to buy, named the way a store labels them."
             mode={recipeInput.mode}
             onChangeMode={recipeInput.setMode}
             text={recipeInput.text}
@@ -375,7 +375,7 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
         <View style={styles.centered}>
           <EmptyState
             icon="help-circle-outline"
-            title="Couldn't place these"
+            title="Couldn’t place these"
             subtitle={unsorted.length === 1
               ? 'No aisle came back for this item, so it stays in Other.'
               : `No aisle came back for these ${unsorted.length} items, so they stay in Other.`}
@@ -397,7 +397,7 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
             subtitle={
               mode === 'tidy'
                 ? 'Everything on your list is already in an aisle.'
-                : 'No shopping items turned up in that text.'
+                : 'No grocery items found in that text.'
             }
           />
         </View>
@@ -408,7 +408,7 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
       <ScrollView contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled">
         <Text style={styles.intro}>
           {mode === 'tidy'
-            ? 'Uncheck anything you’d rather leave where it is.'
+            ? 'Uncheck anything you don’t want moved.'
             : 'Uncheck anything you already have.'}
         </Text>
         {(mode === 'tidy' ? tidyRows : recipeRows).map((row, i) => {

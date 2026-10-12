@@ -1,12 +1,22 @@
 import type { Project, Task, TaskGroup } from '../types';
 import { displayTitleFor, isTaskNotNeeded } from './visibilityUtils';
 import { formatTaskDeliverable } from './deliverables';
-import { mergeRanges, scoreSubstring } from './ranges';
+import { matchExcerpt, mergeRanges, scoreSubstring, type MatchExcerpt } from './ranges';
 
 // Re-exported so the existing call sites (and their tests) keep importing them
 // from here; both moved to `ranges.ts` so a search that isn't over tasks can
 // use them without pulling this module's store imports along.
 export { mergeRanges, scoreSubstring };
+
+/**
+ * How much a hit in notes counts against the same hit in a title. Notes are
+ * long free text, so a query lands in them far more often than in a title, and
+ * the bonus is added on top of the title score: at half weight a notes hit plus
+ * a tag could pull a mid-word title match level with a title that starts with
+ * the query. A quarter keeps notes a tiebreaker that can't outrank a better
+ * title.
+ */
+const NOTES_WEIGHT = 0.25;
 
 export interface SearchResult {
   task: Task;
@@ -16,6 +26,13 @@ export interface SearchResult {
   projectName: string | null;
   /** Ranges to highlight in `projectName` — how a row shows *why* a project-name match matched. */
   projectMatches: [number, number][];
+  /**
+   * Where the notes matched, as a one-line excerpt, when that is the reason the
+   * task is in the list. Null whenever the title or the project name already
+   * carries a highlight (the row explains itself), and when the notes matched
+   * only by scattered letters, which isn't worth pointing at.
+   */
+  notesExcerpt: MatchExcerpt | null;
 }
 
 export function fuzzySearch(
@@ -74,10 +91,10 @@ export function fuzzySearch(
         0
       );
 
-      // Title matches score highest, notes/category/project/chain steps lower, tags moderate
+      // Title matches score highest, notes lowest of the text fields, category/project/chain steps in between, tags moderate
       totalScore +=
         titleResult.score * 2 +
-        notesResult.score * 0.5 +
+        notesResult.score * NOTES_WEIGHT +
         categoryResult.score * 0.5 +
         projectResult.score * 0.5 +
         chainScore * 0.5 +
@@ -99,6 +116,10 @@ export function fuzzySearch(
         titleMatches: mergeRanges(titleMatches),
         projectName: projectName ?? null,
         projectMatches: mergeRanges(projectMatches),
+        notesExcerpt:
+          titleMatches.length === 0 && projectMatches.length === 0 && task.notes
+            ? matchExcerpt(task.notes, words)
+            : null,
       });
     }
   }
@@ -169,7 +190,7 @@ export function searchProjects(
       if (titleResult.ranges.length > 0) {
         titleMatches = titleMatches.concat(titleResult.ranges);
       }
-      totalScore += scoreSubstring(project.notes, word).score * 0.5;
+      totalScore += scoreSubstring(project.notes, word).score * NOTES_WEIGHT;
     }
 
     if (totalScore > 0) {

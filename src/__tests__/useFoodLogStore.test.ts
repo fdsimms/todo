@@ -40,6 +40,7 @@ jest.mock('../db/database', () => ({
   // Matches the real dbGetFoodLogEntry's own miss case (a null row reads as
   // null, never undefined) — see database.ts.
   dbGetFoodLogEntry: jest.fn((id: string) => mockGetRow(id)),
+  dbGetFoodLogEntriesForTask: jest.fn((taskId: string) => mockRows.filter(r => (r as { taskId?: string }).taskId === taskId)),
   dbCountFoodLogEntries: jest.fn(() => 0),
   dbGetPendingHealthFoodEntries: jest.fn(() => []),
   dbInsertFoodLogEntry: jest.fn((entry: { id: string; dayKey: string }) => { mockRows.push(entry); }),
@@ -88,6 +89,7 @@ jest.mock('../store/useTaskStore', () => ({
       checkHealthTasks: mockCheckHealthTasks,
       syncWaterQuotaTasks: mockSyncWaterQuotaTasks,
       syncSnackNudgeTasks: jest.fn(),
+      syncLimitWarningTasks: jest.fn(),
       syncLoggedMealSlotTasks: jest.fn(),
     }),
   },
@@ -568,7 +570,7 @@ describe('addEntry undo', () => {
     state().loadRange('2026-04-02', '2026-04-02');
     const entry = state().addEntry(draft({ label: 'Porridge' }))!;
     const action = state().lastAction;
-    expect(action?.label).toBe('Logged "Porridge"');
+    expect(action?.label).toBe('Logged “Porridge”');
     expect(action?.destructive).toBeUndefined();
 
     state().undoLastAction();
@@ -596,7 +598,7 @@ describe('addEntry undo', () => {
     (dbGetFoodLogEntry as jest.Mock).mockImplementation((id: string) => mockGetRow(id) ?? (id === original.id ? original : null));
     const moved = state().moveEntry(original.id, new Date(2026, 3, 1, 9, 0))!;
     expect(state().undoStack).toHaveLength(1);
-    expect(state().lastAction?.label).toBe('Moved "Porridge"');
+    expect(state().lastAction?.label).toBe('Moved “Porridge”');
 
     // The mock database keeps rows a real delete would drop.
     mockRows.length = 0;
@@ -615,7 +617,7 @@ describe('removeEntry undo', () => {
     state().setLastAction(null);
     state().removeEntry(entry.id);
     expect(state().lastAction?.destructive).toBe(true);
-    expect(state().lastAction?.label).toBe('Deleted "Porridge"');
+    expect(state().lastAction?.label).toBe('Deleted “Porridge”');
     expect(state().entries).toHaveLength(0);
 
     // The mock database keeps rows, so drop it as the real delete would.
@@ -647,7 +649,7 @@ describe('edit undo', () => {
     state().setLastAction(null);
     state().reviseEntry(entry.id, { label: 'Oatmeal' });
     expect(state().entries[0].label).toBe('Oatmeal');
-    expect(state().lastAction?.label).toBe('Edited "Porridge"');
+    expect(state().lastAction?.label).toBe('Edited “Porridge”');
     state().undoLastAction();
     expect(state().entries[0].label).toBe('Porridge');
     state().redoLastUndone();
@@ -1054,6 +1056,26 @@ describe('removeEntries', () => {
     (dbGetFoodLogEntry as jest.Mock).mockReturnValue({ healthSampleIds: [] });
     state().removeEntries(['a']);
     expect(retractFoodEntryFromHealth).not.toHaveBeenCalled();
+  });
+});
+
+describe('removeEntriesForTask', () => {
+  it('forgets every entry a task wrote, on any day, and leaves the rest', () => {
+    state().loadRange('2026-04-02', '2026-04-02');
+    const logged = state().addEntry(draft({ label: 'Metamucil', taskId: 'task-1' }), { undoable: false })!;
+    const byHand = state().addEntry(draft({ label: 'Toast' }))!;
+
+    state().removeEntriesForTask('task-1');
+
+    expect(dbDeleteFoodLogEntry).toHaveBeenCalledWith(logged.id);
+    expect(dbDeleteFoodLogEntry).not.toHaveBeenCalledWith(byHand.id);
+    expect(state().entries.map(e => e.label)).toEqual(['Toast']);
+  });
+
+  it('stamps the task on the entry it writes', () => {
+    const entry = state().addEntry(draft({ label: 'Metamucil', taskId: 'task-1' }))!;
+    expect(entry.taskId).toBe('task-1');
+    expect(state().addEntry(draft({ label: 'Toast' }))!.taskId).toBeUndefined();
   });
 });
 

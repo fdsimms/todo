@@ -31,8 +31,8 @@ interface Props {
   /** Where the "…" was tapped, so the menu opens from it. See `CardSheet`. */
   anchor?: CardAnchor | null;
   /**
-   * Opens the Projects page's own settings (`ScreenSettingsSheet`), with
-   * `settingsHint` naming them. Omitted when none are on show.
+   * Jumps into Settings at the Projects page's first setting, with
+   * `settingsHint` naming the ones beside it. Omitted when none are on show.
    */
   onOpenSettings?: () => void;
   settingsHint?: string;
@@ -116,7 +116,7 @@ export function ProjectsOptionsMenu({
             <View style={styles.optionContent}>
               <Text style={[styles.optionLabel, filter === 'completed' && styles.optionLabelActive]}>Completed projects</Text>
               <Text style={styles.optionHint}>
-                {completedCount > 0 ? `${completedCount} completed` : 'None marked complete yet'}
+                {completedCount > 0 ? `${completedCount} completed` : 'None completed yet'}
               </Text>
             </View>
             {filter === 'completed' && <Ionicons name="checkmark" size={18} color={colors.accent} />}
@@ -196,7 +196,7 @@ export function ProjectsOptionsMenu({
               <Text style={styles.optionHint}>
                 {categoryCount > 0
                   ? `Rename, reorder or delete the ${categoryCount === 1 ? 'one you have' : `${categoryCount} you have`}`
-                  : 'Group projects under headings of your own'}
+                  : 'Group projects under your own headings'}
               </Text>
             </View>
             <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
@@ -234,8 +234,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // Its own group, not a fourth row in the one above: those three are one
   // question (which list am I looking at) with a tick on the current answer,
   // and a row that opens somewhere else is not an answer to it. The band is
-  // the iOS menu's group break, drawn in the screen colour.
-  secondCard: { borderTopWidth: spacing.xsm, borderTopColor: colors.bg },
+  // the iOS menu's group break. It is a translucent separator tint rather than
+  // the opaque screen colour, which read as a white bar across the blurred card.
+  secondCard: { borderTopWidth: spacing.xsm, borderTopColor: colors.separator + '66' },
   optionRow: {
     flexDirection: 'row',
     alignItems: 'center',

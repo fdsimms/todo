@@ -56,12 +56,12 @@ export const RECIPE_BACKFILL_FIELDS: RecipeBackfillFieldDef[] = [
   {
     id: 'servings',
     label: 'Servings',
-    hint: 'How many the recipe makes, so a helping of it can be logged and its nutrition read per serving.',
+    hint: 'How many the recipe makes, so you can log a helping and see nutrition per serving.',
   },
   {
     id: 'cookTime',
     label: 'Cook time',
-    hint: 'How long the cooking itself takes, once anything that needed chopping is chopped.',
+    hint: 'How long the cooking takes once the prep is done.',
   },
   {
     id: 'prepTime',
@@ -74,7 +74,7 @@ export const RECIPE_BACKFILL_FIELDS: RecipeBackfillFieldDef[] = [
   {
     id: 'cookedWeight',
     label: 'Cooked weight',
-    hint: 'What the whole finished dish weighs, so a plate of it can be logged by weight instead of by servings.',
+    hint: 'What the whole finished dish weighs, so you can log a plate of it by weight.',
   },
 ];
 
@@ -111,9 +111,16 @@ export function isRecipeBackfillDismissed(recipe: Recipe, fieldId: RecipeBackfil
 // exclude the way there is for a project — a recipe you haven't cooked in a
 // year is still a recipe, and the cookbook it's filed in says nothing about
 // whether its serving count is known.
-export function recipeBackfillCandidates(recipes: Recipe[], fieldId: RecipeBackfillFieldId): Recipe[] {
+//
+// `fromScratch` is the screen's redo: every recipe, including ones that already
+// have the value or were told never to be asked again.
+export function recipeBackfillCandidates(
+  recipes: Recipe[],
+  fieldId: RecipeBackfillFieldId,
+  opts: { fromScratch?: boolean } = {}
+): Recipe[] {
   return recipes
-    .filter(r => isRecipeFieldMissing(r, fieldId) && !isRecipeBackfillDismissed(r, fieldId))
+    .filter(r => opts.fromScratch || (isRecipeFieldMissing(r, fieldId) && !isRecipeBackfillDismissed(r, fieldId)))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 

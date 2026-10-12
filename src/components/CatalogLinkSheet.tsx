@@ -83,7 +83,7 @@ export function CatalogLinkSheet({
             minWidth={64}
           />
           <Text style={styles.title} numberOfLines={1}>
-            {chosen ? 'Which one of it?' : 'Which item is this?'}
+            {chosen ? 'Which product?' : 'Which item is this?'}
           </Text>
           {/* Balances the button on the left so the title stays optically centered. */}
           <View style={styles.spacer} />

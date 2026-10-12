@@ -192,6 +192,24 @@ describe('setDayResetTime', () => {
   });
 });
 
+describe('setMoodNudgeAfterDays', () => {
+  it('keeps a value in range and persists it', () => {
+    useSettingsStore.getState().setMoodNudgeAfterDays(5);
+    expect(useSettingsStore.getState().moodNudgeAfterDays).toBe(5);
+    expect(dbSetSetting).toHaveBeenCalledWith('moodNudgeAfterDays', '5');
+  });
+
+  it('floors at one day, since a nudge after none would fire on any logged day', () => {
+    useSettingsStore.getState().setMoodNudgeAfterDays(0);
+    expect(useSettingsStore.getState().moodNudgeAfterDays).toBe(1);
+  });
+
+  it('caps at two weeks, the longest run the setting row offers', () => {
+    useSettingsStore.getState().setMoodNudgeAfterDays(40);
+    expect(useSettingsStore.getState().moodNudgeAfterDays).toBe(14);
+  });
+});
+
 // ─── setThemeMode ─────────────────────────────────────────────────────────────
 
 describe('setThemeMode', () => {
@@ -1963,16 +1981,6 @@ describe('persisted filters', () => {
     expect(useSettingsStore.getState().filterEfforts).toEqual([]);
   });
 
-  it('defaults filterHasReminder to off and round-trips it', () => {
-    useSettingsStore.getState().initialize();
-    expect(useSettingsStore.getState().filterHasReminder).toBe(false);
-
-    useSettingsStore.getState().setFilterHasReminder(true);
-    expect(dbSetSetting).toHaveBeenCalledWith('filterHasReminder', 'true');
-    storing({ filterHasReminder: 'true' });
-    useSettingsStore.getState().initialize();
-    expect(useSettingsStore.getState().filterHasReminder).toBe(true);
-  });
 });
 
 describe('persisted recipe sort & filter', () => {
@@ -2070,5 +2078,25 @@ describe('postpone check settings', () => {
     useSettingsStore.getState().resetToDefaults();
     expect(useSettingsStore.getState().postponeCheckEnabled).toBe(true);
     expect(useSettingsStore.getState().postponeCheckThreshold).toBe(3);
+  });
+});
+
+describe('generatedTaskExtras', () => {
+  const extras = { tags: ['cooking'], timeSegments: ['evening' as const], deliverableKind: null, deliverableOptions: [] };
+
+  it('stores a kind\'s extras and clears them when nothing is left', () => {
+    useSettingsStore.getState().setGeneratedTaskExtras('groceryUseUp', extras);
+    expect(useSettingsStore.getState().generatedTaskExtras.groceryUseUp).toEqual(extras);
+    expect(dbSetSetting).toHaveBeenCalledWith('generatedTaskExtras', JSON.stringify({ groceryUseUp: extras }));
+    useSettingsStore.getState().setGeneratedTaskExtras('groceryUseUp', { ...extras, tags: [], timeSegments: [] });
+    expect(useSettingsStore.getState().generatedTaskExtras.groceryUseUp).toBeUndefined();
+  });
+
+  it('reads them back on initialize', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'generatedTaskExtras' ? JSON.stringify({ birthday: extras }) : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().generatedTaskExtras).toEqual({ birthday: extras });
   });
 });

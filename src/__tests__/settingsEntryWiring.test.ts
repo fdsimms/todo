@@ -45,8 +45,8 @@ const TEMPLATED: { test: (id: string) => boolean; template: (id: string) => stri
     template: () => 'entryId={key}',
   },
   {
-    test: id => id.startsWith('gen:') && id.endsWith(':category'),
-    template: () => 'entryId={`gen:${spec.kind}:category`}',
+    test: id => id.startsWith('gen:') && id.endsWith(':taskSettings'),
+    template: () => 'entryId={`gen:${spec.kind}:taskSettings`}',
   },
   { test: id => id.startsWith('gen:'), template: () => 'entryId={`gen:${spec.kind}`}' },
   // The two generators that hold their task back until a part of the day share
@@ -68,7 +68,7 @@ const TEMPLATED: { test: (id: string) => boolean; template: (id: string) => stri
 
 describe('settings entry wiring', () => {
   it('renders a row carrying every entry id', () => {
-    const missing = SETTINGS_ENTRIES.filter(entry => {
+    const missing = SETTINGS_ENTRIES.filter(entry => !entry.screen).filter(entry => {
       const templated = TEMPLATED.find(t => t.test(entry.id));
       if (templated) return !source.includes(templated.template(entry.id));
       return !source.includes(`entryId="${entry.id}"`);

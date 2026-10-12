@@ -208,6 +208,21 @@ function notifyTabDiag() {
   tabDiagListeners.forEach(l => l());
 }
 
+// The morning check-in's last two effect runs, for working out why it opened
+// when it did. Held in memory only, so a restart clears it.
+let morningCheckInDiag: { lastRun: string; lastOpen: string | null } = { lastRun: 'none yet', lastOpen: null };
+
+/** Records one run of Today's morning check-in effect. A no-op unless the readout is on. */
+export function reportMorningCheckIn(run: { opened: boolean; storedKey: string | null; todayKey: string; titles: string[] }) {
+  if (!isTabDiagEnabled()) return;
+  const at = new Date().toTimeString().slice(0, 5);
+  const text =
+    `${at} ${run.opened ? 'OPENED' : 'skipped'} stored=${run.storedKey ?? 'null'} today=${run.todayKey} ` +
+    `cands=${run.titles.length}${run.titles.length ? ` (${run.titles.slice(0, 5).join(', ')})` : ''}`;
+  morningCheckInDiag = { lastRun: text, lastOpen: run.opened ? text : morningCheckInDiag.lastOpen };
+  notifyTabDiag();
+}
+
 function reportTabDiag(name: string, entry: TabDiagEntry) {
   tabDiag.set(name, entry);
   notifyTabDiag();
@@ -259,6 +274,9 @@ function BlankTabReadout({ currentTab }: { currentTab: () => string | undefined 
     <View pointerEvents="none" style={diagStyles.readoutWrap}>
       <Text style={[diagStyles.readout, { color: colors.textSecondary, backgroundColor: colors.bgSecondary }]}>
         {text}
+      </Text>
+      <Text style={[diagStyles.readout, { color: colors.textSecondary, backgroundColor: colors.bgSecondary }]}>
+        {`check-in last run: ${morningCheckInDiag.lastRun}\ncheck-in last opened: ${morningCheckInDiag.lastOpen ?? 'never this session'}`}
       </Text>
     </View>
   );

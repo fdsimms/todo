@@ -7,7 +7,10 @@ import {
   foodKeyResolver,
   hasNutritionData,
   mostLoggedFoods,
+  daysWithinLimits,
   nutrientAverages,
+  niceAxis,
+  nutrientDailySeries,
   nutritionCounts,
   produceAverage,
   sourceMix,
@@ -628,5 +631,91 @@ describe('produceAverage', () => {
     const unweighed = { ...entry('2026-09-08', { label: 'Broccoli', slot: 'dinner' }), grams: null };
     const entries = [...produceDay('2026-09-08', [unweighed]), ...produceDay('2026-09-09')];
     expect(produceAverage(entries, WINDOW)).toEqual({ vegetable: 2, fruit: 1, days: 1, daysLeftOut: 1 });
+  });
+});
+
+describe('daysWithinLimits', () => {
+  // fullDay is two entries, so a day's saturated fat is twice the per-entry figure.
+  const sat = (g: number) => ({ amounts: { calorieKcal: 300, satFatG: g } });
+
+  it('counts the measurable days at or under each limit', () => {
+    const rows = daysWithinLimits(
+      [...fullDay('2026-09-07', sat(4)), ...fullDay('2026-09-08', sat(8)), ...fullDay('2026-09-09', sat(12))],
+      WINDOW,
+      { satFatG: 16, proteinG: 100 },
+      ['satFatG'],
+    );
+    expect(rows).toEqual([{ key: 'satFatG', within: 2, days: 3 }]);
+  });
+
+  it('leaves out today, an unfinished day, and a day an entry did not state it', () => {
+    const rows = daysWithinLimits(
+      [
+        ...fullDay('2026-09-08', sat(4)),
+        entry('2026-09-09', { slot: 'breakfast', amounts: { satFatG: 30 } }),
+        entry('2026-09-09', { slot: 'dinner', amounts: { calorieKcal: 900 } }),
+        ...fullDay('2026-09-10', sat(30)),
+      ],
+      WINDOW,
+      { satFatG: 16 },
+      ['satFatG'],
+    );
+    expect(rows).toEqual([{ key: 'satFatG', within: 1, days: 1 }]);
+  });
+
+  it('says nothing for a goal, or a limit with nothing measured', () => {
+    expect(daysWithinLimits(fullDay('2026-09-08', sat(4)), WINDOW, { satFatG: 16 }, [])).toEqual([]);
+    expect(daysWithinLimits(fullDay('2026-09-08'), WINDOW, { sugarG: 35 }, ['sugarG'])).toEqual([]);
+  });
+});
+
+describe('nutrientDailySeries', () => {
+  const week = lastDaysOf(WINDOW, 7);
+
+  it('gives one slot per day up to yesterday, null where a day cannot speak', () => {
+    const rows = [...fullDay('2026-09-08'), entry('2026-09-09', { slot: 'breakfast' })];
+    const series = nutrientDailySeries(rows, week, 'calorieKcal');
+    expect(series.map(d => d.dayKey)).toEqual([
+      '2026-09-04', '2026-09-05', '2026-09-06', '2026-09-07', '2026-09-08', '2026-09-09',
+    ]);
+    // 2 x 300 on the full day; the breakfast-only day and the empty days are gaps, not zeros.
+    expect(series.map(d => d.amount)).toEqual([null, null, null, null, 600, null]);
+  });
+
+  it('agrees with the average it sits beside', () => {
+    const rows = [...fullDay('2026-09-07'), ...fullDay('2026-09-08', { amounts: { calorieKcal: 500 } })];
+    const amounts = nutrientDailySeries(rows, WINDOW, 'calorieKcal').flatMap(d => (d.amount === null ? [] : [d.amount]));
+    const avg = nutrientAverages(rows, WINDOW).find(r => r.key === 'calorieKcal')!;
+    expect(amounts).toHaveLength(avg.days);
+    expect(amounts.reduce((a, b) => a + b, 0) / amounts.length).toBe(avg.average);
+  });
+
+  it('leaves out a day that did not state the nutrient in every food entry', () => {
+    const rows = [
+      entry('2026-09-08', { slot: 'breakfast', amounts: { calorieKcal: 300, fiberG: 3 } }),
+      entry('2026-09-08', { slot: 'dinner', amounts: { calorieKcal: 700 } }),
+    ];
+    const at = (key: 'calorieKcal' | 'fiberG') =>
+      nutrientDailySeries(rows, week, key).find(d => d.dayKey === '2026-09-08')!.amount;
+    expect(at('calorieKcal')).toBe(1000);
+    expect(at('fiberG')).toBeNull();
+  });
+
+  it('never includes today', () => {
+    const rows = fullDay('2026-09-10');
+    const series = nutrientDailySeries(rows, week, 'calorieKcal');
+    expect(series.some(d => d.dayKey === '2026-09-10')).toBe(false);
+  });
+});
+
+describe('niceAxis', () => {
+  it('rounds the top up to a round step', () => {
+    expect(niceAxis(1850)).toEqual({ top: 2000, step: 1000 });
+    expect(niceAxis(62)).toEqual({ top: 100, step: 50 });
+    expect(niceAxis(7)).toEqual({ top: 10, step: 5 });
+  });
+
+  it('survives an empty or zero series', () => {
+    expect(niceAxis(0).top).toBeGreaterThan(0);
   });
 });

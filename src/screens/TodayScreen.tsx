@@ -31,7 +31,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PinIcon } from '../components/PinIcon';
 import { format } from 'date-fns/format';
-import type { ContextRow, SavedViewClause, Task, TaskGroup, TaskTemplate, Category, TimeOfDay } from '../types';
+import type { ContextRow, NutrientKey, SavedViewClause, Task, TaskGroup, TaskTemplate, Category, TimeOfDay } from '../types';
+import { taskHomeFor } from '../utils/taskHome';
 import { isTaskNew, isTaskVisible, isUnscheduledTask, isInboxTask, isDismissedToday, isRelevantToGroupToday, groupRoster } from '../utils/visibilityUtils';
 import { openTasksOf } from '../utils/openTasks';
 import { reuseUnchangedLists } from '../utils/stableLists';
@@ -65,6 +66,8 @@ import {
   eventContextRows,
   mealContextRows,
   healthContextRows,
+  goalContextRows,
+  limitContextRows,
   insertContextRows,
   withoutContextRows,
 } from '../utils/dayContextRows';
@@ -81,7 +84,7 @@ import { completionTapFor } from '../utils/completionTap';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useStableCallback } from '../hooks/useStableCallback';
 import { featureHidden, featureShown, visibleLenses } from '../utils/simpleMode';
-import { coinBalance } from '../utils/rewards';
+import { coinBalance, goalBarFill, savingForGoal, formatCoins } from '../utils/rewards';
 import { useRewardStore } from '../store/useRewardStore';
 import { CoinIcon } from '../components/CoinIcon';
 import { navigateToTab } from '../navigation/navigationRef';
@@ -103,6 +106,7 @@ import { TaskItem } from '../components/TaskItem';
 import { TaskGroupHeader } from '../components/TaskGroupHeader';
 import { TaskGroupBody } from '../components/TaskGroupBody';
 import { TaskGroupTray } from '../components/TaskGroupTray';
+import { LaterStackRow } from '../components/LaterStackRow';
 import { TaskGroupEditor } from '../components/TaskGroupEditor';
 import { ReorderableList, type RowScroller, type DropCapture } from '../components/ReorderableList';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
@@ -139,6 +143,8 @@ import type { TaskKind } from '../utils/taskKinds';
 import { TemplatePickerSheet } from '../components/TemplatePickerSheet';
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
 import { TemplateAppliedToast } from '../components/TemplateAppliedToast';
+import { templateRunDestination, templateRunDestinationLabel, type TemplateRunDestination } from '../utils/templateRunDestination';
+import { goToTemplateRun } from '../navigation/navigationRef';
 import { SortFilterSheet } from '../components/SortFilterSheet';
 import { SavedViewEditorSheet } from '../components/SavedViewEditorSheet';
 import { clausesFromFilters } from '../utils/savedViews';
@@ -154,6 +160,8 @@ import { shortSleepDeloadNote } from '../utils/healthRules';
 import { LookAheadSheet } from '../components/LookAheadSheet';
 import { ProjectPullSheet } from '../components/ProjectPullSheet';
 import { useProjectStore } from '../store/useProjectStore';
+import { buildTodayProjectBands } from '../utils/todayProjectBands';
+import type { ProjectListItem } from '../utils/projectStacks';
 import { DayContextRow } from '../components/DayContextRow';
 import { contextCardPositions, contextSectionSummaries } from '../utils/contextCards';
 import { mealSlotSourceId } from '../utils/mealSlotTasks';
@@ -165,9 +173,16 @@ import { QuickEventSheet, type QuickEventSeed } from '../components/QuickEventSh
 import { useEventTaskLinkStore } from '../store/useEventTaskLinkStore';
 import { eventTaskKey, movedEventContextRows, movedEventNote, movedLinkedEvents } from '../utils/eventTaskLinks';
 import { morningCheckInTasks } from '../utils/morningCheckIn';
+import { reportMorningCheckIn } from '../components/FreezeWhenBlurred';
 import { addDays } from 'date-fns/addDays';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { useHealthStore } from '../store/useHealthStore';
+import { useFoodLogStore } from '../store/useFoodLogStore';
+import { foodLogTotals } from '../utils/foodLog';
+import { NutrientContributorsSheet } from '../components/NutrientContributorsSheet';
+import { describeAgainstTarget } from '../utils/nutritionTargets';
+import { NUTRIENT_LABEL } from '../utils/foodNutrition';
+import { activeLimits, limitsShownOnToday } from '../utils/nutritionTargets';
 import { useWeatherStore } from '../store/useWeatherStore';
 import { weatherConditionAdjective, weatherIconFor } from '../utils/weatherCondition';
 import { capitalize } from '../utils/capitalize';
@@ -196,13 +211,13 @@ import { FocusSessionSheet } from '../components/FocusSessionSheet';
 import { useFocusStore } from '../store/useFocusStore';
 import { PressableScale } from '../components/PressableScale';
 import { AddTaskFab, type AddTaskType } from '../components/AddTaskFab';
-import { type FabDragHandlers, FAB_SIZE } from '../components/Fab';
+import { type FabDragHandlers, FAB_SIZE, useFabBottom } from '../components/Fab';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, iconSize, textScale, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { openElsewhereResult } from '../navigation/openSearchResult';
 import type { ElsewhereResult } from '../utils/searchElsewhere';
-import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
+import { navigateToSettingsEntry } from '../navigation/openSettings';
 import { useScreenSettings } from '../hooks/useScreenSettings';
 import { stackCompletionScope } from '../utils/bulkCompletion';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -247,7 +262,7 @@ const VIEW_BADGE_LABELS: Partial<Record<ViewMode, string>> = {
 // and a bit ahead of the end costs a short hitch where sixty at the last few
 // rows cost a visible one, and could let a fling hit the bottom before they
 // arrived.
-const LATER_INITIAL_TASK_LIMIT = 15;
+const LATER_INITIAL_TASK_LIMIT = 12;
 const LATER_SETTLED_TASK_LIMIT = 60;
 const LATER_TASK_PAGE_SIZE = 30;
 const LATER_END_REACHED_THRESHOLD = 900;
@@ -578,6 +593,29 @@ function ExpiredSection({
   );
 }
 
+// Id on the view switch's channel while a pill tap is waiting for its list.
+const VIEW_SWITCHING = 'switching';
+
+// Hides the outgoing list the instant a pill is tapped. It subscribes to the
+// channel itself, so the tap repaints this wrapper and nothing else: the list
+// inside arrives as an untouched prop. Without it the pill moved at once and
+// the old list sat there until the new one finished rendering.
+function ViewSwitchVeil({
+  channel,
+  children,
+}: {
+  channel: DropTargetChannel;
+  children: React.ReactNode;
+}) {
+  const switching = useDropTargetAimed(channel, VIEW_SWITCHING);
+  return <View style={switching ? veilStyles.hidden : veilStyles.shown}>{children}</View>;
+}
+
+const veilStyles = StyleSheet.create({
+  shown: { flex: 1 },
+  hidden: { flex: 1, opacity: 0 },
+});
+
 // The view mode switcher. Its own component so a tap can light the pill on a
 // render of just this row: the switch itself (setViewMode) unmounts one list
 // and mounts another, the most expensive render this screen does, so it runs
@@ -597,6 +635,7 @@ function ViewModePills({
   unscheduledCount,
   onLeave,
   onSelect,
+  switchChannel,
   styles,
 }: {
   modes: ViewMode[];
@@ -605,9 +644,14 @@ function ViewModePills({
   unscheduledCount: number;
   onLeave: () => void;
   onSelect: (mode: ViewMode) => void;
+  switchChannel: DropTargetChannel;
   styles: ReturnType<typeof makeStyles>;
 }) {
   const [shownMode, showMode] = useOptimistic(viewMode);
+  // Clears once the new mode has committed (or the tap changed nothing).
+  useEffect(() => {
+    switchChannel.publish(null);
+  }, [viewMode, switchChannel]);
   return (
     <ScrollView
       horizontal
@@ -627,6 +671,9 @@ function ViewModePills({
             onPress={() => {
               haptics.tap();
               onLeave();
+              // Urgent, outside the transition, so it lands with the pill.
+              // Tapping the active pill switches nothing, so it hides nothing.
+              if (mode !== viewMode) switchChannel.publish(VIEW_SWITCHING);
               startTransition(() => {
                 showMode(mode);
                 onSelect(mode);
@@ -679,6 +726,7 @@ export function TodayScreen() {
   const route = useRoute<any>();
   const inboxTasks = useTaskStore(useShallow(s => s.inboxTasks()));
   const tabBarHeight = useBottomTabBarHeight();
+  const fabBottom = useFabBottom();
   // ==== local state (view mode, selection, expansion, sheets) ====
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   // Declared up here rather than with the rest of the sheet/selection state
@@ -731,6 +779,8 @@ export function TodayScreen() {
   const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
   const coinEntries = useRewardStore(s => s.entries);
   const coinTotal = useMemo(() => coinBalance(coinEntries), [coinEntries]);
+  const rewardGoalId = useSettingsStore(s => s.rewardGoalId);
+  const allRewards = useRewardStore(s => s.rewards);
   const bulkTogglePin = useTaskStore(s => s.bulkTogglePin);
   const bulkSetCategory = useTaskStore(s => s.bulkSetCategory);
   const bulkAddTags = useTaskStore(s => s.bulkAddTags);
@@ -748,6 +798,7 @@ export function TodayScreen() {
   const groupTasks = useTaskStore(s => s.groupTasks);
   const applyGroupCategory = useTaskStore(s => s.applyGroupCategory);
   const reorderGroupChildren = useTaskStore(s => s.reorderGroupChildren);
+  const reorderProjectItems = useTaskStore(s => s.reorderProjectItems);
   const addExistingToGroup = useTaskStore(s => s.addExistingToGroup);
   const removeFromGroup = useTaskStore(s => s.removeFromGroup);
   const colors = useColors();
@@ -988,6 +1039,7 @@ export function TodayScreen() {
   const [templatePickerVisible, setTemplatePickerVisible] = useState(false);
   const [applyTemplate, setApplyTemplate] = useState<TaskTemplate | null>(null);
   const [templateAppliedCount, setTemplateAppliedCount] = useState<number | null>(null);
+  const [templateAppliedDest, setTemplateAppliedDest] = useState<TemplateRunDestination | null>(null);
 
   // Collapse any expanded task when navigating away from this tab so it
   // isn't still expanded when the user comes back.
@@ -1164,10 +1216,10 @@ export function TodayScreen() {
   // their own way.
   const scrollToFlatViewTask = (task: Task, view: 'unscheduled' | 'inbox'): boolean => {
     if (view === 'unscheduled') {
-      // Indexed against what's actually rendered (filteredUnscheduledTasks) —
+      // Indexed against what's actually rendered (unscheduledTasks) —
       // with the reminder filter on, a task carrying no reminder has no row to
       // scroll to at all.
-      const index = filteredUnscheduledTasks.findIndex(t => t.id === task.id);
+      const index = unscheduledTasks.findIndex(t => t.id === task.id);
       if (index < 0) return false;
       setPendingUnscheduledJump({ index, n: jumpCount.current++ });
       return true;
@@ -1416,6 +1468,9 @@ export function TodayScreen() {
         // routine that just finished. Idempotent and self-clearing: the
         // completion it writes is what stops it matching again.
         useTaskStore.getState().sweepFinishedQuotaRuns();
+        // And for an avoid-task's end time, which counts the day clean the
+        // moment it passes. Idempotent: the anchor it moves is what stops it.
+        useTaskStore.getState().rolloverNegativeStreaks();
         // Same reasoning as the quota sweep above, for a health rule's own
         // checkpoint hour: "under 2,006mg sodium, from 12 PM" can go from
         // not-yet-judgeable to judgeable by noon simply arriving while the
@@ -1704,14 +1759,31 @@ export function TodayScreen() {
   // without needing its own refresh.
   const morningCheckInLastDayKey = useSettingsStore(s => s.morningCheckInLastDayKey);
   const setMorningCheckInLastDayKey = useSettingsStore(s => s.setMorningCheckInLastDayKey);
+  const vacationEndedAt = useSettingsStore(s => s.vacationEndedAt);
   const morningCheckInCandidates = useMemo(
-    () => morningCheckInTasks(openTasksOf(allTasks), dayResetTime),
-    [allTasks, dayResetTime]
+    () => morningCheckInTasks(openTasksOf(allTasks), dayResetTime, vacationEndedAt),
+    [allTasks, dayResetTime, vacationEndedAt]
   );
+  // Judged exactly once per mount, and only after tasks have loaded. Leaving
+  // the tab hides it in an Activity (FreezeWhenBlurred), which tears effects
+  // down and re-runs them on every return, so an effect with no guard re-asked
+  // the question on each tab switch: a visit with nothing to ask about, then a
+  // return after a mood log, opened the sheet "at random". Refs survive the
+  // hide, so this one keeps the later returns from judging again.
+  const checkInTasksLoaded = useTaskStore(s => s.initialized);
+  const morningCheckInJudged = useRef(false);
   useEffect(() => {
+    if (!checkInTasksLoaded || morningCheckInJudged.current) return;
+    morningCheckInJudged.current = true;
     const todayKey = getLogicalDayKey(new Date(), dayResetTime);
-    if (morningCheckInLastDayKey === todayKey) return;
-    if (morningCheckInCandidates.length === 0) return;
+    const opens = morningCheckInLastDayKey !== todayKey && morningCheckInCandidates.length > 0;
+    reportMorningCheckIn({
+      opened: opens,
+      storedKey: morningCheckInLastDayKey,
+      todayKey,
+      titles: morningCheckInCandidates.map(t => t.title),
+    });
+    if (!opens) return;
     setMorningCheckInVisible(true);
     setMorningCheckInLastDayKey(todayKey);
     // Only the day-key gate belongs here — re-running this effect as tasks
@@ -1719,7 +1791,7 @@ export function TodayScreen() {
     // it, so the candidate list and the visible flag are deliberately left
     // out of the dependency array.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [checkInTasksLoaded]);
 
   // The one place the mood log reaches back into Today — one line under
   // "Lighten today", and only while a run of low days is actually going. See
@@ -1746,7 +1818,21 @@ export function TodayScreen() {
   // current — nothing here fetches, the same split useCalendarStore draws.
   const healthReadEnabled = useSettingsStore(s => s.healthReadEnabled);
   const healthCategory = useSettingsStore(s => s.healthCategory);
+  const stepGoal = useSettingsStore(s => s.stepGoal);
+  const healthTodayHidden = useSettingsStore(s => s.healthTodayHidden);
   const healthToday = useHealthStore(s => s.today);
+  const limitsTodayCategory = useSettingsStore(s => s.limitsTodayCategory);
+  const limitsTodayHidden = useSettingsStore(s => s.limitsTodayHidden);
+  const goalsTodayCategory = useSettingsStore(s => s.goalsTodayCategory);
+  const goalsTodayHidden = useSettingsStore(s => s.goalsTodayHidden);
+  const nutritionTargets = useSettingsStore(useShallow(s => s.nutritionTargets));
+  const nutritionLimits = useSettingsStore(useShallow(s => s.nutritionLimits));
+  const limitWarnPercent = useSettingsStore(s => s.limitWarnPercent);
+  const recentFoodEntries = useFoodLogStore(s => s.recentEntries);
+  // Read for their identity only: they change when an entry is added, removed
+  // or revised, which is when today's totals below go stale.
+  const foodLogCount = useFoodLogStore(s => s.totalCount);
+  const foodLogWindow = useFoodLogStore(s => s.entries);
 
   // Today's reading, shown as a concise "68° Sunny" next to the header title
   // rather than as a row in the list. Gated on `weatherTaskCategory` the same
@@ -1760,8 +1846,8 @@ export function TodayScreen() {
     && weatherSnapshot
     && weatherSnapshotDayKey === getLogicalDayKey(new Date(), dayResetTime)
     ? {
-        label: `${Math.round(weatherSnapshot.tempF)}° ${capitalize(weatherConditionAdjective(weatherSnapshot.weatherCode))}`,
-        icon: weatherIconFor(weatherSnapshot.weatherCode),
+        label: `${Math.round(weatherSnapshot.tempF)}° ${capitalize(weatherConditionAdjective(weatherSnapshot.weatherCode, weatherSnapshot.isDay ?? true))}`,
+        icon: weatherIconFor(weatherSnapshot.weatherCode, weatherSnapshot.isDay ?? true),
       }
     : undefined;
 
@@ -1790,8 +1876,6 @@ export function TodayScreen() {
   const setFilterPriorities = useSettingsStore(s => s.setFilterPriorities);
   const filterEfforts = useSettingsStore(useShallow(s => s.filterEfforts));
   const setFilterEfforts = useSettingsStore(s => s.setFilterEfforts);
-  const filterHasReminder = useSettingsStore(s => s.filterHasReminder);
-  const setFilterHasReminder = useSettingsStore(s => s.setFilterHasReminder);
   const hideCategories = useSettingsStore(s => s.hideCategories);
   const setHideCategories = useSettingsStore(s => s.setHideCategories);
   const simpleMode = useSettingsStore(s => s.simpleMode);
@@ -1839,13 +1923,13 @@ export function TodayScreen() {
   const projects = useProjectStore(useShallow(s => s.projects));
 
   const activeFilterCount =
-    (sort !== 'default' ? 1 : 0) + filterPriorities.length + filterEfforts.length + (filterHasReminder ? 1 : 0);
-  // Only priority/effort/reminder filters narrow which tasks render — sort
+    (sort !== 'default' ? 1 : 0) + filterPriorities.length + filterEfforts.length;
+  // Only priority/effort filters narrow which tasks render — sort
   // just reorders them — so only those should suppress a stack's "N/M" tally
   // (see the filtered prop on TaskGroupHeader). Later Today's groups don't go
   // through this filter at all (upcomingTaskIds is unfiltered), so this only
   // applies to the main Today list's group rows below.
-  const groupTallyFiltered = filterPriorities.length > 0 || filterEfforts.length > 0 || filterHasReminder;
+  const groupTallyFiltered = filterPriorities.length > 0 || filterEfforts.length > 0;
 
   // Both close the filter sheet first: a sheet raised while it is still
   // visible would be a second Modal presented from a view controller already
@@ -1855,9 +1939,8 @@ export function TodayScreen() {
     setSaveViewClauses(clausesFromFilters({
       priorities: filterPriorities,
       efforts: filterEfforts,
-      hasReminder: filterHasReminder,
     }));
-  }, [filterPriorities, filterEfforts, filterHasReminder]);
+  }, [filterPriorities, filterEfforts]);
 
   const handleOpenSavedViews = useCallback(() => {
     setFilterVisible(false);
@@ -1870,24 +1953,6 @@ export function TodayScreen() {
   // to it, rather than having it hidden with no way to reach it.
   const savedViewCount = useSavedViewStore(s => s.views.length);
   const savedViewsShown = featureShown('savedViews', simpleMode, savedViewCount > 0);
-
-  // Later, Unscheduled and Inbox get the reminder filter too (#1798), but not
-  // priority/effort or sort — those stay Today-only, since Later/Unscheduled
-  // already have their own date-driven order and Inbox's whole premise is
-  // tasks with no metadata to sort or filter by. Same shape as `filtered`
-  // above, minus everything that doesn't apply here.
-  const filteredDeferredTasks = useMemo(
-    () => (filterHasReminder ? deferredTasks.filter(t => t.reminderTime !== null) : deferredTasks),
-    [deferredTasks, filterHasReminder]
-  );
-  const filteredUnscheduledTasks = useMemo(
-    () => (filterHasReminder ? unscheduledTasks.filter(t => t.reminderTime !== null) : unscheduledTasks),
-    [unscheduledTasks, filterHasReminder]
-  );
-  const filteredInboxTasks = useMemo(
-    () => (filterHasReminder ? inboxTasks.filter(t => t.reminderTime !== null) : inboxTasks),
-    [inboxTasks, filterHasReminder]
-  );
 
   // Every view here stays current on its own (see the tick effect above for
   // Today's), so pulling down on any of the four doesn't refresh anything —
@@ -2134,7 +2199,6 @@ export function TodayScreen() {
     let result = visibleTasks;
     if (filterPriorities.length > 0) result = result.filter(t => filterPriorities.includes(t.priority));
     if (filterEfforts.length > 0) result = result.filter(t => filterEfforts.includes(t.effort));
-    if (filterHasReminder) result = result.filter(t => t.reminderTime !== null);
     switch (sort) {
       case 'priority': return [...result].sort((a, b) => b.priority - a.priority);
       case 'effort-asc': return [...result].sort((a, b) => (a.effort || 99) - (b.effort || 99));
@@ -2148,18 +2212,18 @@ export function TodayScreen() {
       case 'streak': return [...result].sort((a, b) => liveStreakCount(b) - liveStreakCount(a));
       default: return result;
     }
-  }, [visibleTasks, sort, filterPriorities, filterEfforts, filterHasReminder]);
+  }, [visibleTasks, sort, filterPriorities, filterEfforts]);
 
   // The rows the current sub-view is actually showing — what "select all" and
   // the bulk bar's tally operate on.
   const visibleForMode = useMemo(() => {
     switch (viewMode) {
-      case 'later': return filteredDeferredTasks;
-      case 'unscheduled': return filteredUnscheduledTasks;
-      case 'inbox': return filteredInboxTasks;
+      case 'later': return deferredTasks;
+      case 'unscheduled': return unscheduledTasks;
+      case 'inbox': return inboxTasks;
       default: return filtered;
     }
-  }, [viewMode, filteredDeferredTasks, filteredUnscheduledTasks, filteredInboxTasks, filtered]);
+  }, [viewMode, deferredTasks, unscheduledTasks, inboxTasks, filtered]);
 
   // The pinned block is not in here: it renders above the list as its own
   // header (see pinnedBlock), and a pinned task keeps its ordinary row in this
@@ -2258,6 +2322,24 @@ export function TodayScreen() {
       .filter(g => g.children.length > 0);
   }, [taskGroups, rosterByGroupId, filtered]);
 
+  // A project switched to "Group on Today" takes its loose tasks and its stacks
+  // out of the category sections and into a band of its own, drawn under the
+  // pinned block (see projectBandsBlock). Built from the same two inputs the
+  // sections are, and reporting what it took, so a task is in a band or a
+  // section and never both. Drag and the add button's drop targets are the
+  // sections' business only: the bands sit in the list's header, like the
+  // pinned block, so resolveDrop never sees a row it can't give a category.
+  const projectBands = useMemo(
+    () => buildTodayProjectBands(filtered, visibleGroupItems, projects),
+    [filtered, visibleGroupItems, projects],
+  );
+  const sectionGroupItems = useMemo(
+    () => projectBands.bandedGroupIds.size === 0
+      ? visibleGroupItems
+      : visibleGroupItems.filter(g => !projectBands.bandedGroupIds.has(g.group.id)),
+    [visibleGroupItems, projectBands],
+  );
+
   // Same pairing as visibleGroupItems, but for tasks deferred to later today
   // rather than currently visible — so a stack whose children are all still
   // waiting on a time segment/defer still renders as a collapsible group
@@ -2305,12 +2387,12 @@ export function TodayScreen() {
   // and it should sit under its stack's header, the same as everywhere else,
   // rather than loose among the untriaged rows.
   //
-  // Built from filteredInboxTasks (not childrenByGroupId) so the children come
+  // Built from inboxTasks (not childrenByGroupId) so the children come
   // out in the Inbox's own sortOrder and drop out with the rest of the row
   // when the reminder filter (#1798) doesn't match them.
   const inboxGroupItems = useMemo(() => {
     const byGroup = new Map<string, Task[]>();
-    for (const t of filteredInboxTasks) {
+    for (const t of inboxTasks) {
       if (!t.groupId) continue;
       const list = byGroup.get(t.groupId);
       if (list) list.push(t);
@@ -2319,7 +2401,7 @@ export function TodayScreen() {
     return taskGroups
       .map(group => ({ group, children: byGroup.get(group.id) ?? [] }))
       .filter(g => g.children.length > 0);
-  }, [taskGroups, filteredInboxTasks]);
+  }, [taskGroups, inboxTasks]);
 
   // The Inbox list itself: one row per untriaged task, with each stack's
   // header taking the slot of its first member and that member's siblings
@@ -2332,13 +2414,13 @@ export function TodayScreen() {
       for (const child of item.children) inGroup.add(child.id);
     }
     const items: ListItem[] = [];
-    for (const task of filteredInboxTasks) {
+    for (const task of inboxTasks) {
       const header = headerAt.get(task.id);
       if (header) items.push({ type: 'group', group: header.group, children: header.children });
       if (!inGroup.has(task.id)) items.push({ type: 'task', task });
     }
     return items;
-  }, [filteredInboxTasks, inboxGroupItems]);
+  }, [inboxTasks, inboxGroupItems]);
 
   const upcomingUngroupedTasks = useMemo(
     () => upcomingTodayTasks.filter(t => !t.groupId),
@@ -2440,7 +2522,7 @@ export function TodayScreen() {
     const undo = setMealCookedPaired(entryId, true);
     if (!undo) return;
     animateLayout();
-    setMealLastAction({ label: `Cooked "${title}"`, undo });
+    setMealLastAction({ label: `Cooked “${title}”`, undo });
   }, [setMealCookedPaired, setMealLastAction]);
   // Resolved rather than read straight through: with the groceries/meals area
   // off, Today shows no meals whatever this is set to, but the setting itself
@@ -2473,6 +2555,21 @@ export function TodayScreen() {
   const calendarIds = useSettingsStore(s => s.calendarIds);
   const eventCalendarTags = calendarIds.length > 1 ? calendarsById : undefined;
   const [eventsSheetVisible, setEventsSheetVisible] = useState(false);
+  // Which nutrient's food contribution breakdown is open, from a limit or goal row.
+  const [contributorsKey, setContributorsKey] = useState<NutrientKey | null>(null);
+  const contributorsEntries = useMemo(() => {
+    if (contributorsKey === null) return [];
+    const key = getLogicalDayKey(new Date(), dayResetTime);
+    return recentFoodEntries(key, key);
+  }, [contributorsKey, recentFoodEntries, dayResetTime, foodLogCount, foodLogWindow]);
+  const contributorsTotal = useMemo(() => {
+    if (contributorsKey === null) return null;
+    const value = foodLogTotals(contributorsEntries).total[contributorsKey];
+    if (value === undefined) return null;
+    const unit = NUTRIENT_LABEL[contributorsKey].unit;
+    return describeAgainstTarget(contributorsKey, value, nutritionTargets)
+      ?? `${Math.round(value).toLocaleString()}${unit === 'cal' ? '' : unit}`;
+  }, [contributorsKey, contributorsEntries, nutritionTargets]);
 
   // The Today widget's "Add event" shortcut (openQuickAddEventFromShortcut()
   // in navigationRef.ts, deep link dundundun://addevent) — the event
@@ -2568,7 +2665,32 @@ export function TodayScreen() {
       // dropped as soon as the day turns over rather than at the next remount.
       todayKey: getLogicalDayKey(new Date(), dayResetTime),
         category: healthCategory,
+        stepGoal,
+        hidden: healthTodayHidden,
       }));
+    }
+    // A row per Stay under limit, read off today's food log. Off until the
+    // Nutrition sheet's "Show on Today" files them under a category, for the
+    // reason Health's rows are gated on theirs.
+    const todayLimits = limitsShownOnToday(nutritionLimits, limitsTodayHidden);
+    if (limitsTodayCategory && activeLimits(nutritionTargets, todayLimits).length > 0) {
+      const todayFoodKey = getLogicalDayKey(new Date(), dayResetTime);
+      rows.push(...limitContextRows(
+        foodLogTotals(recentFoodEntries(todayFoodKey, todayFoodKey)).total,
+        nutritionTargets,
+        todayLimits,
+        { category: limitsTodayCategory, warnPercent: limitWarnPercent },
+      ));
+    }
+    // Targets that are figures to reach, under their own switch.
+    if (goalsTodayCategory) {
+      const todayFoodKey = getLogicalDayKey(new Date(), dayResetTime);
+      rows.push(...goalContextRows(
+        foodLogTotals(recentFoodEntries(todayFoodKey, todayFoodKey)).total,
+        nutritionTargets,
+        nutritionLimits,
+        { category: goalsTodayCategory, hidden: goalsTodayHidden },
+      ));
     }
     // No category means nowhere to put them — see ensureCalendarEventCategory
     // for why a cleared setting is a real answer rather than a missing one.
@@ -2610,7 +2732,9 @@ export function TodayScreen() {
     todayCalendarEvents, calendarEventCategory, use24HourTime, eventCalendarTags,
     isEventHidden, movedEventNotes, movedEvents, liveTaskIds,
     mealsOnToday, todayMealEntries, recipesById, mealCookTaskCategory, allTasks,
-    healthToday, healthCategory, dayResetTime,
+    healthToday, healthCategory, stepGoal, healthTodayHidden, dayResetTime,
+    limitsTodayCategory, limitsTodayHidden, goalsTodayCategory, goalsTodayHidden, nutritionTargets, nutritionLimits, limitWarnPercent,
+    recentFoodEntries, foodLogCount, foodLogWindow,
     minuteTick,
   ]);
 
@@ -2630,13 +2754,13 @@ export function TodayScreen() {
     // of the list beside the pinned block it is already in.
     const pinnedIds = new Set(pinnedTasks.map(t => t.id));
     const ungrouped = filtered.filter(
-      t => !t.groupId && !(t.category === null && pinnedIds.has(t.id)),
+      t => !t.groupId && !(t.category === null && pinnedIds.has(t.id)) && !projectBands.bandedTaskIds.has(t.id),
     );
     // Stacks slot into the task order by sortOrder (see makeCategoryGroups) —
     // but only while the list is in its hand-ordered state. Any other sort
     // reorders the tasks by something sortOrder says nothing about, so the
     // stacks go back to heading their section.
-    const grouped = makeCategoryGroups(ungrouped, allCategories, visibleGroupItems, {
+    const grouped = makeCategoryGroups(ungrouped, allCategories, sectionGroupItems, {
       interleaveGroups: sort === 'default',
     });
     // Folded in *here*, before collapse runs over the result, so a context row
@@ -2644,7 +2768,7 @@ export function TodayScreen() {
     // It's also what lets a category holding nothing but events have a header
     // at all — makeCategoryGroups only knows about tasks and stacks.
     return insertContextRows(grouped, contextRows, { categoryOrder: allCategories });
-  }, [filtered, allCategories, visibleGroupItems, sort, contextRows, pinnedTasks]);
+  }, [filtered, allCategories, sectionGroupItems, projectBands, sort, contextRows, pinnedTasks]);
 
   // The rows under each category header, for the header's own pin toggle and
   // the pin glyph that reports its state. Built from `listItems` rather than
@@ -2975,11 +3099,11 @@ export function TodayScreen() {
   // (#1798), matching listItems' own filtered-not-raw drop zones on Today.
   const unscheduledZoneByKey = useMemo(() => {
     const map = new Map<string, DropZone>();
-    filteredUnscheduledTasks.forEach(task => {
+    unscheduledTasks.forEach(task => {
       map.set(task.id, { kind: 'task', key: task.id, category: null });
     });
     return map;
-  }, [filteredUnscheduledTasks]);
+  }, [unscheduledTasks]);
 
   /**
    * Give the freshly created task the position it was dropped at.
@@ -3053,7 +3177,7 @@ export function TodayScreen() {
   };
 
   const placeCreatedUnscheduledTask = (task: Task, intent: Extract<FabDropIntent, { kind: 'insert' }>) => {
-    placeCreatedInFlatOrder(filteredUnscheduledTasks.map(t => t.id), intent.anchorKey, task.id, intent.before);
+    placeCreatedInFlatOrder(unscheduledTasks.map(t => t.id), intent.anchorKey, task.id, intent.before);
   };
 
   const openQuickAddForDrop = (intent: FabDropIntent) => {
@@ -3141,6 +3265,13 @@ export function TodayScreen() {
   // Same deal one level down: a drag of the inline subtask list inside an
   // expanded row (see TaskItem.onSubtaskDragStateChange).
   const [draggingSubtask, setDraggingSubtask] = useState(false);
+  // And for a project band's SortableList, which is in the header too.
+  const [draggingBand, setDraggingBand] = useState(false);
+  // Project bands folded away, by project id. Session-only, like
+  // pinnedGroupOpen: a band only exists on the days its project has something
+  // on, and opening Today to a trip folded shut from last week would hide the
+  // one thing the band is there to show.
+  const [collapsedBands, setCollapsedBands] = useState<ReadonlySet<string>>(() => new Set());
 
   // Each of the three above already resets on its own gesture's release *and*
   // termination (SortableList, PaintSelection's own AppState backstop is the
@@ -3158,6 +3289,7 @@ export function TodayScreen() {
         setDraggingStackChildGroupId(null);
         setDraggingPin(false);
         setDraggingSubtask(false);
+        setDraggingBand(false);
       }
     });
     return () => subscription.remove();
@@ -3209,6 +3341,8 @@ export function TodayScreen() {
   // DropTargetChannel.
   const joinGroupIntentRef = useRef<string | null>(null);
   const dropTargetChannel = useDropTargetChannel();
+  // Whether a pill tap is waiting on its list (see ViewSwitchVeil).
+  const viewSwitchChannel = useDropTargetChannel();
   const dropCapture = useRef<DropCapture>(null);
   // Task the drop just handed to a group (set in onDragEnd, which runs before
   // onReorder), so the placement pass below leaves it alone — it belongs to
@@ -3345,6 +3479,10 @@ export function TodayScreen() {
     setGroupEditorVisible(true);
   }, []);
 
+  const handleGroupOpen = useCallback((groupId: string) => {
+    (navigation as any).navigate('StackDetail', { groupId });
+  }, [navigation]);
+
   // The TaskGroupHeader callbacks below are identical across every place a
   // stack header renders (main list, Later Today, Inbox) — only
   // onToggleCollapse differs per site, so it stays out of this helper. Each
@@ -3356,6 +3494,7 @@ export function TodayScreen() {
     onDefer: handleGroupDefer,
     onSwipeSelect: handleGroupSwipeSelect,
     onPressEdit: handleGroupPressEdit,
+    onPressOpen: handleGroupOpen,
     onPressPin: handleGroupPin,
   };
 
@@ -3554,7 +3693,10 @@ export function TodayScreen() {
             // list throwing you out to a different app for a line you have
             // already read. The arm is explicit rather than left to fall
             // through, because the fall-through is the meal plan.
-            : item.row.kind === 'health' ? undefined
+            : item.row.kind === 'health'
+              ? (item.row.nutrientKey
+                ? () => { const key = item.row.nutrientKey!; setContributorsKey(key); }
+                : undefined)
             : openMealPlan;
       // While a task is focused, a tap anywhere else only unfocuses it, so a
       // context row must not open its sheet (or the meal plan) on that tap.
@@ -3684,11 +3826,7 @@ export function TodayScreen() {
   // dueTodayOverride here, unlike Later Today: these children are undated,
   // so the honest "N/M today" tally is the one TaskGroupHeader computes from
   // the full roster — 0 for an all-Inbox stack, which hides the badge, and
-  // the real count for a stack that also has members due today. `filtered`
-  // is the reminder filter (#1798): with it on, `children` below is a subset
-  // of the roster the tally is computed from, so the badge would misstate
-  // what's actually rendered underneath it — same call groupTallyFiltered
-  // makes for Today's own stacks.
+  // the real count for a stack that also has members due today.
   const renderInboxGroup = (group: TaskGroup, children: Task[]) => {
     const allChildren = childrenByGroupId.get(group.id) ?? NO_GROUP_CHILDREN;
     return (
@@ -3698,7 +3836,6 @@ export function TodayScreen() {
           selectionMode={selectionMode}
           group={group}
           allChildren={allChildren}
-          filtered={filterHasReminder}
           pinned={groupPinInfo.get(group.id)?.pinned ?? false}
           pinDisabled={!(groupPinInfo.get(group.id)?.pinnable ?? false)}
           onToggleCollapse={handleGroupToggleCollapse}
@@ -3915,7 +4052,7 @@ export function TodayScreen() {
                 if (pinnedTasks.length === 1) { clearAllPins(); return; }
                 Alert.alert(
                   'Unpin all tasks?',
-                  'This removes every task from the Pinned Tasks block. Their own rows are unaffected.',
+                  'This removes every task from the Pinned Tasks block. The tasks aren’t changed.',
                   [
                     { text: 'Cancel', style: 'cancel' },
                     { text: 'Unpin all', style: 'destructive', onPress: clearAllPins },
@@ -3959,6 +4096,113 @@ export function TodayScreen() {
     <View style={styles.pinnedBlockFooter}>
       <SpotlightScrim />
     </View>
+    </>
+  );
+
+  const toggleBandCollapsed = (projectId: string) => {
+    // Same first-tap-dismisses rule every header on this screen has.
+    if (expandedTaskId !== null) {
+      setExpandedTaskId(null);
+      return;
+    }
+    haptics.tap();
+    animateLayout();
+    setCollapsedBands(prev => {
+      const next = new Set(prev);
+      if (next.has(projectId)) next.delete(projectId);
+      else next.add(projectId);
+      return next;
+    });
+  };
+
+  // A band's rows keyed for its SortableList, which reads an `id` off each.
+  // Memoized with the bands so the list isn't handed a fresh array every render.
+  type BandListItem = ProjectListItem & { id: string };
+  const bandListItems = useMemo(
+    () => new Map(projectBands.bands.map(band => [
+      band.project.id,
+      band.items.map((item): BandListItem => ({ ...item, id: item.type === 'group' ? item.group.id : item.task.id })),
+    ])),
+    [projectBands],
+  );
+
+  /**
+   * The project bands: each project switched to "Group on Today", under its own
+   * name, holding its stacks and loose tasks for the day (see
+   * buildTodayProjectBands for which rows those are).
+   *
+   * In the list's header beside the pinned block rather than rows in its data,
+   * for the pinned block's reason: a band is not a category, and resolveDrop
+   * gives every row the category of the nearest header above it, so a band as
+   * rows would recategorize anything dragged across it. Its own SortableList
+   * reorders within the project instead (reorderProjectItems, the project
+   * page's own drag), which is the order a band is drawn in. A stack inside it
+   * is the main list's stack renderer, so its tray, its own child drag and
+   * its swipes behave exactly as they do in a category section.
+   *
+   * Hidden with everything else by the pinned block's eye, since that hides
+   * every row but the pins.
+   */
+  const projectBandsBlock = !restVisible || projectBands.bands.length === 0 ? null : (
+    <>
+      {projectBands.bands.map(band => {
+        const collapsed = collapsedBands.has(band.project.id);
+        const bandTaskIds = band.items.flatMap(item => (item.type === 'group' ? item.children.map(c => c.id) : [item.task.id]));
+        return (
+          <React.Fragment key={band.project.id}>
+            <CompletionCollapse taskIds={bandTaskIds}>
+              <View style={styles.categorySectionHeader}>
+                <TouchableOpacity
+                  style={styles.categorySectionToggle}
+                  onPress={() => toggleBandCollapsed(band.project.id)}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${collapsed ? 'Expand' : 'Collapse'} ${band.project.title}`}
+                >
+                  <View style={styles.categorySectionHeaderLeft}>
+                    <Ionicons name="folder-outline" size={13} color={colors.accentText} />
+                    <Text style={styles.projectBandTitle} numberOfLines={1}>
+                      {band.project.title}
+                      {collapsed ? ` (${band.taskCount})` : ''}
+                    </Text>
+                    <Ionicons name={collapsed ? 'chevron-forward' : 'chevron-down'} size={13} color={colors.textTertiary} />
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => {
+                    if (expandedTaskId !== null) { setExpandedTaskId(null); return; }
+                    handleOpenProject(band.project.id);
+                  }}
+                  activeOpacity={interaction.activeOpacity}
+                  hitSlop={{ top: 10, bottom: 10, left: 12, right: 12 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open ${band.project.title}`}
+                >
+                  <Ionicons name="open-outline" size={iconSize.sm} color={colors.textTertiary} />
+                </TouchableOpacity>
+                <SpotlightScrim />
+              </View>
+            </CompletionCollapse>
+            {!collapsed && (
+              <SortableList<BandListItem>
+                data={bandListItems.get(band.project.id) ?? []}
+                onReorder={next => reorderProjectItems(band.project.id, next.map(item => item.id))}
+                onDragStateChange={setDraggingBand}
+                placeholderStyle={styles.stackDropSlot}
+                autoscroll={pinnedAndStackAutoscroll}
+                renderItem={(item, _displayIndex, drag, isActive) =>
+                  item.type === 'group'
+                    ? renderListItem({ item: { type: 'group', group: item.group, children: item.children }, drag: selectionMode ? undefined : drag })
+                    : renderTaskRow(item.task, { drag, isActive, showCategory: true })
+                }
+              />
+            )}
+          </React.Fragment>
+        );
+      })}
+      <View style={styles.pinnedBlockFooter}>
+        <SpotlightScrim />
+      </View>
     </>
   );
 
@@ -4034,11 +4278,13 @@ export function TodayScreen() {
   // Nothing to say when the list is empty only because the user just hid it —
   // "All clear" over a screen of pinned tasks would be flatly wrong, and the
   // eye that emptied it is right there to undo it.
-  const emptyComponent = !restVisible ? null : isEmptyDatabase ? (
+  // A day whose every task went to a project band leaves the list's own data
+  // empty with the bands still showing above it, which is not "All clear".
+  const emptyComponent = !restVisible || projectBands.bands.length > 0 ? null : isEmptyDatabase ? (
     <EmptyState
       icon="rocket-outline"
-      title="Welcome to your list"
-      subtitle="Add your first task to get started"
+      title="No tasks yet"
+      subtitle="Add your first task."
       actionLabel="New task"
       onAction={() => setQuickAddVisible(true)}
       bottomOffset={tabBarHeight}
@@ -4082,6 +4328,26 @@ export function TodayScreen() {
   // hiding it, not just folding it — so a caller can fall back to opening it
   // directly. Shared by jumpToTask and handleTaskCreated.
   const revealTaskInToday = (task: Task): boolean => {
+    // A task in a project band isn't in `listItems` at all: the bands are the
+    // list's header. They sit at the top, so opening its band (and its stack)
+    // is the whole of landing on it.
+    const band = projectBands.bands.find(b => b.items.some(item =>
+      item.type === 'group' ? item.children.some(c => c.id === task.id) : item.task.id === task.id));
+    if (band) {
+      animateLayout();
+      // The bands hide with everything else behind the pinned block's eye.
+      if (othersHidden) setOthersHidden(false);
+      setCollapsedBands(prev => {
+        if (!prev.has(band.project.id)) return prev;
+        const next = new Set(prev);
+        next.delete(band.project.id);
+        return next;
+      });
+      const group = task.groupId ? taskGroups.find(g => g.id === task.groupId) : undefined;
+      if (group?.collapsed) setGroupCollapsed(group.id, false);
+      setExpandedTaskId(null);
+      return true;
+    }
     // Resolved against the pre-collapse list, so a task folded away still has
     // a row to aim at.
     const target = findTaskJumpTarget(listItems, task.id, listItemKey);
@@ -4147,11 +4413,68 @@ export function TodayScreen() {
     flashTask(task.id);
   };
 
+  /**
+   * Take a search result to where its task lives now, rather than opening it:
+   * the right sub-view (Today, Later, Unscheduled, Inbox) scrolled to its row
+   * and flashed, or the Archived screen for a paused one. A task no list holds
+   * (completed, blocked, filed under a project) or one a filter is hiding has
+   * no row to land on, so it opens in the editor instead of eating the tap.
+   * A subtask lands on its parent, which is the row that exists.
+   */
+  const locateTask = (task: Task) => {
+    const root = (task.parentId
+      ? useTaskStore.getState().tasks.find(t => t.id === task.parentId)
+      : undefined) ?? task;
+    const home = taskHomeFor(root);
+    if (home === 'archived') {
+      navigation.navigate({ name: 'Archived', params: { focusTaskId: root.id, at: Date.now() } } as never);
+      return;
+    }
+    let landed = false;
+    if (home === 'today') {
+      landed = revealTaskInToday(root);
+    } else if (home === 'later') {
+      // Later pages itself in behind a task budget — see goToCreatedTask.
+      setLaterTaskLimit(limit => Math.max(limit, LATER_SETTLED_TASK_LIMIT));
+      setPendingLaterJump({ key: root.id, n: jumpCount.current++ });
+      landed = true;
+    } else if (home) {
+      landed = scrollToFlatViewTask(root, home);
+    }
+    if (!landed || !home) {
+      openEditor(task);
+      return;
+    }
+    if (home !== viewMode) {
+      setViewMode(home);
+      // A row left spotlighted on the view being left has no match in the next.
+      setExpandedTaskId(null);
+    }
+    markTaskSeen(root.id);
+    flashTask(root.id);
+  };
+
+  // The same stamped-param handoff the editor link above uses, from a search
+  // result tapped on some other screen (see resetToLocateTask).
+  const [handledLocateTask, setHandledLocateTask] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    const stamp = route.params?.locateTask as number | undefined;
+    if (stamp === undefined || stamp === handledLocateTask) return;
+    setHandledLocateTask(stamp);
+    const task = useTaskStore.getState().tasks.find(t => t.id === route.params?.locateTaskId);
+    if (task) locateTask(task);
+  }, [route.params?.locateTask, route.params?.locateTaskId, handledLocateTask]);
+
   // The quiet-projects banner used to sit here, above the pinned block. It's a
   // real task now (see utils/projectReviewTasks.ts), so the offer arrives in
-  // the list rather than as a strip over it and there is nothing left to put
-  // in the header but the pinned block itself.
-  const todayListHeader = pinnedBlock;
+  // the list rather than as a strip over it. What the header holds is the
+  // pinned block and, under it, the project bands.
+  const todayListHeader = pinnedBlock === null && projectBandsBlock === null ? null : (
+    <>
+      {pinnedBlock}
+      {projectBandsBlock}
+    </>
+  );
 
   const today = format(new Date(), 'EEEE, MMMM d');
 
@@ -4161,7 +4484,7 @@ export function TodayScreen() {
   // row budget below and reruns each time that budget grows a page. Grouping
   // used to run over everything and be truncated afterwards, so the budget
   // bounded how many rows mounted but not what it cost to work out which.
-  const laterOrder = useMemo(() => laterVisibleOrder(filteredDeferredTasks), [filteredDeferredTasks]);
+  const laterOrder = useMemo(() => laterVisibleOrder(deferredTasks), [deferredTasks]);
 
   // The Later list can grow unboundedly (nothing prunes it), and its
   // ReorderableList renders every row unmounted-free (no virtualization — see
@@ -4204,11 +4527,53 @@ export function TodayScreen() {
   }, [viewMode]);
 
   const { sections: visibleLaterSections, hasMore: hasMoreLaterSections } = useMemo(
-    () => laterDaySections(laterOrder, laterTaskLimit),
+    // Only the first-paint budget may end a day partway: it is gone one
+    // interaction later, and a drag needs whole days (see laterDaySections).
+    () => laterDaySections(laterOrder, laterTaskLimit, { cutMidDay: laterTaskLimit === LATER_INITIAL_TASK_LIMIT }),
     [laterOrder, laterTaskLimit],
   );
 
-  const laterData = useMemo(() => flattenLaterSections(visibleLaterSections), [visibleLaterSections]);
+  // Stacks with three or more tasks on one Later day fold into a row (see
+  // LATER_STACK_FOLD_MIN). Unfolded while selecting, so every task is a row the
+  // selection can reach and the paint drag can run down.
+  const laterGroupsById = useMemo(() => new Map(taskGroups.map(g => [g.id, g])), [taskGroups]);
+  const laterData = useMemo(
+    () => flattenLaterSections(visibleLaterSections, { groupsById: laterGroupsById, fold: !selectionMode }),
+    [visibleLaterSections, laterGroupsById, selectionMode],
+  );
+  // Session state, keyed by the folded row's own key (a stack can fold on
+  // several days, and opening one day's must not open the others).
+  const [openLaterStacks, setOpenLaterStacks] = useState<ReadonlySet<string>>(() => new Set());
+  const [expandedLaterStacks, setExpandedLaterStacks] = useState<ReadonlySet<string>>(() => new Set());
+  const handleLaterStackToggle = useCallback((key: string) => {
+    if (expandedTaskId !== null) { setExpandedTaskId(null); return; }
+    haptics.tap();
+    setOpenLaterStacks(prev => {
+      const next = new Set(prev);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
+  }, [expandedTaskId]);
+  const handleLaterStackShowAll = useCallback((key: string) => {
+    setExpandedLaterStacks(prev => new Set(prev).add(key));
+  }, []);
+  // Scoped to the day's members the row holds, never the stack's roster: see
+  // LaterStackRow.
+  const handleLaterStackComplete = useCallback((ids: string[]) => {
+    if (ids.length === 0) return;
+    requestComplete({
+      ids,
+      complete: skipIds => bulkCompleteTasks(ids.filter(id => !skipIds.includes(id))),
+    });
+  }, [requestComplete, bulkCompleteTasks]);
+  const handleLaterStackDefer = useCallback((ids: string[], date: Date) => {
+    if (ids.length > 0) useTaskStore.getState().bulkDefer(ids, date);
+  }, []);
+  const handleLaterStackSelect = useCallback((ids: string[]) => {
+    if (ids.length === 0) return;
+    setExpandedTaskId(null);
+    enterSelectionMode(ids);
+  }, [enterSelectionMode]);
   // Synced during render (comparing against a ref), same as Today's own
   // draggableData above — a useEffect sync lands a frame late, which is what
   // made switching to Later always flash "Nothing deferred" (the stale,
@@ -4293,48 +4658,33 @@ export function TodayScreen() {
           .join('\n')
       : undefined;
 
-  // Later, Unscheduled and Inbox share Today's filter icon and sheet (#1798),
-  // but only the reminder filter applies there — sort and priority/effort stay
-  // Today-only (see filteredDeferredTasks and friends above) — so their badge
-  // is just that one chip, not the combined Today count.
-  const viewFilterCount = viewMode === 'today' ? activeFilterCount : (filterHasReminder ? 1 : 0);
 
   const showCoinPill = rewardsEnabled && !featureHidden('rewardsScreen', simpleMode);
+  const savingGoal = useMemo(() => {
+    if (!showCoinPill) return null;
+    const byId = new Map(allTasks.map(t => [t.id, t]));
+    return savingForGoal(allRewards, coinEntries, rewardGoalId, r => (r.taskId ? byId.get(r.taskId) ?? null : null));
+  }, [showCoinPill, allTasks, allRewards, coinEntries, rewardGoalId]);
   const headerActions: ScreenHeaderAction[] = [
-    {
+    // Sort and filter only apply to Today's own list.
+    ...(viewMode === 'today' ? [{
       icon: 'funnel' as const,
       onPress: () => setFilterVisible(true),
-      active: viewFilterCount > 0,
-      badge: viewFilterCount,
+      active: activeFilterCount > 0,
+      badge: activeFilterCount,
       accessibilityLabel: 'Sort and filter',
-    },
-    ...(viewMode === 'today' && !featureHidden('suggestedPins', simpleMode)
-      && pinnedTasks.length < MAX_SUGGESTED_PINS && visibleTasks.length > 0
-      ? [{
-          icon: 'color-wand' as const,
-          onPress: () => setSuggestedPinsVisible(true),
-          active: pinnedTasks.length === 0,
-          tint: 'orange' as const,
-          accessibilityLabel: 'Suggest tasks to pin',
-        }]
-      : []),
-    // A focus session outlives the switch being flipped, so the way back into a
-    // running one stays whatever the mode says — same call the recipe-timer dot
-    // on the More tab makes about `kitchenEnabled`. Only starting a new one goes.
-    ...(viewMode === 'today' && (!featureHidden('focusSessions', simpleMode) || focusSession)
+    }] : []),
+    // Suggested pins and starting a focus session live in the "…" menu now (two
+    // more icon-only buttons on a screen whose job is the list). A *running*
+    // focus session keeps its header button whatever the mode says, the same
+    // call the recipe-timer dot on the More tab makes about `kitchenEnabled`:
+    // only starting a new one is tucked away.
+    ...(viewMode === 'today' && focusSession
       ? [{
           icon: 'hourglass-outline' as const,
-          onPress: () => {
-            if (focusSession) {
-              setFocusSessionVisible(true);
-              return;
-            }
-            setFocusFromPinned(false);
-            setFocusFromReachOuts(false);
-            setFocusSetupVisible(true);
-          },
-          active: focusSession !== null,
-          accessibilityLabel: focusSession ? 'Focus session running' : 'Start a focus session',
+          onPress: () => setFocusSessionVisible(true),
+          active: true,
+          accessibilityLabel: 'Focus session running',
         }]
       : []),
     ...(viewMode === 'today'
@@ -4347,7 +4697,16 @@ export function TodayScreen() {
           active: hideCategories,
           accessibilityLabel: 'More options',
         }]
-      : []),
+      // Later, Unscheduled and Inbox have no "…" menu, which is where Today's
+      // settings row lives, so they get a settings button that jumps straight
+      // into Settings, the same jump that row makes. The list is the same one:
+      // where quick add files a task, Hide categories, Day starts and vacation
+      // all apply to those lists too.
+      : screenSettings.link ? [{
+        icon: 'settings-outline' as const,
+        onPress: () => navigateToSettingsEntry(navigation, screenSettings.link!.entryId),
+        accessibilityLabel: 'Today settings',
+      }] : []),
   ];
 
   // ==== render. Everything below is JSX ====
@@ -4374,10 +4733,20 @@ export function TodayScreen() {
                 onPress={() => navigateToTab('Rewards')}
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
-                accessibilityLabel={`${coinTotal} coins. Open Rewards`}
+                accessibilityLabel={savingGoal
+                  ? `${coinTotal} coins. Saving for ${savingGoal.title}: ${Math.max(0, Math.min(coinTotal, savingGoal.reward.cost))} of ${formatCoins(savingGoal.reward.cost)}${coinTotal >= savingGoal.reward.cost ? ', ready to claim' : ''}. Open Rewards`
+                  : `${coinTotal} coins. Open Rewards`}
               >
-                <CoinIcon size={iconSize.sm} color={colors.done} filled />
-                <Text style={styles.coinPillText}>{coinTotal}</Text>
+                <View style={styles.coinPillTop}>
+                  <CoinIcon size={iconSize.sm} color={colors.done} filled />
+                  <Text style={styles.coinPillText}>{coinTotal}</Text>
+                  {savingGoal && <Text style={styles.coinPillGoal}>{`/ ${savingGoal.reward.cost}`}</Text>}
+                </View>
+                {savingGoal && (
+                  <View style={styles.coinPillTrack}>
+                    <View style={[styles.coinPillFill, { width: `${goalBarFill(coinTotal, savingGoal.reward.cost) * 100}%` }]} />
+                  </View>
+                )}
               </TouchableOpacity>
             ) : undefined
           }
@@ -4390,6 +4759,7 @@ export function TodayScreen() {
           unscheduledCount={unscheduledCount}
           onLeave={leaveViewMode}
           onSelect={selectViewMode}
+          switchChannel={viewSwitchChannel}
           styles={styles}
         />
 
@@ -4438,6 +4808,7 @@ export function TodayScreen() {
           onTouchStart={spotlightActive ? handleListTouchStart : undefined}
           onTouchEnd={spotlightActive ? handleListTouchEnd : undefined}
         >
+        <ViewSwitchVeil channel={viewSwitchChannel}>
         <PaintSelectionProvider {...paintProps}>
         <FabDropZoneProvider
           ref={dropZonesRef}
@@ -4452,7 +4823,7 @@ export function TodayScreen() {
           <ReorderableList
             scrollEnabled={!painting && !draggingSubtask}
             rowScrollerRef={laterRowScroller}
-            scrollToTop={{ bottom: insets.bottom + 64 }}
+            scrollToTop={{ bottom: fabBottom }}
             data={laterDraggableData}
             keyExtractor={item => item.key}
             // See the Today list's own note: an expanded row's card shadow
@@ -4479,6 +4850,24 @@ export function TodayScreen() {
                     <Text style={styles.laterSubHeaderText}>{item.label}</Text>
                     <SpotlightScrim />
                   </Pressable>
+                );
+              } else if (item.type === 'stack') {
+                content = (
+                  <LaterStackRow
+                    itemKey={item.key}
+                    group={item.group}
+                    tasks={item.tasks}
+                    open={openLaterStacks.has(item.key)}
+                    showAll={expandedLaterStacks.has(item.key)}
+                    selectionMode={selectionMode}
+                    onToggle={handleLaterStackToggle}
+                    onShowAll={handleLaterStackShowAll}
+                    onCompleteIds={handleLaterStackComplete}
+                    onDeferIds={handleLaterStackDefer}
+                    onSelectIds={handleLaterStackSelect}
+                    onPressEdit={handleGroupPressEdit}
+                    renderTask={task => renderTaskRow(task, { indented: true })}
+                  />
                 );
               } else {
                 const subs = subtasksByParent.get(item.task.id) ?? NO_SUBTASKS;
@@ -4534,8 +4923,8 @@ export function TodayScreen() {
               isEmptyDatabase ? (
                 <EmptyState
                   icon="rocket-outline"
-                  title="Welcome to your list"
-                  subtitle="Add your first task to get started"
+                  title="No tasks yet"
+                  subtitle="Add your first task."
                   actionLabel="New task"
                   onAction={() => setQuickAddVisible(true)}
                   bottomOffset={tabBarHeight}
@@ -4545,9 +4934,7 @@ export function TodayScreen() {
                   icon="moon"
                   title="Nothing for later"
                   subtitle={
-                    filterHasReminder && deferredTasks.length > 0
-                      ? 'No tasks match this filter'
-                      : 'Swipe a task right and pick a later day to move it here.'
+                    'Swipe a task right and pick a later day to move it here.'
                   }
                   bottomOffset={tabBarHeight}
                 />
@@ -4578,10 +4965,10 @@ export function TodayScreen() {
             // The user can't scroll during an add-button drag (the button's
             // responder has the touch); the drag scrolls it instead, through
             // this control.
-            scrollEnabled={!painting && !fabDragging && !draggingStackChildGroupId && !draggingSubtask && !draggingPin}
+            scrollEnabled={!painting && !fabDragging && !draggingStackChildGroupId && !draggingSubtask && !draggingPin && !draggingBand}
             scrollControlRef={todayScrollControl}
             rowScrollerRef={todayRowScroller}
-            scrollToTop={{ bottom: insets.bottom + 64 }}
+            scrollToTop={{ bottom: fabBottom }}
             data={draggableData}
             keyExtractor={listItemKey}
             renderItem={renderItem}
@@ -4748,7 +5135,7 @@ export function TodayScreen() {
               if (recategorizedRecurring) {
                 Alert.alert(
                   'Update recurring task',
-                  'This task repeats. Apply this category change to just this task, or to it and every future repeat?',
+                  'This task repeats. Apply this category change to this task, or to this and future tasks?',
                   [
                     { text: 'Cancel', style: 'cancel' },
                     { text: 'This task', onPress: () => commitDrop('occurrence') },
@@ -4789,7 +5176,7 @@ export function TodayScreen() {
           <FlatList
             ref={unscheduledScroll.ref}
             scrollEnabled={!painting && !draggingSubtask}
-            data={filteredUnscheduledTasks}
+            data={unscheduledTasks}
             keyExtractor={t => t.id}
             CellRendererComponent={elevatedUnscheduledCell}
             // No getItemLayout (rows are variable-height), so a target past
@@ -4836,7 +5223,7 @@ export function TodayScreen() {
               );
             }}
             contentContainerStyle={
-              filteredUnscheduledTasks.length === 0
+              unscheduledTasks.length === 0
                 ? styles.emptyContainer
                 : [styles.listContent, extraListBottomPadding !== undefined && { paddingBottom: extraListBottomPadding }]
             }
@@ -4844,8 +5231,8 @@ export function TodayScreen() {
               isEmptyDatabase ? (
                 <EmptyState
                   icon="rocket-outline"
-                  title="Welcome to your list"
-                  subtitle="Add your first task to get started"
+                  title="No tasks yet"
+                  subtitle="Add your first task."
                   actionLabel="New task"
                   onAction={() => setQuickAddVisible(true)}
                   bottomOffset={tabBarHeight}
@@ -4855,9 +5242,7 @@ export function TodayScreen() {
                   icon="calendar-clear-outline"
                   title="Nothing unscheduled"
                   subtitle={
-                    filterHasReminder && unscheduledTasks.length > 0
-                      ? 'No tasks match this filter'
-                      : 'Tasks with no date land here once they have a category, tag, or priority.'
+                    'Tasks with no date land here once they have a category, tag, or priority.'
                   }
                   bottomOffset={tabBarHeight}
                 />
@@ -4865,12 +5250,12 @@ export function TodayScreen() {
             }
             ListFooterComponent={
               <TouchableOpacity
-                style={[styles.listFooter, filteredUnscheduledTasks.length === 0 && styles.listFooterFixed]}
+                style={[styles.listFooter, unscheduledTasks.length === 0 && styles.listFooterFixed]}
                 activeOpacity={1}
                 onPress={() => setExpandedTaskId(null)}
               />
             }
-            ListFooterComponentStyle={filteredUnscheduledTasks.length === 0 ? undefined : styles.listFooterCell}
+            ListFooterComponentStyle={unscheduledTasks.length === 0 ? undefined : styles.listFooterCell}
             refreshControl={
               <RefreshControl
                 refreshing={pullingToSearch}
@@ -4929,8 +5314,8 @@ export function TodayScreen() {
               isEmptyDatabase ? (
                 <EmptyState
                   icon="rocket-outline"
-                  title="Welcome to your list"
-                  subtitle="Add your first task to get started"
+                  title="No tasks yet"
+                  subtitle="Add your first task."
                   actionLabel="New task"
                   onAction={() => setQuickAddVisible(true)}
                   bottomOffset={tabBarHeight}
@@ -4940,9 +5325,7 @@ export function TodayScreen() {
                   icon="file-tray-outline"
                   title="Nothing in the Inbox"
                   subtitle={
-                    filterHasReminder && inboxTasks.length > 0
-                      ? 'No tasks match this filter'
-                      : 'Voice-added and quick tasks land here to be sorted.'
+                    'Voice-added and quick tasks land here to be sorted.'
                   }
                   bottomOffset={tabBarHeight}
                 />
@@ -4967,6 +5350,7 @@ export function TodayScreen() {
         )}
         </FabDropZoneProvider>
         </PaintSelectionProvider>
+        </ViewSwitchVeil>
         </View>
 
         {/* Today and Later get their own scroll-to-top button from
@@ -4975,14 +5359,14 @@ export function TodayScreen() {
         {viewMode === 'unscheduled' && (
           <ScrollToTopButton
             visible={unscheduledScrollTop.visible}
-            bottom={insets.bottom + 64}
+            bottom={fabBottom}
             onPress={() => unscheduledScroll.ref.current?.scrollToOffset({ offset: 0, animated: true })}
           />
         )}
         {viewMode === 'inbox' && (
           <ScrollToTopButton
             visible={inboxScrollTop.visible}
-            bottom={insets.bottom + 64}
+            bottom={fabBottom}
             onPress={() => inboxScroll.ref.current?.scrollToOffset({ offset: 0, animated: true })}
           />
         )}
@@ -4991,7 +5375,6 @@ export function TodayScreen() {
           <AddTaskFabWithDropLabel
             channel={fabIntentChannel}
             categories={categories}
-            bottom={insets.bottom + 64}
             disabled={spotlightActive}
             opacity={fabOpacity}
             onSelect={handleAddMenuSelect}
@@ -5006,7 +5389,7 @@ export function TodayScreen() {
           <View
             style={[
               styles.stackNameBar,
-              { bottom: stackNameKeyboard.height > 0 ? stackNameKeyboard.height + spacing.sm : insets.bottom + 64 },
+              { bottom: stackNameKeyboard.height > 0 ? stackNameKeyboard.height + spacing.sm : fabBottom },
             ]}
           >
             <InlineNameField
@@ -5025,7 +5408,7 @@ export function TodayScreen() {
             destination={createdToast.destination}
             mode={createdToast.source}
             dayResetTime={dayResetTime}
-            bottom={insets.bottom + 64 + FAB_SIZE + spacing.md}
+            bottom={fabBottom + FAB_SIZE + spacing.md}
             onGoToTask={handleCreatedToastGoTo}
             onUndo={handleCreatedToastUndo}
           />
@@ -5049,7 +5432,7 @@ export function TodayScreen() {
             visible={quickSearchVisible}
             onClose={() => { setQuickSearchVisible(false); endPullToSearch(); }}
             onShown={endPullToSearch}
-            onSelectTask={openEditor}
+            onSelectTask={locateTask}
             onSelectGroup={group => handleGroupPressEdit(group.id)}
             onSelectProject={handleOpenProject}
             onSelectElsewhere={handleOpenElsewhere}
@@ -5071,15 +5454,23 @@ export function TodayScreen() {
             visible={applyTemplate !== null}
             template={applyTemplate}
             onClose={() => setApplyTemplate(null)}
-            onApplied={tasks => { if (tasks.length > 0) setTemplateAppliedCount(tasks.length); }}
+            onApplied={tasks => {
+          if (tasks.length === 0) return;
+          setTemplateAppliedCount(tasks.length);
+          setTemplateAppliedDest(templateRunDestination(tasks));
+        }}
           />
         </LazySheet>
 
         {templateAppliedCount !== null && (
           <TemplateAppliedToast
             count={templateAppliedCount}
-            bottom={insets.bottom + 64 + FAB_SIZE + spacing.md}
-            onDismiss={() => setTemplateAppliedCount(null)}
+            bottom={fabBottom + FAB_SIZE + spacing.md}
+            goTo={templateAppliedDest && !(templateAppliedDest.kind === 'view' && templateAppliedDest.mode === viewMode) ? {
+            label: templateRunDestinationLabel(templateAppliedDest),
+            onPress: () => goToTemplateRun(templateAppliedDest),
+          } : undefined}
+          onDismiss={() => { setTemplateAppliedCount(null); setTemplateAppliedDest(null); }}
           />
         )}
 
@@ -5104,15 +5495,12 @@ export function TodayScreen() {
           <SortFilterSheet
             visible={filterVisible}
             onClose={() => setFilterVisible(false)}
-            remindersOnly={viewMode !== 'today'}
             sort={sort}
             onSortChange={setSort}
             priorities={filterPriorities}
             onPrioritiesChange={setFilterPriorities}
             efforts={filterEfforts}
             onEffortsChange={setFilterEfforts}
-            hasReminder={filterHasReminder}
-            onHasReminderChange={setFilterHasReminder}
             onSaveAsView={savedViewsShown ? handleSaveAsView : undefined}
             onOpenSavedViews={savedViewsShown ? handleOpenSavedViews : undefined}
           />
@@ -5139,6 +5527,17 @@ export function TodayScreen() {
             onLightenDay={visibleTasks.length > 0 && !featureHidden('deload', simpleMode) ? () => {
               setOptionsMenuVisible(false);
               setDeloadVisible(true);
+            } : undefined}
+            onStartFocus={!focusSession && !featureHidden('focusSessions', simpleMode) ? () => {
+              setOptionsMenuVisible(false);
+              setFocusFromPinned(false);
+              setFocusFromReachOuts(false);
+              setFocusSetupVisible(true);
+            } : undefined}
+            onSuggestPins={!featureHidden('suggestedPins', simpleMode)
+              && pinnedTasks.length < MAX_SUGGESTED_PINS && visibleTasks.length > 0 ? () => {
+              setOptionsMenuVisible(false);
+              setSuggestedPinsVisible(true);
             } : undefined}
             plannedLabel={plannedLabel}
             lightenNote={deloadNotes[0] ?? null}
@@ -5170,14 +5569,13 @@ export function TodayScreen() {
             } : undefined}
             eventCount={todayCalendarEvents.length}
             anchor={optionsMenuAnchor}
-            onOpenSettings={screenSettings.hasSettings ? () => {
+            onOpenSettings={screenSettings.link ? () => {
               setOptionsMenuVisible(false);
-              screenSettings.open(optionsMenuAnchor);
+              navigateToSettingsEntry(navigation, screenSettings.link!.entryId);
             } : undefined}
-            settingsHint={screenSettings.sheet.entries.map(e => e.label).join(', ')}
+            settingsHint={screenSettings.link?.hint}
           />
         </LazySheet>
-        <ScreenSettingsSheet {...screenSettings.sheet} />
 
         <LazySheet open={categoryOrderVisible}>
           <CategoryOrderSheet
@@ -5191,6 +5589,16 @@ export function TodayScreen() {
             visible={quickEventVisible}
             seed={quickEventSeed}
             onClose={() => { setQuickEventVisible(false); setQuickEventSeed(null); }}
+          />
+        </LazySheet>
+
+        <LazySheet open={contributorsKey !== null}>
+          <NutrientContributorsSheet
+            visible={contributorsKey !== null}
+            nutrientKey={contributorsKey}
+            entries={contributorsEntries}
+            total={contributorsTotal}
+            onClose={() => setContributorsKey(null)}
           />
         </LazySheet>
 
@@ -5351,7 +5759,12 @@ export function TodayScreen() {
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   headerWeather: { flexDirection: 'row', alignItems: 'center', gap: spacing.xxs },
-  coinPill: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingHorizontal: spacing.xsm, paddingVertical: spacing.xxs, borderRadius: radius.full, backgroundColor: colors.bgSecondary },
+  // Column so the saving-for bar can sit under the count; with no goal it is one row, as before.
+  coinPill: { paddingHorizontal: spacing.xsm, paddingVertical: spacing.xxs, borderRadius: radius.full, backgroundColor: colors.bgSecondary, gap: spacing.xxs },
+  coinPillTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  coinPillGoal: { fontSize: font.xxs, fontWeight: fontWeight.medium, color: colors.textSecondary, fontVariant: ['tabular-nums'] },
+  coinPillTrack: { height: 4, borderRadius: radius.full, backgroundColor: colors.bgTertiary, overflow: 'hidden' },
+  coinPillFill: { height: '100%', borderRadius: radius.full, backgroundColor: colors.done },
   coinPillText: { fontSize: font.md, fontWeight: fontWeight.semibold, color: colors.textSecondary },
   headerWeatherText: { flexShrink: 1, fontSize: font.md, fontWeight: fontWeight.medium, color: colors.textSecondary },
   clearBtn: {
@@ -5439,6 +5852,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.xs,
     backgroundColor: colors.bg,
+  },
+  projectBandTitle: {
+    flexShrink: 1,
+    color: colors.accentText, fontSize: font.xs, fontWeight: fontWeight.semibold,
+    textTransform: 'uppercase', letterSpacing: 0.8,
   },
   focusSectionTitleRow: {
     flexDirection: 'row', alignItems: 'center', gap: 5,

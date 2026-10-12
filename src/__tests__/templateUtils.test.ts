@@ -22,6 +22,7 @@ import {
   withPlaceholder,
   withoutPlaceholder,
   substitutePlaceholders,
+  describePlaceholderTokens,
   substituteDraftPlaceholders,
   declaresRunPlaceholder,
   usesItemGroups,
@@ -30,6 +31,7 @@ import {
   findMissingRefs,
   templateHasMissingRefs,
   describeMissingRefs,
+  placeItemAtDrop,
 } from '../utils/templateUtils';
 import type { TaskTemplate, TemplateAnchor, TemplateItem, TemplateQuestion } from '../types';
 
@@ -261,6 +263,15 @@ describe('buildDraftsFromTemplate', () => {
     expect(noDeadline.deadlineTime).toBeNull();
   });
 
+  it('carries a window that follows the sun onto the task, beside its clock fallback', () => {
+    const [draft] = buildDraftsFromTemplate(
+      [makeItem({ windowStart: '15:00', windowEnd: '18:40', windowEndSun: 'sunset-30' })], { start, end },
+    );
+    expect(draft).toMatchObject({ windowStart: '15:00', windowEnd: '18:40', windowStartSun: null, windowEndSun: 'sunset-30' });
+    // A template stored before the fields existed reads as a plain clock window.
+    expect(normalizeTemplateItem({ windowStart: '08:00' })).toMatchObject({ windowStartSun: null, windowEndSun: null });
+  });
+
   it('normalizes a deadline time away when the item has no deadline', () => {
     expect(normalizeTemplateItem({ deadlineOffsetDays: 2, deadlineTime: '09:30' }).deadlineTime).toBe('09:30');
     expect(normalizeTemplateItem({ deadlineTime: '09:30' }).deadlineTime).toBeNull();
@@ -296,6 +307,23 @@ describe('buildDraftsFromTemplate', () => {
     // nothing without the target.
     const [weekly] = buildDraftsFromTemplate([makeItem({ recurrenceType: 'weekly', recurrenceWeekOrdinal: 2, quotaReminders: true, targetUnit: 'x' })], noAnchors);
     expect(weekly).toMatchObject({ recurrenceWeekOrdinal: null, quotaReminders: false, targetUnit: null, targetCount: null });
+  });
+
+  it('seeds a ramp-up only on a plain counted target', () => {
+    const ramp = { targetCount: 10, quotaRampStep: 2, quotaRampEvery: 3, quotaRampGoal: 30 };
+    expect(buildDraftsFromTemplate([makeItem({ recurrenceType: 'daily', ...ramp })], noAnchors)[0])
+      .toMatchObject({ quotaRampStep: 2, quotaRampEvery: 3, quotaRampGoal: 30 });
+    // No target, or one that rides the day out, has nothing for a ramp to move.
+    expect(buildDraftsFromTemplate([makeItem({ recurrenceType: 'daily', ...ramp, targetCount: null })], noAnchors)[0].quotaRampStep).toBeFalsy();
+    expect(buildDraftsFromTemplate([makeItem({ recurrenceType: 'daily', ...ramp, allowOvershoot: true })], noAnchors)[0].quotaRampStep).toBeFalsy();
+  });
+
+  it('seeds a rain skip only on a repeat with days to skip', () => {
+    expect(buildDraftsFromTemplate([makeItem({ recurrenceType: 'daily', rainSkipMm: 5 })], noAnchors)[0].rainSkipMm).toBe(5);
+    expect(buildDraftsFromTemplate([makeItem({ recurrenceType: 'hours', rainSkipMm: 5 })], noAnchors)[0].rainSkipMm).toBeNull();
+    expect(buildDraftsFromTemplate([makeItem({ rainSkipMm: 5 })], noAnchors)[0].rainSkipMm).toBeNull();
+    // A template stored before the field reads as never skipping.
+    expect(normalizeTemplateItem({ id: 'x', title: 'Old' }).rainSkipMm).toBeNull();
   });
 
   it('seeds a chain step per repeat only on a chain that repeats', () => {
@@ -497,7 +525,7 @@ describe('formatOffsetWithAnchor', () => {
   // A trip template's anchors are the days you leave and get back.
   it('names a trip template\'s anchors as leaving and coming back', () => {
     expect(formatOffsetWithAnchor(-42, 'start', true)).toBe('42 days before leaving');
-    expect(formatOffsetWithAnchor(1, 'end', true)).toBe("1 day after you're back");
+    expect(formatOffsetWithAnchor(1, 'end', true)).toBe("1 day after you’re back");
     expect(formatOffsetWithAnchor(0, 'start', true)).toBe('The day you leave');
   });
 
@@ -1273,5 +1301,66 @@ describe('describeMissingRefs', () => {
       { kind: 'tag', name: 'x' },
       { kind: 'tag', name: 'y' },
     ])).toBe('Categories "A", "B" and tags "x", "y" no longer exist');
+  });
+});
+
+describe('describePlaceholderTokens', () => {
+  it('spells out a choice switch with its cap', () => {
+    expect(describePlaceholderTokens('Socks x{laundry access = Yes ? days / 2 : days + 1 max 5}'))
+      .toBe('Socks x (days ÷ 2 if laundry access is Yes, otherwise days + 1, up to 5)');
+  });
+
+  it('spells out a sum and a bare cap', () => {
+    expect(describePlaceholderTokens('Shirts x{days + 1 max 7}')).toBe('Shirts x (days + 1, up to 7)');
+    expect(describePlaceholderTokens('Shirts {days max 7}')).toBe('Shirts (days, up to 7)');
+    expect(describePlaceholderTokens('Pairs {guests * 2}')).toBe('Pairs (guests × 2)');
+  });
+
+  it('reads a literal branch as its number', () => {
+    expect(describePlaceholderTokens('Towels {pool = Yes ? 2 : days}'))
+      .toBe('Towels (2 if pool is Yes, otherwise days)');
+  });
+
+  it('does not double a space and handles a token that starts the text', () => {
+    expect(describePlaceholderTokens('{days + 1} shirts')).toBe('(days + 1) shirts');
+    expect(describePlaceholderTokens('Shirts {days + 1}')).toBe('Shirts (days + 1)');
+  });
+
+  it('returns text with no computed token byte for byte', () => {
+    expect(describePlaceholderTokens('Pack for {where}')).toBe('Pack for {where}');
+    expect(describePlaceholderTokens('Plain  title')).toBe('Plain  title');
+  });
+});
+
+describe('placeItemAtDrop', () => {
+  const a = makeItem({ id: 'a' });
+  const b = makeItem({ id: 'b' });
+  const c = makeItem({ id: 'c' });
+  const fresh = makeItem({ id: 'new' });
+
+  it('puts the item above or below the row it was dropped on', () => {
+    expect(placeItemAtDrop([a, b, c, fresh], 'new', 'b', true)?.ids).toEqual(['a', 'new', 'b', 'c']);
+    expect(placeItemAtDrop([a, b, c, fresh], 'new', 'b', false)?.ids).toEqual(['a', 'b', 'new', 'c']);
+  });
+
+  it('handles the two ends of the list', () => {
+    expect(placeItemAtDrop([a, b, c, fresh], 'new', 'a', true)?.ids).toEqual(['new', 'a', 'b', 'c']);
+    expect(placeItemAtDrop([a, b, c, fresh], 'new', 'c', false)?.ids).toEqual(['a', 'b', 'c', 'new']);
+  });
+
+  it('joins a group only when dropped between two of its members', () => {
+    const g1 = makeItem({ id: 'g1', groupId: 'grp' });
+    const g2 = makeItem({ id: 'g2', groupId: 'grp' });
+    const other = makeItem({ id: 'o', groupId: null });
+    const items = [g1, g2, other, fresh];
+    expect(placeItemAtDrop(items, 'new', 'g1', false)?.groupId).toBe('grp');
+    expect(placeItemAtDrop(items, 'new', 'g1', true)?.groupId).toBeNull();
+    expect(placeItemAtDrop(items, 'new', 'g2', false)?.groupId).toBeNull();
+  });
+
+  it('refuses a row or item that is not there', () => {
+    expect(placeItemAtDrop([a, b, fresh], 'new', 'gone', true)).toBeNull();
+    expect(placeItemAtDrop([a, b], 'new', 'a', true)).toBeNull();
+    expect(placeItemAtDrop([a, fresh], 'new', 'new', true)).toBeNull();
   });
 });

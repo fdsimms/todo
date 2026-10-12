@@ -96,13 +96,13 @@ export function describeOnDeviceAvailability(state: OnDeviceAvailability): strin
     case 'available':
       return null;
     case 'deviceNotEligible':
-      return 'This iPhone doesn\'t support Apple Intelligence, so on-device suggestions can\'t run here.';
+      return 'This iPhone doesn’t support Apple Intelligence, so on-device suggestions can’t run.';
     case 'notEnabled':
-      return 'Turn Apple Intelligence on in the Settings app to use this.';
+      return 'Turn on Apple Intelligence in Settings to use this.';
     case 'notReady':
-      return 'Apple Intelligence is still setting up. This will work once it finishes.';
+      return 'Apple Intelligence is still setting up. Try again once it finishes.';
     case 'unavailable':
-      return 'On-device suggestions aren\'t available on this device.';
+      return 'On-device suggestions aren’t available on this device.';
   }
 }
 
@@ -127,12 +127,12 @@ export function isOnDeviceErrorMessage(message: string): boolean {
 export function describeOnDeviceError(error: unknown): string {
   const message = error instanceof Error ? error.message : '';
   if (message === 'On-device model unavailable') {
-    return 'On-device suggestions aren\'t available on this device.';
+    return 'On-device suggestions aren’t available on this device.';
   }
   if (message === 'On-device model returned malformed output') {
-    return 'Nothing came back that could be used. Try again.';
+    return 'Nothing usable came back. Try again.';
   }
-  return 'The on-device model couldn\'t finish that. Try again.';
+  return 'The on-device model couldn’t finish that. Try again.';
 }
 
 /**

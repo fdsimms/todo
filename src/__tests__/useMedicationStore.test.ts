@@ -1,4 +1,4 @@
-import { useMedicationStore } from '../store/useMedicationStore';
+import { useMedicationStore, setDoseEffects } from '../store/useMedicationStore';
 import {
   dbGetAllMedicationLogs,
   dbInsertMedicationLog,
@@ -30,7 +30,7 @@ jest.mock('../utils/dateUtils', () => ({
 
 beforeEach(() => {
   jest.clearAllMocks();
-  useMedicationStore.setState({ logs: [], archived: [], initialized: false });
+  useMedicationStore.setState({ logs: [], archived: [], registered: [], settings: {}, milestoneDismissed: [], initialized: false });
 });
 
 const state = () => useMedicationStore.getState();
@@ -245,5 +245,301 @@ describe('removeLatestLogForTask', () => {
     state().addLog({ name: 'Ibuprofen', asNeeded: true });
     state().removeLatestLogForTask('task-9');
     expect(state().logs).toHaveLength(1);
+  });
+});
+
+describe('limits and supply', () => {
+  beforeEach(() => {
+    useMedicationStore.setState({ settings: {}, lastSummaryAt: null });
+  });
+
+  it('stores a limit under the match key with a since stamp', () => {
+    state().setLimit(' Ibuprofen ', { minHours: 6, maxPer24h: 4, notify: true });
+    const limit = state().settings.ibuprofen.limit!;
+    expect(limit).toMatchObject({ minHours: 6, maxPer24h: 4, notify: true });
+    expect(typeof limit.since).toBe('string');
+    expect(dbSetSetting).toHaveBeenCalledWith('medication_settings', expect.any(String));
+  });
+
+  it('keeps since when only the notification changes, restamps when a cap does', () => {
+    state().setLimit('Ibuprofen', { minHours: 6, maxPer24h: null, notify: false });
+    const first = state().settings.ibuprofen.limit!.since;
+    useMedicationStore.setState({
+      settings: { ibuprofen: { limit: { ...state().settings.ibuprofen.limit!, since: '2026-01-01T00:00:00.000Z' }, supply: null } },
+    });
+    state().setLimit('Ibuprofen', { minHours: 6, maxPer24h: null, notify: true });
+    expect(state().settings.ibuprofen.limit!.since).toBe('2026-01-01T00:00:00.000Z');
+    state().setLimit('Ibuprofen', { minHours: 8, maxPer24h: null, notify: true });
+    expect(state().settings.ibuprofen.limit!.since).not.toBe('2026-01-01T00:00:00.000Z');
+    expect(first).toBeTruthy();
+  });
+
+  it('clearing both the limit and the supply drops the entry', () => {
+    state().setLimit('Ibuprofen', { minHours: 6, maxPer24h: null, notify: false });
+    state().setLimit('Ibuprofen', null);
+    expect(state().settings).toEqual({});
+  });
+
+  it('a refill adds to what is left and clears a decline', () => {
+    state().setSupply('Ibuprofen', { count: 10, unit: 'tablet', refillCount: 30, reorderAt: 3 });
+    useMedicationStore.setState({
+      settings: { ibuprofen: { limit: null, supply: { ...state().settings.ibuprofen.supply!, since: '2026-09-01T00:00:00.000Z' } } },
+    });
+    state().addLog({ name: 'Ibuprofen', amount: 2, unit: 'tablet', asNeeded: true, at: new Date(2026, 8, 5, 9) });
+    state().declineRefill('Ibuprofen');
+    expect(state().settings.ibuprofen.supply!.declinedAt).toBe(8);
+    state().refillSupply('Ibuprofen', 30);
+    expect(state().settings.ibuprofen.supply!).toMatchObject({ count: 38, declinedAt: null });
+  });
+
+  it('remembers when a summary was shared', () => {
+    state().markSummaryShared(new Date('2026-09-10T12:00:00.000Z'));
+    expect(state().lastSummaryAt).toBe('2026-09-10T12:00:00.000Z');
+    expect(dbSetSetting).toHaveBeenCalledWith('medication_summary_last', '2026-09-10T12:00:00.000Z');
+  });
+});
+
+describe('renameMedication', () => {
+  const dose = (id: string, name: string, amount: number | null = null) => ({
+    id, name, takenAt: '2026-09-01T09:00:00.000Z', dayKey: '2026-09-01',
+    amount, unit: amount === null ? null : 'mg', asNeeded: true, taskId: null, note: null,
+  });
+
+  it('renames the doses, persists each, and fills a strength', () => {
+    useMedicationStore.setState({ logs: [dose('a', 'Ibuprofen 200'), dose('b', 'Ibuprofen 200', 400)] });
+    expect(state().renameMedication('ibuprofen 200', 'Ibuprofen', { amount: 200, unit: 'mg' })).toBe(2);
+    expect(state().logs.map(l => [l.name, l.amount])).toEqual([['Ibuprofen', 200], ['Ibuprofen', 400]]);
+    expect(dbUpdateMedicationLog).toHaveBeenCalledTimes(2);
+  });
+
+  it('refuses a blank name or an unknown medication', () => {
+    useMedicationStore.setState({ logs: [dose('a', 'Ibuprofen')] });
+    expect(state().renameMedication('Ibuprofen', '  ')).toBeNull();
+    expect(state().renameMedication('Nothing', 'X')).toBeNull();
+  });
+
+  it('moves the archived key with the doses', () => {
+    useMedicationStore.setState({ logs: [dose('a', 'Old')], archived: ['old'] });
+    state().renameMedication('Old', 'New');
+    expect(state().archived).toEqual(['new']);
+  });
+
+  it('un-archives a target that live doses are folded into', () => {
+    useMedicationStore.setState({ logs: [dose('a', 'Old'), dose('b', 'New')], archived: ['new'] });
+    state().renameMedication('Old', 'New');
+    expect(state().archived).toEqual([]);
+  });
+
+  it('keeps the target archived when both were', () => {
+    useMedicationStore.setState({ logs: [dose('a', 'Old'), dose('b', 'New')], archived: ['old', 'new'] });
+    state().renameMedication('Old', 'New');
+    expect(state().archived).toEqual(['new']);
+  });
+
+  it('moves the limit to the new key', () => {
+    const limit = { minHours: 6, maxPer24h: null, notify: false, since: '2026-01-01T00:00:00.000Z' };
+    useMedicationStore.setState({ logs: [dose('a', 'Old')], settings: { old: { limit, supply: null } } });
+    state().renameMedication('Old', 'New');
+    expect(state().settings).toEqual({ new: { limit, supply: null } });
+  });
+
+  it('tells the dose effects about each renamed dose', () => {
+    const updated = jest.fn();
+    setDoseEffects({ added: jest.fn(), updated, removed: jest.fn() });
+    useMedicationStore.setState({ logs: [dose('a', 'Old')] });
+    state().renameMedication('Old', 'New');
+    setDoseEffects(null);
+    expect(updated).toHaveBeenCalledTimes(1);
+    expect(updated.mock.calls[0][0].name).toBe('Old');
+    expect(updated.mock.calls[0][1].name).toBe('New');
+  });
+});
+
+describe('medications added by name', () => {
+  it('adds one with no dose and persists the spelling typed', () => {
+    expect(state().addMedication('  Sertraline ')).toBe(true);
+    expect(state().registered).toEqual(['Sertraline']);
+    expect(dbSetSetting).toHaveBeenCalledWith('medication_registered', '["Sertraline"]');
+    expect(state().logs).toEqual([]);
+  });
+
+  it('refuses a blank name and one already listed under another case', () => {
+    expect(state().addMedication('   ')).toBe(false);
+    state().addMedication('Sertraline');
+    expect(state().addMedication('sertraline')).toBe(false);
+    expect(state().registered).toEqual(['Sertraline']);
+  });
+
+  it('refuses a name that already has doses', () => {
+    state().addLog({ name: 'Ibuprofen' });
+    expect(state().addMedication('ibuprofen')).toBe(false);
+    expect(state().registered).toEqual([]);
+  });
+
+  it('adding an archived medication restores it', () => {
+    state().archiveMedication('Valtrex');
+    expect(state().addMedication('Valtrex')).toBe(true);
+    expect(state().archived).toEqual([]);
+  });
+
+  it('loads the list', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((k: string) => (k === 'medication_registered' ? '["Zinc"]' : null));
+    state().initialize();
+    expect(state().registered).toEqual(['Zinc']);
+    (dbGetSetting as jest.Mock).mockImplementation(() => null);
+  });
+
+  it('keeps a medication listed after its last dose is deleted', () => {
+    const log = state().addLog({ name: 'Ibuprofen', amount: 200, unit: 'mg' })!;
+    state().setLimit('Ibuprofen', { minHours: 6, maxPer24h: null, notify: false });
+    state().removeLog(log.id);
+    expect(state().logs).toEqual([]);
+    expect(state().registered).toEqual(['Ibuprofen']);
+    expect(state().settings['ibuprofen']).toBeDefined();
+  });
+
+  it('does not register a medication that still has doses', () => {
+    const a = state().addLog({ name: 'Ibuprofen' })!;
+    state().addLog({ name: 'Ibuprofen' });
+    state().removeLog(a.id);
+    expect(state().registered).toEqual([]);
+  });
+
+  it('removes one with no doses, and its settings, but never one with doses', () => {
+    state().addMedication('Zinc');
+    state().setSupply('Zinc', { count: 30, unit: 'tablets', perDose: 1 } as never);
+    expect(state().removeMedication('Zinc')).toBe(true);
+    expect(state().registered).toEqual([]);
+    expect(state().settings['zinc']).toBeUndefined();
+    state().addLog({ name: 'Ibuprofen' });
+    expect(state().removeMedication('Ibuprofen')).toBe(false);
+    expect(state().logs).toHaveLength(1);
+  });
+
+  it('renames one that has no doses', () => {
+    state().addMedication('Zinc');
+    expect(state().renameMedication('Zinc', 'Zinc 50 mg')).toBe(0);
+    expect(state().registered).toEqual(['Zinc 50 mg']);
+  });
+});
+
+describe('how it is taken and the usual amount', () => {
+  it('stores an answer for a medication with no doses, and clears it', () => {
+    state().addMedication('Zinc');
+    state().setAsNeeded('Zinc', true);
+    expect(state().settings.zinc.asNeeded).toBe(true);
+    state().setAsNeeded('Zinc', null);
+    expect(state().settings.zinc).toBeUndefined();
+  });
+
+  it('stores usual amounts in order, folds repeats and refuses nonsense', () => {
+    state().setUsualDoses('Zinc', [
+      { amount: 50, unit: 'mg' }, { amount: 25, unit: 'mg' }, { amount: 50, unit: 'mg' }, { amount: 0, unit: 'mg' },
+    ]);
+    expect(state().settings.zinc.usualDoses).toEqual([{ amount: 50, unit: 'mg' }, { amount: 25, unit: 'mg' }]);
+    state().setUsualDoses('Zinc', []);
+    expect(state().settings.zinc).toBeUndefined();
+  });
+
+  it('stops at the maximum number of usual amounts', () => {
+    state().setUsualDoses('Zinc', Array.from({ length: 10 }, (_, i) => ({ amount: i + 1, unit: 'mg' })));
+    expect(state().settings.zinc.usualDoses).toHaveLength(6);
+  });
+
+  it('sets a limit on a total, and keeps its start time while the caps are unchanged', () => {
+    state().setLimit('Ibuprofen', { minHours: null, maxPer24h: null, notify: false, maxAmount24h: { amount: 1200, unit: 'mg' } });
+    const first = state().settings.ibuprofen.limit!;
+    expect(first.maxAmount24h).toEqual({ amount: 1200, unit: 'mg' });
+    state().setLimit('Ibuprofen', { minHours: null, maxPer24h: null, notify: true, maxAmount24h: { amount: 1200, unit: 'mg' } });
+    expect(state().settings.ibuprofen.limit!.since).toBe(first.since);
+    state().setLimit('Ibuprofen', { minHours: null, maxPer24h: null, notify: true, maxAmount24h: { amount: 800, unit: 'mg' } });
+    expect(state().settings.ibuprofen.limit!.since >= first.since).toBe(true);
+    state().setLimit('Ibuprofen', { minHours: null, maxPer24h: null, notify: true, maxAmount24h: null });
+    expect(state().settings.ibuprofen).toBeUndefined();
+  });
+
+  it('keeps them through a rename', () => {
+    state().addMedication('Zinc');
+    state().setAsNeeded('Zinc', false);
+    state().setUsualDoses('Zinc', [{ amount: 50, unit: 'mg' }, { amount: 25, unit: 'mg' }]);
+    state().renameMedication('Zinc', 'Zinc picolinate');
+    expect(state().settings['zinc picolinate']).toMatchObject({
+      asNeeded: false, usualDoses: [{ amount: 50, unit: 'mg' }, { amount: 25, unit: 'mg' }],
+    });
+  });
+});
+
+describe('restoreLog', () => {
+  it('puts a deleted dose back with its own id, time and day, in order', () => {
+    const older = state().addLog({ name: 'Ibuprofen', at: new Date(2026, 8, 9, 9) })!;
+    const newer = state().addLog({ name: 'Ibuprofen', at: new Date(2026, 8, 10, 9) })!;
+    state().removeLog(older.id);
+    (dbInsertMedicationLog as jest.Mock).mockClear();
+    state().restoreLog(older);
+    expect(dbInsertMedicationLog).toHaveBeenCalledWith(older);
+    expect(state().logs.map(l => l.id)).toEqual([newer.id, older.id]);
+    expect(state().logs[1]).toEqual(older);
+  });
+
+  it('ignores a dose that is already there, and does not unarchive', () => {
+    const log = state().addLog({ name: 'Ibuprofen' })!;
+    (dbInsertMedicationLog as jest.Mock).mockClear();
+    state().restoreLog(log);
+    expect(dbInsertMedicationLog).not.toHaveBeenCalled();
+    state().removeLog(log.id);
+    state().archiveMedication('Ibuprofen');
+    state().restoreLog(log);
+    expect(state().archived).toEqual(['ibuprofen']);
+  });
+});
+
+describe('usual amount and strength on a dose', () => {
+  it('fills an empty task dose from the default usual amount', () => {
+    state().setUsualDoses('Vitamin D', [{ amount: 1, unit: 'capsule' }, { amount: 2, unit: 'capsule' }]);
+    const log = state().addLog({ name: 'Vitamin D', useUsualDose: true, taskId: 't1' })!;
+    expect([log.amount, log.unit]).toEqual([1, 'capsule']);
+  });
+
+  it('leaves a task dose that names its own amount alone', () => {
+    state().setUsualDoses('Vitamin D', [{ amount: 1, unit: 'capsule' }]);
+    const log = state().addLog({ name: 'Vitamin D', amount: 2000, unit: 'mcg', useUsualDose: true })!;
+    expect([log.amount, log.unit]).toEqual([2000, 'mcg']);
+  });
+
+  it('records no amount when there is no usual one, and never fills a hand-recorded dose', () => {
+    expect(state().addLog({ name: 'Vitamin D', useUsualDose: true })!.amount).toBeNull();
+    state().setUsualDoses('Vitamin D', [{ amount: 1, unit: 'capsule' }]);
+    expect(state().addLog({ name: 'Vitamin D' })!.amount).toBeNull();
+  });
+
+  it('does not borrow another medicine\'s usual amount', () => {
+    state().setUsualDoses('Aleve', [{ amount: 1, unit: 'tablet' }]);
+    expect(state().addLog({ name: 'Vitamin D', useUsualDose: true })!.amount).toBeNull();
+  });
+
+  it('stamps the strength on a counted dose, and only then', () => {
+    state().setStrength('Vitamin D', { amount: 125, unit: 'mcg' });
+    const counted = state().addLog({ name: 'Vitamin D', amount: 1, unit: 'capsule' })!;
+    expect(counted.strength).toEqual({ amount: 125, unit: 'mcg' });
+    expect(dbInsertMedicationLog).toHaveBeenLastCalledWith(expect.objectContaining({ strength: { amount: 125, unit: 'mcg' } }));
+    expect(state().addLog({ name: 'Vitamin D', amount: 400, unit: 'mcg' })!.strength).toBeUndefined();
+    expect(state().addLog({ name: 'Vitamin D' })!.strength).toBeUndefined();
+  });
+
+  it('leaves earlier doses at the strength they were stamped with', () => {
+    state().setStrength('Vitamin D', { amount: 125, unit: 'mcg' });
+    const before = state().addLog({ name: 'Vitamin D', amount: 1, unit: 'capsule' })!;
+    state().setStrength('Vitamin D', { amount: 250, unit: 'mcg' });
+    const after = state().addLog({ name: 'Vitamin D', amount: 1, unit: 'capsule' })!;
+    expect(state().logs.find(l => l.id === before.id)!.strength).toEqual({ amount: 125, unit: 'mcg' });
+    expect(after.strength).toEqual({ amount: 250, unit: 'mcg' });
+  });
+
+  it('clears a strength, and refuses one that is not a measured unit', () => {
+    state().setStrength('Vitamin D', { amount: 125, unit: 'mcg' });
+    state().setStrength('Vitamin D', null);
+    expect(state().settings.vitamind?.strength).toBeUndefined();
+    state().setStrength('Vitamin D', { amount: 1, unit: 'capsule' });
+    expect(state().settings.vitamind).toBeUndefined();
   });
 });

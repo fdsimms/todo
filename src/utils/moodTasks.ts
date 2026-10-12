@@ -41,8 +41,11 @@ import { lowMoodRun, type MoodDay } from './moodInsights';
  *    let the nudge fire off days nobody reported.
  */
 
+/** The deep link a check-in's row opens, to the sheet that answers it. */
+export const MOOD_LOG_LINK_URL = 'dundundun://mood?log=1';
+
 /** The daily task's title. Never varies. */
-export const MOOD_LOG_TITLE = 'Log how you\'re feeling';
+export const MOOD_LOG_TITLE = 'Log how you’re feeling';
 
 /**
  * The nudge's title.
@@ -61,6 +64,10 @@ export const MOOD_NUDGE_TITLE = 'Plan something you enjoy this week';
  * The user can raise or lower it (`moodNudgeAfterDays`).
  */
 export const DEFAULT_MOOD_NUDGE_AFTER_DAYS = 3;
+
+/** The range the setting row offers; below one day the nudge would fire on any day with a mood on it at all. */
+export const MOOD_NUDGE_AFTER_DAYS_MIN = 1;
+export const MOOD_NUDGE_AFTER_DAYS_MAX = 14;
 
 /**
  * The fewest days between two nudges.
@@ -176,7 +183,7 @@ export function daysBetweenKeys(fromKey: string, toKey: string): number {
  */
 export function lowMoodDeloadNote(run: number, afterDays: number): string | null {
   if (run < Math.max(1, afterDays)) return null;
-  return `You've logged a low mood ${run} days running.`;
+  return `You’ve logged a low mood ${run} days running.`;
 }
 
 /**
@@ -187,5 +194,5 @@ export function lowMoodDeloadNote(run: number, afterDays: number): string | null
  * suggestion about what it might mean.
  */
 export function moodNudgeNotes(run: number): string {
-  return `You've logged a low mood ${run} days running.`;
+  return `You’ve logged a low mood ${run} days running.`;
 }

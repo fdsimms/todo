@@ -155,8 +155,8 @@ export function ReminderCapturesSheet({ visible, onClose, reminderLists, reserve
         ? `Anything you add to this list will be added to ${where} and then deleted from the Reminders app.`
         : `The ${count} thing${count === 1 ? '' : 's'} already in this list will be added to ${where} and deleted from the Reminders app, along with anything you add later. Completed reminders are left alone.`
       : count === 0
-        ? `Anything you add to this list will be added to ${where} and left where it is in the Reminders app. Anything whose name already matches a task is skipped, so nothing comes in twice.`
-        : `The ${count} thing${count === 1 ? '' : 's'} already in this list will be added to ${where}, along with anything you add later. Nothing is removed from the Reminders app, and anything whose name already matches a task is skipped so it can’t come in twice. Completed reminders are left alone.`;
+        ? `Anything you add to this list will be added to ${where} and stay in the Reminders app. Anything whose name already matches a task is skipped.`
+        : `The ${count} thing${count === 1 ? '' : 's'} already in this list will be added to ${where}, along with anything you add later. Nothing is removed from the Reminders app. Anything whose name already matches a task is skipped. Completed reminders are left alone.`;
     Alert.alert(
       count === 0
         ? `Import from “${list.title}”?`
@@ -268,8 +268,8 @@ export function ReminderCapturesSheet({ visible, onClose, reminderLists, reserve
       onClose={onClose}
       title="Capture lists"
       caption={
-        'Each capture drains one Apple Reminders list into the app. "Hey Siri, add grilled '
-        + 'cheese to my Food list" becomes a task that offers to log the meal when you check it off.'
+        'Each capture imports one Apple Reminders list. “Hey Siri, add grilled '
+        + 'cheese to my Food list” becomes a task that offers to log the meal when you check it off.'
       }
       rules={captures}
       onChange={setCaptures}
@@ -319,9 +319,9 @@ export function ReminderCapturesSheet({ visible, onClose, reminderLists, reserve
             {capture.filing.kind === 'meal' && (
               <View style={styles.block}>
                 <Text style={styles.hint}>
-                  Checking off a task from this list opens the food log's entry sheet instead of
-                  just completing it, prefilled with what you dictated. Project, Category, and Tag
-                  don't do that; they only file the task.
+                  Checking off a task from this list opens the food log’s entry sheet,
+                  prefilled with what you dictated. Project, Category, and Tag only file
+                  the task.
                 </Text>
                 <View style={styles.toggleRowTop}>
                   <View style={styles.toggleText}>
@@ -329,7 +329,7 @@ export function ReminderCapturesSheet({ visible, onClose, reminderLists, reserve
                     <Text style={styles.hint}>
                       {capture.filing.slot
                         ? 'Everything from this list logs as that meal, no matter what time you dictated it.'
-                        : 'Off, the meal is set by the time of day you dictated it, so one list can log breakfast, lunch, or dinner.'}
+                        : 'Off. The meal is set by the time of day you dictated it, so one list can log breakfast, lunch, or dinner.'}
                     </Text>
                   </View>
                   <Switch
@@ -418,8 +418,8 @@ export function ReminderCapturesSheet({ visible, onClose, reminderLists, reserve
               <Text style={styles.label}>REMINDERS LIST</Text>
               {listPills.length === 0 ? (
                 <Text style={styles.hint}>
-                  No other Reminders lists on this device can be used. A list already feeding
-                  somewhere else, and one that can’t be changed from here, are both left out.
+                  No other Reminders lists are available. A list already used elsewhere, or
+                  one that can’t be changed from here, is left out.
                 </Text>
               ) : listPickerFor === capture.id ? (
                 <PillGroup noun="list" options={listPills} />
@@ -443,8 +443,8 @@ export function ReminderCapturesSheet({ visible, onClose, reminderLists, reserve
                 <Text style={styles.toggleLabel}>Delete after importing</Text>
                 <Text style={styles.hint}>
                   {capture.deleteAfterImport
-                    ? 'Each reminder is removed from the Reminders app once it is in.'
-                    : 'Reminders stay put. Anything whose name already matches a task is skipped.'}
+                    ? 'Each reminder is deleted from the Reminders app after it’s imported.'
+                    : 'Reminders stay in the list. Anything whose name already matches a task is skipped.'}
                 </Text>
               </View>
               <Switch

@@ -1,4 +1,4 @@
-import type { FoodNutrition, FoodPortion, NutrientKey } from '../types';
+import type { FoodNutrition, FoodPortion, MicronutrientKey, NutrientKey } from '../types';
 
 /**
  * Reading a nutrition panel out of the two product databases `productLookup.ts`
@@ -43,14 +43,40 @@ export const NUTRIENT_STORED_UNIT: Record<NutrientKey, NutrientSourceUnit> = {
   carbsG: 'g',
   fatG: 'g',
   satFatG: 'g',
+  transFatG: 'g',
+  cholesterolMg: 'mg',
   fiberG: 'g',
   sugarG: 'g',
+  addedSugarG: 'g',
   sodiumMg: 'mg',
   calciumMg: 'mg',
   ironMg: 'mg',
   potassiumMg: 'mg',
   caffeineMg: 'mg',
   waterMl: 'ml',
+  vitaminAMcg: 'ug',
+  vitaminCMg: 'mg',
+  vitaminDMcg: 'ug',
+  vitaminEMg: 'mg',
+  vitaminKMcg: 'ug',
+  thiaminMg: 'mg',
+  riboflavinMg: 'mg',
+  niacinMg: 'mg',
+  vitaminB6Mg: 'mg',
+  folateMcg: 'ug',
+  vitaminB12Mcg: 'ug',
+  biotinMcg: 'ug',
+  pantothenicAcidMg: 'mg',
+  magnesiumMg: 'mg',
+  zincMg: 'mg',
+  phosphorusMg: 'mg',
+  seleniumMcg: 'ug',
+  copperMg: 'mg',
+  manganeseMg: 'mg',
+  chromiumMcg: 'ug',
+  molybdenumMcg: 'ug',
+  iodineMcg: 'ug',
+  chlorideMg: 'mg',
 };
 
 /** Grams in one of each mass unit. */
@@ -106,14 +132,43 @@ const PER_100_CEILING: Record<NutrientKey, number> = {
   carbsG: 100,
   fatG: 100,
   satFatG: 100,
+  transFatG: 100,
+  cholesterolMg: 100_000,
   fiberG: 100,
   sugarG: 100,
+  addedSugarG: 100,
   sodiumMg: 100_000,
   calciumMg: 100_000,
   ironMg: 100_000,
   potassiumMg: 100_000,
   caffeineMg: 100_000,
   waterMl: 100,
+  // A bound on the impossible, in each key's stored unit: 100 g is 100,000 mg
+  // or 100,000,000 mcg. Nothing reads a micronutrient off a source (see
+  // `OFF_FIELDS`), so this only keeps the table total.
+  vitaminAMcg: 100_000_000,
+  vitaminCMg: 100_000,
+  vitaminDMcg: 100_000_000,
+  vitaminEMg: 100_000,
+  vitaminKMcg: 100_000_000,
+  thiaminMg: 100_000,
+  riboflavinMg: 100_000,
+  niacinMg: 100_000,
+  vitaminB6Mg: 100_000,
+  folateMcg: 100_000_000,
+  vitaminB12Mcg: 100_000_000,
+  biotinMcg: 100_000_000,
+  pantothenicAcidMg: 100_000,
+  magnesiumMg: 100_000,
+  zincMg: 100_000,
+  phosphorusMg: 100_000,
+  seleniumMcg: 100_000_000,
+  copperMg: 100_000,
+  manganeseMg: 100_000,
+  chromiumMcg: 100_000_000,
+  molybdenumMcg: 100_000_000,
+  iodineMcg: 100_000_000,
+  chlorideMg: 100_000,
 };
 
 /**
@@ -229,7 +284,7 @@ export function convertNutrientAmount(
     return factor === undefined ? null : roundAmount(value * factor);
   }
 
-  if (to === 'g' || to === 'mg') {
+  if (to === 'g' || to === 'mg' || to === 'ug') {
     const grams = GRAMS_PER[from];
     if (grams === undefined) return null;
     return roundAmount((value * grams) / GRAMS_PER[to]!);
@@ -323,7 +378,7 @@ const OFF_UNINFORMATIVE_ZERO: ReadonlySet<NutrientKey> = new Set<NutrientKey>(['
  * `sodiumMg` is deliberately absent and handled below.
  */
 
-const OFF_FIELDS: Record<Exclude<NutrientKey, 'sodiumMg'>, { field: string; unit: NutrientSourceUnit }> = {
+const OFF_FIELDS: Record<Exclude<NutrientKey, 'sodiumMg' | MicronutrientKey>, { field: string; unit: NutrientSourceUnit }> = {
   calorieKcal: { field: 'energy-kcal_100g', unit: 'kcal' },
   proteinG: { field: 'proteins_100g', unit: 'g' },
   carbsG: { field: 'carbohydrates_100g', unit: 'g' },
@@ -331,6 +386,12 @@ const OFF_FIELDS: Record<Exclude<NutrientKey, 'sodiumMg'>, { field: string; unit
   satFatG: { field: 'saturated-fat_100g', unit: 'g' },
   fiberG: { field: 'fiber_100g', unit: 'g' },
   sugarG: { field: 'sugars_100g', unit: 'g' },
+  // These three were added (for a cholesterol diet) while Open Food Facts was
+  // unreachable from the sandbox, so the names are its documented ones rather
+  // than read off a live response like the rest. A wrong one parses to nothing.
+  transFatG: { field: 'trans-fat_100g', unit: 'g' },
+  cholesterolMg: { field: 'cholesterol_100g', unit: 'g' },
+  addedSugarG: { field: 'added-sugars_100g', unit: 'g' },
   calciumMg: { field: 'calcium_100g', unit: 'g' },
   ironMg: { field: 'iron_100g', unit: 'g' },
   potassiumMg: { field: 'potassium_100g', unit: 'g' },
@@ -409,7 +470,7 @@ export function readOffNutrition(
   const nutriments = raw as Record<string, unknown>;
 
   const amounts: Partial<Record<NutrientKey, number>> = {};
-  for (const key of Object.keys(OFF_FIELDS) as Array<Exclude<NutrientKey, 'sodiumMg'>>) {
+  for (const key of Object.keys(OFF_FIELDS) as Array<Exclude<NutrientKey, 'sodiumMg' | MicronutrientKey>>) {
     const { field, unit } = OFF_FIELDS[key];
     const value = readSourceNumber(nutriments[field]);
     if (value === null) continue;
@@ -491,6 +552,11 @@ export function readOffNutrition(
  * never appears at all: a wrong id here parses to nothing, silently, on every
  * food. The other ids in this table were each confirmed against a real
  * response and are not in question.
+ *
+ * **Trans fat (1257), cholesterol (1253) and added sugars (1235) are the same
+ * kind of exception**, added while FoodData Central was again unreachable: they
+ * are the documented ids for "Fatty acids, total trans", "Cholesterol" and
+ * "Sugars, added", and the units come off each row's own `unitName` as always.
  */
 const FDC_NUTRIENT_KEYS: Record<number, NutrientKey> = {
   1008: 'calorieKcal',
@@ -498,8 +564,11 @@ const FDC_NUTRIENT_KEYS: Record<number, NutrientKey> = {
   1005: 'carbsG',
   1004: 'fatG',
   1258: 'satFatG',
+  1257: 'transFatG',
+  1253: 'cholesterolMg',
   1079: 'fiberG',
   2000: 'sugarG',
+  1235: 'addedSugarG',
   1093: 'sodiumMg',
   1087: 'calciumMg',
   1089: 'ironMg',

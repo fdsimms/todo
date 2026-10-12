@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useCallback } from 'react';
+import { useWithoutLockedTasks } from '../hooks/useWithoutLockedTasks';
 import {
   View,
   Text,
@@ -20,6 +21,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useElevatedCellRenderer } from '../hooks/useElevatedCellRenderer';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { PaintSelectionProvider } from '../components/PaintSelection';
 import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';
@@ -45,14 +47,19 @@ import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { tagColor } from '../utils/tagColor';
 import type { Task } from '../types';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
+import { reuseUnchangedLists } from '../utils/stableLists';
 
 // One shared empty array for a task with no subtasks — a fresh `[]` per row per
 // render is exactly the identity churn the grouping below exists to avoid.
 const NO_SUBTASKS: Task[] = [];
 
 export function TagsScreen() {
+  const pullSearch = usePullToSearch();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+  const scrollTop = useListScrollToTop();
   const tabBarHeight = useBottomTabBarHeight();
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
@@ -77,7 +84,7 @@ export function TagsScreen() {
   // stop scrolling for the duration (see TaskItem.onSubtaskDragStateChange).
   const [draggingSubtask, setDraggingSubtask] = useState(false);
   const [quickAddVisible, setQuickAddVisible] = useState(false);
-  const allTasks = useTaskStore(s => s.tasks);
+  const allTasks = useWithoutLockedTasks(useTaskStore(s => s.tasks));
   const {
     selectionMode,
     selectedIds,
@@ -112,7 +119,8 @@ export function TagsScreen() {
   // renders itself, so the hook is called from outside that sheet: `ownsSheet`,
   // or it reads its own sheet as a cover and switches keyboard handling off
   // for exactly as long as the sheet is open (see the hook's doc comment).
-  const keyboardScroll = useKeyboardInsetScroll<FlatList>({ ownsSheet: true });
+  const keyboardScroll = useKeyboardInsetScroll<FlatList>({ ownsSheet: true, refreshing: pullSearch.pulling });
+  const sheetScrollTop = useListScrollToTop(keyboardScroll);
   // Lifts the expanded row's cell above the row below it — this list is a
   // genuine FlatList, unlike Today/Later/a project's own list, so the row
   // itself can't just carry a zIndex style the way ReorderableList's
@@ -155,6 +163,7 @@ export function TagsScreen() {
   // Every subtask on this screen, grouped once. Each row used to filter the
   // whole task list for its own children inline, which is O(tasks) per row and
   // — worse — handed the memoized row a fresh array on every render.
+  const subtasksPrev = useRef<Map<string, Task[]> | null>(null);
   const subtasksByParent = useMemo(() => {
     const map = new Map<string, Task[]>();
     for (const t of allTasks) {
@@ -163,7 +172,7 @@ export function TagsScreen() {
       if (list) list.push(t);
       else map.set(t.parentId, [t]);
     }
-    return map;
+    return (subtasksPrev.current = reuseUnchangedLists(subtasksPrev.current, map));
   }, [allTasks]);
   const subtasksOf = (id: string): Task[] => subtasksByParent.get(id) ?? NO_SUBTASKS;
 
@@ -224,7 +233,7 @@ export function TagsScreen() {
     haptics.warning();
     confirmDelete({
       title: 'Delete tag',
-      message: `Remove "${tag}" from all tasks?`,
+      message: `Remove “${tag}” from all tasks?`,
       onConfirm: () => {
         animateLayout();
         deleteTag(tag);
@@ -242,6 +251,9 @@ export function TagsScreen() {
         <HubPills hub="organize" active="Tags" />
 
         <FlatList
+          ref={scrollTop.ref}
+          {...scrollTop.listProps}
+          refreshControl={pullSearch.refreshControl}
           data={allTags}
           keyExtractor={t => t}
           contentContainerStyle={allTags.length === 0 ? styles.emptyContainer : styles.list}
@@ -254,7 +266,7 @@ export function TagsScreen() {
             <EmptyState
               icon="pricetag"
               title="No tags yet"
-              subtitle="Tags cut across categories. One task can carry as many as you like"
+              subtitle="Tags work across categories. A task can have as many as you like."
               actionLabel="New tag"
               onAction={() => setQuickAddVisible(true)}
               bottomOffset={tabBarHeight}
@@ -299,7 +311,6 @@ export function TagsScreen() {
         <Fab
           onPress={() => setQuickAddVisible(true)}
           accessibilityLabel="Add tag"
-          bottom={insets.bottom + tabBarHeight + spacing.md}
         />
 
         <QuickAddNameSheet
@@ -347,12 +358,13 @@ export function TagsScreen() {
             >
             <PaintSelectionProvider {...paintProps}>
               <FlatList
-                ref={keyboardScroll.ref}
+                ref={sheetScrollTop.ref}
                 scrollEnabled={!painting && !draggingSubtask}
                 data={tagTasks}
                 keyExtractor={t => t.id}
                 CellRendererComponent={elevatedCell}
                 {...keyboardScroll.props}
+                {...sheetScrollTop.listProps}
                 contentContainerStyle={[{ flexGrow: 1 }, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
                 renderItem={({ item }) => {
                   const subs = subtasksOf(item.id);
@@ -386,10 +398,11 @@ export function TagsScreen() {
                 }
                 ListFooterComponentStyle={tagTasks.length === 0 ? undefined : styles.listFooterCell}
                 ListEmptyComponent={
-                  <EmptyState icon="pricetag-outline" title="No active tasks" subtitle="Tasks carrying this tag show up here. Completed ones are in the Logbook." />
+                  <EmptyState icon="pricetag-outline" title="No active tasks" subtitle="Tasks with this tag show up here. Completed ones are in the Logbook." />
                 }
               />
             </PaintSelectionProvider>
+            <ScrollToTopButton {...sheetScrollTop.buttonProps} />
             </View>
 
             {selectionMode && (
@@ -436,6 +449,8 @@ export function TagsScreen() {
             }}
           />
         </SheetModal>
+        <ScrollToTopButton {...scrollTop.buttonProps} />
+      {pullSearch.sheet}
       </View>
     </SpotlightProvider>
   );

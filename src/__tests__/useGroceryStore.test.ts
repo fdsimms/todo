@@ -816,7 +816,7 @@ describe('addByName', () => {
     seed([]);
     const item = useGroceryStore.getState().addByName('nduja');
 
-    expect(useGroceryStore.getState().lastAction?.label).toBe('Added "nduja"');
+    expect(useGroceryStore.getState().lastAction?.label).toBe('Added “nduja”');
     useGroceryStore.getState().undoLastAction();
 
     expect(dbDeleteGroceryItem).toHaveBeenCalledWith(item.id);
@@ -4142,7 +4142,7 @@ describe('mergeItems undo', () => {
     // reads as `.find()`'s answer rather than this selector's, and it is what
     // made the suite red on main.
     expect(useGroceryStore.getState().itemById(cilantro.id)).toBeNull();
-    expect(useGroceryStore.getState().lastAction?.label).toBe('Merged "Cilantro" into "Coriander"');
+    expect(useGroceryStore.getState().lastAction?.label).toBe('Merged “Cilantro” into “Coriander”');
     expect(useGroceryStore.getState().lastAction?.destructive).toBe(true);
 
     useGroceryStore.getState().undoLastAction();
@@ -6209,7 +6209,7 @@ describe('either/or items (choiceGroup)', () => {
     useGroceryStore.getState().toggleChecked(milk.id);
     expect(useGroceryStore.getState().items.find(i => i.id === milk.id)!.checked).toBe(true);
     // The add's own undo is still the last thing registered — no choice was made.
-    expect(useGroceryStore.getState().lastAction?.label).toBe('Added "milk"');
+    expect(useGroceryStore.getState().lastAction?.label).toBe('Added “milk”');
   });
 });
 
@@ -8030,7 +8030,7 @@ describe('separate shopping lists', () => {
 
       useGroceryStore.getState().addByName('milk');
 
-      expect(useGroceryStore.getState().lastAction?.label).toBe('Added "milk"');
+      expect(useGroceryStore.getState().lastAction?.label).toBe('Added “milk”');
       useGroceryStore.getState().lastAction!.undo();
       expect(entryOf(milk.id, AIRBNB.id)).toBeNull();
       expect(entryOf(milk.id, null)).not.toBeNull();

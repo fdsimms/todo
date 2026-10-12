@@ -276,10 +276,10 @@ export function ContactPickerSheet({ visible, onPick, onClose, fillingPersonId }
         <View style={styles.card}>
           <Text style={styles.permissionText}>
             {permission === 'denied'
-              ? 'Contacts access is turned off for this app. You can still add somebody by typing their name.'
+              ? 'Contacts access is off. You can still add somebody by typing their name.'
               : permission === 'unsupported'
                 ? 'Contacts are only available on iOS. You can still add somebody by typing their name.'
-                : "Find somebody in your contacts and their name, number and birthday are filled in for you. Nothing is copied until you pick a person."}
+                : "Search your contacts to fill in a name, number and birthday. Nothing is copied until you pick a person."}
           </Text>
           {permission === 'denied' && (
             <TouchableOpacity

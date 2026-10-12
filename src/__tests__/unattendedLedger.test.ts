@@ -1,7 +1,9 @@
 import {
   UNATTENDED_ACTION_SPECS,
   describeUnattendedEntry,
+  AGENT_FILTER,
   filterUnattended,
+  hasAgentEntries,
   unattendedDayLabel,
   unattendedDays,
   unattendedIcon,
@@ -189,6 +191,28 @@ describe('filterUnattended', () => {
   it('treats null as no filter rather than as "the ones with no kind"', () => {
     // A filter offering "nothing" as a choice reads as a bug.
     expect(filterUnattended(entries, null).map(e => e.id)).toEqual(['a', 'b']);
+  });
+});
+
+describe('filtering to Claude', () => {
+  const entries = [
+    entry({ id: 'a', kind: 'birthday' }),
+    entry({ id: 'b', kind: null, actor: 'agent' }),
+    entry({ id: 'c', kind: null, action: 'purged' }),
+  ];
+
+  it('keeps only the rows an agent wrote', () => {
+    expect(filterUnattended(entries, AGENT_FILTER).map(e => e.id)).toEqual(['b']);
+  });
+
+  it('keeps an agent row out of a generator filter', () => {
+    const mixed = [...entries, entry({ id: 'd', kind: 'birthday', actor: 'agent' })];
+    expect(filterUnattended(mixed, 'birthday').map(e => e.id)).toEqual(['a']);
+  });
+
+  it('knows whether there is anything to offer', () => {
+    expect(hasAgentEntries(entries)).toBe(true);
+    expect(hasAgentEntries([entries[0], entries[2]])).toBe(false);
   });
 });
 

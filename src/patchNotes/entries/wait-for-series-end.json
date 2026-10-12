@@ -1,1 +1,1 @@
-{ "message": "A task can now wait for a repeating task to finish its last repeat, not just the next one. Turn on Wait until it ends under Waiting on.", "date": "2026-10-05" }
+{ "message": "A task can now wait for a repeating task’s last repeat instead of only its next one. Turn on Wait until it ends under Waiting on.", "date": "2026-10-05" }

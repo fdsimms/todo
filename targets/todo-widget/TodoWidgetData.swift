@@ -200,6 +200,31 @@ struct WidgetMeal: Codable, Identifiable {
     var id: String { slot + title }
 }
 
+/// One as-needed medication on the Medications widget (`buildWidgetMedications`
+/// in widgetSnapshot.ts). `id` is the medication's key, the same id
+/// LogMedicationIntent's entity carries, so a row's button can build the
+/// entity straight from this.
+struct WidgetMedication: Codable, Identifiable {
+    let id: String
+    let name: String
+    /// What the button records ("400 mg"), or nil when no amount was stated.
+    let dose: String?
+    let lastTakenAt: String
+}
+
+/// One Stay under limit on the Limits widget, worded by the app
+/// (`buildWidgetLimits` in widgetSnapshot.ts) so nothing here formats a figure.
+struct WidgetLimit: Codable, Identifiable {
+    let id: String
+    let label: String
+    let value: String
+    let detail: String
+    /// The bar, 0 to 1.
+    let fraction: Double
+    /// "within", "near" or "over".
+    let status: String
+}
+
 struct WidgetKitchenItem: Codable, Identifiable {
     let title: String
     /// A `YYYY-MM-DD` day key, or nil for a row with no date on it.
@@ -254,11 +279,19 @@ struct WidgetSnapshot: Codable {
     /// When the task rows stop being trustworthy. Nil from a build predating
     /// it, which never goes stale — the widget behaves as it always did.
     let staleAfter: String?
+    /// Nil before the medication log has loaded, or from a build predating
+    /// the Medications widget; either way the widget asks for the app.
+    let medications: [WidgetMedication]?
+    /// Nil before the food log has loaded, or from a build predating the
+    /// Limits widget; either way that widget asks for the app.
+    let limits: [WidgetLimit]?
 
     enum CodingKeys: String, CodingKey {
         case updatedAt, visibleTasks, pinnedTasks, categories, agenda, doneToday
         case groceries, meals, kitchen, upcomingEvents
         case upcomingTasks, nextDayStart, staleAfter
+        case medications
+        case limits
     }
 
     init(from decoder: Decoder) throws {
@@ -276,6 +309,8 @@ struct WidgetSnapshot: Codable {
         upcomingTasks = try c.decodeIfPresent([WidgetTask].self, forKey: .upcomingTasks) ?? []
         nextDayStart = try c.decodeIfPresent(String.self, forKey: .nextDayStart)
         staleAfter = try c.decodeIfPresent(String.self, forKey: .staleAfter)
+        medications = try c.decodeIfPresent([WidgetMedication].self, forKey: .medications)
+        limits = try c.decodeIfPresent([WidgetLimit].self, forKey: .limits)
     }
 
     // ==== Time passing without the app ====
@@ -307,6 +342,10 @@ struct WidgetSnapshot: Codable {
 
     /// The agenda counts, or nil once they describe a day that has ended.
     func agenda(at date: Date) -> WidgetAgenda? { isLaterDay(at: date) ? nil : agenda }
+
+    /// Today's limits, or nil once the day they were totalled for has ended:
+    /// yesterday's saturated fat is not today's budget.
+    func limitsToday(at date: Date) -> [WidgetLimit]? { isLaterDay(at: date) ? nil : limits }
 
     /// Every moment after `date` at which the Today widget draws something
     /// different with no new write: a task arriving, a meeting starting (its

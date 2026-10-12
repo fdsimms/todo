@@ -24,13 +24,17 @@ import { SafeBlurView } from './SafeBlurView';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, lineHeight, border, animation, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, lineHeight, border, animation, interaction, sheetBottomInset, type Colors } from '../theme';
 import { useTextScale } from '../hooks/useTextScale';
 import { haptics } from '../utils/haptics';
 import { useShallow } from 'zustand/react/shallow';
+import { addDays } from 'date-fns/addDays';
+import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useProjectStore } from '../store/useProjectStore';
-import { awaySpanOf } from '../utils/awayDates';
+import { awaySpanOf, awayNights } from '../utils/awayDates';
+import { useDestinationForecast, type DestinationForecastLines } from '../hooks/useDestinationForecast';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import {
   resolveOffsetDate,
   formatOffsetLabel,
@@ -44,10 +48,11 @@ import {
   declaresRunPlaceholder,
   resolveApplyContainer,
   RUN_PLACEHOLDER,
+  placeholderKey,
   type TemplateAnchors,
   type ApplyTreeNode,
 } from '../utils/templateUtils';
-import { formatScheduledDate } from '../utils/dateUtils';
+import { formatScheduledDate, dayKeyOf } from '../utils/dateUtils';
 import { TITLE_MAX_LENGTH } from '../types';
 import {
   questionsForTree,
@@ -56,6 +61,9 @@ import {
   initialLeafSelection,
   reselectForAnswers,
   questionLabel,
+  displayOptions,
+  toggleAnswer,
+  answerValues as answerValuesOf,
   applyItemVariant,
   personIdsFromAnswer,
   personIdsToAnswer,
@@ -123,15 +131,15 @@ function itemSublabel(item: TemplateItem, anchors: TemplateAnchors, away = false
 
 /** What the run name will do, given the container this apply resolves to. Doubles as the field's only in-app documentation. */
 function runNameHint(container: TemplateContainer, upgraded: boolean, hasPlaceholders: boolean): string {
-  const fills = hasPlaceholders ? ', and fills in the blanks below' : '';
+  const fills = hasPlaceholders ? ' The name also fills in the blanks below.' : '';
   if (container === 'project') {
     return upgraded
-      ? `Names the project these tasks land in. This template's groups become stacks inside it${fills}`
-      : `Names the project these tasks land in, dated by the start and end dates above${fills}`;
+      ? `Names the project these tasks land in. This template’s groups become stacks inside it.${fills}`
+      : `Names the project these tasks land in, dated by the start and end dates above.${fills}`;
   }
-  if (container === 'stack') return `Names the stack these tasks land in${fills}`;
-  if (container === 'task') return `Names the task these become subtasks of${fills}`;
-  return `Fills in the blanks below${fills ? '' : ''}`;
+  if (container === 'stack') return `Names the stack these tasks land in.${fills}`;
+  if (container === 'task') return `Names the task these become subtasks of.${fills}`;
+  return `Fills in the blanks below.${fills ? '' : ''}`;
 }
 
 /**
@@ -202,6 +210,30 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
   // (docs/arch/people.md) rules out — so it doesn't render at all, the same
   // way MealEntrySheet's guest picker omits itself rather than showing empty.
   const visibleQuestions = questions.filter(q => q.kind !== 'people' || people.length > 0);
+
+  // The forecast line under a question that asks for it ("What's the weather
+  // like?"). Where: the project this lands in, else a `{destination}` blank
+  // the run answers. When: the two dates picked above, else that project's
+  // away span. It only states the forecast, and answers nothing (see
+  // TemplateQuestion.showForecast). Nothing is fetched unless a question asks.
+  const wantsForecast = visibleQuestions.some(q => q.showForecast);
+  const destinationBlank = placeholderKey('destination');
+  const typedDestination = (
+    placeholderValuesFor(questions, answers)[destinationBlank] ?? placeholderValues[destinationBlank] ?? ''
+  ).trim();
+  const forecastPlace = useDebouncedValue(
+    wantsForecast ? (targetProject?.destination?.trim() || typedDestination || null) : null,
+    600,
+  );
+  const targetSpan = targetProject ? awaySpanOf(targetProject) : null;
+  const forecastStart = startAnchor ?? targetSpan?.start ?? null;
+  const forecastEnd = endAnchor ?? (startAnchor ? null : targetSpan?.end ? addDays(targetSpan.end, -1) : null);
+  const forecast = useDestinationForecast(
+    forecastPlace,
+    forecastStart ? dayKeyOf(forecastStart) : null,
+    forecastStart ? dayKeyOf(forecastEnd ?? forecastStart) : null,
+    forecastStart && forecastEnd ? differenceInCalendarDays(forecastEnd, forecastStart) : null,
+  );
 
   const sheet = useSheetMotion(visible);
   const { translateY, backdropOpacity } = sheet;
@@ -569,7 +601,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
                 style={styles.runInput}
                 value={runName}
                 onChangeText={setRunName}
-                placeholder={`Name for "${template.name}"`}
+                placeholder={`Name for “${template.name}”`}
                 placeholderTextColor={colors.textTertiary}
                 maxLength={TITLE_MAX_LENGTH}
                 returnKeyType="done"
@@ -582,7 +614,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
                   <View style={styles.planningText}>
                     <Text style={styles.planningLabel}>Start in Planning</Text>
                     <Text style={styles.runHint}>
-                      Hides the project's tasks, dated ones too, until you mark it ready.
+                      Hides the project’s tasks, dated ones too, until you mark it ready.
                     </Text>
                   </View>
                   <Switch
@@ -609,6 +641,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
                   question={question}
                   value={answers[question.id] ?? ''}
                   onChange={value => setTypedAnswers(prev => ({ ...prev, [question.id]: value }))}
+                  forecast={question.showForecast ? forecast : null}
                   people={people}
                   colors={colors}
                   styles={styles}
@@ -652,9 +685,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
           <AnchorRow
             icon={away ? 'airplane-outline' : 'play-outline'}
             label={away ? 'Leaving' : 'Start date'}
-            hint={away
-              ? 'The day you go. Items that count days from the start are dated from it.'
-              : 'Items that count days from the start are dated from this day.'}
+            hint='Items that count days from the start are dated from this day.'
             value={startAnchor}
             onPress={() => openCalendar('start')}
             onClear={() => setStartAnchor(null)}
@@ -663,9 +694,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
           <AnchorRow
             icon={away ? 'home-outline' : 'flag-outline'}
             label={away ? 'Coming back' : 'End date'}
-            hint={away
-              ? "The day you're back. Items that count days from the end are dated from it."
-              : 'Items that count days from the end are dated from this day.'}
+            hint='Items that count days from the end are dated from this day.'
             value={endAnchor}
             onPress={() => openCalendar('end')}
             onClear={() => setEndAnchor(null)}
@@ -680,7 +709,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
 
           {anchorless && (
             <Text style={styles.anchorlessHint}>
-              Some items count days from a date you haven't set, so they'll be added without dates
+              Items that count days from a date you haven’t set are added without dates.
             </Text>
           )}
           </ScrollView>
@@ -741,31 +770,40 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
  * one line or wrap ragged, which is a row of pills again inside a box.
  */
 function QuestionRow({
-  question, value, onChange, people, colors, styles,
+  question, value, onChange, forecast, people, colors, styles,
 }: {
   question: TemplateQuestion;
   value: string;
   onChange: (value: string) => void;
+  /** The destination forecast to state under the prompt, when this question asks for it. Null draws nothing. */
+  forecast: DestinationForecastLines | null;
   /** Only read for a `'people'` question — guaranteed non-empty when one reaches this row, see visibleQuestions above. */
   people: Person[];
   colors: Colors;
   styles: ReturnType<typeof makeStyles>;
 }) {
+  const picked = answerValuesOf(value);
   return (
     <View style={styles.questionBlock}>
       <Text style={styles.questionPrompt} numberOfLines={2}>{questionLabel(question)}</Text>
+      {forecast?.line && (
+        <View>
+          <Text style={styles.forecastLine}>{forecast.line}</Text>
+          {forecast.gap && <Text style={styles.forecastGap}>{forecast.gap}</Text>}
+        </View>
+      )}
       {question.kind === 'choice' ? (
         <View style={styles.answerRow}>
-          {question.options.map(option => {
-            const on = option === value;
+          {displayOptions(question).map(option => {
+            const on = picked.includes(option);
             return (
               <TouchableOpacity
                 key={option}
                 style={[styles.answerPill, on && styles.answerPillOn]}
-                onPress={() => { haptics.tap(); onChange(option); }}
+                onPress={() => { haptics.tap(); onChange(toggleAnswer(question, value, option)); }}
                 activeOpacity={interaction.activeOpacity}
-                accessibilityRole="radio"
-                accessibilityState={{ selected: on }}
+                accessibilityRole={question.multiple ? 'checkbox' : 'radio'}
+                accessibilityState={question.multiple ? { checked: on } : { selected: on }}
                 accessibilityLabel={option}
               >
                 <Text style={[styles.answerPillText, on && styles.answerPillTextOn]}>{option}</Text>
@@ -850,7 +888,7 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     right: 0,
     bottom: 0,
     paddingHorizontal: spacing.md,
-    paddingBottom: 34,
+    paddingBottom: sheetBottomInset,
   },
   handleArea: {
     alignItems: 'center',
@@ -940,6 +978,15 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   questionPrompt: {
     color: colors.textSecondary,
     fontSize: font.sm,
+  },
+  forecastLine: {
+    color: colors.text,
+    fontSize: font.sm,
+  },
+  forecastGap: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    marginTop: spacing.xxs,
   },
   answerRow: {
     flexDirection: 'row',

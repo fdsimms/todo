@@ -203,8 +203,8 @@ export function NutritionSearchSheet({ visible, itemName, onClose, onPick, onOpe
                 title={error ? 'Nothing to show' : 'No matching foods'}
                 subtitle={
                   error
-                    ? 'The search could not be run, so there is nothing to choose from.'
-                    : 'Try a plainer name. This database files foods as "Onions, raw" rather than by brand.'
+                    ? 'Couldn’t run the search.'
+                    : 'Try a plainer name. This database lists foods like “Onions, raw”, without brand names.'
                 }
                 actionLabel={errorSettingsEntryId ? 'Open Settings' : undefined}
                 onAction={errorSettingsEntryId ? openSettings : undefined}

@@ -50,6 +50,8 @@ export interface NavContentCounts {
   foodLog?: number;
   journal?: number;
   dreams?: number;
+  /** Meter readings: the Meters screen's content. */
+  meters?: number;
 }
 
 export type NavHubId = 'kitchen' | 'organize' | 'history' | 'health';
@@ -130,6 +132,9 @@ const ORGANIZE_HUB: NavHub = {
     { route: 'Categories', label: 'Categories', icon: 'folder-outline', keywords: ['areas', 'lists', 'groups'] },
     { route: 'Tags', label: 'Tags', icon: 'pricetag-outline', keywords: ['labels'] },
     { route: 'People', label: 'People', icon: 'people-outline', keywords: ['contacts', 'birthdays', 'friends', 'family'] },
+    // Something tasks belong to, as a tag or a person is: the odometer an oil
+    // change is due by. See docs/arch/meters.md.
+    { route: 'Meters', label: 'Meters', icon: 'speedometer-outline', keywords: ['odometer', 'mileage', 'miles', 'usage', 'readings', 'hours', 'counter', 'oil change'] },
     { route: 'Stacks', label: 'Stacks', icon: 'layers-outline', keywords: ['groups', 'routines', 'bundles'] },
     { route: 'Templates', label: 'Templates', icon: 'copy-outline', keywords: ['presets', 'checklists', 'reusable'] },
   ],
@@ -262,8 +267,8 @@ export const NAV_MENU_ROWS: readonly NavMenuRow[] = [
   },
   // Goes through one field at a time and offers the items missing it — a
   // lens over tasks, categories, projects, people and grocery items that
-  // already exist, so it's shown unconditionally in simplified mode the same
-  // as Calendar and Stuck (see simpleMode.ts).
+  // already exist, so simplified mode hides it unconditionally, the same as
+  // Calendar and Stuck (see simpleMode.ts).
   {
     kind: 'screen',
     destination: {
@@ -414,9 +419,9 @@ export function searchMenu(destinations: NavSearchResult[], terms: string[]): Na
 }
 
 /** The most screens that get a button of their own in the bottom tab bar, beside More. */
-export const TAB_SLOT_COUNT = 4;
+export const TAB_SLOT_COUNT = 5;
 
-/** The fewest: the first three slots are always filled, and only the fourth is optional. */
+/** The fewest: the first three slots are always filled, and the fourth and fifth are optional. */
 export const MIN_TAB_COUNT = 3;
 
 /** The tabs a fresh install has, and what "Use the default tabs" goes back to. */
@@ -430,8 +435,8 @@ export const MENU_ROUTES: readonly string[] = NAV_MENU_ROWS.flatMap(row =>
  * The chosen tabs, read back from storage: menu routes only, no repeats, at
  * most `TAB_SLOT_COUNT` of them. Anything short of `MIN_TAB_COUNT` is filled
  * from the default tabs not already chosen, so a damaged or older value still
- * gives three buttons rather than a bar with a hole in it. A fourth is kept
- * only when it was chosen; it is never filled in.
+ * gives three buttons rather than a bar with a hole in it. A fourth or fifth is kept
+ * only when it was chosen; neither is ever filled in.
  */
 export function normalizeTabRoutes(raw: unknown): string[] {
   const chosen: string[] = [];
@@ -462,14 +467,15 @@ export function parseTabRoutes(raw: string | null): string[] {
 /**
  * Puts a screen in one tab slot. A screen that's already in another slot
  * swaps with whatever this slot held, so the bar never shows one screen twice
- * and never loses one without saying so. An empty slot (the optional fourth)
- * takes only a screen that isn't a tab yet, since there is nothing to swap with.
+ * and never loses one without saying so. An empty slot (the optional fourth
+ * and fifth) takes only a screen that isn't a tab yet, since there is nothing to
+ * swap with, and joins the bar after the last tab so the slots stay contiguous.
  */
 export function setTabSlot(current: readonly string[], slot: number, route: string): string[] {
   const next = normalizeTabRoutes(current);
   if (slot < 0 || slot >= TAB_SLOT_COUNT || !MENU_ROUTES.includes(route)) return next;
   if (slot >= next.length) {
-    if (slot === next.length && !next.includes(route)) next.push(route);
+    if (!next.includes(route)) next.push(route);
     return next;
   }
   const existing = next.indexOf(route);
@@ -479,7 +485,7 @@ export function setTabSlot(current: readonly string[], slot: number, route: stri
   return next;
 }
 
-/** Takes the optional fourth tab away. The first three can only be swapped, never emptied. */
+/** Takes an optional tab (the fourth or fifth) away. The first three can only be swapped, never emptied. */
 export function clearTabSlot(current: readonly string[], slot: number): string[] {
   const next = normalizeTabRoutes(current);
   if (slot >= MIN_TAB_COUNT && slot < next.length) next.splice(slot, 1);

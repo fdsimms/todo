@@ -257,7 +257,7 @@ describe('syncNow', () => {
     expect(result?.ok).toBe(true);
     expect(dbSetSetting).toHaveBeenCalledWith('syncLastSyncedAt', expect.any(String));
     expect(useSyncStore.getState().problem).toBe(
-      "Some recipe photos didn't send (cloudkit: Payload too large). They go again with the next sync."
+      "Some recipe photos didn’t send (cloudkit: Payload too large). They’ll retry on the next sync."
     );
   });
 

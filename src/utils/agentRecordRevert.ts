@@ -29,7 +29,7 @@ import { pantryRecordPlan, type PantryRecordPlan, type PantryRecordState } from 
 export const PROJECT_REVERT_FIELDS = [
   'title', 'notes', 'deadline', 'eventDate', 'category', 'defaultTaskCategory', 'taskDefaults', 'nudgeCadenceDays', 'autoSchedule',
   'nudgeOptIn', 'weekendSource', 'kind', 'ongoing', 'awayStart', 'awayEnd', 'awayPauses', 'destination', 'pausedUntil',
-  'personIds', 'links', 'inOrder', 'showChecked',
+  'personIds', 'links', 'inOrder', 'showChecked', 'hideNextStep', 'groupOnToday',
 ] as const;
 
 export type RecordLogSubject = 'meal' | 'food' | 'mood' | 'medication';
@@ -126,7 +126,7 @@ export function agentRecordPlan(entry: UnattendedEntry, state: RecordState): Age
       }
       if (entry.action !== 'edited' || !revert || !id) return NONE;
       const project = state.project(id);
-      if (!project) return { kind: 'none', reason: 'Since removed' };
+      if (!project) return { kind: 'none', reason: 'Removed since' };
       const record = project as unknown as Record<string, unknown>;
       const keys = Object.keys(revert.after);
       if (keys.every(k => same(record[k], revert.before[k]))) return { kind: 'none', reason: 'Undone' };

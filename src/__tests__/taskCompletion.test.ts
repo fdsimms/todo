@@ -69,7 +69,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   penaltyFiredAt: null,
   penaltyCreditedAt: null,
   gatesApps: false,
-  showStreak: false, streakRequiresWindow: false,
+  showStreak: false, streakRequiresWindow: false, streakCountsUnits: false,
   parentId: null, groupId: null, projectId: null,
   chainEnabled: false, chainIndex: 0, chainItems: [], chainStepOnSchedule: false, vacationPause: false, excludeFromSuggestions: false,
   followUpTaskEveryN: null, followUpTaskTitle: null, followUpTaskDraft: null,
@@ -122,6 +122,13 @@ describe('completionRefusal', () => {
   // There is no tap that finishes "don't smoke" — see Task.polarity.
   it('refuses a negative habit and points at the slip instead', () => {
     expect(completionRefusal(makeTask({ polarity: 'negative' }))).toMatch(/slip/);
+  });
+
+  it('refuses a task a saved entry answers, except for the save itself and a missed mark', () => {
+    const task = makeTask({ generatedKind: 'moodLog' });
+    expect(completionRefusal(task)).toMatch(/saving the entry/);
+    expect(completionRefusal(task, { recorded: true })).toBeNull();
+    expect(completionRefusal(task, { missed: true })).toBeNull();
   });
 
   it('refuses a recurring task that is not due yet', () => {
@@ -233,6 +240,42 @@ describe('buildCompletion', () => {
 
     it('is not spawned for a one-off', () => {
       expect(build(makeTask()).nextTask).toBeNull();
+    });
+
+    describe('a ramp-up target', () => {
+      const ramped = (overrides: Partial<Task> = {}) => makeTask({
+        recurrenceType: 'daily', dueDate: localIso('2026-03-10T12:00'),
+        targetCount: 4, quotaRampStep: 1, quotaRampEvery: 2, quotaRampGoal: 6, quotaRampHits: 0,
+        ...overrides,
+      });
+
+      it('counts a hit but keeps the target until enough hits have run', () => {
+        const { nextTask } = build(ramped());
+        expect(nextTask!.targetCount).toBe(4);
+        expect(nextTask!.quotaRampHits).toBe(1);
+      });
+
+      it('adds the step on the hit that completes the run, and starts counting again', () => {
+        const { nextTask } = build(ramped({ quotaRampHits: 1 }));
+        expect(nextTask!.targetCount).toBe(5);
+        expect(nextTask!.quotaRampHits).toBe(0);
+      });
+
+      it('does not step or reset on a missed occurrence', () => {
+        const { nextTask } = build(ramped({ quotaRampHits: 1 }), { missed: true });
+        expect(nextTask!.targetCount).toBe(4);
+        expect(nextTask!.quotaRampHits).toBe(1);
+      });
+
+      it('stops at the goal', () => {
+        const { nextTask } = build(ramped({ targetCount: 6, quotaRampHits: 1 }));
+        expect(nextTask!.targetCount).toBe(6);
+      });
+
+      it('leaves an ordinary target alone', () => {
+        const { nextTask } = build(ramped({ quotaRampStep: null }));
+        expect(nextTask!.targetCount).toBe(4);
+      });
     });
 
     // #1953: the successor's date came off the grid, so it is the grid's
@@ -687,5 +730,40 @@ describe('buildCompletion', () => {
       expect(new Date(rolledOver[0].dueDate!).getDate()).toBe(28);
       expect(rolledOver[0].seriesMonthDays).toEqual([31]);
     });
+  });
+});
+
+describe('a look-back on an answered decision', () => {
+  const decision = (over: Partial<Task> = {}) => makeTask({
+    id: 'd1', title: 'Which contractor?', deliverableKind: 'text', category: 'Home', projectId: 'p1', ...over,
+  });
+
+  it('adds a task that asks how the answer turned out, due that long after the day it was made', () => {
+    const { completed, reviewTask } = build(decision(), { deliverableValue: "Bob's Roofing", reviewAfter: '1m' });
+    expect(reviewTask).toMatchObject({
+      title: 'How did it turn out? Which contractor?',
+      deliverableKind: 'text',
+      reviewOfTaskId: completed.id,
+      category: 'Home',
+      projectId: 'p1',
+      completed: false,
+    });
+    expect(reviewTask!.notes).toBe('You answered “Bob\'s Roofing” on Mar 10, 2026.');
+    expect(dayKeyOf(new Date(reviewTask!.dueDate!))).toBe('2026-04-10');
+  });
+
+  it('derives its id from the completion, so two devices write one', () => {
+    const a = build(decision(), { deliverableValue: 'Bob', reviewAfter: '2w' }).reviewTask!;
+    const b = build(decision(), { deliverableValue: 'Bob', reviewAfter: '2w' }).reviewTask!;
+    expect(a.id).toBe(b.id);
+    expect(dayKeyOf(new Date(a.dueDate!))).toBe('2026-03-24');
+  });
+
+  it('is not made without a real answer, on a miss, or for a look-back itself', () => {
+    expect(build(decision(), { deliverableValue: null, reviewAfter: '1m' }).reviewTask).toBeNull();
+    expect(build(decision(), { reviewAfter: '1m' }).reviewTask).toBeNull();
+    expect(build(decision(), { missed: true, deliverableValue: 'Bob', reviewAfter: '1m' }).reviewTask).toBeNull();
+    expect(build(decision({ reviewOfTaskId: 'd0' }), { deliverableValue: 'Fine', reviewAfter: '1m' }).reviewTask).toBeNull();
+    expect(build(decision(), { deliverableValue: 'Bob' }).reviewTask).toBeNull();
   });
 });

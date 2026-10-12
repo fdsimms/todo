@@ -110,6 +110,7 @@ import {
   dayKeyRange,
   describeAddedToList,
   describeWeekPlan,
+  describeDinnerCoverage,
   describeWeekRange,
   earliestUnplannedSlot,
   entriesForDay,
@@ -124,6 +125,7 @@ import {
 import { liveGeneratedTask } from '../utils/generatedTasks';
 import { buildWeekPlanShareText } from '../utils/shareText';
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import {
   collectPlannedIngredients,
   describeLeftBehind,
@@ -138,8 +140,11 @@ import { decidableNights, weekNights } from '../utils/weekPlan';
 import { standingSwapMap } from '../utils/standingSwaps';
 import { onHandNameKeys } from '../utils/grocerySuggest';
 import { describeWeekCost, estimateWeekCost } from '../utils/recipeCost';
-import { describeWeekNutrition, weekNutrition } from '../utils/recipeNutrition';
-import { targetedNutrients } from '../utils/nutritionTargets';
+import { describeWeekNutrition, perServing, recipeNutrition, weekNutrition } from '../utils/recipeNutrition';
+import { plannedDayNutrition } from '../utils/plannedDayNutrition';
+import { normalizeScale } from '../utils/recipeScale';
+import { NUTRIENT_LABEL } from '../utils/foodNutrition';
+import { activeLimits, targetedNutrients } from '../utils/nutritionTargets';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { useHiddenEventsStore } from '../store/useHiddenEventsStore';
 import { hiddenEventKey } from '../utils/hiddenEvents';
@@ -337,6 +342,7 @@ const DRAG_LIFT_SCALE = 1.03;
 const NO_FOOD_LOG: FoodLogEntry[] = [];
 
 export function MealPlanScreen() {
+  const pullSearch = usePullToSearch();
   // ==== store bindings and layout insets ====
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
@@ -541,6 +547,44 @@ export function MealPlanScreen() {
     }
     return byDay;
   }, [days, entries, weekFoodLog]);
+  /**
+   * Each day against the Stay under limits: what the food log has for it plus
+   * a helping of each planned meal not logged yet (`plannedDayNutrition`), so a
+   * heavy day reads as one before it is eaten. Empty with no limits set, which
+   * leaves every day header as it was.
+   */
+  const nutritionTargets = useSettingsStore(useShallow(s => s.nutritionTargets));
+  const nutritionLimits = useSettingsStore(useShallow(s => s.nutritionLimits));
+  const limitLineByDay = useMemo(() => {
+    const out = new Map<string, { text: string; over: boolean }>();
+    const keys = activeLimits(nutritionTargets, nutritionLimits);
+    if (keys.length === 0) return out;
+    const helpingFor = (entry: MealPlanEntry) => {
+      const recipe = entry.recipeId ? recipesById.get(entry.recipeId) : undefined;
+      if (!recipe) return null;
+      const dish = recipeNutrition(
+        recipe, groceryItems, itemProducts, recipesById,
+        { chosen: entry.recipeChoices }, normalizeScale(entry.recipeScale), standingSwaps,
+      );
+      return dish ? perServing(dish) ?? dish.total : null;
+    };
+    for (const day of days) {
+      const key = dayKeyOf(day);
+      const coverage = coverageByDay.get(key);
+      const logged = weekFoodLog.filter(e => e.dayKey === key);
+      if (logged.length === 0 && (coverage?.size ?? 0) === 0) continue;
+      const { totals, uncounted } = plannedDayNutrition(coverage, logged, helpingFor);
+      const parts = keys.map(k => {
+        const unit = NUTRIENT_LABEL[k].unit;
+        const amount = Math.round((totals[k] ?? 0) * 10) / 10;
+        return `${NUTRIENT_LABEL[k].label} ${amount.toLocaleString()} of ${nutritionTargets[k]!.toLocaleString()}${unit === 'cal' ? ' cal' : unit}`;
+      });
+      const over = keys.some(k => (totals[k] ?? 0) > nutritionTargets[k]!);
+      const note = uncounted > 0 ? ` (${uncounted} ${uncounted === 1 ? 'meal' : 'meals'} without figures not counted)` : '';
+      out.set(key, { text: `Planned: ${parts.join(' · ')}${note}`, over });
+    }
+    return out;
+  }, [days, coverageByDay, weekFoodLog, nutritionTargets, nutritionLimits, recipesById, groceryItems, itemProducts, standingSwaps]);
   /**
    * The row "View in food log" opens: the entry linked to this meal outright,
    * or else the first thing logged in its slot that day. The second is the
@@ -1026,7 +1070,7 @@ export function MealPlanScreen() {
 
   // A selection is scoped to the week on screen — the store's bulk methods
   // would still reach an off-screen id fine, but the bar's counts and
-  // "Select All" wouldn't, so paging away closes the selection rather than
+  // "Select all" wouldn't, so paging away closes the selection rather than
   // carrying stale ids into a week that doesn't render them.
   // useCallback so headerActions can depend on it honestly: the memo below
   // reads `page`, and listing an inline function there would rebuild the
@@ -1131,7 +1175,7 @@ export function MealPlanScreen() {
     cooked ? haptics.success() : haptics.tap();
 
     setLastAction({
-      label: cooked ? `Cooked "${entry.title}"` : `Un-cooked "${entry.title}"`,
+      label: cooked ? `Marked “${entry.title}” as cooked` : `Marked “${entry.title}” as not cooked`,
       undo: () => {
         setEntryCooked(entry.id, !cooked);
         if (recipe && before) restoreCookStats(recipe.id, before);
@@ -1282,7 +1326,7 @@ export function MealPlanScreen() {
     haptics.warning();
     confirmDelete({
       title: `Remove ${count} ${plural}?`,
-      message: `You're about to take ${count} ${plural} off the plan. This can't be undone.`,
+      message: `${count} ${plural} will be removed from the plan. This can’t be undone.`,
       confirmLabel: 'Remove',
       onConfirm: () => {
         const before = entries.filter(e => selectedIds.has(e.id));
@@ -1495,7 +1539,7 @@ export function MealPlanScreen() {
                           activeOpacity={interaction.activeOpacity}
                           hitSlop={{ top: 10, bottom: 10, left: 10, right: 8 }}
                           accessibilityRole="button"
-                          accessibilityLabel={`Add ${dayLabel}'s ingredients to the grocery list`}
+                          accessibilityLabel={`Add ${dayLabel}’s ingredients to the grocery list`}
                         >
                           <Ionicons name="cart-outline" size={iconSize.md} color={colors.textSecondary} />
                         </TouchableOpacity>
@@ -1526,6 +1570,11 @@ export function MealPlanScreen() {
                   week-level hint above says the thing the seven copies were each
                   saying badly.
                 */}
+                {!collapsed && limitLineByDay.has(key) && (
+                  <Text style={[styles.limitLine, limitLineByDay.get(key)!.over && styles.limitLineOver]}>
+                    {limitLineByDay.get(key)!.text}
+                  </Text>
+                )}
                 {!collapsed && dayEntries.length > 0 && (
                   (
                     /*
@@ -1599,7 +1648,7 @@ export function MealPlanScreen() {
     // closed from the fridge card while this list stayed mounted is still live
     // to this closure, and the badge asks about a leftover that's already been
     // finished. Don't prune it as unused.
-  }, [entries, recipesById, styles, collapsedDays, colors, fabIntentChannel, selectionMode, selectedIds, toggleSelection, enterSelectionMode, leftovers, describeEntryChoices, todayKey, previousDaysInfo, previousDaysExpanded, openDayAddToList, mealDrag, busyEveningByDay]);
+  }, [entries, recipesById, styles, collapsedDays, colors, fabIntentChannel, selectionMode, selectedIds, toggleSelection, enterSelectionMode, leftovers, describeEntryChoices, todayKey, previousDaysInfo, previousDaysExpanded, openDayAddToList, mealDrag, busyEveningByDay, limitLineByDay]);
 
   // Cheap enough to compute on every render: whether there's anything an "Add
   // week to list" could possibly find, without running the full ingredient
@@ -1676,7 +1725,7 @@ export function MealPlanScreen() {
     );
     setOverlap({
       matches,
-      seedLabel: "this week's meals",
+      seedLabel: "this week’s meals",
       days: openDinnerDays,
       initialSelected: matches.filter(m => keep.has(m.recipe.id)).map(m => m.recipe.id),
     });
@@ -1848,7 +1897,9 @@ export function MealPlanScreen() {
         accessibilityLabel: 'Log food',
       } satisfies ScreenHeaderAction] : []),
       {
-        icon: copiedWeek ? 'checkmark' : 'copy-outline',
+        // Not copy-outline: that glyph is the copy-meals pill right under the
+        // header, which copies a week of meals into this one rather than text.
+        icon: copiedWeek ? 'checkmark' : 'document-text-outline',
         onPress: () => copyWeekText(weekShareText),
         disabled: !weekShareText,
         accessibilityLabel: `Copy ${weekMealsLabel} as plain text`,
@@ -1940,6 +1991,7 @@ export function MealPlanScreen() {
     animateLayout();
     const n = copyWeek(copySourceKey, range.startKey);
     if (n > 0) haptics.success();
+    else Alert.alert('Nothing copied', 'Meals on days that have already passed, and leftover nights, are left out of a copy.');
   };
 
   /**
@@ -1971,6 +2023,7 @@ export function MealPlanScreen() {
     animateLayout();
     const n = copySlotFromWeek(copyFromKey, range.startKey, slot);
     if (n > 0) haptics.success();
+    else Alert.alert('Nothing copied', 'Meals on days that have already passed, and leftover nights, are left out of a copy.');
   };
 
   const addedStamp = range ? addedToListAt[range.startKey] : undefined;
@@ -2000,7 +2053,11 @@ export function MealPlanScreen() {
   // The plan summary keeps the subtitle line; cost, nutrition and the added
   // stamp share the overline. Joined into one subtitle they wrapped beside the
   // five buttons and made this header taller than the other hub pages'.
-  const subtitle = describeWeekPlan(entries) || undefined;
+  // Left off for an empty week: the hint under the header already says
+  // "Nothing planned this week", and the two read as one line said twice.
+  const subtitle = entries.length === 0
+    ? undefined
+    : [describeWeekPlan(entries), describeDinnerCoverage(entries, days.map(dayKeyOf))].filter(Boolean).join(' · ');
   const overline = [
     describeWeekCost(weekCost, currencySymbol, new Date()),
     describeWeekNutrition(weekNutritionEstimate),
@@ -2020,7 +2077,7 @@ export function MealPlanScreen() {
         subtitle={subtitle}
         actions={withScreenSettings(headerActions, screenSettings.action)}
       />
-  const headerActions = useMemo<ScreenSettingsSheet {...screenSettings.sheet} />
+      <ScreenSettingsSheet {...screenSettings.sheet} />
       <HubPills hub="kitchen" active="MealPlan" />
       <TipHost screen="mealPlan" />
       {!selectionMode && !!activeTripShop && (
@@ -2040,6 +2097,7 @@ export function MealPlanScreen() {
         scroller={scrollControl}
       >
         <FlatList
+          refreshControl={pullSearch.refreshControl}
           ref={flatListRef}
           data={days}
           keyExtractor={d => dayKeyOf(d)}
@@ -2175,7 +2233,7 @@ export function MealPlanScreen() {
                           title: 'Add week to list',
                           stampWeekKey: range.startKey,
                         })}
-                        accessibilityLabel="Add this week's ingredients to the grocery list"
+                        accessibilityLabel="Add this week’s ingredients to the grocery list"
                       />
                     )}
                     {canSuggestMeals && (
@@ -2206,7 +2264,7 @@ export function MealPlanScreen() {
                           haptics.tap();
                           openOverlap();
                         }}
-                        accessibilityLabel="Find recipes that share ingredients with this week's meals"
+                        accessibilityLabel="Find recipes that share ingredients with this week’s meals"
                       />
                     )}
                   </View>
@@ -2340,7 +2398,7 @@ export function MealPlanScreen() {
           hint={replacing
             ? isTypedEntry(replacing)
               ? `Pick the recipe for ${replacing.title}, or type a new name.`
-              : `Pick a recipe, or type a new name, to have instead of ${titleForEntry(replacing, recipesById)}.`
+              : `Pick a recipe, or type a new name, to replace ${titleForEntry(replacing, recipesById)}.`
             : undefined}
           onReplace={replacement => {
             if (replacingId) replaceOne(replacingId, replacement);
@@ -2561,7 +2619,7 @@ export function MealPlanScreen() {
         <OverlapPickerSheet
           visible={overlap !== null}
           matches={overlap?.matches ?? []}
-          seedLabel={overlap?.seedLabel ?? "this week's meals"}
+          seedLabel={overlap?.seedLabel ?? "this week’s meals"}
           openDays={overlap?.days ?? []}
           initialSelected={overlap?.initialSelected}
           onPlan={planSuggestion}
@@ -2666,6 +2724,7 @@ export function MealPlanScreen() {
           onClose={() => { setEditingLeftoverId(null); setLoggingLeftover(null); }}
         />
       </LazySheet>
+      {pullSearch.sheet}
     </View>
   );
 }
@@ -2682,6 +2741,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.md,
   },
+  // A planned day against the Stay under limits, under its header. Secondary
+  // grey while it fits, red text once the plan goes past one.
+  limitLine: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    marginBottom: spacing.xs,
+  },
+  limitLineOver: { color: colors.redText },
   dayHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',

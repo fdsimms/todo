@@ -120,6 +120,59 @@ describe('quickAdd', () => {
   });
 });
 
+describe('quickAdd and the sun', () => {
+  afterEach(() => {
+    mockRaw.runSync("DELETE FROM settings WHERE key = 'sunLocation'");
+    replica.refresh();
+  });
+
+  it('leaves "after sunset" in the title, and says why, with no location saved', () => {
+    const [row] = quickAdd(replica, { lines: ['Porch lights after sunset'] }).rows;
+    expect(row.title).toBe('Porch lights after sunset');
+    expect(row.window).toBeUndefined();
+    expect(row.notes?.join(' ')).toMatch(/needs a location/);
+  });
+
+  it('reads it as a window start that follows the sun once one is saved', () => {
+    mockRaw.runSync("INSERT OR REPLACE INTO settings (key, value) VALUES ('sunLocation', '{\"latitude\":40.71,\"longitude\":-74.01}')");
+    replica.refresh();
+    const [row] = quickAdd(replica, { lines: ['Porch lights after sunset'] }).rows;
+    expect(row.title).toBe('Porch lights');
+    expect(row.window).toMatchObject({ startFollows: 'sunset', start: expect.stringMatching(/^\d{2}:\d{2}$/) });
+  });
+
+  it('reads "every 5,000 miles on the car" as due by usage, from the meter\'s last reading', () => {
+    replica.logMeterReading('Car', 41000, new Date(2026, 8, 21, 12));
+    const { rows } = quickAdd(replica, { lines: ['Change the oil every 5,000 miles on the car'], apply: true });
+    expect(rows[0].title).toBe('Change the oil');
+    expect(rows[0].meter).toEqual({ name: 'Car', unit: 'miles', every: 5000, dueAt: 46000 });
+    const task = replica.tasks().find(t => t.title === 'Change the oil')!;
+    expect(task).toMatchObject({ meterName: 'Car', meterUnit: 'miles', meterEvery: 5000, meterDueAt: 46000 });
+  });
+
+  it('says an unread meter starts on its first reading', () => {
+    const [row] = quickAdd(replica, { lines: ['Descale every 200 shots on the espresso machine'] }).rows;
+    expect(row.meter).toEqual({ name: 'Espresso machine', unit: 'shots', every: 200 });
+    expect(row.notes?.join(' ')).toMatch(/no reading yet/);
+  });
+
+  it('reads "unless it rains" after the repeat it skips, and says when weather is off', () => {
+    const { rows } = quickAdd(replica, { lines: ['Water the garden every 2 days unless it rains 10mm'], apply: true });
+    expect(rows[0].title).toBe('Water the garden');
+    expect(rows[0].repeat).toMatchObject({ every: 'day', interval: 2, skipAfterRainMm: 10 });
+    expect(rows[0].notes?.join(' ')).toMatch(/Weather is switched off/);
+    expect(replica.tasks().find(t => t.title === 'Water the garden')).toMatchObject({ rainSkipMm: 10 });
+    // A bare phrase takes the default in the person's unit (inches, off metric).
+    const [bare] = quickAdd(replica, { lines: ['Water the pots every day unless it rains'] }).rows;
+    expect(bare.repeat).toMatchObject({ skipAfterRainMm: 6.35 });
+    // With no repeat there is nothing to skip, so the words stay in the title
+    // and the date ahead of them is still read.
+    const [once] = quickAdd(replica, { lines: ['Water the lawn tomorrow unless it rains'] }).rows;
+    expect(once.title).toBe('Water the lawn unless it rains');
+    expect(once.dueDate).toBeDefined();
+  });
+});
+
 describe('planDay', () => {
   it('orders the day around busy time, pinned first, and says what will not fit', () => {
     replica.createTask({ title: 'Report', dueDate: day(0), estimatedMinutes: 90, priority: 3 });

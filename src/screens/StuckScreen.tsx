@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useCallback } from 'react';
+import { useWithoutLockedTasks } from '../hooks/useWithoutLockedTasks';
 import { View, Text, FlatList, TouchableOpacity, Alert, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -21,6 +22,7 @@ import { TaskGroupTray } from '../components/TaskGroupTray';
 import { DeliverablePromptSheet } from '../components/DeliverablePromptSheet';
 import { PostponeCheckActions, type PostponeCheckAction } from '../components/PostponeCheckBanner';
 import { useSheetSubject } from '../hooks/useSheetSubject';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, font, lineHeight, fontWeight, iconSize, radius, border, checkboxRadius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -36,6 +38,8 @@ import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { DriftEntry } from '../utils/postpone';
 import type { Person, Task } from '../types';
 import { resetToPeople } from '../navigation/navigationRef';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
 
 const CHECKBOX_SIZE = 22;
 
@@ -120,7 +124,9 @@ function labelForCategory(
 }
 
 export function StuckScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
+  const scrollTop = useListScrollToTop();
   const tabBarHeight = useBottomTabBarHeight();
   // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
   const screenSettings = useScreenSettings('Stuck', 'Stuck settings');
@@ -141,7 +147,7 @@ export function StuckScreen() {
   // deleted — either frees their waiters (see canWaitOn), and a stale list
   // would keep showing a heading for a person who no longer holds anything.
   const people = usePersonStore(useShallow(s => s.people));
-  const tasks = useTaskStore(s => s.tasks);
+  const tasks = useWithoutLockedTasks(useTaskStore(s => s.tasks));
   const updateTask = useTaskStore(s => s.updateTask);
   const setLastAction = useTaskStore(s => s.setLastAction);
   const completeTask = useTaskStore(s => s.completeTask);
@@ -158,8 +164,8 @@ export function StuckScreen() {
     () => new Map(projects.map(p => [p.id, p.title])),
     [projects],
   );
-  const { colors, shadows } = useTheme();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const { colors, shadows, isDark } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
 
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editorVisible, setEditorVisible] = useState(false);
@@ -316,7 +322,7 @@ export function StuckScreen() {
           haptics.warning();
           Alert.alert(
             'Archive this task?',
-            `"${displayTitleFor(task)}" moves to Archived. Nothing is deleted, and you can restore it from there whenever you like.`,
+            `“${displayTitleFor(task)}” moves to Archived. Nothing is deleted. You can restore it from there.`,
             [
               { text: 'Cancel', style: 'cancel' },
               {
@@ -365,7 +371,7 @@ export function StuckScreen() {
     if (section.kind === 'person') {
       const name = displayNameOf(section.person);
       return (
-        <TaskGroupTray>
+        <TaskGroupTray raised={isDark}>
           <View style={styles.blockerHeader}>
             {/* No checkbox: nobody completes a person, so there is no
                 "finish this and release them" here. The glyph is the
@@ -424,7 +430,7 @@ export function StuckScreen() {
     const releasing = section.data.filter(t =>
       liveBlockersOf(t, resolveBlocker).length === 1 && !isWaitingOnPerson(t, resolvePerson)).length;
     return (
-      <TaskGroupTray>
+      <TaskGroupTray raised={isDark}>
         <View style={styles.blockerHeader}>
           {blockedItself ? (
             <View style={styles.checkboxSlot}>
@@ -534,9 +540,12 @@ export function StuckScreen() {
       <ScreenSettingsSheet {...screenSettings.sheet} />
 
       <FlatList
+        ref={scrollTop.ref}
+        {...scrollTop.listProps}
+        refreshControl={pullSearch.refreshControl}
         data={rows}
         keyExtractor={row => row.key}
-        contentContainerStyle={rows.length === 0 ? styles.emptyContainer : styles.listContent}
+        contentContainerStyle={rows.length === 0 ? styles.emptyContainer : [styles.listContent, { paddingBottom: tabBarHeight + spacing.md }]}
         renderItem={({ item }) => {
           if (item.kind === 'heading') {
             return <Text style={styles.sectionHeading}>{item.label}</Text>;
@@ -551,7 +560,7 @@ export function StuckScreen() {
             // Says why it can be empty on an install that has been rescheduling
             // things for years: the drift counting only starts when it starts,
             // and a blank screen otherwise reads as broken rather than as clean.
-            subtitle={`Tasks waiting on another task or on somebody show up here, and so do tasks you have moved to a later day ${threshold} or more times. Counting starts from when a task is first moved, so this stays empty for a while on an existing list.`}
+            subtitle={`Tasks waiting on another task or a person appear here, and so do tasks moved to a later day ${threshold} or more times. Counting starts at a task’s first move, so this stays empty for a while.`}
             bottomOffset={tabBarHeight}
           />
         }
@@ -561,12 +570,13 @@ export function StuckScreen() {
         <DeliverablePromptSheet
           visible={promptTask !== null}
           task={shownPromptTask}
-          onConfirm={(value, reasoning) => {
+          onConfirm={(value, reasoning, lookBack) => {
             const id = shownPromptTask.id;
             setPromptTask(null);
             animateLayout();
-            completeTask(id, { deliverableValue: value, deliverableReasoning: reasoning });
+            completeTask(id, { deliverableValue: value, deliverableReasoning: reasoning, reviewAfter: lookBack });
           }}
+          offerLookBack
           // Same as the row's: cancelling takes the tap back rather than
           // completing the task with no answer.
           onCancel={() => setPromptTask(null)}
@@ -585,6 +595,8 @@ export function StuckScreen() {
           onClose={() => setBreakdownId(null)}
         />
       )}
+      <ScrollToTopButton {...scrollTop.buttonProps} />
+      {pullSearch.sheet}
     </View>
   );
 }
@@ -674,7 +686,7 @@ const WaiterRow = React.memo(function WaiterRow({ task, categoryLabel, dateLabel
   );
 });
 
-const makeStyles = (colors: Colors) => StyleSheet.create({
+const makeStyles = (colors: Colors, isDark: boolean) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   listContent: { paddingTop: spacing.xs, paddingBottom: 40 },
   emptyContainer: { flexGrow: 1 },
@@ -755,7 +767,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: spacing.sm + 2,
     paddingHorizontal: spacing.md - 2,
     borderRadius: radius.md,
-    backgroundColor: colors.bgSecondary,
+    // In the dark themes the tray is raised to bgSecondary (see the `raised`
+    // prop on TaskGroupTray), so the cards step up one more.
+    backgroundColor: isDark ? colors.bgTertiary : colors.bgSecondary,
   },
   cardBody: { flex: 1, minWidth: 0 },
   taskTitle: {

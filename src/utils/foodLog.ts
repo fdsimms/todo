@@ -341,12 +341,12 @@ function baseAmountHint(panel: FoodNutrition): string {
       : `A volume, like 250 ml or 1 cup${weight}.`;
   }
   if (panel.basis === 'perServing' && panel.servingGrams === null) {
-    return 'A number of servings, like 1 serving. This food states no weight per serving to measure anything else against.';
+    return 'A number of servings, like 1 serving. This food has no weight per serving, so nothing else can be entered.';
   }
   const servings = panel.basis !== 'perServing' && panel.servingGrams !== null;
   const examples = portionExamples(panel);
   if (examples.length > 0) {
-    return `A weight (like 100g), or one of this food's stated portions: ${examples.join(', ')}${servings ? ', or a number of servings' : ''}.`;
+    return `A weight (like 100g), or one of this food’s stated portions: ${examples.join(', ')}${servings ? ', or a number of servings' : ''}.`;
   }
   return servings
     ? 'A weight, like 100g, or a number of servings.'
@@ -830,41 +830,6 @@ export function resolveFoodLogDrop(items: readonly FoodLogListItem[]): FoodLogEn
   return resolved;
 }
 
-/** The nutrients a day's one-line summary leads with, same two the recipe line uses. */
-const SUMMARY_KEYS: readonly NutrientKey[] = ['calorieKcal', 'proteinG'];
-
-const SUMMARY_LABEL: Record<string, (amount: number) => string> = {
-  calorieKcal: n => `${Math.round(n)} cal`,
-  proteinG: n => `${Math.round(n)}g protein`,
-};
-
-/**
- * "1,840 cal, 78g protein, from 5 of 7 entries", or null while there is nothing
- * worth saying.
- *
- * **The coverage clause is not optional**, and is what stops the number reading
- * as the day's calorie count rather than as the count of what was logged and
- * measurable. It drops only when every entry stated the nutrient, exactly as
- * `describeRecipeNutrition` drops its own. Counted per nutrient rather than per
- * day, because a day where every entry has calories and three have fibre is
- * fully covered for one figure and not the other.
- */
-export function describeFoodLogTotals(totals: FoodLogTotals): string | null {
-  if (totals.entries === 0) return null;
-  const parts = SUMMARY_KEYS
-    .filter(key => totals.total[key] !== undefined)
-    .map(key => SUMMARY_LABEL[key](totals.total[key] as number));
-  if (parts.length === 0) return null;
-
-  const covered = Math.min(...SUMMARY_KEYS
-    .filter(key => totals.total[key] !== undefined)
-    .map(key => totals.reported[key] ?? 0));
-  const clause = covered === totals.entries
-    ? ''
-    : `, from ${covered} of ${totals.entries} ${totals.entries === 1 ? 'entry' : 'entries'}`;
-  return `${parts.join(', ')}${clause}`;
-}
-
 /** One entry's stated amount of a nutrient, or `null` when it never said. */
 export interface NutrientContribution {
   entry: FoodLogEntry;
@@ -992,6 +957,67 @@ export function foodLogEntryEdit(entry: FoodLogEntry): FoodLogEntryEdit | null {
 }
 
 const WHOLE_PACKAGE_LABEL = /^the whole package \((\d+(?:\.\d+)?) servings\)$/i;
+
+/**
+ * The panel an entry keeps so its amount can be corrected later: the database's
+ * own record while no catalog row holds it, else null (a linked entry is
+ * re-measured against its row, and a stale kept panel is cleared). The one rule
+ * `FoodLogEntrySheet.handleSave` and `remeasureEntry` both apply.
+ */
+export function panelToKeep(panel: FoodNutrition, linked: boolean): FoodNutrition | null {
+  return linked ? null : panel;
+}
+
+/** The fields a re-measured entry takes, the ones `FoodLogEntrySheet.handleSave` hands `reviseEntry`. */
+export interface RemeasuredFields {
+  quantity: string;
+  grams: number | null;
+  nutrition: FoodNutrition;
+  sourcePanel: FoodNutrition | null;
+}
+
+/**
+ * What an entry becomes when its amount is changed to `amount` ("23 g",
+ * "2 servings"), for a caller with no sheet to type into: the same arithmetic
+ * "Edit" runs, so an agent's correction and a thumb's land on the same figures.
+ *
+ * **The sheet's own steps, in its order.** `foodLogEntryEdit` decides whether
+ * the app would reopen this entry at all; the panel is the linked row's
+ * (`linkedPanel`, which the caller reads from the catalog because it holds the
+ * rows) or else the one the entry kept (`keptDatabasePanel`); and
+ * `scalePanelToAmount` measures the amount against that panel, never against
+ * the figures already on the entry. Scaling the stored helping instead would
+ * compound its rounding, and a helping has no portions to resolve "1 slice" by.
+ * `sourcePanel` follows `handleSave`: kept only while no row holds the panel.
+ *
+ * A dish (`recipeId`) is refused: its helping is rebuilt from the recipe's
+ * ingredients and the servings it makes, which this has no way to see.
+ *
+ * Returns the reason in words when it cannot, since each refusal is a different
+ * thing for a person to do next.
+ */
+export function remeasureEntry(
+  entry: FoodLogEntry,
+  linkedPanel: FoodNutrition | null,
+  amount: string,
+  now: Date = new Date(),
+): { ok: true; fields: RemeasuredFields; approximate: boolean } | { ok: false; reason: string } {
+  if (entry.recipeId) return { ok: false, reason: 'This entry is a dish, whose amount is rebuilt from its recipe. Change it in the app.' };
+  if (!foodLogEntryEdit(entry)) return { ok: false, reason: 'This entry has no food record to measure a new amount against (it was described rather than looked up, or answers extra lines). Change it in the app.' };
+  const linked = !!(entry.itemId || entry.productId);
+  const panel = linked ? linkedPanel : keptDatabasePanel(entry);
+  if (!panel) return { ok: false, reason: 'The food record this entry was measured against is no longer there. Change it in the app.' };
+  const typed = amount.trim();
+  const scaled = typed ? scalePanelToAmount(panel, typed, null, now, entry.label) : null;
+  if (!scaled) return { ok: false, reason: `"${typed}" cannot be measured against this food’s record. Try grams, or a portion it lists.` };
+  return {
+    ok: true,
+    fields: { quantity: typed, grams: scaled.grams, nutrition: scaled.nutrition, sourcePanel: panelToKeep(panel, linked) },
+    // A drink measured by assuming water's density; the sheet shows a
+    // disclaimer beside it, so a caller has to be able to say so too.
+    approximate: scaled.approximate,
+  };
+}
 
 /**
  * The panel an entry kept that a new amount can be re-measured against, or
@@ -1344,10 +1370,26 @@ export function estimateAmountPatch(entry: EstimatedHelping, factor: number): Es
   }
   const quantity = estimateAmountWords(base, factor);
   const grams = whole.servingGrams !== null ? Math.round(whole.servingGrams * factor) : null;
+  // The lines are scaled by the same number as the total they split, so they
+  // still add up to it. `whole` keeps the unscaled lines for the next change.
+  const breakdown = whole.breakdown?.map(line => {
+    const lineAmounts: Partial<Record<NutrientKey, number>> = {};
+    for (const key of NUTRIENT_KEYS) {
+      const amount = line.amounts[key];
+      if (amount !== undefined) lineAmounts[key] = round(amount * factor);
+    }
+    return { label: line.label, amounts: lineAmounts };
+  });
   return {
     quantity,
     grams,
-    nutrition: { ...whole, servingText: quantity, servingGrams: grams, amounts },
+    nutrition: {
+      ...whole,
+      servingText: quantity,
+      servingGrams: grams,
+      amounts,
+      ...(breakdown ? { breakdown } : {}),
+    },
     sourcePanel: whole,
   };
 }
@@ -1525,3 +1567,16 @@ const SOURCE_WORDS: Record<FoodNutrition['source'], string> = {
   manual: 'typed in',
   estimated: 'estimated',
 };
+
+/**
+ * Whether the add sheet's search text, with nothing picked yet, is worth a
+ * discard confirm. A food's name ("egg", "oat milk") costs nothing to retype
+ * and confirming over it would put a prompt on every look-and-cancel; a
+ * description of a meal ("chicken burrito with rice and guacamole") is the
+ * text the Estimate path reads, and losing it to a swipe-down was silent.
+ * Three words is where the field stops reading as a name and starts reading
+ * as a description.
+ */
+export function isDescriptionDraft(query: string): boolean {
+  return query.trim().split(/\s+/).filter(Boolean).length >= 3;
+}

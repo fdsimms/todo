@@ -150,7 +150,7 @@ export function DataResetSettings() {
       }
       await shareBackupFile(uri);
     } catch (e) {
-      Alert.alert('Export failed', e instanceof Error ? e.message : 'Something went wrong writing the backup.');
+      Alert.alert('Export failed', e instanceof Error ? e.message : 'Couldn’t write the backup. Try again.');
     } finally {
       // The share sheet has already copied the file wherever it was going, so
       // the cache copy is done either way.
@@ -175,7 +175,7 @@ export function DataResetSettings() {
       const backup = result.backup;
       Alert.alert(
         'Replace everything with this backup?',
-        `The backup holds ${summarizeBackup(backup)}. Everything currently in the app (tasks, projects, groceries, recipes, the meal plan, the food and mood logs, people and settings) is deleted and replaced by it. Meals the app already wrote to Apple Health and events it added to your calendar are not removed. This can't be undone, so export what you have first if you haven't.`,
+        `The backup holds ${summarizeBackup(backup)}. Everything currently in the app (tasks, projects, groceries, recipes, the meal plan, the food and mood logs, people and settings) is deleted and replaced with it. Meals already written to Apple Health and events added to your calendar stay. This can’t be undone, so export your current data first.`,
         [
           { text: 'Cancel', style: 'cancel' },
           {
@@ -186,12 +186,12 @@ export function DataResetSettings() {
                 const photosLost = applyBackup(backup);
                 const photoNote = photosLost === 0
                   ? ''
-                  : ` ${photosLost} recipe ${photosLost === 1 ? 'photo' : 'photos'} couldn't be saved and ${photosLost === 1 ? 'was' : 'were'} left off.`;
+                  : ` ${photosLost} recipe ${photosLost === 1 ? 'photo' : 'photos'} couldn’t be saved and ${photosLost === 1 ? 'was' : 'were'} left off.`;
                 Alert.alert('Restored', `Your data now matches the backup: ${summarizeBackup(backup)}.${photoNote}`);
               } catch (e) {
                 Alert.alert(
                   'Restore failed',
-                  `${e instanceof Error ? e.message : 'Something went wrong.'} Nothing was changed. The restore is a single transaction, so your existing data is still there.`
+                  `${e instanceof Error ? e.message : 'Something went wrong.'} Nothing was changed, so your existing data is still there.`
                 );
               }
             },
@@ -199,7 +199,7 @@ export function DataResetSettings() {
         ]
       );
     } catch (e) {
-      Alert.alert('Restore failed', e instanceof Error ? e.message : 'Something went wrong reading the file.');
+      Alert.alert('Restore failed', e instanceof Error ? e.message : 'Couldn’t read the file.');
     } finally {
       setBackupBusy(null);
     }
@@ -234,7 +234,7 @@ export function DataResetSettings() {
     const window = retentionLabel(days).toLowerCase();
     confirmDelete({
       title: `Delete ${summary}?`,
-      message: `${summary} fall outside a ${window} window. They'll be deleted now, along with their Logbook entries and their share of Stats, and anything that ages past ${window} from here on goes the same way. This can't be undone, so export first if you want to keep them.`,
+      message: `${summary} older than ${window} will be deleted now, along with their Logbook entries and Stats history. Anything that ages past ${window} is deleted the same way from now on. This can’t be undone. Export first to keep them.`,
       onConfirm: () => {
         setCompletedRetentionDays(days);
         purgeOldCompletedTasks();
@@ -249,7 +249,7 @@ export function DataResetSettings() {
     }
     Alert.alert(
       'Turn on demo mode?',
-      'Your tasks are hidden and replaced everywhere with a sample list. Nothing of yours is changed or deleted. Turn it off to get it all back.',
+      'Your tasks are hidden and replaced with a sample list. Nothing is changed or deleted. Turn demo mode off to bring them back.',
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Turn on', onPress: enterDemoMode },
@@ -259,8 +259,8 @@ export function DataResetSettings() {
 
   const confirmResetStreaks = () => {
     confirmDelete({
-      title: 'Reset All Streaks',
-      message: 'This sets every task\'s streak back to 0. You can undo this right after by shaking your phone.',
+      title: 'Reset all streaks?',
+      message: 'This sets every task’s streak back to 0. Shake your phone right after to undo.',
       confirmLabel: 'Reset',
       onConfirm: () => resetAllStreaks(),
     });
@@ -268,10 +268,10 @@ export function DataResetSettings() {
 
   const confirmResetToDefaults = () => {
     confirmDelete({
-      title: 'Reset Settings to Defaults',
+      title: 'Reset settings to defaults?',
       // It also clears remindersImportEnabled, which no version of this copy
       // used to mention — so a reset quietly stopped Siri capture from working.
-      message: 'This resets appearance, day and time, haptics, the daily agenda and the tasks and projects toggles back to their defaults, and turns off importing from Apple Reminders. Your tasks, API key, app lock, and vacation mode are not affected.',
+      message: 'This resets appearance, day and time, haptics, the daily agenda and the tasks and projects toggles, and turns off importing from Apple Reminders. Your tasks, API key, app lock and vacation mode aren’t affected.',
       confirmLabel: 'Reset',
       onConfirm: () => resetToDefaults(),
     });
@@ -281,7 +281,7 @@ export function DataResetSettings() {
     <>
       <SettingsSection
         label="Backup"
-        footer="Everything lives on this device and nowhere else, so a backup is the only copy that survives losing the phone. The file holds your tasks, projects, groceries, recipes, meal plan, food and mood logs, people and settings, but never your API key, since a backup is a file you send places. Restoring replaces what's in the app rather than merging into it."
+        footer="Your data lives only on this device, so a backup is the only copy if you lose the phone. A backup includes your tasks, projects, groceries, recipes, meal plan, food and mood logs, people and settings, but not your API key."
       >
         <SettingsRow
           entryId="exportBackup"
@@ -291,7 +291,7 @@ export function DataResetSettings() {
           labelColor={demoActive ? colors.textTertiary : undefined}
           hint={demoActive
             ? 'Unavailable while demo mode is on'
-            : 'Saves everything to a JSON file you can send anywhere'}
+            : 'Saves everything to a JSON file you can share'}
           busy={backupBusy === 'export'}
           onPress={onExport}
           disabled={demoActive || backupBusy !== null}
@@ -316,7 +316,7 @@ export function DataResetSettings() {
           makes choosing a window here safe. */}
       <SettingsSection
         label="History"
-        footer="A task you repeat daily leaves a completed copy behind every time, and by default those are kept forever. A window trims them permanently, along with their Logbook entries and their share of Stats, so export before shortening one. Finished focus sessions are kept for the same length of time. Streaks aren't affected: a streak count lives on the task still running it. Archived tasks are never touched."
+        footer="Every completed copy of a repeating task is kept forever by default. Choosing a time limit permanently deletes older copies, along with their Logbook entries, their Stats history and older finished focus sessions, so export first. Streaks and archived tasks aren’t affected."
       >
         <SettingsRow
           entryId="retention"
@@ -324,7 +324,7 @@ export function DataResetSettings() {
           iconColor={completedRetentionDays === null ? undefined : colors.accent}
           label="Keep completed tasks for"
           hint={completedRetentionDays === null
-            ? 'Forever. Nothing is ever deleted on its own'
+            ? 'Forever. Nothing is deleted automatically'
             : `Completions older than ${retentionLabel(completedRetentionDays).toLowerCase()} are deleted at launch`}
           tight
         />
@@ -339,7 +339,7 @@ export function DataResetSettings() {
 
       <SettingsSection
         label="Demo"
-        footer="Every screen (Today, Search, Projects, Stats) switches to a sample list you can edit freely. Nothing you do while it's on touches your real tasks, and turning it off discards the sample list and brings yours back."
+        footer="Every screen shows a sample list you can edit. Your real tasks aren’t touched, and turning demo mode off discards the sample list and brings them back."
       >
         <SettingsRow
           entryId="demoMode"
@@ -347,8 +347,8 @@ export function DataResetSettings() {
           iconColor={demoActive ? colors.accent : undefined}
           label="Demo mode"
           hint={demoActive
-            ? 'You are looking at sample data; your own tasks are hidden'
-            : 'Swap your whole list for sample data, so you can show the app to someone'}
+            ? 'Showing sample data. Your own tasks are hidden'
+            : 'Replaces your list with sample data so you can show the app to someone'}
           toggle={demoActive}
           onPress={onToggleDemo}
         />
@@ -356,7 +356,7 @@ export function DataResetSettings() {
 
       <SettingsSection
         label="Reset"
-        footer="Both ask for confirmation first. Resetting streaks can be undone right after by shaking your phone; resetting settings leaves your tasks, API key, app lock and vacation mode alone."
+        footer="Both ask for confirmation first. Shake your phone right after resetting streaks to undo it. Resetting settings leaves your tasks, API key, app lock and vacation mode alone."
       >
         <SettingsRow
           entryId="resetStreaks"
@@ -364,7 +364,7 @@ export function DataResetSettings() {
           iconColor={colors.red}
           label="Reset all streaks"
           labelColor={colors.redText}
-          hint="Sets every task's streak count back to 0."
+          hint="Sets every task’s streak count back to 0."
           onPress={confirmResetStreaks}
         />
         <View style={styles.sep} />

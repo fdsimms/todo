@@ -240,6 +240,8 @@ npm run test:watch   # watch mode
 npm run test:tz      # the suite in UTC+14, UTC-11 and Newfoundland (DST, half-hour offset);
                      # CI runs UTC+14 only, and a local run is usually UTC
 npx jest src/__tests__/dateUtils.test.ts  # one file, for iterating on a change
+npm run bench        # times the Today/Later/Expired selectors and search over 5,000 synthetic
+                     # tasks (src/__bench__/); compare two checkouts, it is not part of npm test
 npm run docs         # regenerate all three generated docs, then commit them
 npm run verify       # the whole verification loop, below
 ```
@@ -346,13 +348,14 @@ file: the two maps are indexes, not write-ups.
 
 | Changing… | Start at |
 |---|---|
-| priority, difficulty and estimate answered once for a group, so Backfill never asks (a project's list, or a kind of generated task) | `src/utils/taskFieldDefaults.ts` (the rules) + `Project.taskDefaults` + `generatedTaskDefaults` in `useSettingsStore`, read in `newTaskFromDraft`. A default fills a field nobody answered and never overrides one. `priority: 0` is an answer (stamps the priority backfill as dismissed), because a priority of 0 otherwise reads as missing. Backfill's whole-group toggle uses `backfillGroupMembers` |
+| the Backfill screen, and whether a new field belongs on it | `src/utils/fieldBackfill.ts` (tasks) and the other `*Backfill.ts` pools + `src/screens/BackfillScreen.tsx` — see `docs/arch/backfill.md`. It opens with the bar a field has to clear and the ones left out on purpose; a task given several dates is one card (`backfillSeriesPeers`), except for `reminder` |
+| priority, difficulty, estimate, streak chip, vacation pause and skip-in-suggestions answered once for a group, so Backfill never asks (a project's list, or a kind of generated task) | `src/utils/taskFieldDefaults.ts` (the rules) + `Project.taskDefaults` + `generatedTaskDefaults` in `useSettingsStore`, read in `newTaskFromDraft`. A default fills a field nobody answered and never overrides one. `priority: 0` is an answer (stamps the priority backfill as dismissed), because a priority of 0 otherwise reads as missing; `false` is the same answer for the three yes/no fields, and streak chip and vacation pause apply to repeating tasks only. Backfill's whole-group toggle uses `backfillGroupMembers` |
 | what appears on Today / Later / Unscheduled / Inbox | `src/utils/visibilityUtils.ts` + the selectors in `useTaskStore` |
 | any task create/complete/defer/delete | `src/store/useTaskStore.ts` |
 | the task edit sheet | `src/components/TaskEditor.tsx` |
 | picking a task's category, anywhere | `src/components/CategoryPicker.tsx` (+ `src/utils/categoryPicker.ts`) |
 | a task row — swipes, checkbox, expansion | `src/components/TaskItem.tsx` |
-| quick-add text parsing (`"pay rent tmrw 5p #home"`) | `src/utils/parseTaskInput.ts`, `parseNaturalDate.ts` |
+| quick-add text parsing (`"pay rent tmrw 5p #home"`) | `src/utils/parseTaskInput.ts`, `parseNaturalDate.ts`. What a line offers after the date, `#word` and `@name` (priority, project, link, phone, timer, target and the rest) is picked in `src/utils/titleSuggestion.ts`, which `QuickAddModal` and `TaskEditor` both call: a new title parse goes there, not into either component |
 | what a template asks before it creates anything | `src/utils/templateQuestions.ts` — see `docs/arch/template-questions.md` |
 | a task the app writes unasked, and the quiet-project offer | `src/utils/generatedTasks.ts` (`GENERATED_KINDS` is the list of generators) + `src/utils/projectReviewTasks.ts` — see `docs/arch/generated-tasks.md` |
 | a bare weekend, and the project it offers to fill it from | `src/utils/weekendTasks.ts` + `Project.weekendSource` — see `docs/arch/generated-tasks.md` |
@@ -373,10 +376,15 @@ file: the two maps are indexes, not write-ups.
 | a planned meal you haven't got the ingredients for | `src/utils/mealShortfallTasks.ts` — see `docs/arch/generated-tasks.md` |
 | a planned meal whose food is only in the freezer | `src/utils/mealThawTasks.ts` — see `docs/arch/generated-tasks.md`. `mealShortfallTasks.ts` asking about the `FROZEN_REASON` rows instead of the missing ones |
 | a one-off task that waits for a kind of day ("next sunny day") | `src/utils/weatherWait.ts` + `applyWeatherWaits` in `useTaskStore` + `Task.weatherWait` — see `docs/arch/generated-tasks.md`. The task's own `deferUntil` is the hold, and it is released for good once the matched day arrives |
+| a repeating task that skips a day it rained ("water the garden unless it rained") | `src/utils/rainSkip.ts` + `applyRainSkips` in `useTaskStore` + `Task.rainSkipMm`, over the rainfall `snapshotFromResponse` reads (`weatherLookup.ts`) — see `docs/arch/generated-tasks.md`. It skips, never misses, forgives the streak, and records the skip in Activity |
+| a task due at a reading rather than a date ("every 5,000 miles"), and the readings behind it | `src/utils/meters.ts` + `src/store/useMeterReadingStore.ts` + `applyMeterHolds` in `useTaskStore` — see `docs/arch/meters.md`. Like a weather wait, the hold is the task's own `deferUntil`, and the pass only ever moves a hold it wrote (`meterHeldUntil`). Quick add's phrase is `parseMeterInput`; the screen is `MetersScreen` |
 | date math, recurrence | `src/utils/dateUtils.ts` |
+| a repeating task that skips or moves off holidays | `src/utils/holidays.ts` (the US set and your own days off, computed, never read from the calendar) + `recurrenceHolidays` in `getNextOccurrence` (`dateUtils.ts`) — see Recurrence below |
+| a time window that starts or ends at sunrise or sunset | `src/utils/sunTimes.ts` (computed on the device, never the forecast) + `windowBoundsFor`/`sunLocationOn` in `visibilityUtils.ts` (home's `sunLocation`, or a trip's `destinationLatitude` on its days). **A reader of a window's times goes through `windowBoundsFor`**, since `windowStart`/`windowEnd` hold only the time an anchor resolved to when it was set; see `Task.windowStartSun` |
 | a timed task's countdown, and splitting it across subtasks | `src/utils/timer.ts` + `src/utils/timerSegments.ts` — see `docs/arch/timed-tasks.md` |
 | a stock of something that runs down as a task repeats, and ordering more | `src/utils/supply.ts` — see `docs/arch/supplies.md` |
 | a target logged N times a day, its pace ramp, and the same thing counted per week | `src/utils/quotaSchedule.ts` (the span) + `Task.quotaPeriod`. A weekly target is a quota with a week-long span, deliberately not a `RecurrenceType` (see the file's header) |
+| a target that raises its own count as you keep hitting it | `src/utils/quotaRamp.ts` + `Task.quotaRampStep`/`quotaRampEvery`/`quotaRampGoal`/`quotaRampHits`, applied in `completeTask`'s successor. Only a plain count can ramp (`canRampQuota`: no interval, rotation, water link or overshoot); a hit advances it and a miss or short period neither advances nor resets it |
 | working a queue of tasks one at a time, with breaks | `src/utils/focusPlan.ts` + `src/store/useFocusStore.ts` — see `docs/arch/focus-sessions.md` |
 | coins for completing tasks, and the rewards they buy | `src/utils/rewards.ts` + `src/store/useRewardStore.ts` + `src/screens/RewardsScreen.tsx` — see `docs/arch/rewards.md`. The balance is a sum over a ledger, never a stored number, and only a person's own action moves it |
 | what failing a task costs, in blocked apps | `src/utils/penaltyShield.ts` (the rule) + `sweepTaskPenalties`/`logSlip` in `useTaskStore` (the two triggers). Read its refusals first: a task the app was withholding is never charged, a charge found on a later day is recorded but not served, and `undoSlip` doesn't refund |
@@ -388,7 +396,7 @@ file: the two maps are indexes, not write-ups.
 | moving a whole trip when its dates change | `src/utils/awayShift.ts` + `src/components/AwayShiftSheet.tsx` — see `docs/arch/away-dates.md`. The offsets are deliberately not stored on the task, and that section says why |
 | where you're going, and the forecast for it | `Project.destination` + `src/services/geocode.ts` + `src/utils/tripForecast.ts` — see `docs/arch/away-dates.md`, including the itinerary boundary it refuses to cross |
 | vacation mode turning itself on for a trip, and the list you shop from while away | `Project.awayPauses`/`checkAwayVacation` + `Project.awayListId`/`checkAwayGroceryList` — see `docs/arch/away-dates.md` |
-| a task that asks a question when it's completed | `src/utils/deliverables.ts` (+ `src/utils/bulkCompletion.ts` for the paths that complete several at once) |
+| a task that asks a question when it's completed | `src/utils/deliverables.ts` (+ `src/utils/bulkCompletion.ts` for the paths that complete several at once). Looking back on an answer ("How did it turn out?") is `src/utils/decisionReview.ts`: a plain task pointing at the answered row by `Task.reviewOfTaskId`, whose answer is read beside the original by joining (`decisionOutcomes`), never written onto it |
 | a task falling on several dates | `seriesId` in `src/store/useTaskStore.ts` (`applyTaskDates`) — see Series below |
 | the month grid, and drawing an occurrence that has no row | `src/utils/calendarMonth.ts` + `src/screens/CalendarScreen.tsx` — see `docs/arch/month-grid.md` |
 | a column, migration, or row↔object mapping | `src/db/database.ts` (`initDatabase`, `rowToTask`) |
@@ -402,7 +410,9 @@ file: the two maps are indexes, not write-ups.
 | reading the mood log back — the whole history, one symptom, or a file for a doctor | `src/utils/moodHistory.ts` + `src/utils/moodExport.ts` — see `docs/arch/mood-log.md` |
 | a journal entry or a dream, and the reminders to write one | `src/utils/journal.ts` + `src/store/useJournalStore.ts` + `src/utils/journalTasks.ts` — see `docs/arch/journal.md`. One table for both kinds; the mood entry keeps only a short note |
 | marking the day something changed (started a medicine, a new job) and comparing mood before/after it | `src/store/useMilestoneStore.ts` + `milestoneMoodContrast` in `src/utils/moodInsights.ts` — see `docs/arch/mood-log.md` |
+| a supplement's vitamins and minerals, and a dose adding them to the day | `src/utils/supplementDose.ts` (the panel, the scaling rule and the dose-to-entry link) + `MedicationPrefs.nutrition` in `src/utils/medicationSettings.ts` + `DoseEffects` in `useMedicationStore` and `src/utils/supplementDoseSync.ts` — see `docs/arch/health-data.md`. The 23 `MicronutrientKey`s are typed by hand only: `EXTERNAL_NUTRIENT_KEYS` is what a barcode source and a model's estimate are asked for (a label photo is print and reads `PRINTED_NUTRIENT_KEYS`), and a new external reader loops one of those, not `NUTRIENT_KEYS` |
 | a dose taken, and how often you reach for something | `src/utils/medicationLog.ts` + `Task.medicationName` — see `docs/arch/mood-log.md`, including why there is deliberately no medication↔symptom contrast |
+| a medication's limit, its supply, recording a dose by any route, and the summary for a visit | `src/utils/medicationSettings.ts` (limit and supply; the count is derived from doses, never decremented) + `src/utils/doseRecording.ts` (every hand-recorded dose goes through `recordDose`) + `src/utils/medicationSummary.ts` — see `docs/arch/mood-log.md` |
 | how you're feeling against what you ate | `foodDayInputs` in `src/utils/nutritionStats.ts` + `nutrientInsight`/`foodMoodContrasts` in `src/utils/moodInsights.ts` — see `docs/arch/mood-log.md`, whose two rules about a too-thinly-logged day come first |
 | a symptom against what you ate | `symptomFoodContrasts` + `symptomFoodDays` in `src/utils/moodInsights.ts`, rendered on `SymptomDetailScreen` — see `docs/arch/mood-log.md`. Scoped to one symptom on purpose |
 | the people you want to keep up with, and their birthdays | `src/store/usePersonStore.ts` + `src/utils/birthdayTasks.ts` — see `docs/arch/people.md` |
@@ -410,7 +420,7 @@ file: the two maps are indexes, not write-ups.
 | what demo mode shows | `src/utils/demoSeed.ts` — see Demo data below |
 | the switch that hides the advanced half of the app | `src/utils/simpleMode.ts` — see `docs/arch/simple-mode.md` |
 | what the widget shows | `src/utils/widgetSync.ts` → `src/utils/widgetBridge.ts` → `modules/todo-widget-bridge` |
-| the Apple Watch app and its complication | `targets/todo-watch/` + `plugins/withWatchApp.js`, fed by `modules/todo-widget-bridge/ios/WatchSession.swift` — see `docs/native-targets.md`. The watch gets the widget's snapshot (`WATCH_LIMITS`) and its taps join the widget's quiet-tap queue, so it has no task rules of its own |
+| the Apple Watch app and its complication | `targets/todo-watch/` + `plugins/withWatchApp.js`, fed by `modules/todo-widget-bridge/ios/WatchSession.swift` — see `docs/native-targets.md`. The watch gets the widget's snapshot (`WATCH_CAPS`) and its taps join the widget's quiet-tap queue, so it has no task rules of its own |
 | anything written outside the app's own database (widget, Live Activities, the two queues) | `src/utils/widgetBridge.ts` — the one gate, demo mode included |
 | what the app catches up on because time passed, at launch or in the background | `src/utils/maintenancePasses.ts` — one list, three groups; `src/utils/backgroundRefresh.ts` is the only thing that runs while the app is closed |
 | the record of what the app wrote or deleted unattended | `src/utils/unattendedLedger.ts` + `src/store/useUnattendedStore.ts` + `UnattendedEntry` in `src/types/index.ts`. Writes come from `generatedTaskSync.ts`, `sweepExpiredTasks`, `purgeOldCompletedTasks` and the two generators that create outside it (`recordGenerated` in `useTaskStore`); grep `recordGenerated`/`recordMany` for the current set. It records the *effect*, never the catch-up pass that ran; nothing about the user; and not a recurrence or quota successor |
@@ -448,6 +458,7 @@ file: the two maps are indexes, not write-ups.
 | vegetable and fruit servings in a day, and their average on Stats | `src/utils/produceServings.ts` (the name lexicon, the 80 g serving, the one-a-day bean cap) + `src/utils/recipeProduce.ts` (a logged recipe's share of its dish). A food logged from the food database also keeps its category (`FoodNutrition.foodCategory`), a fallback for names the lexicon misses that never overrides an exclusion. Derived at read time, never stored; counts, never a score; an entry it cannot weigh is `unmeasured` and is never summed as zero, and a day with one is left out of the Stats average |
 | photographing a nutrition panel no barcode source had | `src/utils/labelOcr.ts` — `receiptOcr.ts`'s row geometry over a label, filling `NutritionPanelSheet`'s existing form rather than writing a record |
 | estimating what a restaurant meal contained, from a description | `src/utils/nutritionEstimate.ts` + `estimateMealNutrition` in `src/services/aiSuggestions.ts` — the model proposes and a person confirms; nothing is written unconfirmed, and `source: 'estimated'` is permanent |
+| a meal described with no signal, kept until it can be estimated and then confirmed | `src/utils/estimateQueue.ts` + `src/store/usePendingEstimateStore.ts` + `src/components/PendingEstimatesCard.tsx` — see `docs/arch/health-data.md`. Holds descriptions, never entries: a drain only makes a meal *ready*, and a tap on the Food log card is what logs it. A recipe's estimate asked for offline is the display-only sibling, `recipeEstimateQueue.ts`, believed only while its fingerprint matches |
 | finding a plain food ("onion", "butter") in a food database by name | `src/services/foodSearch.ts` + `src/utils/foodSearchMatch.ts` (ranks and refuses; the portion table needs a second request) |
 | turning "2 cups chopped onion" into grams | `src/utils/ingredientGrams.ts` — every weight comes from the food's own portion table, never a global density |
 | a recipe's nutrition estimate, and the row under its cost | `src/utils/recipeNutrition.ts` — `recipeCost.ts` with grams in place of prices, plus a per-nutrient coverage floor. `weekNutrition`/`describeWeekNutrition` are the planned-week pair, splitting one body by noun exactly as `describeRecipeCost`/`describeWeekCost` do |
@@ -640,6 +651,7 @@ decided, and the design system every screen is built from. Individual features a
 
 | Doc | Covers |
 |---|---|
+| `docs/arch/backfill.md` | The Backfill screen: what a field has to be to earn a card, and the rules its six pools share |
 | `docs/arch/groceries.md` | Aisles, stores, the active trip, the kitchen/pantry, either/or, substitutes, standing swaps |
 | `docs/arch/recipes.md` | Composed recipes, sections, quantities, scaling, unit conversion, cook mode |
 | `docs/arch/generated-tasks.md` | The things that write a task unattended |
@@ -648,6 +660,7 @@ decided, and the design system every screen is built from. Individual features a
 | `docs/arch/timed-tasks.md` | Countdowns, and splitting one across subtasks |
 | `docs/arch/rewards.md` | Coins and rewards: why the balance is a ledger, and what may and may not earn or cost coins |
 | `docs/arch/supplies.md` | A consumable counted down by a repeating task, and the reorder it asks for |
+| `docs/arch/meters.md` | A task due at a meter reading (an odometer), the readings, and the hold that surfaces it |
 | `docs/arch/focus-sessions.md` | Focus sessions: the plan, its breaks, and why a step that runs out waits |
 | `docs/arch/reminders-import.md` | Apple Reminders import, and the data it deletes elsewhere |
 | `docs/arch/app-lock.md` | The Face ID gate and the API key in the keychain |
@@ -768,6 +781,10 @@ the block would inherit none.
   person) and paused-project tasks. Pinning is an answer to "not yet *today*", not to "can't be done
   yet at all": a blocked pinned task would sit at the top of Today with nothing the user could do
   about it.
+- **A pin-each-occurrence pin is the one exception to the clock rule.** Its successor is spawned
+  pinned, so the pin answers the occurrence, not the schedule: it counts only while the task is
+  visible (`isPinnedOnToday`, which the block, the row's glyph and its pin button all read). A
+  not-yet-due occurrence shows an unlit pin and no pin button.
 - **One exception to that: a pinned daily target unpins itself once logging catches it up to pace.**
   Otherwise it would sit pinned at the top of Today, at quota, until the next unit falls due hours
   later — the exact "hidden until later" state pinning is supposed to override for a task that
@@ -792,6 +809,7 @@ There is no rule entity separate from the occurrence holding it, and `dueDate` d
 - **`getNextDueDate` steps the grid; `{ catchUp: true }` walks it to the present.** Off by default because `projectOccurrences` walks this one occurrence at a time to draw a month, and a first step that skipped to today would drop every earlier cell. On for the two callers *placing a real row* — `completeTask`'s successor and `skipNextRecurrence` — because without it, finishing a task five weeks late spawned a successor dated four weeks ago: overdue on arrival, and five more completions (five more tombstones) to work back to the present. It walks the rule's own grid rather than landing on today outright, so a Friday task caught up is still on a Friday. **A real completion covers the day it happened on** (`coversCompletionDay`, set by `buildCompletion` unless the row is marked missed), so the successor lands strictly after today: a daily task finished a day late used to get today's row back at once, and a one-tap-a-day habit stayed a day behind for ever. A skip or a missed mark covers nothing and still lands on today. `rolloverQuotas` reached the same conclusion for quota tasks by its own route and keeps it, since a partial day's record has to land on the day it belongs to.
 - **`recurrenceAnchorDay` is what a short month is clamped *from*.** `addMonths` clamps Jan 31 to Feb 28, and with the stored date as the only anchor that clamp fed the next one: Feb 28, Mar 28, Apr 28, for ever, off a single February. Yearly did it to Feb 29. The column holds the day-of-month the grid is anchored to for the picker's "same day as the due date" option (an explicit `recurrenceMonthDay` or `recurrenceWeekOrdinal` already answers this, and `recurrenceFromCompletion` measures from a day rather than a date). It is captured whenever the user *writes* the schedule (`SCHEDULE_FIELDS` in `updateTask`) and deliberately never when the app moves the row itself, which is the entire mechanism: recompute it on an unrelated patch and the successor sitting on Feb 28 hands the drift straight back. Same fix `getNextSeriesDates` already applies to a dated series.
 - **The last occurrence of a counted recurrence says so** in the undo bar (`finishedRecurrence` in `completeTask`), since a schedule ending and a successor going missing otherwise look identical; `docs/arch/supplies.md` has the reasoning.
+- **A holiday can skip or move an occurrence, and a caller placing a row writes back where the rule put it.** `Task.recurrenceHolidays` is applied inside the engine (`getNextOccurrence` in `dateUtils.ts`, over `src/utils/holidays.ts`), so the successor, a skip and the month grid agree. A move returns `gridDate`, the rule's own day, which the caller writes to `recurrenceAnchorDate` (the pull-forward mechanism) or the next step measures from the moved day and the schedule drifts. A new caller that places a real row uses `getNextOccurrence`, not `getNextDueDate`, for exactly this.
 - **A multi-week interval counts weeks from the user's own week start.** `weekStartsOn` is a real setting and the weekday walk used to ignore it, so "every 2 weeks on Fri and Sun" split a Monday-start user's pair across two blocks, 9 days apart instead of 2. With `weekStartsOn: 0` the arithmetic is unchanged.
 
 One walk draws every projection (`projectOccurrences` in `src/utils/calendarMonth.ts`, used by the month grid, `lookAhead` and `snoozeEngine`). Don't write a second: a private copy misses `canProject`'s refusals (a `recurrenceFromCompletion` task has no projectable future, since its next date is always answered from today).

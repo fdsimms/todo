@@ -275,7 +275,7 @@ export function dueMealPlanNudge(
       dayKey: dayKeyOf(day),
       title: format(day, 'EEEE MM/dd'),
     })),
-    title: "Plan this week's meals",
+    title: "Plan this week’s meals",
     dueDate,
   };
 }

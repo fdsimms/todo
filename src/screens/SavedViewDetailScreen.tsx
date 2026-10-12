@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useCallback } from 'react';
+import { useWithoutLockedTasks } from '../hooks/useWithoutLockedTasks';
 import {
   View,
   Text,
@@ -19,6 +20,7 @@ import { useProjectStore } from '../store/useProjectStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useElevatedCellRenderer } from '../hooks/useElevatedCellRenderer';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { PaintSelectionProvider } from '../components/PaintSelection';
 import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';
@@ -35,6 +37,9 @@ import { confirmBulkSetWhen } from '../utils/scheduleMovePrompt';
 import { isHeldBack } from '../utils/visibilityUtils';
 import { describeSavedView, filterTasksForView } from '../utils/savedViews';
 import type { Task } from '../types';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
+import { reuseUnchangedLists } from '../utils/stableLists';
 
 type RootStackParamList = {
   SavedViewDetail: { viewId: string };
@@ -58,6 +63,7 @@ const NO_SUBTASKS: Task[] = [];
  * Later, Unscheduled and Inbox — see the note on filterTasksForView.
  */
 export function SavedViewDetailScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   // A task row's category chip opens that category's page. Stable, because
@@ -68,7 +74,7 @@ export function SavedViewDetailScreen() {
   const route = useRoute<RouteProp<RootStackParamList, 'SavedViewDetail'>>();
   const { viewId } = route.params;
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
-  const allTasks = useTaskStore(s => s.tasks);
+  const allTasks = useWithoutLockedTasks(useTaskStore(s => s.tasks));
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
   const bulkMarkMissed = useTaskStore(s => s.bulkMarkMissed);
@@ -114,7 +120,8 @@ export function SavedViewDetailScreen() {
       },
     });
   };
-  const keyboardScroll = useKeyboardInsetScroll<FlatList>();
+  const keyboardScroll = useKeyboardInsetScroll<FlatList>({ refreshing: pullSearch.pulling });
+  const scrollTop = useListScrollToTop(keyboardScroll);
   const elevatedCell = useElevatedCellRenderer<Task>(t => t.id, expandedTaskId);
   // A RootStack card covers the tab bar entirely, so the bulk bar sits above
   // the home indicator rather than above a tab bar.
@@ -127,6 +134,7 @@ export function SavedViewDetailScreen() {
     }, [])
   );
 
+  const subtasksPrev = useRef<Map<string, Task[]> | null>(null);
   const subtasksByParent = useMemo(() => {
     const map = new Map<string, Task[]>();
     for (const t of allTasks) {
@@ -135,7 +143,7 @@ export function SavedViewDetailScreen() {
       if (list) list.push(t);
       else map.set(t.parentId, [t]);
     }
-    return map;
+    return (subtasksPrev.current = reuseUnchangedLists(subtasksPrev.current, map));
   }, [allTasks]);
   const subtasksOf = (id: string): Task[] => subtasksByParent.get(id) ?? NO_SUBTASKS;
 
@@ -254,12 +262,14 @@ export function SavedViewDetailScreen() {
         >
         <PaintSelectionProvider {...paintProps}>
           <FlatList
-            ref={keyboardScroll.ref}
+            ref={scrollTop.ref}
+            refreshControl={pullSearch.refreshControl}
             scrollEnabled={!painting && !draggingSubtask}
             data={viewTasks}
             keyExtractor={t => t.id}
             CellRendererComponent={elevatedCell}
             {...keyboardScroll.props}
+            {...scrollTop.listProps}
             contentContainerStyle={[{ flexGrow: 1 }, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
             renderItem={({ item }) => {
               const subs = subtasksOf(item.id);
@@ -296,7 +306,7 @@ export function SavedViewDetailScreen() {
               <EmptyState
                 icon="bookmark-outline"
                 title="Nothing matches"
-                subtitle="This view filters every task that isn't done or archived. Edit it from the button in the header."
+                subtitle="This view filters every task that isn’t done or archived. Edit it from the button in the header."
               />
             }
           />
@@ -341,6 +351,8 @@ export function SavedViewDetailScreen() {
             setExpandedTaskId(null);
           }}
         />
+        <ScrollToTopButton {...scrollTop.buttonProps} />
+      {pullSearch.sheet}
       </View>
     </SpotlightProvider>
   );

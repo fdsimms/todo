@@ -8,15 +8,17 @@ import {
   dayDetail,
   dayRows,
   dotsFor,
+  hasOpenDeadline,
   nthOccurrence,
   projectOccurrences,
   projectedDeadlineFor,
   summarizeDay,
 } from '../utils/calendarMonth';
 
+const mockSettings = { dayResetTime: '00:00', holidaySet: 'none', customHolidays: [] as string[] };
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: {
-    getState: () => ({ dayResetTime: '00:00' }),
+    getState: () => mockSettings,
   },
 }));
 
@@ -94,7 +96,7 @@ const BASE: Task = {
   penaltyCreditedAt: null,
   gatesApps: false,
   showStreak: false,
-  streakRequiresWindow: false,
+  streakRequiresWindow: false, streakCountsUnits: false,
   reminderTime: null,
   reminderKind: 'notification',
   reminderOffsetDays: null, reminderTracksVisibility: false, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
@@ -473,6 +475,30 @@ describe('buildDayBuckets with projection', () => {
   });
 });
 
+describe('hasOpenDeadline', () => {
+  const bucketOf = (marks: Parameters<typeof dotsFor>[0]): DayBucket =>
+    ({ dots: dotsFor(marks) } as DayBucket);
+  const mark = (over: Partial<Parameters<typeof dotsFor>[0][number]>) => ({
+    kind: 'deadline' as const,
+    taskId: 'task-1',
+    title: 'Test',
+    projected: false,
+    completed: false,
+    ...over,
+  });
+
+  it('is true for a real deadline still open', () => {
+    expect(hasOpenDeadline(bucketOf([mark({})]))).toBe(true);
+  });
+
+  it('is false for a met, projected or missing deadline', () => {
+    expect(hasOpenDeadline(bucketOf([mark({ completed: true })]))).toBe(false);
+    expect(hasOpenDeadline(bucketOf([mark({ projected: true })]))).toBe(false);
+    expect(hasOpenDeadline(bucketOf([mark({ kind: 'due' })]))).toBe(false);
+    expect(hasOpenDeadline(undefined)).toBe(false);
+  });
+});
+
 describe('dotsFor', () => {
   const mark = (over: Partial<Parameters<typeof dotsFor>[0][number]>) => ({
     kind: 'due' as const,
@@ -683,5 +709,28 @@ describe('nthOccurrence', () => {
     range.forEach((date, i) => {
       expect(dayKeyOf(nthOccurrence(task, i + 1)!)).toBe(dayKeyOf(date));
     });
+  });
+});
+
+describe('projecting a task that moves off holidays', () => {
+  afterEach(() => { mockSettings.holidaySet = 'none'; });
+
+  // Mondays from Jan 12, 2026; the 19th is MLK Day and Feb 16 Presidents' Day.
+  const mondays = (rule: 'skip' | 'move') => makeTask({
+    recurrenceType: 'weekly', recurrenceInterval: 1, recurrenceDays: [1],
+    dueDate: at(2026, 1, 12).toISOString(), recurrenceHolidays: rule,
+  });
+  const keys = (task: Task) => projectOccurrences(task, at(2026, 1, 13), at(2026, 2, 28), '00:00').map(dayKeyOf);
+
+  it('moves each holiday occurrence and keeps the rest on their Mondays', () => {
+    mockSettings.holidaySet = 'us';
+    expect(keys(mondays('move'))).toEqual([
+      '2026-01-20', '2026-01-26', '2026-02-02', '2026-02-09', '2026-02-17', '2026-02-23',
+    ]);
+  });
+
+  it('leaves the holiday weeks out when it skips', () => {
+    mockSettings.holidaySet = 'us';
+    expect(keys(mondays('skip'))).toEqual(['2026-01-26', '2026-02-02', '2026-02-09', '2026-02-23']);
   });
 });

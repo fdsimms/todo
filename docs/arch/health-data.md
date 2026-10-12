@@ -509,6 +509,55 @@ could not be verified, and the filter is correct either way: under the first
 reading it is the difference between a partial meal and no meal, and under the
 second it changes nothing.
 
+### The vitamins and minerals that did get in, and why the data limit stopped mattering
+
+Twenty-three more keys joined later (`MicronutrientKey`: vitamins A, C, D, E, K,
+the B vitamins, biotin, magnesium, zinc, phosphorus, selenium, copper,
+manganese, chromium, molybdenum, iodine and chloride), each with an Apple Health
+dietary type (checked against Apple's `HKQuantityTypeIdentifier` page, not
+assumed). Nothing above is reversed. What changed is who supplies the figure.
+The measurement was about what a *barcode source* states, and the answer
+stands: `nutritionParse.ts` maps none of them, so a scanned or searched food
+never claims a magnesium figure and vitamin D's bulk-default zeros still never
+reach a record. A supplement's panel is typed once by someone holding the
+bottle, and that is a different claim from a source's default.
+
+**Only a typed or photographed panel states them.** `EXTERNAL_NUTRIENT_KEYS`
+(every key except these) is what a barcode source and a model's estimate are
+asked for. A model asked to estimate a restaurant meal's selenium would give a
+confident number with nothing behind it, and that number would be written to
+somebody's medical record, so the request never names them and a reply that
+does is read past (`log_food` over MCP reports one as ignored).
+
+**A photographed label is the exception, and reads `PRINTED_NUTRIENT_KEYS`.** A
+photo is a transcription of print, not an estimate and not a source's default,
+and the figures land in the form for the person to check against the bottle
+before saving. Two rules keep it honest (`labelOcr.ts`): a figure printed in IU
+is never a figure (the factor differs per vitamin, and read without its unit it
+would land 40 times too high), and "Vitamin B-6" is glued to its digit before
+the value reader runs, or the 6 is read as the row's amount.
+
+**Where the figures come from is `MedicationPrefs.nutrition`**, a
+`SupplementPanel` kept with a medication's other settings and entered on its
+page (`SupplementPanelSheet`). Each dose of that medication writes one food log
+entry (`supplementDose.ts`), which is why they reach the day's totals, targets
+and this write with no second mechanism. The entry is linked to its dose by
+`FoodNutrition.sourceId` (`dose:<id>`), counts as `isNutrientOnlyEntry` (not a
+meal, never a reason another nutrient's figure is judged incomplete), and is a
+snapshot: changing the panel later does not rewrite what past doses added.
+`useMedicationStore` reaches the food log only through `DoseEffects`, because
+the MCP server loads that store and cannot load the food log store; the app
+installs its version at launch and the replica installs one that writes the row
+flagged `healthWritePending`.
+
+**An existing install is asked again, as for cholesterol and the minerals.** The
+23 new share types are undetermined, so `writeAuthorizationStatus("nutrition")`
+drops to `notDetermined` and the row offers the ask. Until it is answered,
+`writeFoodSamples` skips the types that are not authorized and a dose's other
+figures are still written. **An install that has explicitly chosen its
+"Nutrients written per meal" list does not get the new ones added to it**: the
+default is every writable nutrient, but a stored list is a choice and stays one.
+
 ### Absent stays absent, and here it matters most
 
 A nutrient the entry does not state is not written. This is the same rule
@@ -806,6 +855,14 @@ something nobody measured:
   be weighed (`measuresByWeight`), a food that can't be shows what it will
   log and why, and a weight that still can't be used is said in the card
   rather than swapped for the recorded helping.
+- **A linked entry can also correct the food's own facts** (`handleSaveFacts` in
+  `FoodLogEntrySheet`). A mistyped label (16,000 mg of sodium for 160) lives on
+  the row or box the scan wrote and was copied into the entry, so fixing only
+  the entry leaves the next scan wrong. "Edit nutrition facts" opens the label
+  panel on that row (`panelItemId`/`productId`, never a database food nobody
+  filed), and the amount is then re-measured against the corrected panel and
+  saved through `reviseEntry`. Other entries already logged from the row keep
+  the figures they were written with.
 - **The rewrite is skipped when nothing Health holds changed.** Moving the meal
   or re-filing the item touches no figure Health ever saw, and rewriting anyway
   would churn somebody's medical record for a field it never got.
@@ -914,6 +971,75 @@ migrating onto this app from another one under-reports for as long as the
 migration is partial.** Log half of Tuesday here and half in Cronometer and
 Tuesday reads as whichever half was larger, not as the day. That is the safe
 direction and it is not an obvious one.
+
+### A task that names its food writes the entry, and takes it back
+
+`Task.logSavedMealId` points a task's "Log to food log" row at one of the person's saved meals, and
+completing the task then logs that meal straight away (`completeTask` in `useTaskStore.ts`, through
+`useSavedMealsStore.logMeal`), with no sheet. That is the one place a task writes the food log
+unattended by a prompt, and it is allowed because the saved meal already is the food and the amount:
+nothing is guessed, which is the reason the plain `logMealSlot` row only ever offers.
+
+Two rules keep it honest. **Each entry carries `FoodLogEntry.taskId`**, and un-completing the task
+removes them (`removeEntriesForTask`, which retracts any Health samples the way a delete does), the
+same shape as `MedicationLog.taskId`. A task ticked by mistake means the food was not eaten, and a
+phantom entry would corrupt the day's totals. And **a missed completion logs nothing**, nor does a
+saved meal that has since been deleted: that case falls back to the manual offer, so the tick is
+never a silent no-op. Deleting the task leaves its entries, since the food was eaten.
+
+### A meal described with no signal waits as a description, never as an entry
+
+`utils/estimateQueue.ts`, `usePendingEstimateStore`, `PendingEstimatesCard`. When
+the estimate request fails for a reason waiting can fix (no connection, a
+timeout, a rate limit, a 5xx), the panel offers **Save for later**. The meal is
+kept, and asked about again each time the app comes to the front.
+
+- **The queue holds descriptions and the estimates that come back for them,
+  never a food log entry.** The estimate rule above (a figure exists because a
+  person confirmed it) is why: a queued meal that logged itself when the signal
+  returned would be an estimate stored unconfirmed. So a drain only moves a meal
+  from *waiting* to *ready*, and Log on the Food log screen's card is the
+  confirmation. Until then it is in no day's totals and nothing reaches Health.
+- **It keeps when the meal was eaten.** `atISO` is the moment being logged for,
+  so confirming at bedtime still files it under lunch, and `log` passes it to
+  `addEntry` as `at`.
+- **Only a failure waiting can fix is queued** (`isQueueableFailure`, which
+  mirrors `describeAIError`'s order). A rejected key (401), a missing key, a
+  switched-off feature, demo mode, any other 4xx and an unreadable description
+  would fail identically on every retry, so they show inline as before. A meal
+  that reaches the API and is refused for one of those during a drain is marked
+  *failed* with the reason and left for Try again or Remove.
+- **Nothing is deleted on the app's behalf.** What somebody typed is their
+  input, so there is no expiry; the queue is capped at 20 and refuses past it.
+- **A drain stops at the first failure waiting can fix**, since the rest would
+  fail the same way, so an offline phone costs one request per return to the app.
+  It runs at launch and on foreground only, and is a no-op in demo mode.
+- **A ready meal can be refined before it is logged.** Log on the card writes
+  the figures as returned. Refine opens the same `EstimatePanel` inside the add
+  sheet, already on the saved estimate with its questions, using the meal's own
+  slot and moment rather than the day being viewed (`reviewing` on
+  `FoodLogEntrySheet` and `EstimatePanel`). An answer or a typed amount re-asks
+  the model as it does for a fresh estimate, so it needs the connection the
+  queue was waiting for; a refinement that fails keeps the estimate and its Log
+  button. Logging from the panel removes the queued row, and dismissing the
+  panel leaves it. Save for later is offered only for a first ask, never for a
+  refinement, so answers are never folded into a saved description twice.
+- **Device-local.** `pending_estimates` is in both `BACKUP_EXCLUDED_TABLES` and
+  `SYNC_EXCLUDED_TABLES`: a request belongs to the phone that lost its signal,
+  and syncing one would have a second phone estimate and offer to log the same
+  meal. It is not exposed over MCP for the same reason.
+
+The recipe nutrition estimate has the same offline failure and a **fingerprinted
+counterpart** (`utils/recipeEstimateQueue.ts`, `usePendingRecipeEstimateStore`,
+shown only in `RecipeNutritionSheet`). It differs because that estimate is
+display-only and documented as never stored: there is nothing to confirm into,
+so there is no card and no Log, only a row per recipe that the sheet believes
+while its `estimateKey` (name, servings and every ingredient line) still matches
+what is on screen. `liveFor` is the one place that comparison is made. A recipe
+edit or a different scale hides the row rather than deleting it, so scaling back
+shows it again; a newer ask for the recipe replaces it. It is still never written
+to the recipe or the catalog, and it is not seeded in demo mode because the
+sheet builds the key from live catalog data.
 
 ## The Activity rings
 
@@ -1281,6 +1407,29 @@ fixed "5 a day" figure (`dailyProduceProgress`), added on request. Keep it
 that narrow: the target is a constant rather than a typed number, the bar
 stops at full, and nothing (color, copy, a streak) changes when it fills. The
 Stats row draws the average day against the same figure.
+
+## A panel that looks wrong, and who decides
+
+A panel can pass every check and still be a misprint: a label that says 16 g of
+sodium where it meant 16 mg is possible, just not plausible. Two gates exist
+and they are deliberately different kinds.
+
+- **`PER_100_CEILING` (`nutritionParse.ts`) drops the impossible.** It runs on a
+  barcode record that nobody is looking at, so it may only refuse what cannot
+  be true (more than 100 g of anything in 100 g of food). Tightening it would
+  make a module with no person in front of it decide which real foods are too
+  unusual to keep.
+- **`panelWarnings` (`nutritionSanity.ts`) flags the implausible, and a person
+  answers.** It runs when `NutritionPanelSheet` saves, offering Edit or Save
+  anyway. It never drops a figure and never edits one, because the packet in
+  the person's hand is the only authority on whether the label itself is
+  wrong. Its rules use the panel's own figures and serving weight and nothing
+  else: a bound is set so salt, bouillon and pure oil still pass.
+
+A new check goes in `panelWarnings` if it needs a person to judge it, and in
+`PER_100_CEILING` only if it is arithmetically impossible. Barcode lookups and
+AI estimates are not run through `panelWarnings` on their own; they reach it
+only when a person saves the result in that sheet.
 
 ## What is deliberately not built yet
 

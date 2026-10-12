@@ -1,6 +1,8 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import {
+  automationEntryIdFor,
+  matchesAutomationQuery,
   GENERATED_KINDS,
   GENERATED_KIND_LIST,
   GENERATED_KIND_SPECS,
@@ -20,6 +22,7 @@ import {
   liveUseUpTaskCount,
   wantsGeneratedTask,
 } from '../utils/generatedTasks';
+import { settingsEntryTarget } from '../utils/settingsIndex';
 import type { GeneratedKind, Task } from '../types';
 
 type TaskShape = Pick<Task, 'id' | 'generatedKind' | 'generatedSourceId' | 'completed' | 'archived'>;
@@ -363,7 +366,7 @@ describe('the registry', () => {
     // one task written entirely on the app's own schedule landed loose at the
     // top of Today however the other three were filed.
     expect(GENERATED_KIND_LIST.filter(s => s.categorized).map(s => s.kind))
-      .toEqual(['groceryUseUp', 'pantryCheck', 'pantryReview', 'leftoverUseUp', 'mealSlot', 'mealPlanNudge', 'mealShortfall', 'mealThaw', 'mealLogNudge', 'projectReview', 'supplyReorder', 'calendarReview', 'birthday', 'birthdayGift', 'reachOut', 'waitingFollowUp', 'weather', 'screenTime', 'health', 'eventTask', 'travel', 'moodLog', 'moodNudge', 'weekendNudge', 'weighIn', 'waterShortfall', 'snackNudge', 'bookEvent', 'journalLog', 'dreamLog']);
+      .toEqual(['groceryUseUp', 'pantryCheck', 'pantryReview', 'leftoverUseUp', 'mealSlot', 'mealPlanNudge', 'mealShortfall', 'mealThaw', 'mealLogNudge', 'projectReview', 'supplyReorder', 'calendarReview', 'birthday', 'birthdayGift', 'reachOut', 'waitingFollowUp', 'weather', 'screenTime', 'health', 'eventTask', 'travel', 'moodLog', 'moodNudge', 'weekendNudge', 'weighIn', 'waterShortfall', 'snackNudge', 'limitWarning', 'bookEvent', 'journalLog', 'dreamLog']);
   });
 
   it('marks exactly the two day-shaped questions and the leave reminder as notices', () => {
@@ -533,5 +536,42 @@ describe('stoppableGenerator', () => {
 
   it('offers nothing on a notice, which has no delete to hang it on', () => {
     expect(stoppableGenerator({ generatedKind: 'calendarReview' }, flags())).toBeNull();
+  });
+});
+
+describe('automationEntryIdFor', () => {
+  it('resolves every kind in the registry to a real Automations entry', () => {
+    for (const kind of Object.keys(GENERATED_KIND_SPECS) as GeneratedKind[]) {
+      const target = settingsEntryTarget(automationEntryIdFor(kind));
+      expect(target).toMatchObject({ kind: 'screen', route: 'Automations', entryId: automationEntryIdFor(kind) });
+    }
+  });
+
+  it('opens the rule list for the generators that have one', () => {
+    expect(automationEntryIdFor('weather')).toBe('weatherRules');
+    expect(automationEntryIdFor('health')).toBe('healthRules');
+    expect(automationEntryIdFor('screenTime')).toBe('screenTimeRules');
+    expect(automationEntryIdFor('eventTask')).toBe('eventRules');
+  });
+
+  it('sends the retired mealCook kind to the meal tasks row', () => {
+    expect(automationEntryIdFor('mealCook')).toBe('gen:mealSlot');
+    expect(automationEntryIdFor('groceryUseUp')).toBe('gen:groceryUseUp');
+  });
+});
+
+describe('matchesAutomationQuery', () => {
+  it('matches everything on a blank query', () => {
+    expect(matchesAutomationQuery('', 'Meal tasks')).toBe(true);
+    expect(matchesAutomationQuery('   ', 'Meal tasks')).toBe(true);
+  });
+
+  it('needs every word, in any order, ignoring case', () => {
+    expect(matchesAutomationQuery('TASKS meal', 'Meal tasks', 'what to make')).toBe(true);
+    expect(matchesAutomationQuery('meal weather', 'Meal tasks', 'what to make')).toBe(false);
+  });
+
+  it('looks across all the text it is given', () => {
+    expect(matchesAutomationQuery('shelf life', 'Pantry checks', 'once its usual shelf life has passed')).toBe(true);
   });
 });

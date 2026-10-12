@@ -297,4 +297,10 @@ describe('projectProgressNote on a list', () => {
   it('says lines rather than tasks', () => {
     expect(projectProgressNote(makeProject({ kind: 'list' }), { done: 0, total: 0 })).toBe('No items yet');
   });
+
+  it('counts its items on an ongoing list rather than what is open', () => {
+    expect(projectProgressNote(makeProject({ kind: 'list', ongoing: true }), { done: 2, total: 5 })).toBe('5 items');
+    expect(projectProgressNote(makeProject({ kind: 'list', ongoing: true }), { done: 5, total: 5 })).toBe('5 items');
+    expect(projectProgressNote(makeProject({ kind: 'list', ongoing: true }), { done: 0, total: 1 })).toBe('1 item');
+  });
 });

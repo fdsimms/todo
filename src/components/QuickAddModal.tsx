@@ -30,8 +30,13 @@ import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, animation, interaction, iconSize, border, type Colors, textScale } from '../theme';
 import { useTextScale } from '../hooks/useTextScale';
 import { haptics } from '../utils/haptics';
+import { askForReminderPermissionIfNeeded } from '../utils/reminderPermission';
 import { useTitleSelection } from '../hooks/useTitleSelection';
 import { animateLayout } from '../utils/layoutAnimation';
+import { useMedicationStore } from '../store/useMedicationStore';
+import { medicationVocabulary, type MedicationDose } from '../utils/medicationLog';
+import { parseQuickDose } from '../utils/quickDose';
+import { confirmWithinLimit, recordDose } from '../utils/doseRecording';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
@@ -63,7 +68,7 @@ import {
 import { isSimpleChip } from '../utils/simpleTaskForm';
 import { featureShown } from '../utils/simpleMode';
 import { resolvePillOverflow } from '../utils/pillOverflow';
-import { MAX_TARGET_UNIT_LENGTH, formatQuotaTarget, normalizeTargetUnit } from '../utils/quotaUnit';
+import { MAX_TARGET_UNIT_LENGTH, normalizeTargetUnit } from '../utils/quotaUnit';
 import { firstWeekAnchor, proratedWeeklyTarget, weekDaysLeft, firstWeekPatch } from '../utils/quotaSchedule';
 import { WhenPicker } from './WhenPicker';
 import { projectDateAnchor } from '../utils/projectDateShortcuts';
@@ -77,9 +82,13 @@ import { tokenChipsFor, applyTokenChip, type TokenChip } from '../utils/titleTok
 import { HighlightedText } from './HighlightedText';
 import { suggestTitles } from '../utils/titleSuggestions';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInput, scheduleClockInstant, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseWeatherWaitInput, parseProjectInput, parseWaitingOnInput, parseSubtasksInput, parseAvoidInput, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, applyMentionOverrides, withTrailingSpace, type ParsedCategoryAndTags, type ParsedTaskInput, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
+import { parseTaskInputAheadOfRainSkip, scheduleClockInstant, describeSchedule, stripRemindPrefix, parseCategoryAndTagsInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, applyMentionOverrides, withTrailingSpace, type ParsedCategoryAndTags, type ParsedTaskInput, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
+import { formatMeterAmount, knownMeterNames, latestReading, meterFieldsFromInput } from '../utils/meters';
+import { canSkipForRain, formatRain, rainUnitFor } from '../utils/rainSkip';
+import { useMeterReadingStore } from '../store/useMeterReadingStore';
 import { mergeRanges } from '../utils/ranges';
 import { aimTooltip } from '../utils/tooltipAim';
+import { pickTitleSuggestion, describeTitleSuggestion, linkLabel } from '../utils/titleSuggestion';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { groupMentionTokens } from '../utils/peopleRegistry';
@@ -101,6 +110,8 @@ import { formatPhoneInput } from '../utils/phone';
 import { format } from 'date-fns/format';
 import { isSameDay } from 'date-fns/isSameDay';
 import { getLogicalToday, getLogicalTomorrow, getLogicalNow, getCurrentDayStart, getTaskDayStart, formatTimeOfDay, formatHHMM } from '../utils/dateUtils';
+import { sunLocationOn } from '../utils/visibilityUtils';
+import { describeSunAnchor, parseSunAnchor, sunAnchorHHMM } from '../utils/sunTimes';
 import { blockerFields } from '../utils/blocking';
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
 import { TaskEditor, type TaskDraft } from './TaskEditor';
@@ -206,10 +217,6 @@ interface ToolChipDescriptor {
  */
 function remindsFromTitle(parsed: ParsedTaskInput): string | null {
   return parsed.schedule.explicitClockTime ? stripRemindPrefix(parsed.cleanTitle) : null;
-}
-
-function linkLabel(url: string): string {
-  return KNOWN_LINK_APPS.find(app => app.scheme === url)?.name ?? url;
 }
 
 /** Tooltip label for a "#word" match — category, tag count/name, or both joined. */
@@ -459,6 +466,11 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // "only today" / "expires friday" off the schedule tooltip, and "don't …"
   // off the avoid tooltip. Same applied-line treatment as the two above.
   const [titleWindowEnd, setTitleWindowEnd] = useState<string | null>(null);
+  // "after sunset" / "expires at dark" off the sun tooltip: the anchor each
+  // bound follows, beside the clock time it resolved to in titleWindowStart /
+  // titleWindowEnd (see Task.windowStartSun). Cleared with its clock time.
+  const [titleWindowStartSun, setTitleWindowStartSun] = useState<string | null>(null);
+  const [titleWindowEndSun, setTitleWindowEndSun] = useState<string | null>(null);
   const [polarity, setPolarity] = useState<Polarity>('positive');
   const [subtaskTitles, setSubtaskTitles] = useState<string[]>([]);
   const [tags, setTags] = useState<string[]>([]);
@@ -503,6 +515,17 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // "on the next sunny day" off the title tooltip (Task.weatherWait).
   const [weatherWait, setWeatherWait] = useState<WeatherCondition | null>(null);
   const weatherTasksOn = useSettingsStore(s => s.weatherTasks);
+  // "every 5,000 miles on the car" off the title tooltip (Task.meterName). The
+  // reading it's due at isn't in the phrase; it comes from the meter's last
+  // reading on save, or from the first one logged (meterStartPatch).
+  const [titleMeter, setTitleMeter] = useState<{ name: string; unit: string; every: number } | null>(null);
+  // Task.rainSkipMm from "unless it rains", in millimetres.
+  const [titleRainSkipMm, setTitleRainSkipMm] = useState<number | null>(null);
+  const rainUnit = rainUnitFor(useSettingsStore(s => s.unitSystem));
+  const meterReadings = useMeterReadingStore(s => s.readings);
+  // Read for the re-render alone: the sun tooltip resolves through
+  // sunLocationOn, which reads the setting itself.
+  const sunLocationSetting = useSettingsStore(s => s.sunLocation);
   const [chainItems, setChainItems] = useState<ChainItem[]>([]);
   // The step being renamed in the chain list, and what's typed so far.
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
@@ -612,11 +635,15 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     setTargetCount(initialType === 'target' ? DEFAULT_TARGET_COUNT : null);
     setQuotaPeriod('day');
     setWeatherWait(null);
+    setTitleMeter(null);
+    setTitleRainSkipMm(null);
     setTitleWindowStart(null);
+    setTitleWindowStartSun(null);
     setTitleSeries(null);
     setBlockerIds([]);
     setSubtaskTitles([]);
     setTitleWindowEnd(null);
+    setTitleWindowEndSun(null);
     setPolarity('positive');
     setChainItems([]);
     setEditingStepId(null);
@@ -821,8 +848,10 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // phrase is highlighted in the input and described in a tooltip; nothing is
   // applied until the user taps the tooltip.
   // ==== parsing the typed line: date, category/tags, link, phone, email, duration ====
+  // Read past a trailing "unless it rains" (parseTaskInputAheadOfRainSkip),
+  // which would otherwise block the repeat it needs.
   const parsed = useMemo(
-    () => (title.trim() ? parseTaskInput(title, getLogicalNow(dayResetTime), new Date()) : null),
+    () => (title.trim() ? parseTaskInputAheadOfRainSkip(title, getLogicalNow(dayResetTime), new Date()) : null),
     [title, dayResetTime]
   );
   // "pay rent tmrw #home #errand" — one or more "#word" tokens, the first
@@ -880,15 +909,14 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   useEffect(() => {
     setCandidateLayouts([]);
   }, [candidateRowKey]);
-  // "clean the garage !urgent" — a "!word" token naming a priority
-  // (parsePriorityInput), same single tooltip slot and same sigil-token
-  // shape as the category/tag check above, just checked after the ambiguous
-  // mention and the in-progress mention suggestions so a "@name" still
-  // claiming the slot always wins.
-  const priorityParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && title.trim() ? parsePriorityInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion]
-  );
+  // Everything a typed line can say after the schedule phrase, the "#word"
+  // token and the "@name" mention: priority, project, chain, link, phone, email,
+  // timer, supply, target, estimate, weather wait, sun window, meter, rain
+  // skip, waiting on, subtasks, avoid. One suggestion at a time, in that order,
+  // through pickTitleSuggestion (src/utils/titleSuggestion.ts), which the task
+  // editor reads too so the two can't disagree about what a line means. Each
+  // parser's own gate (plain kind, a repeat, the weather switch, ...) is the
+  // context passed in below; its doc comment says why.
   // "book hotel +japan" — the "+" sigil for a project, resolved against the
   // live ones only (see parseProjectInput). A sigil like "#" and "!", so it's
   // checked beside them, ahead of the chain: a "+trip" inside a line that
@@ -901,135 +929,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     () => projects.filter(p => !p.archived && !p.completedAt),
     [projects]
   );
-  const projectParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !intoProjectId && title.trim()
-      ? parseProjectInput(title, liveProjects) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, intoProjectId, liveProjects]
-  );
-  // "call mom -> buy milk -> walk the dog" — the "->" token for an ad hoc
-  // chain, each segment becoming its own step (see parseChainInput's own doc
-  // comment for why a step's duration/link phrase binds to that step while
-  // everything else — schedule, category/tag, priority, mention — stays
-  // task-wide). Checked after every task-wide token so those still resolve
-  // wherever they're typed, including inside a later step, before the split
-  // is offered, and before link/phone/email/duration below, which must not
-  // claim a step's own phrase for the whole task once a chain is what's
-  // being typed. Same type gate as durationParsed and for the same reason:
-  // accepting it commits the sheet to Chain, so it's only offered from the
-  // plain type.
-  const chainParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !projectParsed
-      && type === 'task' && title.trim()
-      ? parseChainInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, type]
-  );
-  // Pasted URL/app-link detection — same tooltip mechanism as the schedule
-  // parse above, just not suffix-anchored. Only checked when no schedule
-  // phrase, category/tag token, ambiguous mention, priority token, or chain
-  // matched, so the tooltips never compete for the same slot.
-  const linkParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !projectParsed && !chainParsed && title.trim() ? parseLinkInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed]
-  );
-  // "call the doctor 555-123-4567" — the same mechanism again, for the number
-  // rather than the URL. Checked after the link so a tel: URL someone pasted
-  // still reads as a link, and deliberately stricter about what counts (see
-  // looksLikePhoneNumber): this one is reading prose full of digits, so a
-  // year or a price must not light it up.
-  const phoneParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !projectParsed && !chainParsed && !linkParsed && title.trim() ? parsePhoneInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed]
-  );
-  // "email jane@example.com about the invoice" — the same mechanism again,
-  // for an address rather than a number. Checked after phone so a title that
-  // happens to contain both keeps reading as whichever comes first in the
-  // priority chain, and email addresses don't collide with the phone pattern
-  // since "@" and letters aren't dial digits.
-  const emailParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !projectParsed && !chainParsed && !linkParsed && !phoneParsed && title.trim() ? parseEmailInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed]
-  );
-  // "play violin for 15 minutes" — a duration, not a schedule. Same single
-  // tooltip slot, checked last, so a schedule, category/tag token, link or
-  // contact phrase always wins.
-  //
-  // Only offered from the plain type, because accepting it switches the sheet
-  // into Timed: it's how someone who has never picked a type discovers there
-  // is one. Someone already part-way through a Chain or a Target has said what
-  // they're making, and a tooltip shouldn't overrule it.
-  const durationParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !projectParsed && !chainParsed && !linkParsed && !phoneParsed && !emailParsed && type === 'task' && title.trim() ? parseDurationInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, type]
-  );
-  // "replace cpap filter 6 filters left" — a stock this task spends, not a
-  // schedule. Last in the chain, so everything above still wins the one slot.
-  //
-  // **Offered only once the sheet has a repeat**, which is this parser's
-  // equivalent of the type gate above it. A supply counts down by riding onto
-  // the successor a completion spawns, so on a one-off it would sit at its
-  // starting number for ever (see canHoldSupply) — offering it there would be
-  // offering a field that does nothing. It also happens to be the cheapest
-  // false-positive filter available: "finish the report 3 spare left" on a
-  // task with no repeat never gets asked about.
-  //
-  // The order this composes in is the user's, not ours. Type the whole line
-  // and the schedule tooltip comes first (it needs the trailing text); tapping
-  // it shortens the title, sets the repeat, and this fires on the remainder.
-  const supplyParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !projectParsed && !chainParsed && !linkParsed && !phoneParsed && !emailParsed
-      && !durationParsed && recurrenceType !== 'none' && title.trim()
-      ? parseSupplyInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, recurrenceType]
-  );
-  // "drink water 8 times a day" — a daily target, or "run 3 times a week", a
-  // weekly one. Last in the chain, behind supply, so every phrase above still
-  // wins the one slot.
-  //
-  // Same type gate as durationParsed: accepting it switches the sheet into
-  // Target, so it's only offered from the plain type. And only while the
-  // repeat is unset or matches a period a target can count across: a target
-  // resets by repeating, so on a sheet set to "every 2 weeks" or "every
-  // monday" there's no reading of "3 times" that the repeat wouldn't undo.
-  //
-  // A bare "3 times" on a weekly repeat ("3 times" then "every week" accepted
-  // first) is three a week; "3 times a week" on a daily repeat is refused
-  // rather than letting either half overrule the other.
-  const targetParsed = useMemo(() => {
-    if (parsed || categoryTagsParsed || ambiguousMention || mentionSuggestion || priorityParsed || projectParsed || chainParsed || linkParsed || phoneParsed || emailParsed
-      || durationParsed || supplyParsed || type !== 'task' || !title.trim()) return null;
-    const plainWeekly = recurrenceType === 'weekly' && recurrenceInterval === 1 && recurrenceDays.length === 0;
-    if (recurrenceType !== 'none' && recurrenceType !== 'daily' && !plainWeekly) return null;
-    if (recurrenceType === 'daily' && recurrenceInterval !== 1) return null;
-    const result = parseTargetInput(title);
-    if (!result) return null;
-    if (result.period === 'week' && recurrenceType === 'daily') return null;
-    return plainWeekly ? { ...result, period: 'week' as const } : result;
-  }, [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, type, recurrenceType, recurrenceInterval, recurrenceDays]);
-  // "clean the garage ~2h" — an estimate, not a timer. Last in the chain, so
-  // "for 15 minutes" (a timer) and everything above still win the one slot.
-  // Hidden in Timed for the reason the Effort chip is: there the countdown
-  // already is the estimate.
-  const estimateParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !projectParsed && !chainParsed && !linkParsed && !phoneParsed && !emailParsed
-      && !durationParsed && !supplyParsed && !targetParsed && isChipVisible(type, 'effort') && title.trim()
-      ? parseEstimateInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, type]
-  );
-  // "leave books on the curb on the next sunny day" — wait for a kind of day.
-  // After estimate in the chain, so everything above still wins the one slot.
-  //
-  // Offered only where the wait would be honoured, and refused otherwise
-  // rather than accepted and dropped: the weather switch has to be on (nothing
-  // reads the forecast otherwise), and only a plain one-off may wait, so a
-  // repeat, a set of dates, a chain or another kind has already said it
-  // schedules itself (see canWaitForWeather).
-  const weatherParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !projectParsed && !chainParsed && !linkParsed && !phoneParsed && !emailParsed
-      && !durationParsed && !supplyParsed && !targetParsed && !estimateParsed
-      && weatherTasksOn && type === 'task' && recurrenceType === 'none' && !titleSeries && chainItems.length === 0 && weatherWait === null && title.trim()
-      ? parseWeatherWaitInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, estimateParsed, weatherTasksOn, type, recurrenceType, titleSeries, chainItems, weatherWait]
-  );
+  const sunDayStart = dueDate ? getTaskDayStart(dueDate, dayResetTime) : getCurrentDayStart();
   // "file taxes after get W-2" — waiting on another task. Matched strictly
   // (see parseWaitingOnInput) against live top-level tasks, one row per
   // series so a dated set doesn't read as several tasks of the same name.
@@ -1047,31 +947,55 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       return true;
     });
   }, [tasks, visible]);
-  const waitingParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !projectParsed && !chainParsed && !linkParsed && !phoneParsed && !emailParsed
-      && !durationParsed && !supplyParsed && !targetParsed && !estimateParsed && !weatherParsed && title.trim()
-      ? parseWaitingOnInput(title, waitCandidates) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, estimateParsed, weatherParsed, waitCandidates]
+  const titleSuggestion = useMemo(
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion
+      ? pickTitleSuggestion(title, {
+        plainKind: type === 'task',
+        estimateOffered: isChipVisible(type, 'effort'),
+        recurrenceType,
+        recurrenceInterval,
+        recurrenceDays,
+        hasSeries: !!titleSeries,
+        hasChainSteps: chainItems.length > 0,
+        // Not offered on a sheet opened inside a project: createTask files the
+        // task there whatever this says, and a tooltip setting a project that
+        // would then be ignored is an input the save drops.
+        projects: intoProjectId ? null : liveProjects,
+        waitCandidates,
+        weatherTasksOn,
+        weatherWait,
+        polarity,
+        hasMeter: titleMeter !== null,
+        knownMeters: knownMeterNames(meterReadings),
+        hasRainSkip: titleRainSkipMm !== null,
+        rainUnit,
+        sunClock: anchor => sunAnchorHHMM(anchor, sunDayStart, sunLocationOn(sunDayStart)),
+      })
+      : null),
+    // sunLocation is a dep for the re-read alone: sunLocationOn reads it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, type, recurrenceType, recurrenceInterval, recurrenceDays, titleSeries, chainItems, intoProjectId, liveProjects, waitCandidates, weatherTasksOn, weatherWait, polarity, titleMeter, meterReadings, titleRainSkipMm, rainUnit, sunDayStart.getTime(), sunLocationSetting]
   );
-  // "pack: socks, charger, passport" — subtasks. Last of all: a colon list is
-  // the loosest shape here, so anything more specific in the line wins first.
-  const subtasksParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !projectParsed && !chainParsed && !linkParsed && !phoneParsed && !emailParsed
-      && !durationParsed && !supplyParsed && !targetParsed && !estimateParsed && !weatherParsed && !waitingParsed && title.trim()
-      ? parseSubtasksInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, estimateParsed, weatherParsed, waitingParsed]
-  );
-  // "Don't check Twitter", "No snacking" — a habit to avoid. Strips nothing
-  // (the words are its name), so it stops being offered once accepted rather
-  // than when the phrase leaves the title. Plain kind only, like the Goal
-  // control in the editor.
-  const avoidParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !projectParsed && !chainParsed && !linkParsed && !phoneParsed && !emailParsed
-      && !durationParsed && !supplyParsed && !targetParsed && !estimateParsed && !weatherParsed && !waitingParsed && !subtasksParsed
-      && type === 'task' && polarity !== 'negative' && title.trim()
-      ? parseAvoidInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, estimateParsed, weatherParsed, waitingParsed, subtasksParsed, type, polarity]
-  );
+  const titleSuggestionDescription = titleSuggestion
+    ? describeTitleSuggestion(titleSuggestion, rainUnit, hhmm => formatHHMM(hhmm))
+    : null;
+  const priorityParsed = titleSuggestion?.kind === 'priority' ? titleSuggestion.hit : null;
+  const projectParsed = titleSuggestion?.kind === 'project' ? titleSuggestion.hit : null;
+  const chainParsed = titleSuggestion?.kind === 'chain' ? titleSuggestion.hit : null;
+  const linkParsed = titleSuggestion?.kind === 'link' ? titleSuggestion.hit : null;
+  const phoneParsed = titleSuggestion?.kind === 'phone' ? titleSuggestion.hit : null;
+  const emailParsed = titleSuggestion?.kind === 'email' ? titleSuggestion.hit : null;
+  const durationParsed = titleSuggestion?.kind === 'duration' ? titleSuggestion.hit : null;
+  const supplyParsed = titleSuggestion?.kind === 'supply' ? titleSuggestion.hit : null;
+  const targetParsed = titleSuggestion?.kind === 'target' ? titleSuggestion.hit : null;
+  const estimateParsed = titleSuggestion?.kind === 'estimate' ? titleSuggestion.hit : null;
+  const weatherParsed = titleSuggestion?.kind === 'weather' ? titleSuggestion.hit : null;
+  const sunParsed = titleSuggestion?.kind === 'sun' ? titleSuggestion.hit : null;
+  const meterParsed = titleSuggestion?.kind === 'meter' ? titleSuggestion.hit : null;
+  const rainParsed = titleSuggestion?.kind === 'rain' ? titleSuggestion.hit : null;
+  const waitingParsed = titleSuggestion?.kind === 'waiting' ? titleSuggestion.hit : null;
+  const subtasksParsed = titleSuggestion?.kind === 'subtasks' ? titleSuggestion.hit : null;
+  const avoidParsed = titleSuggestion?.kind === 'avoid' ? titleSuggestion.hit : null;
   // Whether the task being built is an avoid-task: the flag, on the one kind
   // that can hold it (a later switch to Timed or Target leaves it unset).
   const avoidsHere = polarity === 'negative' && type === 'task';
@@ -1134,6 +1058,21 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                       ? {
                           matchStart: weatherParsed.matchStart,
                           matchedText: title.slice(weatherParsed.matchStart, weatherParsed.matchEnd),
+                        }
+                    : sunParsed
+                      ? {
+                          matchStart: sunParsed.matchStart,
+                          matchedText: title.slice(sunParsed.matchStart, sunParsed.matchEnd),
+                        }
+                    : meterParsed
+                      ? {
+                          matchStart: meterParsed.matchStart,
+                          matchedText: title.slice(meterParsed.matchStart, meterParsed.matchEnd),
+                        }
+                    : rainParsed
+                      ? {
+                          matchStart: rainParsed.matchStart,
+                          matchedText: title.slice(rainParsed.matchStart, rainParsed.matchEnd),
                         }
                     : waitingParsed
                       ? {
@@ -1237,6 +1176,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   const titleChips = useMemo(
     () => tokenChipsFor(title, {
       categories: categories.map(c => c.name),
+      categoryEmoji: Object.fromEntries(categories.filter(c => c.emoji).map(c => [c.name, c.emoji!])),
       tags: allTags,
       projects: intoProjectId ? [] : liveProjects.map(p => p.title),
     }),
@@ -1280,6 +1220,8 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     setDeadline(parsed.schedule.deadline ?? null);
     setTitleWindowStart(parsed.schedule.windowStart ?? null);
     setTitleWindowEnd(parsed.schedule.windowEnd ?? null);
+    setTitleWindowStartSun(null);
+    setTitleWindowEndSun(null);
     setTitleSeries(parsed.schedule.extraDates?.length
       ? { anchor: parsed.schedule.dueDate, extraDates: parsed.schedule.extraDates }
       : null);
@@ -1319,6 +1261,9 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     haptics.success();
     setReminderTime(reminderOffer);
     setReminderOffer(null);
+    // Accepting the offer is the person asking for a reminder: ask for the
+    // permission now if it has never been asked.
+    void askForReminderPermissionIfNeeded();
   };
 
   const dismissReminderOffer = () => {
@@ -1522,6 +1467,47 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     setWeatherWait(weatherParsed.condition);
   };
 
+  // Sets one bound of the window to follow the sun, with the clock time it
+  // comes to on the task's day beside it. The applied line says which.
+  const applySun = () => {
+    if (!sunParsed) return;
+    haptics.success();
+    animateLayout();
+    const nextTitle = withTrailingSpace(sunParsed.cleanTitle);
+    setTitle(nextTitle);
+    titleCaret.moveCaret(nextTitle);
+    if (sunParsed.bound === 'start') {
+      setTitleWindowStart(sunParsed.clock);
+      setTitleWindowStartSun(sunParsed.anchor);
+    } else {
+      setTitleWindowEnd(sunParsed.clock);
+      setTitleWindowEndSun(sunParsed.anchor);
+    }
+  };
+
+  // Makes it due by usage on that meter. The applied line says so, and says
+  // when the meter still needs its first reading.
+  const applyMeter = () => {
+    if (!meterParsed) return;
+    haptics.success();
+    animateLayout();
+    const nextTitle = withTrailingSpace(meterParsed.cleanTitle);
+    setTitle(nextTitle);
+    titleCaret.moveCaret(nextTitle);
+    setTitleMeter({ name: meterParsed.meterName, unit: meterParsed.unit, every: meterParsed.every });
+  };
+
+  // Skips a day it rained. The applied line says how much rain counts.
+  const applyRain = () => {
+    if (!rainParsed) return;
+    haptics.success();
+    animateLayout();
+    const nextTitle = withTrailingSpace(rainParsed.cleanTitle);
+    setTitle(nextTitle);
+    titleCaret.moveCaret(nextTitle);
+    setTitleRainSkipMm(rainParsed.mm);
+  };
+
   const applyProject = () => {
     if (!projectParsed) return;
     haptics.success();
@@ -1579,6 +1565,9 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     else if (targetParsed) applyTarget();
     else if (estimateParsed) applyEstimate();
     else if (weatherParsed) applyWeather();
+    else if (sunParsed) applySun();
+    else if (meterParsed) applyMeter();
+    else if (rainParsed) applyRain();
     else if (waitingParsed) applyWaiting();
     else if (subtasksParsed) applySubtasks();
     else if (avoidParsed) applyAvoid();
@@ -1647,6 +1636,15 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // The wait only survives on a plain one-off, the same rule the editor applies
   // on save: a Target or a repeat chosen after accepting the phrase drops it.
   const weatherWaitHere = weatherWait !== null && type === 'task' && recurrenceType === 'none' && seriesExtraDates.length === 0 && chainItems.length === 0;
+  // The same plain one-off, and never alongside a weather wait or as an
+  // avoid-task (canFollowMeter). A later switch that breaks it drops the meter.
+  const meterHere = titleMeter !== null && type === 'task' && recurrenceType === 'none' && seriesExtraDates.length === 0 && chainItems.length === 0 && !weatherWaitHere && polarity !== 'negative';
+  // The repeat it skips has to survive too: a later switch to a one-off or an
+  // hourly repeat drops it, the editor's rule on save.
+  const rainSkipHere = titleRainSkipMm !== null && type === 'task' && canSkipForRain({ recurrenceType, polarity });
+  const titleMeterInput = titleMeter
+    ? { name: titleMeter.name, unit: titleMeter.unit, everyText: String(titleMeter.every), dueText: '', limitMonths: null }
+    : null;
 
   const typeValues: TypeValues = {
     // Always empty here, for the same reason healthMetric is null: quick add
@@ -1794,10 +1792,12 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       ...(seedActive && seed?.pinned ? { pinned: true } : {}),
       ...(seedActive && seed?.windowStart ? { windowStart: seed.windowStart, windowEnd: seed.windowEnd ?? null } : {}),
       // After the seed's, so the title's own "after 3pm" wins over a drop.
-      ...(titleWindowStart ? { windowStart: titleWindowStart } : {}),
+      ...(titleWindowStart ? { windowStart: titleWindowStart, windowStartSun: titleWindowStartSun } : {}),
       ...(blockerIds.length > 0 ? blockerFields(blockerIds) : {}),
-      ...(titleWindowEnd ? { windowEnd: titleWindowEnd } : {}),
+      ...(titleWindowEnd ? { windowEnd: titleWindowEnd, windowEndSun: titleWindowEndSun } : {}),
       ...(weatherWaitHere ? { weatherWait } : {}),
+      ...(meterHere && titleMeterInput ? meterFieldsFromInput(titleMeterInput, meterReadings) : {}),
+      ...(rainSkipHere ? { rainSkipMm: titleRainSkipMm } : {}),
       // Plain kind only, the editor's rule: every other kind is a way of
       // completing something, and an avoid-task is never completed.
       ...(avoidsHere ? { polarity: 'negative' as const, showStreak: true } : {}),
@@ -1861,6 +1861,23 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // a demo, where the event would reach the real calendar, so there the line is
   // an ordinary task.
   const eventText = isDemoModeActive() ? null : eventMarkerText(title);
+  // "took ibuprofen 400mg" is a dose to record, not a task (see quickDose.ts
+  // for how strict that reading is). Recorded through the same path the
+  // Medications screen uses, so the limit is checked and a low supply offers
+  // a refill. No demo gate: a dose only reaches the database, which in a demo
+  // is the throwaway one.
+  const medicationLogs = useMedicationStore(s => s.logs);
+  const doseParse = useMemo(
+    () => (eventText === null ? parseQuickDose(title, medicationVocabulary(medicationLogs)) : null),
+    [eventText, title, medicationLogs],
+  );
+  const addAsDose = async (dose: MedicationDose) => {
+    haptics.tap();
+    if (!(await confirmWithinLimit(dose.name, new Date(), dose))) return;
+    if (!recordDose({ ...dose, asNeeded: true })) return;
+    haptics.success();
+    dismiss();
+  };
   const addAsEvent = async (text: string) => {
     haptics.tap();
     const byId = new Map(people.map(p => [p.id, p]));
@@ -1894,8 +1911,8 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     const saved = await useEventPeopleStore.getState().saveEvent(quickEventSaveFields(input), draft.personIds);
     if (!saved) {
       Alert.alert(
-        "Couldn't add the event",
-        'Check that this app can add events to your calendar in the Settings app, then try again. The event is still here.'
+        "Couldn’t add the event",
+        'Check that calendar access is on in Settings, then try again. The event is still here.'
       );
       return;
     }
@@ -1947,6 +1964,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
 
   const handleAdd = () => {
     if (eventText !== null) { void addAsEvent(eventText); return; }
+    if (doseParse !== null) { void addAsDose(doseParse); return; }
     // A rule that strips takes its word out here rather than as you type —
     // rewriting the field under the cursor is the one way this feature would
     // be unusable. Nothing strips unless a rule asked to, and a strip that
@@ -1958,7 +1976,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     if (archivedMatch) {
       Alert.alert(
         'Resume archived task?',
-        `You archived "${archivedMatch.title}" a while ago. Resume it instead of creating a new one? History and stats carry over, but the streak restarts.`,
+        `You archived “${archivedMatch.title}”. Resume it instead of creating a new one? History and stats carry over, but the streak restarts.`,
         [
           { text: 'Create new', onPress: () => createTask(finalTitle) },
           {
@@ -1991,10 +2009,14 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       extraDates: seriesExtraDates,
       timeSegments,
       windowStart: titleWindowStart,
+      windowStartSun: titleWindowStart ? titleWindowStartSun : null,
       weatherWait: weatherWaitHere ? weatherWait : null,
+      meter: meterHere ? titleMeter : null,
+      rainSkipMm: rainSkipHere ? titleRainSkipMm : null,
       blockerIds,
       subtaskTitles,
       windowEnd: titleWindowEnd,
+      windowEndSun: titleWindowEnd ? titleWindowEndSun : null,
       polarity: avoidsHere ? 'negative' : 'positive',
       reminderTime,
       tags: resolveTags(),
@@ -2441,7 +2463,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                 onPress={handleAdd}
                 disabled={!title.trim() || blocked !== null}
                 accessibilityRole="button"
-                accessibilityLabel={eventText !== null ? 'Add event' : 'Add task'}
+                accessibilityLabel={eventText !== null ? 'Add event' : doseParse !== null ? 'Record dose' : 'Add task'}
               >
                 <Ionicons name="arrow-up" size={18} color={!title.trim() || blocked !== null ? colors.textTertiary : colors.onAccent} />
               </TouchableOpacity>
@@ -2541,66 +2563,14 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                                 : parsed.schedule.deadline ? 'flag-outline' : 'calendar-outline')
                             : categoryTagsParsed
                               ? (categoryTagsParsed.category ? 'pricetag-outline' : 'pricetags-outline')
-                              : priorityParsed
-                                ? 'alert-circle-outline'
-                                : projectParsed
-                                ? 'briefcase-outline'
-                                : chainParsed
-                                  ? 'git-commit-outline'
-                                  : linkParsed
-                                    ? 'link-outline'
-                                    : phoneParsed
-                                      ? 'call-outline'
-                                      : emailParsed
-                                        ? 'mail-outline'
-                                        : durationParsed
-                                          ? 'timer-outline'
-                                          : supplyParsed
-                                            ? 'cube-outline'
-                                            : targetParsed
-                                              ? 'speedometer-outline'
-                                              : estimateParsed
-                                                ? 'barbell'
-                                                : weatherParsed
-                                                ? 'partly-sunny-outline'
-                                                : waitingParsed
-                                                  ? 'hourglass-outline'
-                                                  : subtasksParsed
-                                                    ? 'list-outline'
-                                                    : 'shield-checkmark-outline'
+                              : (titleSuggestionDescription?.icon ?? 'shield-checkmark-outline') as React.ComponentProps<typeof TitleSuggestionBanner>['icon']
                     }
                     label={
 parsed
                           ? `${describeSchedule(parsed.schedule, getLogicalNow(dayResetTime))}${remindsFromTitle(parsed) ? ' · Reminder' : ''}`
                           : categoryTagsParsed
                             ? categoryTagsLabel(categoryTagsParsed, categories)
-                            : priorityParsed
-                              ? `Priority · ${PRIORITY_LABELS_SHORT[priorityParsed.priority]}`
-                              : projectParsed
-                              ? `Project · ${projectParsed.title}`
-                              : chainParsed
-                                ? `Chain · ${chainParsed.steps.length} steps`
-                                : linkParsed
-                                  ? linkLabel(linkParsed.url)
-                                  : phoneParsed
-                                    ? `Call ${phoneParsed.number}`
-                                    : emailParsed
-                                      ? `Email ${emailParsed.address}`
-                                      : durationParsed
-                                        ? `Timer · ${formatDuration(durationParsed.minutes)}`
-                                        : supplyParsed
-                                          ? `Supply · ${formatSupplyLeft(supplyParsed.count, supplyParsed.unit)}`
-                                          : targetParsed
-                                            ? `${targetParsed.period === 'week' ? 'Weekly' : 'Daily'} target · ${formatQuotaTarget(targetParsed.count, null)}`
-                                            : estimateParsed
-                                              ? `Estimate · ${formatDuration(estimateParsed.minutes)}`
-                                              : weatherParsed
-                                              ? `Wait for a ${weatherParsed.condition} day`
-                                              : waitingParsed
-                                                ? `Waiting on · ${waitingParsed.title}`
-                                                : subtasksParsed
-                                                  ? `${subtasksParsed.subtasks.length} subtasks`
-                                                  : 'Avoid this habit'
+                            : (titleSuggestionDescription?.label ?? '')
                     }
                     onApply={applyActiveParse}
                     onDismiss={dismissActiveParse}
@@ -2664,15 +2634,31 @@ parsed
               Same row as the reminder above, and the same way out. */}
           {!!titleWindowStart && appliedLine(
             'time-outline',
-            `Hidden until ${formatHHMM(titleWindowStart)}`,
+            titleWindowStartSun
+              ? `Hidden until ${describeSunAnchor(parseSunAnchor(titleWindowStartSun)!).toLowerCase()} (${formatHHMM(titleWindowStart)} on its day)`
+              : `Hidden until ${formatHHMM(titleWindowStart)}`,
             'Remove the start time',
-            () => setTitleWindowStart(null),
+            () => { setTitleWindowStart(null); setTitleWindowStartSun(null); },
           )}
           {weatherWaitHere && appliedLine(
             'partly-sunny-outline',
             `Waiting for a ${weatherWait} day`,
             'Stop waiting for weather',
             () => setWeatherWait(null),
+          )}
+          {meterHere && titleMeter && appliedLine(
+            'speedometer-outline',
+            latestReading(meterReadings, titleMeter.name)
+              ? `Due every ${formatMeterAmount(titleMeter.every, titleMeter.unit)} on ${titleMeter.name}, from its last reading`
+              : `Due every ${formatMeterAmount(titleMeter.every, titleMeter.unit)} on ${titleMeter.name}. Log a reading from the task to start it`,
+            'Remove the meter',
+            () => setTitleMeter(null),
+          )}
+          {rainSkipHere && titleRainSkipMm !== null && appliedLine(
+            'rainy-outline',
+            `Skips a day after ${formatRain(titleRainSkipMm, rainUnit)} of rain`,
+            'Stop skipping for rain',
+            () => setTitleRainSkipMm(null),
           )}
           {blockerIds.length > 0 && appliedLine(
             'hourglass-outline',
@@ -2682,9 +2668,11 @@ parsed
           )}
           {!!titleWindowEnd && appliedLine(
             'alarm-outline',
-            titleWindowEnd === '23:59' ? 'Expires at the end of its day' : `Expires at ${formatHHMM(titleWindowEnd)}`,
+            titleWindowEndSun
+              ? `Expires at ${describeSunAnchor(parseSunAnchor(titleWindowEndSun)!).toLowerCase()} (${formatHHMM(titleWindowEnd)} on its day)`
+              : titleWindowEnd === '23:59' ? 'Expires at the end of its day' : `Expires at ${formatHHMM(titleWindowEnd)}`,
             'Remove the expiry',
-            () => setTitleWindowEnd(null),
+            () => { setTitleWindowEnd(null); setTitleWindowEndSun(null); },
           )}
           {avoidsHere && appliedLine(
             'shield-checkmark-outline',
@@ -2712,7 +2700,7 @@ parsed
                 onPress={() => { haptics.tap(); setRulesOptedOut(true); }}
                 hitSlop={8}
                 accessibilityRole="button"
-                accessibilityLabel="Don't use title rules on this task"
+                accessibilityLabel="Don’t use title rules on this task"
               >
                 <Ionicons name="close-circle" size={15} color={colors.textTertiary} />
               </TouchableOpacity>
@@ -2817,7 +2805,7 @@ parsed
               </View>
               {firstWeekCount !== null && (
                 <Text style={[styles.targetStepperCaption, styles.firstWeekCaption]}>
-                  {`${[firstWeekCount, normalizeTargetUnit(targetUnit)].filter(Boolean).join(' ')} this week, since ${firstWeekDaysLeft === 1 ? '1 day is' : `${firstWeekDaysLeft} days are`} left in it.`}
+                  {`${[firstWeekCount, normalizeTargetUnit(targetUnit)].filter(Boolean).join(' ')} this week, since ${firstWeekDaysLeft === 1 ? '1 day is' : `${firstWeekDaysLeft} days are`} left.`}
                 </Text>
               )}
             </View>
@@ -3159,7 +3147,7 @@ parsed
               <Text style={styles.targetStepperCaption}>
                 {supplyCount === null
                   ? 'One is used each time this is done'
-                  : `One used per repeat. More details for the rest.`}
+                  : `One is used per repeat. Set the rest in More details.`}
               </Text>
             </View>
           )}
@@ -3488,13 +3476,13 @@ parsed
                 disabled={!title.trim() || blocked !== null}
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
-                accessibilityLabel={eventText !== null ? 'Add event' : 'Add task'}
+                accessibilityLabel={eventText !== null ? 'Add event' : doseParse !== null ? 'Record dose' : 'Add task'}
               >
                 <Text style={[
                   styles.footerAddText,
                   (!title.trim() || blocked !== null) && styles.footerAddTextDisabled,
                 ]}>
-                  {eventText !== null ? 'Add event' : 'Add task'}
+                  {eventText !== null ? 'Add event' : doseParse !== null ? 'Record dose' : 'Add task'}
                 </Text>
               </TouchableOpacity>
             </View>

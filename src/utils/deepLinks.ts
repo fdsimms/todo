@@ -22,6 +22,7 @@ import {
   resetToMood,
   resetToJournal,
   resetToFoodLog,
+  resetToMedications,
   resetToWeight,
   resetToProjectPull,
   resetToProject,
@@ -513,6 +514,17 @@ export function journalUrlWantsLog(url: string): boolean {
   return value === '1' || value.toLowerCase() === 'true';
 }
 
+/**
+ * The entry a journal link opens (`?entry=<id>`), which is what a note to your
+ * future self's reminder task carries (journalEntryLink), or null.
+ */
+export function journalUrlEntryId(url: string): string | null {
+  if (typeof url !== 'string') return null;
+  const match = JOURNAL_RE.exec(url.trim());
+  if (!match) return null;
+  return (parseQuery(match[2] ?? '').entry ?? '').trim() || null;
+}
+
 // `dundundun://foodlog` — the Today widget's food log shortcut, the peer of
 // `groceries`/`mealplan`/`kitchen`: a plain "open this screen" link with no
 // query params, since nothing writes this one asking for a specific entry or
@@ -521,6 +533,14 @@ const FOOD_LOG_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?foodlog\\/?$`, 'i');
 
 export function isFoodLogUrl(url: string): boolean {
   return typeof url === 'string' && FOOD_LOG_RE.test(url.trim());
+}
+
+// `dundundun://medications` — the Medications widget's tap, the same plain
+// "open this screen" shape as `foodlog`.
+const MEDICATIONS_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?medications\\/?$`, 'i');
+
+export function isMedicationsUrl(url: string): boolean {
+  return typeof url === 'string' && MEDICATIONS_RE.test(url.trim());
 }
 
 // `dundundun://weight[?log=1]` — what the weigh-in request carries, the exact
@@ -699,6 +719,7 @@ export function linkIconFor(url: string | null | undefined): string {
   if (isPeopleUrl(url)) return 'people-outline';
   if (isMoodUrl(url)) return 'happy-outline';
   if (isFoodLogUrl(url)) return 'fast-food-outline';
+  if (isMedicationsUrl(url)) return 'medkit-outline';
   if (isWeightUrl(url)) return 'scale-outline';
   if (isProjectsUrl(url) || isProjectUrl(url)) return 'briefcase-outline';
   if (isDeloadUrl(url)) return 'leaf-outline';
@@ -769,11 +790,15 @@ export function openInAppUrl(url: string | null | undefined): boolean {
   }
   const journalKind = journalUrlKind(url);
   if (journalKind) {
-    resetToJournal(journalKind, journalUrlWantsLog(url));
+    resetToJournal(journalKind, journalUrlWantsLog(url), journalUrlEntryId(url));
     return true;
   }
   if (isFoodLogUrl(url)) {
     resetToFoodLog();
+    return true;
+  }
+  if (isMedicationsUrl(url)) {
+    resetToMedications();
     return true;
   }
   if (isWeightUrl(url)) {

@@ -80,12 +80,16 @@ import { matchPersonMentions } from '../utils/parseTaskInput';
 import { HighlightedText } from '../components/HighlightedText';
 import { formatQuotaProgress } from '../utils/quotaUnit';
 import { asksOnCompletion, deliverableKindFor, formatTaskDeliverable } from '../utils/deliverables';
+import { decisionOutcomes } from '../utils/decisionReview';
 import { isRotationTask, rotationCoveredOf } from '../utils/rotation';
 import { DeliverablePromptSheet } from '../components/DeliverablePromptSheet';
 import { sectionListCellLayout } from '../utils/sectionListLayout';
 import type { Task } from '../types';
 import { useFilterField } from '../hooks/useFilterField';
 import { useEventTaskContext } from '../hooks/useEventTaskContext';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 
 interface LogbookSection {
   title: string;
@@ -218,10 +222,15 @@ function formatTime(iso: string): string {
 }
 
 export function LogbookScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
+  const scrollTop = useListScrollToTop();
+  const kitchenScrollTop = useListScrollToTop();
   const tabBarHeight = useBottomTabBarHeight();
   const navigation = useNavigation<any>();
   const completedTasks = useTaskStore(useShallow(s => s.completedTasks()));
+  // How each decision turned out, from its answered look-back (decisionReview.ts).
+  const outcomes = useMemo(() => decisionOutcomes(completedTasks), [completedTasks]);
   const uncompleteTask = useTaskStore(s => s.uncompleteTask);
   const bulkUncompleteTasks = useTaskStore(s => s.bulkUncompleteTasks);
   const deleteTask = useTaskStore(s => s.deleteTask);
@@ -337,6 +346,9 @@ export function LogbookScreen() {
   }, [route.params?.openProjectHistory, route.params?.projectId, handledProjectParam]);
   const people = usePersonStore(useShallow(s => s.people));
   const [filterVisible, setFilterVisible] = useState(false);
+  // The search field lives behind the header's magnifier. A live query keeps it
+  // open, so a filtered list never has no visible reason why.
+  const [searchOpen, setSearchOpen] = useState(false);
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
 
   // The same bulk-selection machinery every task list uses. Its delete flow
@@ -433,8 +445,8 @@ export function LogbookScreen() {
   const handleClearLogbook = () => {
     haptics.warning();
     confirmDelete({
-      title: 'Clear Logbook',
-      message: `Delete all ${completedTasks.length} completed task${completedTasks.length === 1 ? '' : 's'} from the Logbook? You can shake to undo this right after.`,
+      title: 'Clear Logbook?',
+      message: `This deletes all ${completedTasks.length} completed task${completedTasks.length === 1 ? '' : 's'}. Shake your phone right after to undo.`,
       confirmLabel: 'Clear',
       onConfirm: () => {
         animateLayout();
@@ -448,8 +460,8 @@ export function LogbookScreen() {
   const handleDeleteEntry = (task: Task) => {
     haptics.warning();
     confirmDelete({
-      title: 'Delete Entry',
-      message: `Delete "${displayTitleFor(task)}" from the Logbook? You can undo this by shaking your phone right after.`,
+      title: 'Delete entry?',
+      message: `“${displayTitleFor(task)}” will be deleted from the Logbook. Shake your phone right after to undo.`,
       onConfirm: () => {
         animateLayout();
         // skipGeneratedOptOut: deleting a logbook entry is deleting history,
@@ -533,6 +545,25 @@ export function LogbookScreen() {
     [navigation]
   );
 
+  const searchVisible = searchOpen || query !== '';
+  const hasSearchableRows = activeLens === 'cooking'
+    ? allKitchenEvents.length > 0
+    : completedTasks.length > 0;
+  const toggleSearch = () => {
+    haptics.tap();
+    if (searchVisible) {
+      searchFilter.clear();
+      setSearchOpen(false);
+    } else {
+      setSearchOpen(true);
+    }
+  };
+  const activeFilterCount =
+    [selectedCategory, selectedTag, selectedPerson, selectedProject].filter(Boolean).length;
+  const hasFilterOptions =
+    categoryChipItems.length > 0 || tagChipItems.length > 0 ||
+    peopleChipItems.length > 0 || projectChipItems.length > 0;
+
   const switchLens = (next: LogbookLens) => {
     if (next === lens) return;
     haptics.tap();
@@ -557,14 +588,34 @@ export function LogbookScreen() {
         // so it belongs to that lens alone. There is no equivalent here and
         // there shouldn't be: the cooking rows are a read over the meal plan and
         // the fridge, and clearing them would mean deleting the plan.
-        actions={withScreenSettings(activeLens === 'tasks' && completedTasks.length > 0 ? [
-          {
-            icon: 'trash-outline',
-            onPress: handleClearLogbook,
-            disabled: selectionMode,
-            accessibilityLabel: 'Clear Logbook',
-          },
-        ] : undefined, screenSettings.action)}
+        actions={withScreenSettings([
+          ...(hasSearchableRows ? [{
+            icon: 'search-outline' as const,
+            onPress: toggleSearch,
+            active: searchVisible,
+            accessibilityLabel: searchVisible ? 'Close search' : 'Search the Logbook',
+          }] : []),
+          ...(activeLens === 'tasks' && completedTasks.length > 0 ? [
+            ...(hasFilterOptions ? [{
+              icon: 'funnel-outline' as const,
+              onPress: () => {
+                haptics.tap();
+                setFilterVisible(true);
+              },
+              active: activeFilterCount > 0,
+              badge: activeFilterCount,
+              badgeColor: colors.accentFill,
+              disabled: selectionMode,
+              accessibilityLabel: 'Filter Logbook',
+            }] : []),
+            {
+              icon: 'trash-outline' as const,
+              onPress: handleClearLogbook,
+              disabled: selectionMode,
+              accessibilityLabel: 'Clear Logbook',
+            },
+          ] : []),
+        ], screenSettings.action)}
       />
       <ScreenSettingsSheet {...screenSettings.sheet} />
       <HubPills hub="history" active="Logbook" />
@@ -581,22 +632,26 @@ export function LogbookScreen() {
         </View>
       )}
 
-      {activeLens === 'cooking' && allKitchenEvents.length > 0 && (
+      {activeLens === 'cooking' && allKitchenEvents.length > 0 && searchVisible && (
         <SearchField
           style={styles.searchBar}
           placeholder="Search cooking"
           field={searchFilter}
+          autoFocus
         />
       )}
 
       {activeLens === 'tasks' && completedTasks.length > 0 && (
         <>
-          <SearchField
-            style={styles.searchBar}
-            placeholder="Search the Logbook"
-            field={searchFilter}
-          />
-          {(categoryChipItems.length > 0 || tagChipItems.length > 0) && (
+          {searchVisible && (
+            <SearchField
+              style={styles.searchBar}
+              placeholder="Search the Logbook"
+              field={searchFilter}
+              autoFocus
+            />
+          )}
+          {activeFilterCount > 0 && (
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -607,20 +662,6 @@ export function LogbookScreen() {
               style={styles.filterBarScroll}
               contentContainerStyle={styles.filterBar}
             >
-              <TouchableOpacity
-                style={styles.filterButton}
-                onPress={() => {
-                  haptics.tap();
-                  setFilterVisible(true);
-                }}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
-                accessibilityLabel="Filter Logbook"
-              >
-                <Ionicons name="funnel-outline" size={13} color={colors.text} />
-                <Text style={styles.filterButtonText}>Filter</Text>
-                <Ionicons name="chevron-down" size={12} color={colors.textTertiary} />
-              </TouchableOpacity>
               {selectedCategory && (
                 <ActiveFilterPill
                   label={categoryChipItems.find(c => c.key === selectedCategory)?.label ?? selectedCategory}
@@ -680,6 +721,9 @@ export function LogbookScreen() {
         // have. What the two share is the metrics (see cellLayout) and the day
         // header, which is what makes them read as one screen.
         <SectionList
+          ref={kitchenScrollTop.ref}
+          {...kitchenScrollTop.listProps}
+          refreshControl={pullSearch.refreshControl}
           sections={kitchenSections}
           keyExtractor={item => item.key}
           getItemLayout={getItemLayout}
@@ -718,7 +762,7 @@ export function LogbookScreen() {
               <EmptyState
                 icon="search-outline"
                 title="No matches"
-                subtitle="Nothing you've cooked matches your search"
+                subtitle="Nothing you’ve cooked matches your search"
                 bottomOffset={tabBarHeight}
               />
             ) : (
@@ -734,6 +778,9 @@ export function LogbookScreen() {
       ) : (
       <PaintSelectionProvider {...paintProps}>
       <SectionList
+        ref={scrollTop.ref}
+        {...scrollTop.listProps}
+        refreshControl={pullSearch.refreshControl}
         sections={sections}
         keyExtractor={item => item.id}
         getItemLayout={getItemLayout}
@@ -769,6 +816,7 @@ export function LogbookScreen() {
                   : null
               }
               projectTitle={item.projectId ? projectNamesById.get(item.projectId) ?? null : null}
+              outcome={outcomes.get(item.id)?.text ?? null}
               onOpenProject={openProject}
               styles={styles}
               colors={colors}
@@ -806,7 +854,7 @@ export function LogbookScreen() {
         <SimpleBulkBar
           selectedCount={selectedIds.size}
           // Counted against what's on screen, not the whole logbook — with a
-          // filter applied, "Select All" can only mean the rows it left.
+          // filter applied, "Select all" can only mean the rows it left.
           totalCount={filteredTasks.length}
           primary={{
             icon: 'arrow-undo',
@@ -903,6 +951,8 @@ export function LogbookScreen() {
         selectedProject={selectedProject}
         onSelectProject={setSelectedProject}
       />
+      <ScrollToTopButton {...(activeLens === 'cooking' ? kitchenScrollTop : scrollTop).buttonProps} />
+      {pullSearch.sheet}
     </View>
   );
 }
@@ -913,6 +963,8 @@ interface RowProps {
   categoryLabel: string | null;
   /** The task's project title, or null when it isn't filed under one. */
   projectTitle: string | null;
+  /** How the answer turned out, from its look-back, or null. A string so the memo holds. */
+  outcome: string | null;
   /** Opens the project from its chip. Stable, so the memo holds. */
   onOpenProject: (projectId: string) => void;
   styles: ReturnType<typeof makeStyles>;
@@ -937,6 +989,7 @@ const LogbookRow = React.memo(function LogbookRow({
   task,
   categoryLabel,
   projectTitle,
+  outcome,
   onOpenProject,
   styles,
   colors,
@@ -1070,6 +1123,7 @@ const LogbookRow = React.memo(function LogbookRow({
             // what makes the ⋯ menu's "Add Answer" make sense to someone who
             // can't see the glyph.
             asksOnCompletion(task) ? (answer !== null ? `answered ${answer}` : 'no answer') : null,
+            outcome ? `turned out: ${outcome}` : null,
           ].filter(Boolean).join(', ')}
         >
           <HighlightedText
@@ -1155,7 +1209,9 @@ const LogbookRow = React.memo(function LogbookRow({
             {asksOnCompletion(task) && (
               answer !== null ? (
                 <View style={styles.answerPill}>
-                  <Text style={styles.answer} numberOfLines={1}>{answer}</Text>
+                  {/* The outcome rides in the same pill rather than a line of
+                      its own, since this row's height is pinned. */}
+                  <Text style={styles.answer} numberOfLines={1}>{outcome ? `${answer} → ${outcome}` : answer}</Text>
                 </View>
               ) : (
                 <Text style={styles.noAnswer} numberOfLines={1}>No answer</Text>
@@ -1277,7 +1333,7 @@ const KitchenRow = React.memo(function KitchenRow({
   );
 });
 
-// An applied filter, shown next to the Filter button so the current state is
+// An applied filter, shown under the header so the current state is
 // readable without opening the sheet. Tapping anywhere on it clears it.
 function ActiveFilterPill({
   label,
@@ -1330,20 +1386,6 @@ const makeStyles = (colors: Colors, metrics: ReturnType<typeof logbookMetrics>) 
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     gap: spacing.sm,
-  },
-  filterButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 7,
-    borderRadius: radius.full,
-    backgroundColor: colors.bgQuaternary,
-  },
-  filterButtonText: {
-    color: colors.text,
-    fontSize: font.sm,
-    fontWeight: fontWeight.semibold,
   },
   activePill: {
     flexDirection: 'row',

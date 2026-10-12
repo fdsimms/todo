@@ -109,7 +109,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   penaltyCreditedAt: null,
   gatesApps: false,
   showStreak: false,
-  streakRequiresWindow: false,
+  streakRequiresWindow: false, streakCountsUnits: false,
   parentId: null,
   groupId: null,
   projectId: null,
@@ -400,6 +400,14 @@ describe('projectDecisions', () => {
     const tasks = [
       decision({ id: 'a', completedAt: '2025-01-02T09:00:00.000Z' }),
       makeTask({ id: 'b', projectId: 'p1', completed: true }),
+    ];
+    expect(projectDecisions('p1', tasks).map(t => t.id)).toEqual(['a']);
+  });
+
+  it('leaves out a look-back, whose answer is the outcome of another decision', () => {
+    const tasks = [
+      decision({ id: 'a', completedAt: '2025-01-02T09:00:00' }),
+      decision({ id: 'r', reviewOfTaskId: 'a', deliverableValue: 'Went well', completedAt: '2025-02-02T09:00:00' }),
     ];
     expect(projectDecisions('p1', tasks).map(t => t.id)).toEqual(['a']);
   });

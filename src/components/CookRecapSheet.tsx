@@ -449,8 +449,8 @@ export function CookRecapSheet({
                 <Text style={styles.groupLabel}>Cooked weight</Text>
                 {!hideHelpText && (
                   <Text style={styles.hint}>
-                    Weigh the finished dish, pan and all subtracted, and logging a plate of it later works
-                    out from what your plate weighs instead of from servings.
+                    Weigh the finished dish without the pan to log a plate of it by weight
+                    instead of servings.
                   </Text>
                 )}
                 <View style={styles.card}>

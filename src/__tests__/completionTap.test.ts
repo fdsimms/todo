@@ -82,7 +82,7 @@ const baseTask = {
   penaltyCreditedAt: null,
   gatesApps: false,
   showStreak: false,
-  streakRequiresWindow: false,
+  streakRequiresWindow: false, streakCountsUnits: false,
   recurrenceFromCompletion: false,
   supplyCount: null,
   supplyUnit: null,
@@ -254,6 +254,20 @@ describe('completionTapFor', () => {
 
   // Polarity decides what the control *is*, so it is asked before any of the
   // questions about how a completion should behave.
+  describe('a task a saved entry answers', () => {
+    it.each(['moodLog', 'journalLog', 'dreamLog', 'weighIn'] as const)('%s opens its sheet instead of completing', kind => {
+      expect(completionTapFor({ ...baseTask, generatedKind: kind } as Task)).toBe('open-log');
+    });
+
+    it('is an ordinary tick once the entry exists', () => {
+      expect(completionTapFor({ ...baseTask, generatedKind: 'moodLog' } as Task, true)).toBe('complete');
+    });
+
+    it('is still an ordinary tick for any other generated task', () => {
+      expect(completionTapFor({ ...baseTask, generatedKind: 'moodNudge' } as Task)).toBe('complete');
+    });
+  });
+
   describe('a negative habit', () => {
     const avoid = { ...baseTask, polarity: 'negative' } as Task;
 
@@ -393,6 +407,11 @@ describe('offersMealLogOnCompletion', () => {
   it('is true for a task with logMealSlot set, even with the setting off', () => {
     const captureTask = { ...baseTask, logMealSlot: 'breakfast' } as Task;
     expect(offersMealLogOnCompletion(captureTask, false)).toBe(true);
+  });
+
+  it('is false when the task names a saved meal, since the tick logs it with no sheet', () => {
+    const named = { ...baseTask, logMealSlot: 'breakfast', logSavedMealId: 'sm-1' } as Task;
+    expect(offersMealLogOnCompletion(named, true)).toBe(false);
   });
 
   it('is false for a completed task with logMealSlot set', () => {

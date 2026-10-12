@@ -3,6 +3,7 @@
  * turning template items into task drafts at apply time. Kept free of store
  * imports so the date-offset math can be unit-tested like reorder.ts.
  */
+import { canRampQuota } from './quotaRamp';
 import { addDays } from 'date-fns/addDays';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { canWaitForWeather } from './weatherCondition';
@@ -48,6 +49,8 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     deadlineTime: raw.deadlineOffsetDays != null ? (raw.deadlineTime ?? null) : null,
     windowStart: raw.windowStart ?? null,
     windowEnd: raw.windowEnd ?? null,
+    windowStartSun: raw.windowStartSun ?? null,
+    windowEndSun: raw.windowEndSun ?? null,
     linkUrl: raw.linkUrl ?? null,
     location: raw.location ?? null,
     reminderOffsetMinutes: raw.reminderOffsetMinutes ?? null,
@@ -67,6 +70,8 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     recurrenceMonthDay: raw.recurrenceMonthDay ?? null,
     recurrenceMonth: raw.recurrenceMonth ?? null,
     recurrenceFromCompletion: raw.recurrenceFromCompletion ?? false,
+    recurrenceHolidays: raw.recurrenceHolidays ?? null,
+    rainSkipMm: raw.rainSkipMm ?? null,
     recurrenceCount: raw.recurrenceCount ?? null,
     recurrenceWeekOrdinal: raw.recurrenceWeekOrdinal ?? null,
     // A target below 2 is no target (Task.targetCount's own floor), so it
@@ -74,6 +79,9 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     targetCount: typeof raw.targetCount === 'number' && raw.targetCount >= 2 ? Math.round(raw.targetCount) : null,
     targetUnit: raw.targetUnit ?? null,
     quotaPeriod: raw.quotaPeriod === 'week' ? 'week' : 'day',
+    quotaRampStep: typeof raw.quotaRampStep === 'number' && raw.quotaRampStep > 0 ? Math.round(raw.quotaRampStep) : null,
+    quotaRampEvery: typeof raw.quotaRampEvery === 'number' && raw.quotaRampEvery > 0 ? Math.round(raw.quotaRampEvery) : null,
+    quotaRampGoal: typeof raw.quotaRampGoal === 'number' && raw.quotaRampGoal > 0 ? Math.round(raw.quotaRampGoal) : null,
     allowOvershoot: raw.allowOvershoot ?? false,
     quotaReminders: raw.quotaReminders ?? false,
     chainStepOnSchedule: raw.chainStepOnSchedule ?? false,
@@ -86,6 +94,7 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     excludeFromSuggestions: raw.excludeFromSuggestions ?? false,
     weatherWait: raw.weatherWait ?? null,
     pinEachOccurrence: raw.pinEachOccurrence ?? false,
+    medicationChecklist: raw.medicationChecklist ?? false,
     penaltyMinutes: raw.penaltyMinutes ?? null,
     penaltyCutoffTime: raw.penaltyCutoffTime ?? null,
     gatesApps: raw.gatesApps ?? false,
@@ -109,6 +118,7 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     subtasks: raw.subtasks ?? [],
     groupId: raw.groupId ?? null,
     conditions: normalizeConditions(raw.conditions),
+    conditionsMatch: raw.conditionsMatch === 'any' ? 'any' : 'all',
     variants: normalizeVariants(raw.variants),
     answerGate: normalizeItemGate(raw.answerGate),
     refTemplateId: raw.refTemplateId ?? null,
@@ -134,6 +144,8 @@ function normalizeConditions(raw: unknown): TemplateItemCondition[] {
     .map(c => ({
       questionId: c.questionId,
       values: Array.isArray(c.values) ? c.values.filter((v): v is string => typeof v === 'string') : [],
+      ...(Number.isFinite(c.min) ? { min: c.min } : {}),
+      ...(Number.isFinite(c.max) ? { max: c.max } : {}),
     }));
 }
 
@@ -185,7 +197,43 @@ export function normalizeTemplateQuestion(raw: Partial<TemplateQuestion>): Templ
     // load-bearing rather than incidental — see personIdsForAnswers.
     defaultValue: kind === 'choice' || kind === 'people' ? '' : (raw.defaultValue ?? ''),
     fromDates,
+    // Only a choice has several answers to pick from.
+    multiple: kind === 'choice' && raw.multiple === true,
+    showForecast: raw.showForecast === true,
   };
+}
+
+/**
+ * Where a freshly added item goes when the add button was dropped on the list.
+ *
+ * `items` already holds the new item (at the end, where `addItem` puts it). It
+ * is lifted out and spliced next to `anchorId`, above or below it, and the
+ * result is handed back as ids in the order `reorderItems` takes. A null when
+ * either id isn't in the list, so a drop whose row has since been deleted
+ * leaves the item where it was added instead of guessing.
+ *
+ * `groupId` is the group the new item lands inside: a spot between two members
+ * of one group belongs to it, because the list draws that group's members as one
+ * run. An edge of a group, or a spot between two groups, joins neither.
+ */
+export function placeItemAtDrop(
+  items: readonly TemplateItem[],
+  itemId: string,
+  anchorId: string,
+  before: boolean,
+): { ids: string[]; groupId: string | null } | null {
+  const moved = items.find(i => i.id === itemId);
+  if (!moved || itemId === anchorId) return null;
+  const rest = items.filter(i => i.id !== itemId);
+  const anchor = rest.findIndex(i => i.id === anchorId);
+  if (anchor < 0) return null;
+  const at = before ? anchor : anchor + 1;
+  const above = rest[at - 1];
+  const below = rest[at];
+  const groupId = above?.groupId && above.groupId === below?.groupId ? above.groupId : null;
+  const ids = rest.map(i => i.id);
+  ids.splice(at, 0, itemId);
+  return { ids, groupId };
 }
 
 /**
@@ -213,6 +261,17 @@ export function formatMinutesOffset(mins: number): string {
  * pinned to (`item.anchor`). With that anchor unset, offsets are ignored and
  * the task is created undated.
  */
+/** The ramp fields a draft carries: all three keys always, null unless a plain target can ramp. */
+function rampDraftFields(item: TemplateItem): Pick<TemplateItem, 'quotaRampStep' | 'quotaRampEvery' | 'quotaRampGoal'> {
+  const on = !!item.quotaRampStep
+    && canRampQuota({ targetCount: item.targetCount ?? null, allowOvershoot: item.allowOvershoot ?? false });
+  return {
+    quotaRampStep: on ? item.quotaRampStep! : null,
+    quotaRampEvery: on ? item.quotaRampEvery ?? 1 : null,
+    quotaRampGoal: on ? item.quotaRampGoal ?? null : null,
+  };
+}
+
 export function buildDraftsFromTemplate(
   items: TemplateItem[],
   anchors: TemplateAnchors,
@@ -250,6 +309,8 @@ export function buildDraftsFromTemplate(
       deadlineTime: item.deadlineOffsetDays !== null ? (item.deadlineTime ?? null) : null,
       windowStart: item.windowStart,
       windowEnd: item.windowEnd,
+      windowStartSun: item.windowStartSun ?? null,
+      windowEndSun: item.windowEndSun ?? null,
       linkUrl: item.linkUrl ?? null,
       location: item.location ?? null,
       reminderTime,
@@ -264,12 +325,18 @@ export function buildDraftsFromTemplate(
       recurrenceMonthDay: item.recurrenceMonthDay,
       recurrenceMonth: item.recurrenceMonth,
       recurrenceFromCompletion: item.recurrenceFromCompletion,
+      recurrenceHolidays: item.recurrenceHolidays ?? null,
+      // Only a repeat with days has an occurrence to skip (canSkipForRain).
+      rainSkipMm: item.recurrenceType !== 'none' && item.recurrenceType !== 'hours' ? item.rainSkipMm ?? null : null,
       recurrenceCount: item.recurrenceCount,
       // Only a monthly repeat reads an ordinal (TaskEditor saves it the same way).
       recurrenceWeekOrdinal: item.recurrenceType === 'monthly' ? item.recurrenceWeekOrdinal ?? null : null,
       targetCount: item.targetCount ?? null,
       targetUnit: item.targetCount != null ? item.targetUnit ?? null : null,
       quotaPeriod: item.quotaPeriod ?? 'day',
+      // Only a plain count can ramp (canRampQuota): overshoot rides the day out
+      // in its own sweep, so the pair is not offered together.
+      ...rampDraftFields(item),
       allowOvershoot: item.targetCount != null && (item.allowOvershoot ?? false),
       quotaReminders: item.targetCount != null && (item.quotaReminders ?? false),
       // Only a repeating chain has a "next repeat" to wait for.
@@ -344,9 +411,9 @@ export function anchorLabel(anchor: TemplateAnchor, away = false): string {
  */
 export function formatOffsetWithAnchor(offsetDays: number | null, anchor: TemplateAnchor, away = false): string {
   if (offsetDays === null) return 'No date';
-  if (away && offsetDays === 0) return anchor === 'end' ? "The day you're back" : 'The day you leave';
+  if (away && offsetDays === 0) return anchor === 'end' ? "The day you’re back" : 'The day you leave';
   const name = away
-    ? (anchor === 'end' ? "you're back" : 'leaving')
+    ? (anchor === 'end' ? "you’re back" : 'leaving')
     : (anchor === 'end' ? 'end date' : 'start date');
   if (offsetDays === 0) return `On ${name}`;
   const n = Math.abs(offsetDays);
@@ -805,6 +872,49 @@ function parsePlaceholderRef(raw: string): PlaceholderRef {
   return parsePlaceholderExpr(raw);
 }
 
+/**
+ * The answers a stored answer string holds. A multi-answer choice stores a JSON
+ * array of its picked options (the way a 'people' answer stores ids, so the
+ * answer model stays one string per question); every other answer is the one
+ * value, or none when it is empty.
+ *
+ * Takes the string alone, not the question, so `applyItemVariant` (which only
+ * has answers by id) can match without the question list. Never throws: a
+ * single-answer option that merely starts with `[` and isn't a JSON array of
+ * strings reads as itself.
+ */
+export function answerValues(raw: string): string[] {
+  if (!raw) return [];
+  if (raw.startsWith('[')) {
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.every(v => typeof v === 'string')) return parsed;
+    } catch {
+      // Not an encoded set: the option's own text.
+    }
+  }
+  return [raw];
+}
+
+/** The reverse of `answerValues` for a multi-answer choice. Empty when nothing is picked. */
+export function encodeAnswerValues(values: readonly string[]): string {
+  return values.length > 0 ? JSON.stringify(values) : '';
+}
+
+/**
+ * A blank's picks, and its text. A multi-answer choice reaches the engine in its
+ * stored form (a JSON array), so the engine, not each caller, decides how to
+ * read it: a title wants the picks joined, a switch wants them as a set. Any
+ * other value is one pick, itself. A typed blank that happens to be a JSON
+ * array of strings reads the same way, which is the price of not threading a
+ * second map through every substitution.
+ */
+function readBlank(values: Record<string, string>, name: string): { picks: string[]; text: string } {
+  const raw = (values[name] ?? '').trim();
+  const picks = answerValues(raw);
+  return { picks, text: picks.length === 1 ? picks[0] : picks.join(', ') };
+}
+
 /** The blanks a token reads, in order and without repeats — a switch reads its condition and both branches. */
 function placeholderRefNames(ref: PlaceholderRef): string[] {
   const names = 'blank' in ref ? [ref.blank, ref.then.name, ref.otherwise.name] : [ref.name];
@@ -824,9 +934,11 @@ function placeholderRefNames(ref: PlaceholderRef): string[] {
  */
 function resolvePlaceholderRef(ref: PlaceholderRef, values: Record<string, string>): string | null {
   if ('blank' in ref) {
-    const answer = (values[ref.blank] ?? '').trim();
-    if (!answer) return null;
-    const branch = answer.toLowerCase() === ref.option ? ref.then : ref.otherwise;
+    const { picks } = readBlank(values, ref.blank);
+    if (picks.length === 0) return null;
+    // Any pick matching is enough, so a multi-answer question can say
+    // `{trip type = camping ? 2 : 4}`; a single answer is one pick.
+    const branch = picks.some(p => p.trim().toLowerCase() === ref.option) ? ref.then : ref.otherwise;
     return resolvePlaceholderRef(branch, values);
   }
   const count = (n: number) => {
@@ -834,7 +946,7 @@ function resolvePlaceholderRef(ref: PlaceholderRef, values: Record<string, strin
     return String(ref.cap === null ? rounded : Math.min(rounded, ref.cap));
   };
   if (ref.literal !== null) return count(ref.literal);
-  const raw = (values[ref.name] ?? '').trim();
+  const raw = readBlank(values, ref.name).text.trim();
   if (!raw) return null;
   if (ref.op === null && ref.cap === null) return raw;
   const base = Number(raw);
@@ -1012,6 +1124,44 @@ export function substitutePlaceholders(text: string, values: Record<string, stri
     resolvePlaceholderRef(parsePlaceholderRef(token), keyed) ?? ''
   );
   return tidySubstituted(substituted);
+}
+
+/** One branch or sum in words: "days ÷ 2", "days + 1, up to 5", "2". */
+function describePlaceholderExpr(expr: PlaceholderExpr): string {
+  if (expr.literal !== null) return String(expr.literal);
+  const sym = expr.op === '/' ? '÷' : expr.op === '*' ? '×' : expr.op;
+  const sum = expr.op === null ? expr.name : `${expr.name} ${sym} ${expr.operand}`;
+  return expr.cap === null ? sum : `${sum}, up to ${expr.cap}`;
+}
+
+/**
+ * `text` with each computed `{...}` token spelled out for reading, for the
+ * places a template is looked at rather than edited: `Socks x{laundry access =
+ * Yes ? days / 2 : days + 1 max 5}` reads "Socks x (days ÷ 2 if laundry access
+ * is Yes, otherwise days + 1, up to 5)". Display only: the stored title and the
+ * editor keep the syntax, and `substitutePlaceholders` never sees this output.
+ *
+ * A plain `{name}` is left as typed (it already reads as a blank), so text with
+ * no computed token comes back byte for byte.
+ */
+export function describePlaceholderTokens(text: string): string {
+  PLACEHOLDER_PATTERN.lastIndex = 0;
+  return text.replace(PLACEHOLDER_PATTERN, (match: string, token: string, offset: number) => {
+    const ref = parsePlaceholderRef(token);
+    let words: string;
+    if ('blank' in ref) {
+      // The option is read from the token again because the parsed one is
+      // lowercased for matching and the author's own capitals read better.
+      const option = token.slice(token.indexOf('=') + 1, token.indexOf('?')).trim();
+      words = `${describePlaceholderExpr(ref.then)} if ${ref.blank} is ${option}, otherwise ${describePlaceholderExpr(ref.otherwise)}`;
+    } else if (ref.op === null && ref.cap === null) {
+      return match;
+    } else {
+      words = describePlaceholderExpr(ref);
+    }
+    const before = text.slice(0, offset);
+    return `${before === '' || /\s$/.test(before) ? '' : ' '}(${words})`;
+  });
 }
 
 /** Apply `substitutePlaceholders` to every user-visible string on a draft built from a template item. */

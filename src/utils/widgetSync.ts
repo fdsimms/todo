@@ -9,7 +9,7 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { resetToKitchen, resetToToday } from '../navigation/navigationRef';
-import { buildWidgetSnapshot, WATCH_LIMITS, type SnapshotInput } from './widgetSnapshot';
+import { buildWidgetSnapshot, WATCH_CAPS, type SnapshotInput } from './widgetSnapshot';
 import { completedOnDay } from './allClear';
 import { getDayStart, getLogicalDayKey } from './dateUtils';
 import { beginVisibleAtPass, getVisibleAt } from './visibilityUtils';
@@ -24,7 +24,17 @@ import { kitchenInventory } from './kitchenInventory';
 import { listedAnywhere } from './groceryLists';
 import { buildPantryIndex, parseQueuedDisposals, planQueuedDisposals } from './pantryIndex';
 import { widgetBridge } from './widgetBridge';
+import { useMedicationStore } from '../store/useMedicationStore';
+import { useFoodLogStore } from '../store/useFoodLogStore';
+import { foodLogTotals } from './foodLog';
+import { buildMedicationIndex, parseQueuedDoses, resolveQueuedDoseName } from './medicationIndex';
+import { repeatDose } from './medicationLog';
+import { defaultUsualDose, prefsFor } from './medicationSettings';
+import { recordDose } from './doseRecording';
 import { haptics } from './haptics';
+import { parseQueuedDreams } from './dreamQueue';
+import { useJournalStore } from '../store/useJournalStore';
+import { isProjectLocked } from '../store/useProjectLockStore';
 
 const DEBOUNCE_MS = 300;
 
@@ -144,6 +154,78 @@ async function processPendingDisposals(): Promise<void> {
   } catch {
     // A build predating drainPendingDisposals — no-op.
   }
+}
+
+// Records what LogMedicationIntent queued ("log ibuprofen", said to Siri).
+// The same drain shape and demo-mode reasoning as processPendingDisposals.
+// Each dose repeats the last one recorded for that medication, the way the
+// Medications screen's quick button does, at the moment Siri was asked, and
+// goes through `recordDose` so the "OK again" notification moves and a supply
+// that just ran low offers a refill. No limit question: the person already
+// asked for it, and asking again after the fact can't un-take a dose.
+async function processPendingDoses(): Promise<void> {
+  const bridge = widgetBridge();
+  // Optional on the bridge: a binary built before the intent has no drain.
+  if (!bridge?.drainPendingDoses) return;
+  try {
+    const queued = parseQueuedDoses(await bridge.drainPendingDoses());
+    if (queued.length === 0) return;
+    for (const dose of queued) {
+      const { logs, registered, settings } = useMedicationStore.getState();
+      const name = resolveQueuedDoseName(dose, logs, registered);
+      recordDose({ ...repeatDose(logs, name, defaultUsualDose(prefsFor(settings, name))), at: dose.at ?? undefined });
+    }
+    haptics.success();
+  } catch {
+    // A build predating drainPendingDoses — no-op.
+  }
+}
+
+// Dreams said to Siri or the Action Button (LogDreamIntent): written into the
+// dream log, filed under the day they were said. Silent on arrival, like the
+// task capture: no navigation, so the journal lock stays closed. Saying one
+// also answers today's "write down a dream" reminder, as saving it in the
+// sheet does. Written through the store's own addEntry, which refuses blank
+// text, so a malformed record costs nothing.
+async function processPendingDreams(): Promise<void> {
+  const bridge = widgetBridge();
+  // Optional on the bridge: a binary built before the intent has no drain.
+  if (!bridge?.drainPendingDreams) return;
+  try {
+    const queued = parseQueuedDreams(await bridge.drainPendingDreams());
+    if (queued.length === 0) return;
+    const journal = useJournalStore.getState();
+    // The store loads with the task store at startup; a drain that beats it
+    // would otherwise sort the new row into an empty list.
+    if (!journal.initialized) journal.initialize();
+    let wroteToday = false;
+    for (const dream of queued) {
+      const entry = useJournalStore.getState().addEntry('dream', dream.text, dream.at ?? undefined);
+      if (entry && dream.at === null) wroteToday = true;
+      if (entry && dream.at !== null && getLogicalDayKey(dream.at) === getLogicalDayKey(new Date())) wroteToday = true;
+    }
+    if (wroteToday) useTaskStore.getState().completeJournalTaskForToday('dream');
+    haptics.success();
+  } catch {
+    // A build predating drainPendingDreams — no-op.
+  }
+}
+
+// The medications LogMedicationIntent can hear (medicationIndex.ts). Its own
+// debounce rather than riding the widget snapshot's: a dose changes nothing on
+// a home screen, and the snapshot write reloads every widget timeline. Skipped
+// before the store has loaded, for the reason the pantry index is: an empty
+// file reads as "you take nothing" until the next dose.
+let medicationIndexTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleMedicationIndexWrite(): void {
+  if (medicationIndexTimer) clearTimeout(medicationIndexTimer);
+  medicationIndexTimer = setTimeout(() => {
+    const meds = useMedicationStore.getState();
+    if (!meds.initialized) return;
+    const bridge = widgetBridge();
+    bridge?.writeMedicationIndex?.(JSON.stringify(buildMedicationIndex(meds.logs, meds.archived, meds.registered))).catch(() => {});
+  }, DEBOUNCE_MS);
 }
 
 // Applies the taps the widget handled without opening the app (see
@@ -270,21 +352,27 @@ function widgetUpcoming(deferred: readonly Task[], now: Date): { task: Task; vis
   return deferred.map(task => ({ task, visibleAt: getVisibleAt(task, pass) }));
 }
 
+const notLocked = (t: Task) => !isProjectLocked(t.projectId);
+
 function writeSnapshotNow(): void {
   if (Platform.OS !== 'ios') return;
   const now = new Date();
   const tasks = useTaskStore.getState();
   const settings = useSettingsStore.getState();
   const grocery = useGroceryStore.getState();
+  const medications = useMedicationStore.getState();
+  const foodLog = useFoodLogStore.getState();
   const leftovers = useLeftoverStore.getState();
   const dayResetTime = settings.dayResetTime;
   const todayKey = getLogicalDayKey(now, dayResetTime);
 
   const input: SnapshotInput = {
     now,
-    visibleTasks: tasks.visibleTasks(),
-    pinnedTasks: tasks.pinnedTasks(),
-    allTasks: tasks.tasks,
+    // A widget can't ask for Face ID, so a locked project stays off it even
+    // while the app is unlocked.
+    visibleTasks: tasks.visibleTasks().filter(notLocked),
+    pinnedTasks: tasks.pinnedTasks().filter(notLocked),
+    allTasks: tasks.tasks.filter(notLocked),
     categories: useCategoryStore.getState().categories.map(c => c.name),
     dayResetTime,
     doneToday: completedOnDay(tasks.tasks, todayKey, dayResetTime).length,
@@ -318,19 +406,32 @@ function writeSnapshotNow(): void {
           )
         : null,
     events: widgetEvents(settings.calendarReadEnabled),
+    medications: medications.initialized
+      ? { logs: medications.logs, archived: medications.archived }
+      : null,
+    // Read fresh for today rather than from the Food log's window, which holds
+    // whatever day that screen last showed.
+    limits: foodLog.initialized
+      ? {
+          totals: foodLogTotals(foodLog.recentEntries(todayKey, todayKey)).total,
+          targets: settings.nutritionTargets,
+          limits: settings.nutritionLimits,
+          warnPercent: settings.limitWarnPercent,
+        }
+      : null,
     dayEnd: addDays(getDayStart(now, dayResetTime), 1),
-    upcoming: widgetUpcoming(tasks.deferredTasks(), now),
+    upcoming: widgetUpcoming(tasks.deferredTasks().filter(notLocked), now),
     mealLogPrompt: settings.mealLogPrompt,
   };
 
   writeToNativeBridge(JSON.stringify(buildWidgetSnapshot(input)));
 
   // The Apple Watch reads the same snapshot with room for a whole shopping
-  // list (see WATCH_LIMITS). Same moment and the same gate as the widget's
+  // list (see WATCH_CAPS). Same moment and the same gate as the widget's
   // write, so the two never describe different states; the native half drops
   // it when there's no paired watch with the app installed.
   const bridge = widgetBridge();
-  bridge?.writeWatchSnapshot(JSON.stringify(buildWidgetSnapshot({ ...input, limits: WATCH_LIMITS }))).catch(() => {});
+  bridge?.writeWatchSnapshot(JSON.stringify(buildWidgetSnapshot({ ...input, caps: WATCH_CAPS }))).catch(() => {});
 
   // Rides the same debounce and the same store read rather than taking a
   // subscription of its own: every write that could change the index is a
@@ -403,6 +504,29 @@ function subscribeToStores(): () => void {
     useHiddenEventsStore.subscribe((s, p) => {
       if (s.hiddenByKey !== p.hiddenByKey) scheduleSnapshotWrite();
     }),
+    // The Limits widget: a logged, revised or deleted entry, and the targets
+    // and limits it is read against.
+    useFoodLogStore.subscribe((s, p) => {
+      if (s.totalCount !== p.totalCount || s.entries !== p.entries || s.initialized !== p.initialized) {
+        scheduleSnapshotWrite();
+      }
+    }),
+    useSettingsStore.subscribe((s, p) => {
+      if (
+        s.nutritionTargets !== p.nutritionTargets ||
+        s.nutritionLimits !== p.nutritionLimits ||
+        s.limitWarnPercent !== p.limitWarnPercent
+      ) {
+        scheduleSnapshotWrite();
+      }
+    }),
+    useMedicationStore.subscribe((s, p) => {
+      if (s.logs !== p.logs || s.archived !== p.archived || s.registered !== p.registered || s.initialized !== p.initialized) {
+        // The Medications widget reads the snapshot, Siri reads the index.
+        scheduleSnapshotWrite();
+        scheduleMedicationIndexWrite();
+      }
+    }),
   ];
   return () => {
     for (const unsubscribe of unsubscribers) unsubscribe();
@@ -422,12 +546,15 @@ export function useWidgetSync(): void {
       processPendingWidgetCompletions(),
       processPendingAddTasks(),
       processPendingDisposals(),
+      processPendingDoses(),
+      processPendingDreams(),
       processQuietWidgetTaps(),
     ]).finally(() => {
       // Deferred rather than called synchronously during mount — avoids
       // making the very first native module call while the app (and its
       // native module registry) is still mid-launch.
       scheduleSnapshotWrite();
+      scheduleMedicationIndexWrite();
     });
 
     // Tapping a checkbox in the widget (CompleteTaskIntent, in
@@ -442,6 +569,8 @@ export function useWidgetSync(): void {
           processPendingWidgetCompletions(),
           processPendingAddTasks(),
           processPendingDisposals(),
+          processPendingDoses(),
+          processPendingDreams(),
           processQuietWidgetTaps(),
         ]).finally(scheduleSnapshotWrite);
       }

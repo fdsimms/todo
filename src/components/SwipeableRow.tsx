@@ -1,9 +1,9 @@
 import React, { useMemo, useRef } from 'react';
-import { StyleSheet, TouchableOpacity, View, type StyleProp, type ViewStyle } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View, type StyleProp, type ViewStyle } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Swipeable } from 'react-native-gesture-handler';
 import { useColors } from '../theme/ThemeContext';
-import { iconSize, type Colors } from '../theme';
+import { font, fontWeight, iconSize, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 
 /** Every revealed panel is this wide, on every screen. */
@@ -30,6 +30,12 @@ export interface DeleteAction {
   accessibilityLabel: string;
 }
 
+export interface UndoAction {
+  /** Takes back something the person just did to this row (a dose marked taken). */
+  onUndo: () => void;
+  accessibilityLabel: string;
+}
+
 interface Props {
   /**
    * Swipe left. Always "enter bulk editing with this row selected" — omit it
@@ -50,6 +56,15 @@ interface Props {
    * `whenAction` if a caller passes both.
    */
   deleteAction?: DeleteAction;
+  /**
+   * Swipe right, in place of `whenAction`: a labelled "Undo" panel for a row
+   * that records something already done, where a tap would be the wrong place
+   * to take it back (a finished record has no reason to react to a tap). Like
+   * `deleteAction` it is an exception to "nothing destructive on a swipe", and
+   * only for a row whose result the person can redo in one tap. Wins over
+   * `deleteAction` and `whenAction` if a caller passes several.
+   */
+  undoAction?: UndoAction;
   /** Turns the gesture off without unmounting it — see the note below. */
   enabled?: boolean;
   /** Applied to the clipping view wrapping the row. */
@@ -98,7 +113,7 @@ interface Props {
  *   the default was never doing work — it was only ever able to round a seam
  *   that isn't a corner.
  */
-export function SwipeableRow({ selectAction, whenAction, deleteAction, enabled = true, style, children }: Props) {
+export function SwipeableRow({ selectAction, whenAction, deleteAction, undoAction, enabled = true, style, children }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const ref = useRef<Swipeable>(null);
@@ -137,7 +152,19 @@ export function SwipeableRow({ selectAction, whenAction, deleteAction, enabled =
     : undefined;
 
   // Left-hand panel, revealed by swiping right.
-  const renderLeftActions = deleteAction
+  const renderLeftActions = undoAction
+    ? () => (
+        <TouchableOpacity
+          style={styles.undoAction}
+          onPress={() => fire(undoAction.onUndo)}
+          accessibilityRole="button"
+          accessibilityLabel={undoAction.accessibilityLabel}
+        >
+          <Ionicons name="arrow-undo" size={iconSize.md} color={colors.onAccent} />
+          <Text style={styles.undoLabel}>Undo</Text>
+        </TouchableOpacity>
+      )
+    : deleteAction
     ? () => (
         <TouchableOpacity
           style={styles.deleteAction}
@@ -200,6 +227,7 @@ export function SwipeableRow({ selectAction, whenAction, deleteAction, enabled =
         onSwipeableWillOpen={direction => {
           haptics.impactMedium();
           if (direction === 'right') { if (selectAction) commit(selectAction.onSelect); }
+          else if (undoAction) commit(undoAction.onUndo);
           else if (deleteAction) commit(deleteAction.onDelete);
           else if (whenAction) commit(whenAction.onAction);
         }}
@@ -226,6 +254,18 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.orangeFill,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  undoAction: {
+    width: ACTION_WIDTH,
+    backgroundColor: colors.accentFill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xxs,
+  },
+  undoLabel: {
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    color: colors.onAccent,
   },
   deleteAction: {
     width: ACTION_WIDTH,

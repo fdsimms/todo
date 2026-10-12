@@ -19,6 +19,7 @@ import { dayKeyOf, getDayStart } from '../utils/dateUtils';
 import { useSettingsStore } from './useSettingsStore';
 import { spansDays } from '../utils/tripEvents';
 import { createRefreshGuard } from '../utils/refreshGuard';
+import { createCoalescedTrigger, onEventStoreChanged } from '../utils/eventStoreChanges';
 
 /**
  * A rolling window of the device calendar, held in memory.
@@ -28,9 +29,11 @@ import { createRefreshGuard } from '../utils/refreshGuard';
  * no migration and no reconcile. Caching it into SQLite would create a second
  * copy that goes stale silently and has to be invalidated by something, and
  * expo-calendar gives us no change notification to invalidate it with (there is
- * no `EKEventStoreChanged` bridge). A window in memory, refreshed on
- * foreground, has exactly one failure mode — being a few minutes old — and it
- * is the same one the Reminders import already lives with.
+ * no `EKEventStoreChanged` bridge in expo-calendar, so `todo-eventkit-bridge`
+ * supplies one). A window in memory, refreshed on foreground and when the
+ * Calendar database says it changed, has exactly one failure mode — being a few
+ * seconds or minutes old — and it is the same one the Reminders import already
+ * lives with.
  *
  * The one thing that *is* persisted is `handledHistory`, and it is the other
  * side of that line rather than an exception to it: which history offers the
@@ -47,6 +50,14 @@ import { createRefreshGuard } from '../utils/refreshGuard';
  * every foreground and holding them for a screen that shows one day.
  */
 export const CALENDAR_WINDOW_DAYS = 14;
+
+/**
+ * How long a burst of Calendar-database changes is gathered before the window
+ * is read again. One edit in the Calendar app can post several notifications
+ * in quick succession; a second is enough for them to land and short enough
+ * that the screen catches up before anyone notices it was behind.
+ */
+export const CALENDAR_CHANGE_COALESCE_MS = 1000;
 
 /**
  * How far ahead the trip read reaches. A trip is planned weeks out, past the
@@ -108,6 +119,21 @@ interface CalendarState {
    */
   readFailed: boolean;
   refresh: () => Promise<void>;
+  /**
+   * Tomorrow's events from the calendars vacation mode is hiding, held only
+   * while vacation ends tomorrow. Read by the "Review tomorrow's calendar" task
+   * and nothing else: the hiding keeps work out of the days you're away, and
+   * knowing what waits on the day you're back is not that. Kept out of `events`
+   * on purpose, since every other reader of that would start showing them.
+   */
+  vacationReturnEvents: BusyEvent[];
+  /**
+   * True only when vacation hides every calendar that was picked and the
+   * return-day read above succeeded, which makes that read the complete answer
+   * for tomorrow. Stands in for `loaded` in the review task alone; `loaded`
+   * itself stays false, since nothing else is being read.
+   */
+  vacationReturnLoaded: boolean;
   /**
    * The past window, and it is a **separate window on purpose** rather than a
    * widening of the one above. That one is refreshed on every foreground to
@@ -171,6 +197,26 @@ export function sameBusyEvents(held: readonly BusyEvent[], read: readonly BusyEv
   return held.every((e, i) => e === read[i] || JSON.stringify(e) === JSON.stringify(read[i]));
 }
 
+/**
+ * The calendars whose events for tomorrow the review task may still read: the
+ * ones vacation mode is hiding, but only when vacation ends tomorrow. Vacation
+ * turns off when its end date's day begins (`checkVacationExpiry`), so that
+ * day is the first one back.
+ */
+export function vacationReturnCalendarIds(s: {
+  vacationMode: boolean;
+  vacationEnd: string | null;
+  calendarIds: readonly string[];
+  vacationHiddenCalendarIds: readonly string[];
+  dayResetTime: string;
+}): string[] {
+  if (!s.vacationMode || !s.vacationEnd) return [];
+  const endKey = dayKeyOf(getDayStart(new Date(s.vacationEnd), s.dayResetTime));
+  const tomorrowKey = dayKeyOf(addDays(getDayStart(new Date(), s.dayResetTime), 1));
+  if (endKey !== tomorrowKey) return [];
+  return s.calendarIds.filter(id => s.vacationHiddenCalendarIds.includes(id));
+}
+
 const windowGuard = createRefreshGuard();
 const pastGuard = createRefreshGuard();
 const aheadGuard = createRefreshGuard();
@@ -178,6 +224,8 @@ const followUpGuard = createRefreshGuard();
 
 export const useCalendarStore = create<CalendarState>((set, get) => ({
   events: [],
+  vacationReturnEvents: [],
+  vacationReturnLoaded: false,
   perCalendar: {},
   calendarsById: {},
   windowStart: null,
@@ -196,7 +244,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
   handledLoaded: false,
 
   async refresh() {
-    const { calendarReadEnabled, calendarIds, vacationMode, vacationHiddenCalendarIds, dayResetTime } =
+    const { calendarReadEnabled, calendarIds, vacationMode, vacationHiddenCalendarIds, vacationEnd, dayResetTime } =
       useSettingsStore.getState();
     // While on vacation, a calendar picked here can still be left out of the
     // read — a work calendar you want gone for the trip without un-picking
@@ -205,6 +253,16 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
     const readIds = vacationMode
       ? calendarIds.filter(id => !vacationHiddenCalendarIds.includes(id))
       : calendarIds;
+    // Anchored on the logical day rather than midnight, so a 2 AM day reset
+    // reads "today" the way every other list in the app does.
+    const start = getDayStart(new Date(), dayResetTime);
+    const end = addDays(start, CALENDAR_WINDOW_DAYS);
+    // The return day's events from the hidden calendars: a second, one-day
+    // read, so `events` stays exactly what the hiding promises.
+    const returnIds = vacationReturnCalendarIds({
+      vacationMode, vacationEnd, calendarIds, vacationHiddenCalendarIds, dayResetTime,
+    });
+    const tomorrow = addDays(start, 1);
     if (!calendarReadEnabled || readIds.length === 0 || Platform.OS !== 'ios') {
       // Same rule `clear()` follows: this write must invalidate the guard too,
       // or a normal refresh already in flight (started before this branch ran)
@@ -212,18 +270,30 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
       // intentional clear with whatever it read before the read was cleared.
       windowGuard.invalidate();
       set({
-        events: [], perCalendar: {}, calendarsById: {},
+        events: [], vacationReturnEvents: [], vacationReturnLoaded: false, perCalendar: {}, calendarsById: {},
         windowStart: null, windowEnd: null, loaded: false, readFailed: false,
       });
+      // Vacation hides every calendar that was picked, so the one-day read is
+      // the whole answer for tomorrow and the review task has nothing else to
+      // wait for. `loaded` stays false: Today and the busy checks still see no
+      // calendar, which is what the hiding promises.
+      if (calendarReadEnabled && Platform.OS === 'ios' && returnIds.length > 0) {
+        const guardToken = windowGuard.begin();
+        const held = await fetchEvents(returnIds, tomorrow, addDays(tomorrow, 1));
+        if (!windowGuard.isCurrent(guardToken) || held === null) return;
+        set({ vacationReturnEvents: held.events, vacationReturnLoaded: true });
+      }
       return;
     }
-    // Anchored on the logical day rather than midnight, so a 2 AM day reset
-    // reads "today" the way every other list in the app does.
-    const start = getDayStart(new Date(), dayResetTime);
-    const end = addDays(start, CALENDAR_WINDOW_DAYS);
     const token = windowGuard.begin();
     const result = await fetchEvents(readIds, start, end);
     if (!windowGuard.isCurrent(token)) return;
+    let vacationReturnEvents: BusyEvent[] = [];
+    if (result !== null && returnIds.length > 0) {
+      const held = await fetchEvents(returnIds, tomorrow, addDays(tomorrow, 1));
+      if (!windowGuard.isCurrent(token)) return;
+      vacationReturnEvents = held?.events ?? [];
+    }
     if (result === null) {
       // A failed read leaves the previous window (and per-calendar status) in
       // place rather than blanking it: yesterday's answer is better than a
@@ -233,6 +303,8 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
     }
     set({
       events: result.events,
+      vacationReturnEvents,
+      vacationReturnLoaded: false,
       perCalendar: result.perCalendar,
       calendarsById: result.calendarsById,
       windowStart: start.toISOString(),
@@ -371,7 +443,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
     aheadGuard.invalidate();
     followUpGuard.invalidate();
     set({
-      events: [], perCalendar: {}, calendarsById: {}, windowStart: null, windowEnd: null, loaded: false, readFailed: false,
+      events: [], vacationReturnEvents: [], vacationReturnLoaded: false, perCalendar: {}, calendarsById: {}, windowStart: null, windowEnd: null, loaded: false, readFailed: false,
       pastEvents: [], pastLoaded: false, pastReadAt: null,
       aheadEvents: [], aheadLoaded: false, aheadWindowEnd: null,
       followUpEvents: [], followUpLoaded: false,
@@ -408,9 +480,12 @@ function hydrateHandled(
 /**
  * Keeps the window current. Call once from the root component.
  *
- * Three triggers, none of which is a poll — the same set `useRemindersImportSync`
- * settled on, and for the same reason: there is no OS-side change notification
- * to subscribe to.
+ * Four triggers, none of which is a poll: the cold start, a settings change,
+ * coming back to the app, and the Calendar database changing while the app is
+ * open (`onEventStoreChanged`). The last is the newest, and it is an addition
+ * to the foreground read rather than a replacement: Apple does not say which
+ * event stores are told of a change, so a build where it never fires still
+ * refreshes the way it always did.
  *
  * The window also goes stale by *sitting there* — it's anchored on the day it
  * was read, so an app left open overnight would answer questions about
@@ -458,9 +533,22 @@ export function useCalendarSync(): void {
       if (state === 'active' && useSettingsStore.getState().calendarReadEnabled) refreshWindows();
     });
 
+    // A change made while the app is open: the Calendar app edited, a sync
+    // landing, or this app's own write. The notification says nothing about
+    // what changed, so this reads the same window the foreground does. Read
+    // only, so it cannot feed itself: a read posts no notification. A burst of
+    // them is one read, and only while the app is in front and the read is on.
+    const changed = createCoalescedTrigger(() => {
+      if (AppState.currentState !== 'active') return;
+      if (useSettingsStore.getState().calendarReadEnabled) refreshWindows();
+    }, CALENDAR_CHANGE_COALESCE_MS);
+    const stopListening = onEventStoreChanged(() => changed.fire());
+
     return () => {
       unsubscribe();
       subscription.remove();
+      stopListening();
+      changed.cancel();
     };
   }, []);
 }

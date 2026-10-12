@@ -165,3 +165,54 @@ export function focusRestsDisabled(
   const minutesOff = settings.focusRestAfterMinutes == null || settings.focusRestAfterMinutes <= 0;
   return tasksOff && minutesOff;
 }
+
+/**
+ * The break rules the setup sheet lets someone change for the one session
+ * about to start. A subset of `FocusPlanOptions` on purpose: the sheet edits
+ * the cadence and the lengths, never the work cap or the default stretch.
+ */
+export type SessionBreakEdits = Pick<
+  FocusPlanOptions,
+  'restAfterMinutes' | 'restMinutes' | 'longRestEvery'
+>;
+
+/** The edits a session starts from: whatever the plan options already say. */
+export function sessionBreakEditsFrom(options: FocusPlanOptions): SessionBreakEdits {
+  return {
+    restAfterMinutes: options.restAfterMinutes,
+    restMinutes: options.restMinutes,
+    longRestEvery: options.longRestEvery,
+  };
+}
+
+/** True when the edits are exactly what the options already hold. */
+export function sessionBreakEditsMatch(options: FocusPlanOptions, edits: SessionBreakEdits): boolean {
+  const base = sessionBreakEditsFrom(options);
+  return (
+    base.restAfterMinutes === edits.restAfterMinutes
+    && base.restMinutes === edits.restMinutes
+    && base.longRestEvery === edits.longRestEvery
+  );
+}
+
+/** One session's break rules written over the Settings plan options. */
+export function applySessionBreakEdits(options: FocusPlanOptions, edits: SessionBreakEdits): FocusPlanOptions {
+  return { ...options, ...edits };
+}
+
+/**
+ * The break rule in one line, for the setup sheet's Breaks row:
+ * "5 min after every 25 min of work". Either trigger can be off, and with both
+ * off there is no rule to describe.
+ */
+export function describeBreakRule(options: FocusPlanOptions): string {
+  const triggers: string[] = [];
+  if (options.restAfterMinutes != null && options.restAfterMinutes > 0) {
+    triggers.push(`every ${options.restAfterMinutes} min of work`);
+  }
+  if (options.restAfterTasks != null && options.restAfterTasks > 0) {
+    triggers.push(`every ${options.restAfterTasks} task${options.restAfterTasks === 1 ? '' : 's'}`);
+  }
+  if (triggers.length === 0) return 'No breaks';
+  return `${options.restMinutes} min after ${triggers.join(' or ')}`;
+}

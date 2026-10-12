@@ -20,12 +20,22 @@ export function useKeyboardHeight(active: boolean): number {
   useEffect(() => {
     if (Platform.OS !== 'ios' || !active) return;
     const update = (e: { endCoordinates?: { height: number } }) => setHeight(e.endCoordinates?.height ?? 0);
+    // `active` usually flips true because the field just took focus, and the
+    // keyboard's own show event can fire before this effect subscribes. Without
+    // the seed, a second focus after a dismiss missed it and the bar never came back.
+    setHeight(Keyboard.metrics()?.height ?? 0);
     const showSub = Keyboard.addListener('keyboardWillShow', update);
     const changeSub = Keyboard.addListener('keyboardWillChangeFrame', update);
+    // Focus can land a beat before this effect subscribes, so `keyboardWillShow`
+    // has already gone by and `Keyboard.metrics()` is still empty (RN fills it
+    // on `keyboardDidShow`). Without this the bar waited for another keyboard
+    // change before it appeared.
+    const didShowSub = Keyboard.addListener('keyboardDidShow', update);
     const hideSub = Keyboard.addListener('keyboardWillHide', () => setHeight(0));
     return () => {
       showSub.remove();
       changeSub.remove();
+      didShowSub.remove();
       hideSub.remove();
     };
   }, [active]);

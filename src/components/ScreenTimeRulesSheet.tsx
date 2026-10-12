@@ -93,10 +93,10 @@ export function ScreenTimeRulesSheet({ visible, onClose }: Props) {
     <RuleListSheet<ScreenTimeRule>
       visible={visible}
       onClose={onClose}
-      title="Screen time rules"
+      title="Screen Time rules"
       caption={
-        'A rule adds its task once you have spent that long on the apps you picked, counted '
-        + 'across the day. Each rule adds its task at most once a day.'
+        'A rule adds its task once your total time today on the apps you picked '
+        + 'reaches the time you set. Each rule adds its task at most once a day.'
       }
       rules={rules}
       categoryFallback={fallbackCategory}
@@ -127,8 +127,8 @@ export function ScreenTimeRulesSheet({ visible, onClose }: Props) {
       titlePlaceholder="e.g. Take a walk"
       titleMaxLength={SCREEN_TIME_RULE_TITLE_MAX_LENGTH}
       emptyIcon="phone-portrait-outline"
-      emptyTitle="No screen time rules"
-      emptySubtitle="Add a rule to get a task once you've spent a while on the apps you picked."
+      emptyTitle="No Screen Time rules"
+      emptySubtitle="Add a rule to get a task after you spend a set time on the apps you picked."
       header={
         <>
           {authorization !== null && authorization !== 'approved' && (
@@ -138,9 +138,9 @@ export function ScreenTimeRulesSheet({ visible, onClose }: Props) {
               title="Screen Time access"
               hint={
                 authorization === 'denied'
-                  ? "Blocked. Rules can't see your app usage until you turn this back on for this app."
+                  ? "Blocked. Rules can’t see your app usage until you turn access back on in Settings."
                   : authorization === 'notDetermined'
-                  ? "Not allowed yet. Rules can't see your app usage until you allow it."
+                  ? "Not allowed yet. Rules can’t see your app usage until you allow it."
                   : 'Not available on this device.'
               }
               action={(authorization === 'denied' || authorization === 'notDetermined') && (

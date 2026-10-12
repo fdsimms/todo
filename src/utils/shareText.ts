@@ -404,7 +404,7 @@ export function buildWeekPlanShareText(
   options: { thisWeek?: boolean } = {},
 ): string {
   const range = describeWeekRange(days);
-  const lines = [options.thisWeek ? `This week's meals (${range})` : `Meals for ${range}`];
+  const lines = [options.thisWeek ? `This week’s meals (${range})` : `Meals for ${range}`];
   for (const day of days) {
     const dayEntries = entriesForDay(entries, dayKeyOf(day));
     if (dayEntries.length === 0) continue;

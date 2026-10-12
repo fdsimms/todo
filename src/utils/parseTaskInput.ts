@@ -1382,6 +1382,169 @@ export function parseWeatherWaitInput(input: string): ParsedWeatherWait | null {
   return { condition: match[1].toLowerCase() as WeatherCondition, cleanTitle, matchStart, matchEnd };
 }
 
+export interface ParsedMeter {
+  /** How far the meter runs between times: 5000 in "every 5,000 miles". */
+  every: number;
+  /** What it counts, as typed: "miles". */
+  unit: string;
+  /** The meter, as typed after "on" or "for": "car", "espresso machine". */
+  meterName: string;
+  cleanTitle: string;
+  matchStart: number;
+  matchEnd: number;
+}
+
+// "change the oil every 5,000 miles on the car". The "on"/"for" and a name at
+// the end are what make it a meter: a bare "every 5,000 miles" names nothing to
+// read, and a time unit ("every 2 weeks on the car") is a repeat, which the
+// schedule parse ahead of this one already offers. Up to three words of name,
+// so "on the espresso machine" reads whole.
+const METER_PATTERN = /\bevery\s+((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\s+([a-z]+)\s+(?:on|for)\s+(?:the\s+|my\s+|our\s+)?([a-z][a-z0-9'-]*(?:\s+[a-z][a-z0-9'-]*){0,2})\s*$/i;
+const METER_TIME_UNIT = /^(?:seconds?|secs?|minutes?|mins?|hours?|hrs?|days?|weeks?|wks?|months?|mos?|years?|yrs?|times?|x)$/i;
+
+/**
+ * Pulls "every 5,000 miles on the car" off the end of a quick-add title, so
+ * the task is due by usage (`Task.meterName`). The reading it's due at isn't
+ * in the phrase: it comes from the meter's last reading, or from the first one
+ * logged (see `meterStartPatch`). Same shape as `parseWeatherWaitInput`.
+ */
+export function parseMeterInput(input: string): ParsedMeter | null {
+  const match = input.match(METER_PATTERN);
+  if (!match || match.index === undefined) return null;
+  if (METER_TIME_UNIT.test(match[2])) return null;
+  const every = Number(match[1].replace(/,/g, ''));
+  if (!Number.isFinite(every) || every <= 0) return null;
+
+  const matchStart = match.index;
+  const matchEnd = matchStart + match[0].length;
+  const cleanTitle = (input.slice(0, matchStart) + input.slice(matchEnd)).replace(/\s+/g, ' ').trim();
+  if (!cleanTitle) return null;
+
+  return { every, unit: match[2], meterName: match[3].trim(), cleanTitle, matchStart, matchEnd };
+}
+
+export interface ParsedRainSkip {
+  /**
+   * The amount named, in millimetres ("unless it rains half an inch" isn't
+   * read, "unless it rains 10mm" is), or null for the bare phrase, which the
+   * caller fills with its default preset in the person's own unit.
+   */
+  mm: number | null;
+  cleanTitle: string;
+  matchStart: number;
+  matchEnd: number;
+}
+
+// "water the garden unless it rains", "...unless it's rained 10mm". Only the
+// "unless"/"skip if" forms: a bare "rain" in a title ("buy a rain jacket") is
+// a word in the task's name, and "if it rains" alone reads as a plan for a wet
+// day ("bring the chairs in if it rains") rather than a reason to skip one.
+const RAIN_SKIP_PATTERN = /\b(?:unless|skip(?:\s+it)?\s+(?:if|when))\s+it(?:'s|’s|\s+has)?\s+rain(?:s|ed|ing)?(?:\s+(?:at\s+least\s+|more\s+than\s+|over\s+)?(\d+(?:\.\d+)?)\s*(mm|millimet(?:er|re)s?|cm|centimet(?:er|re)s?|in|inch(?:es)?|")(?=\s|$|[.,;!?]))?/i;
+
+/** The most a threshold can be: the bound the MCP server applies too. */
+const RAIN_SKIP_MAX_MM = 200;
+
+/**
+ * Pulls "unless it rains" out of a quick-add title, so a repeating task skips
+ * a day it rained (`Task.rainSkipMm`). Same shape as `parseWeatherWaitInput`;
+ * the caller offers it only on a repeat with days to skip (`canSkipForRain`).
+ */
+export function parseRainSkipInput(input: string): ParsedRainSkip | null {
+  const match = input.match(RAIN_SKIP_PATTERN);
+  if (!match || match.index === undefined) return null;
+
+  let mm: number | null = null;
+  if (match[1] !== undefined) {
+    const amount = Number(match[1]);
+    const unit = match[2].toLowerCase();
+    const factor = unit.startsWith('m') ? 1 : unit.startsWith('c') ? 10 : 25.4;
+    mm = Math.round(amount * factor * 100) / 100;
+    if (!(mm > 0) || mm > RAIN_SKIP_MAX_MM) return null;
+  }
+
+  const matchStart = match.index;
+  const matchEnd = matchStart + match[0].length;
+  const cleanTitle = (input.slice(0, matchStart) + input.slice(matchEnd)).replace(/\s+/g, ' ').trim();
+  if (!cleanTitle) return null;
+
+  return { mm, cleanTitle, matchStart, matchEnd };
+}
+
+/**
+ * `parseTaskInput`, reading past a trailing "unless it rains". The schedule
+ * phrase has to reach the end of the title, so "water the garden every 2 days
+ * unless it rains" would offer nothing at all: the rain phrase blocks the
+ * repeat, and the rain phrase is only offered once there is a repeat. So when
+ * the line ends in one, the schedule is read from what comes before it and the
+ * phrase is kept on the clean title, where the rain tooltip finds it next.
+ * A one-off date is read the same way: the phrase then stays in the title,
+ * which is where it would have stayed anyway, and the date isn't lost to it.
+ */
+export function parseTaskInputAheadOfRainSkip(input: string, now: Date = new Date(), clockNow: Date = now): ParsedTaskInput | null {
+  const direct = parseTaskInput(input, now, clockNow);
+  if (direct) return direct;
+  const rain = parseRainSkipInput(input);
+  if (!rain || input.slice(rain.matchEnd).trim()) return null;
+  const parsed = parseTaskInput(input.slice(0, rain.matchStart), now, clockNow);
+  if (!parsed) return null;
+  return { ...parsed, cleanTitle: `${parsed.cleanTitle} ${input.slice(rain.matchStart, rain.matchEnd)}` };
+}
+
+export interface ParsedSunWindow {
+  /** Which bound of the time window the phrase sets. */
+  bound: 'start' | 'end';
+  /** The stored anchor, as `Task.windowStartSun` / `windowEndSun` hold it. */
+  anchor: 'sunrise' | 'sunset';
+  cleanTitle: string;
+  matchStart: number;
+  matchEnd: number;
+}
+
+// The words for each end of the day. "dark" and "dusk" are sunset and "dawn"
+// is sunrise, to the minute this resolves to: twilight is a real half hour,
+// but a window that says "before dark" closing at sunset is the safe reading.
+const SUN_WORDS = '(sunrise|dawn|daybreak|sunset|dusk|dark|nightfall)';
+const SUN_WORD_EVENT: Record<string, 'sunrise' | 'sunset'> = {
+  sunrise: 'sunrise', dawn: 'sunrise', daybreak: 'sunrise',
+  sunset: 'sunset', dusk: 'sunset', dark: 'sunset', nightfall: 'sunset',
+};
+// A window end only from the two explicit expiry words, for ParsedSchedule
+// .windowEnd's reason: an end expires the task, and the sweep can delete what
+// has expired, so a softer "before dark" must not be able to set one.
+const SUN_END_PATTERN = new RegExp(`\\b(?:expires\\s+(?:at\\s+)?|only\\s+(?:until|till|before)\\s+)${SUN_WORDS}\\b`, 'i');
+// A window start from "after", the way "after 3pm" sets one.
+const SUN_START_PATTERN = new RegExp(`\\bafter\\s+${SUN_WORDS}\\b`, 'i');
+
+/**
+ * Pulls "after sunset" / "expires at dark" out of a quick-add title, so the
+ * task's time window follows the sun (`Task.windowStartSun`). Same shape as
+ * `parseWeatherWaitInput`, and like it the caller offers it only when it can be
+ * honoured: here, when a location is saved to work the time out from.
+ *
+ * "before dark" is deliberately not read: "before 5pm" is a deadline in this
+ * file, not a window end, and a deadline has no sun-following form, so the
+ * phrase stays in the title rather than being read as something it isn't.
+ */
+export function parseSunWindowInput(input: string): ParsedSunWindow | null {
+  const end = input.match(SUN_END_PATTERN);
+  const start = end ? null : input.match(SUN_START_PATTERN);
+  const match = end ?? start;
+  if (!match || match.index === undefined) return null;
+
+  const matchStart = match.index;
+  const matchEnd = matchStart + match[0].length;
+  const cleanTitle = (input.slice(0, matchStart) + input.slice(matchEnd)).replace(/\s+/g, ' ').trim();
+  if (!cleanTitle) return null;
+
+  return {
+    bound: end ? 'end' : 'start',
+    anchor: SUN_WORD_EVENT[match[1].toLowerCase()],
+    cleanTitle,
+    matchStart,
+    matchEnd,
+  };
+}
+
 // "remind me to call mom at 4pm" — the words asking for a reminder, which are
 // a request rather than part of the task's name.
 const REMIND_PREFIX = /^\s*(?:remind me to|remind me about|remind me|reminder to|reminder:|don'?t forget to)\s+/i;

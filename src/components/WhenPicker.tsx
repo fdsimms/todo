@@ -37,7 +37,8 @@ import { useCalendarStore } from '../store/useCalendarStore';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { computeSnoozeSuggestion } from '../utils/snoozeEngine';
 import { buildDayBuckets } from '../utils/calendarMonth';
-import { assumedMinutesFor, buildDayLoads, describeDayWeight, weightFor, type DayLoad } from '../utils/dayLoad';
+import { assumedMinutesFor, buildDayLoads, describeDayShade, shadeFor, type DayLoad } from '../utils/dayLoad';
+import { dayShadeBackground } from '../theme/dayShade';
 import { liveAwaySpans } from '../utils/awayDates';
 import { useProjectStore } from '../store/useProjectStore';
 import { useShallow } from 'zustand/react/shallow';
@@ -70,7 +71,7 @@ const BLANK_SNOOZE_TASK: Task = {
   timeBlockEventId: null,
   pendingImport: null,
   backfillDismissedFields: [],
-  streakCount: 0, streakDate: null, previousStreakCount: 0, previousStreakDate: null, priorBestStreak: 0, showStreak: false, streakRequiresWindow: false,
+  streakCount: 0, streakDate: null, previousStreakCount: 0, previousStreakDate: null, priorBestStreak: 0, showStreak: false, streakRequiresWindow: false, streakCountsUnits: false,
   polarity: 'positive', slipCount: 0, slipDate: null, penaltyMinutes: null, penaltyCutoffTime: null, penaltyFiredAt: null, penaltyCreditedAt: null, gatesApps: false,
   parentId: null, groupId: null, projectId: null,
   chainEnabled: false, chainIndex: 0, chainItems: [], chainStepOnSchedule: false, vacationPause: false, excludeFromSuggestions: false, pinEachOccurrence: false,
@@ -187,6 +188,10 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_WIDTH = Math.min(SCREEN_WIDTH - 32, 380);
 const CAL_PADDING = 10;
 const CELL_SIZE = Math.floor((CARD_WIDTH - CAL_PADDING * 2) / 7);
+// Rows are shorter than the columns are wide: a square cell made the month
+// grid taller than the controls above it. The circle is sized from the row.
+const ROW_HEIGHT = 40;
+const DAY_CIRCLE = 32;
 
 // How long the selection "pop" plays before the modal commits and closes.
 const CONFIRM_DELAY_MS = 320;
@@ -232,6 +237,11 @@ export function WhenPicker({
   const [nlText, setNlText] = useState('');
   // Day currently being confirmed — drives the brief "you picked it" feedback.
   const [pendingKey, setPendingKey] = useState<string | null>(null);
+  // Whether the pending pick came from a calendar cell. Cells and quick buttons
+  // share day keys (so a quick button also pops its cell), but a cell tap must
+  // not pop a quick button that merely lands on the same day.
+  const [pendingFromGrid, setPendingFromGrid] = useState(false);
+  const quickPendingKey = pendingFromGrid ? null : pendingKey;
   const [suggestion, setSuggestion] = useState<{ key: string; reason: string } | null>(null);
   const [suggestError, setSuggestError] = useState<string | null>(null);
 
@@ -282,6 +292,7 @@ export function WhenPicker({
       setSegments(initialSegments ?? []);
       setNlText('');
       setPendingKey(null);
+      setPendingFromGrid(false);
       setSuggestion(null);
       setSuggestError(null);
       setCheckDismissed(false);
@@ -312,6 +323,12 @@ export function WhenPicker({
     [displayMonth, weekStartsOn]
   );
   const dayHeaders = useMemo(() => weekdayHeaders(weekStartsOn), [weekStartsOn]);
+  // The row today sits in (-1 when it isn't on this month's grid), which gets a
+  // band behind it so the eye finds the week before it finds the day.
+  const bandRow = useMemo(() => {
+    const i = calendarDays.findIndex(d => isSameDay(d, today));
+    return i < 0 ? -1 : Math.floor(i / 7);
+  }, [calendarDays, today]);
   const canPageBack = canPageToPreviousMonth(displayMonth, earliestDay);
   const canPageForward = canPageToNextMonth(displayMonth, latestDay);
 
@@ -369,7 +386,7 @@ export function WhenPicker({
   };
 
   // Play a quick pop + haptic on the chosen target, then commit & close.
-  const confirmWithFeedback = (date: Date | null, key: string) => {
+  const confirmWithFeedback = (date: Date | null, key: string, fromGrid = false) => {
     if (pendingRef.current) return;
     pendingRef.current = true;
     // The free-text field can still hold focus when a calendar day or quick
@@ -377,6 +394,7 @@ export function WhenPicker({
     // is gone; this only starts it moving a beat sooner.
     Keyboard.dismiss();
     setPendingKey(key);
+    setPendingFromGrid(fromGrid);
     if (date) setDisplayMonth(startOfMonth(date));
     haptics.success();
     popAnim.setValue(0.7);
@@ -395,7 +413,7 @@ export function WhenPicker({
     // Picking today resolves the task, same as the quick button — only a day
     // after it is a deferral the reach-out offer needs to hear about.
     if (!isSameDay(day, today)) declineReachOutOfferIfShown();
-    confirmWithFeedback(noonOf(day), isSameDay(day, today) ? 'today' : dayKeyOf(day));
+    confirmWithFeedback(noonOf(day), isSameDay(day, today) ? 'today' : dayKeyOf(day), true);
   };
 
   const handleToday = () => confirmWithFeedback(noonOf(today), 'today');
@@ -469,7 +487,7 @@ export function WhenPicker({
       setDisplayMonth(startOfMonth(res.date));
       haptics.success();
     } catch (e) {
-      setSuggestError(e instanceof Error ? e.message : 'Could not suggest a date.');
+      setSuggestError(e instanceof Error ? e.message : 'Couldn’t suggest a date.');
       haptics.error();
     }
   };
@@ -538,7 +556,7 @@ export function WhenPicker({
         haptics.warning();
         Alert.alert(
           'Archive this task?',
-          `"${postponeTask.title}" moves to Archived. Nothing is deleted, and you can restore it from there whenever you like.`,
+          `“${postponeTask.title}” moves to Archived. Nothing is deleted. You can restore it from there.`,
           [
             { text: 'Cancel', style: 'cancel' },
             {
@@ -617,7 +635,7 @@ export function WhenPicker({
                   value={nlText}
                   onChangeText={onNlChange}
                   onSubmitEditing={onNlSubmit}
-                  placeholder='e.g. "next monday", "in 3 days"'
+                  placeholder='e.g. “next monday”, “in 3 days”'
                   placeholderTextColor={colors.textTertiary}
                   returnKeyType="done"
                   autoCapitalize="none"
@@ -681,7 +699,7 @@ export function WhenPicker({
                 icon="star"
                 iconColor={colors.warningText}
                 label="Today"
-                pending={pendingKey === 'today'}
+                pending={quickPendingKey === 'today'}
                 popAnim={popAnim}
                 onPress={handleToday}
               />
@@ -692,7 +710,7 @@ export function WhenPicker({
                   icon="sunny"
                   iconColor={colors.timeMorning}
                   label="Tomorrow"
-                  pending={pendingKey === tomorrowKey}
+                  pending={quickPendingKey === tomorrowKey}
                   popAnim={popAnim}
                   onPress={handleTomorrow}
                 />
@@ -731,7 +749,7 @@ export function WhenPicker({
                         <Animated.Text
                           style={[
                             styles.projectShortcutText,
-                            pendingKey === key && { transform: [{ scale: popAnim }] },
+                            quickPendingKey === key && { transform: [{ scale: popAnim }] },
                           ]}
                         >
                           {shortcut.label}
@@ -751,10 +769,10 @@ export function WhenPicker({
               >
                 <Animated.View style={[
                   styles.afterVacationInner,
-                  pendingKey === afterVacationKey && { transform: [{ scale: popAnim }] },
+                  quickPendingKey === afterVacationKey && { transform: [{ scale: popAnim }] },
                 ]}>
                   <Ionicons
-                    name={pendingKey === afterVacationKey ? 'checkmark-circle' : 'airplane'}
+                    name={quickPendingKey === afterVacationKey ? 'checkmark-circle' : 'airplane'}
                     size={15}
                     color={colors.accent}
                   />
@@ -841,6 +859,7 @@ export function WhenPicker({
             </View>
 
             <View style={styles.grid}>
+              {bandRow >= 0 && <View style={[styles.todayRowBand, { top: bandRow * ROW_HEIGHT }]} />}
               {calendarDays.map((day, idx) => {
                 const inMonth = isSameMonth(day, displayMonth);
                 const isSelected = value ? isSameDay(day, value) : false;
@@ -851,7 +870,16 @@ export function WhenPicker({
                 const key = todayDay ? 'today' : dayKeyOf(day);
                 const isPending = pendingKey === key && pendingRef.current;
                 const isSuggested = suggestion?.key === dayKeyOf(day);
-                const weight = weightFor(dayLoads.get(dayKeyOf(day)));
+                const load = dayLoads.get(dayKeyOf(day));
+                // The calendar's shade, so a day reads the same in both grids.
+                // Away has no band to say it here, so it keeps its dashes.
+                // A day already gone carries no load shade: it can't be planned into, and
+                // a busy past day read louder than today itself.
+                const isPast = isDayBefore(day, today);
+                const shade = outOfRange || isPast ? 0 : shadeFor(load);
+                const away = !outOfRange && !isPast && !!load?.away;
+                const tint = isSelected || isPending || todayDay ? null : dayShadeBackground(shade, colors);
+                const spoken = [shade >= 2 ? describeDayShade(shade) : '', away ? 'away' : ''].filter(Boolean).join(', ');
                 const dateLabel = todayDay ? `Today, ${format(day, 'EEEE, MMMM d')}` : format(day, 'EEEE, MMMM d');
 
                 return (
@@ -862,12 +890,13 @@ export function WhenPicker({
                     disabled={outOfRange}
                     activeOpacity={interaction.activeOpacity}
                     accessibilityRole="button"
-                    accessibilityLabel={weight && !outOfRange ? `${dateLabel}, ${describeDayWeight(weight)}` : dateLabel}
+                    accessibilityLabel={spoken ? `${dateLabel}, ${spoken}` : dateLabel}
                     accessibilityState={{ selected: isSelected, disabled: outOfRange }}
                   >
                     <View style={styles.dayStack}>
                       <Animated.View style={[
                         styles.dayCircle,
+                        tint !== null && { backgroundColor: tint },
                         // A refused day gets none of the marked treatments,
                         // including the accent fill for the current value: a
                         // floor can only ever exclude a value the picker was
@@ -875,17 +904,18 @@ export function WhenPicker({
                         // on an accent circle is unreadable as well as
                         // misleading about what a tap would do.
                         isSelected && !isPending && !outOfRange && styles.dayCircleSelected,
+                        isSelected && !isPending && !outOfRange && todayDay && styles.dayCircleTodayScheduled,
                         !isSelected && !isPending && todayDay && styles.dayCircleToday,
                         !isPending && isSuggested && styles.dayCircleSuggested,
                         isPending && styles.dayCirclePending,
                         isPending && { transform: [{ scale: popAnim }] },
                       ]}>
                         {isPending ? (
-                          <Ionicons name="checkmark-sharp" size={CELL_SIZE * 0.46} color={colors.onAccent} />
+                          <Ionicons name="checkmark-sharp" size={DAY_CIRCLE * 0.5} color={colors.onAccent} />
                         ) : (
                           <Text maxFontSizeMultiplier={textScale.badge} style={[
                             styles.dayText,
-                            !inMonth && styles.dayTextOtherMonth,
+                            (!inMonth || isPast) && styles.dayTextOtherMonth,
                             isSelected && !outOfRange && styles.dayTextSelected,
                             !isSelected && todayDay && styles.dayTextToday,
                             isSuggested && styles.dayTextSuggested,
@@ -896,28 +926,27 @@ export function WhenPicker({
                           </Text>
                         )}
                       </Animated.View>
-                      {/* The slot is reserved on every cell, marked or not, so a
-                          bar can't nudge its own circle out of line with its
-                          neighbours' — most days carry nothing here. */}
+                      {isSelected && !isPending && !outOfRange && (
+                        <View
+                          style={[
+                            styles.scheduledBadge,
+                            { borderColor: bandRow === Math.floor(idx / 7) ? colors.bgTertiary : colors.bgSecondary },
+                          ]}
+                        >
+                          <Ionicons name="checkmark-sharp" size={9} color={colors.onAccent} />
+                        </View>
+                      )}
+                      {/* Reserved on every cell, marked or not, so the dashes
+                          can't nudge their own circle out of line. */}
                       <View style={styles.weightSlot}>
-                        {weight && !outOfRange && (
-                          weight === 'away' ? (
-                            // Two segments with a gap rather than a third bar
-                            // width: away is not a heavier `full`, and a run of
-                            // them reads across the row as the stretch of days
-                            // it is. Same greys as the other two — the cue is
-                            // weight, not alarm, and a coloured dot here would
-                            // read as an event marker.
-                            <View style={styles.weightAway}>
-                              <View style={styles.weightAwayDash} />
-                              <View style={styles.weightAwayDash} />
-                            </View>
-                          ) : (
-                            <View style={[
-                              styles.weightBar,
-                              weight === 'full' ? styles.weightBarFull : styles.weightBarBusy,
-                            ]} />
-                          )
+                        {away && (
+                          // Two segments with a gap: a run of them reads across
+                          // the row as the stretch of days it is. Grey, since a
+                          // coloured dot here would read as an event marker.
+                          <View style={styles.weightAway}>
+                            <View style={styles.weightAwayDash} />
+                            <View style={styles.weightAwayDash} />
+                          </View>
                         )}
                       </View>
                     </View>
@@ -1151,7 +1180,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.xs,
-    paddingVertical: spacing.xs,
   },
   navBtn: {
     width: 30,
@@ -1167,12 +1195,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   dayHeaders: {
     flexDirection: 'row',
-    marginBottom: spacing.xxs,
   },
   dayHeaderCell: {
     width: CELL_SIZE,
     alignItems: 'center',
-    paddingVertical: 4,
+    paddingVertical: spacing.xxs,
   },
   dayHeaderText: {
     color: colors.textSecondary,
@@ -1182,11 +1209,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    height: CELL_SIZE * 6,
+    height: ROW_HEIGHT * 6,
   },
   dayCell: {
     width: CELL_SIZE,
-    height: CELL_SIZE,
+    height: ROW_HEIGHT,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1194,32 +1221,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
   },
   dayCircle: {
-    width: CELL_SIZE - 6,
-    height: CELL_SIZE - 6,
-    borderRadius: (CELL_SIZE - 6) / 2,
+    width: DAY_CIRCLE,
+    height: DAY_CIRCLE,
+    borderRadius: DAY_CIRCLE / 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // Weight, not alarm: a full day is often exactly the day you meant to pick,
-  // so the cue is drawn in the greys the app already uses for "quieter than
-  // the row it sits under" rather than in red or orange.
   weightSlot: {
     height: 3,
-    marginTop: spacing.xxs,
+    marginTop: 1,
     justifyContent: 'center',
-  },
-  weightBar: {
-    height: 2.5,
-    borderRadius: 1.5,
-  },
-  weightBarBusy: {
-    width: 11,
-    backgroundColor: colors.textTertiary,
-  },
-  weightBarFull: {
-    width: 21,
-    height: 3,
-    backgroundColor: colors.textSecondary,
   },
   weightAway: {
     flexDirection: 'row',
@@ -1235,9 +1246,36 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   dayCircleSelected: {
     backgroundColor: colors.accentFill,
   },
+  // Neutral rather than violet, so today never competes with the accent fill
+  // on the scheduled day: two violet marks on one grid read as the same thing.
   dayCircleToday: {
-    borderWidth: 1.5,
-    borderColor: colors.accent,
+    backgroundColor: colors.text,
+  },
+  // Today is also the scheduled day: the accent fill wins, ringed in the
+  // neutral so it still reads as today.
+  dayCircleTodayScheduled: {
+    borderWidth: 2.5,
+    borderColor: colors.text,
+  },
+  todayRowBand: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: ROW_HEIGHT,
+    borderRadius: radius.md,
+    backgroundColor: colors.bgTertiary,
+  },
+  scheduledBadge: {
+    position: 'absolute',
+    top: -3,
+    right: -3,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.accentFill,
   },
   dayCircleSuggested: {
     borderWidth: 1.5,
@@ -1271,8 +1309,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     opacity: 0.55,
   },
   dayTextToday: {
-    color: colors.accent,
-    fontWeight: fontWeight.semibold,
+    color: colors.bg,
+    fontWeight: fontWeight.bold,
   },
   dayTextSuggested: {
     color: colors.purpleText,

@@ -10,8 +10,8 @@ import {
 import { SheetModal } from './SheetModal';
 import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, radius, spacing, type Colors } from '../theme';
-import { NUTRIENT_KEYS, type FoodNutrition, type NutrientKey } from '../types';
-import { NUTRIENT_LABEL, NUTRITION_BASIS_LABEL } from '../utils/foodNutrition';
+import { type FoodNutrition, type NutrientKey } from '../types';
+import { NUTRITION_BASIS_LABEL } from '../utils/foodNutrition';
 import {
   applyFoodNutrition,
   applyLabelReading,
@@ -30,6 +30,7 @@ import {
   type PanelForm,
   type ServingWeightUnit,
 } from '../utils/nutritionPanelForm';
+import { panelWarnings } from '../utils/nutritionSanity';
 import { canReadTextOnDevice } from '../utils/receiptOcr';
 import { readLabelPhoto, type LabelReading } from '../utils/labelOcr';
 import { pickRecipePhoto } from '../utils/recipePhoto';
@@ -39,12 +40,14 @@ import {
 import { haptics } from '../utils/haptics';
 import { InlineAction } from './InlineAction';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
+import { NutrientFieldsCard } from './NutrientFieldsCard';
 import { NutritionBarcodeScanSheet } from './NutritionBarcodeScanSheet';
 import { SegmentedControl } from './SegmentedControl';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { TextField } from './TextField';
+import { useActionMenu } from '../hooks/useActionMenu';
 
 /**
  * Typing in a label panel by hand, for the food no database has.
@@ -134,6 +137,14 @@ interface Props {
   onClose: () => void;
   /** Called with the typed panel, or null when every figure was cleared. */
   onSave: (nutrition: FoodNutrition | null) => void;
+  /**
+   * Opens the camera as soon as the sheet has presented, for a caller whose
+   * button already said "photograph": the person has just chosen the photo, so
+   * making them find "Read from a photo" is a second tap for the same decision.
+   * Cancelling the camera leaves the form to type into, as before. Ignored
+   * where Vision can't run, since there is nothing to read the photo with.
+   */
+  openCamera?: boolean;
 }
 
 const BASIS_OPTIONS = (['per100g', 'per100ml', 'perServing'] as const).map(value => ({
@@ -146,34 +157,11 @@ const WEIGHT_UNIT_OPTIONS: { value: ServingWeightUnit; label: string }[] = [
   { value: 'oz', label: 'oz' },
 ];
 
-/**
- * A plausible figure for each nutrient, so the example reads as an example.
- *
- * One number per field rather than a repeated "e.g. 0": a greyed 0 in every
- * box is indistinguishable from a form full of saved zeroes at a glance, which
- * is the exact confusion this form exists to avoid. These are roughly a slice
- * of bread, which is a food most people can sanity-check against.
- */
-const PLACEHOLDER: Record<NutrientKey, string> = {
-  calorieKcal: 'e.g. 265',
-  fatG: 'e.g. 3.2',
-  satFatG: 'e.g. 0.6',
-  carbsG: 'e.g. 49',
-  fiberG: 'e.g. 2.7',
-  sugarG: 'e.g. 5',
-  proteinG: 'e.g. 9',
-  sodiumMg: 'e.g. 490',
-  calciumMg: 'e.g. 150',
-  ironMg: 'e.g. 3.6',
-  potassiumMg: 'e.g. 115',
-  caffeineMg: 'e.g. 0',
-  waterMl: 'e.g. 36',
-};
-
 /** What an unlabelled column is called, by position. A panel never prints more. */
 const COLUMN_ORDINAL = ['First column', 'Second column', 'Third column'];
 
-export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onSave }: Props) {
+export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onSave, openCamera }: Props) {
+  const actionMenu = useActionMenu();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
@@ -254,7 +242,7 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
     if (picked.status === 'denied') {
       Alert.alert(
         source === 'camera' ? 'Camera access is off' : 'Photo access is off',
-        'Turn it on in Settings to read a label from a photo. You can always type the figures in by hand.',
+        'Turn it on in Settings to read a label from a photo, or type the figures in.',
       );
       return;
     }
@@ -290,8 +278,8 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
         haptics.warning();
         setLabel(null);
         setPhotoError(aiFailure
-          ? `Claude couldn't read that photo either: ${aiFailure}`
-          : "That photo didn't read as a nutrition panel. Try again with the whole panel in frame and more light on it, or type the figures in below.");
+          ? `Claude couldn’t read that photo either: ${aiFailure}`
+          : "Couldn’t read a nutrition panel in that photo. Try again with the whole panel in frame and more light, or type the figures in below.");
         return;
       }
       haptics.success();
@@ -317,6 +305,15 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
     }
   }, []);
 
+  // After the modal's own presentation has finished: an image picker raised
+  // while it is still animating in is presented from the wrong controller.
+  useEffect(() => {
+    if (!visible || !openCamera || !canPhotograph) return;
+    const timer = setTimeout(() => { void handlePhoto('camera'); }, 600);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
+
   /**
    * Moving to another of the panel's columns.
    *
@@ -337,15 +334,14 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
   }, [label]);
 
   const startPhoto = useCallback(() => {
-    Alert.alert(
-      'Read the label',
-      'Photograph the nutrition panel and the figures on it will fill in the fields below.',
-      [
-        { text: 'Take a photo', onPress: () => { void handlePhoto('camera'); } },
-        { text: 'Choose a photo', onPress: () => { void handlePhoto('library'); } },
-        { text: 'Cancel', style: 'cancel' },
+    actionMenu.open({
+      title: 'Read the label',
+      message: 'Photograph the nutrition panel to fill in the fields below.',
+      actions: [
+        { key: 'camera', label: 'Take a photo', icon: 'camera-outline', onPress: () => { void handlePhoto('camera'); } },
+        { key: 'library', label: 'Choose a photo', icon: 'images-outline', onPress: () => { void handlePhoto('library'); } },
       ],
-    );
+    });
   }, [handlePhoto]);
 
   /**
@@ -433,10 +429,25 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
       setBad(invalid);
       return;
     }
-    haptics.success();
-    Keyboard.dismiss();
-    onSave(buildPanelNutrition(form, nutrition));
-    onClose();
+    const built = buildPanelNutrition(form, nutrition);
+    const warnings = built ? panelWarnings(built) : [];
+    const commit = () => {
+      haptics.success();
+      Keyboard.dismiss();
+      onSave(built);
+      onClose();
+    };
+    if (warnings.length === 0) { commit(); return; }
+    haptics.warning();
+    setBad(warnings.map(w => w.key));
+    Alert.alert(
+      'Check these figures',
+      `${warnings.map(w => w.message).join('\n\n')}\n\nCheck them against the packet.`,
+      [
+        { text: 'Edit', style: 'cancel' },
+        { text: 'Save anyway', onPress: commit },
+      ],
+    );
   };
 
   /**
@@ -486,7 +497,7 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
           >
             <Text style={styles.intro}>
               Copy the numbers off the package label. Leave a field blank if the label
-              doesn't list it. Blank means unknown, which is not the same as zero.
+              doesn’t list it. Blank means unknown.
             </Text>
 
             <View style={styles.photoRow}>
@@ -524,9 +535,9 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
                       surface="page"
                     />
                     <Text style={styles.photoNote}>
-                      This label prints more than one column. They're the same food against
-                      different portions, so they don't agree. Pick the one you want, then
-                      double-check a figure or two against the label before saving.
+                      This label has more than one column, each for a different portion.
+                      Pick the one you want, then check a figure against the
+                      label before saving.
                     </Text>
                   </>
                 ) : (
@@ -577,8 +588,8 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
                   </View>
                 </View>
                 <Text style={styles.hint}>
-                  The number to compute with. A product sold by volume has none, and that
-                  is fine. A label printed in ounces converts to grams on its own.
+                  The weight used for calculations. Leave it blank for a product sold by
+                  volume. A label in ounces is converted to grams.
                 </Text>
               </View>
 
@@ -590,8 +601,8 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
                 surface="card"
               />
               <Text style={styles.hint}>
-                Most labels outside the US print per 100g. Pick "per serving" only if the
-                panel's own column says so. If you typed the figures under the wrong one,
+                Most labels outside the US print per 100g. Pick “per serving” only if the
+                panel’s own column says so. If you typed the figures under the wrong one,
                 recalculate them here using the serving weight.
               </Text>
               {!!basisConvertTarget && (
@@ -627,35 +638,16 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
               />
             </View>
             <Text style={styles.hint}>
-              If the label only gives whole-package totals, type the totals into the figures
-              below, enter how many servings the package has, then divide.
+              If the label only gives whole-package totals, type them into the figures
+              below, enter the servings per container, then divide.
             </Text>
-            <View style={styles.card}>
-              {NUTRIENT_KEYS.map(key => (
-                <View key={key} style={styles.field}>
-                  <Text style={styles.fieldLabel}>{NUTRIENT_LABEL[key].label}</Text>
-                  <View style={styles.numberRow}>
-                    <TextField
-                      style={[styles.numberInput, bad.includes(key) && styles.inputBad]}
-                      value={form.amounts[key]}
-                      onChangeText={t => setAmount(key, t)}
-                      placeholder={PLACEHOLDER[key]}
-                      placeholderTextColor={colors.textTertiary}
-                      keyboardType="decimal-pad"
-                      inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
-                      accessibilityLabel={`${NUTRIENT_LABEL[key].label} in ${NUTRIENT_LABEL[key].unit}`}
-                    />
-                    <Text style={styles.unit}>{NUTRIENT_LABEL[key].unit}</Text>
-                  </View>
-                </View>
-              ))}
-            </View>
+            <NutrientFieldsCard amounts={form.amounts} bad={bad} onChange={setAmount} />
 
             {bad.length > 0 && (
               <Text style={styles.error}>
-                {bad.length === 1 ? 'One field' : `${bad.length} fields`} couldn't be read as a
-                number. Fix or clear {bad.length === 1 ? 'it' : 'them'}, so nothing is stored
-                that the label didn't say.
+                {bad.length === 1 ? 'One field' : `${bad.length} fields`} couldn’t be read as a
+                number. Fix or clear {bad.length === 1 ? 'it' : 'them'} before
+                saving.
               </Text>
             )}
           </ScrollView>
@@ -667,6 +659,7 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
         onClose={() => setScanning(false)}
         onFound={handleBarcodeFound}
       />
+      {actionMenu.element}
     </SheetModal>
   );
 }

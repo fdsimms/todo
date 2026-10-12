@@ -61,6 +61,7 @@ const mockTaskState = {
   sweepOvershootQuotas: mockRecord('sweepOvershootQuotas'),
   syncWaterQuotaTasks: mockRecord('syncWaterQuotaTasks'),
   syncSnackNudgeTasks: mockRecord('syncSnackNudgeTasks'),
+  syncLimitWarningTasks: mockRecord('syncLimitWarningTasks'),
   checkBookEventTasks: mockRecord('checkBookEventTasks'),
   dripStalledProjects: mockRecord('dripStalledProjects'),
   checkMealPlanNudge: mockRecord('checkMealPlanNudge'),
@@ -74,6 +75,8 @@ const mockTaskState = {
   checkCalendarReviewTasks: mockRecord('checkCalendarReviewTasks'),
   checkWeatherTasks: mockRecord('checkWeatherTasks'),
   applyWeatherWaits: mockRecord('applyWeatherWaits'),
+  applyMeterHolds: mockRecord('applyMeterHolds'),
+  applyRainSkips: mockRecord('applyRainSkips'),
   checkEventTasks: mockRecord('checkEventTasks'),
   checkTravelTasks: mockRecord('checkTravelTasks'),
   checkScreenTimeTasks: mockRecord('checkScreenTimeTasks'),
@@ -107,6 +110,7 @@ const mockSyncState = {
   syncNow: async () => { mockCalls.push('syncNow'); return null; },
 };
 
+jest.mock('../utils/perfReport', () => ({ savePerfRun: jest.fn() }));
 jest.mock('../store/useTaskStore', () => ({
   useTaskStore: { getState: () => mockTaskState },
 }));
@@ -221,13 +225,13 @@ describe('runBackgroundRefresh', () => {
       'recordDeviceTimeZone',
       'checkVacationExpiry', 'checkAwayVacation', 'checkAwayGroceryList',
       'rolloverQuotas', 'sweepOvershootQuotas', 'syncWaterQuotaTasks',
-      'syncSnackNudgeTasks',
+      'syncSnackNudgeTasks', 'syncLimitWarningTasks',
       'checkBookEventTasks',
       'dripStalledProjects',
       'checkMealPlanNudge', 'checkProjectReviewTasks', 'checkMealSlotTasks',
       'checkPantryReviewTasks', 'checkPantryCheckTasks', 'checkMealShortfallTasks',
       'checkMealThawTasks', 'checkMealLogNudgeTasks',
-      'checkCalendarReviewTasks', 'checkWeatherTasks', 'applyWeatherWaits', 'checkEventTasks',
+      'checkCalendarReviewTasks', 'checkWeatherTasks', 'applyWeatherWaits', 'applyRainSkips', 'applyMeterHolds', 'checkEventTasks',
       'checkTravelTasks', 'checkScreenTimeTasks', 'checkHealthTasks',
       'checkMoodTasks', 'checkJournalTasks', 'checkWeekendNudgeTasks', 'checkWeighInTasks',
       'checkBirthdayTasks', 'checkBirthdayGiftTasks', 'checkReachOutTasks',

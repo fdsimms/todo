@@ -16,8 +16,9 @@ import { format } from 'date-fns/format';
 import type { MealPlanEntry, MealSlot } from '../types';
 import { MEAL_SLOTS, RECIPE_NAME_MAX_LENGTH } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, border, interaction, iconSize, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, border, interaction, iconSize, sheetBottomInset, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { DayChipRow } from './DayChipRow';
 import { SegmentedControl } from './SegmentedControl';
 import { SafeBlurView } from './SafeBlurView';
 import { InlineAction } from './InlineAction';
@@ -323,13 +324,55 @@ export function MealEntrySheet({
               activeOpacity={interaction.activeOpacity}
               accessibilityRole="button"
               accessibilityLabel={`Rename ${title}`}
-              accessibilityHint="Opens a text field to edit this meal's title"
+              accessibilityHint="Opens a text field to edit this meal’s title"
             >
               <Text style={[styles.sheetTitle, styles.sheetTitleEditable]} numberOfLines={2}>{title}</Text>
               <Ionicons name="create-outline" size={iconSize.sm} color={colors.textSecondary} />
             </TouchableOpacity>
           ) : (
             <Text style={styles.sheetTitle} numberOfLines={2}>{title}</Text>
+          )}
+
+          {/* What the sheet is usually opened for once the meal's day comes,
+              so it sits under the title rather than below two rows of day
+              chips. Kept in this order: cooked, then logged. */}
+          {(!!onSetCooked || !!onViewFoodLogEntry || !!onLogMeal) && (
+            <View style={styles.closeOut}>
+              {!!onSetCooked && (
+                <SheetActionRow
+                  icon={cooked ? 'close-circle-outline' : 'checkmark-circle-outline'}
+                  color={colors.accent}
+                  label={cooked ? 'Mark not cooked' : 'Mark cooked'}
+                  onPress={() => {
+                    const next = !cooked;
+                    next ? haptics.success() : haptics.tap();
+                    dismiss(() => onSetCooked(next));
+                  }}
+                  accessibilityLabel={cooked ? 'Mark this meal not cooked' : 'Mark this meal cooked'}
+                />
+              )}
+              {!!onSetCooked && (!!onViewFoodLogEntry || !!onLogMeal) && <View style={styles.sep} />}
+              {!!onViewFoodLogEntry && (
+                <SheetActionRow
+                  icon="journal-outline"
+                  color={colors.accent}
+                  label="View in food log"
+                  onPress={() => { haptics.tap(); dismiss(onViewFoodLogEntry); }}
+                  accessibilityLabel="View this meal’s food log entry"
+                />
+              )}
+              {!!onViewFoodLogEntry && !!onLogMeal && <View style={styles.sep} />}
+              {!!onLogMeal && (
+                <SheetActionRow
+                  icon="journal-outline"
+                  color={colors.accent}
+                  label="Log this meal"
+                  onPress={() => { haptics.tap(); dismiss(onLogMeal); }}
+                  accessibilityLabel="Log this meal in the food log"
+                />
+              )}
+              <View style={styles.sep} />
+            </View>
           )}
 
           {/* Alongside the choice chips, above "Move to", for the same reason
@@ -380,30 +423,12 @@ export function MealEntrySheet({
           ))}
 
           <Text style={styles.label}>Move to</Text>
-          <View style={styles.chips}>
-            {weekDays.map(day => {
-              const key = dayKeyOf(day);
-              const on = entry?.date === key;
-              return (
-                <TouchableOpacity
-                  key={key}
-                  style={[styles.dayChip, on && styles.chipOn]}
-                  onPress={() => { haptics.tap(); onMove({ date: key }); }}
-                  activeOpacity={interaction.activeOpacity}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: on }}
-                  accessibilityLabel={`Move to ${format(day, 'EEEE, MMMM d')}`}
-                >
-                  <Text style={[styles.dayChipTop, on && styles.chipTextOn]}>
-                    {format(day, 'EEEEE')}
-                  </Text>
-                  <Text style={[styles.dayChipNum, on && styles.chipTextOn]}>
-                    {format(day, 'd')}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+          <DayChipRow
+            days={weekDays}
+            isOn={key => entry?.date === key}
+            onPress={key => onMove({ date: key })}
+            accessibilityLabelFor={day => `Move to ${format(day, 'EEEE, MMMM d')}`}
+          />
 
           {/*
             The way past the seven chips. They're deliberately a week — see the
@@ -445,33 +470,15 @@ export function MealEntrySheet({
           {!!onCopyTo && (
             <>
               <Text style={styles.label}>Also on</Text>
-              <View style={styles.chips}>
-                {weekDays.map(day => {
-                  const key = dayKeyOf(day);
-                  const has = copiedDays?.has(key) ?? entry?.date === key;
-                  return (
-                    <TouchableOpacity
-                      key={key}
-                      style={[styles.dayChip, has && styles.chipOn]}
-                      disabled={has}
-                      onPress={() => { haptics.tap(); onCopyTo(key); }}
-                      activeOpacity={interaction.activeOpacity}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: has, disabled: has }}
-                      accessibilityLabel={has
-                        ? `Already on ${format(day, 'EEEE, MMMM d')}`
-                        : `Also plan on ${format(day, 'EEEE, MMMM d')}`}
-                    >
-                      <Text style={[styles.dayChipTop, has && styles.chipTextOn]}>
-                        {format(day, 'EEEEE')}
-                      </Text>
-                      <Text style={[styles.dayChipNum, has && styles.chipTextOn]}>
-                        {format(day, 'd')}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
+              <DayChipRow
+                days={weekDays}
+                isOn={key => copiedDays?.has(key) ?? entry?.date === key}
+                disableOn
+                onPress={onCopyTo}
+                accessibilityLabelFor={(day, on) => on
+                  ? `Already on ${format(day, 'EEEE, MMMM d')}`
+                  : `Also plan on ${format(day, 'EEEE, MMMM d')}`}
+              />
               {/* Where Move to keeps its own, so the two rows read alike:
                   seven chips for the week, and a calendar for the rest. */}
               {!!onCopyFurther && (
@@ -488,49 +495,6 @@ export function MealEntrySheet({
               <Text style={styles.copyHint}>
                 Tap a day to plan this {slotLabel(entry?.slot ?? 'dinner').toLowerCase()} there too.
               </Text>
-            </>
-          )}
-
-          {!!onSetCooked && (
-            <>
-              <View style={styles.sep} />
-              <SheetActionRow
-                icon={cooked ? 'close-circle-outline' : 'checkmark-circle-outline'}
-                color={colors.accent}
-                label={cooked ? 'Mark not cooked' : 'Mark cooked'}
-                onPress={() => {
-                  const next = !cooked;
-                  next ? haptics.success() : haptics.tap();
-                  dismiss(() => onSetCooked(next));
-                }}
-                accessibilityLabel={cooked ? 'Mark this meal not cooked' : 'Mark this meal cooked'}
-              />
-            </>
-          )}
-
-          {!!onViewFoodLogEntry && (
-            <>
-              <View style={styles.sep} />
-              <SheetActionRow
-                icon="journal-outline"
-                color={colors.accent}
-                label="View in food log"
-                onPress={() => { haptics.tap(); dismiss(onViewFoodLogEntry); }}
-                accessibilityLabel="View this meal's food log entry"
-              />
-            </>
-          )}
-
-          {!!onLogMeal && (
-            <>
-              <View style={styles.sep} />
-              <SheetActionRow
-                icon="journal-outline"
-                color={colors.accent}
-                label="Log this meal"
-                onPress={() => { haptics.tap(); dismiss(onLogMeal); }}
-                accessibilityLabel="Log this meal in the food log"
-              />
             </>
           )}
 
@@ -562,7 +526,7 @@ export function MealEntrySheet({
                 color={colors.accent}
                 label="Add ingredients to list"
                 onPress={() => { haptics.tap(); dismiss(onAddToList); }}
-                accessibilityLabel="Add this meal's ingredients to the grocery list"
+                accessibilityLabel="Add this meal’s ingredients to the grocery list"
               />
             </>
           )}
@@ -644,7 +608,7 @@ export function MealEntrySheet({
                 accessibilityLabel="Meal task on Today"
                 accessibilityHint={hasCookTask
                   ? 'Removes the task for this meal'
-                  : 'Adds a task for this meal on the day it\'s planned for'}
+                  : 'Adds a task for this meal on its planned day'}
               />
             </>
           )}
@@ -726,7 +690,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     right: 0,
     bottom: 0,
     paddingHorizontal: spacing.md,
-    paddingBottom: 34,
+    paddingBottom: sheetBottomInset,
   },
   handleArea: {
     alignItems: 'center',
@@ -801,6 +765,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
   },
+  closeOut: { marginTop: spacing.sm },
   scaleBlock: { paddingBottom: spacing.xs },
   scaleChips: { paddingHorizontal: spacing.md },
   chips: {
@@ -830,24 +795,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
-  },
-  dayChip: {
-    flex: 1,
-    alignItems: 'center',
-    gap: spacing.xxs,
-    paddingVertical: 8,
-    borderRadius: radius.md,
-    backgroundColor: colors.bgTertiary,
-  },
-  dayChipTop: {
-    color: colors.text,
-    fontSize: font.xs,
-    fontWeight: fontWeight.semibold,
-  },
-  dayChipNum: {
-    color: colors.text,
-    fontSize: font.sm,
-    fontWeight: fontWeight.medium,
   },
   chip: {
     paddingHorizontal: spacing.md,

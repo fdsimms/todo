@@ -44,8 +44,8 @@ export function unansweredCompletionCopy(count: number): { title: string; messag
     title: count === 1 ? '1 task asks a question' : `${count} tasks ask a question`,
     message:
       count === 1
-        ? 'You can answer it now, or complete it with no answer recorded.'
-        : 'You can answer them one at a time, or complete them with no answer recorded.',
+        ? 'Answer it now, or complete it without an answer.'
+        : 'Answer them one at a time, or complete them without answers.',
   };
 }
 

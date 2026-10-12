@@ -107,11 +107,11 @@ export function NewTasksBanner({ tasks, onJumpToTask, onDismiss }: Props) {
           activeOpacity={interaction.activeOpacity}
           accessibilityRole="button"
           accessibilityState={{ expanded: !collapsed }}
-          accessibilityLabel={`You have ${count} new todo${count === 1 ? '' : 's'}`}
-          accessibilityHint={collapsed ? 'Show which todos are new' : 'Hide the list of new todos'}
+          accessibilityLabel={`You have ${count} new task${count === 1 ? '' : 's'}`}
+          accessibilityHint={collapsed ? 'Show which todos are new' : 'Hide the list of new tasks'}
         >
           <Text style={styles.text} numberOfLines={1}>
-            You have <Text style={styles.count}>{count}</Text> new todo{count === 1 ? '' : 's'}
+            You have <Text style={styles.count}>{count}</Text> new task{count === 1 ? '' : 's'}
           </Text>
           <Ionicons
             name={collapsed ? 'chevron-down' : 'chevron-up'}
@@ -119,7 +119,7 @@ export function NewTasksBanner({ tasks, onJumpToTask, onDismiss }: Props) {
             color={colors.textSecondary}
           />
         </TouchableOpacity>
-        <PressableScale style={styles.button} onPress={handleDismiss} accessibilityLabel="Dismiss new todos notice">
+        <PressableScale style={styles.button} onPress={handleDismiss} accessibilityLabel="Dismiss new tasks notice">
           <Text style={styles.buttonText}>OK</Text>
         </PressableScale>
       </View>
@@ -142,7 +142,7 @@ export function NewTasksBanner({ tasks, onJumpToTask, onDismiss }: Props) {
               onPress={handleShowAll}
               activeOpacity={interaction.activeOpacity}
               accessibilityRole="button"
-              accessibilityLabel={`Show ${remaining} more new todo${remaining === 1 ? '' : 's'}`}
+              accessibilityLabel={`Show ${remaining} more new task${remaining === 1 ? '' : 's'}`}
             >
               <Text style={styles.moreText}>+{remaining} more</Text>
             </TouchableOpacity>

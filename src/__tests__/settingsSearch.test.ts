@@ -35,6 +35,21 @@ describe('searchSettings', () => {
     expect(ids('feedback')).toEqual(['haptics']);
   });
 
+  it('matches on the group title when nothing else in the row does', () => {
+    // "Appearance" names the group holding the haptics row, not the row itself.
+    const hit = searchSettings(entries, 'appearance');
+    expect(hit.map(r => r.entry.id)).toEqual(['haptics']);
+    expect(hit[0].matchedVia).toBe('Appearance');
+  });
+
+  it('ranks a group-title match below a keyword match', () => {
+    const both: SettingsEntry[] = [
+      { id: 'inGroup', groupId: 'appearance', label: 'A', section: 'S' },
+      { id: 'byKeyword', groupId: 'about', label: 'B', section: 'S', keywords: ['appearance'] },
+    ];
+    expect(ids('appearance', both)).toEqual(['byKeyword', 'inGroup']);
+  });
+
   it('finds every row a keyword spans', () => {
     expect(ids('streaks').sort()).toEqual(['dayReset', 'vacationMode']);
   });

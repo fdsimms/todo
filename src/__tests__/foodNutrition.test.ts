@@ -7,6 +7,7 @@ import {
   nutritionFor,
   parseFoodNutrition,
   serializeFoodNutrition,
+  describePanelFigures,
 } from '../utils/foodNutrition';
 import { NUTRIENT_KEYS } from '../types';
 import { HEALTH_NUTRIENT_METRICS } from '../utils/healthRules';
@@ -53,6 +54,31 @@ describe('parseFoodNutrition', () => {
     const without = parseFoodNutrition(serializeFoodNutrition(nutrition({})));
     expect(without).not.toBeNull();
     expect('foodCategory' in without!).toBe(false);
+  });
+
+  it('keeps an estimate\'s breakdown through a round trip, and adds no key when there is none', () => {
+    const lines = [
+      { label: 'Birch beer', amounts: { calorieKcal: 250, sugarG: 60 } },
+      { label: 'Soft pretzel', amounts: { calorieKcal: 300 } },
+    ];
+    const withLines = nutrition({ source: 'estimated', breakdown: lines });
+    expect(parseFoodNutrition(serializeFoodNutrition(withLines))?.breakdown).toEqual(lines);
+    const without = parseFoodNutrition(serializeFoodNutrition(nutrition({})));
+    expect('breakdown' in without!).toBe(false);
+  });
+
+  it('drops an unreadable breakdown line rather than failing the record', () => {
+    const parsed = parseFoodNutrition(stored({
+      ...nutrition({}),
+      breakdown: [
+        { label: '  ', amounts: { calorieKcal: 10 } },
+        { label: 'No figures', amounts: {} },
+        { label: 'Kept', amounts: { calorieKcal: 10, fatG: -1 } },
+        'nonsense',
+      ],
+    }));
+    expect(parsed?.breakdown).toEqual([{ label: 'Kept', amounts: { calorieKcal: 10 } }]);
+    expect('breakdown' in parseFoodNutrition(stored({ ...nutrition({}), breakdown: [{ label: 'x', amounts: {} }] }))!).toBe(false);
   });
 
   it('answers null for an empty column, which is every row predating the migration', () => {
@@ -163,7 +189,7 @@ describe('parseFoodNutrition', () => {
 
     it('drops a nutrient this build has no unit for', () => {
       const parsed = parseFoodNutrition(
-        stored(nutrition({ amounts: { calorieKcal: 52, vitaminDMcg: 2.4 } as never }))
+        stored(nutrition({ amounts: { calorieKcal: 52, omega3G: 2.4 } as never }))
       );
       expect(parsed!.amounts).toEqual({ calorieKcal: 52 });
     });
@@ -359,5 +385,32 @@ describe('mlToFlOz / flOzToMl', () => {
   it('round-trips without drifting', () => {
     expect(flOzToMl(mlToFlOz(300))).toBeCloseTo(300, 10);
     expect(mlToFlOz(flOzToMl(10))).toBeCloseTo(10, 10);
+  });
+});
+
+describe('describePanelFigures', () => {
+  const panel = (over: Partial<FoodNutrition>): FoodNutrition => ({
+    basis: 'per100g', servingGrams: null, servingText: null, amounts: {}, source: 'fdc',
+    sourceId: null, portions: [], recordedAt: '2026-10-08T12:00:00.000Z', ...over,
+  } as FoodNutrition);
+
+  it('reads a per-serving panel as printed', () => {
+    expect(describePanelFigures(
+      panel({ basis: 'perServing', servingText: '2 cookies', amounts: { satFatG: 2.5, sugarG: 11 } }),
+      ['satFatG', 'sugarG'],
+    )).toBe('Per serving (2 cookies): Saturated fat 2.5g · Total sugars 11g');
+  });
+
+  it('scales a per-100g panel to its stated serving, and says when one is not stated', () => {
+    expect(describePanelFigures(
+      panel({ servingGrams: 30, servingText: '1 bar (30g)', amounts: { satFatG: 10 } }),
+      ['satFatG', 'addedSugarG'],
+    )).toBe('Per serving (1 bar (30g)): Saturated fat 3g · Added sugars not stated');
+  });
+
+  it('stays per 100g with no serving to scale to, and says nothing with nothing asked', () => {
+    expect(describePanelFigures(panel({ amounts: { satFatG: 10 } }), ['satFatG'])).toBe('Per 100g: Saturated fat 10g');
+    expect(describePanelFigures(panel({}), [])).toBeNull();
+    expect(describePanelFigures(null, ['satFatG'])).toBeNull();
   });
 });

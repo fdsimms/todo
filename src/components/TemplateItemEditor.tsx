@@ -19,25 +19,26 @@ import {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PinIcon } from './PinIcon';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import type { Priority, Effort, TimeOfDay, TemplateAnchor, TemplateItem, TemplateItemCondition, TemplateItemVariant, TemplateAnswerGate, RecurrenceType, ChainItem, RotationItem, DeliverableKind, Polarity, Difficulty, MealSlot, WeatherCondition, QuotaPeriod } from '../types';
+import type { HolidayRule, Priority, Effort, TimeOfDay, TemplateAnchor, TemplateItem, TemplateItemCondition, TemplateItemVariant, TemplateAnswerGate, RecurrenceType, ChainItem, RotationItem, DeliverableKind, Polarity, Difficulty, MealSlot, WeatherCondition, QuotaPeriod } from '../types';
 import { PRIORITY_LABELS, EFFORT_LABELS, EFFORT_HINTS, TITLE_MAX_LENGTH, MEAL_SLOTS, MEAL_SLOT_LABELS } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { DOSE_UNITS, medicationVocabulary, medicationKey } from '../utils/medicationLog';
+import { medicationVocabulary, medicationKey } from '../utils/medicationLog';
 import { formatDuration } from '../utils/effort';
 import { animateLayout } from '../utils/layoutAnimation';
 import { tagColor } from '../utils/tagColor';
 import { useTaskStore } from '../store/useTaskStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useMedicationStore } from '../store/useMedicationStore';
-import { describeConditions, describeVariants, questionLabel, setVariantText, toggleItemCondition, variantText } from '../utils/templateQuestions';
+import { describeConditions, describeVariants, questionLabel, setItemConditionRange, setVariantText, toggleItemCondition, variantText } from '../utils/templateQuestions';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import {
   anchorLabel,
   formatOffsetWithAnchor,
   formatMinutesOffset,
+  describePlaceholderTokens,
   itemPlaceholders,
   normalizePlaceholderName,
   withPlaceholder,
@@ -45,7 +46,7 @@ import {
   RUN_PLACEHOLDER,
 } from '../utils/templateUtils';
 import { categoryLabel } from '../utils/categoryLabel';
-import { formatHHMM, hhmmToDate, dateToHHMM } from '../utils/dateUtils';
+import { formatHHMM, hhmmToDate, dateToHHMM, getCurrentDayStart } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { deliverableMeta, deliverableOptionsFor, parseDeliverableOptions } from '../utils/deliverables';
 import { SortableList } from './SortableList';
@@ -61,7 +62,8 @@ import { ChainStepLinkSheet } from './ChainStepLinkSheet';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { DIFFICULTY_HINT, DIFFICULTY_PICKER_SEGMENTS, DIFFICULTY_SEGMENTS } from '../utils/rewards';
 import { RecurrencePicker } from './RecurrencePicker';
-import { SegmentedControl } from './SegmentedControl';
+import { SegmentedControl, type SegmentOption } from './SegmentedControl';
+import { TaskDoseAmount } from './TaskDoseAmount';
 import { WEATHER_CONDITIONS, weatherConditionLabel } from '../utils/weatherTasks';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { CollapsibleField } from './CollapsibleField';
@@ -73,8 +75,15 @@ import { linkHost, parseLabelledLink } from '../utils/textLinks';
 import { EditorSheet } from './EditorSheet';
 import { NumberPadAccessory } from './NumberPadAccessory';
 import { CountStepper } from './CountStepper';
+import { SunBoundPanel } from './SunBoundPanel';
+import {
+  formatSunAnchor, parseSunAnchor, shortSunAnchor, sunAnchorHHMM, roundSunLocation,
+  type SunAnchor, type SunEvent, type SunLocation,
+} from '../utils/sunTimes';
+import { getCurrentLocation, requestLocationPermission } from '../utils/weatherLocation';
 import { MAX_ROTATION_PER_WEEK, rotationPerWeek, rotationTargetTotal, withPerWeek } from '../utils/rotation';
 import { normalizeTargetUnit } from '../utils/quotaUnit';
+import { QUOTA_RAMP_MAX_EVERY, QUOTA_RAMP_MAX_STEP, QUOTA_RAMP_MAX_TARGET, canRampQuota, describeQuotaRamp } from '../utils/quotaRamp';
 import { formatPhoneInput } from '../utils/phone';
 import { capitalize } from '../utils/capitalize';
 import { TextField } from './TextField';
@@ -84,6 +93,7 @@ import { TextField } from './TextField';
 // at, and an unbounded stepper is one a long press can run to nonsense.
 const MAX_REMINDER_OFFSET_MINUTES = 10080;   // a week, in 15-minute steps
 const MAX_CUSTOM_ESTIMATE_MINUTES = 600;     // ten hours
+const MAX_CONDITION_NUMBER = 999;            // a number question's range bound
 const COMPLETION_TIMER_STEP_MINUTES = 15;
 const MAX_COMPLETION_TIMER_MINUTES = 24 * 60; // matches TaskEditor's own ceiling
 // The same three bounds TaskEditor uses for a penalty, and for the same
@@ -112,6 +122,8 @@ interface Props {
   /** Pre-fill for a new item handed off from TemplateItemQuickAdd. Ignored when editing an existing item. */
   initialDraft?: Partial<TemplateItem> | null;
   onClose: () => void;
+  /** Called with the stored item right after a new one is added (not on an edit). */
+  onCreated?: (item: TemplateItem) => void;
 }
 
 /**
@@ -119,7 +131,14 @@ interface Props {
  * optional flag, due/defer offsets relative to the anchor date, time of day,
  * category, tags, priority and effort.
  */
-export function TemplateItemEditor({ visible, templateId, templateName, item, initialDraft, onClose }: Props) {
+// What a Start or End pill can follow: the clock, or the sun.
+const WINDOW_KIND_OPTIONS: SegmentOption<'time' | SunEvent>[] = [
+  { value: 'time', label: 'Time' },
+  { value: 'sunrise', label: 'Sunrise' },
+  { value: 'sunset', label: 'Sunset' },
+];
+
+export function TemplateItemEditor({ visible, templateId, templateName, item, initialDraft, onClose, onCreated }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -129,10 +148,18 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const addItem = useTemplateStore(s => s.addItem);
   const updateItem = useTemplateStore(s => s.updateItem);
   const tripTemplate = useTemplateStore(s => s.templates.find(t => t.id === templateId)?.anchorsAreAway ?? false);
-  // Only a choice can gate an item: a number or a free-text answer has no
-  // fixed set to pick from, so there's nothing an author could tick.
+  // A choice gates an item by which options are ticked, a number by a range
+  // ("at least 5"). Free text and people answers have neither a fixed set nor
+  // an order to compare, so there's nothing an author could set on them.
   const choiceQuestions = useTemplateStore(
     useShallow(s => (s.templates.find(t => t.id === templateId)?.questions ?? []).filter(q => q.kind === 'choice'))
+  );
+  const numberQuestions = useTemplateStore(
+    useShallow(s => (s.templates.find(t => t.id === templateId)?.questions ?? []).filter(q => q.kind === 'number'))
+  );
+  const conditionQuestions = useMemo(
+    () => [...choiceQuestions, ...numberQuestions],
+    [choiceQuestions, numberQuestions],
   );
   // TemplateItem.answerGate: "only if <another item> is answered …".
   const [answerGate, setAnswerGate] = useState<TemplateAnswerGate | null>(null);
@@ -175,11 +202,11 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     return templateItems.filter(i => i.id !== item?.id && !i.refTemplateId && !waitsOnThis(i));
   }, [templateItems, item?.id]);
   const waitsOnSummary = blockedByItemIds.length > 0
-    ? blockedByItemIds.map(id => templateItems.find(i => i.id === id)?.title || 'An item no longer here').join(', ')
+    ? blockedByItemIds.map(id => templateItems.find(i => i.id === id)?.title || 'Missing item').join(', ')
     : null;
   const gateItem = answerGate ? templateItems.find(i => i.id === answerGate.itemId) ?? null : null;
   const gateSummary = answerGate && answerGate.answers.length > 0
-    ? `${gateItem?.title || 'An item no longer here'}: ${answerGate.answers.join(' or ')}`
+    ? `${gateItem?.title || 'Missing item'}: ${answerGate.answers.join(' or ')}`
     : null;
   const toggleGateAnswer = (itemId: string, option: string) => {
     haptics.tap();
@@ -191,20 +218,23 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     });
   };
   // Every medication ever logged, for the "Log a dose" name field's own
-  // suggestions below — see medicationVocabulary for why this is derived
+  // suggestions below — see medicationVocabulary for what it unions
   // rather than a registry.
   const medicationLogs = useMedicationStore(useShallow(s => s.logs));
   const archivedMedications = useMedicationStore(useShallow(s => s.archived));
+  const registeredMedications = useMedicationStore(useShallow(s => s.registered));
   const medicationSuggestions = useMemo(
-    () => medicationVocabulary(medicationLogs, archivedMedications),
-    [medicationLogs, archivedMedications]
+    () => medicationVocabulary(medicationLogs, archivedMedications, registeredMedications),
+    [medicationLogs, archivedMedications, registeredMedications]
   );
 
   // ==== local state: the draft, one piece of state per field ====
   const [title, setTitle] = useState('');
+  const readableTitle = useMemo(() => describePlaceholderTokens(title), [title]);
   const [notes, setNotes] = useState('');
   const [optional, setOptional] = useState(false);
   const [conditions, setConditions] = useState<TemplateItemCondition[]>([]);
+  const [conditionsMatch, setConditionsMatch] = useState<'all' | 'any'>('all');
   const [variants, setVariants] = useState<TemplateItemVariant[]>([]);
   // True while a subtask/chain row is mid-drag. The sheet's ScrollView has to
   // stand down for the drag to survive the first finger move — a JS responder
@@ -226,6 +256,16 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [locationText, setLocationText] = useState('');
   const [windowEnd, setWindowEnd] = useState<string | null>(null);
   const [windowPickerMode, setWindowPickerMode] = useState<'none' | 'start' | 'end'>('none');
+  // A bound that follows the sun, beside the clock time it resolved to today
+  // (see Task.windowStartSun), and which of Time / Sunrise / Sunset the open
+  // pill is set to. Same controls as the task editor's.
+  const [windowStartSun, setWindowStartSun] = useState<string | null>(null);
+  const [windowEndSun, setWindowEndSun] = useState<string | null>(null);
+  const [windowPickerKind, setWindowPickerKind] = useState<'time' | SunEvent>('time');
+  const [sunLocationStatus, setSunLocationStatus] = useState<'idle' | 'asking' | 'failed'>('idle');
+  const [sunUnavailable, setSunUnavailable] = useState(false);
+  const sunLocation = useSettingsStore(s => s.sunLocation);
+  const setSunLocation = useSettingsStore(s => s.setSunLocation);
   const [windowPickerDate, setWindowPickerDate] = useState(new Date());
   const [reminderOffsetMinutes, setReminderOffsetMinutes] = useState<number | null>(null);
   const [timeSegments, setTimeSegments] = useState<TimeOfDay[]>([]);
@@ -253,6 +293,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const weatherTasksOn = useSettingsStore(s => s.weatherTasks);
   const [difficulty, setDifficulty] = useState<Difficulty | null>(null);
   const [pinEachOccurrence, setPinEachOccurrence] = useState(false);
+  const [medicationChecklist, setMedicationChecklist] = useState(false);
   const [polarity, setPolarity] = useState<Polarity>('positive');
   const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('none');
   const [recurrenceInterval, setRecurrenceInterval] = useState(1);
@@ -260,12 +301,19 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [recurrenceMonthDay, setRecurrenceMonthDay] = useState<number | null>(null);
   const [recurrenceMonth, setRecurrenceMonth] = useState<number | null>(null);
   const [recurrenceFromCompletion, setRecurrenceFromCompletion] = useState(false);
+  const [recurrenceHolidays, setRecurrenceHolidays] = useState<HolidayRule | null>(null);
+  const [rainSkipMm, setRainSkipMm] = useState<number | null>(null);
   const [recurrenceCount, setRecurrenceCount] = useState<number | null>(null);
   const [recurrenceWeekOrdinal, setRecurrenceWeekOrdinal] = useState<number | null>(null);
   const [targetCount, setTargetCount] = useState<number | null>(null);
   const [targetUnitText, setTargetUnitText] = useState('');
   const [quotaPeriod, setQuotaPeriod] = useState<QuotaPeriod>('day');
   const [allowOvershoot, setAllowOvershoot] = useState(false);
+  const [quotaRampStep, setQuotaRampStep] = useState<number | null>(null);
+  const [quotaRampEvery, setQuotaRampEvery] = useState(1);
+  const [quotaRampGoal, setQuotaRampGoal] = useState<number | null>(null);
+  // Same rule as the task editor: only a plain count ramps.
+  const offersRamp = canRampQuota({ targetCount, allowOvershoot });
   const [quotaReminders, setQuotaReminders] = useState(false);
   const [chainStepOnSchedule, setChainStepOnSchedule] = useState(false);
   const [phoneText, setPhoneText] = useState('');
@@ -314,6 +362,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setNotes(item?.notes ?? draft?.notes ?? '');
     setOptional(item?.optional ?? draft?.optional ?? false);
     setConditions(item?.conditions ?? draft?.conditions ?? []);
+    setConditionsMatch(item?.conditionsMatch ?? 'all');
     setVariants(item?.variants ?? draft?.variants ?? []);
     setAnswerGate(item?.answerGate ?? draft?.answerGate ?? null);
     setAnchor(item?.anchor ?? draft?.anchor ?? 'start');
@@ -326,6 +375,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setLinkText(item?.linkUrl ?? draft?.linkUrl ?? '');
     setLocationText(item?.location ?? draft?.location ?? '');
     setWindowEnd(item?.windowEnd ?? draft?.windowEnd ?? null);
+    setWindowStartSun(item?.windowStartSun ?? draft?.windowStartSun ?? null);
+    setWindowEndSun(item?.windowEndSun ?? draft?.windowEndSun ?? null);
     setReminderOffsetMinutes(item?.reminderOffsetMinutes ?? draft?.reminderOffsetMinutes ?? null);
     setTimeSegments(item?.timeSegments ?? draft?.timeSegments ?? []);
     setTags(item?.tags ?? draft?.tags ?? []);
@@ -350,6 +401,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setWeatherWait(item?.weatherWait ?? draft?.weatherWait ?? null);
     setDifficulty(item?.difficulty ?? draft?.difficulty ?? null);
     setPinEachOccurrence(item?.pinEachOccurrence ?? draft?.pinEachOccurrence ?? false);
+    setMedicationChecklist(item?.medicationChecklist ?? false);
     setPolarity(item?.polarity ?? draft?.polarity ?? 'positive');
     setRecurrenceType(item?.recurrenceType ?? draft?.recurrenceType ?? 'none');
     setRecurrenceInterval(item?.recurrenceInterval ?? draft?.recurrenceInterval ?? 1);
@@ -357,12 +409,17 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setRecurrenceMonthDay(item?.recurrenceMonthDay ?? draft?.recurrenceMonthDay ?? null);
     setRecurrenceMonth(item?.recurrenceMonth ?? draft?.recurrenceMonth ?? null);
     setRecurrenceFromCompletion(item?.recurrenceFromCompletion ?? draft?.recurrenceFromCompletion ?? false);
+    setRecurrenceHolidays(item?.recurrenceHolidays ?? draft?.recurrenceHolidays ?? null);
+    setRainSkipMm(item?.rainSkipMm ?? draft?.rainSkipMm ?? null);
     setRecurrenceCount(item?.recurrenceCount ?? draft?.recurrenceCount ?? null);
     setRecurrenceWeekOrdinal(item?.recurrenceWeekOrdinal ?? draft?.recurrenceWeekOrdinal ?? null);
     setTargetCount(item?.targetCount ?? draft?.targetCount ?? null);
     setTargetUnitText(item?.targetUnit ?? draft?.targetUnit ?? '');
     setQuotaPeriod(item?.quotaPeriod ?? draft?.quotaPeriod ?? 'day');
     setAllowOvershoot(item?.allowOvershoot ?? draft?.allowOvershoot ?? false);
+    setQuotaRampStep(item?.quotaRampStep ?? null);
+    setQuotaRampEvery(item?.quotaRampEvery ?? 1);
+    setQuotaRampGoal(item?.quotaRampGoal ?? null);
     setQuotaReminders(item?.quotaReminders ?? draft?.quotaReminders ?? false);
     setChainStepOnSchedule(item?.chainStepOnSchedule ?? draft?.chainStepOnSchedule ?? false);
     setPhoneText(item?.phoneNumber ?? draft?.phoneNumber ?? '');
@@ -391,7 +448,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setShowTimeWindow(false);
   }, [visible, item, initialDraft]);
 
-  const conditionSummary = describeConditions(conditions, choiceQuestions);
+  const conditionSummary = describeConditions(conditions, conditionQuestions, conditionsMatch);
   const variantSummary = describeVariants(variants, choiceQuestions);
 
   /**
@@ -403,6 +460,16 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const toggleCondition = (questionId: string, option: string) => {
     haptics.tap();
     setConditions(prev => toggleItemCondition(prev, questionId, option));
+  };
+
+  /** Set one end of a number question's range, leaving the other as it was. */
+  const setConditionBound = (questionId: string, end: 'min' | 'max', value: number | null) => {
+    setConditions(prev => {
+      const existing = prev.find(c => c.questionId === questionId);
+      const min = end === 'min' ? value : existing?.min ?? null;
+      const max = end === 'max' ? value : existing?.max ?? null;
+      return setItemConditionRange(prev, questionId, min, max);
+    });
   };
 
   const fieldOpen = (key: FieldKey, fallback = false) => openFields[key] ?? fallback;
@@ -438,18 +505,90 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setDeadlineTimePickerOpen(false);
   };
 
+  const windowSunOf = (which: 'start' | 'end') => (which === 'start' ? windowStartSun : windowEndSun);
+
   const openWindowPicker = (which: 'start' | 'end') => {
     const current = which === 'start' ? windowStart : windowEnd;
     const fallback = which === 'start' ? '08:00' : '13:00';
     setWindowPickerDate(hhmmToDate(current ?? fallback));
+    setWindowPickerKind(parseSunAnchor(windowSunOf(which))?.event ?? 'time');
+    setSunUnavailable(false);
+    setSunLocationStatus('idle');
     setWindowPickerMode(which);
   };
 
   const confirmWindowPicker = () => {
     const hhmm = dateToHHMM(windowPickerDate);
-    if (windowPickerMode === 'start') setWindowStart(hhmm);
-    else if (windowPickerMode === 'end') setWindowEnd(hhmm);
+    if (windowPickerMode === 'start') { setWindowStart(hhmm); setWindowStartSun(null); }
+    else if (windowPickerMode === 'end') { setWindowEnd(hhmm); setWindowEndSun(null); }
     setWindowPickerMode('none');
+  };
+
+  // A template has no day yet, so the clock fallback is the time the anchor
+  // comes to today; every task made from it resolves the anchor on its own day.
+  const commitWindowSun = (which: 'start' | 'end', anchor: SunAnchor, loc: SunLocation) => {
+    const text = formatSunAnchor(anchor);
+    const hhmm = sunAnchorHHMM(text, getCurrentDayStart(), loc);
+    if (!hhmm) { setSunUnavailable(true); return; }
+    setSunUnavailable(false);
+    if (which === 'start') { setWindowStartSun(text); setWindowStart(hhmm); }
+    else { setWindowEndSun(text); setWindowEnd(hhmm); }
+  };
+
+  const chooseWindowKind = (kind: 'time' | SunEvent) => {
+    if (windowPickerMode === 'none') return;
+    const which = windowPickerMode;
+    setWindowPickerKind(kind);
+    setSunUnavailable(false);
+    if (kind === 'time') {
+      const current = which === 'start' ? windowStart : windowEnd;
+      if (which === 'start') setWindowStartSun(null); else setWindowEndSun(null);
+      setWindowPickerDate(hhmmToDate(current ?? (which === 'start' ? '08:00' : '13:00')));
+      return;
+    }
+    if (!sunLocation) return;
+    const existing = parseSunAnchor(windowSunOf(which));
+    commitWindowSun(which, { event: kind, offsetMinutes: existing?.offsetMinutes ?? 0 }, sunLocation);
+  };
+
+  const setWindowSunSide = (side: 'before' | 'at' | 'after') => {
+    if (windowPickerMode === 'none' || windowPickerKind === 'time' || !sunLocation) return;
+    const existing = parseSunAnchor(windowSunOf(windowPickerMode));
+    const minutes = Math.abs(existing?.offsetMinutes ?? 0) || 30;
+    const offsetMinutes = side === 'at' ? 0 : side === 'before' ? -minutes : minutes;
+    commitWindowSun(windowPickerMode, { event: windowPickerKind, offsetMinutes }, sunLocation);
+  };
+
+  const setWindowSunMinutes = (minutes: number) => {
+    if (windowPickerMode === 'none' || windowPickerKind === 'time' || !sunLocation) return;
+    const existing = parseSunAnchor(windowSunOf(windowPickerMode));
+    const sign = (existing?.offsetMinutes ?? 0) < 0 ? -1 : 1;
+    commitWindowSun(windowPickerMode, { event: windowPickerKind, offsetMinutes: sign * minutes }, sunLocation);
+  };
+
+  // What the location read was started for, so a late answer only lands on
+  // the pill it was asked from.
+  const sunPickRef = useRef({ visible, which: windowPickerMode, kind: windowPickerKind });
+  sunPickRef.current = { visible, which: windowPickerMode, kind: windowPickerKind };
+
+  const saveCurrentLocationForSun = async () => {
+    const asked = { which: windowPickerMode, kind: windowPickerKind };
+    setSunLocationStatus('asking');
+    const granted = await requestLocationPermission();
+    const loc = granted ? await getCurrentLocation() : null;
+    if (!loc) { setSunLocationStatus('failed'); return; }
+    setSunLocation(loc);
+    setSunLocationStatus('idle');
+    const now = sunPickRef.current;
+    if (!now.visible || now.which !== asked.which || now.kind !== asked.kind) return;
+    if (asked.which === 'none' || asked.kind === 'time') return;
+    commitWindowSun(asked.which, { event: asked.kind, offsetMinutes: 0 }, roundSunLocation(loc));
+  };
+
+  const windowBoundLabel = (hhmm: string | null, sun: string | null): string | null => {
+    const anchor = parseSunAnchor(sun);
+    if (anchor) return shortSunAnchor(anchor);
+    return hhmm ? formatHHMM(hhmm) : null;
   };
 
   // A step, subtask, tag or blank typed into its "add new" field but never
@@ -501,6 +640,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       notes,
       optional,
       conditions,
+      conditionsMatch,
       variants,
       // A gate with no answers ticked would rule the task out whatever the
       // answer, so it's dropped rather than saved.
@@ -512,6 +652,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       deadlineTime: deadlineOffsetDays !== null ? deadlineTime : null,
       windowStart,
       windowEnd,
+      windowStartSun,
+      windowEndSun,
       linkUrl: parseLabelledLink(linkText)?.url ?? null,
       location: locationText.trim() || null,
       reminderOffsetMinutes: dueOffsetDays !== null ? reminderOffsetMinutes : null,
@@ -544,6 +686,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       difficulty,
       // Cleared with the schedule: it only means anything on a repeating task.
       pinEachOccurrence: recurrenceType !== 'none' ? pinEachOccurrence : false,
+      medicationChecklist,
       // Belt and braces with the row above being hidden for a chain: the two
       // are mutually exclusive, and this is what an item saved by an older
       // build carrying both is normalized by on its next save.
@@ -557,6 +700,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       recurrenceWeekOrdinal: recurrenceType === 'monthly' ? recurrenceWeekOrdinal : null,
       recurrenceMonth: recurrenceType === 'yearly' ? recurrenceMonth : null,
       recurrenceFromCompletion,
+      recurrenceHolidays: recurrenceType !== 'none' && recurrenceType !== 'hours' ? recurrenceHolidays : null,
+      rainSkipMm: recurrenceType !== 'none' && recurrenceType !== 'hours' ? rainSkipMm : null,
       recurrenceCount: recurrenceType !== 'none' ? recurrenceCount : null,
       deliverableKind,
       deliverableOptions: deliverableKind === 'choice' ? parseDeliverableOptions(deliverableOptionsText) : [],
@@ -584,6 +729,9 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       targetUnit: targetCount !== null ? normalizeTargetUnit(targetUnitText) : null,
       quotaPeriod: targetCount !== null ? quotaPeriod : 'day',
       allowOvershoot: targetCount !== null && allowOvershoot,
+      quotaRampStep: offersRamp ? quotaRampStep : null,
+      quotaRampEvery: offersRamp && quotaRampStep ? quotaRampEvery : null,
+      quotaRampGoal: offersRamp && quotaRampStep ? quotaRampGoal : null,
       quotaReminders: targetCount !== null && quotaReminders,
       phoneNumber: phoneText.trim() || null,
       emailAddress: emailText.trim() || null,
@@ -592,15 +740,19 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     };
     if (item) {
       updateItem(templateId, item.id, updates);
-    } else if (!addItem(templateId, updates)) {
-      // Nothing was stored — closing here would throw away a whole editor's
-      // worth of work on a row that will never appear. See addItem.
-      haptics.error();
-      Alert.alert(
-        'Couldn’t add that item',
-        'This template couldn’t be found, so nothing was saved. Go back to Templates and open it again, then retry.',
-      );
-      return;
+    } else {
+      const created = addItem(templateId, updates);
+      if (!created) {
+        // Nothing was stored — closing here would throw away a whole editor's
+        // worth of work on a row that will never appear. See addItem.
+        haptics.error();
+        Alert.alert(
+          'Couldn’t add that item',
+          'This template couldn’t be found, so nothing was saved. Reopen it from Templates and try again.',
+        );
+        return;
+      }
+      onCreated?.(created);
     }
     haptics.success();
     onClose();
@@ -658,7 +810,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     ? timeSegments.map(capitalize).join(', ')
     : undefined;
   const timeWindowSummary = (windowStart || windowEnd)
-    ? `${windowStart ? formatHHMM(windowStart) : 'Any'}–${windowEnd ? formatHHMM(windowEnd) : 'Any'}`
+    ? `${windowBoundLabel(windowStart, windowStartSun) ?? 'Any'} to ${windowBoundLabel(windowEnd, windowEndSun) ?? 'Any'}`
     : undefined;
 
   // ==== render. Everything below is JSX ====
@@ -742,6 +894,13 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
         maxLength={TITLE_MAX_LENGTH}
         multiline blurOnSubmit
       />
+      {/* The title in words, shown only when it holds a computed blank: the
+          field has to keep the syntax, so this is the one place it is read back. */}
+      {readableTitle !== title && (
+        <Text style={styles.readableTitle} accessibilityLabel={`Reads as: ${readableTitle}`}>
+          Reads as: {readableTitle}
+        </Text>
+      )}
       <TextField
         style={styles.notesInput}
         value={notes}
@@ -757,7 +916,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
         <CollapsibleField
           label="Blanks"
           summary={blanks.length > 0 ? blanks.map(n => `{${n}}`).join(' ') : undefined}
-          hint={`Type {a name in braces} in the title, notes, a subtask or a chain step. Applying the template asks for each one and puts what you enter in its place. {${RUN_PLACEHOLDER}} is filled in with the name you give the run.`}
+          hint={`Type {a name in braces} in the title, notes, a subtask or a chain step. Applying the template asks for each one. {${RUN_PLACEHOLDER}} becomes the name you give the run.`}
           expanded={fieldOpen('blanks', blanks.length > 0)}
           onToggle={() => toggleField('blanks', blanks.length > 0)}
         >
@@ -801,17 +960,40 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           template asks nothing to condition on: an empty picker of answers
           that don't exist explains itself to nobody, and the place to write
           one is the template's own editor. */}
-      {choiceQuestions.length > 0 && (
+      {conditionQuestions.length > 0 && (
         <View style={styles.sectionCard}>
           <CollapsibleField
             label="Checked by default for"
             summary={conditionSummary ?? undefined}
             emptySummary="Every run"
-            hint="Arrives pre-checked when the run's answer is one of these. Everything stays on the list either way, so you can still check or uncheck it when you apply the template."
+            hint="Starts checked when the run’s answer is one of these, or within the range for a number. You can still check or uncheck it when you apply the template."
             expanded={fieldOpen('conditions', conditionSummary !== null)}
             onToggle={() => toggleField('conditions', conditionSummary !== null)}
           >
-            {choiceQuestions.map(question => (
+            {conditionQuestions.map(question => question.kind === 'number' ? (
+              <View key={question.id} style={styles.conditionBlock}>
+                <Text style={styles.conditionLabel} numberOfLines={1}>{questionLabel(question)}</Text>
+                {(['min', 'max'] as const).map(end => {
+                  const current = conditions.find(c => c.questionId === question.id)?.[end] ?? null;
+                  const noun = end === 'min' ? 'At least' : 'At most';
+                  return (
+                    <View key={end} style={styles.blankRow}>
+                      <Text style={styles.conditionLabel}>{noun}</Text>
+                      <CountStepper
+                        value={current}
+                        onChange={v => setConditionBound(question.id, end, v)}
+                        min={0}
+                        max={MAX_CONDITION_NUMBER}
+                        allowNull
+                        start={end === 'min' ? 1 : 7}
+                        emptyLabel="No limit"
+                        label={`${noun.toLowerCase()} ${questionLabel(question)}`}
+                      />
+                    </View>
+                  );
+                })}
+              </View>
+            ) : (
               <View key={question.id} style={styles.conditionBlock}>
                 <Text style={styles.conditionLabel} numberOfLines={1}>{questionLabel(question)}</Text>
                 <View style={styles.blankRow}>
@@ -834,6 +1016,19 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                 </View>
               </View>
             ))}
+            {conditions.length >= 2 && (
+              <View style={styles.conditionBlock}>
+                <SegmentedControl
+                  label="When there is more than one"
+                  value={conditionsMatch}
+                  onChange={setConditionsMatch}
+                  options={[
+                    { value: 'all', label: 'All of these' },
+                    { value: 'any', label: 'Any of these' },
+                  ]}
+                />
+              </View>
+            )}
           </CollapsibleField>
         </View>
       )}
@@ -847,7 +1042,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             label="Different text for"
             summary={variantSummary ?? undefined}
             emptySummary="Same for every answer"
-            hint="Replaces the title or notes above when the run's answer is the one named. Leave a field empty to keep the text above. Blanks work in it too."
+            hint="Replaces the title or notes above when the run’s answer matches. An empty field keeps the text above. Blanks work here too."
             expanded={fieldOpen('variants', variantSummary !== null)}
             onToggle={() => toggleField('variants', variantSummary !== null)}
           >
@@ -930,7 +1125,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
         <OffsetRow
           icon="flag-outline"
           label="Deadline"
-          hint="A hard cut-off, shown separately from the due date."
+          hint="A hard cutoff, shown separately from the due date."
           offset={deadlineOffsetDays}
           anchor={anchor}
           away={tripTemplate}
@@ -997,7 +1192,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
         <EditorRow
           icon="time-outline"
           label="Time of day"
-          hint="Hold it back until a part of the day."
+          hint="Keeps the task off Today until a part of the day."
           value={timeOfDaySummary}
           expanded={showTimeOfDay}
           onPress={() => { animateLayout(); setShowTimeOfDay(v => !v); }}
@@ -1033,7 +1228,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           expanded={showTimeWindow}
           onPress={() => { animateLayout(); setShowTimeWindow(v => !v); }}
           onClear={(windowStart || windowEnd)
-            ? () => { setWindowStart(null); setWindowEnd(null); setWindowPickerMode('none'); }
+            ? () => { setWindowStart(null); setWindowEnd(null); setWindowStartSun(null); setWindowEndSun(null); setWindowPickerMode('none'); }
             : undefined}
         />
         {showTimeWindow && (
@@ -1044,7 +1239,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                 onPress={() => openWindowPicker('start')}
               >
                 <Text style={[styles.timePillText, !!windowStart && styles.timePillTextActive]}>
-                  {windowStart ? formatHHMM(windowStart) : 'Start'}
+                  {windowBoundLabel(windowStart, windowStartSun) ?? 'Start'}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -1052,11 +1247,36 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                 onPress={() => openWindowPicker('end')}
               >
                 <Text style={[styles.timePillText, !!windowEnd && styles.timePillTextActive]}>
-                  {windowEnd ? formatHHMM(windowEnd) : 'End'}
+                  {windowBoundLabel(windowEnd, windowEndSun) ?? 'End'}
                 </Text>
               </TouchableOpacity>
             </View>
             {windowPickerMode !== 'none' && (
+              <View style={styles.windowKindRow}>
+                <SegmentedControl
+                  options={WINDOW_KIND_OPTIONS}
+                  value={windowPickerKind}
+                  onChange={chooseWindowKind}
+                  label={windowPickerMode === 'start' ? 'Start at' : 'End at'}
+                />
+              </View>
+            )}
+            {windowPickerMode !== 'none' && windowPickerKind !== 'time' && (
+              <SunBoundPanel
+                event={windowPickerKind}
+                anchor={parseSunAnchor(windowSunOf(windowPickerMode))}
+                resolved={windowPickerMode === 'start' ? windowStart : windowEnd}
+                dayLabel="Today"
+                hasLocation={!!sunLocation}
+                locationStatus={sunLocationStatus}
+                unavailable={sunUnavailable}
+                onSide={setWindowSunSide}
+                onMinutes={setWindowSunMinutes}
+                onUseLocation={saveCurrentLocationForSun}
+                onDone={() => setWindowPickerMode('none')}
+              />
+            )}
+            {windowPickerMode !== 'none' && windowPickerKind === 'time' && (
               <>
                 <DateTimePicker
                   value={windowPickerDate}
@@ -1099,7 +1319,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             {dueOffsetDays === null ? (
               <Text style={styles.optionHint}>Set a due date first</Text>
             ) : reminderOffsetMinutes === null ? (
-              <Text style={styles.optionHint}>Minutes before the resolved due date</Text>
+              <Text style={styles.optionHint}>Minutes before the due date</Text>
             ) : null}
           </View>
           {dueOffsetDays !== null && (
@@ -1181,6 +1401,10 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             onChangeMonth={setRecurrenceMonth}
             seedMonth={() => 1}
             recurrenceFromCompletion={recurrenceFromCompletion}
+            recurrenceHolidays={recurrenceHolidays}
+            onChangeHolidays={setRecurrenceHolidays}
+            rainSkipMm={rainSkipMm}
+            onChangeRainSkip={setRainSkipMm}
             onChangeFromCompletion={setRecurrenceFromCompletion}
             recurrenceCount={recurrenceCount}
             onChangeCount={setRecurrenceCount}
@@ -1210,7 +1434,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           <Ionicons name="help-circle-outline" size={18} color={optional ? colors.accent : colors.textSecondary} />
           <View style={styles.optionContent}>
             <Text style={styles.optionLabel}>Optional</Text>
-            <Text style={styles.optionHint}>Starts unchecked in the apply sheet, so it's skipped by default</Text>
+            <Text style={styles.optionHint}>Starts unchecked when the template is applied, so it’s skipped by default</Text>
           </View>
           <View style={[styles.toggle, optional && styles.toggleOn]}>
             <View style={[styles.toggleKnob, optional && styles.toggleKnobOn]} />
@@ -1248,7 +1472,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               <PinIcon filled={pinEachOccurrence} size={18} color={pinEachOccurrence ? colors.orangeText : colors.textSecondary} />
               <View style={styles.optionContent}>
                 <Text style={styles.optionLabel}>Pin every occurrence</Text>
-                <Text style={styles.optionHint}>Each occurrence of tasks created from this item starts out pinned to Today</Text>
+                <Text style={styles.optionHint}>Each occurrence of a task made from this item starts pinned to Today</Text>
               </View>
               <View style={[styles.toggle, pinEachOccurrence && styles.toggleOn]}>
                 <View style={[styles.toggleKnob, pinEachOccurrence && styles.toggleKnobOn]} />
@@ -1268,7 +1492,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           <Ionicons name="color-wand-outline" size={18} color={excludeFromSuggestions ? colors.accent : colors.textSecondary} />
           <View style={styles.optionContent}>
             <Text style={styles.optionLabel}>Skip in suggestions</Text>
-            <Text style={styles.optionHint}>Keeps tasks created from this item out of suggested pins and focus sessions</Text>
+            <Text style={styles.optionHint}>Keeps tasks made from this item out of suggested pins and focus sessions</Text>
           </View>
           <View style={[styles.toggle, excludeFromSuggestions && styles.toggleOn]}>
             <View style={[styles.toggleKnob, excludeFromSuggestions && styles.toggleKnobOn]} />
@@ -1283,7 +1507,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               emptySummary="Off"
               hint={weatherTasksOn
                 ? 'Holds tasks made from this item until the first day in the next 14 with this forecast.'
-                : 'Turn on Weather-based tasks in Settings, with location access, so the app can read the forecast. Until then these tasks are not held.'}
+                : 'Turn on Weather-based tasks in Settings, with location access. Until then, these tasks aren’t held.'}
               expanded={fieldOpen('weatherWait')}
               onToggle={() => toggleField('weatherWait')}
             >
@@ -1302,7 +1526,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           summary={completionTimerMinutes !== null
             ? [`${formatDuration(completionTimerMinutes)} after completing`, completionTimerNote || null].filter(Boolean).join(': ')
             : undefined}
-          hint="Asks to set a reminder this long after a task made from this item is completed, e.g. a two-hour wait before eating after a medication."
+          hint="Offers to set a reminder this long after a task made from this item is completed, such as a two-hour wait before eating."
           expanded={fieldOpen('completionTimer')}
           onToggle={() => toggleField('completionTimer')}
         >
@@ -1323,7 +1547,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               style={[styles.fieldBox, styles.medicationAmountInput]}
               value={completionTimerNote ?? ''}
               onChangeText={text => setCompletionTimerNote(text || null)}
-              placeholder="e.g. Don't eat for 2 hours"
+              placeholder="e.g. Don’t eat for 2 hours"
               placeholderTextColor={colors.textTertiary}
               maxLength={COMPLETION_TIMER_NOTE_MAX_LENGTH}
               returnKeyType="done"
@@ -1344,10 +1568,11 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   .filter(Boolean).join(', ')
               : undefined
           }
-          hint="Tasks made from this item record a dose in your medication log each time they're completed."
+          hint="Completing a task made from this item adds a dose to your medication log. Unchecking it removes the dose."
           expanded={fieldOpen('medication')}
           onToggle={() => toggleField('medication')}
         >
+          <Text style={styles.medicationLabel}>MEDICATION</Text>
           <TextField
             style={styles.fieldBox}
             value={medicationName ?? ''}
@@ -1364,38 +1589,37 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               would otherwise split one medicine's history into two untallied
               entries. */}
           {medicationSuggestions.length > 0 && (
-            <PillGroup
-              noun="medication"
-              surface="card"
-              options={medicationSuggestions.map(name => ({
-                key: medicationKey(name),
-                label: name,
-                selected: !!medicationName && medicationKey(name) === medicationKey(medicationName),
-                onPress: () => { haptics.tap(); setMedicationName(name); },
-              }))}
-            />
-          )}
-          {medicationName !== null && (
             <>
-              <TextField
-                style={[styles.fieldBox, styles.medicationAmountInput]}
-                value={medicationAmount}
-                onChangeText={setMedicationAmount}
-                placeholder="e.g. 50"
-                placeholderTextColor={colors.textTertiary}
-                keyboardType="decimal-pad"
-                returnKeyType="done"
-                accessibilityLabel="How much, optional"
-              />
-              <SegmentedControl
-                options={DOSE_UNITS.map(u => ({ value: u.value, label: u.value }))}
-                value={medicationUnit ?? ''}
-                columns={5}
-                label="Unit"
+              <Text style={styles.medicationCaption}>Or reuse one you&apos;ve logged before</Text>
+              <PillGroup
+                noun="medication"
                 surface="card"
-                onChange={next => { haptics.tap(); setMedicationUnit(next === medicationUnit ? null : next); }}
+                options={medicationSuggestions.map(name => ({
+                  key: medicationKey(name),
+                  label: name,
+                  selected: !!medicationName && medicationKey(name) === medicationKey(medicationName),
+                  onPress: () => {
+                    haptics.tap();
+                    // An amount typed for one medicine is not another's.
+                    if (!medicationName || medicationKey(name) !== medicationKey(medicationName)) {
+                      setMedicationAmount('');
+                      setMedicationUnit(null);
+                    }
+                    setMedicationName(name);
+                  },
+                }))}
               />
             </>
+          )}
+          {medicationName !== null && (
+            <TaskDoseAmount
+              menuName="TemplateItemEditor dose unit menu"
+              medication={medicationName}
+              amount={medicationAmount}
+              onChangeAmount={setMedicationAmount}
+              unit={medicationUnit}
+              onChangeUnit={setMedicationUnit}
+            />
           )}
         </CollapsibleField>
         <View style={styles.sep} />
@@ -1405,7 +1629,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
         <CollapsibleField
           label="Log to food log"
           summary={logMealSlot ? `Offers to log ${MEAL_SLOT_LABELS[logMealSlot].toLowerCase()} when completed` : undefined}
-          hint="Tasks made from this item offer to add an entry to your food log, for the slot below, each time they're completed."
+          hint="Tasks made from this item offer to add a food log entry for the meal below when completed."
           expanded={fieldOpen('logMealSlot')}
           onToggle={() => toggleField('logMealSlot')}
         >
@@ -1429,7 +1653,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
         >
           <View style={styles.optionContent}>
             <Text style={styles.optionLabel}>Block apps until done</Text>
-            <Text style={styles.optionHint}>Tasks made from this item hold the apps you picked in Settings until they're done</Text>
+            <Text style={styles.optionHint}>Blocks the apps you picked in Settings until tasks made from this item are done</Text>
           </View>
           <View style={[styles.toggle, gatesApps && styles.toggleOn]}>
             <View style={[styles.toggleKnob, gatesApps && styles.toggleKnobOn]} />
@@ -1445,7 +1669,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               : penaltyCutoffTime
                 ? `${formatDuration(penaltyMinutes)} after ${formatHHMM(penaltyCutoffTime)}`
                 : `${formatDuration(penaltyMinutes)} if not done that day`}
-          hint="Seeds the cost on tasks made from this item. Needs the setting switched on in Settings before anything is actually blocked."
+          hint="Sets how long apps are blocked for tasks made from this item. Nothing is blocked until “Block apps when you fail a task” is turned on in Settings."
           expanded={fieldOpen('penalty')}
           onToggle={() => toggleField('penalty')}
         >
@@ -1564,7 +1788,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             ? `${targetCount}${normalizeTargetUnit(targetUnitText) ? ` ${normalizeTargetUnit(targetUnitText)}` : '×'} a ${quotaPeriod}`
             : undefined}
           emptySummary="None"
-          hint="Count it several times instead of ticking it once, like 8 glasses a day or 3 runs a week."
+          hint="Count it several times instead of checking it off once, like 8 glasses a day or 3 runs a week."
           expanded={fieldOpen('target', targetCount !== null)}
           onToggle={() => toggleField('target', targetCount !== null)}
         >
@@ -1612,12 +1836,61 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                 <Ionicons name="notifications-outline" size={18} color={quotaReminders ? colors.accent : colors.textSecondary} />
                 <View style={styles.optionContent}>
                   <Text style={styles.optionLabel}>Notify me when each one is due</Text>
-                  <Text style={styles.optionHint}>Send a notification at each one, instead of only showing the task on Today</Text>
+                  <Text style={styles.optionHint}>Send a notification at each one, as well as showing the task on Today</Text>
                 </View>
                 <View style={[styles.toggle, quotaReminders && styles.toggleOn]}>
                   <View style={[styles.toggleKnob, quotaReminders && styles.toggleKnobOn]} />
                 </View>
               </TouchableOpacity>
+              {offersRamp && (
+                <>
+                  <View style={styles.chainModeBlock}>
+                    <CountStepper
+                      value={quotaRampStep}
+                      onChange={setQuotaRampStep}
+                      min={1}
+                      max={QUOTA_RAMP_MAX_STEP}
+                      allowNull
+                      emptyLabel="Off"
+                      format={n => `Add ${n}`}
+                      label="Ramp up amount"
+                      describeValue={n => (n === null ? 'off' : `add ${n} each time`)}
+                    />
+                  </View>
+                  {quotaRampStep !== null && (
+                    <>
+                      <View style={styles.chainModeBlock}>
+                        <CountStepper
+                          value={quotaRampEvery}
+                          onChange={next => setQuotaRampEvery(next ?? 1)}
+                          min={1}
+                          max={QUOTA_RAMP_MAX_EVERY}
+                          format={n => `After every ${n} ${quotaPeriod === 'week' ? (n === 1 ? 'week' : 'weeks') : (n === 1 ? 'day' : 'days')}`}
+                          label="Hits needed before each increase"
+                          describeValue={n => `${n ?? 1} ${quotaPeriod === 'week' ? 'weeks' : 'days'} you hit the target`}
+                        />
+                      </View>
+                      <View style={styles.chainModeBlock}>
+                        <CountStepper
+                          value={quotaRampGoal}
+                          onChange={setQuotaRampGoal}
+                          min={Math.max(2, (targetCount ?? 0) + 1)}
+                          max={QUOTA_RAMP_MAX_TARGET}
+                          allowNull
+                          emptyLabel="No limit"
+                          format={n => `Up to ${n}`}
+                          label="Ramp up goal"
+                          describeValue={n => (n === null ? 'no limit' : `stop at ${n}`)}
+                        />
+                      </View>
+                    </>
+                  )}
+                  <Text style={styles.optionHint}>
+                    {describeQuotaRamp({ quotaRampStep, quotaRampEvery, quotaRampGoal, quotaPeriod })
+                      ?? 'Ramp up: raise the target as you keep hitting it.'}
+                  </Text>
+                </>
+              )}
               <TouchableOpacity
                 style={styles.optionRow}
                 onPress={() => { haptics.tap(); setAllowOvershoot(v => !v); }}
@@ -1820,7 +2093,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               )}
               {chainItems.length > 0 && (
                 <Text style={styles.optionHint}>
-                  Times are per step; a step left blank uses the item's own estimate.
+                  Times are per step; a step left blank uses the item’s own estimate.
                 </Text>
               )}
               {chainItems.length > 1 && (
@@ -1844,10 +2117,10 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   />
                   <Text style={styles.optionHint}>
                     {recurrenceType === 'none'
-                      ? 'Steps follow each other as you finish them. Add a repeat to spread them over days instead.'
+                      ? 'Steps follow each other as you finish them. Add a repeat to spread them over days.'
                       : chainStepOnSchedule
-                        ? 'One step per repeat. The chain rotates through its steps rather than running straight through.'
-                        : 'Finishing a step brings up the next one immediately; the repeat starts the whole chain over.'}
+                        ? 'One step per repeat. The chain rotates through its steps.'
+                        : 'Finishing a step brings up the next one immediately. The repeat starts the whole chain over.'}
                   </Text>
                 </View>
               )}
@@ -1872,7 +2145,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               : undefined
           }
           emptySummary="Off"
-          hint="A set of things to get through each week, in any order, each with its own number of times a week. Checking the task off asks which one you did."
+          hint="A set of things to do each week, in any order, each with its own weekly target. Checking the task off asks which one you did."
           expanded={fieldOpen('rotationSet', rotationEnabled)}
           onToggle={() => toggleField('rotationSet', rotationEnabled)}
           right={
@@ -1999,7 +2272,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           hint={
             deliverableKind
               ? deliverableMeta(deliverableKind).hint
-              : 'Asks you to record an answer when the task is completed, and keeps it in the Logbook.'
+              : 'Asks for an answer when the task is completed and keeps it in the Logbook.'
           }
           expanded={fieldOpen('deliverable')}
           onToggle={() => toggleField('deliverable')}
@@ -2036,13 +2309,13 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             onPress={() => { haptics.tap(); setDeliverableSetsAway(!deliverableSetsAway); }}
             activeOpacity={interaction.activeOpacity}
             accessibilityRole="switch"
-            accessibilityLabel="Use the answer as the trip's leaving date"
+            accessibilityLabel="Use the answer as the trip’s leaving date"
             accessibilityState={{ checked: deliverableSetsAway }}
           >
             <Ionicons name="airplane-outline" size={18} color={deliverableSetsAway ? colors.accent : colors.textSecondary} />
             <View style={styles.optionContent}>
               <Text style={styles.optionLabel}>Sets the leaving date</Text>
-              <Text style={styles.optionHint}>The date you answer becomes the trip's Leaving date, if it doesn't have one yet</Text>
+              <Text style={styles.optionHint}>The date you answer becomes the trip’s Leaving date, if it doesn’t have one yet</Text>
             </View>
             <View style={[styles.toggle, deliverableSetsAway && styles.toggleOn]}>
               <View style={[styles.toggleKnob, deliverableSetsAway && styles.toggleKnobOn]} />
@@ -2060,7 +2333,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             label="Only if"
             summary={gateSummary ?? undefined}
             emptySummary="Always"
-            hint="Waits for another item's question to be answered, then shows only for the answers you pick. Any other answer marks it not needed."
+            hint="Waits for another item’s question, then shows only for the answers you pick. Any other answer marks it not needed."
             expanded={fieldOpen('answerGate', gateSummary !== null)}
             onToggle={() => toggleField('answerGate', gateSummary !== null)}
           >
@@ -2100,7 +2373,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             label="Waits on"
             summary={waitsOnSummary ?? undefined}
             emptySummary="Nothing"
-            hint="Holds the task back until these items' tasks are done. An item left unticked when the template is applied is skipped."
+            hint="Holds the task back until these items’ tasks are done. An item left unchecked when the template is applied is skipped."
             expanded={fieldOpen('waitsOn', waitsOnSummary !== null)}
             onToggle={() => toggleField('waitsOn', waitsOnSummary !== null)}
           >
@@ -2135,8 +2408,11 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       <View style={styles.sectionCard}>
         <CollapsibleField
           label="Subtasks"
-          summary={subtasks.length > 0 ? `${subtasks.length} step${subtasks.length === 1 ? '' : 's'}` : undefined}
-          hint="Checklist items created alongside the task when the template is applied."
+          summary={[
+            subtasks.length > 0 ? `${subtasks.length} subtask${subtasks.length === 1 ? '' : 's'}` : null,
+            medicationChecklist ? 'Your medicines' : null,
+          ].filter(Boolean).join(' + ') || undefined}
+          hint="Subtasks created with the task when the template is applied."
           expanded={fieldOpen('subtasks', true)}
           onToggle={() => toggleField('subtasks', true)}
         >
@@ -2207,6 +2483,24 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               style={styles.addBtnSpacing}
             />
           )}
+          <View style={styles.sep} />
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => { haptics.tap(); setMedicationChecklist(!medicationChecklist); }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="switch"
+            accessibilityLabel="Add my medicines as subtasks"
+            accessibilityState={{ checked: medicationChecklist }}
+          >
+            <Ionicons name="medkit-outline" size={18} color={medicationChecklist ? colors.accent : colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Add my medicines as subtasks</Text>
+              <Text style={styles.optionHint}>One subtask for each medicine you currently take, from your medication log when the template is applied</Text>
+            </View>
+            <View style={[styles.toggle, medicationChecklist && styles.toggleOn]}>
+              <View style={[styles.toggleKnob, medicationChecklist && styles.toggleKnobOn]} />
+            </View>
+          </TouchableOpacity>
         </CollapsibleField>
       </View>
 
@@ -2315,7 +2609,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           />
           {/* Said here rather than dropped on save without a word. */}
           {linkText.trim() !== '' && !parseLabelledLink(linkText) && (
-            <Text style={styles.choiceOptionsHint}>That isn't a link yet, so it won't be saved.</Text>
+            <Text style={styles.choiceOptionsHint}>That isn’t a link yet, so it won’t be saved.</Text>
           )}
         </CollapsibleField>
 
@@ -2324,7 +2618,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
         <CollapsibleField
           label="Location"
           summary={locationText.trim() || undefined}
-          hint="Where each task made from this item happens, like an appointment's address or a venue."
+          hint="Where each task made from this item happens, like an appointment’s address or a venue."
           expanded={fieldOpen('location')}
           onToggle={() => toggleField('location')}
         >
@@ -2410,7 +2704,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           label="Effort"
           summary={estimatedMinutes !== null ? `${estimatedMinutes} min` : effort > 0 ? EFFORT_LABELS[effort] : undefined}
           emptySummary="Not set"
-          hint="Roughly how long this takes, so a day's list can be sized realistically."
+          hint="Roughly how long this takes, so a day’s list can be sized realistically."
           expanded={fieldOpen('effort')}
           onToggle={() => toggleField('effort')}
         >
@@ -2583,6 +2877,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   disabled: { opacity: 0.4 },
   scroll: { flex: 1 },
   scrollContent: { paddingBottom: 120 },
+  readableTitle: {
+    color: colors.textSecondary, fontSize: font.sm,
+    paddingHorizontal: spacing.md, marginBottom: spacing.md,
+  },
   titleInput: {
     color: colors.text, fontSize: font.xl, fontWeight: '500',
     paddingHorizontal: spacing.md, paddingTop: spacing.lg, paddingBottom: spacing.md, minHeight: 68,
@@ -2658,6 +2956,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   conditionPillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
   conditionPillTextOn: { color: colors.onAccent, fontWeight: '600' },
   anchorRow: { paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
+  // Time / Sunrise / Sunset for the open pill, above whichever control it picks.
+  windowKindRow: { paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
   timePillRow: {
     flexDirection: 'row', gap: spacing.xs,
     paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.sm,
@@ -2756,6 +3056,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   /** Sits between the medication's name and its unit row. */
   medicationAmountInput: { marginTop: spacing.sm, marginBottom: spacing.sm },
+  medicationLabel: {
+    color: colors.textSecondary, fontSize: font.xxs, fontWeight: '700',
+    textTransform: 'uppercase', letterSpacing: 0.8,
+    marginTop: spacing.sm, marginBottom: spacing.xsm, marginLeft: spacing.xxs,
+  },
+  medicationCaption: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.smd, marginBottom: spacing.xsm, marginLeft: spacing.xxs },
   choiceOptionsHint: { color: colors.textSecondary, fontSize: font.xs, marginHorizontal: spacing.md, marginTop: spacing.xs, marginBottom: spacing.sm },
   // Space around a control stacked inside a collapsible field (the chain's
   // Next step, the target's period), so it doesn't sit against the rows.

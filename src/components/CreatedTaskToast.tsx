@@ -42,8 +42,8 @@ export function CreatedTaskToast({ task, destination, mode = 'created', dayReset
     ? describeMovedTaskPlacement(task, destination, dayResetTime)
     : describeCreatedTaskPlacement(task, destination, dayResetTime);
   const undoHint = mode === 'moved'
-    ? `Undo moving "${task.title}"`
-    : `Undo creating "${task.title}"`;
+    ? `Undo moving “${task.title}”`
+    : `Undo creating “${task.title}”`;
 
   return (
     <View style={[styles.wrap, { bottom }]} pointerEvents="box-none">
@@ -52,7 +52,7 @@ export function CreatedTaskToast({ task, destination, mode = 'created', dayReset
           {message}
         </Text>
         <View style={styles.actions}>
-          <InlineAction label="Go to it" onPress={onGoToTask} accessibilityLabel={`Go to "${task.title}"`} />
+          <InlineAction label="Go to it" onPress={onGoToTask} accessibilityLabel={`Go to “${task.title}”`} />
           <InlineAction
             label="Undo"
             onPress={onUndo}

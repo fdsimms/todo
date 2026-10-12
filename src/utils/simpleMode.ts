@@ -29,11 +29,12 @@ import { TASK_KINDS } from './taskKinds';
  * **Screens split two ways under that second rule**, which is the one
  * non-obvious thing here. Calendar, Stats, Backfill and Stuck are *lenses*:
  * every task they show is reachable from Today or Search, so hiding them
- * costs nothing and they go unconditionally. Stacks, Templates, People and
- * Mood hold objects that live nowhere else, so hiding them while the user has
- * some would strand real data — those four survive as long as they hold
- * anything (see `screenShown`). An install with none of them loses all four
- * rows; an install with four stacks keeps the one row that can edit them.
+ * costs nothing and they go unconditionally. Stacks, Templates, People, Mood,
+ * Medications, Journal, Dreams and the Food log hold objects that live nowhere
+ * else, so hiding them while the user has some would strand real data — those
+ * eight survive as long as they hold anything (see `screenShown`). An install
+ * with none of them loses all eight rows; an install with four stacks keeps
+ * the one row that can edit them.
  * Mood was declared one of the four from the start but had no branch in
  * `screenShown` for a long time, so it alone was shown unconditionally,
  * including on an install with no entries at all.
@@ -54,6 +55,7 @@ export type SimpleFeatureId =
   | 'timedTasks'
   | 'dailyTargets'
   | 'supplies'
+  | 'meters'
   | 'chains'
   | 'taskSeries'
   | 'deadlines'
@@ -147,6 +149,9 @@ export const SIMPLE_FEATURES: readonly SimpleFeature[] = [
   { id: 'timedTasks', label: 'Timed tasks', area: 'tasks' },
   { id: 'dailyTargets', label: 'Daily targets', area: 'tasks' },
   { id: 'supplies', label: 'Supplies', area: 'tasks' },
+  // A content screen like Stacks: its readings live nowhere else, so the
+  // Meters screen survives for as long as there are any.
+  { id: 'meters', label: 'Due by usage', area: 'tasks', screen: 'Meters', contentScreen: true },
   { id: 'chains', label: 'Chains', area: 'tasks' },
   { id: 'taskSeries', label: 'Several dates for one task', area: 'tasks' },
   { id: 'deadlines', label: 'Deadlines', area: 'tasks' },
@@ -158,7 +163,7 @@ export const SIMPLE_FEATURES: readonly SimpleFeature[] = [
   { id: 'stacks', label: 'Stacks', area: 'tasks', screen: 'Stacks', contentScreen: true },
   { id: 'streakOptions', label: 'Streak options', area: 'tasks' },
   { id: 'vacationPause', label: 'Vacation pause', area: 'tasks' },
-  { id: 'awayDates', label: "A project's away dates", area: 'tasks' },
+  { id: 'awayDates', label: "A project’s away dates", area: 'tasks' },
   { id: 'effortRating', label: 'Effort', area: 'tasks' },
   { id: 'calendarImport', label: 'Import event from photo or text', area: 'tasks' },
 
@@ -289,13 +294,15 @@ export const SIMPLE_CONTENT_SCREENS: ReadonlySet<string> = new Set(
 export function screenShown(
   routeName: string,
   simpleMode: boolean,
-  contentCounts: { stacks: number; templates: number; people?: number; mood?: number; medications?: number; foodLog?: number; journal?: number; dreams?: number } = { stacks: 0, templates: 0 },
+  contentCounts: { stacks: number; templates: number; people?: number; mood?: number; medications?: number; foodLog?: number; journal?: number; dreams?: number; meters?: number } = { stacks: 0, templates: 0 },
 ): boolean {
   if (!simpleMode) return true;
   if (SIMPLE_HIDDEN_SCREENS.has(routeName)) return false;
   if (routeName === 'Stacks') return contentCounts.stacks > 0;
   if (routeName === 'Templates') return contentCounts.templates > 0;
   if (routeName === 'People') return (contentCounts.people ?? 0) > 0;
+  // Readings, not meters a task names: a reading is what lives nowhere else.
+  if (routeName === 'Meters') return (contentCounts.meters ?? 0) > 0;
   // Mood was declared a content screen from the start and never got its branch,
   // so it was the one of the four shown unconditionally — the row stayed on an
   // install with no entries at all, which is the opposite of what the flag on
@@ -331,6 +338,7 @@ export const SIMPLE_EDITOR_ROW_FEATURES: Readonly<Record<string, SimpleFeatureId
   duration: 'timedTasks',
   dailyTarget: 'dailyTargets',
   supply: 'supplies',
+  meter: 'meters',
   chain: 'chains',
   moreDates: 'taskSeries',
   deadline: 'deadlines',
@@ -347,6 +355,7 @@ export const SIMPLE_EDITOR_ROW_FEATURES: Readonly<Record<string, SimpleFeatureId
   streak: 'streakOptions',
   showStreak: 'streakOptions',
   streakRequiresWindow: 'streakOptions',
+  streakCountsUnits: 'streakOptions',
 };
 
 /**
@@ -453,4 +462,31 @@ export function visibleLenses<T extends string>(
 ): T[] {
   return lenses.filter(lens =>
     lens === current || lens !== 'unscheduled' || (counts[lens] ?? 0) > 0);
+}
+
+/**
+ * The sentence under an empty search result that says why a result might not
+ * be there. A search that skips what Simplified mode or the Groceries & meals
+ * switch is hiding looks identical to one for something that doesn't exist,
+ * and the only way back is a Settings group the person never needed to find.
+ *
+ * `fields` (the task editor) is affected by Simplified mode alone; the
+ * Groceries & meals switch only takes away settings and screens. Null when
+ * nothing is being hidden, so the caller shows no extra line.
+ */
+export function hiddenResultsNote(
+  state: { simpleMode: boolean; kitchenEnabled: boolean },
+  subject: 'settings' | 'screens' | 'fields',
+): string | null {
+  const kitchenOff = !state.kitchenEnabled && subject !== 'fields';
+  if (state.simpleMode && kitchenOff) {
+    return `Simplified mode and the Groceries & meals switch are hiding some ${subject}. Change them in Settings › Feature areas.`;
+  }
+  if (state.simpleMode) {
+    return `Simplified mode hides some ${subject}. Turn it off in Settings › Feature areas to see them.`;
+  }
+  if (kitchenOff) {
+    return `Groceries & meals is off, which hides its ${subject}. Turn it on in Settings › Feature areas.`;
+  }
+  return null;
 }

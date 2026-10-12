@@ -10,6 +10,7 @@ import {
   mealIdeaRecipeDraft,
   AI_INVENTED_RECIPE_SOURCE,
   type MealIdea,
+  assignPickDays,
 } from '../utils/mealIdeas';
 import { RECIPE_NAME_MAX_LENGTH } from '../types';
 import type { Recipe } from '../types';
@@ -328,5 +329,38 @@ describe('mealIdeaRecipeDraft', () => {
     });
     expect(draft.steps).toEqual(['Sear the chicken.', 'Roast with the lemons.']);
     expect(draft.prepTasks).toEqual([{ title: 'Marinate the chicken', offsetDays: -1 }]);
+  });
+});
+
+describe('assignPickDays', () => {
+  const open = ['mon', 'tue', 'wed', 'thu'];
+  const none = new Map<string, string>();
+
+  it('fills open days in list order when nothing was chosen', () => {
+    expect([...assignPickDays(['a', 'b'], open, new Set(), none)]).toEqual([['a', 'mon'], ['b', 'tue']]);
+  });
+
+  it('keeps a chosen day and fills the rest around it', () => {
+    const result = assignPickDays(['a', 'b', 'c'], open, new Set(), new Map([['b', 'mon']]));
+    expect(result.get('b')).toBe('mon');
+    expect(result.get('a')).toBe('tue');
+    expect(result.get('c')).toBe('wed');
+  });
+
+  it('never lands on a night already planned from the sheet', () => {
+    const result = assignPickDays(['a', 'b'], open, new Set(['mon']), new Map([['a', 'mon']]));
+    expect(result.get('a')).toBe('tue');
+    expect(result.get('b')).toBe('wed');
+  });
+
+  it('gives a day chosen twice to the earlier pick only', () => {
+    const result = assignPickDays(['a', 'b'], open, new Set(), new Map([['a', 'wed'], ['b', 'wed']]));
+    expect(result.get('a')).toBe('wed');
+    expect(result.get('b')).toBe('mon');
+  });
+
+  it('leaves a pick out once the open days run out', () => {
+    const result = assignPickDays(['a', 'b', 'c'], ['mon', 'tue'], new Set(), none);
+    expect(result.has('c')).toBe(false);
   });
 });

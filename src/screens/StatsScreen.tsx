@@ -1,4 +1,5 @@
 import React, { useCallback, useMemo, useRef, useState, useEffect } from 'react';
+import { useWithoutLockedTasks } from '../hooks/useWithoutLockedTasks';
 import {
   View,
   Text,
@@ -6,7 +7,7 @@ import {
   StyleSheet,
   Animated,
 } from 'react-native';
-import type { TimeOfDay } from '../types';
+import type { NutrientKey, TimeOfDay } from '../types';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useFocusEffect } from '@react-navigation/native';
@@ -21,10 +22,14 @@ import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSetting
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { SegmentedControl, type SegmentOption } from '../components/SegmentedControl';
+import { PillGroup, type PillGroupOption } from '../components/PillGroup';
+import { NutrientDayChart } from '../components/NutrientDayChart';
 import { bestStreakOf, isStreakAtRecord } from '../utils/streakRecord';
+import { rankStreaks } from '../utils/streakLeaderboard';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, animation, type Colors } from '../theme';
 import { useTextScale } from '../hooks/useTextScale';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { useReduceMotion } from '../utils/useReduceMotion';
 import { getRepeatedInstances, normalizeTitle } from '../utils/taskInstances';
 import { onTimeSummary } from '../utils/stats';
@@ -78,6 +83,8 @@ import {
   hasNutritionData,
   mostLoggedFoods,
   nutrientAverages,
+  nutrientDailySeries,
+  daysWithinLimits,
   nutritionCounts,
   produceAverage,
   sourceMix,
@@ -92,6 +99,8 @@ import { standingSwapMap } from '../utils/standingSwaps';
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { capitalize } from '../utils/capitalize';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
 
 const BAR_HEIGHT = 96;
 // The window the focus summary rows describe. Matches HABIT_DAYS below rather
@@ -164,9 +173,11 @@ function expectedCount(recurrenceType: string, interval: number): number {
 }
 
 export function StatsScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
+  const scrollTop = useListScrollToTop();
   const tabBarHeight = useBottomTabBarHeight();
-  const tasks = useTaskStore(s => s.tasks);
+  const tasks = useWithoutLockedTasks(useTaskStore(s => s.tasks));
   const colors = useColors();
   // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
   const screenSettings = useScreenSettings('Stats', 'Stats settings');
@@ -317,14 +328,7 @@ export function StatsScreen() {
     }).start();
   }, [chartProgress, reduceMotion]);
 
-  const streaks = useMemo(
-    () =>
-      tasks
-        .filter(t => !t.parentId && !t.completed && t.recurrenceType !== 'none' && liveStreakCount(t) > 0)
-        .sort((a, b) => liveStreakCount(b) - liveStreakCount(a))
-        .slice(0, 10),
-    [tasks],
-  );
+  const streaks = useMemo(() => rankStreaks(tasks), [tasks]);
 
   const habits = useMemo(() => {
     const cutoff = subDays(now, HABIT_DAYS);
@@ -463,12 +467,18 @@ export function StatsScreen() {
   // shouldn't be shown what they ate, and turning it back on restores this
   // exactly as it was.
   const [eatingDays, setEatingDays] = useState(COOKING_DAYS);
+  const nutritionTargets = useSettingsStore(useShallow(s => s.nutritionTargets));
+  const nutritionLimits = useSettingsStore(useShallow(s => s.nutritionLimits));
   const eating = useMemo(() => {
     if (!kitchenEnabled || !cookWindow) return null;
     const span = lastDaysOf(cookWindow, eatingDays);
     return {
       counts: nutritionCounts(foodEntries, span),
       averages: nutrientAverages(foodEntries, span),
+      // Only for a target marked Stay under; see daysWithinLimits.
+      limitDays: new Map(
+        daysWithinLimits(foodEntries, span, nutritionTargets, nutritionLimits).map(row => [row.key, row]),
+      ),
       produce: produceAverage(
         foodEntries,
         span,
@@ -482,7 +492,29 @@ export function StatsScreen() {
         recipes: new Map(recipes.map(recipe => [recipe.id, recipe.name])),
       }),
     };
-  }, [kitchenEnabled, foodEntries, cookWindow, eatingDays, groceryItems, itemProducts, itemSubs, recipes]);
+  }, [kitchenEnabled, foodEntries, cookWindow, eatingDays, groceryItems, itemProducts, itemSubs, recipes, nutritionTargets, nutritionLimits]);
+  // Which nutrient the by-day chart draws. A choice the span can't honor (no
+  // day in a week stated it) falls back to the first nutrient with an average
+  // rather than an empty chart.
+  const [chartNutrient, setChartNutrient] = useState<NutrientKey>('calorieKcal');
+  const chartKey = eating?.averages.some(r => r.key === chartNutrient)
+    ? chartNutrient
+    : eating?.averages[0]?.key ?? null;
+  const nutrientChartDays = useMemo(
+    () => (chartKey && cookWindow
+      ? nutrientDailySeries(foodEntries, lastDaysOf(cookWindow, eatingDays), chartKey)
+      : []),
+    [chartKey, foodEntries, cookWindow, eatingDays],
+  );
+  const chartOptions = useMemo<PillGroupOption[]>(
+    () => (eating?.averages ?? []).map(row => ({
+      key: row.key,
+      label: NUTRIENT_LABEL[row.key].label,
+      selected: row.key === chartKey,
+      onPress: () => { haptics.tap(); setChartNutrient(row.key); },
+    })),
+    [eating, chartKey],
+  );
   // Asked of the whole month whichever span is showing, so a week with nothing
   // logged in it keeps the section, and with it the control that switches back.
   const hasEating = useMemo(
@@ -528,6 +560,9 @@ export function StatsScreen() {
         />
       ) : (
         <ScrollView
+          ref={scrollTop.ref}
+          {...scrollTop.listProps}
+          refreshControl={pullSearch.refreshControl}
           contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}
           showsVerticalScrollIndicator={false}
         >
@@ -1051,6 +1086,11 @@ export function StatsScreen() {
                           across {row.days} {row.days === 1 ? 'day' : 'days'} that stated it
                         </Text>
                       )}
+                      {eating.limitDays.has(row.key) && (
+                        <Text style={styles.instanceMeta}>
+                          {`Within the ${nutritionTargets[row.key]!.toLocaleString()}${NUTRIENT_LABEL[row.key].unit === 'cal' ? ' cal' : NUTRIENT_LABEL[row.key].unit} limit on ${eating.limitDays.get(row.key)!.within} of ${eating.limitDays.get(row.key)!.days} ${eating.limitDays.get(row.key)!.days === 1 ? 'day' : 'days'}`}
+                        </Text>
+                      )}
                     </View>
                     <Text style={styles.cookValue}>
                       {Math.round(row.average).toLocaleString()}
@@ -1106,6 +1146,19 @@ export function StatsScreen() {
                   </>
                 )}
               </View>
+              {/* One nutrient a day, beside the averages above it. Days that
+                  can't speak for it are gaps; see NutrientDayChart. */}
+              {chartKey !== null && (
+                <View style={[styles.card, { marginTop: spacing.md, padding: spacing.md, gap: spacing.md }]}>
+                  <Text style={styles.rowText}>{`${NUTRIENT_LABEL[chartKey].label} by day`}</Text>
+                  <PillGroup options={chartOptions} noun="nutrient" surface="card" />
+                  <NutrientDayChart
+                    days={nutrientChartDays}
+                    label={NUTRIENT_LABEL[chartKey].label}
+                    unit={NUTRIENT_LABEL[chartKey].unit}
+                  />
+                </View>
+              )}
             </View>
             </StaggerIn>
           )}
@@ -1238,6 +1291,8 @@ export function StatsScreen() {
 
         </ScrollView>
       )}
+      <ScrollToTopButton {...scrollTop.buttonProps} />
+      {pullSearch.sheet}
     </View>
   );
 }

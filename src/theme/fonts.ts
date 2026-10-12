@@ -58,25 +58,25 @@ export const APP_FONT_OPTIONS: AppFontOption[] = [
   {
     id: 'bricolage',
     label: 'Bricolage',
-    hint: 'Editorial and a little wonky. Narrow enough that long titles still fit.',
+    hint: 'Editorial, with irregular letterforms. Narrow enough that long titles fit.',
     faces: facesFor('BricolageGrotesque'),
   },
   {
     id: 'spaceGrotesk',
     label: 'Space Grotesk',
-    hint: 'Precise and a bit technical. Distinctive numerals for times and counts.',
+    hint: 'Precise and technical. Distinctive numerals for times and counts.',
     faces: facesFor('SpaceGrotesk'),
   },
   {
     id: 'nunito',
     label: 'Nunito',
-    hint: 'Rounded and soft. The friendliest of the set, and the widest.',
+    hint: 'Rounded and soft. The widest of the set.',
     faces: facesFor('Nunito'),
   },
   {
     id: 'outfit',
     label: 'Outfit',
-    hint: 'Geometric and even, on near-circular shapes. The tidiest of the set.',
+    hint: 'Geometric and even, built on near-circular shapes.',
     faces: facesFor('Outfit'),
   },
 ];

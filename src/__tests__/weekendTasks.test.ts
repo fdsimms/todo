@@ -407,13 +407,13 @@ describe('the copy', () => {
     // A weekend nudged about with its one allowed plan already on it must not
     // be told it has none.
     expect(weekendNudgeNotes(['Dinner with Sam'], null)).toBe(
-      "Dinner with Sam is on your list for Friday evening, Saturday or Sunday. There's still room to plan more."
+      "Dinner with Sam is on your list for Friday evening, Saturday or Sunday. There’s still room to plan more."
     );
   });
 
   it('joins several plans and uses "are" for them', () => {
     expect(weekendNudgeNotes(['Dinner with Sam', 'Farmers market'], null)).toBe(
-      "Dinner with Sam and Farmers market are on your list for Friday evening, Saturday or Sunday. There's still room to plan more."
+      "Dinner with Sam and Farmers market are on your list for Friday evening, Saturday or Sunday. There’s still room to plan more."
     );
     expect(weekendNudgeNotes(['A', 'B', 'C'], null)).toContain('A, B, and C are on your list');
   });

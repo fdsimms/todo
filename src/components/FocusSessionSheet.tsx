@@ -45,6 +45,7 @@ import { PressableScale } from './PressableScale';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { InlineAction } from './InlineAction';
 import type { FocusSession, FocusStep, Task } from '../types';
+import { useActionMenu } from '../hooks/useActionMenu';
 
 /** How much time "+5 min" adds to a step that needs a little longer. */
 const EXTEND_MINUTES = 5;
@@ -79,6 +80,7 @@ interface Props {
 const NO_TASKS: Task[] = [];
 
 export function FocusSessionSheet({ visible, onClose }: Props) {
+  const actionMenu = useActionMenu();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -190,15 +192,13 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
   const handleContact = () => {
     if (!callUrl) return;
     haptics.tap();
-    Alert.alert(
-      contact.phoneNumber ?? '',
-      undefined,
-      [
-        { text: 'Call', onPress: handleCall },
-        ...(textUrl ? [{ text: 'Message', onPress: handleText }] : []),
-        { text: 'Cancel', style: 'cancel' as const },
+    actionMenu.open({
+      title: contact.phoneNumber ?? '',
+      actions: [
+        { key: 'call', label: 'Call', icon: 'call-outline', onPress: handleCall },
+        ...(textUrl ? [{ key: 'message', label: 'Message', icon: 'chatbubble-outline', onPress: handleText } as const] : []),
       ],
-    );
+    });
   };
   const emailUrl = mailtoUrl(contact.emailAddress);
   const handleEmail = async () => {
@@ -305,7 +305,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
     const taskAction = useTaskStore.getState().lastAction;
     setPendingUndo({
       taskId: currentTask.id,
-      label: `Marked "${displayTitleFor(currentTask)}" done`,
+      label: `Marked “${displayTitleFor(currentTask)}” done`,
       sessionBefore,
       taskUndo: taskAction
         ? () => {
@@ -366,7 +366,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
     const taskId = step.taskId;
     const sessionBefore = session;
     skipTask(taskId);
-    setPendingUndo({ taskId, label: `Skipped "${titleOf(taskId)}"`, sessionBefore, taskUndo: null });
+    setPendingUndo({ taskId, label: `Skipped “${titleOf(taskId)}”`, sessionBefore, taskUndo: null });
   };
 
   const handleFinishForNow = () => {
@@ -377,7 +377,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
     finishForNow(taskId);
     setPendingUndo({
       taskId,
-      label: `Marked "${titleOf(taskId)}" done for now`,
+      label: `Marked “${titleOf(taskId)}” done for now`,
       sessionBefore,
       taskUndo: null,
     });
@@ -407,7 +407,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
     // not the Settings index.
     handleClose();
     (navigation as never as { navigate: (n: string, p: object) => void })
-      .navigate('SettingsGroup', { groupId: 'tasksProjects' });
+      .navigate('SettingsGroup', { groupId: 'focus' });
   };
 
   // ==== render. Everything below is JSX ====
@@ -550,7 +550,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
 
           {stepDone && (
             <Text style={styles.doneNote}>
-              {isRest ? 'Break’s over whenever you are.' : 'Time’s up for this step. Nothing moves until you say so.'}
+              {isRest ? 'Break’s over. The session waits for you.' : 'Time’s up for this step. The session waits for you.'}
             </Text>
           )}
         </View>
@@ -719,6 +719,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
       </View>
 
       <DeliverablePromptQueue {...queueProps} />
+      {actionMenu.element}
     </SheetModal>
   );
 }

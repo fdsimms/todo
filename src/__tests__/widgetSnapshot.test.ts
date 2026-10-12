@@ -4,17 +4,20 @@ import {
   buildGroceries,
   buildKitchen,
   buildMeals,
+  buildWidgetMedications,
   buildWidgetSnapshot,
   isWidgetWorthy,
   toWidgetTask,
-  WATCH_LIMITS,
-  WIDGET_LIMITS,
+  buildWidgetLimits,
+  WATCH_CAPS,
+  WIDGET_CAPS,
 } from '../utils/widgetSnapshot';
 import type {
   GroceryItem,
   GroceryList,
   GroceryListEntry,
   MealPlanEntry,
+  MedicationLog,
   Recipe,
   Shop,
   Task,
@@ -358,14 +361,14 @@ describe('buildWidgetSnapshot', () => {
 
     it('keeps the widget at its own caps when no limits are given', () => {
       const snapshot = buildWidgetSnapshot(snapshotInput({ grocery: longShop(), visibleTasks: tasks }));
-      expect(snapshot.groceries!.lists[0].rows).toHaveLength(WIDGET_LIMITS.groceryItemsPerList);
-      expect(snapshot.visibleTasks).toHaveLength(WIDGET_LIMITS.visibleTasks);
+      expect(snapshot.groceries!.lists[0].rows).toHaveLength(WIDGET_CAPS.groceryItemsPerList);
+      expect(snapshot.visibleTasks).toHaveLength(WIDGET_CAPS.visibleTasks);
     });
 
     it('carries more rows with the watch limits, and still counts the same list', () => {
       const widget = buildWidgetSnapshot(snapshotInput({ grocery: longShop(), visibleTasks: tasks }));
       const watch = buildWidgetSnapshot(
-        snapshotInput({ grocery: longShop(), visibleTasks: tasks, limits: WATCH_LIMITS })
+        snapshotInput({ grocery: longShop(), visibleTasks: tasks, caps: WATCH_CAPS })
       );
       expect(watch.groceries!.lists[0].rows).toHaveLength(25);
       expect(watch.visibleTasks).toHaveLength(70);
@@ -442,5 +445,44 @@ describe('buildUpcomingTasks', () => {
     expect(snapshot.upcomingTasks.map(t => t.id)).toEqual(['later']);
     expect(snapshot.nextDayStart).toBe(new Date(2026, 7, 7).toISOString());
     expect(snapshot.staleAfter).toBe(staleAfter.toISOString());
+  });
+});
+
+describe('buildWidgetMedications', () => {
+  const log = (name: string, takenAt: string, overrides: Partial<MedicationLog> = {}): MedicationLog => ({
+    id: `${name}-${takenAt}`, name, takenAt, dayKey: takenAt.slice(0, 10),
+    amount: 400, unit: 'mg', asNeeded: true, taskId: null, note: null, ...overrides,
+  });
+
+  it('lists current as-needed medications, most recent first, with the dose a tap records', () => {
+    const logs = [
+      log('Ibuprofen', '2026-09-10T09:00:00.000Z', { amount: 200 }),
+      log('Ibuprofen', '2026-09-12T09:00:00.000Z'),
+      log('Zyrtec', '2026-09-13T09:00:00.000Z', { amount: null, unit: null }),
+      log('Sertraline', '2026-09-14T09:00:00.000Z', { asNeeded: false, taskId: 't' }),
+      log('Amoxicillin', '2026-09-14T09:00:00.000Z'),
+    ];
+    expect(buildWidgetMedications(logs, ['amoxicillin'])).toEqual([
+      { id: 'zyrtec', name: 'Zyrtec', dose: null, lastTakenAt: '2026-09-13T09:00:00.000Z' },
+      { id: 'ibuprofen', name: 'Ibuprofen', dose: '400 mg', lastTakenAt: '2026-09-12T09:00:00.000Z' },
+    ]);
+  });
+});
+
+describe('buildWidgetLimits', () => {
+  const targets = { satFatG: 16, sugarG: 35, proteinG: 150 };
+
+  it('words each limit the way Today does, with the bar and its state', () => {
+    expect(buildWidgetLimits({ satFatG: 13, sugarG: 41.25 }, targets, ['sugarG', 'satFatG'], 75)).toEqual([
+      { id: 'satFatG', label: 'Sat fat', value: '13 of 16g', detail: '3g left', fraction: 13 / 16, status: 'near' },
+      { id: 'sugarG', label: 'Sugar', value: '41.3 of 35g', detail: '6.3g over', fraction: 1, status: 'over' },
+    ]);
+  });
+
+  it('reads a limit nothing logged states as a full budget, and leaves goals out', () => {
+    expect(buildWidgetLimits({ proteinG: 80 }, targets, ['satFatG'], 75)).toEqual([
+      { id: 'satFatG', label: 'Sat fat', value: '0 of 16g', detail: '16g left', fraction: 0, status: 'within' },
+    ]);
+    expect(buildWidgetLimits({}, targets, [], 75)).toEqual([]);
   });
 });

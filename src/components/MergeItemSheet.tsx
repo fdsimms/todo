@@ -157,8 +157,8 @@ export function MergeItemSheet({ visible, itemId, initialPickedId, onClose, onMe
         {picked ? (
           <View style={styles.body}>
             <Text style={styles.caption}>
-              These are the same thing. Pick which one to keep: the other’s history folds into
-              it, and it’s deleted.
+              Pick which one to keep. The other’s history is combined into it, and the other
+              is deleted.
             </Text>
 
             {[item, picked].map(row => (
@@ -181,7 +181,7 @@ export function MergeItemSheet({ visible, itemId, initialPickedId, onClose, onMe
         ) : (
           <>
             <Text style={styles.caption}>
-              Pick the other catalog row that’s really {item.name.toLowerCase()}. Its purchases,
+              Pick the other catalog item that’s really {item.name.toLowerCase()}. Its purchases,
               store links and recipes will combine with this one.
             </Text>
 
@@ -213,7 +213,7 @@ export function MergeItemSheet({ visible, itemId, initialPickedId, onClose, onMe
                   subtitle={
                     typed
                       ? 'Nothing in your catalog goes by that name.'
-                      : 'A merge combines two rows already in your catalog.'
+                      : 'A merge combines two items already in your catalog.'
                   }
                 />
               }

@@ -216,11 +216,11 @@ export function ExtractedIngredientRow({
               animateLayout();
               setLinkOpen(false);
             }}
-            accessibilityLabel={`${row.name} is already in your pantry, skip adding it and remember that for next time`}
+            accessibilityLabel={`Mark ${row.name} as in your pantry and skip adding it`}
           />
           <Text style={styles.expandedHint}>
-            Renames this line to match, so it lands on the item you already have instead of a
-            new one.
+            Renames this line to match
+            the item you already have.
           </Text>
         </View>
       )}

@@ -7,9 +7,20 @@ import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
-import { NUTRIENT_KEYS, type NutrientKey } from '../types';
+import { EXTERNAL_NUTRIENT_KEYS, MINERAL_KEYS, VITAMIN_KEYS, type NutrientKey } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { NUTRITION_TARGET_RANGES, type NutritionTargets } from '../utils/nutritionTargets';
+import {
+  DEFAULT_LIMIT_WARN_PERCENT,
+  LIMIT_WARN_PERCENT_MAX,
+  LIMIT_WARN_PERCENT_MIN,
+  LIMIT_WARN_PERCENT_STEP,
+  NO_DAILY_VALUE,
+  NUTRITION_TARGET_RANGES,
+  activeLimits,
+  type NutritionTargets,
+} from '../utils/nutritionTargets';
+import { HEALTH_CATEGORY, useCategoryStore } from '../store/useCategoryStore';
+import { setGeneratorEnabled } from '../store/generatorSwitch';
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
 import { describeWater, waterInUnit, waterTargetRange, waterToMl } from '../utils/waterLog';
 import {
@@ -32,9 +43,12 @@ import { navigateToSettingsEntry } from '../navigation/openSettings';
 import { CountStepper } from './CountStepper';
 import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SegmentedControl } from './SegmentedControl';
+
+const MICRO_KEYS = [...VITAMIN_KEYS, ...MINERAL_KEYS];
 
 /** Every nutrient the Food log's own card can show — water has its own card. */
-const PINNABLE_NUTRIENTS = NUTRIENT_KEYS.filter(k => k !== 'waterMl');
+const PINNABLE_MAIN = EXTERNAL_NUTRIENT_KEYS.filter(k => k !== 'waterMl');
 
 /**
  * A daily figure to aim at, per nutrient.
@@ -59,10 +73,23 @@ const PINNABLE_NUTRIENTS = NUTRIENT_KEYS.filter(k => k !== 'waterMl');
  * lose and no unsaved-changes guard. That is the other valid answer to the
  * `pageSheet` `onRequestClose` rule, not a workaround.
  *
- * All ten are listed rather than hidden behind an "add one" picker: the set is
- * closed and short, and a picker would make the nine somebody has not set
- * invisible rather than merely empty.
+ * Every nutrient is listed rather than hidden behind an "add one" picker: the
+ * set is closed and short, and a picker would make the ones somebody has not
+ * set invisible rather than merely empty.
+ *
+ * **A set target says which way it points** ("Aim for" / "Stay under"), and
+ * only once it is set, since a direction with no number is nothing to read.
+ * Stay under is what lets the Food log say what's left and draw past the limit
+ * in red; see the Limits section of `nutritionTargets.ts`. Marking one also
+ * pins it on the Food log, because a limit nobody can see without tapping
+ * "Show every nutrient" can't be kept.
  */
+
+type TargetDirection = 'reach' | 'limit';
+const DIRECTION_OPTIONS: { value: TargetDirection; label: string }[] = [
+  { value: 'reach', label: 'Aim for' },
+  { value: 'limit', label: 'Stay under' },
+];
 
 interface Props {
   visible: boolean;
@@ -80,6 +107,14 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
   const setNutritionTargets = useSettingsStore(s => s.setNutritionTargets);
   const pinnedNutrients = useSettingsStore(useShallow(s => s.foodLogPinnedNutrients));
   const setFoodLogPinnedNutrients = useSettingsStore(s => s.setFoodLogPinnedNutrients);
+  const limits = useSettingsStore(useShallow(s => s.nutritionLimits));
+  const setNutritionLimits = useSettingsStore(s => s.setNutritionLimits);
+  const limitsTodayCategory = useSettingsStore(s => s.limitsTodayCategory);
+  const setLimitsTodayCategory = useSettingsStore(s => s.setLimitsTodayCategory);
+  const healthCategory = useSettingsStore(s => s.healthCategory);
+  const limitWarnPercent = useSettingsStore(s => s.limitWarnPercent);
+  const setLimitWarnPercent = useSettingsStore(s => s.setLimitWarnPercent);
+  const limitWarningTasks = useSettingsStore(s => s.limitWarningTasks);
   const waterUnit = useSettingsStore(s => s.waterUnit);
   // Whether the weight goal keeps the calorie target in step
   // (autoCalorieTargetKcal): a goal and a complete profile. The row says so,
@@ -164,12 +199,45 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
 
   const set = (key: NutrientKey, value: number | null) => setNutritionTarget(key, value);
 
-  const unsetKeys = NUTRIENT_KEYS.filter(key => targets[key] === undefined);
+  // The vitamins and minerals are folded away until asked for, or until one
+  // has a target, so a target that is set is never hidden behind a closed row.
+  const [microOpen, setMicroOpen] = useState(false);
+  const microShown = microOpen || MICRO_KEYS.some(key => targets[key] !== undefined);
+
+  // The label's own nutrients only: "Set to U.S. Daily Value" must not write twenty-three
+  // vitamin and mineral targets that nobody asked for with one tap.
+  const unsetKeys = EXTERNAL_NUTRIENT_KEYS.filter(key => targets[key] === undefined && !NO_DAILY_VALUE.has(key));
   const applyDailyValues = () => {
     haptics.tap();
     const values: NutritionTargets = {};
     for (const key of unsetKeys) values[key] = NUTRITION_TARGET_RANGES[key].default;
     setNutritionTargets(values);
+  };
+
+  const setDirection = (key: NutrientKey, direction: TargetDirection) => {
+    haptics.tap();
+    if (direction === 'limit') {
+      if (!limits.includes(key)) setNutritionLimits([...limits, key]);
+      if (!pinnedNutrients.includes(key)) setFoodLogPinnedNutrients([...pinnedNutrients, key]);
+    } else if (limits.includes(key)) {
+      setNutritionLimits(limits.filter(k => k !== key));
+    }
+  };
+
+  // Files the rows under the Health reading's own section when there is one, so
+  // the day's readings sit together, and otherwise under a "Biostats" category
+  // made for it.
+  const toggleLimitsOnToday = () => {
+    haptics.tap();
+    if (limitsTodayCategory !== null) { setLimitsTodayCategory(null); return; }
+    const category = healthCategory ?? HEALTH_CATEGORY;
+    useCategoryStore.getState().addCategory(category);
+    setLimitsTodayCategory(category);
+  };
+
+  const toggleLimitWarning = () => {
+    haptics.tap();
+    setGeneratorEnabled('limitWarning', !limitWarningTasks);
   };
 
   const togglePinned = (key: NutrientKey) => {
@@ -178,6 +246,109 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
       ? pinnedNutrients.filter(k => k !== key)
       : [...pinnedNutrients, key];
     setFoodLogPinnedNutrients(next);
+  };
+
+  // Same fold as the daily targets below: the vitamins and minerals stay behind
+  // one row until asked for, or until one is already shown on the Food log.
+  const [pinMicroOpen, setPinMicroOpen] = useState(false);
+  const pinMicroShown = pinMicroOpen || MICRO_KEYS.some(key => pinnedNutrients.includes(key));
+
+  const renderPinnedRow = (key: NutrientKey, last: boolean) => {
+    const pinned = pinnedNutrients.includes(key);
+    return (
+      <TouchableOpacity
+        key={key}
+        style={[styles.pinnedRow, last && styles.pinnedRowLast]}
+        activeOpacity={interaction.activeOpacity}
+        onPress={() => togglePinned(key)}
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: pinned }}
+        accessibilityLabel={`Show ${NUTRIENT_LABEL[key].label} on the Food log`}
+      >
+        <Ionicons
+          name={pinned ? 'checkmark-circle' : 'ellipse-outline'}
+          size={iconSize.md}
+          color={pinned ? colors.accent : colors.textTertiary}
+        />
+        <Text style={styles.pinnedRowLabel}>{NUTRIENT_LABEL[key].label}</Text>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderTarget = (key: NutrientKey) => {
+        // Water's target is stored in ml regardless (like every other
+        // water figure — see waterLogUnit's note in TaskEditor), but the
+        // stepper shows and steps in whichever unit the person picked for
+        // water elsewhere in the app (`waterUnit`).
+        const isWater = key === 'waterMl';
+        const range = isWater ? waterTargetRange(waterUnit) : NUTRITION_TARGET_RANGES[key];
+        const unit = NUTRIENT_LABEL[key].unit;
+        const value = isWater ? waterInUnit(targets.waterMl ?? null, waterUnit) : (targets[key] ?? null);
+        // waterRange's own range has no default of its own to open on —
+        // the reference figure is the ml one below, shown in whichever
+        // unit the stepper is in, the same conversion `value`/`onChange`
+        // already do. The `??` never actually fires (2000ml is always
+        // positive), it just keeps waterInUnit's `number | null` result
+        // assignable to `start`, which only takes a plain number.
+        const start = isWater
+          ? waterInUnit(NUTRITION_TARGET_RANGES.waterMl.default, waterUnit) ?? NUTRITION_TARGET_RANGES.waterMl.default
+          : NUTRITION_TARGET_RANGES[key].default;
+        return (
+          <View key={key} style={styles.row}>
+            <Text style={styles.rowLabel}>{NUTRIENT_LABEL[key].label}</Text>
+            <View style={styles.stepperLine}>
+            <CountStepper
+              value={value}
+              onChange={next =>
+                set(key, isWater ? (next === null ? null : waterToMl(next, waterUnit)) : next)
+              }
+              min={range.min}
+              max={range.max}
+              step={range.step}
+              start={start}
+              allowNull
+              emptyLabel="None"
+              format={n =>
+                isWater
+                  ? (waterUnit === 'flOz' ? `${n.toLocaleString()} fl oz` : `${n.toLocaleString()}ml`)
+                  : `${n.toLocaleString()}${unit === 'cal' ? '' : unit}`
+              }
+              label={`${NUTRIENT_LABEL[key].label} target`}
+              describeValue={n =>
+                isWater
+                  ? `${n} ${waterUnit === 'flOz' ? 'fluid ounces' : 'ml'}`
+                  : `${n} ${unit === 'cal' ? 'calories' : unit}`
+              }
+            />
+            {!NO_DAILY_VALUE.has(key) && targets[key] !== NUTRITION_TARGET_RANGES[key].default && (
+              <InlineAction
+                label="Use Daily Value"
+                variant="neutral"
+                onPress={() => {
+                  haptics.tap();
+                  set(key, NUTRITION_TARGET_RANGES[key].default);
+                }}
+                accessibilityLabel={`Set ${NUTRIENT_LABEL[key].label} target to the U.S. Daily Value`}
+              />
+            )}
+            </View>
+            {!isWater && targets[key] !== undefined && (
+              <SegmentedControl
+                options={DIRECTION_OPTIONS}
+                value={limits.includes(key) ? 'limit' : 'reach'}
+                onChange={direction => setDirection(key, direction)}
+                label={`${NUTRIENT_LABEL[key].label} target direction`}
+                surface="card"
+              />
+            )}
+            {key === 'calorieKcal' && calorieFollowsGoal && (
+              <Text style={styles.boostHint}>
+                This follows your weight goal and updates each time the
+                Weight screen reads your weight, replacing any number set here.
+              </Text>
+            )}
+          </View>
+        );
   };
 
   return (
@@ -199,38 +370,38 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
           <View>
             <Text style={styles.sectionLabel}>Shown on Food log</Text>
             <Text style={styles.intro}>
-              Which of these the totals card shows before "Show every nutrient" is tapped.
+              Nutrients the totals card shows until you tap “Show every nutrient”.
             </Text>
             <View style={styles.pinnedCard}>
-              {PINNABLE_NUTRIENTS.map((key, i) => {
-                const pinned = pinnedNutrients.includes(key);
-                return (
-                  <TouchableOpacity
-                    key={key}
-                    style={[styles.pinnedRow, i === PINNABLE_NUTRIENTS.length - 1 && styles.pinnedRowLast]}
-                    activeOpacity={interaction.activeOpacity}
-                    onPress={() => togglePinned(key)}
-                    accessibilityRole="checkbox"
-                    accessibilityState={{ checked: pinned }}
-                    accessibilityLabel={`Show ${NUTRIENT_LABEL[key].label} on the Food log`}
-                  >
-                    <Ionicons
-                      name={pinned ? 'checkmark-circle' : 'ellipse-outline'}
-                      size={iconSize.md}
-                      color={pinned ? colors.accent : colors.textTertiary}
-                    />
-                    <Text style={styles.pinnedRowLabel}>{NUTRIENT_LABEL[key].label}</Text>
-                  </TouchableOpacity>
-                );
-              })}
+              {PINNABLE_MAIN.map((key, i) => renderPinnedRow(key, i === PINNABLE_MAIN.length - 1))}
             </View>
+            <TouchableOpacity
+              style={[styles.microDisclosure, styles.pinnedMicroDisclosure]}
+              activeOpacity={interaction.activeOpacity}
+              onPress={() => { haptics.tap(); setPinMicroOpen(open => !open); }}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: pinMicroShown }}
+              accessibilityLabel="Vitamins and minerals to show on the Food log"
+            >
+              <Text style={styles.rowLabel}>Vitamins and minerals</Text>
+              <Ionicons
+                name={pinMicroShown ? 'chevron-up' : 'chevron-down'}
+                size={iconSize.sm}
+                color={colors.textTertiary}
+              />
+            </TouchableOpacity>
+            {pinMicroShown && (
+              <View style={styles.pinnedCard}>
+                {MICRO_KEYS.map((key, i) => renderPinnedRow(key, i === MICRO_KEYS.length - 1))}
+              </View>
+            )}
           </View>
 
           <Text style={styles.sectionLabel}>Daily targets</Text>
           <Text style={styles.intro}>
-            A figure to read the day's total against. Nothing is set to begin with, and
-            nothing is suggested: these are yours to choose, to leave alone, or to start
-            from the U.S. Daily Value, the reference figure nutrition labels print.
+            Targets that each day’s total is compared with. None are set or suggested by default,
+            so choose your own, leave any unset, or start from the U.S. Daily Value, the
+            reference figure on nutrition labels.
           </Text>
           {unsetKeys.length > 0 && (
             <InlineAction
@@ -241,72 +412,99 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
             />
           )}
 
-          {NUTRIENT_KEYS.map(key => {
-            // Water's target is stored in ml regardless (like every other
-            // water figure — see waterLogUnit's note in TaskEditor), but the
-            // stepper shows and steps in whichever unit the person picked for
-            // water elsewhere in the app (`waterUnit`).
-            const isWater = key === 'waterMl';
-            const range = isWater ? waterTargetRange(waterUnit) : NUTRITION_TARGET_RANGES[key];
-            const unit = NUTRIENT_LABEL[key].unit;
-            const value = isWater ? waterInUnit(targets.waterMl ?? null, waterUnit) : (targets[key] ?? null);
-            // waterRange's own range has no default of its own to open on —
-            // the reference figure is the ml one below, shown in whichever
-            // unit the stepper is in, the same conversion `value`/`onChange`
-            // already do. The `??` never actually fires (2000ml is always
-            // positive), it just keeps waterInUnit's `number | null` result
-            // assignable to `start`, which only takes a plain number.
-            const start = isWater
-              ? waterInUnit(NUTRITION_TARGET_RANGES.waterMl.default, waterUnit) ?? NUTRITION_TARGET_RANGES.waterMl.default
-              : NUTRITION_TARGET_RANGES[key].default;
-            return (
-              <View key={key} style={styles.row}>
-                <Text style={styles.rowLabel}>{NUTRIENT_LABEL[key].label}</Text>
-                <View style={styles.stepperLine}>
-                <CountStepper
-                  value={value}
-                  onChange={next =>
-                    set(key, isWater ? (next === null ? null : waterToMl(next, waterUnit)) : next)
-                  }
-                  min={range.min}
-                  max={range.max}
-                  step={range.step}
-                  start={start}
-                  allowNull
-                  emptyLabel="None"
-                  format={n =>
-                    isWater
-                      ? (waterUnit === 'flOz' ? `${n.toLocaleString()} fl oz` : `${n.toLocaleString()}ml`)
-                      : `${n.toLocaleString()}${unit === 'cal' ? '' : unit}`
-                  }
-                  label={`${NUTRIENT_LABEL[key].label} target`}
-                  describeValue={n =>
-                    isWater
-                      ? `${n} ${waterUnit === 'flOz' ? 'fluid ounces' : 'ml'}`
-                      : `${n} ${unit === 'cal' ? 'calories' : unit}`
-                  }
-                />
-                {targets[key] !== NUTRITION_TARGET_RANGES[key].default && (
-                  <InlineAction
-                    label="Use Daily Value"
-                    variant="neutral"
+          {EXTERNAL_NUTRIENT_KEYS.map(renderTarget)}
+          <TouchableOpacity
+            style={styles.microDisclosure}
+            activeOpacity={interaction.activeOpacity}
+            onPress={() => { haptics.tap(); setMicroOpen(open => !open); }}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: microShown }}
+            accessibilityLabel="Vitamins and minerals"
+          >
+            <Text style={styles.rowLabel}>Vitamins and minerals</Text>
+            <Ionicons
+              name={microShown ? 'chevron-up' : 'chevron-down'}
+              size={iconSize.sm}
+              color={colors.textTertiary}
+            />
+          </TouchableOpacity>
+          {microShown && MICRO_KEYS.map(renderTarget)}
+
+          {activeLimits(targets, limits).length > 0 && (
+            <View>
+              <Text style={styles.sectionLabel}>Limits</Text>
+              <Text style={styles.intro}>
+                Applies to targets set to Stay under. A day counts as close to a limit at this share of it.
+              </Text>
+              <View style={styles.boostCard}>
+                <TouchableOpacity
+                  style={styles.boostToggleRow}
+                  activeOpacity={interaction.activeOpacity}
+                  onPress={toggleLimitsOnToday}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: limitsTodayCategory !== null }}
+                  accessibilityLabel="Show limits on Today"
+                >
+                  <Ionicons
+                    name={limitsTodayCategory !== null ? 'checkmark-circle' : 'ellipse-outline'}
+                    size={iconSize.md}
+                    color={limitsTodayCategory !== null ? colors.accent : colors.textTertiary}
+                  />
+                  <Text style={styles.boostToggleLabel}>
+                    {limitsTodayCategory !== null ? `Show on Today, under ${limitsTodayCategory}` : 'Show on Today'}
+                  </Text>
+                </TouchableOpacity>
+                {limitsTodayCategory !== null && (
+                  <TouchableOpacity
+                    style={[styles.boostToggleRow, styles.limitToggleRule]}
+                    activeOpacity={interaction.activeOpacity}
                     onPress={() => {
                       haptics.tap();
-                      set(key, NUTRITION_TARGET_RANGES[key].default);
+                      onClose();
+                      navigateToSettingsEntry(navigation, 'limitsTodayCategory');
                     }}
-                    accessibilityLabel={`Set ${NUTRIENT_LABEL[key].label} target to the U.S. Daily Value`}
+                    accessibilityRole="button"
+                    accessibilityLabel="Change the category the limits show under on Today"
+                    accessibilityHint="Opens the Automations setting"
+                  >
+                    <Ionicons name="pricetag-outline" size={iconSize.md} color={colors.textSecondary} />
+                    <Text style={styles.boostToggleLabel}>Change category</Text>
+                    <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity
+                  style={[styles.boostToggleRow, styles.limitToggleRule]}
+                  activeOpacity={interaction.activeOpacity}
+                  onPress={toggleLimitWarning}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: limitWarningTasks }}
+                  accessibilityLabel="Add a daily “don’t do” task for each limit"
+                >
+                  <Ionicons
+                    name={limitWarningTasks ? 'checkmark-circle' : 'ellipse-outline'}
+                    size={iconSize.md}
+                    color={limitWarningTasks ? colors.accent : colors.textTertiary}
                   />
-                )}
+                  <Text style={styles.boostToggleLabel}>Add a “don’t do” task for each limit</Text>
+                </TouchableOpacity>
+                <View style={styles.boostFields}>
+                  <View style={styles.boostFieldRow}>
+                    <Text style={styles.boostFieldLabel}>Close at</Text>
+                    <CountStepper
+                      value={limitWarnPercent}
+                      onChange={n => setLimitWarnPercent(n ?? DEFAULT_LIMIT_WARN_PERCENT)}
+                      min={LIMIT_WARN_PERCENT_MIN}
+                      max={LIMIT_WARN_PERCENT_MAX}
+                      step={LIMIT_WARN_PERCENT_STEP}
+                      format={n => `${n}% of the limit`}
+                      label="Share of a limit that counts as close"
+                      describeValue={n => `${n} percent`}
+                    />
+                  </View>
                 </View>
-                {key === 'calorieKcal' && calorieFollowsGoal && (
-                  <Text style={styles.boostHint}>
-                    This follows your weight goal. It is worked out again each time the
-                    Weight screen reads your weight, which replaces a number set here.
-                  </Text>
-                )}
               </View>
-            );
-          })}
+            </View>
+          )}
 
           {targets.waterMl !== undefined && (
             <View>
@@ -330,7 +528,7 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
                 >
                   <Ionicons name="heart-outline" size={iconSize.sm} color={colors.textSecondary} />
                   <Text style={styles.boostNoticeText}>
-                    Turn on Apple Health reading in Settings to raise today's water target on a day
+                    Turn on Apple Health reading in Settings to raise today’s water target on a day
                     with exercise logged.
                   </Text>
                   <Ionicons
@@ -415,8 +613,8 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
                 >
                   <Ionicons name="heart-outline" size={iconSize.sm} color={colors.textSecondary} />
                   <Text style={styles.boostNoticeText}>
-                    Turn on Apple Health reading in Settings to raise today's calorie target on a
-                    day with more activity than usual.
+                    Turn on Apple Health reading in Settings to raise today’s calorie target on
+                    more active days.
                   </Text>
                   <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
                 </TouchableOpacity>
@@ -440,9 +638,9 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
                   {activeEnergyBoost && (
                     <View style={styles.boostFields}>
                       <Text style={styles.boostHint}>
-                        Today's calorie target goes up by whatever active calories Apple Health
-                        records past this figure. A day that stays under it is left alone, and the
-                        target you set is never changed.
+                        Today’s calorie target goes up by the active calories Apple Health
+                        records past this figure. The target you set
+                        doesn’t change.
                       </Text>
                       <View style={styles.boostFieldRow}>
                         <Text style={styles.boostFieldLabel}>Active calories in a typical day</Text>
@@ -457,7 +655,7 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
                           max={ACTIVE_ENERGY_BASELINE_RANGE.max}
                           step={ACTIVE_ENERGY_BASELINE_RANGE.step}
                           format={n => `${n.toLocaleString()} cal`}
-                          label="Typical day's active calories"
+                          label="Typical day’s active calories"
                           describeValue={n =>
                             `${(n ?? ACTIVE_ENERGY_BASELINE_RANGE.default).toLocaleString()} calories`
                           }
@@ -488,7 +686,7 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
                       )}
                       {typicalKcal === null && !noActiveEnergy && (
                         <Text style={styles.boostHint}>
-                          Apple Health hasn't recorded enough days yet to work out your average.
+                          Apple Health hasn’t recorded enough days yet to work out your average.
                         </Text>
                       )}
                       {/* The whole row opens the Health app, the same shape the
@@ -566,6 +764,17 @@ function makeStyles(colors: Colors) {
     pinnedRowLabel: { color: colors.text, fontSize: font.sm },
     dailyValueAction: { alignSelf: 'flex-start' },
     stepperLine: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm },
+    microDisclosure: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: colors.bgSecondary,
+      borderRadius: radius.md,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.smd,
+      minHeight: 44,
+    },
+    pinnedMicroDisclosure: { marginTop: spacing.sm, marginBottom: spacing.sm },
     row: {
       backgroundColor: colors.bgSecondary,
       borderRadius: radius.md,
@@ -604,6 +813,7 @@ function makeStyles(colors: Colors) {
       padding: spacing.md,
       gap: spacing.sm,
     },
+    limitToggleRule: { borderTopWidth: border.hairline, borderTopColor: colors.separator },
     boostFieldRow: { gap: spacing.sm },
     boostFieldLabel: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
     boostHint: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 18 },

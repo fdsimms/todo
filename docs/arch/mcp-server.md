@@ -139,7 +139,12 @@ in `mcp/src/tools.ts` and take a replica as an argument, which is what makes the
 an SDK or a socket.
 
 Three more read the day-keyed logs: `list_food_log` (with the day's summed nutrients),
-`list_mood_logs` and `list_medication_logs`. They share one range convention rather than three,
+`list_mood_logs` and `list_medication_logs`. A food entry's rows carry an estimate's `breakdown` when it has one,
+read off `FoodNutrition.breakdown` and never added to the totals, which already count the whole.
+`log_food` and `update_food_entry` (with `amounts`) take one too, read by the app's own `readBreakdown`
+and reported back with a count of the lines it dropped. A breakdown has to add up to the total for every
+nutrient its lines state (`breakdownMismatch`): the tools refuse one that does not, with the nutrient named,
+and the in-app estimator drops a split that does not add up rather than showing it. They share one range convention rather than three,
 because all three tables grow without bound and none has a useful "everything" answer: `days`
 counts back from the logical today and an explicit `from`/`to` overrides it. "Today" goes through
 `getLogicalToday`, so a read at 1am under a 2am `dayResetTime` answers about the day the user would
@@ -181,6 +186,11 @@ out to have one each, and the shape of each answer follows from what the field d
   overwritten with nothing said. `get_task` shows `followsWaterTarget` on the target and
   `taskFields.ts` refuses a `target` on such a task; `target: null` is still allowed and takes the
   flag with it, since a task with no target has nothing to follow.
+- **A count the app steps** (`quotaRampStep`). A target with `rampUp` has its `targetCount` raised
+  by `completeTask` (`src/utils/quotaRamp.ts`) when an occurrence that met it closes. Unlike the water
+  goal, the count is still the person's to set, so a write to `target.count` is accepted and becomes
+  the level the ramp climbs from; `rampUp` is refused beside `allowOvershoot`, the only combination
+  `canRampQuota` rules out that `target` can express. `get_task` shows `rampUp.hitsSoFar`.
 - **A date recomputed by rule** (`deadlineOffsetDays` / `deadlineMonthDay`, and
   `reminderOffsetDays` / `reminderTracksVisibility`). Shown as `deadlineRule` and `reminderRule`,
   read-only. A `deadline` written by `update_task` to a task with a rule clears the rule, which is
@@ -360,6 +370,18 @@ a different medicine or strength. Food goes through `readNutritionEstimate` and 
 and then `buildFoodLogEntry` (`src/utils/foodLogEntry.ts`), which is `addEntry`'s row lifted out of
 the store, because the store reaches Apple Health and cannot load here.
 
+**A dose of a supplement with a nutrient panel writes a food log entry too.** The medication store
+reaches the food log only through `DoseEffects` (`useMedicationStore.ts`), which the replica fills
+in with the same entry written through `buildFood`, flagged `healthWritePending` for the phone.
+Editing or deleting such a dose follows `delete_food_entry`'s rule: an entry the phone has already
+written to Apple Health is left alone, because only the phone can take its samples back out. The
+panel is set with `set_supplement_nutrients` (the app's `SupplementPanelSheet` checks the same
+figures), and `list_medication_logs` reports it beside the limit and supply. `supplementDose.ts`
+holds the rules both sides share. The replica reads the panel from the settings row rather than the
+store, which this process never loads, and `setSupplementPanel` initializes the store first because
+it writes the whole settings map back. `log_food` never takes vitamins or minerals
+(`ESTIMATE_KEY_LIST`): an agent's meal figures are estimates, and these are read off a label.
+
 Two rules from the food log shape `log_food`. **The model proposes and a person confirms**
 (`nutritionEstimate.ts`), so it previews until `apply: true`, and the entry is
 `source: 'estimated'` for good. And **only the phone writes a meal to Apple
@@ -383,8 +405,13 @@ since the Activity list is about the app and should not show somebody's health.
 **Journal entries and dreams have their own tools** (`mcp/src/journalTools.ts`:
 `list_journal_entries`, `log_journal_entry`, `update_journal_entry`, `delete_journal_entry`), through
 `useJournalStore` like the mood log goes through its store. They are health rows for the same
-switch, and the Activity entry names the kind and the day, never the words. `log_mood` no longer
-takes a dream (`docs/arch/journal.md`).
+switch, and the Activity entry names the kind and the day, never the words (nor the tags or people).
+`log_mood` no longer takes a dream (`docs/arch/journal.md`). `search_journal_entries` is the
+app's own `searchJournal` rule (every word, plain substring) over all days written unless
+`from`/`to` narrow it, capped at 50 with a `total`, so a word can be found without reading a
+year of entries; it filters through `openEntries` like every reader. Entries carry `tags` and
+`personIds` when they have any, `list_journal_entries` filters by either, and `log_`/`update_journal_entry`
+write them (an update replaces the whole list and leaves out what it isn't given).
 
 **Water is its own tool, `log_water`, because the food log keeps one water entry a day.**
 `waterLog.ts`'s rule is that eight glasses are one row stepped up eight times, not eight rows in
@@ -413,6 +440,14 @@ Time to read, and the list says what each needs there.
 answer the Settings row writes (`setGeneratedCategory` in `useCategoryStore`), so startup's
 `ensureGeneratedTaskCategory` leaves it alone. The name must already be a category; `null` files
 under none and the result says that puts the tasks in the loose block above every section of Today.
+
+It also takes `taskSettings`, the rest of a generator's Task settings sheet: priority, estimate,
+difficulty and skip-in-suggestions (`generatedTaskDefaults`) and tags, time of day and a question on
+completion (`generatedTaskExtras`). A patch, field by field, with `null` clearing one. It refuses
+what the sheet locks for that kind (`TaskSettingsSpec.locks`): a time of day for a generator that
+sets its own, a question on one whose tasks are never completed. `list_automations` returns each
+kind's `taskSettings` and `setByApp`, the sheet's locked rows as text, so an agent can say what the
+automation writes before suggesting a change to the rest.
 
 `delete_category` (`mcp/src/categoryTools.ts`) is the app's delete without its shake-to-undo, and it
 asks where the tasks go: `moveTo`, or `uncategorize: true`, and a category holding open work with
@@ -912,13 +947,20 @@ are `save_project_category` and `reorder_projects`.
 over the `Replica` methods of the same names). `docs/arch/rewards.md` says only a person moves coins.
 The tools keep that by being things the person asks Claude to do, never things Claude does to be
 helpful: each description says "only when they say so", every write previews first, and the
-app's own passes (the sweeps, the rollover) still never charge anything.
+app's own passes (the sweeps, the rollover) still never charge anything. A reward's claim limit
+(`claimEveryDays`) is enforced in the store's `claimReward`, so `claim_reward` is refused inside it and
+`get_rewards` reports `availableInDays`.
 
 - **The rules are the app's.** Claims go through `useRewardStore.claimReward`, bounties through the
   same `canPostBounty` / `bountyLimit` checks as `postBounty`, a miss through `buildCompletion` with
   `missed: true` and `recordMiss`, a slip through `slipPatch` and `recordSlip`. The replica
   hydrates `useRewardStore` on open and on every refresh; before that it was never loaded here, so
   a claim would have judged the balance by what this process had earned since it started.
+- **A slip on a habit a reward guards claims or charges exactly as in the app.** `replica.logSlip`
+  runs `slipGuardFor` and returns the claim it made, if any, so `log_slip` says `claimed` with the
+  `claimId` `unclaim_reward` takes back; the ledger records it as a claim. `create_reward` and
+  `update_reward` take `guardsHabitId`, refused for a one-time reward, a task that isn't a live avoid
+  habit, or a habit another reward already guards.
 - **A wish-list claim checks its item off neutrally**, as `RewardsScreen`'s `claim` does (no coins on
   top of the spend), inside one transaction with the spend. `unclaim_reward` reopens the item only if
   it was checked off at or after the claim, so an item the person finished earlier is left alone.
@@ -1159,6 +1201,19 @@ the Settings stepper's range (`NUTRITION_TARGET_RANGES`); `list_food_log` return
 tool says to set only figures the person gives, since the app ships with none and never suggests
 one. Its Activity entry is titled "Food log targets", not by the figures.
 
+**A measured entry's amount is changed by re-measuring, never by restating figures.**
+`update_food_entry`'s `grams` (or `quantity` on a measured entry) and `duplicate_food_entry`'s
+`grams`/`quantity` run `remeasureEntry` (`src/utils/foodLog.ts`), which is the arithmetic the food
+log sheet's Edit runs: `foodLogEntryEdit` decides whether the app would reopen the entry, the panel
+is the linked item's or product's (the replica reads the catalog) or else the one the entry kept
+(`keptDatabasePanel`), and `scalePanelToAmount` measures the new amount against that panel, not
+against the stored helping, so a round trip loses nothing to rounding. All of it is pure, so it runs
+here unchanged. What the server cannot do is the half that needs HealthKit: the app's `reviseEntry`
+retracts and rewrites the Health samples, so an update is still refused once an entry is in Health,
+while a copy is a new row and is not. A dish, an estimate and an entry whose record is gone are
+refused with the reason, as the app offers no re-measure for them. The preview's line names the
+amount and the calories before and after, which is the check on the new figure.
+
 ### Changing the meal plan
 
 `update_meal` moves a planned meal (another day or slot), swaps what it is (another recipe, or a
@@ -1258,7 +1313,7 @@ is how `list_calendar_requests` reads the outcome. The rules are in `src/utils/c
 - **Exactly one device writes them, and that is a synced setting.** An iCloud calendar shows an event
   on every device signed in to it, so two devices answering one request would put it there twice.
   `calendarRequestDeviceId` names the writer (a `dbGetDeviceId` id). Picking a calendar in Settings ›
-  Reminders & Calendar › Add Claude's events to makes this device the writer, which switches the previous one off
+  Calendar › Add Claude's events to makes this device the writer, which switches the previous one off
   by overwriting the key rather than by anybody remembering to. The calendar itself,
   `calendarRequestCalendarId`, is device-local like every other EventKit id. A device-local on/off
   switch was the first sketch and was dropped for this reason.
@@ -1313,10 +1368,30 @@ left the device they were set on, and `set_automation`'s `category` never reache
 all. They are on the list now. `nutritionTargets` syncs with the health record
 (`HEALTH_SYNC_SETTING_KEYS`), since a calorie target says something about a body.
 
-`archive_medication` is the medicines list's own archive (`medication_archived`, which already
+`set_medication_limit` and `set_medication_supply` are the page's Limit and Left fields (`useMedicationStore.setLimit`/`setSupply`). A limit is the person's own (`docs/arch/mood-log.md`), so the tool descriptions say it is set only from figures they gave, and the notify switch is left alone because turning it on needs the phone's notification permission. `add_medication`, `remove_medication` (only with no doses, as in the app) and `set_medication_profile` are the app's Add medication and the page's How you take it and Usual amounts (`useMedicationStore.addMedication`/`setAsNeeded`/`setUsualDose`), plus `setStrength` for what one capsule holds; a task completed through the replica records the usual amount when it names none, the same `useUsualDose` rule as the phone; a medicine added by name lives in `medication_registered`, so the replica's name lookups union it with the logged names. `archive_medication` is the medicines list's own archive (`medication_archived`, which already
 synced with the health record), and `rename_mood_tag` renames a context tag across every mood
-entry that carries it, through the mood store's own `renameContextTag`, as the Mood screen does. Gates and penalties stay read-only: they decide what the phone blocks, and that is the
+entry that carries it, through the mood store's own `renameContextTag`, as the Mood screen does. `rename_medication` is the medication page's Rename (`useMedicationStore.renameMedication`, rules in `docs/arch/mood-log.md`), with the tasks and templates that record the medicine rewritten through `db` as the rest of the replica writes; naming an existing medicine combines the two. Gates and penalties stay read-only: they decide what the phone blocks, and that is the
 person's to set on the phone.
+
+### Copy flags: temporary dev tooling
+
+A way to mark on-screen copy as needing a manual pass and have Claude fix it. In the app, Settings › About › Flag copy turns on a session-only mode in which a long-press on any text opens a card (`FlagCopyHost`) that files a `CopyFlag`: the rendered string, the route it was on and a note. The long-press is attached by the global `Text` patch in `src/theme/AppFont.tsx`, only while the mode is on, so taps behave as usual otherwise. Flagged text is underlined while the mode is on.
+
+The flag is an ordinary synced row (`copy_flags`), so `list_copy_flags` reads it and `resolve_copy_flag` closes it from here. This server cannot see the repo: the string is a search key, and the edit is made wherever the source is checked out (a rendered string built from a template literal is found by its stable fragments). Resolving goes through the db layer, like `resolveCalendarRequest`, and is not recorded in Activity, since a flag is dev state and not the person's data.
+
+**Remove before real users.** Delete `copy_flags` (`database.ts`, `syncTracking.ts`, `BACKUP_TABLES`), `CopyFlag`, `useCopyFlagStore` (and its line in `useTaskStore`'s fan-out), `copyFlagMode.ts`, `FlagCopyHost` (and its mount in `App.tsx`), the `withCopyFlagging` hook in `AppFont.tsx`, the About row and its `settingsIndex` entry, `copyFlagTools.ts` and the two tools with their annotations and replica methods, and this section.
+
+### Meters
+
+A task due at a reading (`meter` on a task write, `src/utils/meters.ts`) is written like any other
+field, refused on anything but a plain one-off for the reason `weatherWait` is: both are held by a
+pass that owns `deferUntil`, and that pass runs on the phone. So this server records the want and
+the readings and never moves a meter task itself; `meterHeldUntil`, the pass's mark on its own
+hold, is cleared when a meter is taken off and otherwise left alone. Readings go through
+`useMeterReadingStore`'s own action (`meterTools.ts`), are only ever added or deleted, and belong
+to the meter rather than a task, so `log_meter_reading` moves every task on that meter once the
+phone syncs. A completion here passes the readings into `buildCompletion`, so the next occurrence
+counts on from the same baseline the phone would use.
 
 ### Focus sessions, milestones, saved views and the vacation switch
 
@@ -1465,3 +1540,10 @@ Two obligations apply whatever the label says:
 - **Phase 3 (done). Hosting.** OAuth for the chat connector and a Fly deployment
   (`mcp/DEPLOY.md`). The Settings surface that admits to the copy,
   the health logs' own switch and the privacy-label draft are done (see above).
+
+## Locked projects are not hidden from Claude
+
+A project locked with Face ID (`docs/arch/app-lock.md`) is a screen guard on one
+device, kept in a device-local setting that never syncs. The replica never
+sees it, so Claude's tools read and write a locked project's tasks as usual.
+The journal lock is the same.

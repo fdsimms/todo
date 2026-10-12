@@ -187,7 +187,7 @@ export function weatherWindowFor(
 ): WeatherWindow | null {
   if (!hours || hours.length === 0) return null;
   const matching = hours
-    .filter(h => classifyWeather(h.weatherCode, h.tempF).includes(condition))
+    .filter(h => classifyWeather(h.weatherCode, h.tempF, h.isDay ?? true).includes(condition))
     .map(h => h.hour)
     .sort((a, b) => a - b);
   if (matching.length === 0) return null;

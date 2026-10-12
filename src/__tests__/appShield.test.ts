@@ -278,7 +278,7 @@ describe('a gate', () => {
     expect(mockBridge.setShieldState).toHaveBeenCalledWith(
       expect.objectContaining({
         reason: 'gate',
-        detail: "Morning walk isn't done yet. Finish it in dundundun to unblock.",
+        detail: "Morning walk isn’t done yet. Finish it in dundundun to unblock.",
         // The penalty's end is withheld while a gate leads: a block that
         // outlasts the time shown is worse than one that shows no time.
         untilIso: null,
@@ -319,7 +319,7 @@ describe('the gate window it arms for the app being closed', () => {
     // The extension's whole permission to raise a shield, written with the
     // window and never without it.
     expect(mockBridge.setShieldState).toHaveBeenCalledWith(expect.objectContaining({
-      pendingGateDetail: "Morning walk isn't done yet. Finish it in dundundun to unblock.",
+      pendingGateDetail: "Morning walk isn’t done yet. Finish it in dundundun to unblock.",
     }));
   });
 

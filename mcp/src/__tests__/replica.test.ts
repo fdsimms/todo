@@ -19,6 +19,7 @@ import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
 import {
   applyTemplate as applyTemplateTool,
+  completeTask as completeTaskTool,
   createTask as createTaskTool,
   createTemplate as createTemplateTool,
   getTask as getTaskTool,
@@ -186,7 +187,7 @@ describe('the replica', () => {
 
   it('finds a Settings row by a word that is not in its label, with the path to it', () => {
     const hits = replica.searchSettings('midnight');
-    expect(hits[0]).toMatchObject({ label: 'Morning', path: 'Settings › Day & time › When the day turns over › Morning' });
+    expect(hits[0]).toMatchObject({ label: 'Day starts', path: 'Settings › Day & time › When the day turns over › Day starts' });
   });
 
   it('reports the settings a reader needs to talk about the day', () => {
@@ -1422,6 +1423,16 @@ describe('the replica', () => {
       replica.refresh();
     });
 
+    it('refuses a second claim inside a reward\'s claim limit', () => {
+      earn(90);
+      const reward = replica.addReward('Coffee', 5, { claimEveryDays: 7 });
+      expect(reward.claimEveryDays).toBe(7);
+      const claim = replica.claimReward(reward.id);
+      expect(() => replica.claimReward(reward.id)).toThrow(/once a week.*Available again in 7 days/);
+      replica.unclaimReward(claim.id);
+      expect(replica.claimReward(reward.id).kind).toBe('spend');
+    });
+
     it('adds, claims and takes back a reward against the stored balance', () => {
       // The store is loaded from the database, so a balance earned before this
       // process's reward store was last read still counts toward a claim.
@@ -1569,7 +1580,8 @@ describe('the replica', () => {
       const before = balance();
       const habit = replica.createTask({ title: 'No biting nails', polarity: 'negative' });
       const slipped = replica.logSlip(habit.id);
-      expect(slipped.slipCount).toBe(1);
+      expect(slipped.task.slipCount).toBe(1);
+      expect(slipped.claim).toBeNull();
       expect(balance()).toBeLessThan(before);
 
       expect(replica.undoSlip(habit.id).slipCount).toBe(0);
@@ -1578,6 +1590,31 @@ describe('the replica', () => {
 
       const guarded = replica.createTask({ title: 'No scrolling', polarity: 'negative', penaltyMinutes: 30 });
       expect(() => replica.logSlip(guarded.id)).toThrow(/penalty/);
+    });
+
+    it('claims a guarding reward for a slip it can pay for, and charges what is left when it can\'t', () => {
+      earn(90);
+      const have = balance();
+      const habit = replica.createTask({ title: 'No dessert unless claimed', polarity: 'negative' });
+      const reward = replica.addReward('A dessert', have, { guardsTaskId: habit.id });
+      expect(reward.guardsTaskId).toBe(habit.id);
+      expect(() => replica.addReward('Cake', 5, { guardsTaskId: habit.id })).toThrow(/already guards/);
+      expect(() => replica.addReward('Pie', 5, { guardsTaskId: habit.id, oneTime: true })).toThrow(/one-time/);
+
+      const claimed = replica.logSlip(habit.id);
+      expect(claimed.claim?.rewardId).toBe(reward.id);
+      expect(claimed.task.slipCount).toBe(0);
+      expect(balance()).toBe(0);
+      replica.unclaimReward(claimed.claim!.id);
+
+      replica.updateReward(reward.id, { cost: have + 5 });
+      const charged = replica.logSlip(habit.id);
+      expect(charged.claim).toBeNull();
+      expect(charged.task.slipCount).toBe(1);
+      expect(balance()).toBe(0);
+      replica.undoSlip(habit.id);
+      expect(balance()).toBe(have);
+      replica.deleteReward(reward.id);
     });
   });
 
@@ -1621,6 +1658,17 @@ describe('the replica', () => {
     const task = replica.createTask({ title: 'Pick a colour', deliverableKind: 'text' });
     const result = replica.completeTask(task.id, { deliverableValue: 'Green' });
     expect(result.completed.deliverableValue).toBe('Green');
+  });
+
+  it('adds a look-back when asked, and reads its answer as the decision\'s outcome', () => {
+    const task = replica.createTask({ title: 'Which contractor?', deliverableKind: 'text' });
+    const done = completeTaskTool(replica, task.id, { deliverableValue: 'Bob', lookBackAfter: '1m' });
+    expect(done.spawned.join(' ')).toMatch(/look-back task "How did it turn out\? Which contractor\?"/);
+    const review = replica.tasks().find(t => t.reviewOfTaskId === task.id)!;
+    expect(getTaskTool(replica, review.id)?.task).toMatchObject({ lookBackOf: task.id, asksOnCompletion: 'text' });
+
+    completeTaskTool(replica, review.id, { deliverableValue: 'On time and under budget' });
+    expect(getTaskTool(replica, task.id)?.task).toMatchObject({ answer: 'Bob', outcome: { text: 'On time and under budget' } });
   });
 
   // A fixed set of answers takes one of them, in the option's own spelling,

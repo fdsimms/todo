@@ -1,4 +1,4 @@
-import { alertRelativeOffset, describeEventRepeat, eventMarkerText, parseClockRange, parseLengthClause, parseAlertClause, parseQuickEvent } from '../utils/quickEvent';
+import { alertRelativeOffset, describeEventRepeat, describeEventRepeatShort, eventRepeatPresetKey, EVENT_REPEAT_PRESETS, eventMarkerText, parseClockRange, parseLengthClause, parseAlertClause, parseQuickEvent } from '../utils/quickEvent';
 import { findAmbiguousMention } from '../utils/parseTaskInput';
 
 jest.mock('../store/useSettingsStore', () => ({
@@ -40,6 +40,46 @@ describe('parseQuickEvent', () => {
     const draft = parseQuickEvent('beach with @gideon and @tessa tomorrow', opts);
     expect(draft.title).toBe('beach with Gideon and Tessa');
     expect(draft.personIds).toEqual(['p1', 'p2']);
+  });
+
+  describe('"with" and "w/"', () => {
+    it.each(['Big walk with Tessa', 'Big walk w/ Tessa', 'Big walk w/Tessa', 'Big WITH Tessa'])('links the person named in "%s"', line => {
+      const draft = parseQuickEvent(line, opts);
+      expect(draft.personIds).toEqual(['p2']);
+      expect(draft.title).toBe(line);
+    });
+
+    it('matches a first name against a full name and reads past the schedule phrase', () => {
+      const draft = parseQuickEvent('lunch with Gideon tomorrow 12pm', opts);
+      expect(draft.personIds).toEqual(['p1']);
+      expect(draft.scheduled).toBe(true);
+    });
+
+    it('links everybody named, once, alongside an @mention', () => {
+      expect(parseQuickEvent('beach with Gideon and Tessa', opts).personIds).toEqual(['p1', 'p2']);
+      expect(parseQuickEvent('beach with @tessa and Tessa', opts).personIds).toEqual(['p2']);
+    });
+
+    it('still finds the name when a place follows', () => {
+      expect(parseQuickEvent("dinner at Joe's with Tessa", opts).personIds).toEqual(['p2']);
+    });
+
+    it('links nobody without the word, before it, or for an unknown name', () => {
+      expect(parseQuickEvent('Tessa birthday dinner', opts).personIds).toEqual([]);
+      expect(parseQuickEvent('Tessa party with the team', opts).personIds).toEqual([]);
+      expect(parseQuickEvent('walk with Bylila', opts).personIds).toEqual([]);
+      expect(parseQuickEvent('go without Tessa', opts).personIds).toEqual([]);
+    });
+
+    it('refuses an ambiguous name', () => {
+      const twoSams = [...people, { id: 'p3', name: 'Sam Ortiz', nickname: '' }, { id: 'p4', name: 'Sam Lee', nickname: '' }];
+      expect(parseQuickEvent('lunch with Sam', { ...opts, people: twoSams }).personIds).toEqual([]);
+      expect(parseQuickEvent('lunch with Sam Lee', { ...opts, people: twoSams }).personIds).toEqual(['p4']);
+    });
+
+    it('leaves an opened event\'s own title unlinked', () => {
+      expect(parseQuickEvent('Big walk with Tessa', { ...opts, plain: true }).personIds).toEqual([]);
+    });
   });
 
   it('uses a representative hour for a day-part word', () => {
@@ -351,5 +391,27 @@ describe('parseLengthClause', () => {
     expect(parseLengthClause('lunch with Sam for an hour')?.minutes).toBe(60);
     expect(parseLengthClause('lunch with Sam for two hours')).toEqual({ start: 14, minutes: 120 });
     expect(parseLengthClause('call for half an hour')?.minutes).toBe(30);
+  });
+});
+
+describe('repeat chip helpers', () => {
+  it('names a plain rule by its frequency', () => {
+    expect(describeEventRepeatShort({ frequency: 'weekly', interval: 1 })).toBe('Weekly');
+    expect(eventRepeatPresetKey({ frequency: 'monthly', interval: 1 })).toBe('monthly');
+  });
+
+  it('spells out a rule that is more than a preset', () => {
+    const rule = { frequency: 'weekly', interval: 2, daysOfTheWeek: [{ dayOfTheWeek: 2 }, { dayOfTheWeek: 4 }] } as const;
+    expect(describeEventRepeatShort(rule as never)).toBe('Every 2 weeks on Mon, Wed');
+    expect(eventRepeatPresetKey(rule as never)).toBeNull();
+  });
+
+  it('does not call a rule with an end a preset', () => {
+    expect(eventRepeatPresetKey({ frequency: 'daily', interval: 1, occurrence: 5 })).toBeNull();
+    expect(eventRepeatPresetKey(null)).toBeNull();
+  });
+
+  it('keeps every preset keyed by its own frequency', () => {
+    for (const p of EVENT_REPEAT_PRESETS) expect(eventRepeatPresetKey(p.rule)).toBe(p.key);
   });
 });

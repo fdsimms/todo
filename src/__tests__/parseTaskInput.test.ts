@@ -1,4 +1,4 @@
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseWeatherWaitInput, parseProjectInput, parseWaitingOnInput, parseSubtasksInput, parseAvoidInput, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, getEditorMentionSuggestions, applyMentionOverrides, parseFromCompletionSuffix, scheduleClockInstant, type ParsedSchedule } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseWeatherWaitInput, parseMeterInput, parseRainSkipInput, parseTaskInputAheadOfRainSkip, parseSunWindowInput, parseProjectInput, parseWaitingOnInput, parseSubtasksInput, parseAvoidInput, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, getEditorMentionSuggestions, applyMentionOverrides, parseFromCompletionSuffix, scheduleClockInstant, type ParsedSchedule } from '../utils/parseTaskInput';
 
 // Tuesday, June 10 2025, 10:00 AM — same anchor as parseNaturalDate.test.ts
 const NOW = new Date(2025, 5, 10, 10, 0, 0);
@@ -2089,6 +2089,83 @@ describe('parseAvoidInput', () => {
   });
 });
 
+describe('parseMeterInput', () => {
+  it('reads "every 5,000 miles on the car" off the end of a title', () => {
+    expect(parseMeterInput('change the oil every 5,000 miles on the car')).toEqual({
+      every: 5000, unit: 'miles', meterName: 'car', cleanTitle: 'change the oil',
+      matchStart: 15, matchEnd: 43,
+    });
+  });
+
+  it('takes a name of up to three words, "for" as well as "on", and a decimal', () => {
+    expect(parseMeterInput('descale every 200 shots on the espresso machine'))
+      .toMatchObject({ every: 200, unit: 'shots', meterName: 'espresso machine', cleanTitle: 'descale' });
+    expect(parseMeterInput('grease the chain every 150.5 km for my bike'))
+      .toMatchObject({ every: 150.5, unit: 'km', meterName: 'bike' });
+  });
+
+  it('leaves a time unit to the schedule, which reads it as a repeat', () => {
+    expect(parseMeterInput('check the tires every 2 weeks on the car')).toBeNull();
+    expect(parseMeterInput('service it every 50 hours on the mower')).toBeNull();
+  });
+
+  it('needs a meter to read: a bare interval names nothing', () => {
+    expect(parseMeterInput('change the oil every 5,000 miles')).toBeNull();
+    expect(parseMeterInput('every 5,000 miles on the car')).toBeNull();
+  });
+
+  it('is not taken for a schedule by the parse that runs ahead of it', () => {
+    expect(parseTaskInput('change the oil every 5,000 miles on the car')).toBeNull();
+    expect(parseTaskInput('descale every 200 shots on the espresso machine')).toBeNull();
+  });
+});
+
+describe('parseRainSkipInput', () => {
+  it('reads a bare "unless it rains", leaving the amount to the caller', () => {
+    expect(parseRainSkipInput('water the garden unless it rains')).toEqual({
+      mm: null, cleanTitle: 'water the garden', matchStart: 17, matchEnd: 32,
+    });
+    expect(parseRainSkipInput("water the lawn unless it's rained")).toMatchObject({ mm: null, cleanTitle: 'water the lawn' });
+    expect(parseRainSkipInput('water the pots skip if it rains')).toMatchObject({ mm: null, cleanTitle: 'water the pots' });
+  });
+
+  it('reads an amount in millimetres, centimetres or inches, stored as millimetres', () => {
+    expect(parseRainSkipInput('water the garden unless it rains 10mm')).toMatchObject({ mm: 10, cleanTitle: 'water the garden' });
+    expect(parseRainSkipInput('water the garden unless it has rained at least 1 cm')).toMatchObject({ mm: 10 });
+    expect(parseRainSkipInput('water the garden unless it rained more than 0.5 in today'))
+      .toMatchObject({ mm: 12.7, cleanTitle: 'water the garden today' });
+  });
+
+  it('refuses an amount past what a threshold can be', () => {
+    expect(parseRainSkipInput('water the garden unless it rains 300 mm')).toBeNull();
+    expect(parseRainSkipInput('water the garden unless it rains 0 mm')).toBeNull();
+  });
+
+  it('leaves rain that is part of the task alone', () => {
+    expect(parseRainSkipInput('buy a rain jacket')).toBeNull();
+    expect(parseRainSkipInput('bring the chairs in if it rains')).toBeNull();
+    expect(parseRainSkipInput('unless it rains')).toBeNull();
+  });
+
+  it('lets the schedule parse read the repeat ahead of it, and keeps the phrase for afterwards', () => {
+    const now = new Date(2026, 7, 12, 9);
+    // The plain parse can't: the schedule phrase has to reach the end.
+    expect(parseTaskInput('water the garden every 2 days unless it rains', now)).toBeNull();
+    const parsed = parseTaskInputAheadOfRainSkip('water the garden every 2 days unless it rains', now);
+    expect(parsed).toMatchObject({ matchedText: 'every 2 days', matchStart: 17, cleanTitle: 'water the garden unless it rains' });
+    expect(parsed?.schedule).toMatchObject({ recurrenceType: 'daily', recurrenceInterval: 2 });
+    expect(parseRainSkipInput(parsed!.cleanTitle)).toMatchObject({ cleanTitle: 'water the garden' });
+  });
+
+  it('reads a one-off date past it too, leaving the phrase in the title', () => {
+    const now = new Date(2026, 7, 12, 9);
+    expect(parseTaskInputAheadOfRainSkip('water the garden tomorrow unless it rains', now))
+      .toMatchObject({ matchedText: 'tomorrow', cleanTitle: 'water the garden unless it rains' });
+    expect(parseTaskInputAheadOfRainSkip('check the gutters unless it rains every 2 days', now))
+      .toMatchObject({ cleanTitle: 'check the gutters unless it rains' });
+  });
+});
+
 describe('parseWeatherWaitInput', () => {
   it('reads "on the next sunny day" off the end of a title', () => {
     expect(parseWeatherWaitInput('leave books on the curb on the next sunny day'))
@@ -2139,5 +2216,41 @@ describe('scheduleClockInstant', () => {
       .toEqual(new Date(2025, 5, 11, 3, 0, 0));
     expect(scheduleClockInstant({ dueDate: noon, explicitClockTime: { h: 16, m: 30 } }, '04:00'))
       .toEqual(new Date(2025, 5, 10, 16, 30, 0));
+  });
+});
+
+describe('parseSunWindowInput', () => {
+  it('reads "after sunset" and its synonyms as a window start', () => {
+    expect(parseSunWindowInput('porch lights after sunset')).toEqual({
+      bound: 'start', anchor: 'sunset', cleanTitle: 'porch lights', matchStart: 13, matchEnd: 25,
+    });
+    expect(parseSunWindowInput('stargazing after dark')).toMatchObject({ bound: 'start', anchor: 'sunset' });
+    expect(parseSunWindowInput('run after dawn')).toMatchObject({ bound: 'start', anchor: 'sunrise' });
+  });
+
+  it('reads only the explicit expiry words as a window end', () => {
+    expect(parseSunWindowInput('walk the dog expires at sunset')).toMatchObject({ bound: 'end', anchor: 'sunset', cleanTitle: 'walk the dog' });
+    expect(parseSunWindowInput('walk the dog only until dark')).toMatchObject({ bound: 'end', anchor: 'sunset', cleanTitle: 'walk the dog' });
+    expect(parseSunWindowInput('photos only before sunrise')).toMatchObject({ bound: 'end', anchor: 'sunrise' });
+  });
+
+  // "before 5pm" is a deadline in this file, never a window end, so a bare
+  // "before dark" is left in the title rather than read as one.
+  it('leaves a bare "before dark" alone', () => {
+    expect(parseSunWindowInput('walk the dog before dark')).toBeNull();
+  });
+
+  it('needs a whole word and something left to call the task', () => {
+    expect(parseSunWindowInput('after darkness falls')).toBeNull();
+    expect(parseSunWindowInput('after sunset')).toBeNull();
+    expect(parseSunWindowInput('Sunset Boulevard tickets')).toBeNull();
+  });
+
+  // The schedule tooltip comes first in quick add's chain, so it must not
+  // claim these phrases (and drop the sun) before this parser sees them.
+  it('is not claimed by the schedule parser first', () => {
+    expect(parseTaskInput('porch lights after sunset', NOW)).toBeNull();
+    expect(parseTaskInput('walk the dog expires at sunset', NOW)).toBeNull();
+    expect(parseTaskInput('walk the dog only until dark', NOW)).toBeNull();
   });
 });

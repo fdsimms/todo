@@ -19,7 +19,7 @@ import { format } from 'date-fns/format';
 import { parseISO } from 'date-fns/parseISO';
 import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, lineHeight, border, animation, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, lineHeight, border, animation, interaction, sheetBottomInset, type Colors } from '../theme';
 import { patchNotes } from '../utils/patchNotes';
 import { useSettingsStore, type PatchNoteQaStatus } from '../store/useSettingsStore';
 import { haptics } from '../utils/haptics';
@@ -81,7 +81,7 @@ export function PatchNotesModal({ visible, onDismiss }: Props) {
             onPress={() => toggleQaStatus(note.id, 'pass')}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             accessibilityRole="checkbox"
-            accessibilityLabel={`Mark "${note.message}" as passed`}
+            accessibilityLabel={`Mark “${note.message}” as passed`}
             accessibilityState={{ checked: qaStatus === 'pass' }}
           >
             <Ionicons
@@ -96,7 +96,7 @@ export function PatchNotesModal({ visible, onDismiss }: Props) {
             onPress={() => toggleQaStatus(note.id, 'fail')}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             accessibilityRole="checkbox"
-            accessibilityLabel={`Mark "${note.message}" as failed`}
+            accessibilityLabel={`Mark “${note.message}” as failed`}
             accessibilityState={{ checked: qaStatus === 'fail' }}
           >
             <Ionicons
@@ -173,7 +173,7 @@ export function PatchNotesModal({ visible, onDismiss }: Props) {
           <View style={styles.card}>
             <View style={styles.titleRow}>
               <Ionicons name="gift-outline" size={20} color={colors.accent} />
-              <Text style={styles.title}>What's New</Text>
+              <Text style={styles.title}>What’s New</Text>
               <View style={styles.titleSpacer} />
               <TouchableOpacity
                 style={styles.hideReviewedButton}
@@ -233,7 +233,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   sheetOuter: {
     paddingHorizontal: spacing.md,
-    paddingBottom: 34,
+    paddingBottom: sheetBottomInset,
   },
   handleArea: {
     alignItems: 'center',

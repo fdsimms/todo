@@ -27,7 +27,7 @@ import { SafeBlurView } from './SafeBlurView';
 import { SheetScrim } from './SheetScrim';
 import { InlineAction } from './InlineAction';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, iconSize, animation, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, iconSize, animation, interaction, sheetBottomInset, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { useSheetMotion } from '../hooks/useSheetMotion';
@@ -146,7 +146,7 @@ export function GroceryListSheet({ visible, onClose }: Props) {
 
   const handleDelete = (id: string, name: string, count: number) => {
     confirmDelete({
-      title: `Delete "${name}"?`,
+      title: `Delete “${name}”?`,
       message: count > 0
         ? `${count} ${count === 1 ? 'thing' : 'things'} on it will come off the list. Nothing is removed from your catalog.`
         : 'Nothing is removed from your catalog.',
@@ -183,8 +183,8 @@ export function GroceryListSheet({ visible, onClose }: Props) {
               mechanism rather than the mood: what a second list changes is that
               its shopping stays out of your kitchen's record. */}
           <Text style={styles.sheetHint}>
-            Anything you add goes on the list you pick here. Buying things on a list other than
-            Groceries doesn't update your pantry, prices or purchase history.
+            Anything you add goes on the list you pick here. Buying items on a list other than
+            Groceries doesn’t update your pantry, prices or purchase history.
           </Text>
 
           <ScrollView
@@ -310,7 +310,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   backdropDim: { backgroundColor: colors.backdrop },
   sheetOuter: {
     position: 'absolute', left: 0, right: 0, bottom: 0,
-    paddingHorizontal: spacing.md, paddingBottom: 34,
+    paddingHorizontal: spacing.md, paddingBottom: sheetBottomInset,
   },
   handleArea: { alignItems: 'center', paddingTop: spacing.sm, paddingBottom: spacing.sm },
   handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.bgQuaternary },

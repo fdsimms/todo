@@ -18,6 +18,7 @@ import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
 import { SettingsChoiceTray } from './SettingsChoiceTray';
 import { makeSettingsStyles } from './settingsStyles';
+import { alertPermissionOff } from '../../utils/permissionAlert';
 
 /** The tray's explicit "no calendar" option — `''` because ids are never empty. */
 const OFF_OPTION = { id: '', title: 'Off' };
@@ -99,9 +100,9 @@ export function ClaudeCalendarSettings() {
     }
     if (permission !== 'granted' && !(await requestCalendarPermission())) {
       refreshState();
-      Alert.alert(
+      alertPermissionOff(
         'Calendar access is off',
-        'This needs permission to write to your calendar. Turn it on for this app in the Settings app, then try again.'
+        'Writing to your calendar needs permission. Turn it on in Settings, then try again.',
       );
       return;
     }
@@ -113,7 +114,7 @@ export function ClaudeCalendarSettings() {
       // one, most often. There's genuinely nothing to pick.
       Alert.alert(
         'No calendar you can write to',
-        'Every calendar on this device is read-only. Add or unlock one you can edit in the Settings app under Calendar › Accounts.'
+        'Every calendar on this device is read-only. Add or unlock one in Settings under Calendar › Accounts.',
       );
       return;
     }
@@ -124,7 +125,7 @@ export function ClaudeCalendarSettings() {
   return (
     <SettingsSection
       label="Claude’s events on your calendar"
-      footer="When Claude is connected through your sync server and you ask it to add an event, this device adds it to the calendar you pick here the next time it syncs. Only one device adds them, so picking a calendar here turns this off on any other device. Claude can’t see your calendar, and it never changes or deletes an event once it’s added."
+      footer="Events you ask Claude to add through your sync server go to the calendar you pick here on the next sync. Only one device adds them, so picking a calendar here turns this off on other devices. Claude can’t see your calendar and doesn’t change or delete events after they’re added."
     >
       <SettingsRow
         entryId="claudeCalendar"
@@ -148,10 +149,10 @@ export function ClaudeCalendarSettings() {
               icon="lock-closed-outline"
               iconColor={colors.warningText}
               label="Calendar access"
-              hint="Blocked. Nothing can be written until you turn it back on for this app."
+              hint="Blocked. Nothing can be written until you turn it back on in Settings."
               value="Open Settings"
               onPress={() => Linking.openSettings()}
-              accessibilityLabel="Calendar access is blocked. Opens the system Settings app."
+              accessibilityLabel="Calendar access is blocked. Opens Settings."
             />
           ) : (
             <SettingsChoiceTray
@@ -164,7 +165,7 @@ export function ClaudeCalendarSettings() {
                 // Anything already waiting is written now, not at the next sync.
                 if (option.id) void drainCalendarRequests();
               }}
-              emptyText="Every calendar on this device is read-only. Add or unlock one you can edit in the Settings app under Calendar › Accounts."
+              emptyText="Every calendar on this device is read-only. Add or unlock one in Settings under Calendar › Accounts."
               accessibilityLabelFor={option => (option.id ? `Add to ${option.title}` : 'Off')}
             />
           )}

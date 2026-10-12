@@ -12,8 +12,18 @@ import { SettingsSegments } from './SettingsSegments';
 import { type SegmentOption } from '../../components/SegmentedControl';
 import { InlineTimePicker } from './InlineTimePicker';
 import { makeSettingsStyles } from './settingsStyles';
+import { getCurrentDayStart } from '../../utils/dateUtils';
+import { dateToHHMM as clockOf } from '../../utils/clockTime';
+import { sunEventsForDay } from '../../utils/sunTimes';
+import { getCurrentLocation, requestLocationPermission } from '../../utils/weatherLocation';
+import { HOLIDAY_SET_LABELS, HOLIDAY_SETS, nextHoliday, type HolidaySet } from '../../utils/holidays';
+import { dayKeyOf, dayKeyToDate, getLogicalDayKey } from '../../utils/dateUtils';
+import { format } from 'date-fns/format';
+import { CalendarPicker } from '../../components/CalendarPicker';
 
 type SegmentKey = 'dayReset' | 'afternoon' | 'evening' | 'night' | 'activeStart' | 'activeEnd';
+
+const HOLIDAY_SET_OPTIONS: SegmentOption<HolidaySet>[] = HOLIDAY_SETS.map(value => ({ value, label: HOLIDAY_SET_LABELS[value] }));
 
 const WEEK_START_OPTIONS: SegmentOption<WeekStart>[] = [
   { value: 0, label: 'Sunday' },
@@ -30,7 +40,39 @@ export function DayTimeSettings() {
     activeHoursEnd, setActiveHoursEnd,
     use24HourTime, setUse24HourTime,
     weekStartsOn, setWeekStartsOn,
+    sunLocation, setSunLocation,
+    holidaySet, setHolidaySet,
+    customHolidays, setCustomHolidays,
   } = useSettingsStore();
+  const [daysOffOpen, setDaysOffOpen] = useState(false);
+
+  // The next one coming, so the choice reads as dates rather than a label.
+  const upcomingHoliday = nextHoliday(getLogicalDayKey(new Date()), { set: holidaySet, custom: customHolidays });
+  const holidayFooter = upcomingHoliday
+    ? `A repeating task can skip these days or move to the next day. Set this under Repeat in the task editor. Next: ${upcomingHoliday.name}, ${format(dayKeyToDate(upcomingHoliday.dayKey), 'EEE, MMM d')}.`
+    : 'A repeating task can skip these days or move to the next day. Set this under Repeat in the task editor.';
+  const upcomingDaysOff = customHolidays.filter(k => k >= getLogicalDayKey(new Date())).length;
+  const [sunLocationStatus, setSunLocationStatus] = useState<'idle' | 'asking' | 'failed'>('idle');
+
+  // Read only from this tap (and the task editor's), never in the background.
+  // Stored rounded to about a kilometer (setSunLocation).
+  const saveCurrentLocation = async () => {
+    setSunLocationStatus('asking');
+    const granted = await requestLocationPermission();
+    const loc = granted ? await getCurrentLocation() : null;
+    if (!loc) { setSunLocationStatus('failed'); return; }
+    setSunLocation(loc);
+    setSunLocationStatus('idle');
+  };
+
+  const sunToday = sunLocation ? sunEventsForDay(getCurrentDayStart(), sunLocation) : null;
+  const sunLocationHint = sunLocationStatus === 'failed'
+    ? 'Couldn\u2019t read your location. Allow Location for dundundun in Settings, then try again.'
+    : !sunLocation
+      ? 'Not set yet. Tap to use your current location.'
+      : sunToday?.sunrise && sunToday.sunset
+        ? `Today: sunrise ${formatHHMM(clockOf(sunToday.sunrise))}, sunset ${formatHHMM(clockOf(sunToday.sunset))}. Tap to update it to your current location.`
+        : 'The sun doesn\u2019t rise or set there today. Tap to update it to your current location.';
 
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
@@ -126,7 +168,7 @@ export function DayTimeSettings() {
     <>
       <SettingsSection
         label="When the day turns over"
-        footer={'Set Morning to 2:00 AM or later if you’re often up past midnight and don’t want today’s tasks to vanish before you’re done. A task with a time-of-day segment appears once its part of the day begins.'}
+        footer={'If you’re often up past midnight, set Day starts to 2:00 AM or later so today’s tasks don’t disappear before you’re done. A task with a time-of-day segment appears when that part of the day begins.'}
       >
         {/* dayResetTime, which is what this row's picker opens on, what its
             confirm writes and what its hint describes. It used to display
@@ -135,7 +177,7 @@ export function DayTimeSettings() {
             are 00:00 and 06:00, the row read "6:00 AM" over a day that flipped
             at midnight, and stayed wrong until the row was touched once. A
             restore or a sync merge can part them the same way. */}
-        {segment('dayReset', 'Morning', 'sunny', formatHHMM(dayResetTime!),
+        {segment('dayReset', 'Day starts', 'sunny', formatHHMM(dayResetTime!),
           { first: true, hint: 'The new day starts and streaks reset at this time' })}
         {segment('afternoon', 'Afternoon starts', 'partly-sunny', formatHHMM(afternoonStart))}
         {segment('evening', 'Evening starts', 'moon-outline', formatHHMM(eveningStart))}
@@ -144,15 +186,81 @@ export function DayTimeSettings() {
 
       <SettingsSection
         label="Awake hours"
-        footer="A daily target's progress is measured against these hours, so one you haven't started by 8am isn't counted as behind for the whole day."
+        footer="A daily target’s progress is measured against these hours, so one you haven’t started by 8 AM isn’t counted as behind all day."
       >
         {segment('activeStart', 'Awake from', 'speedometer-outline', formatHHMM(activeHoursStart), { first: true })}
         {segment('activeEnd', 'Awake until', 'speedometer-outline', formatHHMM(activeHoursEnd))}
       </SettingsSection>
 
       <SettingsSection
+        label="Sunrise and sunset"
+        footer="A task’s time window can start or end at sunrise or sunset, or up to three hours either side. Times are calculated on this phone from the location saved here, which is never sent anywhere. On trip days, the destination’s times are used once looked up (needs Destination forecast on)."
+      >
+        <SettingsRow
+          entryId="sunLocation"
+          icon="sunny-outline"
+          iconColor={colors.accent}
+          label="Location for sun times"
+          hint={sunLocationHint}
+          alwaysShowHint
+          value={sunLocation ? 'Saved' : 'Not set'}
+          busy={sunLocationStatus === 'asking'}
+          onPress={saveCurrentLocation}
+        />
+        {sunLocation && (
+          <>
+            <View style={styles.sep} />
+            <SettingsRow
+              icon="close-circle-outline"
+              label="Clear location"
+              hint="A window set to follow the sun keeps the last clock time it was set to."
+              onPress={() => { setSunLocation(null); setSunLocationStatus('idle'); }}
+            />
+          </>
+        )}
+      </SettingsSection>
+
+      <SettingsSection label="Holidays" footer={holidayFooter}>
+        <SettingsRow
+          entryId="holidaySet"
+          icon="flag-outline"
+          iconColor={colors.accent}
+          label="Public holidays"
+          tight
+        />
+        <SettingsSegments
+          attached
+          options={HOLIDAY_SET_OPTIONS}
+          selected={holidaySet}
+          onSelect={setHolidaySet}
+          accessibilityLabelFor={o => `Public holidays: ${o.label}`}
+        />
+        <View style={styles.sep} />
+        <SettingsRow
+          entryId="customHolidays"
+          icon="calendar-clear-outline"
+          iconColor={colors.accent}
+          label="Your own days off"
+          hint="Extra holidays for repeating tasks set to skip holidays, like a company holiday."
+          value={upcomingDaysOff === 0 ? 'None' : `${upcomingDaysOff} coming up`}
+          onPress={() => setDaysOffOpen(true)}
+        />
+        <CalendarPicker
+          visible={daysOffOpen}
+          value={null}
+          mode="date"
+          title="Days off"
+          multiple
+          values={customHolidays.map(dayKeyToDate)}
+          onConfirmMultiple={dates => { setCustomHolidays(dates.map(dayKeyOf)); setDaysOffOpen(false); }}
+          onConfirm={() => setDaysOffOpen(false)}
+          onCancel={() => setDaysOffOpen(false)}
+        />
+      </SettingsSection>
+
+      <SettingsSection
         label="How times read"
-        footer={'Week start decides which day each week begins on in the calendar, and what "this week" counts in Stats.'}
+        footer={'Week starts on sets the first day of each week in the calendar and in Stats.'}
       >
         <SettingsRow
           entryId="use24HourTime"

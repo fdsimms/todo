@@ -208,7 +208,7 @@ async function encodePickedPhoto(uri: string, width: number, height: number): Pr
   });
 
   if (saved.uri) discardTempPhoto(saved.uri);
-  if (!saved.base64) return { ok: false, message: 'That photo could not be read.' };
+  if (!saved.base64) return { ok: false, message: 'Couldn’t read that photo. Try another.' };
 
   return { ok: true, base64: saved.base64, mediaType: 'image/jpeg', width: saved.width, height: saved.height };
 }
@@ -295,7 +295,7 @@ export async function pickRecipePhoto(source: RecipePhotoSource): Promise<Recipe
 
     if (result.canceled) return { status: 'canceled' };
     const asset = result.assets?.[0];
-    if (!asset?.uri) return { status: 'failed', message: 'No photo came back from the picker.' };
+    if (!asset?.uri) return { status: 'failed', message: 'Couldn’t get the photo. Try again.' };
 
     const encoded = await encodePickedPhoto(asset.uri, asset.width, asset.height);
     if (!encoded.ok) return { status: 'failed', message: encoded.message };
@@ -313,7 +313,7 @@ export async function pickRecipePhoto(source: RecipePhotoSource): Promise<Recipe
   } catch (e) {
     return {
       status: 'failed',
-      message: e instanceof Error && e.message ? e.message : 'That photo could not be read.',
+      message: e instanceof Error && e.message ? e.message : 'Couldn’t read that photo. Try another.',
     };
   }
 }
@@ -368,7 +368,7 @@ async function saveIntoRecipeImageDirectory(uri: string, width: number, height: 
     compress: PHOTO_COMPRESS,
     format: SaveFormat.JPEG,
   });
-  if (!saved.uri) return { status: 'failed', message: 'That photo could not be read.' };
+  if (!saved.uri) return { status: 'failed', message: 'Couldn’t read that photo. Try another.' };
 
   const { File } = fileSystem();
   const dest = new File(recipeImageDirectory(), `${generateId()}.jpg`);
@@ -428,13 +428,13 @@ export async function pickRecipeImage(source: RecipePhotoSource): Promise<Recipe
 
     if (result.canceled) return { status: 'canceled' };
     const asset = result.assets?.[0];
-    if (!asset?.uri) return { status: 'failed', message: 'No photo came back from the picker.' };
+    if (!asset?.uri) return { status: 'failed', message: 'Couldn’t get the photo. Try again.' };
 
     return await saveIntoRecipeImageDirectory(asset.uri, asset.width, asset.height);
   } catch (e) {
     return {
       status: 'failed',
-      message: e instanceof Error && e.message ? e.message : 'That photo could not be read.',
+      message: e instanceof Error && e.message ? e.message : 'Couldn’t read that photo. Try another.',
     };
   }
 }

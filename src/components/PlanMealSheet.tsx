@@ -17,8 +17,9 @@ import { isTomorrow } from 'date-fns/isTomorrow';
 import type { MealPlanEntry, MealSlot } from '../types';
 import { MEAL_SLOTS } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, border, animation, interaction, iconSize, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, border, animation, interaction, iconSize, sheetBottomInset, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { DayChipRow } from './DayChipRow';
 import { SegmentedControl } from './SegmentedControl';
 import { SafeBlurView } from './SafeBlurView';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -227,30 +228,12 @@ export function PlanMealSheet({ visible, title, defaultSlot, onPlan, onPlanned, 
           </View>
 
           <Text style={styles.label}>When</Text>
-          <View style={styles.chips}>
-            {days.map(day => {
-              const key = dayKeyOf(day);
-              const on = key === dayKey;
-              return (
-                <TouchableOpacity
-                  key={key}
-                  style={[styles.dayChip, on && styles.chipOn]}
-                  onPress={() => { haptics.tap(); setDayKey(key); setPlanned(null); }}
-                  activeOpacity={interaction.activeOpacity}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: on }}
-                  accessibilityLabel={format(day, 'EEEE, MMMM d')}
-                >
-                  <Text style={[styles.dayChipTop, on && styles.chipTextOn]}>
-                    {format(day, 'EEEEE')}
-                  </Text>
-                  <Text style={[styles.dayChipNum, on && styles.chipTextOn]}>
-                    {format(day, 'd')}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+          <DayChipRow
+            days={days}
+            isOn={key => key === dayKey}
+            onPress={key => { setDayKey(key); setPlanned(null); }}
+            accessibilityLabelFor={day => format(day, 'EEEE, MMMM d')}
+          />
 
           <Text style={styles.label}>Meal</Text>
           <View style={styles.segment}>
@@ -303,7 +286,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     right: 0,
     bottom: 0,
     paddingHorizontal: spacing.md,
-    paddingBottom: 34,
+    paddingBottom: sheetBottomInset,
   },
   handleArea: {
     alignItems: 'center',
@@ -360,37 +343,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
   },
-  chips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-  },
   segment: { paddingHorizontal: spacing.md },
-  dayChip: {
-    flex: 1,
-    alignItems: 'center',
-    gap: spacing.xxs,
-    paddingVertical: 8,
-    borderRadius: radius.md,
-    backgroundColor: colors.bgTertiary,
-  },
-  dayChipTop: {
-    color: colors.text,
-    fontSize: font.xs,
-    fontWeight: fontWeight.semibold,
-  },
-  dayChipNum: {
-    color: colors.text,
-    fontSize: font.sm,
-    fontWeight: fontWeight.medium,
-  },
-  chipOn: {
-    backgroundColor: colors.accentFill,
-  },
-  chipTextOn: {
-    color: colors.onAccent,
-  },
   primary: {
     flexDirection: 'row',
     alignItems: 'center',
