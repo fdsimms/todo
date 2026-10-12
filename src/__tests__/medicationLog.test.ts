@@ -2,6 +2,10 @@ import type { ChainItem, MedicationLog } from '../types';
 import {
   DOSE_UNITS,
   MIN_TREND_DOSES,
+  STRENGTH_UNITS,
+  amountInUnit,
+  doseTotal,
+  isCountedUnit,
   canCarryMedication,
   doseCountInWindow,
   dosesOnDay,
@@ -524,5 +528,46 @@ describe('hasScheduledTask', () => {
     ];
     expect(hasScheduledTask(tasks, 'Vitamin D')).toBe(false);
     expect(hasScheduledTask([], '')).toBe(false);
+  });
+});
+
+describe('strength', () => {
+  const capsule = (amount: number | null, strength?: { amount: number; unit: string } | null) =>
+    ({ amount, unit: amount === null ? null : 'capsule', strength });
+
+  it('reads a capsule dose as its total in the strength unit', () => {
+    expect(formatDose(capsule(1, { amount: 125, unit: 'mcg' }))).toBe('1 capsule (125 mcg)');
+    expect(formatDose(capsule(2, { amount: 125, unit: 'mcg' }))).toBe('2 capsules (250 mcg)');
+    expect(doseTotal(capsule(1.5, { amount: 100, unit: 'mg' }))).toEqual({ amount: 150, unit: 'mg' });
+  });
+
+  it('leaves a dose with no stamped strength as it was', () => {
+    expect(formatDose(capsule(1))).toBe('1 capsule');
+    expect(formatDose(capsule(1, null))).toBe('1 capsule');
+    expect(doseTotal(capsule(1))).toBeNull();
+  });
+
+  it('never multiplies a measured dose, even one that carries a strength', () => {
+    const mg = { amount: 400, unit: 'mg', strength: { amount: 125, unit: 'mcg' } };
+    expect(formatDose(mg)).toBe('400 mg');
+    expect(doseTotal(mg)).toBeNull();
+  });
+
+  it('knows which units are counted and which can state a strength', () => {
+    expect(isCountedUnit('capsule')).toBe(true);
+    expect(isCountedUnit('puff')).toBe(true);
+    expect(isCountedUnit('unit')).toBe(false);
+    expect(isCountedUnit('mg')).toBe(false);
+    expect(isCountedUnit(null)).toBe(false);
+    expect([...STRENGTH_UNITS]).toEqual(['mg', 'mcg', 'g', 'ml']);
+  });
+
+  it('contributes to a total only in the unit it was stated in', () => {
+    const c = capsule(2, { amount: 125, unit: 'mcg' });
+    expect(amountInUnit(c, 'mcg')).toBe(250);
+    expect(amountInUnit(c, 'mg')).toBeNull();
+    expect(amountInUnit(c, 'capsule')).toBe(2);
+    expect(amountInUnit(capsule(2), 'mcg')).toBeNull();
+    expect(amountInUnit({ amount: 400, unit: 'mg' }, 'mg')).toBe(400);
   });
 });

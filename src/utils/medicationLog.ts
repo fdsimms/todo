@@ -287,11 +287,55 @@ export function hasDoseOnDay(
  * no amount looks like in its own row, instead of concatenating a blank into
  * the middle of a sentence.
  */
-export function formatDose(log: Pick<MedicationLog, 'amount' | 'unit'>): string | null {
+export function formatDose(log: Pick<MedicationLog, 'amount' | 'unit' | 'strength'>): string | null {
   if (log.amount === null || !log.unit) return null;
   const spec = DOSE_UNITS.find(u => u.value === log.unit);
   const unit = log.amount !== 1 && spec?.plural ? spec.plural : log.unit;
-  return `${log.amount} ${unit}`;
+  const total = doseTotal(log);
+  return total ? `${log.amount} ${unit} (${total.amount} ${total.unit})` : `${log.amount} ${unit}`;
+}
+
+/** The units a dose is counted in rather than measured: the ones with a plural, other than 'unit'. */
+export function isCountedUnit(unit: string | null | undefined): boolean {
+  if (!unit || unit === 'unit') return false;
+  return DOSE_UNITS.some(u => u.value === unit && u.plural !== null);
+}
+
+/** The units a strength can be stated in: the measured ones. */
+export const STRENGTH_UNITS: readonly string[] = DOSE_UNITS
+  .filter(u => u.plural === null)
+  .map(u => u.value);
+
+/** Two decimals is finer than any strength a label prints and hides float noise. */
+function roundTotal(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+/**
+ * How much a dose came to in the strength's own unit ("1 capsule" of a 125 mcg
+ * capsule is 125 mcg), or null when the dose has no stamped strength or isn't
+ * counted. Never guessed: a dose with no stamped strength has none to multiply.
+ */
+export function doseTotal(
+  log: Pick<MedicationLog, 'amount' | 'unit' | 'strength'>,
+): { amount: number; unit: string } | null {
+  if (log.amount === null || !isCountedUnit(log.unit) || !log.strength) return null;
+  if (!(log.strength.amount > 0) || !(log.amount > 0)) return null;
+  return { amount: roundTotal(log.amount * log.strength.amount), unit: log.strength.unit };
+}
+
+/**
+ * What a dose contributes to a total in `unit`: its own amount when it was
+ * recorded in that unit, its `doseTotal` when the stamped strength is in that
+ * unit, and null otherwise (unmeasured, never converted by any other route).
+ */
+export function amountInUnit(
+  log: Pick<MedicationLog, 'amount' | 'unit' | 'strength'>,
+  unit: string,
+): number | null {
+  if (log.unit === unit) return log.amount !== null && log.amount > 0 ? log.amount : null;
+  const total = doseTotal(log);
+  return total && total.unit === unit ? total.amount : null;
 }
 
 /**

@@ -1291,7 +1291,7 @@ export interface Replica {
    */
   setMedicationProfile(
     name: string,
-    profile: { asNeeded?: boolean | null; usualDoses?: { amount: number; unit: string }[] },
+    profile: { asNeeded?: boolean | null; usualDoses?: { amount: number; unit: string }[]; strength?: { amount: number; unit: string } | null },
   ): string;
   /**
    * Set (or, with null, clear) what one serving of a medicine contains. Doses
@@ -3178,7 +3178,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     // that exists to count exactly these. Read through `medicationFor` so a
     // chain step carrying its own medication records that one.
     const dose = missed || mode === 'other' ? null : medication.medicationFor(task);
-    if (dose) useMedicationStore.getState().addLog({ ...dose, taskId: id, at: new Date() });
+    if (dose) useMedicationStore.getState().addLog({ ...dose, taskId: id, at: new Date(), useUsualDose: true });
 
     // Coins, kept for the same reason: the ledger is a record, and a task
     // finished here should earn what it would have earned on the phone.
@@ -3592,6 +3592,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           })() : {}),
           ...(typeof prefs.asNeeded === 'boolean' ? { takenAsNeeded: prefs.asNeeded } : {}),
           ...(prefs.usualDoses?.length ? { usualAmounts: prefs.usualDoses.map(d => medication.formatDose(d) ?? '') } : {}),
+          ...(prefs.strength ? { eachCountedUnitContains: medicationSettings.formatCapAmount(prefs.strength) } : {}),
           ...(logs.some(l => medication.medicationKey(l.name) === key) ? {} : { noDosesYet: true as const }),
         };
       });
@@ -4668,6 +4669,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (!spelled) throw new Error(`No medicine called "${name}" in the list. add_medication adds one; list_medication_logs shows them.`);
       if (profile.asNeeded !== undefined) meds.getState().setAsNeeded(spelled, profile.asNeeded);
       if (profile.usualDoses !== undefined) meds.getState().setUsualDoses(spelled, profile.usualDoses);
+      if (profile.strength !== undefined) meds.getState().setStrength(spelled, profile.strength);
       return spelled;
     },
 

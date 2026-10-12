@@ -2109,6 +2109,15 @@ export interface MedicationLog {
    */
   taskId: string | null;
   note: string | null;
+  /**
+   * What one counted unit (a capsule, a tablet) contained when this dose was
+   * taken, or absent when it stated nothing. Stamped from the medication's
+   * strength at write time and then left alone, so switching to a 250 mcg
+   * product later does not re-read last month's capsules as 250 mcg. Only
+   * meaningful on a dose whose `unit` is counted; `amount` stays what was taken
+   * ("1 capsule") and the total is `doseTotal`'s product of the two.
+   */
+  strength?: { amount: number; unit: string } | null;
 }
 
 /**

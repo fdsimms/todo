@@ -11,6 +11,12 @@ const NO_UNIT_KEY = 'none';
 /** The units that are a measure, as against a form you count. */
 const MEASURED_UNITS = new Set(['mg', 'mcg', 'g', 'ml']);
 
+/** Only the measured units, for a strength: "each capsule contains 125 mcg". */
+const MEASURED_UNIT_GROUPS: ChoiceGroup[] = [
+  { options: DOSE_UNITS.filter(u => MEASURED_UNITS.has(u.value)).map(u => ({ key: u.value, label: u.value })) },
+  { options: [{ key: NO_UNIT_KEY, label: 'No unit' }] },
+];
+
 const DOSE_UNIT_GROUPS: ChoiceGroup[] = [
   { heading: 'MEASURED', options: DOSE_UNITS.filter(u => MEASURED_UNITS.has(u.value)).map(u => ({ key: u.value, label: u.value })) },
   { heading: 'COUNTED', options: DOSE_UNITS.filter(u => !MEASURED_UNITS.has(u.value)).map(u => ({ key: u.value, label: u.value })) },
@@ -25,6 +31,11 @@ interface Props {
   /** For `SheetModal`'s development warnings. */
   name: string;
   style?: StyleProp<ViewStyle>;
+  /** Which units the menu offers. Measured only is for a strength, which is never a count. */
+  units?: 'all' | 'measured';
+  placeholder?: string;
+  /** What the chip says until a unit is picked. */
+  unitPlaceholder?: string;
 }
 
 /**
@@ -34,7 +45,9 @@ interface Props {
  * (the task editor and a chain step's sheet) use this, so the unit list, its
  * grouping and the way a unit is cleared can't drift apart.
  */
-export function DoseAmountField({ amount, onChangeAmount, unit, onChangeUnit, name, style }: Props) {
+export function DoseAmountField({
+  amount, onChangeAmount, unit, onChangeUnit, name, style, units = 'all', placeholder = 'e.g. 125', unitPlaceholder = 'Choose unit',
+}: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
@@ -44,7 +57,7 @@ export function DoseAmountField({ amount, onChangeAmount, unit, onChangeUnit, na
           style={styles.input}
           value={amount}
           onChangeText={onChangeAmount}
-          placeholder="e.g. 50"
+          placeholder={placeholder}
           placeholderTextColor={colors.textTertiary}
           keyboardType="decimal-pad"
           inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
@@ -52,10 +65,11 @@ export function DoseAmountField({ amount, onChangeAmount, unit, onChangeUnit, na
           accessibilityLabel="How much, optional"
         />
         <ChoiceMenuChip
-          groups={DOSE_UNIT_GROUPS}
+          groups={units === 'measured' ? MEASURED_UNIT_GROUPS : DOSE_UNIT_GROUPS}
           selectedKey={unit}
           onSelect={key => onChangeUnit(key === NO_UNIT_KEY ? null : key)}
           noun="Unit"
+          fallbackLabel={unitPlaceholder}
           name={name}
         />
       </View>

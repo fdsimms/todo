@@ -1109,6 +1109,7 @@ export function listMedicationLogs(
       summary: replica.medicationSummary(log),
       amount: log.amount ?? undefined,
       unit: log.unit ?? undefined,
+      ...(log.strength ? { eachContained: `${log.strength.amount} ${log.strength.unit}` } : {}),
       asNeeded: log.asNeeded ? true : undefined,
     })),
   };

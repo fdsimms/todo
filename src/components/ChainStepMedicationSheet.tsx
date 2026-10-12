@@ -15,7 +15,7 @@ import { medicationVocabulary, medicationKey } from '../utils/medicationLog';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { useShallow } from 'zustand/react/shallow';
 import { PillGroup } from './PillGroup';
-import { DoseAmountField } from './DoseAmountField';
+import { TaskDoseAmount } from './TaskDoseAmount';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { TextField } from './TextField';
 
@@ -150,15 +150,21 @@ export function ChainStepMedicationSheet({
                 key: medicationKey(n),
                 label: n,
                 selected: !!name.trim() && medicationKey(n) === medicationKey(name),
-                onPress: () => { haptics.tap(); setName(n); },
+                onPress: () => {
+                  haptics.tap();
+                  // An amount typed for one medicine is not another's.
+                  if (medicationKey(n) !== medicationKey(name)) { setAmount(''); setUnit(null); }
+                  setName(n);
+                },
               }))}
             />
           )}
 
           {name.trim().length > 0 && (
             <>
-              <DoseAmountField
-                name="ChainStepMedicationSheet dose unit menu"
+              <TaskDoseAmount
+                menuName="ChainStepMedicationSheet dose unit menu"
+                medication={name.trim()}
                 amount={amount}
                 onChangeAmount={setAmount}
                 unit={unit}

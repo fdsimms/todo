@@ -401,3 +401,48 @@ describe('a limit on a total amount', () => {
     expect(breaches[0].log.takenAt).toBe(new Date('2026-09-14T12:00').toISOString());
   });
 });
+
+describe('strength', () => {
+  const capsules = (at: string, amount: number, strength?: { amount: number; unit: string }): MedicationLog => ({
+    id: at, name: 'Vitamin D', takenAt: new Date(at).toISOString(), dayKey: at.slice(0, 10),
+    amount, unit: 'capsule', asNeeded: false, taskId: null, note: null, ...(strength ? { strength } : {}),
+  });
+  const cap = { minHours: null, maxPer24h: null, maxAmount24h: { amount: 300, unit: 'mcg' }, notify: false, since: '2026-09-01T00:00:00.000Z' };
+  const now = new Date('2026-09-14T15:00');
+
+  it('reads a stored strength back, and drops one that is not a measured unit', () => {
+    const map = parseMedicationSettings(JSON.stringify({
+      a: { strength: { amount: 125, unit: 'mcg' } },
+      b: { strength: { amount: 1, unit: 'capsule' } },
+      c: { strength: { amount: -5, unit: 'mg' } },
+    }));
+    expect(map.a.strength).toEqual({ amount: 125, unit: 'mcg' });
+    expect(map.b).toBeUndefined();
+    expect(map.c).toBeUndefined();
+  });
+
+  it('adds a stamped capsule dose to a total in the strength unit', () => {
+    const logs = [capsules('2026-09-14T09:00', 1, { amount: 125, unit: 'mcg' }), capsules('2026-09-14T12:00', 1, { amount: 125, unit: 'mcg' })];
+    const status = limitStatus(logs, 'Vitamin D', cap, now);
+    expect(status.amountInLast24h).toBe(250);
+    expect(status.unmeasuredInLast24h).toBe(0);
+  });
+
+  it('still calls a capsule dose with no strength unmeasured', () => {
+    const status = limitStatus([capsules('2026-09-14T09:00', 1)], 'Vitamin D', cap, now);
+    expect(status.amountInLast24h).toBe(0);
+    expect(status.unmeasuredInLast24h).toBe(1);
+  });
+
+  it('judges the dose about to be taken by its total', () => {
+    const logs = [capsules('2026-09-14T09:00', 2, { amount: 125, unit: 'mcg' })];
+    const planned = { amount: 1, unit: 'capsule', strength: { amount: 125, unit: 'mcg' } };
+    expect(limitStatus(logs, 'Vitamin D', cap, now, planned).reason).toBe('amount');
+    expect(limitStatus(logs, 'Vitamin D', { ...cap, maxAmount24h: { amount: 400, unit: 'mcg' } }, now, planned).reason).toBeNull();
+  });
+
+  it('reports a breach from capsule doses', () => {
+    const logs = [capsules('2026-09-14T09:00', 2, { amount: 125, unit: 'mcg' }), capsules('2026-09-14T12:00', 1, { amount: 125, unit: 'mcg' })];
+    expect(limitBreaches(logs, 'Vitamin D', cap).map(b => b.reason)).toEqual(['amount']);
+  });
+});

@@ -2339,6 +2339,17 @@ describe('demo seed — people', () => {
     expect(supplyRemaining(logs, 'Ibuprofen', supply)).toBe(9);
   });
 
+  it('seeds a task that records the usual amount, read through the capsule strength', () => {
+    const { logs, settings } = useMedicationStore.getState();
+    expect(prefsFor(settings, 'Vitamin D').usualDoses).toEqual([{ amount: 1, unit: 'capsule' }]);
+    expect(prefsFor(settings, 'Vitamin D').strength).toEqual({ amount: 125, unit: 'mcg' });
+    const doses = logs.filter(l => l.name === 'Vitamin D' && l.taskId);
+    expect(doses.length).toBeGreaterThan(0);
+    for (const d of doses) {
+      expect([d.amount, d.unit, d.strength]).toEqual([1, 'capsule', { amount: 125, unit: 'mcg' }]);
+    }
+  });
+
   it('seeds a supplement with its label typed in, whose doses reach the food log', () => {
     const { logs, settings } = useMedicationStore.getState();
     const panel = prefsFor(settings, 'Multivitamin').nutrition;

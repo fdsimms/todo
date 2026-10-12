@@ -3342,6 +3342,14 @@ function seedRepeatedHealthTask(today: Date): void {
   // in the seeded mood log, which is what gives the contrast two sides.
   const takenOn = [17, 16, 15, 14, 13, 12, 7, 6, 5, 4, 3, 2, 1];
 
+  // The medication knows what it usually takes and what a capsule holds, so
+  // the task below has no amount of its own and still records "1 capsule
+  // (125 mcg)". Set before the first completion, since each dose is stamped
+  // with the strength as it is recorded.
+  const meds = useMedicationStore.getState();
+  meds.setUsualDoses('Vitamin D', [{ amount: 1, unit: 'capsule' }]);
+  meds.setStrength('Vitamin D', { amount: 125, unit: 'mcg' });
+
   let occurrence = addTask({
     title: 'Take the vitamin D',
     category: 'Health',
@@ -3352,9 +3360,9 @@ function seedRepeatedHealthTask(today: Date): void {
     // medication is meant to be logged here (see docs/arch/mood-log.md). A
     // demo with only hand-logged doses would read as an app where the tablets
     // have to be entered twice, which is the thing the feature avoids.
+    // No amount on the task: it records the medication's usual amount, one
+    // capsule, which the strength set above reads as 125 mcg.
     medicationName: 'Vitamin D',
-    medicationAmount: 25,
-    medicationUnit: 'mcg',
   });
   for (const back of takenOn) {
     const day = subDays(today, back);

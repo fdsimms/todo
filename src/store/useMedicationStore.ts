@@ -14,6 +14,7 @@ import { dayKeyOf, getCurrentDayStart, getDayStart } from '../utils/dateUtils';
 import {
   ARCHIVED_MEDICATIONS_SETTING_KEY,
   REGISTERED_MEDICATIONS_SETTING_KEY,
+  isCountedUnit,
   medicationKey,
   parseArchivedMedications,
   parseRegisteredMedications,
@@ -26,11 +27,14 @@ import {
 } from '../utils/medicationRename';
 import {
   MEDICATION_SETTINGS_KEY,
+  defaultUsualDose,
   parseMedicationSettings,
+  parseStrength,
   prefsFor,
   refilledSupply,
   supplyRemaining,
   withPrefs,
+  type AmountCap,
   type MedicationLimit,
   type MedicationSettingsMap,
   type MedicationSupply,
@@ -80,6 +84,14 @@ export interface DoseInput {
   at?: Date;
   /** The task whose completion is recording this. Provenance only. */
   taskId?: string | null;
+  /**
+   * When no amount is given, fill it from the medication's default usual
+   * amount. Set by a task's completion, whose dose is "whatever you usually
+   * take" unless the task names an amount; a hand-recorded dose with no amount
+   * means exactly that and is left alone. Read at record time, so the dose
+   * keeps what the usual amount was then.
+   */
+  useUsualDose?: boolean;
 }
 
 /**
@@ -176,6 +188,11 @@ interface MedicationStore {
    * are folded, and the list is cut to `MAX_USUAL_DOSES`.
    */
   setUsualDoses: (name: string, doses: UsualDose[]) => void;
+  /**
+   * Set or clear what one capsule, tablet, puff or drop contains. Doses recorded
+   * after this carry it; earlier doses keep what they were stamped with.
+   */
+  setStrength: (name: string, strength: AmountCap | null) => void;
   /** Add a refill to what's left. */
   refillSupply: (name: string, added: number) => void;
   /** Turn down the refill offer at the current count. */
@@ -315,6 +332,14 @@ export const useMedicationStore = create<MedicationStore>((set, get) => ({
     writeSettings(set, withPrefs(get().settings, name, usualDoses.length > 0 ? { ...rest, usualDoses } : rest));
   },
 
+  setStrength(name, strength) {
+    if (!medicationKey(name)) return;
+    const current = prefsFor(get().settings, name);
+    const { strength: _dropped, ...rest } = current;
+    const clean = parseStrength(strength);
+    writeSettings(set, withPrefs(get().settings, name, clean ? { ...rest, strength: clean } : rest));
+  },
+
   refillSupply(name, added) {
     const current = prefsFor(get().settings, name);
     if (!current.supply) return;
@@ -446,7 +471,12 @@ export const useMedicationStore = create<MedicationStore>((set, get) => ({
     // read then has to tell apart from a real one.
     if (!name) return null;
 
-    const { amount, unit } = cleanDose(input.amount ?? null, input.unit ?? null);
+    const prefs = prefsFor(get().settings, name);
+    const usual = input.useUsualDose && input.amount == null ? defaultUsualDose(prefs) : null;
+    const { amount, unit } = cleanDose(usual?.amount ?? input.amount ?? null, usual?.unit ?? input.unit ?? null);
+    // A counted dose carries what one of them contained, as the medication says
+    // now, so a later change of strength doesn't rewrite it.
+    const strength = isCountedUnit(unit) && prefs.strength ? { ...prefs.strength } : null;
     const when = input.at ?? new Date();
     const log: MedicationLog = {
       id: generateId(),
@@ -462,6 +492,7 @@ export const useMedicationStore = create<MedicationStore>((set, get) => ({
       asNeeded: input.asNeeded ?? false,
       taskId: input.taskId ?? null,
       note: input.note?.trim() || null,
+      ...(strength ? { strength } : {}),
     };
     dbInsertMedicationLog(log);
     // A dose of an archived medication means you are taking it again, whether
