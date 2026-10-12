@@ -50,6 +50,8 @@ import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { InlineAction } from '../components/InlineAction';
 import { PressableScale } from '../components/PressableScale';
+import { SwipeableRow } from '../components/SwipeableRow';
+import { SwipeActionButtons } from '../components/SwipeActionButtons';
 import { SheetUndoBar } from '../components/SheetUndoBar';
 import { MedicationLogSheet } from '../components/MedicationLogSheet';
 import { useDeletedDoseUndo } from '../hooks/useDeletedDoseUndo';
@@ -263,27 +265,15 @@ export function MedicationScreen() {
   }, [takenToday]);
 
   /**
-   * Tapping a taken row offers to reopen its task, which removes the dose it
+   * Swiping a taken row right reopens its task, which removes the dose it
    * recorded (`uncompleteTask`), so a check made by mistake can be taken back
-   * after the undo bar has gone. It asks first: a stray tap on a row that
-   * looks like a finished record used to delete the dose with nothing said.
+   * after the undo bar has gone. It is a swipe rather than a tap: the row
+   * reads as a finished record, and a stray tap on it used to delete the dose
+   * with nothing said.
    */
   const undoTaken = (log: MedicationLog) => {
-    const taskId = log.taskId;
-    if (taskId === null || !undoableTaskIds.has(taskId)) return;
-    haptics.tap();
-    Alert.alert(
-      `Mark ${log.name} as not taken?`,
-      'This removes the dose recorded at ' + format(new Date(log.takenAt), 'h:mm a') + '.',
-      [
-        { text: 'Keep', style: 'cancel' },
-        {
-          text: 'Mark not taken',
-          style: 'destructive',
-          onPress: () => useTaskStore.getState().uncompleteTask(taskId),
-        },
-      ],
-    );
+    if (log.taskId === null || !undoableTaskIds.has(log.taskId)) return;
+    useTaskStore.getState().uncompleteTask(log.taskId);
   };
 
   const openDetail = (stat: MedicationStat) => {
@@ -388,37 +378,40 @@ export function MedicationScreen() {
         {(dueTasks.length > 0 || takenToday.length > 0) && (
           <>
             <Text style={styles.sectionTitle}>TODAY</Text>
-            <View style={styles.card}>
+            <View style={[styles.card, styles.todayCard]}>
               {takenToday.map((log, index) => {
                 const undoable = log.taskId !== null && undoableTaskIds.has(log.taskId);
+                const undoAction = {
+                  onUndo: () => undoTaken(log),
+                  accessibilityLabel: `Undo ${log.name} taken`,
+                };
                 return (
-                  <TouchableOpacity
-                    key={log.id}
-                    style={[styles.todayRow, index === 0 && styles.firstRow]}
-                    activeOpacity={interaction.activeOpacity}
-                    disabled={!undoable}
-                    onPress={() => undoTaken(log)}
-                    accessibilityRole="checkbox"
-                    accessibilityState={{ checked: true, disabled: !undoable }}
-                    accessibilityLabel={`${log.name} taken. Double tap to mark not taken`}
-                  >
-                    <Ionicons name="checkmark-circle" size={iconSize.lg} color={colors.done} />
-                    <View style={styles.doseText}>
-                      <Text style={styles.doseName} numberOfLines={1}>{log.name}</Text>
-                      <Text style={styles.doseMeta} numberOfLines={1}>
-                        {[`Taken ${format(new Date(log.takenAt), 'h:mm a')}`, formatDose(log)].filter(Boolean).join(' · ')}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
+                  <React.Fragment key={log.id}>
+                    {index > 0 && <View style={styles.todaySeparator} />}
+                    {/* Always mounted, enabled only when there is a check to take back. */}
+                    <SwipeableRow enabled={undoable} undoAction={undoAction}>
+                      <View style={styles.todayRow} accessible accessibilityLabel={`${log.name} taken`}>
+                        <Ionicons name="checkmark-circle" size={iconSize.lg} color={colors.done} />
+                        <View style={styles.doseText}>
+                          <Text style={styles.doseName} numberOfLines={1}>{log.name}</Text>
+                          <Text style={styles.doseMeta} numberOfLines={1}>
+                            {[`Taken ${format(new Date(log.takenAt), 'h:mm a')}`, formatDose(log)].filter(Boolean).join(' · ')}
+                          </Text>
+                        </View>
+                        <SwipeActionButtons enabled={undoable} undoAction={undoAction} />
+                      </View>
+                    </SwipeableRow>
+                  </React.Fragment>
                 );
               })}
               {dueTasks.map((task, index) => {
                 const dose = medicationFor(task)!;
                 const amount = formatDose(dose);
                 return (
+                  <React.Fragment key={task.id}>
+                  {(index > 0 || takenToday.length > 0) && <View style={styles.todaySeparator} />}
                   <TouchableOpacity
-                    key={task.id}
-                    style={[styles.todayRow, index === 0 && takenToday.length === 0 && styles.firstRow]}
+                    style={styles.todayRow}
                     activeOpacity={interaction.activeOpacity}
                     onPress={() => completeDue(task)}
                     accessibilityRole="checkbox"
@@ -433,6 +426,7 @@ export function MedicationScreen() {
                       </Text>
                     </View>
                   </TouchableOpacity>
+                  </React.Fragment>
                 );
               })}
             </View>
@@ -698,13 +692,21 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   offerText: { fontSize: font.sm, color: colors.text, lineHeight: 20 },
   offerActions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: spacing.sm, marginTop: spacing.smd },
   firstRow: { borderTopWidth: 0 },
+  // No horizontal padding on the card: a swiped row slides over its panel, and
+  // the panel has to start at the card's own edge. The rows carry it instead.
+  todayCard: { paddingHorizontal: 0, overflow: 'hidden' },
+  todaySeparator: {
+    height: StyleSheet.hairlineWidth,
+    marginHorizontal: spacing.md,
+    backgroundColor: colors.separator,
+  },
   todayRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.smd,
     paddingVertical: spacing.smd,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.separator,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.bgSecondary,
   },
   emptyCheck: {
     width: iconSize.lg - 4,

@@ -1,1 +1,1 @@
-{ "message": "Tapping a taken dose on the Medications screen now asks before marking it not taken.", "date": "2026-10-12" }
+{ "message": "On the Medications screen, a taken dose is now undone by swiping it right (Undo), so a stray tap can no longer remove it.", "date": "2026-10-12" }
