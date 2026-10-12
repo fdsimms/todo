@@ -98,6 +98,24 @@ describe('readNutritionLabel', () => {
       expect(reading.servingGrams).toBe(30);
     });
 
+    it.each([
+      ['1 bar (1.2 oz/35g)', 35],
+      ['1 bar/35g', 35],
+      ['1 bar 35 g', 35],
+      ['35 grams (1 bar)', 35],
+      ['1 bar (35 g)', 35],
+    ])('reads the gram weight out of a serving line written as "%s"', (line, grams) => {
+      const rows = US_PANEL.map(r => (r[0] === 'Serving size' ? ['Serving size', line] : r));
+      const reading = readNutritionLabel(panel(rows))!;
+      expect(reading.servingText).toBe(line);
+      expect(reading.servingGrams).toBe(grams);
+    });
+
+    it('leaves the weight empty when the serving line states none', () => {
+      const rows = US_PANEL.map(r => (r[0] === 'Serving size' ? ['Serving size', '1 bar'] : r));
+      expect(readNutritionLabel(panel(rows))!.servingGrams).toBeNull();
+    });
+
     it('proposes per serving, which is the column a US panel prints', () => {
       const reading = readNutritionLabel(panel(US_PANEL))!;
       expect(reading.columns[0].basis).toBe('perServing');

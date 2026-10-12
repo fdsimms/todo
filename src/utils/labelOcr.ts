@@ -250,6 +250,9 @@ const PRINTED_VALUE = /(?:^|\s|<)(\d+(?:[.,]\d+)?)\s*(kcal|kj|mg|mcg|µg|ug|ml|g
 /** A gram weight in parentheses on the serving line: "2 cookies (30g)". */
 const PAREN_GRAMS = /\((\d+(?:[.,]\d+)?)\s*g\)/i;
 
+/** A bare gram weight anywhere on the serving line: "1 bar/35g", "35 g". */
+const LINE_GRAMS = /(?:^|[\s/(])(\d+(?:[.,]\d+)?)\s*g(?:rams?)?\b/i;
+
 /** How the serving line names itself, either vocabulary. */
 const SERVING_ROW = /\b(serving\s*size|portion\s*size)\b/;
 
@@ -445,7 +448,11 @@ function readColumnBases(texts: readonly string[], count: number): (FoodNutritio
  */
 function readServing(printed: string): { text: string | null; grams: number | null } {
   const stripped = printed.replace(/^.*?\b(serving|portion)\s*size\b\s*:?\s*/i, '').trim();
-  const grams = PAREN_GRAMS.exec(printed);
+  // The parenthesized form is the US convention and the surest reading; any
+  // other gram figure on the line ("1 bar (1.2 oz/35g)", "1 bar 35g", "35 g
+  // (1 bar)") is the fallback, since a label states the weight in whichever
+  // shape its printer liked and a miss leaves the person typing it in.
+  const grams = PAREN_GRAMS.exec(printed) ?? LINE_GRAMS.exec(stripped);
   return {
     text: stripped || null,
     grams: grams ? Number(grams[1].replace(',', '.')) : null,
