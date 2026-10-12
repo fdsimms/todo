@@ -1,6 +1,6 @@
 import type { MedicationLog, NutrientKey } from '../types';
 import { NUTRIENT_KEYS } from '../types';
-import { DOSE_UNITS, medicationKey } from './medicationLog';
+import { DOSE_UNITS, STRENGTH_UNITS, amountInUnit, medicationKey } from './medicationLog';
 
 /**
  * What you have told the app about one medication: a limit on how often you
@@ -60,9 +60,10 @@ export interface MedicationLimit {
    * Most of one unit in any 24 hours, or null/absent for no cap. For a label
    * that states a total ("no more than 1200 mg a day") rather than a number of
    * doses, which is what makes it hold across strengths. Only doses recorded in
-   * this unit are added up: a dose with no amount, or in another unit, is
-   * counted as unmeasured and never converted or guessed (the rule
-   * `supplyUseOf` states for a supply). Optional so a map written before it reads unchanged.
+   * this unit are added up, plus counted doses whose stamped strength is in it
+   * (`amountInUnit`): a dose with no amount, or in another unit with no strength
+   * to multiply by, is counted as unmeasured and never converted or guessed (the
+   * rule `supplyUseOf` states for a supply). Optional so a map written before it reads unchanged.
    */
   maxAmount24h?: AmountCap | null;
   /** Send a notification when the next dose is allowed again. */
@@ -141,6 +142,13 @@ export interface MedicationPrefs {
   usualDoses?: UsualDose[];
   /** What a serving contains, or null when none was entered. Optional so a map written before it reads unchanged. */
   nutrition?: SupplementPanel | null;
+  /**
+   * What one capsule, tablet, puff or drop contains ("125 mcg"), or absent when
+   * none was entered. Stamped onto each counted dose as it is recorded
+   * (`MedicationLog.strength`), so changing it affects the doses after it and
+   * leaves the ones before alone. Typed by the person, never looked up.
+   */
+  strength?: AmountCap | null;
 }
 
 export type MedicationSettingsMap = Record<string, MedicationPrefs>;
@@ -202,6 +210,15 @@ function parseUsualDoses(list: unknown, legacy: unknown): UsualDose[] {
   return out;
 }
 
+/** A strength read back from storage: a positive amount in one of the measured units. */
+export function parseStrength(raw: unknown): AmountCap | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const amount = positiveOrNull(r.amount, 999999);
+  const unit = typeof r.unit === 'string' && STRENGTH_UNITS.includes(r.unit) ? r.unit : null;
+  return amount !== null && unit ? { amount, unit } : null;
+}
+
 /** The amount a new dose starts from: the first usual amount, or null. */
 export function defaultUsualDose(prefs: Pick<MedicationPrefs, 'usualDoses'> | undefined): UsualDose | null {
   return prefs?.usualDoses?.[0] ?? null;
@@ -209,7 +226,7 @@ export function defaultUsualDose(prefs: Pick<MedicationPrefs, 'usualDoses'> | un
 
 /** Whether an entry says anything; an entry that doesn't is dropped rather than stored empty. */
 function hasPrefs(p: MedicationPrefs): boolean {
-  return !!(p.limit || p.supply || p.nutrition || p.usualDoses?.length || typeof p.asNeeded === 'boolean');
+  return !!(p.limit || p.supply || p.nutrition || p.strength || p.usualDoses?.length || typeof p.asNeeded === 'boolean');
 }
 
 function parseSupply(raw: unknown): MedicationSupply | null {
@@ -278,12 +295,14 @@ export function parseMedicationSettings(raw: string | null): MedicationSettingsM
     // Only when present, so a map with no panel reads exactly as it did before
     // the field existed.
     const usualDoses = parseUsualDoses(v.usualDoses, v.usualDose);
+    const strength = parseStrength(v.strength);
     const prefs: MedicationPrefs = {
       limit: parseLimit(v.limit),
       supply: parseSupply(v.supply),
       ...(nutrition ? { nutrition } : {}),
       ...(typeof v.asNeeded === 'boolean' ? { asNeeded: v.asNeeded } : {}),
       ...(usualDoses.length > 0 ? { usualDoses } : {}),
+      ...(strength ? { strength } : {}),
     };
     if (hasPrefs(prefs)) out[key] = prefs;
   }
@@ -371,7 +390,7 @@ function amountsOf(logs: readonly MedicationLog[], key: string, unit: string): T
     .filter(l => medicationKey(l.name) === key)
     .map(l => ({
       t: Date.parse(l.takenAt),
-      amount: l.unit === unit && l.amount !== null && l.amount > 0 ? l.amount : null,
+      amount: amountInUnit(l, unit),
     }))
     .filter(d => Number.isFinite(d.t))
     .sort((a, b) => a.t - b.t);
@@ -415,7 +434,7 @@ export function limitStatus(
   name: string,
   limit: MedicationLimit | null,
   now: Date,
-  planned: { amount: number | null; unit: string | null } | null = null,
+  planned: Pick<MedicationLog, 'amount' | 'unit' | 'strength'> | null = null,
 ): LimitStatus {
   const key = medicationKey(name);
   const times = dosesOf(logs, key).filter(t => t <= now.getTime() + HOUR_MS);
@@ -448,7 +467,7 @@ export function limitStatus(
   }
   let amountOk = 0;
   if (cap) {
-    const need = planned && planned.unit === cap.unit && planned.amount !== null && planned.amount > 0 ? planned.amount : 0;
+    const need = planned ? amountInUnit(planned, cap.unit) ?? 0 : 0;
     amountOk = amountOkAt(measured, cap.amount, need);
   }
   const okAt = Math.max(spacingOk, maxOk, amountOk);
@@ -504,7 +523,7 @@ export function limitBreaches(
       const { amount: capAmount, unit } = limit.maxAmount24h;
       let total = 0;
       for (let j = i; j >= 0 && t - Date.parse(ordered[j].takenAt) < DAY_MS; j--) {
-        if (ordered[j].unit === unit && ordered[j].amount !== null) total += ordered[j].amount!;
+        total += amountInUnit(ordered[j], unit) ?? 0;
       }
       if (total > capAmount) breaches.push({ log: ordered[i], reason: 'amount' });
     }

@@ -500,6 +500,29 @@ unit counts that many servings and any other dose counts one, which is
 changes an entry that already exists, and the panel applies to doses recorded
 after it.
 
+### A task's dose defaults to the usual amount, and a capsule has a strength
+
+**A task that logs a dose and names no amount records the medication's default
+usual amount** (`DoseInput.useUsualDose`, set by `completeTask`, the quota and
+rotation unit logs and the MCP completion). It is read when the task is
+completed, not copied onto the task, so changing the usual amount changes the
+task with it; the editor stores only an override (`TaskDoseAmount`, whose preview
+line is `describeTaskDose`). A hand-recorded dose with no amount means exactly
+that and is never filled. The lookup is by the same medication name, so it can't
+attach one medicine's amount to another, which is the rule the chain-step
+section below protects.
+
+**`MedicationPrefs.strength` is what one capsule, tablet, puff or drop holds**
+("125 mcg"), typed on the medication's page. It is **stamped onto each counted
+dose as it is recorded** (`MedicationLog.strength`, `strength_amount` and
+`strength_unit`), never looked up at read time: reading it from the medication
+would re-read last month's capsules as 250 mcg the day a different product is
+bought. `amount` stays what was taken ("1 capsule"), so supply counting is
+unchanged, and `doseTotal` multiplies the two for display (`formatDose` appends
+"(125 mcg)") and for a limit in the strength's unit. A dose in mg or mcg
+directly never carries one, and a dose recorded before the strength was set is
+left alone.
+
 ### A chain step records its own dose
 
 `ChainItem.medicationName` is the third field on the pattern
@@ -561,9 +584,11 @@ hours, optionally a notification when the next dose is within it) and a
 - **A limit can cap a total as well as a count** (`MedicationLimit.maxAmount24h`,
   "at most 1,200 mg in 24 hours"), because a count treats a 200 mg dose and a
   400 mg one as the same. It follows the supply's rule above: only doses
-  recorded in the cap's own unit are added up, and a dose with no amount or in
-  another unit is counted as unmeasured (`LimitStatus.unmeasuredInLast24h`) and
-  said so, never converted. `limitStatus` takes the dose about to be recorded
+  recorded in the cap's own unit are added up, plus a counted dose whose stamped
+  strength is in that unit (`amountInUnit`: "1 capsule" of 125 mcg is 125 mcg).
+  A dose with no amount, or in another unit with no strength to multiply by, is
+  counted as unmeasured (`LimitStatus.unmeasuredInLast24h`) and said so, never
+  converted by any other route. `limitStatus` takes the dose about to be recorded
   (`planned`), since for a total the question is whether *that much* fits.
 - **Usual amounts are a list, and the first is the default** (`usualDoses`,
   `defaultUsualDose`): quick picks in the dose sheet, and what a new dose and the

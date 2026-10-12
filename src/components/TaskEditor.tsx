@@ -146,7 +146,7 @@ import { firstWeekAnchor, proratedFrom, proratedWeeklyTarget, quotaProrationPatc
 import { nextChainStepTitle } from '../utils/chain';
 import { RecurrencePicker } from './RecurrencePicker';
 import { ChoiceMenuChip, type ChoiceGroup } from './ChoiceMenuChip';
-import { DoseAmountField } from './DoseAmountField';
+import { TaskDoseAmount } from './TaskDoseAmount';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { WEATHER_CONDITIONS, weatherConditionLabel } from '../utils/weatherTasks';
 import { useMeterReadingStore } from '../store/useMeterReadingStore';
@@ -7617,10 +7617,11 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                         .filter(Boolean).join(', ')
                     : undefined
                 }
-                hint="Records a dose in your medication log each time you complete this task. Unchecking it removes the dose."
+                hint="Completing this task adds a dose to your medication log. Unchecking it removes the dose."
                 expanded={fieldOpen('medication')}
                 onToggle={() => toggleField('medication')}
               >
+                <Text style={styles.medicationLabel}>MEDICATION</Text>
                 <TextField
                   style={styles.fieldBox}
                   value={medicationName ?? ''}
@@ -7637,25 +7638,36 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                     "sertraline" would otherwise split one medicine's history
                     into two untallied entries. */}
                 {medicationSuggestions.length > 0 && (
-                  <PillGroup
-                    noun="medication"
-                    surface="card"
-                    options={medicationSuggestions.map(name => ({
-                      key: medicationKey(name),
-                      label: name,
-                      selected: !!medicationName && medicationKey(name) === medicationKey(medicationName),
-                      onPress: () => { haptics.tap(); setMedicationName(name); },
-                    }))}
-                  />
+                  <>
+                    <Text style={styles.medicationCaption}>Or reuse one you&apos;ve logged before</Text>
+                    <PillGroup
+                      noun="medication"
+                      surface="card"
+                      options={medicationSuggestions.map(name => ({
+                        key: medicationKey(name),
+                        label: name,
+                        selected: !!medicationName && medicationKey(name) === medicationKey(medicationName),
+                        onPress: () => {
+                          haptics.tap();
+                          // An amount typed for one medicine is not another's.
+                          if (!medicationName || medicationKey(name) !== medicationKey(medicationName)) {
+                            setMedicationAmount('');
+                            setMedicationUnit(null);
+                          }
+                          setMedicationName(name);
+                        },
+                      }))}
+                    />
+                  </>
                 )}
                 {/* Hidden until there's something to be the amount *of*, the
                     same rule the daily target's unit field follows: on its own
                     it labels nothing. */}
                 {medicationName !== null && (
                   <>
-                    <DoseAmountField
-                      name="TaskEditor dose unit menu"
-                      style={styles.medicationAmountInput}
+                    <TaskDoseAmount
+                      menuName="TaskEditor dose unit menu"
+                      medication={medicationName}
                       amount={medicationAmount}
                       onChangeAmount={setMedicationAmount}
                       unit={medicationUnit}
@@ -8408,7 +8420,12 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   meterNumberInput: { minWidth: 96, textAlign: 'right' },
   meterUnitInput: { minWidth: 80 },
   /** Sits below the medication's name. */
-  medicationAmountInput: { marginTop: spacing.sm },
+  medicationLabel: {
+    color: colors.textSecondary, fontSize: font.xxs, fontWeight: '700',
+    textTransform: 'uppercase', letterSpacing: 0.8,
+    marginTop: spacing.sm, marginBottom: spacing.xsm, marginLeft: spacing.xxs,
+  },
+  medicationCaption: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.smd, marginBottom: spacing.xsm, marginLeft: spacing.xxs },
   /** Sits below the completion timer's stepper. */
   completionTimerNoteInput: { marginTop: spacing.sm },
   /** The count in its read-out state, where a cadence is deriving it. */

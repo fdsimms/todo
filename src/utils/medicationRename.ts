@@ -78,6 +78,7 @@ export function renamedSettings(
     ...((target?.usualDoses?.length ? target.usualDoses : source.usualDoses)?.length
       ? { usualDoses: target?.usualDoses?.length ? target.usualDoses : source.usualDoses }
       : {}),
+    ...((target?.strength ?? source.strength) ? { strength: target?.strength ?? source.strength } : {}),
   };
   return next;
 }

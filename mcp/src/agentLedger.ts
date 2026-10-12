@@ -793,6 +793,7 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       const said = [
         profile.asNeeded === undefined ? null : profile.asNeeded === null ? 'taken as needed or not, read from the doses' : profile.asNeeded ? 'taken as needed' : 'taken on a schedule',
         profile.usualDoses === undefined ? null : profile.usualDoses.length > 0 ? `usual amounts ${profile.usualDoses.map(d => `${d.amount} ${d.unit}`).join(', ')}` : 'usual amounts cleared',
+        profile.strength === undefined ? null : profile.strength ? `each capsule or tablet contains ${profile.strength.amount} ${profile.strength.unit}` : 'strength cleared',
       ].filter(Boolean).join(', ');
       log({ action: 'edited', subject: 'medication', title: spelled, taskId: null, note: `Set ${spelled}: ${said}` });
       return spelled;

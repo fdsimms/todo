@@ -24,7 +24,7 @@ import { getRecipe, type RecipeDetail } from './kitchenTools';
 // write.
 import { describeWater, waterToMl, type WaterUnit } from '../../src/utils/waterLog';
 import { MAX_USUAL_DOSES, PANEL_UNITS, SUPPLY_UNITS } from '../../src/utils/medicationSettings';
-import { DOSE_UNITS } from '../../src/utils/medicationLog';
+import { DOSE_UNITS, STRENGTH_UNITS } from '../../src/utils/medicationLog';
 import { describeSupplementPanel } from '../../src/utils/supplementDose';
 
 /** A bare date as noon that day (the app's anchor for a backdated entry), else the instant given; now when absent. */
@@ -435,10 +435,16 @@ export function removeMedication(replica: Replica, name: string): { removed: str
 /** How a medicine is taken and the amounts usually taken. See `Replica.setMedicationProfile`. */
 export function setMedicationProfile(
   replica: Replica,
-  input: { name: string; asNeeded?: boolean | null; usualAmounts?: { amount: number; unit: string }[] },
-): { medicine: string; asNeeded?: boolean | null; usualAmounts?: string[] } {
-  if (input.asNeeded === undefined && input.usualAmounts === undefined) {
-    throw new Error('Give asNeeded, usualAmounts, or both.');
+  input: { name: string; asNeeded?: boolean | null; usualAmounts?: { amount: number; unit: string }[]; strength?: { amount: number; unit: string } | null },
+): { medicine: string; asNeeded?: boolean | null; usualAmounts?: string[]; strength?: string | null } {
+  if (input.asNeeded === undefined && input.usualAmounts === undefined && input.strength === undefined) {
+    throw new Error('Give asNeeded, usualAmounts, strength, or any of them.');
+  }
+  if (input.strength) {
+    const unit = input.strength.unit?.trim();
+    if (!(Number.isFinite(input.strength.amount) && input.strength.amount > 0)) throw new Error('strength.amount must be a number greater than 0.');
+    if (!unit || !STRENGTH_UNITS.includes(unit)) throw new Error(`strength.unit must be one of: ${STRENGTH_UNITS.join(', ')}.`);
+    input = { ...input, strength: { amount: input.strength.amount, unit } };
   }
   let usualDoses: { amount: number; unit: string }[] | undefined;
   if (input.usualAmounts !== undefined) {
@@ -455,9 +461,11 @@ export function setMedicationProfile(
   const medicine = replica.setMedicationProfile(input.name, {
     ...(input.asNeeded !== undefined ? { asNeeded: input.asNeeded } : {}),
     ...(usualDoses !== undefined ? { usualDoses } : {}),
+    ...(input.strength !== undefined ? { strength: input.strength } : {}),
   });
   return {
     medicine,
+    ...(input.strength !== undefined ? { strength: input.strength ? `${input.strength.amount} ${input.strength.unit}` : null } : {}),
     ...(input.asNeeded !== undefined ? { asNeeded: input.asNeeded } : {}),
     ...(usualDoses !== undefined ? { usualAmounts: usualDoses.map(d => `${d.amount} ${d.unit}`) } : {}),
   };

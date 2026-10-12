@@ -3816,6 +3816,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         ...completedDose,
         taskId: id,
         at: completedAt,
+        useUsualDose: true,
       });
     }
 
@@ -4632,7 +4633,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (task.logHealthMetric) void logTaskHealthValue(updated);
     const unitDose = medicationFor(task);
     if (unitDose) {
-      useMedicationStore.getState().addLog({ ...unitDose, taskId: id });
+      useMedicationStore.getState().addLog({ ...unitDose, taskId: id, useUsualDose: true });
     }
     get().setLastAction({
       label: 'Logged',
@@ -4698,7 +4699,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (task.logHealthMetric) void logTaskHealthValue(updated);
     const unitDose = medicationFor(task);
     if (unitDose) {
-      useMedicationStore.getState().addLog({ ...unitDose, taskId: id });
+      useMedicationStore.getState().addLog({ ...unitDose, taskId: id, useUsualDose: true });
     }
     get().setLastAction({
       label: 'Logged',

@@ -1,0 +1,4 @@
+{
+  "message": "A task that logs a dose now records your medication's usual amount when you leave its amount empty. You can also say what one capsule or tablet contains, so \"1 capsule\" is saved as \"1 capsule (125 mcg)\". The Log a dose card is clearer about which field is which and shows what completing the task will record.",
+  "date": "2026-10-12"
+}

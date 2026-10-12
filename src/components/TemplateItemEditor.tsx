@@ -24,7 +24,7 @@ import { PRIORITY_LABELS, EFFORT_LABELS, EFFORT_HINTS, TITLE_MAX_LENGTH, MEAL_SL
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { DOSE_UNITS, medicationVocabulary, medicationKey } from '../utils/medicationLog';
+import { medicationVocabulary, medicationKey } from '../utils/medicationLog';
 import { formatDuration } from '../utils/effort';
 import { animateLayout } from '../utils/layoutAnimation';
 import { tagColor } from '../utils/tagColor';
@@ -63,6 +63,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { DIFFICULTY_HINT, DIFFICULTY_PICKER_SEGMENTS, DIFFICULTY_SEGMENTS } from '../utils/rewards';
 import { RecurrencePicker } from './RecurrencePicker';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
+import { TaskDoseAmount } from './TaskDoseAmount';
 import { WEATHER_CONDITIONS, weatherConditionLabel } from '../utils/weatherTasks';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { CollapsibleField } from './CollapsibleField';
@@ -1567,10 +1568,11 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   .filter(Boolean).join(', ')
               : undefined
           }
-          hint="Tasks made from this item record a dose in your medication log when completed."
+          hint="Completing a task made from this item adds a dose to your medication log. Unchecking it removes the dose."
           expanded={fieldOpen('medication')}
           onToggle={() => toggleField('medication')}
         >
+          <Text style={styles.medicationLabel}>MEDICATION</Text>
           <TextField
             style={styles.fieldBox}
             value={medicationName ?? ''}
@@ -1587,38 +1589,37 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               would otherwise split one medicine's history into two untallied
               entries. */}
           {medicationSuggestions.length > 0 && (
-            <PillGroup
-              noun="medication"
-              surface="card"
-              options={medicationSuggestions.map(name => ({
-                key: medicationKey(name),
-                label: name,
-                selected: !!medicationName && medicationKey(name) === medicationKey(medicationName),
-                onPress: () => { haptics.tap(); setMedicationName(name); },
-              }))}
-            />
-          )}
-          {medicationName !== null && (
             <>
-              <TextField
-                style={[styles.fieldBox, styles.medicationAmountInput]}
-                value={medicationAmount}
-                onChangeText={setMedicationAmount}
-                placeholder="e.g. 50"
-                placeholderTextColor={colors.textTertiary}
-                keyboardType="decimal-pad"
-                returnKeyType="done"
-                accessibilityLabel="How much, optional"
-              />
-              <SegmentedControl
-                options={DOSE_UNITS.map(u => ({ value: u.value, label: u.value }))}
-                value={medicationUnit ?? ''}
-                columns={5}
-                label="Unit"
+              <Text style={styles.medicationCaption}>Or reuse one you&apos;ve logged before</Text>
+              <PillGroup
+                noun="medication"
                 surface="card"
-                onChange={next => { haptics.tap(); setMedicationUnit(next === medicationUnit ? null : next); }}
+                options={medicationSuggestions.map(name => ({
+                  key: medicationKey(name),
+                  label: name,
+                  selected: !!medicationName && medicationKey(name) === medicationKey(medicationName),
+                  onPress: () => {
+                    haptics.tap();
+                    // An amount typed for one medicine is not another's.
+                    if (!medicationName || medicationKey(name) !== medicationKey(medicationName)) {
+                      setMedicationAmount('');
+                      setMedicationUnit(null);
+                    }
+                    setMedicationName(name);
+                  },
+                }))}
               />
             </>
+          )}
+          {medicationName !== null && (
+            <TaskDoseAmount
+              menuName="TemplateItemEditor dose unit menu"
+              medication={medicationName}
+              amount={medicationAmount}
+              onChangeAmount={setMedicationAmount}
+              unit={medicationUnit}
+              onChangeUnit={setMedicationUnit}
+            />
           )}
         </CollapsibleField>
         <View style={styles.sep} />
@@ -3055,6 +3056,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   /** Sits between the medication's name and its unit row. */
   medicationAmountInput: { marginTop: spacing.sm, marginBottom: spacing.sm },
+  medicationLabel: {
+    color: colors.textSecondary, fontSize: font.xxs, fontWeight: '700',
+    textTransform: 'uppercase', letterSpacing: 0.8,
+    marginTop: spacing.sm, marginBottom: spacing.xsm, marginLeft: spacing.xxs,
+  },
+  medicationCaption: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.smd, marginBottom: spacing.xsm, marginLeft: spacing.xxs },
   choiceOptionsHint: { color: colors.textSecondary, fontSize: font.xs, marginHorizontal: spacing.md, marginTop: spacing.xs, marginBottom: spacing.sm },
   // Space around a control stacked inside a collapsible field (the chain's
   // Next step, the target's period), so it doesn't sit against the rows.

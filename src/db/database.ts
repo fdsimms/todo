@@ -1830,6 +1830,10 @@ function runInitDatabase(): void {
     // and read as a fallback in rowToTask, since dropping a column an
     // existing row's data lives in would lose that row's setting on upgrade.
     'ALTER TABLE tasks ADD COLUMN log_water_ml INTEGER',
+    // MedicationLog.strength: what one counted unit contained when the dose was
+    // taken. Null on every existing row, which reads as no strength stated.
+    'ALTER TABLE medication_logs ADD COLUMN strength_amount REAL',
+    'ALTER TABLE medication_logs ADD COLUMN strength_unit TEXT',
     // Freeform, non-symptom context ("vacation", "big deadline") — see
     // MoodLog.contextTags. Same shape as symptoms minus severity.
     "ALTER TABLE mood_logs ADD COLUMN context_tags TEXT NOT NULL DEFAULT '[]'",
@@ -7245,6 +7249,10 @@ function rowToMedicationLog(row: Record<string, unknown>): MedicationLog {
     asNeeded: row.as_needed === 1,
     taskId: (row.task_id as string | null) || null,
     note: (row.note as string) || null,
+    // Both columns or neither, like amount and unit above.
+    ...(typeof row.strength_amount === 'number' && Number.isFinite(row.strength_amount) && row.strength_amount > 0 && row.strength_unit
+      ? { strength: { amount: row.strength_amount, unit: row.strength_unit as string } }
+      : {}),
   };
 }
 
@@ -7257,18 +7265,18 @@ export function dbGetAllMedicationLogs(): MedicationLog[] {
 
 export function dbInsertMedicationLog(log: MedicationLog): void {
   db.runSync(
-    `INSERT INTO medication_logs (id, name, taken_at, day_key, amount, unit, as_needed, task_id, note)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO medication_logs (id, name, taken_at, day_key, amount, unit, as_needed, task_id, note, strength_amount, strength_unit)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [log.id, log.name, log.takenAt, log.dayKey, log.amount, log.unit,
-     log.asNeeded ? 1 : 0, log.taskId, log.note]
+     log.asNeeded ? 1 : 0, log.taskId, log.note, log.strength?.amount ?? null, log.strength?.unit ?? null]
   );
 }
 
 export function dbUpdateMedicationLog(log: MedicationLog): void {
   db.runSync(
-    `UPDATE medication_logs SET name=?, taken_at=?, day_key=?, amount=?, unit=?, as_needed=?, task_id=?, note=? WHERE id=?`,
+    `UPDATE medication_logs SET name=?, taken_at=?, day_key=?, amount=?, unit=?, as_needed=?, task_id=?, note=?, strength_amount=?, strength_unit=? WHERE id=?`,
     [log.name, log.takenAt, log.dayKey, log.amount, log.unit,
-     log.asNeeded ? 1 : 0, log.taskId, log.note, log.id]
+     log.asNeeded ? 1 : 0, log.taskId, log.note, log.strength?.amount ?? null, log.strength?.unit ?? null, log.id]
   );
 }
 

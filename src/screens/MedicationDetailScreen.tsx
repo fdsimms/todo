@@ -13,6 +13,7 @@ import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
 import {
   dosesOnDay,
   formatDose,
+  isCountedUnit,
   medicationKey,
   hasScheduledTask,
   medicationStats,
@@ -87,6 +88,7 @@ export function MedicationDetailScreen() {
   const setSupplementPanel = useMedicationStore(s => s.setSupplementPanel);
   const setAsNeeded = useMedicationStore(s => s.setAsNeeded);
   const setUsualDoses = useMedicationStore(s => s.setUsualDoses);
+  const setStrength = useMedicationStore(s => s.setStrength);
   const refillSupply = useMedicationStore(s => s.refillSupply);
   const archiveMedication = useMedicationStore(s => s.archiveMedication);
   const unarchiveMedication = useMedicationStore(s => s.unarchiveMedication);
@@ -132,14 +134,15 @@ export function MedicationDetailScreen() {
   const storedUsuals = prefsFor(settings, medName).usualDoses ?? [];
   const addDailyTask = () => {
     haptics.success();
-    const usual = storedUsuals[0] ?? null;
     addTask({
       title: medName,
       recurrenceType: 'daily',
       dueDate: getCurrentDayStart().toISOString(),
       medicationName: medName,
-      medicationAmount: usual?.amount ?? null,
-      medicationUnit: usual?.unit ?? null,
+      // No amount of its own: a task with none records the usual amount when
+      // it is completed, so changing the usual amount later changes the task.
+      medicationAmount: null,
+      medicationUnit: null,
     });
     Alert.alert(
       'Daily task added',
@@ -152,11 +155,16 @@ export function MedicationDetailScreen() {
   // amount cap is written as soon as both do (or the amount is cleared).
   const [usualAmount, setUsualAmount] = useState('');
   const [usualUnit, setUsualUnit] = useState<string | null>(null);
+  const storedStrength = prefsFor(settings, medName).strength ?? null;
+  const [strengthAmount, setStrengthAmount] = useState(storedStrength ? String(storedStrength.amount) : '');
+  const [strengthUnit, setStrengthUnit] = useState<string | null>(storedStrength?.unit ?? null);
   const [capAmount, setCapAmount] = useState(storedCap ? String(storedCap.amount) : '');
   const [capUnit, setCapUnit] = useState<string | null>(storedCap?.unit ?? null);
   useEffect(() => {
     setUsualAmount('');
     setUsualUnit(null);
+    setStrengthAmount(storedStrength ? String(storedStrength.amount) : '');
+    setStrengthUnit(storedStrength?.unit ?? null);
     setCapAmount(storedCap ? String(storedCap.amount) : '');
     setCapUnit(storedCap?.unit ?? null);
     // Only when the page switches medication (a rename re-keys it); typing must not reset itself.
@@ -230,6 +238,15 @@ export function MedicationDetailScreen() {
     if (amountText.trim() === '') { updateLimit({ maxAmount24h: null }); return; }
     if (Number.isFinite(parsed) && parsed > 0 && unit) updateLimit({ maxAmount24h: { amount: parsed, unit } });
   };
+  // Written as soon as both halves make a strength, or when the amount is
+  // cleared, the same rule the amount cap above follows.
+  const saveStrength = (amountText: string, unit: string | null) => {
+    const parsed = Number(amountText.trim());
+    if (amountText.trim() === '') { setStrength(name, null); return; }
+    if (Number.isFinite(parsed) && parsed > 0 && unit) setStrength(name, { amount: parsed, unit });
+  };
+  const changeStrengthAmount = (next: string) => { setStrengthAmount(next); saveStrength(next, strengthUnit); };
+  const changeStrengthUnit = (next: string | null) => { setStrengthUnit(next); saveStrength(strengthAmount, next); };
   const changeCapAmount = (next: string) => { setCapAmount(next); saveCap(next, capUnit); };
   const changeCapUnit = (next: string | null) => { setCapUnit(next); saveCap(capAmount, next); };
 
@@ -425,7 +442,7 @@ export function MedicationDetailScreen() {
                   accessibilityLabel={`${formatDose(dose)}${index === 0 ? ', default' : ''}. Double tap for options`}
                 >
                   <Text style={styles.usualChipText}>
-                    {formatDose(dose)}{index === 0 && storedUsuals.length > 1 ? ' · default' : ''}
+                    {formatDose({ ...dose, strength: isCountedUnit(dose.unit) ? storedStrength : null })}{index === 0 && storedUsuals.length > 1 ? ' · default' : ''}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -443,7 +460,20 @@ export function MedicationDetailScreen() {
             <InlineAction label="Add amount" icon="add" onPress={addUsual} disabled={!canAddUsual} />
           </View>
           <Text style={styles.fieldHint}>
-            {`Quick picks when you record a dose. The first is what a new dose starts from and what the round button records before you have recorded one. Up to ${MAX_USUAL_DOSES}.`}
+            {`Quick picks when you record a dose. The first is the default: a new dose starts from it, the round button records it before you have recorded one, and a task that logs this medication with no amount of its own records it. Up to ${MAX_USUAL_DOSES}.`}
+          </Text>
+          <Text style={[styles.fieldLabel, styles.panelHeading]}>Each capsule or tablet contains</Text>
+          <DoseAmountField
+            name="MedicationDetail strength unit menu"
+            amount={strengthAmount}
+            onChangeAmount={changeStrengthAmount}
+            unit={strengthUnit}
+            onChangeUnit={changeStrengthUnit}
+            units="measured"
+            style={styles.amountField}
+          />
+          <Text style={styles.fieldHint}>
+            {'What one capsule, tablet, puff or drop holds, such as 125 mcg. A dose recorded as "1 capsule" is then saved with it and reads "1 capsule (125 mcg)", and counts toward a limit in mcg. Doses you recorded before setting it, and ones you record in mg or mcg directly, are not changed.'}
           </Text>
         </View>
 
@@ -489,7 +519,7 @@ export function MedicationDetailScreen() {
             style={styles.amountField}
           />
           <Text style={styles.fieldHint}>
-            A total, such as 1,200 mg, for a label that limits the amount rather than the number of doses. Only doses recorded in the same unit are added up. A dose with no amount, or in another unit, is not counted.
+            A total, such as 1,200 mg, for a label that limits the amount rather than the number of doses. Only doses recorded in the same unit are added up. A dose in capsules or tablets counts when it has a strength (set above). A dose with no amount, or in another unit, is not counted.
           </Text>
           {status.maxAmount24h && status.amountInLast24h !== null && (
             <Text style={styles.fieldHint}>

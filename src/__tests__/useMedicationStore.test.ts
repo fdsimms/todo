@@ -492,3 +492,54 @@ describe('restoreLog', () => {
     expect(state().archived).toEqual(['ibuprofen']);
   });
 });
+
+describe('usual amount and strength on a dose', () => {
+  it('fills an empty task dose from the default usual amount', () => {
+    state().setUsualDoses('Vitamin D', [{ amount: 1, unit: 'capsule' }, { amount: 2, unit: 'capsule' }]);
+    const log = state().addLog({ name: 'Vitamin D', useUsualDose: true, taskId: 't1' })!;
+    expect([log.amount, log.unit]).toEqual([1, 'capsule']);
+  });
+
+  it('leaves a task dose that names its own amount alone', () => {
+    state().setUsualDoses('Vitamin D', [{ amount: 1, unit: 'capsule' }]);
+    const log = state().addLog({ name: 'Vitamin D', amount: 2000, unit: 'mcg', useUsualDose: true })!;
+    expect([log.amount, log.unit]).toEqual([2000, 'mcg']);
+  });
+
+  it('records no amount when there is no usual one, and never fills a hand-recorded dose', () => {
+    expect(state().addLog({ name: 'Vitamin D', useUsualDose: true })!.amount).toBeNull();
+    state().setUsualDoses('Vitamin D', [{ amount: 1, unit: 'capsule' }]);
+    expect(state().addLog({ name: 'Vitamin D' })!.amount).toBeNull();
+  });
+
+  it('does not borrow another medicine\'s usual amount', () => {
+    state().setUsualDoses('Aleve', [{ amount: 1, unit: 'tablet' }]);
+    expect(state().addLog({ name: 'Vitamin D', useUsualDose: true })!.amount).toBeNull();
+  });
+
+  it('stamps the strength on a counted dose, and only then', () => {
+    state().setStrength('Vitamin D', { amount: 125, unit: 'mcg' });
+    const counted = state().addLog({ name: 'Vitamin D', amount: 1, unit: 'capsule' })!;
+    expect(counted.strength).toEqual({ amount: 125, unit: 'mcg' });
+    expect(dbInsertMedicationLog).toHaveBeenLastCalledWith(expect.objectContaining({ strength: { amount: 125, unit: 'mcg' } }));
+    expect(state().addLog({ name: 'Vitamin D', amount: 400, unit: 'mcg' })!.strength).toBeUndefined();
+    expect(state().addLog({ name: 'Vitamin D' })!.strength).toBeUndefined();
+  });
+
+  it('leaves earlier doses at the strength they were stamped with', () => {
+    state().setStrength('Vitamin D', { amount: 125, unit: 'mcg' });
+    const before = state().addLog({ name: 'Vitamin D', amount: 1, unit: 'capsule' })!;
+    state().setStrength('Vitamin D', { amount: 250, unit: 'mcg' });
+    const after = state().addLog({ name: 'Vitamin D', amount: 1, unit: 'capsule' })!;
+    expect(state().logs.find(l => l.id === before.id)!.strength).toEqual({ amount: 125, unit: 'mcg' });
+    expect(after.strength).toEqual({ amount: 250, unit: 'mcg' });
+  });
+
+  it('clears a strength, and refuses one that is not a measured unit', () => {
+    state().setStrength('Vitamin D', { amount: 125, unit: 'mcg' });
+    state().setStrength('Vitamin D', null);
+    expect(state().settings.vitamind?.strength).toBeUndefined();
+    state().setStrength('Vitamin D', { amount: 1, unit: 'capsule' });
+    expect(state().settings.vitamind).toBeUndefined();
+  });
+});
