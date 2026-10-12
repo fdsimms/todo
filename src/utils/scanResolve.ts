@@ -208,6 +208,18 @@ export function sourceLabelFor(label: string, brand: string | null): string {
 }
 
 /**
+ * What the review row prints under its name field: `sourceLabelFor`, except
+ * that a name still equal to the lookup's words isn't printed twice. The line
+ * exists to check an edited or shortened name against the box in hand, so while
+ * the name is the source's own words it carries only the maker, if there is one.
+ */
+export function sourceLineFor(name: string, label: string, brand: string | null): string {
+  const full = sourceLabelFor(label, brand);
+  if (name.trim().toLowerCase() !== label.trim().toLowerCase()) return full;
+  return brand?.trim() ?? '';
+}
+
+/**
  * Which one of the item it is, from what the product name has left over.
  *
  * "Dave's Killer Bread 21 Whole Grains" scanned onto a catalog row called

@@ -52,8 +52,7 @@ import {
   pluScannedItem,
   nameFromScanFor,
   scannedItemFor,
-  shorterNameSuggestions,
-  sourceLabelFor,
+  sourceLineFor,
   variantFor,
   unknownScannedItem,
   type ScannedGtinLink,
@@ -64,10 +63,6 @@ import { haptics } from '../utils/haptics';
 import { GROCERY_NAME_MAX_LENGTH, type GroceryItem } from '../types';
 import type { ReceiptMatchConfidence } from '../utils/receiptMatch';
 import { TextField } from './TextField';
-
-/** How many shorter names a review row offers: the shortest few, since the
- * longer suffixes only differ from the full name by a word or two. */
-const NAME_SUGGESTION_LIMIT = 3;
 
 /** Matches the shopping list's own checkbox, same as the receipt sheet's. */
 const CHECK_SIZE = 22;
@@ -372,6 +367,45 @@ interface Props {
  * rule `acceptedByDefault` applies to a weak receipt match, for the same
  * reason: an unchecked row is a question and a checked one is an assertion.
  */
+type DetailTone = 'plain' | 'action' | 'error';
+
+/**
+ * One "label, answer, chevron" line under a scanned row's name. The whole line
+ * is the tap target; `extra` is the single pill that may sit beside the answer.
+ * Nested touchables are avoided by keeping the pill a sibling of the tap area.
+ */
+function DetailRow({
+  styles, colors, label, value, tone, onPress, accessibilityLabel, extra,
+}: {
+  styles: ReturnType<typeof makeStyles>;
+  colors: Colors;
+  label: string;
+  value: string;
+  tone: DetailTone;
+  onPress: () => void;
+  accessibilityLabel: string;
+  extra?: React.ReactNode;
+}) {
+  const valueStyle =
+    tone === 'action' ? styles.detailAction : tone === 'error' ? styles.detailError : styles.detailValue;
+  return (
+    <View style={styles.detailRow}>
+      <TouchableOpacity
+        style={styles.detailTap}
+        activeOpacity={interaction.activeOpacity}
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
+      >
+        <Text style={styles.detailLabel}>{label}</Text>
+        <Text style={valueStyle} numberOfLines={2}>{value}</Text>
+      </TouchableOpacity>
+      {extra}
+      <Ionicons name="chevron-forward" size={iconSize.xs} color={colors.textTertiary} />
+    </View>
+  );
+}
+
 export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotographLabel }: Props) {
   const colors = useColors();
   /**
@@ -1075,35 +1109,9 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                           to check the name above is against the box in hand.
                           The maker leads it when the name doesn't already say
                           who it is — see `sourceLabelFor`. */}
-                      {!!row.label && (
-                        <Text style={styles.rowLabel}>{sourceLabelFor(row.label, row.brand)}</Text>
+                      {!!sourceLineFor(row.name, row.label, row.brand) && (
+                        <Text style={styles.rowLabel}>{sourceLineFor(row.name, row.label, row.brand)}</Text>
                       )}
-                      {/* Shorter names for a row that is still wearing the
-                          lookup's words and will mint a new item (a row filed
-                          onto an existing one never uses its own name). The
-                          same suffixes the Backfill's Scanned name step offers,
-                          so the rename doesn't have to wait for it. Tapping one
-                          edits the name, and committing already clears
-                          `nameFromScan` for an edited name, so nothing else
-                          needs to know. */}
-                      {!row.pending && !rowItemId && nameFromScanFor(row) && (() => {
-                        const shorter = shorterNameSuggestions(row.name).slice(-NAME_SUGGESTION_LIMIT);
-                        if (shorter.length === 0) return null;
-                        return (
-                          <View style={styles.captionRow}>
-                            {shorter.map(label => (
-                              <InlineAction
-                                key={label}
-                                label={label}
-                                variant="neutral"
-                                onPress={() => patchRow(row.key, { name: label.slice(0, GROCERY_NAME_MAX_LENGTH) })}
-                                accessibilityLabel={`Rename to ${label}`}
-                                style={styles.confirmPill}
-                              />
-                            ))}
-                          </View>
-                        );
-                      })()}
                       {/* A price read off the shelf label the barcode was on.
                           Shown as its own line with a way out, because it is a
                           geometric guess about which price belongs to this
@@ -1126,88 +1134,81 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                         </View>
                       )}
                       {!row.pending && (
-                        <View style={styles.captionRow}>
-                          {!!caption && (
-                            <Text style={row.error ? styles.rowError : styles.rowCaption}>
-                              {caption}
-                            </Text>
-                          )}
-                          {!!pendingId && !!caption && (
-                            <InlineAction
-                              label="Confirm"
-                              icon="checkmark-circle-outline"
-                              variant="neutral"
-                              onPress={() => patchRow(row.key, { confirmedMatchId: pendingId })}
-                              accessibilityLabel={`Confirm: ${caption}`}
-                              style={styles.confirmPill}
-                            />
-                          )}
-                          {/* The way out of every reading above, including the
-                              one that read nothing. Neutral rather than accent
-                              for the reason `InlineAction` gives: it is the
-                              quieter half of the pair whenever a Confirm is
-                              sitting beside it. */}
-                          <InlineAction
-                            // Three states, three labels, because one word has
-                            // to make sense in all three places this sits: next
-                            // to a guess it is rejecting, next to a reading it
-                            // is replacing, and under a row that read nothing
-                            // at all.
-                            label={row.pickedItemId ? 'Change' : pendingId ? 'Not it' : 'Pick an item'}
-                            icon="albums-outline"
-                            variant="neutral"
-                            onPress={() => setPicking(p => (p?.key === row.key && p.mode === 'item' ? null : { key: row.key, mode: 'item' }))}
-                            accessibilityLabel={
-                              row.pickedItemId
-                                ? `Change which item ${row.name.trim() || row.label || 'this scan'} is filed as`
-                                : `Choose which item ${row.name.trim() || row.label || 'this scan'} is`
-                            }
-                            style={styles.confirmPill}
+                        <>
+                        {/* One line per question the row can still be asked,
+                            each with its current answer: what the scan is
+                            filed as, which product of it, and whether its
+                            nutrition is known. Whole-row taps replace the
+                            pills that used to sit under the name. */}
+                        <DetailRow
+                          styles={styles}
+                          colors={colors}
+                          label="Item"
+                          value={caption || 'Pick an item'}
+                          tone={row.error ? 'error' : caption ? 'plain' : 'action'}
+                          onPress={() => setPicking(p => (p?.key === row.key && p.mode === 'item' ? null : { key: row.key, mode: 'item' }))}
+                          accessibilityLabel={
+                            row.pickedItemId
+                              ? `Change which item ${row.name.trim() || row.label || 'this scan'} is filed as`
+                              : `Choose which item ${row.name.trim() || row.label || 'this scan'} is`
+                          }
+                          extra={
+                            // The one decision worth a button: accepting the
+                            // app's guess. A hand pick is undone here too.
+                            !!pendingId ? (
+                              <InlineAction
+                                label="Confirm"
+                                variant="neutral"
+                                onPress={() => patchRow(row.key, { confirmedMatchId: pendingId })}
+                                accessibilityLabel={`Confirm: ${caption}`}
+                                style={styles.confirmPill}
+                              />
+                            ) : row.pickedItemId ? (
+                              <InlineAction
+                                label="Undo"
+                                variant="neutral"
+                                onPress={() => { setPicking(null); patchRow(row.key, { pickedItemId: null, pickedProductId: null }); }}
+                                accessibilityLabel={`Stop filing ${row.name.trim() || row.label || 'this scan'} by hand`}
+                                style={styles.confirmPill}
+                              />
+                            ) : null
+                          }
+                        />
+                        {/* Once the row has an item. With boxes it is a choice
+                            among them; without, it is the way to name the
+                            first one, so the product's brand and flavor can
+                            be recorded from here rather than in the grocery
+                            screen afterwards. */}
+                        {!!rowItemId && (
+                          <DetailRow
+                            styles={styles}
+                            colors={colors}
+                            label="Product"
+                            value={boxCount > 0 ? boxLabel : 'Add a product'}
+                            tone={boxCount > 0 && row.pickedProductId ? 'plain' : 'action'}
+                            onPress={() => setPicking(p => (p?.key === row.key && p.mode === 'box' ? null : { key: row.key, mode: 'box' }))}
+                            accessibilityLabel={boxCount > 0 ? `Choose which product of ${resolvedName ?? 'this item'} this is` : `Add a product to ${resolvedName ?? 'this item'}`}
                           />
-                          {!!row.pickedItemId && (
-                            <InlineAction
-                              label="Undo"
-                              icon="close-circle-outline"
-                              variant="neutral"
-                              onPress={() => { setPicking(null); patchRow(row.key, { pickedItemId: null, pickedProductId: null }); }}
-                              accessibilityLabel={`Stop filing ${row.name.trim() || row.label || 'this scan'} by hand`}
-                              style={styles.confirmPill}
-                            />
-                          )}
-                          {/* The way out of a code nothing has heard of: the
-                              packet is in hand and its figures are printed on
-                              it, so offer to read them off the label rather
-                              than only "pick an item". Log-only — the other
-                              two contexts never ask about nutrition — and only
-                              once there's a name to attach the figures to and
-                              nothing in the catalog has already answered for
-                              this row. */}
-                          {context === 'log' && !!onPhotographLabel && !pendingId && !row.pickedItemId && !!row.name.trim() && (
-                            <InlineAction
-                              label="Photograph the label"
-                              icon="camera-outline"
-                              variant="neutral"
-                              onPress={() => onPhotographLabel(row.name.trim())}
-                              accessibilityLabel={`Photograph the nutrition label for ${row.name.trim()}`}
-                              style={styles.confirmPill}
-                            />
-                          )}
-                          {/* Once the row has an item. With boxes it is a choice
-                              among them; without, it is the way to name the
-                              first one, so the product's brand and flavor can
-                              be recorded from here rather than in the grocery
-                              screen afterwards. */}
-                          {!!rowItemId && (
-                            <InlineAction
-                              label={boxCount > 0 ? boxLabel : 'Add a product'}
-                              icon="cube-outline"
-                              variant="neutral"
-                              onPress={() => setPicking(p => (p?.key === row.key && p.mode === 'box' ? null : { key: row.key, mode: 'box' }))}
-                              accessibilityLabel={boxCount > 0 ? `Choose which product of ${resolvedName ?? 'this item'} this is` : `Add a product to ${resolvedName ?? 'this item'}`}
-                              style={styles.confirmPill}
-                            />
-                          )}
-                        </View>
+                        )}
+                        {/* The way out of a code nothing has heard of: the
+                            packet is in hand and its figures are printed on
+                            it, so offer to read them off the label. Log-only,
+                            since the other two contexts never ask about
+                            nutrition, and only once there's a name to attach
+                            the figures to and nothing in the catalog has
+                            already answered for this row. */}
+                        {context === 'log' && !!onPhotographLabel && !pendingId && !row.pickedItemId && !!row.name.trim() && (
+                          <DetailRow
+                            styles={styles}
+                            colors={colors}
+                            label="Nutrition"
+                            value="Add from label"
+                            tone="action"
+                            onPress={() => onPhotographLabel(row.name.trim())}
+                            accessibilityLabel={`Photograph the nutrition label for ${row.name.trim()}`}
+                          />
+                        )}
+                        </>
                       )}
                       {/* Only when the label isn't there to identify the row.
                           Once a product name is showing, the digits are a
@@ -1439,6 +1440,19 @@ function makeStyles(colors: Colors) {
     // beside a caption reads as part of the line, not a control from a denser
     // grid of chips.
     confirmPill: { paddingVertical: 3, minHeight: 0 },
+    detailRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      minHeight: 44,
+      borderTopWidth: border.hairline,
+      borderTopColor: colors.separator,
+    },
+    detailTap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 44 },
+    detailLabel: { color: colors.textSecondary, fontSize: font.sm, minWidth: 72 },
+    detailValue: { color: colors.text, fontSize: font.sm, flex: 1 },
+    detailError: { color: colors.orangeText, fontSize: font.sm, flex: 1 },
+    detailAction: { color: colors.accentText, fontSize: font.sm, fontWeight: fontWeight.semibold, flex: 1 },
     rowGtin: {
       color: colors.textTertiary,
       fontSize: font.xs,
