@@ -5538,6 +5538,9 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
               patch.sourceRecipeTitle = null;
               changed = true;
             }
+            const rs = require('../../src/utils/recipeSources') as typeof import('../../src/utils/recipeSources'); // eslint-disable-line @typescript-eslint/no-require-imports
+            const sources = rs.sourcesAfterMerge(existing, row);
+            if (sources) { patch.recipeSources = sources; changed = true; }
             if (changed) db.dbUpdateGroceryItem(patch);
             if (changed && patch.quantity !== existing.quantity) result.toppedUp.push(patch);
             result.alreadyOnList.push(changed ? patch : existing);
