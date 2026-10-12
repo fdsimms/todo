@@ -22,7 +22,7 @@ import { SelectionDot } from './SelectionDot';
 import { SwipeActionButtons } from './SwipeActionButtons';
 import { usePaintSelectionRow } from './PaintSelection';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
-import { convertQuantity } from '../utils/unitConvert';
+import { convertQuantity, showContainerCount } from '../utils/unitConvert';
 import { describeProduct, RATING_LABELS } from '../utils/groceryProduct';
 import { formatPrice, formatPriceInput, parsePriceInput, priceToInput } from '../utils/groceryPrice';
 import { groceryNameKey } from '../utils/groceryParse';
@@ -217,7 +217,7 @@ export const GroceryRow = React.memo(function GroceryRow({
   // The row is read-only text, so it shows the amount in the reader's units.
   // The item sheet's field deliberately doesn't — that one is editable, and an
   // editable field has to show what's stored.
-  const shownQuantity = convertQuantity(item.quantity ?? '', unitSystem).text;
+  const shownQuantity = showContainerCount(convertQuantity(item.quantity ?? '', unitSystem).text);
   // A short quantity sits in the pill beside the name; a long one ("2 x 14 oz
   // cans, drained") gets a line of its own under it, so the name keeps the
   // row (#2946). So does one that would leave a long name too little room
