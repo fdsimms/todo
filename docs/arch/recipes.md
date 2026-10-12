@@ -1049,8 +1049,10 @@ ingredient panel's fold die with the modal.
   `expo`'s own dependencies and is autolinked with the rest of them, so declaring it needs no
   config plugin and no fresh build.
 - **Cook is the third footer verb on the recipe screen**, beside Plan and Add to list — the one
-  that happens *now*, so it leads, and hidden outright when the recipe has no method rather than
-  offered greyed out. Its arrival is why the primary shortened to "Add to list": three buttons
+  that happens *now*, so it leads, and hidden outright when the recipe has neither a method nor
+  ingredients rather than offered greyed out. A recipe with ingredients but no steps (one saved
+  before steps existed) still opens it, onto the mise en place screen alone: no "Start cooking",
+  since there is nothing to start. Its arrival is why the primary shortened to "Add to list": three buttons
   don't fit a 390pt line at the old label.
 
 ### Ingredient references (`stepIngredients.ts`) — the amount the step already implies
