@@ -162,6 +162,7 @@ const mockRecipeState = {
   initialized: false,
   markCooked: jest.fn(),
   restoreCookStats: jest.fn(),
+  stopCookTimer: jest.fn(),
   // A name-only recipe, refused on a taken name the way the real store is, so
   // saveEntryAsRecipe's two branches are both reachable.
   addRecipe: jest.fn((name: string): Recipe | null => {
@@ -3169,6 +3170,19 @@ describe('finishCookForRecipe', () => {
     expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
     // No entry, so no sheet — CookRecap is built around an entry id.
     expect(useMealPlanStore.getState().cookRecap).toBeNull();
+  });
+
+  // CookingBar, the tab dot and the Live Activity all read a running cook timer
+  // as "still cooking", so finishing the cook has to end it.
+  it('stops the recipe’s cook timer, with or without a plan entry', () => {
+    planToday([entry(today, 'dinner', { recipeId: 'r1', title: 'Ragu' })]);
+    useMealPlanStore.getState().finishCookForRecipe('r1');
+    expect(mockRecipeState.stopCookTimer).toHaveBeenCalledWith('r1');
+
+    mockRecipeState.stopCookTimer.mockClear();
+    planToday([]);
+    useMealPlanStore.getState().finishCookForRecipe('r1');
+    expect(mockRecipeState.stopCookTimer).toHaveBeenCalledWith('r1');
   });
 
   it('does nothing at all for a recipe that no longer exists', () => {
