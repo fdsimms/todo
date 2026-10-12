@@ -383,6 +383,15 @@ describe('initDatabase', () => {
       mockRawDb.exec(`DROP TRIGGER ${SENTINEL}; CREATE TRIGGER ${SENTINEL} AFTER UPDATE ON tasks BEGIN SELECT 1; END;`);
     };
 
+    // The planted stub outlives the test that plants it (the database is shared
+    // across the file), and a stamp trigger that is `SELECT 1` silently turns
+    // every later "restamps" assertion false under --randomize. Put the real
+    // triggers back.
+    afterEach(() => {
+      dbSetSetting(SYNC_INSTALL_SIGNATURE_KEY, 'reset-after-test');
+      initDatabase();
+    });
+
     it('records what it installed', () => {
       initDatabase();
       expect(dbGetSetting(SYNC_INSTALL_SIGNATURE_KEY)).toBe(installSignature());
