@@ -1223,12 +1223,15 @@ Three things about it belong here rather than there:
 - **It is gated harder than the reading is.** `probablyHaveReason` is happy to guess from a flat
   fortnight below `MIN_PURCHASES_FOR_CADENCE`; asking the user about a guess is a different bar, so
   the check refuses anything with fewer than three purchases behind it.
-- **Answering it is the existing pair of pills, not the task.** The row links to
-  `GroceryItemSheet` opened on the Pantry field (`kitchenLinkUrl`, which `KitchenScreen` resolves to
-  the sheet by id when the item isn't in the list — and a checked item never is, by definition).
-  "Got it" or "Out of it" makes the item stop wanting a check, so the task clears itself on the next
-  sweep. Ticking it off means "I've dealt with this" and writes nothing to the row — inferring "yes
-  I still have it" from a tick is the guess a container's ✕ already refuses to make.
+- **Answering it is the existing pair of pills, not the task.** The row's link button opens
+  `PantryCheckSheet`, a small card asking "Do you still have X?" whose two buttons call
+  `answerPantryReview` (`have` / `out`), so each writes what its pill on `GroceryItemSheet` writes.
+  The row still carries `kitchenLinkUrl` (which `KitchenScreen` resolves to that sheet by id when the
+  item isn't in the list, and a checked item never is, by definition); the card just intercepts the
+  tap in `TaskItem.handleOpenLink`. Either answer makes the item stop wanting a check, and the card
+  runs `checkPantryCheckTasks` so the task clears at once instead of at the next sweep. Ticking the
+  task off means "I've dealt with this" and writes nothing to the row — inferring "yes I still have
+  it" from a tick is the guess a container's ✕ already refuses to make.
 
 ### The review deck — the same question asked in bulk (`pantryReview.ts`)
 
