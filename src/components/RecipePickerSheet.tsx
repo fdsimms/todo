@@ -24,6 +24,7 @@ import { SegmentedControl } from './SegmentedControl';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { rankRecipes, describeRecipe, cleanRecipeName, sharedRecipeNameKeys, sortRecipesForDisplay } from '../utils/recipeUtils';
+import { recipeMap } from '../utils/recipeComponents';
 import { slotLabel } from '../utils/mealPlan';
 import { describeLeftover, liveFreshnessOf, liveLeftovers, mealTitleForLeftover } from '../utils/leftovers';
 // The colour ladder lives with the card that established it rather than in
@@ -153,6 +154,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   // Recipes another recipe shares a name with lead their subtitle with the book.
   const sharedNames = useMemo(() => sharedRecipeNameKeys(recipes), [recipes]);
+  const libraryById = useMemo(() => recipeMap(recipes), [recipes]);
   const leftovers = useLeftoverStore(useShallow(s => s.leftovers));
   const { query, clear: clearQuery, props: filterField, inputRef: searchInputRef } = useFilterField();
   const [slot, setSlot] = useState<MealSlot>(defaultSlot);
@@ -490,14 +492,14 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
                       accessibilityRole="button"
                       accessibilityLabel={pickedId
                         ? `Remove ${recipe.name} from ${slotLabel(slot)}`
-                        : `Plan ${recipe.name}. ${describeRecipe(recipe, null, { sharedName: sharedNames.has(recipe.nameKey) })}`}
+                        : `Plan ${recipe.name}. ${describeRecipe(recipe, null, { sharedName: sharedNames.has(recipe.nameKey), recipesById: libraryById })}`}
                     >
                       <View style={[styles.rowIcon, { backgroundColor: colors.accentSubtle }]}>
                         <Ionicons name="restaurant-outline" size={16} color={colors.accent} />
                       </View>
                       <View style={styles.rowInfo}>
                         <Text style={styles.rowName} numberOfLines={1}>{recipe.name}</Text>
-                        <Text style={styles.rowHint} numberOfLines={1}>{describeRecipe(recipe, null, { sharedName: sharedNames.has(recipe.nameKey) })}</Text>
+                        <Text style={styles.rowHint} numberOfLines={1}>{describeRecipe(recipe, null, { sharedName: sharedNames.has(recipe.nameKey), recipesById: libraryById })}</Text>
                       </View>
                       {pickedId
                         ? <Ionicons name="checkmark-circle" size={16} color={colors.accent} />

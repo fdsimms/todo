@@ -202,6 +202,7 @@ export function RecipesScreen() {
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   // Recipes another recipe shares a name with lead their subtitle with the book.
   const sharedNames = useMemo(() => sharedRecipeNameKeys(recipes), [recipes]);
+  const libraryById = useMemo(() => recipeMap(recipes), [recipes]);
   const addRecipe = useRecipeStore(s => s.addRecipe);
   const bulkDeleteRecipes = useRecipeStore(s => s.bulkDeleteRecipes);
   const bulkSetVote = useRecipeStore(s => s.bulkSetVote);
@@ -551,9 +552,9 @@ export function RecipesScreen() {
   // same prop it had.
   const rowDescriptions = useMemo(() => {
     const map = new Map<string, string>();
-    for (const recipe of recipes) map.set(recipe.id, describeRecipe(recipe, pantryCounts.get(recipe.id), { sharedName: sharedNames.has(recipe.nameKey) }));
+    for (const recipe of recipes) map.set(recipe.id, describeRecipe(recipe, pantryCounts.get(recipe.id), { sharedName: sharedNames.has(recipe.nameKey), recipesById: libraryById }));
     return map;
-  }, [recipes, pantryCounts, sharedNames]);
+  }, [recipes, pantryCounts, sharedNames, libraryById]);
 
   // "Love"/"Unlove" flips direction based on the selection itself, the
   // same way the grocery bulk bar's Check/Uncheck does — a selection that's
@@ -674,7 +675,7 @@ export function RecipesScreen() {
       recipe={recipe}
       // The fallback covers the one commit a just-deleted recipe can still
       // sit in `draggableData` before its effect catches up with the store.
-      description={rowDescriptions.get(recipe.id) ?? describeRecipe(recipe, pantryCounts.get(recipe.id), { sharedName: sharedNames.has(recipe.nameKey) })}
+      description={rowDescriptions.get(recipe.id) ?? describeRecipe(recipe, pantryCounts.get(recipe.id), { sharedName: sharedNames.has(recipe.nameKey), recipesById: libraryById })}
       colors={colors}
       styles={styles}
       drag={drag}

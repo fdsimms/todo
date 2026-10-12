@@ -1100,6 +1100,19 @@ describe('describeRecipe', () => {
       components: [component('r-mash', 'Mash'), component('r-gravy', 'Gravy')],
     }))).toBe('0 ingredients · 2 components');
   });
+
+  it('says how many ingredients the components bring when given the library', () => {
+    const mash = recipe('Mash', { id: 'r-mash', ingredients: [ing('Potato'), ing('Butter'), ing('Milk')] });
+    const composed = recipe('I', {
+      ingredients: [ing('Steak')],
+      components: [component('r-mash', 'Mash')],
+    });
+    const byId = new Map([[mash.id, mash], [composed.id, composed]]);
+    expect(describeRecipe(composed, null, { recipesById: byId }))
+      .toBe('1 ingredient · 1 component with 3 ingredients');
+    // No library, no tail: a list row can't resolve the component.
+    expect(describeRecipe(composed)).toBe('1 ingredient · 1 component');
+  });
 });
 
 describe('sortRecipesForDisplay', () => {

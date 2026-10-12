@@ -7,6 +7,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, interaction, type Colors } from '../theme';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { rankRecipes, describeRecipe, sharedRecipeNameKeys, sortRecipesForDisplay } from '../utils/recipeUtils';
+import { recipeMap } from '../utils/recipeComponents';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
@@ -47,6 +48,7 @@ export function RecipeSourceSheet({ visible, allowAIImport, onPickSaved, onImpor
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   // Recipes another recipe shares a name with lead their subtitle with the book.
   const sharedNames = useMemo(() => sharedRecipeNameKeys(recipes), [recipes]);
+  const libraryById = useMemo(() => recipeMap(recipes), [recipes]);
   const { query, clear: clearQuery, props: filterField } = useFilterField();
 
   const matches = useMemo(() => {
@@ -149,14 +151,14 @@ export function RecipeSourceSheet({ visible, allowAIImport, onPickSaved, onImpor
                     onPress={() => pickSaved(recipe)}
                     activeOpacity={interaction.activeOpacity}
                     accessibilityRole="button"
-                    accessibilityLabel={`Add ingredients from ${recipe.name}. ${describeRecipe(recipe, null, { sharedName: sharedNames.has(recipe.nameKey) })}`}
+                    accessibilityLabel={`Add ingredients from ${recipe.name}. ${describeRecipe(recipe, null, { sharedName: sharedNames.has(recipe.nameKey), recipesById: libraryById })}`}
                   >
                     <View style={[styles.rowIcon, { backgroundColor: colors.accentSubtle }]}>
                       <Ionicons name="restaurant-outline" size={16} color={colors.accent} />
                     </View>
                     <View style={styles.rowInfo}>
                       <Text style={styles.rowName} numberOfLines={1}>{recipe.name}</Text>
-                      <Text style={styles.rowHint} numberOfLines={1}>{describeRecipe(recipe, null, { sharedName: sharedNames.has(recipe.nameKey) })}</Text>
+                      <Text style={styles.rowHint} numberOfLines={1}>{describeRecipe(recipe, null, { sharedName: sharedNames.has(recipe.nameKey), recipesById: libraryById })}</Text>
                     </View>
                     {recipe.vote === 'loved' && <Ionicons name="thumbs-up" size={13} color={colors.orangeText} />}
                   </TouchableOpacity>

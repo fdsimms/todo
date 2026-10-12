@@ -618,7 +618,8 @@ export interface LikelyInPantryCount {
  * because it has to agree with the list the detail screen puts on screen right
  * under it. What the component clause is for is saying there's more: "3
  * ingredients" alone would read as the whole shop for a dish that's mostly its
- * parts.
+ * parts. A caller with the library passes `recipesById`, and
+ * the clause then says how many ingredients the components bring.
  *
  * `sharedName` moves the attribution to the front, for a recipe whose name
  * another recipe also has (`sharedRecipeNameKeys`). Two cookbooks can each hold
@@ -629,7 +630,7 @@ export interface LikelyInPantryCount {
 export function describeRecipe(
   recipe: Recipe,
   likelyInPantry?: LikelyInPantryCount | null,
-  options: { sharedName?: boolean } = {},
+  options: { sharedName?: boolean; recipesById?: ReadonlyMap<string, Recipe> } = {},
 ): string {
   // Choice-aware, so "serrano or jalapeño" reads as the one pepper a meal of
   // this actually buys — see countChoiceAware.
@@ -637,7 +638,7 @@ export function describeRecipe(
   const parts: string[] = [];
   if (recipe.mealType) parts.push(RECIPE_MEAL_TYPE_LABELS[recipe.mealType]);
   parts.push(count === 1 ? '1 ingredient' : `${count} ingredients`);
-  const components = describeComponents(recipe);
+  const components = describeComponents(recipe, options.recipesById);
   if (components) parts.push(components);
   if (likelyInPantry?.probablyHave) {
     parts.push(likelyInPantry.probablyHave === 1 ? '1 likely in pantry' : `${likelyInPantry.probablyHave} likely in pantry`);

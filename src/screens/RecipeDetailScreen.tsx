@@ -1570,7 +1570,7 @@ export function RecipeDetailScreen() {
               marker ? 'Component' : null,
               label,
               group ? (isDefault ? `usual choice for ${group}` : `alternative for ${group}`) : null,
-              target ? describeRecipe(target) : 'no longer in your recipes',
+              target ? describeRecipe(target, null, { recipesById }) : 'no longer in your recipes',
             ].filter(Boolean).join(', ')
           }
           accessibilityHint={
@@ -1589,7 +1589,7 @@ export function RecipeDetailScreen() {
               {label}
             </Text>
             <Text style={styles.componentMeta} numberOfLines={1}>
-              {target ? describeRecipe(target) : 'No longer in your recipes'}
+              {target ? describeRecipe(target, null, { recipesById }) : 'No longer in your recipes'}
             </Text>
             {!!alternativeNote && (
               <Text style={styles.alternativeNote} numberOfLines={1}>{alternativeNote}</Text>
@@ -1929,7 +1929,7 @@ export function RecipeDetailScreen() {
           />
         )}
 
-        <Text style={styles.summary}>{describeRecipe(recipe)}</Text>
+        <Text style={styles.summary}>{describeRecipe(recipe, null, { recipesById })}</Text>
         {/* The book's own page, a tap away: its index, and the other recipes
             filed under it. */}
         {cookbook && (
