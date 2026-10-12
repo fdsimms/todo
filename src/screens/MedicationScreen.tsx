@@ -263,14 +263,27 @@ export function MedicationScreen() {
   }, [takenToday]);
 
   /**
-   * Tapping a taken row reopens its task, which removes the dose it recorded
-   * (`uncompleteTask`), so a check made by mistake can always be taken back
-   * after the undo bar has gone.
+   * Tapping a taken row offers to reopen its task, which removes the dose it
+   * recorded (`uncompleteTask`), so a check made by mistake can be taken back
+   * after the undo bar has gone. It asks first: a stray tap on a row that
+   * looks like a finished record used to delete the dose with nothing said.
    */
   const undoTaken = (log: MedicationLog) => {
-    if (log.taskId === null || !undoableTaskIds.has(log.taskId)) return;
+    const taskId = log.taskId;
+    if (taskId === null || !undoableTaskIds.has(taskId)) return;
     haptics.tap();
-    useTaskStore.getState().uncompleteTask(log.taskId);
+    Alert.alert(
+      `Mark ${log.name} as not taken?`,
+      'This removes the dose recorded at ' + format(new Date(log.takenAt), 'h:mm a') + '.',
+      [
+        { text: 'Keep', style: 'cancel' },
+        {
+          text: 'Mark not taken',
+          style: 'destructive',
+          onPress: () => useTaskStore.getState().uncompleteTask(taskId),
+        },
+      ],
+    );
   };
 
   const openDetail = (stat: MedicationStat) => {
