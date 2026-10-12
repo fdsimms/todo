@@ -40,14 +40,27 @@ export function cardAnchorPlacement(
   window: { width: number; height: number },
   insets: { top: number; bottom: number },
   preferredWidth: number,
+  /** What the content would take with no cap, when the caller can tell. */
+  expectedHeight?: number,
 ): CardPlacement {
   const width = Math.min(preferredWidth, window.width - ANCHOR_EDGE * 2);
   const below = anchor.y < window.height / 2;
   const onRight = anchor.x > window.width / 2;
 
-  const vertical = below
+  let vertical = below
     ? { top: Math.max(insets.top, anchor.y + ANCHOR_GAP) }
     : { bottom: Math.max(insets.bottom, window.height - anchor.y + ANCHOR_GAP) };
+  const nearRoom = below
+    ? window.height - (vertical.top as number) - insets.bottom - ANCHOR_EDGE
+    : window.height - (vertical.bottom as number) - insets.top - ANCHOR_EDGE;
+  // A card too tall for the short side of the touch would scroll while the
+  // screen has room to spare, so it slides along the far edge instead and may
+  // cover the touch point, which a menu is free to do.
+  if (expectedHeight !== undefined && expectedHeight > nearRoom) {
+    vertical = below
+      ? { top: insets.top + ANCHOR_EDGE }
+      : { bottom: insets.bottom + ANCHOR_EDGE };
+  }
   const maxHeight = below
     ? window.height - (vertical.top as number) - insets.bottom - ANCHOR_EDGE
     : window.height - (vertical.bottom as number) - insets.top - ANCHOR_EDGE;

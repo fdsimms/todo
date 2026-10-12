@@ -55,6 +55,8 @@ interface Props {
    * fallback for an opener with no point to give, such as a swipe action.
    */
   anchor?: CardAnchor | null;
+  /** A popover's height with no cap, so one too tall for its side of the touch moves to the far edge instead of scrolling. */
+  expectedHeight?: number;
   /** How wide a popover card is, before it narrows to fit the screen. */
   popoverWidth?: number;
   /** Fires once the card is actually on screen: focus a field from here. */
@@ -124,7 +126,7 @@ const POPOVER_WIDTH = 300;
  * that can outgrow that belongs in a `ScrollView` inside the card.
  */
 export function CardSheet({
-  visible, onClose, children, controller, onRequestClose, anchor, popoverWidth = POPOVER_WIDTH, onShow, scrimLabel, name, cardStyle, overlays,
+  visible, onClose, children, controller, onRequestClose, anchor, popoverWidth = POPOVER_WIDTH, expectedHeight, onShow, scrimLabel, name, cardStyle, overlays,
 }: Props) {
   const colors = useColors();
   const { isDark, shadows } = useTheme();
@@ -141,7 +143,7 @@ export function CardSheet({
   const closing = useRef(false);
 
   const placement = anchor
-    ? cardAnchorPlacement(anchor, screen, insets, popoverWidth)
+    ? cardAnchorPlacement(anchor, screen, insets, popoverWidth, expectedHeight)
     : null;
 
   useEffect(() => {
