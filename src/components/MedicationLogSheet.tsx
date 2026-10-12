@@ -19,6 +19,11 @@ import { getLogicalToday } from '../utils/dateUtils';
 import { DOSE_UNITS, formatDose, medicationKey, medicationVocabulary } from '../utils/medicationLog';
 import { confirmWithinLimit, recordDose, syncOkAgainNotification, unrecordDose } from '../utils/doseRecording';
 import { TextField } from './TextField';
+import { InlineAction } from './InlineAction';
+import { TaskEditor } from './TaskEditor';
+import { TaskRelationPickerSheet } from './TaskRelationPickerSheet';
+import { useTaskStore } from '../store/useTaskStore';
+import { displayTitleFor } from '../utils/visibilityUtils';
 
 const NAME_MAX_LENGTH = 60;
 const NOTE_MAX_LENGTH = 200;
@@ -91,6 +96,10 @@ export function MedicationLogSheet({ visible, log, initialName, onClose, onDelet
   const [agoMinutes, setAgoMinutes] = useState(0);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [drafted, setDrafted] = useState<string[]>([]);
+  const [taskEditorOpen, setTaskEditorOpen] = useState(false);
+  const [taskPickerOpen, setTaskPickerOpen] = useState(false);
+  const [attachedTitle, setAttachedTitle] = useState<string | null>(null);
+  const updateTask = useTaskStore(s => s.updateTask);
 
   useEffect(() => {
     if (!visible) return;
@@ -108,6 +117,9 @@ export function MedicationLogSheet({ visible, log, initialName, onClose, onDelet
     setAgoMinutes(0);
     setShowDatePicker(false);
     setDrafted([]);
+    setTaskEditorOpen(false);
+    setTaskPickerOpen(false);
+    setAttachedTitle(null);
   }, [visible, log, initialName]);
 
   /**
@@ -185,6 +197,33 @@ export function MedicationLogSheet({ visible, log, initialName, onClose, onDelet
     onClose();
   };
 
+  // What a task made or picked from here would record: the name, and the amount
+  // only when it parses and has a unit, the pair the task editor itself keeps.
+  const taskMedication = () => {
+    const parsed = Number(amount.trim());
+    const usable = amount.trim() !== '' && Number.isFinite(parsed) && unit !== null;
+    return {
+      medicationName: name.trim(),
+      medicationAmount: usable ? parsed : null,
+      medicationUnit: usable ? unit : null,
+    };
+  };
+
+  const taskDraft = useMemo(
+    () => (taskEditorOpen ? { title: name.trim(), recurrenceType: 'daily' as const, ...taskMedication() } : null),
+    // Frozen while the editor is open, so typing underneath can't reseed it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [taskEditorOpen],
+  );
+
+  const attachToTask = (taskId: string) => {
+    const task = useTaskStore.getState().tasks.find(t => t.id === taskId);
+    if (!task) return;
+    updateTask(taskId, taskMedication());
+    setAttachedTitle(displayTitleFor(task));
+    haptics.success();
+  };
+
   const handleDelete = () => {
     if (!log) { onClose(); return; }
     Alert.alert('Delete this dose?', undefined, [
@@ -216,6 +255,7 @@ export function MedicationLogSheet({ visible, log, initialName, onClose, onDelet
         />
       }
       footer={
+        <>
         <WhenPicker
           visible={showDatePicker}
           value={day}
@@ -226,6 +266,21 @@ export function MedicationLogSheet({ visible, log, initialName, onClose, onDelet
           onConfirm={picked => { if (picked) setDay(picked); setShowDatePicker(false); }}
           onCancel={() => setShowDatePicker(false)}
         />
+        {/* Rendered inside this sheet, never beside it: two sibling Modals can't
+            both be visible (see SheetModal). */}
+        <TaskEditor
+          visible={taskEditorOpen}
+          initialDraft={taskDraft}
+          onClose={() => { setTaskEditorOpen(false); }}
+        />
+        <TaskRelationPickerSheet
+          visible={taskPickerOpen}
+          relation="medication"
+          taskId={null}
+          onClose={() => setTaskPickerOpen(false)}
+          onSelect={attachToTask}
+        />
+        </>
       }
     >
       <View style={styles.card}>
@@ -281,20 +336,40 @@ export function MedicationLogSheet({ visible, log, initialName, onClose, onDelet
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.groupLabel}>WHY YOU TOOK IT</Text>
+        <Text style={styles.groupLabel}>WHEN YOU TAKE IT</Text>
         <SegmentedControl
           options={[
             { value: true, label: 'As needed' },
             { value: false, label: 'On schedule' },
           ]}
           value={asNeeded}
-          label="Why you took it"
+          label="When you take it"
           onChange={value => { haptics.tap(); setAsNeeded(value); }}
         />
-        <Text style={styles.hint}>
-          Use a repeating task for anything you take on a schedule.
-          Checking it off records the dose.
-        </Text>
+        {asNeeded ? null : (
+          <>
+            <Text style={styles.hint}>
+              {attachedTitle
+                ? `Checking off "${attachedTitle}" records this medication.`
+                : 'A repeating task records the dose each time you check it off.'}
+            </Text>
+            {canSave && (
+              <View style={styles.taskActions}>
+                <InlineAction
+                  icon="add"
+                  label="New repeating task"
+                  onPress={() => setTaskEditorOpen(true)}
+                />
+                <InlineAction
+                  icon="link-outline"
+                  label="Add to a task"
+                  variant="neutral"
+                  onPress={() => setTaskPickerOpen(true)}
+                />
+              </View>
+            )}
+          </>
+        )}
       </View>
 
       {!log && (
@@ -365,6 +440,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginBottom: spacing.sm,
   },
   agoRow: { marginTop: spacing.sm },
+  taskActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   amountInput: {
     backgroundColor: colors.bgTertiary,
     borderRadius: radius.sm,
