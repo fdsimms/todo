@@ -123,7 +123,7 @@ export function CookbooksScreen() {
           keyExtractor={c => c.id}
           renderItem={renderItem}
           contentContainerStyle={styles.list}
-          ListFooterComponent={<View style={{ height: tabBarHeight + spacing.xl }} />}
+          ListFooterComponent={<View style={{ height: Math.max(tabBarHeight + spacing.xl, scrollTop.clearance) }} />}
         />
       )}
 

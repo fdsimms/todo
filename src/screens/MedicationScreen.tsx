@@ -360,7 +360,7 @@ export function MedicationScreen() {
         {...scrollTop.listProps}
         refreshControl={pullSearch.refreshControl}
         style={styles.scroll}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: tabBarHeight + spacing.xl }]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(tabBarHeight + spacing.xl, scrollTop.clearance) }]}
       >
         {offers.map(offer => (
           <View key={offer.key} style={[styles.card, styles.offerCard]}>

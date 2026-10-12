@@ -224,7 +224,7 @@ export function MoodHistoryScreen() {
           {...scrollTop.listProps}
           sections={sections}
           keyExtractor={log => log.id}
-          contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + spacing.xl }]}
+          contentContainerStyle={[styles.listContent, { paddingBottom: Math.max(insets.bottom + spacing.xl, scrollTop.clearance) }]}
           stickySectionHeadersEnabled={false}
           renderSectionHeader={({ section }) => (
             // The day opens as a page: its entries read in order, and a way to

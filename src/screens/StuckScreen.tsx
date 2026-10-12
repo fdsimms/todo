@@ -545,7 +545,7 @@ export function StuckScreen() {
         refreshControl={pullSearch.refreshControl}
         data={rows}
         keyExtractor={row => row.key}
-        contentContainerStyle={rows.length === 0 ? styles.emptyContainer : [styles.listContent, { paddingBottom: tabBarHeight + spacing.md }]}
+        contentContainerStyle={rows.length === 0 ? styles.emptyContainer : [styles.listContent, { paddingBottom: Math.max(tabBarHeight + spacing.md, scrollTop.clearance) }]}
         renderItem={({ item }) => {
           if (item.kind === 'heading') {
             return <Text style={styles.sectionHeading}>{item.label}</Text>;

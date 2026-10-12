@@ -299,7 +299,7 @@ export function SavedViewDetailScreen() {
             ListFooterComponent={
               viewTasks.length === 0
                 ? null
-                : <TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />
+                : <TouchableOpacity style={[styles.listFooter, { minHeight: Math.max(120, scrollTop.clearance) }]} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />
             }
             ListFooterComponentStyle={viewTasks.length === 0 ? undefined : styles.listFooterCell}
             ListEmptyComponent={

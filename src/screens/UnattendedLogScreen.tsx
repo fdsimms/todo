@@ -267,7 +267,7 @@ export function UnattendedLogScreen() {
         contentContainerStyle={
           sections.length === 0
             ? styles.emptyContainer
-            : [styles.listContent, { paddingBottom: tabBarHeight + spacing.xl }]
+            : [styles.listContent, { paddingBottom: Math.max(tabBarHeight + spacing.xl, scrollTop.clearance) }]
         }
         renderSectionHeader={({ section }) => (
           <View style={styles.sectionHeader}>

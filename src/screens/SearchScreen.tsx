@@ -934,6 +934,7 @@ export function SearchScreen() {
               return item.result.task.id;
             }}
             renderItem={renderItem}
+            contentContainerStyle={{ paddingBottom: scrollTop.clearance }}
             // The action rows' receipts live outside `listData`, and a row that
             // just ran has to redraw as "Recorded …" with its Undo.
             extraData={receipts}

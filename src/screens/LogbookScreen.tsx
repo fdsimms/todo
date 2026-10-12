@@ -436,7 +436,7 @@ export function LogbookScreen() {
   // tabBarStyle) covers whatever's behind it rather than pushing content up,
   // so every list needs this in its bottom padding or its last rows are
   // unreachable behind the bar.
-  const basePadding = tabBarHeight + spacing.sm;
+  const basePadding = Math.max(tabBarHeight + spacing.sm, scrollTop.clearance, kitchenScrollTop.clearance);
   // Extra bottom padding so the last rows aren't hidden behind the floating
   // bulk bar too, same as the other bulk-selecting screens.
   const selectionListPadding = basePadding + bulkBarHeight + spacing.sm;

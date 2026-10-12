@@ -85,7 +85,7 @@ export function RemindersScreen() {
         refreshControl={pullSearch.refreshControl}
         data={reminders}
         keyExtractor={item => item.id}
-        contentContainerStyle={reminders.length === 0 ? styles.emptyContainer : [styles.listContent, { paddingBottom: tabBarHeight + spacing.md }]}
+        contentContainerStyle={reminders.length === 0 ? styles.emptyContainer : [styles.listContent, { paddingBottom: Math.max(tabBarHeight + spacing.md, scrollTop.clearance) }]}
         renderItem={({ item }) => (
           <ReminderRow
             task={item}

@@ -224,7 +224,7 @@ export function CookbookDetailScreen() {
             ) : (
               indexEntries.map(renderIndexEntry)
             )}
-            <View style={{ height: insets.bottom + spacing.xl }} />
+            <View style={{ height: Math.max(insets.bottom + spacing.xl, scrollTop.clearance) }} />
           </>
         }
       />

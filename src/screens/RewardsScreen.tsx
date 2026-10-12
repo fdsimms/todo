@@ -846,7 +846,7 @@ export function RewardsScreen() {
       <ScrollView
         ref={scrollTop.ref}
         refreshControl={pullSearch.refreshControl}
-        contentContainerStyle={{ paddingBottom: tabBarHeight + spacing.xl }}
+        contentContainerStyle={{ paddingBottom: Math.max(tabBarHeight + spacing.xl, scrollTop.clearance) }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         {...keyboardScroll.props}

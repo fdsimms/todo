@@ -221,7 +221,7 @@ export function SleepScreen() {
         {...scrollTop.listProps}
         refreshControl={pullSearch.refreshControl}
         style={styles.scroll}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: tabBarHeight + spacing.xl }]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(tabBarHeight + spacing.xl, scrollTop.clearance) }]}
       >
         {latest && (
           <>

@@ -6,7 +6,8 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, iconSize, animation } from '../theme';
 import { useSettingsStore } from '../store/useSettingsStore';
 
-const SIZE = 44;
+export const SCROLL_TO_TOP_SIZE = 44;
+const SIZE = SCROLL_TO_TOP_SIZE;
 
 interface Props {
   visible: boolean;
