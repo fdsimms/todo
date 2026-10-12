@@ -637,8 +637,8 @@ an "@" does for the names after it (`peopleAfterWith`: "Big walk with Tessa" lin
 Tessa), through the history offer's own whole-word, ambiguity-resolves-to-nobody
 match, so only people already on the list link and a name before the word links
 nobody. An opened event's own title is read plain, so it links nothing until edited. The rows Apple's form asked for are chips
-on the card (calendar, alert, Busy/Free) that start as the last saved event
-left them (`quickEventDefaults.ts`), plus a Notes or link field and a trailing
+on the card (calendar, alert, repeat, and All day and Busy/Free as switches) that start as the last saved event
+left them (`quickEventDefaults.ts`), plus a Notes or link field (behind a "+ Notes" chip until used), a Starts and an Ends block (an end picked by hand is stored as a length, so it replaces a typed "for 2h") and a trailing
 `at (place)` and `alert 30m` in the line, which win over a chip's earlier pick.
 With "Suggest places" on (`placeSuggestionsEnabled`, off by default because it
 sends what is typed to Apple), the location is looked up in Apple Maps as you

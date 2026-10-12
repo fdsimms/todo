@@ -130,6 +130,28 @@ export function describeEventRepeat(rule: EventRecurrence): string {
   return `Repeats ${every}${days}`;
 }
 
+/** The repeats the card's chip offers, as plain rules. A typed phrase can say more ("every 2 weeks on Mon, Wed"). */
+export const EVENT_REPEAT_PRESETS: { key: string; label: string; rule: EventRecurrence }[] = [
+  { key: 'daily', label: 'Every day', rule: { frequency: 'daily', interval: 1 } },
+  { key: 'weekly', label: 'Every week', rule: { frequency: 'weekly', interval: 1 } },
+  { key: 'monthly', label: 'Every month', rule: { frequency: 'monthly', interval: 1 } },
+  { key: 'yearly', label: 'Every year', rule: { frequency: 'yearly', interval: 1 } },
+];
+
+/** The preset a rule is exactly, or null for none or a custom one. */
+export function eventRepeatPresetKey(rule: EventRecurrence | null): string | null {
+  if (!rule || rule.interval !== 1 || rule.daysOfTheWeek || rule.daysOfTheMonth || rule.endDate || rule.occurrence) return null;
+  return rule.frequency;
+}
+
+/** The chip's text: "Daily" for a preset, otherwise the phrase minus its "Repeats", e.g. "Every 2 weeks on Mon, Wed". */
+export function describeEventRepeatShort(rule: EventRecurrence): string {
+  const preset = eventRepeatPresetKey(rule);
+  if (preset) return { daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly', yearly: 'Yearly' }[preset]!;
+  const text = describeEventRepeat(rule).replace(/^Repeats /, '');
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
 // "alert 30m", "alert 1 hour", "alert 2d", "alert none". A suffix, like the
 // schedule phrase, so a word "alert" inside a title is left alone.
 const ALERT_CLAUSE = /\s+alert\s+(?:(\d{1,4})\s*(m|min|mins|minutes?|h|hrs?|hours?|d|days?)?|none|off)\s*$/i;
