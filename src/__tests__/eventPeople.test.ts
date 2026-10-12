@@ -1,5 +1,8 @@
 import {
   defaultNewEventSpan,
+  eventPeopleChoices,
+  EVENT_PEOPLE_RESULTS,
+  EVENT_PEOPLE_SUGGESTED,
   eventPeopleKeys,
   indexEventPeople,
   isEventPeopleLinkStale,
@@ -227,5 +230,43 @@ describe('defaultNewEventSpan', () => {
     const logicalToday = new Date(2026, 7, 19, 2);
     const { start } = defaultNewEventSpan(new Date(2026, 7, 19, 12), logicalToday, new Date(2026, 7, 20, 1, 30));
     expect(start).toEqual(new Date(2026, 7, 20, 2));
+  });
+});
+
+describe('eventPeopleChoices', () => {
+  const many = Array.from({ length: 20 }, (_, i) => ({ id: `n${i}`, name: `Person${i} Smith`, nickname: '' }));
+  const roster = [...many, gideon, tessa];
+
+  it('offers a short list rather than the whole roster before anything is typed', () => {
+    const { shown, hidden } = eventPeopleChoices(roster, 'Walk', [], '');
+    expect(shown).toHaveLength(EVENT_PEOPLE_SUGGESTED);
+    expect(hidden).toBe(roster.length - EVENT_PEOPLE_SUGGESTED);
+  });
+
+  it('puts the people the title names first, then keeps the list order', () => {
+    const { shown } = eventPeopleChoices(roster, 'Dinner w/ Gideon', [], '');
+    expect(shown.map(p => p.id).slice(0, 3)).toEqual(['p1', 'n0', 'n1']);
+  });
+
+  it('leaves out people who are already linked', () => {
+    const { shown, hidden } = eventPeopleChoices([gideon, tessa], 'Walk', ['p1'], '');
+    expect(shown.map(p => p.id)).toEqual(['p2']);
+    expect(hidden).toBe(0);
+  });
+
+  it('searches the whole roster by name or nickname, case-insensitively', () => {
+    expect(eventPeopleChoices(roster, 'Walk', [], 'TESS').shown.map(p => p.id)).toEqual(['p2']);
+    const nick = [{ id: 'k', name: 'Kristen Moore', nickname: 'Kiki' }];
+    expect(eventPeopleChoices(nick, 'Walk', [], 'kik').shown).toHaveLength(1);
+  });
+
+  it('caps a broad query and reports what it left out', () => {
+    const { shown, hidden } = eventPeopleChoices(roster, 'Walk', [], 'smith');
+    expect(shown).toHaveLength(EVENT_PEOPLE_RESULTS);
+    expect(hidden).toBe(many.length - EVENT_PEOPLE_RESULTS);
+  });
+
+  it('treats a blank query as no query', () => {
+    expect(eventPeopleChoices(roster, 'Walk', [], '   ').shown).toHaveLength(EVENT_PEOPLE_SUGGESTED);
   });
 });

@@ -212,6 +212,39 @@ export function suggestedEventPeople(
   return peopleNamedInTitle(title, people).filter(id => !linked.includes(id));
 }
 
+/** How many unlinked people the picker offers before anything is typed. */
+export const EVENT_PEOPLE_SUGGESTED = 6;
+/** How many matches it lists for a typed query; the rest wait for more letters. */
+export const EVENT_PEOPLE_RESULTS = 8;
+
+/**
+ * The people the picker lists under the ones already linked: who to offer, and
+ * how many more exist that it is not showing. With no query it is the people the
+ * title names first, then the user's own list order, cut at
+ * `EVENT_PEOPLE_SUGGESTED`, so a long list is never laid out all at once. A
+ * query searches everybody unlinked by name or nickname and keeps that order.
+ * Never ranks by anything about the person (`docs/arch/people.md`).
+ */
+export function eventPeopleChoices<P extends PersonName>(
+  people: readonly P[],
+  title: string,
+  linked: readonly string[],
+  query: string
+): { shown: P[]; hidden: number } {
+  const suggested = suggestedEventPeople(title, people, linked);
+  const open = people.filter(p => !linked.includes(p.id));
+  const ordered = [
+    ...open.filter(p => suggested.includes(p.id)),
+    ...open.filter(p => !suggested.includes(p.id)),
+  ];
+  const q = query.trim().toLowerCase();
+  const matches = q
+    ? ordered.filter(p => p.name.toLowerCase().includes(q) || p.nickname.toLowerCase().includes(q))
+    : ordered;
+  const limit = q ? EVENT_PEOPLE_RESULTS : EVENT_PEOPLE_SUGGESTED;
+  return { shown: matches.slice(0, limit), hidden: Math.max(0, matches.length - limit) };
+}
+
 /**
  * One person's linked events that haven't finished yet, soonest first — the
  * events half of "Coming up" on their screen. Reads only what the calendar

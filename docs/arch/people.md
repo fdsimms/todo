@@ -596,6 +596,10 @@ events sheet, or by starting the event from a person's page ("Plan something").
   link is written to the event.
 - **A title match is offered, not applied.** The picker lists people the title
   names first, and each is still a tap. Same bar as the history offer.
+- **The picker never lays out the whole list.** `eventPeopleChoices` offers the
+  people the title names, then the first few in the user's own order, and a find
+  field searches everybody else. Linked people sit above it as filled chips. The
+  row's details (edit, template, trip) are a separate panel from the picker.
 - **After the event, a link makes an offer, not a record.** Linked people are
   offered the event under "From your calendar" even when the title never names
   them (`suggestedHistoryEvents`' `linkedPeople`). A link says who a plan was
