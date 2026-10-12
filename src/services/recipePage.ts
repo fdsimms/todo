@@ -95,9 +95,9 @@ const MESSAGES: Record<RecipePageErrorCode, string> = {
  * only the second would render "That site wouldn't let us in" as "check your
  * API key in Settings".
  */
-export function describeImportError(error: unknown): string {
+export function describeImportError(error: unknown, source?: string): string {
   if (isRecipePageError(error)) return MESSAGES[error.recipePageCode];
-  return describeAIError(error);
+  return describeAIError(error, source);
 }
 
 /**

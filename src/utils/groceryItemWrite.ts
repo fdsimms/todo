@@ -490,6 +490,8 @@ export const ITEM_MERGE_RULES: Readonly<Record<keyof GroceryItem, ItemMergeRule>
   purchaseIntervalDays: 'fillGap',
   sourceRecipeId: 'fillGap',
   sourceRecipeTitle: 'fillGap',
+  // Rides with the survivor's own quantity, which is what it explains.
+  recipeSources: 'survivor',
   isStaple: 'either',
   onHandUntil: 'pantry',
   expiresAt: 'pantry',

@@ -172,7 +172,7 @@ export function useRecipeComponentImports(
       haptics.success();
       setAccepted(prev => (prev.has(key) ? prev : new Set(prev).add(key)));
     } catch (e) {
-      setState(key, { status: 'failed', message: describeImportError(e) });
+      setState(key, { status: 'failed', message: describeImportError(e, 'recipe-component-import') });
     }
   }, [availableAisles, setState]);
 

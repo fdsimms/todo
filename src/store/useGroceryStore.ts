@@ -1,6 +1,7 @@
 import { create } from 'zustand';
-import type { FoodNutrition, GroceryGroupBy, GroceryItem, GroceryList, GroceryListEntry, ItemProduct, ItemShopLink, ItemSubLink, PriceObservation, ProductRating, ReceiptStyle, Shop, StoreAlias } from '../types';
+import type { FoodNutrition, GroceryGroupBy, GroceryItem, GroceryRecipeSource, GroceryList, GroceryListEntry, ItemProduct, ItemShopLink, ItemSubLink, PriceObservation, ProductRating, ReceiptStyle, Shop, StoreAlias } from '../types';
 import { isPortionBox } from '../types';
+import { incomingSourcesOf, sourcesAfterMerge } from '../utils/recipeSources';
 import {
   type DeletedItemSnapshot,
   listNameProblem,
@@ -1622,6 +1623,11 @@ export interface PlannedRow {
   sourceRecipeId?: string | null;
   sourceRecipeTitle?: string | null;
   /**
+   * What each recipe asked for, on a row more than one recipe wanted. Carried
+   * to `GroceryItem.recipeSources`; see there.
+   */
+  recipeSources?: GroceryRecipeSource[];
+  /**
    * The either/or slot this row is one option of, as the recipe-side key
    * `choiceGroupKey` mints — see ClassifiedIngredient.choiceGroup. Rows sharing
    * one land on the list under a single opaque `GroceryItem.choiceGroup`, so
@@ -1729,6 +1735,12 @@ function mergeOnListRecipeNeed(existing: GroceryItem, row: PlannedRow): GroceryI
   if (existing.sourceRecipeId && row.sourceRecipeId !== existing.sourceRecipeId) {
     patch.sourceRecipeId = null;
     patch.sourceRecipeTitle = null;
+    changed = true;
+  }
+
+  const sources = sourcesAfterMerge(existing, row);
+  if (sources) {
+    patch.recipeSources = sources;
     changed = true;
   }
 
@@ -2410,7 +2422,13 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         if (row.quantity) {
           const current = get().itemById(item.id);
           if (current && (!current.quantity || current.quantityFromRecipe)) {
-            const withQuantity = { ...current, quantity: row.quantity, quantityFromRecipe: true };
+            const incoming = incomingSourcesOf(row);
+            const withQuantity = {
+              ...current,
+              quantity: row.quantity,
+              quantityFromRecipe: true,
+              recipeSources: incoming.length >= 2 ? incoming : undefined,
+            };
             dbUpdateGroceryItem(withQuantity);
             set(s => ({ items: s.items.map(i => (i.id === withQuantity.id ? withQuantity : i)) }));
           }

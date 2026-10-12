@@ -106,6 +106,16 @@ list, which meant every feature recording a fact had to remember to promote its 
 
 ---
 
+## A row two recipes want (`recipeSources`)
+
+`sourceRecipeId` is one credit and goes null when a second recipe wants the row, so the per-recipe
+amounts live in `GroceryItem.recipeSources` (`src/utils/recipeSources.ts`). The row says it one of
+two ways, picked by `recipeLedgerFor`: amounts that can't be added (`mergeQuantities` would join
+them with " · ") are drawn one per recipe, each pill with its recipe under it; amounts that add up
+keep the one pill and the caption reads "For N recipes", with the names and links in the item
+sheet. It is meaningful only while `quantityFromRecipe` is true, which is why it never needs
+clearing at the sites that end a shop: they already clear that flag.
+
 ## Products (`ItemProduct`) — which bread, under Bread
 
 A `GroceryItem` is the Platonic ideal: Bread is what recipes call for, what the pantry tracks,

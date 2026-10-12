@@ -3916,6 +3916,10 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(recipes.some(r => r.ingredients.filter(i => i.choiceGroup).length >= 2)).toBe(true);
     expect(recipes.every(r => r.ingredients.every(i => !/\bor\b/.test(i.name)))).toBe(true);
 
+    // A row two recipes want shows each recipe's own amount.
+    const scallions = useGroceryStore.getState().itemByNameKey('scallion');
+    expect(scallions?.recipeSources?.map(r => r.title)).toEqual(['Weeknight chicken stir-fry', 'Weeknight vegetable soup']);
+
     // A choice group crossing the two lists: the stir-fry's own rice line and
     // its Steamed rice component share one label, and the ingredient — not
     // the component — is what an unresolved read still buys by default.

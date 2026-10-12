@@ -27,6 +27,7 @@ import { describeProduct, RATING_LABELS } from '../utils/groceryProduct';
 import { formatPrice, formatPriceInput, parsePriceInput, priceToInput } from '../utils/groceryPrice';
 import { groceryNameKey } from '../utils/groceryParse';
 import { groceryRowNameSpace, quantityFitsBesideName } from '../utils/groceryRowQuantity';
+import { recipeLedgerFor } from '../utils/recipeSources';
 import { haptics } from '../utils/haptics';
 import { TextField } from './TextField';
 
@@ -217,7 +218,16 @@ export const GroceryRow = React.memo(function GroceryRow({
   // The row is read-only text, so it shows the amount in the reader's units.
   // The item sheet's field deliberately doesn't — that one is editable, and an
   // editable field has to show what's stored.
-  const shownQuantity = convertQuantity(item.quantity ?? '', unitSystem).text;
+  //
+  // A row two recipes want says which amount is whose (`recipeLedgerFor`):
+  // amounts that don't add up are drawn one per recipe under the name instead of
+  // as one joined string, so the merged pill is left out for them.
+  const recipeLedger = recipeLedgerFor(item);
+  const ledgerLines =
+    recipeLedger?.kind === 'ledger'
+      ? recipeLedger.lines.map(l => ({ title: l.title, quantity: convertQuantity(l.quantity ?? '', unitSystem).text }))
+      : null;
+  const shownQuantity = ledgerLines ? '' : convertQuantity(item.quantity ?? '', unitSystem).text;
   // A short quantity sits in the pill beside the name; a long one ("2 x 14 oz
   // cans, drained") gets a line of its own under it, so the name keeps the
   // row (#2946). So does one that would leave a long name too little room
@@ -315,6 +325,8 @@ export const GroceryRow = React.memo(function GroceryRow({
     // Right behind the product it rates — see the icon on the same line below.
     preferredProduct?.rating ? `, ${RATING_LABELS[preferredProduct.rating].toLowerCase()}` : '',
     shownQuantity ? `, ${shownQuantity}` : '',
+    ledgerLines ? ledgerLines.map(l => `, ${l.quantity ? `${l.quantity} ` : ''}for ${l.title}`).join('') : '',
+    recipeLedger?.kind === 'count' ? `, for ${recipeLedger.count} recipes` : '',
     item.checked ? ', in cart' : '',
   ].join('');
 
@@ -524,6 +536,33 @@ export const GroceryRow = React.memo(function GroceryRow({
               </Text>
             </View>
           )}
+          {/* One amount per recipe, each with its recipe under it. Same pill
+              as the quantity above, so it reads as the same field; the pairs
+              sit `spacing.xs` apart and the title hugs its amount, or the
+              list reads as four unrelated captions. */}
+          {ledgerLines?.map((line, i) => (
+            <View key={`${i}-${line.title}`} style={styles.ledgerEntry}>
+              {!!line.quantity && (
+                <View
+                  style={[
+                    styles.qtyPill,
+                    styles.qtyPillUnder,
+                    styles.ledgerPill,
+                    item.checked && styles.qtyPillChecked,
+                    item.checked && styles.qtyPillUnderChecked,
+                  ]}
+                >
+                  <Text
+                    style={[styles.qtyText, styles.qtyTextUnder, item.checked && styles.qtyTextChecked]}
+                    numberOfLines={2}
+                  >
+                    {line.quantity}
+                  </Text>
+                </View>
+              )}
+              <Text style={styles.note} numberOfLines={2}>{line.title}</Text>
+            </View>
+          ))}
           {!!item.note && (
             <Text style={styles.note} numberOfLines={1}>
               {item.note}
@@ -542,6 +581,14 @@ export const GroceryRow = React.memo(function GroceryRow({
           {!item.note && !storeMarker && !!item.sourceRecipeTitle && (
             <Text style={styles.note} numberOfLines={2}>
               For “{item.sourceRecipeTitle}”
+            </Text>
+          )}
+          {/* Amounts that already add up to one quantity leave only how many
+              recipes asked. Same slot and suppressions as the single recipe's
+              line: the names are in the item sheet. */}
+          {recipeLedger?.kind === 'count' && !item.note && !storeMarker && (
+            <Text style={styles.note} numberOfLines={1}>
+              For {recipeLedger.count} recipes
             </Text>
           )}
           {/* Same slot, same two suppressions, and behind the recipe stamp when
@@ -973,6 +1020,14 @@ function makeStyles(colors: Colors) {
       paddingHorizontal: spacing.sm,
       paddingVertical: 3,
       maxWidth: 90,
+    },
+    ledgerEntry: {
+      marginTop: spacing.xs,
+    },
+    // The entry carries the gap, so the pill drops the margin qtyPillUnder
+    // would add on top of it.
+    ledgerPill: {
+      marginTop: 0,
     },
     qtyPillChecked: {
       backgroundColor: 'transparent',
