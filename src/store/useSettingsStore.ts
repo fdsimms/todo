@@ -418,6 +418,10 @@ interface SettingsStore {
   vacationMode: boolean;
   vacationStart: string | null;
   vacationEnd: string | null; // optional ISO date — vacation mode auto-turns-off once this passes
+  // When vacation mode last turned off (ISO instant). State, not a preference:
+  // the morning check-in skips tasks whose day fell before it, since vacation
+  // hid them and nobody could have done them. Null until a vacation has ended.
+  vacationEndedAt: string | null;
   /**
    * The project whose away dates switched vacation mode on, or null when a
    * person did it themselves.
@@ -2663,6 +2667,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   vacationMode: false,
   vacationStart: null,
   vacationEnd: null,
+  vacationEndedAt: null,
   vacationDrivenBy: null,
   activeListDrivenBy: null,
   destinationForecastEnabled: false,
@@ -2973,6 +2978,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const vacationMode = dbGetSetting('vacationMode') === 'true';
     const vacationStart = dbGetSetting('vacationStart') ?? null;
     const vacationEnd = dbGetSetting('vacationEnd') || null;
+    const vacationEndedAt = dbGetSetting('vacationEndedAt') || null;
     const vacationDrivenBy = dbGetSetting('vacationDrivenBy') || null;
     const activeListDrivenBy = dbGetSetting('activeListDrivenBy') || null;
     const destinationForecastEnabled = dbGetSetting('destinationForecastEnabled') === 'true';
@@ -3734,6 +3740,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       useUpTaskCap,
       vacationDrivenBy,
       vacationEnd,
+      vacationEndedAt,
       vacationHiddenCalendarIds,
       vacationMode,
       vacationStart,
@@ -4016,9 +4023,13 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       dbSetSetting('vacationEnd', end ?? '');
       set({ vacationMode: true, vacationStart: start, vacationEnd: end });
     } else {
+      // Stamped only on an actual on-to-off change, so a redundant off call
+      // (a peer's sync, an expiry check) can't push the end later.
+      const endedAt = get().vacationMode ? new Date().toISOString() : get().vacationEndedAt;
       dbSetSetting('vacationMode', 'false');
       dbSetSetting('vacationEnd', '');
-      set({ vacationMode: false, vacationStart: null, vacationEnd: null });
+      dbSetSetting('vacationEndedAt', endedAt ?? '');
+      set({ vacationMode: false, vacationStart: null, vacationEnd: null, vacationEndedAt: endedAt });
     }
   },
 

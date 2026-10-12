@@ -271,6 +271,22 @@ describe('isMorningCheckInCandidate', () => {
   });
 });
 
+describe('vacationEndedAt', () => {
+  const dueOn = (day: string) => makeTask({ dueDate: localIso(`${day}T00:00`) });
+
+  it('skips a task whose day fell before the vacation ended', () => {
+    expect(isMorningCheckInCandidate(dueOn('2025-06-05'), DAY_RESET, localIso('2025-06-09T12:00'))).toBe(false);
+  });
+
+  it('still asks about a task dated the day vacation turned off', () => {
+    expect(isMorningCheckInCandidate(dueOn('2025-06-09'), DAY_RESET, localIso('2025-06-09T12:00'))).toBe(true);
+  });
+
+  it('asks about everything overdue when no vacation has ended', () => {
+    expect(isMorningCheckInCandidate(dueOn('2025-06-05'), DAY_RESET, null)).toBe(true);
+  });
+});
+
 describe('morningCheckInTasks', () => {
   it('filters a mixed list down to only the eligible ones', () => {
     const missedYesterday = makeTask({ id: 'a', dueDate: localIso('2025-06-09T00:00'), deadline: localIso('2025-06-09T00:00') });

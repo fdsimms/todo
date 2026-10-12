@@ -29,11 +29,21 @@ import { isNegativeTask } from './negativeHabits';
  * deadline then sat open and overdue with no miss on record, and finishing it
  * late spawned a second row for today. Every recurring task is asked about.
  *
+ * - anything whose day fell before `vacationEndedAt`. Vacation hid it for the
+ *   whole stretch, so the day after coming back it would otherwise read as
+ *   "yesterday, unanswered" when nobody could have done it. Only a day that
+ *   ended before the vacation did is skipped: a task dated the day vacation
+ *   turned off was on Today that day, so it is still asked about.
+ *
  * One live row per recurring task (see the Recurrence note in CLAUDE.md), so
  * "yesterday's task, unresolved" is just this row's own `dueDate` sitting in
  * the past — there's no separate history to look up.
  */
-export function isMorningCheckInCandidate(task: Task, dayResetTime?: string): boolean {
+export function isMorningCheckInCandidate(
+  task: Task,
+  dayResetTime?: string,
+  vacationEndedAt?: string | null,
+): boolean {
   if (task.parentId) return false;
   if (task.completed || task.archived) return false;
   if (task.recurrenceType === 'none') return false;
@@ -53,10 +63,16 @@ export function isMorningCheckInCandidate(task: Task, dayResetTime?: string): bo
   // judging by dueDate asked about a task you had chosen to move, every
   // morning until the day it came back.
   const readsAs = getEffectiveTaskDate(task, dayResetTime) ?? task.dueDate;
-  return getTaskDayStart(new Date(readsAs), dayResetTime) < getDayStart(new Date(), dayResetTime);
+  const taskDay = getTaskDayStart(new Date(readsAs), dayResetTime);
+  if (vacationEndedAt && taskDay < getDayStart(new Date(vacationEndedAt), dayResetTime)) return false;
+  return taskDay < getDayStart(new Date(), dayResetTime);
 }
 
 /** The full set across all tasks, in no particular order — callers group it. */
-export function morningCheckInTasks(tasks: Task[], dayResetTime?: string): Task[] {
-  return tasks.filter(t => isMorningCheckInCandidate(t, dayResetTime));
+export function morningCheckInTasks(
+  tasks: Task[],
+  dayResetTime?: string,
+  vacationEndedAt?: string | null,
+): Task[] {
+  return tasks.filter(t => isMorningCheckInCandidate(t, dayResetTime, vacationEndedAt));
 }

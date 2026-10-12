@@ -1759,9 +1759,10 @@ export function TodayScreen() {
   // without needing its own refresh.
   const morningCheckInLastDayKey = useSettingsStore(s => s.morningCheckInLastDayKey);
   const setMorningCheckInLastDayKey = useSettingsStore(s => s.setMorningCheckInLastDayKey);
+  const vacationEndedAt = useSettingsStore(s => s.vacationEndedAt);
   const morningCheckInCandidates = useMemo(
-    () => morningCheckInTasks(openTasksOf(allTasks), dayResetTime),
-    [allTasks, dayResetTime]
+    () => morningCheckInTasks(openTasksOf(allTasks), dayResetTime, vacationEndedAt),
+    [allTasks, dayResetTime, vacationEndedAt]
   );
   // Judged exactly once per mount, and only after tasks have loaded. Leaving
   // the tab hides it in an Activity (FreezeWhenBlurred), which tears effects
