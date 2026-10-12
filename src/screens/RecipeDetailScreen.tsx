@@ -1225,7 +1225,7 @@ export function RecipeDetailScreen() {
           <View style={styles.choiceHeader}>
             <Ionicons name="git-branch-outline" size={iconSize.xs} color={colors.accent} />
             <Text style={styles.choiceHeaderText} numberOfLines={1}>
-              Choose one · {choiceHeader}
+              Choose one
             </Text>
           </View>
         )}
@@ -1507,7 +1507,7 @@ export function RecipeDetailScreen() {
           <View style={styles.choiceHeader}>
             <Ionicons name="git-branch-outline" size={iconSize.xs} color={colors.accent} />
             <Text style={styles.choiceHeaderText} numberOfLines={1}>
-              Choose one · {groupHeader}
+              Choose one
             </Text>
           </View>
         )}
