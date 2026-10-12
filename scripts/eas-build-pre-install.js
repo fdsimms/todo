@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 // EAS Build runs this on the builder before `npm install`, for every build
 // (package.json's "eas-build-pre-install"), so it may use nothing but Node's
-// builtins. It only acts on a build that includes the watch app
-// (DUNDUNDUN_WATCH_APP, set by eas.json's `watch-canary` profile; see
-// plugins/withWatchApp.js) and is a no-op everywhere else.
+// builtins. Every iOS build embeds the Apple Watch app (plugins/withWatchApp.js),
+// so it acts on every iOS build.
 //
 // Since Xcode 15 the watchOS platform is a separate download, and archiving an
 // app that embeds a watch app fails without it ("watchOS ... is not installed.
@@ -13,7 +12,7 @@
 // minutes of build time, a missing platform costs the whole build.
 const { execFileSync } = require('child_process');
 
-if (process.env.EAS_BUILD_PLATFORM !== 'ios' || process.env.DUNDUNDUN_WATCH_APP !== '1') {
+if (process.env.EAS_BUILD_PLATFORM !== 'ios') {
   process.exit(0);
 }
 

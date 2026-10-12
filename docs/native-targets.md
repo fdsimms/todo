@@ -18,8 +18,7 @@ Targets are injected at prebuild time by custom config plugins rather than a che
   `plugins/withShieldExtensions.js`.
 - **`targets/todo-watch/`** and **`targets/todo-watch-complication/`** — the Apple Watch app
   (Today and the grocery list, ticked off from the wrist) and its watch face complication, both
-  added by `plugins/withWatchApp.js` and only when `DUNDUNDUN_WATCH_APP=1` (eas.json's
-  `watch-canary` profile). See "The watch app" below.
+  added by `plugins/withWatchApp.js`. See "The watch app" below.
 
 `plugins/withAppGroup.js` puts the App Group on the main app and exports `APP_GROUP_ID`; each
 extension's plugin writes its own `.entitlements` with that id (`todo-shield-action` deliberately
@@ -181,16 +180,10 @@ iPhone extension, and most of what that changes lives in `addWatchAppTarget`,
 `addWatchExtensionTarget` and `withExplicitTargetDependency` (`plugins/lib/nativeTarget.js`),
 whose comments carry the reasons. The rules worth knowing before touching them:
 
-- **They are behind a flag until a build has gone all the way through.** `withWatchApp.js` adds
-  nothing unless `DUNDUNDUN_WATCH_APP=1`, which only the `watch-canary` build profile sets (the
-  EAS Build workflow's `profile` input runs it). A profile's `env` reaches both the local
-  config evaluation (credentials) and the builder (prebuild), so the flag switches the targets
-  and their `appExtensions` entries together. Those entries are the one exception to the rule
-  above: the plugin adds them to the evaluated config instead of `app.json`, because a static
-  entry would have EAS provision targets the production project doesn't contain. When a canary
-  has shipped to TestFlight and installed, drop the flag rather than adding a second way in.
-  **The iPhone half is not behind it**: `WatchSession.swift` and the watch's snapshot write are
-  in every build, and do nothing without a paired watch that has the app.
+- **Both are in every build, and so is the iPhone half.** Their `appExtensions` entries are in
+  `app.json` like every other target's (a watch app's bundle id has to start with the iPhone
+  app's, and the complication's with the watch app's). `WatchSession.swift` and the watch's
+  snapshot write run in every build too, and do nothing without a paired watch that has the app.
 - **The watch can't read the App Group, so the data path is WatchConnectivity, both ways.** The
   watch is another device with its own containers. Out: the app builds a second copy of the
   widget snapshot with `WATCH_CAPS` (room for a whole shopping list), and
@@ -240,7 +233,7 @@ whose comments carry the reasons. The rules worth knowing before touching them:
   template doesn't have).
 - **The watchOS platform is a separate download since Xcode 15**, and archiving an app that
   embeds a watch app fails without it. `scripts/eas-build-pre-install.js` fetches it on the
-  builder when the flag is on and no matching runtime is installed.
+  builder for every iOS build where no matching runtime is installed.
 - **React Native's `pod install` adds the app's `PrivacyInfo.xcprivacy` to the watch app too.**
   Its privacy manifest aggregation attaches the file to every target of type `:application`. Not
   a bug, but it's why the watch target in Xcode shows a file nothing here added.

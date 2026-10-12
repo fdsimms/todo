@@ -20,15 +20,9 @@ const {
 // modules/todo-widget-bridge, compiled into the app like the rest of that
 // module. See docs/native-targets.md, "The watch app".
 //
-// **The two targets are off unless DUNDUNDUN_WATCH_APP is "1"**, which only
-// eas.json's `watch-canary` profile sets, until a canary build has gone all the
-// way to an install. EAS applies a build profile's `env` both when EAS CLI
-// evaluates this config locally (to resolve credentials) and on the builder
-// (where prebuild runs), so one variable switches the targets *and* their EAS
-// declarations together. That's also why the declarations are added here
-// rather than written into app.json: a static entry would have EAS provision
-// targets the production project doesn't contain. The iPhone half is in every
-// build, and does nothing without a paired watch that has the app installed.
+// The two targets' EAS declarations are in app.json's `appExtensions`, with every
+// other target's, and must match the bundle ids and entitlements built here: nothing
+// checks that the two agree (see docs/native-targets.md).
 const WATCH_TARGET = 'TodoWatch';
 const WATCH_BUNDLE_SUFFIX = 'watchkitapp';
 const COMPLICATION_TARGET = 'TodoWatchComplication';
@@ -63,10 +57,6 @@ const COMPLICATION_SOURCES = [
   TAP_LOG,
   SNAPSHOT_MODEL,
 ];
-
-function watchAppEnabled() {
-  return process.env.DUNDUNDUN_WATCH_APP === '1';
-}
 
 // Same placeholder rule as every other target's Info.plist (see
 // withWidgetExtension.js): a $(BUILD_SETTING) only gets substituted into a key
@@ -136,29 +126,7 @@ function appGroupEntitlements() {
 	</array>`);
 }
 
-// The `extra.eas.build.experimental.ios.appExtensions` entries, without which
-// EAS never provisions the targets and never stamps their build numbers (the
-// upload is then refused for a CFBundleVersion that doesn't match the app's).
-// Replaces an entry with the same bundle id rather than adding a second one,
-// since a config can be evaluated more than once.
-function withWatchCredentials(config, entries) {
-  config.extra = config.extra ?? {};
-  config.extra.eas = config.extra.eas ?? {};
-  config.extra.eas.build = config.extra.eas.build ?? {};
-  config.extra.eas.build.experimental = config.extra.eas.build.experimental ?? {};
-  const experimental = config.extra.eas.build.experimental;
-  experimental.ios = experimental.ios ?? {};
-  const ids = new Set(entries.map(entry => entry.bundleIdentifier));
-  experimental.ios.appExtensions = [
-    ...(experimental.ios.appExtensions ?? []).filter(ext => !ids.has(ext.bundleIdentifier)),
-    ...entries,
-  ];
-  return config;
-}
-
 const withWatchApp = config => {
-  if (!watchAppEnabled()) return config;
-
   const companionBundleIdentifier = config.ios?.bundleIdentifier;
   const watchBundleIdentifier = `${companionBundleIdentifier}.${WATCH_BUNDLE_SUFFIX}`;
   // A nested bundle's id has to start with its container's.
@@ -166,12 +134,7 @@ const withWatchApp = config => {
   // The watch face masks the icon to a circle, so the iPhone's square artwork
   // is cropped rather than redrawn.
   const iconPath = config.ios?.icon?.light ?? config.icon;
-  const entitlements = { 'com.apple.security.application-groups': [APP_GROUP_ID] };
 
-  config = withWatchCredentials(config, [
-    { targetName: WATCH_TARGET, bundleIdentifier: watchBundleIdentifier, entitlements },
-    { targetName: COMPLICATION_TARGET, bundleIdentifier: complicationBundleIdentifier, entitlements },
-  ]);
   config = withExplicitTargetDependency(config, WATCH_TARGET);
   config = withExplicitTargetDependency(config, COMPLICATION_TARGET, WATCH_TARGET);
 
