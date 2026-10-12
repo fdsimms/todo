@@ -1,4 +1,4 @@
-import { alertRelativeOffset, describeEventRepeat, eventMarkerText, parseClockRange, parseLengthClause, parseAlertClause, parseQuickEvent } from '../utils/quickEvent';
+import { alertRelativeOffset, describeEventRepeat, describeEventRepeatShort, eventRepeatPresetKey, EVENT_REPEAT_PRESETS, eventMarkerText, parseClockRange, parseLengthClause, parseAlertClause, parseQuickEvent } from '../utils/quickEvent';
 import { findAmbiguousMention } from '../utils/parseTaskInput';
 
 jest.mock('../store/useSettingsStore', () => ({
@@ -391,5 +391,27 @@ describe('parseLengthClause', () => {
     expect(parseLengthClause('lunch with Sam for an hour')?.minutes).toBe(60);
     expect(parseLengthClause('lunch with Sam for two hours')).toEqual({ start: 14, minutes: 120 });
     expect(parseLengthClause('call for half an hour')?.minutes).toBe(30);
+  });
+});
+
+describe('repeat chip helpers', () => {
+  it('names a plain rule by its frequency', () => {
+    expect(describeEventRepeatShort({ frequency: 'weekly', interval: 1 })).toBe('Weekly');
+    expect(eventRepeatPresetKey({ frequency: 'monthly', interval: 1 })).toBe('monthly');
+  });
+
+  it('spells out a rule that is more than a preset', () => {
+    const rule = { frequency: 'weekly', interval: 2, daysOfTheWeek: [{ dayOfTheWeek: 2 }, { dayOfTheWeek: 4 }] } as const;
+    expect(describeEventRepeatShort(rule as never)).toBe('Every 2 weeks on Mon, Wed');
+    expect(eventRepeatPresetKey(rule as never)).toBeNull();
+  });
+
+  it('does not call a rule with an end a preset', () => {
+    expect(eventRepeatPresetKey({ frequency: 'daily', interval: 1, occurrence: 5 })).toBeNull();
+    expect(eventRepeatPresetKey(null)).toBeNull();
+  });
+
+  it('keeps every preset keyed by its own frequency', () => {
+    for (const p of EVENT_REPEAT_PRESETS) expect(eventRepeatPresetKey(p.rule)).toBe(p.key);
   });
 });
