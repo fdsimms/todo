@@ -7,7 +7,9 @@ import {
   Animated,
   PanResponder,
   StyleSheet,
+  useWindowDimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SheetModal } from './SheetModal';
 import { SortableList } from './SortableList';
 import { useNavigation } from '@react-navigation/native';
@@ -149,6 +151,11 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  // The sheet grows upward from the bottom, so opening the break settings
+  // pushed its top (title and window stepper) off screen. Capping it at the
+  // window less the top inset makes the task list give up the height instead.
+  const { height: windowHeight } = useWindowDimensions();
+  const topInset = useSafeAreaInsets().top;
   const navigation = useNavigation();
 
   // useShallow, not a bare selector: focusPlanOptionsFrom builds a fresh
@@ -519,7 +526,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
       </Animated.View>
       <SheetScrim onPress={dismiss} />
 
-      <Animated.View onLayout={sheet.onCardLayout} style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
+      <Animated.View onLayout={sheet.onCardLayout} style={[styles.sheetOuter, { maxHeight: windowHeight - topInset - spacing.sm, transform: [{ translateY }] }]}>
         <View style={styles.handleArea} {...panResponder.panHandlers}>
           <View style={styles.handle} />
         </View>
@@ -848,6 +855,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.lg,
     overflow: 'hidden',
     marginBottom: spacing.sm,
+    flexShrink: 1,
   },
   header: {
     flexDirection: 'row',
@@ -960,7 +968,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: spacing.md,
     textAlign: 'center',
   },
-  list: { maxHeight: 300 },
+  list: { maxHeight: 300, flexShrink: 1 },
   row: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bgSecondary },
   rowActive: { backgroundColor: colors.bgTertiary },
   rowMain: {
