@@ -384,6 +384,20 @@ function runInitDatabase(): void {
       row_count INTEGER NOT NULL DEFAULT 1
     );
 
+    -- Failures worth reading later (see utils/errorLog.ts): an unrecognized AI
+    -- or import error, with the name, a trimmed message and a short stack, never
+    -- a request body. Synced so the MCP server can read it, which is the only
+    -- way a phone's console output reaches anyone not holding the phone.
+    -- Capped by errorLogCutoff / ERROR_LOG_MAX_ROWS, not kept forever.
+    CREATE TABLE IF NOT EXISTS error_log (
+      id TEXT PRIMARY KEY NOT NULL,
+      at TEXT NOT NULL,
+      source TEXT NOT NULL,
+      name TEXT NOT NULL DEFAULT '',
+      message TEXT NOT NULL DEFAULT '',
+      stack TEXT NOT NULL DEFAULT ''
+    );
+
     CREATE TABLE IF NOT EXISTS projects (
       id TEXT PRIMARY KEY NOT NULL,
       title TEXT NOT NULL DEFAULT '',
@@ -1712,6 +1726,7 @@ function runInitDatabase(): void {
     // the table from an earlier build still picks the index up.
     'CREATE INDEX IF NOT EXISTS idx_focus_session_log_ended ON focus_session_log(ended_at)',
     'CREATE INDEX IF NOT EXISTS idx_unattended_log_at ON unattended_log(at)',
+    'CREATE INDEX IF NOT EXISTS idx_error_log_at ON error_log(at)',
     // See Project.ongoing — a running list with no finish line, so the
     // "Mark Complete" banner never offers itself for it.
     'ALTER TABLE projects ADD COLUMN ongoing INTEGER NOT NULL DEFAULT 0',
@@ -2652,6 +2667,12 @@ export const BACKUP_EXCLUDED_TABLES = [
   // rows are believed only against a fingerprint of ingredient lines that a
   // restore is about to rewrite.
   'pending_recipe_estimates',
+  // The error log (see utils/errorLog.ts). A diagnostic trail of what went
+  // wrong on this phone recently; restoring another day's failures over a
+  // fixed bug would send somebody chasing an error that no longer happens. It
+  // syncs for the MCP server's sake, which is not the same as being worth
+  // carrying into a backup.
+  'error_log',
 ] as const;
 
 /** The live column names of a table, straight from the schema. */
@@ -5038,6 +5059,45 @@ export function dbPruneUnattendedLog(cutoffIso: string): number {
 /** Empties the ledger, for the screen's own "Clear" action. */
 export function dbClearUnattendedLog(): void {
   db.runSync('DELETE FROM unattended_log');
+}
+
+// ─── Error log ──────────────────────────────────────────────────────────────
+
+export interface ErrorLogRow {
+  id: string;
+  at: string;
+  source: string;
+  name: string;
+  message: string;
+  stack: string;
+}
+
+/** Newest first. The table is capped small, so this is the whole thing. */
+export function dbGetErrorLog(): ErrorLogRow[] {
+  return db.getAllSync<Record<string, unknown>>('SELECT * FROM error_log ORDER BY at DESC').map(r => ({
+    id: r.id as string,
+    at: r.at as string,
+    source: r.source as string,
+    name: (r.name as string) ?? '',
+    message: (r.message as string) ?? '',
+    stack: (r.stack as string) ?? '',
+  }));
+}
+
+export function dbInsertErrorLog(row: ErrorLogRow): void {
+  db.runSync(
+    'INSERT OR REPLACE INTO error_log (id, at, source, name, message, stack) VALUES (?,?,?,?,?,?)',
+    [row.id, row.at, row.source, row.name, row.message, row.stack]
+  );
+}
+
+/** Drops rows older than the cutoff, then everything past the newest `keep`. */
+export function dbPruneErrorLog(cutoffIso: string, keep: number): void {
+  db.runSync('DELETE FROM error_log WHERE at < ?', [cutoffIso]);
+  db.runSync(
+    'DELETE FROM error_log WHERE id NOT IN (SELECT id FROM error_log ORDER BY at DESC LIMIT ?)',
+    [keep]
+  );
 }
 
 // ─── Groceries ──────────────────────────────────────────────────────────────
