@@ -779,8 +779,8 @@ export function recipesUsing(recipes: readonly Recipe[], targetId: string): Reci
  *
  * With `recipesById` the clause also says how many ingredients the components
  * bring ("1 component with 22 ingredients"), counted choice-aware like the
- * recipe's own number. Without it the clause is only the component count, since
- * a list row has no library to resolve against. A component that no longer
+ * recipe's own number. Without it the clause is only the component count, for a
+ * caller with no library to resolve against. A component that no longer
  * resolves contributes nothing, so the tail is dropped when the total is 0.
  */
 export function describeComponents(

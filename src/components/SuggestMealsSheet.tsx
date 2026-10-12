@@ -701,7 +701,7 @@ export function SuggestMealsSheet({
         accessibilityState={{ disabled, selected: isSelected }}
         accessibilityLabel={landedDay
           ? `${recipe.name}, planned for ${format(landedDay, 'EEEE')}`
-          : `${isSelected ? 'Deselect' : 'Select'} ${recipe.name}. ${describeRecipe(recipe, null, { sharedName: sharedNames.has(recipe.nameKey) })}${signalsLabel ? `. ${signalsLabel}` : ''}`}
+          : `${isSelected ? 'Deselect' : 'Select'} ${recipe.name}. ${describeRecipe(recipe, null, { sharedName: sharedNames.has(recipe.nameKey), recipesById })}${signalsLabel ? `. ${signalsLabel}` : ''}`}
       >
         <View style={styles.body}>
           <Text style={styles.name} numberOfLines={1}>{recipe.name}</Text>
@@ -709,7 +709,7 @@ export function SuggestMealsSheet({
             <Text style={styles.meta} numberOfLines={1}>
               {landedDay
                 ? `Planned for ${format(landedDay, 'EEEE')}`
-                : describeRecipe(recipe, null, { sharedName: sharedNames.has(recipe.nameKey) })}
+                : describeRecipe(recipe, null, { sharedName: sharedNames.has(recipe.nameKey), recipesById })}
             </Text>
           )}
           {!landedDay && (pantryLabel || cookHistory) && (
@@ -1061,7 +1061,7 @@ export function SuggestMealsSheet({
                 }
               />
               <ScrollView contentContainerStyle={styles.previewList}>
-                <Text style={styles.previewMeta}>{describeRecipe(previewRecipe)}</Text>
+                <Text style={styles.previewMeta}>{describeRecipe(previewRecipe, null, { recipesById })}</Text>
                 <View style={styles.previewLinkRow}>
                   <InlineAction
                     label="View full recipe"

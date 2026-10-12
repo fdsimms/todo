@@ -618,7 +618,7 @@ export interface LikelyInPantryCount {
  * because it has to agree with the list the detail screen puts on screen right
  * under it. What the component clause is for is saying there's more: "3
  * ingredients" alone would read as the whole shop for a dish that's mostly its
- * parts. A caller with the library (the detail screen) passes `recipesById`, and
+ * parts. A caller with the library passes `recipesById`, and
  * the clause then says how many ingredients the components bring.
  *
  * `sharedName` moves the attribution to the front, for a recipe whose name
