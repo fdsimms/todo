@@ -22,6 +22,9 @@ import {
   alternativeCaptions,
   recipeAlternativeCaptions,
   choiceGroupKey,
+  componentPlacement,
+  ingredientLayout,
+  reanchorComponents,
 } from '../utils/recipeComponents';
 import type { Recipe, RecipeComponent, RecipeIngredient, RecipePrepTask } from '../types';
 
@@ -906,5 +909,163 @@ describe('alternativeCaptions', () => {
     const a = ing('Serrano', 'Pepper');
     const b = { ...ing('x', 'Pepper'), name: '  ' };
     expect(alternativeCaptions([a, b]).get(a.id)).toBe('or unnamed');
+  });
+});
+
+describe('component placement', () => {
+  const placed = (c: RecipeComponent, before: string | null, section: string | null = null): RecipeComponent =>
+    ({ ...c, placement: { before, section } });
+
+  describe('normalizeComponent', () => {
+    it('keeps a placement, trimmed, and leaves an unplaced link without the key', () => {
+      const withPlacement = normalizeComponent({ recipeId: 'r2', placement: { before: 'i1', section: '  Sauce ' } });
+      expect(withPlacement?.placement).toEqual({ before: 'i1', section: 'Sauce' });
+      expect(normalizeComponent({ recipeId: 'r2' })).not.toHaveProperty('placement');
+    });
+
+    it('reads a missing anchor as the end and a blank section as no heading', () => {
+      expect(normalizeComponent({ recipeId: 'r2', placement: { before: '', section: '  ' } })?.placement)
+        .toEqual({ before: null, section: null });
+    });
+
+    it('drops garbage, and keeps a placement on a link in a choice group', () => {
+      expect(normalizeComponent({ recipeId: 'r2', placement: 'x' })).not.toHaveProperty('placement');
+      expect(normalizeComponent({ recipeId: 'r2', choiceGroup: 'Side', placement: { before: 'i1', section: null } })?.placement)
+        .toEqual({ before: 'i1', section: null });
+    });
+  });
+
+  describe('componentPlacement', () => {
+    it('is the placement a link carries, and nothing for one never placed', () => {
+      const c = placed(link('r2', 'Mash'), 'i1');
+      expect(componentPlacement(c)).toEqual({ before: 'i1', section: null });
+      expect(componentPlacement(link('r3', 'Rub'))).toBeUndefined();
+    });
+  });
+
+  describe('ingredientLayout', () => {
+    it('is the lines, then the components, when nothing is placed', () => {
+      const a = ing('A');
+      const b = ing('B');
+      const c = link('r2', 'Mash');
+      const r = recipe('r1', 'Dinner', { ingredients: [a, b], components: [c] });
+      expect(ingredientLayout(r)).toEqual([
+        { kind: 'ingredient', ingredient: a },
+        { kind: 'ingredient', ingredient: b },
+        { kind: 'component', component: c },
+      ]);
+    });
+
+    it('puts a component directly above the line it is anchored to', () => {
+      const a = ing('A');
+      const b = ing('B');
+      const c = placed(link('r2', 'Mash'), b.id);
+      const r = recipe('r1', 'Dinner', { ingredients: [a, b], components: [c] });
+      expect(ingredientLayout(r).map(i => (i.kind === 'ingredient' ? i.ingredient.name : i.component.name)))
+        .toEqual(['A', 'Mash', 'B']);
+    });
+
+    it('keeps component order within one slot, and puts a first-placed part above everything', () => {
+      const a = ing('A');
+      const first = placed(link('r2', 'One'), a.id);
+      const second = placed(link('r3', 'Two'), a.id);
+      const r = recipe('r1', 'Dinner', { ingredients: [a], components: [first, second] });
+      expect(ingredientLayout(r).map(i => (i.kind === 'ingredient' ? i.ingredient.name : i.component.name)))
+        .toEqual(['One', 'Two', 'A']);
+    });
+
+    it('sends an anchor that no longer resolves to the end', () => {
+      const a = ing('A');
+      const gone = placed(link('r2', 'Gone'), 'missing');
+      const r = recipe('r1', 'Dinner', { ingredients: [a], components: [gone] });
+      expect(ingredientLayout(r).map(i => (i.kind === 'ingredient' ? i.ingredient.name : i.component.name)))
+        .toEqual(['A', 'Gone']);
+    });
+
+    it('places a link in a choice group like any other when it has a placement', () => {
+      const a = ing('A');
+      const b = ing('B');
+      const rice = { ...placed(link('r2', 'Rice'), b.id), choiceGroup: 'Side' };
+      const r = recipe('r1', 'Dinner', { ingredients: [a, b], components: [rice] });
+      expect(ingredientLayout(r).map(i => (i.kind === 'ingredient' ? i.ingredient.name : i.component.name)))
+        .toEqual(['A', 'Rice', 'B']);
+    });
+
+    it('draws an unplaced link that shares an ingredient’s group right after that group’s last line', () => {
+      const corn = ing('Corn tortillas', 'Tortillas');
+      const flour = ing('Flour tortillas', 'Tortillas');
+      const salsa = ing('Salsa');
+      const homemade = { ...link('r2', 'Homemade tortillas'), choiceGroup: 'Tortillas' };
+      const r = recipe('r1', 'Tacos', { ingredients: [corn, flour, salsa], components: [homemade] });
+      expect(ingredientLayout(r).map(i => (i.kind === 'ingredient' ? i.ingredient.name : i.component.name)))
+        .toEqual(['Corn tortillas', 'Flour tortillas', 'Homemade tortillas', 'Salsa']);
+    });
+  });
+
+  describe('flattenRecipeIngredients', () => {
+    it('lands a component’s lines between the lines it was placed between', () => {
+      const mash = recipe('r2', 'Mash', { ingredients: [ing('Potatoes')] });
+      const steak = ing('Steak');
+      const salt = ing('Salt');
+      const dinner = recipe('r1', 'Dinner', {
+        ingredients: [steak, salt],
+        components: [placed(link('r2', 'Mash'), salt.id, 'Sides')],
+      });
+      const flat = flattenRecipeIngredients(dinner, recipeMap([dinner, mash]));
+      expect(flat.map(f => f.ingredient.name)).toEqual(['Steak', 'Potatoes', 'Salt']);
+      expect(flat.map(f => f.depth)).toEqual([0, 1, 0]);
+      expect(flat[1].linkSection).toBe('Sides');
+    });
+
+    it('is unchanged for a recipe whose components were never placed', () => {
+      const mash = recipe('r2', 'Mash', { ingredients: [ing('Potatoes')] });
+      const dinner = recipe('r1', 'Dinner', { ingredients: [ing('Steak')], components: [link('r2', 'Mash')] });
+      expect(flattenRecipeIngredients(dinner, recipeMap([dinner, mash])).map(f => f.ingredient.name))
+        .toEqual(['Steak', 'Potatoes']);
+    });
+
+    it('still skips a component twice reached, and one the library no longer has', () => {
+      const mash = recipe('r2', 'Mash', { ingredients: [ing('Potatoes')] });
+      const a = ing('A');
+      const dinner = recipe('r1', 'Dinner', {
+        ingredients: [a],
+        components: [placed(link('r2', 'Mash'), a.id), placed(link('gone', 'Gone'), a.id)],
+      });
+      expect(flattenRecipeIngredients(dinner, recipeMap([dinner, mash])).map(f => f.ingredient.name))
+        .toEqual(['Potatoes', 'A']);
+    });
+
+    it('follows the placement through a component that has its own placed component', () => {
+      const salsa = recipe('r3', 'Salsa', { ingredients: [ing('Tomato')] });
+      const x = ing('X');
+      const y = ing('Y');
+      const fish = recipe('r2', 'Fish', { ingredients: [x, y], components: [placed(link('r3', 'Salsa'), y.id)] });
+      const dinner = recipe('r1', 'Dinner', { ingredients: [ing('Rice')], components: [link('r2', 'Fish')] });
+      expect(flattenRecipeIngredients(dinner, recipeMap([dinner, fish, salsa])).map(f => f.ingredient.name))
+        .toEqual(['Rice', 'X', 'Tomato', 'Y']);
+    });
+  });
+
+  describe('reanchorComponents', () => {
+    const lines = [ing('A'), ing('B'), ing('C')];
+
+    it('moves a part above a removed line to the next line that survives', () => {
+      const c = placed(link('r2', 'Mash'), lines[1].id, 'Sauce');
+      const [moved] = reanchorComponents([c], lines, new Set([lines[1].id]));
+      expect(moved.placement).toEqual({ before: lines[2].id, section: 'Sauce' });
+    });
+
+    it('skips over several removed lines in a row, and falls to the end past the last', () => {
+      const c = placed(link('r2', 'Mash'), lines[1].id);
+      expect(reanchorComponents([c], lines, new Set([lines[1].id, lines[2].id]))[0].placement?.before).toBeNull();
+    });
+
+    it('leaves a part whose anchor stays, and an unplaced one, alone', () => {
+      const keep = placed(link('r2', 'Mash'), lines[0].id);
+      const bare = link('r3', 'Rub');
+      const out = reanchorComponents([keep, bare], lines, new Set([lines[1].id]));
+      expect(out[0]).toBe(keep);
+      expect(out[1]).toBe(bare);
+    });
   });
 });

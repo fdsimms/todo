@@ -116,7 +116,8 @@ describe('ingredientHeadings', () => {
     recipeId: string,
     depth: number,
     section: string | null = null,
-  ): FlatSectionRow => ({ recipe: { id: recipeId }, depth, ingredient: { section } });
+    linkSection?: string | null,
+  ): FlatSectionRow => ({ recipe: { id: recipeId }, depth, ingredient: { section }, linkSection });
 
   it('opens a section wherever the label changes, and not while it carries on', () => {
     const headings = ingredientHeadings([
@@ -130,7 +131,10 @@ describe('ingredientHeadings', () => {
 
   it('opens nothing for a list with no sections at all', () => {
     const headings = ingredientHeadings([flat('r', 0), flat('r', 0)]);
-    expect(headings).toEqual([{ dish: false, section: null }, { dish: false, section: null }]);
+    expect(headings).toEqual([
+      { dish: false, parentSection: null, resume: false, section: null },
+      { dish: false, parentSection: null, resume: false, section: null },
+    ]);
   });
 
   it('opens a section again after a run of unsectioned lines', () => {
@@ -159,9 +163,49 @@ describe('ingredientHeadings', () => {
       flat('mash', 1, 'Sauce'),
     ]);
     expect(headings).toEqual([
-      { dish: false, section: 'Sauce' },
-      { dish: true, section: 'Sauce' },
+      { dish: false, parentSection: null, resume: false, section: 'Sauce' },
+      { dish: true, parentSection: null, resume: false, section: 'Sauce' },
     ]);
+  });
+
+  describe('a component placed among the root’s lines', () => {
+    it('opens the root heading it sits under, above its own name', () => {
+      const headings = ingredientHeadings([
+        flat('root', 0, 'Sauce'),
+        flat('fish', 1, null, 'For serving'),
+      ]);
+      expect(headings[1]).toMatchObject({ dish: true, parentSection: 'For serving' });
+    });
+
+    it('opens nothing extra when the heading is already the one open', () => {
+      const headings = ingredientHeadings([
+        flat('root', 0, 'Sauce'),
+        flat('fish', 1, null, 'Sauce'),
+      ]);
+      expect(headings[1].parentSection).toBeNull();
+    });
+
+    it('names the root again when its lines resume, without reopening the heading', () => {
+      const headings = ingredientHeadings([
+        flat('root', 0, 'Sauce'),
+        flat('fish', 1, null, 'Sauce'),
+        flat('root', 0, 'Sauce'),
+      ]);
+      expect(headings[2]).toMatchObject({ resume: true, dish: false, section: null });
+    });
+
+    it('reopens a root heading that changed while a component was open', () => {
+      const headings = ingredientHeadings([
+        flat('root', 0, 'Sauce'),
+        flat('fish', 1, null, 'Sauce'),
+        flat('root', 0, 'For serving'),
+      ]);
+      expect(headings[2]).toMatchObject({ resume: true, section: 'For serving' });
+    });
+
+    it('does not mark the first line of the list as a resume', () => {
+      expect(ingredientHeadings([flat('root', 0)])[0].resume).toBe(false);
+    });
   });
 
   it('is empty for an empty list', () => {

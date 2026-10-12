@@ -4140,8 +4140,17 @@ function seedRecipes(): DemoRecipes {
   // The default is the group's first link in list order, so mash is the usual.
   addComponent(steak.id, mash.id, 'Potatoes');
   addComponent(steak.id, roasties.id, 'Potatoes');
-  // ...and one unconditional component alongside them.
+  // ...and one unconditional component alongside them, dragged above the
+  // steak's own lines: a placed part, which every list reads in that order.
   addComponent(steak.id, salad.id);
+  const saladLink = componentIdFor(steak.id, salad.id);
+  const steakLines = useRecipeStore.getState().recipeById(steak.id)?.ingredients ?? [];
+  if (saladLink && steakLines.length > 0) {
+    useRecipeStore.getState().reorderIngredients(steak.id, steakLines.map(i => i.id), new Map(), {
+      order: [saladLink],
+      placements: new Map([[saladLink, { before: steakLines[0].id, section: null }]]),
+    });
+  }
   const rest = addPrepTask(steak.id, 'Take the steak out of the fridge');
   if (rest) updatePrepTask(steak.id, rest.id, { offsetDays: 0, reminderOffsetMinutes: 45 });
   markCooked(steak.id);
