@@ -487,7 +487,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
           value={leftoverKeepOpen
             ? undefined
             : (leftoverKeepDays === null ? undefined : describeKeepDays(leftoverKeepDays))}
-          hint={`How long this dish keeps in the fridge. Its leftovers use this many days instead of the usual ${LEFTOVER_KEEP_DAYS_DEFAULT}.`}
+          hint={`How long this keeps once it's made. Its leftovers use this many days instead of the usual ${LEFTOVER_KEEP_DAYS_DEFAULT}.`}
           expanded={leftoverKeepOpen}
           onPress={() => { animateLayout(); setLeftoverKeepOpen(v => !v); }}
           onClear={leftoverKeepDays !== null
