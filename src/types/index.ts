@@ -6940,10 +6940,6 @@ export interface RecipeComponent {
   // heading. Present, it is the position a person dragged the part to, and every
   // surface that flattens the recipe (the shopping list, cook mode, the share
   // text) honors it, so the order on the recipe page is the order everywhere.
-  //
-  // **Never set on a link in a choice group** (`componentPlacement` is the one
-  // reader, and drops it): an alternative is drawn beside its siblings, under
-  // the group's one header, and a position of its own would pull it away.
   placement?: ComponentPlacement;
 }
 

@@ -928,18 +928,18 @@ describe('component placement', () => {
         .toEqual({ before: null, section: null });
     });
 
-    it('drops garbage and a placement on a link in a choice group', () => {
+    it('drops garbage, and keeps a placement on a link in a choice group', () => {
       expect(normalizeComponent({ recipeId: 'r2', placement: 'x' })).not.toHaveProperty('placement');
-      expect(normalizeComponent({ recipeId: 'r2', choiceGroup: 'Side', placement: { before: null, section: null } }))
-        .not.toHaveProperty('placement');
+      expect(normalizeComponent({ recipeId: 'r2', choiceGroup: 'Side', placement: { before: 'i1', section: null } })?.placement)
+        .toEqual({ before: 'i1', section: null });
     });
   });
 
   describe('componentPlacement', () => {
-    it('is the placement of an ungrouped link and nothing for a grouped one', () => {
+    it('is the placement a link carries, and nothing for one never placed', () => {
       const c = placed(link('r2', 'Mash'), 'i1');
       expect(componentPlacement(c)).toEqual({ before: 'i1', section: null });
-      expect(componentPlacement({ ...c, choiceGroup: 'Side' })).toBeUndefined();
+      expect(componentPlacement(link('r3', 'Rub'))).toBeUndefined();
     });
   });
 
@@ -974,13 +974,31 @@ describe('component placement', () => {
         .toEqual(['One', 'Two', 'A']);
     });
 
-    it('sends an anchor that no longer resolves, and a grouped link, to the end', () => {
+    it('sends an anchor that no longer resolves to the end', () => {
       const a = ing('A');
       const gone = placed(link('r2', 'Gone'), 'missing');
-      const grouped = { ...placed(link('r3', 'Rice'), a.id), choiceGroup: 'Side' };
-      const r = recipe('r1', 'Dinner', { ingredients: [a], components: [gone, grouped] });
+      const r = recipe('r1', 'Dinner', { ingredients: [a], components: [gone] });
       expect(ingredientLayout(r).map(i => (i.kind === 'ingredient' ? i.ingredient.name : i.component.name)))
-        .toEqual(['A', 'Gone', 'Rice']);
+        .toEqual(['A', 'Gone']);
+    });
+
+    it('places a link in a choice group like any other when it has a placement', () => {
+      const a = ing('A');
+      const b = ing('B');
+      const rice = { ...placed(link('r2', 'Rice'), b.id), choiceGroup: 'Side' };
+      const r = recipe('r1', 'Dinner', { ingredients: [a, b], components: [rice] });
+      expect(ingredientLayout(r).map(i => (i.kind === 'ingredient' ? i.ingredient.name : i.component.name)))
+        .toEqual(['A', 'Rice', 'B']);
+    });
+
+    it('draws an unplaced link that shares an ingredient’s group right after that group’s last line', () => {
+      const corn = ing('Corn tortillas', 'Tortillas');
+      const flour = ing('Flour tortillas', 'Tortillas');
+      const salsa = ing('Salsa');
+      const homemade = { ...link('r2', 'Homemade tortillas'), choiceGroup: 'Tortillas' };
+      const r = recipe('r1', 'Tacos', { ingredients: [corn, flour, salsa], components: [homemade] });
+      expect(ingredientLayout(r).map(i => (i.kind === 'ingredient' ? i.ingredient.name : i.component.name)))
+        .toEqual(['Corn tortillas', 'Flour tortillas', 'Homemade tortillas', 'Salsa']);
     });
   });
 

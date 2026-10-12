@@ -102,7 +102,7 @@ export function normalizeComponent(raw: unknown): RecipeComponent | null {
   const choiceGroup = typeof r.choiceGroup === 'string'
     ? r.choiceGroup.trim().slice(0, RECIPE_CHOICE_GROUP_MAX_LENGTH)
     : '';
-  const placement = choiceGroup ? undefined : normalizePlacement(r.placement);
+  const placement = normalizePlacement(r.placement);
   return {
     id: typeof r.id === 'string' && r.id ? r.id : generateId(),
     recipeId,
@@ -125,12 +125,11 @@ function normalizePlacement(raw: unknown): ComponentPlacement | undefined {
 
 /**
  * Where a component sits among its parent's ingredients, or undefined when it
- * has no position of its own: never placed, or in a choice group, whose
- * alternatives are drawn together and so cannot be placed one at a time.
- * Every reader of a placement goes through this rather than `component.placement`.
+ * was never placed. Every reader of a placement goes through this rather than
+ * `component.placement`.
  */
 export function componentPlacement(component: RecipeComponent): ComponentPlacement | undefined {
-  return component.choiceGroup ? undefined : component.placement;
+  return component.placement;
 }
 
 /** One line of a recipe's ingredient list, with the parts placed among them — see `ingredientLayout`. */
@@ -143,28 +142,41 @@ export type LayoutItem =
  * order the recipe page shows and every flatten reads.
  *
  * A component sits directly above the ingredient its placement names, so one
- * placed before the same line keeps component order. Anything with no usable
- * placement (never placed, in a choice group, or anchored to a line that is
- * gone) goes after the last ingredient in component order, which for a recipe
- * with no placements at all is exactly the order the walk always had.
+ * placed before the same line keeps component order. An unplaced component in
+ * a choice group an ingredient also carries sits right after that group's last
+ * ingredient, where the page has always drawn it ("buy rice, or cook this
+ * instead"). Anything else with no usable placement (never placed, or anchored
+ * to a line that is gone) goes after the last ingredient in component order,
+ * which for a recipe with no placements at all is exactly the order the walk
+ * always had.
  */
 export function ingredientLayout(recipe: Recipe): LayoutItem[] {
   const ingredientIds = new Set(recipe.ingredients.map(i => i.id));
+  const lastOfGroup = new Map<string, string>();
+  for (const ingredient of recipe.ingredients) {
+    if (ingredient.choiceGroup) lastOfGroup.set(ingredient.choiceGroup, ingredient.id);
+  }
   const before = new Map<string, RecipeComponent[]>();
+  const after = new Map<string, RecipeComponent[]>();
   const trailing: RecipeComponent[] = [];
+  const push = (map: Map<string, RecipeComponent[]>, key: string, component: RecipeComponent) => {
+    const list = map.get(key);
+    if (list) list.push(component); else map.set(key, [component]);
+  };
   for (const component of recipe.components) {
     const anchor = componentPlacement(component)?.before ?? null;
-    if (anchor && ingredientIds.has(anchor)) {
-      const list = before.get(anchor);
-      if (list) list.push(component); else before.set(anchor, [component]);
-    } else {
-      trailing.push(component);
-    }
+    const folded = !component.placement && component.choiceGroup
+      ? lastOfGroup.get(component.choiceGroup)
+      : undefined;
+    if (anchor && ingredientIds.has(anchor)) push(before, anchor, component);
+    else if (folded) push(after, folded, component);
+    else trailing.push(component);
   }
   const out: LayoutItem[] = [];
   for (const ingredient of recipe.ingredients) {
     for (const component of before.get(ingredient.id) ?? []) out.push({ kind: 'component', component });
     out.push({ kind: 'ingredient', ingredient });
+    for (const component of after.get(ingredient.id) ?? []) out.push({ kind: 'component', component });
   }
   for (const component of trailing) out.push({ kind: 'component', component });
   return out;

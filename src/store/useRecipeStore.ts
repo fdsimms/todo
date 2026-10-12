@@ -429,8 +429,9 @@ interface RecipeStore {
     /**
      * The components that sat in the same merged list, written in the same
      * save: `order` is their ids as dropped and `placements` where each now
-     * sits (see `ComponentPlacement`). A component in a choice group is left
-     * alone, since its placement is never read.
+     * sits (see `ComponentPlacement`). The array follows the dropped order, so
+     * a choice group's first option (its default) is whichever the list shows
+     * first, the same rule dragging an ingredient already follows.
      */
     components?: { order: string[]; placements: ReadonlyMap<string, ComponentPlacement> },
   ) => void;
@@ -1366,14 +1367,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     if (!recipe.components.some(c => c.id === componentId)) return;
     save(set, {
       ...recipe,
-      // An alternative is drawn with its group, so a position it had as a part
-      // on its own goes (`componentPlacement` would ignore it anyway, but a
-      // stale one would come back if the group were later dissolved).
-      components: recipe.components.map(c => {
-        if (c.id !== componentId) return c;
-        const { placement: _placement, ...rest } = c;
-        return clean ? { ...rest, choiceGroup: clean } : { ...c, choiceGroup: clean };
-      }),
+      components: recipe.components.map(c => (c.id === componentId ? { ...c, choiceGroup: clean } : c)),
     });
   },
 
@@ -1614,26 +1608,20 @@ function unlinkIfChanged(recipe: Recipe, changed: boolean): { cookbookId?: strin
 }
 
 /**
- * The components after a drop in the merged ingredient list. The placeable ones
- * (no choice group) are put back into the slots they already held, in the order
- * they were dropped, so a component in a choice group keeps its place in the
- * array and the group's default (its first member) is not disturbed.
+ * The components after a drop in the merged ingredient list: in the order they
+ * were dropped, each carrying the placement the caller resolved for it. Any the
+ * caller didn't name keep their relative order after the ones it did, the same
+ * stale-list rule `reorderIngredients` follows for ingredients.
  */
 function placeComponents(
   components: readonly Recipe['components'][number][],
   placed: { order: string[]; placements: ReadonlyMap<string, ComponentPlacement> },
 ): Recipe['components'] {
-  const free = components.filter(c => !c.choiceGroup);
   const rank = new Map(placed.order.map((id, i) => [id, i]));
-  // Anything the caller didn't name keeps its relative place after the ones it
-  // did, the same stale-list rule `reorderIngredients` follows for ingredients.
-  const sorted = [...free].sort((a, b) => (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity));
-  let next = 0;
-  return components.map(c => {
-    if (c.choiceGroup) return c;
-    const target = sorted[next++];
-    const placement = placed.placements.get(target.id);
-    return placement ? { ...target, placement } : target;
+  const sorted = [...components].sort((a, b) => (rank.get(a.id) ?? placed.order.length) - (rank.get(b.id) ?? placed.order.length));
+  return sorted.map(c => {
+    const placement = placed.placements.get(c.id);
+    return placement ? { ...c, placement } : c;
   });
 }
 

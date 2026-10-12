@@ -566,10 +566,8 @@ export function RecipeDetailScreen() {
     let prevSection: string | null = null;
     for (const item of ingredientLayout(recipe)) {
       if (item.kind === 'component') {
-        // A part in a choice group is drawn with its group (renderComponent's
-        // other call sites), not placed one at a time, so it has no row here.
         const resolved = resolvedById.get(item.component.id);
-        if (!resolved || item.component.choiceGroup) continue;
+        if (!resolved) continue;
         // An unplaced part carries on under whatever heading is open, which is
         // where it is drawn (after the last line), so it opens no heading.
         const placement = componentPlacement(item.component);
@@ -673,8 +671,8 @@ export function RecipeDetailScreen() {
 
   // Every label an ingredient carries — what makes a group "mixed" (see the
   // cross-type groups note in recipeComponents.ts). A component sharing one of
-  // these is folded in next to that ingredient instead of getting a header of
-  // its own; see mixedComponentsByLabel/lastIngredientIdByGroup below.
+  // these is drawn right after that group's last ingredient (ingredientLayout)
+  // instead of getting a header of its own.
   const ingredientChoiceLabels = useMemo(
     () => new Set((recipe?.ingredients ?? []).filter(i => i.choiceGroup).map(i => i.choiceGroup as string)),
     [recipe],
@@ -693,37 +691,6 @@ export function RecipeDetailScreen() {
     return raw;
   }, [recipe, ingredientChoiceLabels]);
 
-  // The last ingredient (in stored order) carrying each label, and the
-  // components that share it — where a mixed group's component options fold
-  // into the ingredient list, right after the option they're an alternative
-  // to. Components with no matching ingredient label render in their usual
-  // trailing block instead (trailingComponents, used where `components` was).
-  const lastIngredientIdByGroup = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const ing of recipe?.ingredients ?? []) {
-      if (ing.choiceGroup) map.set(ing.choiceGroup, ing.id);
-    }
-    return map;
-  }, [recipe]);
-  const mixedComponentsByLabel = useMemo(() => {
-    const map = new Map<string, ResolvedComponent[]>();
-    for (const resolved of components) {
-      const label = resolved.component.choiceGroup;
-      if (!label || !ingredientChoiceLabels.has(label)) continue;
-      const list = map.get(label);
-      if (list) list.push(resolved); else map.set(label, [resolved]);
-    }
-    return map;
-  }, [components, ingredientChoiceLabels]);
-  // Only the parts in a choice group of their own. One with no group is a row
-  // in the ingredient list (mergedIngredientRows), where it can be dragged.
-  const trailingComponents = useMemo(
-    () => components.filter(resolved => {
-      const label = resolved.component.choiceGroup;
-      return !!label && !ingredientChoiceLabels.has(label);
-    }),
-    [components, ingredientChoiceLabels],
-  );
 
   // The header above only opens at a group's *first* option, so on its own every
   // other option reads as an ordinary line — and a list you read as ordinary is
@@ -1436,15 +1403,6 @@ export function RecipeDetailScreen() {
         </TouchableOpacity>
         </PaintSelectionRow>
         </SwipeableRow>
-        {/* A component sharing this ingredient's choice group folds in right
-            here, after the group's last ingredient option — not in its own
-            block at the bottom of the card (see trailingComponents below).
-            Not part of the SortableList's own data, just extra content this
-            one row renders: the drag math only ever tracks ingredient rows,
-            and a linked component isn't one — it's still removed and
-            re-grouped from its own long press, same as any other component. */}
-        {!!choiceGroup && lastIngredientIdByGroup.get(choiceGroup) === ingredient.id
-          && (mixedComponentsByLabel.get(choiceGroup) ?? []).map(resolved => renderComponent(resolved, true))}
       </View>
     );
   };
@@ -2246,14 +2204,6 @@ export function RecipeDetailScreen() {
                 renderItem={renderMergedRow}
               />
             )}
-            {/* Marked so a shared part reads as part of this recipe from the
-                first list you'd check, not only several scrolls down in its
-                own Components section (which stays the place to remove one or
-                set a choice-group default). Only the components with nowhere
-                more specific to be — one sharing an ingredient's choice group
-                folds in next to that ingredient instead, inside renderIngredient
-                itself (see mixedComponentsByLabel above). */}
-            {trailingComponents.map(resolved => renderComponent(resolved, true))}
           </View>
         )}
 

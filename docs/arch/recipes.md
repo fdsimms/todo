@@ -138,10 +138,12 @@ every surface that flattens the recipe, because there is one walk (`flattenRecip
   and a heading a part sits under keeps a declared-empty heading from being redeclared
   (`save()` prunes against both lists).
 - **Absent means unplaced**, which reads exactly as before (after the last ingredient, under no
-  heading), so no migration. A part in a choice group never has one (`componentPlacement` is the one
-  reader and drops it, and `setComponentChoiceGroup` clears it): alternatives are drawn together
-  under one header, and a position of its own would pull one away. Those keep their long press for
-  the either/or sheet, and every other part's long press is the drag.
+  heading), so no migration. The one exception is a part sharing a choice group with an ingredient:
+  unplaced, it is drawn right after that group's last line (`ingredientLayout`), where the page has
+  always put it. A part in a choice group is placed like any other. **The components array follows the
+  drop** (`placeComponents`), so a group's default (its first option) and its "Choose one" header are
+  whichever the list shows first, the same rule dragging an ingredient already follows; the either/or
+  sheet is still one long press away in the Components section, which keeps that gesture.
 - **Interleaving makes headings ambiguous, which `ingredientHeadings` resolves.** A part placed
   under a root heading opens it above its own name (`parentSection`), and the root's own lines
   coming back after a part name the root again (`resume`) instead of reading as the part's. The root's

@@ -2488,22 +2488,24 @@ describe('component placement', () => {
     expect(placeOf(dinner.id, mashLink.id)).toBeUndefined();
   });
 
-  it('keeps a component in a choice group where it is, and gives it no placement', () => {
+  it('places a component in a choice group like any other, and the array follows the drop', () => {
     const { dinner, steak, salt, mashLink, rubLink } = seedDinner();
     useRecipeStore.getState().setComponentChoiceGroup(dinner.id, mashLink.id, 'Side');
 
     useRecipeStore.getState().reorderIngredients(dinner.id, [steak.id, salt.id], new Map(), {
-      order: [rubLink.id],
-      placements: new Map([[rubLink.id, { before: salt.id, section: null }]]),
+      order: [rubLink.id, mashLink.id],
+      placements: new Map([
+        [rubLink.id, { before: steak.id, section: null }],
+        [mashLink.id, { before: salt.id, section: null }],
+      ]),
     });
 
     const links = useRecipeStore.getState().recipeById(dinner.id)!.components;
-    expect(links.map(c => c.id)).toEqual([mashLink.id, rubLink.id]);
-    expect(links[0].placement).toBeUndefined();
-    expect(links[1].placement).toEqual({ before: salt.id, section: null });
+    expect(links.map(c => c.id)).toEqual([rubLink.id, mashLink.id]);
+    expect(links[1]).toMatchObject({ choiceGroup: 'Side', placement: { before: salt.id, section: null } });
   });
 
-  it('drops a placement when the link joins a choice group', () => {
+  it('keeps a placement when the link joins or leaves a choice group', () => {
     const { dinner, salt, mashLink } = seedDinner();
     useRecipeStore.getState().reorderIngredients(dinner.id, [salt.id], new Map(), {
       order: [mashLink.id],
@@ -2511,10 +2513,10 @@ describe('component placement', () => {
     });
 
     useRecipeStore.getState().setComponentChoiceGroup(dinner.id, mashLink.id, 'Side');
-    expect(placeOf(dinner.id, mashLink.id)).toBeUndefined();
+    expect(placeOf(dinner.id, mashLink.id)).toEqual({ before: salt.id, section: 'Sides' });
 
     useRecipeStore.getState().setComponentChoiceGroup(dinner.id, mashLink.id, null);
-    expect(placeOf(dinner.id, mashLink.id)).toBeUndefined();
+    expect(placeOf(dinner.id, mashLink.id)).toEqual({ before: salt.id, section: 'Sides' });
   });
 
   it('moves a part to the next line when the line under it is removed, one or many', () => {

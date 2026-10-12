@@ -2383,11 +2383,36 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       });
     }
     if (f.components !== undefined) {
-      for (const c of current().components) store().removeComponent(id, c.id);
+      // A link that is still wanted is kept rather than removed and re-added,
+      // so the position a person dragged it to (`RecipeComponent.placement`)
+      // survives an edit that only touched other parts. Only a group change,
+      // an added link and a removed one are written.
+      const wantedIds = new Set(f.components.map(c => c.recipeId));
+      for (const c of current().components) {
+        if (!wantedIds.has(c.recipeId)) store().removeComponent(id, c.id);
+      }
       for (const c of f.components) {
+        const existing = current().components.find(x => x.recipeId === c.recipeId);
+        if (existing) {
+          if ((existing.choiceGroup ?? null) !== (c.choiceGroup ?? null)) {
+            store().setComponentChoiceGroup(id, existing.id, c.choiceGroup ?? null);
+          }
+          continue;
+        }
         if (!store().addComponent(id, c.recipeId, c.choiceGroup ?? null)) {
           throw new Error(`Could not use recipe ${c.recipeId} inside this one.`);
         }
+      }
+      // The order given is the order kept (it decides a group's default), and
+      // no placement is touched.
+      const order = f.components
+        .map(c => current().components.find(x => x.recipeId === c.recipeId)?.id)
+        .filter((cid): cid is string => !!cid);
+      if (order.join() !== current().components.map(c => c.id).join()) {
+        store().reorderIngredients(id, current().ingredients.map(i => i.id), new Map(), {
+          order,
+          placements: new Map(),
+        });
       }
     }
     if (f.prepTasks !== undefined) {
