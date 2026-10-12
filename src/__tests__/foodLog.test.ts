@@ -4,7 +4,6 @@ import {
   combineFoodNutrition,
   composeFoodAmount,
   describeFoodLogEntry,
-  describeFoodLogTotals,
   ESTIMATE_AMOUNTS,
   MAX_ESTIMATE_MULTIPLE,
   currentEstimateCount,
@@ -584,35 +583,6 @@ describe('resolveFoodLogDrop', () => {
     ];
     const resolved = resolveFoodLogDrop(items);
     expect(resolved[0].slot).toBeNull();
-  });
-});
-
-describe('describeFoodLogTotals', () => {
-  it('leads with calories and protein', () => {
-    const totals = foodLogTotals([
-      entry({ nutrition: panel({ amounts: { calorieKcal: 400, proteinG: 20 } }) }),
-      entry({ nutrition: panel({ amounts: { calorieKcal: 600, proteinG: 30 } }) }),
-    ]);
-    expect(describeFoodLogTotals(totals)).toBe('1000 cal, 50g protein');
-  });
-
-  it('says what the figure covers whenever it is not the whole day', () => {
-    // Without the clause the number reads as the day's calorie count rather
-    // than as the count of what was logged and measurable.
-    const totals = foodLogTotals([
-      entry({ nutrition: panel({ amounts: { calorieKcal: 400, proteinG: 20 } }) }),
-      entry({ nutrition: panel({ amounts: { proteinG: 30 } }) }),
-    ]);
-    expect(describeFoodLogTotals(totals)).toBe('400 cal, 50g protein, from 1 of 2 entries');
-  });
-
-  it('says nothing for a day with no entries', () => {
-    expect(describeFoodLogTotals(foodLogTotals([]))).toBeNull();
-  });
-
-  it('says nothing when nothing it leads with was stated', () => {
-    const totals = foodLogTotals([entry({ nutrition: panel({ amounts: { sodiumMg: 400 } }) })]);
-    expect(describeFoodLogTotals(totals)).toBeNull();
   });
 });
 

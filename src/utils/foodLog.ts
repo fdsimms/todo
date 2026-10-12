@@ -830,41 +830,6 @@ export function resolveFoodLogDrop(items: readonly FoodLogListItem[]): FoodLogEn
   return resolved;
 }
 
-/** The nutrients a day's one-line summary leads with, same two the recipe line uses. */
-const SUMMARY_KEYS: readonly NutrientKey[] = ['calorieKcal', 'proteinG'];
-
-const SUMMARY_LABEL: Record<string, (amount: number) => string> = {
-  calorieKcal: n => `${Math.round(n)} cal`,
-  proteinG: n => `${Math.round(n)}g protein`,
-};
-
-/**
- * "1,840 cal, 78g protein, from 5 of 7 entries", or null while there is nothing
- * worth saying.
- *
- * **The coverage clause is not optional**, and is what stops the number reading
- * as the day's calorie count rather than as the count of what was logged and
- * measurable. It drops only when every entry stated the nutrient, exactly as
- * `describeRecipeNutrition` drops its own. Counted per nutrient rather than per
- * day, because a day where every entry has calories and three have fibre is
- * fully covered for one figure and not the other.
- */
-export function describeFoodLogTotals(totals: FoodLogTotals): string | null {
-  if (totals.entries === 0) return null;
-  const parts = SUMMARY_KEYS
-    .filter(key => totals.total[key] !== undefined)
-    .map(key => SUMMARY_LABEL[key](totals.total[key] as number));
-  if (parts.length === 0) return null;
-
-  const covered = Math.min(...SUMMARY_KEYS
-    .filter(key => totals.total[key] !== undefined)
-    .map(key => totals.reported[key] ?? 0));
-  const clause = covered === totals.entries
-    ? ''
-    : `, from ${covered} of ${totals.entries} ${totals.entries === 1 ? 'entry' : 'entries'}`;
-  return `${parts.join(', ')}${clause}`;
-}
-
 /** One entry's stated amount of a nutrient, or `null` when it never said. */
 export interface NutrientContribution {
   entry: FoodLogEntry;

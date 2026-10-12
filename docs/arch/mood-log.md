@@ -687,8 +687,8 @@ measurement and isn't.
   number. One constant (`COMPLETE_DAY_SLOTS`) answers for both readers, because
   a day either stands for a day's eating or it doesn't.
 - **A nutrient only counts for a day every entry stated.** A total covering five
-  of seven entries is fine on the day's own card, where `describeFoodLogTotals`
-  prints the clause saying so. Across days there is nowhere to print one and the
+  of seven entries is fine on the day's own card, where tapping a row lists the
+  entries behind it. Across days there is nowhere to show that and the
   coverage varies day to day, so the variation reads as variation in the food.
   Stats' per-nutrient averages (`nutrientAverages`) apply the same rule for the
   same reason, since a month's average is an across-days read too; there, the

@@ -681,9 +681,9 @@ export function sourceMix(
  *
  * **The coverage rule is stricter here than anywhere else in the file**, and it
  * is the difference between a figure and a comparable one. A total covering
- * five of seven entries is perfectly good on the day's own card, where
- * `describeFoodLogTotals` prints the clause that says so. Across days there is
- * nowhere to print it, and the coverage varies day to day, so the variation
+ * five of seven entries is perfectly good on the day's own card, which tapping
+ * a row breaks out by entry. Across days there is nowhere to show that, and the
+ * coverage varies day to day, so the variation
  * reads as variation in the food. A nutrient not stated by every entry that day
  * is therefore absent for the day rather than partial: the same refuse-rather-
  * than-approximate posture `scalePanelToAmount` takes one file over.
