@@ -14,6 +14,7 @@ import {
   dosesOnDay,
   formatDose,
   medicationKey,
+  hasScheduledTask,
   medicationStats,
   taskSupplyFor,
 } from '../utils/medicationLog';
@@ -92,6 +93,8 @@ export function MedicationDetailScreen() {
   // A scheduled medicine whose task already counts a supply: that count is
   // the one to show, and offering a second one here would spend each pill twice.
   const supplyTask = useTaskStore(s => taskSupplyFor(s.tasks, key));
+  const scheduled = useTaskStore(s => hasScheduledTask(s.tasks, key));
+  const addTask = useTaskStore(s => s.addTask);
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
@@ -127,6 +130,22 @@ export function MedicationDetailScreen() {
   const howValue = prefsFor(settings, medName).asNeeded === true ? 'asNeeded'
     : prefsFor(settings, medName).asNeeded === false ? 'scheduled' : 'auto';
   const storedUsuals = prefsFor(settings, medName).usualDoses ?? [];
+  const addDailyTask = () => {
+    haptics.success();
+    const usual = storedUsuals[0] ?? null;
+    addTask({
+      title: medName,
+      recurrenceType: 'daily',
+      dueDate: getCurrentDayStart().toISOString(),
+      medicationName: medName,
+      medicationAmount: usual?.amount ?? null,
+      medicationUnit: usual?.unit ?? null,
+    });
+    Alert.alert(
+      'Daily task added',
+      `${medName} is now on Today every day. Checking it off records the dose. Open the task on Today to change the time or schedule.`,
+    );
+  };
   const storedCap = prefsFor(settings, medName).limit?.maxAmount24h ?? null;
   // An amount and its unit are typed separately, so the half-typed state lives
   // here. The usual amount is added with a button once both make a dose; the
@@ -323,6 +342,15 @@ export function MedicationDetailScreen() {
               surface="page"
             />
           )}
+          {!scheduled && !isArchived && (
+            <InlineAction
+              label="Add daily task"
+              icon="repeat-outline"
+              variant="neutral"
+              onPress={addDailyTask}
+              surface="page"
+            />
+          )}
           <InlineAction
             label="Rename"
             icon="create-outline"
@@ -382,7 +410,7 @@ export function MedicationDetailScreen() {
             }}
           />
           <Text style={styles.fieldHint}>
-            As needed shows a button on the Medications screen that records another dose, and compares how often you take it. From doses marks it as needed once a dose is recorded as needed.
+            As needed shows a button on the Medications screen that records another dose, and compares how often you take it. It is not on Today until you take it; add a daily task to have it listed there every day. From doses marks it as needed once a dose is recorded as needed.
           </Text>
           <Text style={[styles.fieldLabel, styles.panelHeading]}>Usual amounts</Text>
           {storedUsuals.length > 0 && (

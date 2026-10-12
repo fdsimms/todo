@@ -587,3 +587,19 @@ export function taskSupplyFor<T extends MedicationSource & Pick<Task,
     && medicationKey(medicationFor(t)?.name ?? '') === key);
   return matches.sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ?? null;
 }
+
+/**
+ * Whether a medication already has a repeating task that records it: top-level,
+ * open, not archived, and recurring. What decides if the detail page offers to
+ * make one, so a medication that is already scheduled isn't offered a second.
+ */
+export function hasScheduledTask<T extends MedicationSource & Pick<Task,
+  'completed' | 'archived' | 'parentId' | 'recurrenceType'>>(
+  tasks: readonly T[],
+  name: string,
+): boolean {
+  const key = medicationKey(name);
+  if (!key) return false;
+  return tasks.some(t => !t.completed && !t.archived && !t.parentId && t.recurrenceType !== 'none'
+    && medicationKey(medicationFor(t)?.name ?? '') === key);
+}
