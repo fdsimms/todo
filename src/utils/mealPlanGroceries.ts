@@ -1,5 +1,5 @@
 import { format } from 'date-fns/format';
-import type { GroceryItem, GroceryListEntry, ItemProduct, ItemSubLink, MealPlanEntry, Recipe } from '../types';
+import type { GroceryItem, GroceryListEntry, GroceryRecipeSource, ItemProduct, ItemSubLink, MealPlanEntry, Recipe } from '../types';
 import { isKeyInRange } from './mealPlan';
 import { dayKeyToDate } from './dateUtils';
 import { setHours } from 'date-fns/setHours';
@@ -472,6 +472,12 @@ export interface ClassifiedIngredient {
   sourceRecipeId: string | null;
   sourceRecipeTitle: string | null;
   /**
+   * Each recipe's own amount, once the row merged more than one (which is when
+   * the credit above is null). Optional so a hand-built fixture needs none.
+   * See GroceryItem.recipeSources.
+   */
+  recipeSources?: GroceryRecipeSource[];
+  /**
    * `PlannedIngredient.optional`, narrowed to *every* contributing line —
    * a row several recipes call for is only skippable by default when none of
    * them actually need it. One recipe treating "basil" as a garnish and
@@ -700,9 +706,29 @@ export function classifyPlanned(
     // Every contributor has to agree it's optional — see ClassifiedIngredient.optional.
     const optional = group.every(g => g.optional);
 
+    // One entry per recipe, in the order they first appear, each carrying that
+    // recipe's own amounts merged the way the row's chip merges them.
+    let recipeSources: GroceryRecipeSource[] | undefined;
+    if (recipeIds.size > 1) {
+      const byRecipe = new Map<string, { title: string; quantities: string[] }>();
+      for (const g of group) {
+        if (!g.recipeId) continue;
+        const entry = byRecipe.get(g.recipeId) ?? { title: g.recipeTitle ?? '', quantities: [] };
+        entry.quantities.push(g.quantity);
+        byRecipe.set(g.recipeId, entry);
+      }
+      if (byRecipe.size > 1) {
+        recipeSources = [...byRecipe].map(([recipeId, e]) => ({
+          recipeId,
+          title: e.title,
+          quantity: mergeQuantities(e.quantities) || null,
+        }));
+      }
+    }
     rows.push({
       nameKey: key, name, aisle, quantity, sources, category, known: !!match, reason,
       choiceGroup, swappedFrom, sourceRecipeId, sourceRecipeTitle,
+      ...(recipeSources ? { recipeSources } : {}),
       ...(optional ? { optional: true } : {}),
     });
   }

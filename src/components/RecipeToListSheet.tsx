@@ -471,6 +471,7 @@ export function RecipeToListSheet({
         // actually tapped is the honest answer for that case.
         sourceRecipeId: r.sourceRecipeId ?? recipe.id,
         sourceRecipeTitle: r.sourceRecipeTitle ?? recipe.name,
+        recipeSources: r.recipeSources,
         choiceGroup: r.choiceGroup,
       }));
 

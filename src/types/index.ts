@@ -5341,6 +5341,13 @@ export interface SavedMeal {
   createdAt: string;
 }
 
+/** One recipe's own amount of a grocery row. See `GroceryItem.recipeSources`. */
+export interface GroceryRecipeSource {
+  recipeId: string | null;
+  title: string;
+  quantity: string | null;
+}
+
 export interface GroceryItem {
   id: string;
   // What the user last typed — the label. "Whole milk" and "milk" reading
@@ -5522,6 +5529,16 @@ export interface GroceryItem {
   // a recipe from a shop that already happened.
   sourceRecipeId: string | null;
   sourceRecipeTitle: string | null;
+  /**
+   * What each recipe asked of this row, once more than one has: the other half
+   * of the single credit above, which drops to null the moment a second recipe
+   * wants the same row. Empty or absent for a row one recipe (or none) put on
+   * the list. **Read only through `recipeLedgerFor` (`recipeSources.ts`)**: it
+   * is meaningful only while `quantityFromRecipe` is true, which is what lets
+   * every site that ends a shop (finishing it, taking the row off the list)
+   * stay correct by clearing that flag, without each one also clearing this.
+   */
+  recipeSources?: GroceryRecipeSource[];
   // "apples or pears" — two rows you'll pick between at the shelf, sharing this
   // label. Same idea as RecipeIngredient.choiceGroup and resolved by the same
   // rule (exactly one of a group is bought), with two differences that follow
