@@ -181,7 +181,8 @@ interface Props {
  * (`quickEventDefaults.ts`), so a usual event is a title and a day. A trailing
  * "at Joe's" and "alert 30m" in the line fill the place and the alert as you
  * type, and they win over a chip's earlier pick the way a typed day wins over
- * the date chip's. What can't be set from here at all is invitees and travel
+ * the date chip's. The trip, calendar and Busy/Free chips read the same way
+ * ("walking", "10 min early", "from home", "in Work calendar", "show as free"). What can't be set from here at all is invitees and travel
  * time: EventKit exposes neither to a write.
  *
  * Its own component rather than a mode of `QuickAddModal`: that one builds a
@@ -499,6 +500,10 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
       today: getCurrentDayStart(),
       wallClock: new Date(),
       mentionOverrides: personOverrides,
+      travel: travelTasksOn,
+      originPlaces: originCandidates(savedPlaces).map(p => ({ id: p.id, name: p.name })),
+      calendars: calendars.map(c => ({ id: c.id, title: c.title })),
+      availability: true,
     };
     // An edit opens on the event's own title, and a time block on its task's,
     // read as plain text until changed: a title isn't an instruction to parse.
@@ -507,9 +512,14 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     const read = parseQuickEvent(text, base);
     const dismissed = read.phrase !== null && `${read.phrase.start}|${read.phrase.text}` === dismissedSignature;
     return dismissed ? parseQuickEvent(text, { ...base, ignoreSchedule: true }) : read;
-  }, [text, people, groupTokens, dayResetTime, personOverrides, dismissedSignature, original, seed]);
+  }, [text, people, groupTokens, dayResetTime, personOverrides, dismissedSignature, original, seed, travelTasksOn, savedPlaces, calendars]);
 
   const phrase = draft.phrase;
+  // A trip clause typed in the line is live, like a typed alert: it wins over
+  // the chip's pick, and a chip pick takes it out of the line (`cutFromLine`).
+  const effectiveTravelMode = draft.travelMode ?? travelModePick;
+  const effectiveArriveEarly = draft.arriveEarlyMinutes ?? arriveEarlyPick;
+  const effectiveTravelOrigin = draft.travelOriginId ?? travelOriginPick;
   // The two "@name" states that need a pick, checked only when no schedule
   // phrase holds the tooltip, the same order quick add uses.
   const ambiguousMention = useMemo(
@@ -636,8 +646,8 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
       : alertPick !== undefined ? alertPick
       : recalled ? recalled.alertMinutes
       : alertDefault;
-  const effectiveAvailability = availabilityPick ?? recalled?.availability ?? availability;
-  const chosenCalendarId = calendarPick ?? recalled?.calendarId ?? null;
+  const effectiveAvailability = draft.availability ?? availabilityPick ?? recalled?.availability ?? availability;
+  const chosenCalendarId = draft.calendarId ?? calendarPick ?? recalled?.calendarId ?? null;
   const effectiveCalendar = (chosenCalendarId ? calendars.find(c => c.id === chosenCalendarId) : undefined) ?? targetCalendar;
   // Whether last time's values are filling in anything at all, for the caption.
   const usingMemory = recalled !== null && (
@@ -932,7 +942,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
       // A new appointment starts a new booking cycle, so the old "Book …" goes now.
       useTaskStore.getState().checkBookEventTasks();
     }
-    setTravelEventPref(saved.id, { mode: travelModePick, arriveEarlyMinutes: arriveEarlyPick, originPlaceId: travelOriginPick });
+    setTravelEventPref(saved.id, { mode: effectiveTravelMode, arriveEarlyMinutes: effectiveArriveEarly, originPlaceId: effectiveTravelOrigin });
     useEventCreatedToastStore.getState().announce(
       saved.id,
       effectiveStart,
@@ -982,7 +992,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
       );
       return;
     }
-    setTravelEventPref(id, { mode: travelModePick, arriveEarlyMinutes: arriveEarlyPick, originPlaceId: travelOriginPick });
+    setTravelEventPref(id, { mode: effectiveTravelMode, arriveEarlyMinutes: effectiveArriveEarly, originPlaceId: effectiveTravelOrigin });
     onSaved?.(id);
     dismiss();
   };
@@ -1042,15 +1052,17 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   ];
   const arriveOptions: EventOption[] = TRAVEL_ARRIVE_CHOICES.map(m => ({ key: String(m), label: describeArrival(m) }));
   // Only for an event with a place and a time, the only kind a "Leave for" task is written for.
-  const showTravelChips = travelTasksOn && !allDay && !!effectiveLocation;
+  // A trip clause typed in the line shows its chip even before a place is named.
+  const typedTrip = draft.travelMode !== undefined || draft.arriveEarlyMinutes !== undefined || draft.travelOriginId !== undefined;
+  const showTravelChips = travelTasksOn && !allDay && (!!effectiveLocation || typedTrip);
   // Where the trip starts only matters to an Apple Maps estimate, so the chip
   // appears with that switch. A pick of a place since removed reads as the
   // Settings default, the same fallback `travelOriginForEvent` applies.
   const originPlaces = originCandidates(savedPlaces);
   const settingsOriginName = travelOriginFor(defaultOriginPlaceId, savedPlaces)?.name ?? 'Where I am';
   const pickedOriginName =
-    travelOriginPick === TRAVEL_ORIGIN_PHONE ? 'Where I am'
-    : originPlaces.find(p => p.id === travelOriginPick)?.name ?? null;
+    effectiveTravelOrigin === TRAVEL_ORIGIN_PHONE ? 'Where I am'
+    : originPlaces.find(p => p.id === effectiveTravelOrigin)?.name ?? null;
   const originChipLabel = pickedOriginName ?? settingsOriginName;
   const originOptions: EventOption[] = [
     { key: 'default', label: `Settings default (${settingsOriginName})` },
@@ -1429,27 +1441,27 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
             {showTravelChips && (
               <View style={styles.toolbar}>
                 <TouchableOpacity
-                  style={[styles.toolChip, styles.toolChipWide, travelModePick !== null && styles.toolChipSet]}
+                  style={[styles.toolChip, styles.toolChipWide, effectiveTravelMode !== null && styles.toolChipSet]}
                   onPress={() => { haptics.tap(); Keyboard.dismiss(); setTravelModePickerVisible(true); }}
                   activeOpacity={interaction.activeOpacity}
                   accessibilityRole="button"
-                  accessibilityLabel={`Getting there: ${TRAVEL_MODE_LABELS[travelModePick ?? defaultTravelMode]}`}
+                  accessibilityLabel={`Getting there: ${TRAVEL_MODE_LABELS[effectiveTravelMode ?? defaultTravelMode]}`}
                 >
-                  <Ionicons name="navigate-outline" size={iconSize.sm} color={travelModePick !== null ? colors.accent : colors.textSecondary} />
-                  <Text style={[styles.toolChipText, travelModePick !== null && styles.toolChipTextSet]} numberOfLines={1}>
-                    {TRAVEL_MODE_LABELS[travelModePick ?? defaultTravelMode]}
+                  <Ionicons name="navigate-outline" size={iconSize.sm} color={effectiveTravelMode !== null ? colors.accent : colors.textSecondary} />
+                  <Text style={[styles.toolChipText, effectiveTravelMode !== null && styles.toolChipTextSet]} numberOfLines={1}>
+                    {TRAVEL_MODE_LABELS[effectiveTravelMode ?? defaultTravelMode]}
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.toolChip, styles.toolChipWide, arriveEarlyPick !== 0 && styles.toolChipSet]}
+                  style={[styles.toolChip, styles.toolChipWide, effectiveArriveEarly !== 0 && styles.toolChipSet]}
                   onPress={() => { haptics.tap(); Keyboard.dismiss(); setArrivePickerVisible(true); }}
                   activeOpacity={interaction.activeOpacity}
                   accessibilityRole="button"
-                  accessibilityLabel={`Arrive: ${describeArrival(arriveEarlyPick)}`}
+                  accessibilityLabel={`Arrive: ${describeArrival(effectiveArriveEarly)}`}
                 >
-                  <Ionicons name="flag-outline" size={iconSize.sm} color={arriveEarlyPick !== 0 ? colors.accent : colors.textSecondary} />
-                  <Text style={[styles.toolChipText, arriveEarlyPick !== 0 && styles.toolChipTextSet]} numberOfLines={1}>
-                    {describeArrival(arriveEarlyPick)}
+                  <Ionicons name="flag-outline" size={iconSize.sm} color={effectiveArriveEarly !== 0 ? colors.accent : colors.textSecondary} />
+                  <Text style={[styles.toolChipText, effectiveArriveEarly !== 0 && styles.toolChipTextSet]} numberOfLines={1}>
+                    {describeArrival(effectiveArriveEarly)}
                   </Text>
                 </TouchableOpacity>
                 {showOriginChip && (
@@ -1490,7 +1502,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.toolChip, styles.toolChipWide]}
-                onPress={() => { haptics.tap(); setAvailabilityPick(isBusy ? 'free' : 'busy'); }}
+                onPress={() => { haptics.tap(); if (draft.availabilitySpan) cutFromLine(draft.availabilitySpan); setAvailabilityPick(isBusy ? 'free' : 'busy'); }}
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="switch"
                 accessibilityLabel="Busy"
@@ -1645,6 +1657,8 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
         selectedKey={effectiveCalendar?.id ?? null}
         emptyText="No calendar on this device can take new events. Turn on calendar access or add an editable calendar in Settings."
         onSelect={id => {
+          // A typed "in Work calendar" would outrank the pick, so it leaves the line.
+          if (draft.calendarSpan) cutFromLine(draft.calendarSpan);
           setCalendarPick(id);
         }}
         onClose={() => setCalendarPickerVisible(false)}
@@ -1666,24 +1680,33 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
         visible={travelModePickerVisible}
         title="Getting there"
         options={travelModeOptions}
-        selectedKey={travelModePick ?? 'default'}
-        onSelect={key => setTravelModePick(key === 'default' ? null : (key as TravelMode))}
+        selectedKey={effectiveTravelMode ?? 'default'}
+        onSelect={key => {
+          if (draft.travelSpan) cutFromLine(draft.travelSpan);
+          setTravelModePick(key === 'default' ? null : (key as TravelMode));
+        }}
         onClose={() => setTravelModePickerVisible(false)}
       />
       <EventOptionSheet
         visible={arrivePickerVisible}
         title="Arrive"
         options={arriveOptions}
-        selectedKey={String(arriveEarlyPick)}
-        onSelect={key => setArriveEarlyPick(Number(key))}
+        selectedKey={String(effectiveArriveEarly)}
+        onSelect={key => {
+          if (draft.arriveSpan) cutFromLine(draft.arriveSpan);
+          setArriveEarlyPick(Number(key));
+        }}
         onClose={() => setArrivePickerVisible(false)}
       />
       <EventOptionSheet
         visible={originPickerVisible}
         title="Start from"
         options={originOptions}
-        selectedKey={pickedOriginName !== null ? travelOriginPick ?? 'default' : 'default'}
-        onSelect={key => setTravelOriginPick(key === 'default' ? null : key)}
+        selectedKey={pickedOriginName !== null ? effectiveTravelOrigin ?? 'default' : 'default'}
+        onSelect={key => {
+          if (draft.originSpan) cutFromLine(draft.originSpan);
+          setTravelOriginPick(key === 'default' ? null : key);
+        }}
         onClose={() => setOriginPickerVisible(false)}
       />
     </SheetModal>

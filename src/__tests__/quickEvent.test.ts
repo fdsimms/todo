@@ -1,4 +1,4 @@
-import { alertRelativeOffset, describeEventRepeat, describeEventRepeatShort, eventRepeatPresetKey, EVENT_REPEAT_PRESETS, eventMarkerText, parseClockRange, parseLengthClause, parseAlertClause, parseQuickEvent } from '../utils/quickEvent';
+import { alertRelativeOffset, describeEventRepeat, describeEventRepeatShort, eventRepeatPresetKey, EVENT_REPEAT_PRESETS, eventMarkerText, parseClockRange, parseLengthClause, parseAlertClause, parseArriveClause, parseAvailabilityClause, parseCalendarClause, parseOriginClause, parseQuickEvent, parseTravelClause } from '../utils/quickEvent';
 import { findAmbiguousMention } from '../utils/parseTaskInput';
 
 jest.mock('../store/useSettingsStore', () => ({
@@ -413,5 +413,134 @@ describe('repeat chip helpers', () => {
 
   it('keeps every preset keyed by its own frequency', () => {
     for (const p of EVENT_REPEAT_PRESETS) expect(eventRepeatPresetKey(p.rule)).toBe(p.key);
+  });
+});
+
+describe('parseQuickEvent, trip, calendar and availability clauses', () => {
+  const trip = {
+    ...opts,
+    travel: true,
+    availability: true,
+    originPlaces: [{ id: 'home1', name: 'Home' }, { id: 'gym1', name: "Mom's House" }],
+    calendars: [{ id: 'c-work', title: 'Work' }, { id: 'c-side', title: 'Side Work' }],
+  };
+
+  it('sets a whole event from one line', () => {
+    const line = "Open mic fri 7pm at 225 Greenwood Ave walking 10 min early from home in Work calendar show as free alert 30m for 2h";
+    const draft = parseQuickEvent(line, trip);
+    expect(draft.title).toBe('Open mic');
+    expect(draft.location).toBe('225 Greenwood Ave');
+    expect(draft.travelMode).toBe('walking');
+    expect(draft.arriveEarlyMinutes).toBe(10);
+    expect(draft.travelOriginId).toBe('home1');
+    expect(draft.calendarId).toBe('c-work');
+    expect(draft.availability).toBe('free');
+    expect(draft.alertMinutes).toBe(30);
+    expect(draft.durationMinutes).toBe(120);
+    expect(draft.start).toEqual(new Date(2026, 9, 2, 19, 0));
+  });
+
+  it('reads the clauses in any order, and a place typed after them', () => {
+    const draft = parseQuickEvent("Open mic fri 7pm walking at Joe's", trip);
+    expect(draft.location).toBe("Joe's");
+    expect(draft.travelMode).toBe('walking');
+    expect(draft.title).toBe('Open mic');
+  });
+
+  it('highlights each clause and keeps them when the schedule phrase is taken out', () => {
+    const line = 'Open mic fri 7pm by transit 5m late';
+    const draft = parseQuickEvent(line, trip);
+    expect(draft.clauseSpans.map(([a, b]) => line.slice(a, b))).toEqual(['by transit', '5m late']);
+    expect(draft.phrase?.lineWithout).toBe('Open mic by transit 5m late');
+  });
+
+  it('reads none of the trip clauses unless asked, and leaves the words in the title', () => {
+    const draft = parseQuickEvent('Open mic walking', { ...trip, travel: false });
+    expect(draft.travelMode).toBeUndefined();
+    expect(draft.title).toBe('Open mic walking');
+  });
+
+  it('reads none of it for an opened event\'s own title', () => {
+    const draft = parseQuickEvent('Open mic walking', { ...trip, plain: true });
+    expect(draft.travelMode).toBeUndefined();
+    expect(draft.title).toBe('Open mic walking');
+  });
+
+  it('reports nothing typed as undefined', () => {
+    const draft = parseQuickEvent('Open mic fri 7pm', trip);
+    expect(draft.travelMode).toBeUndefined();
+    expect(draft.arriveEarlyMinutes).toBeUndefined();
+    expect(draft.travelOriginId).toBeUndefined();
+    expect(draft.calendarId).toBeUndefined();
+    expect(draft.availability).toBeUndefined();
+  });
+
+  describe('parseTravelClause', () => {
+    it.each([
+      ['walking', 'walking'], ['on foot', 'walking'], ['by walking', 'walking'], ['by foot', 'walking'],
+      ['transit', 'transit'], ['by bus', 'transit'], ['via subway', 'transit'],
+      ['driving', 'driving'], ['by car', 'driving'], ['by drive', 'driving'],
+    ])('reads "%s"', (words, mode) => {
+      expect(parseTravelClause(`Open mic ${words}`)?.mode).toBe(mode);
+    });
+
+    it('leaves a bare bus or car in the title', () => {
+      expect(parseTravelClause('Catch the bus')).toBeNull();
+      expect(parseTravelClause('Wash the car')).toBeNull();
+    });
+
+    it('needs something before it', () => {
+      expect(parseTravelClause('walking')).toBeNull();
+    });
+  });
+
+  describe('parseArriveClause', () => {
+    it.each([
+      ['10 min early', 10], ['arrive 10m early', 10], ['arrive 15 early', 15], ['5 minutes late', -5],
+      ['arrive on time', 0],
+    ])('reads "%s"', (words, minutes) => {
+      expect(parseArriveClause(`Open mic ${words}`)?.minutes).toBe(minutes);
+    });
+
+    it('leaves an off-step amount or a bare number in the title', () => {
+      expect(parseArriveClause('Open mic 12 min early')).toBeNull();
+      expect(parseArriveClause('Open mic 90 min early')).toBeNull();
+      expect(parseArriveClause('Open mic 10 early')).toBeNull();
+    });
+  });
+
+  describe('parseOriginClause and parseCalendarClause', () => {
+    const places = trip.originPlaces;
+    it('matches a saved place by name, loosely, and "here" as the phone', () => {
+      expect(parseOriginClause('Open mic from home', places)?.id).toBe('home1');
+      expect(parseOriginClause("Open mic from MOM'S  house", places)?.id).toBe('gym1');
+      expect(parseOriginClause('Open mic from here', places)?.id).toBe('phone');
+    });
+
+    it('leaves a place that is not saved in the title', () => {
+      expect(parseOriginClause('Open mic from work', places)).toBeNull();
+      expect(parseOriginClause('Open mic from', places)).toBeNull();
+    });
+
+    it('prefers the longest calendar name', () => {
+      expect(parseCalendarClause('Open mic in Side Work calendar', trip.calendars)?.id).toBe('c-side');
+      expect(parseCalendarClause('Open mic on my work calendar', trip.calendars)?.id).toBe('c-work');
+    });
+
+    it('needs the word calendar and a calendar that exists', () => {
+      expect(parseCalendarClause('Open mic in Work', trip.calendars)).toBeNull();
+      expect(parseCalendarClause('Open mic in Gym calendar', trip.calendars)).toBeNull();
+    });
+  });
+
+  describe('parseAvailabilityClause', () => {
+    it('reads "show as free" and "as busy"', () => {
+      expect(parseAvailabilityClause('Open mic show as free')?.availability).toBe('free');
+      expect(parseAvailabilityClause('Open mic as busy')?.availability).toBe('busy');
+    });
+
+    it('leaves a title that merely ends in free', () => {
+      expect(parseAvailabilityClause('Gluten free')).toBeNull();
+    });
   });
 });
