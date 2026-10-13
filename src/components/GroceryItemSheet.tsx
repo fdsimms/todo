@@ -669,7 +669,10 @@ export function GroceryItemSheet({
   // doing here anyway — that's the window setFrozen hands back on the thaw.
   const countingDown = onHandFuture && !frozen;
   const expiryDays = countingDown
-    ? (item.expiresAt ? expiryDaysFromNow(item.expiresAt, new Date()) : null)
+    // On hand with no date yet, the summary reads "Keeps N days" off the
+    // remembered shelf life, so the stepper opens on that same N rather than
+    // on None.
+    ? (item.expiresAt ? expiryDaysFromNow(item.expiresAt, new Date()) : item.shelfLifeDays)
     : item.shelfLifeDays;
   const pickExpiryDays = (days: number | null) => {
     haptics.tap();
