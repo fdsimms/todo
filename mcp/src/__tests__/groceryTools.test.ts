@@ -36,6 +36,7 @@ import {
   listBrands,
   mergeGroceryItems,
   renameBrand,
+  renameBrands,
 } from '../groceryTools';
 import { saveRecipe } from '../logTools';
 import { addGroceryItem, listGroceryItems } from '../tools';
@@ -237,6 +238,22 @@ describe('the catalog tools', () => {
       expect(listBrands(replica).find(b => b.brand === 'Quest')).not.toHaveProperty('spellings');
       expect(renameBrand(replica, { from: 'QUEST', to: 'Quest' })).toMatchObject({ renamed: 0, note: expect.stringMatching(/Nothing changed/) });
       expect(() => renameBrand(replica, { from: 'Nobody', to: 'X' })).toThrow(/No variant has the brand/);
+    });
+
+    it('renames several brands in one call, each seeing the ones before it', () => {
+      addGroceryItem(replica, 'vegan sausages');
+      addGroceryItem(replica, 'vegan tenders');
+      saveGroceryBox(replica, { name: 'vegan sausages' }, { brand: 'Beyond', variant: 'brat' });
+      saveGroceryBox(replica, { name: 'vegan tenders' }, { brand: 'BEYOND MEAT', variant: 'tenders' });
+      const result = renameBrands(replica, [
+        { from: 'BEYOND MEAT', to: 'Beyond Meat' },
+        { from: 'Beyond', to: 'Beyond Meat' },
+      ]);
+      expect(result).toMatchObject({ renamed: 2, renames: [{ from: 'BEYOND MEAT', renamed: 1 }, { from: 'Beyond', renamed: 1 }] });
+      expect(listBrands(replica).filter(b => b.brand.toLowerCase().startsWith('beyond'))).toEqual([
+        { brand: 'Beyond Meat', variants: 2, items: ['vegan sausages', 'vegan tenders'] },
+      ]);
+      expect(() => renameBrands(replica, [{ from: 'Nobody', to: 'X' }])).toThrow(/No variant has the brand/);
     });
   });
 
