@@ -795,7 +795,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
       {suggestions.length > 0 && (
         <View style={styles.matches}>
           <ScrollView keyboardShouldPersistTaps="handled" bounces={false} style={styles.matchesScroll}>
-            {suggestions.map(({ item, onList }) => {
+            {suggestions.map(({ item, onList, matchedName }) => {
               // Which one to reach for, on the row that offers it. The catalog
               // has carried a brand and a variant for a while and this — the
               // one screen where you pick an item by name — was still showing
@@ -819,12 +819,15 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
                   })}
                   accessibilityRole="button"
                   accessibilityLabel={
-                    [`Add ${item.name}`, product, item.aisle, onList ? 'already on the list' : null]
+                    [`Add ${item.name}`, matchedName && `also called ${matchedName}`, product, item.aisle, onList ? 'already on the list' : null]
                       .filter(Boolean).join(', ')
                   }
                 >
                   <View style={styles.suggestionBody}>
                     <Text style={styles.suggestionName} numberOfLines={1}>{item.name}</Text>
+                    {!!matchedName && (
+                      <Text style={styles.suggestionProduct} numberOfLines={1}>{`also called ${matchedName}`}</Text>
+                    )}
                     {!!product && (
                       <Text style={styles.suggestionProduct} numberOfLines={1}>{product}</Text>
                     )}

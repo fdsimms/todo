@@ -2,7 +2,7 @@ import type { GroceryItem } from '../types';
 import { groceryNameKey } from '../utils/groceryParse';
 import { catalogItemForKey } from '../utils/groceryPlural';
 import {
-  aliasIndex, cleanOtherNames, itemKeyIndex, otherNameKeysOf,
+  aliasIndex, cleanOtherNames, describeOtherNames, itemKeyIndex, otherNameKeysOf,
 } from '../utils/itemAliases';
 import { matchIngredientToCatalog } from '../utils/ingredientCatalogMatch';
 import { mergedItemRow, setOtherNamesRow } from '../utils/groceryItemWrite';
@@ -65,6 +65,18 @@ describe('otherNameKeysOf', () => {
   it('derives keys, dropping the item’s own key and repeats', () => {
     const item = makeItem('Dashima', { otherNames: ['Kombu', 'KOMBU', 'dashima', ' Konbu '] });
     expect(otherNameKeysOf(item)).toEqual(['kombu', 'konbu']);
+  });
+});
+
+describe('describeOtherNames', () => {
+  it('lists the names as typed, without the item’s own name or repeats', () => {
+    const item = makeItem('Dashima', { otherNames: ['Kombu', 'KOMBU', 'dashima', 'Konbu'] });
+    expect(describeOtherNames(item)).toBe('also called Kombu, Konbu');
+  });
+
+  it('is null when there are none', () => {
+    expect(describeOtherNames(makeItem('Salt'))).toBeNull();
+    expect(describeOtherNames(makeItem('Salt', { otherNames: ['salt'] }))).toBeNull();
   });
 });
 

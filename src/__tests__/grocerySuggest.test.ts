@@ -124,6 +124,35 @@ describe('rankGrocerySuggestions', () => {
     expect(rankGrocerySuggestions('s', items, NOW).map(s => s.item.name)).toEqual(['Spinach']);
   });
 
+  it('offers an item for another name it lists, saying which name matched', () => {
+    const dashima = makeItem({ name: 'Dashima', otherNames: ['Kombu'] });
+    const [hit] = rankGrocerySuggestions('komb', [dashima, makeItem({ name: 'Salt' })], NOW);
+    expect(hit.item).toBe(dashima);
+    expect(hit.matchedName).toBe('Kombu');
+  });
+
+  it('says nothing about another name when the item’s own name matched', () => {
+    const ginger = makeItem({ name: 'Ginger root', otherNames: ['ginger'] });
+    const [hit] = rankGrocerySuggestions('ginger', [ginger], NOW);
+    expect(hit.item).toBe(ginger);
+    expect(hit.matchedName).toBeNull();
+  });
+
+  it('ranks the item with the name above an item that only lists it as another name', () => {
+    const real = makeItem({ name: 'Scallions' });
+    const other = makeItem({ name: 'Green onions', otherNames: ['scallion greens'] });
+    expect(rankGrocerySuggestions('scallion', [other, real], NOW).map(s => s.item.name))
+      .toEqual(['Scallions', 'Green onions']);
+  });
+
+  it('ignores another name two items both claim, or one that is some item’s own name', () => {
+    const a = makeItem({ name: 'Dashima', otherNames: ['Kombu', 'Salt'] });
+    const b = makeItem({ name: 'Sea vegetable', otherNames: ['Kombu'] });
+    const salt = makeItem({ name: 'Salt' });
+    expect(rankGrocerySuggestions('komb', [a, b, salt], NOW)).toEqual([]);
+    expect(rankGrocerySuggestions('salt', [a, b, salt], NOW).map(s => s.item.name)).toEqual(['Salt']);
+  });
+
   it('still tolerates a plural query past one character', () => {
     const items = [makeItem({ name: 'Banana' })];
     expect(rankGrocerySuggestions('bananas', items, NOW).map(s => s.item.name)).toEqual(['Banana']);

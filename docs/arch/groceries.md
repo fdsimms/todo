@@ -1719,6 +1719,12 @@ join still resolves one key to one row, the row just answers to more than one ke
 - **Nothing is renamed.** A line reached through an alias keeps its words.
 - **Merging learns it**: `mergedItemRow` keeps the loser's name as another name of the survivor
   (`ITEM_MERGE_RULES.otherNames: 'names'`), so merging kombu into dashima is how the app is told.
+- **Search offers the item for any of its other names.** `rankGrocerySuggestions` scores an item on
+  its own name and on the names `aliasIndex` resolves to it (so a contested name or one that is some
+  item's own never offers a row), at 0.9 of the same match on the item's own name. `matchedName` says
+  which name matched when it was not the item's own, and the add field and the catalog link picker
+  show it. The catalog sheet lists every item's other names in its meta line
+  (`describeOtherNames`), and a recipe line reached through one says "Counted as <item>".
 - Written by `setOtherNamesRow` (shared by `useGroceryStore.setOtherNames` and the MCP replica); the
   field is "Also called" on `GroceryItemSheet`, and `update_grocery_item`'s `alsoCalled` over MCP.
 
