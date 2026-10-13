@@ -15,13 +15,13 @@ import Foundation
 /// tap, so the phone can say which ones it has received and applied.
 struct WatchTap: Codable, Identifiable {
     let id: String
-    /// "complete", "unit", "grocery" or "add".
+    /// "complete", "unit", "grocery", "choose", "add" or "groceryAdd".
     let kind: String
-    /// The task id or grocery item id. Empty for "add".
+    /// The task id or grocery item id. Empty for "add" and "groceryAdd".
     let itemId: String
     /// The grocery list the row was on; nil is the home list.
     let listId: String?
-    /// The task's title, for "add" only.
+    /// The words typed, for "add" and "groceryAdd".
     let title: String?
     let at: Date
     /// Handed to WatchConnectivity. False while the session wasn't active yet,
@@ -82,18 +82,29 @@ struct LocalTapState {
     let groceries: Set<String>
     /// Titles of tasks added on the watch that the phone hasn't received yet.
     let added: [String]
+    /// The same for grocery items, by the list they were added to.
+    let groceryAdded: [(listId: String?, title: String)]
+    /// Either/or options picked here, as `groceryKey`s.
+    let chosen: Set<String>
 
     init(_ taps: [WatchTap]) {
         var completed = Set<String>()
         var units: [String: Int] = [:]
         var groceries = Set<String>()
         var added: [String] = []
+        var groceryAdded: [(listId: String?, title: String)] = []
+        var chosen = Set<String>()
         for tap in taps {
             switch tap.kind {
             case "complete": completed.insert(tap.itemId)
             case "unit": units[tap.itemId, default: 0] += 1
             case "grocery": groceries.insert(Self.groceryKey(itemId: tap.itemId, listId: tap.listId))
+            case "choose":
+                let key = Self.groceryKey(itemId: tap.itemId, listId: tap.listId)
+                groceries.insert(key)
+                chosen.insert(key)
             case "add": if let title = tap.title { added.append(title) }
+            case "groceryAdd": if let title = tap.title { groceryAdded.append((tap.listId, title)) }
             default: break
             }
         }
@@ -101,6 +112,8 @@ struct LocalTapState {
         self.units = units
         self.groceries = groceries
         self.added = added
+        self.groceryAdded = groceryAdded
+        self.chosen = chosen
     }
 
     static func groceryKey(itemId: String, listId: String?) -> String {
@@ -120,6 +133,24 @@ struct LocalTapState {
 
     func isChecked(_ row: WidgetGroceryRow, listId: String?) -> Bool {
         groceries.contains(Self.groceryKey(itemId: row.id, listId: listId))
+    }
+
+    /// The rows to draw: an option that lost an either/or picked on this watch
+    /// is gone, as it will be on the phone.
+    func visibleRows(_ list: WidgetGroceryList) -> [WidgetGroceryRow] {
+        let wonGroups = Set(list.rows.compactMap { row -> String? in
+            guard chosen.contains(Self.groceryKey(itemId: row.id, listId: list.id)) else { return nil }
+            return row.choiceGroup
+        })
+        return list.rows.filter { row in
+            guard let group = row.choiceGroup, wonGroups.contains(group) else { return true }
+            return chosen.contains(Self.groceryKey(itemId: row.id, listId: list.id))
+        }
+    }
+
+    /// Items added here to `listId` that the phone hasn't received yet.
+    func groceryAdds(listId: String?) -> [String] {
+        groceryAdded.filter { $0.listId == listId }.map { $0.title }
     }
 }
 

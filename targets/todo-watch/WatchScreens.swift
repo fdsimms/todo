@@ -7,6 +7,7 @@ import SwiftUI
 
 struct TodayView: View {
     @EnvironmentObject private var store: WatchStore
+    let openGroceries: () -> Void
     /// A row whose tap has to happen on the phone, shown as an alert.
     @State private var needsPhone: WidgetTask?
 
@@ -18,6 +19,7 @@ struct TodayView: View {
                 List {
                     tasks(at: context.date)
                     addSection
+                    groceriesLink
                 }
                 .undoBar()
             }
@@ -61,6 +63,21 @@ struct TodayView: View {
             }
         } else {
             WatchNote(text: "Open dundundun on your iPhone to load your tasks.")
+        }
+    }
+
+    private var groceriesLink: some View {
+        Section {
+            Button(action: openGroceries) {
+                HStack {
+                    Label("Groceries", systemImage: "cart")
+                    Spacer()
+                    if let remaining = store.snapshot?.groceries?.lists.first?.remaining, remaining > 0 {
+                        Text("\(remaining)")
+                            .foregroundStyle(WidgetPalette.dark.textSecondary)
+                    }
+                }
+            }
         }
     }
 
@@ -156,22 +173,23 @@ struct GroceryListView: View {
     let list: WidgetGroceryList
     var tripShopName: String? = nil
     var otherLists: [WidgetGroceryList] = []
-    /// An either/or row, which is chosen on the phone rather than ticked.
+    /// An either/or row, which is chosen (the other options come off) rather than ticked.
     @State private var choiceRow: WidgetGroceryRow?
 
     var body: some View {
+        let rows = store.local.visibleRows(list)
         List {
             if let tripShopName {
                 WatchNote(text: "Shopping at \(tripShopName)")
             }
-            if list.rows.isEmpty {
+            if rows.isEmpty {
                 WatchNote(text: "Nothing left to buy.")
             }
-            ForEach(Array(list.rows.enumerated()), id: \.offset) { _, row in
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                 GroceryRowView(row: row, checked: store.local.isChecked(row, listId: list.id)) {
                     if row.canCheck {
                         store.check(row, listId: list.id)
-                    } else {
+                    } else if row.choice && !row.id.isEmpty {
                         choiceRow = row
                     }
                 }
@@ -179,6 +197,23 @@ struct GroceryListView: View {
             if list.remaining > list.rows.count {
                 WatchNote(text: "\(list.remaining - list.rows.count) more items aren't shown here.")
             }
+            Section {
+                TextFieldLink(prompt: Text("New item")) {
+                    Label("Add item", systemImage: "plus")
+                        .foregroundStyle(WidgetPalette.dark.accent)
+                } onSubmit: { title in
+                    store.addGrocery(title, listId: list.id)
+                }
+                ForEach(Array(store.local.groceryAdds(listId: list.id).enumerated()), id: \.offset) { _, title in
+                    Label(title, systemImage: "arrow.up.circle")
+                        .foregroundStyle(.secondary)
+                }
+            } footer: {
+                if !store.local.groceryAdds(listId: list.id).isEmpty {
+                    Text("Added to the list when dundundun next opens on your iPhone.")
+                }
+            }
+
             if !otherLists.isEmpty {
                 Section("Other lists") {
                     ForEach(Array(otherLists.enumerated()), id: \.offset) { _, other in
@@ -198,15 +233,36 @@ struct GroceryListView: View {
         }
         .undoBar()
         .navigationTitle(list.name)
-        .alert("Choose on iPhone", isPresented: choiceShown, presenting: choiceRow) { _ in
-            Button("OK", role: .cancel) {}
-        } message: { _ in
-            Text("This item is one of a choice. Pick which one in dundundun on your iPhone.")
+        .confirmationDialog(
+            choiceRow.map { "Choose \($0.name)?" } ?? "",
+            isPresented: choiceShown,
+            titleVisibility: .visible,
+            presenting: choiceRow
+        ) { row in
+            Button("Choose \(row.name)") {
+                store.choose(row, listId: list.id)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { row in
+            let rest = others(than: row)
+            if rest.isEmpty {
+                Text("This item stays on the list.")
+            } else {
+                Text("\(rest.joined(separator: ", ")) will come off the list.")
+            }
         }
     }
 
     private var choiceShown: Binding<Bool> {
         Binding(get: { choiceRow != nil }, set: { if !$0 { choiceRow = nil } })
+    }
+
+    /// The other options of the row's either/or still on the list.
+    private func others(than row: WidgetGroceryRow) -> [String] {
+        guard let group = row.choiceGroup else { return [] }
+        return store.local.visibleRows(list)
+            .filter { $0.choiceGroup == group && $0.id != row.id }
+            .map { $0.name }
     }
 }
 

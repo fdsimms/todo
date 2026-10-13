@@ -150,22 +150,28 @@ struct WidgetGroceryRow: Codable, Identifiable {
     /// Empty when the snapshot carried names only; such a row has no checkbox.
     let id: String
     let name: String
-    /// One side of an either/or, which is ticked in the app, not here.
+    /// One side of an either/or. The widget has no tick for it; the Apple
+    /// Watch asks which option you want.
     let choice: Bool
+    /// Rows with the same value are the options of one either/or. Nil on a
+    /// plain row and on a snapshot that predates the field.
+    let choiceGroup: String?
 
-    init(id: String, name: String, choice: Bool) {
+    init(id: String, name: String, choice: Bool, choiceGroup: String? = nil) {
         self.id = id
         self.name = name
         self.choice = choice
+        self.choiceGroup = choiceGroup
     }
 
-    enum CodingKeys: String, CodingKey { case id, name, choice }
+    enum CodingKeys: String, CodingKey { case id, name, choice, choiceGroup }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decodeIfPresent(String.self, forKey: .id) ?? ""
         name = try c.decode(String.self, forKey: .name)
         choice = try c.decodeIfPresent(Bool.self, forKey: .choice) ?? false
+        choiceGroup = try c.decodeIfPresent(String.self, forKey: .choiceGroup)
     }
 
     var canCheck: Bool { !id.isEmpty && !choice }
