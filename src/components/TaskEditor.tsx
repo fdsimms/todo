@@ -59,6 +59,7 @@ import { medicationVocabulary, medicationKey } from '../utils/medicationLog';
 import { useTitleSelection } from '../hooks/useTitleSelection';
 import { confirmDelete } from '../utils/confirmDelete';
 import { confirmDeleteGenerated } from '../utils/confirmDeleteGenerated';
+import { offerGeneratedCategoryWriteBack } from '../utils/generatedCategoryPrompt';
 import { stoppableGenerator } from '../utils/generatedTasks';
 import { animateLayout } from '../utils/layoutAnimation';
 import { formatPhoneInput } from '../utils/phone';
@@ -2264,6 +2265,9 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
           markSeenOnBecomeVisible: true,
         });
         applyProration(task.id);
+        if ((task.category ?? null) !== (data.category ?? null)) {
+          offerGeneratedCategoryWriteBack([{ id: task.id, category: data.category ?? null }]);
+        }
         // Other rows, so it can't ride along in `data`: "Blocks" writes each
         // picked task's own blockedById (see setBlockedTasks).
         setBlockedTasks(task.id, blocksIds);

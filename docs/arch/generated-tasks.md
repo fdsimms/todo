@@ -765,10 +765,9 @@ own is ever filled, and a task somebody typed never is.
 
 ## A category set on one is offered to its generator
 
-Dragging an app-written task into another category on Today is also an answer
-about where that generator files things, so `offerGeneratedCategoryWriteBack`
-(`TodayScreen`) asks, after the drop has already applied, whether future tasks
-should go there too. The write is `src/store/generatedCategoryWriteBack.ts`, and
+Moving an app-written task to another category (a drag on Today, say) is also an
+answer about where that generator files things, so `offerGeneratedCategoryWriteBack`
+asks, after the move has already applied, whether future tasks should go there too. The write is `src/store/generatedCategoryWriteBack.ts`, and
 it follows `writeEstimateToSource`'s split: the four rule kinds write the one
 rule's own `category` (`withRuleCategory`, so the kind's other rules are
 untouched), every other kind writes its "File them under" setting
@@ -778,9 +777,11 @@ untouched), every other kind writes its "File them under" setting
 - **No offer for "no category".** A drop into the loose block at the top of Today
   would send every later task there, the position the per-kind default category
   exists to avoid.
-- **One question per generator or rule**, however many of its rows the drop moved.
-- **Only the Today drag asks so far.** The editor's category row and the bulk
-  Move do not.
+- **One question per generator or rule**, however many of its rows the move touched.
+- **Every by-hand category change asks**: the Today drag, the task editor's
+  category row and the bulk Move, all through `offerGeneratedCategoryWriteBack`
+  (`src/utils/generatedCategoryPrompt.ts`). A new way to change a task's category
+  by hand calls it after the write.
 
 ## Task settings: a kind's task, field by field
 

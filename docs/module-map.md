@@ -151,6 +151,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/foodSearchMatch.ts` — FoodCandidate, FoodMatchTier, RankedFood, rankFoodCandidates, unambiguousFood
 - `src/utils/freshness.ts` — daysUntilDay, freshnessFor, FRESHNESS_ORDER, freshnessRank, isUseUpSoon, describeUseBy, liveUseBy, describeOpenedOn, describeFrozenSince
 - `src/utils/fuzzySearch.ts` — SearchResult, fuzzySearch, ranksAsActive, ProjectSearchResult, searchProjects, GroupSearchResult, searchGroups
+- `src/utils/generatedCategoryPrompt.ts` — offerGeneratedCategoryWriteBack, bulkSetCategoryOffering
 - `src/utils/generatedTaskSettings.ts` — NO_GENERATED_TASK_EXTRAS, hasGeneratedTaskExtras, parseGeneratedTaskExtrasValue, parseGeneratedTaskExtras, generatedExtrasFill, OwnedTaskField, TaskSettingsContext, LockableField, TaskSettingsSpec, appearsPhrase, +5 more
 - `src/utils/generatedTasks.ts` — GENERATED_KINDS, GeneratedEnabledKey, GeneratedKindSpec, GENERATED_KIND_SPECS, GENERATED_KIND_LIST, listedGeneratedKinds, generatedTaskCounts, matchesAutomationQuery, describeGeneratedCounts, GeneratedEnabledFlags, +15 more
 - `src/utils/goalTargetTasks.ts` — GoalReading, GOAL_TARGET_LINK, GOAL_TARGET_NOTES, goalReadings, goalTargetSourceId, goalTargetKeyOf, goalTargetDayOf, goalTargetTitle, goalTargetNotes

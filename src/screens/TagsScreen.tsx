@@ -17,6 +17,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useAnswerFirstCompletion } from '../hooks/useAnswerFirstCompletion';
 import { DeliverablePromptQueue } from '../components/DeliverablePromptQueue';
 import { useTaskStore } from '../store/useTaskStore';
+import { bulkSetCategoryOffering } from '../utils/generatedCategoryPrompt';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
@@ -71,7 +72,6 @@ export function TagsScreen() {
   const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
   const bulkSetDifficulty = useTaskStore(s => s.bulkSetDifficulty);
   const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
-  const bulkSetCategory = useTaskStore(s => s.bulkSetCategory);
   const bulkAddTags = useTaskStore(s => s.bulkAddTags);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -414,7 +414,7 @@ export function TagsScreen() {
                 completableCount={completableCount}
                 onDelete={handleBulkDelete}
                 onSetWhen={(date, segs) => confirmBulkSetWhen(Array.from(selectedIds), date, segs, exitSelection)}
-                onSetCategory={category => { bulkSetCategory(Array.from(selectedIds), category); exitSelection(); }}
+                onSetCategory={category => { bulkSetCategoryOffering(Array.from(selectedIds), category); exitSelection(); }}
                 onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
                 onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
                 onSetDifficulty={rewardsEnabled ? d => { bulkSetDifficulty(Array.from(selectedIds), d); exitSelection(); } : undefined}
