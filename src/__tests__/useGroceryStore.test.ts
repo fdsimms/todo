@@ -8498,7 +8498,6 @@ describe('checkAwayGroceryList', () => {
     personIds: [],
     links: [],
     inOrder: false,
-    showChecked: false,
     archived: false,
     completed: false,
     ...extra,

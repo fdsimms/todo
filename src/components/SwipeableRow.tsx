@@ -24,12 +24,6 @@ export interface SelectAction {
   accessibilityLabel: string;
 }
 
-export interface DeleteAction {
-  /** Must raise the Undo bar: that is the only thing making this safe. */
-  onDelete: () => void;
-  accessibilityLabel: string;
-}
-
 export interface UndoAction {
   /** Takes back something the person just did to this row (a dose marked taken). */
   onUndo: () => void;
@@ -49,20 +43,12 @@ interface Props {
    */
   whenAction?: WhenAction;
   /**
-   * Swipe right, in place of `whenAction`: deletes the row. The one exception
-   * to "nothing destructive on a swipe" below, and only for a list item (a
-   * line of text with nothing time-shaped to offer), where a quick delete is
-   * the thing a list is used for and the Undo bar takes it back. Wins over
-   * `whenAction` if a caller passes both.
-   */
-  deleteAction?: DeleteAction;
-  /**
    * Swipe right, in place of `whenAction`: a labelled "Undo" panel for a row
    * that records something already done, where a tap would be the wrong place
    * to take it back (a finished record has no reason to react to a tap). Like
-   * `deleteAction` it is an exception to "nothing destructive on a swipe", and
-   * only for a row whose result the person can redo in one tap. Wins over
-   * `deleteAction` and `whenAction` if a caller passes several.
+   * it is an exception to "nothing destructive on a swipe", and only for a row
+   * whose result the person can redo in one tap. Wins over `whenAction` if a
+   * caller passes both.
    */
   undoAction?: UndoAction;
   /** Turns the gesture off without unmounting it — see the note below. */
@@ -80,9 +66,7 @@ interface Props {
  * row's "when" action, and nothing destructive lives on a swipe at all.**
  * Deleting belongs in an editor or the bulk bar, where it can be confirmed and
  * undone in context — a full-swipe commit is far too easy to trigger by
- * accident for an action that can't be taken back. The single exception is
- * `deleteAction`, for an item on a list (see its doc comment); don't extend it
- * to a task, whose delete takes a schedule and history with it.
+ * accident for an action that can't be taken back.
  *
  * Two implementation details are load-bearing:
  *
@@ -113,7 +97,7 @@ interface Props {
  *   the default was never doing work — it was only ever able to round a seam
  *   that isn't a corner.
  */
-export function SwipeableRow({ selectAction, whenAction, deleteAction, undoAction, enabled = true, style, children }: Props) {
+export function SwipeableRow({ selectAction, whenAction, undoAction, enabled = true, style, children }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const ref = useRef<Swipeable>(null);
@@ -162,17 +146,6 @@ export function SwipeableRow({ selectAction, whenAction, deleteAction, undoActio
         >
           <Ionicons name="arrow-undo" size={iconSize.md} color={colors.onAccent} />
           <Text style={styles.undoLabel}>Undo</Text>
-        </TouchableOpacity>
-      )
-    : deleteAction
-    ? () => (
-        <TouchableOpacity
-          style={styles.deleteAction}
-          onPress={() => fire(deleteAction.onDelete)}
-          accessibilityRole="button"
-          accessibilityLabel={deleteAction.accessibilityLabel}
-        >
-          <Ionicons name="trash" size={iconSize.md} color={colors.onAccent} />
         </TouchableOpacity>
       )
     : whenAction
@@ -228,7 +201,6 @@ export function SwipeableRow({ selectAction, whenAction, deleteAction, undoActio
           haptics.impactMedium();
           if (direction === 'right') { if (selectAction) commit(selectAction.onSelect); }
           else if (undoAction) commit(undoAction.onUndo);
-          else if (deleteAction) commit(deleteAction.onDelete);
           else if (whenAction) commit(whenAction.onAction);
         }}
         onSwipeableOpen={() => ref.current?.close()}
@@ -266,11 +238,5 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,
     color: colors.onAccent,
-  },
-  deleteAction: {
-    width: ACTION_WIDTH,
-    backgroundColor: colors.redFill,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 });

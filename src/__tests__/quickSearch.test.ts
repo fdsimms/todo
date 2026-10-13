@@ -401,7 +401,6 @@ describe('quickSearch', () => {
       reviewDeclinedAt: null,
       reviewedAt: null,
       backfillDismissedFields: [],
-      kind: 'project' as const,
       awayStart: null,
       awayEnd: null,
       awayPauses: false,
@@ -413,7 +412,6 @@ describe('quickSearch', () => {
       personIds: [],
       links: [],
       inOrder: false,
-      showChecked: false,
       ...overrides,
     });
 

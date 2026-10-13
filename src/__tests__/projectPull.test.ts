@@ -188,7 +188,6 @@ const PROJECT_BASE: Project = {
   reviewDeclinedAt: null,
   reviewedAt: null,
   backfillDismissedFields: [],
-  kind: 'project' as const,
   awayStart: null,
   awayEnd: null,
   awayPauses: false,
@@ -200,7 +199,6 @@ const PROJECT_BASE: Project = {
   personIds: [],
   links: [],
   inOrder: false,
-  showChecked: false,
 };
 
 const makeProject = (overrides: Partial<Project> = {}): Project => ({ ...PROJECT_BASE, ...overrides });

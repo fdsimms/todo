@@ -216,9 +216,7 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
   // task added from Today joins a stack that sits on a project's page while
   // not being in that project.
   const filingProjectId = projectId ?? homeProjectId;
-  const checklistShown = !!homeProjectId || !!projectId
-    ? projects.find(p => p.id === (projectId ?? homeProjectId))?.kind !== 'list'
-    : false;
+  const checklistShown = !!homeProjectId || !!projectId;
 
   // Same TaskGroup, two names: homed on a project it reads as "section" (the
   // vocabulary the project screen's own FAB and empty-state copy already use),
@@ -466,7 +464,7 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
           page outright, since that answer is the page it was opened on. */}
       {/* A section on a project page can be a checklist: a packing list
           inside a trip. Only on a project's own section (not a stack on
-          Today), and not on a list project, whose lines are already undated. */}
+          Today). */}
       {checklistShown && (
         <View style={styles.sectionCard}>
           <TouchableOpacity

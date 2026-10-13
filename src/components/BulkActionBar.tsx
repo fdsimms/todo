@@ -72,7 +72,7 @@ interface Props {
    * own, the way Priority is, so there's no second modal to stack over the bar.
    */
   moveToProject?: {
-    projects: ReadonlyArray<{ id: string; title: string; isList: boolean }>;
+    projects: ReadonlyArray<{ id: string; title: string }>;
     onMove: (projectId: string) => void;
   };
   /** True when every selected task is already pinned — the action then reads "Unpin". */
@@ -351,7 +351,7 @@ export function BulkActionBar({
                     accessibilityLabel={`Move to ${p.title}`}
                   >
                     <Ionicons
-                      name={p.isList ? 'list-outline' : 'briefcase-outline'}
+                      name="briefcase-outline"
                       size={18}
                       color={colors.textSecondary}
                     />

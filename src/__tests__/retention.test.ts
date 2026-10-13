@@ -214,13 +214,13 @@ describe('retentionCutoff', () => {
 });
 
 describe('selectPurgeableTaskIds', () => {
-  // A checked-off line on a list is the record of it (books read), not a
-  // tombstone.
+  // A checked-off task in an ongoing project is the record of it (books read),
+  // not a tombstone.
   it('keeps finished members of a kept project, whatever their age', () => {
     const cutoff = new Date('2026-01-01T00:00:00.000Z');
     const old = '2025-01-01T00:00:00.000Z';
     const tasks = [
-      { id: 'list-line', parentId: null, completed: true, archived: false, completedAt: old, projectId: 'books', deliverableKind: null, deliverableValue: null, chainEnabled: false, chainItems: [], chainIndex: 0 },
+      { id: 'kept-task', parentId: null, completed: true, archived: false, completedAt: old, projectId: 'books', deliverableKind: null, deliverableValue: null, chainEnabled: false, chainItems: [], chainIndex: 0 },
       { id: 'plain', parentId: null, completed: true, archived: false, completedAt: old, projectId: null, deliverableKind: null, deliverableValue: null, chainEnabled: false, chainItems: [], chainIndex: 0 },
     ] as unknown as Task[];
     expect(selectPurgeableTaskIds(tasks, cutoff, new Set(['books']))).toEqual(['plain']);

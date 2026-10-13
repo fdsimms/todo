@@ -27,7 +27,6 @@ export interface CreateProjectInput extends Omit<ProjectPlan, 'steps'> {
 export interface SerializedProjectDetail {
   id: string;
   title: string;
-  kind: 'project' | 'list';
   notes?: string;
   deadline?: string;
   /** The day the project is for; dueDaysFromEvent counts from it. */
@@ -65,8 +64,6 @@ export interface SerializedProjectDetail {
   links?: { label: string; url: string }[];
   /** How it nudges: days of quiet before it offers a task (0 never), whether it dates one itself, and whether it nudges at all. */
   nudge?: { cadenceDays: number; autoSchedule: boolean; optIn: boolean; weekendSource: boolean };
-  /** On a list: checked items stay on the page. */
-  showChecked?: true;
   /** Its card shows no "Next:" line. */
   hideNextStep?: true;
   /** Today gathers its tasks for the day under its name, above the categories. */
@@ -119,7 +116,6 @@ function serializeProject(replica: Replica, p: Project): SerializedProjectDetail
   return {
     id: p.id,
     title: p.title,
-    kind: p.kind,
     ...(p.notes ? { notes: p.notes } : {}),
     ...(p.deadline ? { deadline: p.deadline } : {}),
     ...(p.eventDate ? { eventDate: p.eventDate } : {}),
@@ -140,7 +136,6 @@ function serializeProject(replica: Replica, p: Project): SerializedProjectDetail
       : {}),
     ...((p.links ?? []).length > 0 ? { links: p.links.map(l => ({ label: l.label, url: l.url })) } : {}),
     nudge: { cadenceDays: p.nudgeCadenceDays, autoSchedule: p.autoSchedule, optIn: p.nudgeOptIn, weekendSource: p.weekendSource },
-    ...(p.showChecked ? { showChecked: true as const } : {}),
     ...(p.hideNextStep ? { hideNextStep: true as const } : {}),
     ...(p.groupOnToday ? { groupOnToday: true as const } : {}),
     done,

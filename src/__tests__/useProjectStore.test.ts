@@ -185,7 +185,6 @@ const makeProject = (overrides: Partial<Project> = {}): Project => ({
   reviewDeclinedAt: null,
   reviewedAt: null,
   backfillDismissedFields: [],
-  kind: 'project' as const,
   awayStart: null,
   awayEnd: null,
   awayPauses: false,
@@ -197,7 +196,6 @@ const makeProject = (overrides: Partial<Project> = {}): Project => ({
   personIds: [],
   links: [],
   inOrder: false,
-  showChecked: false,
   ...overrides,
 });
 
@@ -580,13 +578,11 @@ describe('createProject / updateProject / getProjectById', () => {
     // row and immediately updateProject it, which made the row they were
     // handed back stale on the next line.
     const project = useProjectStore.getState().createProject('Lisbon', {
-      kind: 'list',
       category: 'Travel',
       awayStart: '2026-09-12T12:00:00.000Z',
       awayEnd: '2026-09-19T12:00:00.000Z',
       destination: 'Lisbon, Portugal',
     });
-    expect(project.kind).toBe('list');
     expect(project.category).toBe('Travel');
     expect(project.awayStart).toBe('2026-09-12T12:00:00.000Z');
     expect(project.awayEnd).toBe('2026-09-19T12:00:00.000Z');
@@ -597,7 +593,6 @@ describe('createProject / updateProject / getProjectById', () => {
   it('defaults every option a caller did not answer', () => {
     const project = useProjectStore.getState().createProject('Kitchen refresh');
     expect(project.deadline).toBeNull();
-    expect(project.kind).toBe('project');
     expect(project.category).toBeNull();
     expect(project.awayStart).toBeNull();
     expect(project.awayEnd).toBeNull();
@@ -866,83 +861,22 @@ describe('removeProjectRow / restoreProject', () => {
   });
 });
 
-describe('kind', () => {
-  it('creates an ordinary project by default, so nothing existing changes', () => {
+describe('ongoing at creation', () => {
+  it('creates a project with a finish line by default', () => {
     useProjectStore.setState({ projects: [] });
     const project = useProjectStore.getState().createProject('Kitchen refresh');
-    expect(project.kind).toBe('project');
-    expect(dbInsertProject).toHaveBeenCalledWith(expect.objectContaining({ kind: 'project' }));
+    expect(project.ongoing).toBe(false);
+    expect(nudgeModeOf(project)).toBe('on-ask');
   });
 
   // Whichever caller makes it: a Reminders capture filing and the demo seed
-  // both pass only the kind, and used to get a list with a progress bar and a
-  // place in Pull from projects.
-  it('creates a list when asked, with the list defaults', () => {
+  // both pass only `ongoing`, and would otherwise get a project that is
+  // nudged about.
+  it('creates a project with no finish line that is never nudged when asked', () => {
     useProjectStore.setState({ projects: [] });
-    const project = useProjectStore.getState().createProject('Questions for Dr. Okafor', { kind: 'list' });
-    expect(project.kind).toBe('list');
+    const project = useProjectStore.getState().createProject('Questions for Dr. Okafor', { ongoing: true });
     expect(project.ongoing).toBe(true);
     expect(nudgeModeOf(project)).toBe('never');
-  });
-
-  // The escape hatch for a project that turned out to be a list, or the
-  // reverse — otherwise the only way across is delete and retype, which loses
-  // every item. Nothing about the members changes.
-  it('switches an existing project between the two', () => {
-    useProjectStore.setState({ projects: [makeProject({ id: 'p1', kind: 'project' })] });
-    useProjectStore.getState().updateProject('p1', { kind: 'list' });
-    expect(useProjectStore.getState().getProjectById('p1')?.kind).toBe('list');
-    useProjectStore.getState().updateProject('p1', { kind: 'project' });
-    expect(useProjectStore.getState().getProjectById('p1')?.kind).toBe('project');
-  });
-
-  it('brings each kind\'s defaults along when switching, both ways', () => {
-    useSettingsStore.setState({ defaultProjectNudgeCadenceDays: 0 });
-    useProjectStore.setState({
-      projects: [makeProject({ id: 'p1', kind: 'project', ongoing: false, nudgeOptIn: true, nudgeCadenceDays: 0 })],
-    });
-    useProjectStore.getState().updateProject('p1', { kind: 'list' });
-    let p = useProjectStore.getState().getProjectById('p1')!;
-    expect(p.ongoing).toBe(true);
-    expect(nudgeModeOf(p)).toBe('never');
-    // Back to a project: a finish line again, and the Settings default for
-    // nudges, rather than a project that silently can't finish.
-    useProjectStore.getState().updateProject('p1', { kind: 'project' });
-    p = useProjectStore.getState().getProjectById('p1')!;
-    expect(p.ongoing).toBe(false);
-    expect(nudgeModeOf(p)).toBe('on-ask');
-  });
-
-  it('lets a patch that names the fields keep them', () => {
-    useProjectStore.setState({ projects: [makeProject({ id: 'p1', kind: 'project', ongoing: false })] });
-    useProjectStore.getState().updateProject('p1', { kind: 'list', ongoing: false });
-    const p = useProjectStore.getState().getProjectById('p1')!;
-    expect(p.ongoing).toBe(false);
-    expect(nudgeModeOf(p)).toBe('never');
-  });
-
-  it('leaves the defaults alone on an edit that keeps the kind', () => {
-    useProjectStore.setState({
-      projects: [makeProject({ id: 'p1', kind: 'list', ongoing: false, nudgeOptIn: true, nudgeCadenceDays: 7 })],
-    });
-    useProjectStore.getState().updateProject('p1', { kind: 'list', title: 'Renamed' });
-    const p = useProjectStore.getState().getProjectById('p1')!;
-    expect(p.ongoing).toBe(false);
-    expect(p.nudgeCadenceDays).toBe(7);
-  });
-
-  // A list is an ordinary project in every respect that isn't drawing: its
-  // members are counted, ordered and completed by exactly the same code.
-  it('leaves progress counting alone', () => {
-    const list = makeProject({ id: 'p1', kind: 'list' });
-    const tasks = [
-      makeTask({ id: 't1', projectId: 'p1', completed: true }),
-      makeTask({ id: 't2', projectId: 'p1' }),
-    ];
-    expect(projectProgress('p1', tasks)).toEqual(
-      expect.objectContaining({ done: 1, total: 2 })
-    );
-    expect(list.kind).toBe('list');
   });
 });
 

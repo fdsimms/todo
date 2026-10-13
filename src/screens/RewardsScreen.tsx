@@ -90,7 +90,7 @@ import { ScrollToTopButton } from '../components/ScrollToTopButton';
  *
  * One scrolling page: the balance (with the goal you're saving for, if any,
  * and the earning rule spelled out), the rewards you've set, items from the
- * list you've chosen to price as rewards, starter ideas, and the history the
+ * project you've chosen to price as rewards, starter ideas, and the history the
  * balance is summed from. Coins and rewards are enabled/disabled in Settings.
  */
 
@@ -226,10 +226,10 @@ export function RewardsScreen() {
   const [rulesAnchor, setRulesAnchor] = useState<CardAnchor | null>(null);
   const showIdeas = ideas.length > 0 && (openRewards.length === 0 || ideasOpen);
 
-  // The list whose items can be priced as rewards. Only offered at all while
-  // a list project exists, and an item already made into a reward (claimed or
+  // The project whose tasks can be priced as rewards (a wish list, say). Only
+  // offered at all while an active project exists, and a task already made into a reward (claimed or
   // not) isn't offered twice.
-  const hasLists = projects.some(p => p.kind === 'list' && !p.archived && !p.completed);
+  const hasLists = projects.some(p => !p.archived && !p.completed);
   const list = projects.find(p => p.id === listId && !p.archived) ?? null;
   const pricedTaskIds = useMemo(() => new Set(rewards.map(r => r.taskId).filter(Boolean)), [rewards]);
   const listItems = useMemo(
@@ -422,7 +422,7 @@ export function RewardsScreen() {
     Alert.alert(
       `Delete “${title}”?`,
       reward.taskId
-        ? 'Coins already spent on it aren’t refunded. The item stays on your list.'
+        ? 'Coins already spent on it aren’t refunded. The task stays in your project.'
         : 'Coins already spent on it aren’t refunded.',
       [
         { text: 'Cancel', style: 'cancel' },
@@ -486,7 +486,7 @@ export function RewardsScreen() {
         <View>
           <Text style={styles.rewardTitle}>{draftItem.title}</Text>
           <Text style={styles.hint}>
-            {`From ${list?.title ?? 'your list'}. The reward takes the item’s title, notes and link. Claiming it checks it off.`}
+            {`From ${list?.title ?? 'your project'}. The reward takes the task’s title, notes and link. Claiming it checks it off.`}
           </Text>
         </View>
       ) : (
@@ -655,7 +655,7 @@ export function RewardsScreen() {
           <View style={styles.switchRow}>
             <View style={styles.switchText}>
               <Text style={styles.switchLabel}>One time only</Text>
-              <Text style={styles.hint}>Leaves your list once claimed.</Text>
+              <Text style={styles.hint}>Checked off in your project once claimed.</Text>
             </View>
             <Switch
               value={draftOneTime}
@@ -770,7 +770,7 @@ export function RewardsScreen() {
       <View key={reward.id} style={styles.card}>
         <View>
           <Text style={styles.rewardTitle}>{shown.title}</Text>
-          {reward.taskId && <Text style={styles.hint}>{`From ${sourceList?.title ?? 'your list'}`}</Text>}
+          {reward.taskId && <Text style={styles.hint}>{`From ${sourceList?.title ?? 'your project'}`}</Text>}
           {shown.note && <Text style={styles.note}>{shown.note}</Text>}
           <View style={styles.costRow}>
             <CoinIcon size={iconSize.sm} color={colors.done} filled />
@@ -1046,14 +1046,14 @@ export function RewardsScreen() {
 
         {hasLists && (
           <>
-            <Text style={styles.sectionHeader}>{list ? `From ${list.title}` : 'From a list'}</Text>
+            <Text style={styles.sectionHeader}>{list ? `From ${list.title}` : 'From a project'}</Text>
             {list === null ? (
               <View style={styles.listPrompt}>
                 <Text style={styles.sectionHint}>
-                  Choose a list, like a wish list, and its items can be priced as one-time rewards.
+                  Choose a project, like a wish list, and its tasks can be priced as one-time rewards.
                 </Text>
                 <View style={styles.addRow}>
-                  <InlineAction label="Choose a list" icon="list-outline" variant="neutral" surface="page" onPress={() => setListPickerOpen(true)} />
+                  <InlineAction label="Choose a project" icon="briefcase-outline" variant="neutral" surface="page" onPress={() => setListPickerOpen(true)} />
                 </View>
               </View>
             ) : (
@@ -1062,7 +1062,7 @@ export function RewardsScreen() {
                 {pickableItems.length === 0 ? (
                   draft?.mode !== 'item' && (
                     <View style={styles.emptyNote}>
-                      <EmptyNote icon="list-outline">{`Everything on ${list.title} is already a reward.`}</EmptyNote>
+                      <EmptyNote icon="briefcase-outline">{`Every task in ${list.title} is already a reward.`}</EmptyNote>
                     </View>
                   )
                 ) : (
@@ -1088,7 +1088,7 @@ export function RewardsScreen() {
                   </View>
                 )}
                 <View style={styles.addRow}>
-                  <InlineAction label="Change list" icon="swap-horizontal" variant="neutral" surface="page" onPress={() => setListPickerOpen(true)} />
+                  <InlineAction label="Change project" icon="swap-horizontal" variant="neutral" surface="page" onPress={() => setListPickerOpen(true)} />
                 </View>
               </>
             )}
@@ -1141,9 +1141,8 @@ export function RewardsScreen() {
         onClose={() => setListPickerOpen(false)}
         value={listId}
         onSelect={id => setListId(id)}
-        kind="list"
-        title="Rewards from a list"
-        noneLabel="No list"
+        title="Rewards from a project"
+        noneLabel="No project"
       />
       <HabitPickerSheet
         visible={habitPickerOpen}
