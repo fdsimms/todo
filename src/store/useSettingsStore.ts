@@ -688,6 +688,10 @@ interface SettingsStore {
   // (tripShopId/tripStartedAt in useGroceryStore.ts) — see
   // src/utils/tripLiveActivity.ts. iOS 17+ only, defaults on.
   tripLiveActivity: boolean;
+  // Same idea again, for the next "Leave for X" event (a live travel task) —
+  // see src/utils/leaveLiveActivity.ts. Rides on travelTasks: nothing starts
+  // while that is off. iOS 17+ only, defaults on.
+  leaveLiveActivity: boolean;
   // Same idea again, for the focus session in flight (useFocusStore.ts) — see
   // src/utils/focusLiveActivity.ts. iOS 17+ only, defaults on.
   focusLiveActivity: boolean;
@@ -2011,6 +2015,7 @@ interface SettingsStore {
   resetTips: () => void;
   setTimerLiveActivity: (on: boolean) => void;
   setTripLiveActivity: (on: boolean) => void;
+  setLeaveLiveActivity: (on: boolean) => void;
   setFocusLiveActivity: (on: boolean) => void;
   setFocusHideTimers: (on: boolean) => void;
   setFocusBreaksEnabled: (on: boolean) => void;
@@ -2305,6 +2310,7 @@ const DEFAULT_SETTINGS = {
   tipsEnabled: true,
   timerLiveActivity: true,
   tripLiveActivity: true,
+  leaveLiveActivity: true,
   focusLiveActivity: true,
   focusHideTimers: false,
   focusBreaksEnabled: true,
@@ -2746,6 +2752,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   lastTipShown: null,
   timerLiveActivity: true,
   tripLiveActivity: true,
+  leaveLiveActivity: true,
   focusLiveActivity: true,
   focusHideTimers: false,
   focusBreaksEnabled: true,
@@ -3070,6 +3077,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const timerLiveActivity = dbGetSetting('timerLiveActivity') !== 'false';
     // Same `!== 'false'` reasoning, for the shopping-trip Live Activity.
     const tripLiveActivity = dbGetSetting('tripLiveActivity') !== 'false';
+    // And for the leave-by one.
+    const leaveLiveActivity = dbGetSetting('leaveLiveActivity') !== 'false';
     // And again for the focus session's.
     const focusLiveActivity = dbGetSetting('focusLiveActivity') !== 'false';
     const focusHideTimers = dbGetSetting('focusHideTimers') === 'true';
@@ -3666,6 +3675,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       lastDeloadAppliedDayKey,
       lastTipShown,
       lastVisitedScreen,
+      leaveLiveActivity,
       leftoverUseUpTaskCategory,
       leftoverUseUpTasks,
       limitsTodayCategory,
@@ -4996,6 +5006,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setTripLiveActivity(on: boolean) {
     dbSetSetting('tripLiveActivity', on ? 'true' : 'false');
     set({ tripLiveActivity: on });
+  },
+
+  setLeaveLiveActivity(on: boolean) {
+    dbSetSetting('leaveLiveActivity', on ? 'true' : 'false');
+    set({ leaveLiveActivity: on });
   },
 
   setFocusLiveActivity(on: boolean) {

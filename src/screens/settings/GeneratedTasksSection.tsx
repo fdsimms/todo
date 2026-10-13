@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import { Alert, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Alert, Platform, StyleSheet, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSettingsStore, type WeekStart } from '../../store/useSettingsStore';
 import { useTaskStore } from '../../store/useTaskStore';
@@ -1129,6 +1129,22 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
               describeValue={n => `${n ?? TRAVEL_LEAD_MINUTES_DEFAULT} minutes before the event`}
             />
           </View>
+          {Platform.OS === 'ios' && (
+            <>
+              <View style={styles.sep} />
+              <SettingsRow
+                entryId="leaveLiveActivity"
+                icon="phone-portrait-outline"
+                iconColor={s.leaveLiveActivity ? colors.accent : undefined}
+                label="Live Activity before leaving"
+                hint={s.leaveLiveActivity
+                  ? 'Counts down to when to leave on the Lock Screen and Dynamic Island. Starts when you open the app within 4 hours of leaving, and ends when you finish the task. Requires iOS 17.'
+                  : 'The countdown stays in the app only'}
+                toggle={s.leaveLiveActivity}
+                onPress={() => s.setLeaveLiveActivity(!s.leaveLiveActivity)}
+              />
+            </>
+          )}
           <View style={styles.sep} />
           <SettingsRow
             entryId="travelEstimates"

@@ -13,6 +13,7 @@ struct TodoWidgetBundle: WidgetBundle {
         // IPHONEOS_DEPLOYMENT_TARGET 17.0 (plugins/withWidgetExtension.js).
         TimerLiveActivity()
         TripLiveActivity()
+        LeaveLiveActivity()
         FocusLiveActivity()
     }
 }

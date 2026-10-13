@@ -1306,6 +1306,19 @@ argued out before it was built; read them before reopening one.
   calendar, transit and settings stores and re-runs the check on change. It lives in `src/hooks/`
   because `useTaskStore` already imports the calendar and transit stores, so a subscription in
   either reaching back would be an import cycle.
+- **A Live Activity counts down to leaving, and its source is the task.** `src/utils/leaveLiveActivity.ts`
+  (+ `LeaveLiveActivity.swift`) reads the live "Leave for" rows, not the calendar: the task's
+  `reminderTime` already folds in the typed lead, the Apple Maps estimate, the per-event arrival
+  offset and the per-calendar lead, so reading events again would be a second copy of those rules.
+  It ends when the task is finished, deleted or travel tasks go off, with no switch of its own for
+  any of them. **It can only start while the app is open** (ActivityKit refuses a start from the
+  background and nothing is pushed), so the window is 4 hours before leaving rather than the
+  reminder's minutes, and a card started late shows "Time to leave" at once. Its stale date is the
+  leave-by time, which flips the card with nothing pushed; it does not end at the event's start
+  until the next sync. **"Not already at" is best effort and only where the app can tell**: with
+  estimates on and the trip starting from the phone, a fresh estimate of 2 minutes or less means
+  the phone is there. A saved-place start, estimates off or a stale estimate can't tell, so the
+  card starts and finishing the task ends it. The app never reads the location for this.
 - **Lines are picked globally**, the shape of Screen Time's app selection. Which line serves which
   event can't be known without routing. `TRANSIT_LINES` maps a rider's name for a line to its route
   ids, since "the 6" is two routes and "the S" is three shuttles.

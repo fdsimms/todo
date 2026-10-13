@@ -90,6 +90,15 @@ private struct TripRunPayload: Codable {
   let staleAtMs: Double?
 }
 
+// Mirrors the LeaveRun shape written by src/utils/leaveLiveActivity.ts.
+private struct LeaveRunPayload: Codable {
+  let eventTitle: String
+  let location: String?
+  let leaveAtMs: Double
+  let startMs: Double
+  let staleAtMs: Double?
+}
+
 // Mirrors the FocusRun shape written by src/utils/focusLiveActivity.ts.
 private struct FocusRunPayload: Codable {
   let key: String
@@ -627,6 +636,81 @@ public class TodoWidgetBridgeModule: Module {
           max(Date(timeIntervalSince1970: $0 / 1000), Date().addingTimeInterval(1))
         }
         let content = ActivityContent(state: TripActivityAttributes.ContentState(), staleDate: staleDate)
+        _ = try? Activity.request(attributes: attributes, content: content, pushType: nil)
+
+        succeeded = true
+      }
+      return succeeded
+    }
+    .runOnQueue(.main)
+
+    // ─── Live Activity (time to leave) ────────────────────────────────────
+    // syncTripLiveActivity's shape again: zero-or-one activity, an empty
+    // string meaning "none wanted", and a changed run showing up as the old
+    // activity ending and a new one starting rather than an update. The stale
+    // date is the leave-by time, so LeaveLiveActivity.swift flips to its
+    // "Time to leave" state on its own with nothing pushed. See
+    // src/utils/leaveLiveActivity.ts for when one is wanted.
+    AsyncFunction("syncLeaveLiveActivity") { (jsonString: String) -> Bool in
+      var succeeded = false
+      TodoWidgetExceptionCatcher.runCatchingExceptions {
+        guard #available(iOS 17.0, *) else { return }
+
+        let existing = Activity<LeaveActivityAttributes>.activities
+
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else {
+          for activity in existing {
+            Task { await activity.end(nil, dismissalPolicy: .immediate) }
+          }
+          succeeded = true
+          return
+        }
+
+        guard
+          !jsonString.isEmpty,
+          let data = jsonString.data(using: .utf8),
+          let run = try? JSONDecoder().decode(LeaveRunPayload.self, from: data)
+        else {
+          for activity in existing {
+            Task { await activity.end(nil, dismissalPolicy: .immediate) }
+          }
+          succeeded = true
+          return
+        }
+
+        let leaveAt = Date(timeIntervalSince1970: run.leaveAtMs / 1000)
+        let startAt = Date(timeIntervalSince1970: run.startMs / 1000)
+
+        // Already live for this exact event and time: keep it. A different
+        // lead (an estimate arriving) changes `leaveAt` and so restarts it.
+        if let current = existing.first,
+           current.attributes.eventTitle == run.eventTitle,
+           current.attributes.location == run.location,
+           current.attributes.leaveAt == leaveAt,
+           current.attributes.startAt == startAt {
+          for stale in existing.dropFirst() {
+            Task { await stale.end(nil, dismissalPolicy: .immediate) }
+          }
+          succeeded = true
+          return
+        }
+
+        for activity in existing {
+          Task { await activity.end(nil, dismissalPolicy: .immediate) }
+        }
+        let attributes = LeaveActivityAttributes(
+          eventTitle: run.eventTitle,
+          location: run.location,
+          leaveAt: leaveAt,
+          startAt: startAt
+        )
+        // A leave-by time already past gets a stale date a second out rather
+        // than one in the past, the focus activity's reasoning: the flip is
+        // then one ActivityKit is still going to make.
+        let staleDate: Date? = run.staleAtMs.map {
+          max(Date(timeIntervalSince1970: $0 / 1000), Date().addingTimeInterval(1))
+        }
+        let content = ActivityContent(state: LeaveActivityAttributes.ContentState(), staleDate: staleDate)
         _ = try? Activity.request(attributes: attributes, content: content, pushType: nil)
 
         succeeded = true

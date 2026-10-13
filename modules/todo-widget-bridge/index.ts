@@ -42,6 +42,9 @@ interface TodoWidgetBridgeNativeModule {
   // See src/utils/tripLiveActivity.ts for the JSON shape (TripRun) and the
   // reconciliation this drives. Empty string means "no trip wanted".
   syncTripLiveActivity(jsonString: string): Promise<boolean>;
+  // See src/utils/leaveLiveActivity.ts for the JSON shape (LeaveRun) and the
+  // reconciliation this drives. Empty string means "no leave-by wanted".
+  syncLeaveLiveActivity(jsonString: string): Promise<boolean>;
   // See src/utils/focusLiveActivity.ts for the JSON shape (FocusRun) and the
   // reconciliation this drives. Empty string means "no session wanted".
   syncFocusLiveActivity(jsonString: string): Promise<boolean>;
@@ -110,6 +113,10 @@ export function syncTimerLiveActivities(jsonString: string): Promise<boolean> {
 
 export function syncTripLiveActivity(jsonString: string): Promise<boolean> {
   return TodoWidgetBridge.syncTripLiveActivity(jsonString);
+}
+
+export function syncLeaveLiveActivity(jsonString: string): Promise<boolean> {
+  return TodoWidgetBridge.syncLeaveLiveActivity(jsonString);
 }
 
 export function syncFocusLiveActivity(jsonString: string): Promise<boolean> {

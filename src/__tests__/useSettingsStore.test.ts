@@ -1700,6 +1700,24 @@ describe('timerLiveActivity', () => {
   });
 });
 
+describe('leaveLiveActivity', () => {
+  it('defaults to on, and only turns off for an explicit "false"', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().leaveLiveActivity).toBe(true);
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'leaveLiveActivity' ? 'false' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().leaveLiveActivity).toBe(false);
+  });
+
+  it('round-trips through setLeaveLiveActivity', () => {
+    useSettingsStore.getState().setLeaveLiveActivity(false);
+    expect(dbSetSetting).toHaveBeenCalledWith('leaveLiveActivity', 'false');
+    expect(useSettingsStore.getState().leaveLiveActivity).toBe(false);
+  });
+});
+
 describe('tripLiveActivity', () => {
   // Same reasoning as timerLiveActivity: defaults on so an install predating
   // the setting keeps the Live Activity it already had.
