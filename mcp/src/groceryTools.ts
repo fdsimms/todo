@@ -27,6 +27,7 @@ import type {
   ReceiptLineInput,
   Replica,
 } from './replica';
+import { brandSummaries } from '../../src/utils/brands';
 import { findPantryItem } from './pantryTools';
 import { NUTRIENT_KEYS } from '../../src/types';
 import { describeFoodPanel } from '../../src/utils/foodNutrition';
@@ -378,6 +379,29 @@ export function deleteGroceryItem(replica: Replica, ref: { id?: string; name?: s
 
 export function createGroceryList(replica: Replica, name: string): GroceryList {
   return replica.createGroceryList(name);
+}
+
+/**
+ * Every brand once, with the spellings in use and the items it appears under.
+ * Derived from the variants (a brand has no record of its own), so a brand
+ * spelled two ways shows both and the count says which is the common one.
+ */
+export function listBrands(replica: Replica) {
+  return brandSummaries(replica.itemProducts(), replica.groceryItems()).map(b => ({
+    brand: b.name,
+    variants: b.variants,
+    items: b.items,
+    ...(b.spellings.length > 1 ? { spellings: b.spellings.map(s => `${s.text} (${s.count})`) } : {}),
+  }));
+}
+
+export function renameBrand(replica: Replica, input: { from: string; to: string }) {
+  const result = replica.renameBrand(input.from, input.to);
+  return {
+    brand: input.to.trim(),
+    renamed: result.renamed,
+    ...(result.renamed === 0 ? { note: 'Nothing changed: every variant already has that spelling.' } : {}),
+  };
 }
 
 export function renameGroceryList(replica: Replica, ref: string, name: string): GroceryList {

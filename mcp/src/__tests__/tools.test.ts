@@ -87,6 +87,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     deleteGroceryItem: () => { throw new Error('not stubbed'); },
     createGroceryList: () => { throw new Error('not stubbed'); },
     renameGroceryList: () => { throw new Error('not stubbed'); },
+    renameBrand: () => { throw new Error('not stubbed'); },
     deleteGroceryList: () => { throw new Error('not stubbed'); },
     finishGroceryTrip: () => { throw new Error('not stubbed'); },
     importReceipt: () => { throw new Error('not stubbed'); },

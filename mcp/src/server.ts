@@ -83,7 +83,7 @@ import type { DeliverableKind, MealSlot, TimeOfDay } from '../../src/types';
 import { assignToStack, createStack, deleteStack, listStacks, renameStack, updateStack } from './stackTools';
 import { claimReward, createReward, deleteReward, getRewards, markMissed, setBounty, setRewardGoal, setSlip, unclaimReward, updateReward } from './rewardTools';
 import { addProjectSteps, createProject, deleteProject, getProject, nextInProject, reorderProjects, saveProjectAsTemplate, saveProjectCategory, startFreshProject, updateProject, type CreateProjectInput, type ProjectPlanStepInput } from './projectTools';
-import { addChoiceToList, addIngredientsToList, clearGroceryList, createGroceryList, deleteGroceryItem, deleteGroceryList, finishGroceryTrip, getGroceryItem, grocerySetup, importReceipt, markUnavailable, matchReceipt, mergeGroceryItems, renameGroceryList, reorderAisles, reorderGroceryPlaces, resolveList, saveAisle, saveGroceryBox, saveStore, setNutritionPanel, setNutritionPanels, setShoppingTrip, settleChoice, swapForSubstitute, updateGroceryItem, updateStore } from './groceryTools';
+import { addChoiceToList, addIngredientsToList, clearGroceryList, createGroceryList, deleteGroceryItem, deleteGroceryList, finishGroceryTrip, getGroceryItem, grocerySetup, importReceipt, markUnavailable, matchReceipt, listBrands, mergeGroceryItems, renameBrand, renameGroceryList, reorderAisles, reorderGroceryPlaces, resolveList, saveAisle, saveGroceryBox, saveStore, setNutritionPanel, setNutritionPanels, setShoppingTrip, settleChoice, swapForSubstitute, updateGroceryItem, updateStore } from './groceryTools';
 import { PANTRY_FILTERS, addToPantry, answerPantryReview, getPantryItem, listPantry, logLeftover, pantryReview, deleteLeftover, splitLeftover, updateLeftover, updatePantryBox, updatePantryItem, useUpRecipes } from './pantryTools';
 import { deleteCookbook, deleteIndexEntry, getCookbookIndex, listCookbooks, logCookTime, mergeCookbooks, recipeFromIndexEntry, renameCookbook, reorderUpNext, saveIndexEntry } from './recipeTools';
 import { DEFAULT_PLAN_DAYS, MAX_PLAN_DAYS, MEAL_SLOTS as KITCHEN_MEAL_SLOTS, copyMeals, getRecipe, listMealPlan, listRecipes, planMeal, removeMeal, saveMealAsRecipe, setMealCooked, updateMeal } from './kitchenTools';
@@ -3222,6 +3222,26 @@ function registerWriteTools(
         return json(await withWrite(() => createGroceryList(replica, name)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not create that list.' });
+      }
+    }
+  );
+
+  server.tool(
+    'list_brands',
+    "Every brand in the catalog once, with how many variants carry it, the items it appears under, and (only when there is more than one) the spellings in use with their counts. A brand has no record of its own, so this is read off the variants: use it to find 'Quest' and 'QUEST' before rename_brand.",
+    {},
+    async () => json({ brands: await withFresh(() => listBrands(replica)) })
+  );
+
+  server.tool(
+    'rename_brand',
+    "Write one spelling of a brand onto every variant that carries it, whichever way it is spelled now (from is matched ignoring case and punctuation). Renaming to a different brand re-keys those variants, and is refused when an item would end up with two variants of the same brand and variant name; merge or rename those first. Not undoable from here.",
+    { from: z.string().min(1), to: z.string().min(1) },
+    async ({ from, to }) => {
+      try {
+        return json(await withWrite(() => renameBrand(replica, { from, to })));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not rename that brand.' });
       }
     }
   );

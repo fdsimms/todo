@@ -33,7 +33,9 @@ import {
   reorderAisles,
   updateStore,
   reorderGroceryPlaces,
+  listBrands,
   mergeGroceryItems,
+  renameBrand,
 } from '../groceryTools';
 import { saveRecipe } from '../logTools';
 import { addGroceryItem, listGroceryItems } from '../tools';
@@ -212,6 +214,29 @@ describe('the catalog tools', () => {
 
       expect(() => saveGroceryBox(replica, { name: 'stroopwafels' }, { boxId: plain.box!.id, gtin: '12345' })).toThrow(/not a product barcode/);
       expect(() => saveGroceryBox(replica, { name: 'stroopwafels' }, { boxId: plain.box!.id, gtin: '0212345000008' })).toThrow(/not a product barcode/);
+    });
+  });
+
+  describe('list_brands and rename_brand', () => {
+    it('shows a brand spelled two ways, then respells every variant, whichever spelling is named', () => {
+      addGroceryItem(replica, 'protein chips');
+      addGroceryItem(replica, 'protein bar');
+      saveGroceryBox(replica, { name: 'protein chips' }, { brand: 'QUEST', variant: 'taco' });
+      // A new variant reuses the catalog's spelling, so the second spelling has to arrive by an edit.
+      const nacho = saveGroceryBox(replica, { name: 'protein chips' }, { brand: 'Quest', variant: 'nacho' });
+      expect(nacho.box!.brand).toBe('QUEST');
+      saveGroceryBox(replica, { name: 'protein chips' }, { boxId: nacho.box!.id, brand: 'Quest' });
+      saveGroceryBox(replica, { name: 'protein bar' }, { brand: 'Quest', variant: 'cookies' });
+      const quest = listBrands(replica).find(b => b.brand.toLowerCase() === 'quest')!;
+      expect(quest).toMatchObject({ variants: 3, items: ['protein bar', 'protein chips'] });
+      expect(quest.brand).toBe('QUEST');
+      expect(quest.spellings).toEqual(['QUEST (2)', 'Quest (1)']);
+
+      expect(renameBrand(replica, { from: 'quest', to: 'Quest' })).toMatchObject({ renamed: 2 });
+      expect(listBrands(replica).find(b => b.brand === 'Quest')).toMatchObject({ variants: 3 });
+      expect(listBrands(replica).find(b => b.brand === 'Quest')).not.toHaveProperty('spellings');
+      expect(renameBrand(replica, { from: 'QUEST', to: 'Quest' })).toMatchObject({ renamed: 0, note: expect.stringMatching(/Nothing changed/) });
+      expect(() => renameBrand(replica, { from: 'Nobody', to: 'X' })).toThrow(/No variant has the brand/);
     });
   });
 

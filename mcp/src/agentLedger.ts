@@ -1214,6 +1214,14 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return list;
     },
 
+    renameBrand(from, to) {
+      const result = replica.renameBrand(from, to);
+      if (result.renamed > 0) {
+        log({ action: 'edited', subject: 'catalog', title: to.trim(), taskId: null, note: `Rename the brand "${from.trim()}" to "${to.trim()}" on ${result.renamed} variants` });
+      }
+      return result;
+    },
+
     renameGroceryList(id, name) {
       const list = replica.renameGroceryList(id, name);
       log({ action: 'edited', subject: 'catalog', title: list.name, taskId: null, recordId: list.id, note: `Rename a grocery list to "${list.name}"` });
