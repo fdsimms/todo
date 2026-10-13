@@ -404,6 +404,21 @@ export function renameBrand(replica: Replica, input: { from: string; to: string 
   };
 }
 
+/**
+ * Several brand renames in one call, applied in order. Each later rename sees
+ * the earlier ones, so "Beyond" and "BEYOND MEAT" can both be sent to
+ * "Beyond Meat". A refusal stops the batch where it is; the preview runs the
+ * same sequence and rolls it back, so a clean preview means the apply won't
+ * stop partway.
+ */
+export function renameBrands(replica: Replica, renames: { from: string; to: string }[]) {
+  const results = renames.map(r => renameBrand(replica, r));
+  return {
+    renamed: results.reduce((sum, r) => sum + r.renamed, 0),
+    renames: results.map((r, i) => ({ from: renames[i].from.trim(), to: r.brand, renamed: r.renamed })),
+  };
+}
+
 export function renameGroceryList(replica: Replica, ref: string, name: string): GroceryList {
   const list = resolveList(replica, ref);
   if (!list) throw new Error('The list at home cannot be renamed.');
