@@ -148,6 +148,7 @@ struct TaskRowView: View {
 
 struct GroceriesView: View {
     @EnvironmentObject private var store: WatchStore
+    let openToday: () -> Void
 
     var body: some View {
         NavigationStack {
@@ -155,15 +156,25 @@ struct GroceriesView: View {
                 GroceryListView(
                     list: first,
                     tripShopName: groceries.tripShopName,
-                    otherLists: Array(groceries.lists.dropFirst())
+                    otherLists: Array(groceries.lists.dropFirst()),
+                    openToday: openToday
                 )
             } else {
                 List {
                     WatchNote(text: "Open dundundun on your iPhone to load your grocery list.")
+                    todayLink(openToday)
                 }
                 .undoBar()
                 .navigationTitle("Groceries")
             }
+        }
+    }
+}
+
+private func todayLink(_ action: @escaping () -> Void) -> some View {
+    Section {
+        Button(action: action) {
+            Label("Today", systemImage: "checklist")
         }
     }
 }
@@ -173,6 +184,8 @@ struct GroceryListView: View {
     let list: WidgetGroceryList
     var tripShopName: String? = nil
     var otherLists: [WidgetGroceryList] = []
+    /// Set on the first list only; the pager has no visible way back to Today.
+    var openToday: (() -> Void)? = nil
     /// An either/or row, which is chosen (the other options come off) rather than ticked.
     @State private var choiceRow: WidgetGroceryRow?
 
@@ -212,6 +225,10 @@ struct GroceryListView: View {
                 if !store.local.groceryAdds(listId: list.id).isEmpty {
                     Text("Added to the list when dundundun next opens on your iPhone.")
                 }
+            }
+
+            if let openToday {
+                todayLink(openToday)
             }
 
             if !otherLists.isEmpty {
