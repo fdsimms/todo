@@ -89,6 +89,8 @@ import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
 import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
 import { FoodLogEntrySheet, type FoodLogEntrySheetHandle } from '../components/FoodLogEntrySheet';
 import { SavedMealsSheet } from '../components/SavedMealsSheet';
+import { useSheetSubject } from '../hooks/useSheetSubject';
+import { SavedMealReviewSheet } from '../components/SavedMealReviewSheet';
 import { PendingEstimatesCard } from '../components/PendingEstimatesCard';
 import type { PendingEstimate } from '../utils/estimateQueue';
 import { NutrientContributorsSheet } from '../components/NutrientContributorsSheet';
@@ -223,6 +225,7 @@ export function FoodLogScreen() {
   const addSavedMealFromEntries = useSavedMealsStore(s => s.addFromEntries);
   const removeSavedMeal = useSavedMealsStore(s => s.removeMeal);
   const logSavedMeal = useSavedMealsStore(s => s.logMeal);
+  const replaceSavedMealItems = useSavedMealsStore(s => s.replaceItems);
   const nutritionTargets = useSettingsStore(useShallow(s => s.nutritionTargets));
   const foodLogPinnedNutrients = useSettingsStore(useShallow(s => s.foodLogPinnedNutrients));
   const nutritionLimits = useSettingsStore(useShallow(s => s.nutritionLimits));
@@ -289,6 +292,11 @@ export function FoodLogScreen() {
     if (!kept.some(Boolean)) setAddOpen(false);
   };
   const [savedMealsOpen, setSavedMealsOpen] = useState(false);
+  // The saved meal opened for changes. Kept as an id so the sheet reads the
+  // store's current copy after "Save changes to this meal" rewrites it.
+  const [reviewMealId, setReviewMealId] = useState<string | null>(null);
+  const reviewMeal = savedMeals.find(m => m.id === reviewMealId) ?? null;
+  const shownReviewMeal = useSheetSubject(reviewMeal);
   /**
    * The entry whose catalog row is being chosen, or null.
    *
@@ -1512,7 +1520,26 @@ export function FoodLogScreen() {
                   keepAddSheetOrClose([meal.name]);
                 }}
                 onDelete={meal => removeSavedMeal(meal.id)}
-                onClose={() => setSavedMealsOpen(false)}
+                onReview={meal => setReviewMealId(meal.id)}
+                onClose={() => { setSavedMealsOpen(false); setReviewMealId(null); }}
+                // Inside the saved meals sheet's own Modal for the same reason
+                // that one is inside the add sheet's.
+                overlays={shownReviewMeal && (
+                  <SavedMealReviewSheet
+                    visible={reviewMeal !== null}
+                    meal={shownReviewMeal}
+                    slot={addingSlot}
+                    at={loggingAt}
+                    onLog={items => {
+                      logSavedMeal({ ...shownReviewMeal, items }, addingSlot, loggingAt);
+                      setReviewMealId(null);
+                      setSavedMealsOpen(false);
+                      keepAddSheetOrClose([shownReviewMeal.name]);
+                    }}
+                    onSaveChanges={items => replaceSavedMealItems(shownReviewMeal.id, items)}
+                    onClose={() => setReviewMealId(null)}
+                  />
+                )}
               />
             </>
           }

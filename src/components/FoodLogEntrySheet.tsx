@@ -32,7 +32,8 @@ import { useNavigation } from '@react-navigation/native';
 import { useStoreWhileOpen } from '../hooks/useStoreWhileOpen';
 import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
-import { MEAL_SLOTS, MEAL_SLOT_LABELS, isPortionBox, type FoodLogEntry, type FoodNutrition, type GroceryItem, type ItemProduct, type ItemSubLink, type MealSlot, type Recipe } from '../types';
+import { MEAL_SLOTS, MEAL_SLOT_LABELS, isPortionBox, type FoodLogEntry, type FoodNutrition, type GroceryItem, type ItemProduct, type ItemSubLink, type MealSlot, type Recipe, type SavedMealItem } from '../types';
+import { itemFromPick } from '../utils/savedMealReview';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useFoodLogStore, type FoodLogDraft } from '../store/useFoodLogStore';
@@ -308,6 +309,19 @@ interface Props {
    */
   overlays?: React.ReactNode;
   /**
+   * Turns the sheet into a picker: the food chosen and measured here is handed
+   * back as a `SavedMealItem` instead of being written to the log. The saved
+   * meal review uses it to swap one food for another or add one before
+   * anything is logged.
+   *
+   * Everything up to the save is unchanged, so an amount is measured by the
+   * code that measures a logged one. Nothing reaches the store, the pantry
+   * review or the meal plan, and a caller leaves `canEstimate`, `onScan` and
+   * `onSavedMeal` off: Describe writes through its own panel, which this does
+   * not intercept.
+   */
+  onPickFood?: (item: SavedMealItem) => void;
+  /**
    * Lets a sheet raised from `overlays` (a scan or a saved meal) report a
    * food it logged, so this sheet can apply "Add another" to it the same way it
    * applies to its own saves. See `FoodLogEntrySheetHandle`.
@@ -420,7 +434,7 @@ const NO_RECIPES: Recipe[] = [];
 const NO_SUBS: ItemSubLink[] = [];
 
 export function FoodLogEntrySheet({
-  visible, slot, at, initialQuery, mealPlanEntryId, editing, reviewing, allowBurst, onClose, canEstimate, onScan, onPhotographLabel, onSavedMeal, onDeclineMeal,
+  visible, slot, at, initialQuery, mealPlanEntryId, editing, reviewing, allowBurst, onClose, canEstimate, onScan, onPhotographLabel, onSavedMeal, onPickFood, onDeclineMeal,
   overlays, ref,
 }: Props) {
   const colors = useColors();
@@ -1184,6 +1198,11 @@ export function FoodLogEntrySheet({
    * about which meal plan square a lunch fills. False when the store refused.
    */
   const logNew = (measurement: Omit<FoodLogDraft, 'mealPlanEntryId' | 'at'>): boolean => {
+    // A picker hands the helping back and writes nothing.
+    if (onPickFood) {
+      onPickFood(itemFromPick(measurement));
+      return true;
+    }
     // A caller that already knows the planned meal (`LogMealEntrySheet`)
     // says so via the prop; a plain manual log
     // has none, so it gets one last chance at `matchMealPlanEntry` before
@@ -1317,7 +1336,7 @@ export function FoodLogEntrySheet({
     }
     // Written only once the entry is, so a refused log leaves the pantry as it
     // was. The same write the pantry review's three answers make.
-    if (pantryAnswer && picked.itemId && !editing) answerPantryReview(picked.itemId, pantryAnswer);
+    if (pantryAnswer && picked.itemId && !editing && !onPickFood) answerPantryReview(picked.itemId, pantryAnswer);
     afterSave(picked.label);
   };
 

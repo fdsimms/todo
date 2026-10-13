@@ -22,6 +22,9 @@ jest.mock('../db/database', () => ({
   dbBulkUpdateFoodLogPlacement: jest.fn(),
   dbGetSavedMeals: jest.fn(() => mockSavedMealRows),
   dbInsertSavedMeal: jest.fn((meal: SavedMeal) => { mockSavedMealRows.push(meal); }),
+  dbUpdateSavedMealItems: jest.fn((id: string, items: unknown[]) => {
+    mockSavedMealRows = mockSavedMealRows.map(m => (m.id === id ? { ...m, items: items as SavedMeal['items'] } : m));
+  }),
   dbDeleteSavedMeal: jest.fn((id: string) => {
     mockSavedMealRows = mockSavedMealRows.filter(m => m.id !== id);
   }),
@@ -255,6 +258,29 @@ describe('useSavedMealsStore', () => {
       };
       const written = useSavedMealsStore.getState().logMeal(meal, null, new Date(2026, 3, 5));
       expect(written).toHaveLength(0);
+    });
+  });
+
+  describe('replaceItems', () => {
+    it('rewrites the items of a saved meal and keeps its name and id', () => {
+      const meal = useSavedMealsStore.getState().addFromEntries('Usual breakfast', [makeEntry()])!;
+      const items = [{ ...meal.items[0], quantity: '2 cups', grams: 480 }];
+      expect(useSavedMealsStore.getState().replaceItems(meal.id, items)).toBe(true);
+      const stored = useSavedMealsStore.getState().meals[0];
+      expect(stored.id).toBe(meal.id);
+      expect(stored.name).toBe('Usual breakfast');
+      expect(stored.items[0].quantity).toBe('2 cups');
+      expect(mockSavedMealRows[0].items[0].quantity).toBe('2 cups');
+    });
+
+    it('refuses an empty list rather than leaving a meal that logs nothing', () => {
+      const meal = useSavedMealsStore.getState().addFromEntries('Usual breakfast', [makeEntry()])!;
+      expect(useSavedMealsStore.getState().replaceItems(meal.id, [])).toBe(false);
+      expect(useSavedMealsStore.getState().meals[0].items).toHaveLength(1);
+    });
+
+    it('refuses a meal that is not there', () => {
+      expect(useSavedMealsStore.getState().replaceItems('missing', [])).toBe(false);
     });
   });
 });

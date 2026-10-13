@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, type ReactNode } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -17,6 +17,17 @@ interface Props {
   /** Logs the meal at whichever slot/moment the caller already knows about — this sheet asks neither. */
   onLog: (meal: SavedMeal) => void;
   onDelete: (meal: SavedMeal) => void;
+  /**
+   * Opens a meal for changes before it is logged (`SavedMealReviewSheet`).
+   * Omitted by a caller with nowhere to send it, which leaves the row as it was.
+   */
+  onReview?: (meal: SavedMeal) => void;
+  /**
+   * Sheets raised from this one (the review), rendered **inside** its Modal so
+   * they present from it rather than from the root, which is already
+   * presenting this sheet. See `overlays` on `FoodLogEntrySheet`.
+   */
+  overlays?: ReactNode;
   onClose: () => void;
 }
 
@@ -30,8 +41,12 @@ interface Props {
  * interaction. Nothing here is staged, so there is no unsaved-changes guard
  * to wire (see the `onRequestClose` rule in CLAUDE.md) — logging and
  * deleting both commit the moment they're tapped, same as `StandingSwapsSheet`.
+ *
+ * The sliders button on a row is the other way in: it opens the meal for
+ * changes first (a different amount, a food swapped or left out), and the
+ * staging that needs lives in the review sheet it raises, not here.
  */
-export function SavedMealsSheet({ visible, meals, onLog, onDelete, onClose }: Props) {
+export function SavedMealsSheet({ visible, meals, onLog, onDelete, onReview, overlays, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -97,6 +112,17 @@ export function SavedMealsSheet({ visible, meals, onLog, onDelete, onClose }: Pr
                           {calories !== null ? ` · ${calories} cal` : ''}
                         </Text>
                       </View>
+                      {!!onReview && (
+                        <TouchableOpacity
+                          style={styles.deleteBtn}
+                          hitSlop={8}
+                          onPress={() => { haptics.tap(); onReview(meal); }}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Change ${meal.name} before logging`}
+                        >
+                          <Ionicons name="options-outline" size={iconSize.sm} color={colors.textSecondary} />
+                        </TouchableOpacity>
+                      )}
                       <TouchableOpacity
                         style={styles.deleteBtn}
                         hitSlop={8}
@@ -113,6 +139,7 @@ export function SavedMealsSheet({ visible, meals, onLog, onDelete, onClose }: Pr
             </View>
           </ScrollView>
         )}
+        {overlays}
       </View>
     </SheetModal>
   );
