@@ -217,7 +217,7 @@ final class WatchSession: NSObject, WCSessionDelegate {
 
     let at = (info["at"] as? String) ?? ISO8601DateFormatter().string(from: Date())
     switch kind {
-    case "complete", "unit", "grocery":
+    case "complete", "unit", "grocery", "choose":
       guard let id = info["id"] as? String, !id.isEmpty else { return }
       // The widget's QuietTap shape (WidgetQuietIntents.swift) plus the id the
       // watch settles on. Both readers ignore a key they don't know, and a nil
@@ -232,6 +232,15 @@ final class WatchSession: NSObject, WCSessionDelegate {
       if kind == "complete" {
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [id])
       }
+    case "groceryAdd":
+      // Not a task, so it goes on the quiet-tap queue beside the grocery ticks
+      // (applied in order with them) rather than the task-title queue. There is
+      // no existing row for it to name, so the tap's own id fills `id`.
+      guard let title = (info["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+            !title.isEmpty else { return }
+      var entry: [String: Any] = ["kind": kind, "id": tapId, "title": title, "at": at, "watchTapId": tapId]
+      if let listId = info["listId"] as? String, !listId.isEmpty { entry["listId"] = listId }
+      appendToQueue(watchQuietTapsFileName, entry)
     case "add":
       guard let title = (info["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
             !title.isEmpty else { return }

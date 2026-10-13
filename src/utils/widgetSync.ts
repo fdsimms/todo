@@ -276,6 +276,17 @@ async function processQuietWidgetTaps(handOff: 'app' | 'requeue' = 'app'): Promi
         case 'checkGrocery':
           useGroceryStore.getState().setCheckedMany([action.itemId], true, { listId: action.listId });
           break;
+        case 'chooseOption': {
+          // Ticking an option is how the app makes the choice (toggleChecked),
+          // so this is the same pair, scoped to the list the tap was made on.
+          const grocery = useGroceryStore.getState();
+          grocery.setCheckedMany([action.itemId], true, { listId: action.listId });
+          grocery.resolveChoice(action.itemId, { listId: action.listId });
+          break;
+        }
+        case 'addGrocery':
+          useGroceryStore.getState().addByName(action.title, undefined, undefined, { listId: action.listId });
+          break;
         case 'handToApp':
           handedOver[action.id] = action.at;
           break;
