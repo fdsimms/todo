@@ -168,7 +168,7 @@ import { mealSlotSourceId } from '../utils/mealSlotTasks';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { selectTodayMealEntries, recipeIndex } from '../utils/mealPlan';
-import { getDayStart, getLogicalDayKey, getLogicalToday, liveStreakCount } from '../utils/dateUtils';
+import { getDayStart, getLogicalDayKey, getLogicalToday, isBeforeDayReset, liveStreakCount } from '../utils/dateUtils';
 import { QuickEventSheet, type QuickEventSeed } from '../components/QuickEventSheet';
 import { useEventTaskLinkStore } from '../store/useEventTaskLinkStore';
 import { eventTaskKey, movedEventContextRows, movedEventNote, movedLinkedEvents } from '../utils/eventTaskLinks';
@@ -4477,8 +4477,12 @@ export function TodayScreen() {
   );
 
   // The logical day, not the wall-clock one: before dayResetTime the header
-  // has to name the same day the date picker calls "Today".
-  const today = format(getLogicalToday(dayResetTime), 'EEEE, MMMM d');
+  // has to name the same day the date picker calls "Today". In that grace
+  // window the calendar has already rolled over, so it also says which date
+  // that is ("Monday, October 12 → Tue, Oct 13"), or the two read as a mismatch.
+  const today = isBeforeDayReset(dayResetTime)
+    ? `${format(getLogicalToday(dayResetTime), 'EEEE, MMMM d')} → ${format(new Date(), 'EEE, MMM d')}`
+    : format(new Date(), 'EEEE, MMMM d');
 
 
   // Split in two memos on purpose. The ordering is the O(every deferred task)
