@@ -108,7 +108,7 @@ function entry(date: string, recipeId: string | null, overrides: Partial<MealPla
     createdAt: '2026-01-01T00:00:00.000Z',
     cookedAt: null,
     leftoverId: null,
-    recipeChoices: [],
+    recipeChoices: [], recipeOverrides: [],
     recipeScale: 1,
     cookTask: null,
     shopTask: null,
@@ -194,6 +194,26 @@ describe('collectPlannedIngredients', () => {
       { name: 'Onions', nameKey: 'onions', quantity: '2', aisle: null, source: 'Tue Ragù', recipeId: ragu.id, recipeTitle: 'Ragù', swappedFrom: null },
       { name: 'Garlic', nameKey: 'garlic', quantity: '3 cloves', aisle: null, source: 'Tue Ragù', recipeId: ragu.id, recipeTitle: 'Ragù', swappedFrom: null },
     ]);
+  });
+
+  it('shops for what the meal replaced a used recipe with, and not for the recipe\'s own lines', () => {
+    const fish = recipe('Homemade fish', [ing('Tofu', { quantity: '1 lb' }), ing('Nori')]);
+    const stew = recipe('Stew', [ing('Broth')]);
+    const dish = makeComponent(fish);
+    stew.components = [dish];
+    const recipesById = new Map([[stew.id, stew], [fish.id, fish]]);
+    const replacement = ing('Vegan fish fillets', { quantity: '8 oz' });
+    const as = (e: MealPlanEntry) => collectPlannedIngredients([e], recipesById, RANGE).map(l => l.nameKey);
+
+    expect(as(entry('2026-08-11', stew.id))).toEqual(['broth', 'tofu', 'nori']);
+    expect(as(entry('2026-08-11', stew.id, { recipeOverrides: [{ targetId: dish.id, replacement }] })))
+      .toEqual(['broth', 'vegan fish fillets']);
+    // The other night of the week still cooks the dish as written.
+    const week = collectPlannedIngredients(
+      [entry('2026-08-11', stew.id, { recipeOverrides: [{ targetId: dish.id, replacement }] }), entry('2026-08-12', stew.id)],
+      recipesById, RANGE,
+    );
+    expect(week.filter(l => l.nameKey === 'tofu')).toHaveLength(1);
   });
 
   it('carries an optional ingredient through, and writes the key only when it is set', () => {

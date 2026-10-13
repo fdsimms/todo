@@ -63,7 +63,7 @@ function entry(
     createdAt: `2026-01-01T00:00:0${seq % 10}.000Z`,
     cookedAt: null,
     leftoverId: null,
-    recipeChoices: [],
+    recipeChoices: [], recipeOverrides: [],
     recipeScale: 1,
     cookTask: null,
     shopTask: null,
@@ -424,8 +424,18 @@ describe('mealCopyDraft', () => {
     expect(mealCopyDraft(lunch, '2026-08-05')).toEqual({
       date: '2026-08-05', slot: 'lunch', recipeId: 'r1', title: 'Pasta salad',
       sortOrder: lunch.sortOrder, cookedAt: null, leftoverId: null,
-      recipeChoices: ['c1'], recipeScale: 2, cookTask: false, shopTask: false, logMeal: true,
+      recipeChoices: ['c1'], recipeOverrides: [], recipeScale: 2, cookTask: false, shopTask: false, logMeal: true,
     });
+  });
+
+  it('does not carry a one-off replacement: this time is about this time', () => {
+    const swapped = entry('2026-08-03', 'dinner', {
+      recipeId: 'r1', recipeChoices: ['c1'],
+      recipeOverrides: [{ targetId: 'l1', replacement: null, note: 'No time to make it' }],
+    });
+    const draft = mealCopyDraft(swapped, '2026-08-10')!;
+    expect(draft.recipeChoices).toEqual(['c1']);
+    expect(draft.recipeOverrides).toEqual([]);
   });
 
   it('refuses a leftover night, which one container cannot supply twice', () => {
@@ -941,7 +951,7 @@ describe('buildMealPlanEntry', () => {
   it('builds the row planMeal writes, with every per-meal question left to its setting', () => {
     expect(buildMealPlanEntry({ date: '2026-10-05', slot: 'dinner', recipeId: 'r1', title: 'Chili' }, ctx)).toEqual({
       id: 'm1', date: '2026-10-05', slot: 'dinner', recipeId: 'r1', title: 'Chili', sortOrder: 1,
-      createdAt: '2026-10-01T09:00:00.000Z', cookedAt: null, leftoverId: null, recipeChoices: [], recipeScale: 1,
+      createdAt: '2026-10-01T09:00:00.000Z', cookedAt: null, leftoverId: null, recipeChoices: [], recipeOverrides: [], recipeScale: 1,
       cookTask: null, shopTask: null, logMeal: null, calendarEventId: null,
     });
   });
@@ -963,7 +973,7 @@ describe('replacedMealEntry', () => {
   it('drops the old dish\'s choices and leftover, and keeps the per-meal task answers', () => {
     const e = entry('2026-03-02', 'dinner', { recipeId: 'a', recipeChoices: ['x'], leftoverId: 'l', cookTask: false });
     const out = replacedMealEntry(e, { recipeId: 'b', title: 'B' }, new Map([['b', withServings('b', null)]]), 0);
-    expect(out).toMatchObject({ recipeId: 'b', title: 'B', recipeChoices: [], leftoverId: null, cookTask: false });
+    expect(out).toMatchObject({ recipeId: 'b', title: 'B', recipeChoices: [], recipeOverrides: [], leftoverId: null, cookTask: false });
   });
 
   it('keeps the head count across recipes, and the factor for the same recipe', () => {

@@ -25,7 +25,7 @@ function entry(
     createdAt: `2026-01-01T00:00:0${seq % 10}.000Z`,
     cookedAt: null,
     leftoverId: null,
-    recipeChoices: [],
+    recipeChoices: [], recipeOverrides: [],
     recipeScale: 1,
     cookTask: null,
     shopTask: null,

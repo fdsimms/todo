@@ -12,6 +12,7 @@ import {
   flattenRecipeIngredients,
   reachableRecipeIds,
   type ChoiceResolution,
+  entryResolution,
 } from './recipeComponents';
 import { NO_STANDING_SWAPS, standingSwapMap, type StandingSwapMap } from './standingSwaps';
 import {
@@ -170,7 +171,7 @@ export function collectPlannedIngredients(
     // The entry's own picks, so a week holding steak-with-mash on Tuesday and
     // steak-with-roast on Friday shops for one side each night rather than both
     // twice. An entry that never answered resolves to the defaults.
-    for (const flat of flattenRecipeIngredients(recipe, recipesById, { chosen: entry.recipeChoices, onHand }, swaps)) {
+    for (const flat of flattenRecipeIngredients(recipe, recipesById, entryResolution(entry, { onHand }), swaps)) {
       // A staple you'd already have (RecipeIngredient.excludeFromShoppingList,
       // water at a stated amount most often) never becomes a shopping-list
       // add — it stays on the recipe, this just skips it here.
@@ -848,7 +849,7 @@ export function consumedRows(classified: readonly ClassifiedIngredient[]): Class
  * after the oat milk.
  */
 export function cookedConsumption(
-  entry: Pick<MealPlanEntry, 'recipeId' | 'recipeChoices' | 'recipeScale'>,
+  entry: Pick<MealPlanEntry, 'recipeId' | 'recipeChoices' | 'recipeOverrides' | 'recipeScale'>,
   recipes: readonly Recipe[],
   items: readonly GroceryItem[],
   itemSubs: readonly ItemSubLink[],
@@ -866,7 +867,7 @@ export function cookedConsumption(
       plannedIngredientsForRecipe(
         recipe,
         recipesById,
-        { chosen: entry.recipeChoices, onHand: onHandNameKeys(items, now, products) },
+        entryResolution(entry, { onHand: onHandNameKeys(items, now, products) }),
         normalizeScale(entry.recipeScale),
         standingSwapMap(itemSubs, items),
       ),

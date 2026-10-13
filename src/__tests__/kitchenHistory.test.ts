@@ -25,7 +25,7 @@ function entry(overrides: Partial<MealPlanEntry> & { id: string; date: string })
     createdAt: localIso('2026-08-01T12:00'),
     cookedAt: null,
     leftoverId: null,
-    recipeChoices: [],
+    recipeChoices: [], recipeOverrides: [],
     recipeScale: 1,
     cookTask: null,
     shopTask: null,

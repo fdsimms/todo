@@ -28,7 +28,7 @@ import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import { useMeasuredTextWidth } from '../hooks/useMeasuredTextWidth';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
-import type { ComponentPlacement, RecipeIngredient, RecipePrepTask, RecipeStep } from '../types';
+import type { ComponentPlacement, RecipeIngredient, RecipeOverride, RecipePrepTask, RecipeStep } from '../types';
 import { GROCERY_NAME_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH, RECIPE_STEP_NOTE_MAX_LENGTH, TITLE_MAX_LENGTH } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useSyncStore } from '../store/useSyncStore';
@@ -109,6 +109,7 @@ import {
   flattenRecipeIngredients,
   ingredientLayout,
   recipeAlternativeCaptions,
+  describeOverrides,
   recipeChoiceGroups,
   stepOptionNames,
   stepVisible,
@@ -144,9 +145,10 @@ type RootStackParamList = {
    * planned meal (MealPlanEntry.recipeChoices), so cooking the Tuesday mash
    * reads as the mash rather than the recipe's default. `scale` does the
    * same for MealPlanEntry.recipeScale. Seed only: nothing picked here is
-   * written back to the entry.
+   * written back to the entry. `overrides` does the same for the meal's one-off
+   * replacements (MealPlanEntry.recipeOverrides).
    */
-  RecipeDetail: { recipeId: string; choices?: string[]; scale?: number; openCookMode?: number; openDetails?: number };
+  RecipeDetail: { recipeId: string; choices?: string[]; overrides?: RecipeOverride[]; scale?: number; openCookMode?: number; openDetails?: number };
 };
 
 /** One row of the merged list the ingredients SortableList drags over — see mergedIngredientRows. */
@@ -281,16 +283,24 @@ export function RecipeDetailScreen() {
   // into it, so a pick made at the stove is the one the cost, nutrition and
   // "Log to food log" read afterwards.
   const [choices, setChoices] = useState<string[]>(() => route.params.choices ?? []);
+  // The meal's one-off replacements, seeded and reseeded exactly like the picks
+  // and, like them, never edited or written back from this screen.
+  const [overrides, setOverrides] = useState<RecipeOverride[]>(() => route.params.overrides ?? []);
   const [choicesSeed, setChoicesSeed] = useState(route.params);
   if (choicesSeed !== route.params) {
     setChoicesSeed(route.params);
     setChoices(route.params.choices ?? []);
+    setOverrides(route.params.overrides ?? []);
     setScale(route.params.scale ?? 1);
   }
   // Live, not persisted — see recipeComponents.ts's ChoiceResolution.onHand.
   const choiceResolution = useMemo(
-    () => ({ chosen: choices, onHand: onHandNameKeys(groceryItems, new Date(), itemProducts) }),
-    [choices, groceryItems, itemProducts]
+    () => ({
+      chosen: choices,
+      ...(overrides.length > 0 ? { overrides } : {}),
+      onHand: onHandNameKeys(groceryItems, new Date(), itemProducts),
+    }),
+    [choices, overrides, groceryItems, itemProducts]
   );
   // What cook mode would have to read out — this recipe's steps and every
   // component's, or the notes blob a recipe predating Recipe.steps still keeps
@@ -304,6 +314,10 @@ export function RecipeDetailScreen() {
   // recipe with no steps still has a mise en place screen worth opening, and
   // a recipe saved before steps existed shouldn't lose the button for it.
   const cookModeAvailable = cookableCount > 0 || shoppableCount > 0;
+  const overrideLines = useMemo(
+    () => (recipe ? describeOverrides(recipe, recipesById, overrides) : []),
+    [recipe, recipesById, overrides]
+  );
   const choiceGroups = useMemo(
     () => (recipe ? recipeChoiceGroups(recipe, recipesById, choiceResolution) : []),
     [recipe, recipesById, choiceResolution]
@@ -1012,6 +1026,7 @@ export function RecipeDetailScreen() {
       mealPlanEntryId: planned?.id ?? null,
       scale,
       choices,
+      overrides,
       grams: null,
       // Somebody tapped to log this, rather than the app offering it.
       asked: true,
@@ -2136,6 +2151,16 @@ export function RecipeDetailScreen() {
             })}
           </View>
         )}
+        {/* This meal's one-off replacements, said once above the figures they
+            change. Plain sentences, not controls: they are set on the meal. */}
+        {overrideLines.length > 0 && (
+          <View style={styles.overrideBox}>
+            <Text style={styles.overrideTitle}>This time</Text>
+            {overrideLines.map(line => (
+              <Text key={line} style={styles.overrideLine}>{line}</Text>
+            ))}
+          </View>
+        )}
         {/* Live off the same scale chips above — a doubled dinner reads as a
             doubled cost. Renders nothing rather than a guess while too few
             lines are priced to say (see recipeCost.ts's coverage floor). */}
@@ -2807,6 +2832,7 @@ export function RecipeDetailScreen() {
         recipe={recipe}
         recipesById={recipesById}
         initialScale={scale}
+        initialOverrides={overrides}
         onAdded={offerPlanForScaledShop}
         onClose={() => setAddToListVisible(false)}
       />
@@ -2842,6 +2868,7 @@ export function RecipeDetailScreen() {
         recipesById={recipesById}
         scale={scale}
         choices={choices}
+        overrides={overrides}
         onChoicesChange={setChoices}
         onClose={() => setCookModeVisible(false)}
         onLogCooked={() => cookRecipeNow(recipe)}
@@ -3452,6 +3479,29 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   },
   scaleRow: { marginTop: spacing.xs, marginBottom: spacing.sm },
   choiceRow: { gap: spacing.sm, marginBottom: spacing.sm },
+  // A planned meal's one-off replacements (MealPlanEntry.recipeOverrides): a
+  // card of plain sentences. Margin on both sides, since the rows around it
+  // carry none of their own.
+  overrideBox: {
+    backgroundColor: colors.bgSecondary,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
+    gap: spacing.xs,
+  },
+  overrideTitle: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  overrideLine: {
+    color: colors.text,
+    fontSize: font.sm,
+    lineHeight: lineHeight.sm,
+  },
   scaleNote: {
     color: colors.textTertiary,
     fontSize: font.xs,

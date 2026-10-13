@@ -3762,7 +3762,7 @@ function registerWriteTools(
 
   server.tool(
     'update_meal',
-    "Change a planned meal (ids from list_meal_plan): move it to another date or slot, swap what it is (recipeId, or recipeId: null with a title for a typed meal), rename a typed one, set a recipe's scale (0.5 halves it, 2 doubles it), answer its either/or questions (choices, by the group and option names list_meal_plan shows), or say whether this meal gets a shopping task, a thaw task or the offer to log it (null hands the choice back to the setting). A leftover night is not swapped here. Whether a meal gets a cook task is set on the phone, which writes or removes that task as it is changed. The phone catches up the meal's task and calendar event the next time it opens.",
+    "Change a planned meal (ids from list_meal_plan): move it to another date or slot, swap what it is (recipeId, or recipeId: null with a title for a typed meal), rename a typed one, set a recipe's scale (0.5 halves it, 2 doubles it), answer its either/or questions (choices, by the group and option names list_meal_plan shows), use something else for this one cooking only (replacements: each names a line or used recipe of the recipe, and either what this meal uses instead, as an ingredient is printed, or null to leave it out; the list replaces the meal's earlier replacements and [] goes back to the recipe as written; shopping, cost and cooking follow it and the recipe is never edited), or say whether this meal gets a shopping task, a thaw task or the offer to log it (null hands the choice back to the setting). A leftover night is not swapped here. Whether a meal gets a cook task is set on the phone, which writes or removes that task as it is changed. The phone catches up the meal's task and calendar event the next time it opens.",
     {
       id: z.string().min(1),
       date: dayKey.optional(),
@@ -3771,6 +3771,12 @@ function registerWriteTools(
       scale: z.number().positive().optional(),
       recipeId: z.string().nullable().optional(),
       choices: z.array(z.object({ group: z.string().min(1), option: z.string().min(1) })).optional(),
+      replacements: z.array(z.object({
+        replace: z.string().min(1),
+        in: z.string().optional().describe('The recipe the line or used recipe is on, only when the same name is on two.'),
+        with: z.string().nullable().describe('What this meal uses instead, as an ingredient is printed ("8 oz vegan fish fillets"), or null to leave it out.'),
+        note: z.string().nullable().optional().describe('The one thing worth saying about the swap, shown beside it.'),
+      })).optional(),
       shopTask: z.boolean().nullable().optional(),
       thawTask: z.boolean().nullable().optional(),
       logMeal: z.boolean().nullable().optional(),

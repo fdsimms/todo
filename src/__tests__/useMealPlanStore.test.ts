@@ -207,7 +207,7 @@ function entry(
     createdAt: localIso('2026-01-01T00:00'),
     cookedAt: null,
     leftoverId: null,
-    recipeChoices: [],
+    recipeChoices: [], recipeOverrides: [],
     recipeScale: 1,
     cookTask: null,
     shopTask: null,
@@ -1000,13 +1000,15 @@ describe('renameEntry', () => {
     mockRecipeState.initialized = true;
     const dinner = entry('2026-08-05', 'dinner', {
       recipeId: 'r-gone', title: 'Chili', recipeChoices: ['c-1'], recipeScale: 2,
+      // Goes with the picks: both are about cooking a recipe that is gone.
+      recipeOverrides: [{ targetId: 'c-fish', replacement: null }],
     });
     loadWeek([dinner]);
 
     useMealPlanStore.getState().renameEntry(dinner.id, 'Tacos');
 
     expect(getEntries()[0]).toEqual({
-      ...dinner, title: 'Tacos', recipeId: null, recipeChoices: [], recipeScale: 1,
+      ...dinner, title: 'Tacos', recipeId: null, recipeChoices: [], recipeOverrides: [], recipeScale: 1,
     });
     expect(dbUpdateMealPlanEntry).toHaveBeenCalledWith(
       expect.objectContaining({ id: dinner.id, title: 'Tacos', recipeId: null })
@@ -1076,6 +1078,31 @@ describe('setRecipeChoices', () => {
 
     useMealPlanStore.getState().setRecipeChoices('gone', ['c-roast']);
 
+    expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
+  });
+});
+
+describe('setRecipeOverrides', () => {
+  const swap = { targetId: 'c-fish', replacement: null, note: 'Not tonight' };
+
+  it('records the replacements and writes them back, and an empty list restores the recipe', () => {
+    const dinner = entry('2026-08-05', 'dinner');
+    loadWeek([dinner]);
+
+    useMealPlanStore.getState().setRecipeOverrides(dinner.id, [swap]);
+    expect(getEntries().find(e => e.id === dinner.id)!.recipeOverrides).toEqual([swap]);
+    expect(dbUpdateMealPlanEntry).toHaveBeenCalledWith(
+      expect.objectContaining({ id: dinner.id, recipeOverrides: [swap] })
+    );
+
+    useMealPlanStore.getState().setRecipeOverrides(dinner.id, []);
+    expect(getEntries().find(e => e.id === dinner.id)!.recipeOverrides).toEqual([]);
+  });
+
+  it('shrugs at an unknown entry', () => {
+    loadWeek([entry('2026-08-05', 'dinner')]);
+    (dbUpdateMealPlanEntry as jest.Mock).mockClear();
+    useMealPlanStore.getState().setRecipeOverrides('gone', [swap]);
     expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
   });
 });
@@ -2049,6 +2076,7 @@ describe('cookRecap', () => {
       recipeId: 'r-Chili',
       recipeName: 'Chili',
       choices: [],
+      overrides: [],
       scale: 1,
     });
   });

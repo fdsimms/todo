@@ -4,7 +4,7 @@ import { SheetModal } from './SheetModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
-import type { Recipe } from '../types';
+import type { Recipe, RecipeOverride } from '../types';
 import { useTheme } from '../theme/ThemeContext';
 import {
   spacing,
@@ -70,6 +70,12 @@ interface Props {
    * header are the sheet's, and nothing here is written back.
    */
   initialChoices?: readonly string[];
+  /**
+   * A planned meal's one-off replacements (`MealPlanEntry.recipeOverrides`), so the
+   * shop buys what the meal is actually using. Read-only here, like the picks it
+   * rides with: the sheet never edits or writes them.
+   */
+  initialOverrides?: readonly RecipeOverride[];
   /**
    * How much of the recipe to shop for, to start on — the factor the recipe
    * screen was being read at, or a planned meal's own `recipeScale` when the
@@ -159,6 +165,7 @@ export function RecipeToListSheet({
   recipe,
   recipesById,
   initialChoices,
+  initialOverrides,
   initialScale,
   initialSelection = 'all',
   onAdded,
@@ -216,8 +223,8 @@ export function RecipeToListSheet({
   );
 
   const choiceGroups = useMemo(
-    () => (recipe && recipesById ? recipeChoiceGroups(recipe, recipesById, { chosen: choices, onHand }) : []),
-    [recipe, recipesById, choiceKey, onHand]
+    () => (recipe && recipesById ? recipeChoiceGroups(recipe, recipesById, { chosen: choices, overrides: initialOverrides, onHand }) : []),
+    [recipe, recipesById, choiceKey, onHand, initialOverrides]
   );
 
   // "Always use oat milk for milk" — applied on the way out of the flatten, so
@@ -228,7 +235,7 @@ export function RecipeToListSheet({
   const classified = useMemo(() => {
     if (!recipe) return [];
     return classifyPlanned(
-      plannedIngredientsForRecipe(recipe, recipesById, { chosen: choices, undecided, onHand }, scale, swaps),
+      plannedIngredientsForRecipe(recipe, recipesById, { chosen: choices, overrides: initialOverrides, undecided, onHand }, scale, swaps),
       items,
       new Date(),
       itemSubs,
@@ -238,7 +245,7 @@ export function RecipeToListSheet({
       // row under it can't disagree about a frozen or "Got it" packet.
       itemProducts
     );
-  }, [recipe, recipesById, items, itemSubs, swaps, choiceKey, scale, inTrolley, onHand, itemProducts]);
+  }, [recipe, recipesById, items, itemSubs, swaps, choiceKey, initialOverrides, scale, inTrolley, onHand, itemProducts]);
 
   // "or jalapeño" on each option of a group left open, so a row in Need to buy
   // reads as one of a pair rather than as a second thing to buy. Keyed on

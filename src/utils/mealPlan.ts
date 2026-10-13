@@ -224,6 +224,9 @@ export type MealCopyDraft = Omit<MealPlanEntry, 'id' | 'createdAt' | 'calendarEv
  *   cook the dish — the roast potatoes, the double batch — and repeating the
  *   week is repeating those too. This is the whole reason a copy beats
  *   re-planning by hand.
+ * - **`recipeOverrides` do not carry.** A one-off replacement ("store-bought
+ *   fish this time") is about that cooking, so a repeated week starts from the
+ *   recipe as written. This is the one place a pick and an override part ways.
  * - **`cookTask` carries**, for the same reason and unlike `cookedAt`: it says
  *   whether *this meal* is one you want reminding about, which is a fact about
  *   how you cook the dish rather than a record of a night that happened. A
@@ -296,6 +299,7 @@ export function mealCopyDraft(entry: MealPlanEntry, date: string): MealCopyDraft
     cookedAt: null,
     leftoverId: null,
     recipeChoices: [...entry.recipeChoices],
+    recipeOverrides: [],
     recipeScale: entry.recipeScale,
     cookTask: entry.cookTask,
     shopTask: entry.shopTask,
@@ -731,6 +735,7 @@ export function buildMealPlanEntry(draft: MealPlanDraft, ctx: MealPlanEntryConte
     // planning a meal must never be gated on answering "mash or roast?", the
     // same call MealPlanEntry.recipeId makes about naming a recipe at all.
     recipeChoices: [],
+    recipeOverrides: [],
     // As written, for the same reason: how much of it you're making is a
     // question a plan is allowed not to have answered. Unless the person has
     // answered it once for every meal (#2910): "Usually cooking for 4" starts
@@ -763,7 +768,7 @@ export function buildMealPlanEntry(draft: MealPlanDraft, ctx: MealPlanEntryConte
  * meal, lifted out so the MCP server's `update_meal` swaps a meal the same way.
  * `title` is already cleaned.
  *
- * The choices and any leftover go, since they were answers about the old dish.
+ * The choices, overrides and any leftover go, since they were answers about the old dish.
  * The scale keeps the head count rather than the multiplier: the same recipe
  * keeps its factor (converting through its own servings would only round a 1.5x
  * of 3 to a different number); an as-written night names no head count, so the
@@ -785,6 +790,7 @@ export function replacedMealEntry(
     recipeId: replacement.recipeId,
     title: replacement.title,
     recipeChoices: [],
+    recipeOverrides: [],
     leftoverId: null,
     recipeScale: entry.recipeId === replacement.recipeId && entry.recipeId
       ? entry.recipeScale

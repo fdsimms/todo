@@ -70,6 +70,7 @@ import type {
   Shop,
   StoreAlias,
   MealPlanEntry,
+  RecipeOverride,
   MealSlot,
   MedicationLog,
   MoodLog,
@@ -437,6 +438,14 @@ export interface MealPatch {
   recipeId?: string | null;
   /** Answers to its either/or questions, by the group's label and the option's name. */
   choices?: { group: string; option: string }[];
+  /**
+   * What this one cooking uses instead of a line or used recipe of its recipe,
+   * by name, replacing the whole list (`[]` goes back to the recipe as written).
+   * `with` is an ingredient as printed ("8 oz vegan fish fillets"), or null to
+   * leave the line out; `in` names the recipe when the same name is on two. The
+   * recipe itself is never edited.
+   */
+  replacements?: { replace: string; in?: string; with: string | null; note?: string | null }[];
   /** Whether it gets a "Shop for X" task, a thaw task, or the offer to log it; null hands it back to the setting. */
   shopTask?: boolean | null;
   thawTask?: boolean | null;
@@ -1994,6 +2003,8 @@ export interface Replica {
   copyMealTo(id: string, dates: string[]): { copied: MealPlanEntry[]; skipped: string[] };
   /** A planned meal's either/or questions ("Side": mash or roast), and which option is in force. */
   mealChoices(entry: MealPlanEntry): MealChoice[];
+  /** What a planned meal uses instead of its recipe's own lines, one plain sentence each. */
+  mealReplacements(entry: MealPlanEntry): string[];
 
   people(): Person[];
   personGroups(): PersonGroup[];
@@ -7620,7 +7631,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         const cleaned = mealPlanUtils.cleanMealTitle(patch.title);
         if (!cleaned) throw new Error('A meal needs a title.');
         // A renamed meal whose recipe is gone is a different meal now, as in the app.
-        next = gone ? { ...next, title: cleaned, recipeId: null, recipeChoices: [], recipeScale: 1 } : { ...next, title: cleaned };
+        next = gone ? { ...next, title: cleaned, recipeId: null, recipeChoices: [], recipeOverrides: [], recipeScale: 1 } : { ...next, title: cleaned };
       }
 
       if (patch.choices !== undefined) {
@@ -7644,6 +7655,47 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           chosen = components().applyChoice(chosen, group, option.id);
         }
         next = { ...next, recipeChoices: chosen };
+      }
+
+      if (patch.replacements !== undefined) {
+        if (!next.recipeId) throw new Error('Only a meal with a recipe has lines to replace.');
+        const recipes = db.dbGetAllRecipes();
+        const recipe = recipes.find(r => r.id === next.recipeId);
+        if (!recipe) throw new Error('That meal\'s recipe is gone, so it has nothing to replace.');
+        const byId = new Map(recipes.map(r => [r.id, r]));
+        // Every line and used recipe the meal could cook, at any depth.
+        const targets: { id: string; name: string; recipeName: string }[] = [];
+        for (const rid of [recipe.id, ...components().reachableRecipeIds(byId, recipe.id)]) {
+          const node = byId.get(rid);
+          if (!node) continue;
+          for (const l of node.ingredients) targets.push({ id: l.id, name: l.name, recipeName: node.name });
+          for (const c of node.components) targets.push({ id: c.id, name: byId.get(c.recipeId)?.name ?? c.name, recipeName: node.name });
+        }
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const recipeUtils = require('../../src/utils/recipeUtils') as typeof import('../../src/utils/recipeUtils');
+        const overrides: RecipeOverride[] = [];
+        for (const r of patch.replacements) {
+          const key = r.replace.trim().toLowerCase();
+          const where = r.in?.trim().toLowerCase();
+          const hits = targets.filter(t => t.name.trim().toLowerCase() === key && (!where || t.recipeName.trim().toLowerCase() === where));
+          if (hits.length === 0) {
+            throw new Error(`"${r.replace}" is not a line or used recipe of "${recipe.name}". It has: ${[...new Set(targets.map(t => t.name))].slice(0, 25).join(', ')}.`);
+          }
+          if (hits.length > 1) {
+            throw new Error(`"${r.replace}" is on more than one recipe (${hits.map(h => h.recipeName).join(', ')}). Name the recipe with "in".`);
+          }
+          const targetId = hits[0].id;
+          if (overrides.some(o => o.targetId === targetId)) throw new Error(`"${r.replace}" is replaced twice.`);
+          let replacement: RecipeOverride['replacement'] = null;
+          if (r.with !== null) {
+            const made = recipeUtils.makeIngredient(r.with);
+            if (!made) throw new Error(`Could not read an ingredient out of "${r.with}".`);
+            replacement = made;
+          }
+          const note = r.note?.trim();
+          overrides.push({ targetId, replacement, ...(note ? { note } : {}) });
+        }
+        next = { ...next, recipeOverrides: overrides };
       }
 
       if (patch.shopTask !== undefined) next = { ...next, shopTask: patch.shopTask };
@@ -7754,8 +7806,16 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (!recipe) return [];
       const onHand = grocerySuggest.onHandNameKeys(db.dbGetAllGroceryItems(), new Date(), db.dbGetAllItemProducts());
       return components()
-        .recipeChoiceGroups(recipe, new Map(recipes.map(r => [r.id, r])), { chosen: entry.recipeChoices, onHand })
+        .recipeChoiceGroups(recipe, new Map(recipes.map(r => [r.id, r])), components().entryResolution(entry, { onHand }))
         .map(g => ({ group: g.label, options: g.options.map(o => o.name), chosen: g.active.name }));
+    },
+
+    mealReplacements(entry: MealPlanEntry): string[] {
+      if (!entry.recipeId || entry.recipeOverrides.length === 0) return [];
+      const recipes = db.dbGetAllRecipes();
+      const recipe = recipes.find(r => r.id === entry.recipeId);
+      if (!recipe) return [];
+      return components().describeOverrides(recipe, new Map(recipes.map(r => [r.id, r])), entry.recipeOverrides);
     },
 
     createPerson(fields: PersonFields): Person {

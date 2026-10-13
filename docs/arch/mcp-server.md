@@ -1224,8 +1224,8 @@ amount and the calories before and after, which is the check on the new figure.
 `update_meal` moves a planned meal (another day or slot), swaps what it is (another recipe, or a
 typed title), renames a typed one, sets a recipe's scale, answers its either/or questions by group
 and option name (`recipeChoiceGroups` and `applyChoice`, one answer at a time since an answer can
-open or close a question), and sets the per-meal answers for its shopping task, thaw task and log
-offer. A swap is the row the app's Replace writes (`replacedMealEntry`, lifted out of
+open or close a question), uses something else for this one cooking (`replacements`, below), and sets
+the per-meal answers for its shopping task, thaw task and log offer. A swap is the row the app's Replace writes (`replacedMealEntry`, lifted out of
 `bulkReplaceItem`), so the head count carries the way it does there. A leftover night is not swapped
 here, since the replace also reconciles its container's use-up task. Whether a meal gets a cook task
 stays on the phone: the app writes or removes that task as the answer changes, which is task-store
@@ -1233,6 +1233,16 @@ work. `plan_meal` takes a `leftoverId` for a leftover night, titled by its conta
 drag titles one. `remove_meal` takes a meal off. These write only the entry row: the slot's task and
 the calendar event are device work that catches up on the phone. A meal already marked cooked is not
 removable here, since it is history behind the cooking stats.
+
+`replacements` on `update_meal` is `MealPlanEntry.recipeOverrides`, by name: each names a line or a
+used recipe of the meal's recipe (at any depth; `in` names the recipe when two share a name) and what
+this meal uses instead, as an ingredient is printed, or null to leave it out. The list replaces the
+meal's earlier one and `[]` goes back to the recipe as written, so a swap is one call and its undo is
+another. The recipe is never edited, and nothing is copied when a meal or week is copied. Shopping,
+cost, nutrition and cooking all follow it because they read the meal through `entryResolution`; a
+hand-built resolution would drop it, which `noBareEntryResolution.test.ts` forbids in `src/` and
+`mcp/src/`. Like a pick, it is not undoable from Activity, and `list_meal_plan` states it as plain
+sentences in `replacements`.
 
 `set_meal_cooked` is the plan's checkbox, with the parts a Node process can do. Marking a meal cooked
 stamps it, counts the cooking on the recipe (`useRecipeStore.markCooked`), opens the packets it used

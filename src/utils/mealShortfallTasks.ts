@@ -7,6 +7,7 @@ import { mealPlanNudgeLinkUrl } from './mealPlanNudge';
 import { classifyPlanned, plannedIngredientsForRecipe, type ClassifiedIngredient } from './mealPlanGroceries';
 import type { StandingSwapMap } from './standingSwaps';
 import { onHandNameKeys } from './grocerySuggest';
+import { entryResolution } from './recipeComponents';
 
 /**
  * "Shop for Tue ragù" — the meal plan's answer to being blindsided on the night.
@@ -175,7 +176,7 @@ export function mealShortfallRows(
       // whichever alternative is already in the kitchen (see
       // recipeComponents.ts's ChoiceResolution.onHand) rather than always
       // asking to buy the recipe's first-listed option.
-      { chosen: entry.recipeChoices, onHand: onHandNameKeys(items, now, products) },
+      entryResolution(entry, { onHand: onHandNameKeys(items, now, products) }),
       entry.recipeScale,
       swaps
     ),

@@ -7500,6 +7500,33 @@ export const MEAL_SLOT_ICONS: Record<MealSlot, string> = {
   snack: 'cafe-outline',
 };
 
+
+/**
+ * "This time" instead of the recipe's own line, kept on one planned meal.
+ *
+ * `targetId` is a `RecipeIngredient` id or a `RecipeComponent` link id on the
+ * recipe (any level down), and `replacement` is what this cooking uses in its
+ * place: a parsed ingredient line, or null to leave the line out. The recipe is
+ * never edited, which is the whole point: a one-off swap ("store-bought fish")
+ * must not become a standing option the recipe has to carry forever.
+ *
+ * Resolved at read time by `flattenRecipeIngredients` and `activeComponents`
+ * (`recipeComponents.ts`), the same seam and the same reason as
+ * `MealPlanEntry.recipeChoices`, and carried on `ChoiceResolution.overrides`.
+ * **A reader builds its resolution from an entry through `entryResolution`,
+ * never by hand**: a hand-built `{ chosen }` silently drops the override and
+ * shops for the line it replaced (`noBareEntryResolution.test.ts` enforces it).
+ *
+ * Resolve-or-shrug like every other cross-row pointer: a `targetId` that names
+ * nothing on the recipe any more replaces nothing.
+ */
+export interface RecipeOverride {
+  targetId: string;
+  replacement: RecipeIngredient | null;
+  /** Shown beside the replaced line, for the one thing worth saying about the swap. */
+  note?: string;
+}
+
 /**
  * One thing planned for one meal of one day.
  *
@@ -7593,6 +7620,14 @@ export interface MealPlanEntry {
    * its default rather than the meal losing its side.
    */
   recipeChoices: string[];
+  /**
+   * One-off replacements for this cooking only; see `RecipeOverride`. Empty on
+   * every entry planned before it shipped. Like `recipeChoices` and
+   * `recipeScale` it belongs to the recipe this entry points at, so it resets
+   * when the recipe is swapped or goes dangling, and it does NOT carry when a
+   * meal or week is copied: "this time" is about this time.
+   */
+  recipeOverrides: RecipeOverride[];
   /**
    * How much of the recipe this meal makes — 1 for as-written, 2 for a doubled
    * Sunday, 0.5 for cooking for one. Applied to every ingredient quantity when

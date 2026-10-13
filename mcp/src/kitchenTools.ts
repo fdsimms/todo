@@ -161,6 +161,8 @@ export interface SerializedMeal {
   scale?: number;
   /** Its either/or questions and the option in force for each. */
   choices?: MealChoice[];
+  /** What this meal uses instead of its recipe's own lines, one plain sentence each (set with update_meal's replacements). */
+  replacements?: string[];
   /** The per-meal answers to the meal task settings; absent when the setting decides. */
   shopTask?: boolean;
   thawTask?: boolean;
@@ -170,6 +172,7 @@ export interface SerializedMeal {
 
 function serializeMeal(e: MealPlanEntry, recipes: Map<string, string>, replica?: Replica): SerializedMeal {
   const choices = replica ? replica.mealChoices(e) : [];
+  const replacements = replica ? replica.mealReplacements(e) : [];
   return {
     id: e.id,
     date: e.date,
@@ -182,6 +185,7 @@ function serializeMeal(e: MealPlanEntry, recipes: Map<string, string>, replica?:
     ...(e.cookedAt ? { cooked: true } : {}),
     ...(e.recipeId && e.recipeScale !== 1 ? { scale: e.recipeScale } : {}),
     ...(choices.length > 0 ? { choices } : {}),
+    ...(replacements.length > 0 ? { replacements } : {}),
     ...(e.shopTask != null ? { shopTask: e.shopTask } : {}),
     ...(e.thawTask != null ? { thawTask: e.thawTask } : {}),
     ...(e.logMeal != null ? { logMeal: e.logMeal } : {}),

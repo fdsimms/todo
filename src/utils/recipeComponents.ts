@@ -1,4 +1,4 @@
-import type { ComponentPlacement, Recipe, RecipeComponent, RecipeIngredient, RecipePrepTask } from '../types';
+import type { ComponentPlacement, MealPlanEntry, Recipe, RecipeComponent, RecipeIngredient, RecipeOverride, RecipePrepTask } from '../types';
 import { RECIPE_CHOICE_GROUP_MAX_LENGTH, RECIPE_NAME_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH } from '../types';
 import { generateId } from './id';
 import { applyStandingSwap, NO_STANDING_SWAPS, type StandingSwapMap } from './standingSwaps';
@@ -221,6 +221,51 @@ export function parseRecipeChoices(raw: unknown): string[] {
   return out;
 }
 
+/**
+ * The overrides stored on a meal plan entry (`MealPlanEntry.recipeOverrides`).
+ * Tolerates a null column or a corrupt blob like `parseRecipeChoices`, and drops
+ * a row with no target or a replacement with no name: one that names nothing
+ * replaces nothing, but a nameless line would only ever shop for a blank.
+ */
+export function parseRecipeOverrides(raw: unknown): RecipeOverride[] {
+  if (!raw) return [];
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw as string); } catch { return []; }
+  if (!Array.isArray(parsed)) return [];
+  const out: RecipeOverride[] = [];
+  for (const row of parsed) {
+    if (!row || typeof row !== 'object') continue;
+    const r = row as Partial<RecipeOverride> & { replacement?: unknown };
+    const targetId = typeof r.targetId === 'string' ? r.targetId.trim() : '';
+    if (!targetId || out.some(o => o.targetId === targetId)) continue;
+    const note = typeof r.note === 'string' ? r.note.trim() : '';
+    if (r.replacement === null) {
+      out.push({ targetId, replacement: null, ...(note ? { note } : {}) });
+      continue;
+    }
+    const rep = r.replacement as Partial<RecipeIngredient> | undefined;
+    const name = rep && typeof rep.name === 'string' ? rep.name.trim() : '';
+    if (!rep || !name) continue;
+    out.push({
+      targetId,
+      replacement: {
+        ...(rep as RecipeIngredient),
+        id: typeof rep.id === 'string' && rep.id ? rep.id : generateId(),
+        name,
+        nameKey: typeof rep.nameKey === 'string' && rep.nameKey ? rep.nameKey : name.toLowerCase(),
+        quantity: typeof rep.quantity === 'string' ? rep.quantity : '',
+        aisle: typeof rep.aisle === 'string' ? rep.aisle : null,
+        prep: typeof rep.prep === 'string' ? rep.prep : null,
+        purpose: typeof rep.purpose === 'string' ? rep.purpose : null,
+        section: typeof rep.section === 'string' ? rep.section : null,
+        choiceGroup: null,
+      },
+      ...(note ? { note } : {}),
+    });
+  }
+  return out;
+}
+
 /** A new link to `target`, with its name captured for the day the target stops resolving. */
 export function makeComponent(target: Recipe, choiceGroup: string | null = null): RecipeComponent {
   return { id: generateId(), recipeId: target.id, name: target.name, choiceGroup };
@@ -289,6 +334,71 @@ export interface ChoiceResolution {
    * at all.
    */
   onHand?: ReadonlySet<string>;
+  /**
+   * This cooking's one-off replacements (`MealPlanEntry.recipeOverrides`). A line
+   * or used recipe named here is swapped for the replacement, or left out, on
+   * the way out of `flattenRecipeIngredients`, and a replaced used recipe drops
+   * out of `activeComponents` so its steps and prep tasks go with it.
+   *
+   * Shopping, cost, nutrition and the cooking views all go through those two, so
+   * a caller only has to carry this; build it with `entryResolution`.
+   */
+  overrides?: readonly RecipeOverride[];
+}
+
+/**
+ * The resolution for one planned meal: its picks and its one-off replacements
+ * together, plus whatever the caller adds (`onHand`, `undecided`).
+ *
+ * **The one way to turn an entry into a `ChoiceResolution`.** Building
+ * `{ chosen: entry.recipeChoices }` by hand compiles and works, and silently
+ * leaves the override off, so the meal shops for the very line it replaced.
+ * `noBareEntryResolution.test.ts` fails the build on the hand-built form.
+ */
+export function entryResolution(
+  entry: Pick<MealPlanEntry, 'recipeChoices' | 'recipeOverrides'> | null | undefined,
+  extra: Omit<ChoiceResolution, 'chosen' | 'overrides'> = {},
+): ChoiceResolution {
+  return {
+    chosen: entry?.recipeChoices ?? [],
+    ...(entry?.recipeOverrides?.length ? { overrides: entry.recipeOverrides } : {}),
+    ...extra,
+  };
+}
+
+/**
+ * One plain sentence per override for the recipe page, in the order given:
+ * "Korean-Style Fish is replaced by 8 oz vegan fish fillets. Note." or "salt is
+ * left out." The replaced name is the recipe's own line or used recipe; an
+ * override whose target is no longer on the recipe is skipped, as everywhere
+ * else (resolve-or-shrug).
+ */
+export function describeOverrides(
+  recipe: Recipe,
+  recipesById: ReadonlyMap<string, Recipe>,
+  overrides: readonly RecipeOverride[],
+): string[] {
+  if (overrides.length === 0) return [];
+  const names = new Map<string, string>();
+  for (const id of [recipe.id, ...reachableRecipeIds(recipesById, recipe.id)]) {
+    const node = recipesById.get(id) ?? (id === recipe.id ? recipe : undefined);
+    if (!node) continue;
+    for (const line of node.ingredients) names.set(line.id, line.name);
+    for (const link of node.components) names.set(link.id, recipesById.get(link.recipeId)?.name ?? link.name);
+  }
+  const out: string[] = [];
+  for (const o of overrides) {
+    const was = names.get(o.targetId);
+    if (!was) continue;
+    const note = o.note ? ` ${o.note.trim().replace(/[.!]?$/, '.')}` : '';
+    if (!o.replacement) {
+      out.push(`${was} is left out.${note}`);
+      continue;
+    }
+    const line = [o.replacement.quantity, o.replacement.name, o.replacement.prep].filter(Boolean).join(' ');
+    out.push(`${was} is replaced by ${line}.${note}`);
+  }
+  return out;
 }
 
 /**
@@ -364,15 +474,34 @@ function undecidedLabelsOf(recipe: Recipe, resolution?: ChoiceResolution): Set<s
   return labels.size > 0 ? labels : undefined;
 }
 
-/** The components a meal of `recipe` actually cooks under `resolution`. */
+/**
+ * The components a meal of `recipe` actually cooks under `resolution`: the
+ * picked side of each either/or, minus any the meal replaces outright
+ * (`ChoiceResolution.overrides`), so a replaced dish contributes no steps and no
+ * prep tasks either. `allOptions` (search) sees every link, replaced or not.
+ */
 export function activeComponents(
   recipe: Recipe,
   resolution?: ChoiceResolution,
 ): RecipeComponent[] {
+  const replaced = overriddenIds(resolution);
+  return pickedComponents(recipe, resolution).filter(c => !replaced.has(c.id) || !!resolution?.allOptions);
+}
+
+/** The components that win their groups, before any one-off replacement. */
+function pickedComponents(recipe: Recipe, resolution?: ChoiceResolution): RecipeComponent[] {
   if (resolution?.allOptions) return [...recipe.components];
   if (recipe.components.every(c => !c.choiceGroup)) return [...recipe.components];
   const { componentIds } = resolveGroupWinners(recipe, resolution, undecidedLabelsOf(recipe, resolution));
   return recipe.components.filter(c => !c.choiceGroup || componentIds.has(c.id));
+}
+
+const NO_IDS: ReadonlySet<string> = new Set();
+
+/** The ids a resolution replaces, or a shared empty set. */
+function overriddenIds(resolution?: ChoiceResolution): ReadonlySet<string> {
+  if (!resolution?.overrides?.length) return NO_IDS;
+  return new Set(resolution.overrides.map(o => o.targetId));
 }
 
 /**
@@ -524,6 +653,14 @@ export interface FlatIngredient {
    * above the part's own name.
    */
   linkSection?: string | null;
+  /**
+   * The recipe's own line or used-recipe name this line stands in for when the
+   * meal replaced it (`RecipeOverride`), else absent. For the row that says
+   * "instead of ...".
+   */
+  replacedName?: string;
+  /** The override's note, when it has one. */
+  replacedNote?: string;
 }
 
 /**
@@ -563,6 +700,7 @@ export function flattenRecipeIngredients(
 ): FlatIngredient[] {
   const out: FlatIngredient[] = [];
   const visited = new Set([recipe.id]);
+  const overrides = new Map((resolution?.overrides ?? []).map(o => [o.targetId, o]));
   // Not `walk`: that visits a node's lines whole and then its children, and a
   // component placed between two lines has to land between them. The rules it
   // enforces are repeated here, each recipe once and only the components the
@@ -572,11 +710,33 @@ export function flattenRecipeIngredients(
     // meal picked. Ungrouped lines are every line, so a recipe with no
     // alternatives flattens exactly as it always did.
     const lines = new Set(activeIngredients(node, resolution));
-    const parts = new Set(activeComponents(node, resolution).map(c => c.id));
+    // The picked components before any replacement: a replaced one still has a
+    // slot here, which its replacement line takes.
+    const parts = new Set(pickedComponents(node, resolution).map(c => c.id));
     const linkSection = (via && componentPlacement(via)?.section) || null;
+    // This cooking's one-off replacements. A standing swap is deliberately not
+    // applied to a replacement: the person typed what they are using this time,
+    // and a standing rule must not rewrite it.
+    const replace = (targetId: string, name: string): boolean => {
+      const override = overrides.get(targetId);
+      if (!override) return false;
+      if (override.replacement) {
+        out.push({
+          ingredient: override.replacement,
+          recipe: node,
+          depth,
+          swappedFrom: null,
+          linkSection,
+          replacedName: name,
+          ...(override.note ? { replacedNote: override.note } : {}),
+        });
+      }
+      return true;
+    };
     for (const item of ingredientLayout(node)) {
       if (item.kind === 'ingredient') {
         if (!lines.has(item.ingredient)) continue;
+        if (replace(item.ingredient.id, item.ingredient.name)) continue;
         // Swapped after the choice is resolved, never before: an option the
         // user isn't cooking has nothing to be swapped into.
         const { ingredient, swappedFrom } = applyStandingSwap(item.ingredient, swaps);
@@ -584,7 +744,9 @@ export function flattenRecipeIngredients(
         continue;
       }
       const { component } = item;
-      if (!parts.has(component.id) || visited.has(component.recipeId)) continue;
+      if (!parts.has(component.id)) continue;
+      if (replace(component.id, recipesById.get(component.recipeId)?.name ?? component.name)) continue;
+      if (visited.has(component.recipeId)) continue;
       const target = recipesById.get(component.recipeId);
       if (!target) continue;
       visited.add(component.recipeId);

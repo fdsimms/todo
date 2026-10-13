@@ -840,9 +840,10 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       const where = before && (before.date !== entry.date || before.slot !== entry.slot)
         ? `Move "${entry.title}" from ${before.slot} on ${before.date} to ${entry.slot} on ${entry.date}`
         : `Change the planned meal "${entry.title}"`;
-      const rest = describePatch({ ...patch, date: undefined, slot: undefined, choices: undefined }, before);
+      const rest = describePatch({ ...patch, date: undefined, slot: undefined, choices: undefined, replacements: undefined }, before);
       const choices = patch.choices && patch.choices.length > 0 ? `${plural(patch.choices.length, 'either/or answer')}` : '';
-      const detail = [rest, choices].filter(Boolean).join('; ');
+      const replaced = patch.replacements === undefined ? '' : patch.replacements.length === 0 ? 'one-off replacements cleared' : `${plural(patch.replacements.length, 'one-off replacement')}`;
+      const detail = [rest, choices, replaced].filter(Boolean).join('; ');
       log({ action: 'moved', subject: 'meal', title: entry.title, taskId: null, note: detail ? `${where}${where.startsWith('Move') ? ', and change' : ':'} ${detail}` : where });
       return entry;
     },

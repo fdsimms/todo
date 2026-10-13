@@ -418,6 +418,7 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
           // surviving plan entry falls back to the dish as written.
           scale: source?.recipeScale ?? 1,
           choices: source?.recipeChoices ?? [],
+          overrides: source?.recipeOverrides ?? [],
           // What this container weighed, when it was weighed — the container
           // against the dish's own cooked weight is the fraction of the recipe
           // that was in it, and finishing it as eaten means that fraction was

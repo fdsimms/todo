@@ -82,7 +82,7 @@ export function CookRecap() {
     // the recap names what was actually consumed (see ChoiceResolution.onHand).
     return classifyPlanned(
       plannedIngredientsForRecipe(
-        recipe, recipesById, { chosen: shownRecap.choices, onHand: onHandNameKeys(items, new Date(), itemProducts) }, shownRecap.scale, swaps
+        recipe, recipesById, { chosen: shownRecap.choices, overrides: shownRecap.overrides, onHand: onHandNameKeys(items, new Date(), itemProducts) }, shownRecap.scale, swaps
       ),
       items,
       new Date(),
@@ -109,7 +109,7 @@ export function CookRecap() {
     // With the standing swaps, the same read the after-meal prompt measures
     // the weight against: a dish whose figures exist only once "oat milk for
     // milk" is applied still has something for a weight to divide.
-    return recipeNutrition(recipe, items, itemProducts, recipesById, { chosen: shownRecap?.choices ?? [] }, 1, swaps) !== null;
+    return recipeNutrition(recipe, items, itemProducts, recipesById, { chosen: shownRecap?.choices ?? [], overrides: shownRecap?.overrides }, 1, swaps) !== null;
   }, [recipe, items, itemProducts, recipesById, shownRecap, swaps]);
 
   const restockList = useMemo(
@@ -144,7 +144,7 @@ export function CookRecap() {
       sourceEntryId: shownRecap.entryId,
       // Under this cooking's own choices, so a night the roast potatoes won
       // never offers to log leftover mash — the mash was never made.
-      parts: leftoverPartsFor(shownRecap.title, recipe ?? undefined, recipesById, { chosen: shownRecap.choices }),
+      parts: leftoverPartsFor(shownRecap.title, recipe ?? undefined, recipesById, { chosen: shownRecap.choices, overrides: shownRecap.overrides }),
       // What the dish itself says it keeps for, so the usual log is still one
       // tap for a recipe that lasts a week rather than a stepper to correct
       // every time. A free-text meal has no recipe to ask and falls back.

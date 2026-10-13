@@ -19,7 +19,7 @@ import { format } from 'date-fns/format';
 import { isToday } from 'date-fns/isToday';
 import { isSameWeek } from 'date-fns/isSameWeek';
 import { isBefore } from 'date-fns/isBefore';
-import { MEAL_SLOTS, type FoodLogEntry, type Leftover, type MealPlanEntry, type MealSlot, type Recipe } from '../types';
+import { MEAL_SLOTS, type FoodLogEntry, type Leftover, type MealPlanEntry, type MealSlot, type Recipe, type RecipeOverride } from '../types';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
 import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
@@ -105,6 +105,7 @@ import {
   flattenRecipePrepTasks,
   recipeMap,
   type FlatPrepTask,
+  entryResolution,
 } from '../utils/recipeComponents';
 import {
   dayKeyRange,
@@ -565,7 +566,7 @@ export function MealPlanScreen() {
       if (!recipe) return null;
       const dish = recipeNutrition(
         recipe, groceryItems, itemProducts, recipesById,
-        { chosen: entry.recipeChoices }, normalizeScale(entry.recipeScale), standingSwaps,
+        entryResolution(entry), normalizeScale(entry.recipeScale), standingSwaps,
       );
       return dish ? perServing(dish) ?? dish.total : null;
     };
@@ -626,7 +627,7 @@ export function MealPlanScreen() {
    * back to the entry.
    */
   const [mealShop, setMealShop] =
-    useState<{ recipe: Recipe; choices: string[]; scale: number } | null>(null);
+    useState<{ recipe: Recipe; choices: string[]; overrides: RecipeOverride[]; scale: number } | null>(null);
   const [mealShopVisible, setMealShopVisible] = useState(false);
   // What the suggestion shelf was opened with — the ranked recipes and the
   // nights they may land on, captured at open rather than re-read while it's
@@ -1010,7 +1011,7 @@ export function MealPlanScreen() {
       const entry = entries.find(e => e.id === shopEntryId);
       const recipe = entry && !entry.cookedAt && entry.recipeId ? recipesById.get(entry.recipeId) : undefined;
       if (entry && recipe) {
-        setMealShop({ recipe, choices: entry.recipeChoices, scale: entry.recipeScale });
+        setMealShop({ recipe, choices: entry.recipeChoices, overrides: entry.recipeOverrides, scale: entry.recipeScale });
         setMealShopVisible(true);
       }
     }
@@ -1368,7 +1369,7 @@ export function MealPlanScreen() {
       title,
       recipeId: entry.recipeId,
       sourceEntryId: entry.id,
-      parts: leftoverPartsFor(title, recipe, recipesById, { chosen: entry.recipeChoices, onHand }),
+      parts: leftoverPartsFor(title, recipe, recipesById, entryResolution(entry, { onHand })),
       // What the dish itself says it keeps for, so the usual log is still one
       // tap for a recipe that lasts a week rather than a stepper to correct
       // every time. A free-text meal has no recipe to ask and falls back.
@@ -1399,7 +1400,7 @@ export function MealPlanScreen() {
   const describeEntryChoices = useCallback((entry: MealPlanEntry): string => {
     const recipe = entry.recipeId ? recipesById.get(entry.recipeId) : undefined;
     if (!recipe || recipe.components.length === 0) return '';
-    return describeChoices(recipeChoiceGroups(recipe, recipesById, { chosen: entry.recipeChoices, onHand }));
+    return describeChoices(recipeChoiceGroups(recipe, recipesById, entryResolution(entry, { onHand })));
   }, [recipesById, onHand]);
 
   // ==== day and row renderers ====
@@ -1672,7 +1673,7 @@ export function MealPlanScreen() {
   // Counted over the whole component tree, so a dish whose only prep steps
   // live on one of its parts still offers the action.
   const selectedRecipe = selected?.recipeId ? recipesById.get(selected.recipeId) : undefined;
-  const selectedResolution = { chosen: selected?.recipeChoices ?? [], onHand };
+  const selectedResolution = entryResolution(selected, { onHand });
   const selectedPrepTaskCount = selectedRecipe
     ? flattenRecipePrepTasks(selectedRecipe, recipesById, selectedResolution).length
     : 0;
@@ -2543,6 +2544,7 @@ export function MealPlanScreen() {
               ? () => navigation.navigate('RecipeDetail', {
                   recipeId: selected.recipeId,
                   choices: selected.recipeChoices,
+                  ...(selected.recipeOverrides.length > 0 ? { overrides: selected.recipeOverrides } : {}),
                   scale: selected.recipeScale,
                 })
               : undefined
@@ -2553,6 +2555,7 @@ export function MealPlanScreen() {
                   setMealShop({
                     recipe: selectedRecipe,
                     choices: selected?.recipeChoices ?? [],
+                    overrides: selected?.recipeOverrides ?? [],
                     scale: selected?.recipeScale ?? 1,
                   });
                   setMealShopVisible(true);
@@ -2647,6 +2650,7 @@ export function MealPlanScreen() {
           recipe={mealShop?.recipe ?? null}
           recipesById={recipesById}
           initialChoices={mealShop?.choices}
+          initialOverrides={mealShop?.overrides}
           initialScale={mealShop?.scale}
           onClose={() => setMealShopVisible(false)}
         />
@@ -2657,7 +2661,7 @@ export function MealPlanScreen() {
           visible={reviewingPrepTasksFor !== null}
           recipe={reviewingRecipe}
           recipesById={recipesById}
-          resolution={{ chosen: reviewingEntry?.recipeChoices ?? [], onHand }}
+          resolution={entryResolution(reviewingEntry, { onHand })}
           onAdd={addChosenPrepTasks}
           onClose={() => setReviewingPrepTasksFor(null)}
         />

@@ -67,7 +67,7 @@ import { waterHelping } from './waterLog';
 import { cookedDishGrams, mealHelping, weighedHelping } from './mealLog';
 import { perServing, recipeNutrition } from './recipeNutrition';
 import { recipeMap } from './recipeComponents';
-import { recipeInBook } from './recipeUtils';
+import { makeIngredient, recipeInBook } from './recipeUtils';
 import { packageChoices, packageHelping } from './scanPortion';
 import { describeProduct } from './groceryProduct';
 import { focusPlanOptionsFrom } from './focusSettings';
@@ -5368,7 +5368,7 @@ function seedMealPlanNudgeStack(
 }
 
 function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
-  const { loadRange, planMeal, setCooked, setRecipeScale, setRecipeChoices, stampAddedToList } =
+  const { loadRange, planMeal, setCooked, setRecipeScale, setRecipeChoices, setRecipeOverrides, stampAddedToList } =
     useMealPlanStore.getState();
   const { markCooked } = useRecipeStore.getState();
   const { logLeftover, finishLeftover, setFrozen: setLeftoverFrozen } = useLeftoverStore.getState();
@@ -5596,7 +5596,14 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   // Roast potatoes again this week, decided in advance.
   if (sundayRoast) {
     const roasted = componentIdFor(recipes.steak, recipes.roasties);
-    if (roasted) setRecipeChoices(sundayRoast.id, [roasted]);
+    if (roasted) {
+      setRecipeChoices(sundayRoast.id, [roasted]);
+      // ...with a bag from the freezer instead of making them (a one-off
+      // replacement, MealPlanEntry.recipeOverrides): that night buys the bag,
+      // the recipe still lists the dish, and the other Sunday is unchanged.
+      const bag = makeIngredient('1 bag frozen roast potatoes');
+      if (bag) setRecipeOverrides(sundayRoast.id, [{ targetId: roasted, replacement: bag, note: 'Straight from the freezer.' }]);
+    }
   }
   plan(5, 'snack', { title: 'Carrot cake with cream cheese frosting', recipeId: recipes.cake });
 

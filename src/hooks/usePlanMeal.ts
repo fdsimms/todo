@@ -13,6 +13,7 @@ import { prepTaskDraftsForMeal } from '../utils/recipeUtils';
 import { slotForHour } from '../utils/mealLog';
 import { onHandNameKeys } from '../utils/grocerySuggest';
 import { haptics } from '../utils/haptics';
+import { entryResolution } from '../utils/recipeComponents';
 
 /**
  * Planning a recipe onto a night, and the prep-task offer that follows.
@@ -86,7 +87,7 @@ export function usePlanMeal() {
     // read (see ChoiceResolution.onHand).
     const drafts = prepTaskDraftsForMeal(
       recipe, recipesById, dayKeyToDate(entry.date),
-      { chosen: entry.recipeChoices, onHand: onHandNameKeys(groceryItems, new Date(), itemProducts) }
+      entryResolution(entry, { onHand: onHandNameKeys(groceryItems, new Date(), itemProducts) })
     );
     if (drafts.length === 0) { onDone?.(); return; }
     const one = drafts.length === 1;

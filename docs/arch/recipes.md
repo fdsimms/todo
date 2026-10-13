@@ -224,6 +224,27 @@ already allows two things on one dinner, so ad-hoc pairing needs nothing.
   - **The two surfaces that show every option don't filter.** The recipe page shows every step so
     each can be edited, dimmed with an "Only with X" caption when it isn't the pick; share text sends
     every step with the same "(Only with X.)" tag, because it sends every option's ingredient too.
+- **A one-off replacement lives on the meal too (`MealPlanEntry.recipeOverrides`), and is a different
+  thing from a pick.** A pick chooses between options the recipe already offers. An override swaps
+  one line or one used recipe for a typed ingredient (or leaves it out) for a single cooking, with
+  the recipe untouched, so "store-bought fish tonight" never becomes a permanent option the recipe
+  has to carry. Rules that keep it honest:
+  - **It rides on `ChoiceResolution.overrides` and applies in two places only**: `flattenRecipeIngredients`
+    (the replacement takes the slot, and a standing swap is deliberately not run over what the person
+    typed) and `activeComponents` (a replaced used recipe drops out, so its steps and prep tasks go with
+    it). Everything that shops, prices, tallies or cooks already goes through those two.
+  - **A reader builds its resolution from an entry with `entryResolution`, never by hand.** A hand-built
+    `{ chosen: entry.recipeChoices }` compiles and silently shops for the line it replaced;
+    `noBareEntryResolution.test.ts` fails the build on that form in `src/` and `mcp/src/`. A place that
+    carries a bare `choices` list (the cook recap, the log prompt, the RecipeDetail route params) carries
+    `overrides` next to it.
+  - **It does not copy.** A copied meal or week keeps its picks and starts from the recipe as written;
+    "this time" is about this time. It resets when the meal is swapped to another recipe or its recipe
+    goes missing, like the picks do.
+  - **It is resolve-or-shrug**: a target the recipe no longer has replaces nothing, and an override on the
+    non-picked side of an either/or changes nothing.
+  - **There is no in-app editor yet.** Overrides are set over MCP (`update_meal`'s `replacements`) and are
+    shown, read-only, as a "This time" card on the recipe page and in shopping and cook mode.
 - **The pick lives on `MealPlanEntry.recipeChoices`**, because which side you make is a fact about
   a cooking, not about the dish — one recipe, mash on Tuesday and roast on Friday. **One list holds
   both kinds of id** (component links and ingredient lines): every reader asks it the same question,
