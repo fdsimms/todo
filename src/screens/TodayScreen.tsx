@@ -168,7 +168,7 @@ import { mealSlotSourceId } from '../utils/mealSlotTasks';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { selectTodayMealEntries, recipeIndex } from '../utils/mealPlan';
-import { getDayStart, getLogicalDayKey, liveStreakCount } from '../utils/dateUtils';
+import { getDayStart, getLogicalDayKey, getLogicalToday, liveStreakCount } from '../utils/dateUtils';
 import { QuickEventSheet, type QuickEventSeed } from '../components/QuickEventSheet';
 import { useEventTaskLinkStore } from '../store/useEventTaskLinkStore';
 import { eventTaskKey, movedEventContextRows, movedEventNote, movedLinkedEvents } from '../utils/eventTaskLinks';
@@ -4476,7 +4476,9 @@ export function TodayScreen() {
     </>
   );
 
-  const today = format(new Date(), 'EEEE, MMMM d');
+  // The logical day, not the wall-clock one: before dayResetTime the header
+  // has to name the same day the date picker calls "Today".
+  const today = format(getLogicalToday(dayResetTime), 'EEEE, MMMM d');
 
 
   // Split in two memos on purpose. The ordering is the O(every deferred task)
