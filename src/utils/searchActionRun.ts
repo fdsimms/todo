@@ -2,14 +2,16 @@ import { format } from 'date-fns/format';
 import type { MedicationLog } from '../types';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { useMoodStore } from '../store/useMoodStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { dbGetFoodLogEntries } from '../db/database';
 import { getLogicalDayKey } from './dateUtils';
 import { confirmWithinLimit, recordDose, unrecordDose } from './doseRecording';
 import { formatDose } from './medicationLog';
+import { severityLabel } from './moodLog';
 import { describeWater, waterEntryOf, waterHelping, waterTotalMl } from './waterLog';
 import { resetToMood } from '../navigation/navigationRef';
-import type { DoseAction, GroceryAction, MoodAction, SearchAction, WaterAction } from './searchActions';
+import type { DoseAction, GroceryAction, MoodAction, SearchAction, SymptomAction, WaterAction } from './searchActions';
 
 /**
  * Running a search action (see `searchActions.ts`): the write, through the
@@ -112,6 +114,18 @@ function runGrocery(action: GroceryAction): SearchActionReceipt | null {
   };
 }
 
+function runSymptom(action: SymptomAction): SearchActionReceipt | null {
+  // Through `addLog` like the sheet's Save, so the day key is stamped under
+  // `dayResetTime`. No mood level: this entry says only that the symptom happened.
+  const log = useMoodStore.getState().addLog(null, [{ name: action.symptom, severity: 1 }]);
+  if (!log) return null;
+  return {
+    title: `Logged ${action.symptom}`,
+    meta: `${severityLabel(1)} · ${format(new Date(log.loggedAt), 'h:mm a')}`,
+    undo: () => useMoodStore.getState().removeLog(log.id),
+  };
+}
+
 /** Open the mood log, filled in with what the words named. */
 export function openMoodLogFor(action: MoodAction): void {
   resetToMood(true, { mood: action.mood, symptom: action.symptom });
@@ -126,6 +140,7 @@ export async function runSearchAction(action: SearchAction): Promise<SearchActio
   switch (action.kind) {
     case 'dose': return runDose(action);
     case 'water': return runWater(action);
+    case 'symptom': return runSymptom(action);
     case 'grocery': return runGrocery(action);
     case 'mood': return null;
   }

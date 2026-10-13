@@ -18,8 +18,8 @@ import { entryFor } from './groceryLists';
 
 /**
  * Things the search field can *do*, not just find: "take aleve" offers to
- * record a dose, "drank water" a glass of water, "feeling tired" the mood log
- * with Tired checked, "buy milk" milk on the grocery list.
+ * record a dose, "drank water" a glass of water, "feeling tired" a Tired entry
+ * (or the mood log with Tired checked), "buy milk" milk on the grocery list.
  *
  * An action is only ever an offer. Nothing here writes anything; a row is
  * shown, and a tap on it goes through the same path the feature's own screen
@@ -79,6 +79,15 @@ export interface MoodAction {
   symptom: string | null;
 }
 
+export interface SymptomAction {
+  kind: 'symptom';
+  key: string;
+  /** The query opened with "log"/"record", so Return may run it. */
+  explicit: boolean;
+  /** The symptom, spelled as the log already spells it. */
+  symptom: string;
+}
+
 export interface GroceryAction {
   kind: 'grocery';
   key: string;
@@ -95,7 +104,7 @@ export interface GroceryAction {
   onList: 'list' | 'cart' | null;
 }
 
-export type SearchAction = DoseAction | WaterAction | MoodAction | GroceryAction;
+export type SearchAction = DoseAction | WaterAction | MoodAction | SymptomAction | GroceryAction;
 
 /** What each kind needs to match against, or null while its screen is hidden. */
 export interface SearchActionSources {
@@ -238,10 +247,34 @@ function moodAction(query: string, symptoms: readonly string[]): MoodAction | nu
   if (!feeling) return null;
   const words = feeling[1].replace(SOFTENERS_RE, '').trim();
   const mood = words ? moodLevelFor(words) : null;
-  const symptom = words && mood === null
-    ? symptoms.find(s => symptomKey(s) === symptomKey(words)) ?? null
-    : null;
+  const symptom = words && mood === null ? knownSymptom(words, symptoms) : null;
   return { kind: 'mood', key: 'mood', explicit: true, mood, symptom };
+}
+
+function knownSymptom(words: string, symptoms: readonly string[]): string | null {
+  return symptoms.find(s => symptomKey(s) === symptomKey(words)) ?? null;
+}
+
+const SYMPTOM_VERB_RE = /^(?:log|record)\s+(?:my\s+|a\s+|an\s+)?(.+)$/i;
+
+/**
+ * The same known symptom, offered as a write: "log headache", or the words of
+ * "feeling tired" when Tired is already in the log. One tap records an entry
+ * with that symptom at Mild and no mood level, which the log allows ("my knee
+ * hurts" is a complete entry). Mild is the floor the sheet starts a picked
+ * symptom at, so a one-tap entry never overstates one, and the mood row beside
+ * it is the way to set a severity.
+ *
+ * Only a symptom the log already has, matched exactly (`symptomKey`): a new
+ * name belongs in the sheet, where the vocabulary is built on purpose.
+ */
+function symptomAction(query: string, symptoms: readonly string[]): SymptomAction | null {
+  const verb = SYMPTOM_VERB_RE.exec(query);
+  const feeling = verb ? null : FEELING_RE.exec(query);
+  const words = (verb ? verb[1] : feeling ? feeling[1].replace(SOFTENERS_RE, '') : '').trim();
+  const symptom = words ? knownSymptom(words, symptoms) : null;
+  if (!symptom) return null;
+  return { kind: 'symptom', key: `symptom:${symptomKey(symptom)}`, explicit: verb !== null, symptom };
 }
 
 // ==== groceries ====
@@ -317,6 +350,9 @@ export function searchActions(
     if (water) found.push(water);
   }
   if (sources.mood) {
+    // The write comes before the screen that opens, so the one-tap row leads.
+    const symptom = symptomAction(text, sources.mood.symptoms);
+    if (symptom) found.push(symptom);
     const mood = moodAction(text, sources.mood.symptoms);
     if (mood) found.push(mood);
   }
@@ -327,7 +363,12 @@ export function searchActions(
 
   const actions = found.slice(0, limit);
   if (actions.length === 0) return NONE;
-  const only = actions.length === 1 ? actions[0] : null;
+  // "feeling tired" offers a write and the log; Return keeps opening the log,
+  // as it did before the write was offered, because that writes nothing.
+  const pairedMood = actions.length === 2 && actions[0].kind === 'symptom' && actions[1].kind === 'mood'
+    ? actions[1]
+    : null;
+  const only = actions.length === 1 ? actions[0] : pairedMood;
   return { actions, onSubmit: only && only.explicit && isRunnable(only) ? only : null };
 }
 
@@ -398,6 +439,15 @@ function describeMood(action: MoodAction): ActionDescription {
   return { title: 'Log your mood', meta, warn: false, icon: 'happy-outline' };
 }
 
+function describeSymptom(action: SymptomAction): ActionDescription {
+  return {
+    title: `Log ${action.symptom}`,
+    meta: ['Mild · no mood level'],
+    warn: false,
+    icon: 'pulse-outline',
+  };
+}
+
 function describeGrocery(action: GroceryAction): ActionDescription {
   const meta: string[] = [];
   if (action.quantity) meta.push(action.quantity);
@@ -416,6 +466,7 @@ export function describeSearchAction(action: SearchAction, ctx: DescribeContext)
     case 'dose': return describeDose(action, ctx);
     case 'water': return describeWaterAction(action, ctx);
     case 'mood': return describeMood(action);
+    case 'symptom': return describeSymptom(action);
     case 'grocery': return describeGrocery(action);
   }
 }
