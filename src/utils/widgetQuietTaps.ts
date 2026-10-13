@@ -36,11 +36,19 @@ export interface QuietTap {
   /**
    * `complete` checks a task off, `unit` logs one unit of a daily target (the
    * widget sends these for every target row, so a run of taps is a run of
-   * units), `grocery` puts an item in the cart on one list.
+   * units), `grocery` puts an item in the cart on one list, `choose` picks one
+   * option of an either/or on one list (the others come off it), and
+   * `groceryAdd` adds `title` to one list. Only the Apple Watch sends the last
+   * two: the widget draws no checkbox on an either/or and has no text entry.
    */
-  kind: 'complete' | 'unit' | 'grocery';
-  /** The task id, or the grocery item id. */
+  kind: 'complete' | 'unit' | 'grocery' | 'choose' | 'groceryAdd';
+  /**
+   * The task id, or the grocery item id. A `groceryAdd` names no existing row,
+   * so its id is the watch's own tap id, only to keep the entry well formed.
+   */
   id: string;
+  /** The words to add, for `groceryAdd` only. */
+  title?: string;
   /** The grocery list the row was on; null is the home list. Tasks carry null. */
   listId: string | null;
   /** When the tap happened, ISO. */
@@ -58,7 +66,9 @@ export type QuietTapAction =
   | { type: 'logUnit'; id: string }
   /** Needs a person after all: run it through the opening intent's path. */
   | { type: 'handToApp'; id: string; at: string }
-  | { type: 'checkGrocery'; itemId: string; listId: string | null };
+  | { type: 'checkGrocery'; itemId: string; listId: string | null }
+  | { type: 'chooseOption'; itemId: string; listId: string | null }
+  | { type: 'addGrocery'; title: string; listId: string | null };
 
 /**
  * Whether a widget tap on this task has to bring the app forward to be done
@@ -90,12 +100,25 @@ export function parseQuietTaps(json: string): QuietTap[] {
   const taps: QuietTap[] = [];
   for (const entry of raw) {
     if (typeof entry !== 'object' || entry === null) continue;
-    const { kind, id, listId, at, watchTapId } = entry as Record<string, unknown>;
-    if (kind !== 'complete' && kind !== 'unit' && kind !== 'grocery') continue;
+    const { kind, id, listId, at, watchTapId, title } = entry as Record<string, unknown>;
+    if (
+      kind !== 'complete' &&
+      kind !== 'unit' &&
+      kind !== 'grocery' &&
+      kind !== 'choose' &&
+      kind !== 'groceryAdd'
+    ) {
+      continue;
+    }
     if (typeof id !== 'string' || id === '') continue;
     if (typeof at !== 'string' || Number.isNaN(Date.parse(at))) continue;
     const tap: QuietTap = { kind, id, listId: typeof listId === 'string' && listId !== '' ? listId : null, at };
     if (typeof watchTapId === 'string' && watchTapId !== '') tap.watchTapId = watchTapId;
+    if (kind === 'groceryAdd') {
+      const words = typeof title === 'string' ? title.trim() : '';
+      if (words === '') continue;
+      tap.title = words;
+    }
     taps.push(tap);
   }
   return taps;
@@ -129,6 +152,21 @@ export function planQuietTaps(
   const actions: QuietTapAction[] = [];
 
   for (const tap of taps) {
+    if (tap.kind === 'groceryAdd') {
+      actions.push({ type: 'addGrocery', title: tap.title ?? '', listId: tap.listId });
+      continue;
+    }
+    if (tap.kind === 'choose') {
+      const key = `${tap.listId ?? ''}\u0000${tap.id}`;
+      if (checked.has(key)) continue;
+      const entry = entries.find(e => e.itemId === tap.id && e.listId === tap.listId);
+      // Only a row that is still one side of an either/or can be chosen. If
+      // the choice was already made (on the phone, say), it is simply done.
+      if (!entry?.choiceGroup) continue;
+      checked.add(key);
+      actions.push({ type: 'chooseOption', itemId: tap.id, listId: tap.listId });
+      continue;
+    }
     if (tap.kind === 'grocery') {
       const key = `${tap.listId ?? ''}\u0000${tap.id}`;
       if (checked.has(key)) continue;
@@ -180,5 +218,7 @@ export function planQuietTaps(
  * drain plans it exactly as this one did and hands it over with a person there.
  */
 export function tapsToRequeue(taps: readonly QuietTap[], handedOverIds: ReadonlySet<string>): QuietTap[] {
-  return taps.filter(tap => tap.kind !== 'grocery' && handedOverIds.has(tap.id));
+  return taps.filter(
+    tap => tap.kind !== 'grocery' && tap.kind !== 'choose' && tap.kind !== 'groceryAdd' && handedOverIds.has(tap.id),
+  );
 }

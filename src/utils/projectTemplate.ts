@@ -241,6 +241,7 @@ export function templateFromProject(
     targetUnit: task.targetUnit,
     quotaPeriod: task.quotaPeriod,
     allowOvershoot: task.allowOvershoot,
+    coinsPerTap: task.coinsPerTap,
     quotaReminders: task.quotaReminders,
     phoneNumber: task.phoneNumber,
     emailAddress: task.emailAddress,

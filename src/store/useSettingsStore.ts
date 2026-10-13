@@ -584,12 +584,6 @@ interface SettingsStore {
   // segment (morning/afternoon/evening): neither pins down an actual clock
   // time, and "30 minutes before the day reset" is not a useful reminder.
   defaultReminderLeadMinutes: number | null;
-  /**
-   * Whether a list's card on the Projects screen leaves out the first few
-   * items it would otherwise show. For a wish list or gift list that is
-   * visible to someone it is a surprise for.
-   */
-  hideListPreviews: boolean;
   hideCategories: boolean; // Today's "Hide categories" display option, in Sort & Filter
   /**
    * Trims quick add's chip toolbar and the task editor's open-by-default rows
@@ -1973,7 +1967,6 @@ interface SettingsStore {
   setPenaltyShieldUntil: (until: string | null, reason?: string | null) => void;
   setCompletedRetentionDays: (days: RetentionDays) => void;
   setDefaultReminderLeadMinutes: (minutes: number | null) => void;
-  setHideListPreviews: (on: boolean) => void;
   setHideCategories: (on: boolean) => void;
   setSimpleTaskForm: (on: boolean) => void;
   setSimpleMode: (on: boolean) => void;
@@ -2274,7 +2267,6 @@ const DEFAULT_SETTINGS = {
   gateShieldEnabled: false,
   penaltyShieldUntil: null,
   penaltyShieldReason: null,
-  hideListPreviews: false,
   hideCategories: false,
   simpleTaskForm: false,
   simpleMode: false,
@@ -2712,7 +2704,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   penaltyShieldReason: null,
   completedRetentionDays: null,
   defaultReminderLeadMinutes: null,
-  hideListPreviews: false,
   hideCategories: false,
   simpleTaskForm: false,
   simpleMode: false,
@@ -3031,7 +3022,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const completedRetentionDays = parseRetentionDays(dbGetSetting('completedRetentionDays'));
     const defaultReminderLeadMinutes = parseDefaultReminderLeadMinutes(dbGetSetting('defaultReminderLeadMinutes'));
     const hideCategories = dbGetSetting('hideCategories') === 'true';
-    const hideListPreviews = dbGetSetting('hideListPreviews') === 'true';
     const collapsedCategories = parseCategoryNames(dbGetSetting('collapsedCategories'));
     const collapsedRecipeSections = parseCollapsedRecipeSections(dbGetSetting('collapsedRecipeSections'));
     const collapsedGroceryGroups = parseCollapsedGroceryGroups(dbGetSetting('collapsedGroceryGroups'));
@@ -3627,7 +3617,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       healthWriteNutrients,
       hideCategories,
       hideHelpText,
-      hideListPreviews,
       holidaySet,
       householdServings,
       journalCustomPrompts,
@@ -4863,11 +4852,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setDefaultReminderLeadMinutes(minutes: number | null) {
     dbSetSetting('defaultReminderLeadMinutes', minutes === null ? '' : String(minutes));
     set({ defaultReminderLeadMinutes: minutes });
-  },
-
-  setHideListPreviews(on: boolean) {
-    dbSetSetting('hideListPreviews', on ? 'true' : 'false');
-    set({ hideListPreviews: on });
   },
 
   setHideCategories(on: boolean) {

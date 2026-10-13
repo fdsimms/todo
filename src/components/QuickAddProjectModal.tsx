@@ -16,7 +16,6 @@ import { SafeBlurView } from './SafeBlurView';
 import { WhenPicker } from './WhenPicker';
 import { PillGroup, type PillGroupOption } from './PillGroup';
 import { SheetScrim } from './SheetScrim';
-import { SegmentedControl } from './SegmentedControl';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, animation, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -36,8 +35,6 @@ export interface ProjectDraft {
   title: string;
   category: string | null;
   deadline: string | null;
-  /** "List" was picked above the name: a running list rather than work with an end. */
-  asList?: boolean;
   /** The "Planning" chip was on: held back until it's marked ready. */
   planning?: boolean;
   /** The "Trip" chip's departure, stored the way the editor stores it. */
@@ -98,7 +95,6 @@ export function QuickAddProjectModal({
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<string | null>(null);
   const [deadline, setDeadline] = useState<Date | null>(null);
-  const [asList, setAsList] = useState(false);
   const [planning, setPlanning] = useState(false);
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
   const [deadlinePickerVisible, setDeadlinePickerVisible] = useState(false);
@@ -151,7 +147,6 @@ export function QuickAddProjectModal({
     setDeadline(null);
     setLeaving(null);
     setLeavingPickerVisible(false);
-    setAsList(false);
     setPlanning(false);
     setActivePanel(null);
     setDeadlinePickerVisible(false);
@@ -196,10 +191,9 @@ export function QuickAddProjectModal({
     animateLayout();
     const resolvedCategory = resolveCategory();
     const created = createProject(finalTitle, {
-      deadline: deadline && !asList ? deadline.toISOString() : null,
+      deadline: deadline ? deadline.toISOString() : null,
       category: resolvedCategory,
-      awayStart: leaving && !asList ? awayNoonIso(leaving) : null,
-      kind: asList ? 'list' : 'project',
+      awayStart: leaving ? awayNoonIso(leaving) : null,
       planning,
     });
     const project = useProjectStore.getState().getProjectById(created.id) ?? created;
@@ -267,7 +261,6 @@ export function QuickAddProjectModal({
       title: title.trim(),
       category: resolveCategory(),
       deadline: deadline ? deadline.toISOString() : null,
-      asList,
       planning,
       awayStart: leaving ? awayNoonIso(leaving) : null,
     });
@@ -346,28 +339,12 @@ export function QuickAddProjectModal({
             </View>
           ) : null}
 
-          {/* The kind is the first question, not a switch found later on the
-              project's page: a list has no dates or finish line, so it is a
-              different thing to make. Switching afterward is Convert in the
-              project page's "..." menu. */}
-          <View style={styles.kindRow}>
-            <SegmentedControl
-              label="Kind"
-              options={[
-                { value: false, label: 'Project', icon: 'briefcase-outline' },
-                { value: true, label: 'List', icon: 'list-outline' },
-              ]}
-              value={asList}
-              onChange={setAsList}
-            />
-          </View>
-
           {/* Name input row */}
           <View style={styles.row}>
             <TextField
               ref={inputRef}
               style={styles.input}
-              placeholder={asList ? 'New list…' : 'New project…'}
+              placeholder="New project…"
               placeholderTextColor={colors.textTertiary}
               value={title}
               onChangeText={setTitle}
@@ -381,7 +358,7 @@ export function QuickAddProjectModal({
               onPress={handleAdd}
               disabled={!title.trim()}
               accessibilityRole="button"
-              accessibilityLabel={asList ? 'Create list' : 'Create project'}
+              accessibilityLabel="Create project"
             >
               <Ionicons name="arrow-up" size={18} color={title.trim() ? colors.onAccent : colors.textTertiary} />
             </TouchableOpacity>
@@ -390,10 +367,7 @@ export function QuickAddProjectModal({
           {/* Attribute toolbar. Every chip always carries its label — an
               icon alone doesn't say what tapping it does. Same shape as
               QuickAddModal's own toolbar: label until there's a value, then
-              the value replaces it.
-
-              Whether it's a list is the segmented control above the name. A
-              list has no deadline or trip, so those two chips are left off. */}
+              the value replaces it. */}
           <View style={styles.toolbar}>
             <TouchableOpacity
               style={[styles.toolChip, activePanel === 'category' && styles.toolChipActive, category !== null && styles.toolChipSet]}
@@ -408,7 +382,7 @@ export function QuickAddProjectModal({
               </Text>
             </TouchableOpacity>
 
-            {!asList && <TouchableOpacity
+            <TouchableOpacity
               style={[styles.toolChip, deadline != null && styles.toolChipSet]}
               onPress={() => setDeadlinePickerVisible(true)}
               activeOpacity={interaction.activeOpacity}
@@ -419,9 +393,9 @@ export function QuickAddProjectModal({
               <Text style={[styles.toolChipText, deadline != null && styles.toolChipTextSet]} numberOfLines={1}>
                 {deadline != null ? formatDeadlineDate(deadline.toISOString()) : 'Deadline'}
               </Text>
-            </TouchableOpacity>}
+            </TouchableOpacity>
 
-            {!asList && <TouchableOpacity
+            <TouchableOpacity
               style={[styles.toolChip, leaving != null && styles.toolChipSet]}
               onPress={() => setLeavingPickerVisible(true)}
               activeOpacity={interaction.activeOpacity}
@@ -432,7 +406,7 @@ export function QuickAddProjectModal({
               <Text style={[styles.toolChipText, leaving != null && styles.toolChipTextSet]} numberOfLines={1}>
                 {leaving != null ? `Leaves ${formatDeadlineDate(leaving.toISOString())}` : 'Trip'}
               </Text>
-            </TouchableOpacity>}
+            </TouchableOpacity>
 
             <TouchableOpacity
               style={[styles.toolChip, planning && styles.toolChipSet]}
@@ -513,7 +487,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing.md,
   },
-  kindRow: { marginBottom: spacing.smd },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

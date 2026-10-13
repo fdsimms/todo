@@ -17,7 +17,7 @@ const task = (over: Partial<Task> & { id: string; title: string }): Task =>
      parentId: null, projectId: 'p1', dueDate: null, deadline: null, deferUntil: null, recurrenceType: 'none',
      chainItems: [], chainIndex: 0, pinned: false, sortOrder: 0, blockedById: null, blockedByIds: [], ...over }) as Task;
 
-const project = { id: 'p1', title: 'Hall', notes: '', deadline: null, kind: 'project', category: null, defaultTaskCategory: null, completed: false, archived: false } as unknown as Project;
+const project = { id: 'p1', title: 'Hall', notes: '', deadline: null, category: null, defaultTaskCategory: null, completed: false, archived: false } as unknown as Project;
 
 function stub(tasks: Task[], over: Partial<Replica> = {}): Replica {
   return {
@@ -50,7 +50,7 @@ describe('getProject', () => {
 
   it('lists open steps in order with their checklist and blockers, and the recently done', () => {
     const result = getProject(stub(tasks), 'p1')!;
-    expect(result.project).toMatchObject({ id: 'p1', kind: 'project', done: 1, total: 3 });
+    expect(result.project).toMatchObject({ id: 'p1', done: 1, total: 3 });
     expect(result.open.map(t => t.id)).toEqual(['a', 'b']);
     expect(result.open[1]).toMatchObject({ subtasks: [{ id: 's', title: 'Rollers', done: false }], waitsOn: ['a'], blocked: true });
     expect(result.recentlyDone).toEqual([{ id: 'd', title: 'Measure', completedAt: '2026-10-01T10:00:00.000Z' }]);

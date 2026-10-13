@@ -82,7 +82,7 @@ const baseTask = {
   penaltyCreditedAt: null,
   gatesApps: false,
   showStreak: false,
-  streakRequiresWindow: false, streakCountsUnits: false,
+  streakRequiresWindow: false, streakCountsUnits: false, coinsPerTap: false,
   recurrenceFromCompletion: false,
   supplyCount: null,
   supplyUnit: null,
@@ -257,6 +257,27 @@ describe('tapsToRequeue', () => {
   });
 });
 
+describe('watch grocery taps', () => {
+  const add = (title: unknown, listId?: string) =>
+    JSON.stringify([{ kind: 'groceryAdd', id: 'w1', title, at: AT, ...(listId ? { listId } : {}) }]);
+
+  it('reads a dictated item with its trimmed title and list', () => {
+    expect(parseQuietTaps(add('  oat milk ', 'away'))).toEqual([
+      { kind: 'groceryAdd', id: 'w1', title: 'oat milk', listId: 'away', at: AT },
+    ]);
+  });
+
+  it('drops a dictated item with no words', () => {
+    expect(parseQuietTaps(add('   '))).toEqual([]);
+    expect(parseQuietTaps(add(undefined))).toEqual([]);
+  });
+
+  it('never puts a dictated item back on the queue for a task hand-off', () => {
+    const taps = parseQuietTaps(add('eggs'));
+    expect(tapsToRequeue(taps, new Set(['plain']))).toEqual([]);
+  });
+});
+
 describe('planQuietTaps', () => {
   const plan = (taps: QuietTap[], tasks: Task[], entries: GroceryListEntry[] = []) =>
     planQuietTaps(taps, tasks, entries, true, isCurrentDay);
@@ -305,5 +326,41 @@ describe('planQuietTaps', () => {
 
   it('leaves an either/or row for the list itself', () => {
     expect(plan([tap('grocery', 'milk')], [], [entry({ choiceGroup: 'g' })])).toEqual([]);
+  });
+
+  describe('either/or and dictated items from the watch', () => {
+    const option = (itemId: string, overrides: Partial<GroceryListEntry> = {}) =>
+      entry({ itemId, choiceGroup: 'fruit', ...overrides });
+
+    it('chooses an option that is still one side of an either/or, once', () => {
+      const entries = [option('apples'), option('pears')];
+      expect(plan([tap('choose', 'apples'), tap('choose', 'apples')], [], entries)).toEqual([
+        { type: 'chooseOption', itemId: 'apples', listId: null },
+      ]);
+    });
+
+    it('drops a choice already made, or on a row that was never an option', () => {
+      const entries = [entry({ itemId: 'apples' }), entry({ itemId: 'milk' })];
+      expect(plan([tap('choose', 'apples'), tap('choose', 'milk'), tap('choose', 'gone')], [], entries)).toEqual([]);
+    });
+
+    it('scopes a choice to the list the tap names', () => {
+      const entries = [option('apples', { listId: 'away' })];
+      expect(plan([tap('choose', 'apples')], [], entries)).toEqual([]);
+      expect(plan([tap('choose', 'apples', AT, 'away')], [], entries)).toEqual([
+        { type: 'chooseOption', itemId: 'apples', listId: 'away' },
+      ]);
+    });
+
+    it('adds each dictated item in order with the ticks around it', () => {
+      const taps: QuietTap[] = [
+        { ...tap('groceryAdd', 'w1', AT, 'away'), title: 'eggs' },
+        tap('grocery', 'milk'),
+      ];
+      expect(plan(taps, [], [entry()])).toEqual([
+        { type: 'addGrocery', title: 'eggs', listId: 'away' },
+        { type: 'checkGrocery', itemId: 'milk', listId: null },
+      ]);
+    });
   });
 });

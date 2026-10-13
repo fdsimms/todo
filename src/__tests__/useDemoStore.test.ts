@@ -620,35 +620,19 @@ describe('demo mode', () => {
     expect(calibration!.samples).toBeGreaterThanOrEqual(MIN_CALIBRATION_SAMPLES);
     useDemoStore.getState().exitDemoMode();
   });
-  // A list is drawn differently from a project and is otherwise the same row,
-  // so the only thing that can make the feature visible in demo mode is a
-  // project actually carrying kind: 'list'. Behaviour is asserted alongside:
-  // its members are undated, which is what keeps them off Today and out of
+  // A running collection (no finish line, never nudged) is an ordinary project.
+  // Its members are undated, which is what keeps them off Today and out of
   // Inbox without any code of their own.
-  // A sectioned list that keeps its checked items in view, so a checked item
-  // can be seen staying under its own section.
-  it('seeds a sectioned list keeping a checked item in each section', () => {
-    useDemoStore.getState().enterDemoMode();
-    const projects = useProjectStore.getState().projects;
-    const tasks = useTaskStore.getState().tasks;
-    const list = projects.find(p => p.kind === 'list' && p.showChecked
-      && tasks.some(t => t.projectId === p.id && t.groupId && t.completed));
-    expect(list).toBeDefined();
-    const checkedSections = new Set(tasks.filter(t => t.projectId === list!.id && t.completed && t.groupId).map(t => t.groupId));
-    expect(checkedSections.size).toBeGreaterThanOrEqual(2);
-    useDemoStore.getState().exitDemoMode();
-  });
-
-  it('seeds a list, with undated members', () => {
+  it('seeds running collections, with undated members', () => {
     useDemoStore.getState().enterDemoMode();
     const projects = useProjectStore.getState().projects;
     const tasks = useTaskStore.getState().tasks;
 
-    const lists = projects.filter(p => p.kind === 'list');
+    const lists = projects.filter(p => p.ongoing && !p.nudgeOptIn);
     expect(lists.length).toBeGreaterThanOrEqual(2);
     // And ordinary projects still exist, or the demo would say every project
-    // is a list.
-    expect(projects.some(p => p.kind === 'project')).toBe(true);
+    // is a running collection.
+    expect(projects.some(p => !p.ongoing)).toBe(true);
 
     for (const list of lists) {
       const members = tasks.filter(t => t.projectId === list.id);
@@ -657,25 +641,20 @@ describe('demo mode', () => {
       // The property the whole design rests on: an undated project task is
       // absent from Today, Inbox and Unscheduled with no special-casing.
       expect(members.every(t => !isTaskVisible(t))).toBe(true);
-      // Every list carries the list defaults, whichever route made it: no
-      // finish line and never pulled. Two of the three seeded lists used to
-      // miss them. See projectKind.ts.
-      expect(list.ongoing).toBe(true);
-      expect(list.nudgeOptIn).toBe(false);
     }
 
     useDemoStore.getState().exitDemoMode();
   });
 
-  // Opt-in per item, not per list — see Project.kind. A list where every line
-  // demanded an answer would be a form, so the demo has to show one item
-  // carrying a question and the rest not.
-  it('seeds exactly one list item that records an answer', () => {
+  // Opt-in per task, not per project. A project where every task demanded an
+  // answer would be a form, so the demo has to show one task carrying a
+  // question and the rest not.
+  it('seeds exactly one collection task that records an answer', () => {
     useDemoStore.getState().enterDemoMode();
     const projects = useProjectStore.getState().projects;
     const tasks = useTaskStore.getState().tasks;
 
-    const listIds = new Set(projects.filter(p => p.kind === 'list').map(p => p.id));
+    const listIds = new Set(projects.filter(p => p.ongoing && !p.nudgeOptIn).map(p => p.id));
     const members = tasks.filter(t => t.projectId && listIds.has(t.projectId));
     const answered = members.filter(t => t.deliverableValue !== null);
 
@@ -1093,6 +1072,13 @@ describe('demo mode', () => {
     expect(target.progressCount).toBeLessThan(target.targetCount!);
     // A target always repeats — it resets by spawning its next occurrence.
     expect(target.recurrenceType).not.toBe('none');
+  });
+
+  it('seeds a daily target that pays coins on every tap', () => {
+    useDemoStore.getState().enterDemoMode();
+    const perTap = useTaskStore.getState().tasks.find(t => t.coinsPerTap);
+    expect(perTap).toBeDefined();
+    expect(perTap!.targetCount).not.toBeNull();
   });
 
   it('seeds a daily target paced by an interval, nudges and all', () => {
@@ -1680,14 +1666,13 @@ describe('demo mode', () => {
     expect(projectCardCaption(party!, false, 'active')?.text).toBe('Event in 31 days');
   });
 
-  it('seeds a checklist section, project links, a list keeping checked lines, and a project worked in order', () => {
+  it('seeds a checklist section, project links, and a project worked in order', () => {
     useDemoStore.getState().enterDemoMode();
     const projects = useProjectStore.getState().projects;
     const lisbon = projects.find(p => p.title === 'Lisbon, with Mia')!;
     const packing = useTaskGroupStore.getState().groups.find(g => g.title === 'Packing' && g.projectId === lisbon.id);
     expect(packing?.checklist).toBe(true);
     expect(lisbon.links).toHaveLength(1);
-    expect(projects.find(p => p.title === 'Six Seasons')?.showChecked).toBe(true);
     const remodel = projects.find(p => p.title === 'Kitchen remodel')!;
     expect(remodel.inOrder).toBe(true);
     expect(nextPullCandidate(remodel, useTaskStore.getState().tasks)?.title).toBe('Get quotes from contractors');
@@ -2232,7 +2217,7 @@ describe('demo seed — people', () => {
     expect(rewards.some(r => r.claimEveryDays === 7)).toBe(true);
     const listId = useSettingsStore.getState().rewardListProjectId;
     const list = useProjectStore.getState().projects.find(p => p.id === listId);
-    expect(list?.kind).toBe('list');
+    expect(list?.ongoing).toBe(true);
     const fromList = rewards.find(r => r.taskId);
     expect(useTaskStore.getState().tasks.find(t => t.id === fromList?.taskId)?.projectId).toBe(listId);
     expect(rewards.some(r => r.id === useSettingsStore.getState().rewardGoalId)).toBe(true);

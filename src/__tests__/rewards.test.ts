@@ -29,6 +29,7 @@ import {
   describeExchangeRate,
   parseWeeklyBudget,
   coinsForCompletion,
+  coinsForTap,
   coinsForLoss,
   fullBountyFor,
   DIFFICULTY_MULTIPLIER,
@@ -659,5 +660,28 @@ describe('goalBarFill', () => {
   it('follows the real progress above the floor, capped at full', () => {
     expect(goalBarFill(55, 110)).toBe(0.5);
     expect(goalBarFill(500, 110)).toBe(1);
+  });
+});
+
+describe('coinsForTap', () => {
+  it('splits the base coins across the taps, adding up to exactly the base', () => {
+    for (const minutes of [15, 30, 90, 240]) {
+      for (const total of [1, 2, 3, 5, 8, 13]) {
+        const t = task(minutes);
+        let sum = 0;
+        for (let n = 1; n <= total; n++) sum += coinsForTap(t, n, total);
+        expect(sum).toBe(baseCoinsFor(t));
+      }
+    }
+  });
+
+  it('pays nothing past the target or before the first tap', () => {
+    expect(coinsForTap(task(90), 6, 5)).toBe(0);
+    expect(coinsForTap(task(90), 0, 5)).toBe(0);
+    expect(coinsForTap(task(90), 1, 0)).toBe(0);
+  });
+
+  it('pays nothing on a trivial task', () => {
+    expect(coinsForTap({ ...task(90), difficulty: 'trivial' }, 1, 3)).toBe(0);
   });
 });

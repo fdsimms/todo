@@ -168,7 +168,8 @@ import { mealSlotSourceId } from '../utils/mealSlotTasks';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { selectTodayMealEntries, recipeIndex } from '../utils/mealPlan';
-import { getDayStart, getLogicalDayKey, liveStreakCount } from '../utils/dateUtils';
+import { getDayStart, getLogicalDayKey, getLogicalToday, isBeforeDayReset, liveStreakCount } from '../utils/dateUtils';
+import { effectiveCalorieTargetKcal } from '../utils/activeEnergyBoost';
 import { QuickEventSheet, type QuickEventSeed } from '../components/QuickEventSheet';
 import { useEventTaskLinkStore } from '../store/useEventTaskLinkStore';
 import { eventTaskKey, movedEventContextRows, movedEventNote, movedLinkedEvents } from '../utils/eventTaskLinks';
@@ -1825,7 +1826,23 @@ export function TodayScreen() {
   const limitsTodayHidden = useSettingsStore(s => s.limitsTodayHidden);
   const goalsTodayCategory = useSettingsStore(s => s.goalsTodayCategory);
   const goalsTodayHidden = useSettingsStore(s => s.goalsTodayHidden);
-  const nutritionTargets = useSettingsStore(useShallow(s => s.nutritionTargets));
+  const storedNutritionTargets = useSettingsStore(useShallow(s => s.nutritionTargets));
+  const activeEnergyBoost = useSettingsStore(useShallow(s => s.activeEnergyBoost));
+  // Today's calorie target with the movement boost applied, the same figure the
+  // food log reads (see activeEnergyBoost.ts). Every Today row and breakdown
+  // reads this rather than the stored map, or the calories row asks for fewer
+  // calories than the food log on a day you moved more than usual.
+  const nutritionTargets = useMemo(() => {
+    const activeEnergyToday = healthToday?.dayKey === getLogicalDayKey(new Date(), dayResetTime)
+      ? healthToday.activeEnergyKcal ?? null
+      : null;
+    const calorieKcal = effectiveCalorieTargetKcal(
+      storedNutritionTargets.calorieKcal, activeEnergyToday, activeEnergyBoost,
+    );
+    return calorieKcal === storedNutritionTargets.calorieKcal
+      ? storedNutritionTargets
+      : { ...storedNutritionTargets, calorieKcal };
+  }, [storedNutritionTargets, healthToday, activeEnergyBoost, dayResetTime]);
   const nutritionLimits = useSettingsStore(useShallow(s => s.nutritionLimits));
   const limitWarnPercent = useSettingsStore(s => s.limitWarnPercent);
   const recentFoodEntries = useFoodLogStore(s => s.recentEntries);
@@ -4476,7 +4493,13 @@ export function TodayScreen() {
     </>
   );
 
-  const today = format(new Date(), 'EEEE, MMMM d');
+  // The logical day, not the wall-clock one: before dayResetTime the header
+  // has to name the same day the date picker calls "Today". In that grace
+  // window the calendar has already rolled over, so it also says which date
+  // that is ("Mon, Oct 12 → Tue, Oct 13"), or the two read as a mismatch.
+  const today = isBeforeDayReset(dayResetTime)
+    ? `${format(getLogicalToday(dayResetTime), 'EEE, MMM d')} → ${format(new Date(), 'EEE, MMM d')}`
+    : format(new Date(), 'EEEE, MMMM d');
 
 
   // Split in two memos on purpose. The ordering is the O(every deferred task)

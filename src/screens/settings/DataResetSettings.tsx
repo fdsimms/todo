@@ -219,9 +219,9 @@ export function DataResetSettings() {
     if (days === completedRetentionDays) return;
     const cutoff = retentionCutoff(days, new Date(), dayResetTime);
     // The same exemption the purge applies, or the count here would name
-    // lines on a list that the purge then keeps.
-    const listIds = new Set(useProjectStore.getState().projects.filter(p => p.kind === 'list').map(p => p.id));
-    const doomed = cutoff ? selectPurgeableTaskIds(allTasks, cutoff, listIds) : [];
+    // tasks in an ongoing project that the purge then keeps.
+    const ongoingIds = new Set(useProjectStore.getState().projects.filter(p => p.ongoing).map(p => p.id));
+    const doomed = cutoff ? selectPurgeableTaskIds(allTasks, cutoff, ongoingIds) : [];
     // Finished focus sessions ride the same window, so they have to be in the
     // count too. The dialog is this feature's whole safety mechanism, and one
     // that named only the tasks would understate what the tap deletes.

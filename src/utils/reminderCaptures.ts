@@ -197,8 +197,8 @@ export function captureListIds(
  * answer rather than a good one.
  *
  * Note what the other three arms do *not* stamp: a date. A capture files a task
- * somewhere, and filing is not scheduling — a project-list capture is exactly
- * the undated running list `ProjectKind` `'list'` exists for, and giving it a
+ * somewhere, and filing is not scheduling — a capture into a running
+ * project is exactly the undated collection it is for, and giving it a
  * due date would put it on Today on the strength of a sentence nobody has read.
  * The schedule a reminder *does* imply still rides `pendingImport` as it always
  * did.

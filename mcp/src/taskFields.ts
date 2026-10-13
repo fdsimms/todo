@@ -115,6 +115,8 @@ export interface TargetInput {
   per: 'day' | 'week';
   unit?: string | null;
   allowOvershoot?: boolean;
+  /** Pay coins on every tap instead of when the target is reached. Same total either way. */
+  coinsPerTap?: boolean;
   /** Raise the count as it keeps being met: add `add` after every `every` days (weeks, for a weekly target) it was hit, stopping at `upTo`. null clears it. */
   rampUp?: { add: number; every: number; upTo?: number | null } | null;
   /** Creating a weekly target partway through a week: 'fewer' (the default) scales the first week to the days left, 'full' asks for the whole count. */
@@ -476,6 +478,7 @@ export function taskFieldsPatch(
         targetCount: null,
         targetUnit: null,
         allowOvershoot: false,
+        coinsPerTap: false,
         quotaIntervalMinutes: null,
         quotaReminders: false,
         quotaAlwaysVisible: false,
@@ -508,6 +511,7 @@ export function taskFieldsPatch(
       }
       patch.targetCount = t.count;
       patch.quotaPeriod = t.per;
+      if (t.coinsPerTap !== undefined) patch.coinsPerTap = t.coinsPerTap;
       if (t.unit !== undefined) patch.targetUnit = t.unit;
       // Ramp up: the app's own rule (src/utils/quotaRamp.ts). Only a plain count
       // can ramp, so going past the target is refused alongside it.

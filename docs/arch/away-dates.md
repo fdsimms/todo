@@ -104,14 +104,13 @@ overline on the grocery screen. Use it.
 
 ### What this deliberately is not
 
-- **Not a `ProjectKind`.** That field's own note says it changes presentation and
-  never behaviour, and that it should stay that small. Away dates change
-  behaviour, so putting them behind a kind would be exactly what the note
-  forbids. `weekendSource` already refused this move for itself and said so.
-- **Not a `Trip` entity.** `ProjectKind`'s note is also the post-mortem for this:
-  a "list of things with no date" was first built as its own entity, with two
-  tables, a store, two screens, a drawer row and its own search source, on a
-  premise that turned out to be false. A project is already the container.
+- **Not a kind of project.** Away dates change behaviour, so putting them behind
+  a presentation flag would hide that. `weekendSource` already refused this move
+  for itself and said so.
+- **Not a `Trip` entity.** A "list of things with no date" was once built as its
+  own entity, with two tables, a store, two screens, a drawer row and its own
+  search source, on a premise that turned out to be false. A project is already
+  the container.
 - **Not a range on `Task`.** `TemplateContainer`'s doc already refused the
   `'task'` container dates for this reason: "there's no Task field to put a
   start/end range in, only single `dueDate`/`deferUntil`." That is still true and

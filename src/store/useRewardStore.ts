@@ -56,6 +56,18 @@ interface RewardStore {
   recordEarn: (taskId: string, amount: number, label: string, at: string) => void;
   /** Marking an occurrence missed cost `amount`. Keyed by the missed row. */
   recordMiss: (taskId: string, amount: number, label: string, at: string) => void;
+  /**
+   * One tap on a target paid `amount` (`Task.coinsPerTap`). Keyed by the
+   * occurrence and the tap number, so the tap that is undone names its entry.
+   */
+  recordTap: (taskId: string, tap: number, amount: number, label: string) => void;
+  /** Undoing tap number `tap`: drop what `recordTap` wrote for it. */
+  takeBackTap: (taskId: string, tap: number) => void;
+  /**
+   * Coins already paid to an occurrence's taps. The completion earns the
+   * total less this, so paying per tap never pays twice.
+   */
+  tapCoinsPaid: (taskId: string) => number;
   /** A slip on a negative habit cost `amount`. Every slip is its own entry. */
   recordSlip: (taskId: string, amount: number, label: string) => void;
   /** Unticking a task: drop whatever its completion or miss wrote. */
@@ -170,6 +182,28 @@ export const useRewardStore = create<RewardStore>((set, get) => {
       const entry: CoinEntry = { id: derivedId(spawnSeed.coinMiss(taskId)), kind: 'loss', amount, at, taskId, rewardId: null, label };
       write(entry);
       announce(entry);
+    },
+
+    recordTap(taskId, tap, amount, label) {
+      if (!enabled() || amount <= 0) return;
+      const entry: CoinEntry = { id: derivedId(spawnSeed.coinTap(taskId, tap)), kind: 'earn', amount, at: new Date().toISOString(), taskId, rewardId: null, label };
+      write(entry);
+      announce(entry);
+    },
+
+    // Not gated, for the reason takeBackTask gives.
+    takeBackTap(taskId, tap) {
+      const id = derivedId(spawnSeed.coinTap(taskId, tap));
+      if (get().entries.some(e => e.id === id)) remove([id]);
+    },
+
+    tapCoinsPaid(taskId) {
+      const completionId = derivedId(spawnSeed.coinEarn(taskId));
+      let paid = 0;
+      for (const e of get().entries) {
+        if (e.kind === 'earn' && e.taskId === taskId && e.id !== completionId) paid += e.amount;
+      }
+      return paid;
     },
 
     recordSlip(taskId, amount, label) {

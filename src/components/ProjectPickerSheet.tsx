@@ -6,7 +6,6 @@ import { useProjectStore } from '../store/useProjectStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import type { ProjectKind } from '../types';
 import { PickerSheet, PICKER_SHEET_LIST_MAX_HEIGHT } from './CategoryPicker';
 
 interface Props {
@@ -16,11 +15,6 @@ interface Props {
   value: string | null;
   /** Called with the picked project's id, or null for "No project". */
   onSelect: (projectId: string | null) => void;
-  /**
-   * Offer only projects of this kind. The Rewards screen passes 'list', since
-   * only a list's items can be priced as rewards. Omitted, every kind shows.
-   */
-  kind?: ProjectKind;
   /** The sheet's title and the label of the "none" row. Default "Project" / "No project". */
   title?: string;
   noneLabel?: string;
@@ -28,26 +22,26 @@ interface Props {
 
 /**
  * Pick the project a new task goes into, from quick add: one row per active
- * project, lists marked with the list icon, in the user's own project order.
+ * project, in the user's own project order.
  * Built on `PickerSheet`, the shell the category picker uses, so it arrives,
  * dismisses and sits over the keyboard the same way.
  */
 export function ProjectPickerSheet({
-  visible, onClose, value, onSelect, kind, title = 'Project', noneLabel = 'No project',
+  visible, onClose, value, onSelect, title = 'Project', noneLabel = 'No project',
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const projects = useProjectStore(useShallow(s =>
     s.projects
-      .filter(p => !p.archived && !p.completed && (kind === undefined || p.kind === kind))
+      .filter(p => !p.archived && !p.completed)
       .sort((a, b) => a.sortOrder - b.sortOrder)));
 
   return (
     <PickerSheet visible={visible} onClose={onClose} title={title}>
       {choose => (
         <ScrollView style={{ maxHeight: PICKER_SHEET_LIST_MAX_HEIGHT }} keyboardShouldPersistTaps="handled">
-          {[{ id: null, title: noneLabel, isList: false }, ...projects.map(p => ({
-            id: p.id as string | null, title: p.title, isList: p.kind === 'list',
+          {[{ id: null, title: noneLabel }, ...projects.map(p => ({
+            id: p.id as string | null, title: p.title,
           }))].map(row => {
             const on = row.id === value;
             return (
@@ -58,10 +52,10 @@ export function ProjectPickerSheet({
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
                 accessibilityState={{ selected: on }}
-                accessibilityLabel={row.id === null ? noneLabel : `${row.title}${row.isList ? ', list' : ''}`}
+                accessibilityLabel={row.id === null ? noneLabel : row.title}
               >
                 <Ionicons
-                  name={row.id === null ? 'remove-circle-outline' : row.isList ? 'list-outline' : 'briefcase-outline'}
+                  name={row.id === null ? 'remove-circle-outline' : 'briefcase-outline'}
                   size={iconSize.sm}
                   color={colors.textSecondary}
                 />
@@ -72,9 +66,7 @@ export function ProjectPickerSheet({
           })}
           {projects.length === 0 && (
             <Text style={styles.empty}>
-              {kind === 'list'
-                ? 'No lists yet. Make one on the Projects page.'
-                : 'No active projects yet. Make one on the Projects page.'}
+              No active projects yet. Make one on the Projects page.
             </Text>
           )}
         </ScrollView>

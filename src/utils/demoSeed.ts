@@ -693,6 +693,8 @@ export function seedDemoData(): void {
     dueDate: today.toISOString(),
     targetCount: 6,
     targetUnit: 'glasses',
+    // Paid per glass rather than when the sixth is logged (Task.coinsPerTap).
+    coinsPerTap: true,
     // A target resets by spawning its next occurrence, so it always repeats.
     recurrenceType: 'daily',
     recurrenceInterval: 1,
@@ -1444,15 +1446,10 @@ export function seedDemoData(): void {
     .reduce((max, t) => Math.max(max, t.sortOrder), 0);
   useTaskGroupStore.getState().updateGroup(appliances.id, { sortOrder: lastKitchenSlot + 1 });
 
-  // A list rather than a project, which is what it always was: nothing here
-  // ever gets a date, and it predates Project.kind by long enough that its own
-  // comment already described a list. Seeded as one so the presentation is in
-  // the demo rather than only the behaviour — a list drawn as a project is a
-  // feature the demo says the app doesn't have.
-  //
-  // Being a list makes it ongoing and never nudged (see projectKind.ts), so it
-  // never offers to mark itself complete or shows up in "Pull from projects".
-  const giftIdeas = createProject('Gift ideas', { kind: 'list' });
+  // A running collection rather than work with an end: nothing here ever gets a
+  // date. Ongoing, so it never offers to mark itself complete, and never
+  // nudged, so it doesn't show up in "Pull from projects".
+  const giftIdeas = createProject('Gift ideas', { ongoing: true });
   updateProject(giftIdeas.id, { category: 'Ideas' });
   ['Something for Mom’s birthday', 'Housewarming idea for the Chens', 'Stocking stuffers'].forEach(title => {
     const t = addTask({ title });
@@ -1489,20 +1486,18 @@ export function seedDemoData(): void {
   addTask({ title: 'Order drinks', projectId: housewarming.id, dueDate: addDays(new Date(), 10).toISOString() });
   addTask({ title: 'Make a playlist', projectId: housewarming.id });
 
-  // The list the feature was built for, and the one that shows an answer being
-  // recorded. Exactly one item carries a deliverable: a list where every line
-  // demanded an answer on completion would be a form, so the kind is opt-in
-  // per item and the demo has to show that it's the exception rather than the
-  // rule. See Project.kind.
-  const doctor = createProject('Questions for Dr. Okafor', { kind: 'list' });
+  // The collection that shows an answer being recorded. Exactly one task
+  // carries a deliverable: a project where every task demanded an answer on
+  // completion would be a form, so the question is opt-in per task and the
+  // demo has to show that it's the exception rather than the rule.
+  const doctor = createProject('Questions for Dr. Okafor', { ongoing: true });
   updateProject(doctor.id, { category: 'Ideas' });
 
-  // A list-kind project that's read in book order rather than worked off a
-  // list, and crossed out rather than dropped once done (Project.showChecked)
-  // — a book is read with what's done still on the page. Seeded with a couple
-  // already cooked so it reads as progress through a book.
-  const cookbook = createProject('Six Seasons', { kind: 'list' });
-  updateProject(cookbook.id, { category: 'Ideas', showChecked: true });
+  // An ongoing project that's read in book order rather than worked off a
+  // list. Seeded with a couple already cooked so it reads as progress through
+  // a book.
+  const cookbook = createProject('Six Seasons', { ongoing: true });
+  updateProject(cookbook.id, { category: 'Ideas' });
   ['Grilled Asparagus with Anchovy', 'Sugar Snaps with Mint', 'Roast Chicken with Crispy Bread Salad',
     'Corn Chaat', 'Slow-Roasted Tomatoes'].forEach((title, i) => {
     const t = addTask({ title });
@@ -1510,11 +1505,9 @@ export function seedDemoData(): void {
     if (i < 2) completeTask(t.id);
   });
 
-  // A packing list in sections that keeps its checked items in view: each
-  // checked item stays under its own section, so the list reads as packed per
-  // section (see checkedBySection in ProjectDetailScreen).
-  const camping = createProject('Camping kit', { kind: 'list' });
-  updateProject(camping.id, { category: 'Ideas', showChecked: true });
+  // A packing list in sections, checked off and used again.
+  const camping = createProject('Camping kit', { ongoing: true });
+  updateProject(camping.id, { category: 'Ideas' });
   ([['Sleeping', ['Tent', 'Sleeping bags', 'Headlamps']], ['Kitchen', ['Camp stove', 'Lighter', 'Coffee']]] as const)
     .forEach(([section, items], s) => {
       const group = createGroup(section, null, camping.id);
@@ -3221,8 +3214,7 @@ function seedRewards(today: Date): void {
   // A wish list feeding the screen: one item already priced as a reward, the
   // others waiting to be. Through the stores, like everything else here.
   const { addTask, addExistingToProject } = useTaskStore.getState();
-  const wishList = useProjectStore.getState().createProject('Wish list', { kind: 'list' });
-  useProjectStore.getState().updateProject(wishList.id, { ongoing: true });
+  const wishList = useProjectStore.getState().createProject('Wish list', { ongoing: true });
   const wishes = ['Noise-canceling headphones', 'A cast iron pan', 'Concert tickets'].map(title => {
     const t = addTask({ title });
     addExistingToProject(t.id, wishList.id);

@@ -550,7 +550,7 @@ export function PersonDetailScreen() {
                     accessibilityLabel={`Open ${project.title}${project.completed ? ', finished' : ''}`}
                   >
                     <Ionicons
-                      name={project.kind === 'list' ? 'list-outline' : 'folder-outline'}
+                      name="folder-outline"
                       size={14}
                       color={project.completed ? colors.textTertiary : colors.accent}
                     />

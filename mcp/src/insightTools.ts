@@ -478,12 +478,13 @@ export function reviewTasks(replica: Replica, input: { staleDays?: number; minPu
   }
   const quiet = listProjects(replica)
     .map(p => ({ summary: p, project: replica.projects().find(q => q.id === p.id)! }))
-    // A list has no finish line to be quiet about, and a paused project is
-    // quiet because the person said so.
+    // A project set never to be chased (what a running collection like a wish
+    // list is) has nothing to be quiet about, and a paused project is quiet
+    // because the person said so.
     .filter(({ summary, project }) =>
       !project.completed
       && summary.outstanding > 0
-      && project.kind !== 'list'
+      && project.nudgeOptIn
       && !(project.pausedUntil !== null && today < project.pausedUntil))
     .map(({ summary, project }) => {
       const last = lastDoneByProject.get(project.id);

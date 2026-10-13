@@ -90,7 +90,7 @@ const BASE: Task = {
   penaltyCreditedAt: null,
   gatesApps: false,
   showStreak: false,
-  streakRequiresWindow: false, streakCountsUnits: false,
+  streakRequiresWindow: false, streakCountsUnits: false, coinsPerTap: false,
   reminderTime: null,
   reminderKind: 'notification',
   reminderOffsetDays: null, reminderTracksVisibility: false, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
@@ -185,6 +185,30 @@ describe('buildDeloadPlan', () => {
       expect(p.suggested).not.toBeNull();
       expect(p.suggested!.date.getTime()).toBeGreaterThan(today.getTime());
       expect(p.suggested!.reason).toBeTruthy();
+    });
+
+    it('refuses to move an event task past its own event', () => {
+      const start = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 16).toISOString();
+      const task = makeTask({
+        id: 'prep',
+        estimatedMinutes: 30,
+        dueDate: today.toISOString(),
+        generatedKind: 'eventTask',
+        generatedSourceId: `evt1|${start}#rule1`,
+      });
+      const [p] = buildDeloadPlan([task], [task]).proposals;
+      expect(p.suggested).toBeNull();
+      expect(p.tomorrow).toBeNull();
+      expect(p.selected).toBe(false);
+      expect(p.blockerLabel).toBe('Needed before the event');
+    });
+
+    it('does not suggest pushing a task that repeats every day', () => {
+      const task = makeTask({ id: 'daily', estimatedMinutes: 1, recurrenceType: 'daily', dueDate: today.toISOString() });
+      const [p] = buildDeloadPlan([task], [task]).proposals;
+      expect(p.blocker).toBe('daily');
+      expect(p.selected).toBe(false);
+      expect(p.suggested).not.toBeNull();
     });
 
     it('orders proposals biggest-first so the top row recovers the most time', () => {

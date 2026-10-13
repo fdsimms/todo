@@ -101,4 +101,10 @@ export const spawnSeed = {
   coinEarn: (completedTaskId: string) => `coin-earn:${completedTaskId}`,
   /** The coins marking one occurrence missed cost. Same reasoning as `coinEarn`. */
   coinMiss: (missedTaskId: string) => `coin-miss:${missedTaskId}`,
+  /**
+   * The coins one tap on a target earned (`Task.coinsPerTap`), keyed by the
+   * occurrence and which tap it was, so a redo after an undo rewrites the same
+   * row. The tap that reaches the target is the completion and uses `coinEarn`.
+   */
+  coinTap: (taskId: string, tap: number) => `coin-tap:${taskId}:${tap}`,
 } as const;

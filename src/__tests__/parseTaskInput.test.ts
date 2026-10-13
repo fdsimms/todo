@@ -1406,24 +1406,19 @@ describe('matchPersonMentions', () => {
     expect(matchPersonMentions('lunch @sam', twoSams)).toEqual([]);
   });
 
-  it('matches a unique prefix once at least 3 characters are typed', () => {
+  it('never resolves a prefix, however unique', () => {
     const people = [...PEOPLE, { id: 'p5', name: 'Kelsey', nickname: '' }];
-    expect(matchPersonMentions('hug @kelse', people).map(m => m.personId)).toEqual(['p5']);
-  });
-
-  it('leaves a prefix under 3 characters unmatched', () => {
-    const people = [...PEOPLE, { id: 'p5', name: 'Kelsey', nickname: '' }];
+    expect(matchPersonMentions('hug @kelse', people)).toEqual([]);
     expect(matchPersonMentions('hug @br', people)).toEqual([]);
   });
 
-  it('leaves an ambiguous prefix unmatched, then resolves once it is typed far enough to be unique', () => {
-    const twoBrits = [
+  it('resolves a prefix only once it is the whole name', () => {
+    const people = [
       { id: 'a', name: 'Kelsey', nickname: '' },
       { id: 'b', name: 'Kelsie', nickname: '' },
     ];
-    expect(matchPersonMentions('hug @kel', twoBrits)).toEqual([]);
-    // "kelse" only Kelsey answers to.
-    expect(matchPersonMentions('hug @kelse', twoBrits).map(m => m.personId)).toEqual(['a']);
+    expect(matchPersonMentions('hug @kel', people)).toEqual([]);
+    expect(matchPersonMentions('hug @kelsey', people).map(m => m.personId)).toEqual(['a']);
   });
 
   it('still resolves an unambiguous name when somebody else is ambiguous', () => {
@@ -1467,9 +1462,13 @@ describe('matchPersonMentions', () => {
       expect(matchPersonMentions('lunch @sam', twoSams, groups)).toEqual([]);
     });
 
-    it('resolves by a unique prefix of the group\'s name too', () => {
-      const r = matchPersonMentions('dinner @house tonight', PEOPLE, GROUPS);
-      expect(r.map(m => m.personId)).toEqual(['p1', 'p2']);
+    it('does not resolve a prefix of the group\'s name, however unique', () => {
+      expect(matchPersonMentions('dinner @house tonight', PEOPLE, GROUPS)).toEqual([]);
+    });
+
+    it('still offers a suggestion for a unique group prefix of 3+ characters', () => {
+      const r = getMentionSuggestions('dinner @house', PEOPLE, GROUPS);
+      expect(r?.candidates.map(c => c.id)).toEqual(['g1']);
     });
 
     it('leaves a group with nobody in it unresolved', () => {
@@ -1507,17 +1506,12 @@ describe('findAmbiguousMention', () => {
     expect(r?.candidates.map(c => c.id)).toEqual(['a', 'b']);
   });
 
-  it('reports the candidates for a prefix two people answer to', () => {
-    const r = findAmbiguousMention('hug @kel', twoBrits);
-    expect(r?.candidates.map(c => c.name)).toEqual(['Kelsey', 'Kelsie']);
+  it('is silent for a prefix two people answer to: the suggestion row owns that', () => {
+    expect(findAmbiguousMention('hug @kel', twoBrits)).toBeNull();
   });
 
-  it('is silent once a unique prefix resolves on its own', () => {
+  it('is silent for a unique prefix', () => {
     expect(findAmbiguousMention('hug @kelse', twoBrits)).toBeNull();
-  });
-
-  it('is silent under the prefix floor — nothing to search yet', () => {
-    expect(findAmbiguousMention('hug @br', twoBrits)).toBeNull();
   });
 
   it('is silent once the token has an override recorded for it', () => {
@@ -1560,8 +1554,8 @@ describe('getMentionSuggestions', () => {
     expect(r?.candidates[0].resolveKey).toBe('Xander');
   });
 
-  it('is silent once a unique prefix is long enough to resolve on its own', () => {
-    expect(getMentionSuggestions('respond to @luk', people)).toBeNull();
+  it('still suggests a unique prefix of 3+ characters, since a prefix never resolves on its own', () => {
+    expect(getMentionSuggestions('respond to @luk', people)?.candidates.map(c => c.name)).toEqual(['Luke Harmon']);
   });
 
   it('is silent for a token that already resolves to exactly one person', () => {

@@ -1342,9 +1342,8 @@ in the mechanism.
   during the weekend, not the window.
 - **The project it names is nominated, never inferred** (`Project.weekendSource`,
   off on everybody). Nothing scores a project for weekend-ishness or reads its
-  title, and it is deliberately *not* a reading of `Project.kind` — that field is
-  presentation only and its own note says it should stay that small, so gating
-  behavior on it would be exactly the thing that note forbids. Several nominated
+  title, and it is deliberately *not* a reading of the project's other fields.
+  Several nominated
   projects break the tie on `sortOrder`, the hand drag on the Projects screen,
   for the reason `reachOut` breaks its own tie there: it is the only ranking of
   these the user actually made.

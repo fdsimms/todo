@@ -30,7 +30,6 @@ const makeProject = (overrides: Partial<Project> = {}): Project => ({
   reviewDeclinedAt: null,
   reviewedAt: null,
   backfillDismissedFields: [],
-  kind: 'project' as const,
   awayStart: null,
   awayEnd: null,
   awayPauses: false,
@@ -42,7 +41,6 @@ const makeProject = (overrides: Partial<Project> = {}): Project => ({
   personIds: [],
   links: [],
   inOrder: false,
-  showChecked: false,
   ...overrides,
 });
 
@@ -68,7 +66,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   progressCount: 0, tags: [], category: null, sortOrder: 1, pinned: false, pinnedOrder: 0,
   postponeCount: 0, postponeMuted: false, driftingSince: null, priority: 0, effort: 0,
   estimatedMinutes: null, streakCount: 0, streakDate: null, previousStreakCount: 0,
-  previousStreakDate: null, priorBestStreak: 0, showStreak: false, streakRequiresWindow: false, streakCountsUnits: false, parentId: null,
+  previousStreakDate: null, priorBestStreak: 0, showStreak: false, streakRequiresWindow: false, streakCountsUnits: false, coinsPerTap: false, parentId: null,
   polarity: 'positive',
   slipCount: 0,
   slipDate: null,
