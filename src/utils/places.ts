@@ -48,5 +48,19 @@ export function placeSubtitle(place: PlaceResult): string | null {
   return placeLocationText(place) === place.address ? null : place.address;
 }
 
+/**
+ * The first line of a suggestion row. An address-only result comes back named
+ * for its street ("225 Greenwood Ave") with the city and state only in the
+ * address, so the row shows the whole address rather than the bare name, which
+ * is what lets two same-named streets in different towns be told apart.
+ */
+export function placeRowTitle(place: PlaceResult): string {
+  if (place.name && place.address && placeSubtitle(place) === null) return place.address;
+  return place.name ?? place.address ?? '';
+}
+
+/** How many suggestions a location field lists. */
+export const PLACE_SUGGESTION_LIMIT = 5;
+
 /** Fewer characters than this isn't worth a request: "jo" matches half a city. */
 export const PLACE_QUERY_MIN_LENGTH = 3;

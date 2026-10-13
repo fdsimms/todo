@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { searchPlaces } from '../services/placeSearch';
-import { PLACE_QUERY_MIN_LENGTH, type PlaceResult } from '../utils/places';
+import { PLACE_QUERY_MIN_LENGTH, PLACE_SUGGESTION_LIMIT, type PlaceResult } from '../utils/places';
 import { useSettingsStore } from '../store/useSettingsStore';
 
 const PLACE_SEARCH_DEBOUNCE_MS = 350;
-const MAX_SUGGESTIONS = 3;
 
 /**
  * Apple Maps suggestions for a place being typed into a plain text field.
@@ -35,7 +34,7 @@ export function usePlaceSuggestions(query: string, active: boolean): {
     }
     const timer = setTimeout(() => {
       void searchPlaces(trimmed).then(found => {
-        if (queryRef.current === trimmed) setResults(found.slice(0, MAX_SUGGESTIONS));
+        if (queryRef.current === trimmed) setResults(found.slice(0, PLACE_SUGGESTION_LIMIT));
       });
     }, PLACE_SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);

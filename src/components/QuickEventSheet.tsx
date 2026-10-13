@@ -103,6 +103,8 @@ import {
   PLACE_QUERY_MIN_LENGTH,
   placeLocationText,
   placeSubtitle,
+  placeRowTitle,
+  PLACE_SUGGESTION_LIMIT,
   type PlaceResult,
 } from '../utils/places';
 import {
@@ -661,7 +663,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     }
     const timer = setTimeout(() => {
       void searchPlaces(placeQuery).then(results => {
-        if (placeQueryRef.current === placeQuery) setPlaceResults(results.slice(0, 3));
+        if (placeQueryRef.current === placeQuery) setPlaceResults(results.slice(0, PLACE_SUGGESTION_LIMIT));
       });
     }, PLACE_SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
@@ -1294,8 +1296,8 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
                       accessibilityRole="button"
                       accessibilityLabel={`Use ${placeLocationText(place)}`}
                     >
-                      <Text style={styles.placeName} numberOfLines={1}>{place.name ?? place.address}</Text>
-                      {subtitle && <Text style={styles.placeAddress} numberOfLines={1}>{subtitle}</Text>}
+                      <Text style={styles.placeName} numberOfLines={2}>{placeRowTitle(place)}</Text>
+                      {subtitle && <Text style={styles.placeAddress} numberOfLines={2}>{subtitle}</Text>}
                     </TouchableOpacity>
                   );
                 })}

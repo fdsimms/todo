@@ -1,4 +1,4 @@
-import { parsePlaceResults, placeLocationText, placeSubtitle } from '../utils/places';
+import { parsePlaceResults, placeLocationText, placeRowTitle, placeSubtitle } from '../utils/places';
 
 const joes = { name: "Joe's Pizza", address: '7 Carmine St, New York, NY 10014', latitude: 40.73, longitude: -74.0 };
 
@@ -53,5 +53,20 @@ describe('placeSubtitle', () => {
     expect(placeSubtitle({ ...joes, name: '7 Carmine St' })).toBeNull();
     expect(placeSubtitle({ ...joes, name: null })).toBeNull();
     expect(placeSubtitle({ ...joes, address: null })).toBeNull();
+  });
+});
+
+describe('placeRowTitle', () => {
+  it('shows the full address for an address-only result, so the city is visible', () => {
+    expect(placeRowTitle({ ...joes, name: '7 Carmine St' })).toBe('7 Carmine St, New York, NY 10014');
+  });
+
+  it('keeps the name as the title when the address goes underneath it', () => {
+    expect(placeRowTitle(joes)).toBe("Joe's Pizza");
+  });
+
+  it('falls back to whichever half there is', () => {
+    expect(placeRowTitle({ ...joes, address: null })).toBe("Joe's Pizza");
+    expect(placeRowTitle({ ...joes, name: null })).toBe('7 Carmine St, New York, NY 10014');
   });
 });
