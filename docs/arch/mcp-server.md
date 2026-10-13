@@ -326,6 +326,15 @@ preview's `willDo` lines (`redeem`'s `echoed`): a call that does not is refused 
 token, with the lines to copy. Calling a write tool without `apply` still previews, for a client that
 does not know `preview_change`.
 
+### Keep `tools/list` small
+
+A write-scoped connection sends every tool's description and input schema in front of the first message, so their size is a cost on every conversation: the server was about 490 KB (around 120k tokens) at 213 tools. Two rules keep it from growing back.
+
+- **Say the confirm flow once.** The full explanation is in the server instructions and `preview_change`. A write tool's description ends with the one-line `CONFIRM_NOTE`, and its `apply` / `confirmToken` / `willDo` parameters have one-line descriptions. They sit on 158 tools, so a sentence added to either is paid 158 times.
+- **A task nested inside another tool takes `coreTaskFieldsShape`, not `taskFieldsShape`.** A project step and a batch `update` hold a task, and the whole-object fields (repeat, target, meter, chain, rotation, follow-up, supply, health target, timed, reminder and deadline rules, medication, onlyIfAnswer) are about 30 KB of schema that each tool would repeat. Those are set with `update_task`. The nested objects are `.strict()`, so naming one is an error that says so rather than a field quietly dropped. Only `create_task` and `update_task` take the full shape.
+
+To measure a change, run the server with `MCP_AUTH_TOKEN`, `MCP_WRITE_TOKEN` and `TODO_DB_PATH` set and POST `tools/list` to `/mcp` with the write token.
+
 ### Every agent write is in Activity, and a task write can be undone there
 
 An agent's writes land on the phone by sync with nobody looking at the app, which is the

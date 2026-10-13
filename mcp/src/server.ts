@@ -167,8 +167,12 @@ function confirmTokensFor(replica: Replica): ConfirmTokens {
   return tokens;
 }
 
-/** Said once on every write tool, after its own description. */
-const CONFIRM_NOTE = 'Every write previews first. Call preview_change with this tool\'s name and arguments (it is read-only and needs no approval): it changes nothing and returns willDo (what would change, in plain words) and a confirmToken. Show the person willDo and wait for their yes, then call this tool with the same arguments plus apply: true, the confirmToken and willDo repeated exactly. Calling this tool without apply also previews, but asks for approval like a write.';
+/**
+ * Said on every write tool, after its own description. Short on purpose: the
+ * full flow is in the server instructions and in preview_change, and a
+ * paragraph repeated on 158 tools was a quarter of the whole tools/list.
+ */
+const CONFIRM_NOTE = 'Preview with preview_change first (see the server instructions).';
 
 /** A tool result's JSON back as a value, or undefined when it is not JSON. */
 function parseToolText(out: { content: { type: string; text?: string }[] }): unknown {
@@ -873,9 +877,9 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
         `${description} ${CONFIRM_NOTE}`,
         {
           ...shape,
-          apply: z.boolean().optional().describe('Leave out to preview. true, with confirmToken and willDo, to make the change.'),
-          confirmToken: z.string().optional().describe('From the preview of this exact request.'),
-          willDo: z.array(z.string()).optional().describe("The preview's willDo lines, repeated exactly. They are what the approval prompt shows the person."),
+          apply: z.boolean().optional().describe('true, with confirmToken and willDo, to make the change.'),
+          confirmToken: z.string().optional().describe('From the preview.'),
+          willDo: z.array(z.string()).optional().describe("The preview's willDo lines, exactly."),
         },
         async (args: Record<string, unknown>, extra: unknown) => {
           const { apply, confirmToken, willDo, ...request } = args;
@@ -1246,6 +1250,22 @@ const taskFieldsShape = {
   }).nullable().optional()
     .describe('A reminder placed by rule on every occurrence instead of at a fixed time. A reminderTime given on its own replaces a rule. null drops the rule and the reminder.'),
 };
+
+/**
+ * The task fields a nested task takes (a project step, a batch update): the
+ * plain ones. The parts that are a whole object of their own (a repeat rule, a
+ * target, a meter, a chain...) are about 30 KB of schema, and nesting them
+ * repeated that in every tool that holds a task. They are set with update_task,
+ * which takes the full set. The nested objects are `.strict()` so naming one
+ * of them is an error that says so, never a field quietly dropped.
+ */
+const {
+  repeat: _repeat, target: _target, meter: _meter, chain: _chain, rotation: _rotation, followUp: _followUp,
+  supply: _supply, healthTarget: _healthTarget, timed: _timed, reminderRule: _reminderRule,
+  deadlineRule: _deadlineRule, onlyIfAnswer: _onlyIfAnswer, medication: _medication,
+  ...coreTaskFieldsShape
+} = taskFieldsShape;
+const ADVANCED_TASK_FIELDS_NOTE = 'Repeat, target, meter, chain, rotation, follow-up, supply, health target, timed, reminder and deadline rules, medication and onlyIfAnswer are not accepted here; set them with update_task.';
 
 function registerWriteTools(
   server: McpServer,
@@ -2177,10 +2197,10 @@ function registerWriteTools(
 
   server.tool(
     'batch_update_tasks',
-    `Edit, complete or reschedule up to ${MAX_BATCH} tasks in one call. Without apply: true it is a preview: each row says exactly what would change (field by field, before and after), and nothing is written. Show the preview to the person, then send the same changes with apply: true. If any change would be refused, the whole batch is refused before anything is written, and that row says why. "defer" moves one occurrence of a repeating task without moving its schedule, the same as defer_task. "complete" on a task that asks a question needs deliverableValue (or null to skip the question).`,
+    `Edit, complete or reschedule up to ${MAX_BATCH} tasks in one call. Without apply: true it is a preview: each row says exactly what would change (field by field, before and after), and nothing is written. Show the preview to the person, then send the same changes with apply: true. If any change would be refused, the whole batch is refused before anything is written, and that row says why. "defer" moves one occurrence of a repeating task without moving its schedule, the same as defer_task. "complete" on a task that asks a question needs deliverableValue (or null to skip the question). ${ADVANCED_TASK_FIELDS_NOTE}`,
     {
       changes: z.array(z.discriminatedUnion('action', [
-        z.object({ id: z.string().min(1), action: z.literal('update'), fields: z.object({ title: z.string().optional(), ...taskFieldsShape }) }),
+        z.object({ id: z.string().min(1), action: z.literal('update'), fields: z.object({ title: z.string().optional(), ...coreTaskFieldsShape }).strict() }),
         z.object({ id: z.string().min(1), action: z.literal('complete'), deliverableValue: z.string().nullable().optional() }),
         z.object({ id: z.string().min(1), action: z.literal('defer'), date: z.string().nullable().describe('YYYY-MM-DD, or null to clear the date.') }),
       ])).min(1).max(MAX_BATCH),
@@ -3338,7 +3358,7 @@ function registerWriteTools(
 
   const planStep = z.object({
     title: z.string().min(1),
-    ...taskFieldsShape,
+    ...coreTaskFieldsShape,
     subtasks: z.array(z.string()).optional().describe('A checklist under this step.'),
     after: z.array(z.number().int().min(0)).optional()
       .describe('Positions (from 0) of earlier steps in this plan that must be done first. The step stays hidden until they are.'),
@@ -3347,11 +3367,11 @@ function registerWriteTools(
       answers: z.array(z.string()).min(1),
     }).optional()
       .describe('onlyIfAnswer for a question in this same plan, which has no id yet.'),
-  });
+  }).strict();
 
   server.tool(
     'create_project',
-    'Create a project and its whole plan in one go: the project, its steps (each a full task: dates, estimates, repeats and the rest), each step\'s checklist, and which steps wait on earlier ones. Everything is checked first and written together, so a problem creates nothing and lists every issue. Scope it with the user before calling: agree on the steps, their order and what blocks what, then create it once. ongoing: true is for a running collection with no finish line (gift ideas, questions for the doctor). The result is the project as get_project shows it.',
+    'Create a project and its whole plan in one go: the project, its steps (each a task: dates, estimates, tags and the rest), each step\'s checklist, and which steps wait on earlier ones. Everything is checked first and written together, so a problem creates nothing and lists every issue. Scope it with the user before calling: agree on the steps, their order and what blocks what, then create it once. ongoing: true is for a running collection with no finish line (gift ideas, questions for the doctor). ' + ADVANCED_TASK_FIELDS_NOTE + ' The result is the project as get_project shows it.',
     {
       title: z.string().min(1),
       notes: z.string().optional(),
@@ -3376,7 +3396,7 @@ function registerWriteTools(
 
   server.tool(
     'add_project_steps',
-    'Add several steps to a project that already exists, in one go: each a full task, with its checklist and what it waits on. "after" names earlier steps in this same batch by position; "waitsOn" names tasks already in the app by id. Everything is checked first and written together, so a problem adds nothing and lists every issue. The result is the project as get_project shows it, plus the ids of the steps added (archive_task takes any of them back).',
+    'Add several steps to a project that already exists, in one go: each a task, with its checklist and what it waits on. "after" names earlier steps in this same batch by position; "waitsOn" names tasks already in the app by id. Everything is checked first and written together, so a problem adds nothing and lists every issue. ' + ADVANCED_TASK_FIELDS_NOTE + ' The result is the project as get_project shows it, plus the ids of the steps added (archive_task takes any of them back).',
     {
       projectId: z.string().min(1),
       steps: z.array(planStep).min(1),
