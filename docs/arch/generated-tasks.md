@@ -763,6 +763,25 @@ The write-back compares values, not the patch's keys, because an undo snapshot
 names both fields without changing them. Only a draft with no estimate of its
 own is ever filled, and a task somebody typed never is.
 
+## A category set on one is offered to its generator
+
+Dragging an app-written task into another category on Today is also an answer
+about where that generator files things, so `offerGeneratedCategoryWriteBack`
+(`TodayScreen`) asks, after the drop has already applied, whether future tasks
+should go there too. The write is `src/store/generatedCategoryWriteBack.ts`, and
+it follows `writeEstimateToSource`'s split: the four rule kinds write the one
+rule's own `category` (`withRuleCategory`, so the kind's other rules are
+untouched), every other kind writes its "File them under" setting
+(`setGeneratedCategory`).
+
+- **Only future tasks move.** The row already written is wherever the drag put it.
+- **No offer for "no category".** A drop into the loose block at the top of Today
+  would send every later task there, the position the per-kind default category
+  exists to avoid.
+- **One question per generator or rule**, however many of its rows the drop moved.
+- **Only the Today drag asks so far.** The editor's category row and the bulk
+  Move do not.
+
 ## Task settings: a kind's task, field by field
 
 Every kind has a **Task settings** sheet in Settings (`GeneratedTaskSettingsSheet`, rules in

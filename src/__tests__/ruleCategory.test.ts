@@ -1,4 +1,4 @@
-import { parseRuleCategory, renameInRuleCategories, ruleCategoryFor } from '../utils/ruleCategory';
+import { parseRuleCategory, renameInRuleCategories, ruleCategoryFor, withRuleCategory } from '../utils/ruleCategory';
 import { parseEventRules } from '../utils/eventTasks';
 import { parseWeatherRules } from '../utils/weatherTasks';
 
@@ -37,5 +37,19 @@ describe('rule parsers keep the category', () => {
   it('weather rules', () => {
     const raw = JSON.stringify([{ id: 'r', condition: 'sunny', title: 'Sunscreen', enabled: true, category: 'Outdoors' }]);
     expect(parseWeatherRules(raw)[0].category).toBe('Outdoors');
+  });
+});
+
+describe('withRuleCategory', () => {
+  const rules = [{ id: 'a', category: 'Travel' }, { id: 'b' }];
+  it('files the named rule and leaves the others', () => {
+    expect(withRuleCategory(rules, 'b', 'Home', 'Errands')).toEqual([{ id: 'a', category: 'Travel' }, { id: 'b', category: 'Home' }]);
+  });
+  it('returns null when the rule already resolves there', () => {
+    expect(withRuleCategory(rules, 'a', 'Travel', null)).toBeNull();
+    expect(withRuleCategory(rules, 'b', 'Errands', 'Errands')).toBeNull();
+  });
+  it('returns null for a rule that no longer exists', () => {
+    expect(withRuleCategory(rules, 'zzz', 'Home', null)).toBeNull();
   });
 });
