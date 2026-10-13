@@ -19,7 +19,10 @@ import {
 } from '../../utils/focusSettings';
 import { alertPermissionOff } from '../../utils/permissionAlert';
 import {
-  SCROLL_NUDGE_DEFAULT_SECONDS, SCROLL_NUDGE_MAX_SECONDS, SCROLL_NUDGE_MIN_SECONDS, SCROLL_NUDGE_STEP_SECONDS,
+  SCROLL_NUDGE_COOLDOWN_STEP_MINUTES, SCROLL_NUDGE_DEFAULT_COOLDOWN_MINUTES, SCROLL_NUDGE_DEFAULT_DAILY_CAP,
+  SCROLL_NUDGE_DEFAULT_SECONDS, SCROLL_NUDGE_MAX_COOLDOWN_MINUTES, SCROLL_NUDGE_MAX_DAILY_CAP,
+  SCROLL_NUDGE_MAX_SECONDS, SCROLL_NUDGE_MIN_COOLDOWN_MINUTES, SCROLL_NUDGE_MIN_DAILY_CAP,
+  SCROLL_NUDGE_MIN_SECONDS, SCROLL_NUDGE_STEP_SECONDS,
 } from '../../utils/scrollNudge';
 
 /**
@@ -58,6 +61,10 @@ export function FocusSettings() {
   const setScrollNudgeEnabled = useSettingsStore(s => s.setScrollNudgeEnabled);
   const scrollNudgeSeconds = useSettingsStore(s => s.scrollNudgeSeconds);
   const setScrollNudgeSeconds = useSettingsStore(s => s.setScrollNudgeSeconds);
+  const scrollNudgeCooldownMinutes = useSettingsStore(s => s.scrollNudgeCooldownMinutes);
+  const setScrollNudgeCooldownMinutes = useSettingsStore(s => s.setScrollNudgeCooldownMinutes);
+  const scrollNudgeDailyCap = useSettingsStore(s => s.scrollNudgeDailyCap);
+  const setScrollNudgeDailyCap = useSettingsStore(s => s.setScrollNudgeDailyCap);
 
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
@@ -477,7 +484,7 @@ export function FocusSettings() {
       {!simpleMode && (
         <SettingsSection
           label="Scroll suggestion"
-          footer="Counts scrolling on Today, Later, Unscheduled and Inbox. Any tap or swipe on a row starts the count over. It appears at most 3 times a day, 30 minutes apart, and nothing is recorded or sent anywhere."
+          footer="Counts scrolling on Today, Later, Unscheduled and Inbox. Any tap or swipe on a row starts the count over. Nothing is recorded or sent anywhere."
         >
           <SettingsRow
             entryId="scrollNudge"
@@ -510,6 +517,47 @@ export function FocusSettings() {
                   format={n => `${n} sec`}
                   label="Scroll time before suggesting"
                   describeValue={n => `${n} seconds`}
+                />
+              </View>
+
+              <View style={styles.sep} />
+              <SettingsRow
+                entryId="scrollNudgeCooldownMinutes"
+                icon="hourglass-outline"
+                label="Time between suggestions"
+                hint="Minutes to wait after the banner appears before it can appear again."
+                tight
+              />
+              <View style={styles.cadenceRow}>
+                <CountStepper
+                  value={scrollNudgeCooldownMinutes}
+                  onChange={next => setScrollNudgeCooldownMinutes(next ?? SCROLL_NUDGE_DEFAULT_COOLDOWN_MINUTES)}
+                  min={SCROLL_NUDGE_MIN_COOLDOWN_MINUTES}
+                  max={SCROLL_NUDGE_MAX_COOLDOWN_MINUTES}
+                  step={SCROLL_NUDGE_COOLDOWN_STEP_MINUTES}
+                  format={n => `${n} min`}
+                  label="Time between suggestions"
+                  describeValue={n => `${n} minutes`}
+                />
+              </View>
+
+              <View style={styles.sep} />
+              <SettingsRow
+                entryId="scrollNudgeDailyCap"
+                icon="today-outline"
+                label="Most suggestions per day"
+                hint="The banner stops for the rest of the day after appearing this many times."
+                tight
+              />
+              <View style={styles.cadenceRow}>
+                <CountStepper
+                  value={scrollNudgeDailyCap}
+                  onChange={next => setScrollNudgeDailyCap(next ?? SCROLL_NUDGE_DEFAULT_DAILY_CAP)}
+                  min={SCROLL_NUDGE_MIN_DAILY_CAP}
+                  max={SCROLL_NUDGE_MAX_DAILY_CAP}
+                  format={n => `${n}`}
+                  label="Most suggestions per day"
+                  describeValue={n => `${n} per day`}
                 />
               </View>
             </>

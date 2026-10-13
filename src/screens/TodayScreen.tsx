@@ -1755,9 +1755,15 @@ export function TodayScreen() {
   // are being selected, since neither is drifting. See useScrollNudge.
   const scrollNudgeEnabled = useSettingsStore(s => s.scrollNudgeEnabled && !featureHidden('focusSessions', s.simpleMode));
   const scrollNudgeSeconds = useSettingsStore(s => s.scrollNudgeSeconds);
+  const scrollNudgeCooldownMinutes = useSettingsStore(s => s.scrollNudgeCooldownMinutes);
+  const scrollNudgeDailyCap = useSettingsStore(s => s.scrollNudgeDailyCap);
+  const scrollNudgeLimits = useMemo(
+    () => ({ seconds: scrollNudgeSeconds, cooldownMinutes: scrollNudgeCooldownMinutes, dailyCap: scrollNudgeDailyCap }),
+    [scrollNudgeSeconds, scrollNudgeCooldownMinutes, scrollNudgeDailyCap],
+  );
   const scrollNudge = useScrollNudge({
     enabled: scrollNudgeEnabled,
-    seconds: scrollNudgeSeconds,
+    limits: scrollNudgeLimits,
     dayResetTime,
     suspended: focusSession !== null || selectionMode,
   });

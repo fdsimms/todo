@@ -2053,6 +2053,22 @@ describe('scroll nudge settings', () => {
     useSettingsStore.getState().setScrollNudgeSeconds(5);
     expect(useSettingsStore.getState().scrollNudgeSeconds).toBe(30);
   });
+
+  it('defaults the repeat limits to 30 minutes and 3 a day, and persists changes', () => {
+    expect(useSettingsStore.getState().scrollNudgeCooldownMinutes).toBe(30);
+    expect(useSettingsStore.getState().scrollNudgeDailyCap).toBe(3);
+    useSettingsStore.getState().setScrollNudgeCooldownMinutes(45);
+    useSettingsStore.getState().setScrollNudgeDailyCap(5);
+    expect(dbSetSetting).toHaveBeenCalledWith('scrollNudgeCooldownMinutes', '45');
+    expect(dbSetSetting).toHaveBeenCalledWith('scrollNudgeDailyCap', '5');
+  });
+
+  it('clamps the repeat limits', () => {
+    useSettingsStore.getState().setScrollNudgeCooldownMinutes(1);
+    useSettingsStore.getState().setScrollNudgeDailyCap(99);
+    expect(useSettingsStore.getState().scrollNudgeCooldownMinutes).toBe(5);
+    expect(useSettingsStore.getState().scrollNudgeDailyCap).toBe(10);
+  });
 });
 
 // ─── postpone check ───

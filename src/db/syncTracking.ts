@@ -452,6 +452,8 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'postponeCheckThreshold',
   'scrollNudgeEnabled',
   'scrollNudgeSeconds',
+  'scrollNudgeCooldownMinutes',
+  'scrollNudgeDailyCap',
   'simpleTaskForm',
   'simpleMode',
   'sortOption',

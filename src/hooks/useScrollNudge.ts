@@ -9,13 +9,14 @@ import {
   noteOffered,
   noteScroll,
   shouldOfferScrollNudge,
+  type ScrollNudgeLimits,
   type ScrollNudgeState,
 } from '../utils/scrollNudge';
 
 interface Options {
   enabled: boolean;
-  /** Seconds of unbroken scrolling before the offer. */
-  seconds: number;
+  /** Seconds of unbroken scrolling before the offer, and the two limits on repeating it. */
+  limits: ScrollNudgeLimits;
   dayResetTime?: string;
   /** True while something else owns the person's attention (a focus session, selecting rows). */
   suspended: boolean;
@@ -36,7 +37,7 @@ interface Options {
  * All state is in a ref and only `offered` is React state, so a scroll event
  * (sixty a second) never re-renders the screen.
  */
-export function useScrollNudge({ enabled, seconds, dayResetTime, suspended }: Options) {
+export function useScrollNudge({ enabled, limits, dayResetTime, suspended }: Options) {
   const active = enabled && !suspended;
   const stateRef = useRef<ScrollNudgeState>(INITIAL_SCROLL_NUDGE_STATE);
   const [offered, setOffered] = useState(false);
@@ -56,12 +57,12 @@ export function useScrollNudge({ enabled, seconds, dayResetTime, suspended }: Op
     const now = Date.now();
     let next = noteScroll(stateRef.current, now);
     const dayKey = getLogicalDayKey(new Date(now), dayResetTime);
-    if (shouldOfferScrollNudge(next, now, dayKey, seconds)) {
+    if (shouldOfferScrollNudge(next, now, dayKey, limits)) {
       next = noteOffered(next, now, dayKey);
       setOffered(true);
     }
     stateRef.current = next;
-  }, [active, seconds, dayResetTime]);
+  }, [active, limits, dayResetTime]);
 
   const onTouchStart = useCallback((e: GestureResponderEvent) => {
     touchStart.current = { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY };

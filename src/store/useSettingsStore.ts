@@ -98,7 +98,10 @@ import {
   DEFAULT_MEAL_PLAN_NUDGE_TIME, DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY, MEAL_PLAN_NUDGE_SLOTS,
 } from '../utils/mealPlanNudge';
 import { DEFAULT_POSTPONE_THRESHOLD, parsePostponeThreshold } from '../utils/postpone';
-import { SCROLL_NUDGE_DEFAULT_SECONDS, parseScrollNudgeSeconds } from '../utils/scrollNudge';
+import {
+  SCROLL_NUDGE_DEFAULT_COOLDOWN_MINUTES, SCROLL_NUDGE_DEFAULT_DAILY_CAP, SCROLL_NUDGE_DEFAULT_SECONDS,
+  parseScrollNudgeCooldownMinutes, parseScrollNudgeDailyCap, parseScrollNudgeSeconds,
+} from '../utils/scrollNudge';
 import { DEFAULT_BOUNTY_LIMIT, parseBountyLimit, parseWeeklyBudget } from '../utils/rewards';
 import {
   FOCUS_DEFAULTS,
@@ -501,6 +504,10 @@ interface SettingsStore {
   scrollNudgeEnabled: boolean;
   /** Seconds of unbroken scrolling before it speaks up. */
   scrollNudgeSeconds: number;
+  /** Minutes after it appears before it may appear again. */
+  scrollNudgeCooldownMinutes: number;
+  /** Times it may appear in one logical day. */
+  scrollNudgeDailyCap: number;
   /**
    * Focus sessions — the run of work stretches and breaks a queue of tasks is
    * turned into (see src/utils/focusPlan.ts). Defaults are a classic pomodoro;
@@ -1946,6 +1953,8 @@ interface SettingsStore {
   setPostponeCheckThreshold: (count: number) => void;
   setScrollNudgeEnabled: (on: boolean) => void;
   setScrollNudgeSeconds: (seconds: number) => void;
+  setScrollNudgeCooldownMinutes: (minutes: number) => void;
+  setScrollNudgeDailyCap: (count: number) => void;
   setAppLockEnabled: (on: boolean) => void;
   setAppLockGraceSeconds: (seconds: number) => void;
   setJournalLockEnabled: (on: boolean) => void;
@@ -2258,6 +2267,8 @@ const DEFAULT_SETTINGS = {
   postponeCheckThreshold: DEFAULT_POSTPONE_THRESHOLD,
   scrollNudgeEnabled: false,
   scrollNudgeSeconds: SCROLL_NUDGE_DEFAULT_SECONDS,
+  scrollNudgeCooldownMinutes: SCROLL_NUDGE_DEFAULT_COOLDOWN_MINUTES,
+  scrollNudgeDailyCap: SCROLL_NUDGE_DEFAULT_DAILY_CAP,
   focusWorkCapMinutes: FOCUS_DEFAULTS.workCapMinutes,
   focusDefaultWorkMinutes: FOCUS_DEFAULTS.defaultWorkMinutes,
   focusRestAfterTasks: FOCUS_DEFAULTS.restAfterTasks,
@@ -2694,6 +2705,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   postponeCheckThreshold: DEFAULT_POSTPONE_THRESHOLD,
   scrollNudgeEnabled: false,
   scrollNudgeSeconds: SCROLL_NUDGE_DEFAULT_SECONDS,
+  scrollNudgeCooldownMinutes: SCROLL_NUDGE_DEFAULT_COOLDOWN_MINUTES,
+  scrollNudgeDailyCap: SCROLL_NUDGE_DEFAULT_DAILY_CAP,
   focusWorkCapMinutes: FOCUS_DEFAULTS.workCapMinutes,
   focusDefaultWorkMinutes: FOCUS_DEFAULTS.defaultWorkMinutes,
   focusRestAfterTasks: FOCUS_DEFAULTS.restAfterTasks,
@@ -2998,6 +3011,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const postponeCheckThreshold = parsePostponeThreshold(dbGetSetting('postponeCheckThreshold'));
     const scrollNudgeEnabled = dbGetSetting('scrollNudgeEnabled') === 'true';
     const scrollNudgeSeconds = parseScrollNudgeSeconds(dbGetSetting('scrollNudgeSeconds'));
+    const scrollNudgeCooldownMinutes = parseScrollNudgeCooldownMinutes(dbGetSetting('scrollNudgeCooldownMinutes'));
+    const scrollNudgeDailyCap = parseScrollNudgeDailyCap(dbGetSetting('scrollNudgeDailyCap'));
     const vacationMode = dbGetSetting('vacationMode') === 'true';
     const vacationStart = dbGetSetting('vacationStart') ?? null;
     const vacationEnd = dbGetSetting('vacationEnd') || null;
@@ -3729,6 +3744,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       screenTimeRules,
       screenTimeTaskCategory,
       screenTimeTasks,
+      scrollNudgeCooldownMinutes,
+      scrollNudgeDailyCap,
       scrollNudgeEnabled,
       scrollNudgeSeconds,
       seenTips,
@@ -4758,6 +4775,18 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const clamped = parseScrollNudgeSeconds(String(seconds));
     dbSetSetting('scrollNudgeSeconds', String(clamped));
     set({ scrollNudgeSeconds: clamped });
+  },
+
+  setScrollNudgeCooldownMinutes(minutes: number) {
+    const clamped = parseScrollNudgeCooldownMinutes(String(minutes));
+    dbSetSetting('scrollNudgeCooldownMinutes', String(clamped));
+    set({ scrollNudgeCooldownMinutes: clamped });
+  },
+
+  setScrollNudgeDailyCap(count: number) {
+    const clamped = parseScrollNudgeDailyCap(String(count));
+    dbSetSetting('scrollNudgeDailyCap', String(clamped));
+    set({ scrollNudgeDailyCap: clamped });
   },
 
   // Every focus setting re-parses on the way in as well as on the way out, so

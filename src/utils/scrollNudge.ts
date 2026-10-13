@@ -29,9 +29,14 @@ export const SCROLL_NUDGE_STEP_SECONDS = 15;
  */
 export const SCROLL_IDLE_GAP_MS = 15_000;
 /** After the suggestion appears, how long before it may appear again. */
-export const SCROLL_NUDGE_COOLDOWN_MS = 30 * 60_000;
+export const SCROLL_NUDGE_DEFAULT_COOLDOWN_MINUTES = 30;
+export const SCROLL_NUDGE_MIN_COOLDOWN_MINUTES = 5;
+export const SCROLL_NUDGE_MAX_COOLDOWN_MINUTES = 240;
+export const SCROLL_NUDGE_COOLDOWN_STEP_MINUTES = 5;
 /** Times it may appear in one logical day, however long the cooldown has run. */
-export const SCROLL_NUDGE_DAILY_CAP = 3;
+export const SCROLL_NUDGE_DEFAULT_DAILY_CAP = 3;
+export const SCROLL_NUDGE_MIN_DAILY_CAP = 1;
+export const SCROLL_NUDGE_MAX_DAILY_CAP = 10;
 /** Finger travel, in points, under which a touch is a tap and not a scroll. */
 export const TAP_SLOP = 10;
 
@@ -60,6 +65,39 @@ export function parseScrollNudgeSeconds(raw: string | null | undefined): number 
   if (!Number.isFinite(n)) return SCROLL_NUDGE_DEFAULT_SECONDS;
   return Math.min(SCROLL_NUDGE_MAX_SECONDS, Math.max(SCROLL_NUDGE_MIN_SECONDS, n));
 }
+
+function parseClamped(raw: string | null | undefined, fallback: number, min: number, max: number): number {
+  if (raw == null) return fallback;
+  const n = Math.round(Number(raw));
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
+}
+
+export function parseScrollNudgeCooldownMinutes(raw: string | null | undefined): number {
+  return parseClamped(
+    raw,
+    SCROLL_NUDGE_DEFAULT_COOLDOWN_MINUTES,
+    SCROLL_NUDGE_MIN_COOLDOWN_MINUTES,
+    SCROLL_NUDGE_MAX_COOLDOWN_MINUTES,
+  );
+}
+
+export function parseScrollNudgeDailyCap(raw: string | null | undefined): number {
+  return parseClamped(raw, SCROLL_NUDGE_DEFAULT_DAILY_CAP, SCROLL_NUDGE_MIN_DAILY_CAP, SCROLL_NUDGE_MAX_DAILY_CAP);
+}
+
+/** The three limits the person can set. */
+export interface ScrollNudgeLimits {
+  seconds: number;
+  cooldownMinutes: number;
+  dailyCap: number;
+}
+
+export const DEFAULT_SCROLL_NUDGE_LIMITS: ScrollNudgeLimits = {
+  seconds: SCROLL_NUDGE_DEFAULT_SECONDS,
+  cooldownMinutes: SCROLL_NUDGE_DEFAULT_COOLDOWN_MINUTES,
+  dailyCap: SCROLL_NUDGE_DEFAULT_DAILY_CAP,
+};
 
 /** A scroll event. Continues the run unless the list sat still too long first. */
 export function noteScroll(state: ScrollNudgeState, now: number): ScrollNudgeState {
@@ -90,13 +128,13 @@ export function shouldOfferScrollNudge(
   state: ScrollNudgeState,
   now: number,
   dayKey: string,
-  seconds: number,
+  limits: ScrollNudgeLimits,
 ): boolean {
   if (state.runStartedAt === null || state.lastScrollAt === null) return false;
   if (now - state.lastScrollAt > SCROLL_IDLE_GAP_MS) return false;
-  if (now - state.runStartedAt < seconds * 1000) return false;
-  if (state.lastOfferedAt !== null && now - state.lastOfferedAt < SCROLL_NUDGE_COOLDOWN_MS) return false;
-  if (state.offerDay === dayKey && state.offersToday >= SCROLL_NUDGE_DAILY_CAP) return false;
+  if (now - state.runStartedAt < limits.seconds * 1000) return false;
+  if (state.lastOfferedAt !== null && now - state.lastOfferedAt < limits.cooldownMinutes * 60_000) return false;
+  if (state.offerDay === dayKey && state.offersToday >= limits.dailyCap) return false;
   return true;
 }
 

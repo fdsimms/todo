@@ -1,8 +1,16 @@
 import {
   INITIAL_SCROLL_NUDGE_STATE as INITIAL,
   SCROLL_IDLE_GAP_MS,
-  SCROLL_NUDGE_COOLDOWN_MS,
-  SCROLL_NUDGE_DAILY_CAP,
+  DEFAULT_SCROLL_NUDGE_LIMITS,
+  SCROLL_NUDGE_DEFAULT_COOLDOWN_MINUTES,
+  SCROLL_NUDGE_DEFAULT_DAILY_CAP,
+  SCROLL_NUDGE_MAX_COOLDOWN_MINUTES,
+  SCROLL_NUDGE_MAX_DAILY_CAP,
+  SCROLL_NUDGE_MIN_COOLDOWN_MINUTES,
+  SCROLL_NUDGE_MIN_DAILY_CAP,
+  parseScrollNudgeCooldownMinutes,
+  parseScrollNudgeDailyCap,
+  type ScrollNudgeLimits,
   SCROLL_NUDGE_DEFAULT_SECONDS,
   SCROLL_NUDGE_MAX_SECONDS,
   SCROLL_NUDGE_MIN_SECONDS,
@@ -18,6 +26,9 @@ import {
 } from '../utils/scrollNudge';
 
 const DAY = '2026-10-13';
+const COOLDOWN_MS = SCROLL_NUDGE_DEFAULT_COOLDOWN_MINUTES * 60_000;
+const LIMITS = DEFAULT_SCROLL_NUDGE_LIMITS;
+const withLimits = (over: Partial<ScrollNudgeLimits>): ScrollNudgeLimits => ({ ...LIMITS, ...over });
 
 /** Scrolls every `stepMs` from t=0 up to and including `untilMs`. */
 function scrollThrough(state: ScrollNudgeState, untilMs: number, stepMs = 5000, from = 0): ScrollNudgeState {
@@ -29,26 +40,26 @@ function scrollThrough(state: ScrollNudgeState, untilMs: number, stepMs = 5000, 
 describe('shouldOfferScrollNudge', () => {
   it('offers once a run has lasted the threshold', () => {
     const s = scrollThrough(INITIAL, 60_000);
-    expect(shouldOfferScrollNudge(s, 60_000, DAY, 60)).toBe(true);
+    expect(shouldOfferScrollNudge(s, 60_000, DAY, LIMITS)).toBe(true);
   });
 
   it('does not offer before the threshold', () => {
     const s = scrollThrough(INITIAL, 55_000);
-    expect(shouldOfferScrollNudge(s, 55_000, DAY, 60)).toBe(false);
+    expect(shouldOfferScrollNudge(s, 55_000, DAY, LIMITS)).toBe(false);
   });
 
   it('honours a longer threshold', () => {
     const s = scrollThrough(INITIAL, 60_000);
-    expect(shouldOfferScrollNudge(s, 60_000, DAY, 120)).toBe(false);
+    expect(shouldOfferScrollNudge(s, 60_000, DAY, withLimits({ seconds: 120 }))).toBe(false);
   });
 
   it('does nothing with no scrolling at all', () => {
-    expect(shouldOfferScrollNudge(INITIAL, 1_000_000, DAY, 60)).toBe(false);
+    expect(shouldOfferScrollNudge(INITIAL, 1_000_000, DAY, LIMITS)).toBe(false);
   });
 
   it('does not offer on a run that stopped long ago', () => {
     const s = scrollThrough(INITIAL, 60_000);
-    expect(shouldOfferScrollNudge(s, 60_000 + SCROLL_IDLE_GAP_MS + 1, DAY, 60)).toBe(false);
+    expect(shouldOfferScrollNudge(s, 60_000 + SCROLL_IDLE_GAP_MS + 1, DAY, LIMITS)).toBe(false);
   });
 });
 
@@ -57,7 +68,7 @@ describe('a run', () => {
     let s = scrollThrough(INITIAL, 40_000);
     s = noteScroll(s, 40_000 + SCROLL_IDLE_GAP_MS + 1);
     expect(s.runStartedAt).toBe(40_000 + SCROLL_IDLE_GAP_MS + 1);
-    expect(shouldOfferScrollNudge(s, 40_000 + SCROLL_IDLE_GAP_MS + 1, DAY, 60)).toBe(false);
+    expect(shouldOfferScrollNudge(s, 40_000 + SCROLL_IDLE_GAP_MS + 1, DAY, LIMITS)).toBe(false);
   });
 
   it('survives a pause exactly at the idle gap', () => {
@@ -71,9 +82,9 @@ describe('a run', () => {
     s = noteAction(s);
     expect(s.runStartedAt).toBeNull();
     s = scrollThrough(s, 70_000, 5000, 55_000);
-    expect(shouldOfferScrollNudge(s, 70_000, DAY, 60)).toBe(false);
+    expect(shouldOfferScrollNudge(s, 70_000, DAY, LIMITS)).toBe(false);
     s = scrollThrough(s, 120_000, 5000, 75_000);
-    expect(shouldOfferScrollNudge(s, 120_000, DAY, 60)).toBe(true);
+    expect(shouldOfferScrollNudge(s, 120_000, DAY, LIMITS)).toBe(true);
   });
 
   it('returns the same object when an action has nothing to end', () => {
@@ -89,36 +100,36 @@ describe('after an offer', () => {
 
     const later = 60_000 + 10 * 60_000;
     s = scrollThrough(s, later + 70_000, 5000, later);
-    expect(shouldOfferScrollNudge(s, later + 70_000, DAY, 60)).toBe(false);
+    expect(shouldOfferScrollNudge(s, later + 70_000, DAY, LIMITS)).toBe(false);
   });
 
   it('offers again once the cooldown has passed', () => {
     let s = noteOffered(scrollThrough(INITIAL, 60_000), 60_000, DAY);
-    const start = 60_000 + SCROLL_NUDGE_COOLDOWN_MS;
+    const start = 60_000 + COOLDOWN_MS;
     s = scrollThrough(s, start + 60_000, 5000, start);
-    expect(shouldOfferScrollNudge(s, start + 60_000, DAY, 60)).toBe(true);
+    expect(shouldOfferScrollNudge(s, start + 60_000, DAY, LIMITS)).toBe(true);
   });
 
   it('stops at the daily cap even when the cooldown has passed', () => {
     let s: ScrollNudgeState = INITIAL;
     let t = 0;
-    for (let i = 0; i < SCROLL_NUDGE_DAILY_CAP; i++) {
+    for (let i = 0; i < SCROLL_NUDGE_DEFAULT_DAILY_CAP; i++) {
       s = scrollThrough(s, t + 60_000, 5000, t);
-      expect(shouldOfferScrollNudge(s, t + 60_000, DAY, 60)).toBe(true);
+      expect(shouldOfferScrollNudge(s, t + 60_000, DAY, LIMITS)).toBe(true);
       s = noteOffered(s, t + 60_000, DAY);
-      t += SCROLL_NUDGE_COOLDOWN_MS + 60_000;
+      t += COOLDOWN_MS + 60_000;
     }
     s = scrollThrough(s, t + 60_000, 5000, t);
-    expect(shouldOfferScrollNudge(s, t + 60_000, DAY, 60)).toBe(false);
+    expect(shouldOfferScrollNudge(s, t + 60_000, DAY, LIMITS)).toBe(false);
   });
 
   it('starts the count over on a new day', () => {
     let s: ScrollNudgeState = INITIAL;
-    for (let i = 0; i < SCROLL_NUDGE_DAILY_CAP; i++) s = noteOffered(s, i, DAY);
-    expect(s.offersToday).toBe(SCROLL_NUDGE_DAILY_CAP);
-    const start = 10 * SCROLL_NUDGE_COOLDOWN_MS;
+    for (let i = 0; i < SCROLL_NUDGE_DEFAULT_DAILY_CAP; i++) s = noteOffered(s, i, DAY);
+    expect(s.offersToday).toBe(SCROLL_NUDGE_DEFAULT_DAILY_CAP);
+    const start = 10 * COOLDOWN_MS;
     s = scrollThrough(s, start + 60_000, 5000, start);
-    expect(shouldOfferScrollNudge(s, start + 60_000, '2026-10-14', 60)).toBe(true);
+    expect(shouldOfferScrollNudge(s, start + 60_000, '2026-10-14', LIMITS)).toBe(true);
     expect(noteOffered(s, start, '2026-10-14').offersToday).toBe(1);
   });
 });
@@ -157,5 +168,35 @@ describe('describeScrollNudgeSpan', () => {
     expect(describeScrollNudgeSpan(120)).toBe('2 minutes');
     expect(describeScrollNudgeSpan(90)).toBe('90 seconds');
     expect(describeScrollNudgeSpan(30)).toBe('30 seconds');
+  });
+});
+
+describe('adjustable limits', () => {
+  it('honours a shorter cooldown', () => {
+    let s = noteOffered(scrollThrough(INITIAL, 60_000), 60_000, DAY);
+    const start = 60_000 + 10 * 60_000;
+    s = scrollThrough(s, start + 60_000, 5000, start);
+    expect(shouldOfferScrollNudge(s, start + 60_000, DAY, LIMITS)).toBe(false);
+    expect(shouldOfferScrollNudge(s, start + 60_000, DAY, withLimits({ cooldownMinutes: 5 }))).toBe(true);
+  });
+
+  it('honours a lower and a higher daily cap', () => {
+    let s: ScrollNudgeState = INITIAL;
+    s = noteOffered(s, 0, DAY);
+    const start = 10 * COOLDOWN_MS;
+    s = scrollThrough(s, start + 60_000, 5000, start);
+    expect(shouldOfferScrollNudge(s, start + 60_000, DAY, withLimits({ dailyCap: 1 }))).toBe(false);
+    expect(shouldOfferScrollNudge(s, start + 60_000, DAY, withLimits({ dailyCap: 2 }))).toBe(true);
+  });
+});
+
+describe('parse cooldown and cap', () => {
+  it('falls back and clamps', () => {
+    expect(parseScrollNudgeCooldownMinutes(null)).toBe(SCROLL_NUDGE_DEFAULT_COOLDOWN_MINUTES);
+    expect(parseScrollNudgeCooldownMinutes('1')).toBe(SCROLL_NUDGE_MIN_COOLDOWN_MINUTES);
+    expect(parseScrollNudgeCooldownMinutes('9999')).toBe(SCROLL_NUDGE_MAX_COOLDOWN_MINUTES);
+    expect(parseScrollNudgeDailyCap('x')).toBe(SCROLL_NUDGE_DEFAULT_DAILY_CAP);
+    expect(parseScrollNudgeDailyCap('0')).toBe(SCROLL_NUDGE_MIN_DAILY_CAP);
+    expect(parseScrollNudgeDailyCap('99')).toBe(SCROLL_NUDGE_MAX_DAILY_CAP);
   });
 });

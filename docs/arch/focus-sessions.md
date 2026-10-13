@@ -478,9 +478,9 @@ appears once a run reaches `scrollNudgeSeconds` (60 by default).
   passive touch events.** A touch handler on the container also hears a scroll
   inside any sheet raised from it, which would count a long picker as drifting.
   A tap in a sheet only resets the run, which is harmless.
-- **Its limits are fixed, not settings:** 30 minutes between offers, 3 a day
-  (logical day), measured from when it was shown, whether or not it was taken.
-  The state is a ref and is never persisted: a cooldown that survived a restart
+- **The repeat limits are settings:** minutes between offers (30) and offers
+  per logical day (3), measured from when it was shown, whether or not it was
+  taken. The state is a ref and is never persisted: a cooldown that survived a restart
   would be a promise the app has no reason to keep.
 - **It only offers.** Start opens the normal setup sheet; nothing begins until
   the person confirms there. It is suspended during a session and while
