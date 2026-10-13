@@ -979,7 +979,10 @@ export function FoodLogEntrySheet({
   const dishWeightHint = useMemo(() => {
     if (!picked || picked.kind !== 'dish') return '';
     if (dishMeasure !== 'weight' || picked.cookedGrams === null) {
-      return 'In servings of the recipe as written.';
+      const makes = picked.dishServings;
+      return makes !== null && makes > 0
+        ? `In servings. The recipe as written makes ${makes}.`
+        : 'In servings of the recipe as written.';
     }
     const per = servingGrams({
       total: {},
