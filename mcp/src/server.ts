@@ -373,6 +373,13 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
   );
 
   server.tool(
+    'list_brands',
+    "Every brand in the catalog once, with how many variants carry it, the items it appears under, and (only when there is more than one) the spellings in use with their counts. A brand has no record of its own, so this is read off the variants: use it to find 'Quest' and 'QUEST' before rename_brand.",
+    {},
+    async () => json({ brands: await withFresh(() => listBrands(replica)) })
+  );
+
+  server.tool(
     'get_grocery_item',
     "Everything recorded about one grocery item: aisle, quantity, note, last price, variants (each a brand and variant, listed as `boxes` with an id), the stores it comes from, substitutes, the lists it is on, the names receipts print for it, and its nutrition panel (and each variant's) with its source, when it has one. Read the panel before set_nutrition_panel, which replaces it. Takes an id from list_grocery_items or a name. For its pantry state use get_pantry_item.",
     { id: z.string().optional(), name: z.string().optional() },
@@ -3224,13 +3231,6 @@ function registerWriteTools(
         return json({ error: e instanceof Error ? e.message : 'Could not create that list.' });
       }
     }
-  );
-
-  server.tool(
-    'list_brands',
-    "Every brand in the catalog once, with how many variants carry it, the items it appears under, and (only when there is more than one) the spellings in use with their counts. A brand has no record of its own, so this is read off the variants: use it to find 'Quest' and 'QUEST' before rename_brand.",
-    {},
-    async () => json({ brands: await withFresh(() => listBrands(replica)) })
   );
 
   server.tool(
