@@ -561,14 +561,20 @@ export function stepVisible(
  * order the step lists them, for the caption that says why a step is or isn't
  * on screen and for share text, which sends every step. Ids that name no
  * option are left out, matching `stepVisible`'s "ignore a dangling id".
+ *
+ * A used recipe is named as it is now when `recipesById` is given (a rename
+ * after linking shows), falling back to the name captured on the link.
  */
 export function stepOptionNames(
   step: { onlyWhen?: readonly string[] },
   recipe: Recipe,
+  recipesById?: ReadonlyMap<string, Recipe>,
 ): string[] {
   const names = new Map<string, string>();
   for (const row of recipe.ingredients) if (row.choiceGroup) names.set(row.id, row.name);
-  for (const row of recipe.components) if (row.choiceGroup) names.set(row.id, row.name);
+  for (const row of recipe.components) {
+    if (row.choiceGroup) names.set(row.id, recipesById?.get(row.recipeId)?.name ?? row.name);
+  }
   const out: string[] = [];
   for (const id of step.onlyWhen ?? []) {
     const name = names.get(id);

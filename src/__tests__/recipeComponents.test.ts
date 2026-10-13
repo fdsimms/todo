@@ -1140,6 +1140,14 @@ describe('stepOptionNames', () => {
     expect(stepOptionNames({ onlyWhen: [b.id, 'gone', c.id, a.id] }, r)).toEqual(['jalapeño', 'serrano']);
     expect(stepOptionNames({}, r)).toEqual([]);
   });
+
+  it('names a used recipe as it is now, not as it was when linked', () => {
+    const renamed = recipe('fish', 'Pan-fried fish');
+    const dish = link('fish', 'Homemade fish', 'Fish');
+    const parent = recipe('p', 'Stew', { components: [dish] });
+    expect(stepOptionNames({ onlyWhen: [dish.id] }, parent)).toEqual(['Homemade fish']);
+    expect(stepOptionNames({ onlyWhen: [dish.id] }, parent, recipeMap([parent, renamed]))).toEqual(['Pan-fried fish']);
+  });
 });
 
 describe('one-off overrides', () => {

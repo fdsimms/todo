@@ -1707,7 +1707,7 @@ export function RecipeDetailScreen() {
     // still be edited, and says which option it is for. It dims when that
     // option isn't the one being read for, which is the same call cook mode
     // makes by leaving it out.
-    const onlyWith = recipe ? stepOptionNames(step, recipe) : [];
+    const onlyWith = recipe ? stepOptionNames(step, recipe, recipesById) : [];
     const offPick = !!recipe && !stepVisible(step, recipe, choiceResolution);
     return (
     <View

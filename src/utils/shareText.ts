@@ -242,7 +242,7 @@ export function buildRecipeShareText(
     // A step tied to an option says which, or a reader would follow the
     // jalapeño method over the serrano.
     recipe.steps.forEach((step, i) => {
-      const only = stepOptionNames(step, recipe);
+      const only = stepOptionNames(step, recipe, recipesById);
       const tag = only.length > 0 ? ` (Only with ${only.join(' or ')}.)` : '';
       lines.push(`${i + 1}. ${step.text}${tag}`);
     });
