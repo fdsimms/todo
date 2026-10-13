@@ -378,6 +378,15 @@ export function describeOverrides(
   recipesById: ReadonlyMap<string, Recipe>,
   overrides: readonly RecipeOverride[],
 ): string[] {
+  return overrideLines(recipe, recipesById, overrides).map(l => l.text);
+}
+
+/** `describeOverrides`, each sentence with the target it is about, for a row that can take it back off. */
+export function overrideLines(
+  recipe: Recipe,
+  recipesById: ReadonlyMap<string, Recipe>,
+  overrides: readonly RecipeOverride[],
+): { targetId: string; text: string }[] {
   if (overrides.length === 0) return [];
   const names = new Map<string, string>();
   for (const id of [recipe.id, ...reachableRecipeIds(recipesById, recipe.id)]) {
@@ -386,17 +395,17 @@ export function describeOverrides(
     for (const line of node.ingredients) names.set(line.id, line.name);
     for (const link of node.components) names.set(link.id, recipesById.get(link.recipeId)?.name ?? link.name);
   }
-  const out: string[] = [];
+  const out: { targetId: string; text: string }[] = [];
   for (const o of overrides) {
     const was = names.get(o.targetId);
     if (!was) continue;
     const note = o.note ? ` ${o.note.trim().replace(/[.!]?$/, '.')}` : '';
     if (!o.replacement) {
-      out.push(`${was} is left out.${note}`);
+      out.push({ targetId: o.targetId, text: `${was} is left out.${note}` });
       continue;
     }
     const line = [o.replacement.quantity, o.replacement.name, o.replacement.prep].filter(Boolean).join(' ');
-    out.push(`${was} is replaced by ${line}.${note}`);
+    out.push({ targetId: o.targetId, text: `${was} is replaced by ${line}.${note}` });
   }
   return out;
 }

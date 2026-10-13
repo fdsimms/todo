@@ -40,6 +40,8 @@ import { SuggestMealsSheet } from '../components/SuggestMealsSheet';
 import { OverlapPickerSheet } from '../components/OverlapPickerSheet';
 import { WhenPicker } from '../components/WhenPicker';
 import { MealReplaceItemSheet, type MealReplacement } from '../components/MealReplaceItemSheet';
+import { MealOverrideSheet } from '../components/MealOverrideSheet';
+import { withoutOverride } from '../utils/mealOverrides';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { useRowSelection } from '../hooks/useRowSelection';
 import { useSheetSubject } from '../hooks/useSheetSubject';
@@ -101,6 +103,7 @@ import { kitchenInventory, useUpEntries } from '../utils/kitchenInventory';
 import {
   applyChoice,
   describeChoices,
+  overrideLines,
   recipeChoiceGroups,
   flattenRecipePrepTasks,
   recipeMap,
@@ -423,6 +426,7 @@ export function MealPlanScreen() {
   const setCookTask = useMealPlanStore(s => s.setCookTask);
   const setLastAction = useMealPlanStore(s => s.setLastAction);
   const setRecipeChoices = useMealPlanStore(s => s.setRecipeChoices);
+  const setRecipeOverrides = useMealPlanStore(s => s.setRecipeOverrides);
   const setRecipeScale = useMealPlanStore(s => s.setRecipeScale);
   const addedToListAt = useMealPlanStore(useShallow(s => s.addedToListAt));
   const bulkDeleteEntries = useMealPlanStore(s => s.bulkDeleteEntries);
@@ -720,6 +724,9 @@ export function MealPlanScreen() {
   // movingFurtherId's reason. Shares MealReplaceItemSheet with the bulk bar's
   // Replace; this being set is what makes it a replace of one.
   const [replacingId, setReplacingId] = useState<string | null>(null);
+  // The one meal getting a one-off replacement from its own sheet, held by id
+  // for movingFurtherId's reason: MealEntrySheet has closed by the time the card is up.
+  const [overridingId, setOverridingId] = useState<string | null>(null);
 
   const toggleDayCollapse = (key: string) => {
     haptics.tap();
@@ -2420,6 +2427,21 @@ export function MealPlanScreen() {
         />
       </LazySheet>
 
+      <LazySheet open={overridingId !== null}>
+        <MealOverrideSheet
+          visible={overridingId !== null}
+          entry={overridingId ? entries.find(e => e.id === overridingId) ?? null : null}
+          recipe={(() => {
+            const e = overridingId ? entries.find(x => x.id === overridingId) : undefined;
+            return e?.recipeId ? recipesById.get(e.recipeId) ?? null : null;
+          })()}
+          recipesById={recipesById}
+          onHand={onHand}
+          onSave={next => { if (overridingId) setRecipeOverrides(overridingId, next); }}
+          onClose={() => setOverridingId(null)}
+        />
+      </LazySheet>
+
       <LazySheet open={planningDay !== null}>
         <RecipePickerSheet
           visible={planningDay !== null}
@@ -2503,6 +2525,11 @@ export function MealPlanScreen() {
               : undefined
           }
           choiceGroups={selectedChoiceGroups}
+          overrideLines={selected && selectedRecipe ? overrideLines(selectedRecipe, recipesById, selected.recipeOverrides) : undefined}
+          onRemoveOverride={selected
+            ? targetId => setRecipeOverrides(selected.id, withoutOverride(selected.recipeOverrides, targetId))
+            : undefined}
+          onOverride={selected && selectedRecipe ? () => setOverridingId(selected.id) : undefined}
           onChoose={(group, componentId) => {
             if (!selected) return;
             setRecipeChoices(

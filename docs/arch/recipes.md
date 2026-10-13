@@ -243,8 +243,12 @@ already allows two things on one dinner, so ad-hoc pairing needs nothing.
     goes missing, like the picks do.
   - **It is resolve-or-shrug**: a target the recipe no longer has replaces nothing, and an override on the
     non-picked side of an either/or changes nothing.
-  - **There is no in-app editor yet.** Overrides are set over MCP (`update_meal`'s `replacements`) and are
-    shown, read-only, as a "This time" card on the recipe page and in shopping and cook mode.
+  - **Two ways to set one, one rule for both.** The planned meal's sheet (`MealEntrySheet`, "Change an
+    ingredient" opening `MealOverrideSheet`, over `mealOverrides.ts`) and `update_meal`'s `replacements`
+    over MCP both write the whole list through `setRecipeOverrides`/`dbUpdateMealPlanEntry`. The sheet
+    offers only what the meal actually cooks (`overrideTargets`, read under the meal's picks), so the
+    side of an either/or it did not choose is not listed. The recipe page shows them read-only as a
+    "This time" card; nothing on that screen writes them.
 - **The pick lives on `MealPlanEntry.recipeChoices`**, because which side you make is a fact about
   a cooking, not about the dish — one recipe, mash on Tuesday and roast on Friday. **One list holds
   both kinds of id** (component links and ingredient lines): every reader asks it the same question,

@@ -1242,7 +1242,8 @@ another. The recipe is never edited, and nothing is copied when a meal or week i
 cost, nutrition and cooking all follow it because they read the meal through `entryResolution`; a
 hand-built resolution would drop it, which `noBareEntryResolution.test.ts` forbids in `src/` and
 `mcp/src/`. Like a pick, it is not undoable from Activity, and `list_meal_plan` states it as plain
-sentences in `replacements`.
+sentences in `replacements`. The app has its own editor for the same list (`MealOverrideSheet`), so
+an agent's write and a person's land in one field.
 
 `set_meal_cooked` is the plan's checkbox, with the parts a Node process can do. Marking a meal cooked
 stamps it, counts the cooking on the recipe (`useRecipeStore.markCooked`), opens the packets it used
