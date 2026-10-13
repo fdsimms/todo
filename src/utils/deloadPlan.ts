@@ -2,11 +2,13 @@ import type { Task } from '../types';
 import { computeSnoozeSuggestion } from './snoozeEngine';
 import { estimatedMinutesFor } from './effort';
 import { getLogicalTomorrow } from './dateUtils';
+import { eventTaskStartOf } from './eventTasks';
 import type { AwaySpan } from './awayDates';
 import type { BusyEvent } from './calendarBusy';
 import { useSettingsStore } from '../store/useSettingsStore';
 import {
   SOFT_DELOAD_BLOCKERS,
+  dailyRepeatBlocker,
   deloadBlockerFor,
   isDateAnchored,
   wouldMissDeadline,
@@ -123,7 +125,7 @@ export function buildDeloadPlan(
   tomorrowDate.setHours(12, 0, 0, 0);
 
   const proposals: DeloadProposal[] = ordered.map(({ task, minutes }) => {
-    const found = deloadBlockerFor(task);
+    const found = deloadBlockerFor(task) ?? dailyRepeatBlocker(task);
     const hardBlocked = found !== null && !SOFT_DELOAD_BLOCKERS.has(found.blocker);
     const mode: 'defer' | 'reschedule' = isDateAnchored(task) ? 'defer' : 'reschedule';
 
@@ -151,7 +153,7 @@ export function buildDeloadPlan(
         mode,
         selected: false,
         blocker: 'deadline',
-        blockerLabel: 'Deadline too close',
+        blockerLabel: eventTaskStartOf(task) ? 'Needed before the event' : 'Deadline too close',
       };
     }
 

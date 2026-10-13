@@ -15,6 +15,7 @@ import {
 import { dayKeyOf, getDayStart, getTaskDayStart } from './dateUtils';
 import {
   SOFT_DELOAD_BLOCKERS,
+  dailyRepeatBlocker,
   deloadBlockerFor,
   isDateAnchored,
   wouldMissDeadline,
@@ -490,7 +491,7 @@ export function buildPushPlan(
     .map(task => {
       const minutes = estimatedMinutesFor(task) ?? 0;
       const mode: 'defer' | 'reschedule' = isDateAnchored(task) ? 'defer' : 'reschedule';
-      const found = deloadBlockerFor(task);
+      const found = deloadBlockerFor(task) ?? dailyRepeatBlocker(task);
       const hardBlocked = found !== null && !SOFT_DELOAD_BLOCKERS.has(found.blocker);
 
       if (hardBlocked) {

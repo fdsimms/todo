@@ -402,6 +402,13 @@ describe('tightDeadlines', () => {
 });
 
 describe('buildPushPlan', () => {
+  it('leaves a task that repeats every day unchecked', () => {
+    const plan = buildPushPlan([makeTask({ dueDate: iso(2026, 8, 25), recurrenceType: 'daily' })], AWAY_END, '00:00');
+    expect(plan[0].blocker).toBe('daily');
+    expect(plan[0].selected).toBe(false);
+    expect(plan[0].destination).not.toBeNull();
+  });
+
   it('lands everything on the day after the trip ends', () => {
     const plan = buildPushPlan([makeTask({ dueDate: iso(2026, 8, 25) })], AWAY_END, '00:00');
     expect(plan).toHaveLength(1);
