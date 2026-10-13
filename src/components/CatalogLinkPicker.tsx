@@ -50,8 +50,7 @@ export function CatalogLinkPicker({ items, initialQuery, excludeItemId, onPick, 
 
   const results = useMemo(
     () => rankGrocerySuggestions(query, items, new Date(), 6)
-      .map(s => s.item)
-      .filter(item => item.id !== excludeItemId),
+      .filter(s => s.item.id !== excludeItemId),
     [query, items, excludeItemId]
   );
 
@@ -78,16 +77,19 @@ export function CatalogLinkPicker({ items, initialQuery, excludeItemId, onPick, 
         />
       </View>
       {results.length > 0 ? (
-        results.map(item => (
+        results.map(({ item, matchedName }) => (
           <TouchableOpacity
             key={item.id}
             style={styles.row}
             activeOpacity={interaction.activeOpacity}
             onPress={() => { haptics.tap(); onPick(item); }}
             accessibilityRole="button"
-            accessibilityLabel={`Link to ${item.name}, ${item.aisle}`}
+            accessibilityLabel={`Link to ${item.name}, ${matchedName ? `also called ${matchedName}, ` : ''}${item.aisle}`}
           >
-            <Text style={styles.rowName} numberOfLines={1}>{item.name}</Text>
+            <Text style={styles.rowName} numberOfLines={1}>
+              {item.name}
+              {!!matchedName && <Text style={styles.rowAisle}>{`  (${matchedName})`}</Text>}
+            </Text>
             <Text style={styles.rowAisle} numberOfLines={1}>{item.aisle}</Text>
           </TouchableOpacity>
         ))

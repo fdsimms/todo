@@ -123,3 +123,20 @@ export function cleanOtherNames(
   }
   return { names, refused };
 }
+
+/**
+ * The clause a catalog row carries under an item's name when it has other
+ * names ("also called kombu"), or null when it has none. Built from the names
+ * that actually resolve to this item (`otherNameKeysOf` drops the item's own
+ * name and repeats), shown as typed.
+ */
+export function describeOtherNames(item: Pick<GroceryItem, 'nameKey' | 'otherNames'>): string | null {
+  const pending = new Set(otherNameKeysOf(item));
+  const shown: string[] = [];
+  for (const name of item.otherNames ?? []) {
+    const key = groceryNameKey(name);
+    if (!pending.delete(key)) continue;
+    shown.push(name.trim());
+  }
+  return shown.length > 0 ? `also called ${shown.join(', ')}` : null;
+}

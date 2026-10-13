@@ -29,6 +29,7 @@ import { trolleyStateFor, itemsOnList, listedAnywhere } from '../utils/groceryLi
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { describeOtherNames } from '../utils/itemAliases';
 import { rankedCatalogItems, catalogPruneCandidates, rankGrocerySuggestions } from '../utils/grocerySuggest';
 import { describeForgetLoss, linkCounts } from '../utils/groceryFacts';
 import { suppliesStockedFrom } from '../utils/supply';
@@ -283,6 +284,7 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
     // as a real number.
     const priceMinor = lastPriceFor(item, shopFilter, itemShops);
     const priceContext = priceMinor !== null ? describePriceContext(item, now) : null;
+    const otherNames = describeOtherNames(item);
     return (
       <View style={styles.row}>
         <TouchableOpacity
@@ -297,7 +299,7 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
           delayLongPress={interaction.delayLongPress}
           accessibilityRole="checkbox"
           accessibilityState={{ checked: isSelected }}
-          accessibilityLabel={item.name}
+          accessibilityLabel={otherNames ? `${item.name}, ${otherNames}` : item.name}
           accessibilityHint="Long press to edit"
         >
           <View style={[styles.checkbox, isSelected && styles.checkboxOn]}>
@@ -307,6 +309,7 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
             <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
             <Text style={styles.meta} numberOfLines={1}>
               {item.aisle}
+              {!!otherNames && ` · ${otherNames}`}
               {item.purchaseCount > 0 && ` · bought ${item.purchaseCount}×`}
               {!!usual && ` · ${usual.name}`}
               {!!priceContext && ` · ${priceContext}`}

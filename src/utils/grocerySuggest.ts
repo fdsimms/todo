@@ -4,6 +4,7 @@ import { FROZEN_REASON, RUNNING_LOW_REASON, THAWED_PORTION_REASON, isPortionBox 
 import { groceryNameKey } from './groceryParse';
 import { OTHER_AISLE } from './groceryAisles';
 import { hasUserFacts } from './groceryFacts';
+import { aliasIndex } from './itemAliases';
 
 /**
  * Ranking and sectioning — the part that makes the catalog feel like it knows
@@ -26,6 +27,12 @@ export interface GrocerySuggestion {
    * is right to take an arbitrary order.
    */
   score: number;
+  /**
+   * The other name the query matched, when that (and not the item's own name)
+   * is why it was offered: "kombu" on the dashima row. Null for a match on the
+   * name itself, so a row only says it when the typed word is not the one shown.
+   */
+  matchedName: string | null;
 }
 
 export interface GrocerySection {
@@ -46,6 +53,13 @@ export interface GroceryRecipeSection {
  * buildGroceryRecipeSections — always last, same convention OTHER_AISLE uses.
  */
 export const NO_RECIPE_LABEL = 'No recipe';
+
+/**
+ * A match on another name scores a hair under the same match on the item's own
+ * name, so "ginger" still finds ginger root before the item that lists it as
+ * another name. Small enough that it never reorders a 3/2/1 rung.
+ */
+const OTHER_NAME_FACTOR = 0.9;
 
 const DAY_MS = 86_400_000;
 /** Score halves every this many days since last purchase. */
@@ -133,17 +147,41 @@ export function rankGrocerySuggestions(
   const queryKey = groceryNameKey(query);
   if (!queryKey) return [];
 
+  // Only names that resolve to one item count (`aliasIndex` leaves out a name
+  // that is some item's own, or that two items both claim), so a row is never
+  // offered for a word the rest of the app would not resolve to it.
+  const otherKeys = new Map<string, string[]>();
+  for (const [key, owner] of aliasIndex(items)) {
+    const keys = otherKeys.get(owner.id);
+    if (keys) keys.push(key); else otherKeys.set(owner.id, [key]);
+  }
+
   return items
-    .map(item => ({ item, weight: matchWeight(item.nameKey, queryKey) }))
+    .map(item => {
+      let weight = matchWeight(item.nameKey, queryKey);
+      let matchedKey: string | null = null;
+      for (const key of otherKeys.get(item.id) ?? []) {
+        const viaOther = matchWeight(key, queryKey) * OTHER_NAME_FACTOR;
+        if (viaOther > weight) { weight = viaOther; matchedKey = key; }
+      }
+      return { item, weight, matchedKey };
+    })
     .filter(x => x.weight > 0)
-    .map(x => ({ item: x.item, score: x.weight * familiarity(x.item, now) }))
+    .map(x => ({ ...x, score: x.weight * familiarity(x.item, now) }))
     .sort((a, b) =>
       b.score - a.score ||
       a.item.name.length - b.item.name.length ||
       a.item.name.localeCompare(b.item.name)
     )
     .slice(0, limit)
-    .map(x => ({ item: x.item, onList: onListIn(x.item, inTrolley), score: x.score }));
+    .map(x => ({
+      item: x.item,
+      onList: onListIn(x.item, inTrolley),
+      score: x.score,
+      matchedName: x.matchedKey === null
+        ? null
+        : (x.item.otherNames ?? []).find(name => groceryNameKey(name) === x.matchedKey) ?? null,
+    }));
 }
 
 /**
