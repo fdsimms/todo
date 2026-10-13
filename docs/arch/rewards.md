@@ -41,6 +41,25 @@ default (`rewardsEnabled`), switched on from the Rewards screen (its own menu ro
   `rewardsEnabled` is off. The `takeBack*` actions are not gated, so an entry written while it was on
   still goes when its completion is undone after it was switched off.
 
+## Paying per tap
+
+A target (`Task.targetCount`) can pay on every tap instead of once at the end (`Task.coinsPerTap`, a switch
+under the target in the task editor, shown only while rewards are on). Rules in `coinsForTap`
+(`src/utils/rewards.ts`), the two writes in `logQuotaUnit` and `unlogQuotaUnit`.
+
+- **It changes when coins arrive, never how many.** The base coins are split by running total across
+  the target, so the taps add up to exactly `baseCoinsFor`. The streak bonus and a bounty are not
+  split: they ride the completion.
+- **The completion earns the total less what the taps were paid** (`tapCoinsPaid`), so switching the
+  setting on or off mid-day, or logging past the target, can't pay twice or lose coins.
+- **A tap's entry is keyed by occurrence and tap number** (`spawnSeed.coinTap`), and undoing the tap
+  removes that entry whether or not the setting is still on. Unticking the completion removes only
+  its own entry, as before.
+- **A short period keeps what its taps paid.** The quota rollover still earns and costs nothing, so
+  coins already paid for taps stay: that is the point of paying per tap.
+- **It seeds from a template item** (`TemplateItem.coinsPerTap`) and is settable over MCP (`target.coinsPerTap`).
+- **Not offered on a rotation or a water-following target**, whose units are logged by paths that don't go through `logQuotaUnit`.
+
 ## Difficulty
 
 `Task.difficulty` (Trivial / Easy / Normal / Hard) says how hard a task is to make yourself do, which the time

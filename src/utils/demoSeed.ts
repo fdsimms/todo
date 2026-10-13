@@ -693,6 +693,8 @@ export function seedDemoData(): void {
     dueDate: today.toISOString(),
     targetCount: 6,
     targetUnit: 'glasses',
+    // Paid per glass rather than when the sixth is logged (Task.coinsPerTap).
+    coinsPerTap: true,
     // A target resets by spawning its next occurrence, so it always repeats.
     recurrenceType: 'daily',
     recurrenceInterval: 1,

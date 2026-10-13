@@ -83,7 +83,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   penaltyCreditedAt: null,
   gatesApps: false,
   showStreak: false,
-  streakRequiresWindow: false, streakCountsUnits: false,
+  streakRequiresWindow: false, streakCountsUnits: false, coinsPerTap: false,
   parentId: null,
   groupId: null,
   projectId: null,

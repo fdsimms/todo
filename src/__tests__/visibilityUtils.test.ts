@@ -153,7 +153,7 @@ const baseTask: Task = {
   penaltyCreditedAt: null,
   gatesApps: false,
   showStreak: false,
-  streakRequiresWindow: false, streakCountsUnits: false,
+  streakRequiresWindow: false, streakCountsUnits: false, coinsPerTap: false,
   recurrenceFromCompletion: false,
   supplyCount: null,
   supplyUnit: null,

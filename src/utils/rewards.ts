@@ -141,6 +141,20 @@ export function coinsForCompletion(
   return baseCoinsFor(task) + streakBonusFor(streakCount) + bountyCoinsFor(task);
 }
 
+/**
+ * What tap number `tap` of `total` earns on a task paid per tap
+ * (`Task.coinsPerTap`). The base coins are split by running total, so the
+ * shares of taps 1 to `total` add up to exactly `baseCoinsFor` and paying per
+ * tap changes when the coins arrive, never how many. A tap past the target
+ * (an overshoot) earns nothing. The streak bonus and a bounty are not split:
+ * they ride the completion.
+ */
+export function coinsForTap(task: CoinSource, tap: number, total: number): number {
+  if (!(total > 0) || tap < 1 || tap > total) return 0;
+  const base = baseCoinsFor(task);
+  return Math.floor((base * tap) / total) - Math.floor((base * (tap - 1)) / total);
+}
+
 // ---------------------------------------------------------------------------
 // Bounties
 // ---------------------------------------------------------------------------

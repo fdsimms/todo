@@ -3679,6 +3679,14 @@ export interface Task {
   // the editor offers it. See countsUnits in src/utils/streakUnits.ts.
   streakCountsUnits: boolean;
 
+  // Opt-in per task, for a target (`targetCount`): coins are paid on every tap
+  // instead of once when the target is reached. The occurrence's base coins
+  // are split across the taps (`coinsForTap` in src/utils/rewards.ts), so the
+  // total is the same either way and only the timing differs. The streak
+  // bonus and a bounty ride the last tap, which is the completion. Inert
+  // while rewards are off and on any task without a target.
+  coinsPerTap: boolean;
+
   // Series — one commitment that falls on several hand-picked dates (e.g.
   // walking the neighbour's dog on the 10th and the 15th). Every date is its
   // own real row sharing this id, deliberately rather than one row holding a
@@ -4321,6 +4329,8 @@ export interface TemplateItem {
   quotaRampEvery?: number | null;
   quotaRampGoal?: number | null;
   allowOvershoot?: boolean;
+  // Seeds Task.coinsPerTap.
+  coinsPerTap?: boolean;
   quotaReminders?: boolean;
 
   // Seeds Task.chainStepOnSchedule: on a repeating chain, each step waits for
