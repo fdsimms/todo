@@ -289,6 +289,19 @@ describe('recipeNutrition', () => {
     expect(read.covered).toBe(1);
   });
 
+  it('weighs a drained can by the food\'s own drained portion, and the whole can otherwise', () => {
+    const beans = (portions: { amount: number; label: string; grams: number }[]) => [
+      item({ name: 'Black beans', nutrition: panel({ amounts: { calorieKcal: 120 }, portions }) }),
+    ];
+    const dish = recipe('Bake', [
+      ing('Black beans', { quantity: '2 14 oz cans', prep: 'drained and rinsed' }),
+    ]);
+    // 2 x 240 g drained @ 120 kcal/100g.
+    expect(recipeNutrition(dish, beans([{ amount: 1, label: '14 oz can, drained', grams: 240 }]))!.total.calorieKcal).toBe(576);
+    // No drained row: the whole 28 oz, as before.
+    expect(recipeNutrition(dish, beans([]))!.total.calorieKcal).toBeCloseTo(952.6, 0);
+  });
+
   it('still counts a staple written in a tablespoon or more', () => {
     // Olive oil marked "Always have it", at 3 tbsp: not a dash, so it counts
     // rather than leaving the dish "fully counted" with its fat missing.

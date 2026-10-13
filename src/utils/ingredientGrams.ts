@@ -254,6 +254,38 @@ export function measureLineAmount(quantity: Quantity): MeasuredQuantity | null {
 }
 
 /**
+ * What a "drained" sized container weighs once the liquid is gone, or null when
+ * the food's own table doesn't say.
+ *
+ * "2 14 oz cans black beans, drained" is two tins' net weight to
+ * `measureLineAmount`, liquid included, while a bean panel is for the beans:
+ * the dish read about 60% heavier than it was. How much a can drains to is a
+ * fact about the food (beans, tomatoes, corn and tuna all differ), so it comes
+ * off the food's own table and never from a global fraction. The portion has
+ * to name the whole container as the recipe writes it, size and word and
+ * "drained" ("14 oz can, drained"), so a 28 oz can never borrows a 14 oz one's
+ * weight. No match returns null, and the line weighs what it always did.
+ */
+function drainedContainerGrams(
+  quantity: Quantity,
+  prep: string | null,
+  portions: readonly FoodPortion[],
+): number | null {
+  const container = quantity.container;
+  if (!container || !prep || !/\bdrain/i.test(prep)) return null;
+  const count = container.count ? rationalToNumber(container.count) : 1;
+  if (!(count > 0)) return null;
+  const wanted = [container.sizeText, container.sizeUnit, container.word, 'drained'].map(unitKey);
+  const named = portions.filter(p => {
+    const words = labelWords(p.label);
+    return wanted.every(word => words.includes(word));
+  });
+  // Two rows that fit is a table that can't say which, the refusal every other
+  // lookup in this module makes.
+  return named.length === 1 ? count * gramsPerUnit(named[0]) : null;
+}
+
+/**
  * What one recipe line weighs in grams, or null when it can't be said honestly.
  *
  * `quantity` is already parsed rather than raw text, deliberately: this is not
@@ -289,6 +321,9 @@ export function gramsForLine(
   // refuses the pair outright — it is measuring how much a line calls for,
   // and this is choosing which end to believe.
   const single: Quantity = quantity.rangeMax ? { ...quantity, rangeMax: null } : quantity;
+
+  const drained = drainedContainerGrams(single, prep, portions);
+  if (drained !== null) return drained;
 
   const measured = measureLineAmount(single);
   if (measured?.dimension === 'mass') return measured.base;

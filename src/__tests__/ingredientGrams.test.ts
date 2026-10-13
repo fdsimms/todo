@@ -59,6 +59,41 @@ describe('a line already written as a mass', () => {
   });
 });
 
+describe('a drained sized container', () => {
+  const BEANS: FoodPortion[] = [{ amount: 1, label: '14 oz can, drained', grams: 240 }];
+  const DRAINED = 'drained and rinsed';
+
+  it('weighs what the food\'s own table says one drained can holds', () => {
+    expect(grams('14 oz can', DRAINED, BEANS)).toBe(240);
+    expect(grams('2 14 oz cans', DRAINED, BEANS)).toBe(480);
+  });
+
+  it('scales a portion that states more than one can', () => {
+    expect(grams('3 14 oz cans', 'drained', [{ amount: 2, label: '14 oz can, drained', grams: 480 }])).toBe(720);
+  });
+
+  it('keeps the whole net weight when the line is not drained', () => {
+    expect(grams('2 14 oz cans', null, BEANS)).toBeCloseTo(793.8, 1);
+    expect(grams('2 14 oz cans', 'rinsed', BEANS)).toBeCloseTo(793.8, 1);
+  });
+
+  it('keeps the whole net weight when the table has no drained row for that can', () => {
+    expect(grams('2 14 oz cans', DRAINED, [])).toBeCloseTo(793.8, 1);
+    // A different size must not borrow the 14 oz weight.
+    expect(grams('2 28 oz cans', DRAINED, BEANS)).toBeCloseTo(1587.6, 1);
+    // A plain "can" row is not a drained one.
+    expect(grams('2 14 oz cans', DRAINED, [{ amount: 1, label: '14 oz can', grams: 400 }])).toBeCloseTo(793.8, 1);
+  });
+
+  it('refuses to pick between two drained rows that both fit', () => {
+    const two: FoodPortion[] = [
+      { amount: 1, label: '14 oz can, drained', grams: 240 },
+      { amount: 1, label: 'can, 14 oz, drained and rinsed', grams: 225 },
+    ];
+    expect(grams('2 14 oz cans', DRAINED, two)).toBeCloseTo(793.8, 1);
+  });
+});
+
 describe('a line written as a volume', () => {
   it('uses the food\'s own density when its portions agree', () => {
     // Flour lists one cup at 125g, so a half cup is 62.5g and two
