@@ -102,9 +102,9 @@ export function ProductPicker({ itemId, products, value, onPick, label, allowNon
   return (
     <View style={styles.wrap}>
       {!!label && <Text style={styles.label}>{label}</Text>}
-      {allowNone && row('none', 'Just the food, no particular box', value === null, () => onPick(null))}
+      {allowNone && row('none', 'Just the food, no particular variant', value === null, () => onPick(null))}
       {boxes.map(box =>
-        row(box.id, describeProduct(box) ?? 'Unnamed box', value === box.id, () => onPick(box))
+        row(box.id, describeProduct(box) ?? 'Unnamed variant', value === box.id, () => onPick(box))
       )}
       {!!onCreate && !adding && (
         <View style={styles.addRow}>

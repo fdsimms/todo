@@ -176,6 +176,13 @@ chips are scoped to the item's own products**, deliberately: brands don't genera
   what is now one item, so they come across the way its purchase count and price run already do,
   deduped by `productKey` with the survivor's row kept and the loser's counters folded in. Its
   rating only fills a silence — two verdicts on one box is a disagreement nothing here can settle.
+  **Two rows only fold when nothing distinguishes them.** Same key but different barcodes, or
+  different panels (`differentProduct` in `groceryMerge.ts`), are different products that happen
+  to share words (three Ben & Jerry's flavors, all brand-only), so the loser is kept and takes the
+  name of the item it came from as its variant. Folding them dropped a barcode and a panel
+  without a word. Separately, `dbSetItemProduct` writes `item_id`: the re-parenting this relies on
+  is an upsert of the same id under the survivor, and without it the loser's cascade delete took
+  every moved row with it.
   Pointers at a deduped id (`ItemShopLink.productId`, the claims, a `PriceObservation`) are
   remapped rather than left to dangle: they would only *read* as absent, but a claim quietly
   ceasing to apply because of a rename is the staleness this whole model was built to avoid.

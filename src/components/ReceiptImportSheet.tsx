@@ -114,6 +114,13 @@ export interface ReceiptAddDraft {
    */
   nameFromScan?: boolean;
   /**
+   * What the product's name had left over once the shopper's name for the row
+   * was taken out of it, for a row this mints. "Cinnamon Roll" when
+   * "Cinnamon Roll Toaster Strudel Pastries" was shortened to "Toaster Strudel".
+   * Null when the name was not shortened, which is every receipt line.
+   */
+  variant?: string | null;
+  /**
    * The barcode this row was scanned from, so the row it mints can be linked
    * back to the code — see `linkScannedGtins`.
    *

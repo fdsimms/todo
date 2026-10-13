@@ -1,0 +1,1 @@
+{ "message": "Scanning a product the catalog doesn't know now suggests shorter names (like \"Toaster Strudel\" instead of the full package name) and keeps what's left as the variant. Merging two items no longer drops a variant that has a different barcode or nutrition, and a scan that looks like a different food than its match gets a warning.", "date": "2026-10-13" }

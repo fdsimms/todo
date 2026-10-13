@@ -70,9 +70,9 @@ export function productEditRow(
   const brand = patch.brand === undefined ? product.brand : patch.brand?.trim() || null;
   const variant = patch.variant === undefined ? product.variant : patch.variant?.trim() || null;
   const productKey = productKeyFor(brand, variant);
-  if (!productKey) return { refusal: 'A box needs a brand or a variant. Delete the box to clear it.' };
+  if (!productKey) return { refusal: 'Add a brand or a variant name. Delete this variant to clear it.' };
   if (siblings.some(p => p.itemId === product.itemId && p.id !== product.id && p.productKey === productKey)) {
-    return { refusal: 'This item already has a box with that brand and variant.' };
+    return { refusal: 'This item already has that brand and variant.' };
   }
   return {
     row: {

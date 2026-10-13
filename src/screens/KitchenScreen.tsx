@@ -557,9 +557,9 @@ export function KitchenScreen() {
       const gtin = draft.existingItemId
         ? gtinByItemId.get(draft.existingItemId) ?? null
         : draft.gtin ?? null;
-      // A minted row's brand only, same as GroceryScreen's own scan handler —
-      // there's no existing item name yet for `variantFor` to subtract from.
-      const box = matched ?? (draft.brand ? { brand: draft.brand, variant: null } : undefined);
+      // A minted row's brand, and its variant when the name was shortened, same
+      // as GroceryScreen's own scan handler.
+      const box = matched ?? (draft.brand || draft.variant ? { brand: draft.brand, variant: draft.variant ?? null } : undefined);
       // Same restraint as the box: the source's category only applies to a row
       // this batch mints, matching GroceryScreen.handleScanApply's own
       // addByName(..., { aisle: draft.aisle }) call, which never touches an

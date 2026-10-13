@@ -2,6 +2,8 @@ import type { GroceryItem, GroceryListEntry, ItemProduct, ItemShopLink, ItemSubL
 import { describeQuantities } from './mealPlanGroceries';
 import { mergePriceHistories } from './priceHistory';
 import { mergedItemRow } from './groceryItemWrite';
+import { productKeyFor } from './groceryProduct';
+import { GROCERY_VARIANT_MAX_LENGTH } from '../types';
 
 /**
  * Merging one catalog item into another: every row the merge writes, worked
@@ -34,6 +36,45 @@ export function pickPriceFields<
     lastPricedAt: winner.lastPricedAt,
     lastPriceQuantity: winner.lastPriceQuantity,
   };
+}
+
+/**
+ * Whether two variants with one key are in fact different products: each names a
+ * barcode and the barcodes differ, or each has a nutrition panel and the panels
+ * differ. A key that matches because neither side said anything more (two bare
+ * "store brand" rows) is the case folding exists for, so absent data on either
+ * side is not a difference.
+ */
+function differentProduct(a: ItemProduct, b: ItemProduct): boolean {
+  if (a.gtin && b.gtin && a.gtin !== b.gtin) return true;
+  if (a.nutrition && b.nutrition && JSON.stringify(a.nutrition.amounts) !== JSON.stringify(b.nutrition.amounts)) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * The brand and variant a colliding variant keeps when it is not folded: the
+ * name of the item it came from, minus the brand when the name starts with it,
+ * with a number added only if even that is taken.
+ */
+function distinguishedBy(
+  product: ItemProduct,
+  fromName: string,
+  taken: ReadonlyMap<string, ItemProduct>
+): Pick<ItemProduct, 'variant' | 'productKey'> {
+  const brand = product.brand?.trim() ?? '';
+  let base = fromName.trim();
+  if (brand && base.toLowerCase().startsWith(brand.toLowerCase())) {
+    base = base.slice(brand.length).replace(/^[\s,;:.\-–—]+/, '') || base;
+  }
+  base = base.slice(0, GROCERY_VARIANT_MAX_LENGTH);
+  for (let n = 1; n < 50; n++) {
+    const variant = n === 1 ? base : `${base.slice(0, GROCERY_VARIANT_MAX_LENGTH - 3)} ${n}`;
+    const productKey = productKeyFor(product.brand, variant);
+    if (productKey && !taken.has(productKey)) return { variant, productKey };
+  }
+  return { variant: product.variant, productKey: product.productKey };
 }
 
 export interface MergeRows {
@@ -133,6 +174,18 @@ export function planMergeItems(fromId: string, intoId: string, rows: MergeRows):
   const mergedProducts: ItemProduct[] = [...survivorProducts];
   for (const loser of itemProducts.filter(p => p.itemId === fromId)) {
     const match = byKey.get(loser.productKey);
+    if (match && differentProduct(match, loser)) {
+      // Same words, different product: two barcodes or two panels cannot be one
+      // variant. Folding them kept the survivor's and silently dropped the
+      // loser's (three ice cream flavors, all "Ben & Jerry's" with no variant,
+      // became one). The loser's own item name is what told them apart before the
+      // merge, so it becomes the variant.
+      const renamed = distinguishedBy(loser, fromItem.name, byKey);
+      const moved = { ...loser, ...renamed, itemId: intoId };
+      mergedProducts.push(moved);
+      byKey.set(moved.productKey, moved);
+      continue;
+    }
     if (!match) {
       // A box the survivor doesn't have moves over keeping its id, which is
       // what lets `PriceObservation.productId` and `ItemShopLink.productId`

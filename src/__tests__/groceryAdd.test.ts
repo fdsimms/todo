@@ -6,7 +6,7 @@ import {
   reAddNotice,
   type GroceryAddContext,
 } from '../utils/groceryAdd';
-import type { GroceryItem, GroceryListEntry } from '../types';
+import type { GroceryItem, GroceryListEntry, ItemProduct } from '../types';
 
 /** Rows are built by the factory under test, which is also the only copy of them. */
 const row = (name: string, nameKey: string, over: Partial<GroceryItem> = {}): GroceryItem => ({
@@ -84,6 +84,12 @@ describe('newItemRow', () => {
 });
 
 describe('ensureProductFor', () => {
+  it('files a new variant under the brand spelling the catalog already uses', () => {
+    const existing = { id: 'p0', itemId: 'other', brand: 'Siggi’s', variant: 'plain', productKey: 'siggi s|plain' } as ItemProduct;
+    const made = ensureProductFor('i1', "siggi's", 'blueberry', [existing], 'T');
+    expect(made?.product.brand).toBe('Siggi’s');
+  });
+
   it('is nothing when neither half names anything', () => {
     expect(ensureProductFor('i1', null, null, [], 'T')).toBeNull();
   });
