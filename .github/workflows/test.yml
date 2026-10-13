@@ -37,6 +37,12 @@ jobs:
       # first half of the verification loop CLAUDE.md asks for, and it went
       # unenforced long enough for main to merge red on it.
       - run: npx tsc --noEmit
+      # The MCP server is its own package with its own tsconfig, so the root
+      # check above never sees it. A tool registered where a helper it calls is
+      # out of scope compiles to a runtime "not defined" and only surfaces once
+      # the deployed server is asked for it.
+      - run: npm ci --prefix mcp
+      - run: npx tsc -p mcp/tsconfig.json
       # The standard hosted runner has two cores, and Jest's default is one
       # worker fewer than that — so without this the whole suite runs in a
       # single worker and CI pays the sum of every file rather than the longest

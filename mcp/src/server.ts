@@ -2068,7 +2068,7 @@ function registerWriteTools(
     },
     async ({ kind, on, category, taskSettings }) => {
       try {
-        return json(await withWrite(() => setAutomation(replica, kind, { on, category, taskSettings })));
+        return json(await withWrite(() => setAutomation(replica, kind, { on, category, taskSettings: taskSettings as Parameters<typeof setAutomation>[2]['taskSettings'] })));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not change that automation.' });
       }
