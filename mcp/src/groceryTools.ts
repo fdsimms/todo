@@ -122,7 +122,7 @@ export interface GroceryItemDetail {
   /** Its nutrition panel, absent when it has none. A set_nutrition_panel write replaces this. */
   nutrition?: NutritionPanelDetail;
   lists: { id: string | null; name: string; checked: boolean }[];
-  boxes: { id: string; brand?: string; variant?: string; note?: string; rating?: string; portion?: boolean; nutrition?: NutritionPanelDetail }[];
+  boxes: { id: string; brand?: string; variant?: string; note?: string; rating?: string; portion?: boolean; gtin?: string; nutrition?: NutritionPanelDetail }[];
   stores: { id: string; name: string; timesBought: number; unavailable?: boolean; price?: number }[];
   /** Items that can stand in for this one. */
   substitutes: { itemId: string; name: string; note?: string; ratio?: string; standing?: boolean }[];
@@ -192,6 +192,7 @@ export function getGroceryItem(replica: Replica, ref: { id?: string; name?: stri
       ...(p.note ? { note: p.note } : {}),
       ...(p.rating ? { rating: String(p.rating) } : {}),
       ...(p.isPortion ? { portion: true } : {}),
+      ...(p.gtin ? { gtin: p.gtin } : {}),
       ...nutritionDetail(p.nutrition),
     })),
     stores: replica.itemShopLinks().filter(l => l.itemId === item.id).map(l => ({
