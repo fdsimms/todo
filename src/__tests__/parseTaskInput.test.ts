@@ -1467,9 +1467,13 @@ describe('matchPersonMentions', () => {
       expect(matchPersonMentions('lunch @sam', twoSams, groups)).toEqual([]);
     });
 
-    it('resolves by a unique prefix of the group\'s name too', () => {
-      const r = matchPersonMentions('dinner @house tonight', PEOPLE, GROUPS);
-      expect(r.map(m => m.personId)).toEqual(['p1', 'p2']);
+    it('does not resolve a prefix of the group\'s name, however unique', () => {
+      expect(matchPersonMentions('dinner @house tonight', PEOPLE, GROUPS)).toEqual([]);
+    });
+
+    it('still offers a suggestion for a unique group prefix of 3+ characters', () => {
+      const r = getMentionSuggestions('dinner @house', PEOPLE, GROUPS);
+      expect(r?.candidates.map(c => c.id)).toEqual(['g1']);
     });
 
     it('leaves a group with nobody in it unresolved', () => {

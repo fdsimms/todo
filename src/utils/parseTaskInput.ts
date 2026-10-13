@@ -2259,14 +2259,11 @@ export function matchPersonMentions(
     if (hits) continue;
 
     if (!groupByName) continue;
-    let groupHits = groupByName.get(token);
-    if (!groupHits && token.length >= MIN_PREFIX_LENGTH) {
-      const prefixIds = new Set<string>();
-      for (const [key, ids] of groupByName) {
-        if (key.startsWith(token)) ids.forEach(id => prefixIds.add(id));
-      }
-      if (prefixIds.size === 1) groupHits = [...prefixIds];
-    }
+    // Exact name or first word only, never a prefix: a group is several
+    // people, so a half-typed "@Byli" tagging all of them is a much bigger
+    // guess than tagging one. A prefix gets the suggestion row instead
+    // (`getMentionSuggestions`), which is a tap rather than a silent write.
+    const groupHits = groupByName.get(token);
     if (!groupHits || groupHits.length !== 1) continue;
     const group = groupById!.get(groupHits[0]);
     if (!group) continue;
@@ -2428,7 +2425,6 @@ export function getMentionSuggestions(
     if (key.startsWith(token)) ids.forEach(id => groupIds.add(id));
   }
   if (groupIds.size === 0) return null;
-  if (groupIds.size === 1 && token.length >= MIN_PREFIX_LENGTH) return null;
 
   const groupById = new Map(groups.map(g => [g.id, g]));
   const candidates: MentionSuggestionCandidate[] = [...groupIds]
