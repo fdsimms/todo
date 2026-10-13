@@ -57,6 +57,7 @@ under the target in the task editor, shown only while rewards are on). Rules in 
   its own entry, as before.
 - **A short period keeps what its taps paid.** The quota rollover still earns and costs nothing, so
   coins already paid for taps stay: that is the point of paying per tap.
+- **It seeds from a template item** (`TemplateItem.coinsPerTap`) and is settable over MCP (`target.coinsPerTap`).
 - **Not offered on a rotation or a water-following target**, whose units are logged by paths that don't go through `logQuotaUnit`.
 
 ## Difficulty

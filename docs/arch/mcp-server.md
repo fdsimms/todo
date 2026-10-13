@@ -191,6 +191,8 @@ out to have one each, and the shape of each answer follows from what the field d
   goal, the count is still the person's to set, so a write to `target.count` is accepted and becomes
   the level the ramp climbs from; `rampUp` is refused beside `allowOvershoot`, the only combination
   `canRampQuota` rules out that `target` can express. `get_task` shows `rampUp.hitsSoFar`.
+- **Paying per tap** (`coinsPerTap`). `target.coinsPerTap` sets it and `get_task` shows it on the target.
+  Only the timing of coins changes, not the total (see "Paying per tap" in `docs/arch/rewards.md`).
 - **A date recomputed by rule** (`deadlineOffsetDays` / `deadlineMonthDay`, and
   `reminderOffsetDays` / `reminderTracksVisibility`). Shown as `deadlineRule` and `reminderRule`,
   read-only. A `deadline` written by `update_task` to a task with a rule clears the rule, which is

@@ -4329,6 +4329,8 @@ export interface TemplateItem {
   quotaRampEvery?: number | null;
   quotaRampGoal?: number | null;
   allowOvershoot?: boolean;
+  // Seeds Task.coinsPerTap.
+  coinsPerTap?: boolean;
   quotaReminders?: boolean;
 
   // Seeds Task.chainStepOnSchedule: on a repeating chain, each step waits for

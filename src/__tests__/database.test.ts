@@ -1848,6 +1848,7 @@ describe('Templates', () => {
     targetUnit: null,
     quotaPeriod: 'day',
     allowOvershoot: false,
+    coinsPerTap: false,
     quotaReminders: false,
     chainStepOnSchedule: false,
     phoneNumber: null,
