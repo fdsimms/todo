@@ -110,7 +110,7 @@ import { mealPlanNudgeDayKey } from '../utils/mealPlanNudge';
 import { activeMealSlotStepId, mealSlotOf, parseMealSlotSource } from '../utils/mealSlotTasks';
 import { calendarReviewEventsFor } from '../utils/calendarReviewTasks';
 import { useEventTaskContext } from '../hooks/useEventTaskContext';
-import { automationEntryIdFor, isNoticeTask } from '../utils/generatedTasks';
+import { automationEntryIdFor, canPinTask, isNoticeTask } from '../utils/generatedTasks';
 import { navigateToSettingsEntry } from '../navigation/openSettings';
 import { useCalendarStore } from '../store/useCalendarStore';
 import type { BusyEvent } from '../utils/calendarBusy';
@@ -3798,7 +3798,7 @@ const TaskItemRow = React.memo(function TaskItem({
         </TouchableOpacity>
       )}
 
-      {!selectionMode && showActions && showPin && !notice && !pinWaiting && (
+      {!selectionMode && showActions && showPin && canPinTask(task) && !pinWaiting && (
         <TouchableOpacity
           onPress={() => {
             haptics.tap();
