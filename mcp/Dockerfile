@@ -26,6 +26,14 @@ RUN cd mcp && npm ci
 COPY src src
 COPY mcp mcp
 
+# Fail the image build, not the running machine, on a file that will not parse
+# or an import that will not resolve. The server runs off TypeScript through tsx
+# (the shim has to be in the module cache before the db layer loads, which a
+# bundle would break), so a syntax error otherwise surfaces only when the new
+# machine starts and crash-loops, with the old one already gone. This bundles to
+# nowhere purely to make esbuild read every file the server can reach.
+RUN cd mcp && node_modules/.bin/esbuild src/server.ts --bundle --platform=node --packages=external --outfile=/dev/null --log-level=warning
+
 ENV NODE_ENV=production
 ENV PORT=8080
 EXPOSE 8080

@@ -84,6 +84,11 @@ Two consequences worth knowing before editing either side:
 - **Root `tsc --noEmit` typechecks everything in `mcp/` except `mcp/src/server.ts`**, which is
   excluded in `tsconfig.json` because it is the one file importing packages that only exist in
   `mcp/node_modules`. Everything else is held to the same typecheck as the app, which is the point.
+- **`mcp/Dockerfile` runs esbuild over `mcp/src/server.ts` with the output discarded.** `server.ts` is
+  the file root `tsc` skips, and `tsx` only parses it when the machine starts, so a syntax error
+  there used to crash-loop the new machine after the old one was gone. The check makes it fail the
+  image build instead. It is deliberately not a bundle that gets run: the shim has to be in the
+  module cache before the db layer loads, and a bundle would resolve `expo-sqlite` at build time.
 - **Root `npm test` runs `mcp/src/__tests__/`** — the repo's jest has no `roots` narrowing, so it
   collects them for free. Nothing under that directory may import the MCP SDK, for the same reason.
 - **Any `fetch` in `src/` that `mcp/` reaches has to typecheck under Node's types as well as React

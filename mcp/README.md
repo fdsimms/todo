@@ -41,8 +41,10 @@ sync is unaffected and keeps running alongside.
 That also removes the old chore of copying a `todo.db` off a device by hand. Point the server at a
 path that does not exist yet and the first sync fills it.
 
-It runs straight off the TypeScript through `tsx`; there is no build step, because there is nothing
-to deploy to yet.
+It runs straight off the TypeScript through `tsx` and is not bundled: the shim has to be in Node's
+module cache before the db layer loads. The Dockerfile does run esbuild once over `src/server.ts`
+with the output thrown away, so a file that will not parse fails the image build instead of
+crash-looping the machine.
 
 **`MCP_AUTH_TOKEN` is not optional.** With it unset the server starts and refuses every request,
 which is deliberate: the alternative default is a server that serves an entire task history to
