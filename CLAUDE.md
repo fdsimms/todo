@@ -152,6 +152,20 @@ local (a typo, a one-off logic error with no generalizable cause) needs no offer
 one this file's own rules clear — would a future agent, reading only the surrounding code and not
 this session's history, plausibly make the same mistake blind.
 
+## Improving the MCP for agents
+
+The `dundundun` MCP server (`mcp/`) is how an agent reads and writes this app's data, and an agent
+using it is the one place its rough edges show up first. If, while using it, you think the setup
+could be better for an agent, **say so and suggest the change**. Don't work around it silently and
+move on. Examples: a tool that needs several calls for one obvious job, a missing field in a
+result, an unclear tool name or description, an input that's easy to get wrong, an error message
+that doesn't say how to fix the call, a rule that belongs in `mcp/src/instructions.ts` but isn't
+there, or a lens or filter that would have saved a round trip.
+
+Raise it as a concrete suggestion: what you were trying to do, what got in the way, and what you'd
+change (and where, if you know). This is a suggestion, not a license to edit `mcp/` unasked. Follow
+the same "stop and ask" rules as above: ask before changing the server or filing an issue.
+
 ## User-facing copy
 
 Say what a setting does in plain, literal terms — the way the rest of the app already talks
