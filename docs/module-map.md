@@ -146,7 +146,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/foodLogEntry.ts` — buildFoodLogEntry
 - `src/utils/foodLogExport.ts` — FOOD_LOG_EXPORT_COLUMNS, foodLogExportCsv, foodLogExportFileName, foodLogExportSummary
 - `src/utils/foodLogRecents.ts` — FoodRecency, creditedKeys, foodLogRecency, foodLastAmounts, rankByRecency, USUAL_FOR_SLOT_LIMIT, usualForSlot, RECENT_HELPING_LIMIT, recentUnlinkedHelpings, HelpingAgain, +1 more
-- `src/utils/foodNutrition.ts` — parseFoodNutrition, serializeFoodNutrition, addCustomPortion, nutritionFor, CatalogPanelWrite, catalogPanelWrite, describeFoodPanel, NUTRIENT_LABEL, ML_PER_FL_OZ, mlToFlOz, +3 more
+- `src/utils/foodNutrition.ts` — parseFoodNutrition, serializeFoodNutrition, addCustomPortion, nutritionFor, PANEL_MISMATCH_RATIO, panelLooksWrongFor, CatalogPanelWrite, catalogPanelWrite, describeFoodPanel, NUTRIENT_LABEL, +5 more
 - `src/utils/foodRecall.ts` — RECALL_MIN_QUERY, RECALL_LIMIT, RecalledFood, describedGrams, estimateWholeGrams, describedEstimateFactor, descriptionClauses, recallWeight, recallFoods, recallMeasuringPanel, +14 more
 - `src/utils/foodSearchMatch.ts` — FoodCandidate, FoodMatchTier, RankedFood, rankFoodCandidates, unambiguousFood
 - `src/utils/freshness.ts` — daysUntilDay, freshnessFor, FRESHNESS_ORDER, freshnessRank, isUseUpSoon, describeUseBy, liveUseBy, describeOpenedOn, describeFrozenSince
@@ -165,7 +165,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/groceryParse.ts` — groceryNameKey, parseGroceryInput, LEADING_PREP_PRODUCTS, splitPrep, splitPurpose, splitExample, suggestShorterCatalogName, splitAlternativeNames, looksLikeAlternativeList, resolveGroceryTokens, +1 more
 - `src/utils/groceryPlural.ts` — pluralKeyVariants, resolvePluralKey, catalogItemForKey
 - `src/utils/groceryPrice.ts` — parsePriceInput, formatPrice, priceToInput, formatPriceInput, describePriceAge, describePriceContext, describeShopPrices, ShopPrice, shopPricesFor, Comparable, +19 more
-- `src/utils/groceryProduct.ts` — productKeyFor, describeProduct, describeCatalogItem, productsForItem, productForGtin, preferredProductOf, describePreferredProduct, RATING_LABELS, describeProductPurchases, parseUnavailableProductIds, +1 more
+- `src/utils/groceryProduct.ts` — productKeyFor, canonicalBrand, describeProduct, describeCatalogItem, productsForItem, productForGtin, preferredProductOf, describePreferredProduct, RATING_LABELS, describeProductPurchases, +2 more
 - `src/utils/groceryReminderMirror.ts` — GroceryReminderLink, GroceryLinkIndex, parseGroceryLinks, serializeGroceryLinks, withGroceryLinks, MirrorItem, MirrorReminder, mirrorNote, mirrorTitleFor, normalizeMirrorTitle, +2 more
 - `src/utils/groceryReorder.ts` — GroceryDropRow, GroceryPlacement, resolveGroceryDrop, KeyedGroceryDropRow, placeNewGroceryItems, groceryDragRange
 - `src/utils/groceryRowQuantity.ts` — QUANTITY_BESIDE_NAME_MAX_CHARS, quantityCharsForPill, NameRowSpace, groceryRowNameSpace, recipeToListNameSpace, addMealsToListNameSpace, quantityFitsBesideName

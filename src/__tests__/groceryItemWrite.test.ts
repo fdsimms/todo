@@ -63,7 +63,7 @@ describe('productEditRow', () => {
   it('refuses a portion, a box with no words, and a clash with a sibling', () => {
     expect(productEditRow(box({ isPortion: true }), [], { note: 'x' })).toEqual({ refusal: expect.stringMatching(/portion/) });
     expect(productEditRow(box(), [box()], { brand: null })).toEqual({ refusal: expect.stringMatching(/brand or a variant/) });
-    expect(productEditRow(box(), [box(), sibling], { brand: 'Arnold' })).toEqual({ refusal: expect.stringMatching(/already has a box/) });
+    expect(productEditRow(box(), [box(), sibling], { brand: 'Arnold' })).toEqual({ refusal: expect.stringMatching(/already has that brand and variant/) });
   });
 });
 

@@ -185,10 +185,11 @@ export function ScanToLogFlow({
       resolved.set(id, item);
       if (draft.quantity) packSizes.set(id, draft.quantity);
       if (!draft.existingItemId && draft.gtin) {
-        // Brand-only, matching what a minted row is named after: there is no
-        // existing item name left for a variant to be the residue of.
-        if (draft.brand) addProduct(id, { brand: draft.brand, variant: null }, { promote: false });
-        mintedLinks.push({ gtin: draft.gtin, itemId: id, brand: draft.brand, variant: null });
+        // A variant only when the name was shortened; an untouched name already
+        // holds every word the source had.
+        const variant = draft.variant ?? null;
+        if (draft.brand || variant) addProduct(id, { brand: draft.brand, variant }, { promote: false });
+        mintedLinks.push({ gtin: draft.gtin, itemId: id, brand: draft.brand, variant });
       }
     }
     // Recorded, never preferred, for GroceryScreen.handleScanApply's reason:

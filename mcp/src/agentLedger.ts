@@ -1074,7 +1074,7 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       const item = replica.groceryItems().find(i => i.id === itemId);
       const old = input.boxId ? replica.itemProducts().find(x => x.id === input.boxId) : undefined;
       const box = replica.saveGroceryBox(itemId, input);
-      const verb = input.delete ? 'Delete a brand of' : input.boxId ? 'Change a brand of' : 'Add a brand to';
+      const verb = input.delete ? 'Delete a variant of' : input.boxId ? 'Change a variant of' : 'Add a variant to';
       const shown = box ?? old;
       log({ action: 'edited', subject: 'catalog', title: item?.name ?? 'item', taskId: null, recordId: itemId, note: `${verb} "${item?.name ?? 'an item'}"${shown ? `: ${[shown.brand, shown.variant].filter(Boolean).join(' ')}` : ''}` });
       return box;
@@ -1203,7 +1203,7 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       const snapshot = replica.deleteGroceryItem(id);
       log({
         action: 'cleared', subject: 'catalog', title: snapshot.item.name, taskId: null, recordId: id, revert: deletedItemRevert(snapshot),
-        note: `Delete "${snapshot.item.name}" from the grocery catalog, with its ${snapshot.boxes.length} brands, ${snapshot.shopLinks.length} store links, ${snapshot.subLinks.length} substitutes and ${snapshot.aliases.length} receipt names`,
+        note: `Delete "${snapshot.item.name}" from the grocery catalog, with its ${snapshot.boxes.length} variants, ${snapshot.shopLinks.length} store links, ${snapshot.subLinks.length} substitutes and ${snapshot.aliases.length} receipt names`,
       });
       return snapshot;
     },

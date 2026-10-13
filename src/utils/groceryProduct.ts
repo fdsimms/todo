@@ -28,6 +28,40 @@ export function productKeyFor(brand: string | null, variant: string | null): str
 }
 
 /**
+ * The spelling to file a brand under: the one the catalog already uses for it.
+ *
+ * Barcode sources spell one maker several ways ("siggi's", "Siggi’s", "SIGGI'S",
+ * "QUEST" and "Quest"), and each new box took whatever the lookup said.
+ * `productKeyFor` already treats them as one brand, so nothing collided, but the
+ * catalog displayed three. Matching on `groceryNameKey` and reusing the most
+ * common stored spelling (the older one on a tie) stops a fourth appearing.
+ * A brand nothing else uses is returned as typed.
+ */
+export function canonicalBrand(
+  brand: string | null,
+  products: readonly Pick<ItemProduct, 'brand'>[]
+): string | null {
+  const trimmed = brand?.trim();
+  if (!trimmed) return brand;
+  const key = groceryNameKey(trimmed);
+  if (!key) return brand;
+  const counts = new Map<string, number>();
+  for (const p of products) {
+    const stored = p.brand?.trim();
+    if (stored && groceryNameKey(stored) === key) counts.set(stored, (counts.get(stored) ?? 0) + 1);
+  }
+  let best: string | null = null;
+  let bestCount = 0;
+  for (const [spelling, count] of counts) {
+    if (count > bestCount) {
+      best = spelling;
+      bestCount = count;
+    }
+  }
+  return best ?? trimmed;
+}
+
+/**
  * What names the product beyond the item's own name — the brand and the variant
  * composed into the one clause that captions a row.
  *

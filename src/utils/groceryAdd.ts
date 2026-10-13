@@ -34,7 +34,7 @@ import { groceryNameKey, parseGroceryInput } from './groceryParse';
 import { catalogItemForKey } from './groceryPlural';
 import { aisleForName, placeAisle } from './groceryAisles';
 import { entryFor, nextListSortOrder } from './groceryLists';
-import { productKeyFor } from './groceryProduct';
+import { canonicalBrand, productKeyFor } from './groceryProduct';
 
 /** The next free slot in the catalog's own order. */
 export function nextSortOrder(items: GroceryItem[]): number {
@@ -86,7 +86,9 @@ export function ensureProductFor(
     product: {
       id: generateId(),
       itemId,
-      brand,
+      // Spelled the way the catalog already spells this maker, so a scan that
+      // says "siggi's" under an existing "Siggi’s" doesn't add a third.
+      brand: canonicalBrand(brand, products),
       variant,
       productKey,
       // Never inferred, in either direction. A box you just named is one you

@@ -374,7 +374,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'get_grocery_item',
-    "Everything recorded about one grocery item: aisle, quantity, note, last price, brands (boxes), the stores it comes from, substitutes, the lists it is on, the names receipts print for it, and its nutrition panel (and each box's) with its source, when it has one. Read the panel before set_nutrition_panel, which replaces it. Takes an id from list_grocery_items or a name. For its pantry state use get_pantry_item.",
+    "Everything recorded about one grocery item: aisle, quantity, note, last price, variants (each a brand and variant, listed as `boxes` with an id), the stores it comes from, substitutes, the lists it is on, the names receipts print for it, and its nutrition panel (and each variant's) with its source, when it has one. Read the panel before set_nutrition_panel, which replaces it. Takes an id from list_grocery_items or a name. For its pantry state use get_pantry_item.",
     { id: z.string().optional(), name: z.string().optional() },
     async input => {
       try {
@@ -423,7 +423,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'get_pantry_item',
-    "Everything the app records about one item's place in the kitchen: whether it counts as on hand and why, its use-by day, opened and frozen state, shelf life, running-low and staple flags, purchase history, how often it went to waste, and its boxes (brands, packets, frozen portions). A status of unknown means the app has no opinion, which is not the same as out. Takes an id from list_grocery_items or list_pantry, or a name.",
+    "Everything the app records about one item's place in the kitchen: whether it counts as on hand and why, its use-by day, opened and frozen state, shelf life, running-low and staple flags, purchase history, how often it went to waste, and its variants (brands, packets, frozen portions). A status of unknown means the app has no opinion, which is not the same as out. Takes an id from list_grocery_items or list_pantry, or a name.",
     { id: z.string().optional(), name: z.string().optional() },
     async input => {
       try {
@@ -2878,7 +2878,7 @@ function registerWriteTools(
       priceStore: z.string().optional().describe('With priceMinor: the store it was seen at, which also updates that store\'s link if it has one.'),
       kindOf: z.string().nullable().optional().describe('The generic this item is a kind of ("white onion" is a kind of "onion"), or null.'),
       alsoCalled: z.array(z.string()).optional().describe('Replaces the item\'s other names ("kombu" on dashima): the same thing under another word, unlike kindOf. A recipe line using one resolves to this item. [] clears them. A name another item already uses is refused and said so in the result.'),
-      preferredBoxId: z.string().nullable().optional().describe('A box id from get_grocery_item, or null for none.'),
+      preferredBoxId: z.string().nullable().optional().describe('A variant's id (a `boxes` id from get_grocery_item), or null for none.'),
       onlyPreferredBrand: z.boolean().optional(),
       linkStores: z.array(z.string()).optional().describe('Stores it can be bought at, by name or id.'),
       unlinkStores: z.array(z.string()).optional(),
@@ -2903,7 +2903,7 @@ function registerWriteTools(
 
   server.tool(
     'save_grocery_box',
-    "Add, edit or delete a brand or variant (a box) of a grocery item. Omit boxId to add one (needs a brand or a variant; the first box becomes the preferred one). Pass boxId to edit it, or delete: true to remove it, which also clears it as a preference and from stores' claims. A frozen portion is not editable here (update_pantry_box).",
+    "Add, edit or delete a variant of a grocery item: one brand and variant pair, such as Miss Vickie's + spicy ketchup, which carries its own barcode and nutrition panel. Omit boxId to add one (needs a brand or a variant name; the first variant becomes the preferred one). Pass boxId (the variant's id from get_grocery_item) to edit it, or delete: true to remove it, which also clears it as a preference and from stores' claims. A frozen portion is not editable here (update_pantry_box).",
     {
       id: z.string().optional(),
       name: z.string().optional().describe('The item by name, when you have no id.'),
@@ -2911,8 +2911,8 @@ function registerWriteTools(
       brand: z.string().nullable().optional(),
       variant: z.string().nullable().optional(),
       note: z.string().optional(),
-      rating: z.string().nullable().optional().describe('The app\'s own rating words for a box (see get_grocery_item).'),
-      gtin: z.string().optional().describe('The barcode printed on the package, digits only or as scanned. A scan of it then lands on this box. A code is one box\'s at a time: it moves here from whichever box held it. A store\'s own by-weight code is refused.'),
+      rating: z.string().nullable().optional().describe('The app\'s own rating words for a variant (see get_grocery_item).'),
+      gtin: z.string().optional().describe('The barcode printed on the package, digits only or as scanned. A scan of it then lands on this variant. A code belongs to one variant at a time: it moves here from whichever variant held it. A store\'s own by-weight code is refused.'),
       delete: z.boolean().optional(),
     },
     async ({ id, name, ...input }) => {

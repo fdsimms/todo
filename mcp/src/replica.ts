@@ -6383,7 +6383,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         const brand = input.brand?.trim() || null;
         const variant = input.variant?.trim() || null;
         const ensured = groceryAdd.ensureProductFor(itemId, brand, variant, boxes, new Date().toISOString());
-        if (!ensured) throw new Error('A box needs a brand or a variant.');
+        if (!ensured) throw new Error('A variant needs a brand or a variant name.');
         const box = ensured.created ? { ...ensured.product, note: input.note?.trim() ?? '', rating: input.rating ?? null } : ensured.product;
         if (ensured.created) db.dbSetItemProduct(box);
         // The first box becomes the preference, as naming one does in the app.

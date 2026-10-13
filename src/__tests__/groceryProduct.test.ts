@@ -1,4 +1,5 @@
 import {
+  canonicalBrand,
   describeProduct,
   describeProductPurchases,
   lacksPreferredProduct,
@@ -61,6 +62,26 @@ describe('describeProduct', () => {
     expect(describeProduct({ brand: '  ', variant: 'low fat' })).toBe('low fat');
     expect(describeProduct({ brand: 'Oatly', variant: '   ' })).toBe('Oatly');
     expect(describeProduct({ brand: '', variant: '' })).toBeNull();
+  });
+});
+
+describe('canonicalBrand', () => {
+  const stored = [
+    product({ id: 'a', brand: 'Siggi’s' }),
+    product({ id: 'b', brand: "siggi's" }),
+    product({ id: 'c', brand: 'Siggi’s' }),
+    product({ id: 'd', brand: 'Quest' }),
+  ];
+
+  it('reuses the most common stored spelling of a brand, whatever case and apostrophe it arrives in', () => {
+    expect(canonicalBrand("SIGGI'S", stored)).toBe('Siggi’s');
+    expect(canonicalBrand('QUEST', stored)).toBe('Quest');
+  });
+
+  it('keeps the older spelling on a tie, returns a new brand as typed, and passes null through', () => {
+    expect(canonicalBrand('quest', [product({ id: 'x', brand: 'Quest' }), product({ id: 'y', brand: 'QUEST' })])).toBe('Quest');
+    expect(canonicalBrand('Goodles', stored)).toBe('Goodles');
+    expect(canonicalBrand(null, stored)).toBeNull();
   });
 });
 

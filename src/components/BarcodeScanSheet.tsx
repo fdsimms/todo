@@ -43,7 +43,7 @@ import type { ReceiptMatch } from '../utils/receiptMatch';
 import { lookupGtin, describeLookupError } from '../services/productLookup';
 import { formatGtin, normalizeGtin } from '../utils/gtin';
 import { describeProduct, productsForItem } from '../utils/groceryProduct';
-import { nutritionFor } from '../utils/foodNutrition';
+import { nutritionFor, panelLooksWrongFor } from '../utils/foodNutrition';
 import { priceNearBarcode } from '../utils/shelfLabel';
 import { formatPrice } from '../utils/groceryPrice';
 import { normalizePlu, pluNameFor } from '../utils/plu';
@@ -54,14 +54,16 @@ import {
   pluScannedItem,
   nameFromScanFor,
   scannedItemFor,
+  shorterNameSuggestions,
   sourceLineFor,
   unknownScannedItem,
+  variantFor,
   type ScannedGtinLink,
   type ScannedItem,
 } from '../utils/scanResolve';
 import { generateId } from '../utils/id';
 import { haptics } from '../utils/haptics';
-import { GROCERY_NAME_MAX_LENGTH, type GroceryItem } from '../types';
+import { GROCERY_NAME_MAX_LENGTH, type FoodNutrition, type GroceryItem } from '../types';
 import type { ReceiptMatchConfidence } from '../utils/receiptMatch';
 import { TextField } from './TextField';
 
@@ -186,6 +188,11 @@ interface ScanRow extends ScannedItem {
    * Nutrition line doesn't offer to photograph a label the database already read.
    */
   hasNutrition?: boolean;
+  /**
+   * The panel the lookup stated, kept so a match can be checked against what
+   * the catalog already holds for that item. See `panelLooksWrongFor`.
+   */
+  scanPanel?: FoodNutrition | null;
 }
 
 /** Which screen is scanning. See `Props.context`. */
@@ -543,6 +550,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
           patchRow(key, {
             ...scannedItemFor(record),
             hasNutrition: !!record.nutrition,
+            scanPanel: record.nutrition,
             pending: false,
             included: true,
           });
@@ -885,6 +893,9 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
         // lookup proposed it is the source's words, not the user's — see
         // `nameFromScanFor`, which is where that test lives.
         nameFromScan: nameFromScanFor(row),
+        // Shortening the name leaves the rest of the product's words, which
+        // are the variant: the item is the thing and this is which one.
+        variant: row.gtin ? variantFor(row.label, row.brand, row.name.trim()) : null,
       });
     });
     // Only rows whose label came off a lookup are worth remembering. A typed
@@ -986,11 +997,27 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
     const matchedId = confidentItemId(row, match) ?? confidentOffListMatchId(row, match);
     if (matchedId) {
       if (row.gtin && gtinItemFor(row.gtin) === matchedId) return 'You scanned this barcode before';
+      // Looks like a different food from everything filed under that item:
+      // worth a second look before the barcode is remembered as this item.
+      const matchedItem = items.find(i => i.id === matchedId);
+      const known = matchedItem
+        ? [matchedItem.nutrition, ...productsForItem(matchedId, itemProducts).map(p => p.nutrition)].filter(
+            (n): n is FoodNutrition => !!n
+          )
+        : [];
+      if (known.length > 0 && known.every(n => panelLooksWrongFor(row.scanPanel, n))) {
+        return `Its nutrition is very different from your ${matchedItem?.name}. Check this is the right item`;
+      }
       return match?.confidence === 'remembered'
         ? 'Matched by name, as you matched it before'
         : 'Matched by name';
     }
     if (pendingMatchId(row, match)) return 'Confirm it is the same food, or choose another item';
+    // Still wearing the barcode source's own words: say so, because the full
+    // product name is what ends up as the item's name if nobody shortens it.
+    if (nameFromScanFor(row) && shorterNameSuggestions(row.name).length > 0) {
+      return 'New item. Tap a shorter name below, or choose an existing item';
+    }
     return 'Added to your catalog when you continue';
   };
 
@@ -1090,6 +1117,14 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                 const rowItem = rowItemId ? items.find(i => i.id === rowItemId) : null;
                 const rowBoxes = rowItemId ? productsForItem(rowItemId, itemProducts) : [];
                 const boxCount = rowBoxes.length;
+                // A scan nothing in the catalog claimed, still named with the
+                // barcode source's words. Offered the shorter names that
+                // are suffixes of them ("Milk" for "Great Value 2% Reduced Fat
+                // Milk"), so the item is the thing and the rest is a variant.
+                const nameSuggestions =
+                  nameable && !pickedTarget(row) && !rowItemId && !pendingId && nameFromScanFor(row)
+                    ? shorterNameSuggestions(row.name).slice(0, 4)
+                    : [];
                 const resolvedName = rowItem?.name ?? null;
                 const captionNote = captionNoteFor(row, index);
                 // What Add will file this row's product as, from the same rule
@@ -1176,6 +1211,20 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                           who it is — see `sourceLabelFor`. */}
                       {!!sourceLineFor(row.name, row.label, row.brand) && (
                         <Text style={styles.rowLabel}>{sourceLineFor(row.name, row.label, row.brand)}</Text>
+                      )}
+                      {nameSuggestions.length > 0 && (
+                        <View style={styles.captionRow}>
+                          {nameSuggestions.map(suggestion => (
+                            <InlineAction
+                              key={suggestion}
+                              label={suggestion}
+                              variant="neutral"
+                              onPress={() => patchRow(row.key, { name: suggestion.slice(0, GROCERY_NAME_MAX_LENGTH), included: true })}
+                              accessibilityLabel={`Name it ${suggestion}`}
+                              style={styles.confirmPill}
+                            />
+                          ))}
+                        </View>
                       )}
                       {/* A price read off the shelf label the barcode was on.
                           Shown as its own line with a way out, because it is a

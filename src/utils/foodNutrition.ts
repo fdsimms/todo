@@ -238,6 +238,48 @@ export function nutritionFor(
 }
 
 /**
+ * Calories in 100 g (or 100 ml) of a panel, or null when it cannot be worked out.
+ * A per-serving panel needs the serving's weight; without it, nothing is claimed.
+ */
+function kcalPer100(panel: FoodNutrition | null | undefined): number | null {
+  const kcal = panel?.amounts.calorieKcal;
+  if (!panel || kcal === undefined || kcal === null || !Number.isFinite(kcal)) return null;
+  if (panel.basis !== 'perServing') return kcal;
+  return panel.servingGrams && panel.servingGrams > 0 ? (kcal / panel.servingGrams) * 100 : null;
+}
+
+/** How far apart two foods' calories per 100 g must be before they look like different foods. */
+export const PANEL_MISMATCH_RATIO = 3;
+
+/**
+ * Whether a scanned panel is so far from the panel already on the item that the
+ * scan is probably a different food: potato chips (about 520 kcal per 100 g)
+ * matched onto ketchup (about 100) is the case this was written for.
+ *
+ * Calories only, and only when both sides state them. Comparing grams to
+ * milliliters is refused by treating a `per100ml` panel as unknown against a
+ * `per100g` one, since a density is not something this app has. Two panels that
+ * differ by less than a factor of three are never called a mismatch, because
+ * flavors and brands of one food routinely differ by half again. This is a
+ * prompt to look, not a block: the person holding the package decides.
+ */
+export function panelLooksWrongFor(
+  scanned: FoodNutrition | null | undefined,
+  existing: FoodNutrition | null | undefined,
+): boolean {
+  if (!scanned || !existing) return false;
+  const liquid = (p: FoodNutrition) => p.basis === 'per100ml';
+  if (liquid(scanned) !== liquid(existing) && scanned.basis !== 'perServing' && existing.basis !== 'perServing') {
+    return false;
+  }
+  const a = kcalPer100(scanned);
+  const b = kcalPer100(existing);
+  if (a === null || b === null || a <= 0 || b <= 0) return false;
+  const ratio = a > b ? a / b : b / a;
+  return ratio > PANEL_MISMATCH_RATIO;
+}
+
+/**
  * What filing a panel found elsewhere onto a catalog row would do to the row.
  *
  * The food log can turn up figures for a food the catalog has never had any:

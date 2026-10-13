@@ -1253,6 +1253,7 @@ export function GroceryScreen() {
             name: draft.name,
             quantity: draft.quantity || null,
             brand: draft.brand,
+            variant: draft.variant ?? null,
             preferBox: false,
             aisle: draft.aisle,
             // Only true when the sheet's proposed name went through untouched
@@ -1261,10 +1262,10 @@ export function GroceryScreen() {
             // phrasing in the catalog for good.
             nameFromScan: draft.nameFromScan === true,
           }).id;
-          // Brand-only, matching what addByName just filed: a minted row is
-          // *named* after the residue, so there is no variant left over.
+          // Matching what addByName just filed: a variant only when the name was
+          // shortened, since an untouched name already holds every word.
           if (draft.gtin) {
-            mintedLinks.push({ gtin: draft.gtin, itemId: id, brand: draft.brand, variant: null });
+            mintedLinks.push({ gtin: draft.gtin, itemId: id, brand: draft.brand, variant: draft.variant ?? null });
           }
         }
         allIds.push(id);

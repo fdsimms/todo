@@ -8,6 +8,7 @@ import {
   parseFoodNutrition,
   serializeFoodNutrition,
   describePanelFigures,
+  panelLooksWrongFor,
 } from '../utils/foodNutrition';
 import { NUTRIENT_KEYS } from '../types';
 import { HEALTH_NUTRIENT_METRICS } from '../utils/healthRules';
@@ -412,5 +413,26 @@ describe('describePanelFigures', () => {
     expect(describePanelFigures(panel({ amounts: { satFatG: 10 } }), ['satFatG'])).toBe('Per 100g: Saturated fat 10g');
     expect(describePanelFigures(panel({}), [])).toBeNull();
     expect(describePanelFigures(null, ['satFatG'])).toBeNull();
+  });
+});
+
+describe('panelLooksWrongFor', () => {
+  const panel = (basis: FoodNutrition['basis'], calorieKcal: number, servingGrams: number | null = null): FoodNutrition =>
+    ({ basis, servingGrams, amounts: { calorieKcal }, source: 'openFoodFacts', recordedAt: '2026-01-01T00:00:00.000Z' }) as unknown as FoodNutrition;
+
+  it('flags chips scanned onto ketchup, and not two flavors of one food', () => {
+    expect(panelLooksWrongFor(panel('per100g', 520), panel('per100g', 100))).toBe(true);
+    expect(panelLooksWrongFor(panel('per100g', 437), panel('per100g', 468))).toBe(false);
+  });
+
+  it('works a per-serving panel out only when the serving weighs something, and says nothing when unsure', () => {
+    expect(panelLooksWrongFor(panel('perServing', 260, 50), panel('per100g', 100))).toBe(true);
+    expect(panelLooksWrongFor(panel('perServing', 260, null), panel('per100g', 100))).toBe(false);
+    expect(panelLooksWrongFor(null, panel('per100g', 100))).toBe(false);
+    expect(panelLooksWrongFor(panel('per100g', 520), undefined)).toBe(false);
+  });
+
+  it('does not compare a per-100ml panel with a per-100g one', () => {
+    expect(panelLooksWrongFor(panel('per100ml', 500), panel('per100g', 100))).toBe(false);
   });
 });

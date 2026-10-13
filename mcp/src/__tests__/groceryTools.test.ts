@@ -191,7 +191,7 @@ describe('the catalog tools', () => {
       const first = saveGroceryBox(replica, { name: 'bread' }, { brand: 'Dave\'s', variant: '21 grain' });
       expect(getGroceryItem(replica, { name: 'bread' }).preferredBoxId).toBe(first.box!.id);
       const second = saveGroceryBox(replica, { name: 'bread' }, { brand: 'Arnold' });
-      expect(() => saveGroceryBox(replica, { name: 'bread' }, { boxId: second.box!.id, brand: 'Dave\'s', variant: '21 grain' })).toThrow(/already has a box/);
+      expect(() => saveGroceryBox(replica, { name: 'bread' }, { boxId: second.box!.id, brand: 'Dave\'s', variant: '21 grain' })).toThrow(/already has that brand and variant/);
       saveGroceryBox(replica, { name: 'bread' }, { boxId: second.box!.id, note: 'soft' });
       expect(getGroceryItem(replica, { name: 'bread' }).boxes.find(b => b.id === second.box!.id)?.note).toBe('soft');
       saveGroceryBox(replica, { name: 'bread' }, { boxId: first.box!.id, delete: true });

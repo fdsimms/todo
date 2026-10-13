@@ -37,6 +37,35 @@ describe('planMergeItems', () => {
     expect(plan.mergedProducts).toEqual([expect.objectContaining({ id: 'p1', purchaseCount: 3, rating: 'loved' })]);
   });
 
+  it('keeps a colliding variant apart when its barcode differs, naming it after the item it came from', () => {
+    const boxes = [
+      { id: 'p1', itemId: 'b', brand: "Ben & Jerry's", variant: null, productKey: "ben jerry s|", purchaseCount: 0, lastPurchasedAt: null, rating: null, note: '', gtin: '00076840101320' },
+      { id: 'p2', itemId: 'a', brand: "Ben & Jerry's", variant: null, productKey: "ben jerry s|", purchaseCount: 0, lastPurchasedAt: null, rating: null, note: '', gtin: '00076840004508' },
+    ] as unknown as ItemProduct[];
+    const plan = planMergeItems('a', 'b', { items: [item({ id: 'a', name: 'Mocha Mood pie' }), item({ id: 'b', name: 'Ice cream' })], itemShops: [], itemSubs: [], itemProducts: boxes, listEntries: [] })!;
+    expect(plan.mergedProducts).toHaveLength(2);
+    expect(plan.mergedProducts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'p1', itemId: 'b' }),
+      expect.objectContaining({ id: 'p2', itemId: 'b', variant: 'Mocha Mood pie', productKey: "ben jerry s|mocha mood pie", gtin: '00076840004508' }),
+    ]));
+    expect(plan.productIdRemap.size).toBe(0);
+  });
+
+  it('keeps a colliding variant apart when both have different nutrition panels, and still folds bare duplicates', () => {
+    const panel = (calorieKcal: number) => ({ basis: 'per100g', amounts: { calorieKcal } });
+    const differing = [
+      { id: 'p1', itemId: 'b', brand: 'Quest', variant: null, productKey: 'quest|', purchaseCount: 0, lastPurchasedAt: null, rating: null, note: '', gtin: null, nutrition: panel(437) },
+      { id: 'p2', itemId: 'a', brand: 'Quest', variant: null, productKey: 'quest|', purchaseCount: 0, lastPurchasedAt: null, rating: null, note: '', gtin: null, nutrition: panel(468) },
+    ] as unknown as ItemProduct[];
+    const items = [item({ id: 'a', name: 'Quest nacho cheese' }), item({ id: 'b', name: 'protein chips' })];
+    const kept = planMergeItems('a', 'b', { items, itemShops: [], itemSubs: [], itemProducts: differing, listEntries: [] })!;
+    expect(kept.mergedProducts.map(p => p.variant)).toEqual([null, 'nacho cheese']);
+
+    const bare = differing.map(p => ({ ...p, nutrition: null })) as unknown as ItemProduct[];
+    const folded = planMergeItems('a', 'b', { items, itemShops: [], itemSubs: [], itemProducts: bare, listEntries: [] })!;
+    expect(folded.mergedProducts).toHaveLength(1);
+  });
+
   it('refuses itself and an unknown item', () => {
     expect(planMergeItems('a', 'a', { items: [], itemShops: [], itemSubs: [], itemProducts: [], listEntries: [] })).toBeNull();
     expect(planMergeItems('a', 'b', { items: [], itemShops: [], itemSubs: [], itemProducts: [], listEntries: [] })).toBeNull();
