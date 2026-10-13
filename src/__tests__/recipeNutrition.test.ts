@@ -289,6 +289,71 @@ describe('recipeNutrition', () => {
     expect(read.covered).toBe(1);
   });
 
+  it('weighs a drained can by the food\'s own drained portion, and the whole can otherwise', () => {
+    const beans = (portions: { amount: number; label: string; grams: number }[]) => [
+      item({ name: 'Black beans', nutrition: panel({ amounts: { calorieKcal: 120 }, portions }) }),
+    ];
+    const dish = recipe('Bake', [
+      ing('Black beans', { quantity: '2 14 oz cans', prep: 'drained and rinsed' }),
+    ]);
+    // 2 x 240 g drained @ 120 kcal/100g.
+    expect(recipeNutrition(dish, beans([{ amount: 1, label: '14 oz can, drained', grams: 240 }]))!.total.calorieKcal).toBe(576);
+    // No drained row: the whole 28 oz, as before.
+    expect(recipeNutrition(dish, beans([]))!.total.calorieKcal).toBeCloseTo(952.6, 0);
+  });
+
+  it('still counts a staple written in a tablespoon or more', () => {
+    // Olive oil marked "Always have it", at 3 tbsp: not a dash, so it counts
+    // rather than leaving the dish "fully counted" with its fat missing.
+    const dish = recipe('Beans', [
+      ing('Beans', { quantity: '200 g' }),
+      ing('Olive oil', { quantity: '3 tbsp' }),
+    ]);
+    const catalog = [
+      item({ name: 'Beans', nutrition: panel() }),
+      item({
+        name: 'Olive oil',
+        isStaple: true,
+        nutrition: panel({
+          amounts: { calorieKcal: 884 },
+          portions: [{ amount: 1, label: 'tbsp', grams: 13.5 }],
+        }),
+      }),
+    ];
+    const read = recipeNutrition(dish, catalog)!;
+    expect(read.lines).toBe(2);
+    expect(read.covered).toBe(2);
+    // 200g beans @ 100 kcal/100g + 3 x 13.5g oil @ 884 kcal/100g.
+    expect(read.total.calorieKcal).toBe(Math.round((200 + 40.5 * 8.84) * 10) / 10);
+  });
+
+  it('counts a staple at exactly a tablespoon, but not at a teaspoon or a count', () => {
+    const catalog = [
+      item({ name: 'Beans', nutrition: panel() }),
+      item({ name: 'Oil', isStaple: true, nutrition: panel() }),
+    ];
+    const lineCount = (qty: string) =>
+      recipeNutritionLines(recipe('D', [ing('Beans', { quantity: '200 g' }), ing('Oil', { quantity: qty })]), catalog).length;
+    expect(lineCount('1 tbsp')).toBe(2);
+    expect(lineCount('2 tsp')).toBe(1);
+    expect(lineCount('3 cloves')).toBe(1);
+  });
+
+  it('turns a staple written in a tablespoon or more into a real gap when it has no figures', () => {
+    const dish = recipe('Beans', [
+      ing('Beans', { quantity: '200 g' }),
+      ing('Olive oil', { quantity: '3 tbsp' }),
+    ]);
+    const catalog = [
+      item({ name: 'Beans', nutrition: panel() }),
+      item({ name: 'Olive oil', isStaple: true }),
+    ];
+    expect(recipeNutritionLines(dish, catalog).map(l => [l.name, l.state])).toEqual([
+      ['Beans', 'covered'],
+      ['Olive oil', 'noPanel'],
+    ]);
+  });
+
   it('turns a staple written in a bulk weight into a real gap when it has no figures', () => {
     const dish = recipe('Cake', [
       ing('Flour', { quantity: '200 g' }),
