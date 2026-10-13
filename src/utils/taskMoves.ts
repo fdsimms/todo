@@ -1,6 +1,7 @@
 import type { GeneratedKind, Task } from '../types';
 import { getNextDueDate, getTaskDayStart, recurrenceAnchorDayFor } from './dateUtils';
 import { isNoticeTask } from './generatedTasks';
+import { eventTaskStartOf } from './eventTasks';
 
 /**
  * Whether a task may be swept off the day it is on, what moving it means, and
@@ -33,6 +34,7 @@ export type DeloadBlocker =
   | 'day-bound'
   | 'streak'
   | 'started'
+  | 'daily'
   | 'high-priority'
   | 'people';
 
@@ -71,6 +73,7 @@ const DAY_BOUND_GENERATED_KINDS: ReadonlySet<GeneratedKind> = new Set([
 export const SOFT_DELOAD_BLOCKERS: ReadonlySet<DeloadBlocker> = new Set([
   'streak',
   'started',
+  'daily',
   'high-priority',
   'people',
 ]);
@@ -141,13 +144,35 @@ export function deloadBlockerFor(task: Task): { blocker: DeloadBlocker; label: s
  * True when moving the task to `dest` would push it past its own deadline.
  * Also catches a deadline that's already today or earlier, since every
  * candidate destination is at least tomorrow.
+ *
+ * A task a calendar-event rule wrote ("Prep for interview") has the event's
+ * start as an implicit deadline: preparing for it after it happened is not a
+ * move. It applies only while the task sits on or before the event's day, so a
+ * follow-up rule's task (placed after the event) is left alone.
  */
 export function wouldMissDeadline(task: Task, dest: Date, dayResetTime?: string): boolean {
-  if (!task.deadline) return false;
-  return (
-    getTaskDayStart(dest, dayResetTime) >
-    getTaskDayStart(new Date(task.deadline), dayResetTime)
-  );
+  const destDay = getTaskDayStart(dest, dayResetTime);
+  if (task.deadline && destDay > getTaskDayStart(new Date(task.deadline), dayResetTime)) return true;
+  const eventStart = eventTaskStartOf(task);
+  if (!eventStart) return false;
+  const eventDay = getTaskDayStart(new Date(eventStart), dayResetTime);
+  const ownDay = task.dueDate ? getTaskDayStart(new Date(task.dueDate), dayResetTime) : null;
+  if (ownDay && ownDay > eventDay) return false;
+  return destDay > eventDay;
+}
+
+/**
+ * A task that repeats every day. Pushing today's occurrence to tomorrow does
+ * not lighten anything lasting (tomorrow has its own), and for a supplement or
+ * a routine it is just a skipped day, so it is never pre-checked. Soft: a person
+ * can still opt in. Kept out of `deloadBlockerFor` so the trip shift, which
+ * moves whole spans, is unchanged.
+ */
+export function dailyRepeatBlocker(task: Task): { blocker: DeloadBlocker; label: string } | null {
+  if (task.recurrenceType === 'daily' && task.recurrenceInterval <= 1) {
+    return { blocker: 'daily', label: 'Repeats daily' };
+  }
+  return null;
 }
 
 /**

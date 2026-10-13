@@ -207,6 +207,11 @@ export function DeloadSheet({ visible, todaysTasks, notes, onClose }: Props) {
 
   const movable = plan.proposals.filter(p => destinationFor(p) !== null);
   const blocked = plan.proposals.filter(p => destinationFor(p) === null);
+  // Grouped by what the app suggests, not by what is checked right now, so a
+  // row doesn't jump between groups as it is tapped. A hand-picked day doesn't
+  // move a row either, for the same reason.
+  const suggestedRows = movable.filter(p => p.blocker === null);
+  const optionalRows = movable.filter(p => p.blocker !== null);
 
   const renderRow = (p: DeloadProposal) => {
     const dest = destinationFor(p);
@@ -317,12 +322,29 @@ export function DeloadSheet({ visible, todaysTasks, notes, onClose }: Props) {
           )}
 
           <ScrollView style={styles.list} bounces={false}>
-            {movable.map((p, i) => (
+            {suggestedRows.length > 0 && optionalRows.length > 0 && (
+              <Text style={[styles.sectionLabel, styles.sectionLabelFirst]}>SUGGESTED</Text>
+            )}
+            {suggestedRows.map((p, i) => (
               <React.Fragment key={p.task.id}>
                 {i > 0 && <View style={styles.sep} />}
                 {renderRow(p)}
               </React.Fragment>
             ))}
+
+            {optionalRows.length > 0 && (
+              <>
+                <Text style={[styles.sectionLabel, suggestedRows.length === 0 && styles.sectionLabelFirst]}>
+                  NOT SUGGESTED
+                </Text>
+                {optionalRows.map((p, i) => (
+                  <React.Fragment key={p.task.id}>
+                    {i > 0 && <View style={styles.sep} />}
+                    {renderRow(p)}
+                  </React.Fragment>
+                ))}
+              </>
+            )}
 
             {blocked.length > 0 && (
               <>
@@ -471,6 +493,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing.xs,
   },
+  sectionLabelFirst: { paddingTop: spacing.xs },
   sep: { height: border.hairline, backgroundColor: colors.separator, marginLeft: spacing.md },
   applyBtn: {
     backgroundColor: colors.accentFill,

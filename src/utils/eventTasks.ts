@@ -363,6 +363,16 @@ function occurrenceStartOf(occurrenceKey: string): string | null {
 }
 
 /**
+ * When the event a rule-written task was made for starts (ISO), read off the
+ * source id alone so it works after the event has left the calendar window.
+ * Null for any task that isn't an event task.
+ */
+export function eventTaskStartOf(task: Pick<Task, 'generatedKind' | 'generatedSourceId'>): string | null {
+  const parsed = parseEventTaskSourceId(generatedSourceOf(task, 'eventTask'));
+  return parsed ? occurrenceStartOf(parsed.occurrenceKey) : null;
+}
+
+/**
  * The calendar event a rule-written task was made for, or null when the task
  * isn't one or the event is no longer in `events`. The widget uses this alone,
  * since it ships the title and leaves the words about when to Swift.
