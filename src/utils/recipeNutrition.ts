@@ -15,7 +15,7 @@ import { flattenRecipeIngredients, type ChoiceResolution } from './recipeCompone
 import { normalizeScale, scaleQuantity } from './recipeScale';
 import { NO_STANDING_SWAPS, type StandingSwapMap } from './standingSwaps';
 import { onHandNameKeys } from './grocerySuggest';
-import { measureQuantity } from './unitConvert';
+import { measureQuantity, ML_PER_TBSP } from './unitConvert';
 
 /**
  * What a recipe, or a week of planned meals, is made of.
@@ -150,27 +150,39 @@ interface LineResolution {
  * Grams at or above which a staple's own line is too much to wave through
  * unmeasured, the way a dash of salt is.
  *
- * Scoped to *mass* on purpose: a weight measures the same amount regardless
- * of what food it's naming (`measureQuantity` below needs no food-specific
- * density for it, unlike a volume), so "1 lb" is unambiguously not a pinch.
- * Volume and counts ("2 tbsp", "3 cloves") are left alone — that's how salt,
- * pepper and spices are actually written in most recipes, and it's the case
- * this exclusion exists for. No science past the number itself: a packet of
- * yeast ("7 g") or a knob of butter ("20 g") stay comfortably under it, and a
- * recipe calling for a pound of something (453 g) — the case that surfaced
- * this, sugar marked "Always have it" in a recipe that actually uses a pound
- * of it — clears it easily. Same kind of threshold as `MIN_LINE_COVERAGE`
- * below: it has to be picked somewhere.
+ * A weight needs no food-specific density to be read (`measureQuantity` below),
+ * so "1 lb" is unambiguously not a pinch. No science past the number itself: a
+ * packet of yeast ("7 g") or a knob of butter ("20 g") stay comfortably under
+ * it, and a recipe calling for a pound of something (453 g) — the case that
+ * surfaced this, sugar marked "Always have it" in a recipe that actually uses
+ * a pound of it — clears it easily. Same kind of threshold as
+ * `MIN_LINE_COVERAGE` below: it has to be picked somewhere.
  */
 const STAPLE_BULK_THRESHOLD_G = 100;
 
 /**
- * Whether a staple's own line names a weight too large to treat as negligible,
- * at `factor` times the amount written (see the header on scaling).
+ * The volume counterpart: a tablespoon. Weights alone left this blind to the
+ * way a staple is usually written: "3 tbsp olive oil" (about 360 kcal) was
+ * waved through as negligible, so the dish read "7 of 7 counted" with a fifth
+ * of its calories missing and nothing on screen to say so. Teaspoons and
+ * smaller stay under it, which is where a dash of salt, pepper or a spice is
+ * actually written; a counted unit ("3 cloves") and a range have no volume
+ * to measure and stay waved through.
+ */
+const STAPLE_BULK_THRESHOLD_ML = ML_PER_TBSP;
+
+/**
+ * Whether a staple's own line names an amount too large to treat as
+ * negligible, at `factor` times the amount written (see the header on
+ * scaling).
  */
 function isBulkStapleQuantity(quantity: string, factor: number): boolean {
   const measured = measureQuantity(quantity);
-  return measured !== null && measured.dimension === 'mass' && measured.base * factor >= STAPLE_BULK_THRESHOLD_G;
+  if (measured === null) return false;
+  const scaled = measured.base * factor;
+  if (measured.dimension === 'mass') return scaled >= STAPLE_BULK_THRESHOLD_G;
+  if (measured.dimension === 'volume') return scaled >= STAPLE_BULK_THRESHOLD_ML;
+  return false;
 }
 
 /**
@@ -187,7 +199,8 @@ function isBulkStapleQuantity(quantity: string, factor: number): boolean {
  * sides of the coverage fraction, so it is not a line that failed, it is not a
  * line at all. Salt missing a nutrition panel is not a gap in a dish's figures
  * — **unless the line itself says otherwise**. `isBulkStapleQuantity` is the
- * one exception: a staple written in a genuinely large weight is treated as an
+ * one exception: a staple written in a genuinely large amount (100 g or a
+ * tablespoon and up) is treated as an
  * ordinary ingredient (falling through to `unmatched`/`noPanel`/`unmeasured`/
  * `covered` below) rather than silently dropped, because a pound of something
  * is a real contribution to a dish's figures whether or not it's also
