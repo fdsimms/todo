@@ -70,6 +70,7 @@ import type {
   Shop,
   StoreAlias,
   MealPlanEntry,
+  RecipeOverride,
   MealSlot,
   MedicationLog,
   MoodLog,
@@ -356,7 +357,18 @@ export interface RecipeInput {
    * is unchanged keeps its identity (and so its timer, its note and the cook
    * questions filed under it).
    */
-  steps?: { text: string; section?: string | null; timerSeconds?: number | null; note?: string | null }[];
+  steps?: {
+    text: string;
+    section?: string | null;
+    timerSeconds?: number | null;
+    note?: string | null;
+    /**
+     * Names of the recipe's own either/or options (an ingredient line or a used
+     * recipe in an alternativeGroup) this step applies to. Omitted leaves a kept
+     * step's setting alone; null or [] clears it.
+     */
+    onlyWith?: string[] | null;
+  }[];
   servings?: number | null;
   /** The top of a range ("serves 4-6"); null for a plain count. */
   servingsMax?: number | null;
@@ -385,6 +397,37 @@ export interface RecipeInput {
 /** `cookbook` on an edit moves the recipe: a title (created when new), or null to take it out of its book. */
 export type RecipePatch = Partial<RecipeInput>;
 
+/**
+ * One small edit to a saved recipe, for `patch_recipe`. Steps and ingredients
+ * are numbered from 1 in the order the recipe lists them, counted as the
+ * recipe stands after the earlier ops in the same call. `expect` is a snippet
+ * the targeted line must contain, so an edit made from a stale reading is
+ * refused instead of landing on the wrong line.
+ */
+export interface RecipePatchOp {
+  op:
+    | 'setStepNote'
+    | 'setStepOnlyWith'
+    | 'insertStep'
+    | 'replaceStep'
+    | 'removeStep'
+    | 'insertIngredient'
+    | 'replaceIngredient'
+    | 'removeIngredient';
+  /** The step an op targets (1-based). */
+  step?: number;
+  /** The ingredient an op targets (1-based). */
+  ingredient?: number;
+  /** For an insert: the position the new line takes (1 to length + 1). */
+  at?: number;
+  expect?: string;
+  text?: string;
+  section?: string | null;
+  note?: string | null;
+  onlyWith?: string[] | null;
+  alternativeGroup?: string | null;
+}
+
 /** A change to a planned meal. Only what is given changes. */
 export interface MealPatch {
   date?: string;
@@ -395,6 +438,14 @@ export interface MealPatch {
   recipeId?: string | null;
   /** Answers to its either/or questions, by the group's label and the option's name. */
   choices?: { group: string; option: string }[];
+  /**
+   * What this one cooking uses instead of a line or used recipe of its recipe,
+   * by name, replacing the whole list (`[]` goes back to the recipe as written).
+   * `with` is an ingredient as printed ("8 oz vegan fish fillets"), or null to
+   * leave the line out; `in` names the recipe when the same name is on two. The
+   * recipe itself is never edited.
+   */
+  replacements?: { replace: string; in?: string; with: string | null; note?: string | null }[];
   /** Whether it gets a "Shop for X" task, a thaw task, or the offer to log it; null hands it back to the setting. */
   shopTask?: boolean | null;
   thawTask?: boolean | null;
@@ -1166,6 +1217,8 @@ export interface Replica {
    * catch up on the phone.
    */
   updateRecipe(id: string, patch: RecipePatch): Recipe;
+  /** Small edits to one recipe, all or nothing; untouched lines keep their ids. */
+  patchRecipe(id: string, ops: RecipePatchOp[]): Recipe;
   /**
    * Delete a recipe. Planned meals made from it keep their title and stop
    * pointing at a recipe, as in the app; the phone reconciles their tasks.
@@ -1950,6 +2003,8 @@ export interface Replica {
   copyMealTo(id: string, dates: string[]): { copied: MealPlanEntry[]; skipped: string[] };
   /** A planned meal's either/or questions ("Side": mash or roast), and which option is in force. */
   mealChoices(entry: MealPlanEntry): MealChoice[];
+  /** What a planned meal uses instead of its recipe's own lines, one plain sentence each. */
+  mealReplacements(entry: MealPlanEntry): string[];
 
   people(): Person[];
   personGroups(): PersonGroup[];
@@ -2320,6 +2375,36 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   }
 
   /**
+   * Ids of a recipe's own either/or options by the names a tool uses: an
+   * ingredient line's name, or a used recipe's name (as it is now, falling back
+   * to the one captured on the link). Refuses a name that is not an option, or
+   * that names two.
+   */
+  function optionIdsFor(recipe: Recipe, names: readonly string[]): string[] {
+    const targets = new Map(db.dbGetAllRecipes().map(r => [r.id, r.name]));
+    const rows = [
+      ...recipe.ingredients.filter(i => i.choiceGroup).map(i => ({ id: i.id, names: [i.name] })),
+      ...recipe.components.filter(c => c.choiceGroup).map(c => ({ id: c.id, names: [targets.get(c.recipeId) ?? c.name, c.name] })),
+    ];
+    const out: string[] = [];
+    for (const raw of names) {
+      const key = raw.trim().toLowerCase();
+      const hits = rows.filter(r => r.names.some(n => n.trim().toLowerCase() === key));
+      if (hits.length === 1) {
+        if (!out.includes(hits[0].id)) out.push(hits[0].id);
+        continue;
+      }
+      if (hits.length > 1) throw new Error(`"${raw}" names more than one either/or option in this recipe.`);
+      throw new Error(
+        rows.length === 0
+          ? `"${raw}" is not an either/or option: this recipe has none. Give the lines or used recipes an alternativeGroup first.`
+          : `"${raw}" is not an either/or option in this recipe. The options are: ${rows.map(r => r.names[0]).join(', ')}.`
+      );
+    }
+    return out;
+  }
+
+  /**
    * The fields of a recipe write past its name and book, through the store's
    * own setters (already checked by `checkRecipeFields`). Runs inside the
    * caller's transaction.
@@ -2329,9 +2414,13 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     const { useRecipeStore } = require('../../src/store/useRecipeStore') as typeof import('../../src/store/useRecipeStore');
     const recipeUtils = require('../../src/utils/recipeUtils') as typeof import('../../src/utils/recipeUtils');
     const { generateId } = require('../../src/utils/id') as typeof import('../../src/utils/id');
+    const componentsLib = require('../../src/utils/recipeComponents') as typeof import('../../src/utils/recipeComponents');
     /* eslint-enable @typescript-eslint/no-require-imports */
     const store = () => useRecipeStore.getState();
     const current = () => store().recipes.find(r => r.id === id)!;
+    // Option names a call gave per step. Applied last, since the options they
+    // name (ingredients above, used recipes below) must exist by then.
+    const givenOnlyWith = new Map<string, string[] | null>();
 
     if (f.servings !== undefined || f.servingsMax !== undefined) {
       store().setServings(id, f.servings !== undefined ? f.servings : current().servings, f.servingsMax !== undefined ? f.servingsMax : current().servingsMax);
@@ -2356,8 +2445,22 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           return m ? { ...m, choiceGroup: recipeUtils.cleanChoiceGroup(line.alternativeGroup) } : null;
         })
         .filter((x): x is NonNullable<typeof x> => x !== null);
+      // A line that is still wanted keeps its row (id and everything the text
+      // cannot say: aisle, optional, a repointed catalog key), with the amount
+      // and group the call gave. Its id is what a planned meal's pick, a step's
+      // onlyWhen and a one-off replacement point at, so a rewrite that gave
+      // every line a new one silently dropped them all. Matched on the same key
+      // the add paths dedupe on, so an edited quantity still counts as the line.
+      const unclaimed = [...current().ingredients];
+      const kept = made.map(line => {
+        const key = recipeUtils.ingredientDedupeKey(line);
+        const at = unclaimed.findIndex(old => recipeUtils.ingredientDedupeKey(old) === key);
+        if (at < 0) return line;
+        const [old] = unclaimed.splice(at, 1);
+        return { ...old, quantity: line.quantity, choiceGroup: line.choiceGroup };
+      });
       store().bulkRemoveIngredients(id, current().ingredients.map(i => i.id));
-      if (made.length > 0) store().addStructuredIngredients(id, made);
+      if (kept.length > 0) store().addStructuredIngredients(id, kept);
     }
     if (f.steps !== undefined) {
       // A step whose text is unchanged keeps its id, so a cook question filed
@@ -2384,6 +2487,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         if (!stepId) return;
         if (step.timerSeconds !== undefined) store().setStepTimerSeconds(id, stepId, step.timerSeconds);
         if (step.note !== undefined) store().setStepNote(id, stepId, step.note);
+        if (step.onlyWith !== undefined) givenOnlyWith.set(stepId, step.onlyWith);
       });
     }
     if (f.components !== undefined) {
@@ -2429,6 +2533,9 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           reminderOffsetMinutes: p.reminderOffsetMinutes ?? null,
         });
       }
+    }
+    for (const [stepId, names] of givenOnlyWith) {
+      store().setStepOnlyWhen(id, stepId, names && names.length > 0 ? optionIdsFor(current(), names) : null);
     }
   }
 
@@ -4054,6 +4161,134 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
               if (!e.leftoverId && e.title !== renamed.name) db.dbUpdateMealPlanEntry({ ...e, title: renamed.name });
             }
           }
+        });
+      } finally {
+        // Rehydrated, which also puts the store back if the transaction rolled back.
+        useRecipeStore.getState().initialize();
+      }
+      refresh();
+      return useRecipeStore.getState().recipes.find(r => r.id === id)!;
+    },
+
+    patchRecipe(id: string, ops: RecipePatchOp[]): Recipe {
+      /* eslint-disable @typescript-eslint/no-require-imports */
+      const { useRecipeStore } = require('../../src/store/useRecipeStore') as typeof import('../../src/store/useRecipeStore');
+      const recipeUtils = require('../../src/utils/recipeUtils') as typeof import('../../src/utils/recipeUtils');
+      /* eslint-enable @typescript-eslint/no-require-imports */
+      useRecipeStore.getState().initialize();
+      if (!useRecipeStore.getState().recipes.some(r => r.id === id)) throw new Error(`No recipe with id ${id}.`);
+      if (ops.length === 0) throw new Error('Name at least one change.');
+      if (ops.length > 50) throw new Error('At most 50 changes in one call.');
+      const store = () => useRecipeStore.getState();
+      const current = () => store().recipes.find(r => r.id === id)!;
+
+      // 1-based, as the recipe lists them; `max` is length + 1 for an insert.
+      const index = (n: number | undefined, len: number, what: string, max = len): number => {
+        if (n === undefined || !Number.isInteger(n) || n < 1 || n > max) {
+          throw new Error(`${what} ${n === undefined ? 'is missing' : `${n} is out of range`}: the recipe has ${len}.`);
+        }
+        return n - 1;
+      };
+      const guard = (expect: string | undefined, actual: string, what: string) => {
+        if (expect !== undefined && expect.trim() && !actual.toLowerCase().includes(expect.trim().toLowerCase())) {
+          throw new Error(`${what} reads "${actual}", which does not contain "${expect}". The recipe may have changed since it was read; read it again.`);
+        }
+      };
+      const need = (text: string | undefined, what: string): string => {
+        if (!text || !text.trim()) throw new Error(`${what} needs text.`);
+        return text;
+      };
+
+      try {
+        db.dbTransaction(() => {
+          ops.forEach((op, n) => {
+            try {
+              switch (op.op) {
+                case 'setStepNote':
+                case 'setStepOnlyWith':
+                case 'replaceStep':
+                case 'removeStep': {
+                  const steps = current().steps;
+                  const target = steps[index(op.step, steps.length, 'Step')];
+                  guard(op.expect, target.text, `Step ${op.step}`);
+                  if (op.op === 'setStepNote') {
+                    if (op.note === undefined) throw new Error('setStepNote needs note (null clears it).');
+                    store().setStepNote(id, target.id, op.note);
+                  } else if (op.op === 'setStepOnlyWith') {
+                    if (op.onlyWith === undefined) throw new Error('setStepOnlyWith needs onlyWith (null clears it).');
+                    store().setStepOnlyWhen(id, target.id, op.onlyWith && op.onlyWith.length > 0 ? optionIdsFor(current(), op.onlyWith) : null);
+                  } else if (op.op === 'replaceStep') {
+                    store().updateStep(id, target.id, need(op.text, 'replaceStep'));
+                  } else {
+                    store().removeStep(id, target.id);
+                  }
+                  break;
+                }
+                case 'insertStep': {
+                  const steps = current().steps;
+                  const pos = index(op.at, steps.length, 'Position', steps.length + 1);
+                  // A step dropped into the middle of a section stays in it; a
+                  // null section there would split the heading in two.
+                  const section = op.section !== undefined ? op.section?.trim() || null : steps[pos - 1]?.section ?? null;
+                  const made = store().addStep(id, need(op.text, 'insertStep'), section);
+                  if (!made) throw new Error('A step needs text.');
+                  const order = current().steps.map(x => x.id).filter(x => x !== made.id);
+                  order.splice(pos, 0, made.id);
+                  store().reorderSteps(id, order);
+                  if (op.note != null) store().setStepNote(id, made.id, op.note);
+                  if (op.onlyWith && op.onlyWith.length > 0) store().setStepOnlyWhen(id, made.id, optionIdsFor(current(), op.onlyWith));
+                  break;
+                }
+                case 'insertIngredient': {
+                  const list = current().ingredients;
+                  const pos = index(op.at, list.length, 'Position', list.length + 1);
+                  const section = op.section !== undefined ? op.section?.trim() || null : list[pos - 1]?.section ?? null;
+                  const made = recipeUtils.makeIngredient(need(op.text, 'insertIngredient'), section);
+                  if (!made) throw new Error('Could not read an ingredient out of that text.');
+                  made.choiceGroup = recipeUtils.cleanChoiceGroup(op.alternativeGroup);
+                  const before = new Set(list.map(x => x.id));
+                  if (store().addStructuredIngredients(id, [made]) === 0) {
+                    throw new Error('A line with the same name, section, prep and purpose is already in the recipe.');
+                  }
+                  const added = current().ingredients.find(x => !before.has(x.id));
+                  if (!added) throw new Error('Could not add that ingredient.');
+                  const order = current().ingredients.map(x => x.id).filter(x => x !== added.id);
+                  order.splice(pos, 0, added.id);
+                  store().reorderIngredients(id, order, new Map([[added.id, section]]));
+                  break;
+                }
+                case 'replaceIngredient':
+                case 'removeIngredient': {
+                  const list = current().ingredients;
+                  const target = list[index(op.ingredient, list.length, 'Ingredient')];
+                  guard(op.expect, [target.quantity, target.name, target.prep].filter(Boolean).join(' '), `Ingredient ${op.ingredient}`);
+                  if (op.op === 'removeIngredient') {
+                    store().removeIngredient(id, target.id);
+                    break;
+                  }
+                  // Edited in place, so the line keeps its id: a planned meal's
+                  // pick and a step's onlyWhen both point at it.
+                  const section = op.section !== undefined ? op.section?.trim() || null : target.section;
+                  const made = recipeUtils.makeIngredient(need(op.text, 'replaceIngredient'), section);
+                  if (!made) throw new Error('Could not read an ingredient out of that text.');
+                  store().updateIngredient(id, target.id, {
+                    name: made.name,
+                    quantity: made.quantity,
+                    prep: made.prep,
+                    purpose: made.purpose,
+                    section,
+                    choiceGroup: op.alternativeGroup !== undefined ? recipeUtils.cleanChoiceGroup(op.alternativeGroup) : target.choiceGroup,
+                    example: made.example,
+                  });
+                  break;
+                }
+                default:
+                  throw new Error(`Unknown op "${String((op as { op: unknown }).op)}".`);
+              }
+            } catch (e) {
+              throw new Error(`Change ${n + 1} (${op.op}): ${e instanceof Error ? e.message : 'could not be made.'}`);
+            }
+          });
         });
       } finally {
         // Rehydrated, which also puts the store back if the transaction rolled back.
@@ -7395,7 +7630,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         const cleaned = mealPlanUtils.cleanMealTitle(patch.title);
         if (!cleaned) throw new Error('A meal needs a title.');
         // A renamed meal whose recipe is gone is a different meal now, as in the app.
-        next = gone ? { ...next, title: cleaned, recipeId: null, recipeChoices: [], recipeScale: 1 } : { ...next, title: cleaned };
+        next = gone ? { ...next, title: cleaned, recipeId: null, recipeChoices: [], recipeOverrides: [], recipeScale: 1 } : { ...next, title: cleaned };
       }
 
       if (patch.choices !== undefined) {
@@ -7419,6 +7654,47 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           chosen = components().applyChoice(chosen, group, option.id);
         }
         next = { ...next, recipeChoices: chosen };
+      }
+
+      if (patch.replacements !== undefined) {
+        if (!next.recipeId) throw new Error('Only a meal with a recipe has lines to replace.');
+        const recipes = db.dbGetAllRecipes();
+        const recipe = recipes.find(r => r.id === next.recipeId);
+        if (!recipe) throw new Error('That meal\'s recipe is gone, so it has nothing to replace.');
+        const byId = new Map(recipes.map(r => [r.id, r]));
+        // Every line and used recipe the meal could cook, at any depth.
+        const targets: { id: string; name: string; recipeName: string }[] = [];
+        for (const rid of [recipe.id, ...components().reachableRecipeIds(byId, recipe.id)]) {
+          const node = byId.get(rid);
+          if (!node) continue;
+          for (const l of node.ingredients) targets.push({ id: l.id, name: l.name, recipeName: node.name });
+          for (const c of node.components) targets.push({ id: c.id, name: byId.get(c.recipeId)?.name ?? c.name, recipeName: node.name });
+        }
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const recipeUtils = require('../../src/utils/recipeUtils') as typeof import('../../src/utils/recipeUtils');
+        const overrides: RecipeOverride[] = [];
+        for (const r of patch.replacements) {
+          const key = r.replace.trim().toLowerCase();
+          const where = r.in?.trim().toLowerCase();
+          const hits = targets.filter(t => t.name.trim().toLowerCase() === key && (!where || t.recipeName.trim().toLowerCase() === where));
+          if (hits.length === 0) {
+            throw new Error(`"${r.replace}" is not a line or used recipe of "${recipe.name}". It has: ${[...new Set(targets.map(t => t.name))].slice(0, 25).join(', ')}.`);
+          }
+          if (hits.length > 1) {
+            throw new Error(`"${r.replace}" is on more than one recipe (${hits.map(h => h.recipeName).join(', ')}). Name the recipe with "in".`);
+          }
+          const targetId = hits[0].id;
+          if (overrides.some(o => o.targetId === targetId)) throw new Error(`"${r.replace}" is replaced twice.`);
+          let replacement: RecipeOverride['replacement'] = null;
+          if (r.with !== null) {
+            const made = recipeUtils.makeIngredient(r.with);
+            if (!made) throw new Error(`Could not read an ingredient out of "${r.with}".`);
+            replacement = made;
+          }
+          const note = r.note?.trim();
+          overrides.push({ targetId, replacement, ...(note ? { note } : {}) });
+        }
+        next = { ...next, recipeOverrides: overrides };
       }
 
       if (patch.shopTask !== undefined) next = { ...next, shopTask: patch.shopTask };
@@ -7529,8 +7805,16 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (!recipe) return [];
       const onHand = grocerySuggest.onHandNameKeys(db.dbGetAllGroceryItems(), new Date(), db.dbGetAllItemProducts());
       return components()
-        .recipeChoiceGroups(recipe, new Map(recipes.map(r => [r.id, r])), { chosen: entry.recipeChoices, onHand })
+        .recipeChoiceGroups(recipe, new Map(recipes.map(r => [r.id, r])), components().entryResolution(entry, { onHand }))
         .map(g => ({ group: g.label, options: g.options.map(o => o.name), chosen: g.active.name }));
+    },
+
+    mealReplacements(entry: MealPlanEntry): string[] {
+      if (!entry.recipeId || entry.recipeOverrides.length === 0) return [];
+      const recipes = db.dbGetAllRecipes();
+      const recipe = recipes.find(r => r.id === entry.recipeId);
+      if (!recipe) return [];
+      return components().describeOverrides(recipe, new Map(recipes.map(r => [r.id, r])), entry.recipeOverrides);
     },
 
     createPerson(fields: PersonFields): Person {

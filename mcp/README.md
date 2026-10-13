@@ -182,7 +182,7 @@ only the fallback until the first sync.
 | `delete_tag` | **Write.** Takes a tag off every task and out of the tag list. |
 | `set_completion_date` | **Write.** Corrects when a completed task was done, as the Logbook's date edit does. |
 | `reopen_task` | **Write.** Reopens a completed or missed task and takes back what its completion did. Needs `MCP_WRITE_TOKEN`. |
-| `update_meal` | **Write.** Moves a planned meal, swaps or renames it, sets a recipe's scale, answers its either/or choices, or sets its shopping, thaw and log answers. |
+| `update_meal` | **Write.** Moves a planned meal, swaps or renames it, sets a recipe's scale, answers its either/or choices, uses something else for this one cooking (`replacements`: a line or used recipe swapped for another ingredient, or left out; the recipe is not edited), or sets its shopping, thaw and log answers. |
 | `remove_meal` | **Write.** Takes a meal off the plan. |
 | `create_person` | **Write.** Adds a person: name, nickname, notes, birthday, contact details (phone, fax, email, link), location (free text), group, archived, birthday task opt-outs. Never a cadence or nudge. |
 | `delete_person` | **Write.** Deletes a person and the notes about them; tasks naming them stay. Restorable from Activity. |
@@ -210,6 +210,7 @@ only the fallback until the first sync.
 | `mark_missed` | **Write.** Marks a repeating task's occurrence missed: breaks the streak, creates the next occurrence, costs coins. `reopen_task` undoes it. |
 | `log_slip` / `undo_slip` | **Write.** Logs or takes back today's slip on a "don't do this" habit. On a habit a reward guards, a slip the balance covers claims the reward instead, and one it doesn't costs the balance up to the reward's price. A habit with a penalty is refused. |
 | `update_recipe` | **Write.** Changes a recipe or moves it to another cookbook; ingredients, steps, components and prep tasks each replace the whole list. |
+| `patch_recipe` | **Write.** Small edits to one recipe without resending its lists: set a step's note or which either/or option it applies to, insert, reword or remove a step or an ingredient. Numbered from 1; `expect` refuses a stale reading; all or nothing; untouched lines keep their ids. |
 | `delete_recipe` | **Write.** Deletes a recipe. Not undoable from here. |
 | `defer_task` | **Write.** Moves a task to a date, or clears its date. |
 | `add_grocery_item` | **Write.** Puts something on the home list, re-using the shelf item the user already has where there is one. |

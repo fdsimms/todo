@@ -24,7 +24,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeepAwake } from 'expo-keep-awake';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
-import type { Recipe } from '../types';
+import type { Recipe, RecipeOverride } from '../types';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -83,6 +83,11 @@ interface Props {
    * `scale`, never written onto the recipe.
    */
   choices: readonly string[];
+  /**
+   * The meal's one-off replacements (MealPlanEntry.recipeOverrides), shared in
+   * the same way and read-only here: the mise en place and the method follow them.
+   */
+  overrides?: readonly RecipeOverride[];
   onChoicesChange: (choices: string[]) => void;
   onClose: () => void;
   /**
@@ -152,7 +157,7 @@ interface Props {
  * keeps its own words.
  */
 export function CookModeSheet({
-  visible, recipe, recipesById, scale, choices, onChoicesChange, onClose, onLogCooked, onLogFood,
+  visible, recipe, recipesById, scale, choices, overrides, onChoicesChange, onClose, onLogCooked, onLogFood,
 }: Props) {
   // ==== store bindings and derived data: the method, the ingredients ====
   const colors = useColors();
@@ -193,7 +198,10 @@ export function CookModeSheet({
     () => onHandNameKeys(groceryItems, new Date(), itemProducts),
     [groceryItems, itemProducts]
   );
-  const resolution = useMemo(() => ({ chosen: choices, onHand }), [choices, onHand]);
+  const resolution = useMemo(
+    () => ({ chosen: choices, ...(overrides?.length ? { overrides } : {}), onHand }),
+    [choices, overrides, onHand]
+  );
 
   // The method follows the picks too: "mash or roast" is a choice between two
   // components, and each brings its own steps. `clampStepIndex` below is what

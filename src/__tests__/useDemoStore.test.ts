@@ -2416,6 +2416,28 @@ describe('demo seed — people', () => {
     expect(useTaskStore.getState().tasks.some(t => t.linkUrl === journalEntryLink(sealed[0].id) && !t.completed)).toBe(true);
   });
 
+  it('seeds a planned meal with a one-off replacement, shopped for as replaced', () => {
+    // MealPlanEntry.recipeOverrides is invisible until something uses it: the
+    // Sunday roast buys a bag of frozen potatoes instead of making the dish.
+    const entries = useMealPlanStore.getState().entries;
+    const replaced = entries.find(e => e.recipeOverrides.length > 0);
+    expect(replaced).toBeTruthy();
+    expect(replaced!.recipeOverrides[0].replacement?.name).toBe('frozen roast potatoes');
+    const recipes = useRecipeStore.getState().recipes;
+    const byId = new Map(recipes.map(r => [r.id, r]));
+    const range = { startKey: replaced!.date, endKey: replaced!.date };
+    const keys = collectPlannedIngredients([replaced!], byId, range).map(l => l.nameKey);
+    expect(keys).toContain('frozen roast potatoes');
+    // ...and the dish it replaced contributes nothing, while the same meal without it does.
+    const roasties = recipes.find(r => r.name === 'Roast potatoes');
+    const plain = collectPlannedIngredients([{ ...replaced!, recipeOverrides: [] }], byId, range).map(l => l.nameKey);
+    const roastLine = roasties?.ingredients[0]?.nameKey;
+    if (roastLine) {
+      expect(plain).toContain(roastLine);
+      expect(keys).not.toContain(roastLine);
+    }
+  });
+
   it('seeds a meal that has opted out of being logged', () => {
     // The per-meal answer is invisible until something uses it, and a night
     // out is exactly the meal somebody declines: the app has no idea what was
@@ -3914,6 +3936,16 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(stirFry.components.some(c => c.choiceGroup === 'Rice')).toBe(true);
     expect(activeIngredients(stirFry).some(i => i.id === riceIngredient!.id)).toBe(true);
     expect(activeComponents(stirFry).some(c => c.choiceGroup === 'Rice')).toBe(false);
+
+    // A step tied to one side of the Chile either/or: cook mode drops it under
+    // the default serrano pick and reads it once the jalapeno is chosen.
+    const jalapeno = stirFry.ingredients.find(i => i.name === 'jalapeno')!;
+    const conditional = stirFry.steps.find(st => st.onlyWhen?.includes(jalapeno.id));
+    expect(conditional).toBeTruthy();
+    const withoutPick = cookSteps(stirFry, recipeMap(recipes)).map(st => st.id);
+    const withJalapeno = cookSteps(stirFry, recipeMap(recipes), { chosen: [jalapeno.id] }).map(st => st.id);
+    expect(withoutPick).not.toContain(conditional!.id);
+    expect(withJalapeno).toContain(conditional!.id);
 
     // The ingredient-line detail the parser splits out, and the editor's labels.
     // The sectioned recipe carries a method too: cook mode's ingredient panel

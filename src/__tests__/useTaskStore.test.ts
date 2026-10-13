@@ -7825,7 +7825,7 @@ describe('checkMealPlanNudge', () => {
     const s = settings();
     useSettingsStore.getState.mockReturnValue(s);
     (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
-      { id: 'm1', date: '2025-08-05', slot: 'dinner', recipeId: null, title: 'Tacos', sortOrder: 1, createdAt: '2025-08-01T00:00:00.000Z', cookedAt: null, leftoverId: null, recipeChoices: [] },
+      { id: 'm1', date: '2025-08-05', slot: 'dinner', recipeId: null, title: 'Tacos', sortOrder: 1, createdAt: '2025-08-01T00:00:00.000Z', cookedAt: null, leftoverId: null, recipeChoices: [], recipeOverrides: [] },
     ]);
     useTaskStore.setState({ tasks: [] });
 
@@ -7842,7 +7842,7 @@ describe('checkMealPlanNudge', () => {
     const s = settings({ mealPlanNudgeSlots: ['dinner'] as MealSlot[] });
     useSettingsStore.getState.mockReturnValue(s);
     (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
-      { id: 'm1', date: '2025-08-05', slot: 'lunch', recipeId: null, title: 'Salad', sortOrder: 1, createdAt: '2025-08-01T00:00:00.000Z', cookedAt: null, leftoverId: null, recipeChoices: [] },
+      { id: 'm1', date: '2025-08-05', slot: 'lunch', recipeId: null, title: 'Salad', sortOrder: 1, createdAt: '2025-08-01T00:00:00.000Z', cookedAt: null, leftoverId: null, recipeChoices: [], recipeOverrides: [] },
     ]);
     useTaskStore.setState({ tasks: [] });
 
@@ -7891,7 +7891,7 @@ describe('checkMealSlotTasks', () => {
     return {
       id: `m-${date}-${slot}`, date, slot, recipeId: null, title: 'Chili', sortOrder: 1,
       createdAt: '2026-01-01T00:00:00.000Z', cookedAt: null, leftoverId: null,
-      recipeChoices: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null, calendarEventId: null,
+      recipeChoices: [], recipeOverrides: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null, calendarEventId: null,
       ...over,
     };
   }
@@ -8373,7 +8373,7 @@ describe('checkMealShortfallTasks', () => {
     return {
       id: `m-${date}-${over.slot ?? 'dinner'}`, date, slot: 'dinner', recipeId, title: 'Ragu',
       sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z', cookedAt: null, leftoverId: null,
-      recipeChoices: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null, calendarEventId: null,
+      recipeChoices: [], recipeOverrides: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null, calendarEventId: null,
       ...over,
     };
   }
@@ -8660,7 +8660,7 @@ describe('checkMealThawTasks', () => {
   const tomorrowDinner: MealPlanEntry = {
     id: 'm-sun', date: '2026-08-23', slot: 'dinner', recipeId: 'r1', title: 'Stir-fry',
     sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z', cookedAt: null, leftoverId: null,
-    recipeChoices: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null, calendarEventId: null,
+    recipeChoices: [], recipeOverrides: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null, calendarEventId: null,
   };
 
   const thawRows = () =>
@@ -8762,7 +8762,7 @@ describe('checkMealLogNudgeTasks', () => {
   const yesterdaysDinner: MealPlanEntry = {
     id: 'm-dinner', date: '2026-08-21', slot: 'dinner', recipeId: null, title: 'Ragu',
     sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z', cookedAt: null, leftoverId: null,
-    recipeChoices: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null, calendarEventId: null,
+    recipeChoices: [], recipeOverrides: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null, calendarEventId: null,
   };
   let planned: MealPlanEntry[] = [];
 
@@ -16890,7 +16890,7 @@ describe('completing a leftover-backed meal task', () => {
   const entry: MealPlanEntry = {
     id: 'm-1', date: '2026-08-22', slot: 'dinner', recipeId: null, title: 'Chicken stir-fry',
     sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z', cookedAt: null, leftoverId: 'l-1',
-    recipeChoices: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null, calendarEventId: null,
+    recipeChoices: [], recipeOverrides: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null, calendarEventId: null,
   };
   const seedEntry = (overrides: Partial<MealPlanEntry> = {}) => {
     const merged = { ...entry, ...overrides };
@@ -16960,7 +16960,7 @@ describe('completing a meal task offers to log it', () => {
   const recipeEntry: MealPlanEntry = {
     id: 'm-1', date: '2026-08-22', slot: 'dinner', recipeId: 'r-1', title: 'Chicken stir-fry',
     sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z', cookedAt: null, leftoverId: null,
-    recipeChoices: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null, calendarEventId: null,
+    recipeChoices: [], recipeOverrides: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null, calendarEventId: null,
   };
   // No recipe behind it — a typed answer, same as "Eating out" would be —
   // which is the case offerMealLog's manual branch exists for.
@@ -17177,7 +17177,7 @@ describe('completing a use-up task and its meal task for the same leftover', () 
   const entry: MealPlanEntry = {
     id: 'm-1', date: '2026-08-22', slot: 'dinner', recipeId: null, title: 'Chicken stir-fry',
     sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z', cookedAt: null, leftoverId: 'l-1',
-    recipeChoices: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null, calendarEventId: null,
+    recipeChoices: [], recipeOverrides: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null, calendarEventId: null,
   };
   const seedEntry = () => {
     (dbGetMealPlanEntries as jest.Mock).mockReturnValue([entry]);

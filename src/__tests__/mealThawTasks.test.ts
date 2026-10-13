@@ -51,7 +51,7 @@ function recipe(name: string, ingredients: RecipeIngredient[]): Recipe {
 function entry(date: string, recipeId: string | null, overrides: Partial<MealPlanEntry> = {}): MealPlanEntry {
   return {
     id: `m-${++seq}`, date, slot: 'dinner', recipeId, title: 'Stir-fry', sortOrder: 1,
-    createdAt: '2026-01-01T00:00:00.000Z', cookedAt: null, leftoverId: null, recipeChoices: [],
+    createdAt: '2026-01-01T00:00:00.000Z', cookedAt: null, leftoverId: null, recipeChoices: [], recipeOverrides: [],
     recipeScale: 1, cookTask: null, shopTask: null, logMeal: null, calendarEventId: null,
     ...overrides,
   };

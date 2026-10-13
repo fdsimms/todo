@@ -2421,7 +2421,7 @@ describe('backup and restore', () => {
     dbInsertMealPlanEntry({
       id: 'meal-b', date: '2026-08-13', slot: 'dinner', recipeId: null, title: 'Chili',
       sortOrder: 1, createdAt: '2026-08-01T00:00:00.000Z', cookedAt: null, leftoverId: null,
-      recipeChoices: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null,
+      recipeChoices: [], recipeOverrides: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null,
       calendarEventId: 'evt-2', calendarEventExternalId: 'ext-2',
     });
     const backup = buildBackup(dbExportTables(), { appVersion: '1.0.0', exportedAt: new Date() });
@@ -2446,7 +2446,7 @@ describe('backup and restore', () => {
     dbInsertMealPlanEntry({
       id, date: '2026-08-13', slot: 'dinner', recipeId: null, title: 'Chili',
       sortOrder: 1, createdAt: '2026-08-01T00:00:00.000Z', cookedAt: null, leftoverId: null,
-      recipeChoices: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null,
+      recipeChoices: [], recipeOverrides: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null,
       calendarEventId, calendarEventExternalId,
     });
 
@@ -4026,7 +4026,7 @@ describe('meal plan entries', () => {
       title: `Meal ${mealSeq}`,
       sortOrder: 1,
       createdAt: '2026-01-01T00:00:00.000Z',
-      recipeChoices: [],
+      recipeChoices: [], recipeOverrides: [],
       recipeScale: 1,
       cookTask: null,
       shopTask: null,
@@ -4063,8 +4063,24 @@ describe('meal plan entries', () => {
     expect(dbGetMealPlanEntries('2026-08-05', '2026-08-05')[0].recipeChoices).toEqual(['c-roast']);
 
     // Back to the default is stored as no answer, and has to survive as one.
-    dbUpdateMealPlanEntry({ ...planned, recipeChoices: [] });
+    dbUpdateMealPlanEntry({ ...planned, recipeChoices: [], recipeOverrides: [] });
     expect(dbGetMealPlanEntries('2026-08-05', '2026-08-05')[0].recipeChoices).toEqual([]);
+  });
+
+  it('round-trips a meal\'s one-off replacements through insert and update, empty for an old row', () => {
+    const fillets = {
+      id: 'ing-fillets', name: 'vegan fish fillets', nameKey: 'vegan fish fillets', quantity: '8 oz',
+      aisle: null, prep: null, purpose: null, section: null, choiceGroup: null,
+    };
+    const planned = makeEntry('2026-08-05', 'dinner', {
+      recipeId: 'r1', title: 'Stew',
+      recipeOverrides: [{ targetId: 'c-fish', replacement: fillets, note: 'Cook first' }, { targetId: 'l-salt', replacement: null }],
+    });
+    dbInsertMealPlanEntry(planned);
+    expect(dbGetMealPlanEntries('2026-08-05', '2026-08-05')[0].recipeOverrides).toEqual(planned.recipeOverrides);
+
+    dbUpdateMealPlanEntry({ ...planned, recipeOverrides: [] });
+    expect(dbGetMealPlanEntries('2026-08-05', '2026-08-05')[0].recipeOverrides).toEqual([]);
   });
 
   it('stores a free-text meal with a null recipe', () => {
@@ -4264,7 +4280,7 @@ describe('leftovers', () => {
     dbInsertMealPlanEntry({
       id: 'meal-x', date: '2026-08-11', slot: 'dinner', recipeId: null,
       title: 'Chilli (1 day old)', sortOrder: 1, createdAt: '2026-08-11T00:00:00.000Z',
-      cookedAt: null, leftoverId: 'lo-a', recipeChoices: [], recipeScale: 1, cookTask: null,
+      cookedAt: null, leftoverId: 'lo-a', recipeChoices: [], recipeOverrides: [], recipeScale: 1, cookTask: null,
       shopTask: null, logMeal: null, calendarEventId: null,
     });
 
@@ -4398,7 +4414,7 @@ describe('sync change tracking', () => {
     dbInsertMealPlanEntry({
       id: 'meal-sync', date: '2026-08-13', slot: 'dinner', recipeId: null, title: 'Chili',
       sortOrder: 1, createdAt: '2026-08-01T00:00:00.000Z', cookedAt: null, leftoverId: null,
-      recipeChoices: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null,
+      recipeChoices: [], recipeOverrides: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null,
       calendarEventId: 'evt-this-phone', calendarEventExternalId: 'ext-this-phone',
     });
 
@@ -4582,7 +4598,7 @@ describe('dbApplySyncChanges', () => {
     const localMeal = () => dbInsertMealPlanEntry({
       id: 'meal-p', date: '2026-08-13', slot: 'dinner', recipeId: null, title: 'Chili',
       sortOrder: 1, createdAt: '2026-08-01T00:00:00.000Z', cookedAt: null, leftoverId: null,
-      recipeChoices: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null,
+      recipeChoices: [], recipeOverrides: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null,
       calendarEventId: 'evt-this-phone', calendarEventExternalId: 'ext-this-phone',
     });
     const peerMealRow = (over: Record<string, unknown>) => {

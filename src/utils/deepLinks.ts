@@ -33,7 +33,7 @@ import {
   openQuickAddFromShortcut,
   openQuickAddEventFromShortcut,
 } from '../navigation/navigationRef';
-import { MEAL_SLOTS, type MealPlanEntry, type MealSlot } from '../types';
+import { MEAL_SLOTS, type MealPlanEntry, type MealSlot, type RecipeOverride } from '../types';
 import { KNOWN_LINK_APPS } from '../constants/linkApps';
 
 export interface AddTaskLink {
@@ -268,11 +268,15 @@ export function recipeUrlEntryId(url: string): string | null {
  * `dateUtils`.
  */
 export function plannedRecipeParams(
-  entry: Pick<MealPlanEntry, 'recipeId' | 'recipeChoices' | 'recipeScale'> | null | undefined,
+  entry: Pick<MealPlanEntry, 'recipeId' | 'recipeChoices' | 'recipeOverrides' | 'recipeScale'> | null | undefined,
   recipeId: string
-): { choices?: string[]; scale?: number } {
+): { choices?: string[]; overrides?: RecipeOverride[]; scale?: number } {
   if (!entry || entry.recipeId !== recipeId) return {};
-  return { choices: entry.recipeChoices, scale: entry.recipeScale };
+  return {
+    choices: entry.recipeChoices,
+    ...(entry.recipeOverrides.length > 0 ? { overrides: entry.recipeOverrides } : {}),
+    scale: entry.recipeScale,
+  };
 }
 
 // `dundundun://mealplan[?date=YYYY-MM-DD]` — the third kitchen link, so a

@@ -67,7 +67,7 @@ import { waterHelping } from './waterLog';
 import { cookedDishGrams, mealHelping, weighedHelping } from './mealLog';
 import { perServing, recipeNutrition } from './recipeNutrition';
 import { recipeMap } from './recipeComponents';
-import { recipeInBook } from './recipeUtils';
+import { makeIngredient, recipeInBook } from './recipeUtils';
 import { packageChoices, packageHelping } from './scanPortion';
 import { describeProduct } from './groceryProduct';
 import { focusPlanOptionsFrom } from './focusSettings';
@@ -3647,6 +3647,7 @@ function seedRecipes(): DemoRecipes {
     addStep,
     setStepTimerSeconds,
     setStepNote,
+    setStepOnlyWhen,
   } = useRecipeStore.getState();
 
   // --- Sides, first: the two dinners below reference them as components ----
@@ -3975,8 +3976,15 @@ function seedRecipes(): DemoRecipes {
     'Slice the chicken thin and toss it with the soy sauce.',
     'Get the pan as hot as it goes, then sear the chicken in one layer.',
     'Add the pepper, garlic and chile and stir-fry for two minutes.',
-    'Serve over the rice.',
   ].forEach(text => addStep(stirFry.id, text));
+  // A step that belongs to one side of the Chile either/or (RecipeStep.onlyWhen):
+  // it shows in cook mode only when the jalapeno is the pick, and reads dimmed
+  // with an "Only with jalapeno" caption on the recipe page while the serrano is.
+  // Placed after the indexed steps above, which later seed code reads by position.
+  const jalapenoStep = addStep(stirFry.id, 'Halve and seed the jalapeno before it goes in the pan.');
+  const jalapenoId = ingredientIdNamed(stirFry.id, 'jalapeno');
+  if (jalapenoStep && jalapenoId) setStepOnlyWhen(stirFry.id, jalapenoStep.id, [jalapenoId]);
+  addStep(stirFry.id, 'Serve over the rice.');
   // A hand-set timer length on the one step here whose sentence gives no time
   // — the case RecipeStep.timerSeconds exists for. Every other step in the box
   // is read straight out of its own text ("Simmer for 20 minutes", "stir-fry
@@ -5360,7 +5368,7 @@ function seedMealPlanNudgeStack(
 }
 
 function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
-  const { loadRange, planMeal, setCooked, setRecipeScale, setRecipeChoices, stampAddedToList } =
+  const { loadRange, planMeal, setCooked, setRecipeScale, setRecipeChoices, setRecipeOverrides, stampAddedToList } =
     useMealPlanStore.getState();
   const { markCooked } = useRecipeStore.getState();
   const { logLeftover, finishLeftover, setFrozen: setLeftoverFrozen } = useLeftoverStore.getState();
@@ -5588,7 +5596,14 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   // Roast potatoes again this week, decided in advance.
   if (sundayRoast) {
     const roasted = componentIdFor(recipes.steak, recipes.roasties);
-    if (roasted) setRecipeChoices(sundayRoast.id, [roasted]);
+    if (roasted) {
+      setRecipeChoices(sundayRoast.id, [roasted]);
+      // ...with a bag from the freezer instead of making them (a one-off
+      // replacement, MealPlanEntry.recipeOverrides): that night buys the bag,
+      // the recipe still lists the dish, and the other Sunday is unchanged.
+      const bag = makeIngredient('1 bag frozen roast potatoes');
+      if (bag) setRecipeOverrides(sundayRoast.id, [{ targetId: roasted, replacement: bag, note: 'Straight from the freezer.' }]);
+    }
   }
   plan(5, 'snack', { title: 'Carrot cake with cream cheese frosting', recipeId: recipes.cake });
 

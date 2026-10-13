@@ -17,7 +17,7 @@
  * (`healthWritePending`) and the phone writes it on its next foreground.
  */
 import { EXTERNAL_NUTRIENT_KEYS, NUTRIENT_KEYS, type FoodLogEntry, type MealSlot, type NutrientKey } from '../../src/types';
-import type { RecipeInput, RecipePatch, Replica } from './replica';
+import type { RecipeInput, RecipePatch, RecipePatchOp, Replica } from './replica';
 import { getRecipe, type RecipeDetail } from './kitchenTools';
 // Pure over its arguments (types, the target ranges and the unit maths), so
 // safe to import for its value here; the replica loads the same module for the
@@ -347,6 +347,12 @@ export function updateRecipe(replica: Replica, id: string, patch: RecipePatch): 
   return patch.ingredients
     ? { ...detail, ingredientsGiven: patch.ingredients.length, ingredientsRead: recipe.ingredients.length }
     : detail;
+}
+
+/** Small edits to one recipe, all or nothing; see `RecipePatchOp`. */
+export function patchRecipe(replica: Replica, id: string, ops: RecipePatchOp[]): RecipeDetail {
+  const recipe = replica.patchRecipe(id, ops);
+  return getRecipe(replica, recipe.id)!;
 }
 
 export function deleteRecipe(replica: Replica, id: string) {

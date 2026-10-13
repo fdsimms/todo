@@ -126,6 +126,81 @@ describe('update_meal', () => {
   });
 });
 
+describe('update_meal replacements', () => {
+  const stew = () => {
+    const fish = saveRecipe(replica, { name: 'Homemade fish', ingredients: [{ text: '1 lb tofu' }, { text: '2 sheets nori' }] });
+    const parent = saveRecipe(replica, {
+      name: 'Stew',
+      ingredients: [{ text: '2 cups broth' }, { text: '1 tsp salt' }],
+      components: [{ recipeId: fish.id }],
+    });
+    return { fish, parent };
+  };
+  // What the plan would buy for the day, by catalog key, in recipe order.
+  const shopFor = (_mealId: string) => replica
+    .plannedIngredients({ from: DAY, to: DAY }, null)
+    .map(l => l.nameKey);
+
+  it('uses something else for this cooking only, and shops, serializes and clears it', () => {
+    const { parent } = stew();
+    const meal = planMeal(replica, { date: DAY, slot: 'dinner', recipeId: parent.id });
+    expect(shopFor(meal.id)).toEqual(['broth', 'salt', 'tofu', 'nori']);
+
+    const out = updateMeal(replica, meal.id, {
+      replacements: [{ replace: 'homemade fish', with: '8 oz vegan fish fillets', note: 'Cook per the package first' }],
+    });
+    expect(out.replacements).toEqual(['Homemade fish is replaced by 8 oz vegan fish fillets. Cook per the package first.']);
+    expect(shopFor(meal.id)).toEqual(['broth', 'salt', 'vegan fish fillets']);
+    // The recipe is never touched.
+    expect(replica.recipes().find(r => r.id === parent.id)!.components).toHaveLength(1);
+
+    const cleared = updateMeal(replica, meal.id, { replacements: [] });
+    expect(cleared.replacements).toBeUndefined();
+    expect(shopFor(meal.id)).toEqual(['broth', 'salt', 'tofu', 'nori']);
+  });
+
+  it('leaves a line out with null, replaces a whole list at a time, and does not copy to another week', () => {
+    const { parent } = stew();
+    const meal = planMeal(replica, { date: DAY, slot: 'dinner', recipeId: parent.id });
+    updateMeal(replica, meal.id, { replacements: [{ replace: 'salt', with: null }] });
+    expect(shopFor(meal.id)).toEqual(['broth', 'tofu', 'nori']);
+    // Replaces the list rather than adding to it.
+    updateMeal(replica, meal.id, { replacements: [{ replace: 'broth', with: '2 cups stock' }] });
+    expect(shopFor(meal.id)).toEqual(['stock', 'salt', 'tofu', 'nori']);
+
+    copyMeals(replica, { mealId: meal.id, dates: ['2030-03-19'] });
+    const copy = replica.mealPlan('2030-03-19', '2030-03-19')[0];
+    expect(copy.recipeId).toBe(parent.id);
+    expect(copy.recipeOverrides).toEqual([]);
+  });
+
+  it('refuses a name the recipe does not have, listing what it has, and a name on two recipes', () => {
+    const { parent } = stew();
+    const meal = planMeal(replica, { date: DAY, slot: 'dinner', recipeId: parent.id });
+    expect(() => updateMeal(replica, meal.id, { replacements: [{ replace: 'pepper', with: null }] }))
+      .toThrow(/not a line or used recipe of "Stew".*broth, salt, Homemade fish/);
+    expect(() => updateMeal(replica, meal.id, { replacements: [{ replace: 'broth', with: 'a' }, { replace: 'Broth', with: 'b' }] }))
+      .toThrow(/replaced twice/);
+
+    const side = saveRecipe(replica, { name: 'Side', ingredients: [{ text: '1 tsp salt' }] });
+    const both = saveRecipe(replica, { name: 'Both', ingredients: [{ text: '1 tsp salt' }], components: [{ recipeId: side.id }] });
+    const m2 = planMeal(replica, { date: DAY, slot: 'lunch', recipeId: both.id });
+    expect(() => updateMeal(replica, m2.id, { replacements: [{ replace: 'salt', with: null }] })).toThrow(/more than one recipe.*"in"/);
+    expect(updateMeal(replica, m2.id, { replacements: [{ replace: 'salt', in: 'Side', with: null }] }).replacements)
+      .toEqual(['salt is left out.']);
+  });
+
+  it('refuses on a typed meal, and drops the replacements when the meal is swapped to another recipe', () => {
+    const { parent } = stew();
+    const typed = planMeal(replica, { date: DAY, slot: 'lunch', title: 'Takeout' });
+    expect(() => updateMeal(replica, typed.id, { replacements: [] })).toThrow(/Only a meal with a recipe/);
+    const meal = planMeal(replica, { date: DAY, slot: 'dinner', recipeId: parent.id });
+    updateMeal(replica, meal.id, { replacements: [{ replace: 'salt', with: null }] });
+    const other = saveRecipe(replica, { name: 'Soup' });
+    expect(updateMeal(replica, meal.id, { recipeId: other.id }).replacements).toBeUndefined();
+  });
+});
+
 describe('a leftover night and saving a meal as a recipe', () => {
   it('plans a leftover by its container and refuses to swap it here', () => {
     const leftover = logLeftover(replica, { title: 'Chili' });

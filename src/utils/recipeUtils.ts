@@ -9,6 +9,7 @@ import {
   RECIPE_SOURCE_MAX_LENGTH,
   RECIPE_SECTION_MAX_LENGTH,
   RECIPE_STEP_NOTE_MAX_LENGTH,
+  STEP_ONLY_WHEN_MAX,
   PREP_MAX_LENGTH,
   GROCERY_NAME_MAX_LENGTH,
   RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH,
@@ -471,12 +472,22 @@ export function normalizeStep(raw: unknown): RecipeStep | null {
   const note = typeof r.note === 'string' ? r.note.trim().slice(0, RECIPE_STEP_NOTE_MAX_LENGTH) : '';
   // Same treatment, same reason — see RecipeStep.section.
   const section = typeof r.section === 'string' ? r.section.trim().slice(0, RECIPE_SECTION_MAX_LENGTH) : '';
+  // Same treatment again — see RecipeStep.onlyWhen. Ids are only trimmed and
+  // deduped here; whether each still names an option is a read-time question
+  // (stepVisible), because the option can be deleted long after this is saved.
+  const onlyWhen = Array.isArray(r.onlyWhen)
+    ? [...new Set(r.onlyWhen
+        .filter((id): id is string => typeof id === 'string')
+        .map(id => id.trim())
+        .filter(Boolean))].slice(0, STEP_ONLY_WHEN_MAX)
+    : [];
   return {
     id: typeof r.id === 'string' && r.id ? r.id : generateId(),
     text,
     ...(timerSeconds === null ? {} : { timerSeconds }),
     ...(section ? { section } : {}),
     ...(note ? { note } : {}),
+    ...(onlyWhen.length > 0 ? { onlyWhen } : {}),
   };
 }
 

@@ -212,6 +212,43 @@ already allows two things on one dinner, so ad-hoc pairing needs nothing.
   One refinement: a caller may pass `ChoiceResolution.onHand` (ingredient `nameKey`s in the
   pantry), and an unresolved group then prefers an on-hand *ingredient* over the first-listed one.
   It never promotes a component, and an explicit pick always wins.
+- **A method step can depend on an option (`RecipeStep.onlyWhen`).** It holds option ids (an
+  ingredient line or component link that has a `choiceGroup`), and `stepVisible` is the one reader:
+  visible when any named option is the pick, always visible when none is named. It reuses the pick
+  the meal already stores, so there is no second mechanism. Three rules keep it safe:
+  - **An id that names no option is ignored, and a step left with none always shows.** A deleted
+    option, or one whose `choiceGroup` was cleared, must not be able to swallow instructions.
+  - **Every reader of "the method for one cooking" takes the picks**, same as the shopping reads:
+    `cookSteps` filters (and keeps the notes fallback on the *unfiltered* list, so a fully filtered
+    method doesn't fall through to notes), and the recipe page's Cook button counts under the picks.
+  - **The two surfaces that show every option don't filter.** The recipe page shows every step so
+    each can be edited, dimmed with an "Only with X" caption when it isn't the pick; share text sends
+    every step with the same "(Only with X.)" tag, because it sends every option's ingredient too.
+- **A one-off replacement lives on the meal too (`MealPlanEntry.recipeOverrides`), and is a different
+  thing from a pick.** A pick chooses between options the recipe already offers. An override swaps
+  one line or one used recipe for a typed ingredient (or leaves it out) for a single cooking, with
+  the recipe untouched, so "store-bought fish tonight" never becomes a permanent option the recipe
+  has to carry. Rules that keep it honest:
+  - **It rides on `ChoiceResolution.overrides` and applies in two places only**: `flattenRecipeIngredients`
+    (the replacement takes the slot, and a standing swap is deliberately not run over what the person
+    typed) and `activeComponents` (a replaced used recipe drops out, so its steps and prep tasks go with
+    it). Everything that shops, prices, tallies or cooks already goes through those two.
+  - **A reader builds its resolution from an entry with `entryResolution`, never by hand.** A hand-built
+    `{ chosen: entry.recipeChoices }` compiles and silently shops for the line it replaced;
+    `noBareEntryResolution.test.ts` fails the build on that form in `src/` and `mcp/src/`. A place that
+    carries a bare `choices` list (the cook recap, the log prompt, the RecipeDetail route params) carries
+    `overrides` next to it.
+  - **It does not copy.** A copied meal or week keeps its picks and starts from the recipe as written;
+    "this time" is about this time. It resets when the meal is swapped to another recipe or its recipe
+    goes missing, like the picks do.
+  - **It is resolve-or-shrug**: a target the recipe no longer has replaces nothing, and an override on the
+    non-picked side of an either/or changes nothing.
+  - **Two ways to set one, one rule for both.** The planned meal's sheet (`MealEntrySheet`, "Change an
+    ingredient" opening `MealOverrideSheet`, over `mealOverrides.ts`) and `update_meal`'s `replacements`
+    over MCP both write the whole list through `setRecipeOverrides`/`dbUpdateMealPlanEntry`. The sheet
+    offers only what the meal actually cooks (`overrideTargets`, read under the meal's picks), so the
+    side of an either/or it did not choose is not listed. The recipe page shows them read-only as a
+    "This time" card; nothing on that screen writes them.
 - **The pick lives on `MealPlanEntry.recipeChoices`**, because which side you make is a fact about
   a cooking, not about the dish — one recipe, mash on Tuesday and roast on Friday. **One list holds
   both kinds of id** (component links and ingredient lines): every reader asks it the same question,

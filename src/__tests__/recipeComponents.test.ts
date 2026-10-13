@@ -25,8 +25,13 @@ import {
   componentPlacement,
   ingredientLayout,
   reanchorComponents,
+  stepVisible,
+  stepOptionNames,
+  entryResolution,
+  parseRecipeOverrides,
+  describeOverrides,
 } from '../utils/recipeComponents';
-import type { Recipe, RecipeComponent, RecipeIngredient, RecipePrepTask } from '../types';
+import type { Recipe, RecipeComponent, RecipeIngredient, RecipeOverride, RecipePrepTask } from '../types';
 
 let seq = 0;
 
@@ -1067,5 +1072,199 @@ describe('component placement', () => {
       expect(out[0]).toBe(keep);
       expect(out[1]).toBe(bare);
     });
+  });
+});
+
+describe('stepVisible', () => {
+  const serrano = ing('serrano', 'Pepper');
+  const jalapeno = ing('jalapeño', 'Pepper');
+  const plain = ing('salt');
+  const r = recipe('r', 'Salsa', { ingredients: [serrano, jalapeno, plain] });
+
+  it('shows a step that names no option', () => {
+    expect(stepVisible({}, r)).toBe(true);
+    expect(stepVisible({ onlyWhen: [] }, r)).toBe(true);
+  });
+
+  it('shows a step tied to the default option and hides one tied to the other', () => {
+    expect(stepVisible({ onlyWhen: [serrano.id] }, r)).toBe(true);
+    expect(stepVisible({ onlyWhen: [jalapeno.id] }, r)).toBe(false);
+  });
+
+  it('follows the pick in the resolution', () => {
+    const picked = { chosen: [jalapeno.id] };
+    expect(stepVisible({ onlyWhen: [serrano.id] }, r, picked)).toBe(false);
+    expect(stepVisible({ onlyWhen: [jalapeno.id] }, r, picked)).toBe(true);
+  });
+
+  it('shows a step when any one of several named options is the pick', () => {
+    expect(stepVisible({ onlyWhen: [jalapeno.id, serrano.id] }, r)).toBe(true);
+  });
+
+  it('shows everything under allOptions', () => {
+    expect(stepVisible({ onlyWhen: [jalapeno.id] }, r, { allOptions: true })).toBe(true);
+  });
+
+  it('ignores an id that is not an option, and shows a step left with none', () => {
+    expect(stepVisible({ onlyWhen: ['gone'] }, r)).toBe(true);
+    // A line with no choiceGroup is not an option, so naming it is the same as naming nothing.
+    expect(stepVisible({ onlyWhen: [plain.id] }, r)).toBe(true);
+    // A dangling id beside a real one does not stop the real one deciding.
+    expect(stepVisible({ onlyWhen: ['gone', jalapeno.id] }, r)).toBe(false);
+  });
+
+  it('judges a component option, and a group shared across the two lists', () => {
+    const fish = recipe('fish', 'Homemade fish');
+    const rice = ing('rice', 'Base');
+    const dish = link('fish', 'Homemade fish', 'Base');
+    const parent = recipe('p', 'Stew', { ingredients: [rice], components: [dish] });
+    // Ingredients are tried first, so the rice line is the default.
+    expect(stepVisible({ onlyWhen: [dish.id] }, parent)).toBe(false);
+    expect(stepVisible({ onlyWhen: [dish.id] }, parent, { chosen: [dish.id] })).toBe(true);
+    expect(stepVisible({ onlyWhen: [rice.id] }, parent, { chosen: [dish.id] })).toBe(false);
+    expect(fish.id).toBe('fish');
+  });
+
+  it('treats an undecided ingredient group as all live', () => {
+    const resolution = { undecided: [choiceGroupKey('r', 'Pepper')] };
+    expect(stepVisible({ onlyWhen: [jalapeno.id] }, r, resolution)).toBe(true);
+  });
+});
+
+describe('stepOptionNames', () => {
+  it('names the options a step is tied to, in its own order, and skips ids that name none', () => {
+    const a = ing('serrano', 'Pepper');
+    const b = ing('jalapeño', 'Pepper');
+    const c = ing('salt');
+    const r = recipe('r', 'Salsa', { ingredients: [a, b, c] });
+    expect(stepOptionNames({ onlyWhen: [b.id, 'gone', c.id, a.id] }, r)).toEqual(['jalapeño', 'serrano']);
+    expect(stepOptionNames({}, r)).toEqual([]);
+  });
+
+  it('names a used recipe as it is now, not as it was when linked', () => {
+    const renamed = recipe('fish', 'Pan-fried fish');
+    const dish = link('fish', 'Homemade fish', 'Fish');
+    const parent = recipe('p', 'Stew', { components: [dish] });
+    expect(stepOptionNames({ onlyWhen: [dish.id] }, parent)).toEqual(['Homemade fish']);
+    expect(stepOptionNames({ onlyWhen: [dish.id] }, parent, recipeMap([parent, renamed]))).toEqual(['Pan-fried fish']);
+  });
+});
+
+describe('one-off overrides', () => {
+  const fishLines = [ing('tofu'), ing('nori')];
+  const fish = recipe('fish', 'Homemade fish', { ingredients: fishLines, steps: [{ id: 'f1', text: 'Fry the fillets.' }], prepTasks: [prep('Press the tofu')] });
+  const dish = link('fish', 'Homemade fish');
+  const broth = ing('broth');
+  const stew = recipe('stew', 'Stew', { ingredients: [broth], components: [dish], steps: [{ id: 's1', text: 'Simmer.' }] });
+  const byId = recipeMap([stew, fish]);
+  const fillets: RecipeOverride = {
+    targetId: dish.id,
+    replacement: { ...ing('vegan fish fillets'), quantity: '8 oz' },
+    note: 'Cook per the package first.',
+  };
+
+  it('replaces a used recipe with one line, in the slot the recipe held', () => {
+    const flat = flattenRecipeIngredients(stew, byId, { overrides: [fillets] });
+    expect(flat.map(f => f.ingredient.name)).toEqual(['broth', 'vegan fish fillets']);
+    expect(flat[1]).toMatchObject({ replacedName: 'Homemade fish', replacedNote: 'Cook per the package first.', depth: 0 });
+    // Without the override the dish's own lines are bought.
+    expect(flattenRecipeIngredients(stew, byId).map(f => f.ingredient.name)).toEqual(['broth', 'tofu', 'nori']);
+  });
+
+  it('takes the replaced recipe\'s steps and prep tasks with it', () => {
+    expect(activeComponents(stew, { overrides: [fillets] })).toEqual([]);
+    expect(cookedDishes(stew, byId, { overrides: [fillets] }).map(d => d.recipe.id)).toEqual(['stew']);
+    expect(flattenRecipePrepTasks(stew, byId, { overrides: [fillets] })).toEqual([]);
+  });
+
+  it('replaces one ingredient line in place, or leaves it out with a null replacement', () => {
+    const line = stew.ingredients[0];
+    const swapped = flattenRecipeIngredients(stew, byId, { overrides: [{ targetId: line.id, replacement: { ...ing('chicken stock') } }, { targetId: dish.id, replacement: null }] });
+    expect(swapped.map(f => f.ingredient.name)).toEqual(['chicken stock']);
+    expect(swapped[0].replacedName).toBe('broth');
+    const gone = flattenRecipeIngredients(stew, byId, { overrides: [{ targetId: line.id, replacement: null }] });
+    expect(gone.map(f => f.ingredient.name)).toEqual(['tofu', 'nori']);
+  });
+
+  it('does not run a standing swap over what the person typed for this time', () => {
+    const milk = { ...ing('milk') };
+    const r = recipe('r', 'R', { ingredients: [milk] });
+    const swaps = new Map([['milk', { link: {} as never, from: { nameKey: 'milk' } as never, to: { name: 'oat milk', nameKey: 'oat milk' } as never }]]);
+    const typed = { targetId: 'nothing', replacement: null } as RecipeOverride;
+    // The swap applies to the recipe's own line...
+    expect(flattenRecipeIngredients(r, recipeMap([r]), undefined, swaps)[0].swappedFrom).toBe('milk');
+    // ...and not to a line replacing it.
+    const over = { targetId: milk.id, replacement: { ...ing('milk') } } as RecipeOverride;
+    expect(flattenRecipeIngredients(r, recipeMap([r]), { overrides: [over, typed] }, swaps)[0].swappedFrom).toBeNull();
+  });
+
+  it('ignores a target that is gone, and search (allOptions) still sees the used recipe', () => {
+    const stale: RecipeOverride = { targetId: 'gone', replacement: null };
+    expect(flattenRecipeIngredients(stew, byId, { overrides: [stale] }).map(f => f.ingredient.name)).toEqual(['broth', 'tofu', 'nori']);
+    expect(activeComponents(stew, { overrides: [fillets], allOptions: true })).toEqual([dish]);
+  });
+
+  it('leaves a replaced option that lost its group alone', () => {
+    // The replaced link is the either/or\'s non-pick, so it never cooked and the override changes nothing.
+    const roast = link('fish', 'Roast', 'Side');
+    const mash = ing('mash', 'Side');
+    const r = recipe('r', 'R', { ingredients: [mash], components: [roast] });
+    const out = flattenRecipeIngredients(r, recipeMap([r, fish]), { overrides: [{ targetId: roast.id, replacement: { ...ing('x') } }] });
+    expect(out.map(f => f.ingredient.name)).toEqual(['mash']);
+  });
+});
+
+describe('entryResolution', () => {
+  it('builds from the picks and the overrides, and leaves the key off when there are none', () => {
+    const o: RecipeOverride = { targetId: 'l', replacement: null };
+    expect(entryResolution({ recipeChoices: ['a'], recipeOverrides: [o] }, { onHand: new Set(['x']) }))
+      .toEqual({ chosen: ['a'], overrides: [o], onHand: new Set(['x']) });
+    expect(entryResolution({ recipeChoices: ['a'], recipeOverrides: [] })).toEqual({ chosen: ['a'] });
+    expect(entryResolution(null)).toEqual({ chosen: [] });
+  });
+});
+
+describe('parseRecipeOverrides', () => {
+  it('reads a stored list and repairs a replacement', () => {
+    const raw = JSON.stringify([
+      { targetId: 'a', replacement: { name: ' fillets ', quantity: '8 oz' }, note: ' ok ' },
+      { targetId: 'b', replacement: null },
+    ]);
+    const out = parseRecipeOverrides(raw);
+    expect(out).toHaveLength(2);
+    expect(out[0]).toMatchObject({ targetId: 'a', note: 'ok', replacement: { name: 'fillets', nameKey: 'fillets', quantity: '8 oz', choiceGroup: null } });
+    expect(out[0].replacement!.id).toBeTruthy();
+    expect(out[1]).toEqual({ targetId: 'b', replacement: null });
+  });
+
+  it('drops a row with no target, a nameless replacement, a repeat, and tolerates garbage', () => {
+    expect(parseRecipeOverrides(JSON.stringify([
+      { targetId: '', replacement: null },
+      { targetId: 'a', replacement: { name: '  ' } },
+      { targetId: 'b', replacement: null },
+      { targetId: 'b', replacement: null },
+      'x', null, 3,
+    ]))).toEqual([{ targetId: 'b', replacement: null }]);
+    expect(parseRecipeOverrides('{not json')).toEqual([]);
+    expect(parseRecipeOverrides(null)).toEqual([]);
+    expect(parseRecipeOverrides('{}')).toEqual([]);
+  });
+});
+
+describe('describeOverrides', () => {
+  it('says each override in a plain sentence, skipping a target the recipe no longer has', () => {
+    const fish = recipe('fish', 'Homemade fish');
+    const dish = link('fish', 'Homemade fish');
+    const salt = ing('salt');
+    const stew = recipe('stew', 'Stew', { ingredients: [salt], components: [dish] });
+    const lines = describeOverrides(stew, recipeMap([stew, fish]), [
+      { targetId: dish.id, replacement: { ...ing('vegan fish fillets'), quantity: '8 oz' }, note: 'Cook per the package first' },
+      { targetId: salt.id, replacement: null },
+      { targetId: 'gone', replacement: null },
+    ]);
+    expect(lines).toEqual([
+      'Homemade fish is replaced by 8 oz vegan fish fillets. Cook per the package first.',
+      'salt is left out.',
+    ]);
   });
 });

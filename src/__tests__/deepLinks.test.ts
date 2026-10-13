@@ -878,7 +878,7 @@ describe('openInAppUrl', () => {
   // opened from Today reads doubled, the way the Meal Plan screen's own
   // "Open recipe" already did.
   it('opens a meal task\'s recipe on the meal\'s own scale and picks', () => {
-    mockEntryById.mockReturnValueOnce({ id: 'm1', recipeId: 'r1', recipeScale: 2, recipeChoices: ['c1'] });
+    mockEntryById.mockReturnValueOnce({ id: 'm1', recipeId: 'r1', recipeScale: 2, recipeChoices: ['c1'], recipeOverrides: [] });
     expect(recipeUrlEntryId('dundundun://recipe?id=r1&entry=m1')).toBe('m1');
     expect(openInAppUrl('dundundun://recipe?id=r1&entry=m1')).toBe(true);
     expect(mockEntryById).toHaveBeenCalledWith('m1');
@@ -886,11 +886,15 @@ describe('openInAppUrl', () => {
   });
 
   it('reads a planned meal\'s scale and picks only while it still holds that recipe', () => {
-    expect(plannedRecipeParams({ recipeId: 'r-chili', recipeScale: 2, recipeChoices: ['rice'] }, 'r-chili'))
+    expect(plannedRecipeParams({ recipeId: 'r-chili', recipeScale: 2, recipeChoices: ['rice'], recipeOverrides: [] }, 'r-chili'))
       .toEqual({ choices: ['rice'], scale: 2 });
+    // The meal's one-off replacements travel with its picks, and are left off when there are none.
+    const swap = { targetId: 'l1', replacement: null };
+    expect(plannedRecipeParams({ recipeId: 'r-chili', recipeScale: 1, recipeChoices: [], recipeOverrides: [swap] }, 'r-chili'))
+      .toEqual({ choices: [], overrides: [swap], scale: 1 });
     // One recipe's picks are meaningless ids on another's, so a slot re-planned
     // since the link was written opens the recipe on its own defaults.
-    expect(plannedRecipeParams({ recipeId: 'r-soup', recipeScale: 2, recipeChoices: [] }, 'r-chili')).toEqual({});
+    expect(plannedRecipeParams({ recipeId: 'r-soup', recipeScale: 2, recipeChoices: [], recipeOverrides: [] }, 'r-chili')).toEqual({});
     expect(plannedRecipeParams(null, 'r-chili')).toEqual({});
   });
 

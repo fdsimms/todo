@@ -1,5 +1,5 @@
 import { createNavigationContainerRef } from '@react-navigation/native';
-import type { JournalKind, MealSlot, MoodLevel } from '../types';
+import type { JournalKind, MealSlot, MoodLevel, RecipeOverride } from '../types';
 import type { TemplateRunDestination } from '../utils/templateRunDestination';
 
 // Shared with AppNavigator's <NavigationContainer ref={navigationRef}>, so
@@ -146,7 +146,7 @@ export function resetToMedications(): void {
 // doubled chili opened from Today reads doubled (#2931).
 export function resetToRecipeDetail(
   recipeId: string,
-  opts: { openCookMode?: boolean; choices?: string[]; scale?: number } = {}
+  opts: { openCookMode?: boolean; choices?: string[]; overrides?: RecipeOverride[]; scale?: number } = {}
 ): void {
   const { openCookMode = false, ...planned } = opts;
   runWhenReady(() => {

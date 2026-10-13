@@ -834,6 +834,16 @@ describe('normalizeStep', () => {
     expect(normalizeStep({ id: 's1', text: 'Sear', note: '   ' })).toEqual({ id: 's1', text: 'Sear' });
     expect(normalizeStep({ id: 's1', text: 'Sear', note: 7 })).toEqual({ id: 's1', text: 'Sear' });
   });
+
+  it('keeps the options a step is tied to, trimmed and deduped', () => {
+    expect(normalizeStep({ id: 's1', text: 'Sear', onlyWhen: [' a ', 'a', 'b'] })!.onlyWhen).toEqual(['a', 'b']);
+  });
+
+  it('leaves onlyWhen off a step that has none, and ignores a stored non-array or non-strings', () => {
+    expect(normalizeStep({ id: 's1', text: 'Sear', onlyWhen: [] })).toEqual({ id: 's1', text: 'Sear' });
+    expect(normalizeStep({ id: 's1', text: 'Sear', onlyWhen: 'a' })).toEqual({ id: 's1', text: 'Sear' });
+    expect(normalizeStep({ id: 's1', text: 'Sear', onlyWhen: [3, null, '  '] })).toEqual({ id: 's1', text: 'Sear' });
+  });
 });
 
 describe('parseSteps', () => {

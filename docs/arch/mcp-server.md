@@ -1224,8 +1224,8 @@ amount and the calories before and after, which is the check on the new figure.
 `update_meal` moves a planned meal (another day or slot), swaps what it is (another recipe, or a
 typed title), renames a typed one, sets a recipe's scale, answers its either/or questions by group
 and option name (`recipeChoiceGroups` and `applyChoice`, one answer at a time since an answer can
-open or close a question), and sets the per-meal answers for its shopping task, thaw task and log
-offer. A swap is the row the app's Replace writes (`replacedMealEntry`, lifted out of
+open or close a question), uses something else for this one cooking (`replacements`, below), and sets
+the per-meal answers for its shopping task, thaw task and log offer. A swap is the row the app's Replace writes (`replacedMealEntry`, lifted out of
 `bulkReplaceItem`), so the head count carries the way it does there. A leftover night is not swapped
 here, since the replace also reconciles its container's use-up task. Whether a meal gets a cook task
 stays on the phone: the app writes or removes that task as the answer changes, which is task-store
@@ -1233,6 +1233,17 @@ work. `plan_meal` takes a `leftoverId` for a leftover night, titled by its conta
 drag titles one. `remove_meal` takes a meal off. These write only the entry row: the slot's task and
 the calendar event are device work that catches up on the phone. A meal already marked cooked is not
 removable here, since it is history behind the cooking stats.
+
+`replacements` on `update_meal` is `MealPlanEntry.recipeOverrides`, by name: each names a line or a
+used recipe of the meal's recipe (at any depth; `in` names the recipe when two share a name) and what
+this meal uses instead, as an ingredient is printed, or null to leave it out. The list replaces the
+meal's earlier one and `[]` goes back to the recipe as written, so a swap is one call and its undo is
+another. The recipe is never edited, and nothing is copied when a meal or week is copied. Shopping,
+cost, nutrition and cooking all follow it because they read the meal through `entryResolution`; a
+hand-built resolution would drop it, which `noBareEntryResolution.test.ts` forbids in `src/` and
+`mcp/src/`. Like a pick, it is not undoable from Activity, and `list_meal_plan` states it as plain
+sentences in `replacements`. The app has its own editor for the same list (`MealOverrideSheet`), so
+an agent's write and a person's land in one field.
 
 `set_meal_cooked` is the plan's checkbox, with the parts a Node process can do. Marking a meal cooked
 stamps it, counts the cooking on the recipe (`useRecipeStore.markCooked`), opens the packets it used
@@ -1289,6 +1300,20 @@ bounds, a prep task within `PREP_OFFSET_MIN`..`MAX`), and a component that would
 refused through `wouldCreateRecipeCycle`. An author on a recipe in a cookbook is refused: the book's
 author is mirrored onto it, and the store's `setAuthor` unlinks the book on a change, so
 `rename_cookbook` is the way to say it.
+
+**`patch_recipe` is the tool for a small edit, and `update_recipe` is the wrong one for it.** Replacing
+a whole list means resending every line (a typo in a line nobody meant to touch is a silent
+rewrite). `patch_recipe` takes an ordered list
+of ops against 1-based positions (the order `get_recipe` lists), applies each to the recipe as the
+earlier ones left it, and lands all of them or none (the transaction rolls back and the store is
+re-read). Three rules keep an agent from editing the wrong line: `expect` is a snippet the target must
+contain, so a number read from an older copy is refused; a position out of range is refused rather
+than clamped; and an inserted ingredient that would be a duplicate is refused rather than dropped.
+Edits are made in place, so an untouched line keeps its id. `update_recipe` keeps a line's row when
+the rewrite still wants it (matched on `ingredientDedupeKey`: name, heading, prep and purpose, so a
+changed amount is still the same line), because that id is what a planned meal's pick
+(`MealPlanEntry.recipeChoices`), a step's `onlyWhen` and a one-off replacement point at; a rewrite
+that gave every line a new one silently dropped them all. A step's option is addressed by name (`onlyWith`), never by id, since ids are not exposed.
 
 `cookbook` on an edit moves the recipe (`linkCookbook`, which clears a page that belonged to the old
 book). A book is found by title ignoring case and author, since the store's `ensureCookbook` keys on

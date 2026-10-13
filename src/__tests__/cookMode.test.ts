@@ -251,6 +251,49 @@ describe('cookSteps', () => {
   });
 });
 
+describe('cookSteps with conditional steps', () => {
+  const serrano = { id: 'i-s', name: 'serrano', nameKey: 'serrano', quantity: '', aisle: null, prep: null, purpose: null, section: null, choiceGroup: 'Pepper' };
+  const jalapeno = { id: 'i-j', name: 'jalapeño', nameKey: 'jalapeño', quantity: '', aisle: null, prep: null, purpose: null, section: null, choiceGroup: 'Pepper' };
+
+  const build = () => {
+    const steps: RecipeStep[] = [
+      { id: 'a', text: 'Chop the pepper.' },
+      { id: 'b', text: 'Seed the jalapeño.', onlyWhen: ['i-j'] },
+      { id: 'c', text: 'Keep the serrano whole.', onlyWhen: ['i-s'] },
+      { id: 'd', text: 'Serve.' },
+    ];
+    return recipe('r', 'Salsa', { ingredients: [serrano, jalapeno], steps });
+  };
+
+  it('drops the steps for the option that is not cooked', () => {
+    const r = build();
+    expect(cookSteps(r, recipeMap([r])).map(s => s.id)).toEqual(['a', 'c', 'd']);
+    expect(cookSteps(r, recipeMap([r]), { chosen: ['i-j'] }).map(s => s.id)).toEqual(['a', 'b', 'd']);
+  });
+
+  it('hands a section heading to the next shown step when its opener is hidden', () => {
+    const r = recipe('r', 'Salsa', {
+      ingredients: [serrano, jalapeno],
+      steps: [
+        { id: 'a', text: 'Hidden opener.', section: 'Peppers', onlyWhen: ['i-j'] },
+        { id: 'b', text: 'Shown.', section: 'Peppers' },
+      ],
+    });
+    const out = cookSteps(r, recipeMap([r]));
+    expect(out.map(s => s.id)).toEqual(['b']);
+    expect(out[0].section).toBe('Peppers');
+  });
+
+  it('does not fall back to notes when every step is filtered out', () => {
+    const r = recipe('r', 'Salsa', {
+      ingredients: [serrano, jalapeno],
+      notes: 'Some old notes.',
+      steps: [{ id: 'a', text: 'Only for jalapeño.', onlyWhen: ['i-j'] }],
+    });
+    expect(cookSteps(r, recipeMap([r]))).toEqual([]);
+  });
+});
+
 describe('clampStepIndex', () => {
   it('is -1 for an empty method — the one case with no step to be on', () => {
     expect(clampStepIndex(0, 0)).toBe(-1);

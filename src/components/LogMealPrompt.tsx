@@ -138,7 +138,7 @@ export function LogMealPrompt() {
       // picked serrano over jalapeño is measured as the dish that was made
       // rather than as the one the recipe leaves open. Same read
       // collectPlannedIngredients makes off the same field.
-      { chosen: pending.choices },
+      { chosen: pending.choices, ...(pending.overrides?.length ? { overrides: pending.overrides } : {}) },
       pending.scale,
       swaps,
     );

@@ -92,7 +92,7 @@ function planEntry(overrides: Partial<MealPlanEntry> = {}): MealPlanEntry {
     createdAt: '2026-04-02T00:00:00.000Z',
     cookedAt: null,
     leftoverId: null,
-    recipeChoices: [],
+    recipeChoices: [], recipeOverrides: [],
     recipeScale: 1,
     cookTask: null,
     shopTask: null,

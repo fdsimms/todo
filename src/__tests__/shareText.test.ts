@@ -104,6 +104,21 @@ function recipeMap(recipes: Recipe[]): Map<string, Recipe> {
 }
 
 describe('buildRecipeShareText', () => {
+  it('sends every step and says which option a conditional one is for', () => {
+    const serrano = ing('serrano', { choiceGroup: 'Pepper' });
+    const jalapeno = ing('jalapeño', { choiceGroup: 'Pepper' });
+    const r = recipe('r1', 'Salsa', {
+      ingredients: [serrano, jalapeno],
+      steps: [
+        { id: 'a', text: 'Chop the pepper.' },
+        { id: 'b', text: 'Seed it.', onlyWhen: [jalapeno.id] },
+      ],
+    });
+    const lines = buildRecipeShareText(r, recipeMap([r])).split('\n');
+    expect(lines).toContain('1. Chop the pepper.');
+    expect(lines).toContain('2. Seed it. (Only with jalapeño.)');
+  });
+
   it('opens with the name, then servings and time', () => {
     const r = recipe('r1', 'Chili', {
       servings: 4, servingsMax: 6, estimatedMinutes: 45, prepMinutes: 15,
@@ -506,7 +521,7 @@ describe('buildWeekPlanShareText', () => {
     return {
       id: `m-${++seq}`, date, slot, recipeId: null, title: 'Meal', sortOrder: 1,
       createdAt: '2026-01-01T00:00:00.000Z', cookedAt: null, leftoverId: null,
-      recipeChoices: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null, calendarEventId: null,
+      recipeChoices: [], recipeOverrides: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null, calendarEventId: null,
       ...overrides,
     };
   }

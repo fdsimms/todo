@@ -102,7 +102,7 @@ import { forget, remember } from './memoryTools';
 import { deleteRule, listAutomations, saveRule, setAutomation, RULE_TYPES } from './automationTools';
 import { deleteCategory, reorderCategories, updateCategory } from './categoryTools';
 import { cancelCalendarRequest, changeCalendarEvent, listCalendarRequests, requestCalendarEvent } from './calendarTools';
-import { ESTIMATE_KEY_LIST, NUTRIENT_KEY_LIST, atFrom, deleteSavedMeal, duplicateFoodEntry, listSavedMeals, logSavedMeal, moveFoodEntry, saveMealFromEntries, setNutritionTargets, renameMedication, renameMoodTag, setMedicationArchived, addMedication, removeMedication, setMedicationProfile, setMedicationLimit, setMedicationSupply, logFood, logMedication, setSupplementNutrients, logMood, logWater, updateRecipe, deleteRecipe, updateFoodEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
+import { ESTIMATE_KEY_LIST, NUTRIENT_KEY_LIST, atFrom, deleteSavedMeal, duplicateFoodEntry, listSavedMeals, logSavedMeal, moveFoodEntry, saveMealFromEntries, setNutritionTargets, renameMedication, renameMoodTag, setMedicationArchived, addMedication, removeMedication, setMedicationProfile, setMedicationLimit, setMedicationSupply, logFood, logMedication, setSupplementNutrients, logMood, logWater, updateRecipe, patchRecipe, deleteRecipe, updateFoodEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
 import { listErrors, MAX_ERRORS } from './errorTools';
 import { DEFAULT_PATTERN_DAYS, focusHistory, habitPatterns, moodInsights } from './patternTools';
 import { addMilestone, deleteMilestone, listMilestones, updateMilestone } from './milestoneTools';
@@ -1292,6 +1292,7 @@ function registerWriteTools(
       section: z.string().nullable().optional(),
       timerSeconds: z.number().int().nullable().optional().describe('Only when the sentence does not say how long (cook mode reads "for 10 minutes" itself).'),
       note: z.string().nullable().optional().describe('The cook\'s own note on this step.'),
+      onlyWith: z.array(z.string()).nullable().optional().describe('Names of this recipe\'s own either/or options (an ingredient line or a used recipe in an alternativeGroup) the step applies to; cook mode skips it when another option is picked. Omit to leave a kept step as it is; null clears it.'),
     })).optional(),
     servings: z.number().int().positive().nullable().optional(),
     servingsMax: z.number().int().positive().nullable().optional().describe('The top of a range: "serves 4-6" is servings 4, servingsMax 6.'),
@@ -1337,7 +1338,7 @@ function registerWriteTools(
 
   server.tool(
     'update_recipe',
-    'Change a saved recipe (ids from list_recipes). Only what you name changes. ingredients, steps, components and prepTasks each replace the whole list, so send the full set, in the same form as save_recipe (one line per ingredient, alternatives sharing an alternativeGroup); a step whose text is unchanged keeps its timer, note and the cook questions asked about it. cookbook moves it to another book by title (made if new), or null takes it out of one; a move clears a page that belonged to the old book. A rename or move is refused if that cookbook already has a recipe of that name; planned meals made from it are retitled.',
+    'Change a saved recipe (ids from list_recipes). Only what you name changes. ingredients, steps, components and prepTasks each replace the whole list, so send the full set, in the same form as save_recipe (one line per ingredient, alternatives sharing an alternativeGroup); a step whose text is unchanged keeps its timer, note and the cook questions asked about it. cookbook moves it to another book by title (made if new), or null takes it out of one; a move clears a page that belonged to the old book. A rename or move is refused if that cookbook already has a recipe of that name; planned meals made from it are retitled. For a small edit (one step, one note, one ingredient) use patch_recipe instead: this tool rewrites whole lists. An ingredient line that is still wanted (same name, heading, prep and purpose) keeps its row, so the choices planned meals made still point at it.',
     {
       id: z.string().min(1),
       name: z.string().min(1).optional(),
@@ -1349,6 +1350,33 @@ function registerWriteTools(
         return json(await withWrite(() => updateRecipe(replica, id, patch)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not change the recipe.' });
+      }
+    }
+  );
+
+  server.tool(
+    'patch_recipe',
+    'Make small edits to a saved recipe without resending its lists (update_recipe replaces whole lists, so a small edit means resending every line). Give changes in order; each applies to the recipe as the earlier ones left it, and all land or none do. Steps and ingredients are numbered from 1 in the order get_recipe lists them. op is setStepNote (step, note; null clears), setStepOnlyWith (step, onlyWith: names of the recipe\'s either/or options; null clears), insertStep (at, text, optional section, note, onlyWith), replaceStep (step, text; keeps its timer, note and cook questions), removeStep (step), insertIngredient (at, text as printed, optional section and alternativeGroup), replaceIngredient (ingredient, text; keeps its id and group unless alternativeGroup is given), removeIngredient (ingredient). at is the position the new line takes, 1 to the length + 1. Pass expect (a snippet the line must contain) on every change to an existing line: a number read from an older copy of the recipe is refused instead of editing the wrong line.',
+    {
+      id: z.string().min(1),
+      changes: z.array(z.object({
+        op: z.enum(['setStepNote', 'setStepOnlyWith', 'insertStep', 'replaceStep', 'removeStep', 'insertIngredient', 'replaceIngredient', 'removeIngredient']),
+        step: z.number().int().positive().optional(),
+        ingredient: z.number().int().positive().optional(),
+        at: z.number().int().positive().optional(),
+        expect: z.string().optional(),
+        text: z.string().optional(),
+        section: z.string().nullable().optional(),
+        note: z.string().nullable().optional(),
+        onlyWith: z.array(z.string()).nullable().optional(),
+        alternativeGroup: z.string().nullable().optional(),
+      })).min(1).max(50),
+    },
+    async ({ id, changes }) => {
+      try {
+        return json(await withWrite(() => patchRecipe(replica, id, changes)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not edit the recipe.' });
       }
     }
   );
@@ -3734,7 +3762,7 @@ function registerWriteTools(
 
   server.tool(
     'update_meal',
-    "Change a planned meal (ids from list_meal_plan): move it to another date or slot, swap what it is (recipeId, or recipeId: null with a title for a typed meal), rename a typed one, set a recipe's scale (0.5 halves it, 2 doubles it), answer its either/or questions (choices, by the group and option names list_meal_plan shows), or say whether this meal gets a shopping task, a thaw task or the offer to log it (null hands the choice back to the setting). A leftover night is not swapped here. Whether a meal gets a cook task is set on the phone, which writes or removes that task as it is changed. The phone catches up the meal's task and calendar event the next time it opens.",
+    "Change a planned meal (ids from list_meal_plan): move it to another date or slot, swap what it is (recipeId, or recipeId: null with a title for a typed meal), rename a typed one, set a recipe's scale (0.5 halves it, 2 doubles it), answer its either/or questions (choices, by the group and option names list_meal_plan shows), use something else for this one cooking only (replacements: each names a line or used recipe of the recipe, and either what this meal uses instead, as an ingredient is printed, or null to leave it out; the list replaces the meal's earlier replacements and [] goes back to the recipe as written; shopping, cost and cooking follow it and the recipe is never edited), or say whether this meal gets a shopping task, a thaw task or the offer to log it (null hands the choice back to the setting). A leftover night is not swapped here. Whether a meal gets a cook task is set on the phone, which writes or removes that task as it is changed. The phone catches up the meal's task and calendar event the next time it opens.",
     {
       id: z.string().min(1),
       date: dayKey.optional(),
@@ -3743,6 +3771,12 @@ function registerWriteTools(
       scale: z.number().positive().optional(),
       recipeId: z.string().nullable().optional(),
       choices: z.array(z.object({ group: z.string().min(1), option: z.string().min(1) })).optional(),
+      replacements: z.array(z.object({
+        replace: z.string().min(1),
+        in: z.string().optional().describe('The recipe the line or used recipe is on, only when the same name is on two.'),
+        with: z.string().nullable().describe('What this meal uses instead, as an ingredient is printed ("8 oz vegan fish fillets"), or null to leave it out.'),
+        note: z.string().nullable().optional().describe('The one thing worth saying about the swap, shown beside it.'),
+      })).optional(),
       shopTask: z.boolean().nullable().optional(),
       thawTask: z.boolean().nullable().optional(),
       logMeal: z.boolean().nullable().optional(),

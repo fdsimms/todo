@@ -90,7 +90,7 @@ import { parseSavedViewClauses, serializeSavedViewClauses } from '../utils/saved
 import { parseFollowUpTaskDraft } from '../utils/followUpTask';
 import { cookbookKey, parseRecipeIngredients, parsePrepTasks, parseSteps } from '../utils/recipeUtils';
 import { parseRecipeTags } from '../utils/recipeTags';
-import { parseRecipeChoices, parseRecipeComponents } from '../utils/recipeComponents';
+import { parseRecipeChoices, parseRecipeComponents, parseRecipeOverrides } from '../utils/recipeComponents';
 import { parseEmptySections } from '../utils/recipeSections';
 import { normalizeScale } from '../utils/recipeScale';
 import { normalizeTemplateItem, normalizeTemplateQuestion } from '../utils/templateUtils';
@@ -2162,6 +2162,9 @@ function runInitDatabase(): void {
     // Null on every existing row: no row has had a second recipe fold into it
     // yet. See GroceryItem.recipeSources.
     'ALTER TABLE grocery_items ADD COLUMN recipe_sources TEXT',
+    // JSON array of one-off replacements for one planned meal, '[]' on every
+    // existing entry: none has replaced a line yet. See MealPlanEntry.recipeOverrides.
+    "ALTER TABLE meal_plan_entries ADD COLUMN recipe_overrides TEXT NOT NULL DEFAULT '[]'",
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -6797,6 +6800,7 @@ function rowToMealPlanEntry(row: Record<string, unknown>): MealPlanEntry {
     cookedAt: (row.cooked_at as string) ?? null,
     leftoverId: (row.leftover_id as string) ?? null,
     recipeChoices: parseRecipeChoices(row.recipe_choices),
+    recipeOverrides: parseRecipeOverrides(row.recipe_overrides),
     // Clamped rather than trusted: the column defaults to 1, but a restored
     // backup or a hand-edited row carrying 0 would otherwise render a meal with
     // no quantities at all.
@@ -7937,12 +7941,13 @@ export function dbGetMealPlanEntriesForLeftover(leftoverId: string): MealPlanEnt
 
 export function dbInsertMealPlanEntry(entry: MealPlanEntry): void {
   db.runSync(
-    `INSERT INTO meal_plan_entries (id, date, slot, recipe_id, title, sort_order, created_at, cooked_at, leftover_id, recipe_choices, recipe_scale, cook_task, shop_task, log_meal, calendar_event_id, thaw_task, calendar_event_external_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO meal_plan_entries (id, date, slot, recipe_id, title, sort_order, created_at, cooked_at, leftover_id, recipe_choices, recipe_overrides, recipe_scale, cook_task, shop_task, log_meal, calendar_event_id, thaw_task, calendar_event_external_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       entry.id, entry.date, entry.slot, entry.recipeId ?? null,
       entry.title, entry.sortOrder, entry.createdAt, entry.cookedAt ?? null,
       entry.leftoverId ?? null, JSON.stringify(entry.recipeChoices ?? []),
+      JSON.stringify(entry.recipeOverrides ?? []),
       normalizeScale(entry.recipeScale),
       entry.cookTask === null || entry.cookTask === undefined ? null : (entry.cookTask ? 1 : 0),
       entry.shopTask === null || entry.shopTask === undefined ? null : (entry.shopTask ? 1 : 0),
@@ -7956,11 +7961,12 @@ export function dbInsertMealPlanEntry(entry: MealPlanEntry): void {
 
 export function dbUpdateMealPlanEntry(entry: MealPlanEntry): void {
   db.runSync(
-    `UPDATE meal_plan_entries SET date=?, slot=?, recipe_id=?, title=?, sort_order=?, cooked_at=?, leftover_id=?, recipe_choices=?, recipe_scale=?, cook_task=?, shop_task=?, log_meal=?, calendar_event_id=?, thaw_task=?, calendar_event_external_id=? WHERE id=?`,
+    `UPDATE meal_plan_entries SET date=?, slot=?, recipe_id=?, title=?, sort_order=?, cooked_at=?, leftover_id=?, recipe_choices=?, recipe_overrides=?, recipe_scale=?, cook_task=?, shop_task=?, log_meal=?, calendar_event_id=?, thaw_task=?, calendar_event_external_id=? WHERE id=?`,
     [
       entry.date, entry.slot, entry.recipeId ?? null, entry.title, entry.sortOrder,
       entry.cookedAt ?? null, entry.leftoverId ?? null,
-      JSON.stringify(entry.recipeChoices ?? []), normalizeScale(entry.recipeScale),
+      JSON.stringify(entry.recipeChoices ?? []), JSON.stringify(entry.recipeOverrides ?? []),
+      normalizeScale(entry.recipeScale),
       entry.cookTask === null || entry.cookTask === undefined ? null : (entry.cookTask ? 1 : 0),
       entry.shopTask === null || entry.shopTask === undefined ? null : (entry.shopTask ? 1 : 0),
       entry.logMeal === null || entry.logMeal === undefined ? null : (entry.logMeal ? 1 : 0),

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { FoodLogEntry, FoodNutrition, MealPlanEntry, MealSlot } from '../types';
+import type { FoodLogEntry, FoodNutrition, MealPlanEntry, MealSlot, RecipeOverride } from '../types';
 import { NUTRIENT_KEYS } from '../types';
 import {
   dbBulkDeleteFoodLogEntries,
@@ -140,6 +140,8 @@ export interface PendingMealLog {
   scale: number;
   /** The either/or answers that cooking used, so the figures match what went in. */
   choices: string[];
+  /** That cooking's one-off replacements (`MealPlanEntry.recipeOverrides`), for the same reason as `choices`. */
+  overrides?: RecipeOverride[];
   /**
    * What the plate or the container weighed, when something already knows —
    * today only a finished leftover, which was weighed when it went in the
@@ -874,6 +876,7 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
           mealPlanEntryId: entry.id,
           scale: entry.recipeScale,
           choices: entry.recipeChoices,
+          overrides: entry.recipeOverrides,
           // A meal cooked tonight has nothing weighed yet — the prompt asks.
           // Only a container that was weighed on the way into the fridge
           // arrives with a figure (see finishLeftover).

@@ -109,6 +109,20 @@ interface Props {
   /** Records a pick. Absent alongside an empty `choiceGroups`. */
   onChoose?: (group: ChoiceGroup, componentId: string) => void;
   /**
+   * What this meal uses instead of its recipe's own lines, as plain sentences
+   * (`describeOverrides`), each with the target it replaces so a row can be taken
+   * back off. Empty for nearly every meal, and the section then renders nothing.
+   */
+  overrideLines?: { targetId: string; text: string }[];
+  /** Takes one replacement off, so that line goes back to the recipe as written. */
+  onRemoveOverride?: (targetId: string) => void;
+  /**
+   * Opens the sheet that replaces a line for this meal only. The caller dismisses
+   * this sheet first and hosts the card itself, for `onReplace`'s reason. Present
+   * for a meal backed by a recipe, like the batch control.
+   */
+  onOverride?: () => void;
+  /**
    * Records how much of the recipe this meal makes — see
    * MealPlanEntry.recipeScale. Absent for a meal with no recipe behind it,
    * which is what hides the control entirely.
@@ -210,7 +224,7 @@ const TOP_INSET = 72;
 
 export function MealEntrySheet({
   visible, entry, title, weekDays, onMove, onMoveFurther, onCopyTo, onCopyFurther, copiedDays, onReplace, onChooseRecipe, onSaveAsRecipe, matchingRecipeName,
-  onRemove, onRename, choiceGroups = [], onChoose,
+  onRemove, onRename, choiceGroups = [], onChoose, overrideLines = [], onRemoveOverride, onOverride,
   onScale, baseServings, baseServingsMax, onSetCooked, onViewFoodLogEntry, onLogMeal, onOpenRecipe, onAddToList, onAddPrepTasks,
   onLogLeftovers,
   onFinishLeftover, onSetCookTask, hasCookTask = false, onClose,
@@ -422,6 +436,28 @@ export function MealEntrySheet({
             </View>
           ))}
 
+          {/* What this one cooking uses instead of the recipe's own lines. Plain
+              sentences with a way to take each back off; adding one is the
+              action row below, beside Replace meal. */}
+          {overrideLines.length > 0 && (
+            <View>
+              <Text style={styles.label}>This time</Text>
+              {overrideLines.map(line => (
+                <View key={line.targetId} style={styles.overrideRow}>
+                  <Text style={styles.overrideText}>{line.text}</Text>
+                  <TouchableOpacity
+                    onPress={() => { haptics.tap(); onRemoveOverride?.(line.targetId); }}
+                    hitSlop={10}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Undo this change: ${line.text}`}
+                  >
+                    <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
+
           <Text style={styles.label}>Move to</Text>
           <DayChipRow
             days={weekDays}
@@ -539,6 +575,19 @@ export function MealEntrySheet({
             answer and the batch size; the replace keeps both (see
             bulkReplaceItem).
           */}
+          {!!onOverride && (
+            <>
+              <View style={styles.sep} />
+              <SheetActionRow
+                icon="create-outline"
+                color={colors.accent}
+                label="Change an ingredient"
+                onPress={() => { haptics.tap(); dismiss(onOverride); }}
+                accessibilityLabel="Use something else in place of one ingredient, for this meal only"
+              />
+            </>
+          )}
+
           {!!onReplace && (
             <>
               <View style={styles.sep} />
@@ -767,6 +816,19 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   closeOut: { marginTop: spacing.sm },
   scaleBlock: { paddingBottom: spacing.xs },
+  overrideRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+  },
+  overrideText: {
+    flex: 1,
+    color: colors.text,
+    fontSize: font.sm,
+  },
   scaleChips: { paddingHorizontal: spacing.md },
   chips: {
     flexDirection: 'row',

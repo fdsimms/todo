@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { ComponentPlacement, Cookbook, CookbookIndexEntry, Recipe, RecipeIngredient, RecipeMealType, RecipePrepTask, RecipeSourceType, RecipeStep, RecipeVote } from '../types';
-import { GROCERY_NAME_MAX_LENGTH, RECIPE_PAGE_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH, RECIPE_STEP_NOTE_MAX_LENGTH, TITLE_MAX_LENGTH } from '../types';
+import { GROCERY_NAME_MAX_LENGTH, RECIPE_PAGE_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH, RECIPE_STEP_NOTE_MAX_LENGTH, STEP_ONLY_WHEN_MAX, TITLE_MAX_LENGTH } from '../types';
 import {
   dbGetAllRecipes,
   dbInsertRecipe,
@@ -515,6 +515,13 @@ interface RecipeStore {
    * nothing; only this does.
    */
   setStepNote: (recipeId: string, stepId: string, note: string | null) => void;
+  /**
+   * Ties one step to the either/or options it applies to (`RecipeStep.onlyWhen`),
+   * or clears it with null/empty. Ids that aren't an option on this recipe (no
+   * `choiceGroup`, or not its row at all) are dropped on the way in, so what is
+   * stored always names something a person could have picked.
+   */
+  setStepOnlyWhen: (recipeId: string, stepId: string, optionIds: readonly string[] | null) => void;
   removeStep: (recipeId: string, stepId: string) => void;
   /**
    * The new order. An id missing from `ids` keeps its place at the end rather
@@ -1490,6 +1497,27 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       // the duration above — see RecipeStep.note.
       const { note: _dropped, ...rest } = s;
       return value ? { ...rest, note: value } : rest;
+    });
+    if (!touched) return;
+    save(set, { ...recipe, steps });
+  },
+
+  setStepOnlyWhen(recipeId, stepId, optionIds) {
+    const recipe = get().recipes.find(r => r.id === recipeId);
+    if (!recipe) return;
+    const options = new Set<string>();
+    for (const row of recipe.ingredients) if (row.choiceGroup) options.add(row.id);
+    for (const row of recipe.components) if (row.choiceGroup) options.add(row.id);
+    const value = [...new Set(optionIds ?? [])].filter(id => options.has(id)).slice(0, STEP_ONLY_WHEN_MAX);
+    let touched = false;
+    const steps = recipe.steps.map(s => {
+      if (s.id !== stepId) return s;
+      const before = s.onlyWhen ?? [];
+      if (before.length === value.length && before.every((id, i) => id === value[i])) return s;
+      touched = true;
+      // Cleared back to absent, same as the note above — see RecipeStep.onlyWhen.
+      const { onlyWhen: _dropped, ...rest } = s;
+      return value.length > 0 ? { ...rest, onlyWhen: value } : rest;
     });
     if (!touched) return;
     save(set, { ...recipe, steps });

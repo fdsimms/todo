@@ -19,6 +19,7 @@ import { onHandNameKeys } from './grocerySuggest';
 import { kitchenEntryId, kitchenLinkUrl } from './kitchenInventory';
 import { isLiveLeftover } from './leftovers';
 import { joinNames } from './shoppingTrip';
+import { entryResolution } from './recipeComponents';
 
 /**
  * "Take chicken out of the freezer (Thursday Dinner)" — the meal plan noticing
@@ -141,7 +142,7 @@ export function frozenForMeal(
     plannedIngredientsForRecipe(
       recipe,
       recipesById,
-      { chosen: entry.recipeChoices, onHand: onHandNameKeys(items, now, products) },
+      entryResolution(entry, { onHand: onHandNameKeys(items, now, products) }),
       entry.recipeScale,
       swaps
     ),
