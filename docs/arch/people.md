@@ -412,6 +412,11 @@ person cannot.
   a friendship. Capped at the cadence (`Math.min(7, cadence)`) so a four-day
   cadence is not silenced for seven, which is the objection to cadence-scoped declines pointed the only
   way it actually bites.
+- **A slot freed today is not refilled today.** The cap of two counts rows
+  finished, archived or swiped away today as well as live ones
+  (`reachOutSlotsOpen`). Counting only live rows meant completing one at night
+  wrote the next person's row on the following foreground, dated noon, so it
+  looked as if it had been there all day.
 - **The note beats the clock.** `Person.askAbout` turns the title into "Ask
   Tessa about the new job" instead of "Catch up with Tessa" — a reason to get
   in touch rather than a prompt to. Rule 7, in one field.

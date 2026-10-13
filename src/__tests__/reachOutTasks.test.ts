@@ -13,6 +13,7 @@ import {
   observedCadenceDays,
   reachOutTitle,
   reachOutsHandledRecently,
+  reachOutSlotsOpen,
   staleReachOutTasks,
   wantedReachOuts,
   collapseGroupedReachOuts,
@@ -433,5 +434,32 @@ describe('the day-reset grace window', () => {
     settingsState.dayResetTime = '02:00';
     const task = genTask({ completed: true, completedAt: new Date(2026, 2, 13, 1, 30).toISOString() });
     expect(reachOutsHandledRecently([task], new Date(2026, 2, 19, 2, 0), 7).size).toBe(0);
+  });
+});
+
+describe('reachOutSlotsOpen', () => {
+  const live = (id: string) => genTask({ generatedKind: 'reachOut', generatedSourceId: id });
+  const doneAt = (id: string, at: Date) =>
+    genTask({ generatedKind: 'reachOut', generatedSourceId: id, completed: true, completedAt: at.toISOString() });
+
+  it('gives the whole cap when nothing has been written', () => {
+    expect(reachOutSlotsOpen([], [], TODAY)).toBe(MAX_REACH_OUT_TASKS);
+  });
+
+  it('counts a live row against the cap', () => {
+    expect(reachOutSlotsOpen([live('a')], [], TODAY)).toBe(MAX_REACH_OUT_TASKS - 1);
+  });
+
+  it('does not refill a slot freed by finishing a row today', () => {
+    expect(reachOutSlotsOpen([live('a'), doneAt('b', TODAY)], [], TODAY)).toBe(0);
+  });
+
+  it('refills a slot freed on an earlier day', () => {
+    expect(reachOutSlotsOpen([live('a'), doneAt('b', daysAgo(1))], [], TODAY)).toBe(MAX_REACH_OUT_TASKS - 1);
+  });
+
+  it('does not refill a slot freed by a swipe-away today', () => {
+    const swiped = person({ reachOutDeclinedAt: TODAY.toISOString() });
+    expect(reachOutSlotsOpen([live('a')], [swiped], TODAY)).toBe(0);
   });
 });

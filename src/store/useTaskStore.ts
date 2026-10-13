@@ -308,6 +308,7 @@ import {
   reachOutPersonId,
   reachOutTitle,
   reachOutsHandledRecently,
+  reachOutSlotsOpen,
   staleReachOutTasks,
   wantedReachOuts,
   collapseGroupedReachOuts,
@@ -5889,7 +5890,18 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // them losing the contest for a slot.
     const allWanted = wantedReachOuts(candidates, today, handled, candidates.length);
     const collapsedWanted = collapseGroupedReachOuts(allWanted, groupIdOf, groupNameOf);
-    const wanted = collapsedWanted.slice(0, MAX_REACH_OUT_TASKS);
+    // Rows already written are kept as they are; only new ones spend a slot,
+    // and a slot freed today is not refilled until the day turns over.
+    const liveSources = new Set(
+      liveGeneratedTasksOfKind(tasks, 'reachOut').map(t => reachOutPersonId(t)),
+    );
+    let slotsOpen = reachOutSlotsOpen(tasks, people, today);
+    const wanted = collapsedWanted.slice(0, MAX_REACH_OUT_TASKS).filter(w => {
+      if (liveSources.has(w.sourceId)) return true;
+      if (slotsOpen <= 0) return false;
+      slotsOpen--;
+      return true;
+    });
 
     // Everybody still due, uncapped — a row that lost the contest for a slot is
     // not stale, and deleting one the user deferred to Saturday would be the
