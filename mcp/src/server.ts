@@ -2878,7 +2878,7 @@ function registerWriteTools(
       priceStore: z.string().optional().describe('With priceMinor: the store it was seen at, which also updates that store\'s link if it has one.'),
       kindOf: z.string().nullable().optional().describe('The generic this item is a kind of ("white onion" is a kind of "onion"), or null.'),
       alsoCalled: z.array(z.string()).optional().describe('Replaces the item\'s other names ("kombu" on dashima): the same thing under another word, unlike kindOf. A recipe line using one resolves to this item. [] clears them. A name another item already uses is refused and said so in the result.'),
-      preferredBoxId: z.string().nullable().optional().describe('A variant's id (a `boxes` id from get_grocery_item), or null for none.'),
+      preferredBoxId: z.string().nullable().optional().describe('The id of a variant (a `boxes` id from get_grocery_item), or null for none.'),
       onlyPreferredBrand: z.boolean().optional(),
       linkStores: z.array(z.string()).optional().describe('Stores it can be bought at, by name or id.'),
       unlinkStores: z.array(z.string()).optional(),
