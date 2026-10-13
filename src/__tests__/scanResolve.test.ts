@@ -2,6 +2,7 @@ import {
   alreadyScanned,
   matchScans,
   nameFromScanFor,
+  scanBoxChoice,
   scanBoxFor,
   scanLinkTarget,
   scannedItemFor,
@@ -393,5 +394,60 @@ describe('scanBoxFor', () => {
   it('shrugs at a box that no longer resolves', () => {
     expect(scanBoxFor(null, 'milk')).toBeNull();
     expect(scanBoxFor(undefined, 'milk')).toBeNull();
+  });
+});
+
+describe('scanBoxChoice', () => {
+  const base = {
+    itemId: 'bread',
+    itemName: 'Bread',
+    picked: null,
+    linked: null,
+    label: "Dave's Killer Bread 21 Whole Grains",
+    brand: "Dave's Killer",
+  };
+
+  it('prefers a box the person picked over the one the barcode names', () => {
+    const choice = scanBoxChoice({
+      ...base,
+      picked: { itemId: 'bread', brand: 'Local', variant: 'rye' },
+      linked: { itemId: 'bread', brand: 'Old', variant: null },
+    });
+    expect(choice).toEqual({ brand: 'Local', variant: 'rye', source: 'picked' });
+  });
+
+  it('uses the box this barcode is already linked to rather than re-deriving one', () => {
+    const choice = scanBoxChoice({
+      ...base,
+      label: 'vegan sausage',
+      linked: { itemId: 'bread', brand: 'Beyond', variant: 'Cajun' },
+    });
+    expect(choice).toEqual({ brand: 'Beyond', variant: 'Cajun', source: 'linked' });
+  });
+
+  it('ignores a link or pick that belongs to a different item', () => {
+    const choice = scanBoxChoice({
+      ...base,
+      picked: { itemId: 'milk', brand: 'Horizon', variant: null },
+      linked: { itemId: 'milk', brand: 'Horizon', variant: null },
+    });
+    expect(choice?.source).toBe('barcode');
+  });
+
+  it("derives the box from the lookup's own words last", () => {
+    expect(scanBoxChoice(base)).toEqual({
+      brand: "Dave's Killer",
+      variant: '21 Whole Grains',
+      source: 'barcode',
+    });
+  });
+
+  it('has no box for a typed row or a code with no brand and no residue', () => {
+    expect(scanBoxChoice({ ...base, label: '', brand: null })).toBeNull();
+    expect(scanBoxChoice({ ...base, label: 'Bread', brand: null })).toBeNull();
+  });
+
+  it('does not derive from a label when the item cannot be found', () => {
+    expect(scanBoxChoice({ ...base, itemName: null })).toBeNull();
   });
 });
