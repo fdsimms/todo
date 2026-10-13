@@ -78,6 +78,7 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { CatalogLinkSheet } from '../components/CatalogLinkSheet';
 import { EstimateAmountSheet } from '../components/EstimateAmountSheet';
 import { ScanToLogFlow } from '../components/ScanToLogFlow';
+import type { LabelSubject } from '../components/LabelSubjectSheet';
 import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { EmptyNote } from '../components/EmptyNote';
 import { HubPills } from '../components/HubPills';
@@ -274,7 +275,7 @@ export function FoodLogScreen() {
   const reviewingAt = useMemo(() => (reviewing ? new Date(reviewing.atISO) : null), [reviewing]);
   const [scanOpen, setScanOpen] = useState(false);
   // The food whose nutrition label is being photographed from the picker.
-  const [labelName, setLabelName] = useState<string | null>(null);
+  const [label, setLabel] = useState<LabelSubject | null>(null);
   // The add sheet, so a log made from a sheet raised over it (scan, saved
   // meal) can apply "Add another" to it.
   const addSheetRef = useRef<FoodLogEntrySheetHandle>(null);
@@ -1480,7 +1481,7 @@ export function FoodLogScreen() {
           onClose={() => { setAddOpen(false); setReviewing(null); }}
           canEstimate={estimateRoute !== 'unavailable'}
           onScan={scanShown ? () => setScanOpen(true) : undefined}
-          onPhotographLabel={scanShown ? setLabelName : undefined}
+          onPhotographLabel={scanShown ? setLabel : undefined}
           onSavedMeal={() => setSavedMealsOpen(true)}
           // Inside that sheet's own Modal, not beside it: as siblings these
           // presented from the root view controller, which was already
@@ -1494,8 +1495,8 @@ export function FoodLogScreen() {
                 visible={scanOpen}
                 slot={addingSlot}
                 at={loggingAt}
-                labelName={labelName}
-                onLabelClose={() => setLabelName(null)}
+                label={label}
+                onLabelClose={() => setLabel(null)}
                 onClose={() => setScanOpen(false)}
                 // Closes the "What did you eat?" sheet underneath too, only once
                 // a scan actually logs something — cancelling leaves it open,

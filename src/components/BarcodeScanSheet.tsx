@@ -10,6 +10,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { SheetModal } from './SheetModal';
+import { labelSubjectNamed, type LabelSubject } from './LabelSubjectSheet';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import {
@@ -328,7 +329,7 @@ interface Props {
    * mints the catalog row only once the label photo is actually saved — see
    * its own `panelFor`.
    */
-  onPhotographLabel?: (name: string) => void;
+  onPhotographLabel?: (subject: LabelSubject) => void;
 }
 
 /**
@@ -1288,7 +1289,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                               value="Add from label"
                               note="Not found yet. Photograph the label to log it"
                               tone="action"
-                              onPress={() => onPhotographLabel(row.name.trim())}
+                              onPress={() => onPhotographLabel(labelSubjectNamed(row.name.trim()))}
                               accessibilityLabel={`Photograph the nutrition label for ${row.name.trim()}`}
                             />
                           ) : (

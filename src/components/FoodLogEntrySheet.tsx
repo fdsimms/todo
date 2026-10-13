@@ -84,6 +84,7 @@ import { CatalogLinkPicker } from './CatalogLinkPicker';
 import { EmptyState } from './EmptyState';
 import { InlineAction } from './InlineAction';
 import { NutritionPanelSheet } from './NutritionPanelSheet';
+import { LabelSubjectSheet, type LabelSubject } from './LabelSubjectSheet';
 import { PressableScale } from './PressableScale';
 import { navigateToFoodSearchSettings } from './NutritionSearchSheet';
 import { EstimatePanel, type EstimateLogAction } from './EstimatePanel';
@@ -264,7 +265,7 @@ interface Props {
    * row needs a name. Omitted by a caller with nowhere to send it, same split
    * `onScan` draws.
    */
-  onPhotographLabel?: (name: string) => void;
+  onPhotographLabel?: (subject: LabelSubject) => void;
   /**
    * Opens the saved-meals list — the fourth way in, beside searching,
    * describing and scanning. Logs several entries at once rather than one,
@@ -1468,27 +1469,14 @@ export function FoodLogEntrySheet({
     setEstimateOpen(true);
   };
 
+  // Asked every time, with the search field's text as Food: a typed name may
+  // already have the brand in it, and only this sheet can say which part is which.
+  const [labelAsk, setLabelAsk] = useState(false);
   const startLabelPhoto = () => {
     if (!onPhotographLabel) return;
     haptics.tap();
     Keyboard.dismiss();
-    const typed = query.trim();
-    if (typed) { onPhotographLabel(typed); return; }
-    Alert.prompt(
-      'Name this food',
-      'What the food on the label is called. Its nutrition facts are saved under this name.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Next',
-          onPress: (text?: string) => {
-            const name = (text ?? '').trim();
-            if (name) onPhotographLabel(name);
-          },
-        },
-      ],
-      'plain-text',
-    );
+    setLabelAsk(true);
   };
 
   /**
@@ -2271,6 +2259,12 @@ export function FoodLogEntrySheet({
         onSave={handleSaveFacts}
       />
       {overlays}
+      <LabelSubjectSheet
+        visible={labelAsk}
+        initialName={query.trim()}
+        onNext={subject => onPhotographLabel?.(subject)}
+        onClose={() => setLabelAsk(false)}
+      />
       <NumberPadAccessory />
     </SheetModal>
   );

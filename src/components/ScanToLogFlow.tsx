@@ -8,6 +8,7 @@ import { describeProduct } from '../utils/groceryProduct';
 import type { ScannedGtinLink } from '../utils/scanResolve';
 import { BarcodeScanSheet, type ScanProductDraft } from './BarcodeScanSheet';
 import { NutritionPanelSheet } from './NutritionPanelSheet';
+import type { LabelSubject } from './LabelSubjectSheet';
 import { ScanPortionSheet, type ScannedFood } from './ScanPortionSheet';
 import type { ReceiptAddDraft } from './ReceiptImportSheet';
 
@@ -53,11 +54,12 @@ interface Props {
   /**
    * A food to photograph the label of, without scanning anything first: the
    * caller's own "Photograph a label" action. Non-null opens the label panel
-   * for that name, the same panel the scanner's not-found row opens, and the
-   * rest of the flow (catalog row, then the amount sheet) is unchanged.
+   * for that food and product, the same panel the scanner's not-found row
+   * opens, and the rest of the flow (catalog row, then the amount sheet) is
+   * unchanged.
    */
-  labelName?: string | null;
-  /** The label panel opened by `labelName` closed, saved or not. */
+  label?: LabelSubject | null;
+  /** The label panel opened by `label` closed, saved or not. */
   onLabelClose?: () => void;
 }
 
@@ -65,7 +67,7 @@ interface Props {
 const EMPTY_FOODS: ScannedFood[] = [];
 
 export function ScanToLogFlow({
-  visible, slot, at, mealPlanEntryId, onClose, onLogged, labelName, onLabelClose,
+  visible, slot, at, mealPlanEntryId, onClose, onLogged, label, onLabelClose,
 }: Props) {
   const items = useGroceryStore(useShallow(s => s.items));
   const ensureCatalogItem = useGroceryStore(s => s.ensureCatalogItem);
@@ -116,6 +118,10 @@ export function ScanToLogFlow({
       itemId: string | null;
       productId: string | null;
       name: string;
+      // The brand and variant a photographed label is printed on. Only a
+      // subject with no item yet carries them: a scanned one already has its box.
+      brand?: string | null;
+      variant?: string | null;
       slot: MealSlot | null;
       at: Date;
       mealPlanEntryId: string | null;
@@ -124,8 +130,8 @@ export function ScanToLogFlow({
   // The panel's subject: one the scanner raised, else the caller's own label
   // photo. Read at render time, which is safe for the second because the
   // caller's props only change after the panel's `onSave`/`onClose` pair.
-  const panelSubject = panelFor ?? (labelName
-    ? { itemId: null, productId: null, name: labelName, slot, at, mealPlanEntryId: mealPlanEntryId ?? null }
+  const panelSubject = panelFor ?? (label
+    ? { itemId: null, productId: null, name: label.name, brand: label.brand, variant: label.variant, slot, at, mealPlanEntryId: mealPlanEntryId ?? null }
     : null);
 
   /**
@@ -273,8 +279,8 @@ export function ScanToLogFlow({
         context="log"
         onClose={onClose}
         onApply={handleScanApply}
-        onPhotographLabel={name => setPanelFor({
-          itemId: null, productId: null, name, slot, at, mealPlanEntryId: mealPlanEntryId ?? null,
+        onPhotographLabel={subject => setPanelFor({
+          itemId: null, productId: null, ...subject, slot, at, mealPlanEntryId: mealPlanEntryId ?? null,
         })}
       />
       <ScanPortionSheet
@@ -289,7 +295,7 @@ export function ScanToLogFlow({
       <NutritionPanelSheet
         visible={panelSubject !== null}
         foodName={panelSubject?.name ?? ''}
-        openCamera={panelFor === null && !!labelName}
+        openCamera={panelFor === null && !!label}
         nutrition={null}
         onClose={() => { setPanelFor(null); onLabelClose?.(); }}
         onSave={panel => {
@@ -299,12 +305,20 @@ export function ScanToLogFlow({
           // typed-name path in this app uses, so a name that already exists
           // resolves to it rather than duplicating it.
           let itemId = panelSubject.itemId;
-          const productId = panelSubject.productId;
+          let productId = panelSubject.productId;
           if (!itemId) {
             const item = ensureCatalogItem(panelSubject.name);
             if (!item) return;
             itemId = item.id;
-            setItemNutrition(itemId, panel);
+            // A label with a brand or variant is one box, so the figures go
+            // on it and not on the generic food. `promote: false` keeps a box
+            // named from a photo from becoming the item's preferred one.
+            const box = panelSubject.brand || panelSubject.variant
+              ? addProduct(itemId, { brand: panelSubject.brand ?? null, variant: panelSubject.variant ?? null }, { promote: false })
+              : null;
+            productId = box?.id ?? null;
+            if (productId) setProductNutrition(productId, panel);
+            else setItemNutrition(itemId, panel);
           } else if (productId) {
             // Onto the box when the scan named one, onto the catalog row when
             // it didn't — the same precedence `nutritionFor` reads them back
@@ -322,8 +336,10 @@ export function ScanToLogFlow({
           // too, rather than leaving `BarcodeScanSheet` to reopen with
           // nothing logged and the figures just typed sitting unused on the
           // catalog row.
+          const boxWords = describeProduct({ brand: panelSubject.brand ?? null, variant: panelSubject.variant ?? null });
+          const portionLabel = boxWords ? `${panelSubject.name}, ${boxWords}` : panelSubject.name;
           setSession({
-            foods: [{ key: productId ?? itemId, label: panelSubject.name, panel, packSize: null, itemId, productId }],
+            foods: [{ key: productId ?? itemId, label: portionLabel, panel, packSize: null, itemId, productId }],
             slot: panelSubject.slot,
             at: panelSubject.at,
             mealPlanEntryId: panelSubject.mealPlanEntryId,
