@@ -1,6 +1,6 @@
 import { format } from 'date-fns/format';
 import type { GroceryItem, MealPlanEntry, Recipe, RecipeIngredient } from '../types';
-import { cookedDishes, flattenRecipeIngredients, type FlatIngredient } from './recipeComponents';
+import { cookedDishes, flattenRecipeIngredients, stepOptionNames, type FlatIngredient } from './recipeComponents';
 import { ingredientHeadings } from './recipeSections';
 import { describeAttribution, formatServingsRange, totalMinutes } from './recipeUtils';
 import { formatDuration } from './effort';
@@ -238,7 +238,14 @@ export function buildRecipeShareText(
 
   if (recipe.steps.length > 0) {
     lines.push('', 'Steps:');
-    recipe.steps.forEach((step, i) => lines.push(`${i + 1}. ${step.text}`));
+    // Every step travels, since the ingredients above send every option too.
+    // A step tied to an option says which, or a reader would follow the
+    // jalapeño method over the serrano.
+    recipe.steps.forEach((step, i) => {
+      const only = stepOptionNames(step, recipe);
+      const tag = only.length > 0 ? ` (Only with ${only.join(' or ')}.)` : '';
+      lines.push(`${i + 1}. ${step.text}${tag}`);
+    });
   } else if (recipe.notes) {
     lines.push('', 'Notes:');
     lines.push(recipe.notes);

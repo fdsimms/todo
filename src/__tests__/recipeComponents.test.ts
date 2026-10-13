@@ -25,6 +25,8 @@ import {
   componentPlacement,
   ingredientLayout,
   reanchorComponents,
+  stepVisible,
+  stepOptionNames,
 } from '../utils/recipeComponents';
 import type { Recipe, RecipeComponent, RecipeIngredient, RecipePrepTask } from '../types';
 
@@ -1067,5 +1069,72 @@ describe('component placement', () => {
       expect(out[0]).toBe(keep);
       expect(out[1]).toBe(bare);
     });
+  });
+});
+
+describe('stepVisible', () => {
+  const serrano = ing('serrano', 'Pepper');
+  const jalapeno = ing('jalapeño', 'Pepper');
+  const plain = ing('salt');
+  const r = recipe('r', 'Salsa', { ingredients: [serrano, jalapeno, plain] });
+
+  it('shows a step that names no option', () => {
+    expect(stepVisible({}, r)).toBe(true);
+    expect(stepVisible({ onlyWhen: [] }, r)).toBe(true);
+  });
+
+  it('shows a step tied to the default option and hides one tied to the other', () => {
+    expect(stepVisible({ onlyWhen: [serrano.id] }, r)).toBe(true);
+    expect(stepVisible({ onlyWhen: [jalapeno.id] }, r)).toBe(false);
+  });
+
+  it('follows the pick in the resolution', () => {
+    const picked = { chosen: [jalapeno.id] };
+    expect(stepVisible({ onlyWhen: [serrano.id] }, r, picked)).toBe(false);
+    expect(stepVisible({ onlyWhen: [jalapeno.id] }, r, picked)).toBe(true);
+  });
+
+  it('shows a step when any one of several named options is the pick', () => {
+    expect(stepVisible({ onlyWhen: [jalapeno.id, serrano.id] }, r)).toBe(true);
+  });
+
+  it('shows everything under allOptions', () => {
+    expect(stepVisible({ onlyWhen: [jalapeno.id] }, r, { allOptions: true })).toBe(true);
+  });
+
+  it('ignores an id that is not an option, and shows a step left with none', () => {
+    expect(stepVisible({ onlyWhen: ['gone'] }, r)).toBe(true);
+    // A line with no choiceGroup is not an option, so naming it is the same as naming nothing.
+    expect(stepVisible({ onlyWhen: [plain.id] }, r)).toBe(true);
+    // A dangling id beside a real one does not stop the real one deciding.
+    expect(stepVisible({ onlyWhen: ['gone', jalapeno.id] }, r)).toBe(false);
+  });
+
+  it('judges a component option, and a group shared across the two lists', () => {
+    const fish = recipe('fish', 'Homemade fish');
+    const rice = ing('rice', 'Base');
+    const dish = link('fish', 'Homemade fish', 'Base');
+    const parent = recipe('p', 'Stew', { ingredients: [rice], components: [dish] });
+    // Ingredients are tried first, so the rice line is the default.
+    expect(stepVisible({ onlyWhen: [dish.id] }, parent)).toBe(false);
+    expect(stepVisible({ onlyWhen: [dish.id] }, parent, { chosen: [dish.id] })).toBe(true);
+    expect(stepVisible({ onlyWhen: [rice.id] }, parent, { chosen: [dish.id] })).toBe(false);
+    expect(fish.id).toBe('fish');
+  });
+
+  it('treats an undecided ingredient group as all live', () => {
+    const resolution = { undecided: [choiceGroupKey('r', 'Pepper')] };
+    expect(stepVisible({ onlyWhen: [jalapeno.id] }, r, resolution)).toBe(true);
+  });
+});
+
+describe('stepOptionNames', () => {
+  it('names the options a step is tied to, in its own order, and skips ids that name none', () => {
+    const a = ing('serrano', 'Pepper');
+    const b = ing('jalapeño', 'Pepper');
+    const c = ing('salt');
+    const r = recipe('r', 'Salsa', { ingredients: [a, b, c] });
+    expect(stepOptionNames({ onlyWhen: [b.id, 'gone', c.id, a.id] }, r)).toEqual(['jalapeño', 'serrano']);
+    expect(stepOptionNames({}, r)).toEqual([]);
   });
 });

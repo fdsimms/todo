@@ -395,6 +395,59 @@ export function activeIngredients(
   return recipe.ingredients.filter(i => !i.choiceGroup || ingredientIds.has(i.id));
 }
 
+/**
+ * Whether a method step belongs in one cooking of `recipe` — `RecipeStep.onlyWhen`.
+ *
+ * Visible when the step names no option, when `allOptions` is on (search and
+ * the editor see everything), or when any option it names is a winner of its
+ * group. An id that is not an option on this recipe (deleted, or its
+ * `choiceGroup` since cleared) is ignored, and a step left with no valid id
+ * shows always: dropping instructions because a pointer dangled is the worse
+ * failure. An undecided ingredient group counts every member as live, the same
+ * as it does for the shopping reads.
+ *
+ * `recipe` must be the recipe that owns the step: option ids are looked up in
+ * its own lists, so a component's step is judged against that component's picks.
+ */
+export function stepVisible(
+  step: { onlyWhen?: readonly string[] },
+  recipe: Recipe,
+  resolution?: ChoiceResolution,
+): boolean {
+  const wanted = step.onlyWhen;
+  if (!wanted || wanted.length === 0 || resolution?.allOptions) return true;
+  const optionIds = new Set<string>();
+  for (const row of recipe.ingredients) if (row.choiceGroup) optionIds.add(row.id);
+  for (const row of recipe.components) if (row.choiceGroup) optionIds.add(row.id);
+  const valid = wanted.filter(id => optionIds.has(id));
+  if (valid.length === 0) return true;
+  const { ingredientIds, componentIds } = resolveGroupWinners(
+    recipe, resolution, undecidedLabelsOf(recipe, resolution),
+  );
+  return valid.some(id => ingredientIds.has(id) || componentIds.has(id));
+}
+
+/**
+ * The names of the options a step is tied to (`RecipeStep.onlyWhen`), in the
+ * order the step lists them, for the caption that says why a step is or isn't
+ * on screen and for share text, which sends every step. Ids that name no
+ * option are left out, matching `stepVisible`'s "ignore a dangling id".
+ */
+export function stepOptionNames(
+  step: { onlyWhen?: readonly string[] },
+  recipe: Recipe,
+): string[] {
+  const names = new Map<string, string>();
+  for (const row of recipe.ingredients) if (row.choiceGroup) names.set(row.id, row.name);
+  for (const row of recipe.components) if (row.choiceGroup) names.set(row.id, row.name);
+  const out: string[] = [];
+  for (const id of step.onlyWhen ?? []) {
+    const name = names.get(id);
+    if (name) out.push(name);
+  }
+  return out;
+}
+
 /** label → its rows, in list order. Empty for a list with no alternatives. */
 function groupOptions<T extends Groupable>(list: readonly T[]): Map<string, T[]> {
   const groups = new Map<string, T[]>();

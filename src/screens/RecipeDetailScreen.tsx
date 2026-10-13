@@ -110,6 +110,8 @@ import {
   ingredientLayout,
   recipeAlternativeCaptions,
   recipeChoiceGroups,
+  stepOptionNames,
+  stepVisible,
   recipeMap,
   resolveComponents,
   type ChoiceGroup,
@@ -205,6 +207,7 @@ export function RecipeDetailScreen() {
   const removeEmptyStepSection = useRecipeStore(s => s.removeEmptyStepSection);
   const setStepTimerSeconds = useRecipeStore(s => s.setStepTimerSeconds);
   const setStepNote = useRecipeStore(s => s.setStepNote);
+  const setStepOnlyWhen = useRecipeStore(s => s.setStepOnlyWhen);
   const setImage = useRecipeStore(s => s.setImage);
   const addComponent = useRecipeStore(s => s.addComponent);
   const removeComponent = useRecipeStore(s => s.removeComponent);
@@ -252,18 +255,6 @@ export function RecipeDetailScreen() {
     () => (recipe ? flattenRecipeIngredients(recipe, recipesById).length : 0),
     [recipe, recipesById]
   );
-  // What cook mode would have to read out — this recipe's steps and every
-  // component's, or the notes blob a recipe predating Recipe.steps still keeps
-  // its method in.
-  const cookableCount = useMemo(
-    () => (recipe ? cookSteps(recipe, recipesById).length : 0),
-    [recipe, recipesById]
-  );
-  // Cook is offered whenever there is a method or ingredients to gather. A
-  // recipe with no steps still has a mise en place screen worth opening, and
-  // a recipe saved before steps existed shouldn't lose the button for it.
-  const cookModeAvailable = cookableCount > 0 || shoppableCount > 0;
-
   // How much of the recipe you're reading it for. Screen state, deliberately
   // written nowhere: halving a recipe to cook for one tonight is not an edit to
   // the recipe, and the lasting form of the same fact lives on the meal that
@@ -301,6 +292,18 @@ export function RecipeDetailScreen() {
     () => ({ chosen: choices, onHand: onHandNameKeys(groceryItems, new Date(), itemProducts) }),
     [choices, groceryItems, itemProducts]
   );
+  // What cook mode would have to read out — this recipe's steps and every
+  // component's, or the notes blob a recipe predating Recipe.steps still keeps
+  // its method in. Read under the picks above: a step tied to an option
+  // (RecipeStep.onlyWhen) is only there for the cooking that picks it.
+  const cookableCount = useMemo(
+    () => (recipe ? cookSteps(recipe, recipesById, choiceResolution).length : 0),
+    [recipe, recipesById, choiceResolution]
+  );
+  // Cook is offered whenever there is a method or ingredients to gather. A
+  // recipe with no steps still has a mise en place screen worth opening, and
+  // a recipe saved before steps existed shouldn't lose the button for it.
+  const cookModeAvailable = cookableCount > 0 || shoppableCount > 0;
   const choiceGroups = useMemo(
     () => (recipe ? recipeChoiceGroups(recipe, recipesById, choiceResolution) : []),
     [recipe, recipesById, choiceResolution]
@@ -1032,6 +1035,13 @@ export function RecipeDetailScreen() {
   // rather than a copy of it — the length is written through on every press,
   // the same way every other picker in this screen writes.
   const editingStep = editingStepId === null ? null : recipe.steps.find(s => s.id === editingStepId) ?? null;
+  // The rows a step can be tied to: this recipe's own either/or options, in
+  // list order, ingredient lines before component links (the order the
+  // resolver tries them in).
+  const stepOptionRows = [
+    ...recipe.ingredients.filter(row => row.choiceGroup),
+    ...recipe.components.filter(row => row.choiceGroup),
+  ] as { id: string; name: string; choiceGroup: string }[];
   const editingStepParsed = editingStep === null ? null : parseStepDurations(editingStep.text)[0] ?? null;
 
   /** Writes the note draft onto the step being edited. No-ops when unchanged. */
@@ -1677,13 +1687,21 @@ export function RecipeDetailScreen() {
   // `stepNumber` is `mergedStepRows`' own count, not a position within
   // whatever list is actually being dragged over — a heading between two
   // steps occupies a slot in that list too, and "Step 3" has to skip it.
-  const renderStep = (step: RecipeStep, stepNumber: number, drag: () => void, isActive?: boolean) => (
+  const renderStep = (step: RecipeStep, stepNumber: number, drag: () => void, isActive?: boolean) => {
+    // A step tied to an option (RecipeStep.onlyWhen) stays on screen so it can
+    // still be edited, and says which option it is for. It dims when that
+    // option isn't the one being read for, which is the same call cook mode
+    // makes by leaving it out.
+    const onlyWith = recipe ? stepOptionNames(step, recipe) : [];
+    const offPick = !!recipe && !stepVisible(step, recipe, choiceResolution);
+    return (
     <View
       key={step.id}
       style={[
         styles.ingredient,
         editingStepId === step.id && styles.stepEditing,
         isActive && styles.ingredientDragging,
+        offPick && editingStepId !== step.id && styles.stepOffPick,
       ]}
     >
       <Text style={styles.stepNumber}>{stepNumber}</Text>
@@ -1710,6 +1728,9 @@ export function RecipeDetailScreen() {
         {stepTimerLabel(step) !== null && (
           <Text style={styles.stepTimerNote}>Timer · {stepTimerLabel(step)}</Text>
         )}
+        {onlyWith.length > 0 && (
+          <Text style={styles.stepTimerNote}>Only with {onlyWith.join(' or ')}</Text>
+        )}
         {/* A note kept from cook mode, on the row rather than hidden behind a
             tap: it's the answer to a question this step raised, which is worth
             reading while the method is being read. Removing it is in the
@@ -1734,7 +1755,8 @@ export function RecipeDetailScreen() {
         <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
       </TouchableOpacity>
     </View>
-  );
+    );
+  };
 
   // Same heading row as the ingredients grid's renderHeadingRow — a populated
   // caption or a declared-empty drop target — reused verbatim except for what
@@ -2537,6 +2559,41 @@ export function RecipeDetailScreen() {
             <Text style={styles.inputHint}>
               Shown under the step in cook mode. Keeping an answer there writes one too.
             </Text>
+            {/* Only on a recipe that poses an either/or at all: with no option
+                to name, the row would be a control with nothing to pick. */}
+            {stepOptionRows.length > 0 && (
+              <>
+                <View style={styles.stepNoteEditRow}>
+                  <Text style={styles.stepNoteEditLabel}>Only with</Text>
+                  <PillGroup
+                    noun="option"
+                    surface="card"
+                    options={stepOptionRows.map(row => {
+                      const picked = (editingStep.onlyWhen ?? []).includes(row.id);
+                      return {
+                        key: row.id,
+                        label: row.name,
+                        suffix: `· ${row.choiceGroup}`,
+                        selected: picked,
+                        onPress: () => {
+                          haptics.tap();
+                          const current = editingStep.onlyWhen ?? [];
+                          setStepOnlyWhen(
+                            recipe.id,
+                            editingStep.id,
+                            picked ? current.filter(id => id !== row.id) : [...current, row.id],
+                          );
+                        },
+                      };
+                    })}
+                  />
+                </View>
+                <Text style={styles.inputHint}>
+                  Shows this step only when one of the selected options is the one being cooked.
+                  With none selected, the step always shows.
+                </Text>
+              </>
+            )}
           </>
         )}
 
@@ -3118,6 +3175,12 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   },
   // `textSecondary` rather than the tertiary the timer line uses: this is a
   // sentence to read, where that is a label saying what a parse found.
+  // A step for an option that isn't the one being read for (RecipeStep.onlyWhen).
+  // Dimmed rather than hidden so it can still be found and edited; opacity on
+  // the row because the row is a plain View, not a swipeable or drag overlay.
+  stepOffPick: {
+    opacity: 0.5,
+  },
   stepNote: {
     color: colors.textSecondary,
     fontSize: font.sm,

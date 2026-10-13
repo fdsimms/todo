@@ -6707,6 +6707,9 @@ export const RECIPE_SECTION_MAX_LENGTH = 40;
  */
 export const RECIPE_STEP_NOTE_MAX_LENGTH = 500;
 
+/** How many either/or options one step may be tied to (`RecipeStep.onlyWhen`). Far above any real recipe; it only bounds a corrupt blob. */
+export const STEP_ONLY_WHEN_MAX = 12;
+
 // One line of a recipe's shopping implication — deliberately not a GroceryItem.
 // A GroceryItem is a forever-row carrying purchase counters and everything the
 // app knows about a food; "1 tsp smoked paprika" is a line of a recipe. Minting
@@ -7380,6 +7383,23 @@ export interface RecipeStep {
    * round-trips byte for byte (`normalizeStep`).
    */
   note?: string;
+  /**
+   * "Only when this option is cooked": ids of the recipe's own either/or
+   * options (a `RecipeIngredient` line or a `RecipeComponent` link that has a
+   * `choiceGroup`). The step shows when any one of them is the pick, and always
+   * shows when the field is absent.
+   *
+   * Reuses the pick the meal already stores (`MealPlanEntry.recipeChoices`)
+   * rather than adding a second mechanism: an option id already says which
+   * option it is, and `stepVisible` (`recipeComponents.ts`) is the one reader.
+   * **An id that names no option on this recipe is ignored, and a step left
+   * with no valid id shows always**: a deleted option must never be able to
+   * swallow instructions.
+   *
+   * Stored absent rather than empty, so a step nobody conditioned round-trips
+   * byte for byte (`normalizeStep`).
+   */
+  onlyWhen?: string[];
 }
 
 /**

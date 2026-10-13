@@ -212,6 +212,18 @@ already allows two things on one dinner, so ad-hoc pairing needs nothing.
   One refinement: a caller may pass `ChoiceResolution.onHand` (ingredient `nameKey`s in the
   pantry), and an unresolved group then prefers an on-hand *ingredient* over the first-listed one.
   It never promotes a component, and an explicit pick always wins.
+- **A method step can depend on an option (`RecipeStep.onlyWhen`).** It holds option ids (an
+  ingredient line or component link that has a `choiceGroup`), and `stepVisible` is the one reader:
+  visible when any named option is the pick, always visible when none is named. It reuses the pick
+  the meal already stores, so there is no second mechanism. Three rules keep it safe:
+  - **An id that names no option is ignored, and a step left with none always shows.** A deleted
+    option, or one whose `choiceGroup` was cleared, must not be able to swallow instructions.
+  - **Every reader of "the method for one cooking" takes the picks**, same as the shopping reads:
+    `cookSteps` filters (and keeps the notes fallback on the *unfiltered* list, so a fully filtered
+    method doesn't fall through to notes), and the recipe page's Cook button counts under the picks.
+  - **The two surfaces that show every option don't filter.** The recipe page shows every step so
+    each can be edited, dimmed with an "Only with X" caption when it isn't the pick; share text sends
+    every step with the same "(Only with X.)" tag, because it sends every option's ingredient too.
 - **The pick lives on `MealPlanEntry.recipeChoices`**, because which side you make is a fact about
   a cooking, not about the dish — one recipe, mash on Tuesday and roast on Friday. **One list holds
   both kinds of id** (component links and ingredient lines): every reader asks it the same question,

@@ -1,5 +1,5 @@
 import type { Recipe } from '../types';
-import { cookedDishes, type ChoiceResolution } from './recipeComponents';
+import { cookedDishes, stepVisible, type ChoiceResolution } from './recipeComponents';
 
 /**
  * Cook mode — the method a cooking actually reads, one step at a time (#1695).
@@ -141,6 +141,10 @@ export function cookSteps(
     if (dish.recipe.id !== prevRecipeId) prevSection = null;
     if (dish.recipe.steps.length > 0) {
       for (const step of dish.recipe.steps) {
+        // A step tied to an option that isn't the pick (RecipeStep.onlyWhen).
+        // Skipped before the section bookkeeping so a hidden step that opens a
+        // section hands its heading to the next step that is shown.
+        if (!stepVisible(step, dish.recipe, resolution)) continue;
         const label = step.section ?? null;
         out.push({
           id: step.id,

@@ -3915,6 +3915,16 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(activeIngredients(stirFry).some(i => i.id === riceIngredient!.id)).toBe(true);
     expect(activeComponents(stirFry).some(c => c.choiceGroup === 'Rice')).toBe(false);
 
+    // A step tied to one side of the Chile either/or: cook mode drops it under
+    // the default serrano pick and reads it once the jalapeno is chosen.
+    const jalapeno = stirFry.ingredients.find(i => i.name === 'jalapeno')!;
+    const conditional = stirFry.steps.find(st => st.onlyWhen?.includes(jalapeno.id));
+    expect(conditional).toBeTruthy();
+    const withoutPick = cookSteps(stirFry, recipeMap(recipes)).map(st => st.id);
+    const withJalapeno = cookSteps(stirFry, recipeMap(recipes), { chosen: [jalapeno.id] }).map(st => st.id);
+    expect(withoutPick).not.toContain(conditional!.id);
+    expect(withJalapeno).toContain(conditional!.id);
+
     // The ingredient-line detail the parser splits out, and the editor's labels.
     // The sectioned recipe carries a method too: cook mode's ingredient panel
     // heads its lines by section, and a recipe with no steps and no notes has

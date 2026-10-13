@@ -9,6 +9,7 @@ import {
 import type { Recipe, RecipeIngredient } from '../types';
 import { LEFTOVER_KEEP_DAYS_MAX, RECIPE_STEP_NOTE_MAX_LENGTH } from '../types';
 import { groceryNameKey } from '../utils/groceryParse';
+import { makeIngredient } from '../utils/recipeUtils';
 import { deleteRecipeImage } from '../utils/recipePhoto';
 
 // Only the file delete is stubbed, so a test can see which photos a delete
@@ -909,6 +910,26 @@ describe('steps', () => {
       .toEqual({ id: step.id, text: 'Simmer until it darkens' });
     useRecipeStore.getState().setStepNote(r.id, step.id, '   ');
     expect(useRecipeStore.getState().recipeById(r.id)!.steps[0].note).toBeUndefined();
+  });
+
+  it('ties a step to its recipe\'s own either/or options, and clears it back to absent', () => {
+    const line = (name: string, choiceGroup: string | null): RecipeIngredient =>
+      ({ ...makeIngredient(name)!, choiceGroup });
+    const serrano = line('serrano', 'Pepper');
+    const jalapeno = line('jalapeño', 'Pepper');
+    const salt = line('salt', null);
+    const r = { ...makeRecipe('Salsa'), ingredients: [serrano, jalapeno, salt] };
+    seed([r]);
+    const step = useRecipeStore.getState().addStep(r.id, 'Seed the jalapeño')!;
+
+    // Only real options are kept: the plain line and a made-up id are dropped.
+    useRecipeStore.getState().setStepOnlyWhen(r.id, step.id, [jalapeno.id, salt.id, 'gone', jalapeno.id]);
+    expect(useRecipeStore.getState().recipeById(r.id)!.steps[0].onlyWhen).toEqual([jalapeno.id]);
+
+    useRecipeStore.getState().setStepOnlyWhen(r.id, step.id, null);
+    expect(useRecipeStore.getState().recipeById(r.id)!.steps[0])
+      .toEqual({ id: step.id, text: 'Seed the jalapeño' });
+    useRecipeStore.getState().setStepOnlyWhen('gone', 'also gone', [serrano.id]);
   });
 
   it('truncates a note past the cap rather than refusing it', () => {

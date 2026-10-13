@@ -104,6 +104,21 @@ function recipeMap(recipes: Recipe[]): Map<string, Recipe> {
 }
 
 describe('buildRecipeShareText', () => {
+  it('sends every step and says which option a conditional one is for', () => {
+    const serrano = ing('serrano', { choiceGroup: 'Pepper' });
+    const jalapeno = ing('jalapeño', { choiceGroup: 'Pepper' });
+    const r = recipe('r1', 'Salsa', {
+      ingredients: [serrano, jalapeno],
+      steps: [
+        { id: 'a', text: 'Chop the pepper.' },
+        { id: 'b', text: 'Seed it.', onlyWhen: [jalapeno.id] },
+      ],
+    });
+    const lines = buildRecipeShareText(r, recipeMap([r])).split('\n');
+    expect(lines).toContain('1. Chop the pepper.');
+    expect(lines).toContain('2. Seed it. (Only with jalapeño.)');
+  });
+
   it('opens with the name, then servings and time', () => {
     const r = recipe('r1', 'Chili', {
       servings: 4, servingsMax: 6, estimatedMinutes: 45, prepMinutes: 15,
