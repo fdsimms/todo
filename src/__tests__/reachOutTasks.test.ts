@@ -18,7 +18,6 @@ import {
   collapseGroupedReachOuts,
   reachOutHistoryIds,
   sharedReachOutGroupId,
-  MAX_REACH_OUT_TASKS,
   MIN_CADENCE_SAMPLES,
   REACH_OUT_DECLINE_DAYS,
   type ReachOutWant,
@@ -187,22 +186,22 @@ describe('who wants a nudge', () => {
       .toEqual(['p1']);
   });
 
-  it('caps how many arrive at once', () => {
+  it('does not cap how many arrive at once', () => {
     const many = Array.from({ length: 6 }, (_, i) =>
       ({ person: person({ id: `p${i}`, sortOrder: i }), lastTogether: daysAgo(45) }));
-    expect(wantedReachOuts(many, TODAY)).toHaveLength(MAX_REACH_OUT_TASKS);
+    expect(wantedReachOuts(many, TODAY)).toHaveLength(6);
   });
 
-  // The one place a cap forces a choice between people. Sorting by
-  // longest-since is ranking by neglect, which docs/arch/people.md rules out
-  // even done invisibly — so the tie goes to the order the user dragged.
-  it('breaks the tie on the user\'s own order, never on who is most overdue', () => {
+  // Sorting by longest-since is ranking by neglect, which
+  // docs/arch/people.md rules out even done invisibly, so the order is the
+  // one the user dragged.
+  it('orders on the user\'s own order, never on who is most overdue', () => {
     const candidates = [
       { person: person({ id: 'late', sortOrder: 9 }), lastTogether: daysAgo(400) },
       { person: person({ id: 'first', sortOrder: 1 }), lastTogether: daysAgo(31) },
       { person: person({ id: 'second', sortOrder: 2 }), lastTogether: daysAgo(60) },
     ];
-    expect(wantedReachOuts(candidates, TODAY).map(w => w.personId)).toEqual(['first', 'second']);
+    expect(wantedReachOuts(candidates, TODAY).map(w => w.personId)).toEqual(['first', 'second', 'late']);
   });
 
   it('carries the number, so the row can call or text', () => {

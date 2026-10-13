@@ -313,7 +313,6 @@ import {
   collapseGroupedReachOuts,
   reachOutHistoryIds,
   sharedReachOutGroupId,
-  MAX_REACH_OUT_TASKS,
   type ReachOutCandidate,
 } from '../utils/reachOutTasks';
 import { lastTogether, personHistory } from '../utils/personHistory';
@@ -5889,7 +5888,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // them losing the contest for a slot.
     const allWanted = wantedReachOuts(candidates, today, handled, candidates.length);
     const collapsedWanted = collapseGroupedReachOuts(allWanted, groupIdOf, groupNameOf);
-    const wanted = collapsedWanted.slice(0, MAX_REACH_OUT_TASKS);
+    const wanted = collapsedWanted;
 
     // Everybody still due, uncapped — a row that lost the contest for a slot is
     // not stale, and deleting one the user deferred to Saturday would be the

@@ -355,7 +355,7 @@ export function suggestFocusTasks(
  *
  * **A second caller uses this unchanged: "batch the reach-outs" (#2091).**
  * The live `generatedKind: 'reachOut'` tasks are already the whole set — the
- * cap on that generator (`MAX_REACH_OUT_TASKS`) does the ranking, the same
+ * People order (`sortOrder`) does the ranking, the same
  * way pinning does here — so this needed no reach-out-specific version, only
  * a second caller. See `docs/arch/people.md`.
  */

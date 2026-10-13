@@ -127,7 +127,7 @@ interface Props {
  *
  * `reachOutSeed` is a third entry point on the same mechanism — "batch the
  * reach-outs" (#2091). The live reach-out tasks are already the whole
- * shortlist (`MAX_REACH_OUT_TASKS` is the ranking, the way pinning is for the
+ * shortlist (`sortOrder` is the ranking, the way pinning is for the
  * seed above), so it needed no new picking logic, only a second caller of
  * `focusQueueFromPinned` and its own copy. See `docs/arch/people.md`.
  *

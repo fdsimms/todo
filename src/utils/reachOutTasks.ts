@@ -18,15 +18,6 @@ import type { HistoryEntry } from './personHistory';
  */
 
 /**
- * How many rows the pass may write at once.
- *
- * Two, not three: these arrive uninvited and are about people rather than
- * work, so the ceiling is lower than `projectReview`'s. A fortnight away must
- * not produce a screen of them.
- */
-export const MAX_REACH_OUT_TASKS = 2;
-
-/**
  * How long a swipe-away holds for.
  *
  * `projectReview` scopes its decline to the *day*, which is right there and
@@ -175,7 +166,7 @@ export function wantedReachOuts(
   candidates: readonly ReachOutCandidate[],
   today: Date,
   handledRecently: ReadonlySet<string> = new Set(),
-  cap: number = MAX_REACH_OUT_TASKS
+  cap: number = Infinity
 ): ReachOutWant[] {
   return candidates
     .filter(({ person, lastTogether }) => {
