@@ -1117,6 +1117,9 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     // the freezer and purchase history, and `openedAt` is none of the three, so
     // the sheet recomputing its rows live still lands on the same set.
     set({ cookRecap: cooked ? cookRecapFor(next) : null });
+    // Ticking the meal is finishing the cook, so its timer ends with it (see
+    // finishCookForRecipe). Un-ticking never restarts one.
+    if (cooked && next.recipeId) useRecipeStore.getState().stopCookTimer(next.recipeId);
     if (cooked) markConsumedOpened(next);
     // Ticking the meal ticks its task, and un-ticking un-ticks it. The
     // ping-pong this would otherwise cause is broken by the guard above plus

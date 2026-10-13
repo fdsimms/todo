@@ -1152,6 +1152,19 @@ describe('setCooked', () => {
     expect(dbUpdateMealPlanEntry).toHaveBeenCalledWith(expect.objectContaining({ id: dinner.id, cookedAt: expect.any(String) }));
   });
 
+  it('stops the recipe’s cook timer when ticked, and never on un-ticking', () => {
+    mockRecipeState.stopCookTimer.mockClear();
+    const dinner = entry('2026-08-05', 'dinner', { recipeId: 'r1', title: 'Ragu' });
+    loadWeek([dinner]);
+
+    useMealPlanStore.getState().setCooked(dinner.id, true);
+    expect(mockRecipeState.stopCookTimer).toHaveBeenCalledWith('r1');
+
+    mockRecipeState.stopCookTimer.mockClear();
+    useMealPlanStore.getState().setCooked(dinner.id, false);
+    expect(mockRecipeState.stopCookTimer).not.toHaveBeenCalled();
+  });
+
   // A snack, or a slot whose task is switched off, has no task to complete,
   // so the offer the task path raises has to come from the tick itself.
   it('offers to log the meal it cooked, and not on un-cooking', () => {
