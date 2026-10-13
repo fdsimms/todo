@@ -440,6 +440,7 @@ export function MealPlanScreen() {
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const recipesById = useMemo(() => recipeIndex(recipes), [recipes]);
   const markRecipeCooked = useRecipeStore(s => s.markCooked);
+  const stopCookTimer = useRecipeStore(s => s.stopCookTimer);
   const restoreCookStats = useRecipeStore(s => s.restoreCookStats);
 
   const leftovers = useLeftoverStore(useShallow(s => s.leftovers));
@@ -1261,7 +1262,10 @@ export function MealPlanScreen() {
       // The snapshot markRecipeCooked returns is for the single-row undo; a
       // bulk mark registers its own undo through the store and never restores
       // recipe counters (see bulkSetCooked), so it's discarded here.
-      recipeIds.forEach(id => markRecipeCooked(id));
+      recipeIds.forEach(id => {
+        markRecipeCooked(id);
+        stopCookTimer(id);
+      });
     }
     bulkSetCooked(selectedIdList, cooked);
     haptics.success();
