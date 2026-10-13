@@ -26,7 +26,7 @@ const {
 const WATCH_TARGET = 'TodoWatch';
 const WATCH_BUNDLE_SUFFIX = 'watchkitapp';
 const COMPLICATION_TARGET = 'TodoWatchComplication';
-const COMPLICATION_BUNDLE_SUFFIX = 'complication';
+const COMPLICATION_BUNDLE_SUFFIX = 'widgets';
 // watchOS 11 is the first with interactive widgets, and runs on the same
 // watches as watchOS 26.
 const DEPLOYMENT_TARGET = '11.0';

@@ -222,7 +222,7 @@
                 },
                 {
                   "targetName": "TodoWatchComplication",
-                  "bundleIdentifier": "com.fdsimms.dundundun.watchkitapp.complication",
+                  "bundleIdentifier": "com.fdsimms.dundundun.watchkitapp.widgets",
                   "entitlements": {
                     "com.apple.security.application-groups": [
                       "group.com.fdsimms.dundundun"
