@@ -120,6 +120,7 @@ import { usePullToSearch } from '../hooks/usePullToSearch';
 import { LazySheet } from '../components/LazySheet';
 import { ActionMenu, type ActionMenuAction, type ActionMenuChoice } from '../components/ActionMenu';
 import type { CardAnchor } from '../components/CardSheet';
+import { resetToMealPlan } from '../navigation/navigationRef';
 
 /**
  * A day of eating, read back.
@@ -311,6 +312,8 @@ export function FoodLogScreen() {
   /** The entry whose "…" menu is open, and the touch it opened from. */
   const [menuEntry, setMenuEntry] = useState<FoodLogEntry | null>(null);
   const [menuAnchor, setMenuAnchor] = useState<CardAnchor | null>(null);
+  // The planned-meal row whose menu is open, by slot (the card's own key).
+  const [plannedMenu, setPlannedMenu] = useState<{ slot: MealSlot; anchor: CardAnchor } | null>(null);
   /**
    * The entry being corrected, which reopens the add sheet on it rather than
    * on an empty form. Null the rest of the time.
@@ -937,6 +940,10 @@ export function FoodLogScreen() {
    * lose the row to a fixed-width sibling (CLAUDE.md's rule about exactly
    * that), and a row that opens something is the shape the rest of the app
    * already uses for it.
+   *
+   * **A tap opens a small menu rather than the log sheet.** Going straight to
+   * logging presumed that tapping a planned meal meant "I ate this"; the menu
+   * makes logging one of the choices. `handleLogPlanned` is that choice.
    */
   const handleLogPlanned = useCallback(
     (coverage: SlotCoverage) => {
@@ -947,6 +954,20 @@ export function FoodLogScreen() {
     },
     [offerMealLog],
   );
+
+  const plannedMenuCoverage = useMemo(
+    () => plannedOpen.find(c => c.slot === plannedMenu?.slot) ?? null,
+    [plannedOpen, plannedMenu],
+  );
+
+  const plannedMenuActions = useMemo<ActionMenuAction[]>(() => {
+    const coverage = plannedMenuCoverage;
+    if (!coverage) return [];
+    return [
+      { key: 'log', label: 'Log this meal', icon: 'create-outline', onPress: () => handleLogPlanned(coverage) },
+      { key: 'plan', label: 'Open in meal plan', icon: 'restaurant-outline', onPress: () => resetToMealPlan(dayKey) },
+    ];
+  }, [plannedMenuCoverage, handleLogPlanned, dayKey]);
 
   /**
    * "Planned for today" — the meals the plan has an answer for and the log
@@ -968,10 +989,13 @@ export function FoodLogScreen() {
           key={coverage.slot}
           style={styles.plannedRow}
           activeOpacity={interaction.activeOpacity}
-          onPress={() => handleLogPlanned(coverage)}
+          onPress={e => {
+            haptics.tap();
+            setPlannedMenu({ slot: coverage.slot, anchor: { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY } });
+          }}
           accessibilityRole="button"
-          accessibilityLabel={`Log ${describePlannedSlot(coverage)}`}
-          accessibilityHint="Double tap to log this planned meal."
+          accessibilityLabel={describePlannedSlot(coverage)}
+          accessibilityHint="Double tap for options: log this planned meal or open it in the meal plan."
         >
           <Ionicons
             name={MEAL_SLOT_ICONS[coverage.slot] as keyof typeof Ionicons.glyphMap}
@@ -1561,6 +1585,13 @@ export function FoodLogScreen() {
       </LazySheet>
       {/* Provenance only: the entry's own figures are a snapshot of what was
           eaten and must not follow the pointer. See `FoodLogPatch`. */}
+      <ActionMenu
+        visible={plannedMenuCoverage !== null}
+        title={plannedMenuCoverage ? describePlannedSlot(plannedMenuCoverage) : ''}
+        actions={plannedMenuActions}
+        anchor={plannedMenu?.anchor ?? null}
+        onClose={() => setPlannedMenu(null)}
+      />
       <ActionMenu
         visible={menuEntry !== null}
         title={menuEntry?.label ?? ''}
