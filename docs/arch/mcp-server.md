@@ -1120,7 +1120,7 @@ has the rules; two decisions are specific to the server.
 ### The catalog: edits, delete with a snapshot, separate lists and receipts
 
 `grocery_setup`, `get_grocery_item`, `match_receipt` and the writes `update_grocery_item`,
-`save_grocery_box`, `save_store`, `delete_grocery_item`, `create_grocery_list`, `rename_grocery_list`,
+`save_grocery_box`, `list_brands`, `rename_brand`, `save_store`, `delete_grocery_item`, `create_grocery_list`, `rename_grocery_list`,
 `delete_grocery_list`, `finish_grocery_trip` and `import_receipt` (`mcp/src/groceryTools.ts`), with a `list`
 argument on the list tools. The row rules are `src/utils/groceryItemWrite.ts` (price, boxes, rename, store and
 substitute links, list names, aliases, finishing a trip), shared with `useGroceryStore` the way `pantryWrite.ts`

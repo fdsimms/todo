@@ -1785,6 +1785,8 @@ export interface Replica {
   deleteGroceryItem(id: string): import('../../src/utils/groceryItemWrite').DeletedItemSnapshot;
   createGroceryList(name: string): GroceryList;
   renameGroceryList(id: string, name: string): GroceryList;
+  /** Writes one spelling of a brand onto every variant that carries it, under any spelling. */
+  renameBrand(from: string, to: string): { renamed: number };
   /** Items on it are unlisted, not deleted. */
   deleteGroceryList(id: string): { list: GroceryList; unlisted: number };
   /** Finish a list: ticked items are recorded as bought and leave it. */
@@ -6444,6 +6446,17 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       db.dbInsertGroceryList(list);
       refresh();
       return list;
+    },
+
+    renameBrand(from: string, to: string): { renamed: number } {
+      const brands = require('../../src/utils/brands') as typeof import('../../src/utils/brands'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const plan = brands.planBrandRename(db.dbGetAllItemProducts(), from, to);
+      if ('refusal' in plan) throw new Error(plan.refusal);
+      db.dbTransaction(() => {
+        for (const product of plan.updates) db.dbSetItemProduct(product);
+      });
+      refresh();
+      return { renamed: plan.updates.length };
     },
 
     renameGroceryList(id: string, name: string): GroceryList {

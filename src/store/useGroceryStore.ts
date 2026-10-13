@@ -145,6 +145,7 @@ import { shopAisleOrderToSave } from '../utils/groceryShops';
 import { scheduleTripReminder, cancelTripReminder } from '../utils/notifications';
 import { substituteQuantity } from '../utils/itemSubs';
 import { productForGtin, productKeyFor, productsForItem } from '../utils/groceryProduct';
+import { planBrandRename } from '../utils/brands';
 import type { ScannedGtinLink } from '../utils/scanResolve';
 import {
   aliasDraftsFrom,
@@ -688,6 +689,12 @@ interface GroceryStore extends UndoHistoryActions {
    * row.
    */
   mergeItems: (fromId: string, intoId: string) => boolean;
+  /**
+   * Writes one spelling of a brand onto every variant that carries it, under any
+   * spelling. Refuses, rather than merging, when a change of brand would give an
+   * item two variants with the same key. Not undoable, like a rename of an item.
+   */
+  renameBrand: (from: string, to: string) => { renamed: number } | { refusal: string };
   setNote: (id: string, note: string) => void;
   /**
    * Name a box under an item — "Arnold's wheat" under Bread. Returns the
@@ -2985,6 +2992,18 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         return { ...l, productId: l.productId === id ? null : l.productId, unavailableProductIds };
       }),
     }));
+  },
+
+  renameBrand(from, to) {
+    const plan = planBrandRename(get().itemProducts, from, to);
+    if ('refusal' in plan) return plan;
+    if (plan.updates.length === 0) return { renamed: 0 };
+    dbTransaction(() => {
+      for (const u of plan.updates) dbSetItemProduct(u);
+    });
+    const byId = new Map(plan.updates.map(u => [u.id, u]));
+    set(s => ({ itemProducts: s.itemProducts.map(p => byId.get(p.id) ?? p) }));
+    return { renamed: plan.updates.length };
   },
 
   setProductStrict(id, strict) {
