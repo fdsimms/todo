@@ -234,6 +234,7 @@ export const WRITE_TOOLS: Record<string, { title: string; destructive: boolean; 
   set_shopping_trip: { title: 'Start or end a shopping trip', destructive: false, idempotent: true },
   mark_unavailable: { title: 'Mark an item unavailable at a store', destructive: false, idempotent: true },
   set_nutrition_panel: { title: 'Set a nutrition panel', destructive: true, idempotent: true },
+  set_nutrition_panels: { title: 'Set several nutrition panels', destructive: true, idempotent: true },
   save_aisle: { title: 'Change an aisle', destructive: true, idempotent: false },
   reorder_aisles: { title: 'Reorder aisles', destructive: true, idempotent: true },
   update_store: { title: 'Change or delete a store', destructive: true, idempotent: false },

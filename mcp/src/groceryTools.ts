@@ -601,33 +601,80 @@ function mergePortions(previous: FoodPortion[], incoming: NutritionPanelInput['p
   return [...previous.filter(p => !replaced.has(p.label.trim().toLowerCase())), ...rows];
 }
 
+/**
+ * The panel a tool's input describes, laid over `previous` (the item's, or a
+ * brand's, existing panel) for its portions. Throws on a nutrient the app does
+ * not keep, a figure that is not a number, an empty panel, or a bad portion.
+ */
+function buildPanel(input: NutritionPanelInput, previous: FoodNutrition | null): FoodNutrition {
+  const keys = NUTRIENT_KEYS as readonly string[];
+  const amounts: Record<string, number> = {};
+  for (const [k, v] of Object.entries(input.amounts)) {
+    if (!keys.includes(k)) throw new Error(`"${k}" isn't a nutrient the app keeps. They are ${keys.join(', ')}.`);
+    if (typeof v !== 'number' || !(v >= 0)) throw new Error(`${k} must be a number, 0 or more.`);
+    amounts[k] = v;
+  }
+  if (Object.keys(amounts).length === 0) throw new Error('A panel needs at least one figure. Absent is unknown, not zero, so leave out what the label does not say.');
+  return {
+    basis: input.basis,
+    servingGrams: input.servingGrams && input.servingGrams > 0 ? input.servingGrams : null,
+    servingText: input.servingText?.trim() || null,
+    amounts,
+    source: input.estimated ? 'estimated' as const : 'manual' as const,
+    sourceId: null,
+    portions: mergePortions(previous?.portions ?? [], input.portions),
+    recordedAt: new Date().toISOString(),
+  };
+}
+
 export function setNutritionPanel(replica: Replica, input: { item: string; boxId?: string; panel: NutritionPanelInput | null }) {
   const item = itemByIdOrName(replica, input.item);
-  let panel = null;
+  let panel: FoodNutrition | null = null;
   if (input.panel) {
-    const keys = NUTRIENT_KEYS as readonly string[];
-    const amounts: Record<string, number> = {};
-    for (const [k, v] of Object.entries(input.panel.amounts)) {
-      if (!keys.includes(k)) throw new Error(`"${k}" isn't a nutrient the app keeps. They are ${keys.join(', ')}.`);
-      if (typeof v !== 'number' || !(v >= 0)) throw new Error(`${k} must be a number, 0 or more.`);
-      amounts[k] = v;
-    }
-    if (Object.keys(amounts).length === 0) throw new Error('A panel needs at least one figure. Absent is unknown, not zero, so leave out what the label does not say.');
     const box = input.boxId ? replica.itemProducts().find(p => p.id === input.boxId) : null;
     const previous = (input.boxId ? box?.nutrition : item.nutrition) ?? null;
-    panel = {
-      basis: input.panel.basis,
-      servingGrams: input.panel.servingGrams && input.panel.servingGrams > 0 ? input.panel.servingGrams : null,
-      servingText: input.panel.servingText?.trim() || null,
-      amounts,
-      source: input.panel.estimated ? 'estimated' as const : 'manual' as const,
-      sourceId: null,
-      portions: mergePortions(previous?.portions ?? [], input.panel.portions),
-      recordedAt: new Date().toISOString(),
-    };
+    panel = buildPanel(input.panel, previous);
   }
   replica.setNutritionPanel(item.id, input.boxId ?? null, panel);
   return { item: item.name, ...(input.boxId ? { boxId: input.boxId } : {}), panel: panel ? describeFoodPanel(panel) : null };
+}
+
+/**
+ * Many items' panels in one call, so one preview and one approval cover a whole
+ * recipe's worth. All or none: every panel is checked, and every item found,
+ * before the first write. An item that is not in the catalog is refused unless
+ * the entry says `create`, which makes a bare catalog row (not on a list, not in
+ * the pantry) so the figures have somewhere to live.
+ */
+export function setNutritionPanels(
+  replica: Replica,
+  input: { panels: { item: string; create?: boolean; panel: NutritionPanelInput }[] },
+) {
+  if (input.panels.length === 0) throw new Error('Name at least one panel.');
+  const seen = new Set<string>();
+  const planned = input.panels.map((entry, n) => {
+    const where = `Panel ${n + 1} ("${entry.item}")`;
+    try {
+      let existing: GroceryItem | null = null;
+      try { existing = itemByIdOrName(replica, entry.item); } catch { existing = null; }
+      if (!existing && !entry.create) {
+        throw new Error('There is no item by that name in the catalog. Pass create: true to add it (it is not put on a list or in the pantry).');
+      }
+      if (!existing && !replica.lib().groceryParse.parseGroceryInput(entry.item).name.trim()) throw new Error('Give a name.');
+      const key = existing ? existing.id : entry.item.trim().toLowerCase();
+      if (seen.has(key)) throw new Error('This item is already in the call.');
+      seen.add(key);
+      return { entry, existing, panel: buildPanel(entry.panel, existing?.nutrition ?? null) };
+    } catch (e) {
+      throw new Error(`${where}: ${e instanceof Error ? e.message : 'could not be set.'}`);
+    }
+  });
+  const items = planned.map(p => {
+    const item = p.existing ?? replica.createCatalogItem(p.entry.item).item;
+    replica.setNutritionPanel(item.id, null, p.panel);
+    return { item: item.name, ...(p.existing ? {} : { created: true }), panel: describeFoodPanel(p.panel) };
+  });
+  return { set: items.length, items };
 }
 
 // ---------------------------------------------------------------------------

@@ -1268,6 +1268,12 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return outcome;
     },
 
+    createCatalogItem(name) {
+      const out = replica.createCatalogItem(name);
+      if (out.isNew) log({ action: 'created', subject: 'catalog', title: out.item.name, taskId: null, note: `Add "${out.item.name}" to the catalog, on no list and not in the pantry` });
+      return out;
+    },
+
     addToPantry(names) {
       // One snapshot per item, taken before the call: a name may match an
       // existing row (whose before is its row) or make one (whose before is a

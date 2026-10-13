@@ -83,7 +83,7 @@ import type { DeliverableKind, MealSlot, TimeOfDay } from '../../src/types';
 import { assignToStack, createStack, deleteStack, listStacks, renameStack, updateStack } from './stackTools';
 import { claimReward, createReward, deleteReward, getRewards, markMissed, setBounty, setRewardGoal, setSlip, unclaimReward, updateReward } from './rewardTools';
 import { addProjectSteps, createProject, deleteProject, getProject, nextInProject, reorderProjects, saveProjectAsTemplate, saveProjectCategory, startFreshProject, updateProject, type CreateProjectInput, type ProjectPlanStepInput } from './projectTools';
-import { addChoiceToList, addIngredientsToList, clearGroceryList, createGroceryList, deleteGroceryItem, deleteGroceryList, finishGroceryTrip, getGroceryItem, grocerySetup, importReceipt, markUnavailable, matchReceipt, mergeGroceryItems, renameGroceryList, reorderAisles, reorderGroceryPlaces, resolveList, saveAisle, saveGroceryBox, saveStore, setNutritionPanel, setShoppingTrip, settleChoice, swapForSubstitute, updateGroceryItem, updateStore } from './groceryTools';
+import { addChoiceToList, addIngredientsToList, clearGroceryList, createGroceryList, deleteGroceryItem, deleteGroceryList, finishGroceryTrip, getGroceryItem, grocerySetup, importReceipt, markUnavailable, matchReceipt, mergeGroceryItems, renameGroceryList, reorderAisles, reorderGroceryPlaces, resolveList, saveAisle, saveGroceryBox, saveStore, setNutritionPanel, setNutritionPanels, setShoppingTrip, settleChoice, swapForSubstitute, updateGroceryItem, updateStore } from './groceryTools';
 import { PANTRY_FILTERS, addToPantry, answerPantryReview, getPantryItem, listPantry, logLeftover, pantryReview, deleteLeftover, splitLeftover, updateLeftover, updatePantryBox, updatePantryItem, useUpRecipes } from './pantryTools';
 import { deleteCookbook, deleteIndexEntry, getCookbookIndex, listCookbooks, logCookTime, mergeCookbooks, recipeFromIndexEntry, renameCookbook, reorderUpNext, saveIndexEntry } from './recipeTools';
 import { DEFAULT_PLAN_DAYS, MAX_PLAN_DAYS, MEAL_SLOTS as KITCHEN_MEAL_SLOTS, copyMeals, getRecipe, listMealPlan, listRecipes, planMeal, removeMeal, saveMealAsRecipe, setMealCooked, updateMeal } from './kitchenTools';
@@ -1308,6 +1308,7 @@ function registerWriteTools(
     vote: z.enum(['loved', 'liked', 'never']).nullable().optional().describe('The person\'s own rating. Set it only on their word.'),
     upNext: z.boolean().optional().describe('On the Up next shelf.'),
     leftoverKeepDays: z.number().int().nullable().optional().describe('Days its leftovers keep, 0 to 365; null for the app default.'),
+    cookedWeightG: z.number().int().nullable().optional().describe('What the whole finished dish weighs in grams, as written (1 to 50000; null clears). Counts a used recipe\'s ingredients in whole, so a composed recipe\'s weight includes its parts. Logging a plate divides by it.'),
     components: z.array(z.object({
       recipeId: z.string().min(1),
       choiceGroup: z.string().nullable().optional(),
@@ -3053,6 +3054,36 @@ function registerWriteTools(
         return json(await withWrite(() => markUnavailable(replica, input)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not mark it.' });
+      }
+    }
+  );
+
+  server.tool(
+    'set_nutrition_panels',
+    `Set the nutrition panels of several grocery items at once, one preview and one approval for the lot (set_nutrition_panel is one item per call). Each entry is an item and a panel as set_nutrition_panel takes it, per 100g, per 100ml or per serving, keyed ${NUTRIENT_KEY_LIST.join(', ')}. All or none: every panel is checked and every item found before the first write. An item not in the catalog is refused unless its entry says create: true, which adds a bare catalog row (on no list, not in the pantry). Each replaces that item's figures, so read get_grocery_item first for any that may already have some. Set estimated when the figures are yours rather than a label's, and send portions so a recipe line in tablespoons or a count can be weighed.`,
+    {
+      panels: z.array(z.object({
+        item: z.string().min(1),
+        create: z.boolean().optional(),
+        panel: z.object({
+          basis: z.enum(['per100g', 'per100ml', 'perServing']),
+          amounts: z.record(z.number()),
+          servingGrams: z.number().nullable().optional(),
+          servingText: z.string().nullable().optional(),
+          estimated: z.boolean().optional(),
+          portions: z.array(z.object({
+            label: z.string().min(1),
+            grams: z.number(),
+            amount: z.number().optional(),
+          })).optional().describe('What an amount of this food weighs ("tbsp" 13.5, "cup, shredded" 113). Merged into the existing table by label.'),
+        }),
+      })).min(1).max(60),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => setNutritionPanels(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not set the panels.' });
       }
     }
   );

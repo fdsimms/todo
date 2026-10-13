@@ -209,7 +209,7 @@ only the fallback until the first sync.
 | `mark_done_by_other` | **Write.** Closes a task as done by somebody else: completes it and creates a repeat's next occurrence, with no coins and no streak change. Works on a one-off. `reopen_task` undoes it. |
 | `mark_missed` | **Write.** Marks a repeating task's occurrence missed: breaks the streak, creates the next occurrence, costs coins. `reopen_task` undoes it. |
 | `log_slip` / `undo_slip` | **Write.** Logs or takes back today's slip on a "don't do this" habit. On a habit a reward guards, a slip the balance covers claims the reward instead, and one it doesn't costs the balance up to the reward's price. A habit with a penalty is refused. |
-| `update_recipe` | **Write.** Changes a recipe or moves it to another cookbook; ingredients, steps, components and prep tasks each replace the whole list. |
+| `update_recipe` | **Write.** Changes a recipe or moves it to another cookbook; ingredients, steps, components and prep tasks each replace the whole list. Also sets `cookedWeightG`, what the whole finished dish weighs. |
 | `patch_recipe` | **Write.** Small edits to one recipe without resending its lists: set a step's note or which either/or option it applies to, insert, reword or remove a step or an ingredient. Numbered from 1; `expect` refuses a stale reading; all or nothing; untouched lines keep their ids. |
 | `delete_recipe` | **Write.** Deletes a recipe. Not undoable from here. |
 | `defer_task` | **Write.** Moves a task to a date, or clears its date. |
@@ -228,6 +228,7 @@ only the fallback until the first sync.
 | `clear_grocery_list` | **Write.** Empties a list as the app's Clear list does, and ends a trip. |
 | `set_shopping_trip` | **Write.** Starts a trip at a store with an optional budget, changes the budget, or ends it. |
 | `mark_unavailable` | **Write.** A store doesn't carry an item, or its preferred brand; or does again. |
+| `set_nutrition_panels` | **Write.** Many items' panels in one call (one preview, one approval): the same panels as `set_nutrition_panel`, all or none, with `create: true` on an entry to add a catalog item that is not there yet (on no list, not in the pantry). |
 | `set_nutrition_panel` | **Write.** An item's or a brand's nutrition panel, with optional `portions` (what a tablespoon, cup or clove weighs) merged into its table by label. A recipe counts a volume or count line only when the item has a portion weighing it. |
 | `merge_grocery_items` | **Write.** Merges one item into another, with everything recorded on it. Not undoable from Activity. |
 | `delete_grocery_item` | **Write.** Deletes an item with everything attached. Restorable from Activity. |
