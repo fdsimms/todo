@@ -230,6 +230,7 @@ Where each component can appear.
 - `src/components/NutrientContributorsSheet.tsx` — on FoodLogScreen, TodayScreen
 - `src/components/NutrientDayChart.tsx` — on StatsScreen
 - `src/components/NutrientFieldsCard.tsx` — on BackfillScreen, FoodLogScreen, GroceryScreen, KitchenScreen, MedicationDetailScreen, RecipeDetailScreen, app shell
+- `src/components/NutrientTaskBar.tsx` — on CalendarScreen, CategoryDetailScreen, ProjectDetailScreen, SavedViewDetailScreen, StackDetailScreen, TagsScreen, TodayScreen
 - `src/components/NutritionBarcodeScanSheet.tsx` — on BackfillScreen, FoodLogScreen, GroceryScreen, KitchenScreen, RecipeDetailScreen, app shell
 - `src/components/NutritionPanelSheet.tsx` — on BackfillScreen, FoodLogScreen, GroceryScreen, KitchenScreen, RecipeDetailScreen, app shell
 - `src/components/NutritionSearchSheet.tsx` — on BackfillScreen, GroceryScreen, KitchenScreen, RecipeDetailScreen

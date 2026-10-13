@@ -443,6 +443,11 @@ describe('limitContextRows', () => {
     expect(over).toMatchObject({ tone: 'over', title: 'Sugar 41.3 of 35g, 6.3g over' });
   });
 
+  it('leaves out a limit whose task is on the list', () => {
+    const rows = limitContextRows({ satFatG: 9 }, targets, ['satFatG', 'sugarG'], { ...opts, covered: ['satFatG'] });
+    expect(rows.map(r => r.nutrientKey)).toEqual(['sugarG']);
+  });
+
   it('draws nothing for a goal, or a limit with no target', () => {
     expect(limitContextRows({ proteinG: 80 }, targets, ['cholesterolMg'], opts)).toEqual([]);
   });
@@ -498,6 +503,11 @@ describe('health row visuals', () => {
 describe('goalContextRows', () => {
   const targets = { proteinG: 120, sodiumMg: 2000, fiberG: 30, waterMl: 2000 };
   const opts = { category: 'Health' };
+
+  it('leaves out a goal whose task is on the list', () => {
+    const rows = goalContextRows({ proteinG: 60 }, targets, ['sodiumMg'], { ...opts, covered: ['proteinG'] });
+    expect(rows.map(r => r.id)).toEqual(['goal-fiberG']);
+  });
 
   it('draws a row per target that is not a limit, with a bar and no tone', () => {
     const rows = goalContextRows({ proteinG: 60, fiberG: 45 }, targets, ['sodiumMg'], opts);

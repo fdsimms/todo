@@ -71,6 +71,7 @@ import {
   insertContextRows,
   withoutContextRows,
 } from '../utils/dayContextRows';
+import { nutrientsCoveredByTasks } from '../utils/nutrientTaskBar';
 import { dragRange } from '../utils/reorder';
 import { useAnswerFirstCompletion } from '../hooks/useAnswerFirstCompletion';
 import { asksOnCompletion } from '../utils/deliverables';
@@ -2709,13 +2710,16 @@ export function TodayScreen() {
     // Nutrition sheet's "Show on Today" files them under a category, for the
     // reason Health's rows are gated on theirs.
     const todayLimits = limitsShownOnToday(nutritionLimits, limitsTodayHidden);
+    // A nutrient whose Stay under / Aim for task is on the list draws its bar
+    // on the task, so its row here would say the same thing twice.
+    const coveredByTasks = nutrientsCoveredByTasks(allTasks, getLogicalDayKey(new Date(), dayResetTime));
     if (limitsTodayCategory && activeLimits(nutritionTargets, todayLimits).length > 0) {
       const todayFoodKey = getLogicalDayKey(new Date(), dayResetTime);
       rows.push(...limitContextRows(
         foodLogTotals(recentFoodEntries(todayFoodKey, todayFoodKey)).total,
         nutritionTargets,
         todayLimits,
-        { category: limitsTodayCategory, warnPercent: limitWarnPercent },
+        { category: limitsTodayCategory, warnPercent: limitWarnPercent, covered: coveredByTasks },
       ));
     }
     // Targets that are figures to reach, under their own switch.
@@ -2725,7 +2729,7 @@ export function TodayScreen() {
         foodLogTotals(recentFoodEntries(todayFoodKey, todayFoodKey)).total,
         nutritionTargets,
         nutritionLimits,
-        { category: goalsTodayCategory, hidden: goalsTodayHidden },
+        { category: goalsTodayCategory, hidden: goalsTodayHidden, covered: coveredByTasks },
       ));
     }
     // No category means nowhere to put them — see ensureCalendarEventCategory

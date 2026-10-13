@@ -1658,6 +1658,12 @@ is in `useTaskStore.ts`, run beside the snack one on the same triggers.
 - Refuses in demo mode, for the snack suggestion's reason. Ships off, pauses on
   vacation (the task hides and its streak holds), files under its own category
   setting (default Health).
+- **The task is the nutrient's face on Today, not a second thing beside its row.**
+  Both this and `goalTarget` draw the progress bar under their title
+  (`NutrientTaskBar`, fill and tone from `nutrientTaskBar`), and Today's info row
+  for a nutrient is left out while its task exists (`nutrientsCoveredByTasks`),
+  the way a meal row yields to its cook task. A nutrient with no task keeps the
+  row; archiving or declining the task brings the row back.
 
 ## `goalTarget`: an "Aim for" task per nutrient goal
 
