@@ -8,10 +8,19 @@ import SwiftUI
 // has for the widget's own checkboxes. So this target holds no rules about
 // tasks at all: what a tap means, whether a task needs the app, what is on
 // Today, all of it was decided on the phone and arrives in the snapshot.
+enum WatchPage: Hashable {
+    case today
+    case groceries
+}
+
 @main
 struct TodoWatchApp: App {
     @StateObject private var store = WatchStore.shared
     @Environment(\.scenePhase) private var scenePhase
+    /// Which page is showing. The Digital Crown scrolls Today's list rather
+    /// than paging past it, so the pager alone left Groceries with no visible
+    /// way in; Today carries a row that sets this.
+    @State private var page: WatchPage = .today
 
     init() {
         WatchStore.shared.activate()
@@ -19,9 +28,11 @@ struct TodoWatchApp: App {
 
     var body: some Scene {
         WindowGroup {
-            TabView {
-                TodayView()
-                GroceriesView()
+            TabView(selection: $page) {
+                TodayView(openGroceries: { page = .groceries })
+                    .tag(WatchPage.today)
+                GroceriesView(openToday: { page = .today })
+                    .tag(WatchPage.groceries)
             }
             .tabViewStyle(.verticalPage)
             .environmentObject(store)

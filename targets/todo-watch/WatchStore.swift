@@ -77,6 +77,20 @@ final class WatchStore: NSObject, ObservableObject {
         record(kind: "grocery", itemId: row.id, listId: listId, title: nil)
     }
 
+    /// Picks one option of an either/or: the phone checks it and takes the
+    /// other options off that list.
+    func choose(_ row: WidgetGroceryRow, listId: String?) {
+        guard row.choice, !row.id.isEmpty, !local.isChecked(row, listId: listId) else { return }
+        record(kind: "choose", itemId: row.id, listId: listId, title: nil)
+    }
+
+    /// A dictated grocery item, added to `listId` (nil is the list at home).
+    func addGrocery(_ title: String, listId: String?) {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        record(kind: "groceryAdd", itemId: "", listId: listId, title: trimmed)
+    }
+
     func add(_ title: String) {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }

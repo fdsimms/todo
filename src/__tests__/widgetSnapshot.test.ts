@@ -209,8 +209,8 @@ describe('buildGroceries', () => {
       NOW
     );
     expect(built.lists[0].rows).toEqual([
-      { id: 'i1', name: 'Milk', choice: false },
-      { id: 'i2', name: 'Pears', choice: true },
+      { id: 'i1', name: 'Milk', choice: false, choiceGroup: null },
+      { id: 'i2', name: 'Pears', choice: true, choiceGroup: 'fruit' },
     ]);
   });
 

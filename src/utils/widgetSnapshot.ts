@@ -184,6 +184,12 @@ export interface WidgetGroceryRow {
    * is a decision to make in front of the whole list.
    */
   choice: boolean;
+  /**
+   * Which either/or the row belongs to, null for a plain row. Rows sharing a
+   * value are the options of one choice, which the Apple Watch uses to name
+   * what picking one takes off the list. Opaque: never shown.
+   */
+  choiceGroup: string | null;
 }
 
 export interface WidgetGroceries {
@@ -420,13 +426,18 @@ function groceryRows(
   listId: string | null,
   maxItems: number,
 ): Pick<WidgetGroceryList, 'items' | 'rows'> {
-  const choiceIds = new Set(
-    input.listEntries.filter(e => e.listId === listId && e.choiceGroup).map(e => e.itemId)
+  const choiceGroups = new Map(
+    input.listEntries.filter(e => e.listId === listId && e.choiceGroup).map(e => [e.itemId, e.choiceGroup as string])
   );
   const rows = itemsOnList(input.items, input.listEntries, listId)
     .filter(item => !item.checked)
     .slice(0, maxItems)
-    .map(item => ({ id: item.id, name: item.name, choice: choiceIds.has(item.id) }));
+    .map(item => ({
+      id: item.id,
+      name: item.name,
+      choice: choiceGroups.has(item.id),
+      choiceGroup: choiceGroups.get(item.id) ?? null,
+    }));
   return { items: rows.map(r => r.name), rows };
 }
 
