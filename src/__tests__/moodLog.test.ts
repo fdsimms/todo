@@ -227,6 +227,23 @@ describe('seededContextTags', () => {
     expect(seededContextTags(logs, '2026-08-16', { isToday: false, vacationMode: true })).toEqual([]);
   });
 
+  it('offers Travel on a day a trip covers, today or in the past, without losing logged tags', () => {
+    expect(seededContextTags(logs, '2026-08-17', { isToday: true, vacationMode: false, away: true })).toEqual(['Travel', 'Sick']);
+    expect(seededContextTags(logs, '2026-08-16', { isToday: false, vacationMode: false, away: true })).toEqual(['Travel']);
+    expect(seededContextTags(logs, '2026-08-15', { isToday: false, vacationMode: false, away: true })).toEqual(['Travel']);
+  });
+
+  it('adds what the day facts offer, without duplicating a tag already logged', () => {
+    expect(seededContextTags(logs, '2026-08-17', {
+      isToday: true, vacationMode: false, offered: ['Holiday', 'Sick'],
+    })).toEqual(['Holiday', 'Sick']);
+  });
+
+  it('offers the place only for an entry today', () => {
+    expect(seededContextTags([], '2026-08-17', { isToday: true, vacationMode: false, placeTag: 'At Home' })).toEqual(['At Home']);
+    expect(seededContextTags([], '2026-08-16', { isToday: false, vacationMode: false, placeTag: 'At Home' })).toEqual([]);
+  });
+
   it('offers nothing for vacation while vacation mode is off', () => {
     expect(seededContextTags([], '2026-08-17', { isToday: true, vacationMode: false })).toEqual([]);
   });

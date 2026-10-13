@@ -28,6 +28,7 @@ import { formatWordCount } from '../../utils/journal';
 import { resetToWeightGoal } from '../../navigation/navigationRef';
 import { useColors } from '../../theme/ThemeContext';
 import { SettingsSection } from './SettingsSection';
+import type { MoodContextSources } from '../../utils/moodContextSources';
 import { SettingsRow } from './SettingsRow';
 import { SettingsSegments } from './SettingsSegments';
 import { makeSettingsStyles } from './settingsStyles';
@@ -93,6 +94,21 @@ const DEMO_HINT = 'Not available in demo mode. Demo mode does not read or write 
  * rows report per type while the switch stays single. A second app-level
  * toggle would only add a way to be refused twice for the same reason.
  */
+const MOOD_SOURCE_ROWS: readonly {
+  key: keyof MoodContextSources; entryId: string; icon: string; label: string; hint: string;
+}[] = [
+  { key: 'dayOff', entryId: 'moodSourceDayOff', icon: 'flag-outline', label: 'Holidays and days off',
+    hint: 'Picks Holiday on a public holiday, and Day off on one of your own days off.' },
+  { key: 'social', entryId: 'moodSourceSocial', icon: 'people-outline', label: 'Social events',
+    hint: 'Picks Social event on a day with a calendar event you linked to someone.' },
+  { key: 'birthday', entryId: 'moodSourceBirthday', icon: 'gift-outline', label: 'Birthdays',
+    hint: 'Picks Birthday on a day someone in People has one.' },
+  { key: 'exercise', entryId: 'moodSourceExercise', icon: 'barbell-outline', label: 'Exercise',
+    hint: 'Picks Exercised once Health shows 30 minutes of exercise today. Needs Read Apple Health.' },
+  { key: 'outside', entryId: 'moodSourceOutside', icon: 'sunny-outline', label: 'Time outside',
+    hint: 'Picks Went outside once Health shows 30 minutes in daylight today. Needs Read Apple Health and an Apple Watch. If you allowed Health access earlier, tap Health access again to include it.' },
+];
+
 export function HealthSettings() {
   const demoActive = useDemoStore(s => s.active);
   const healthReadEnabled = useSettingsStore(s => s.healthReadEnabled);
@@ -113,6 +129,8 @@ export function HealthSettings() {
   const sleepGoalMinutes = useSettingsStore(s => s.sleepGoalMinutes);
   const [sleepGoalOpen, setSleepGoalOpen] = useState(false);
   const journalWordGoal = useSettingsStore(s => s.journalWordGoal);
+  const moodContextSources = useSettingsStore(s => s.moodContextSources);
+  const setMoodContextSource = useSettingsStore(s => s.setMoodContextSource);
   const journalCustomPrompts = useSettingsStore(s => s.journalCustomPrompts);
   const [wordGoalOpen, setWordGoalOpen] = useState(false);
   const [promptsOpen, setPromptsOpen] = useState(false);
@@ -633,6 +651,26 @@ export function HealthSettings() {
         value={journalCustomPrompts.length === 0 ? 'None' : String(journalCustomPrompts.length)}
         onPress={() => { haptics.tap(); setPromptsOpen(true); }}
       />
+    </SettingsSection>
+    <SettingsSection
+      label="Mood log suggestions"
+      footer="A new mood entry starts with these tags already picked when they apply. You can untap any of them before saving. They only ever add a tag; a day without one gets nothing."
+    >
+      {MOOD_SOURCE_ROWS.map(({ key, entryId, icon, label, hint }, i) => (
+        <React.Fragment key={key}>
+          {i > 0 && <View style={styles.sep} />}
+          <SettingsRow
+            entryId={entryId}
+            icon={icon}
+            iconColor={moodContextSources[key] ? colors.accent : undefined}
+            label={label}
+            hint={hint}
+            toggle={moodContextSources[key]}
+            onPress={() => { haptics.tap(); setMoodContextSource(key, !moodContextSources[key]); }}
+            accessibilityLabel={label}
+          />
+        </React.Fragment>
+      ))}
     </SettingsSection>
     <JournalWordGoalSheet visible={wordGoalOpen} onClose={() => setWordGoalOpen(false)} />
     <JournalPromptsSheet visible={promptsOpen} onClose={() => setPromptsOpen(false)} />

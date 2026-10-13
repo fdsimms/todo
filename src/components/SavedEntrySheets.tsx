@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { CardSheet, useCardSheet } from './CardSheet';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { TextField } from './TextField';
@@ -10,6 +10,8 @@ import { usePlaceSuggestions } from '../hooks/usePlaceSuggestions';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { alertPermissionOff } from '../utils/permissionAlert';
+import { requestLocationPermission } from '../utils/weatherLocation';
 import { placeLocationText, placeSubtitle, type PlaceResult } from '../utils/places';
 import { editSavedPlace, addSavedPlace, findSavedPlace, type SavedPlace } from '../utils/savedPlaces';
 import { editSavedEvent, type SavedEvent } from '../utils/savedEvents';
@@ -100,6 +102,30 @@ export function SavedPlaceSheet({ visible, subject: liveSubject, places, onSave,
   const [name, setName] = useState('');
   const [text, setText] = useState('');
   const [pin, setPin] = useState<Pin>(null);
+  const [moodTag, setMoodTag] = useState(false);
+
+  // Typing over the address drops its pin, and a place with no pin has nothing
+  // to be near, so the mood log switch goes off with it.
+  const changePin = (next: Pin) => {
+    setPin(next);
+    if (!next) setMoodTag(false);
+  };
+
+  // The switch is the one place location is asked for: the mood log only ever
+  // reads it when a place has this on.
+  const toggleMoodTag = async (next: boolean) => {
+    haptics.tap();
+    if (!next) { setMoodTag(false); return; }
+    const granted = await requestLocationPermission();
+    if (!granted) {
+      alertPermissionOff(
+        'Location is off',
+        'Allow Location for dundundun in Settings to suggest this place in the mood log.',
+      );
+      return;
+    }
+    setMoodTag(true);
+  };
 
   // Reseeds on each open: the subject outlives a close, so keying on it alone
   // would hand back last time's half-typed edit.
@@ -111,6 +137,7 @@ export function SavedPlaceSheet({ visible, subject: liveSubject, places, onSave,
     setPin(existing && existing.latitude !== null && existing.longitude !== null
       ? { latitude: existing.latitude, longitude: existing.longitude }
       : null);
+    setMoodTag(existing?.moodTag ?? false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, subject === 'new' ? 'new' : subject?.id]);
 
@@ -122,7 +149,7 @@ export function SavedPlaceSheet({ visible, subject: liveSubject, places, onSave,
       Alert.alert('Name and address needed', 'Enter a name and the address it stands for.');
       return;
     }
-    const input = { name, text, place: pin };
+    const input = { name, text, place: pin, moodTag };
     let next: SavedPlace[];
     if (isNew) {
       if (findSavedPlace(places, name)) {
@@ -164,12 +191,29 @@ export function SavedPlaceSheet({ visible, subject: liveSubject, places, onSave,
         <PlaceAddressField
           text={text}
           onChangeText={setText}
-          onPickPlace={setPin}
+          onPickPlace={changePin}
           picked={pin !== null}
           placeholder="Search or type an address"
           accessibilityLabel="Place address"
         />
         <Text style={styles.hint}>Typing the name in a new event’s location fills in this address.</Text>
+        <View style={styles.switchRow}>
+          <View style={styles.switchText}>
+            <Text style={styles.switchLabel}>Suggest in mood log</Text>
+            <Text style={styles.switchHint}>
+              {pin
+                ? `A new mood entry made here starts with “At ${name.trim() || 'this place'}” picked. Your location is read only then and never leaves this phone.`
+                : 'Pick an address from the suggestions to turn this on.'}
+            </Text>
+          </View>
+          <Switch
+            value={moodTag}
+            disabled={!pin}
+            onValueChange={next => { void toggleMoodTag(next); }}
+            trackColor={{ false: colors.bgTertiary, true: colors.accent }}
+            accessibilityLabel="Suggest in mood log"
+          />
+        </View>
       </View>
     </CardSheet>
   );
@@ -329,6 +373,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.xs,
     marginTop: spacing.md,
   },
+  switchRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginTop: spacing.lg,
+  },
+  switchText: { flex: 1 },
+  switchLabel: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium },
+  switchHint: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xxs },
   placeList: {
     backgroundColor: colors.bgTertiary,
     borderRadius: radius.md,

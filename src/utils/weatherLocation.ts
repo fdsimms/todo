@@ -46,6 +46,8 @@ export async function requestLocationPermission(): Promise<boolean> {
 export interface DeviceLocation {
   latitude: number;
   longitude: number;
+  /** Horizontal accuracy in meters, when the system reported one. */
+  accuracyM?: number | null;
 }
 
 /**
@@ -66,18 +68,27 @@ export interface DeviceLocation {
  * alone act on it.
  *
  * Low accuracy is enough for a weather lookup — Open-Meteo's own grid is
- * coarser than GPS precision — and it's the faster, lower-power fix.
+ * coarser than GPS precision — and it's the faster, lower-power fix. A caller
+ * that has to tell one street from the next (`moodPlaceNow.ts`) asks for
+ * `'balanced'`, about a hundred meters, and reads `accuracyM` to see what it
+ * got.
  */
-export async function getCurrentLocation(): Promise<DeviceLocation | null> {
+export async function getCurrentLocation(
+  opts: { accuracy?: 'low' | 'balanced' } = {},
+): Promise<DeviceLocation | null> {
   if (Platform.OS !== 'ios') return null;
   if (isDemoModeActive()) return null;
   try {
     const permission = await location().getForegroundPermissionsAsync();
     if (!permission.granted) return null;
     const position = await location().getCurrentPositionAsync({
-      accuracy: location().Accuracy.Low,
+      accuracy: opts.accuracy === 'balanced' ? location().Accuracy.Balanced : location().Accuracy.Low,
     });
-    return { latitude: position.coords.latitude, longitude: position.coords.longitude };
+    return {
+      latitude: position.coords.latitude,
+      longitude: position.coords.longitude,
+      accuracyM: position.coords.accuracy ?? null,
+    };
   } catch {
     return null;
   }

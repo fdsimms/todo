@@ -70,6 +70,9 @@ const TEMPLATED: { test: (id: string) => boolean; template: (id: string) => stri
   // the rest are — see that screen's own header comment), so it keeps a
   // literal `entryId="permHealth"` and is excluded here.
   { test: id => id.startsWith('perm') && id !== 'permHealth', template: () => 'entryId={permission.entryId}' },
+  // HealthSettings maps one `MOOD_SOURCE_ROWS` array into the mood log's four
+  // suggestion switches, so the literal ids live in the array, not the JSX.
+  { test: id => id.startsWith('moodSource'), template: () => 'entryId={entryId}' },
 ];
 
 describe('settings entry wiring', () => {

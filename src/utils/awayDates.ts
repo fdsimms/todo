@@ -345,6 +345,18 @@ export function isAwayPauseInForce(now: Date = new Date(), dayResetTime?: string
   return awayPauseDriver(projects, now, dayResetTime) !== null;
 }
 
+/**
+ * Whether a live trip's span holds `date`, per the registered source. A planning
+ * read like `tripPlaceOn`: the mood log offers "Travel" from it, and the person
+ * can untap it. Archived and completed trips are history and don't count, so a
+ * backdated entry for a trip whose project is already finished gets no offer.
+ */
+export function isAwayOn(date: Date, dayResetTime?: string): boolean {
+  const projects = awayProjectSource?.();
+  if (!projects) return false;
+  return projects.some(p => isProjectAwayNow(p, date, dayResetTime));
+}
+
 type TripPlace = Pick<Project, 'awayStart' | 'awayEnd' | 'archived' | 'completed' | 'destinationLatitude' | 'destinationLongitude'>;
 
 /**

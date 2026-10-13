@@ -353,7 +353,7 @@ describe('travel estimates', () => {
 
 describe('travel origin', () => {
   const place = (over: Partial<SavedPlace> = {}): SavedPlace => ({
-    id: 'p1', name: 'Home', text: '1 Home St', latitude: 40.7128, longitude: -74.006, ...over,
+    id: 'p1', name: 'Home', text: '1 Home St', latitude: 40.7128, longitude: -74.006, moodTag: false, ...over,
   });
 
   it('is where the phone is when no place is chosen', () => {
@@ -384,8 +384,8 @@ describe('travel origin', () => {
 });
 
 describe('travelOriginForEvent', () => {
-  const home: SavedPlace = { id: 'home', name: 'Home', text: '1 Home St', latitude: 40.7128, longitude: -74.006 };
-  const work: SavedPlace = { id: 'work', name: 'Work', text: '2 Work Ave', latitude: 40.75, longitude: -73.99 };
+  const home: SavedPlace = { id: 'home', name: 'Home', text: '1 Home St', latitude: 40.7128, longitude: -74.006, moodTag: false };
+  const work: SavedPlace = { id: 'work', name: 'Work', text: '2 Work Ave', latitude: 40.75, longitude: -73.99, moodTag: false };
   const places = [home, work];
   const pick = (originPlaceId: string | null) =>
     parseTravelEventPrefs({ 'evt-1': { mode: null, arriveEarlyMinutes: 5, originPlaceId } });

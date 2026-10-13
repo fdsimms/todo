@@ -9,6 +9,7 @@ import {
   awayStatus,
   describeAwaySpan,
   isAwayDay,
+  isAwayOn,
   isProjectAwayNow,
   nextAwayProject,
   tripPlaceOn,
@@ -473,6 +474,25 @@ describe('the place a trip puts the sun', () => {
     expect(tripSunLocationOn(new Date(2026, 10, 5))).toEqual({ latitude: 38.72, longitude: -9.14 });
     registerAwayProjectSource(null);
     expect(tripSunLocationOn(new Date(2026, 10, 5))).toBeNull();
+  });
+});
+
+describe('isAwayOn', () => {
+  const trip = { awayStart: noon(2026, 11, 3), awayEnd: noon(2026, 11, 10), archived: false, completed: false };
+  afterEach(() => registerAwayProjectSource(null));
+
+  it('is true on a day a live trip covers and false either side, with the return day home', () => {
+    registerAwayProjectSource(() => [trip as never]);
+    expect(isAwayOn(new Date(2026, 10, 5))).toBe(true);
+    expect(isAwayOn(new Date(2026, 10, 2))).toBe(false);
+    expect(isAwayOn(new Date(2026, 10, 10))).toBe(false);
+  });
+
+  it('ignores a trip that is archived or completed, and answers false without a source', () => {
+    registerAwayProjectSource(() => [{ ...trip, archived: true } as never, { ...trip, completed: true } as never]);
+    expect(isAwayOn(new Date(2026, 10, 5))).toBe(false);
+    registerAwayProjectSource(null);
+    expect(isAwayOn(new Date(2026, 10, 5))).toBe(false);
   });
 });
 

@@ -75,6 +75,7 @@ export function SavedPlacesRows() {
             label={place.name}
             hint={place.text}
             alwaysShowHint
+            value={place.moodTag ? 'Mood log' : undefined}
             onPress={() => setEditing(place)}
             accessibilityLabel={`Edit ${place.name}`}
             trailing={(

@@ -147,3 +147,33 @@ describe('editSavedPlace', () => {
     expect(next[0]).toMatchObject({ name: 'HOME', text: '12 Main St', latitude: 40.7 });
   });
 });
+
+describe('moodTag', () => {
+  it('is off by default and read back as written', () => {
+    const [plain] = home();
+    expect(plain.moodTag).toBe(false);
+    const [on] = addSavedPlace([], { name: 'Home', text: '12 Main St', place: pin, moodTag: true });
+    expect(on.moodTag).toBe(true);
+    expect(parseSavedPlaces(JSON.stringify([on]))[0].moodTag).toBe(true);
+  });
+
+  it('is never on for a place with no pin, however it arrives', () => {
+    const [noPin] = addSavedPlace([], { name: 'Gym', text: 'Planet Fitness', place: null, moodTag: true });
+    expect(noPin.moodTag).toBe(false);
+    const stored = JSON.stringify([{ id: 'g', name: 'Gym', text: 'Planet Fitness', moodTag: true }]);
+    expect(parseSavedPlaces(stored)[0].moodTag).toBe(false);
+  });
+
+  it('survives saving the same place again without a choice, and an edit that leaves the pin', () => {
+    const [on] = addSavedPlace([], { name: 'Home', text: '12 Main St', place: pin, moodTag: true });
+    const again = addSavedPlace([on], { name: 'home', text: '12 Main St', place: pin });
+    expect(again[0].moodTag).toBe(true);
+    const edited = editSavedPlace(again, on.id, { name: 'Home', text: '14 Main St', place: pin });
+    expect(edited[0].moodTag).toBe(true);
+  });
+
+  it('goes off when an edit loses the pin', () => {
+    const [on] = addSavedPlace([], { name: 'Home', text: '12 Main St', place: pin, moodTag: true });
+    expect(editSavedPlace([on], on.id, { name: 'Home', text: 'Somewhere new', place: null })[0].moodTag).toBe(false);
+  });
+});

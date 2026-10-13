@@ -1,3 +1,4 @@
+import { NO_MOOD_CONTEXT_SOURCES, parseMoodContextSources, type MoodContextSources } from '../utils/moodContextSources';
 import { create } from 'zustand';
 import { dbGetAllSettings, dbGetDeviceId, dbGetSetting, dbSetSetting } from '../db/database';
 import type { ThemeMode } from '../theme';
@@ -1141,6 +1142,12 @@ interface SettingsStore {
   waterUnit: WaterUnit;
 
   /**
+   * Which day facts the mood log may offer as pre-picked context tags
+   * (`moodDayContext.ts`). Every one is off until turned on.
+   */
+  moodContextSources: MoodContextSources;
+
+  /**
    * A weight to reach, the rate to reach it at, and the weight it was set
    * from — see src/utils/weightGoal.ts. Null until somebody sets one, which is
    * the shipping state.
@@ -2026,6 +2033,7 @@ interface SettingsStore {
   setKeepOpenAfterFoodLog: (on: boolean) => void;
   setWeightUnit: (unit: WeightUnit) => void;
   setWaterUnit: (unit: WaterUnit) => void;
+  setMoodContextSource: (key: keyof MoodContextSources, on: boolean) => void;
   /** Sets the weight goal, or clears it with null. */
   setWeightGoal: (goal: WeightGoal | null) => void;
   /** Sets the sleep goal in minutes, or clears it with null. */
@@ -2343,6 +2351,7 @@ const DEFAULT_SETTINGS = {
   healthFoodWriteRefusalSeen: false,
   weightUnit: 'kg' as WeightUnit,
   waterUnit: 'ml' as WaterUnit,
+  moodContextSources: NO_MOOD_CONTEXT_SOURCES,
   healthTasks: false,
   reminderMeetingNudgeEnabled: true,
   calendarPeopleHistory: true,
@@ -2816,6 +2825,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   healthFoodWriteRefusalSeen: false,
   weightUnit: 'kg',
   waterUnit: 'ml',
+  moodContextSources: NO_MOOD_CONTEXT_SOURCES,
   weightGoal: null,
   sleepGoalMinutes: null,
   journalWordGoal: null,
@@ -3205,6 +3215,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // than to undefined.
     const weightUnit: WeightUnit = dbGetSetting('weightUnit') === 'lb' ? 'lb' : 'kg';
     const waterUnit: WaterUnit = dbGetSetting('waterUnit') === 'flOz' ? 'flOz' : 'ml';
+    const moodContextSources = parseMoodContextSources(dbGetSetting('moodContextSources'));
     // Both parsers salvage rather than throw: an unreadable goal reads back as
     // no goal, and an unreadable profile as an empty one, so a blob written by
     // a future build can never stop the settings loading.
@@ -3689,6 +3700,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       mealThawTaskCategory,
       mealThawTasks,
       mirroringMode,
+      moodContextSources,
       moodLogLastDayKey,
       moodLogTaskCategory,
       moodLogTasks,
@@ -5270,6 +5282,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setWaterUnit(unit: WaterUnit) {
     dbSetSetting('waterUnit', unit);
     set({ waterUnit: unit });
+  },
+
+  setMoodContextSource(key: keyof MoodContextSources, on: boolean) {
+    const next = { ...get().moodContextSources, [key]: on };
+    dbSetSetting('moodContextSources', JSON.stringify(next));
+    set({ moodContextSources: next });
   },
 
   // '' persists as "no goal", matching every other nullable here: the settings
