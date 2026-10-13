@@ -2019,6 +2019,42 @@ describe('persisted recipe sort & filter', () => {
   });
 });
 
+// ─── scroll nudge ───
+
+describe('scroll nudge settings', () => {
+  it('defaults to off, at 60 seconds', () => {
+    expect(useSettingsStore.getState().scrollNudgeEnabled).toBe(false);
+    expect(useSettingsStore.getState().scrollNudgeSeconds).toBe(60);
+  });
+
+  it('stays off for an install that predates the setting', () => {
+    (dbGetSetting as jest.Mock).mockReturnValue(null);
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().scrollNudgeEnabled).toBe(false);
+  });
+
+  it('only turns on for an explicitly stored "true"', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'scrollNudgeEnabled' ? 'true' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().scrollNudgeEnabled).toBe(true);
+  });
+
+  it('stores and persists both settings', () => {
+    useSettingsStore.getState().setScrollNudgeEnabled(true);
+    expect(dbSetSetting).toHaveBeenCalledWith('scrollNudgeEnabled', 'true');
+    useSettingsStore.getState().setScrollNudgeSeconds(90);
+    expect(useSettingsStore.getState().scrollNudgeSeconds).toBe(90);
+    expect(dbSetSetting).toHaveBeenCalledWith('scrollNudgeSeconds', '90');
+  });
+
+  it('clamps a threshold outside the stepper range', () => {
+    useSettingsStore.getState().setScrollNudgeSeconds(5);
+    expect(useSettingsStore.getState().scrollNudgeSeconds).toBe(30);
+  });
+});
+
 // ─── postpone check ───
 
 describe('postpone check settings', () => {

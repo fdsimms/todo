@@ -450,6 +450,8 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'completedRetentionDays',
   'postponeCheckEnabled',
   'postponeCheckThreshold',
+  'scrollNudgeEnabled',
+  'scrollNudgeSeconds',
   'simpleTaskForm',
   'simpleMode',
   'sortOption',

@@ -18,6 +18,9 @@ import {
   focusRestsDisabled,
 } from '../../utils/focusSettings';
 import { alertPermissionOff } from '../../utils/permissionAlert';
+import {
+  SCROLL_NUDGE_DEFAULT_SECONDS, SCROLL_NUDGE_MAX_SECONDS, SCROLL_NUDGE_MIN_SECONDS, SCROLL_NUDGE_STEP_SECONDS,
+} from '../../utils/scrollNudge';
 
 /**
  * Focus sessions, the apps that stay blocked around them, and the timers' Lock
@@ -51,6 +54,10 @@ export function FocusSettings() {
   const timerLiveActivity = useSettingsStore(s => s.timerLiveActivity);
   const setTimerLiveActivity = useSettingsStore(s => s.setTimerLiveActivity);
   const simpleMode = useSettingsStore(s => s.simpleMode);
+  const scrollNudgeEnabled = useSettingsStore(s => s.scrollNudgeEnabled);
+  const setScrollNudgeEnabled = useSettingsStore(s => s.setScrollNudgeEnabled);
+  const scrollNudgeSeconds = useSettingsStore(s => s.scrollNudgeSeconds);
+  const setScrollNudgeSeconds = useSettingsStore(s => s.setScrollNudgeSeconds);
 
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
@@ -465,6 +472,49 @@ export function FocusSettings() {
           </>
         )}
       </SettingsSection>
+      )}
+
+      {!simpleMode && (
+        <SettingsSection
+          label="Scroll suggestion"
+          footer="Counts scrolling on Today, Later, Unscheduled and Inbox. Any tap or swipe on a row starts the count over. It appears at most 3 times a day, 30 minutes apart, and nothing is recorded or sent anywhere."
+        >
+          <SettingsRow
+            entryId="scrollNudge"
+            icon="swap-vertical-outline"
+            iconColor={scrollNudgeEnabled ? colors.accent : undefined}
+            label="Suggest a focus session while scrolling"
+            hint={scrollNudgeEnabled
+              ? 'Shows a banner on Today with a button to start a focus session'
+              : 'Off. Nothing is suggested, however long you scroll'}
+            toggle={scrollNudgeEnabled}
+            onPress={() => setScrollNudgeEnabled(!scrollNudgeEnabled)}
+          />
+          {scrollNudgeEnabled && (
+            <>
+              <View style={styles.sep} />
+              <SettingsRow
+                entryId="scrollNudgeSeconds"
+                icon="time-outline"
+                label="Scroll time before suggesting"
+                hint="How long the lists can scroll with no tap before the banner appears."
+                tight
+              />
+              <View style={styles.cadenceRow}>
+                <CountStepper
+                  value={scrollNudgeSeconds}
+                  onChange={next => setScrollNudgeSeconds(next ?? SCROLL_NUDGE_DEFAULT_SECONDS)}
+                  min={SCROLL_NUDGE_MIN_SECONDS}
+                  max={SCROLL_NUDGE_MAX_SECONDS}
+                  step={SCROLL_NUDGE_STEP_SECONDS}
+                  format={n => `${n} sec`}
+                  label="Scroll time before suggesting"
+                  describeValue={n => `${n} seconds`}
+                />
+              </View>
+            </>
+          )}
+        </SettingsSection>
       )}
 
       {Platform.OS === 'ios' && (

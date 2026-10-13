@@ -93,6 +93,8 @@ export const SETTINGS_SPEC: Record<string, SettingSpec> = {
   completedRetentionDays: { group: 'tasks', describe: 'Delete completed tasks older than this many days (90 or 365), or null keep forever.', read: s => s.completedRetentionDays, write: (s, v) => s.setCompletedRetentionDays(oneOf('completedRetentionDays', v, [null, 90, 365] as const)) },
   postponeCheckEnabled: { group: 'tasks', describe: 'Ask about a task that keeps being pushed to another day.', read: s => s.postponeCheckEnabled, write: (s, v) => s.setPostponeCheckEnabled(bool('postponeCheckEnabled', v)) },
   postponeCheckThreshold: { group: 'tasks', describe: 'Ask after a task has been pushed this many times.', read: s => s.postponeCheckThreshold, write: (s, v) => s.setPostponeCheckThreshold(int('postponeCheckThreshold', v, 1, 100)) },
+  scrollNudgeEnabled: { group: 'tasks', describe: 'Offer a focus session when the task lists have been scrolled for a while with no tap.', read: s => s.scrollNudgeEnabled, write: (s, v) => s.setScrollNudgeEnabled(bool('scrollNudgeEnabled', v)) },
+  scrollNudgeSeconds: { group: 'tasks', describe: 'Seconds of scrolling with no tap before that offer appears (30 to 300).', read: s => s.scrollNudgeSeconds, write: (s, v) => s.setScrollNudgeSeconds(int('scrollNudgeSeconds', v, 30, 300)) },
   newTaskDefaults: {
     group: 'tasks',
     describe: 'What a new task starts with: { category, priority (0-4), effort (0-6), difficulty, timeSegment, destination (today, inbox or unscheduled) }. Fields left out stay.',
