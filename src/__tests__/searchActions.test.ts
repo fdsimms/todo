@@ -160,10 +160,14 @@ describe('searchActions: mood', () => {
     expect(only<MoodAction>('log my mood', mood)).toMatchObject({ mood: null, symptom: null, explicit: true });
   });
 
+  // A known symptom also offers the write, so the log is the second row.
+  const moodRow = (query: string) =>
+    searchActions(query, mood).actions.find((a): a is MoodAction => a.kind === 'mood');
+
   it('fills in a symptom you have logged before, spelled your way', () => {
-    expect(only<MoodAction>('feeling tired', mood)).toMatchObject({ symptom: 'Tired', mood: null });
-    expect(only<MoodAction>("I'm feeling a bit tired", mood)).toMatchObject({ symptom: 'Tired' });
-    expect(only<MoodAction>('i feel HEADACHE', mood)).toMatchObject({ symptom: 'Headache' });
+    expect(moodRow('feeling tired')).toMatchObject({ symptom: 'Tired', mood: null });
+    expect(moodRow("I'm feeling a bit tired")).toMatchObject({ symptom: 'Tired' });
+    expect(moodRow('i feel HEADACHE')).toMatchObject({ symptom: 'Headache' });
   });
 
   it("fills in a mood only from the scale's own labels", () => {
@@ -181,6 +185,33 @@ describe('searchActions: mood', () => {
 
   it('offers nothing while the Mood screen is hidden', () => {
     expect(searchActions('feeling tired', { mood: null }).actions).toEqual([]);
+    expect(searchActions('log headache', { mood: null }).actions).toEqual([]);
+  });
+});
+
+describe('searchActions: symptoms', () => {
+  const mood: SearchActionSources = { mood: { symptoms: ['Tired', 'Headache'] } };
+
+  it('offers a one-tap write beside the log for a symptom you have logged', () => {
+    const { actions, onSubmit } = searchActions('feeling tired', mood);
+    expect(actions.map(a => a.kind)).toEqual(['symptom', 'mood']);
+    expect(actions[0]).toMatchObject({ symptom: 'Tired', explicit: false });
+    // Return still opens the log: it writes nothing.
+    expect(onSubmit?.kind).toBe('mood');
+  });
+
+  it('runs on Return after "log" or "record", spelled the way the log has it', () => {
+    const { actions, onSubmit } = searchActions('log my headache', mood);
+    expect(actions).toHaveLength(1);
+    expect(onSubmit).toMatchObject({ kind: 'symptom', symptom: 'Headache', explicit: true });
+    expect(searchActions('record TIRED', mood).onSubmit).toMatchObject({ symptom: 'Tired' });
+  });
+
+  it('never offers a write for a name the log has not seen or a mood label', () => {
+    expect(searchActions('log nausea', mood).actions).toEqual([]);
+    expect(searchActions('feeling nauseous', mood).actions.map(a => a.kind)).toEqual(['mood']);
+    expect(searchActions('feeling low', mood).actions.map(a => a.kind)).toEqual(['mood']);
+    expect(searchActions('log my mood', mood).actions.map(a => a.kind)).toEqual(['mood']);
   });
 });
 
@@ -275,7 +306,9 @@ describe('describeSearchAction', () => {
 
   it('says what the mood log will open with', () => {
     const mood = { mood: { symptoms: ['Tired'] } };
-    expect(describeSearchAction(only<MoodAction>('feeling tired', mood)!, ctx()).meta).toEqual(['Opens with Tired checked']);
+    const tired = searchActions('feeling tired', mood).actions;
+    expect(describeSearchAction(tired[0], ctx())).toMatchObject({ title: 'Log Tired', meta: ['Mild · no mood level'] });
+    expect(describeSearchAction(tired[1], ctx()).meta).toEqual(['Opens with Tired checked']);
     expect(describeSearchAction(only<MoodAction>('feeling low', mood)!, ctx()).meta).toEqual(['Opens with Low picked']);
     expect(describeSearchAction(only<MoodAction>('mood', mood)!, ctx())).toMatchObject({ title: 'Log your mood', meta: ['Opens the mood log'] });
   });
