@@ -309,6 +309,16 @@ export function activeLimits(targets: NutritionTargets, limits: readonly Nutrien
   return NUTRIENT_KEYS.filter(key => isActiveLimit(key, targets, limits));
 }
 
+/**
+ * The nutrients with a target that is a figure to reach: every target except
+ * the ones marked Stay under, and water (which has its own task and unit).
+ * Today's goal rows and the Aim for tasks both read this, so they list the
+ * same nutrients.
+ */
+export function goalNutrientKeys(targets: NutritionTargets, limits: readonly NutrientKey[]): NutrientKey[] {
+  return targetedNutrients(targets).filter(key => key !== 'waterMl' && !limits.includes(key));
+}
+
 /** The limits Today draws a row for: every limit except the ones the person hid there. */
 export function limitsShownOnToday(
   limits: readonly NutrientKey[],

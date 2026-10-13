@@ -376,6 +376,8 @@ function generatedCategorySetting(kind: GeneratedKind): {
       return { key: 'snackNudgeTaskCategory', current: s.snackNudgeTaskCategory, assign: s.setSnackNudgeTaskCategory };
     case 'limitWarning':
       return { key: 'limitWarningTaskCategory', current: s.limitWarningTaskCategory, assign: s.setLimitWarningTaskCategory };
+    case 'goalTarget':
+      return { key: 'goalTargetTaskCategory', current: s.goalTargetTaskCategory, assign: s.setGoalTargetTaskCategory };
     case 'bookEvent':
       return { key: 'bookEventTaskCategory', current: s.bookEventTaskCategory, assign: s.setBookEventTaskCategory };
   }

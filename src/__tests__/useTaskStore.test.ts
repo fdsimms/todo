@@ -14341,6 +14341,78 @@ describe('quota tasks', () => {
         });
       });
 
+      describe('the aim for task', () => {
+        const proteinEntry = (proteinG: number, id = 'p1'): FoodLogEntry => ({
+          ...waterEntry(0),
+          id,
+          label: 'Chicken',
+          nutrition: { ...panel(0), amounts: { proteinG } },
+        });
+        const goalTasks = () =>
+          useTaskStore.getState().tasks.filter(t => t.generatedKind === 'goalTarget' && !t.archived);
+        const on = () => ({
+          goalTargetTasks: true, goalTargetTaskCategory: 'Health', vacationMode: false,
+          nutritionTargets: { proteinG: 120, satFatG: 16 }, nutritionLimits: ['satFatG'],
+          goalTargetDeclined: [],
+        });
+        const run = () => useTaskStore.getState().syncGoalTargetTasks();
+        const log = (...entries: FoodLogEntry[]) => (dbGetFoodLogEntries as jest.Mock).mockReturnValue(entries);
+
+        beforeEach(() => {
+          jest.useFakeTimers({ now: new Date(2026, 9, 5, 16, 0) });
+          useTaskStore.setState({ tasks: [] });
+        });
+        afterEach(() => jest.useRealTimers());
+
+        it('writes one task per goal for today and leaves the limit out', () => {
+          withSettings(on());
+          log(proteinEntry(80));
+          run();
+          expect(goalTasks()).toHaveLength(1);
+          expect(goalTasks()[0]).toMatchObject({
+            title: 'Aim for 120g protein · 80g so far', generatedSourceId: 'proteinG|2026-10-05',
+            completed: false,
+          });
+          run();
+          expect(goalTasks()).toHaveLength(1);
+        });
+
+        it('checks it off when the day reaches the goal, and keeps it checked', () => {
+          withSettings(on());
+          log(proteinEntry(80));
+          run();
+          log(proteinEntry(80), proteinEntry(45, 'p2'));
+          run();
+          expect(goalTasks()[0].completed).toBe(true);
+          log(proteinEntry(80));
+          run();
+          expect(goalTasks()).toHaveLength(1);
+          expect(goalTasks()[0].completed).toBe(true);
+        });
+
+        it('writes none for a goal that is switched off, and none when the automation is off', () => {
+          withSettings({ ...on(), goalTargetDeclined: ['proteinG'] });
+          log();
+          run();
+          expect(goalTasks()).toHaveLength(0);
+          withSettings(on());
+          run();
+          expect(goalTasks()).toHaveLength(1);
+          withSettings({ ...on(), goalTargetTasks: false });
+          run();
+          expect(goalTasks()).toHaveLength(0);
+        });
+
+        it('drops yesterday\'s task instead of carrying it forward', () => {
+          withSettings(on());
+          log();
+          run();
+          jest.setSystemTime(new Date(2026, 9, 6, 16, 0));
+          run();
+          expect(goalTasks().map(t => t.generatedSourceId)).toEqual(['proteinG|2026-10-06']);
+        });
+      });
+
       it('leaves the count alone when the task does not follow', () => {
         withSettings({ nutritionTargets: { waterMl: 2500 } });
         useTaskStore.setState({ tasks: [waterQuota()] });

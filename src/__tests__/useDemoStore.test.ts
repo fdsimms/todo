@@ -4765,6 +4765,13 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(task?.polarity).toBe('negative');
   });
 
+  it('seeds an Aim for task for a nutrient goal', () => {
+    const task = useTaskStore.getState().tasks.find(t => t.generatedKind === 'goalTarget');
+    expect(task?.category).toBe('Health');
+    expect(task?.generatedSourceId).toBe(`proteinG|${dayKeyOf(getCurrentDayStart())}`);
+    expect(useSettingsStore.getState().goalTargetTaskCategory).toBe('Health');
+  });
+
   it('seeds a snack suggestion under the Health category', () => {
     const task = useTaskStore.getState().tasks.find(t => t.generatedKind === 'snackNudge');
     expect(task).toBeDefined();

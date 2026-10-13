@@ -1640,6 +1640,33 @@ is in `useTaskStore.ts`, run beside the snack one on the same triggers.
   vacation (the task hides and its streak holds), files under its own category
   setting (default Health).
 
+## `goalTarget`: an "Aim for" task per nutrient goal
+
+The mirror of `limitWarning` for the targets that are a figure to reach (every
+target that isn't Stay under, water aside). `reconcileGoalTargets` keeps one task
+per goal for today: "Aim for 120g protein · 80g so far". Rules are in
+`src/utils/goalTargetTasks.ts`; the pass is in `useTaskStore.ts`, run beside the
+limit one.
+
+- **A one-off for today, not a habit.** Keyed by nutrient and day
+  (`proteinG|2026-10-13`), so a past day's is dropped (no opt-out) and the next day
+  writes a fresh one. There is no streak: with no direction known, a streak would
+  be the app scoring a body.
+- **The app checks it off when the day reaches the goal**, as a `neutral`
+  completion (no coins, nothing moves). "Reached" is `targetStatus` not being
+  `under`, the same band the Food log calls met. Nothing says a day went past a
+  goal. A total that falls back under later (an entry deleted) leaves it checked.
+- **A goal of zero gets no task**: an empty day meets it, so the task would
+  complete as it was written. That is a limit, and Stay under is how to say it.
+- **The per-nutrient switch is the declined list.** Settings › Automations has a
+  "Nutrients with a task" row of pills under both Aim for and Stay under, and
+  turning one off writes `goalTargetDeclined` / `limitWarningDeclined`, the same
+  list a delete writes. So a switch and a delete are one answer, and the pass
+  needs no second check. Turning a nutrient off removes its live task; a checked-off
+  one stays as the record.
+- Refuses in demo mode, ships off, pauses on vacation, files under its own
+  category setting (default Health).
+
 ## `bookEvent`: booking a saved event again
 
 A saved event (`src/utils/savedEvents.ts`, an event kept for re-adding from the

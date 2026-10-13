@@ -181,6 +181,9 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   // Beside it, reading the same food log against a limit rather than a goal:
   // a "don't do" task per limit, slipped when the log goes past it.
   'limitWarning',
+  // And its mirror for the targets that are a figure to reach: "Aim for 120g
+  // protein", checked off by the app when the day gets there.
+  'goalTarget',
   // Appended: the one generator whose source is a calendar event the person
   // keeps for re-adding (savedEvents.ts).
   'bookEvent',
@@ -253,6 +256,7 @@ export type GeneratedEnabledKey =
   | 'waterShortfallTasks'
   | 'snackNudgeTasks'
   | 'limitWarningTasks'
+  | 'goalTargetTasks'
   | 'bookEventTasks'
   | 'journalLogTasks'
   | 'dreamLogTasks';
@@ -1018,6 +1022,23 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     sourced: true,
     // Not a notice: it is a habit with a streak, a slip allowance and a penalty
     // a person may want to set, so the editor stays reachable.
+    notice: false,
+    kitchen: false,
+    categorized: true,
+    defaultCategory: 'Health',
+  },
+  // Ships off, like the Stay under one it mirrors.
+  goalTarget: {
+    kind: 'goalTarget',
+    pausedOnVacation: true,
+    enabledKey: 'goalTargetTasks',
+    label: 'Aim for goals as tasks',
+    onHint: 'Adds a task each day for each nutrient goal, checked off when the food log reaches it',
+    offHint: 'No task for nutrient goals',
+    icon: 'trending-up-outline',
+    // Keyed by the nutrient and the day; goalTargetDeclined is what keeps a
+    // deleted or switched-off one from coming back.
+    sourced: true,
     notice: false,
     kitchen: false,
     categorized: true,

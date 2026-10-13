@@ -104,6 +104,9 @@ export function catchUpPasses(): MaintenanceStep[] {
     ['sync snack nudge', () => tasks().syncSnackNudgeTasks()],
     // And the Stay under warnings, off the same log. See limitWarningTasks.ts.
     ['sync limit warnings', () => tasks().syncLimitWarningTasks()],
+    // And the Aim for goals, which also need the day turning over to retire
+    // yesterday's. See goalTargetTasks.ts.
+    ['sync goal targets', () => tasks().syncGoalTargetTasks()],
     // A saved event's booking interval running out is a day passing, so it is
     // caught up here. Reads only its own setting; see savedEventTasks.ts.
     ['check book-event tasks', () => tasks().checkBookEventTasks()],

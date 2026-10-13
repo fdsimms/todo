@@ -60,6 +60,7 @@ import {
   weighInNotes,
 } from './weightTasks';
 import { SNACK_NUDGE_NOTES, snackNudgeTitle } from './snackNudgeTasks';
+import { GOAL_TARGET_LINK, goalTargetNotes, goalTargetSourceId, goalTargetTitle } from './goalTargetTasks';
 import { LIMIT_WARNING_LINK, LIMIT_WARNING_NOTES, limitWarningTitle } from './limitWarningTasks';
 import { helpingNutrition, scalePanelToAmount } from './foodLog';
 import { waterHelping } from './waterLog';
@@ -1981,6 +1982,18 @@ export function seedDemoData(): void {
     showStreak: true,
     category: 'Health',
     ...generatedBy('limitWarning', 'satFatG'),
+  });
+
+  // The goal's "Aim for" task, seeded directly for the same reason.
+  useSettingsStore.getState().setGoalTargetTaskCategory('Health');
+  const goalReading = { key: 'proteinG' as const, total: 62, target: 120, reached: false };
+  addTask({
+    title: goalTargetTitle(goalReading),
+    notes: goalTargetNotes(goalReading),
+    linkUrl: GOAL_TARGET_LINK,
+    dueDate: today.toISOString(),
+    category: 'Health',
+    ...generatedBy('goalTarget', goalTargetSourceId('proteinG', dayKeyOf(today))),
   });
 
   // A health-target task, the fifth kind. Seeded so the shape is visible even

@@ -44,6 +44,7 @@ export function setGeneratorEnabled(kind: GeneratedKind, next: boolean): void {
     case 'waterShortfall': s.setWaterShortfallTasks(next); break;
     case 'snackNudge': s.setSnackNudgeTasks(next); break;
     case 'limitWarning': s.setLimitWarningTasks(next); break;
+    case 'goalTarget': s.setGoalTargetTasks(next); break;
     case 'bookEvent': s.setBookEventTasks(next); break;
     default: {
       const exhaustive: never = kind;

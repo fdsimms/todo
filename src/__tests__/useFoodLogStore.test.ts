@@ -90,6 +90,7 @@ jest.mock('../store/useTaskStore', () => ({
       syncWaterQuotaTasks: mockSyncWaterQuotaTasks,
       syncSnackNudgeTasks: jest.fn(),
       syncLimitWarningTasks: jest.fn(),
+      syncGoalTargetTasks: jest.fn(),
       syncLoggedMealSlotTasks: jest.fn(),
     }),
   },

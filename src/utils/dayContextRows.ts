@@ -10,7 +10,7 @@ import { ringsSummaryLine, type ActivityRings } from './activityRings';
 import type { NutrientKey } from '../types';
 import { NUTRIENT_LABEL } from './foodNutrition';
 import {
-  LIMIT_ROW_NAME, activeLimits, describeAgainstTarget, describeLimit, limitStatus, targetProgress, targetedNutrients,
+  LIMIT_ROW_NAME, activeLimits, describeAgainstTarget, describeLimit, goalNutrientKeys, limitStatus, targetProgress,
   type NutritionTargets,
 } from './nutritionTargets';
 
@@ -417,8 +417,8 @@ export function goalContextRows(
   opts: { category: string | null; hidden?: readonly NutrientKey[] },
 ): ContextRow[] {
   const hidden = opts.hidden ?? [];
-  return targetedNutrients(targets)
-    .filter(key => key !== 'waterMl' && !limits.includes(key) && !hidden.includes(key))
+  return goalNutrientKeys(targets, limits)
+    .filter(key => !hidden.includes(key))
     .map(key => {
       const total = totals[key] ?? 0;
       const name = LIMIT_ROW_NAME[key] ?? NUTRIENT_LABEL[key].label;

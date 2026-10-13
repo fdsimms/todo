@@ -457,6 +457,17 @@ export const TASK_SETTINGS_SPECS: Partial<Record<GeneratedKind, TaskSettingsSpec
       { key: 'link', label: 'Link', summary: 'Opens the food log', hint: 'So the task takes you to what you ate.' },
     ],
   },
+  goalTarget: {
+    example: 'Aim for 120g protein · 80g so far',
+    noun: 'Goal task',
+    locks: ['time', 'ask'],
+    owned: () => [
+      { key: 'title', label: 'Title', summary: 'Aim for (goal) (nutrient)', hint: 'Updated with today’s total as you log food.' },
+      { key: 'date', label: 'Date', summary: 'Today', hint: 'A new one is added each day the goal is set.' },
+      { key: 'notes', label: 'Notes', summary: 'Today’s total and where it came from', hint: 'Updated as you log food.' },
+      { key: 'link', label: 'Link', summary: 'Opens the food log', hint: 'So the task takes you to what you ate.' },
+    ],
+  },
   bookEvent: {
     example: 'Book Dentist',
     noun: 'Booking task',

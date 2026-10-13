@@ -346,6 +346,10 @@ import {
   shouldAutoSlip, shouldTakeBackAutoSlip,
 } from '../utils/limitWarningTasks';
 import type { LimitReading } from '../utils/limitWarningTasks';
+import {
+  goalReadings, goalTargetDayOf, goalTargetKeyOf, goalTargetNotes, goalTargetSourceId, goalTargetTitle,
+  GOAL_TARGET_LINK,
+} from '../utils/goalTargetTasks';
 import { foodLogTotals } from '../utils/foodLog';
 import { effectiveCalorieTargetKcal } from '../utils/activeEnergyBoost';
 import { effectiveWaterTargetMl } from '../utils/waterExerciseBoost';
@@ -758,6 +762,16 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
       const settings = useSettingsStore.getState();
       const rest = settings.limitWarningDeclined.filter(k => k !== key);
       settings.setLimitWarningDeclined(value === false ? [...rest, key] : rest);
+      return;
+    }
+    // Like the limit's: the goal's own switch, not the day's. A task for a
+    // past day is dropped by the pass, so this is only ever a person's delete.
+    case 'goalTarget': {
+      const key = goalTargetKeyOf(sourceId);
+      if (!key) return;
+      const settings = useSettingsStore.getState();
+      const rest = settings.goalTargetDeclined.filter(k => k !== key);
+      settings.setGoalTargetDeclined(value === false ? [...rest, key] : rest);
       return;
     }
     // On the saved event itself, scoped to the cycle the task was for: the
@@ -1855,6 +1869,8 @@ interface TaskStore extends UndoHistoryActions {
   syncSnackNudgeTasks: () => void;
   /** The `limitWarning` pass, called beside the snack one. */
   syncLimitWarningTasks: () => void;
+  /** The `goalTarget` pass, run on the same triggers as the limit one. */
+  syncGoalTargetTasks: () => void;
   /** The `bookEvent` pass: "Book <saved event>" once its interval is nearly up. */
   checkBookEventTasks: () => void;
   /**
@@ -2610,6 +2626,70 @@ function reconcileLimitWarnings(tasks: Task[]): void {
       }),
     });
     syncLimitAutoSlip(reading, todayKey, dayStart);
+  }
+}
+
+/**
+ * The `goalTarget` generator's whole pass: one "Aim for" task per nutrient goal
+ * for today, checked off by the app when the day gets there. See
+ * `src/utils/goalTargetTasks.ts`.
+ *
+ * Run beside the limit one, so the title follows the total as it is logged.
+ */
+function reconcileGoalTargets(tasks: Task[]): void {
+  const settings = useSettingsStore.getState();
+  // The demo database has no food log behind it; see reconcileSnackNudge.
+  if (isDemoModeActive()) return;
+  if (!settings.goalTargetTasks || !settings.goalTargetTaskCategory) {
+    liveGeneratedTasksOfKind(tasks, 'goalTarget')
+      .forEach(t => dropGeneratedTask('goalTarget', t.generatedSourceId));
+    return;
+  }
+  if (generatorPausedForVacation('goalTarget', settings.vacationMode)) return;
+
+  const todayKey = dayKeyOf(getCurrentDayStart());
+  const readings = goalReadings(
+    foodLogTotals(dbGetFoodLogEntries(todayKey, todayKey)).total, settings.nutritionTargets, settings.nutritionLimits,
+  );
+  const dueDate = getCurrentDayStart();
+  dueDate.setHours(12, 0, 0, 0);
+
+  // A day that has gone, or a nutrient that is no longer a goal: dropped
+  // without an opt-out, since nobody declined it.
+  liveGeneratedTasksOfKind(tasks, 'goalTarget')
+    .filter(t => goalTargetDayOf(t.generatedSourceId) !== todayKey
+      || !readings.some(r => r.key === goalTargetKeyOf(t.generatedSourceId)))
+    .forEach(t => dropGeneratedTask('goalTarget', t.generatedSourceId));
+
+  for (const reading of readings) {
+    const sourceId = goalTargetSourceId(reading.key, todayKey);
+    reconcileGeneratedTask({
+      kind: 'goalTarget',
+      sourceId,
+      wanted: !settings.goalTargetDeclined.includes(reading.key),
+      // A checked-off one blocks a second today.
+      blocksOnFinished: true,
+      drift: existing => {
+        const title = goalTargetTitle(reading);
+        const notes = goalTargetNotes(reading);
+        const patch: Partial<Task> = {};
+        if (existing.title !== title) patch.title = title;
+        if (existing.notes !== notes) patch.notes = notes;
+        return Object.keys(patch).length > 0 ? patch : null;
+      },
+      draft: () => ({
+        title: goalTargetTitle(reading),
+        notes: goalTargetNotes(reading),
+        linkUrl: GOAL_TARGET_LINK,
+        dueDate: dueDate.toISOString(),
+        category: settings.goalTargetTaskCategory,
+        ...generatedBy('goalTarget', sourceId),
+      }),
+    });
+    if (!reading.reached) continue;
+    const live = liveGeneratedTask(useTaskStore.getState().tasks, 'goalTarget', sourceId);
+    // neutral: the app closing it on its own, which nobody did, so no coins.
+    if (live) useTaskStore.getState().completeTask(live.id, { neutral: true });
   }
 }
 
@@ -4842,6 +4922,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   syncSnackNudgeTasks() {
     reconcileSnackNudge(get().tasks);
+  },
+
+  syncGoalTargetTasks() {
+    reconcileGoalTargets(get().tasks);
   },
 
   syncLimitWarningTasks() {
