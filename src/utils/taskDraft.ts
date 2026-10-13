@@ -367,6 +367,7 @@ export function newTaskFromDraft(
     showStreak: draft.showStreak ?? seeded.showStreak ?? resolvedPolarity === 'negative',
     streakRequiresWindow: draft.streakRequiresWindow ?? false,
     streakCountsUnits: draft.streakCountsUnits ?? false,
+    coinsPerTap: draft.coinsPerTap ?? false,
     parentId: draft.parentId ?? null,
     groupId: draft.groupId ?? null,
     projectId: draft.projectId ?? null,
@@ -540,7 +541,7 @@ type RecurrenceFields = Pick<
   | 'recurrenceType' | 'recurrenceInterval' | 'recurrenceDays' | 'recurrenceMonthDay' | 'recurrenceMonth'
   | 'recurrenceWeekOrdinal' | 'recurrenceAnchorDay' | 'recurrenceAnchorDate'
   | 'recurrenceEndDate' | 'recurrenceCount'
-  | 'recurrenceFromCompletion' | 'showStreak' | 'streakRequiresWindow' | 'streakCountsUnits'
+  | 'recurrenceFromCompletion' | 'showStreak' | 'streakRequiresWindow' | 'streakCountsUnits' | 'coinsPerTap'
   | 'supplyCount' | 'supplyUnit' | 'supplyRefillCount' | 'supplyReorderAt'
   | 'supplyLeadDays' | 'supplyDeclinedAtCount' | 'supplyGroceryItemId'
 >;
@@ -586,7 +587,7 @@ export const NO_RECURRENCE: RecurrenceFields = {
   showStreak: false,
   // Same reasoning as showStreak above: a series row is a one-off with no
   // streak of its own, so nothing is left on for it to be late against.
-  streakRequiresWindow: false, streakCountsUnits: false,
+  streakRequiresWindow: false, streakCountsUnits: false, coinsPerTap: false,
 };
 
 /**

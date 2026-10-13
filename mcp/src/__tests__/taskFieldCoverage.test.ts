@@ -58,7 +58,7 @@ const NOT_EXPOSED: Record<string, string[]> = {
   // date answer filling a trip's departure (`deliverableSetsAway`) is a
   // template nomination, and complete_task's answer already lands it.
   'per-task settings with no MCP use yet': [
-    'deliverableSetsAway', 'seriesMonthDays', 'seriesRepeatMonths',
+    'deliverableSetsAway', 'seriesMonthDays', 'seriesRepeatMonths', 'coinsPerTap',
   ],
 };
 

@@ -479,7 +479,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   penaltyCreditedAt: null,
   gatesApps: false,
   showStreak: false,
-  streakRequiresWindow: false, streakCountsUnits: false,
+  streakRequiresWindow: false, streakCountsUnits: false, coinsPerTap: false,
   parentId: null,
   groupId: null,
   projectId: null,
@@ -3036,7 +3036,7 @@ describe('completeTask', () => {
         const yesterdayStart = new Date(2025, 5, 9, 0, 0, 0).toISOString();
         const task = makeTask({
           recurrenceType: 'daily', streakCount: 3, streakDate: yesterdayStart,
-          streakRequiresWindow: false, streakCountsUnits: false, windowStart: '07:00', windowEnd: '09:00',
+          streakRequiresWindow: false, streakCountsUnits: false, coinsPerTap: false, windowStart: '07:00', windowEnd: '09:00',
         });
         useTaskStore.setState({ tasks: [task] });
         useTaskStore.getState().completeTask(task.id);
@@ -14734,7 +14734,7 @@ describe('quota tasks', () => {
 
     it('still resets on a short week when the setting is off', () => {
       useTaskStore.setState({
-        tasks: [counting({ streakCountsUnits: false, progressCount: 1, dueDate: new Date(2025, 5, 3, 12, 0, 0).toISOString() })],
+        tasks: [counting({ streakCountsUnits: false, coinsPerTap: false, progressCount: 1, dueDate: new Date(2025, 5, 3, 12, 0, 0).toISOString() })],
       });
       useTaskStore.getState().rolloverQuotas();
       const successor = useTaskStore.getState().tasks.find(t => !t.completed)!;
@@ -20017,6 +20017,53 @@ describe('coins', () => {
     useTaskStore.getState().completeTask('t1');
     expect(useTaskStore.getState().tasks.find(t => t.id === 't1')!.streakCount).toBe(7);
     expect(balance()).toBe(3 + 1);
+  });
+
+  describe('coinsPerTap on a target', () => {
+    // 90 minutes is the 5-coin bucket; split over 3 taps that is 1, 2, 2.
+    const target = (over: Partial<Task> = {}) => makeTask({
+      id: 't1', estimatedMinutes: 90, targetCount: 3, progressCount: 0, coinsPerTap: true, ...over,
+    });
+
+    it('pays every tap its share and the completion the rest, totalling the same', () => {
+      useTaskStore.setState({ tasks: [target()] });
+      useTaskStore.getState().logQuotaUnit('t1');
+      expect(balance()).toBe(1);
+      useTaskStore.getState().logQuotaUnit('t1');
+      expect(balance()).toBe(3);
+      useTaskStore.getState().logQuotaUnit('t1');
+      expect(useTaskStore.getState().tasks.find(t => t.id === 't1')!.completed).toBe(true);
+      expect(balance()).toBe(5);
+    });
+
+    it('pays nothing until the target is reached when it is off', () => {
+      useTaskStore.setState({ tasks: [target({ coinsPerTap: false })] });
+      useTaskStore.getState().logQuotaUnit('t1');
+      useTaskStore.getState().logQuotaUnit('t1');
+      expect(balance()).toBe(0);
+      useTaskStore.getState().logQuotaUnit('t1');
+      expect(balance()).toBe(5);
+    });
+
+    it('takes a tap back with its coins', () => {
+      useTaskStore.setState({ tasks: [target()] });
+      useTaskStore.getState().logQuotaUnit('t1');
+      useTaskStore.getState().logQuotaUnit('t1');
+      useTaskStore.getState().unlogQuotaUnit('t1');
+      expect(balance()).toBe(1);
+      useTaskStore.getState().unlogQuotaUnit('t1');
+      expect(balance()).toBe(0);
+    });
+
+    it('takes only the completion back when the task is unticked', () => {
+      useTaskStore.setState({ tasks: [target({ progressCount: 2 })] });
+      useRewardStore.getState().recordTap('t1', 1, 1, 'x');
+      useRewardStore.getState().recordTap('t1', 2, 2, 'x');
+      useTaskStore.getState().logQuotaUnit('t1');
+      expect(balance()).toBe(5);
+      useTaskStore.getState().uncompleteTask('t1');
+      expect(balance()).toBe(3);
+    });
   });
 
   it('charges for an occurrence marked missed', () => {

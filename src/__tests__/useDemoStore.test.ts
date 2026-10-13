@@ -1095,6 +1095,13 @@ describe('demo mode', () => {
     expect(target.recurrenceType).not.toBe('none');
   });
 
+  it('seeds a daily target that pays coins on every tap', () => {
+    useDemoStore.getState().enterDemoMode();
+    const perTap = useTaskStore.getState().tasks.find(t => t.coinsPerTap);
+    expect(perTap).toBeDefined();
+    expect(perTap!.targetCount).not.toBeNull();
+  });
+
   it('seeds a daily target paced by an interval, nudges and all', () => {
     useDemoStore.getState().enterDemoMode();
     const { tasks } = useTaskStore.getState();
