@@ -582,7 +582,11 @@ export function MealPlanScreen() {
       });
       const over = keys.some(k => (totals[k] ?? 0) > nutritionTargets[k]!);
       const note = uncounted > 0 ? ` (${uncounted} ${uncounted === 1 ? 'meal' : 'meals'} without figures not counted)` : '';
-      out.set(key, { text: `Planned: ${parts.join(' · ')}${note}`, over });
+      // Name what the figures are made of: a day with only logged food has no
+      // plan in it, and calling it "Planned" reads as a meal that isn't there.
+      const hasPlanned = [...(coverage?.values() ?? [])].some(s => s.logged.length === 0 && s.planned.length > 0);
+      const label = hasPlanned ? (logged.length > 0 ? 'Logged and planned' : 'Planned') : 'Logged';
+      out.set(key, { text: `${label}: ${parts.join(' · ')}${note}`, over });
     }
     return out;
   }, [days, coverageByDay, weekFoodLog, nutritionTargets, nutritionLimits, recipesById, groceryItems, itemProducts, standingSwaps]);
