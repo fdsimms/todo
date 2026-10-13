@@ -7708,6 +7708,10 @@ export function dbInsertSavedMeal(meal: SavedMeal): void {
   );
 }
 
+export function dbUpdateSavedMealItems(id: string, items: SavedMealItem[]): void {
+  db.runSync('UPDATE saved_meals SET items = ? WHERE id = ?', [JSON.stringify(items), id]);
+}
+
 export function dbDeleteSavedMeal(id: string): void {
   db.runSync('DELETE FROM saved_meals WHERE id = ?', [id]);
 }

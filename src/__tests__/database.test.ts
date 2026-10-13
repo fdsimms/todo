@@ -125,6 +125,7 @@ import {
   dbGetFoodLogEntry,
   dbGetFoodLogEntriesForTask,
   dbInsertSavedMeal,
+  dbUpdateSavedMealItems,
   dbGetSavedMeals,
   dbGetPendingEstimates,
   dbSavePendingEstimate,
@@ -5867,6 +5868,15 @@ describe('a saved meal item\'s kept panel', () => {
   it('round-trips through insert and read', () => {
     dbInsertSavedMeal(makeMeal(chicken));
     expect(dbGetSavedMeals()[0].items[0].sourcePanel).toEqual(chicken);
+  });
+
+  it('rewrites a meal’s items in place', () => {
+    dbInsertSavedMeal(makeMeal(chicken));
+    dbUpdateSavedMealItems('m1', [{ ...makeMeal(chicken).items[0], quantity: '100 g', grams: 100 }]);
+    const meals = dbGetSavedMeals();
+    expect(meals).toHaveLength(1);
+    expect(meals[0].name).toBe('Lunch');
+    expect(meals[0].items[0].grams).toBe(100);
   });
 
   it('reads a meal saved before items kept a panel as none kept', () => {

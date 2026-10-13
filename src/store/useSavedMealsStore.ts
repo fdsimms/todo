@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { FoodLogEntry, MealSlot, SavedMeal, SavedMealItem } from '../types';
-import { dbDeleteSavedMeal, dbGetSavedMeals, dbInsertSavedMeal } from '../db/database';
+import { dbDeleteSavedMeal, dbGetSavedMeals, dbInsertSavedMeal, dbUpdateSavedMealItems } from '../db/database';
 import { generateId } from '../utils/id';
 import { useFoodLogStore } from './useFoodLogStore';
 
@@ -33,6 +33,12 @@ interface SavedMealsStore {
    */
   addMeal: (name: string, items: SavedMealItem[]) => SavedMeal | null;
   removeMeal: (id: string) => void;
+  /**
+   * Replaces a saved meal's items with the ones just reviewed ("Save changes to
+   * this meal"). Refuses an empty list rather than leaving a meal that logs
+   * nothing, and returns whether it wrote.
+   */
+  replaceItems: (id: string, items: SavedMealItem[]) => boolean;
   /**
    * Logs every item in a saved meal, at the given moment and meal slot.
    *
@@ -100,6 +106,13 @@ export const useSavedMealsStore = create<SavedMealsStore>((set, get) => ({
   removeMeal(id) {
     dbDeleteSavedMeal(id);
     set(s => ({ meals: s.meals.filter(m => m.id !== id) }));
+  },
+
+  replaceItems(id, items) {
+    if (items.length === 0 || !get().meals.some(m => m.id === id)) return false;
+    dbUpdateSavedMealItems(id, items);
+    set(s => ({ meals: s.meals.map(m => (m.id === id ? { ...m, items } : m)) }));
+    return true;
   },
 
   logMeal(meal, slot, at, opts) {
