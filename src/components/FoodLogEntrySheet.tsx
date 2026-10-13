@@ -980,7 +980,7 @@ export function FoodLogEntrySheet({
   const dishWeightHint = useMemo(() => {
     if (!picked || picked.kind !== 'dish') return '';
     if (dishMeasure !== 'weight' || picked.cookedGrams === null) {
-      return 'In servings of the recipe as written.';
+      return 'How many servings you ate.';
     }
     const per = servingGrams({
       total: {},
@@ -990,6 +990,14 @@ export function FoodLogEntrySheet({
     });
     return `What was on your plate. The whole dish weighs ${picked.cookedGrams} g`
       + (per !== null ? `, so a serving is about ${per} g.` : '.');
+  }, [picked, dishMeasure]);
+
+  // The label at the right edge of a dish's servings field, so the field says
+  // both what it counts and how many the recipe makes ("of 4 servings").
+  const dishServingsSuffix = useMemo(() => {
+    if (!picked || picked.kind !== 'dish' || dishMeasure !== 'servings') return null;
+    const makes = picked.dishServings;
+    return makes !== null && makes > 0 ? `of ${makes} ${makes === 1 ? 'serving' : 'servings'}` : 'servings';
   }, [picked, dishMeasure]);
 
   // Every unit this food's panel can resolve — its stated portions, plus
@@ -1778,9 +1786,9 @@ export function FoodLogEntrySheet({
               const usingFoodUnitPills = picked.kind === 'food' && foodUnitOptions.length > 0 && amountUnit !== 'other';
               const selectedFoodUnit = usingFoodUnitPills ? foodUnitOptions.find(o => o.key === amountUnit) : undefined;
               return (
-                <View style={picked.kind === 'food' && foodUnitOptions.length > 0 ? styles.inputRow : undefined}>
+                <View style={(picked.kind === 'food' && foodUnitOptions.length > 0) || dishServingsSuffix ? styles.inputRow : undefined}>
                   <TextField
-                    style={picked.kind === 'food' && foodUnitOptions.length > 0 ? styles.inputWithSuffix : styles.input}
+                    style={(picked.kind === 'food' && foodUnitOptions.length > 0) || dishServingsSuffix ? styles.inputWithSuffix : styles.input}
                     value={usingFoodUnitPills ? amountNumber : amount}
                     onChangeText={text => {
                       if (usingFoodUnitPills) {
@@ -1826,6 +1834,9 @@ export function FoodLogEntrySheet({
                       (volumes, nutrient amounts, "Something else") are one tap
                       away in its menu. It stays beside the number once one is
                       typed, which is when a "servings" vs. "g" mix-up matters. */}
+                  {!!dishServingsSuffix && (
+                    <Text style={styles.servingsSuffix}>{dishServingsSuffix}</Text>
+                  )}
                   {picked.kind === 'food' && foodUnitOptions.length > 0 && (
                     <UnitMenuChip
                       name="FoodLogEntrySheet unit menu"
@@ -2376,6 +2387,7 @@ function makeStyles(colors: Colors) {
       color: colors.text,
       fontSize: font.md,
     },
+    servingsSuffix: { color: colors.textSecondary, fontSize: font.md },
     hint: { color: colors.textSecondary, fontSize: font.xs, lineHeight: 16, marginTop: spacing.xs },
     error: { color: colors.redText, fontSize: font.sm, lineHeight: 18, marginTop: spacing.sm },
     preview: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold, marginTop: spacing.sm },
