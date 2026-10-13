@@ -18,7 +18,7 @@
  *   rule (`docs/arch/groceries.md`, "An away trip records nothing"), and the
  *   result says so rather than leaving it to look like a failure.
  */
-import type { FoodNutrition, GroceryItem, GroceryList, ItemProduct, ReceiptStyle } from '../../src/types';
+import type { FoodNutrition, FoodPortion, GroceryItem, GroceryList, ItemProduct, ReceiptStyle } from '../../src/types';
 import type {
   GroceryBoxInput,
   GroceryItemChange,
@@ -143,6 +143,8 @@ export interface NutritionPanelDetail {
   servingGrams?: number;
   servingText?: string;
   amounts: Record<string, number>;
+  /** What an amount weighs; this is what lets a tablespoon or clove line be counted. `custom` is one the person weighed. */
+  portions?: { label: string; grams: number; amount?: number; custom?: boolean }[];
   recordedAt: string;
 }
 
@@ -155,6 +157,9 @@ function nutritionDetail(n: FoodNutrition | null | undefined): { nutrition?: Nut
       ...(n.servingGrams ? { servingGrams: n.servingGrams } : {}),
       ...(n.servingText ? { servingText: n.servingText } : {}),
       amounts: { ...n.amounts } as Record<string, number>,
+      ...(n.portions.length > 0
+        ? { portions: n.portions.map(p => ({ label: p.label, grams: p.grams, ...(p.amount !== 1 ? { amount: p.amount } : {}), ...(p.custom ? { custom: true } : {}) })) }
+        : {}),
       recordedAt: n.recordedAt,
     },
   };
@@ -571,6 +576,29 @@ export interface NutritionPanelInput {
   servingText?: string | null;
   /** True when these are your estimate rather than read off a label. */
   estimated?: boolean;
+  /**
+   * What an amount of the food weighs, so a recipe line in tablespoons or cloves
+   * can be turned into grams ("tbsp" = 13.5, "cup, shredded" = 113). Merged into
+   * the portions the item already has: a row with the same label replaces it, the
+   * rest (including ones the person weighed themselves) are kept. Omit to leave
+   * the table alone.
+   */
+  portions?: { label: string; grams: number; amount?: number }[];
+}
+
+/** The item's existing portions with `incoming` laid over them, by label. */
+function mergePortions(previous: FoodPortion[], incoming: NutritionPanelInput['portions']): FoodPortion[] {
+  if (!incoming || incoming.length === 0) return previous;
+  const rows: FoodPortion[] = incoming.map(p => {
+    const label = typeof p.label === 'string' ? p.label.trim() : '';
+    const amount = p.amount ?? 1;
+    if (!label) throw new Error('A portion needs a label ("tbsp", "cup, shredded", "clove").');
+    if (typeof p.grams !== 'number' || !(p.grams > 0)) throw new Error(`Portion "${label}" needs grams above 0.`);
+    if (typeof amount !== 'number' || !(amount > 0)) throw new Error(`Portion "${label}" needs an amount above 0.`);
+    return { amount, label, grams: p.grams };
+  });
+  const replaced = new Set(rows.map(r => r.label.toLowerCase()));
+  return [...previous.filter(p => !replaced.has(p.label.trim().toLowerCase())), ...rows];
 }
 
 export function setNutritionPanel(replica: Replica, input: { item: string; boxId?: string; panel: NutritionPanelInput | null }) {
@@ -594,7 +622,7 @@ export function setNutritionPanel(replica: Replica, input: { item: string; boxId
       amounts,
       source: input.panel.estimated ? 'estimated' as const : 'manual' as const,
       sourceId: null,
-      portions: previous?.portions ?? [],
+      portions: mergePortions(previous?.portions ?? [], input.panel.portions),
       recordedAt: new Date().toISOString(),
     };
   }

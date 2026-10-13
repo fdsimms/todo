@@ -227,7 +227,7 @@ only the fallback until the first sync.
 | `clear_grocery_list` | **Write.** Empties a list as the app's Clear list does, and ends a trip. |
 | `set_shopping_trip` | **Write.** Starts a trip at a store with an optional budget, changes the budget, or ends it. |
 | `mark_unavailable` | **Write.** A store doesn't carry an item, or its preferred brand; or does again. |
-| `set_nutrition_panel` | **Write.** An item's or a brand's nutrition panel. |
+| `set_nutrition_panel` | **Write.** An item's or a brand's nutrition panel, with optional `portions` (what a tablespoon, cup or clove weighs) merged into its table by label. A recipe counts a volume or count line only when the item has a portion weighing it. |
 | `merge_grocery_items` | **Write.** Merges one item into another, with everything recorded on it. Not undoable from Activity. |
 | `delete_grocery_item` | **Write.** Deletes an item with everything attached. Restorable from Activity. |
 | `create_grocery_list` / `rename_grocery_list` / `delete_grocery_list` | **Write.** Separate lists (a trip away). The grocery tools take a `list`. |
