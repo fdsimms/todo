@@ -2377,11 +2377,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   /**
    * Ids of a recipe's own either/or options by the names a tool uses: an
    * ingredient line's name, or a used recipe's name (as it is now, falling back
-   * to the one captured on the link). `strict` refuses a name that is not an
-   * option, or that names two; otherwise such names are skipped, for carrying a
-   * step's setting across an ingredient rewrite.
+   * to the one captured on the link). Refuses a name that is not an option, or
+   * that names two.
    */
-  function optionIdsFor(recipe: Recipe, names: readonly string[], strict: boolean): string[] {
+  function optionIdsFor(recipe: Recipe, names: readonly string[]): string[] {
     const targets = new Map(db.dbGetAllRecipes().map(r => [r.id, r.name]));
     const rows = [
       ...recipe.ingredients.filter(i => i.choiceGroup).map(i => ({ id: i.id, names: [i.name] })),
@@ -2395,7 +2394,6 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         if (!out.includes(hits[0].id)) out.push(hits[0].id);
         continue;
       }
-      if (!strict) continue;
       if (hits.length > 1) throw new Error(`"${raw}" names more than one either/or option in this recipe.`);
       throw new Error(
         rows.length === 0
@@ -2420,15 +2418,6 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     /* eslint-enable @typescript-eslint/no-require-imports */
     const store = () => useRecipeStore.getState();
     const current = () => store().recipes.find(r => r.id === id)!;
-    // Rewriting the ingredients makes new ids, which would orphan every step's
-    // `onlyWhen`; remember each by option name now and re-resolve at the end.
-    const keptOnlyWith = new Map<string, string[]>();
-    if (f.ingredients !== undefined) {
-      for (const step of current().steps) {
-        const names = componentsLib.stepOptionNames(step, current());
-        if (names.length > 0) keptOnlyWith.set(step.id, names);
-      }
-    }
     // Option names a call gave per step. Applied last, since the options they
     // name (ingredients above, used recipes below) must exist by then.
     const givenOnlyWith = new Map<string, string[] | null>();
@@ -2456,8 +2445,22 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           return m ? { ...m, choiceGroup: recipeUtils.cleanChoiceGroup(line.alternativeGroup) } : null;
         })
         .filter((x): x is NonNullable<typeof x> => x !== null);
+      // A line that is still wanted keeps its row (id and everything the text
+      // cannot say: aisle, optional, a repointed catalog key), with the amount
+      // and group the call gave. Its id is what a planned meal's pick, a step's
+      // onlyWhen and a one-off replacement point at, so a rewrite that gave
+      // every line a new one silently dropped them all. Matched on the same key
+      // the add paths dedupe on, so an edited quantity still counts as the line.
+      const unclaimed = [...current().ingredients];
+      const kept = made.map(line => {
+        const key = recipeUtils.ingredientDedupeKey(line);
+        const at = unclaimed.findIndex(old => recipeUtils.ingredientDedupeKey(old) === key);
+        if (at < 0) return line;
+        const [old] = unclaimed.splice(at, 1);
+        return { ...old, quantity: line.quantity, choiceGroup: line.choiceGroup };
+      });
       store().bulkRemoveIngredients(id, current().ingredients.map(i => i.id));
-      if (made.length > 0) store().addStructuredIngredients(id, made);
+      if (kept.length > 0) store().addStructuredIngredients(id, kept);
     }
     if (f.steps !== undefined) {
       // A step whose text is unchanged keeps its id, so a cook question filed
@@ -2532,11 +2535,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       }
     }
     for (const [stepId, names] of givenOnlyWith) {
-      store().setStepOnlyWhen(id, stepId, names && names.length > 0 ? optionIdsFor(current(), names, true) : null);
-    }
-    for (const [stepId, names] of keptOnlyWith) {
-      if (givenOnlyWith.has(stepId) || !current().steps.some(x => x.id === stepId)) continue;
-      store().setStepOnlyWhen(id, stepId, optionIdsFor(current(), names, false));
+      store().setStepOnlyWhen(id, stepId, names && names.length > 0 ? optionIdsFor(current(), names) : null);
     }
   }
 
@@ -4217,7 +4216,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
                     store().setStepNote(id, target.id, op.note);
                   } else if (op.op === 'setStepOnlyWith') {
                     if (op.onlyWith === undefined) throw new Error('setStepOnlyWith needs onlyWith (null clears it).');
-                    store().setStepOnlyWhen(id, target.id, op.onlyWith && op.onlyWith.length > 0 ? optionIdsFor(current(), op.onlyWith, true) : null);
+                    store().setStepOnlyWhen(id, target.id, op.onlyWith && op.onlyWith.length > 0 ? optionIdsFor(current(), op.onlyWith) : null);
                   } else if (op.op === 'replaceStep') {
                     store().updateStep(id, target.id, need(op.text, 'replaceStep'));
                   } else {
@@ -4237,7 +4236,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
                   order.splice(pos, 0, made.id);
                   store().reorderSteps(id, order);
                   if (op.note != null) store().setStepNote(id, made.id, op.note);
-                  if (op.onlyWith && op.onlyWith.length > 0) store().setStepOnlyWhen(id, made.id, optionIdsFor(current(), op.onlyWith, true));
+                  if (op.onlyWith && op.onlyWith.length > 0) store().setStepOnlyWhen(id, made.id, optionIdsFor(current(), op.onlyWith));
                   break;
                 }
                 case 'insertIngredient': {

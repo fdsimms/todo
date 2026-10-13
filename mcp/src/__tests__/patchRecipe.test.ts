@@ -159,6 +159,28 @@ describe('patch_recipe: refusals', () => {
   });
 });
 
+describe('update_recipe and line identity', () => {
+  it('keeps the id of a line that is still wanted, so picks and replacements still point at it', () => {
+    const r = salsa();
+    const before = stored(r.id).ingredients;
+    updateRecipe(replica, r.id, {
+      ingredients: [
+        { text: '1 serrano chile', alternativeGroup: 'Chile' },
+        { text: '2 jalapeno', alternativeGroup: 'Chile' },
+        { text: '1 lime' },
+      ],
+    });
+    const after = stored(r.id).ingredients;
+    expect(after.map(i => i.name)).toEqual(['serrano chile', 'jalapeno', 'lime']);
+    // The unchanged line and the one whose amount changed keep their ids.
+    expect(after[0].id).toBe(before[0].id);
+    expect(after[1].id).toBe(before[1].id);
+    expect(after[1].quantity).toBe('2');
+    // A line the call dropped is gone and a new one has a new id.
+    expect(before.map(i => i.id)).not.toContain(after[2].id);
+  });
+});
+
 describe('update_recipe and conditional steps', () => {
   it('lets save_recipe write a conditional step by option name', () => {
     const r = saveRecipe(replica, {
@@ -170,10 +192,10 @@ describe('update_recipe and conditional steps', () => {
     expect(stored(r.id).steps[0].onlyWhen).toEqual([quinoa.id]);
   });
 
-  it('carries a step\'s option across an ingredient rewrite, which gives every line a new id', () => {
+  it('leaves a step\'s option pointing at the same line after an ingredient rewrite', () => {
     const r = salsa();
     patchRecipe(replica, r.id, [{ op: 'setStepOnlyWith', step: 1, onlyWith: ['jalapeno'] }]);
-    const oldId = stored(r.id).ingredients.find(i => i.name === 'jalapeno')!.id;
+    const before = stored(r.id).ingredients.find(i => i.name === 'jalapeno')!.id;
     updateRecipe(replica, r.id, {
       ingredients: [
         { text: '1 serrano chile', alternativeGroup: 'Chile' },
@@ -181,8 +203,7 @@ describe('update_recipe and conditional steps', () => {
         { text: '1 tsp salt' },
       ],
     });
-    const now = stored(r.id).ingredients.find(i => i.name === 'jalapeno')!;
-    expect(now.id).not.toBe(oldId);
-    expect(stored(r.id).steps[0].onlyWhen).toEqual([now.id]);
+    expect(stored(r.id).ingredients.find(i => i.name === 'jalapeno')!.id).toBe(before);
+    expect(stored(r.id).steps[0].onlyWhen).toEqual([before]);
   });
 });
