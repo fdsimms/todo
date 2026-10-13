@@ -147,7 +147,7 @@ export function filterProjectListItems(items: readonly ProjectListItem[], query:
 /**
  * The tasks whose title holds `query`, by the same rule as
  * `filterProjectListItems`. For the rows a page draws outside its list items,
- * like a list's checked items, so the find field narrows them too.
+ * like a project's completed tasks, so the find field narrows them too.
  */
 export function filterTasksByTitle(tasks: readonly Task[], query: string): Task[] {
   const q = fold(query.trim());
@@ -157,32 +157,6 @@ export function filterTasksByTitle(tasks: readonly Task[], query: string): Task[
 
 function fold(text: string): string {
   return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-}
-
-/**
- * The same page sorted A to Z, for a list: the loose lines by title among the
- * slots loose lines hold (a section stays where it is), and each section's own
- * lines by title within it. Case and accents ignored, numbers read as numbers
- * ("Chapter 2" before "Chapter 10"). Answers the two orders to write, top-level
- * ids for `reorderProjectItems` and each section's for `reorderGroupChildren`.
- */
-export function alphabeticalPageOrder(items: readonly ProjectListItem[]): {
-  top: string[];
-  sections: Array<{ groupId: string; ids: string[] }>;
-} {
-  const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
-  const byTitle = (a: Task, b: Task) => collator.compare(a.title.trim(), b.title.trim());
-  const loose = items
-    .filter((i): i is { type: 'task'; task: Task } => i.type === 'task')
-    .map(i => i.task)
-    .sort(byTitle);
-  let next = 0;
-  const top = items.map(item => (item.type === 'group' ? item.group.id : loose[next++].id));
-  const sections = items
-    .filter((i): i is { type: 'group'; group: TaskGroup; children: Task[] } => i.type === 'group')
-    .filter(i => i.children.length > 1)
-    .map(i => ({ groupId: i.group.id, ids: [...i.children].sort(byTitle).map(t => t.id) }));
-  return { top, sections };
 }
 
 /**

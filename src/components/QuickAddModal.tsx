@@ -305,13 +305,8 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // The date a fresh sheet opens with, absent a drop seed — factored out so
   // shaking off the seed chip can revert to exactly this rather than to a
   // second, drifting copy of the same rule.
-  // A list's lines are undated, and a line with a category would sit under a
-  // header on Today, so a sheet filing into a list opens with neither.
-  const isListProject = (id: string | null) =>
-    id !== null && projects.find(p => p.id === id)?.kind === 'list';
-  const defaultDueDate = (listTarget = isListProject(intoProjectId)) =>
-    listTarget ? null
-    : effectiveContext === 'later' ? getLogicalTomorrow(dayResetTime)
+  const defaultDueDate = () =>
+    effectiveContext === 'later' ? getLogicalTomorrow(dayResetTime)
     : effectiveContext === 'inbox' || effectiveContext === 'unscheduled' ? null
     : getLogicalToday(dayResetTime);
   // Holds the task created by this sheet while its editor is open — only used
@@ -490,14 +485,6 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   const pickProject = (id: string | null) => {
     pickedProjectRef.current = id;
     setProjectId(id);
-    // Picking a list takes off the date and category the sheet opened with,
-    // and only those: one the person set themselves is theirs to keep.
-    if (isListProject(id)) {
-      const openedWith = defaultDueDate(false);
-      setDueDate(cur => (cur && openedWith && cur.getTime() === openedWith.getTime() ? null : cur));
-      const baseCategory = hostDefaultCategory() ?? newTaskDefaults.category;
-      setCategory(cur => (cur === baseCategory ? null : cur));
-    }
   };
   // "Not on this task" for whatever a rule filled in. Sheet-lifetime, like
   // showAllChips: the next task starts from the rules again rather than
@@ -606,7 +593,6 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     // since the next title answers for itself.
     const keptProjectId = opts?.keepProject ? pickedProjectRef.current : null;
     if (!opts?.keepProject) pickedProjectRef.current = null;
-    const listTarget = isListProject(intoProjectId ?? keptProjectId);
     setTitle(nextTitle);
     titleCaret.resetCaret(nextTitle);
     setPriority(hostFieldDefaults()?.priority ?? newTaskDefaults.priority ?? 0);
@@ -615,13 +601,13 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     fieldSeedRef.current = null;
     setEstimatedMinutes(null);
     setCustomEffortText('');
-    setDueDate(defaultDueDate(listTarget));
+    setDueDate(defaultDueDate());
     setTimeSegments(newTaskDefaults.timeSegment ? [newTaskDefaults.timeSegment] : []);
     setWindowStart(null);
     setWindowEnd(null);
     setTags([]);
     setPersonOverrides({});
-    setCategory(hostDefaultCategory() ?? (listTarget ? null : newTaskDefaults.category));
+    setCategory(hostDefaultCategory() ?? newTaskDefaults.category);
     setSeedActive(false);
     setLinkUrl(null);
     setPhoneNumber(null);
@@ -754,7 +740,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     // linkUrl has no such baseline (the sheet always opens with none), so its
     // base is simply null, same as projectId.
     const baseCategory = seedRef.current?.category ?? hostDefaultCategory()
-      ?? (isListProject(intoProjectId) ? null : newTaskDefaults.category);
+      ?? newTaskDefaults.category;
     const basePriority: Priority = hostFieldDefaults()?.priority ?? newTaskDefaults.priority ?? 0;
     const baseEffort: Effort = hostFieldDefaults()?.effort ?? newTaskDefaults.effort ?? 0;
     const prev = appliedRuleRef.current
@@ -2379,7 +2365,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                     haptics.tap();
                     if (seed?.category && category === seed.category) setCategory(null);
                     if (seed?.dueDate !== undefined && (dueDate?.toISOString() ?? null) === (seed.dueDate ?? null)) {
-                      setDueDate(defaultDueDate(isListProject(intoProjectId ?? projectId)));
+                      setDueDate(defaultDueDate());
                     }
                     if (seed?.timeSegments && timeSegments === seed.timeSegments) setTimeSegments([]);
                     setSeedActive(false);

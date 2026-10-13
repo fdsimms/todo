@@ -701,7 +701,7 @@ export type ReminderCaptureFiling =
    * that.
    */
   | { kind: 'meal'; slot: MealSlot | null }
-  /** Lands in a project — meant for `ProjectKind` `'list'`, a running list with no dates. */
+  /** Lands in a project — meant for a running list of undated tasks. */
   | { kind: 'project'; projectId: string }
   /** Lands in a task category. */
   | { kind: 'category'; category: string }
@@ -804,7 +804,7 @@ export interface TaskGroup {
   projectId: string | null;
   // A section whose rows are ticked off rather than scheduled: a packing list
   // inside a trip. Its rows show no dates and are never offered by Pull or
-  // auto-schedule, the way a list project's lines aren't. Only meaningful on
+  // auto-schedule. Only meaningful on
   // a project's section; ignored anywhere else. Optional for rows built before
   // it existed.
   checklist?: boolean;
@@ -1261,9 +1261,8 @@ export interface Project {
   nudgeOptIn: boolean;
   // Opt-in: somewhere to look when the weekend nudge finds a bare weekend (see
   // utils/weekendTasks.ts). Off by default, and deliberately its own field
-  // rather than a reading of `kind` or of the title: nothing may guess which of
-  // somebody's projects are the fun ones, and `kind` is a presentation flag
-  // that is supposed to stay one (see ProjectKind's own note). Separate from
+  // rather than a reading of the title: nothing may guess which of
+  // somebody's projects are the fun ones. Separate from
   // nudgeOptIn above because they answer different questions — that one is
   // "chase me about this project", this one is "look here when I have a free
   // weekend", and a wishlist is a good answer to the second and a bad one to
@@ -1309,44 +1308,6 @@ export interface Project {
    */
   backfillDismissedFields: string[];
   /**
-   * How this project's own screen is drawn: an ordinary project, or a list.
-   *
-   * **It never changes what a task does.** A list's members are ordinary
-   * tasks in an ordinary project — `projectProgress` counts them,
-   * `isTaskVisible` places them, completing one behaves exactly as completing
-   * any task does — and nothing about scheduling, visibility or sync branches
-   * on it. What it does change is the *project's* defaults (a list is ongoing
-   * and never nudged, applied by the store on every route: see
-   * `src/utils/projectKind.ts`), a retention exemption for checked items, and
-   * the words and controls the screens use. `docs/arch/lists.md` has the
-   * whole list of readers.
-   *
-   * That narrowness is the whole design, and it's what the alternative got
-   * wrong. A "list of things with no date" was first built as its own entity —
-   * two tables, a store, two screens, a drawer row, its own search source —
-   * on the premise that a task drags the visibility model along with it. That
-   * premise was false: `isVisibleApartFromVacation` already refuses a project
-   * task with no `dueDate`, and `projectId == null` is a condition of both
-   * `isInboxTask` and `isUnscheduledTask`. **An undated task in a project is
-   * already absent from Today, Inbox and Unscheduled**, which is exactly the
-   * behaviour the separate entity existed to obtain. Everything else it needed
-   * was here too: progress is `projectProgress`, the recorded answer is
-   * `deliverableValue` read back by `projectDecisions`, and ordering, archive,
-   * sync, backup and search were all already wired.
-   *
-   * So what a list actually needed was a way to *look* like one: an add field
-   * that takes a line of text and keeps focus, and the scheduling affordances
-   * out of the way. That is this field, and it should stay that small. If
-   * something here ever wants to change what a task *does*, it belongs on the
-   * task.
-   *
-   * A list item is a plain task by default — in particular it gets no
-   * `deliverableKind`. Recording what the doctor said is worth having and is
-   * one tap away in the editor, but a list where every line demands an answer
-   * on completion is a form, not a list.
-   */
-  kind: ProjectKind;
-  /**
    * The day you leave, for a project that is a trip — and `awayEnd` below is
    * the day you are back. See `docs/arch/away-dates.md`, which is the design
    * these are the first slice of and is not optional reading before adding a
@@ -1362,10 +1323,9 @@ export interface Project {
    * `applyTemplate` says of a run's start anchor that it "has nowhere to go
    * now that a project carries one date rather than a range".
    *
-   * **Not a `ProjectKind`.** That field changes presentation and never
-   * behaviour, and its own note says it should stay that small. These change
-   * behaviour, so they are their own fields — the same call `weekendSource`
-   * made, and for the reason it gives.
+   * These change behaviour, so they are their own fields rather than a flag
+   * on how the project is drawn — the same call `weekendSource` made, and for
+   * the reason it gives.
    *
    * **This is not `targetStartDate` coming back.** That pair was deleted
    * because the start half had, across its whole life, one reader: half a
@@ -1493,12 +1453,6 @@ export interface Project {
    */
   inOrder: boolean;
   /**
-   * On a list: checked items stay on the page, struck through at the bottom
-   * in list order, rather than folding behind "Show N checked". A packing
-   * list is read with what's already packed in view. Presentation only.
-   */
-  showChecked: boolean;
-  /**
    * Leaves the "Next: ..." line off this project's card on the Projects
    * screen. Presentation only. Optional for rows built before it existed.
    */
@@ -1542,17 +1496,6 @@ export interface Project {
   destinationLatitude?: number | null;
   destinationLongitude?: number | null;
 }
-
-/**
- * `'project'` for work that finishes; `'list'` for a running list of things to
- * remember that never gets scheduled — doctor questions, a wish list, packing.
- *
- * Persisted verbatim in `projects.kind`, so these are storage values: adding a
- * third means an older build has to keep drawing rows carrying it, which is why
- * `rowToProject` reads anything unrecognised as `'project'` rather than
- * throwing.
- */
-export type ProjectKind = 'project' | 'list';
 
 // Fallback cadence for a project row written before the nudge columns existed,
 // and the default for a newly created project. Never, deliberately: being asked

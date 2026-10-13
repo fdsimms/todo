@@ -275,10 +275,10 @@ interface Props {
   /** Briefly tints the row to draw the eye to it — a task that was just created, or one jumped to from the new-todos banner. */
   highlighted?: boolean;
   /**
-   * A line on a list project: checked off rather than scheduled. A tap opens
+   * A checklist line: checked off rather than scheduled. A tap opens
    * the line with its text ready to edit, the whole text shows while open,
    * and the panel trades the timer, the date and the subtask field for a
-   * Delete. No reschedule swipe, since a list line has no date to move.
+   * Delete. No reschedule swipe, since a checklist line has no date to move.
    */
   listRow?: boolean;
   /**
@@ -287,12 +287,6 @@ interface Props {
    * useCallback), or the memo on this row stops holding.
    */
   onSubmitLine?: (taskId: string) => void;
-  /**
-   * A full swipe right deletes the row (SwipeableRow's deleteAction). Only an
-   * item on a list passes this; a checklist line in a project doesn't, since
-   * the rule it's an exception to is about tasks.
-   */
-  swipeDeletes?: boolean;
   /** Plays the same checkbox-tap complete animation as a real tap, then completes the task — used for a completion that happened in the Today widget so the user can watch it happen here too. */
   autoComplete?: boolean;
   /**
@@ -385,7 +379,6 @@ const TaskItemRow = React.memo(function TaskItem({
   highlighted = false,
   listRow = false,
   onSubmitLine,
-  swipeDeletes = false,
   autoComplete = false,
   claimAutoComplete,
   hidesWhenOnPace = false,
@@ -1271,19 +1264,13 @@ const TaskItemRow = React.memo(function TaskItem({
   // Mirroring buttons (SwipeActionButtons) offer exactly the same ones.
   // No reschedule on a notice: there's nothing a later date would mean for
   // it, and the button that opens the same picker is gone from its panel for
-  // that reason. A list item has no date to move, and deleting is what a list
-  // is swiped for (deleteTask raises the Undo bar; see SwipeableRow's
-  // deleteAction for why this is the one destructive swipe). No select unless
-  // the screen can actually bulk-select: a list without a bulk bar (Demo, say)
+  // that reason. A checklist line has no date to move. No select unless the
+  // screen can actually bulk-select: a list without a bulk bar (Demo, say)
   // would otherwise offer an action whose handler is a no-op.
   const swipeWhen = notice || listRow ? undefined : {
     onAction: () => setShowWhenPicker(true),
     accessibilityLabel: `Reschedule ${task.title}`,
   };
-  const swipeDelete = swipeDeletes && !notice ? {
-    onDelete: () => { animateLayout(); deleteTask(task.id); },
-    accessibilityLabel: `Delete ${task.title}`,
-  } : undefined;
   const swipeSelect = onSwipeSelect ? {
     onSelect: () => onSwipeSelect(task.id),
     accessibilityLabel: `Select ${task.title}`,
@@ -3846,7 +3833,6 @@ const TaskItemRow = React.memo(function TaskItem({
         <SwipeActionButtons
           enabled={!selectionMode && !spotlightDisabled}
           whenAction={swipeWhen}
-          deleteAction={swipeDelete}
           selectAction={swipeSelect}
         />
       )}
@@ -4763,8 +4749,7 @@ const TaskItemRow = React.memo(function TaskItem({
             // `swipeWhen`, so the iPhone Mirroring menu offers the same set.
             selectAction={swipeSelect}
             whenAction={swipeWhen}
-            deleteAction={swipeDelete}
-          >
+            >
             <View>
               <View pointerEvents={spotlightDisabled ? 'none' : 'auto'}>
                 {rowBody}

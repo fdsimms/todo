@@ -1,10 +1,10 @@
 import { create } from 'zustand';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
-import type { Project, ProjectKind, Task } from '../types';
+import type { Project, Task } from '../types';
 import { getCurrentDayStart } from '../utils/dateUtils';
-import { kindFields, kindSwitchFields } from '../utils/projectKind';
 import { isResolvedAsDone } from '../utils/missed';
 import { useSettingsStore } from './useSettingsStore';
+import { nudgeFieldsFor } from '../utils/nudgeCadence';
 import {
   dbGetAllProjects,
   dbInsertProject,
@@ -332,7 +332,7 @@ interface ProjectStore {
   initialized: boolean;
   initialize: () => void;
   createProject: (title: string, options?: CreateProjectOptions) => Project;
-  updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'deadline' | 'eventDate' | 'category' | 'defaultTaskCategory' | 'taskDefaults' | 'nudgeCadenceDays' | 'autoSchedule' | 'nudgeOptIn' | 'weekendSource' | 'reviewDeclinedAt' | 'reviewedAt' | 'backfillDismissedFields' | 'kind' | 'ongoing' | 'awayStart' | 'awayEnd' | 'awayPauses' | 'awayPauseDeclinedFor' | 'destination' | 'awayListId' | 'awayListDeclinedFor' | 'pausedUntil' | 'personIds' | 'links' | 'inOrder' | 'showChecked' | 'hideNextStep' | 'groupOnToday' | 'destinationLatitude' | 'destinationLongitude'>>) => void;
+  updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'deadline' | 'eventDate' | 'category' | 'defaultTaskCategory' | 'taskDefaults' | 'nudgeCadenceDays' | 'autoSchedule' | 'nudgeOptIn' | 'weekendSource' | 'reviewDeclinedAt' | 'reviewedAt' | 'backfillDismissedFields' | 'ongoing' | 'awayStart' | 'awayEnd' | 'awayPauses' | 'awayPauseDeclinedFor' | 'destination' | 'awayListId' | 'awayListDeclinedFor' | 'pausedUntil' | 'personIds' | 'links' | 'inOrder' | 'hideNextStep' | 'groupOnToday' | 'destinationLatitude' | 'destinationLongitude'>>) => void;
   /** Filing several projects at once from the Projects screen's bulk bar. */
   bulkSetProjectCategory: (ids: string[], category: string | null) => void;
   getProjectById: (id: string) => Project | null;
@@ -359,7 +359,7 @@ interface ProjectStore {
  * What a caller may decide about a project at the moment it is created.
  *
  * An options object rather than more positional parameters, which is where
- * this was heading: `createProject(title, deadline, kind)` had already run out
+ * this was heading: `createProject(title, deadline, category)` had already run out
  * of room, so the three callers that wanted a fourth thing created the row and
  * immediately patched it — a second write, a second render, and a returned row
  * that was stale on the line after it came back (see the comment
@@ -377,8 +377,13 @@ export interface CreateProjectOptions {
   deadline?: string | null;
   /** The day the project is for. See Project.eventDate. */
   eventDate?: string | null;
-  /** Presentation only. See Project.kind. */
-  kind?: ProjectKind;
+  /**
+   * No finish line (see Project.ongoing), for a running collection like gift
+   * ideas that never gets done. Such a project is also never nudged: it has no
+   * next task to pull, so both are set together here rather than at each
+   * caller.
+   */
+  ongoing?: boolean;
   category?: string | null;
   /**
    * The away span, for the one caller that knows one at creation: a template
@@ -437,9 +442,12 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       createdAt: new Date().toISOString(),
       // `ongoing` and the nudge pair, seeded from the global default at
       // creation time only — changing the default in Settings later never
-      // touches a project already created. A list gets its own (no finish
-      // line, never pulled) whichever caller made it. See projectKind.ts.
-      ...kindFields(options.kind ?? 'project', defaultCadenceDays),
+      // touches a project already created. An ongoing project has no finish
+      // line and is never pulled.
+      ongoing: options.ongoing ?? false,
+      ...(options.ongoing
+        ? nudgeFieldsFor('never', 0)
+        : nudgeFieldsFor(defaultCadenceDays > 0 ? 'scheduled' : 'on-ask', defaultCadenceDays)),
       autoSchedule: false,
       // Off, like every other opt-in here: the weekend nudge may quote a project
       // only once somebody has said it is one to quote. See
@@ -448,9 +456,6 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       reviewDeclinedAt: null,
       reviewedAt: null,
       backfillDismissedFields: [],
-      // A list's members are ordinary tasks in an ordinary project. See
-      // Project.kind.
-      kind: options.kind ?? 'project',
       // No span unless a caller brought one. A project is a trip only once
       // somebody enters the dates, and there is nothing here to infer them
       // from — so the default is null and the only caller that passes a pair is
@@ -470,7 +475,6 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       personIds: [],
       links: [],
       inOrder: false,
-      showChecked: false,
       hideNextStep: false,
       groupOnToday: false,
     };
@@ -482,14 +486,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   updateProject(id, patch) {
     const project = get().projects.find(p => p.id === id);
     if (!project) return;
-    // Switching kind brings that kind's defaults along unless the patch names
-    // them itself. See kindSwitchFields.
-    const kindSwitch = kindSwitchFields(
-      project.kind,
-      patch,
-      useSettingsStore.getState().defaultProjectNudgeCadenceDays,
-    );
-    const updated = { ...project, ...kindSwitch, ...destinationPinFields(project, patch), ...patch };
+    const updated = { ...project, ...destinationPinFields(project, patch), ...patch };
     dbUpdateProject(updated);
     set(s => ({ projects: s.projects.map(p => (p.id === id ? updated : p)) }));
   },

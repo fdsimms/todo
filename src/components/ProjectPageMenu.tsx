@@ -6,7 +6,6 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useProjectActions } from '../hooks/useProjectActions';
-import { useProjectStore } from '../store/useProjectStore';
 import type { Project } from '../types';
 
 interface Props {
@@ -15,7 +14,6 @@ interface Props {
   /** Where the "..." was tapped, so the menu opens from it. See `CardSheet`. */
   anchor?: CardAnchor | null;
   project: Project;
-  onConvert: () => void;
 }
 
 interface MenuRowProps {
@@ -56,20 +54,14 @@ function MenuRow({ card, icon, label, hint, onPress, destructive, checked, acces
 
 /**
  * The project page's overflow ("...") menu: the one-shot actions on the page
- * itself. Whether it is a project or a list is chosen when one is made (quick
- * add's Project/List control), so converting is rare and lives here rather than
- * as a header toggle that made a list look like a project with a switch on. The
- * rest (finish, file away, reuse, delete) are the same actions the editor's
- * bottom cards run, through `useProjectActions`.
+ * itself: finish, file away, reuse and delete are the same actions the
+ * editor's bottom cards run, through `useProjectActions`.
  */
-export function ProjectPageMenu({ visible, onClose, anchor, project, onConvert }: Props) {
+export function ProjectPageMenu({ visible, onClose, anchor, project }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const card = useCardSheet();
-  const updateProject = useProjectStore(s => s.updateProject);
   const actions = useProjectActions(project);
-  const isList = project.kind === 'list';
-  const keepChecked = project.showChecked ?? false;
 
   return (
     <CardSheet
@@ -81,28 +73,6 @@ export function ProjectPageMenu({ visible, onClose, anchor, project, onConvert }
       popoverWidth={300}
       scrimLabel="Close menu"
     >
-      <MenuRow card={card}
-        icon={isList ? 'briefcase-outline' : 'list-outline'}
-        label={isList ? 'Convert to project' : 'Convert to list'}
-        hint={isList
-          ? 'Adds a finish line and a progress bar'
-          : 'No finish line or progress bar. Items are checked off and reused'}
-        onPress={onConvert}
-      />
-      {isList && (
-        <>
-          <View style={styles.sep} />
-          <MenuRow card={card}
-            icon="checkmark-done-outline"
-            label="Keep checked items in view"
-            hint="Checked items stay at the bottom, crossed out"
-            checked={keepChecked}
-            accessibilityRole="switch"
-            onPress={() => updateProject(project.id, { showChecked: !keepChecked })}
-          />
-        </>
-      )}
-      <View style={styles.sep} />
       <MenuRow card={card}
         icon={project.completed ? 'refresh-outline' : 'checkmark-circle-outline'}
         label={project.completed ? 'Reopen' : 'Mark complete'}
@@ -127,13 +97,13 @@ export function ProjectPageMenu({ visible, onClose, anchor, project, onConvert }
       <MenuRow card={card}
         icon="duplicate-outline"
         label="Start a fresh copy"
-        hint={isList ? 'A new list with the same items, all unchecked' : 'A new project with the same tasks, all open and undated'}
+        hint="A new project with the same tasks, all open and undated"
         onPress={actions.startFresh}
       />
       <View style={styles.sep} />
       <MenuRow card={card}
         icon="trash-outline"
-        label={isList ? 'Delete list' : 'Delete project'}
+        label="Delete project"
         destructive
         onPress={actions.confirmDelete}
       />

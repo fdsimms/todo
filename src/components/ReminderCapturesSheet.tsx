@@ -109,16 +109,16 @@ export function ReminderCapturesSheet({ visible, onClose, reminderLists, reserve
   const [listPickerFor, setListPickerFor] = useState<string | null>(null);
 
   /**
-   * A running list, which is what `ProjectKind` `'list'` exists for — a wish
-   * list, questions for the doctor. An ordinary dated project is offered too:
-   * "add X to my Kitchen Rebuild list" is a reasonable thing to want, and
-   * refusing it here would be this sheet second-guessing which of the user's
-   * own projects deserve a capture. Lists come first because they are what this
-   * is for.
+   * An ongoing project, a running collection like a wish list or questions
+   * for the doctor. An ordinary dated project is offered too: "add X to my
+   * Kitchen Rebuild list" is a reasonable thing to want, and refusing it here
+   * would be this sheet second-guessing which of the user's own projects
+   * deserve a capture. Ongoing ones come first because they are what this is
+   * for.
    */
   const projectOptions = useMemo(
     () => [...projects].sort((a, b) =>
-      (a.kind === b.kind ? 0 : a.kind === 'list' ? -1 : 1) || a.title.localeCompare(b.title)
+      (a.ongoing === b.ongoing ? 0 : a.ongoing ? -1 : 1) || a.title.localeCompare(b.title)
     ),
     [projects]
   );
@@ -224,11 +224,11 @@ export function ReminderCapturesSheet({ visible, onClose, reminderLists, reserve
     const title = name.trim();
     if (!title) return 'Give the project a name.';
     const existing = projectOptions.find(p => p.title.toLowerCase() === title.toLowerCase());
-    // kind: 'list' because that is what a capture is for — a running list with
-    // no dates, which is exactly what ProjectKind 'list' exists for and what
-    // the filing refuses to date. A capture pointed at a dated project is
-    // still allowed; it just isn't what creating one from here should make.
-    const project = existing ?? createProject(title, { kind: 'list' });
+    // Ongoing because that is what a capture is for: a running collection with
+    // no dates and no finish line, which the filing refuses to date. A capture
+    // pointed at a dated project is still allowed; it just isn't what creating
+    // one from here should make.
+    const project = existing ?? createProject(title, { ongoing: true });
     changeFiling(capture, { kind: 'project', projectId: project.id }, update);
   };
 

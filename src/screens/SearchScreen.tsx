@@ -101,11 +101,6 @@ const SearchResultItem = React.memo(function SearchResultItem({ result, onPress,
     ? format(new Date(task.completedAt), 'MMM d')
     : null;
 
-  // A primitive, so an unrelated project change doesn't re-render the row.
-  const projectIsList = useProjectStore(
-    st => (task.projectId ? st.projects.find(p => p.id === task.projectId)?.kind === 'list' : false),
-  );
-
   const displayTitle = displayTitleFor(task);
   // An "@name" mention stays literal in the title (see matchPersonMentions'
   // doc comment) and is tinted the same as a matched query term — merged
@@ -200,7 +195,7 @@ const SearchResultItem = React.memo(function SearchResultItem({ result, onPress,
               accessibilityLabel={`Open ${projectName}`}
             >
               <Ionicons
-                name={projectIsList ? 'list-outline' : 'briefcase-outline'}
+                name="briefcase-outline"
                 size={iconSize.xs}
                 color={colors.textSecondary}
               />

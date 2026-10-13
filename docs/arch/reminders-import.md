@@ -196,8 +196,8 @@ Five rules hold the rest of it in place:
   (`reminderCreatedAt` → `slotForHour`). That field is genuinely optional in EventKit, and the
   drain's own clock stands in when it is absent — named rather than hidden, because it is the best
   available answer rather than a good one. A capture can also be pinned to one meal.
-- **A filing never carries a date.** Filing is not scheduling: a project-list capture is exactly the
-  undated running list `ProjectKind` `'list'` exists for, and dating it would put a sentence nobody
+- **A filing never carries a date.** Filing is not scheduling: a capture into a running
+  project is exactly the undated collection it is for, and dating it would put a sentence nobody
   has read onto Today. The schedule a reminder *does* imply still rides `pendingImport` as before,
   and the filing is applied *after* it, so a list pointed at a project keeps that whatever words are
   in one reminder.

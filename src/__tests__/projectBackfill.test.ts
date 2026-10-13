@@ -25,7 +25,6 @@ const baseProject: Project = {
   reviewDeclinedAt: null,
   reviewedAt: null,
   backfillDismissedFields: [],
-  kind: 'project' as const,
   awayStart: null,
   awayEnd: null,
   awayPauses: false,
@@ -37,7 +36,6 @@ const baseProject: Project = {
   personIds: [],
   links: [],
   inOrder: false,
-  showChecked: false,
 };
 
 describe('isProjectFieldMissing', () => {

@@ -18,7 +18,7 @@ const task = (over: Partial<Task> & { id: string; title: string }): Task =>
   }) as Task;
 
 const project = (over: Partial<Project> & { id: string; title: string }): Project =>
-  ({ notes: '', deadline: null, archived: false, completed: false, kind: 'project', pausedUntil: null,
+  ({ notes: '', deadline: null, archived: false, completed: false, nudgeOptIn: true, pausedUntil: null,
      createdAt: '2026-01-01T09:00:00', ...over }) as Project;
 
 const emptyLookAhead = (over: Partial<LookAhead> = {}): LookAhead =>
@@ -245,11 +245,11 @@ describe('reviewTasks', () => {
     expect(reviewTasks(stub(tasks), { minPushes: 2 }).repeatedlyPostponed.count).toBe(3);
   });
 
-  it('finds quiet projects, but not a list, a paused one, or one with nothing left', () => {
+  it('finds quiet projects, but not one set never to be chased, a paused one, or one with nothing left', () => {
     const projects = [
       project({ id: 'quiet', title: 'Garage' }),
       project({ id: 'busy', title: 'Launch' }),
-      project({ id: 'list', title: 'Wish list', kind: 'list' }),
+      project({ id: 'list', title: 'Wish list', nudgeOptIn: false }),
       project({ id: 'paused', title: 'Novel', pausedUntil: '2027-01-01' }),
       project({ id: 'done', title: 'Move' }),
     ];

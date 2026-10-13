@@ -1,4 +1,4 @@
-import { buildProjectListItems, projectCopyText, projectPageOrder, alphabeticalPageOrder, orderWithInserted, filterProjectListItems, filterTasksByTitle } from '../utils/projectStacks';
+import { buildProjectListItems, projectCopyText, projectPageOrder, orderWithInserted, filterProjectListItems, filterTasksByTitle } from '../utils/projectStacks';
 import type { Task, TaskGroup } from '../types';
 
 const group = (id: string, overrides: Partial<TaskGroup> = {}): TaskGroup => ({
@@ -188,37 +188,6 @@ describe('projectPageOrder', () => {
     const tasks = [task('late', null, 30), task('early', null, 10), task('s2', 'g', 2), task('s1', 'g', 1)];
     const order = projectPageOrder(tasks, [group('g', { sortOrder: 20 })], 'p1');
     expect(order.map(t => t.id)).toEqual(['early', 's1', 's2', 'late']);
-  });
-});
-
-describe('alphabeticalPageOrder', () => {
-  const titled = (id: string, title: string, groupId: string | null = null, sortOrder = 0): Task =>
-    ({ id, title, groupId, sortOrder } as Task);
-
-  it('sorts loose lines among their own slots and leaves a section where it is', () => {
-    const items = buildProjectListItems(
-      [titled('c', 'cherry', null, 1), titled('a', 'Apple', null, 2), titled('b', 'banana', null, 9)],
-      [group('g', { sortOrder: 5 })],
-      'p1',
-    );
-    // g is homed nowhere and holds nothing here, so only the three loose lines show.
-    expect(alphabeticalPageOrder(items).top).toEqual(['a', 'b', 'c']);
-  });
-
-  it('keeps a section in its slot and sorts inside it, numbers as numbers', () => {
-    const items = buildProjectListItems(
-      [
-        titled('z', 'Zucchini', null, 1),
-        titled('ch10', 'Chapter 10', 'g', 1),
-        titled('ch2', 'Chapter 2', 'g', 2),
-        titled('m', 'mango', null, 9),
-      ],
-      [group('g', { sortOrder: 5 })],
-      'p1',
-    );
-    const order = alphabeticalPageOrder(items);
-    expect(order.top).toEqual(['m', 'g', 'z']);
-    expect(order.sections).toEqual([{ groupId: 'g', ids: ['ch2', 'ch10'] }]);
   });
 });
 

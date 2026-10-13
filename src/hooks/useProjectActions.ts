@@ -38,23 +38,20 @@ export function useProjectActions(project: Project | null, options: Options = {}
   const startFreshFromProject = useTaskStore(s => s.startFreshFromProject);
   const addTemplateFromProject = useTemplateStore(s => s.addTemplateFromProject);
 
-  const isList = project?.kind === 'list';
   const { prepare, onEnded, onDeleted } = options;
   const displayTitle = () =>
-    options.displayTitle?.() || project?.title || (isList ? 'this list' : 'this project');
+    options.displayTitle?.() || project?.title || 'this project';
 
   const confirmDelete = () => {
     if (!project) return;
     Alert.alert(
       `Delete “${displayTitle()}”?`,
-      isList
-        ? 'Keep its items as tasks without a list, or delete them with it.'
-        : 'Keep its tasks without a project, or delete them with it.',
+      'Keep its tasks without a project, or delete them with it.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: isList ? 'Delete list only' : 'Delete project only', onPress: () => { deleteProject(project.id, { cascade: false }); onDeleted?.(); } },
+        { text: 'Delete project only', onPress: () => { deleteProject(project.id, { cascade: false }); onDeleted?.(); } },
         {
-          text: isList ? 'Delete list and items' : 'Delete project and tasks',
+          text: 'Delete project and tasks',
           style: 'destructive',
           onPress: () => { deleteProject(project.id, { cascade: true }); onDeleted?.(); },
         },
@@ -139,9 +136,7 @@ export function useProjectActions(project: Project | null, options: Options = {}
     if (!project) return;
     Alert.alert(
       'Start a fresh copy?',
-      isList
-        ? 'Makes a new list with the same items, all unchecked. The original isn’t changed.'
-        : 'Makes a new project with the same tasks and sections, all open and undated. The original isn’t changed.',
+      'Makes a new project with the same tasks and sections, all open and undated. The original isn’t changed.',
       [
         { text: 'Cancel', style: 'cancel' },
         {

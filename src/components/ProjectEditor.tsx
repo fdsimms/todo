@@ -174,11 +174,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
   const pausedCategoryCount = useCategoryStore(s => s.categories.filter(c => c.hideOnVacation).length);
   // Rule 2 of simplified mode: a project that already has a trip keeps its
   // rows, whatever the switch says.
-  // A list is lines to tick off, so the fields about dates and being chased
-  // step aside for it. Only while unused: a list that was given a deadline or
-  // a nudge before it became one keeps the row that can take it off again.
-  const isList = project?.kind === 'list';
-  const awayFieldShown = featureShown('awayDates', simpleMode, awayStart !== null) && (!isList || awayStart !== null);
+  const awayFieldShown = featureShown('awayDates', simpleMode, awayStart !== null);
   // Collapsed to the chosen category until tapped, like every other editor.
   const [categoryOpen, setCategoryOpen] = useState(false);
   // The merged nudge control: one chosen answer, plus the cadence the third of
@@ -202,7 +198,6 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
   const [linkDraft, setLinkDraft] = useState('');
   const [linkError, setLinkError] = useState<string | null>(null);
   const [inOrder, setInOrder] = useState(false);
-  const [showChecked, setShowChecked] = useState(false);
   const [hideNextStep, setHideNextStep] = useState(false);
   const [groupOnToday, setGroupOnToday] = useState(false);
   const people = usePersonStore(useShallow(s => s.people.filter(p => !p.archived)));
@@ -284,7 +279,6 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
     setLinkDraft('');
     setLinkError(null);
     setInOrder(project.inOrder ?? false);
-    setShowChecked(project.showChecked ?? false);
     setHideNextStep(project.hideNextStep ?? false);
     setGroupOnToday(project.groupOnToday ?? false);
     setCategoryOpen(false);
@@ -430,7 +424,6 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
         return pending ? [...links, { id: generateId(), ...pending }] : links;
       })(),
       inOrder,
-      showChecked,
       hideNextStep,
       groupOnToday,
     });
@@ -458,11 +451,11 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
     // notes and settings entered for it, without a word.
     if (isNew && !title.trim()) {
       Alert.alert(
-        isList ? 'Name this list' : 'Name this project',
-        isList ? 'A new list needs a name before it can be saved.' : 'A new project needs a name before it can be saved.',
+        'Name this project',
+        'A new project needs a name before it can be saved.',
         [
           { text: 'Keep editing', style: 'cancel' },
-          { text: isList ? 'Discard list' : 'Discard project', style: 'destructive', onPress: () => onClose('discarded') },
+          { text: 'Discard project', style: 'destructive', onPress: () => onClose('discarded') },
         ],
       );
       return;
@@ -498,7 +491,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
   // The name as it reads on screen right now, for the confirms below: the
   // snapshot's title is blank for a project fresh from quick add, and stale
   // for one renamed in this session.
-  const displayTitle = () => title.trim() || project?.title || (isList ? 'this list' : 'this project');
+  const displayTitle = () => title.trim() || project?.title || 'this project';
 
   /**
    * Whether anything on the sheet differs from what the project holds. Read
@@ -532,7 +525,6 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
       JSON.stringify(links) !== JSON.stringify(project.links ?? []) ||
       linkDraft.trim() !== '' ||
       inOrder !== (project.inOrder ?? false) ||
-      showChecked !== (project.showChecked ?? false) ||
       hideNextStep !== (project.hideNextStep ?? false) ||
       groupOnToday !== (project.groupOnToday ?? false)
     );
@@ -548,7 +540,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
     const leave = () => onClose(isNew ? 'discarded' : undefined);
     if (!isDirty()) { leave(); return; }
     Alert.alert(
-      isNew ? (isList ? 'Discard this list?' : 'Discard this project?') : 'Discard changes?',
+      isNew ? 'Discard this project?' : 'Discard changes?',
       isNew
         ? "It hasn’t been saved yet. Are you sure you want to discard it?"
         : 'You have unsaved changes. Are you sure you want to discard them?',
@@ -631,7 +623,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
         // Delete moved down to the actions at the bottom to make room.
         <SheetHeader
           bare
-          title={isNew ? (isList ? 'New list' : 'New project') : (isList ? 'Edit list' : 'Edit project')}
+          title={isNew ? 'New project' : 'Edit project'}
           left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} />}
           right={<SheetHeaderButton label="Done" onPress={() => saveAndClose()} />}
         />
@@ -760,7 +752,6 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
           sheet was a column of unlabelled cards in the order each field was
           added, with the nudge's own switch floating free of the field it
           belongs to. */}
-      {(!isList || deadline !== null || eventDate !== null) && (
       <>
       <Text style={styles.groupLabel}>Schedule</Text>
       <View style={styles.card}>
@@ -787,7 +778,6 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
         The event date is the day the project is for, like a wedding or a move. Changing it offers to move dated tasks by the same number of days. A passed deadline is flagged on the project’s card.
       </Text>
       </>
-      )}
 
       {/* The away span. Two rows rather than one range control because the end
           is genuinely optional: a trip you have booked a flight out for and
@@ -1085,7 +1075,6 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
           nobody chose — see NudgeMode in utils/nudgeCadence. Automatic
           scheduling only exists under "Every…", so it lives inside the same
           field rather than as a card of its own that came and went beside it. */}
-      {(!isList || nudgeMode !== 'never') && (
       <>
       <Text style={styles.groupLabel}>Nudges</Text>
       <View style={styles.card}>
@@ -1183,13 +1172,6 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
         </TouchableOpacity>
       </View>
       </>
-      )}
-
-      {/*
-        Whether this project is a list is chosen when it is made (quick add's
-        Project/List control) and converted from ProjectDetailScreen's "..."
-        menu, right where its effect shows — not here. See docs/arch/lists.md.
-      */}
 
       <Text style={styles.groupLabel}>More</Text>
       <View style={styles.card}>
@@ -1217,9 +1199,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
           <View style={styles.optionContent}>
             <Text style={styles.optionLabel}>Planning</Text>
             <Text style={styles.optionHint}>
-              {isList
-                ? 'Hides all of its items and stops any nudges until you mark it ready'
-                : 'Hides all of its tasks, dated ones too, and stops any nudges until you mark it ready'}
+              Hides all of its tasks, dated ones too, and stops any nudges until you mark it ready
             </Text>
           </View>
           <View style={[styles.toggle, planning && styles.toggleOn]}>
@@ -1232,9 +1212,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
             <EditorRow
               icon="pause-outline"
               label="Pause until"
-              hint={isList
-                ? 'Hides all of its items and stops any nudges until this day.'
-                : 'Hides all of its tasks, repeating ones too, and stops any nudges until this day.'}
+              hint="Hides all of its tasks, repeating ones too, and stops any nudges until this day."
               value={pausedUntil ? formatDeadlineDate(pausedUntil.toISOString()) : undefined}
               onPress={() => setPickingPause(true)}
               onClear={pausedUntil ? () => setPausedUntil(null) : undefined}
@@ -1242,29 +1220,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
             <View style={styles.sepIcon} />
           </>
         )}
-        {isList ? (
-          <TouchableOpacity
-            style={styles.optionRow}
-            onPress={() => { haptics.tap(); setShowChecked(v => !v); }}
-            activeOpacity={interaction.activeOpacity}
-            accessibilityRole="switch"
-            accessibilityLabel="Keep checked items in view"
-            accessibilityState={{ checked: showChecked }}
-          >
-            <Ionicons name="checkmark-done-outline" size={18} color={showChecked ? colors.accent : colors.textSecondary} />
-            <View style={styles.optionContent}>
-              <Text style={styles.optionLabel}>Keep checked items in view</Text>
-              <Text style={styles.optionHint}>
-                {showChecked
-                  ? 'Checked items stay at the bottom, crossed out, in list order'
-                  : 'Checked items fold away under a “Show checked” button at the bottom'}
-              </Text>
-            </View>
-            <View style={[styles.toggle, showChecked && styles.toggleOn]}>
-              <View style={[styles.toggleKnob, showChecked && styles.toggleKnobOn]} />
-            </View>
-          </TouchableOpacity>
-        ) : (
+        {(
           <>
           <TouchableOpacity
             style={styles.optionRow}
@@ -1347,8 +1303,8 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
             <Text style={styles.optionLabel}>Ongoing</Text>
             <Text style={styles.optionHint}>
               {ongoing
-                ? `Never offered as complete. Its card counts open ${isList ? 'items' : 'tasks'} instead of a progress bar`
-                : isList ? 'Offers to mark complete once every item is checked' : 'Offers to mark complete once every task is done'}
+                ? 'Never offered as complete. Its card counts open tasks instead of a progress bar'
+                : 'Offers to mark complete once every task is done'}
             </Text>
           </View>
           <View style={[styles.toggle, ongoing && styles.toggleOn]}>
@@ -1416,9 +1372,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
             <View style={styles.optionContent}>
               <Text style={styles.optionLabel}>Lock with Face ID</Text>
               <Text style={styles.optionHint}>
-                {isList
-                  ? 'Its items stay out of Today, Search and the widget until you unlock. Reminders show no title.'
-                  : 'Its tasks stay out of Today, Search and the widget until you unlock. Reminders show no title.'}
+                Its tasks stay out of Today, Search and the widget until you unlock. Reminders show no title.
               </Text>
             </View>
           </TouchableOpacity>
@@ -1451,7 +1405,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
             <Ionicons name="duplicate-outline" size={18} color={colors.textSecondary} />
             <View style={styles.optionContent}>
               <Text style={styles.optionLabel}>Start a fresh copy</Text>
-              <Text style={styles.optionHint}>{isList ? 'A new list with the same items, all unchecked' : 'A new project with the same tasks, all open and undated'}</Text>
+              <Text style={styles.optionHint}>A new project with the same tasks, all open and undated</Text>
             </View>
           </TouchableOpacity>
         </View>
@@ -1464,11 +1418,11 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
             onPress={handleDelete}
             activeOpacity={interaction.activeOpacity}
             accessibilityRole="button"
-            accessibilityLabel={isList ? 'Delete list' : 'Delete project'}
+            accessibilityLabel="Delete project"
           >
             <Ionicons name="trash-outline" size={18} color={colors.red} />
             <View style={styles.optionContent}>
-              <Text style={[styles.optionLabel, styles.deleteLabel]}>{isList ? 'Delete list' : 'Delete project'}</Text>
+              <Text style={[styles.optionLabel, styles.deleteLabel]}>Delete project</Text>
             </View>
           </TouchableOpacity>
         </View>

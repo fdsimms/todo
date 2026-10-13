@@ -22,7 +22,6 @@ const makeProject = (overrides: Partial<Project> = {}): Project => ({
   reviewDeclinedAt: null,
   reviewedAt: null,
   backfillDismissedFields: [],
-  kind: 'project' as const,
   awayStart: null,
   awayEnd: null,
   awayPauses: false,
@@ -34,7 +33,6 @@ const makeProject = (overrides: Partial<Project> = {}): Project => ({
   personIds: [],
   links: [],
   inOrder: false,
-  showChecked: false,
   ...overrides,
 });
 

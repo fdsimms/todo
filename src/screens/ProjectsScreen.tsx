@@ -62,7 +62,6 @@ import {
   projectCardCaption,
   projectMatchesQuery,
   projectNextStepTitle,
-  projectListPreview,
   projectProgressNote,
   sortProjects,
 } from '../utils/projectList';
@@ -126,7 +125,6 @@ export function ProjectsScreen() {
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const lockedIds = useProjectLockStore(s => s.lockedIds);
   const projectsUnlocked = useProjectLockStore(s => s.unlocked);
-  const hideListPreviews = useSettingsStore(s => s.hideListPreviews);
   // Re-renders the list when the day rolls over, so a card's "Due tomorrow"
   // becomes "Due today" without waiting for some unrelated store write.
   useLogicalDayKey();
@@ -180,19 +178,13 @@ export function ProjectsScreen() {
   // on every render of the list, not just when the tasks actually moved. The
   // next step's title rides the same pass.
   const cardFactsByProject = useMemo(() => {
-    const map = new Map<string, { progress: { done: number; total: number }; next: string | null; preview: string | null }>();
+    const map = new Map<string, { progress: { done: number; total: number }; next: string | null }>();
     listProjects.forEach(p => map.set(p.id, {
       progress: projectProgress(p.id, allTasks),
-      // Not for a list: "Next" reads as an order to work in, and a list of
-      // books or gift ideas has none.
-      next: projectFilter === 'active' && p.kind !== 'list' && !p.hideNextStep ? projectNextStepTitle(p.id, allTasks, taskGroups, p.inOrder) : null,
-      // A list shows its first lines instead, which is what it's for.
-      preview: projectFilter === 'active' && p.kind === 'list' && !hideListPreviews
-        ? projectListPreview(p.id, allTasks, taskGroups).join(', ') || null
-        : null,
+      next: projectFilter === 'active' && !p.hideNextStep ? projectNextStepTitle(p.id, allTasks, taskGroups, p.inOrder) : null,
     }));
     return map;
-  }, [listProjects, allTasks, projectFilter, taskGroups, hideListPreviews]);
+  }, [listProjects, allTasks, projectFilter, taskGroups]);
   const progressByProject = useMemo(
     () => new Map(Array.from(cardFactsByProject, ([id, facts]) => [id, facts.progress])),
     [cardFactsByProject]
@@ -436,7 +428,6 @@ export function ProjectsScreen() {
       deadline: draft.deadline,
       category: draft.category,
       awayStart: draft.awayStart ?? null,
-      kind: draft.asList ? 'list' : 'project',
       planning: draft.planning,
     });
     const project = useProjectStore.getState().getProjectById(created.id) ?? created;
@@ -498,12 +489,6 @@ export function ProjectsScreen() {
     (navigation as any).navigate('ProjectDetail', { projectId: project.id });
   }, [selectionMode, toggleSelection, navigation]);
 
-  // Stable, like the other row callbacks, so ProjectRow's memo holds.
-  const handleAddLine = useCallback((project: Project) => {
-    haptics.tap();
-    (navigation as any).navigate('ProjectDetail', { projectId: project.id, addLine: Date.now() });
-  }, [navigation]);
-
   // A locked project's settings are as private as its tasks.
   const handleEditProject = useCallback((project: Project) => {
     if (isProjectHidden(project.id)) {
@@ -551,7 +536,6 @@ export function ProjectsScreen() {
         captionSoon={caption?.soon ?? false}
         progressNote={locked ? null : projectProgressNote(project, progress)}
         nextStep={locked ? null : facts?.next ?? null}
-        preview={locked ? null : facts?.preview ?? null}
         projectFilter={projectFilter}
         allDone={allDone}
         selectionMode={selectionMode}
@@ -567,7 +551,6 @@ export function ProjectsScreen() {
         onQuickUncomplete={handleQuickUncomplete}
         onQuickComplete={handleQuickComplete}
         onEdit={handleEditProject}
-        onAddLine={handleAddLine}
       />
     );
   };
@@ -801,9 +784,9 @@ export function ProjectsScreen() {
  * follows on Today.
  */
 const ProjectRow = React.memo(function ProjectRow({
-  project, locked, progress, pastWindow, captionText, captionOverdue, captionSoon, progressNote, nextStep, preview, projectFilter, allDone,
+  project, locked, progress, pastWindow, captionText, captionOverdue, captionSoon, progressNote, nextStep, projectFilter, allDone,
   selectionMode, selected, isActive, drag, colors, styles,
-  onPress, onToggleSelect, onSwipeSelect, onQuickUnarchive, onQuickUncomplete, onQuickComplete, onEdit, onAddLine,
+  onPress, onToggleSelect, onSwipeSelect, onQuickUnarchive, onQuickUncomplete, onQuickComplete, onEdit,
 }: {
   project: Project;
   /** Behind Face ID right now: the row names the project and nothing else. */
@@ -819,8 +802,6 @@ const ProjectRow = React.memo(function ProjectRow({
   progressNote: string | null;
   /** The top of the project's own order, named so the card says what's up. */
   nextStep: string | null;
-  /** A list's first open lines, joined, in place of a "Next". */
-  preview: string | null;
   projectFilter: ProjectFilter;
   allDone: boolean;
   selectionMode: boolean;
@@ -836,7 +817,6 @@ const ProjectRow = React.memo(function ProjectRow({
   onQuickUncomplete: (project: Project) => void;
   onQuickComplete: (project: Project) => void;
   onEdit: (project: Project) => void;
-  onAddLine: (project: Project) => void;
 }) {
   // Excluded for the floating drag overlay's copy — it shares the dragged
   // row's id, and registering both would leave the real row's slot evicted
@@ -870,15 +850,12 @@ const ProjectRow = React.memo(function ProjectRow({
           accessibilityRole={selectionMode ? 'checkbox' : 'button'}
           accessibilityState={selectionMode ? { checked: selected } : undefined}
           accessibilityLabel={
-            // The list glyph beside the title is decorative, so the kind has to
-            // be said here or a screen reader can't tell the two apart. The
-            // caption and next step are read too: they're the rest of what the
-            // card shows.
+            // The caption and next step are read too: they're the rest of what
+            // the card shows.
             [
-              project.title + (project.kind === 'list' ? ', list' : '') + (locked ? ', locked' : ''),
+              project.title + (locked ? ', locked' : ''),
               locked ? null : progressNote ?? `${progress.done} of ${progress.total} done`,
               nextStep ? `next: ${nextStep}` : null,
-              preview,
               captionText,
             ].filter(Boolean).join(', ')
           }
@@ -888,19 +865,12 @@ const ProjectRow = React.memo(function ProjectRow({
               : locked
                 ? 'Double tap to unlock with Face ID and view this project.'
               : drag
-                ? `Double tap to view ${project.kind === 'list' ? 'this list' : 'tasks in this project'}. Long press to reorder.`
-                : `Double tap to view ${project.kind === 'list' ? 'this list' : 'tasks in this project'}.`
+                ? 'Double tap to view tasks in this project. Long press to reorder.'
+                : 'Double tap to view tasks in this project.'
           }
         >
           <View style={styles.projectInfo}>
             <View style={styles.projectTitleRow}>
-              {/* A glyph rather than a separate section: lists and projects sit
-                  in the same category order the user arranged, and splitting
-                  them would make that order answer to something they didn't
-                  choose. See Project.kind. */}
-              {project.kind === 'list' && (
-                <Ionicons name="list-outline" size={14} color={colors.textTertiary} />
-              )}
               <Text style={styles.projectName} numberOfLines={1}>{project.title}</Text>
               {locked && <Ionicons name="lock-closed" size={14} color={colors.textTertiary} />}
               {/* Nothing a row can do to itself while a selection is being
@@ -936,21 +906,9 @@ const ProjectRow = React.memo(function ProjectRow({
                     onPress={() => onQuickComplete(project)}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     accessibilityRole="button"
-                    accessibilityLabel={`Mark ${project.title} complete: ${project.kind === 'list' ? 'every item is checked' : 'every task is done'}`}
+                    accessibilityLabel={`Mark ${project.title} complete: every task is done`}
                   >
                     <Ionicons name="checkmark-circle" size={16} color={colors.done} />
-                  </TouchableOpacity>
-                )}
-                {/* Add to a list without hunting for its field: opens the
-                    list with the add field open. */}
-                {project.kind === 'list' && projectFilter === 'active' && (
-                  <TouchableOpacity
-                    onPress={() => onAddLine(project)}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Add an item to ${project.title}`}
-                  >
-                    <Ionicons name="add-circle-outline" size={16} color={colors.textTertiary} />
                   </TouchableOpacity>
                 )}
                 <TouchableOpacity
@@ -962,7 +920,7 @@ const ProjectRow = React.memo(function ProjectRow({
                   {/* A pencil, like the project page's own: this opens the
                       editor straight away rather than a menu. Nudged up a point:
                       the glyph's square sits low in its box, so its ink reads
-                      lower than the add circle's beside it. */}
+                      lower than the other glyphs beside it. */}
                   <Ionicons name="create-outline" size={16} color={colors.textTertiary} style={{ marginTop: -1 }} />
                 </TouchableOpacity>
                 <SwipeActionButtons enabled={!selectionMode} selectAction={swipeSelect} />
@@ -980,9 +938,6 @@ const ProjectRow = React.memo(function ProjectRow({
                 </View>
                 <Text style={styles.progressText}>{progress.done}/{progress.total}</Text>
               </View>
-            )}
-            {preview && (
-              <Text style={styles.nextText} numberOfLines={1}>{preview}</Text>
             )}
             {nextStep && (
               <Text style={styles.nextText} numberOfLines={1}>

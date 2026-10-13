@@ -10,7 +10,6 @@ import {
   projectNextStepTitle,
   overdueRoutines,
   projectProgressNote,
-  projectListPreview,
   sortProjects,
 } from '../utils/projectList';
 import type { Project, Task } from '../types';
@@ -45,7 +44,6 @@ const makeProject = (overrides: Partial<Project> = {}): Project => ({
   reviewDeclinedAt: null,
   reviewedAt: null,
   backfillDismissedFields: [],
-  kind: 'project',
   awayStart: null,
   awayEnd: null,
   awayPauses: false,
@@ -57,7 +55,6 @@ const makeProject = (overrides: Partial<Project> = {}): Project => ({
   personIds: [],
   links: [],
   inOrder: false,
-  showChecked: false,
   ...overrides,
 });
 
@@ -274,33 +271,5 @@ describe('projectActivity', () => {
 
   it('says nothing for a project nothing has been done in', () => {
     expect(describeProjectActivity(projectActivity('p1', []))).toBeNull();
-  });
-});
-
-describe('projectListPreview', () => {
-  it("names a list's first open lines in page order", () => {
-    const tasks = [
-      makeTask({ id: 'a', title: 'Piranesi', sortOrder: 2 }),
-      makeTask({ id: 'b', title: 'Dune', sortOrder: 1 }),
-      makeTask({ id: 'c', title: 'Read already', sortOrder: 0, completed: true }),
-      makeTask({ id: 'd', title: 'Third', sortOrder: 3 }),
-    ];
-    expect(projectListPreview('p1', tasks)).toEqual(['Dune', 'Piranesi']);
-  });
-
-  it('is empty for a list with nothing open', () => {
-    expect(projectListPreview('p1', [])).toEqual([]);
-  });
-});
-
-describe('projectProgressNote on a list', () => {
-  it('says lines rather than tasks', () => {
-    expect(projectProgressNote(makeProject({ kind: 'list' }), { done: 0, total: 0 })).toBe('No items yet');
-  });
-
-  it('counts its items on an ongoing list rather than what is open', () => {
-    expect(projectProgressNote(makeProject({ kind: 'list', ongoing: true }), { done: 2, total: 5 })).toBe('5 items');
-    expect(projectProgressNote(makeProject({ kind: 'list', ongoing: true }), { done: 5, total: 5 })).toBe('5 items');
-    expect(projectProgressNote(makeProject({ kind: 'list', ongoing: true }), { done: 0, total: 1 })).toBe('1 item');
   });
 });
