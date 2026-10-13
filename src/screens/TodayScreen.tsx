@@ -95,6 +95,7 @@ import { useScrollToTopVisibility } from '../hooks/useScrollToTopVisibility';
 import { useElevatedCellRenderer } from '../hooks/useElevatedCellRenderer';
 import { useMealPlanNudgeProgress } from '../hooks/useMealPlanNudgeProgress';
 import { useCategoryStore } from '../store/useCategoryStore';
+import { offerGeneratedCategoryWriteBack, bulkSetCategoryOffering } from '../utils/generatedCategoryPrompt';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useSettingsStore, type MealsOnToday } from '../store/useSettingsStore';
@@ -717,6 +718,7 @@ function ViewModePills({
 /** How long a task link waits for its task to arrive by sync before giving up. */
 const OPEN_TASK_WAIT_MS = 20_000;
 
+
 export function TodayScreen() {
   // ==== store bindings, navigation, layout insets ====
   const insets = useSafeAreaInsets();
@@ -785,7 +787,6 @@ export function TodayScreen() {
   const rewardGoalId = useSettingsStore(s => s.rewardGoalId);
   const allRewards = useRewardStore(s => s.rewards);
   const bulkTogglePin = useTaskStore(s => s.bulkTogglePin);
-  const bulkSetCategory = useTaskStore(s => s.bulkSetCategory);
   const bulkAddTags = useTaskStore(s => s.bulkAddTags);
   const markTasksSeen = useTaskStore(s => s.markTasksSeen);
   const markTaskSeen = useTaskStore(s => s.markTaskSeen);
@@ -5177,6 +5178,7 @@ export function TodayScreen() {
                   applyGroupCategory(u.id, u.category);
                 });
                 reorderWithCategoryUpdates(taskOrders, categoryUpdates, scope ? { scope } : undefined);
+                offerGeneratedCategoryWriteBack(categoryUpdates);
               };
 
               // Dragging a recurring task into a new category is a content-field
@@ -5769,7 +5771,7 @@ export function TodayScreen() {
             completableCount={completableCount}
             onDelete={handleBulkDelete}
             onSetWhen={(date, segs) => confirmBulkSetWhen(Array.from(selectedIds), date, segs, exitSelection)}
-            onSetCategory={category => { bulkSetCategory(Array.from(selectedIds), category); exitSelection(); }}
+            onSetCategory={category => { bulkSetCategoryOffering(Array.from(selectedIds), category); exitSelection(); }}
             onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
             onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
             onSetDifficulty={rewardsEnabled ? d => { bulkSetDifficulty(Array.from(selectedIds), d); exitSelection(); } : undefined}

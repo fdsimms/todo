@@ -22,6 +22,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useAnswerFirstCompletion } from '../hooks/useAnswerFirstCompletion';
 import { DeliverablePromptQueue } from '../components/DeliverablePromptQueue';
 import { useTaskStore } from '../store/useTaskStore';
+import { bulkSetCategoryOffering } from '../utils/generatedCategoryPrompt';
 import { useProjectStore, projectDecisions, projectProgress, projectCompletedRows, isProjectPastWindow, projectAnswerTallies, answerTallyParts } from '../store/useProjectStore';
 import { decisionOutcomes } from '../utils/decisionReview';
 import { AddGuestsSheet } from '../components/AddGuestsSheet';
@@ -395,7 +396,6 @@ function ProjectDetailContent() {
   const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
   const bulkSetDifficulty = useTaskStore(s => s.bulkSetDifficulty);
   const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
-  const bulkSetCategory = useTaskStore(s => s.bulkSetCategory);
   const bulkAddTags = useTaskStore(s => s.bulkAddTags);
   const groupTasks = useTaskStore(s => s.groupTasks);
   const setDeliverableValue = useTaskStore(s => s.setDeliverableValue);
@@ -2149,7 +2149,7 @@ function ProjectDetailContent() {
             completableCount={completableCount}
             onDelete={handleBulkDelete}
             onSetWhen={(date, segs) => confirmBulkSetWhen(Array.from(selectedIds), date, segs, exitSelection)}
-            onSetCategory={cat => { bulkSetCategory(Array.from(selectedIds), cat); exitSelection(); }}
+            onSetCategory={cat => { bulkSetCategoryOffering(Array.from(selectedIds), cat); exitSelection(); }}
             onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
             onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
             onSetDifficulty={rewardsEnabled ? d => { bulkSetDifficulty(Array.from(selectedIds), d); exitSelection(); } : undefined}

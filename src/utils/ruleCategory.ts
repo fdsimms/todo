@@ -34,3 +34,21 @@ export function renameInRuleCategories<R extends RuleTaskCategory>(rules: R[], f
   if (!rules.some(r => r.category === from)) return rules;
   return rules.map(r => (r.category === from ? { ...r, category: to } : r));
 }
+
+/**
+ * The rule list with one rule filed under `category`, or null when nothing
+ * would change (no such rule, or it already resolves there), so a caller can
+ * skip the settings write. `fallback` is the kind's setting: a rule naming no
+ * category of its own already files there, so it is left alone rather than
+ * given a redundant copy of the setting.
+ */
+export function withRuleCategory<R extends RuleTaskCategory & { id: string }>(
+  rules: readonly R[],
+  ruleId: string,
+  category: string,
+  fallback: string | null,
+): R[] | null {
+  const rule = rules.find(r => r.id === ruleId);
+  if (!rule || ruleCategoryFor(rule, fallback) === category) return null;
+  return rules.map(r => (r.id === ruleId ? { ...r, category } : r));
+}
