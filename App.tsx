@@ -26,6 +26,7 @@ import { useFocusPlanReconcile } from './src/hooks/useFocusSession';
 import { useStepTimerStore } from './src/store/useStepTimerStore';
 import { useTimerLiveActivitySync } from './src/utils/liveActivity';
 import { useTripLiveActivitySync } from './src/utils/tripLiveActivity';
+import { useLeaveLiveActivitySync } from './src/utils/leaveLiveActivity';
 import { useFocusLiveActivitySync } from './src/utils/focusLiveActivity';
 import { useRemindersImportSync } from './src/utils/remindersImportSync';
 import { useCalendarSync } from './src/store/useCalendarStore';
@@ -327,6 +328,9 @@ function AppRoot() {
 
   // Keeps an active shopping trip's Lock Screen Live Activity in sync.
   useTripLiveActivitySync();
+
+  // Keeps the next "Leave for X" event's Lock Screen Live Activity in sync.
+  useLeaveLiveActivitySync();
 
   // Keeps the focus session's Lock Screen Live Activity in sync.
   useFocusLiveActivitySync();

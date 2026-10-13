@@ -29,6 +29,7 @@ const SWIFT_FILES = [
   'TodoLimitsWidget.swift',
   'TimerLiveActivity.swift',
   'TripLiveActivity.swift',
+  'LeaveLiveActivity.swift',
   'FocusLiveActivity.swift',
 ];
 // Files that must compile into BOTH this extension and the app. The
@@ -52,6 +53,7 @@ const BRIDGE_SOURCE_DIR = path.join(__dirname, '..', 'modules', 'todo-widget-bri
 const SHARED_SWIFT_FILES = [
   'TimerActivityAttributes.swift',
   'TripActivityAttributes.swift',
+  'LeaveActivityAttributes.swift',
   'FocusActivityAttributes.swift',
   'CompleteTaskIntent.swift',
   // The Medications widget's buttons name LogMedicationIntent, which opens

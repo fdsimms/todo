@@ -629,7 +629,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
  *
  * - `hapticsEnabled`, `shakeToUndoEnabled`, `beatSoundEnabled`,
  *   `beatLastDayKey`, `timerLiveActivity`,
- *   `tripLiveActivity`, `focusLiveActivity`, `fabHand`, `mapsApp`,
+ *   `tripLiveActivity`, `leaveLiveActivity`, `focusLiveActivity`, `fabHand`, `mapsApp`,
  *   `mirroringMode` — capabilities and
  *   ergonomics of one device. A Mac has no haptics and no thumb reach, and
  *   which maps apps are installed differs from phone to phone. Whether a phone

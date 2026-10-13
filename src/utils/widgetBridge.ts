@@ -63,6 +63,7 @@ export interface WidgetBridge {
   drainSharedLinks: () => Promise<string[]>;
   syncTimerLiveActivities: (jsonString: string) => Promise<boolean>;
   syncTripLiveActivity: (jsonString: string) => Promise<boolean>;
+  syncLeaveLiveActivity: (jsonString: string) => Promise<boolean>;
   syncFocusLiveActivity: (jsonString: string) => Promise<boolean>;
   /** The Apple Watch's copy of the snapshot, built with `WATCH_CAPS`. */
   writeWatchSnapshot: (jsonString: string) => Promise<boolean>;
