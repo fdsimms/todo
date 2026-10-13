@@ -2386,6 +2386,10 @@ export type GeneratedKind =
   // log goes past it — see src/utils/limitWarningTasks.ts. Keyed by the
   // nutrient; deleting one adds it to limitWarningDeclined.
   | 'limitWarning'
+  // "Aim for 120g protein" for a nutrient goal, checked off by the app when the
+  // day reaches it — see src/utils/goalTargetTasks.ts. Keyed by the nutrient
+  // and the day; deleting one adds the nutrient to goalTargetDeclined.
+  | 'goalTarget'
   // "Book Optometrist" once a saved event's own interval has nearly passed
   // since the last one — see src/utils/savedEventTasks.ts. Sourced by the saved
   // event and the cycle (`key|day`), and declined on the saved event itself.

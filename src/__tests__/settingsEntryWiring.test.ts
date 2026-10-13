@@ -48,6 +48,12 @@ const TEMPLATED: { test: (id: string) => boolean; template: (id: string) => stri
     test: id => id.startsWith('gen:') && id.endsWith(':taskSettings'),
     template: () => 'entryId={`gen:${spec.kind}:taskSettings`}',
   },
+  // Aim for and Stay under share one per-nutrient row, so the id is picked by
+  // the kind the row is rendered for.
+  {
+    test: id => id === 'limitWarningNutrients' || id === 'goalTargetNutrients',
+    template: () => "entryId={isLimit ? 'limitWarningNutrients' : 'goalTargetNutrients'}",
+  },
   { test: id => id.startsWith('gen:'), template: () => 'entryId={`gen:${spec.kind}`}' },
   // The two generators that hold their task back until a part of the day share
   // one `timeSegmentExtra` helper rather than a copy of its row each, so the id

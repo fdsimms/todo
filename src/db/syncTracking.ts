@@ -422,6 +422,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'waterShortfallTasks',
   'snackNudgeTasks',
   'limitWarningTasks',
+  'goalTargetTasks',
   'bookEventTasks',
 
   // Behaviour.
@@ -527,6 +528,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'snackNudgeFromHour',
   'snackNudgeSharePercent',
   'limitWarningTaskCategory',
+  'goalTargetTaskCategory',
   'supplyReorderTaskCategory',
   'travelTaskCategory',
   'travelLeadMinutes',
@@ -563,6 +565,8 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // The limit tasks deleted for good, and the slips the app logged on them.
   'limitWarningDeclined',
   'limitWarningAutoSlips',
+  // The goals whose Aim for task was deleted or switched off.
+  'goalTargetDeclined',
   'waterUnit',
 
   // Vocabularies the user builds. These are data as much as preference — a

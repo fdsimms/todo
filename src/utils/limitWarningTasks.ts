@@ -56,13 +56,13 @@ export function limitWarningKeyOf(sourceId: string | null | undefined): Nutrient
   return sourceId && (NUTRIENT_KEYS as readonly string[]).includes(sourceId) ? (sourceId as NutrientKey) : null;
 }
 
-function figure(key: NutrientKey, amount: number): string {
+export function figure(key: NutrientKey, amount: number): string {
   const unit = NUTRIENT_LABEL[key].unit;
   const suffix = unit === 'cal' ? ' cal' : unit;
   return `${(Math.round(amount * 10) / 10).toLocaleString('en-US')}${suffix}`;
 }
 
-function shortName(key: NutrientKey): string {
+export function shortName(key: NutrientKey): string {
   return (LIMIT_ROW_NAME[key] ?? NUTRIENT_LABEL[key].label).toLowerCase();
 }
 

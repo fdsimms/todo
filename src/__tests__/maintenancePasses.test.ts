@@ -38,6 +38,7 @@ describe('the three maintenance groups', () => {
       'sync water quotas',
       'sync snack nudge',
       'sync limit warnings',
+      'sync goal targets',
       'check book-event tasks',
       'drip stalled projects',
       'check meal plan nudge',

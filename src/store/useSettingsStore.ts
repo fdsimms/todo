@@ -1421,6 +1421,12 @@ interface SettingsStore {
   // Per limit, the logical day the app last logged a slip on itself, so a
   // deleted entry can take back that slip and never one the person logged.
   limitWarningAutoSlips: Partial<Record<NutrientKey, string>>;
+  // Opt-in, off by default: an "Aim for" task each day per nutrient goal. See
+  // src/utils/goalTargetTasks.ts.
+  goalTargetTasks: boolean;
+  goalTargetTaskCategory: string | null;
+  // The goals switched off, by the switch in Settings or by deleting the task.
+  goalTargetDeclined: NutrientKey[];
 
   /**
    * Which of the nutrients a logged meal is allowed to write to
@@ -2087,6 +2093,9 @@ interface SettingsStore {
   setLimitWarningTaskCategory: (category: string | null) => void;
   setLimitWarningDeclined: (keys: NutrientKey[]) => void;
   setLimitWarningAutoSlips: (days: Partial<Record<NutrientKey, string>>) => void;
+  setGoalTargetTasks: (on: boolean) => void;
+  setGoalTargetTaskCategory: (category: string | null) => void;
+  setGoalTargetDeclined: (keys: NutrientKey[]) => void;
   setMealShortfallLeadDays: (days: number) => void;
   setMealShortfallTaskCategory: (category: string | null) => void;
   setMealLogNudgeTasks: (on: boolean) => void;
@@ -2744,6 +2753,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   limitWarningTaskCategory: null,
   limitWarningDeclined: [],
   limitWarningAutoSlips: {},
+  goalTargetTasks: false,
+  goalTargetTaskCategory: null,
+  goalTargetDeclined: [],
   healthWriteNutrients: [...DEFAULT_HEALTH_WRITE_NUTRIENTS],
   keepOpenAfterFoodLog: false,
   mealShortfallLeadDays: MEAL_SHORTFALL_LEAD_DAYS_DEFAULT,
@@ -3237,6 +3249,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const limitWarningTaskCategory = dbGetSetting('limitWarningTaskCategory') || null;
     const limitWarningDeclined = parseNutritionLimits(dbGetSetting('limitWarningDeclined'));
     const limitWarningAutoSlips = parseAutoSlips(dbGetSetting('limitWarningAutoSlips'));
+    const goalTargetTasks = dbGetSetting('goalTargetTasks') === 'true';
+    const goalTargetTaskCategory = dbGetSetting('goalTargetTaskCategory') || null;
+    const goalTargetDeclined = parseNutritionLimits(dbGetSetting('goalTargetDeclined'));
     const healthWriteNutrients = parseHealthWriteNutrients(dbGetSetting('healthWriteNutrients'));
     const keepOpenAfterFoodLog = dbGetSetting('keepOpenAfterFoodLog') === 'true';
     const mealShortfallTaskCategory = dbGetSetting('mealShortfallTaskCategory') || null;
@@ -3578,6 +3593,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       generatorEstimates,
       goalsTodayCategory,
       goalsTodayHidden,
+      goalTargetDeclined,
+      goalTargetTaskCategory,
+      goalTargetTasks,
       groceryImportConfirmedListId,
       groceryImportDelete,
       groceryImportEnabled,
@@ -4237,6 +4255,21 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setLimitWarningDeclined(keys: NutrientKey[]) {
     dbSetSetting('limitWarningDeclined', serializeNutritionLimits(keys));
     set({ limitWarningDeclined: parseNutritionLimits(serializeNutritionLimits(keys)) });
+  },
+
+  setGoalTargetTasks(on: boolean) {
+    dbSetSetting('goalTargetTasks', String(on));
+    set({ goalTargetTasks: on });
+  },
+
+  setGoalTargetTaskCategory(category: string | null) {
+    dbSetSetting('goalTargetTaskCategory', category ?? '');
+    set({ goalTargetTaskCategory: category });
+  },
+
+  setGoalTargetDeclined(keys: NutrientKey[]) {
+    dbSetSetting('goalTargetDeclined', serializeNutritionLimits(keys));
+    set({ goalTargetDeclined: parseNutritionLimits(serializeNutritionLimits(keys)) });
   },
 
   setLimitWarningAutoSlips(days: Partial<Record<NutrientKey, string>>) {

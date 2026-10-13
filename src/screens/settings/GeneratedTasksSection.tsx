@@ -9,7 +9,7 @@ import { useCalendarStore } from '../../store/useCalendarStore';
 import { HEALTH_CATEGORY, useCategoryStore } from '../../store/useCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { categoryLabel } from '../../utils/categoryLabel';
-import { LIMIT_ROW_NAME, activeLimits, targetedNutrients } from '../../utils/nutritionTargets';
+import { LIMIT_ROW_NAME, activeLimits, goalNutrientKeys } from '../../utils/nutritionTargets';
 import { NUTRIENT_LABEL } from '../../utils/foodNutrition';
 import { haptics } from '../../utils/haptics';
 import {
@@ -263,9 +263,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
     s.setGoalsTodayCategory(category);
   };
   // Targets that are figures to reach: every target that isn't a limit, water aside.
-  const goalNutrients = targetedNutrients(s.nutritionTargets).filter(
-    key => key !== 'waterMl' && !s.nutritionLimits.includes(key),
-  );
+  const goalNutrients = goalNutrientKeys(s.nutritionTargets, s.nutritionLimits);
   const [timePickerOpen, setTimePickerOpen] = useState(false);
   // The saved places a leave-by trip can start from. A plain setting read on
   // focus, as SavedPlacesRows does: places are added from the new-event card.
@@ -394,6 +392,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
       case 'waterShortfall': return s.waterShortfallTaskCategory;
       case 'snackNudge': return s.snackNudgeTaskCategory;
       case 'limitWarning': return s.limitWarningTaskCategory;
+      case 'goalTarget': return s.goalTargetTaskCategory;
       case 'bookEvent': return s.bookEventTaskCategory;
     }
   };
@@ -432,6 +431,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
       case 'waterShortfall': s.setWaterShortfallTaskCategory(category); break;
       case 'snackNudge': s.setSnackNudgeTaskCategory(category); break;
       case 'limitWarning': s.setLimitWarningTaskCategory(category); break;
+      case 'goalTarget': s.setGoalTargetTaskCategory(category); break;
       case 'bookEvent': s.setBookEventTaskCategory(category); break;
       case 'supplyReorder': s.setSupplyReorderTaskCategory(category); break;
       // Exhaustive, unlike the switches above it, which are only exhaustive
@@ -759,6 +759,45 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
               format={n => `${n}d`}
               label="Days without a weigh-in"
               describeValue={n => (n === 1 ? '1 day' : `${n ?? DEFAULT_WEIGH_IN_EVERY_DAYS} days`)}
+            />
+          </View>
+        </>
+      );
+    }
+
+    if (kind === 'limitWarning' || kind === 'goalTarget') {
+      const isLimit = kind === 'limitWarning';
+      const nutrients = isLimit ? activeLimits(s.nutritionTargets, s.nutritionLimits) : goalNutrients;
+      const declined = isLimit ? s.limitWarningDeclined : s.goalTargetDeclined;
+      const setDeclined = isLimit ? s.setLimitWarningDeclined : s.setGoalTargetDeclined;
+      if (nutrients.length === 0) return null;
+      return (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId={isLimit ? 'limitWarningNutrients' : 'goalTargetNutrients'}
+            icon="list-outline"
+            label="Nutrients with a task"
+            hint={`Turn off a nutrient to stop its ${isLimit ? 'Stay under' : 'Aim for'} task. Its ${isLimit ? 'limit' : 'goal'} still applies everywhere else.`}
+            tight
+          />
+          <View style={styles.pillGroupRow}>
+            <PillGroup
+              noun="nutrient"
+              options={nutrients.map(key => {
+                const label = LIMIT_ROW_NAME[key] ?? NUTRIENT_LABEL[key].label;
+                const on = !declined.includes(key);
+                return {
+                  key,
+                  label,
+                  selected: on,
+                  accessibilityLabel: `${label} ${isLimit ? 'limit' : 'goal'} task: ${on ? 'on' : 'off'}`,
+                  onPress: () => {
+                    haptics.tap();
+                    setDeclined(on ? [...declined, key] : declined.filter(k => k !== key));
+                  },
+                };
+              })}
             />
           </View>
         </>
