@@ -96,6 +96,7 @@ export const WRITE_TOOLS: Record<string, { title: string; destructive: boolean; 
   quick_add: { title: 'Quick add tasks', destructive: false, idempotent: false },
   remember: { title: 'Remember a note', destructive: false, idempotent: true },
   update_recipe: { title: 'Change a recipe', destructive: true, idempotent: true },
+  patch_recipe: { title: 'Edit lines of a recipe', destructive: true, idempotent: false },
   delete_recipe: { title: 'Delete a recipe', destructive: true, idempotent: true },
   save_recipe: { title: 'Save a recipe', destructive: false, idempotent: false },
   move_food_entry: { title: 'Move a food entry', destructive: true, idempotent: false },

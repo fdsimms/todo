@@ -152,6 +152,23 @@ export function describePatch(patch: object, before?: object | null): string {
   }).join('; ');
 }
 
+/** The small edits of a `patch_recipe` call, by kind, for a preview line. */
+function describeRecipeOps(ops: readonly { op: string; step?: number; ingredient?: number; at?: number }[]): string {
+  return ops.map(o => {
+    switch (o.op) {
+      case 'setStepNote': return `set the note on step ${o.step}`;
+      case 'setStepOnlyWith': return `set which option step ${o.step} applies to`;
+      case 'insertStep': return `add a step at ${o.at}`;
+      case 'replaceStep': return `reword step ${o.step}`;
+      case 'removeStep': return `remove step ${o.step}`;
+      case 'insertIngredient': return `add an ingredient at ${o.at}`;
+      case 'replaceIngredient': return `change ingredient ${o.ingredient}`;
+      case 'removeIngredient': return `remove ingredient ${o.ingredient}`;
+      default: return o.op;
+    }
+  }).join('; ');
+}
+
 function same(a: unknown, b: unknown): boolean {
   return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 }
@@ -938,6 +955,12 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       const was = replica.recipes().find(r => r.id === id) ?? null;
       const recipe = replica.updateRecipe(id, patch);
       log({ action: 'edited', subject: 'recipe', title: recipe.name, taskId: null, note: `Change the recipe "${was?.name ?? recipe.name}": ${describePatch(patch, was)}${was && was.name !== recipe.name ? ' (planned meals using it are retitled)' : ''}` });
+      return recipe;
+    },
+
+    patchRecipe(id, ops) {
+      const recipe = replica.patchRecipe(id, ops);
+      log({ action: 'edited', subject: 'recipe', title: recipe.name, taskId: null, note: `Change the recipe "${recipe.name}": ${describeRecipeOps(ops)}` });
       return recipe;
     },
 

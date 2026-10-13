@@ -1290,6 +1290,19 @@ refused through `wouldCreateRecipeCycle`. An author on a recipe in a cookbook is
 author is mirrored onto it, and the store's `setAuthor` unlinks the book on a change, so
 `rename_cookbook` is the way to say it.
 
+**`patch_recipe` is the tool for a small edit, and `update_recipe` is the wrong one for it.** Replacing
+a whole list means resending every line (a typo in a line nobody meant to touch is a silent
+rewrite), and replacing `ingredients` gives every line a new id, which drops the picks planned meals
+stored (`MealPlanEntry.recipeChoices`) and every step's `onlyWhen`. `patch_recipe` takes an ordered list
+of ops against 1-based positions (the order `get_recipe` lists), applies each to the recipe as the
+earlier ones left it, and lands all of them or none (the transaction rolls back and the store is
+re-read). Three rules keep an agent from editing the wrong line: `expect` is a snippet the target must
+contain, so a number read from an older copy is refused; a position out of range is refused rather
+than clamped; and an inserted ingredient that would be a duplicate is refused rather than dropped.
+Edits are made in place, so an untouched line keeps its id. `update_recipe` still carries a step's
+option across an ingredient rewrite, by re-resolving its option names, because that one it can do.
+A step's option is addressed by name (`onlyWith`), never by id, since ids are not exposed.
+
 `cookbook` on an edit moves the recipe (`linkCookbook`, which clears a page that belonged to the old
 book). A book is found by title ignoring case and author, since the store's `ensureCookbook` keys on
 both and would make a second copy of a book that has an author. The recipe store's `renameRecipe`

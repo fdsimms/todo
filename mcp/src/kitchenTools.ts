@@ -69,8 +69,10 @@ export function listRecipes(replica: Replica, input: ListRecipesInput = {}): { r
 export interface RecipeDetail extends SerializedRecipe {
   notes?: string;
   source?: string;
+  /** Numbered from 1 in this order (patch_recipe addresses them that way). */
   ingredients: { section?: string; quantity?: string; name: string; prep?: string; optional?: boolean; oneOf?: string }[];
-  steps: { section?: string; text: string; timerSeconds?: number; note?: string }[];
+  /** Numbered from 1 in this order (patch_recipe addresses them that way). onlyWith names the either/or options a step applies to. */
+  steps: { section?: string; text: string; timerSeconds?: number; note?: string; onlyWith?: string[] }[];
   /** Other recipes used inside this one ("the pie crust"). */
   uses?: string[];
   /** The same, by recipe id; ones sharing a choiceGroup are alternatives (cook one). */
@@ -95,6 +97,12 @@ export function getRecipe(replica: Replica, id: string): RecipeDetail | null {
   // A component shows the used recipe's name as it is now (RecipeComponent.name is the fallback).
   const names = new Map(all.map(x => [x.id, x.name]));
   const cookbooks = new Map(replica.cookbooks().map(c => [c.id, c.title]));
+  // A step's onlyWhen ids, as the names the tools take. An id naming no option is left out.
+  const optionById = new Map<string, string>([
+    ...r.ingredients.filter(i => i.choiceGroup).map(i => [i.id, i.name] as [string, string]),
+    ...r.components.filter(c => c.choiceGroup).map(c => [c.id, names.get(c.recipeId) ?? c.name] as [string, string]),
+  ]);
+  const optionNames = (ids: readonly string[]) => ids.flatMap(id => optionById.get(id) ?? []);
   const source = [
     r.cookbookId && cookbooks.get(r.cookbookId),
     r.sourcePage ? `p. ${r.sourcePage}` : null,
@@ -120,6 +128,7 @@ export function getRecipe(replica: Replica, id: string): RecipeDetail | null {
       text: s.text,
       ...(s.timerSeconds ? { timerSeconds: s.timerSeconds } : {}),
       ...(s.note ? { note: s.note } : {}),
+      ...(s.onlyWhen?.length ? { onlyWith: optionNames(s.onlyWhen) } : {}),
     })),
     ...(r.components.length > 0 ? { uses: r.components.map(c => names.get(c.recipeId) ?? c.name) } : {}),
     ...(r.components.length > 0
