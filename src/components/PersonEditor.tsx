@@ -39,7 +39,7 @@ import { describeObservedCadence, observedCadenceDays } from '../utils/reachOutT
 import { TextField } from './TextField';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { usePlaceSuggestions } from '../hooks/usePlaceSuggestions';
-import { placeLocationText, placeSubtitle, type PlaceResult } from '../utils/places';
+import { placeLocationText, placeRowTitle, placeSubtitle, type PlaceResult } from '../utils/places';
 import { useSettingsStore } from '../store/useSettingsStore';
 
 interface Props {
@@ -510,8 +510,8 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
                 accessibilityRole="button"
                 accessibilityLabel={`Use ${placeLocationText(place)}`}
               >
-                <Text style={styles.placeName} numberOfLines={1}>{place.name ?? place.address}</Text>
-                {subtitle && <Text style={styles.placeAddress} numberOfLines={1}>{subtitle}</Text>}
+                <Text style={styles.placeName} numberOfLines={2}>{placeRowTitle(place)}</Text>
+                {subtitle && <Text style={styles.placeAddress} numberOfLines={2}>{subtitle}</Text>}
               </TouchableOpacity>
             );
           })}

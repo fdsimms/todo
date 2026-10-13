@@ -12,7 +12,7 @@ import { spacing, radius, font, fontWeight, interaction, type Colors } from '../
 import { haptics } from '../utils/haptics';
 import { alertPermissionOff } from '../utils/permissionAlert';
 import { requestLocationPermission } from '../utils/weatherLocation';
-import { placeLocationText, placeSubtitle, type PlaceResult } from '../utils/places';
+import { placeLocationText, placeRowTitle, placeSubtitle, type PlaceResult } from '../utils/places';
 import { editSavedPlace, addSavedPlace, findSavedPlace, type SavedPlace } from '../utils/savedPlaces';
 import { editSavedEvent, type SavedEvent } from '../utils/savedEvents';
 import { ALERT_CHOICES, describeAlert } from '../utils/quickEventSave';
@@ -70,8 +70,8 @@ function PlaceAddressField({ text, onChangeText, onPickPlace, picked, placeholde
                 accessibilityRole="button"
                 accessibilityLabel={`Use ${placeLocationText(place)}`}
               >
-                <Text style={styles.placeName} numberOfLines={1}>{place.name ?? place.address}</Text>
-                {subtitle && <Text style={styles.placeAddress} numberOfLines={1}>{subtitle}</Text>}
+                <Text style={styles.placeName} numberOfLines={2}>{placeRowTitle(place)}</Text>
+                {subtitle && <Text style={styles.placeAddress} numberOfLines={2}>{subtitle}</Text>}
               </TouchableOpacity>
             );
           })}
