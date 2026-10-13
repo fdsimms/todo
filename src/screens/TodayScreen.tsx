@@ -208,6 +208,8 @@ import { CreatedTaskToast } from '../components/CreatedTaskToast';
 import { TipHost } from '../components/TipHost';
 import { FocusBar } from '../components/FocusBar';
 import { FocusSetupSheet } from '../components/FocusSetupSheet';
+import { ScrollNudgeBanner } from '../components/ScrollNudgeBanner';
+import { useScrollNudge } from '../hooks/useScrollNudge';
 import { FocusSessionSheet } from '../components/FocusSessionSheet';
 import { useFocusStore } from '../store/useFocusStore';
 import { PressableScale } from '../components/PressableScale';
@@ -1749,6 +1751,22 @@ export function TodayScreen() {
   };
 
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  // Off unless turned on in Settings. Suspended while a session runs or rows
+  // are being selected, since neither is drifting. See useScrollNudge.
+  const scrollNudgeEnabled = useSettingsStore(s => s.scrollNudgeEnabled && !featureHidden('focusSessions', s.simpleMode));
+  const scrollNudgeSeconds = useSettingsStore(s => s.scrollNudgeSeconds);
+  const scrollNudgeCooldownMinutes = useSettingsStore(s => s.scrollNudgeCooldownMinutes);
+  const scrollNudgeDailyCap = useSettingsStore(s => s.scrollNudgeDailyCap);
+  const scrollNudgeLimits = useMemo(
+    () => ({ seconds: scrollNudgeSeconds, cooldownMinutes: scrollNudgeCooldownMinutes, dailyCap: scrollNudgeDailyCap }),
+    [scrollNudgeSeconds, scrollNudgeCooldownMinutes, scrollNudgeDailyCap],
+  );
+  const scrollNudge = useScrollNudge({
+    enabled: scrollNudgeEnabled,
+    limits: scrollNudgeLimits,
+    dayResetTime,
+    suspended: focusSession !== null || selectionMode,
+  });
 
   // The morning check-in: recurring tasks whose day already passed with
   // nothing said about them. Shown once per logical day, on this screen's
@@ -4735,7 +4753,7 @@ export function TodayScreen() {
   // ==== render. Everything below is JSX ====
   return (
     <SpotlightProvider progress={spotlightProgress}>
-      <View style={[styles.container, { paddingTop: insets.top }]}>
+      <View style={[styles.container, { paddingTop: insets.top }]} {...scrollNudge.touchProps}>
         <ScreenHeader
           title={VIEW_TITLES[viewMode]}
           overline={viewMode === 'today' ? today : undefined}
@@ -4791,6 +4809,19 @@ export function TodayScreen() {
             not make it look as though it stopped. */}
         {focusSession && <FocusBar onOpen={() => setFocusSessionVisible(true)} />}
 
+        {scrollNudge.offered && (
+          <ScrollNudgeBanner
+            seconds={scrollNudgeSeconds}
+            onDismiss={scrollNudge.dismiss}
+            onStart={() => {
+              scrollNudge.dismiss();
+              setFocusFromReachOuts(false);
+              setFocusFromPinned(false);
+              setFocusSetupVisible(true);
+            }}
+          />
+        )}
+
         {/* No `viewMode` test of its own: newTasks is already empty in the one
             sub-view that has no banner (see newTasksSource). */}
         {newTasks.length > 0 && (
@@ -4845,6 +4876,7 @@ export function TodayScreen() {
         {viewMode === 'later' && (
           <ReorderableList
             scrollEnabled={!painting && !draggingSubtask}
+            onScrollActivity={scrollNudge.onUserScroll}
             rowScrollerRef={laterRowScroller}
             scrollToTop={{ bottom: fabBottom }}
             data={laterDraggableData}
@@ -4990,6 +5022,7 @@ export function TodayScreen() {
             // this control.
             scrollEnabled={!painting && !fabDragging && !draggingStackChildGroupId && !draggingSubtask && !draggingPin && !draggingBand}
             scrollControlRef={todayScrollControl}
+            onScrollActivity={scrollNudge.onUserScroll}
             rowScrollerRef={todayRowScroller}
             scrollToTop={{ bottom: fabBottom }}
             data={draggableData}
@@ -5216,6 +5249,7 @@ export function TodayScreen() {
             // every event (see useKeyboardInsetScroll's noteScroll).
             onScroll={e => {
               unscheduledScrollTop.onScroll(e);
+              scrollNudge.onUserScroll();
               unscheduledScroll.noteScroll(e);
             }}
             renderItem={({ item }) => {
@@ -5316,6 +5350,7 @@ export function TodayScreen() {
             // every event (see useKeyboardInsetScroll's noteScroll).
             onScroll={e => {
               inboxScrollTop.onScroll(e);
+              scrollNudge.onUserScroll();
               inboxScroll.noteScroll(e);
             }}
             renderItem={({ item }) => {
