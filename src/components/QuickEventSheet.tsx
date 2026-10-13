@@ -182,7 +182,7 @@ interface Props {
  * "at Joe's" and "alert 30m" in the line fill the place and the alert as you
  * type, and they win over a chip's earlier pick the way a typed day wins over
  * the date chip's. The trip, calendar and Busy/Free chips read the same way
- * ("walking", "10 min early", "from home", "in Work calendar", "show as free"). What can't be set from here at all is invitees and travel
+ * ("walking", "10 min early", "from home", "in Work calendar", "show as free", "note: bring a guitar"). What can't be set from here at all is invitees and travel
  * time: EventKit exposes neither to a write.
  *
  * Its own component rather than a mode of `QuickAddModal`: that one builds a
@@ -504,6 +504,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
       originPlaces: originCandidates(savedPlaces).map(p => ({ id: p.id, name: p.name })),
       calendars: calendars.map(c => ({ id: c.id, title: c.title })),
       availability: true,
+      notes: true,
     };
     // An edit opens on the event's own title, and a time block on its task's,
     // read as plain text until changed: a title isn't an instruction to parse.
@@ -520,6 +521,8 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   const effectiveTravelMode = draft.travelMode ?? travelModePick;
   const effectiveArriveEarly = draft.arriveEarlyMinutes ?? arriveEarlyPick;
   const effectiveTravelOrigin = draft.travelOriginId ?? travelOriginPick;
+  // A typed "note: …" fills the Notes field; editing the field takes it out of the line.
+  const effectiveNotes = draft.notes ?? notesOrLink;
   // The two "@name" states that need a pick, checked only when no schedule
   // phrase holds the tooltip, the same order quick add uses.
   const ambiguousMention = useMemo(
@@ -657,7 +660,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   );
   const isBusy = effectiveAvailability === 'busy';
   const alertSet = effectiveAlert !== null;
-  const showNotes = notesOpen || notesOrLink.trim() !== '';
+  const showNotes = notesOpen || effectiveNotes.trim() !== '';
   const canAdd = draft.title.trim().length > 0 && !busy && (!isEditing || original !== null);
 
   // ==== place suggestions ====
@@ -895,7 +898,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
         allDay,
         location: effectiveLocation,
         place: effectivePlace,
-        notesOrLink,
+        notesOrLink: effectiveNotes,
         repeat: effectiveRepeat,
         alertMinutes: effectiveAlert,
         availability: effectiveAvailability,
@@ -964,12 +967,12 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
       allDay,
       location: effectiveLocation,
       place: effectivePlace,
-      notesOrLink,
+      notesOrLink: effectiveNotes,
       alertMinutes: effectiveAlert,
       availability: effectiveAvailability,
       calendarId: effectiveCalendar?.id ?? before.calendarId,
     });
-    if (notesOrLink.trim() === originalNotesField.trim()) {
+    if (effectiveNotes.trim() === originalNotesField.trim()) {
       delete fields.notes;
       delete fields.url;
     } else {
@@ -1362,8 +1365,11 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
                 style={styles.locationInput}
                 placeholder="Notes or link"
                 placeholderTextColor={colors.textTertiary}
-                value={notesOrLink}
-                onChangeText={setNotesOrLink}
+                value={effectiveNotes}
+                onChangeText={value => {
+                  if (draft.notesSpan) cutFromLine(draft.notesSpan);
+                  setNotesOrLink(value);
+                }}
                 onSubmitEditing={next}
                 returnKeyType="done"
                 blurOnSubmit={false}

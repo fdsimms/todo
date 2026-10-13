@@ -1,4 +1,4 @@
-import { alertRelativeOffset, describeEventRepeat, describeEventRepeatShort, eventRepeatPresetKey, EVENT_REPEAT_PRESETS, eventMarkerText, parseClockRange, parseLengthClause, parseAlertClause, parseArriveClause, parseAvailabilityClause, parseCalendarClause, parseOriginClause, parseQuickEvent, parseTravelClause } from '../utils/quickEvent';
+import { alertRelativeOffset, describeEventRepeat, describeEventRepeatShort, eventRepeatPresetKey, EVENT_REPEAT_PRESETS, eventMarkerText, parseClockRange, parseLengthClause, parseAlertClause, parseArriveClause, parseAvailabilityClause, parseCalendarClause, parseNotesClause, parseOriginClause, parseQuickEvent, parseTravelClause } from '../utils/quickEvent';
 import { findAmbiguousMention } from '../utils/parseTaskInput';
 
 jest.mock('../store/useSettingsStore', () => ({
@@ -541,6 +541,28 @@ describe('parseQuickEvent, trip, calendar and availability clauses', () => {
 
     it('leaves a title that merely ends in free', () => {
       expect(parseAvailabilityClause('Gluten free')).toBeNull();
+    });
+  });
+
+  describe('notes', () => {
+    it('takes the rest of the line, before any other clause can read inside it', () => {
+      const draft = parseQuickEvent('Open mic fri 7pm walking note: take the bus, alert 30m', { ...trip, notes: true });
+      expect(draft.title).toBe('Open mic');
+      expect(draft.notes).toBe('take the bus, alert 30m');
+      expect(draft.travelMode).toBe('walking');
+      expect(draft.alertMinutes).toBeUndefined();
+    });
+
+    it('needs the colon and the option', () => {
+      expect(parseNotesClause('Open mic note bring a guitar')).toBeNull();
+      expect(parseQuickEvent('Open mic note: bring a guitar', trip).notes).toBeUndefined();
+      expect(parseQuickEvent('Open mic note: bring a guitar', { ...trip, notes: true }).notes).toBe('bring a guitar');
+    });
+
+    it('is left in the title for an opened event', () => {
+      const draft = parseQuickEvent('Open mic note: bring a guitar', { ...trip, notes: true, plain: true });
+      expect(draft.notes).toBeUndefined();
+      expect(draft.title).toBe('Open mic note: bring a guitar');
     });
   });
 });

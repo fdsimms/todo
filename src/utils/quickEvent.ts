@@ -92,6 +92,9 @@ export interface QuickEventDraft {
   originSpan: [number, number] | null;
   calendarSpan: [number, number] | null;
   availabilitySpan: [number, number] | null;
+  /** "note: bring the sign-up sheet": what goes in the Notes or link field. */
+  notes: string | undefined;
+  notesSpan: [number, number] | null;
 }
 
 /**
@@ -379,6 +382,17 @@ export function parseOriginClause(
   return best ? { start: best.start, id: best.id } : null;
 }
 
+// "note: bring the sign-up sheet". It takes everything after it, so it has to
+// be the last clause typed, and it needs the colon so a title that merely
+// contains the word "note" is left alone.
+const NOTES_CLAUSE = /\s+notes?:\s*(\S.*)$/i;
+
+/** A trailing "note: …", with where its leading space begins. The rest of the line is the note. */
+export function parseNotesClause(input: string): { start: number; text: string } | null {
+  const m = NOTES_CLAUSE.exec(input);
+  return m ? { start: m.index, text: m[1].trim() } : null;
+}
+
 /** A representative hour for a day-part word with no clock time. */
 const DAY_PART_HOUR: Record<TimeOfDay, number> = {
   morning: 9,
@@ -429,6 +443,8 @@ export function parseQuickEvent(
     calendars?: readonly { id: string; title: string }[];
     /** Read "show as free" and "as busy". */
     availability?: boolean;
+    /** Read "note: …" into the Notes or link field. */
+    notes?: boolean;
   }
 ): QuickEventDraft {
   // Peel the trailing clauses off the right of the line, in whatever order
@@ -453,11 +469,23 @@ export function parseQuickEvent(
   let calendarSpan: [number, number] | null = null;
   let availability: 'busy' | 'free' | undefined;
   let availabilitySpan: [number, number] | null = null;
+  let notes: string | undefined;
+  let notesSpan: [number, number] | null = null;
   let clausesFrom: number | null = null;
   const spanOf = (from: number, to: number): [number, number] =>
     [from + (/^\s*/.exec(input.slice(from, to))?.[0].length ?? 0), to];
   for (let guard = 0; guard < 9 && !opts.plain; guard++) {
     const to = body.length;
+    // The notes take the rest of the line, so they are read before anything
+    // typed after them ("note: take the bus walking") can be read as a clause.
+    const noteClause = !opts.notes || notesSpan ? null : parseNotesClause(body);
+    if (noteClause) {
+      notes = noteClause.text;
+      notesSpan = spanOf(noteClause.start, to);
+      body = body.slice(0, noteClause.start);
+      clausesFrom = noteClause.start;
+      continue;
+    }
     const alert: { start: number; minutes: number | null } | null = alertClause ? null : parseAlertClause(body);
     if (alert) {
       alertClause = alert;
@@ -626,7 +654,7 @@ export function parseQuickEvent(
   }
   const mentionSpans = [...bySpan.keys()].map(k => k.split(':').map(Number) as [number, number]);
   const clauseSpans: [number, number][] = [
-    locationSpan, durationSpan, alertSpan, travelSpan, arriveSpan, originSpan, calendarSpan, availabilitySpan,
+    locationSpan, durationSpan, alertSpan, travelSpan, arriveSpan, originSpan, calendarSpan, availabilitySpan, notesSpan,
   ]
     .filter((span): span is [number, number] => span !== null)
     .sort((a, b) => a[0] - b[0]);
@@ -658,6 +686,8 @@ export function parseQuickEvent(
     originSpan,
     calendarSpan,
     availabilitySpan,
+    notes,
+    notesSpan,
   };
 }
 

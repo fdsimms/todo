@@ -642,9 +642,10 @@ on the card (calendar, alert, repeat, and All day and Busy/Free as switches) tha
 left them (`quickEventDefaults.ts`), plus a Notes or link field (behind a "+ Notes" chip until used), a Starts and an Ends block (an end picked by hand is stored as a length, so it replaces a typed "for 2h") and a trailing
 `at (place)` and `alert 30m` in the line, which win over a chip's earlier pick.
 The same suffix grammar sets the rest of the chips, so a whole event can be typed:
-"Open mic fri 7pm at Joe's walking 10 min early from home in Work calendar show as free"
+"Open mic fri 7pm at Joe's walking 10 min early from home in Work calendar show as free note: bring a guitar"
 (`parseTravelClause`, `parseArriveClause`, `parseOriginClause`, `parseCalendarClause`,
-`parseAvailabilityClause`). Two rules keep them from eating a title. A clause that
+`parseAvailabilityClause`, `parseNotesClause`). `note: …` takes the rest of the line, so it is read first and must come last.
+The `event:` line in task quick add reads the same clauses (`addAsEvent` passes the calendar list and saved places). Two rules keep them from eating a title. A clause that
 names something (a saved place, a calendar on this device) is read only when the
 name exists, and the arrival clause only at the chip's own steps ("12 min early"
 stays in the title), so a clause never takes words out of the line and sets
