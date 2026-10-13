@@ -2911,6 +2911,7 @@ function registerWriteTools(
       variant: z.string().nullable().optional(),
       note: z.string().optional(),
       rating: z.string().nullable().optional().describe('The app\'s own rating words for a box (see get_grocery_item).'),
+      gtin: z.string().optional().describe('The barcode printed on the package, digits only or as scanned. A scan of it then lands on this box. A code is one box\'s at a time: it moves here from whichever box held it. A store\'s own by-weight code is refused.'),
       delete: z.boolean().optional(),
     },
     async ({ id, name, ...input }) => {

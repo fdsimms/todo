@@ -197,6 +197,33 @@ describe('the catalog tools', () => {
       saveGroceryBox(replica, { name: 'bread' }, { boxId: first.box!.id, delete: true });
       expect(getGroceryItem(replica, { name: 'bread' }).preferredBoxId).toBeUndefined();
     });
+
+    it('sets a box’s barcode, moves it between boxes, and refuses a bad or store-internal code', () => {
+      addGroceryItem(replica, 'stroopwafels');
+      const maple = saveGroceryBox(replica, { name: 'stroopwafels' }, { brand: 'Maple Terroir', gtin: '0 629098 28200 8' });
+      expect(maple.box!.gtin).toBe('00629098282008');
+      expect(getGroceryItem(replica, { name: 'stroopwafels' }).boxes[0].gtin).toBe('00629098282008');
+
+      const plain = saveGroceryBox(replica, { name: 'stroopwafels' }, { brand: 'Stroopwafel & Co' });
+      saveGroceryBox(replica, { name: 'stroopwafels' }, { boxId: plain.box!.id, gtin: '00629098282008' });
+      const boxes = getGroceryItem(replica, { name: 'stroopwafels' }).boxes;
+      expect(boxes.find(b => b.id === plain.box!.id)?.gtin).toBe('00629098282008');
+      expect(boxes.find(b => b.id === maple.box!.id)?.gtin).toBeUndefined();
+
+      expect(() => saveGroceryBox(replica, { name: 'stroopwafels' }, { boxId: plain.box!.id, gtin: '12345' })).toThrow(/not a product barcode/);
+      expect(() => saveGroceryBox(replica, { name: 'stroopwafels' }, { boxId: plain.box!.id, gtin: '0212345000008' })).toThrow(/not a product barcode/);
+    });
+  });
+
+  describe('merge_grocery_items', () => {
+    it('keeps the loser’s brands and their barcodes on the survivor', () => {
+      addGroceryItem(replica, 'stroopwafels');
+      addGroceryItem(replica, 'maple stroop waffle');
+      saveGroceryBox(replica, { name: 'maple stroop waffle' }, { brand: 'Maple Terroir', variant: 'maple', rating: 'loved', gtin: '00629098282008' });
+      mergeGroceryItems(replica, { from: 'maple stroop waffle', into: 'stroopwafels' });
+      const [box] = getGroceryItem(replica, { name: 'stroopwafels' }).boxes;
+      expect(box).toMatchObject({ brand: 'Maple Terroir', variant: 'maple', gtin: '00629098282008' });
+    });
   });
 
   describe('stores', () => {
