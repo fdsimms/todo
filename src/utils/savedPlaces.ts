@@ -26,6 +26,12 @@ export interface SavedPlace {
   /** The map pin, or null for a place saved as plain text. */
   latitude: number | null;
   longitude: number | null;
+  /**
+   * Whether a new mood entry near this place starts with "At <name>" picked
+   * (`moodPlaces.ts`). Off unless the person turned it on, and only ever on for
+   * a place with a pin: there is nothing to be near otherwise.
+   */
+  moodTag: boolean;
 }
 
 /** The comparison key for a name: lowercased, spaces collapsed, trailing punctuation dropped. */
@@ -43,7 +49,12 @@ function readEntry(raw: unknown): SavedPlace | null {
   const lon = typeof v.longitude === 'number' && Number.isFinite(v.longitude) && Math.abs(v.longitude) <= 180 ? v.longitude : null;
   // A pin is a pair: half of one is no pin.
   const pinned = lat !== null && lon !== null;
-  return { id: v.id, name, text, latitude: pinned ? lat : null, longitude: pinned ? lon : null };
+  return {
+    id: v.id, name, text,
+    latitude: pinned ? lat : null,
+    longitude: pinned ? lon : null,
+    moodTag: pinned && v.moodTag === true,
+  };
 }
 
 /** Tolerant of a missing or malformed stored value: entries that don't read are dropped. */
@@ -71,6 +82,8 @@ export interface SavedPlaceInput {
   name: string;
   text: string;
   place: { latitude: number; longitude: number } | null;
+  /** Left out, it keeps what the place already had. Dropped when there is no pin. */
+  moodTag?: boolean;
 }
 
 /**
@@ -89,11 +102,13 @@ export function addSavedPlace(places: readonly SavedPlace[], input: SavedPlaceIn
     text,
     latitude: input.place?.latitude ?? null,
     longitude: input.place?.longitude ?? null,
+    moodTag: !!input.moodTag && !!input.place,
   };
   const at = places.findIndex(p => savedPlaceKey(p.name) === key);
   if (at >= 0) {
     const next = [...places];
-    next[at] = { ...entry, id: places[at].id };
+    const moodTag = (input.moodTag ?? places[at].moodTag) && !!input.place;
+    next[at] = { ...entry, id: places[at].id, moodTag };
     return next;
   }
   if (places.length >= SAVED_PLACES_LIMIT) return [...places];
@@ -120,7 +135,12 @@ export function editSavedPlace(places: readonly SavedPlace[], id: string, input:
   const key = savedPlaceKey(name);
   if (!key || !text || places.some(p => p.id !== id && savedPlaceKey(p.name) === key)) return [...places];
   return places.map(p => (p.id === id
-    ? { ...p, name, text, latitude: input.place?.latitude ?? null, longitude: input.place?.longitude ?? null }
+    ? {
+      ...p, name, text,
+      latitude: input.place?.latitude ?? null,
+      longitude: input.place?.longitude ?? null,
+      moodTag: (input.moodTag ?? p.moodTag) && !!input.place,
+    }
     : p));
 }
 

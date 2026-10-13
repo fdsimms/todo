@@ -26,6 +26,8 @@ import {
 } from '../utils/moodLog';
 import { useMoodStore } from '../store/useMoodStore';
 import { dayKeyOf, getCurrentDayStart, getLogicalToday } from '../utils/dateUtils';
+import { isAwayOn } from '../utils/awayDates';
+import { moodPlaceTagNow } from '../utils/moodPlaceNow';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { EditorSheet } from './EditorSheet';
@@ -45,6 +47,11 @@ function noonOn(day: Date): Date {
   const at = new Date(day);
   at.setHours(12, 0, 0, 0);
   return at;
+}
+
+/** Whether two tag lists are the same picks in the same order. */
+function sameTags(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((t, i) => t === b[i]);
 }
 
 /** "Today" for the common case, an actual date once you have moved off it. */
@@ -100,10 +107,11 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
   const removeLog = useMoodStore(s => s.removeLog);
   const renameContextTag = useMoodStore(s => s.renameContextTag);
   const completeMoodLogTaskForToday = useTaskStore(s => s.completeMoodLogTaskForToday);
-  // The one source this offers a suggestion from — see docs/arch/mood-log.md.
-  // Other data the app already has (a missed-heavy day, and so on) can follow
-  // the same offer-don't-decide shape later without redesigning this.
+  // What this offers a suggestion from — see docs/arch/mood-log.md. Other data
+  // the app already has (a missed-heavy day, and so on) can follow the same
+  // offer-don't-decide shape later without redesigning this.
   const vacationMode = useSettingsStore(s => s.vacationMode);
+  const dayResetTime = useSettingsStore(s => s.dayResetTime);
 
   const [mood, setMood] = useState<MoodLevel | null>(null);
   const [symptoms, setSymptoms] = useState<LoggedSymptom[]>([]);
@@ -132,6 +140,15 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
   const [pickerOpen, setPickerOpen] = useState(false);
   // What a new entry's context tags were seeded with, or null when editing.
   const seedRef = useRef<string[] | null>(null);
+  // Where the phone was when the sheet opened, once that read lands. It arrives
+  // after the sheet is up, so it is kept for a Day row moved back to today, and
+  // `sheetSession` is what lets a read that outlives its sheet be dropped.
+  const placeTagRef = useRef<string | null>(null);
+  const sheetSession = useRef(0);
+  const dayRef = useRef(day);
+  dayRef.current = day;
+  const contextTagsRef = useRef(contextTags);
+  contextTagsRef.current = contextTags;
 
   // Reseeds on every open, including a reopen with the same props — a sheet
   // that handed back last night's half-filled form would be recording the
@@ -158,8 +175,12 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
     // tags are a fact about its own day.
     const seed = editing
       ? null
-      : seededContextTags(logs, dayKeyOf(getCurrentDayStart()), { isToday: true, vacationMode });
+      : seededContextTags(logs, dayKeyOf(getCurrentDayStart()), {
+        isToday: true, vacationMode, away: isAwayOn(getCurrentDayStart(), dayResetTime),
+      });
     seedRef.current = seed;
+    placeTagRef.current = null;
+    const session = ++sheetSession.current;
     const openingTags = editing?.contextTags ?? seed ?? [];
     setContextTags(openingTags);
     setOpenedContext(openingTags);
@@ -169,6 +190,21 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
     setDraftedContext([]);
     setDay(getLogicalToday());
     setPickerOpen(false);
+    // The place is read after the sheet is up and joins the seed when it lands:
+    // a fix takes a moment and the sheet must not wait on it. Only a new entry
+    // for today (a Day row moved elsewhere has no use for it), and dropped if
+    // the sheet closed or reopened meanwhile.
+    if (!editing) {
+      void moodPlaceTagNow().then(tag => {
+        if (!tag || sheetSession.current !== session) return;
+        placeTagRef.current = tag;
+        if (!isSameDay(dayRef.current, getLogicalToday())) return;
+        const untouched = seedRef.current !== null && sameTags(contextTagsRef.current, seedRef.current);
+        if (untouched) seedRef.current = withContextTag(seedRef.current!, tag);
+        animateLayout();
+        setContextTags(current => withContextTag(current, tag));
+      });
+    }
     // logs is deliberately not a dependency: it's read once, at the moment
     // the sheet opens, for the seed above. Depending on it would re-run this
     // reset on every store write while the sheet is open — including the
@@ -183,10 +219,12 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
   const pickDay = (picked: Date) => {
     setDay(picked);
     const seed = seedRef.current;
-    if (!seed || contextTags.length !== seed.length || contextTags.some((t, i) => t !== seed[i])) return;
+    if (!seed || !sameTags(contextTags, seed)) return;
     const next = seededContextTags(logs, dayKeyOf(picked), {
       isToday: isSameDay(picked, getLogicalToday()),
       vacationMode,
+      away: isAwayOn(picked, dayResetTime),
+      placeTag: placeTagRef.current,
     });
     seedRef.current = next;
     setContextTags(next);

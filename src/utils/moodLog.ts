@@ -270,19 +270,23 @@ export function dayContextTags(logs: readonly MoodLog[], dayKey: string): string
 
 /**
  * The context tags a fresh entry for `dayKey` opens with: "Vacation" while
- * vacation mode is on, plus whatever an earlier entry that same day already
- * said. Both are offers the user can tap off.
+ * vacation mode is on, "Travel" on a day a trip's away span covers, the place
+ * the phone is at (`placeTag`), plus whatever an earlier entry that same day
+ * already said. All are offers the user can tap off.
  *
- * Vacation mode is a fact about now, so it seeds only an entry for today. The
- * sheet re-seeds through this when the Day row moves, which is what stops a
- * backdated entry inheriting today's circumstances.
+ * Vacation mode and the place are facts about now, so they seed only an entry
+ * for today. The sheet re-seeds through this when the Day row moves, which is
+ * what stops a backdated entry inheriting today's circumstances. A trip's span
+ * is dated, so "Travel" is answerable for any day it covers.
  */
 export function seededContextTags(
   logs: readonly MoodLog[],
   dayKey: string,
-  opts: { isToday: boolean; vacationMode: boolean },
+  opts: { isToday: boolean; vacationMode: boolean; away?: boolean; placeTag?: string | null },
 ): string[] {
   let tags: string[] = opts.isToday && opts.vacationMode ? ['Vacation'] : [];
+  if (opts.away) tags = withContextTag(tags, 'Travel');
+  if (opts.isToday && opts.placeTag) tags = withContextTag(tags, opts.placeTag);
   for (const tag of dayContextTags(logs, dayKey)) tags = withContextTag(tags, tag);
   return tags;
 }

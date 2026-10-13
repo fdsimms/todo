@@ -557,7 +557,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'placeSuggestions', groupId: 'calendar', label: 'Suggest places', section: 'Adding events and directions',
     keywords: ['location', 'address', 'apple maps', 'autocomplete', 'search', 'venue', 'restaurant'] },
   { id: 'savedPlaces', groupId: 'calendar', label: 'Saved places', section: 'Adding events and directions',
-    keywords: ['home', 'work', 'location', 'address', 'event', 'name', 'bookmark', 'favorite'] },
+    keywords: ['home', 'work', 'office', 'location', 'address', 'event', 'name', 'bookmark', 'favorite', 'mood', 'context', 'at home'] },
   { id: 'savedEvents', groupId: 'calendar', label: 'Saved events', section: 'Adding events and directions',
     keywords: ['appointment', 'regular', 'repeat', 'bookmark', 'favorite', 'book', 'checkup', 'reminder'] },
   { id: 'calendarPeopleHistory', requires: 'calendarRead', groupId: 'calendar', label: 'Match events to people', section: 'Calendar',

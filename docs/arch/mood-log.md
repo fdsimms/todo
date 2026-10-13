@@ -90,31 +90,44 @@ grid — it is a constant, the same kind `MOOD_LEVELS` is, and it never
 overrides what the log itself has accumulated (real usage sorts ahead of it
 in `MoodLogSheet`'s pill ordering).
 
-**The auto-suggestions, and why they stop at two.** A *new* entry opens with
-"Vacation" pre-selected while `vacationMode` is on, and with whatever context
-tags an earlier entry that same day already gave (a fourth "Sick" check-in on a
-day you're unwell shouldn't need a fourth tap) — visibly, as already-picked
-pills the person can untap before Save, never written silently
-(`seededContextTags` in `moodLog.ts`). That is the same "offer, don't decide" posture
+**The auto-suggestions, and why each one is a clean fact.** A *new* entry opens
+with some context tags already picked: whatever an earlier entry that same day
+gave (a fourth "Sick" check-in on a day you're unwell shouldn't need a fourth
+tap), "Vacation" while `vacationMode` is on, "Travel" on a day a live trip's
+away span covers (`isAwayOn`, so it follows the span rather than guessing), and
+"At <place>" when the phone is at a saved place that has Suggest in mood log
+turned on (`moodPlaces.ts`). They show as already-picked pills the person can
+untap before Save, never written silently (`seededContextTags` in
+`moodLog.ts`). That is the same "offer, don't decide" posture
 `lowMoodDeloadNote` takes below: the app can notice a fact it already tracks,
 but the log stays the user's own record of what they think was going on, not
-an automated inference dressed up as one. Both sources are things the app
-already knows cleanly: what the person themselves said earlier that day, and
-vacation mode, a clean boolean the app already owns and gets
-right on its own terms (see the vacation-mode note in the tasks
-architecture); most other "obvious" candidates are not nearly as clean —
-a missed-task-heavy day, a bad-sleep night from Health — and guessing wrong
-on those reads as the app telling somebody why they feel a certain way, which
-is exactly what `moodInsights.ts`'s association-not-cause rule exists to
-forbid. Widening the source list is a real feature decision each time, not a
-default to reach for.
+an automated inference dressed up as one. Every source is something the app
+knows cleanly: what the person said earlier that day, a boolean it owns, a
+span the person typed, or a place the person named and opted in. Most other
+"obvious" candidates are not nearly as clean, such as a missed-task-heavy day
+or a bad-sleep night from Health, and guessing wrong on those reads as the app
+telling somebody why they feel a certain way, which is exactly what
+`moodInsights.ts`'s association-not-cause rule exists to forbid. Widening the
+source list is a real feature decision each time, not a default to reach for.
+
+**The place suggestion has three rules of its own.** It is opt-in per saved
+place (`SavedPlace.moodTag`, only possible for a place with a pin), and the
+switch is where location permission is asked, so with no place opted in
+nothing reads the location at all. A fix that can't tell is no answer: a fix
+with no reported accuracy or one coarser than 100 m matches nothing
+(`PLACE_MAX_FIX_ERROR_M`), and being somewhere that isn't a saved place offers
+nothing either, because the absence of a match is not a fact about the day (so
+there is no "Away" or "Out" tag). And the read happens after the sheet is up
+and joins the seed when it lands, never making the sheet wait on a fix; a
+result for a sheet that has since closed is dropped.
 
 Only a *new* entry is seeded. Editing an existing row must never retroactively
 add a tag it didn't say (same reason the Day row itself only shows for a new
 entry). **Moving a new entry's Day row re-seeds for that day**, as long as the
 user hasn't touched the tags yet: a backdated entry gets that day's own earlier
-tags and never "Vacation", because the app's *current* vacation state says
-nothing about whether last Tuesday was one.
+tags and "Travel" if a trip covered it, and never "Vacation" or a place, because
+the app's *current* vacation state and position say nothing about whether last
+Tuesday was one.
 
 ## Correcting a tag's text is a rename across the whole log, not an edit of one entry
 
