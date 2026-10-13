@@ -3029,7 +3029,7 @@ function registerWriteTools(
 
   server.tool(
     'set_nutrition_panel',
-    `Set what a grocery item is made of (its nutrition panel), or one of its brands' (boxId), as the app's panel editor does; panel null removes it. Figures are keyed ${NUTRIENT_KEY_LIST.join(', ')}, per 100g, per 100ml (a drink), or per serving. Leave out any the label does not state: absent is unknown, not zero. Set estimated when the figures are yours rather than read off a label. Recipes and the food log read it.`,
+    `Set what a grocery item is made of (its nutrition panel), or one of its brands' (boxId), as the app's panel editor does; panel null removes it. Figures are keyed ${NUTRIENT_KEY_LIST.join(', ')}, per 100g, per 100ml (a drink), or per serving. Leave out any the label does not state: absent is unknown, not zero. Set estimated when the figures are yours rather than read off a label. Recipes and the food log read it; a recipe counts a line written in a volume or a count only when the item has a portion weighing it, so send portions too. Check get_grocery_item first: this replaces the figures it shows.`,
     {
       item: z.string().min(1),
       boxId: z.string().optional(),
@@ -3039,6 +3039,11 @@ function registerWriteTools(
         servingGrams: z.number().nullable().optional(),
         servingText: z.string().nullable().optional().describe('As the label prints it: "1 cup (240ml)".'),
         estimated: z.boolean().optional(),
+        portions: z.array(z.object({
+          label: z.string().min(1),
+          grams: z.number(),
+          amount: z.number().optional(),
+        })).optional().describe('What an amount of this food weighs ("tbsp" 13.5, "cup, shredded" 113), so a recipe line in tablespoons or cloves can be counted. Merged into the existing table by label; omit to leave it alone.'),
       }).nullable(),
     },
     async input => {

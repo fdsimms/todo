@@ -439,6 +439,26 @@ describe('the catalog tools', () => {
       expect(getGroceryItem(replica, { name: 'lentils' }).nutrition).toBeUndefined();
     });
 
+    it('merges portions into a panel by label, keeping the rest, and refuses a bad one', () => {
+      addGroceryItem(replica, 'olive oil');
+      const base = { basis: 'per100g' as const, amounts: { calorieKcal: 884 }, estimated: true };
+      setNutritionPanel(replica, { item: 'olive oil', panel: { ...base, portions: [{ label: 'tbsp', grams: 13.5 }, { label: 'cup', grams: 216 }] } });
+      expect(getGroceryItem(replica, { name: 'olive oil' }).nutrition?.portions).toEqual([
+        { label: 'tbsp', grams: 13.5 },
+        { label: 'cup', grams: 216 },
+      ]);
+      // A later write with a same-label row replaces it and keeps the other; none given leaves the table alone.
+      setNutritionPanel(replica, { item: 'olive oil', panel: { ...base, portions: [{ label: 'TBSP', grams: 14 }] } });
+      expect(getGroceryItem(replica, { name: 'olive oil' }).nutrition?.portions).toEqual([
+        { label: 'cup', grams: 216 },
+        { label: 'TBSP', grams: 14 },
+      ]);
+      setNutritionPanel(replica, { item: 'olive oil', panel: base });
+      expect(getGroceryItem(replica, { name: 'olive oil' }).nutrition?.portions).toHaveLength(2);
+      expect(() => setNutritionPanel(replica, { item: 'olive oil', panel: { ...base, portions: [{ label: 'tsp', grams: 0 }] } })).toThrow(/grams above 0/);
+      expect(() => setNutritionPanel(replica, { item: 'olive oil', panel: { ...base, portions: [{ label: ' ', grams: 5 }] } })).toThrow(/needs a label/);
+    });
+
     it('adds, renames, marks non-food, orders and deletes an aisle, refiling its items', () => {
       expect(saveAisle(replica, { name: 'Bulk bins' }).aisles).toContain('Bulk bins');
       addGroceryItem(replica, 'quinoa');

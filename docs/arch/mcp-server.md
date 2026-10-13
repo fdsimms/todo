@@ -1167,7 +1167,10 @@ is. Decisions specific to the server:
   clear; `swap_for_substitute` is the swap; `clear_grocery_list` is Clear list (items with nothing recorded
   are deleted, as there); `set_shopping_trip` writes the trip's three settings (the reminder is device work).
   A nutrition panel is `source: 'manual'` when read off a label and `'estimated'` when it is the model's own,
-  and keeps the `portions` the row already had.
+  and keeps the `portions` the row already had. A write may also send `portions`, merged by label (the same
+  label replaces, others stay, including ones the person weighed); a recipe counts a line in tablespoons or
+  cloves only when such a portion exists, which is why a panel without one leaves those lines uncounted.
+  `get_grocery_item` returns the panel and its portions, so a write can be checked against what it replaces.
 - **Logged as `subject: 'catalog'`.** Writes to a separate list are recorded there too, never as a `grocery`
   entry, because that subject's undo acts on the list at home.
 
