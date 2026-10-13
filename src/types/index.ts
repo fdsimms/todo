@@ -5544,6 +5544,20 @@ export interface GroceryItem {
    * generic whose key changes.
    */
   varietyOfKey: string | null;
+  /**
+   * Other names this same item goes by: "kombu" on dashima, "scallions" on
+   * green onions. Absent or empty means none.
+   *
+   * This is the same thing under another word, where `varietyOfKey` is a kind
+   * of it and a substitute is a different thing you would tolerate. Stored as
+   * the names as typed; the keys are derived (`groceryNameKey`) wherever a
+   * name is resolved (`itemAliases.ts`), so there is no second key column to
+   * drift from them. The item's own `nameKey` always wins over any item's
+   * other name, and a name two items both claim resolves to neither.
+   * Optional rather than required for the reason `Ingredient.example` is:
+   * most items never have one.
+   */
+  otherNames?: string[];
   // Always on hand — salt, pepper, water, the things nobody actually shops
   // for. Set by hand on GroceryItemSheet, and unlike onHandUntil it never
   // expires: a staple isn't a guess about recent purchases, it's a standing

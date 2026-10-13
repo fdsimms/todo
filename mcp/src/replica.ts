@@ -714,6 +714,8 @@ export interface GroceryItemChange {
   price?: { minor: number | null; shopId?: string | null };
   /** The generic this item is a variety of (a name), or null. */
   varietyOf?: string | null;
+  /** Replaces the item's other names. */
+  otherNames?: string[];
   preferredBoxId?: string | null;
   strict?: boolean;
   /** Stores this item can be bought at (store ids). */
@@ -6289,6 +6291,11 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           const key = change.varietyOf ? parse.groceryNameKey(change.varietyOf) || null : null;
           const next = key === item.nameKey ? null : key;
           if (next !== item.varietyOfKey) save({ ...item, varietyOfKey: next }, next ? `a kind of "${next}"` : 'no longer a kind of something');
+        }
+        if (change.otherNames !== undefined) {
+          const r = itemWrite.setOtherNamesRow(db.dbGetAllGroceryItems(), id, change.otherNames);
+          if (r?.row) save(r.row, r.row.otherNames?.length ? `also called ${r.row.otherNames.map(n => `"${n}"`).join(', ')}` : 'other names cleared');
+          for (const x of r?.refused ?? []) changed.push(`left out "${x.name}": ${x.reason}`);
         }
         if (change.preferredBoxId !== undefined) {
           const next = itemWrite.preferredProductRow(item, db.dbGetAllItemProducts(), change.preferredBoxId);

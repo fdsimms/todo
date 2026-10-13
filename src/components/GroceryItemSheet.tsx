@@ -134,7 +134,7 @@ function withFrozenPortion(summary: string | undefined, portionFrozen: boolean):
 }
 
 /** The collapsible fields in the "More" card, in the order they render. */
-export type CollapsibleFieldKey = 'products' | 'aisle' | 'stores' | 'pantry' | 'useBy' | 'substitutes' | 'varietyOf' | 'usedIn' | 'nutrition';
+export type CollapsibleFieldKey = 'products' | 'aisle' | 'stores' | 'pantry' | 'useBy' | 'substitutes' | 'otherNames' | 'varietyOf' | 'usedIn' | 'nutrition';
 
 interface Props {
   visible: boolean;
@@ -238,6 +238,7 @@ export function GroceryItemSheet({
   const setExpiresAt = useGroceryStore(s => s.setExpiresAt);
   const setShelfLifeDays = useGroceryStore(s => s.setShelfLifeDays);
   const setVarietyOfKey = useGroceryStore(s => s.setVarietyOfKey);
+  const setOtherNames = useGroceryStore(s => s.setOtherNames);
   const setUseUpTask = useGroceryStore(s => s.setUseUpTask);
   const setItemPrice = useGroceryStore(s => s.setItemPrice);
   const clearItemShopPrice = useGroceryStore(s => s.clearItemShopPrice);
@@ -819,6 +820,28 @@ export function GroceryItemSheet({
     haptics.success();
     setVarietyOfKey(item.id, key);
     closeField();
+  };
+
+  // "Kombu is another name for dashima" — see GroceryItem.otherNames. Each
+  // existing name is a selected pill that removes itself when pressed; a new
+  // one is typed into the field, and a refusal (the name is already another
+  // item's) comes back as the field's message.
+  const otherNames = item.otherNames ?? [];
+  const otherNameOptions: PillGroupOption[] = otherNames.map(name => ({
+    key: name,
+    label: name,
+    selected: true,
+    onPress: () => {
+      haptics.tap();
+      setOtherNames(item.id, otherNames.filter(n => n !== name));
+    },
+  }));
+  const handleAddOtherName = (name: string) => {
+    const refused = setOtherNames(item.id, [...otherNames, name]);
+    const mine = refused.find(r => r.name === name);
+    if (mine) return mine.reason;
+    haptics.success();
+    return null;
   };
 
   const shopOptions: PillGroupOption[] = shops.map(shop => {
@@ -1574,6 +1597,34 @@ export function GroceryItemSheet({
               }}
               style={styles.subAdd}
               accessibilityLabel={`Add a substitute for ${item.name}`}
+            />
+          </CollapsibleField>
+        </View>
+      ),
+    },
+    {
+      key: 'otherNames',
+      label: 'Also called',
+      keywords: ['alias', 'aka', 'synonym', 'also known as', 'other name', 'same as'],
+      node: (
+        <View onLayout={(e: LayoutChangeEvent) => {
+          fieldYRefs.current.otherNames = e.nativeEvent.layout.y;
+          maybeScrollToInitialField();
+        }}>
+          <CollapsibleField
+            label="Also called"
+            summary={otherNames.length > 0 ? otherNames.join(', ') : undefined}
+            emptySummary="No other names"
+            hint={`Other names for ${item.name.toLowerCase()}. A recipe line using one of them counts as this item. Tap a name to remove it.`}
+            expanded={openField === 'otherNames'}
+            onToggle={() => toggleField('otherNames')}
+          >
+            <PillGroup
+              options={otherNameOptions}
+              noun="name"
+              onCreate={handleAddOtherName}
+              createMaxLength={GROCERY_NAME_MAX_LENGTH}
+              filterPlaceholder="Add another name…"
             />
           </CollapsibleField>
         </View>

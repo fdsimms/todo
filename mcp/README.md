@@ -216,7 +216,7 @@ only the fallback until the first sync.
 | `add_grocery_item` | **Write.** Puts something on the home list, re-using the shelf item the user already has where there is one. |
 | `check_off_grocery_item` | **Write.** Checks something off on the home list, or un-checks it. |
 | `remove_from_grocery_list` | **Write.** Takes something off the home list. Does not delete it. |
-| `update_grocery_item` | **Write.** Rename, aisle, quantity, note, last price, kind-of, preferred brand, stores and substitutes. Field edits are undoable from Activity. |
+| `update_grocery_item` | **Write.** Rename, aisle, quantity, note, last price, kind-of, other names, preferred brand, stores and substitutes. Field edits are undoable from Activity. |
 | `save_grocery_box` | **Write.** Add, edit or delete a brand or variant of an item. |
 | `save_store` | **Write.** Add or rename a store, or set its receipt style. |
 | `update_store` | **Write.** A store's own aisles and walk order, whether it is suggested, or delete it. |

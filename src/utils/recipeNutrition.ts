@@ -10,6 +10,7 @@ import { NUTRIENT_KEYS } from '../types';
 import { nutritionFor } from './foodNutrition';
 import { panelMultiplier } from './ingredientGrams';
 import { resolvePluralKey } from './groceryPlural';
+import { itemKeyIndex } from './itemAliases';
 import { collectPlannedIngredients } from './mealPlanGroceries';
 import { flattenRecipeIngredients, type ChoiceResolution } from './recipeComponents';
 import { normalizeScale, scaleQuantity } from './recipeScale';
@@ -445,7 +446,7 @@ export function recipeNutritionLines(
   if (flat.length === 0) return [];
   if (hasUnresolvedChoice(flat)) return [];
 
-  const byKey = new Map(items.map(i => [i.nameKey, i]));
+  const byKey = itemKeyIndex(items);
   const productFor = preferredProductLookup(products);
   const factor = normalizeScale(scale);
 
@@ -549,7 +550,7 @@ export function weekNutrition(
   );
   if (planned.length === 0) return null;
 
-  const byKey = new Map(items.map(i => [i.nameKey, i]));
+  const byKey = itemKeyIndex(items);
   const productFor = preferredProductLookup(products);
   const resolved: LineResolution[] = [];
   for (const line of planned) {

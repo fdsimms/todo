@@ -1,6 +1,7 @@
 import type { FoodNutrition, GroceryItem, ItemProduct } from '../types';
 import { nutritionFor } from './foodNutrition';
 import { resolvePluralKey } from './groceryPlural';
+import { itemKeyIndex } from './itemAliases';
 import { gramsForLine } from './ingredientGrams';
 import { parseQuantity } from './quantity';
 import { formatScaleWeight, measureParsedQuantity, type UnitSystem } from './unitConvert';
@@ -95,7 +96,7 @@ export function weightLookups(
   products: readonly ItemProduct[],
 ): WeightLookups {
   return {
-    byKey: new Map(items.map(i => [i.nameKey, i])),
+    byKey: itemKeyIndex(items),
     productsById: new Map(products.map(p => [p.id, p])),
   };
 }

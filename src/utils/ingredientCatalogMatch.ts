@@ -3,6 +3,7 @@ import { AISLE_LEXICON } from './groceryAisles';
 import { groceryNameKey, suggestShorterCatalogName } from './groceryParse';
 import { pluralKeyVariants, resolvePluralKey } from './groceryPlural';
 import { rankGrocerySuggestions } from './grocerySuggest';
+import { itemKeyIndex } from './itemAliases';
 import { varietyIndex } from './itemVarieties';
 import { MIN_SIMILAR_LENGTH, withinOneEdit } from './textSimilar';
 
@@ -69,7 +70,14 @@ export type IngredientMatchReason =
    * there is nothing to offer and nothing to rename — renaming it to the
    * variety is exactly the over-specifying this relation exists to avoid.
    */
-  | 'variety';
+  | 'variety'
+  /**
+   * The line is another name the catalog row lists for itself — "kombu"
+   * against dashima's other names (`itemAliases.ts`). On `linked` for the
+   * reason `plural` and `variety` are: the catalog resolves it, so there is
+   * nothing to offer and nothing to rename.
+   */
+  | 'alias';
 
 export type IngredientMatchKind =
   /** Exact `nameKey` hit, its singular/plural (`reason: 'plural'`), or a generic covered by its declared varieties (`reason: 'variety'`). */
@@ -193,7 +201,9 @@ function matchOne(
   if (!key) return NO_MATCH;
 
   const exact = byKey.get(key);
-  if (exact) return { kind: 'linked', item: exact, suggestedName: null, reason: null };
+  if (exact) {
+    return { kind: 'linked', item: exact, suggestedName: null, reason: exact.nameKey === key ? null : 'alias' };
+  }
 
   // One plural apart is the same shelf item, and the catalog now agrees —
   // adding this line resolves to that row rather than minting a near-duplicate
@@ -264,11 +274,10 @@ export function matchIngredientToCatalog(
 }
 
 function indexByKey(items: readonly GroceryItem[]): Map<string, GroceryItem> {
-  const byKey = new Map<string, GroceryItem>();
-  // First wins, so a catalog that somehow holds two rows with one key resolves
-  // the same way `catalogItem`'s own `.find` always has.
-  for (const item of items) if (!byKey.has(item.nameKey)) byKey.set(item.nameKey, item);
-  return byKey;
+  // Primary names first, then each item's other names (`itemKeyIndex`), so a
+  // catalog that somehow holds two rows with one key resolves the way
+  // `catalogItem`'s own `.find` always has.
+  return itemKeyIndex(items);
 }
 
 /**

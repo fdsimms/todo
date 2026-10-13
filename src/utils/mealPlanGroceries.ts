@@ -5,6 +5,7 @@ import { dayKeyToDate } from './dateUtils';
 import { setHours } from 'date-fns/setHours';
 import { onHandNameKeys, probablyHaveReason } from './grocerySuggest';
 import { resolvePluralKey } from './groceryPlural';
+import { aliasIndex } from './itemAliases';
 import { describeSubstitutesOnHand, substitutesOnHand } from './itemSubs';
 import { coveringVariety, describeFamilyOnHand, familyOnHand, varietyIndex } from './itemVarieties';
 import {
@@ -504,6 +505,8 @@ export interface ClassifiedIngredient {
 export interface PlannedCatalogIndex {
   items: readonly GroceryItem[];
   byKey: ReadonlyMap<string, GroceryItem>;
+  /** Another name's key → the item that lists it (`itemAliases.ts`); empty for most catalogs. */
+  aliases: ReadonlyMap<string, GroceryItem>;
   keys: ReadonlySet<string>;
   varieties: ReadonlyMap<string, GroceryItem[]>;
 }
@@ -512,7 +515,7 @@ export interface PlannedCatalogIndex {
 export function plannedCatalogIndex(items: readonly GroceryItem[]): PlannedCatalogIndex {
   const byKey = new Map<string, GroceryItem>();
   for (const item of items) byKey.set(item.nameKey, item);
-  return { items, byKey, keys: new Set(byKey.keys()), varieties: varietyIndex(items) };
+  return { items, byKey, aliases: aliasIndex(items), keys: new Set(byKey.keys()), varieties: varietyIndex(items) };
 }
 
 /**
@@ -593,7 +596,7 @@ export function classifyPlanned(
   catalog: PlannedCatalogIndex = plannedCatalogIndex(items)
 ): ClassifiedIngredient[] {
   const index = catalog.items === items ? catalog : plannedCatalogIndex(items);
-  const { byKey, keys: catalogKeys, varieties } = index;
+  const { byKey, aliases, keys: catalogKeys, varieties } = index;
 
   const groups = new Map<string, PlannedIngredient[]>();
   for (const p of planned) {
@@ -601,6 +604,22 @@ export function classifyPlanned(
     const group = groups.get(key);
     if (group) group.push(p);
     else groups.set(key, [p]);
+  }
+
+  // A line that is another name of a row ("kombu" on dashima) becomes that row
+  // first, with `swappedFrom` carrying the recipe's own word like a swap does.
+  // An item's own name never gets here (`aliasIndex` leaves those out), and a
+  // key the catalog holds as a name is left alone.
+  if (aliases.size > 0) {
+    for (const [key, group] of [...groups]) {
+      const item = byKey.has(key) ? undefined : aliases.get(key);
+      if (!item) continue;
+      groups.delete(key);
+      const refiled = group.map(g => ({ ...g, swappedFrom: g.swappedFrom ?? g.name }));
+      const target = groups.get(item.nameKey);
+      if (target) target.push(...refiled);
+      else groups.set(item.nameKey, refiled);
+    }
   }
 
   // A line one plural apart from a row that exists *becomes* that row, before

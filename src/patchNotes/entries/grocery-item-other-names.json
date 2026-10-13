@@ -1,0 +1,4 @@
+{
+  "message": "A grocery item can now list other names it goes by, like kombu for dashima. A recipe line using one of them counts as that item for nutrition, cost, and shopping.",
+  "date": "2026-10-13"
+}

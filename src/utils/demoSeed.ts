@@ -4269,6 +4269,7 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     setShelfLifeDays,
     setUseUpTask,
     setVarietyOfKey,
+    setOtherNames,
     finishShopping,
     addAisle,
     deleteAisle,
@@ -4939,6 +4940,11 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     setVarietyOfKey(whiteOnion.id, 'onion');
     setOnHandUntil(whiteOnion.id, defaultOnHandUntil(whiteOnion, new Date()));
   }
+
+  // Another name (GroceryItem.otherNames): invisible until something lists one. Scallions are
+  // also green onions, so a recipe line using either word reads as the one catalog item.
+  const scallions = ensureCatalogItem('Scallions');
+  if (scallions) setOtherNames(scallions.id, ['Green onions']);
 
   // Everything else typed above is still sitting on the list, since only what
   // a trip actually bought — or a link/unavailable claim above — came off it

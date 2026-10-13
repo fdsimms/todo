@@ -1662,6 +1662,9 @@ function runInitDatabase(): void {
     // varieties existed, so every item keeps matching recipe lines by its own
     // exact key alone. See GroceryItem.varietyOfKey.
     'ALTER TABLE grocery_items ADD COLUMN variety_of_key TEXT',
+    // JSON array of the item's other names, NULL on every existing row (no
+    // item had one before they existed). See GroceryItem.otherNames.
+    'ALTER TABLE grocery_items ADD COLUMN other_names TEXT',
     // When the "turn off reminders for X" offer (see PostponeCheckBanner's
     // reach-out variant) was last declined by deferring past it — a lapsing
     // stamp, not a verdict, same shape as reach_out_declined_at beside it. See
@@ -5158,11 +5161,33 @@ function rowToGroceryItem(row: Record<string, unknown>): GroceryItem {
     spoiledCount: (row.spoiled_count as number) ?? 0,
     lastSpoiledAt: (row.last_spoiled_at as string) ?? null,
     varietyOfKey: (row.variety_of_key as string) ?? null,
+    ...otherNamesField(row.other_names as string | null),
     nameFromScan: Boolean(row.name_from_scan),
     priceHistory: parsePriceHistory(row.price_history as string | null),
     nutrition: parseFoodNutrition(row.nutrition as string | null),
     backfillDismissedFields: JSON.parse((row.backfill_dismissed_fields as string) ?? '[]') as string[],
   };
+}
+
+function parseOtherNames(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((n): n is string => typeof n === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Spread into the row: the key is absent when there are none, so an item that never had one equals its fixture. */
+function otherNamesField(raw: string | null): { otherNames?: string[] } {
+  const names = parseOtherNames(raw);
+  return names.length > 0 ? { otherNames: names } : {};
+}
+
+/** NULL for none, so a row that never had a name stays byte-identical to one written before the column. */
+function serializeOtherNames(names: readonly string[] | undefined): string | null {
+  return names && names.length > 0 ? JSON.stringify(names) : null;
 }
 
 export function dbGetAllGroceryItems(): GroceryItem[] {
@@ -5180,8 +5205,8 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
        source_recipe_id, source_recipe_title, choice_group, is_staple, expires_at, frozen_at, opened_at, running_low_at, shelf_life_days, use_up_task,
        pantry_check_declined_at, pantry_reviewed_at, used_up_count, spoiled_count, last_spoiled_at,
        last_price_minor, last_priced_at, last_price_quantity, preferred_product_id, brand_strict, variety_of_key,
-       backfill_dismissed_fields, nutrition, name_from_scan, purchase_interval_days, recipe_sources)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       backfill_dismissed_fields, nutrition, name_from_scan, purchase_interval_days, recipe_sources, other_names)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       item.id, item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
       item.onList ? 1 : 0, item.checked ? 1 : 0, 1, item.sortOrder,
@@ -5201,6 +5226,7 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
       item.nameFromScan ? 1 : 0,
       item.purchaseIntervalDays ?? null,
       serializeRecipeSources(item.recipeSources),
+      serializeOtherNames(item.otherNames),
     ]
   );
 }
@@ -5222,7 +5248,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
        pantry_check_declined_at=?, pantry_reviewed_at=?, used_up_count=?, spoiled_count=?, last_spoiled_at=?,
        last_price_minor=?, last_priced_at=?, last_price_quantity=?,
        preferred_product_id=?, brand_strict=?, variety_of_key=?, backfill_dismissed_fields=?, nutrition=?,
-       name_from_scan=?, price_history=?, purchase_interval_days=?, recipe_sources=?
+       name_from_scan=?, price_history=?, purchase_interval_days=?, recipe_sources=?, other_names=?
      WHERE id=?`,
     [
       item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
@@ -5247,6 +5273,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
       JSON.stringify(item.priceHistory ?? []),
       item.purchaseIntervalDays ?? null,
       serializeRecipeSources(item.recipeSources),
+      serializeOtherNames(item.otherNames),
       item.id,
     ]
   );

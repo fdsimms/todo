@@ -17,6 +17,7 @@ import {
   subLinkRows,
   chosenOptionRows,
   mergedItemRow,
+  setOtherNamesRow,
 } from '../utils/groceryItemWrite';
 import {
   dbGetAllGroceryItems,
@@ -1224,6 +1225,13 @@ interface GroceryStore extends UndoHistoryActions {
    * key (a thing is not a variety of itself) and an empty result.
    */
   setVarietyOfKey: (id: string, key: string | null) => void;
+
+  /**
+   * Replaces the item's other names ("kombu" on dashima). Returns the names it
+   * refused with the reason for each, so the sheet can say why one did not
+   * stick. See GroceryItem.otherNames and `setOtherNamesRow`.
+   */
+  setOtherNames: (id: string, names: readonly string[]) => { name: string; reason: string }[];
 
   /**
    * Persists the Backfill screen's "don't ask again" list for one item —
@@ -3700,6 +3708,17 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const updated = { ...item, varietyOfKey: next };
     dbUpdateGroceryItem(updated);
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
+  },
+
+  setOtherNames(id, names) {
+    const result = setOtherNamesRow(get().items, id, names);
+    if (!result) return [];
+    const { row, refused } = result;
+    if (row) {
+      dbUpdateGroceryItem(row);
+      set(s => ({ items: s.items.map(i => (i.id === id ? row : i)) }));
+    }
+    return refused;
   },
 
   setItemBackfillDismissedFields(id, fields) {

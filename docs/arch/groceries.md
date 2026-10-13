@@ -1701,6 +1701,27 @@ nothing to backfill.
   `matchWeight` is untouched and still does its own job: that one is autocomplete, where a wrong
   guess costs a keystroke.
 
+## Other names (`GroceryItem.otherNames`) — kombu is dashima
+
+The same thing under another word, which is neither a variety (a *kind* of the generic) nor a
+substitute (a *different* thing you'd tolerate). `otherNames` holds the names as typed (JSON in
+`other_names`, absent when empty); **the keys are derived at read time** (`itemAliases.ts`), so there
+is no second key column to drift. This does not break "the join is `nameKey` and nothing else": the
+join still resolves one key to one row, the row just answers to more than one key.
+
+- **Every `nameKey` join goes through `itemKeyIndex` / `catalogItemForKey`**, never a bare
+  `new Map(items.map(i => [i.nameKey, i]))`. That is how recipe nutrition, cost, line weights, the
+  catalog match badge (`reason: 'alias'`, on `linked`) and every find-or-insert pick it up without
+  knowing aliases exist. `classifyPlanned` re-files an aliased line under the item (with `swappedFrom`
+  carrying the recipe's own word), ahead of the plural pass.
+- **An item's own name always wins**, and **a name two items both claim resolves to neither**, the
+  `resolvePluralKey` refusal again. `cleanOtherNames` refuses both when they are typed, with the reason.
+- **Nothing is renamed.** A line reached through an alias keeps its words.
+- **Merging learns it**: `mergedItemRow` keeps the loser's name as another name of the survivor
+  (`ITEM_MERGE_RULES.otherNames: 'names'`), so merging kombu into dashima is how the app is told.
+- Written by `setOtherNamesRow` (shared by `useGroceryStore.setOtherNames` and the MCP replica); the
+  field is "Also called" on `GroceryItemSheet`, and `update_grocery_item`'s `alsoCalled` over MCP.
+
 ## Varieties (`GroceryItem.varietyOfKey`) — white onion is a kind of onion
 
 Every relation above is *lateral* — a product is a box of one item, either/or and alternatives
