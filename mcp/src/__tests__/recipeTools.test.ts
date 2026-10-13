@@ -70,6 +70,16 @@ describe('update_recipe', () => {
     });
   });
 
+  it('sets the cooked weight, shows it on get_recipe, and refuses one the app cannot hold', () => {
+    const r = saveRecipe(replica, { name: 'Stew' });
+    expect(updateRecipe(replica, r.id, { cookedWeightG: 2100 }).cookedWeightG).toBe(2100);
+    expect(stored(r.id).cookedWeightG).toBe(2100);
+    expect(() => updateRecipe(replica, r.id, { cookedWeightG: 0 })).toThrow(/cookedWeightG must be a whole number from 1 to 50000/);
+    expect(() => updateRecipe(replica, r.id, { cookedWeightG: 60000 })).toThrow(/50000/);
+    expect(updateRecipe(replica, r.id, { cookedWeightG: null }).cookedWeightG).toBeUndefined();
+    expect(saveRecipe(replica, { name: 'Dressing', cookedWeightG: 480 }).cookedWeightG).toBe(480);
+  });
+
   it('keeps a step whose text is unchanged, with its timer and note', () => {
     const r = saveRecipe(replica, { name: 'Rice', steps: [{ text: 'Rinse.' }, { text: 'Simmer.' }] });
     updateRecipe(replica, r.id, { steps: [{ text: 'Rinse.' }, { text: 'Simmer until the water is gone.', timerSeconds: 900 }] });

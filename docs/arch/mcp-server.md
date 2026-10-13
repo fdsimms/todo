@@ -1173,6 +1173,13 @@ is. Decisions specific to the server:
   label replaces, others stay, including ones the person weighed); a recipe counts a line in tablespoons or
   cloves only when such a portion exists, which is why a panel without one leaves those lines uncounted.
   `get_grocery_item` returns the panel and its portions, so a write can be checked against what it replaces.
+  **`set_nutrition_panels` is the same write for many items, so a recipe's worth is one preview and one
+  approval** rather than a prompt per ingredient (every write tool is guarded by the preview/confirm flow, so
+  a batch has to be one tool to be one approval). All or none: every panel is built and every item found
+  before the first write, so a bad figure in the thirtieth entry writes nothing. An item missing from the
+  catalog is refused unless its entry says `create`, which adds a bare row through `createCatalogItem`:
+  `planAddToPantry`'s row with the "got it" stamp taken back off, so it is on no list and asserts nothing
+  about the kitchen. That is deliberately not `add_to_pantry`, which does assert it.
 - **Logged as `subject: 'catalog'`.** Writes to a separate list are recorded there too, never as a `grocery`
   entry, because that subject's undo acts on the list at home.
 

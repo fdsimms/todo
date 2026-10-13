@@ -388,6 +388,12 @@ export interface RecipeInput {
   upNext?: boolean;
   /** How many days its leftovers keep; null for the app's default. */
   leftoverKeepDays?: number | null;
+  /**
+   * What the whole finished dish weighs, in grams, as written (not as cooked on
+   * one night). A used recipe's ingredients are counted in whole, so a composed
+   * recipe's weight includes its parts. 1 to 50000, null to clear.
+   */
+  cookedWeightG?: number | null;
   /** Other recipes used inside this one, replacing the list. Sharing a choiceGroup makes them alternatives. */
   components?: { recipeId: string; choiceGroup?: string | null }[];
   /** Tasks written ahead of a planned meal of it ("soak the beans"), replacing the list. */
@@ -1730,6 +1736,12 @@ export interface Replica {
    * becomes a row that is not on the shopping list.
    */
   addToPantry(names: string[]): { item: GroceryItem; isNew: boolean }[];
+  /**
+   * A bare catalog row for a name, or the one it already names: not on any list
+   * and not in the pantry, so it asserts nothing about the kitchen. For giving a
+   * food somewhere to keep its nutrition panel.
+   */
+  createCatalogItem(name: string): { item: GroceryItem; isNew: boolean };
   /** One card of the pantry review. Every answer stamps the card as reviewed. */
   answerPantryReview(id: string, answer: 'have' | 'low' | 'out'): GroceryItem;
   updateLeftover(id: string, change: LeftoverChange): Leftover;
@@ -2338,6 +2350,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       throw new Error('servingsMax is the top of a range, so it has to be more than servings.');
     }
     whole('leftoverKeepDays', f.leftoverKeepDays, lib.types.LEFTOVER_KEEP_DAYS_MIN, lib.types.LEFTOVER_KEEP_DAYS_MAX);
+    whole('cookedWeightG', f.cookedWeightG, 1, 50000);
     if (f.sourcePage != null && f.sourcePage.trim().length > lib.types.RECIPE_PAGE_MAX_LENGTH) {
       throw new Error(`A page is at most ${lib.types.RECIPE_PAGE_MAX_LENGTH} characters, as printed ("142", "112-115").`);
     }
@@ -2438,6 +2451,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     if (f.vote !== undefined) store().setVote(id, f.vote);
     if (f.upNext !== undefined) store().setUpNext(id, f.upNext);
     if (f.leftoverKeepDays !== undefined) store().setLeftoverKeepDays(id, f.leftoverKeepDays);
+    if (f.cookedWeightG !== undefined) store().setCookedWeight(id, f.cookedWeightG);
     if (f.ingredients !== undefined) {
       const made = f.ingredients
         .map(line => {
@@ -6666,6 +6680,28 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       });
       refresh();
       return out;
+    },
+
+    createCatalogItem(name: string): { item: GroceryItem; isNew: boolean } {
+      const items = db.dbGetAllGroceryItems();
+      const plan = pantryWrite.planAddToPantry(name, {
+        items,
+        aisleOverrides: db.dbGetGroceryAisleOverrides(),
+        aisleOrder: aisles.normalizeAisleOrder(
+          db.dbGetGroceryAisleOrder(),
+          items.map(i => i.aisle),
+          db.dbGetGroceryHiddenAisles(),
+        ),
+        now: new Date(),
+      });
+      if (!plan) throw new Error('A catalog item needs a name.');
+      // A row that exists is left exactly as it is: the plan stamps "got it" on it.
+      if (!plan.isNew) return { item: items.find(i => i.id === plan.item.id) ?? plan.item, isNew: false };
+      // Planned as a pantry add, so the "got it" stamp comes off: this row says nothing about what is in the kitchen.
+      const item = { ...plan.item, onHandUntil: null };
+      db.dbInsertGroceryItem(item);
+      refresh();
+      return { item, isNew: true };
     },
 
     answerPantryReview(id: string, answer: 'have' | 'low' | 'out'): GroceryItem {

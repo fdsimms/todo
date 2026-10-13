@@ -28,6 +28,7 @@ import {
   setShoppingTrip,
   markUnavailable,
   setNutritionPanel,
+  setNutritionPanels,
   saveAisle,
   reorderAisles,
   updateStore,
@@ -412,6 +413,40 @@ describe('the catalog tools', () => {
       expect(getGroceryItem(replica, { name: 'tahini' }).stores[0]).toMatchObject({ name: 'Safeway', unavailable: true });
       markUnavailable(replica, { item: 'tahini', store: 'Safeway', unavailable: false });
       expect(getGroceryItem(replica, { name: 'tahini' }).stores[0]?.unavailable).toBeUndefined();
+    });
+
+    it('sets several panels at once, creating a missing item on request without putting it on a list or in the pantry', () => {
+      addGroceryItem(replica, 'oats');
+      const base = { basis: 'per100g' as const, estimated: true, amounts: { calorieKcal: 100 } };
+      const out = setNutritionPanels(replica, {
+        panels: [
+          { item: 'oats', panel: { ...base, portions: [{ label: 'cup', grams: 80 }] } },
+          { item: 'onion powder', create: true, panel: { ...base, portions: [{ label: 'tsp', grams: 2.4 }] } },
+        ],
+      });
+      expect(out).toMatchObject({ set: 2, items: [{ item: 'oats' }, { item: 'onion powder', created: true }] });
+      const made = replica.groceryItems().find(i => i.name === 'onion powder')!;
+      expect(made.nutrition).toMatchObject({ source: 'estimated', portions: [{ label: 'tsp', grams: 2.4 }] });
+      // A bare catalog row: nothing says it is on the list or in the kitchen.
+      expect(made.onList).toBe(false);
+      expect(made.onHandUntil).toBeNull();
+      expect(replica.groceryItems().find(i => i.name === 'oats')!.nutrition?.source).toBe('estimated');
+    });
+
+    it('writes none of a bulk call when one entry is wrong', () => {
+      addGroceryItem(replica, 'oats');
+      const good = { basis: 'per100g' as const, amounts: { calorieKcal: 100 } };
+      expect(() => setNutritionPanels(replica, {
+        panels: [{ item: 'oats', panel: good }, { item: 'ghost', panel: good }],
+      })).toThrow(/Panel 2 \("ghost"\).*create: true/);
+      expect(() => setNutritionPanels(replica, {
+        panels: [{ item: 'oats', panel: good }, { item: 'oats', panel: good }],
+      })).toThrow(/Panel 2.*already in the call/);
+      expect(() => setNutritionPanels(replica, {
+        panels: [{ item: 'oats', panel: good }, { item: 'rye', create: true, panel: { basis: 'per100g', amounts: { vibes: 1 } } }],
+      })).toThrow(/Panel 2.*isn't a nutrient/);
+      expect(replica.groceryItems().find(i => i.name === 'oats')!.nutrition).toBeNull();
+      expect(replica.groceryItems().some(i => i.name === 'rye')).toBe(false);
     });
 
     it('sets and removes a nutrition panel, refusing a nutrient the app does not keep', () => {

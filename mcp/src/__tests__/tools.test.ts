@@ -94,6 +94,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     updatePantryItem: () => { throw new Error('not stubbed'); },
     updatePantryBox: () => { throw new Error('not stubbed'); },
     addToPantry: () => { throw new Error('not stubbed'); },
+    createCatalogItem: () => { throw new Error('not stubbed'); },
     answerPantryReview: () => { throw new Error('not stubbed'); },
     updateLeftover: () => { throw new Error('not stubbed'); },
     createLeftover: () => { throw new Error('not stubbed'); },

@@ -86,6 +86,8 @@ export interface RecipeDetail extends SerializedRecipe {
   yield?: string;
   prepMinutes?: number;
   leftoverKeepDays?: number;
+  /** What the whole finished dish weighs in grams, when it has been set. */
+  cookedWeightG?: number;
   /** Minutes the last measured cook took. */
   lastCookMinutes?: number;
 }
@@ -144,6 +146,7 @@ export function getRecipe(replica: Replica, id: string): RecipeDetail | null {
     ...(r.recipeYield ? { yield: r.recipeYield } : {}),
     ...(r.prepMinutes ? { prepMinutes: r.prepMinutes } : {}),
     ...(r.leftoverKeepDays != null ? { leftoverKeepDays: r.leftoverKeepDays } : {}),
+    ...(r.cookedWeightG ? { cookedWeightG: r.cookedWeightG } : {}),
     ...(r.lastCookMinutes ? { lastCookMinutes: r.lastCookMinutes } : {}),
   };
 }
