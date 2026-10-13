@@ -16,6 +16,7 @@ import {
   stoppableGenerator,
   hasAnyGeneratedTask,
   isNoticeTask,
+  canPinTask,
   isUseUpKind,
   liveGeneratedTask,
   liveGeneratedTasksOfKind,
@@ -267,6 +268,19 @@ describe('isNoticeTask', () => {
 
   it('is false for a task nobody generated', () => {
     expect(isNoticeTask(task())).toBe(false);
+  });
+});
+
+describe('canPinTask', () => {
+  it('is true for a task nobody generated and for ordinary generated work', () => {
+    expect(canPinTask(task())).toBe(true);
+    expect(canPinTask(from('pantryReview', '2026-08-29'))).toBe(true);
+  });
+
+  it('is false for a notice, except the leave-by task', () => {
+    expect(canPinTask(from('calendarReview', '2026-08-29'))).toBe(false);
+    expect(canPinTask(from('mealPlanNudge', '2026-08-31'))).toBe(false);
+    expect(canPinTask(from('travel', 'event-1'))).toBe(true);
   });
 });
 

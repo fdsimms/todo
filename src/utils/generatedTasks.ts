@@ -370,6 +370,14 @@ export interface GeneratedKindSpec {
    */
   notice: boolean;
   /**
+   * A notice that can still be pinned. Pinning is not planning: it moves no
+   * date and asks nothing of the generator, it only keeps the row in the
+   * Pinned block. `travel` sets it because "leave for X" is the row you want
+   * at the top of Today on the day, and a sweep only rewrites the row's title
+   * and reminder, so the pin survives it. Read through `canPinTask`.
+   */
+  pinnableNotice?: boolean;
+  /**
    * Whether the user can choose a category to file this kind under.
    *
    * True for every kind — including `calendarReview` and `supplyReorder`,
@@ -848,6 +856,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     icon: 'walk-outline',
     sourced: false,
     notice: true,
+    pinnableNotice: true,
     kitchen: false,
     categorized: true,
     defaultCategory: 'Calendar',
@@ -1403,6 +1412,16 @@ export function generatedBy(
  */
 export function isNoticeTask(task: Pick<Task, 'generatedKind'>): boolean {
   return task.generatedKind !== null && GENERATED_KIND_SPECS[task.generatedKind].notice;
+}
+
+/**
+ * Whether the pin control is offered on this row: every task that isn't a
+ * notice, plus the notices that opt back in (`pinnableNotice`).
+ */
+export function canPinTask(task: Pick<Task, 'generatedKind'>): boolean {
+  if (task.generatedKind === null) return true;
+  const spec = GENERATED_KIND_SPECS[task.generatedKind];
+  return !spec.notice || spec.pinnableNotice === true;
 }
 
 /**
