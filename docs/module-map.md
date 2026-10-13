@@ -186,6 +186,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/id.ts` — generateId
 - `src/utils/ingredientCatalogMatch.ts` — IngredientMatchReason, IngredientMatchKind, IngredientCatalogMatch, matchIngredientToCatalog, matchIngredientsToCatalog, CatalogMatchSummary, catalogMatchSummary
 - `src/utils/ingredientGrams.ts` — volumeFromMass, hasKnownDensity, measureLineAmount, gramsForLine, panelMultiplier, UnfixableQuantity, unfixableQuantityReason, LineWeighing, weighableLine
+- `src/utils/itemAliases.ts` — otherNameKeysOf, aliasIndex, itemKeyIndex, itemForOtherName, OtherNamesResult, cleanOtherNames
 - `src/utils/itemBackfill.ts` — ItemBackfillFieldId, LATER_LABEL_NUTRIENTS, ItemBackfillFieldDef, ITEM_BACKFILL_FIELDS, isItemFieldMissing, isItemFieldApplicable, isItemBackfillDismissed, itemBackfillCandidates, itemBackfillFieldCounts, dismissItemBackfillField
 - `src/utils/itemDisposal.ts` — DisposalOutcome, REPEAT_WASTE_THRESHOLD, disposalAnswerCount, describeDisposalHistory, wantsShelfLifePrompt
 - `src/utils/itemSubs.ts` — Substitute, substitutesFor, substituteForItems, describeSubstituteLink, describeSubstitutes, SubstitutedQuantity, substituteQuantity, substitutesOnHand, describeSubstitutesOnHand, resolveShoppingSubstitutes
