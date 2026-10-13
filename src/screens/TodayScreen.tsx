@@ -4479,9 +4479,9 @@ export function TodayScreen() {
   // The logical day, not the wall-clock one: before dayResetTime the header
   // has to name the same day the date picker calls "Today". In that grace
   // window the calendar has already rolled over, so it also says which date
-  // that is ("Monday, October 12 → Tue, Oct 13"), or the two read as a mismatch.
+  // that is ("Mon, Oct 12 → Tue, Oct 13"), or the two read as a mismatch.
   const today = isBeforeDayReset(dayResetTime)
-    ? `${format(getLogicalToday(dayResetTime), 'EEEE, MMMM d')} → ${format(new Date(), 'EEE, MMM d')}`
+    ? `${format(getLogicalToday(dayResetTime), 'EEE, MMM d')} → ${format(new Date(), 'EEE, MMM d')}`
     : format(new Date(), 'EEEE, MMMM d');
 
 
