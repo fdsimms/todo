@@ -19,6 +19,7 @@ import { format } from 'date-fns/format';
 import { groceryNameKey, parseGroceryInput, splitExample, splitGroceryLines, splitPrep, splitPurpose } from './groceryParse';
 import { generateId } from './id';
 import { resolveOffsetDate } from './templateUtils';
+import { itemKeyIndex } from './itemAliases';
 import { classifyPlanned, plannedCatalogIndex, plannedIngredientsForRecipe, type PlannedCatalogIndex } from './mealPlanGroceries';
 import { substitutesOnHand } from './itemSubs';
 import { varietyIndex } from './itemVarieties';
@@ -1766,7 +1767,7 @@ function catalogCoverage(
     standingSwapMap(itemSubs, items)
   ).map(f => f.ingredient);
   if (ingredients.length === 0) return { matched: 0, total: 0, coverage: 0, avgRecency: 0 };
-  const byKey = new Map(items.map(i => [i.nameKey, i]));
+  const byKey = itemKeyIndex(items);
   // Built on the first line that misses, not up front: this runs once per
   // recipe over the whole catalog, and an install where nobody has declared a
   // variety would otherwise pay a second full pass per recipe to learn there

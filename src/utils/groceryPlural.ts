@@ -1,4 +1,5 @@
 import type { GroceryItem } from '../types';
+import { itemForOtherName } from './itemAliases';
 
 /**
  * Singular and plural, resolved to one shelf item.
@@ -140,8 +141,8 @@ export function resolvePluralKey(key: string, existing: Iterable<string>): strin
 }
 
 /**
- * The catalog row a name key resolves to: the exact one, else the one it is a
- * plural of. **The one lookup every find-or-insert should use** — reading
+ * The catalog row a name key resolves to: the exact one, else the one that
+ * lists it as another name (`itemAliases.ts`), else the one it is a plural of. **The one lookup every find-or-insert should use** — reading
  * `items.find(i => i.nameKey === key)` bare is what mints the near-duplicate.
  *
  * First wins among rows sharing a key, the same rule `catalogItem`'s own
@@ -154,6 +155,8 @@ export function catalogItemForKey(
   if (!key) return null;
   const exact = items.find(i => i.nameKey === key);
   if (exact) return exact;
+  const aliased = itemForOtherName(key, items);
+  if (aliased) return aliased;
   const resolved = resolvePluralKey(key, itemKeys(items));
   if (!resolved) return null;
   return items.find(i => i.nameKey === resolved) ?? null;

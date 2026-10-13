@@ -12,6 +12,7 @@ import type {
 import { isPortionBox } from '../types';
 import { groceryNameKey } from './groceryParse';
 import { catalogItemForKey } from './groceryPlural';
+import { cleanOtherNames, type OtherNamesResult } from './itemAliases';
 import { productKeyFor } from './groceryProduct';
 import { HOME_LIST_NAME, isAwayList, itemsOnList } from './groceryLists';
 import { expiresAtForPurchase } from './groceryShelfLife';
@@ -395,6 +396,31 @@ export function planFinishShopping(input: {
 }
 
 // ---------------------------------------------------------------------------
+// Other names
+// ---------------------------------------------------------------------------
+
+/**
+ * Replaces an item's other names (`GroceryItem.otherNames`). `refused` names
+ * what `cleanOtherNames` left out and why, for the caller to say; `row` is
+ * null when nothing changed.
+ */
+export function setOtherNamesRow(
+  items: readonly GroceryItem[],
+  id: string,
+  typed: readonly string[]
+): { row: GroceryItem | null; refused: OtherNamesResult['refused'] } | null {
+  const item = items.find(i => i.id === id);
+  if (!item) return null;
+  const { names, refused } = cleanOtherNames(items, id, typed);
+  const before = item.otherNames ?? [];
+  if (names.length === before.length && names.every((n, i) => n === before[i])) {
+    return { row: null, refused };
+  }
+  const { otherNames: _dropped, ...rest } = item;
+  return { row: names.length > 0 ? { ...rest, otherNames: names } : rest, refused };
+}
+
+// ---------------------------------------------------------------------------
 // Deleting an item
 // ---------------------------------------------------------------------------
 
@@ -462,8 +488,11 @@ export function deletedItemSnapshot(
  *   the survivor's null `frozenAt` restarted a paused clock.
  * - `price`: the three last-price fields as a group from the more recently
  *   priced row, and both rows' history.
+ * - `names`: both rows' other names, plus the loser's own name, which becomes
+ *   another name of the survivor (merging kombu into dashima is how the app
+ *   learns they are one thing). The survivor's own name is never in the list.
  */
-type ItemMergeRule = 'survivor' | 'caller' | 'fillGap' | 'sum' | 'later' | 'either' | 'union' | 'pantry' | 'price';
+type ItemMergeRule = 'survivor' | 'caller' | 'fillGap' | 'sum' | 'later' | 'either' | 'union' | 'pantry' | 'price' | 'names';
 
 export const ITEM_MERGE_RULES: Readonly<Record<keyof GroceryItem, ItemMergeRule>> = {
   id: 'survivor',
@@ -482,6 +511,7 @@ export const ITEM_MERGE_RULES: Readonly<Record<keyof GroceryItem, ItemMergeRule>
   sortOrder: 'caller',
   choiceGroup: 'caller',
   varietyOfKey: 'caller',
+  otherNames: 'names',
   purchaseCount: 'sum',
   lastAddedAt: 'later',
   lastPurchasedAt: 'later',
@@ -573,6 +603,14 @@ export function mergedItemRow(into: GroceryItem, from: GroceryItem): GroceryItem
       case 'pantry':
         out[key] = pantry[key];
         break;
+      case 'names': {
+        const names = [...(into.otherNames ?? []), ...(from.otherNames ?? []), from.name]
+          .filter((n, i, all) => groceryNameKey(n) !== into.nameKey
+            && all.findIndex(m => groceryNameKey(m) === groceryNameKey(n)) === i);
+        if (names.length > 0) out[key] = names;
+        else delete out[key];
+        break;
+      }
       case 'price':
         out[key] = key === 'priceHistory'
           ? mergePriceHistories(into.priceHistory, from.priceHistory)

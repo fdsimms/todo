@@ -115,6 +115,7 @@ export interface GroceryItemDetail {
   /** What the last recorded price was for, in minor units. */
   price?: { minor: number; quantity?: string; at?: string };
   kindOf?: string;
+  alsoCalled?: string[];
   preferredBoxId?: string;
   onlyPreferredBrand?: boolean;
   boughtTimes?: number;
@@ -179,6 +180,7 @@ export function getGroceryItem(replica: Replica, ref: { id?: string; name?: stri
     ...(item.note ? { note: item.note } : {}),
     ...(item.lastPriceMinor !== null ? { price: { minor: item.lastPriceMinor, ...(item.lastPriceQuantity ? { quantity: item.lastPriceQuantity } : {}), ...(item.lastPricedAt ? { at: item.lastPricedAt } : {}) } } : {}),
     ...(item.varietyOfKey ? { kindOf: item.varietyOfKey } : {}),
+    ...(item.otherNames && item.otherNames.length > 0 ? { alsoCalled: item.otherNames } : {}),
     ...(item.preferredProductId ? { preferredBoxId: item.preferredProductId } : {}),
     ...(item.productStrict ? { onlyPreferredBrand: true } : {}),
     ...(item.purchaseCount > 0 ? { boughtTimes: item.purchaseCount } : {}),
@@ -300,6 +302,7 @@ export interface UpdateGroceryItemInput {
   /** The store the price was seen at, which also updates that store's link. */
   priceStore?: string;
   kindOf?: string | null;
+  alsoCalled?: string[];
   preferredBoxId?: string | null;
   onlyPreferredBrand?: boolean;
   linkStores?: string[];
@@ -317,6 +320,7 @@ export function updateGroceryItem(replica: Replica, input: UpdateGroceryItemInpu
     ...(input.note !== undefined ? { note: input.note } : {}),
     ...(input.priceMinor !== undefined ? { price: { minor: input.priceMinor, shopId: input.priceStore ? resolveShop(replica, input.priceStore)!.id : null } } : {}),
     ...(input.kindOf !== undefined ? { varietyOf: input.kindOf } : {}),
+    ...(input.alsoCalled !== undefined ? { otherNames: input.alsoCalled } : {}),
     ...(input.preferredBoxId !== undefined ? { preferredBoxId: input.preferredBoxId } : {}),
     ...(input.onlyPreferredBrand !== undefined ? { strict: input.onlyPreferredBrand } : {}),
     ...(input.linkStores ? { linkShops: input.linkStores.map(s => resolveShop(replica, s)!.id) } : {}),

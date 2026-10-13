@@ -3452,6 +3452,11 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(mashLines.every(f => f.swappedFrom === null)).toBe(true);
   });
 
+  it('seeds an item with another name', () => {
+    const { items } = useGroceryStore.getState();
+    expect(items.find(i => i.nameKey === 'scallions')?.otherNames).toEqual(['Green onions']);
+  });
+
   it('seeds a variety declaration, covering the generic name end to end', () => {
     // The one vertical relation in the catalog, invisible until something
     // declares one — and on hand, so a line naming plain "onion" actually

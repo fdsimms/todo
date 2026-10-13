@@ -7,6 +7,7 @@ import { collectPlannedIngredients } from './mealPlanGroceries';
 import { normalizeScale } from './recipeScale';
 import { NO_STANDING_SWAPS, type StandingSwapMap } from './standingSwaps';
 import { resolvePluralKey } from './groceryPlural';
+import { itemKeyIndex } from './itemAliases';
 import { onHandNameKeys } from './grocerySuggest';
 
 /**
@@ -183,7 +184,7 @@ export function estimateRecipeCost(
   const flat = flattenRecipeIngredients(recipe, recipesById, resolution, swaps);
   if (flat.length === 0) return null;
 
-  const byKey = new Map(items.map(i => [i.nameKey, i]));
+  const byKey = itemKeyIndex(items);
   const factor = normalizeScale(scale);
   const acc = { totalMinor: 0, priced: 0, total: 0, oldestPricedAt: null as string | null };
   for (const line of flat) {
@@ -218,7 +219,7 @@ export function estimateWeekCost(
   );
   if (planned.length === 0) return null;
 
-  const byKey = new Map(items.map(i => [i.nameKey, i]));
+  const byKey = itemKeyIndex(items);
   const acc = { totalMinor: 0, priced: 0, total: 0, oldestPricedAt: null as string | null };
   for (const line of planned) {
     // The line as the recipe wrote it and the entry's scale, rather than the
