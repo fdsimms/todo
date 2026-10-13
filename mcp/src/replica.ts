@@ -743,6 +743,8 @@ export interface GroceryBoxInput {
   variant?: string | null;
   note?: string;
   rating?: ProductRating | null;
+  /** The barcode this box is, in any form a scanner reads. It moves here from whichever box held it. */
+  gtin?: string;
   delete?: boolean;
 }
 
@@ -2188,6 +2190,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const parse = require('../../src/utils/groceryParse') as GroceryParseModule;
   const pantryWrite = require('../../src/utils/pantryWrite') as typeof import('../../src/utils/pantryWrite');
   const itemWrite = require('../../src/utils/groceryItemWrite') as typeof import('../../src/utils/groceryItemWrite');
+  const gtinUtil = require('../../src/utils/gtin') as typeof import('../../src/utils/gtin');
   const recipeUtils = require('../../src/utils/recipeUtils') as typeof import('../../src/utils/recipeUtils');
   const grocerySuggest = require('../../src/utils/grocerySuggest') as typeof import('../../src/utils/grocerySuggest');
   const shelfLife = require('../../src/utils/groceryShelfLife') as typeof import('../../src/utils/groceryShelfLife');
@@ -6347,6 +6350,20 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (!item) throw new Error(`No grocery item with id ${itemId}.`);
       const boxes = db.dbGetAllItemProducts();
       let result: ItemProduct | null = null;
+      // Normalized up front, so a bad code refuses before any row is written.
+      // A store's own by-weight code names a package, not a product, so it is
+      // refused the way a scan refuses to remember one.
+      const gtin = input.gtin === undefined || input.delete ? undefined : gtinUtil.normalizeGtin(input.gtin);
+      if (input.gtin !== undefined && !input.delete && (!gtin || gtinUtil.isStoreInternalGtin(gtin))) {
+        throw new Error(`"${input.gtin}" is not a product barcode (it fails the check digit, or it is a store's own code).`);
+      }
+      // `dbSetItemProduct` carries no barcode, and claiming one releases it from
+      // whichever box held it, so it is written on its own.
+      const withGtin = (box: ItemProduct): ItemProduct => {
+        if (!gtin) return box;
+        db.dbSetProductGtin(box.id, gtin);
+        return { ...box, gtin };
+      };
       db.dbTransaction(() => {
         if (input.delete) {
           const box = boxes.find(b => b.id === input.boxId && b.itemId === itemId);
@@ -6360,7 +6377,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           const edited = itemWrite.productEditRow(box, boxes, input);
           if ('refusal' in edited) throw new Error(edited.refusal);
           db.dbSetItemProduct(edited.row);
-          result = edited.row;
+          result = withGtin(edited.row);
           return;
         }
         const brand = input.brand?.trim() || null;
@@ -6371,7 +6388,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         if (ensured.created) db.dbSetItemProduct(box);
         // The first box becomes the preference, as naming one does in the app.
         if (!item.preferredProductId) db.dbUpdateGroceryItem({ ...item, preferredProductId: box.id });
-        result = box;
+        result = withGtin(box);
       });
       refresh();
       return result;

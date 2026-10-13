@@ -6214,6 +6214,11 @@ export function dbGetAllItemProducts(): ItemProduct[] {
  * Without the carve-out `mergeItems` would throw: it re-parents the loser's
  * products *before* the cascade deletes them, so for a moment two rows would
  * claim one barcode.
+ *
+ * **`item_id` is in the update**, because that re-parenting is an upsert of the
+ * same id under a new item. Left out, the row stayed attached to the loser and
+ * the cascade in `dbDeleteGroceryItem` deleted it: a merge dropped every brand
+ * the loser had, with its ratings and nutrition panels.
  */
 export function dbSetItemProduct(product: ItemProduct): void {
   db.runSync(
@@ -6222,7 +6227,8 @@ export function dbSetItemProduct(product: ItemProduct): void {
         on_hand_until, expires_at, frozen_at, opened_at, nutrition, is_portion, created_at)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
      ON CONFLICT(id)
-     DO UPDATE SET brand = excluded.brand,
+     DO UPDATE SET item_id = excluded.item_id,
+                   brand = excluded.brand,
                    variant = excluded.variant,
                    product_key = excluded.product_key,
                    rating = excluded.rating,

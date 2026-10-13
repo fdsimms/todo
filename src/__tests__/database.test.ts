@@ -3003,6 +3003,23 @@ describe('grocery items', () => {
     ).toThrow();
   });
 
+  // A merge re-parents the loser's boxes with this upsert and then deletes the
+  // loser, whose cascade removes every box still pointing at it.
+  it('re-parents a product when its row is written under another item, and it survives the old item’s delete', () => {
+    insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Stroopwafels' }));
+    insertListedGroceryItem(makeGroceryItem({ id: 'g2', name: 'Maple stroopwafel' }));
+    const product = makeProduct({ id: 'p1', itemId: 'g2', brand: 'Maple Terroir', variant: 'maple' });
+    dbSetItemProduct(product);
+    dbSetProductGtin('p1', '00629098282008');
+
+    dbSetItemProduct({ ...product, itemId: 'g1' });
+    dbDeleteGroceryItem('g2');
+
+    expect(dbGetAllItemProducts()).toEqual([
+      expect.objectContaining({ id: 'p1', itemId: 'g1', brand: 'Maple Terroir', gtin: '00629098282008' }),
+    ]);
+  });
+
   it('leaves a box’s barcode alone when the row is rewritten', () => {
     insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Sausage' }));
     const product = makeProduct({ id: 'p1', itemId: 'g1', brand: 'Beyond Meat', variant: 'Cajun' });
