@@ -132,7 +132,7 @@ only the fallback until the first sync.
 | `upcoming_birthdays` | Birthdays in the next N days, soonest first. |
 | `list_grocery_items` | The home grocery list, or the whole catalog with `onListOnly: false`. A separate list (a trip's, say) is not included. |
 | `grocery_setup` | The aisles (and which are non-food), the stores (with receipt style, their own aisles and order), the lists (home and separate) with item counts, and the trip in progress. |
-| `get_grocery_item` | One item's whole catalog record: aisle, quantity, note, last price, brands, stores, substitutes, lists, receipt names. |
+| `get_grocery_item` | One item's whole catalog record: aisle, quantity, note, last price, brands, stores, substitutes, lists, receipt names, and its nutrition panel (with its source) when it has one, so a `set_nutrition_panel` write can be checked against what it would replace. |
 | `match_receipt` | The app's receipt matching over lines Claude read. Writes nothing. |
 | `list_pantry` | What the app has a reason to think is in the kitchen: pantry, fridge and freezer, each with the app's reason, use-by day and freshness. `filter: use_up`, `frozen` or `fridge` narrows it. Has no quantities, on purpose. |
 | `get_pantry_item` | One item's whole pantry state (on hand and why, use-by, opened, frozen, running low, staple, shelf life, waste history, boxes). `unknown` means the app has no opinion, not that it is out. |

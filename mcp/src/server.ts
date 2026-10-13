@@ -374,7 +374,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'get_grocery_item',
-    "Everything recorded about one grocery item: aisle, quantity, note, last price, brands (boxes), the stores it comes from, substitutes, the lists it is on, and the names receipts print for it. Takes an id from list_grocery_items or a name. For its pantry state use get_pantry_item.",
+    "Everything recorded about one grocery item: aisle, quantity, note, last price, brands (boxes), the stores it comes from, substitutes, the lists it is on, the names receipts print for it, and its nutrition panel (and each box's) with its source, when it has one. Read the panel before set_nutrition_panel, which replaces it. Takes an id from list_grocery_items or a name. For its pantry state use get_pantry_item.",
     { id: z.string().optional(), name: z.string().optional() },
     async input => {
       try {
