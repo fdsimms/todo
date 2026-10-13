@@ -93,6 +93,9 @@ import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { groupMentionTokens } from '../utils/peopleRegistry';
 import { eventMarkerText, parseQuickEvent } from '../utils/quickEvent';
+import { getCalendarPermission, listWritableCalendars } from '../utils/calendarSync';
+import { readSavedPlaces } from '../utils/savedPlaces';
+import { originCandidates } from '../utils/travelTasks';
 import { readQuickEventDefaults, writeQuickEventDefaults } from '../utils/quickEventDefaults';
 import { quickEventFromLine, quickEventSaveFields } from '../utils/quickEventSave';
 import { readEventMemory, recallEvent, rememberEvent, writeEventMemory } from '../utils/eventMemory';
@@ -1867,6 +1870,9 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   const addAsEvent = async (text: string) => {
     haptics.tap();
     const byId = new Map(people.map(p => [p.id, p]));
+    // The same trailing clauses the event card reads. The calendar list is
+    // read here, on Add, since the line is only resolved once.
+    const calendars = (await getCalendarPermission()) === 'granted' ? await listWritableCalendars() : [];
     const draft = parseQuickEvent(text, {
       people,
       groups: groupTokens,
@@ -1874,6 +1880,11 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       now: getLogicalNow(dayResetTime),
       today: getCurrentDayStart(),
       wallClock: new Date(),
+      travel: useSettingsStore.getState().travelTasks,
+      originPlaces: originCandidates(readSavedPlaces()).map(p => ({ id: p.id, name: p.name })),
+      calendars: calendars.map(c => ({ id: c.id, title: c.title })),
+      availability: true,
+      notes: true,
     });
     const defaults = readQuickEventDefaults();
     const memory = readEventMemory();
@@ -1901,6 +1912,13 @@ export const QuickAddModal = React.memo(function QuickAddModal({
         'Check that calendar access is on in Settings, then try again. The event is still here.'
       );
       return;
+    }
+    if (draft.travelMode !== undefined || draft.arriveEarlyMinutes !== undefined || draft.travelOriginId !== undefined) {
+      useSettingsStore.getState().setTravelEventPref(saved.id, {
+        mode: draft.travelMode ?? null,
+        arriveEarlyMinutes: draft.arriveEarlyMinutes ?? 0,
+        originPlaceId: draft.travelOriginId ?? null,
+      });
     }
     writeQuickEventDefaults({
       ...defaults,

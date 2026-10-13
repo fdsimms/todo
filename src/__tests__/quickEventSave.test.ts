@@ -108,6 +108,14 @@ describe('quickEventFromLine', () => {
     expect(input).toMatchObject({ location: 'YMCA', place: null, durationMinutes: 45, alertMinutes: null });
   });
 
+  it('lets a typed calendar, Busy/Free and note win over what was remembered', () => {
+    const input = quickEventFromLine(
+      { ...draft, calendarId: 'c-work', availability: 'busy', notes: 'bring a guitar' },
+      { recalled, defaults, freeSlotFor: () => null },
+    );
+    expect(input).toMatchObject({ calendarId: 'c-work', availability: 'busy', notesOrLink: 'bring a guitar' });
+  });
+
   it('falls back to the defaults with nothing remembered', () => {
     const input = quickEventFromLine(draft, { recalled: null, defaults, freeSlotFor: () => null });
     expect(input).toMatchObject({ calendarId: 'c-default', alertMinutes: null, availability: 'busy', durationMinutes: 60 });

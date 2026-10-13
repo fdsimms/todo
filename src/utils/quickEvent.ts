@@ -12,6 +12,7 @@ import { peopleNamedInTitle } from './calendarHistory';
 import { parseDurationTail, type ParsedSchedule } from './parseTaskInput';
 import type { TimeOfDay } from '../types';
 import type { ClockTime } from './parseNaturalDate';
+import { TRAVEL_ORIGIN_PHONE, clampArriveEarlyMinutes, type TravelMode } from './travelTasks';
 
 /**
  * One typed line ("lunch w/ @gideon fri 12p") turned into a new calendar
@@ -71,6 +72,29 @@ export interface QuickEventDraft {
   clauseSpans: [number, number][];
   /** The repeat the schedule phrase read ("every monday"), or null for a one-off. */
   repeat: EventRecurrence | null;
+  /**
+   * The trailing clauses below set what the card's chips set. Each is
+   * undefined when it wasn't typed (the chip's own pick or default stands) and
+   * is only ever read when `parseQuickEvent`'s options ask for it.
+   */
+  /** "walking", "by transit": how the trip there is made. */
+  travelMode: TravelMode | undefined;
+  /** "10 min early", "5m late": minutes before the start to arrive, negative for late. */
+  arriveEarlyMinutes: number | undefined;
+  /** "from home": a saved place's id, or `TRAVEL_ORIGIN_PHONE` for "from here". */
+  travelOriginId: string | undefined;
+  /** "in Work calendar": the id of the calendar named. */
+  calendarId: string | undefined;
+  /** "show as free": whether the time blocks the calendar. */
+  availability: 'busy' | 'free' | undefined;
+  travelSpan: [number, number] | null;
+  arriveSpan: [number, number] | null;
+  originSpan: [number, number] | null;
+  calendarSpan: [number, number] | null;
+  availabilitySpan: [number, number] | null;
+  /** "note: bring the sign-up sheet": what goes in the Notes or link field. */
+  notes: string | undefined;
+  notesSpan: [number, number] | null;
 }
 
 /**
@@ -262,6 +286,113 @@ export function peopleAfterWith(line: string, people: readonly PersonToken[]): s
   return peopleNamedInTitle(line.slice(marker.index + marker[0].length), people);
 }
 
+// ---- the card's other chips, typed as trailing clauses ----
+// "walking", "by transit", "10 min early", "from home", "in Work calendar",
+// "show as free". Each is a suffix like the alert, and each has to name
+// something that exists (a mode, a saved place, a calendar on this device) or
+// it stays in the title: a clause that read as nothing would take its words
+// out of the line without setting anything.
+
+const TRAVEL_WORDS: { mode: TravelMode; bare: string[]; withBy: string[] }[] = [
+  { mode: 'walking', bare: ['walking', 'on foot'], withBy: ['walking', 'walk', 'foot'] },
+  { mode: 'transit', bare: ['transit', 'public transit'], withBy: ['transit', 'public transit', 'bus', 'train', 'subway', 'metro'] },
+  { mode: 'driving', bare: ['driving'], withBy: ['driving', 'drive', 'car'] },
+];
+
+const escapeRegex = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** A name as a pattern that tolerates any run of spaces where the name has one. */
+const loosely = (text: string) => escapeRegex(text.trim()).replace(/\s+/g, '\\s+');
+
+/**
+ * "walking", "on foot", "by transit", "via bus", "by car". The bare words are
+ * the unambiguous ones: "bus" or "car" alone ends too many real titles ("catch
+ * the bus", "wash the car"), so those need the "by".
+ */
+export function parseTravelClause(input: string): { start: number; mode: TravelMode } | null {
+  for (const { mode, bare, withBy } of TRAVEL_WORDS) {
+    const by = new RegExp(String.raw`\s+(?:by|via)\s+(?:${withBy.map(loosely).join('|')})\s*$`, 'i').exec(input);
+    if (by) return { start: by.index, mode };
+    const plain = new RegExp(String.raw`\s+(?:${bare.map(loosely).join('|')})\s*$`, 'i').exec(input);
+    if (plain) return { start: plain.index, mode };
+  }
+  return null;
+}
+
+// "10 min early", "arrive 10m early", "5 minutes late", "arrive on time". A
+// bare "10 early" needs the word "arrive" so a stray number stays a number.
+const ARRIVE_CLAUSE = /\s+(?:(arrive\s+)?(\d{1,2})\s*(m|mins?|minutes?)?\s+(early|late)|arrive\s+on\s+time)\s*$/i;
+
+/**
+ * A trailing arrival clause, as minutes before the start (negative is late).
+ * Only the steps the chip offers read: "12 min early" stays in the title
+ * rather than quietly becoming 10.
+ */
+export function parseArriveClause(input: string): { start: number; minutes: number } | null {
+  const m = ARRIVE_CLAUSE.exec(input);
+  if (!m) return null;
+  if (m[4] === undefined) return { start: m.index, minutes: 0 };
+  if (!m[1] && !m[3]) return null;
+  const minutes = Number(m[2]) * (m[4].toLowerCase() === 'late' ? -1 : 1);
+  if (minutes === 0 || clampArriveEarlyMinutes(minutes) !== minutes) return null;
+  return { start: m.index, minutes };
+}
+
+// "show as free", "as busy".
+const AVAILABILITY_CLAUSE = /\s+(?:show(?:n)?\s+)?as\s+(free|busy)\s*$/i;
+
+export function parseAvailabilityClause(input: string): { start: number; availability: 'busy' | 'free' } | null {
+  const m = AVAILABILITY_CLAUSE.exec(input);
+  return m ? { start: m.index, availability: m[1].toLowerCase() === 'free' ? 'free' : 'busy' } : null;
+}
+
+/**
+ * A trailing "in Work calendar" / "on my Home calendar" naming one of the
+ * calendars given. The longest title that matches wins, so "Work" doesn't
+ * shadow "Side Work".
+ */
+export function parseCalendarClause(
+  input: string,
+  calendars: readonly { id: string; title: string }[],
+): { start: number; id: string } | null {
+  let best: { start: number; id: string; length: number } | null = null;
+  for (const { id, title } of calendars) {
+    if (!title.trim()) continue;
+    const m = new RegExp(String.raw`\s+(?:in|on)\s+(?:my\s+|the\s+)?${loosely(title)}\s+calendar\s*$`, 'i').exec(input);
+    if (m && (!best || title.length > best.length)) best = { start: m.index, id, length: title.length };
+  }
+  return best ? { start: best.start, id: best.id } : null;
+}
+
+/**
+ * A trailing "from home" / "from here" naming a place the trip can start at:
+ * one of the places given, or the phone's own position.
+ */
+export function parseOriginClause(
+  input: string,
+  places: readonly { id: string; name: string }[],
+): { start: number; id: string } | null {
+  const phone = /\s+from\s+(?:here|where\s+i\s+am|my\s+location)\s*$/i.exec(input);
+  if (phone) return { start: phone.index, id: TRAVEL_ORIGIN_PHONE };
+  let best: { start: number; id: string; length: number } | null = null;
+  for (const { id, name } of places) {
+    if (!name.trim()) continue;
+    const m = new RegExp(String.raw`\s+from\s+${loosely(name)}\s*$`, 'i').exec(input);
+    if (m && (!best || name.length > best.length)) best = { start: m.index, id, length: name.length };
+  }
+  return best ? { start: best.start, id: best.id } : null;
+}
+
+// "note: bring the sign-up sheet". It takes everything after it, so it has to
+// be the last clause typed, and it needs the colon so a title that merely
+// contains the word "note" is left alone.
+const NOTES_CLAUSE = /\s+notes?:\s*(\S.*)$/i;
+
+/** A trailing "note: …", with where its leading space begins. The rest of the line is the note. */
+export function parseNotesClause(input: string): { start: number; text: string } | null {
+  const m = NOTES_CLAUSE.exec(input);
+  return m ? { start: m.index, text: m[1].trim() } : null;
+}
+
 /** A representative hour for a day-part word with no clock time. */
 const DAY_PART_HOUR: Record<TimeOfDay, number> = {
   morning: 9,
@@ -300,6 +431,20 @@ export function parseQuickEvent(
      * or lose words until the user actually types something.
      */
     plain?: boolean;
+    /**
+     * Read the trip clauses ("walking", "10 min early", "from home"). Off
+     * unless the trip setting is on, since the words would otherwise leave the
+     * title and set nothing.
+     */
+    travel?: boolean;
+    /** Places a trip can start from, for "from home". */
+    originPlaces?: readonly { id: string; name: string }[];
+    /** Calendars the event can go in, for "in Work calendar". Without any the clause isn't read. */
+    calendars?: readonly { id: string; title: string }[];
+    /** Read "show as free" and "as busy". */
+    availability?: boolean;
+    /** Read "note: …" into the Notes or link field. */
+    notes?: boolean;
   }
 ): QuickEventDraft {
   // Peel the trailing clauses off the right of the line, in whatever order
@@ -314,11 +459,33 @@ export function parseQuickEvent(
   let alertSpan: [number, number] | null = null;
   let forMinutes: number | null = null;
   let durationSpan: [number, number] | null = null;
+  let travelMode: TravelMode | undefined;
+  let travelSpan: [number, number] | null = null;
+  let arriveEarlyMinutes: number | undefined;
+  let arriveSpan: [number, number] | null = null;
+  let travelOriginId: string | undefined;
+  let originSpan: [number, number] | null = null;
+  let calendarId: string | undefined;
+  let calendarSpan: [number, number] | null = null;
+  let availability: 'busy' | 'free' | undefined;
+  let availabilitySpan: [number, number] | null = null;
+  let notes: string | undefined;
+  let notesSpan: [number, number] | null = null;
   let clausesFrom: number | null = null;
   const spanOf = (from: number, to: number): [number, number] =>
     [from + (/^\s*/.exec(input.slice(from, to))?.[0].length ?? 0), to];
-  for (let guard = 0; guard < 3 && !opts.plain; guard++) {
+  for (let guard = 0; guard < 9 && !opts.plain; guard++) {
     const to = body.length;
+    // The notes take the rest of the line, so they are read before anything
+    // typed after them ("note: take the bus walking") can be read as a clause.
+    const noteClause = !opts.notes || notesSpan ? null : parseNotesClause(body);
+    if (noteClause) {
+      notes = noteClause.text;
+      notesSpan = spanOf(noteClause.start, to);
+      body = body.slice(0, noteClause.start);
+      clausesFrom = noteClause.start;
+      continue;
+    }
     const alert: { start: number; minutes: number | null } | null = alertClause ? null : parseAlertClause(body);
     if (alert) {
       alertClause = alert;
@@ -333,6 +500,46 @@ export function parseQuickEvent(
       durationSpan = spanOf(length.start, to);
       body = body.slice(0, length.start);
       clausesFrom = length.start;
+      continue;
+    }
+    const mode = !opts.travel || travelSpan ? null : parseTravelClause(body);
+    if (mode) {
+      travelMode = mode.mode;
+      travelSpan = spanOf(mode.start, to);
+      body = body.slice(0, mode.start);
+      clausesFrom = mode.start;
+      continue;
+    }
+    const arrive = !opts.travel || arriveSpan ? null : parseArriveClause(body);
+    if (arrive) {
+      arriveEarlyMinutes = arrive.minutes;
+      arriveSpan = spanOf(arrive.start, to);
+      body = body.slice(0, arrive.start);
+      clausesFrom = arrive.start;
+      continue;
+    }
+    const origin = !opts.travel || originSpan ? null : parseOriginClause(body, opts.originPlaces ?? []);
+    if (origin) {
+      travelOriginId = origin.id;
+      originSpan = spanOf(origin.start, to);
+      body = body.slice(0, origin.start);
+      clausesFrom = origin.start;
+      continue;
+    }
+    const free = !opts.availability || availabilitySpan ? null : parseAvailabilityClause(body);
+    if (free) {
+      availability = free.availability;
+      availabilitySpan = spanOf(free.start, to);
+      body = body.slice(0, free.start);
+      clausesFrom = free.start;
+      continue;
+    }
+    const calendar = !opts.calendars || calendarSpan ? null : parseCalendarClause(body, opts.calendars);
+    if (calendar) {
+      calendarId = calendar.id;
+      calendarSpan = spanOf(calendar.start, to);
+      body = body.slice(0, calendar.start);
+      clausesFrom = calendar.start;
       continue;
     }
     const locationMatch: RegExpExecArray | null = locationSpan ? null : LOCATION_CLAUSE.exec(body);
@@ -446,7 +653,9 @@ export function parseQuickEvent(
     phrase = { start: phraseStart, text: body.slice(phraseStart).trim(), lineWithout: before + clauses };
   }
   const mentionSpans = [...bySpan.keys()].map(k => k.split(':').map(Number) as [number, number]);
-  const clauseSpans: [number, number][] = [locationSpan, durationSpan, alertSpan]
+  const clauseSpans: [number, number][] = [
+    locationSpan, durationSpan, alertSpan, travelSpan, arriveSpan, originSpan, calendarSpan, availabilitySpan, notesSpan,
+  ]
     .filter((span): span is [number, number] => span !== null)
     .sort((a, b) => a[0] - b[0]);
 
@@ -467,6 +676,18 @@ export function parseQuickEvent(
     durationSpan,
     clauseSpans,
     repeat: eventRecurrenceFor(schedule),
+    travelMode,
+    arriveEarlyMinutes,
+    travelOriginId,
+    calendarId,
+    availability,
+    travelSpan,
+    arriveSpan,
+    originSpan,
+    calendarSpan,
+    availabilitySpan,
+    notes,
+    notesSpan,
   };
 }
 

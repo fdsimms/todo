@@ -94,7 +94,8 @@ export const ALERT_CHOICES: readonly number[] = [0, 5, 10, 15, 30, 60, 120, 1440
  * `freeSlotFor` finds one, asked with the length the event will have.
  */
 export function quickEventFromLine(
-  draft: Pick<QuickEventDraft, 'title' | 'start' | 'timed' | 'durationMinutes' | 'location' | 'alertMinutes' | 'repeat'>,
+  draft: Pick<QuickEventDraft, 'title' | 'start' | 'timed' | 'durationMinutes' | 'location' | 'alertMinutes' | 'repeat'>
+    & Partial<Pick<QuickEventDraft, 'availability' | 'calendarId' | 'notes'>>,
   context: {
     recalled: RememberedEvent | null;
     defaults: QuickEventDefaults;
@@ -116,7 +117,8 @@ export function quickEventFromLine(
     alertMinutes: draft.alertMinutes !== undefined
       ? draft.alertMinutes
       : recalled ? recalled.alertMinutes : defaults.alertMinutes,
-    availability: recalled?.availability ?? defaults.availability,
-    calendarId: recalled?.calendarId ?? defaults.calendarId,
+    availability: draft.availability ?? recalled?.availability ?? defaults.availability,
+    calendarId: draft.calendarId ?? recalled?.calendarId ?? defaults.calendarId,
+    ...(draft.notes ? { notesOrLink: draft.notes } : {}),
   };
 }
