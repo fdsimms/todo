@@ -131,8 +131,8 @@ describe('captureDraftFields', () => {
 
   /**
    * Filing is not scheduling. A dated capture would put a sentence nobody has
-   * read onto Today, and a project-list capture is exactly the undated running
-   * list ProjectKind 'list' exists for.
+   * read onto Today, and a capture into a running project is exactly the undated
+   * collection it is for.
    */
   it('never dates anything', () => {
     const filings: ReminderCaptureFiling[] = [

@@ -1699,10 +1699,9 @@ function runInitDatabase(): void {
     // a stack built from a project's own screen gets an id here, so it can sit
     // on that project's page before it has any members. See TaskGroup.projectId.
     'ALTER TABLE task_groups ADD COLUMN project_id TEXT',
-    // 'project' for every existing row, which is what they all are. This column
-    // only changes how a project's own screen is drawn, never what its tasks
-    // do, so an install upgrading into it reads exactly as it did. See
-    // Project.kind.
+    // Unread and never written now that the List project type is gone. It stays
+    // because SQLite can't cheaply drop a column; a row that was a list is an
+    // ordinary ongoing project.
     "ALTER TABLE projects ADD COLUMN kind TEXT NOT NULL DEFAULT 'project'",
     // The one statement here that isn't an ADD COLUMN. 'opaque' is gone from
     // ReceiptStyle, and a store that prints prices without item names is now a
@@ -2011,8 +2010,7 @@ function runInitDatabase(): void {
     "ALTER TABLE projects ADD COLUMN person_ids TEXT NOT NULL DEFAULT '[]'",
     "ALTER TABLE projects ADD COLUMN links TEXT NOT NULL DEFAULT '[]'",
     'ALTER TABLE projects ADD COLUMN in_order INTEGER NOT NULL DEFAULT 0',
-    // Off on every existing list: checked lines fold away, as they always
-    // have. See Project.showChecked.
+    // Unread and never written, like projects.kind above (it only served lists).
     'ALTER TABLE projects ADD COLUMN show_checked INTEGER NOT NULL DEFAULT 0',
     // Off on every existing project and section: the next task shows, as it
     // always has. See Project.hideNextStep / TaskGroup.hideNextStep.
@@ -8245,10 +8243,6 @@ function rowToProject(row: Record<string, unknown>): Project {
     reviewDeclinedAt: (row.review_declined_at as string) ?? null,
     reviewedAt: (row.reviewed_at as string) ?? null,
     backfillDismissedFields: JSON.parse((row.backfill_dismissed_fields as string) ?? '[]') as string[],
-    // Anything unrecognised reads as an ordinary project rather than throwing:
-    // a column added later, or a row from a peer on a newer build, must not
-    // make somebody's project undrawable. See Project.kind.
-    kind: row.kind === 'list' ? 'list' : 'project',
     awayStart: (row.away_start as string) ?? null,
     awayEnd: (row.away_end as string) ?? null,
     awayPauses: Boolean(row.away_pauses),
@@ -8262,7 +8256,6 @@ function rowToProject(row: Record<string, unknown>): Project {
     personIds: parseStringList(row.person_ids),
     links: parseProjectLinks(row.links),
     inOrder: row.in_order === 1,
-    showChecked: row.show_checked === 1,
     hideNextStep: row.hide_next_step === 1,
     groupOnToday: row.group_on_today === 1,
     eventDate: (row.event_date as string) ?? null,
@@ -8277,18 +8270,18 @@ export function dbGetAllProjects(): Project[] {
 
 export function dbInsertProject(project: Project): void {
   db.runSync(
-    'INSERT INTO projects (id, title, notes, target_end_date, category, default_task_category, sort_order, archived, archived_at, completed, completed_at, ongoing, created_at, nudge_cadence_days, auto_schedule, nudge_opt_in, weekend_source, review_declined_at, reviewed_at, backfill_dismissed_fields, kind, away_start, away_end, away_pauses, away_pause_declined_for, destination, away_list_id, away_list_declined_for, paused_until, person_ids, links, in_order, show_checked, hide_next_step, event_date, task_defaults, destination_latitude, destination_longitude, group_on_today) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    'INSERT INTO projects (id, title, notes, target_end_date, category, default_task_category, sort_order, archived, archived_at, completed, completed_at, ongoing, created_at, nudge_cadence_days, auto_schedule, nudge_opt_in, weekend_source, review_declined_at, reviewed_at, backfill_dismissed_fields, away_start, away_end, away_pauses, away_pause_declined_for, destination, away_list_id, away_list_declined_for, paused_until, person_ids, links, in_order, hide_next_step, event_date, task_defaults, destination_latitude, destination_longitude, group_on_today) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
     [
       project.id, project.title, project.notes, project.deadline,
       project.category, project.defaultTaskCategory, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
       project.completed ? 1 : 0, project.completedAt, project.ongoing ? 1 : 0, project.createdAt,
       project.nudgeCadenceDays, project.autoSchedule ? 1 : 0, project.nudgeOptIn ? 1 : 0,
       project.weekendSource ? 1 : 0,
-      project.reviewDeclinedAt, project.reviewedAt, JSON.stringify(project.backfillDismissedFields), project.kind,
+      project.reviewDeclinedAt, project.reviewedAt, JSON.stringify(project.backfillDismissedFields),
       project.awayStart, project.awayEnd,
       project.awayPauses ? 1 : 0, project.awayPauseDeclinedFor, project.destination,
       project.awayListId, project.awayListDeclinedFor, project.pausedUntil,
-      JSON.stringify(project.personIds ?? []), JSON.stringify(project.links ?? []), project.inOrder ? 1 : 0, project.showChecked ? 1 : 0, project.hideNextStep ? 1 : 0,
+      JSON.stringify(project.personIds ?? []), JSON.stringify(project.links ?? []), project.inOrder ? 1 : 0, project.hideNextStep ? 1 : 0,
       project.eventDate ?? null,
       serializeTaskFieldDefaults(project.taskDefaults),
       project.destinationLatitude ?? null, project.destinationLongitude ?? null,
@@ -8299,18 +8292,18 @@ export function dbInsertProject(project: Project): void {
 
 export function dbUpdateProject(project: Project): void {
   db.runSync(
-    'UPDATE projects SET title=?, notes=?, target_end_date=?, category=?, default_task_category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, ongoing=?, nudge_cadence_days=?, auto_schedule=?, nudge_opt_in=?, weekend_source=?, review_declined_at=?, reviewed_at=?, backfill_dismissed_fields=?, kind=?, away_start=?, away_end=?, away_pauses=?, away_pause_declined_for=?, destination=?, away_list_id=?, away_list_declined_for=?, paused_until=?, person_ids=?, links=?, in_order=?, show_checked=?, hide_next_step=?, event_date=?, task_defaults=?, destination_latitude=?, destination_longitude=?, group_on_today=? WHERE id=?',
+    'UPDATE projects SET title=?, notes=?, target_end_date=?, category=?, default_task_category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, ongoing=?, nudge_cadence_days=?, auto_schedule=?, nudge_opt_in=?, weekend_source=?, review_declined_at=?, reviewed_at=?, backfill_dismissed_fields=?, away_start=?, away_end=?, away_pauses=?, away_pause_declined_for=?, destination=?, away_list_id=?, away_list_declined_for=?, paused_until=?, person_ids=?, links=?, in_order=?, hide_next_step=?, event_date=?, task_defaults=?, destination_latitude=?, destination_longitude=?, group_on_today=? WHERE id=?',
     [
       project.title, project.notes, project.deadline,
       project.category, project.defaultTaskCategory, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
       project.completed ? 1 : 0, project.completedAt, project.ongoing ? 1 : 0,
       project.nudgeCadenceDays, project.autoSchedule ? 1 : 0, project.nudgeOptIn ? 1 : 0,
       project.weekendSource ? 1 : 0,
-      project.reviewDeclinedAt, project.reviewedAt, JSON.stringify(project.backfillDismissedFields), project.kind,
+      project.reviewDeclinedAt, project.reviewedAt, JSON.stringify(project.backfillDismissedFields),
       project.awayStart, project.awayEnd,
       project.awayPauses ? 1 : 0, project.awayPauseDeclinedFor, project.destination,
       project.awayListId, project.awayListDeclinedFor, project.pausedUntil,
-      JSON.stringify(project.personIds ?? []), JSON.stringify(project.links ?? []), project.inOrder ? 1 : 0, project.showChecked ? 1 : 0, project.hideNextStep ? 1 : 0,
+      JSON.stringify(project.personIds ?? []), JSON.stringify(project.links ?? []), project.inOrder ? 1 : 0, project.hideNextStep ? 1 : 0,
       project.eventDate ?? null,
       serializeTaskFieldDefaults(project.taskDefaults),
       project.destinationLatitude ?? null, project.destinationLongitude ?? null,

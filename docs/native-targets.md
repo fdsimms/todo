@@ -190,7 +190,14 @@ whose comments carry the reasons. The rules worth knowing before touching them:
   `WatchSession.swift` sends it as the session's application context, compressed. Back: a tap
   is a user-info transfer, which `WatchSession` appends to the widget's own quiet-tap queue (or
   AddTaskIntent's queue, for a dictated task) in the widget's shape, so
-  `processQuietWidgetTaps` applies it with the widget's rules.
+  `processQuietWidgetTaps` applies it with the widget's rules. Two tap kinds exist only for the
+  watch: `choose` (settle an either/or on the list the tap names, through `resolveChoice`'s
+  explicit `listId`) and `groceryAdd` (a dictated item, which rides the quiet-tap queue rather
+  than AddTaskIntent's task-title queue so it applies in order with the ticks around it).
+- **The watch pager has no visible way to its second page on its own.** Today is a scrolling
+  list, so the Digital Crown scrolls it instead of paging past it, and Groceries was only
+  reachable by a vertical swipe nobody is told about. Today ends in a Groceries row that sets the
+  pager's selection (`TodoWatchApp`'s `page`). A new watch page needs an entry like that.
 - **A tap can wake the iPhone app to be applied, and that path has no React tree.** With the
   phone in reach the watch also sends each tap as a message, which (unlike the transfer) wakes
   the app in the background; the phone drops the second copy by `watchTapId`. `WatchSession`

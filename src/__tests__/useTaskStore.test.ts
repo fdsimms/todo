@@ -568,7 +568,6 @@ const makeProject = (overrides: Partial<import('../types').Project> = {}): impor
   reviewDeclinedAt: null,
   reviewedAt: null,
   backfillDismissedFields: [],
-  kind: 'project' as const,
   awayStart: null,
   awayEnd: null,
   awayPauses: false,
@@ -580,7 +579,6 @@ const makeProject = (overrides: Partial<import('../types').Project> = {}): impor
   personIds: [],
   links: [],
   inOrder: false,
-  showChecked: false,
   ...overrides,
 });
 
@@ -11234,41 +11232,6 @@ describe('clearLogbook', () => {
     expect(lastAction?.label).toBe('Logbook cleared');
     lastAction?.undo();
 
-    expect(useTaskStore.getState().tasks.map(t => t.id).sort()).toEqual(['a', 'b']);
-  });
-});
-
-describe('deleteCheckedListItems', () => {
-  it('deletes only the checked items of that list', () => {
-    useTaskStore.setState({
-      tasks: [
-        makeTask({ id: 'a', projectId: 'L', completed: true, completedAt: '2026-01-01T00:00:00.000Z' }),
-        makeTask({ id: 'b', projectId: 'L', completed: false }),
-        makeTask({ id: 'c', projectId: 'other', completed: true, completedAt: '2026-01-01T00:00:00.000Z' }),
-        makeTask({ id: 'd', projectId: 'L', completed: true, archived: true, completedAt: '2026-01-01T00:00:00.000Z' }),
-      ],
-    });
-    useTaskStore.getState().deleteCheckedListItems('L');
-    expect(useTaskStore.getState().tasks.map(t => t.id).sort()).toEqual(['b', 'c', 'd']);
-  });
-
-  it('does nothing when nothing is checked', () => {
-    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'L' })] });
-    useTaskStore.getState().deleteCheckedListItems('L');
-    expect(dbBulkDeleteTasks).not.toHaveBeenCalled();
-  });
-
-  it('queues one undo that puts them back', () => {
-    useTaskStore.setState({
-      tasks: [
-        makeTask({ id: 'a', projectId: 'L', completed: true, completedAt: '2026-01-01T00:00:00.000Z' }),
-        makeTask({ id: 'b', projectId: 'L', completed: true, completedAt: '2026-01-02T00:00:00.000Z' }),
-      ],
-    });
-    useTaskStore.getState().deleteCheckedListItems('L');
-    const lastAction = useTaskStore.getState().lastAction;
-    expect(lastAction?.label).toBe('2 checked items deleted');
-    lastAction?.undo();
     expect(useTaskStore.getState().tasks.map(t => t.id).sort()).toEqual(['a', 'b']);
   });
 });

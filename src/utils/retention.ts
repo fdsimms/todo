@@ -107,10 +107,10 @@ export function selectPurgeableTaskIds(
   tasks: Task[],
   cutoff: Date,
   /**
-   * Projects whose finished members are kept whatever their age: the list
-   * kind (Project.kind). A checked-off line on "Books to read" is the record
-   * of having read it, not a tombstone, and a retention window set for
-   * everyday tasks was deleting it.
+   * Projects whose finished members are kept whatever their age: the ongoing
+   * ones (Project.ongoing). A checked-off task in "Books to read" is the
+   * record of having read it, not a tombstone, and a retention window set for
+   * everyday tasks would delete it.
    */
   keepProjectIds: ReadonlySet<string> = new Set(),
 ): string[] {

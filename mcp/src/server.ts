@@ -3270,7 +3270,7 @@ function registerWriteTools(
 
   server.tool(
     'create_project',
-    'Create a project and its whole plan in one go: the project, its steps (each a full task: dates, estimates, repeats and the rest), each step\'s checklist, and which steps wait on earlier ones. Everything is checked first and written together, so a problem creates nothing and lists every issue. Scope it with the user before calling: agree on the steps, their order and what blocks what, then create it once. kind "list" is a running list with no dates (shopping ideas, questions for the doctor). The result is the project as get_project shows it.',
+    'Create a project and its whole plan in one go: the project, its steps (each a full task: dates, estimates, repeats and the rest), each step\'s checklist, and which steps wait on earlier ones. Everything is checked first and written together, so a problem creates nothing and lists every issue. Scope it with the user before calling: agree on the steps, their order and what blocks what, then create it once. ongoing: true is for a running collection with no finish line (gift ideas, questions for the doctor). The result is the project as get_project shows it.',
     {
       title: z.string().min(1),
       notes: z.string().optional(),
@@ -3279,7 +3279,7 @@ function registerWriteTools(
       category: z.string().nullable().optional().describe('A project category, for grouping on the Projects page.'),
       defaultTaskCategory: z.string().nullable().optional().describe('A task category (from list_categories) every step gets unless it names its own. Without it, every step needs its own category.'),
       newCategory: z.boolean().optional().describe('Create defaultTaskCategory as a new category.'),
-      kind: z.enum(['project', 'list']).optional(),
+      ongoing: z.boolean().optional().describe('No finish line: finishing its last task does not offer to complete it, and it is never nudged. For a running collection like gift ideas or questions for the doctor.'),
       planning: z.boolean().optional().describe('Start it in Planning: its steps, dated ones too, stay off every list until it is marked ready (update_project planning: false). For a plan the person is still working out.'),
       steps: z.array(planStep).optional(),
     },
@@ -3334,7 +3334,6 @@ function registerWriteTools(
         vacationPause: z.boolean().nullable().optional().describe('true pauses every repeating task during vacation mode, false leaves it off on purpose so the backfill screen stops asking. Null means ask.'),
         excludeFromSuggestions: z.boolean().nullable().optional().describe('true keeps every task out of suggested pins and focus sessions, false leaves it in on purpose so the backfill screen stops asking. Null means ask.'),
       }).nullable().optional().describe('Priority, difficulty, time estimate, streak chip, vacation pause and skip-in-suggestions every new task in the project starts with, so a list like a wish list never reaches backfill. Null clears them. Existing tasks are not changed.'),
-      kind: z.enum(['project', 'list']).optional(),
       completed: z.boolean().optional(),
       archived: z.boolean().optional(),
       archiveRemaining: z.boolean().optional().describe('With completed: true, archive its open tasks too, as the app offers when a project is finished with tasks left. Ask the person first.'),
@@ -3348,7 +3347,6 @@ function registerWriteTools(
       autoSchedule: z.boolean().optional().describe('When it runs dry, date its next task automatically instead of offering it.'),
       nudgeOptIn: z.boolean().optional().describe('false keeps it out of every nudge, the Pull from projects sheet included.'),
       weekendSource: z.boolean().optional().describe('Somewhere the weekend nudge looks for something to do when a weekend is bare.'),
-      showChecked: z.boolean().optional().describe('On a list: checked items stay on the page, struck through, instead of folding away.'),
       hideNextStep: z.boolean().optional().describe('Leave the "Next:" line off its card on the Projects screen.'),
       groupOnToday: z.boolean().optional().describe('Today shows its tasks and stacks for the day together under its name, at the top below the pinned tasks, instead of in their categories. A trip with a packing list is the usual case. Display only: it changes nothing about what is due.'),
     },

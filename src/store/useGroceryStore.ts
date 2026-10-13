@@ -1256,7 +1256,7 @@ interface GroceryStore extends UndoHistoryActions {
    * looking outstanding for ever, since finishShopping only clears what's
    * checked.
    */
-  resolveChoice: (id: string) => void;
+  resolveChoice: (id: string, opts?: { listId?: string | null }) => void;
   /**
    * "These aren't alternatives after all" — unlinks the whole group, from the
    * item sheet. Takes the label off every member rather than just this row: one
@@ -3753,11 +3753,13 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
    * you'd said nothing about wanting to lose; parking says the same thing
    * ("not this one") without needing to be undone to get it back.
    */
-  resolveChoice(id) {
+  resolveChoice(id, opts) {
     // An either/or belongs to one trolley (see GroceryListEntry.choiceGroup),
     // so the whole of this happens inside the list being shown: the same pair
-    // on another list is a separate choice, still to be made there.
-    const listId = get().activeListId;
+    // on another list is a separate choice, still to be made there. A caller
+    // that isn't looking at the screen (the Apple Watch) names its list; null
+    // is the list at home, hence `in` rather than `??`.
+    const listId = opts && 'listId' in opts ? opts.listId ?? null : get().activeListId;
     const entries = get().listEntries;
     const plan = chosenOptionRows(entries, get().items, id, listId);
     if (!plan) return;
@@ -3799,7 +3801,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       // option off the list at once, and that's the "what just happened?" a
       // shake answers.
       destructive: true,
-      redo: () => get().resolveChoice(id),
+      redo: () => get().resolveChoice(id, { listId }),
       undo: () => {
         for (const row of beforeItems) dbUpdateGroceryItem(row);
         const back = new Map(beforeItems.map(i => [i.id, i]));

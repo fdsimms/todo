@@ -28,12 +28,6 @@ interface Props {
   projectNotes: string;
   /** Titles already in the project, so the AI doesn't suggest duplicates. */
   existingTitles: string[];
-  /**
-   * The project is a list (see Project.kind). Its lines are written down
-   * exactly as given, so title rules are skipped for these the way the list's
-   * own add field skips them.
-   */
-  isList?: boolean;
   /** How many were added, so the screen can say so; the sheet closes itself. */
   onAdded?: (count: number) => void;
   onClose: () => void;
@@ -46,7 +40,7 @@ interface Props {
  * Modelled directly on TemplateSuggestionsSheet.
  */
 export function ProjectTaskSuggestionsSheet({
-  visible, projectId, projectTitle, projectNotes, existingTitles, isList = false, onAdded, onClose,
+  visible, projectId, projectTitle, projectNotes, existingTitles, onAdded, onClose,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -115,9 +109,7 @@ export function ProjectTaskSuggestionsSheet({
     dbTransaction(() => {
       suggestions.forEach((s, i) => {
         if (!accepted.has(i)) return;
-        // On a list, the same two opt-outs its own add field passes: a
-        // category would put the item under a header on Today.
-        addTask({ title: s.title, notes: s.notes, projectId }, undefined, { skipTitleRules: isList, skipCategoryDefault: isList });
+        addTask({ title: s.title, notes: s.notes, projectId });
       });
     });
     haptics.success();
@@ -151,7 +143,7 @@ export function ProjectTaskSuggestionsSheet({
     >
       <View style={styles.root}>
         <SheetHeader
-          title={isList ? 'Suggested items' : 'Suggested tasks'}
+          title="Suggested tasks"
           icon="sparkles"
           left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} />}
           right={
@@ -166,7 +158,7 @@ export function ProjectTaskSuggestionsSheet({
         {loading ? (
           <View style={styles.centered}>
             <ActivityIndicator size="large" color={colors.purple} />
-            <Text style={styles.loadingText}>Generating {isList ? 'items' : 'tasks'} for “{projectTitle}”…</Text>
+            <Text style={styles.loadingText}>Generating tasks for “{projectTitle}”…</Text>
           </View>
         ) : error ? (
           <EmptyState

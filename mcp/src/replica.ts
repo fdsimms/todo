@@ -77,7 +77,6 @@ import type {
   PersonGroup,
   PersonNote,
   Project,
-  ProjectKind,
   NutrientKey,
   Recipe,
   RecipeVote,
@@ -781,7 +780,8 @@ export interface ProjectPlan {
   category?: string | null;
   /** The task category every step falls back to, by name. */
   defaultTaskCategory?: string | null;
-  kind?: ProjectKind;
+  /** No finish line and never nudged: a running collection like a wish list. */
+  ongoing?: boolean;
   /** Start in Planning: its tasks are held off every list until it is marked ready. */
   planning?: boolean;
   steps: ProjectPlanStep[];
@@ -808,7 +808,6 @@ export interface ProjectPatch {
     priority?: number | null; difficulty?: 'easy' | 'normal' | 'hard' | null; effort?: number | null;
     showStreak?: boolean | null; vacationPause?: boolean | null; excludeFromSuggestions?: boolean | null;
   } | null;
-  kind?: ProjectKind;
   completed?: boolean;
   archived?: boolean;
   /**
@@ -843,8 +842,6 @@ export interface ProjectPatch {
   nudgeOptIn?: boolean;
   /** Somewhere the weekend nudge looks when a weekend is bare. */
   weekendSource?: boolean;
-  /** On a list: checked items stay on the page instead of folding away. */
-  showChecked?: boolean;
   /** Leave the "Next:" line off its card on the Projects screen. */
   hideNextStep?: boolean;
   /** Today gathers its tasks for the day under its name, at the top. */
@@ -6578,7 +6575,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
             deadline: plan.deadline ?? null,
             eventDate,
             category: plan.category ?? null,
-            kind: plan.kind ?? 'project',
+            ongoing: plan.ongoing === true,
             planning: plan.planning === true,
           });
           ensureCategory(defaultTaskCategory);
@@ -7005,14 +7002,14 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       let created: Project | undefined;
       db.dbTransaction(() => {
         const store = useProjectStore.getState();
-        created = store.createProject(source.title, { category: source.category, kind: source.kind });
+        created = store.createProject(source.title, { category: source.category });
         // The settings the person chose carry over; its dates and its
         // done-ness don't, since those were about the last time.
         store.updateProject(created.id, {
           notes: source.notes, defaultTaskCategory: source.defaultTaskCategory, taskDefaults: source.taskDefaults ?? null,
           ongoing: source.ongoing, nudgeOptIn: source.nudgeOptIn, nudgeCadenceDays: source.nudgeCadenceDays,
           autoSchedule: source.autoSchedule, weekendSource: source.weekendSource, destination: source.destination,
-          personIds: source.personIds, links: source.links, inOrder: source.inOrder, showChecked: source.showChecked, hideNextStep: source.hideNextStep,
+          personIds: source.personIds, links: source.links, inOrder: source.inOrder, hideNextStep: source.hideNextStep,
           groupOnToday: source.groupOnToday,
         });
         const sectionFor = new Map<string, string>();

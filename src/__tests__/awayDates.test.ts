@@ -377,7 +377,6 @@ describe('awayListDriver', () => {
     personIds: [],
     links: [],
     inOrder: false,
-    showChecked: false,
     archived: false,
     completed: false,
     ...extra,

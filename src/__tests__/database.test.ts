@@ -2088,7 +2088,6 @@ describe('Projects', () => {
     reviewDeclinedAt: null,
     reviewedAt: null,
     backfillDismissedFields: [],
-    kind: 'project' as const,
     awayStart: null,
     awayEnd: null,
     awayPauses: false,
@@ -2100,7 +2099,6 @@ describe('Projects', () => {
     personIds: [],
     links: [],
     inOrder: false,
-    showChecked: false,
     ...overrides,
   });
 
@@ -2370,7 +2368,6 @@ describe('backup and restore', () => {
       reviewDeclinedAt: null,
       reviewedAt: null,
       backfillDismissedFields: [],
-      kind: 'project' as const,
       awayStart: null,
       awayEnd: null,
       awayPauses: false,
@@ -2382,7 +2379,6 @@ describe('backup and restore', () => {
       personIds: [],
       links: [],
       inOrder: false,
-      showChecked: false,
     });
     dbInsertCategory('Home');
     dbSetSetting('themeMode', 'light');

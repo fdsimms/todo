@@ -135,14 +135,11 @@ export function projectCardCaption(
  * open.
  */
 export function projectProgressNote(
-  project: Pick<Project, 'ongoing'> & Partial<Pick<Project, 'kind'>>,
+  project: Pick<Project, 'ongoing'>,
   progress: ProjectProgress,
 ): string | null {
-  if (progress.total === 0) return project.kind === 'list' ? 'No items yet' : 'No tasks yet';
+  if (progress.total === 0) return 'No tasks yet';
   if (!project.ongoing) return null;
-  // A list has no open tasks to count: its lines are the thing it holds, so
-  // the count names how many there are.
-  if (project.kind === 'list') return progress.total === 1 ? '1 item' : `${progress.total} items`;
   const open = progress.total - progress.done;
   return open === 0 ? 'Nothing open' : `${open} open`;
 }
@@ -200,31 +197,6 @@ export function overdueRoutines(
     (t.recurrenceType ?? 'none') !== 'none' && t.dueDate != null &&
     getTaskDayStart(new Date(t.dueDate), dayResetTime).getTime() < todayStart.getTime()
   );
-}
-
-/**
- * A list's first few open lines, in page order, for its card: a list of
- * books reads better as "Dune, Piranesi" than as "12 open". Waiting lines
- * are included, since a list isn't worked in order.
- */
-export function projectListPreview(
-  projectId: string,
-  tasks: readonly Task[],
-  groups: readonly TaskGroup[] = [],
-  count = 2,
-): string[] {
-  const live = liveProjectSteps(projectId, tasks);
-  const titles: string[] = [];
-  for (const item of buildProjectListItems(live, [...groups], projectId)) {
-    const rows = item.type === 'task'
-      ? [item.task]
-      : [...item.children].sort((a, b) => a.sortOrder - b.sortOrder);
-    for (const row of rows) {
-      titles.push(displayTitleFor(row));
-      if (titles.length >= count) return titles;
-    }
-  }
-  return titles;
 }
 
 /** The sort choices, in the order the menu offers them. */

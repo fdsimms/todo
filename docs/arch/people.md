@@ -223,16 +223,18 @@ Search and Quick Search, and `TaskEditor`'s own title field.
   every prefix match not already linked, and picking one both rewrites the
   token and adds the person to `personIds`. Linking is the tap, never the
   text.
-- **A token can also resolve by a unique prefix, and an ambiguous one gets a
-  pick-one list instead of only refusing.** `matchPersonMentions` itself still
-  only ever returns a token that resolves cleanly — "@kel" matches "Kelsey"
-  on its own once no one else answers to that prefix, and "@sam" with two Sams
-  on file still resolves to nothing. `findAmbiguousMention` is the other half:
-  it finds the first token more than one person answers to (exact or by
-  prefix) and hands back its candidates, which is what `QuickAddModal`'s
+- **A prefix never resolves a token, and an ambiguous exact name gets a
+  pick-one list instead of only refusing.** `matchPersonMentions` only ever
+  returns a token that resolves cleanly, by exact name, nickname or first
+  word: "@kel" tags nobody (it gets the suggestion row below), and a group
+  is never matched by prefix either, because tagging several people off half
+  a word is a much bigger guess than tagging one. "@sam" with two Sams on
+  file also resolves to nothing. `findAmbiguousMention` is the other half:
+  it finds the first token more than one person answers to exactly and hands
+  back its candidates, which is what `QuickAddModal`'s
   tooltip renders as a small pick-one row in place of the usual single "tap to
-  set" bubble. The pick can't just rewrite the token text the way typing a
-  longer prefix does — two people who share an entire first name or nickname
+  set" bubble. The pick can't just rewrite the token text the way a
+  suggestion does — two people who share an entire first name or nickname
   (two Sams) can never become unique that way — so it's recorded by token text
   instead
   (`QuickAddModal`'s `personOverrides`) and layered back onto the live matches
@@ -246,14 +248,14 @@ Search and Quick Search, and `TaskEditor`'s own title field.
   first; the prefix scan never answers a multi-word name by its first word.
   Groups have no phrase index, so a group's name still resolves one word at a
   time.
-- **A short, still-growing token gets a live suggestion row, not silence.**
+- **A still-growing token gets a live suggestion row, not silence.**
   `getMentionSuggestions` (`src/utils/parseTaskInput.ts`) exists so someone
-  one or two letters into "@l" can tell whether they're spelling a real
-  person's name or literal text. It only ever fires for the token currently being typed (the
+  partway into "@l" or "@luk" can tell whether they're spelling a real
+  person's name or literal text, and it is the only way a prefix resolves. It only ever fires for the token currently being typed (the
   one running to the end of the title, so it disappears the moment you move
   on to the next word) and only for a token neither `matchPersonMentions` nor
   `findAmbiguousMention` already has an opinion about — an exact match
-  (unique or ambiguous) or an already-unique prefix is excluded, so this
+  (unique or ambiguous) is excluded, so this
   never competes with either. Picking a candidate **rewrites** the token to
   that person's resolving name (`QuickAddModal`'s `applyMentionSuggestion`),
   unlike the ambiguous-mention pick above: nothing here is an exact-name

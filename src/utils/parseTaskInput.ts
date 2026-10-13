@@ -2031,12 +2031,6 @@ export interface AmbiguousMention {
 // can name several people.
 const PERSON_TOKEN_PATTERN = /(?<!\w)@([a-z][\w'-]*)/gi;
 
-// Below this many characters, a prefix is too likely to land on more than one
-// name to be worth trying — the same floor calendarHistory.ts's
-// MIN_CALENDAR_NAME_LENGTH uses, though that one guards a guess made from text
-// written for another purpose, not a deliberate "@" token.
-const MIN_PREFIX_LENGTH = 3;
-
 /**
  * The three ways a person answers to a token — full name, nickname, and the
  * first word of the name — indexed once per call so `matchPersonMentions` and
@@ -2185,9 +2179,8 @@ function buildGroupNameIndex(groups: GroupMentionToken[]) {
  * Matches a name or a nickname, exactly and case-insensitively, and also the
  * first word of a name so "@gideon" finds "Gideon Reyes" — full names are how
  * people arrive from a contact card, and nobody types a surname mid-sentence.
- * Short of an exact match, a token of at least `MIN_PREFIX_LENGTH` characters
- * also matches a unique prefix, so "@kel" finds "Kelsey" while it's still
- * being typed rather than only once the last letter lands.
+ * A prefix never matches, for a person or a group: "@kel" is offered as a
+ * suggestion (`getMentionSuggestions`) rather than tagging "Kelsey" unasked.
  *
  * A token more than one person answers to — "@sam" with two Sams registered —
  * is never guessed here; see `findAmbiguousMention` for the pick-one list
@@ -2236,18 +2229,10 @@ export function matchPersonMentions(
       continue;
     }
     const token = m[1].toLowerCase();
-    let hits = byName.get(token);
-    // No exact answer yet: try a unique prefix, so a name still being typed
-    // can resolve before its last letter lands. Only tried when there is no
-    // exact hit at all — an exact match that is itself ambiguous stays that
-    // way rather than widening the search and picking up more candidates.
-    if (!hits && token.length >= MIN_PREFIX_LENGTH) {
-      const prefixIds = new Set<string>();
-      for (const [key, ids] of byName) {
-        if (key.startsWith(token)) ids.forEach(id => prefixIds.add(id));
-      }
-      if (prefixIds.size === 1) hits = [...prefixIds];
-    }
+    // Exact name, nickname or first word only. A prefix never resolves on its
+    // own: it gets the suggestion row (`getMentionSuggestions`) instead, so a
+    // half-typed name is a tap rather than a silent tag.
+    const hits = byName.get(token);
     if (hits && hits.length === 1) {
       mentions.push({ start: m.index, end: m.index + m[0].length, personId: hits[0] });
       continue;
@@ -2259,14 +2244,11 @@ export function matchPersonMentions(
     if (hits) continue;
 
     if (!groupByName) continue;
-    let groupHits = groupByName.get(token);
-    if (!groupHits && token.length >= MIN_PREFIX_LENGTH) {
-      const prefixIds = new Set<string>();
-      for (const [key, ids] of groupByName) {
-        if (key.startsWith(token)) ids.forEach(id => prefixIds.add(id));
-      }
-      if (prefixIds.size === 1) groupHits = [...prefixIds];
-    }
+    // Exact name or first word only, never a prefix: a group is several
+    // people, so a half-typed "@Byli" tagging all of them is a much bigger
+    // guess than tagging one. A prefix gets the suggestion row instead
+    // (`getMentionSuggestions`), which is a tap rather than a silent write.
+    const groupHits = groupByName.get(token);
     if (!groupHits || groupHits.length !== 1) continue;
     const group = groupById!.get(groupHits[0]);
     if (!group) continue;
@@ -2317,14 +2299,6 @@ export function findAmbiguousMention(
       }
       continue;
     }
-    if (token.length < MIN_PREFIX_LENGTH) continue;
-    const prefixIds = new Set<string>();
-    for (const [key, ids] of byName) {
-      if (key.startsWith(token)) ids.forEach(id => prefixIds.add(id));
-    }
-    if (prefixIds.size > 1) {
-      return { start: m.index, end: m.index + m[0].length, token, candidates: toCandidates(prefixIds) };
-    }
   }
   return null;
 }
@@ -2358,22 +2332,17 @@ export interface MentionSuggestion {
 /**
  * A "@name" token still being typed, at the very end of the title, offered as
  * a row of candidate suggestions before it's typed far enough to resolve on
- * its own. `matchPersonMentions` needs a full name/nickname or a *unique*
- * prefix of at least `MIN_PREFIX_LENGTH` characters to tint anything, so
- * someone one letter into "@luke" gets no feedback at all today — the actual
- * complaint this exists to answer, not a new way of resolving a mention.
+ * its own. `matchPersonMentions` needs a full name, nickname or first word to
+ * tint anything, so a prefix never resolves by itself and this row is how it
+ * gets resolved at all.
  *
  * It only ever returns a token `matchPersonMentions` (and `findAmbiguousMention`)
  * wouldn't already have an opinion about:
  * - An exact name/nickname match, unique or ambiguous, is excluded outright —
  *   the first is already live-tinted, the second is `findAmbiguousMention`'s
  *   job, and the two tooltips must never compete for the same token.
- * - A unique prefix `MIN_PREFIX_LENGTH` characters or longer is excluded too,
- *   for the same reason: it's already resolved and tinted, so suggesting it
- *   again would just be a second UI pointing at what the title already shows.
- * - What's left is a short (1-2 character) prefix with at least one
- *   candidate, resolved or not — exactly the window neither existing function
- *   covers.
+ * - What's left is any prefix of any length with at least one candidate,
+ *   unique or not, which neither existing function covers.
  *
  * Groups are only tried once no person answers to the prefix at all, the same
  * fallback order `matchPersonMentions` uses — a group whose name happens to
@@ -2406,8 +2375,6 @@ export function getMentionSuggestions(
   for (const [key, ids] of byName) {
     if (key.startsWith(token)) ids.forEach(id => prefixIds.add(id));
   }
-  if (prefixIds.size === 1 && token.length >= MIN_PREFIX_LENGTH) return null; // matchPersonMentions already has this
-
   if (prefixIds.size > 0) {
     return {
       start, end, token,
@@ -2428,7 +2395,6 @@ export function getMentionSuggestions(
     if (key.startsWith(token)) ids.forEach(id => groupIds.add(id));
   }
   if (groupIds.size === 0) return null;
-  if (groupIds.size === 1 && token.length >= MIN_PREFIX_LENGTH) return null;
 
   const groupById = new Map(groups.map(g => [g.id, g]));
   const candidates: MentionSuggestionCandidate[] = [...groupIds]

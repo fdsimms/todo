@@ -945,6 +945,32 @@ describe('addManyFromText', () => {
   });
 });
 
+describe('resolveChoice on a named list', () => {
+  const away: GroceryList = { id: 'away', name: 'Airbnb', sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z' };
+  const row = (itemId: string, listId: string | null): GroceryListEntry => ({
+    itemId, listId, checked: false, sortOrder: 0, choiceGroup: 'fruit', addedAt: '2026-01-01T00:00:00.000Z',
+  });
+
+  it('settles the either/or on that list only, whichever list is open (the watch names its own)', () => {
+    const apples = makeItem({ name: 'Apples', onList: true });
+    const pears = makeItem({ name: 'Pears', onList: true });
+    seed([apples, pears], {
+      lists: [away],
+      listEntries: [row(apples.id, 'away'), row(pears.id, 'away'), row(apples.id, null), row(pears.id, null)],
+    });
+
+    useGroceryStore.getState().setCheckedMany([apples.id], true, { listId: 'away' });
+    useGroceryStore.getState().resolveChoice(apples.id, { listId: 'away' });
+
+    const entries = useGroceryStore.getState().listEntries;
+    // Away: apples won, pears left. Home: untouched, still an open choice.
+    expect(entries.filter(e => e.listId === 'away').map(e => e.itemId)).toEqual([apples.id]);
+    expect(entries.find(e => e.listId === 'away')).toMatchObject({ checked: true, choiceGroup: null });
+    expect(entries.filter(e => e.listId === null)).toHaveLength(2);
+    expect(entries.filter(e => e.listId === null).every(e => e.choiceGroup === 'fruit')).toBe(true);
+  });
+});
+
 // ─── toggleChecked and the cart hold ─────────────────────────────────────────
 
 describe('toggleChecked', () => {
@@ -8472,7 +8498,6 @@ describe('checkAwayGroceryList', () => {
     personIds: [],
     links: [],
     inOrder: false,
-    showChecked: false,
     archived: false,
     completed: false,
     ...extra,
