@@ -51,6 +51,7 @@ import { weatherWaitChipText } from '../utils/weatherWait';
 import { meterChipText } from '../utils/meters';
 import { useMeterReadingStore } from '../store/useMeterReadingStore';
 import { MeterReadingSheet } from './MeterReadingSheet';
+import { NutrientTaskBar } from './NutrientTaskBar';
 import { formatDeadlineLabel, isDeadlineTimePassed, formatScheduledDate, formatTaskDate, formatHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate, getTaskDayStart, getCurrentDayStart, liveStreakCount, getLogicalDayKey, dayKeyToDate, formatTimeOfDay, hoursUnlockLabel, getLogicalNow } from '../utils/dateUtils';
 import { isNegativeTask, isFailedToday, slipsToday, slipAllowanceOf } from '../utils/negativeHabits';
 import { negativeHoldNow, negativeHoldOffered } from '../utils/negativeHold';
@@ -3025,6 +3026,7 @@ const TaskItemRow = React.memo(function TaskItem({
             )}
           </View>
         )}
+        {(task.generatedKind === 'limitWarning' || task.generatedKind === 'goalTarget') && <NutrientTaskBar task={task} />}
         {activeTitleOffer && (
           <TitleSuggestionBanner
             icon={

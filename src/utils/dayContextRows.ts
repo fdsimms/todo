@@ -364,7 +364,8 @@ export function healthContextRows(
  *
  * A fourth source beside the calendar, the menu and Health, and filed as a
  * `health` row because it is the same kind of thing: a reading about the day,
- * with nothing to tick and nowhere for a tap to go. Unlike a step count it is
+ * with nothing to tick and nowhere for a tap to go. A limit whose Stay under task
+ * is on the list is left out (`covered`), since the task draws the same bar. Unlike a step count it is
  * drawn at zero, since "16g left" before breakfast is the budget the day starts
  * with, which is the point of showing it. The category is the person's
  * (`limitsTodayCategory`), which is also the off switch.
@@ -373,9 +374,10 @@ export function limitContextRows(
   totals: Partial<Record<NutrientKey, number>>,
   targets: NutritionTargets,
   limits: readonly NutrientKey[],
-  opts: { category: string | null; warnPercent: number },
+  opts: { category: string | null; warnPercent: number; covered?: readonly NutrientKey[] },
 ): ContextRow[] {
-  return activeLimits(targets, limits).map(key => {
+  const covered = opts.covered ?? [];
+  return activeLimits(targets, limits).filter(key => !covered.includes(key)).map(key => {
     const total = totals[key] ?? 0;
     const target = targets[key]!;
     const unit = NUTRIENT_LABEL[key].unit;
@@ -414,9 +416,9 @@ export function goalContextRows(
   totals: Partial<Record<NutrientKey, number>>,
   targets: NutritionTargets,
   limits: readonly NutrientKey[],
-  opts: { category: string | null; hidden?: readonly NutrientKey[] },
+  opts: { category: string | null; hidden?: readonly NutrientKey[]; covered?: readonly NutrientKey[] },
 ): ContextRow[] {
-  const hidden = opts.hidden ?? [];
+  const hidden = [...(opts.hidden ?? []), ...(opts.covered ?? [])];
   return goalNutrientKeys(targets, limits)
     .filter(key => !hidden.includes(key))
     .map(key => {
