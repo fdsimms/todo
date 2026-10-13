@@ -2067,19 +2067,6 @@ function ProjectDetailContent() {
                     </View>
                   </View>
                 )}
-                {/* Sorting sits at the top rather than under the list, where
-                    it used to share a row with the add button. */}
-                {isList && !selectionMode && lineCount >= 3 && !filteringLines && (
-                  <View style={[styles.sectionAddRow, styles.listSortRow]}>
-                    <InlineAction
-                      icon="swap-vertical-outline"
-                      label="Sort A to Z"
-                      variant="neutral"
-                      onPress={sortListAToZ}
-                      accessibilityLabel="Sort this list’s items from A to Z"
-                    />
-                  </View>
-                )}
                 {isList && !selectionMode && topLineOpen !== null && (
                   <NewLineField
                     key={`top-line-${topLineOpen}`}
@@ -2656,6 +2643,10 @@ function ProjectDetailContent() {
             // finishes and is never pulled; a project gets both back). See
             // kindSwitchFields.
             onConvert={() => updateProject(project.id, { kind: isList ? 'project' : 'list' })}
+            // Sorting lives in this menu rather than as a button over the
+            // list. Withheld while narrowed (only some lines are showing) or
+            // selecting, as the button was.
+            onSortAToZ={isList && !selectionMode && lineCount >= 3 && !filteringLines ? sortListAToZ : undefined}
           />}
         </LazySheet>
         <ProjectEditor
@@ -2808,7 +2799,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   // The list-level sort sits directly on the screen rather than inside a
   // section tray, so it needs the same side gutter as the cards around it.
-  listSortRow: { marginHorizontal: spacing.md },
   newSectionField: { marginTop: spacing.sm },
   inlineNewTask: {
     flexDirection: 'row',

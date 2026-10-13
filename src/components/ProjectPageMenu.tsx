@@ -16,6 +16,8 @@ interface Props {
   anchor?: CardAnchor | null;
   project: Project;
   onConvert: () => void;
+  /** Sorts a list's items A to Z. Omitted when there is nothing to sort (too few items, narrowed by the find field, selecting). */
+  onSortAToZ?: () => void;
 }
 
 interface MenuRowProps {
@@ -62,7 +64,7 @@ function MenuRow({ card, icon, label, hint, onPress, destructive, checked, acces
  * rest (finish, file away, reuse, delete) are the same actions the editor's
  * bottom cards run, through `useProjectActions`.
  */
-export function ProjectPageMenu({ visible, onClose, anchor, project, onConvert }: Props) {
+export function ProjectPageMenu({ visible, onClose, anchor, project, onConvert, onSortAToZ }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const card = useCardSheet();
@@ -81,6 +83,17 @@ export function ProjectPageMenu({ visible, onClose, anchor, project, onConvert }
       popoverWidth={300}
       scrimLabel="Close menu"
     >
+      {!!onSortAToZ && (
+        <>
+          <MenuRow card={card}
+            icon="swap-vertical-outline"
+            label="Sort A to Z"
+            hint="Reorders the items on this list. Undo is available afterward"
+            onPress={onSortAToZ}
+          />
+          <View style={styles.sep} />
+        </>
+      )}
       <MenuRow card={card}
         icon={isList ? 'briefcase-outline' : 'list-outline'}
         label={isList ? 'Convert to project' : 'Convert to list'}
