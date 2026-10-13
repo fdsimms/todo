@@ -232,6 +232,8 @@ interface Props<T> {
   holdRowsOnHeaderResize?: boolean;
   ListFooterComponent?: React.ReactNode;
   onScrollBeginDrag?: () => void;
+  /** Fires on every scroll event. For callers that only want to know the list is moving. */
+  onScrollActivity?: () => void;
   /**
    * Fires when a scroll comes to rest — finger lifted, or momentum spent. For
    * callers that want to act on "the user has finished moving the list" rather
@@ -344,6 +346,7 @@ export function ReorderableList<T>({
   holdRowsOnHeaderResize = false,
   ListFooterComponent,
   onScrollBeginDrag,
+  onScrollActivity,
   onScrollSettle,
   onEndReached,
   onEndReachedThreshold = 300,
@@ -1130,6 +1133,7 @@ export function ReorderableList<T>({
     const { contentOffset, contentSize, layoutMeasurement, contentInset } = e.nativeEvent;
     scrollOffsetRef.current = contentOffset.y;
     keyboardScroll.noteScroll(e);
+    onScrollActivity?.();
     // The net under every way the offset can be moved without a finger on the
     // list: the header anchoring above shifting it in the same transaction as
     // rows leave, a keyboard scrolling a field into view, a scrollTo aimed past
