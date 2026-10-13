@@ -84,7 +84,7 @@ Two consequences worth knowing before editing either side:
 - **Root `tsc --noEmit` typechecks everything in `mcp/` except `mcp/src/server.ts`**, which is
   excluded in `tsconfig.json` because it is the one file importing packages that only exist in
   `mcp/node_modules`. Everything else is held to the same typecheck as the app, which is the point.
-- **`mcp/Dockerfile` runs esbuild over `src/server.ts` with the output discarded.** `server.ts` is
+- **`mcp/Dockerfile` runs esbuild over `mcp/src/server.ts` with the output discarded.** `server.ts` is
   the file root `tsc` skips, and `tsx` only parses it when the machine starts, so a syntax error
   there used to crash-loop the new machine after the old one was gone. The check makes it fail the
   image build instead. It is deliberately not a bundle that gets run: the shim has to be in the
