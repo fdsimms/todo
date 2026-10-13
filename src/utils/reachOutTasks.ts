@@ -18,15 +18,6 @@ import type { HistoryEntry } from './personHistory';
  */
 
 /**
- * How many rows the pass may write at once.
- *
- * Two, not three: these arrive uninvited and are about people rather than
- * work, so the ceiling is lower than `projectReview`'s. A fortnight away must
- * not produce a screen of them.
- */
-export const MAX_REACH_OUT_TASKS = 2;
-
-/**
  * How long a swipe-away holds for.
  *
  * `projectReview` scopes its decline to the *day*, which is right there and
@@ -133,34 +124,6 @@ export function reachOutsHandledRecently(
   return done;
 }
 
-/**
- * How many NEW rows the pass may write today.
- *
- * The cap is on rows the person sees in a day, not on rows alive at this
- * instant. Counting only live rows meant finishing one at 10pm freed its slot
- * and the next foreground wrote the next person's, dated noon, so it looked
- * like it had been there all day. A row finished, archived or swiped away today
- * keeps its slot until the day turns over.
- */
-export function reachOutSlotsOpen(
-  tasks: readonly Pick<Task, 'generatedKind' | 'generatedSourceId' | 'completed' | 'completedAt' | 'archived' | 'archivedAt'>[],
-  people: readonly Pick<Person, 'reachOutDeclinedAt'>[],
-  today: Date,
-  cap: number = MAX_REACH_OUT_TASKS
-): number {
-  const sameDay = (stamp: string | null | undefined) =>
-    !!stamp && differenceInCalendarDays(today, getDayStart(new Date(stamp))) === 0;
-  const live = liveGeneratedTasksOfKind(tasks, 'reachOut').length;
-  let spentToday = 0;
-  for (const task of tasks) {
-    if (!reachOutPersonId(task)) continue;
-    if ((task.completed && sameDay(task.completedAt)) || (task.archived && sameDay(task.archivedAt))) spentToday++;
-  }
-  // A swipe-away deletes the row, so its only trace is the person's decline stamp.
-  spentToday += people.filter(p => sameDay(p.reachOutDeclinedAt)).length;
-  return Math.max(0, cap - live - spentToday);
-}
-
 /** One person who should have a reach-out task sitting on the list right now. */
 export interface ReachOutWant {
   personId: string;
@@ -203,7 +166,7 @@ export function wantedReachOuts(
   candidates: readonly ReachOutCandidate[],
   today: Date,
   handledRecently: ReadonlySet<string> = new Set(),
-  cap: number = MAX_REACH_OUT_TASKS
+  cap: number = Infinity
 ): ReachOutWant[] {
   return candidates
     .filter(({ person, lastTogether }) => {

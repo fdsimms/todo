@@ -396,27 +396,17 @@ person cannot.
   `cadenceDays` are both off on every new person, and the editor ties them
   together: setting a cadence *is* the opt-in, and clearing it is how somebody
   stops being nudged. The global setting only decides whether the pass runs.
-- **The cap forces the one choice the app has to make between people, and it
-  makes it on the user's own order.** Sorting the due set by longest-since is
-  the obvious answer and is exactly what the "never" list rules out, even done
-  invisibly where nobody sees it. So the tie breaks on `sortOrder`, the hand
-  drag on the People screen, which is the only ranking the feature may contain
-  because it is the one somebody made on purpose. The cost, stated plainly:
-  somebody low in a long list whose neighbours above are perpetually due could
-  wait. In practice the set rotates, since acting on a nudge resets that
-  person's clock. The alternative is the app quietly deciding which friend it
-  thinks you have let down most.
+- **There is no cap.** Everybody whose cadence has run out gets a row, so
+  nothing arrives because somebody else's row was finished and freed a slot.
+  Where an order is still needed (the queue "batch the reach-outs" builds), it
+  is `sortOrder`, the hand drag on the People screen, never longest-since,
+  which is ranking by neglect and is exactly what the "never" list rules out.
 - **A swipe-away holds for a week, not for a day.** `projectReview` scopes its
   decline to the day, which is right there and nagging here: a nudge about
   Sarah returning tomorrow morning reads as the app disagreeing with you about
   a friendship. Capped at the cadence (`Math.min(7, cadence)`) so a four-day
   cadence is not silenced for seven, which is the objection to cadence-scoped declines pointed the only
   way it actually bites.
-- **A slot freed today is not refilled today.** The cap of two counts rows
-  finished, archived or swiped away today as well as live ones
-  (`reachOutSlotsOpen`). Counting only live rows meant completing one at night
-  wrote the next person's row on the following foreground, dated noon, so it
-  looked as if it had been there all day.
 - **The note beats the clock.** `Person.askAbout` turns the title into "Ask
   Tessa about the new job" instead of "Catch up with Tessa" — a reason to get
   in touch rather than a prompt to. Rule 7, in one field.
@@ -481,7 +471,7 @@ small guilts spread across a week.
 - **`focusQueueFromPinned` is reused unchanged, not forked.** "Take this short
   hand-picked list as-is, filtered by eligibility and window-fit" is exactly
   what a ≤2-item reach-out list needs, and it's exactly what pinning already
-  needed — `MAX_REACH_OUT_TASKS` is the ranking here the way `pinnedOrder` is
+  needed — `sortOrder` is the ranking here the way `pinnedOrder` is
   there. A second, reach-out-flavoured copy of that function would be the
   drift the shared-primitives notes elsewhere in this file exist to prevent.
 - **The menu row is omitted, not shown-and-explained, when there's nothing to
@@ -1311,7 +1301,7 @@ Two separate mechanisms, because the pain point has two shapes:
   due on the same day for different reasons. `collapseGroupedReachOuts`
   (`reachOutTasks.ts`) folds any wants sharing a group into one row —
   "Catch up with {group name}" — **after** `wantedReachOuts` runs uncapped
-  and **before** the `MAX_REACH_OUT_TASKS` cap is applied, so a couple due at
+  and so a couple due at
   once merges into a single row instead of one of them losing the contest
   for a capped slot. Order is preserved from the already-sorted want list, so
   the cap's own tie-break still runs on the user's hand-order
