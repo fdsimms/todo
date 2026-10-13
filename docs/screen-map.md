@@ -30,7 +30,7 @@ components below.
 - `src/screens/CategoryDetailScreen.tsx` — BulkActionBar, DeliverablePromptQueue, DetailHeader, EmptyState, Fab, PaintSelection, PinIcon, QuickAddModal, ScrollToTopButton, SpotlightOverlay, TaskEditor, TaskItem
 - `src/screens/CookbookDetailScreen.tsx` — CookbookIndexEntrySheet, DetailHeader, EmptyNote, EmptyState, InlineAction, ScrollToTopButton, SearchField, SheetHeader, SheetHeaderButton, SheetModal
 - `src/screens/CookbooksScreen.tsx` — CookWithSheet, CookbookEditor, EmptyState, ScreenHeader, ScrollToTopButton
-- `src/screens/FoodLogScreen.tsx` — ActionMenu, AnimatedCollapsible, CardSheet, CatalogLinkSheet, CountStepper, CsvExportSheet, EmptyNote, EstimateAmountSheet, Fab, FabDropZones, FoodLogEntrySheet, HubPills, +17 more
+- `src/screens/FoodLogScreen.tsx` — ActionMenu, AnimatedCollapsible, CardSheet, CatalogLinkSheet, CountStepper, CsvExportSheet, EmptyNote, EstimateAmountSheet, Fab, FabDropZones, FoodLogEntrySheet, HubPills, +18 more
 - `src/screens/GroceryScreen.tsx` — ActiveTripBanner, BarcodeScanSheet, EmptyState, Fab, FabDropZones, FinishShoppingSheet, GroceryAISheet, GroceryAddSheet, GroceryAislesSheet, GroceryCatalogSheet, GroceryItemSheet, GroceryListSheet, +16 more
 - `src/screens/JournalScreen.tsx` — EmptyState, HubPills, JournalDaySheet, JournalEntrySheet, JournalMonthSheet, JournalText, JournalWordGoalSheet, ScreenHeader, ScreenSettingsSheet, ScrollToTopButton, SearchField
 - `src/screens/KitchenScreen.tsx` — ActiveTripBanner, BarcodeScanSheet, CookWithSheet, EmptyState, GroceryItemSheet, HubPills, InlineAction, ItemDisposalOffer, LazySheet, LeftoverSheet, PantryReviewSheet, PressableScale, +5 more
@@ -195,6 +195,7 @@ Where each component can appear.
 - `src/components/JournalPromptsSheet.tsx` — on SettingsGroupScreen
 - `src/components/JournalText.tsx` — on JournalScreen, MoodDayScreen, PersonDetailScreen
 - `src/components/JournalWordGoalSheet.tsx` — on JournalScreen, SettingsGroupScreen
+- `src/components/LabelSubjectSheet.tsx` — on FoodLogScreen, app shell
 - `src/components/LaterStackRow.tsx` — on TodayScreen
 - `src/components/LazySheet.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, GroceryScreen, KitchenScreen, MealPlanScreen, MedicationDetailScreen, MedicationScreen, MetersScreen, PersonDetailScreen, ProjectDetailScreen, +10 more
 - `src/components/LeftoverSheet.tsx` — on KitchenScreen, MealPlanScreen, app shell

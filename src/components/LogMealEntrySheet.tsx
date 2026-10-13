@@ -9,6 +9,7 @@ import { logInstantFor } from '../utils/foodLog';
 import { featureHidden } from '../utils/simpleMode';
 import { FoodLogEntrySheet } from './FoodLogEntrySheet';
 import { ScanToLogFlow } from './ScanToLogFlow';
+import type { LabelSubject } from './LabelSubjectSheet';
 import type { MealSlot } from '../types';
 
 /**
@@ -115,7 +116,7 @@ export function LogMealEntrySheet() {
   // The food whose nutrition label is being photographed, with what `scan`
   // captures because `pending` is gone once the panel is saved.
   const [label, setLabel] = useState<
-    { name: string; slot: MealSlot | null; dayKey: string; mealPlanEntryId: string | null } | null
+    { subject: LabelSubject; slot: MealSlot | null; dayKey: string; mealPlanEntryId: string | null } | null
   >(null);
 
   return (
@@ -129,8 +130,8 @@ export function LogMealEntrySheet() {
         onScan={featureHidden('barcodeScanning', simpleMode) ? undefined : () => {
           setScan({ slot: pending?.slot ?? null, dayKey: pending?.dayKey ?? dayKeyOf(getLogicalToday()), mealPlanEntryId });
         }}
-        onPhotographLabel={featureHidden('barcodeScanning', simpleMode) ? undefined : name => {
-          setLabel({ name, slot: pending?.slot ?? null, dayKey: pending?.dayKey ?? dayKeyOf(getLogicalToday()), mealPlanEntryId });
+        onPhotographLabel={featureHidden('barcodeScanning', simpleMode) ? undefined : subject => {
+          setLabel({ subject, slot: pending?.slot ?? null, dayKey: pending?.dayKey ?? dayKeyOf(getLogicalToday()), mealPlanEntryId });
         }}
         canEstimate={estimateRoute !== 'unavailable'}
         onDeclineMeal={mealPlanEntryId ? () => {
@@ -146,7 +147,7 @@ export function LogMealEntrySheet() {
               mealPlanEntryId={(scan ?? label)?.mealPlanEntryId ?? null}
               onClose={() => setScan(null)}
               onLogged={() => setPending(null)}
-              labelName={label?.name ?? null}
+              label={label?.subject ?? null}
               onLabelClose={() => setLabel(null)}
             />
           </>
