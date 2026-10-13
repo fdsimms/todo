@@ -4,7 +4,7 @@ import type { EventPeopleIndex } from './eventPeople';
 import { peopleForEvent } from './eventPeople';
 import { birthdayInYear } from './birthdayTasks';
 import { holidayOn, type HolidayConfig } from './holidays';
-import { EXERCISED_MINUTES, type MoodContextSources } from './moodContextSources';
+import { EXERCISED_MINUTES, OUTSIDE_MINUTES, type MoodContextSources } from './moodContextSources';
 
 /**
  * Context tags the mood sheet can offer from facts the app already holds about
@@ -33,6 +33,8 @@ export interface MoodDayInputs {
   people: readonly Pick<Person, 'birthdayMonth' | 'birthdayDay' | 'archived'>[];
   /** Today's exercise so far, or null when Health has nothing. Read only for today. */
   exerciseMinutesToday: number | null;
+  /** Today's Time in Daylight so far, or null. Read only for today. */
+  daylightMinutesToday: number | null;
 }
 
 /** The tags the enabled sources offer for one day, in a stable order. */
@@ -66,6 +68,11 @@ export function moodDayOffers(sources: MoodContextSources, input: MoodDayInputs)
   if (sources.exercise && input.isToday
     && input.exerciseMinutesToday !== null && input.exerciseMinutesToday >= EXERCISED_MINUTES) {
     tags.push('Exercised');
+  }
+
+  if (sources.outside && input.isToday
+    && input.daylightMinutesToday !== null && input.daylightMinutesToday >= OUTSIDE_MINUTES) {
+    tags.push('Went outside');
   }
 
   return tags;

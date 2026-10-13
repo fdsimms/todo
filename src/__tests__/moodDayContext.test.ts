@@ -1,6 +1,7 @@
 import { moodDayOffers, type MoodDayInputs } from '../utils/moodDayContext';
 import {
   EXERCISED_MINUTES,
+  OUTSIDE_MINUTES,
   NO_MOOD_CONTEXT_SOURCES,
   parseMoodContextSources,
   type MoodContextSources,
@@ -13,7 +14,7 @@ jest.mock('../store/useSettingsStore', () => ({
 }));
 
 const on = (over: Partial<MoodContextSources> = {}): MoodContextSources => ({
-  dayOff: true, social: true, birthday: true, exercise: true, ...over,
+  dayOff: true, social: true, birthday: true, exercise: true, outside: true, ...over,
 });
 
 const event = (over: Partial<BusyEvent> = {}): BusyEvent => ({
@@ -35,6 +36,7 @@ const base = (over: Partial<MoodDayInputs> = {}): MoodDayInputs => ({
   eventPeople: indexEventPeople([], {}),
   people: [],
   exerciseMinutesToday: null,
+  daylightMinutesToday: null,
   ...over,
 });
 
@@ -43,7 +45,7 @@ describe('moodDayOffers', () => {
     const e = event();
     const out = moodDayOffers(NO_MOOD_CONTEXT_SOURCES, base({
       events: [e], eventPeople: indexEventPeople([linkFor(e, ['p'])], {}),
-      people: [{ birthdayMonth: 7, birthdayDay: 4, archived: false }], exerciseMinutesToday: 90,
+      people: [{ birthdayMonth: 7, birthdayDay: 4, archived: false }], exerciseMinutesToday: 90, daylightMinutesToday: 90,
     }));
     expect(out).toEqual([]);
   });
@@ -90,6 +92,14 @@ describe('moodDayOffers', () => {
     expect(moodDayOffers(on(), base({ isToday: false, exerciseMinutesToday: 90 }))).not.toContain('Exercised');
   });
 
+  it('offers Went outside from the daylight threshold, today only, and never from missing data', () => {
+    expect(moodDayOffers(on(), base({ daylightMinutesToday: OUTSIDE_MINUTES }))).toContain('Went outside');
+    expect(moodDayOffers(on(), base({ daylightMinutesToday: OUTSIDE_MINUTES - 1 }))).not.toContain('Went outside');
+    expect(moodDayOffers(on(), base({ daylightMinutesToday: null }))).not.toContain('Went outside');
+    expect(moodDayOffers(on(), base({ isToday: false, daylightMinutesToday: 90 }))).not.toContain('Went outside');
+    expect(moodDayOffers(on({ outside: false }), base({ daylightMinutesToday: 90 }))).not.toContain('Went outside');
+  });
+
   it('keeps each switch independent', () => {
     expect(moodDayOffers(on({ dayOff: false }), base())).not.toContain('Holiday');
   });
@@ -98,7 +108,7 @@ describe('moodDayOffers', () => {
 describe('parseMoodContextSources', () => {
   it('reads what was stored and treats anything unreadable as off', () => {
     expect(parseMoodContextSources(JSON.stringify({ dayOff: true, social: 'yes' }))).toEqual({
-      dayOff: true, social: false, birthday: false, exercise: false,
+      dayOff: true, social: false, birthday: false, exercise: false, outside: false,
     });
     expect(parseMoodContextSources('not json')).toEqual(NO_MOOD_CONTEXT_SOURCES);
     expect(parseMoodContextSources(null)).toEqual(NO_MOOD_CONTEXT_SOURCES);

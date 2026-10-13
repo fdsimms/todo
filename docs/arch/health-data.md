@@ -1725,3 +1725,17 @@ triggers as the others. (`checkWeighInTasks` is already in `catchUpPasses()` and
 reads recent weights there, so a background run does reach Health once.)
 Adding the snapshot is a change to make on purpose, with the permission string
 re-read first.
+
+## Time in Daylight
+
+`daylightMinutes` on `readDailyHealth` is `HKQuantityTypeIdentifier.timeInDaylight`
+(iOS 17+, an Apple Watch's light sensor), summed by the same collection query as
+exercise time. It is named only behind `#available(iOS 17.0, *)`, since the pod's
+floor is 15.1, and an older OS spends its slot in the countdown instead of
+asking. Its one reader is the mood log's "Went outside" offer
+(`moodDayContext.ts`), which only ever answers with a positive: a null is no
+watch, an old OS, a refusal or a day not yet out, and is never "didn't go
+outside". `runDietQuery` refuses a type whose `aggregationStyle` isn't
+`.cumulative`, because a cumulative-sum query on a discrete type raises. An
+install that allowed Health before this was added is not asked for it until
+somebody taps the access row again, like every addition to `readTypes`.

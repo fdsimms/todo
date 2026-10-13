@@ -33,5 +33,6 @@ export function moodDayOffersFor(day: Date, isToday: boolean): string[] {
     eventPeople: useEventPeopleStore.getState().links,
     people: usePersonStore.getState().people,
     exerciseMinutesToday: health.today?.dayKey === dayKey ? health.today.exerciseMinutes : null,
+    daylightMinutesToday: health.today?.dayKey === dayKey ? health.today.daylightMinutes : null,
   });
 }

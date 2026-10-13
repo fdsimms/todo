@@ -113,6 +113,13 @@ export interface HealthDay {
    */
   exerciseMinutes: number | null;
   /**
+   * Minutes of Time in Daylight so far today, or null. Same rules as `steps`,
+   * and read by nothing but the mood log's "Went outside" offer, which only
+   * ever answers with a positive: a null is no watch, an older OS, a refusal
+   * or a day not yet out, and is never a claim that nobody went outside.
+   */
+  daylightMinutes: number | null;
+  /**
    * Whether exercise minutes were recorded on any day of the trailing window
    * — **not a reading about today**, and the one field on this record that
    * isn't.
@@ -371,6 +378,7 @@ export const useHealthStore = create<HealthState>((set, get) => ({
           calorieKcal: reading?.calorieKcal ?? null,
           activeEnergyKcal: reading?.activeEnergyKcal ?? null,
           exerciseMinutes: reading?.exerciseMinutes ?? null,
+          daylightMinutes: reading?.daylightMinutes ?? null,
           exerciseMinutesSeenRecently,
           rings: parseActivitySummary(summaryJson),
           readAt: now.toISOString(),

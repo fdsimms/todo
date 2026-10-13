@@ -105,6 +105,8 @@ const MOOD_SOURCE_ROWS: readonly {
     hint: 'Picks Birthday on a day someone in People has one.' },
   { key: 'exercise', entryId: 'moodSourceExercise', icon: 'barbell-outline', label: 'Exercise',
     hint: 'Picks Exercised once Health shows 30 minutes of exercise today. Needs Read Apple Health.' },
+  { key: 'outside', entryId: 'moodSourceOutside', icon: 'sunny-outline', label: 'Time outside',
+    hint: 'Picks Went outside once Health shows 30 minutes in daylight today. Needs Read Apple Health and an Apple Watch. If you allowed Health access earlier, tap Health access again to include it.' },
 ];
 
 export function HealthSettings() {

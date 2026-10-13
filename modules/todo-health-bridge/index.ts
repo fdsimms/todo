@@ -154,6 +154,14 @@ export interface HealthDayReading {
    * exercise that they did none.
    */
   exerciseMinutes: number | null;
+  /**
+   * Minutes of Time in Daylight for the day, or null. A cumulative quantity an
+   * Apple Watch's light sensor writes (iOS 17+), so it rides the same summed
+   * collection query. Null covers everything the other figures' null does and
+   * more: no watch, an older OS, or an install that allowed Health before this
+   * was added and has not tapped the access row since. Never read as zero.
+   */
+  daylightMinutes: number | null;
   /** Milligrams of dietary sodium logged for the day, or null. Not read from
    * this app's own writes — nothing here writes to Health — but from whatever
    * food-logging app the person already uses; see the module note above. */
@@ -437,7 +445,7 @@ export async function readDailyHealth(
       if (typeof entry !== 'object' || entry === null) continue;
       const {
         start, steps, sleepMinutes, exerciseMinutes, sodiumMg, proteinG, satFatG, fiberG, sugarG, caffeineMg, waterMl, calorieKcal,
-        activeEnergyKcal,
+        activeEnergyKcal, daylightMinutes,
       } = entry as Record<string, unknown>;
       // A row with no instant cannot be filed under a day, so it is dropped
       // rather than guessed at — the same refusal the native side makes when
@@ -457,6 +465,7 @@ export async function readDailyHealth(
         waterMl: countOrNull(waterMl),
         calorieKcal: countOrNull(calorieKcal),
         activeEnergyKcal: countOrNull(activeEnergyKcal),
+        daylightMinutes: countOrNull(daylightMinutes),
       });
     }
     return out;

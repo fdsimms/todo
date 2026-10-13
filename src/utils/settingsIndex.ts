@@ -609,6 +609,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['mood', 'context', 'tag', 'people', 'party', 'suggest', 'pre-pick'] },
   { id: 'moodSourceExercise', groupId: 'health', label: 'Exercise', section: 'Mood log suggestions',
     keywords: ['mood', 'context', 'tag', 'workout', 'activity', 'health', 'suggest', 'pre-pick'] },
+  { id: 'moodSourceOutside', groupId: 'health', label: 'Time outside', section: 'Mood log suggestions',
+    keywords: ['mood', 'context', 'tag', 'daylight', 'sun', 'outdoors', 'went outside', 'watch', 'suggest', 'pre-pick'] },
   { id: 'journalPrompts', groupId: 'health', label: 'Your prompts', section: 'Journal',
     keywords: ['journal', 'diary', 'writing', 'question', 'suggest', 'custom', 'idea'] },
 

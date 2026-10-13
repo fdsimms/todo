@@ -4,7 +4,7 @@
  * settings store can hold the type without importing the calendar and People
  * code the offers read.
  *
- * **All four are off until the person turns them on**, since seeding a tag the
+ * **All five are off until the person turns them on**, since seeding a tag the
  * person did not ask for makes the log less their own record. Each is rare
  * enough to mean something: a tag that applied every weekday would give the
  * contrast card nothing to compare.
@@ -18,13 +18,15 @@ export interface MoodContextSources {
   birthday: boolean;
   /** "Exercised" once today's exercise reaches `EXERCISED_MINUTES`. */
   exercise: boolean;
+  /** "Went outside" once today's Time in Daylight reaches `OUTSIDE_MINUTES`. */
+  outside: boolean;
 }
 
 export const NO_MOOD_CONTEXT_SOURCES: MoodContextSources = {
-  dayOff: false, social: false, birthday: false, exercise: false,
+  dayOff: false, social: false, birthday: false, exercise: false, outside: false,
 };
 
-export const MOOD_CONTEXT_SOURCE_KEYS = ['dayOff', 'social', 'birthday', 'exercise'] as const;
+export const MOOD_CONTEXT_SOURCE_KEYS = ['dayOff', 'social', 'birthday', 'exercise', 'outside'] as const;
 
 /**
  * Apple's default Exercise ring goal. A fixed figure rather than a setting:
@@ -32,6 +34,13 @@ export const MOOD_CONTEXT_SOURCE_KEYS = ['dayOff', 'social', 'birthday', 'exerci
  * be a second place to disagree with the ring.
  */
 export const EXERCISED_MINUTES = 30;
+
+/**
+ * Minutes of Time in Daylight that read as having gone outside. Fixed for the
+ * same reason as `EXERCISED_MINUTES`: the tag's meaning is the point, and a
+ * stepper for it is a figure to second-guess.
+ */
+export const OUTSIDE_MINUTES = 30;
 
 /** Tolerant of a missing or malformed stored value: anything unreadable is off. */
 export function parseMoodContextSources(raw: string | null | undefined): MoodContextSources {

@@ -101,6 +101,15 @@ public class TodoHealthBridgeModule: Module {
     if let exercise = HKQuantityType.quantityType(forIdentifier: .appleExerciseTime) {
       types.insert(exercise)
     }
+    // Time in daylight: minutes an Apple Watch's light sensor judged to be
+    // outdoors, a cumulative quantity like exercise time. **iOS 17+, against
+    // this pod's 15.1 floor**, so the identifier is only named behind an
+    // availability check; an older OS simply never asks for it. Like every
+    // addition here, an install that already answered the sheet gets no
+    // daylight until somebody taps the access row again.
+    if #available(iOS 17.0, *), let daylight = HKQuantityType.quantityType(forIdentifier: .timeInDaylight) {
+      types.insert(daylight)
+    }
     // Active energy: the calories a body spent *moving*, over and above what it
     // spends existing (that is `basalEnergyBurned`, which this deliberately
     // does not read — a target raised by a resting rate would rise by the same
@@ -326,7 +335,12 @@ public class TodoHealthBridgeModule: Module {
     write: @escaping (Int, Double) -> Void,
     finish: @escaping () -> Void
   ) {
-    guard let type = HKQuantityType.quantityType(forIdentifier: identifier) else {
+    // A cumulative-sum statistics query on a discrete type raises an
+    // NSInvalidArgumentException, so a type that isn't cumulative is skipped
+    // (reads as absent) rather than asked. Every identifier passed today is
+    // cumulative; this is for the next one added without checking.
+    guard let type = HKQuantityType.quantityType(forIdentifier: identifier),
+          type.aggregationStyle == .cumulative else {
       finish()
       return
     }
@@ -969,7 +983,7 @@ public class TodoHealthBridgeModule: Module {
     /// reader uses, so there is exactly one implementation of "which day is
     /// this" in the app and it is the one with the setting.
     ///
-    /// All ten numbers are nullable per day and null is not zero — a day
+    /// All the numbers are nullable per day and null is not zero — a day
     /// with no samples, a day before the phone was set up, and a day whose
     /// type was refused all read the same way. See the module note above.
     AsyncFunction("readDailyHealth") { (anchorISO: String, days: Int, promise: Promise) in
@@ -1007,20 +1021,21 @@ public class TodoHealthBridgeModule: Module {
       var waterMl = [Double?](repeating: nil, count: days)
       var calorieKcal = [Double?](repeating: nil, count: days)
       var activeEnergyKcal = [Double?](repeating: nil, count: days)
-      // Eleven queries, one promise. `resolve` is called by whichever finishes
+      var daylightMinutes = [Double?](repeating: nil, count: days)
+      // Twelve queries, one promise. `resolve` is called by whichever finishes
       // last, and `pending` is only ever touched on the health store's own
       // serial callback queue, so the count needs no lock.
-      // The eleven queries report back on arbitrary background queues, so the
+      // The twelve queries report back on arbitrary background queues, so the
       // countdown runs on a serial queue of its own rather than on whichever
       // thread finished. It does two jobs and both are needed: the decrements
       // cannot interleave (a lost one leaves the promise unresolved for ever,
       // which reads as Health simply never answering, and a doubled one
       // resolves it twice), and every per-day array written before a query's
       // own `finish` is enqueued is therefore visible to the final block that
-      // reads all eleven. Each array has exactly one writer, so this is the whole
+      // reads all twelve. Each array has exactly one writer, so this is the whole
       // of the sharing.
       let tally = DispatchQueue(label: "TodoHealthBridge.readDailyHealth")
-      var pending = 12
+      var pending = 13
       let finish = {
         tally.async {
           pending -= 1
@@ -1034,7 +1049,8 @@ public class TodoHealthBridgeModule: Module {
               + "\"proteinG\":\(part(proteinG[i])),\"satFatG\":\(part(satFatG[i])),\"fiberG\":\(part(fiberG[i])),"
               + "\"sugarG\":\(part(sugarG[i])),\"caffeineMg\":\(part(caffeineMg[i])),\"waterMl\":\(part(waterMl[i])),"
               + "\"calorieKcal\":\(part(calorieKcal[i])),"
-              + "\"activeEnergyKcal\":\(part(activeEnergyKcal[i]))}"
+              + "\"activeEnergyKcal\":\(part(activeEnergyKcal[i])),"
+              + "\"daylightMinutes\":\(part(daylightMinutes[i]))}"
           }
           promise.resolve("[" + entries.joined(separator: ",") + "]")
         }
@@ -1048,7 +1064,7 @@ public class TodoHealthBridgeModule: Module {
         // A collection query rather than one statistics query per day, which
         // is what an anchor-plus-interval window is for: 90 round trips to the
         // health daemon to draw one insight is the version of this that gets
-        // noticed. All eleven are cumulative and per-source for the same reason:
+        // noticed. All twelve are cumulative and per-source for the same reason:
         // a phone and a watch both counting steps for one walk, or two
         // food-logging apps both writing the same meal's sodium, would
         // otherwise be double-counted — see `bestSum`. This app never writes
@@ -1073,6 +1089,17 @@ public class TodoHealthBridgeModule: Module {
           identifier: .activeEnergyBurned, unit: .kilocalorie(), anchor: anchor, end: end, starts: starts,
           write: { i, value in activeEnergyKcal[i] = value }, finish: finish
         )
+        // Time in daylight is iOS 17+, so before that it is not asked and its
+        // slot in the countdown is spent here instead, which keeps `pending`
+        // reaching zero on every OS.
+        if #available(iOS 17.0, *) {
+          self.runDietQuery(
+            identifier: .timeInDaylight, unit: .minute(), anchor: anchor, end: end, starts: starts,
+            write: { i, value in daylightMinutes[i] = value }, finish: finish
+          )
+        } else {
+          finish()
+        }
         self.runDietQuery(
           identifier: .dietarySodium, unit: HKUnit.gramUnit(with: .milli), anchor: anchor, end: end, starts: starts,
           write: { i, value in sodiumMg[i] = value }, finish: finish
