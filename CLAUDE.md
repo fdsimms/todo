@@ -684,6 +684,7 @@ decided, and the design system every screen is built from. Individual features a
 | `docs/arch/simple-mode.md` | Simplified mode: what the one switch hides, and the two rules that make it safe |
 | `docs/arch/away-dates.md` | A project's away span: scheduled vacation mode, the trip move, the destination forecast, the away grocery list |
 | `docs/arch/mcp-server.md` | The MCP server: why it is a syncing replica rather than an in-app or backup-file one, and what it costs the "no backend" promise |
+| `docs/arch/desktop-client.md` | A Mac desktop client (design only, not built): why Electron over the existing logic layer, and what the desktop leaves to the phone |
 | `docs/native-targets.md` | Adding an iOS native target (widget, Watch app, Live Activity) |
 
 ### Data flow
