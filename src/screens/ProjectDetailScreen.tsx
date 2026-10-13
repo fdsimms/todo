@@ -102,6 +102,7 @@ import { addMenuItemShown } from '../utils/simpleMode';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { useActionMenu } from '../hooks/useActionMenu';
 import { animateLayout } from '../utils/layoutAnimation';
 import type { Task, Project, TaskDraft as NewTaskDraft, TaskGroup, TaskTemplate } from '../types';
 import { PRIORITY_LABELS, TITLE_MAX_LENGTH } from '../types';
@@ -409,6 +410,7 @@ function ProjectDetailContent() {
   const addExistingToGroup = useTaskStore(s => s.addExistingToGroup);
 
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const sectionMenu = useActionMenu();
   const [pageMenuVisible, setPageMenuVisible] = useState(false);
   const [pageMenuAnchor, setPageMenuAnchor] = useState<CardAnchor | null>(null);
   const [editorVisible, setEditorVisible] = useState(false);
@@ -910,12 +912,10 @@ function ProjectDetailContent() {
     haptics.success();
   };
   const handleGroupDefer = useCallback((groupId: string, date: Date) => deferGroup(groupId, date), [deferGroup]);
-  const handleGroupPressEdit = useCallback((groupId: string) => {
-    const group = useTaskGroupStore.getState().getGroupById(groupId);
-    if (!group) return;
-    setEditingGroup(group);
-    setGroupEditorVisible(true);
-  }, []);
+  // Stable for TaskGroupHeader's memo; what it runs is rebuilt each render
+  // (`openSectionMenu`, below) because it reads the sections as they are now.
+  const openSectionMenuRef = useRef<(groupId: string) => void>(() => {});
+  const handleGroupPressEdit = useCallback((groupId: string) => openSectionMenuRef.current(groupId), []);
 
   // One handler per section, kept while the list's own `drag` for it stays
   // the same (ReorderableList caches that per row). Built inline, a fresh
@@ -1078,6 +1078,35 @@ function ProjectDetailContent() {
       undo: () => reorderGroupChildren(group.id, before),
     });
   };
+
+  /**
+   * A section's "...": a checklist with enough lines to sort offers Sort A to
+   * Z beside Edit, and anything else opens the editor straight away, since a
+   * menu of one choice is a tap spent for nothing. Withheld while the find
+   * field narrows the page, because only some lines are showing then.
+   */
+  const openSectionMenu = (groupId: string) => {
+    const group = useTaskGroupStore.getState().getGroupById(groupId);
+    if (!group) return;
+    const edit = () => {
+      setEditingGroup(group);
+      setGroupEditorVisible(true);
+    };
+    const item = projectListItems.find(i => i.type === 'group' && i.group.id === groupId);
+    const lines = item && item.type === 'group' ? item.children : [];
+    if (!group.checklist || filteringLines || lines.length < 3) {
+      edit();
+      return;
+    }
+    sectionMenu.open({
+      title: group.title.trim() || 'Section',
+      actions: [
+        { key: 'sort', label: 'Sort A to Z', icon: 'swap-vertical-outline', onPress: () => sortSectionAToZ(group, lines) },
+        { key: 'edit', label: 'Edit section', icon: 'create-outline', onPress: edit },
+      ],
+    });
+  };
+  openSectionMenuRef.current = openSectionMenu;
 
   /** A line at the foot of a section, from its own field. */
   /**
@@ -2015,18 +2044,6 @@ function ProjectDetailContent() {
                               onPress={() => openAddToSection(group)}
                               accessibilityLabel={group.title.trim() ? `Add ${group.checklist ? 'a line' : 'a task'} to the ${group.title.trim()} section` : `Add ${group.checklist ? 'a line' : 'a task'} to this section`}
                             />
-                            {/* A checklist section sorts here. Hidden while
-                                narrowed, since only some lines are showing. */}
-                            {group.checklist && children.length >= 3 && !filteringLines && (
-                              <InlineAction
-                                label="Sort A to Z"
-                                icon="swap-vertical-outline"
-                                variant="neutral"
-                                surface="tray"
-                                onPress={() => sortSectionAToZ(group, children)}
-                                accessibilityLabel={`Sort ${group.title.trim() || 'this section'} A to Z`}
-                              />
-                            )}
                           </View>
                         )}
                         </>
@@ -2348,6 +2365,7 @@ function ProjectDetailContent() {
           onClose={() => setLookAheadOpen(false)}
         />
 
+        {sectionMenu.element}
         <LazySheet open={pageMenuVisible}>
           {!!project && <ProjectPageMenu
             visible={pageMenuVisible}
