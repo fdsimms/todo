@@ -983,6 +983,7 @@ const itemSchema = z.object({
   targetUnit: z.string().nullable().optional().describe('What the target counts, e.g. "glasses".'),
   quotaPeriod: z.enum(['day', 'week']).optional().describe('What targetCount is per. Default day.'),
   allowOvershoot: z.boolean().optional().describe('With a target: let it be logged past the target.'),
+  coinsPerTap: z.boolean().optional().describe('With a target: pay coins on every tap instead of when the target is reached.'),
   quotaRampStep: z.number().int().min(1).max(20).nullable().optional().describe('With a plain target: raise targetCount by this much each time the ramp steps. null or absent: no ramp.'),
   quotaRampEvery: z.number().int().min(1).max(60).nullable().optional().describe('With quotaRampStep: how many days (weeks, for a weekly target) the target has to be met before each increase. Default 1.'),
   quotaRampGoal: z.number().int().min(2).max(99).nullable().optional().describe('With quotaRampStep: the count to stop at. null: climb to 99.'),
@@ -1144,6 +1145,7 @@ const taskFieldsShape = {
     per: z.enum(['day', 'week']),
     unit: z.string().nullable().optional().describe('E.g. "glasses". Optional.'),
     allowOvershoot: z.boolean().optional().describe('Per day only: keep counting past the target.'),
+    coinsPerTap: z.boolean().optional().describe('Pay coins on every tap instead of when the target is reached. The total is the same; each tap earns its share and the last one the rest. Only matters while rewards are on. Omit to leave as is.'),
     rampUp: z.object({
       add: z.number().int().describe('How much to add to the count each time, 1 to 20.'),
       every: z.number().int().describe('How many days (weeks, for a weekly target) the target has to be met before each increase, 1 to 60.'),

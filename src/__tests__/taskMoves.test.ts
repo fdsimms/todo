@@ -89,7 +89,7 @@ const BASE: Task = {
   penaltyCreditedAt: null,
   gatesApps: false,
   showStreak: false,
-  streakRequiresWindow: false, streakCountsUnits: false,
+  streakRequiresWindow: false, streakCountsUnits: false, coinsPerTap: false,
   reminderTime: null,
   reminderKind: 'notification',
   reminderOffsetDays: null, reminderTracksVisibility: false, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,

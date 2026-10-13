@@ -162,6 +162,7 @@ import {
   canPostBounty,
   coinsForCompletion,
   coinsForLoss,
+  coinsForTap,
   liveBountyCount,
   nextBountyPushes,
   taskEarnsCoins,
@@ -3868,7 +3869,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       const rewards = useRewardStore.getState();
       const label = displayTitleFor(task);
       if (missed) rewards.recordMiss(id, coinsForLoss(task), label, completedAt.toISOString());
-      else rewards.recordEarn(id, coinsForCompletion(task, completed.streakCount), label, completedAt.toISOString());
+      else {
+        // Taps on a task paid per tap (Task.coinsPerTap) were paid as they
+        // happened, so the completion earns the rest of the total.
+        const owed = coinsForCompletion(task, completed.streakCount) - rewards.tapCoinsPaid(id);
+        rewards.recordEarn(id, owed, label, completedAt.toISOString());
+      }
     }
     // A completed row has nothing left to be late for — its deadline event,
     // if it had one, is deleted rather than left dangling on the calendar.
@@ -4703,6 +4709,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     };
     dbUpdateTask(updated);
     set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+    // Paid per tap (Task.coinsPerTap): this tap's share of the base coins now,
+    // the rest at the completion. The tap that reaches the target took the
+    // branch above, so this is never the completing one.
+    if (task.coinsPerTap && taskEarnsCoins(task) && updated.targetCount) {
+      useRewardStore.getState().recordTap(
+        id, updated.progressCount, coinsForTap(task, updated.progressCount, updated.targetCount), displayTitleFor(task),
+      );
+    }
     // Same reasoning as the dose below: a daily target is several units, not
     // one completion, so a task logging to Health logs once per unit here —
     // otherwise a 13-cup water quota would sit at zero in the food log until
@@ -4833,6 +4847,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     };
     dbUpdateTask(updated);
     set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+    // The tap's coins go with it. Not gated on coinsPerTap: switching the
+    // setting off after a tap was paid must still let the undo take it back.
+    useRewardStore.getState().takeBackTap(id, task.progressCount);
     // The unit being taken back is the dose that unit recorded, and only that
     // one — the day's earlier doses were still taken.
     if (medicationFor(task)) useMedicationStore.getState().removeLatestLogForTask(id);
@@ -8456,7 +8473,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       previousStreakDate: null,
       priorBestStreak: 0,
       showStreak: false,
-      streakRequiresWindow: false, streakCountsUnits: false,
+      streakRequiresWindow: false, streakCountsUnits: false, coinsPerTap: false,
       polarity: 'positive',
       slipCount: 0,
       slipDate: null,
@@ -8684,7 +8701,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       previousStreakDate: null,
       priorBestStreak: 0,
       showStreak: false,
-      streakRequiresWindow: false, streakCountsUnits: false,
+      streakRequiresWindow: false, streakCountsUnits: false, coinsPerTap: false,
       polarity: 'positive',
       slipCount: 0,
       slipDate: null,

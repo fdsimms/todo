@@ -24,6 +24,7 @@ import { PRIORITY_LABELS, EFFORT_LABELS, EFFORT_HINTS, TITLE_MAX_LENGTH, MEAL_SL
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { CoinIcon } from './CoinIcon';
 import { medicationVocabulary, medicationKey } from '../utils/medicationLog';
 import { formatDuration } from '../utils/effort';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -309,6 +310,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [targetUnitText, setTargetUnitText] = useState('');
   const [quotaPeriod, setQuotaPeriod] = useState<QuotaPeriod>('day');
   const [allowOvershoot, setAllowOvershoot] = useState(false);
+  const [coinsPerTap, setCoinsPerTap] = useState(false);
   const [quotaRampStep, setQuotaRampStep] = useState<number | null>(null);
   const [quotaRampEvery, setQuotaRampEvery] = useState(1);
   const [quotaRampGoal, setQuotaRampGoal] = useState<number | null>(null);
@@ -417,6 +419,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setTargetUnitText(item?.targetUnit ?? draft?.targetUnit ?? '');
     setQuotaPeriod(item?.quotaPeriod ?? draft?.quotaPeriod ?? 'day');
     setAllowOvershoot(item?.allowOvershoot ?? draft?.allowOvershoot ?? false);
+    setCoinsPerTap(item?.coinsPerTap ?? draft?.coinsPerTap ?? false);
     setQuotaRampStep(item?.quotaRampStep ?? null);
     setQuotaRampEvery(item?.quotaRampEvery ?? 1);
     setQuotaRampGoal(item?.quotaRampGoal ?? null);
@@ -729,6 +732,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       targetUnit: targetCount !== null ? normalizeTargetUnit(targetUnitText) : null,
       quotaPeriod: targetCount !== null ? quotaPeriod : 'day',
       allowOvershoot: targetCount !== null && allowOvershoot,
+      coinsPerTap: targetCount !== null && coinsPerTap,
       quotaRampStep: offersRamp ? quotaRampStep : null,
       quotaRampEvery: offersRamp && quotaRampStep ? quotaRampEvery : null,
       quotaRampGoal: offersRamp && quotaRampStep ? quotaRampGoal : null,
@@ -1908,6 +1912,29 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   <View style={[styles.toggleKnob, allowOvershoot && styles.toggleKnobOn]} />
                 </View>
               </TouchableOpacity>
+              {rewardsEnabled && polarity !== 'negative' && (
+                <TouchableOpacity
+                  style={styles.optionRow}
+                  onPress={() => { haptics.tap(); setCoinsPerTap(v => !v); }}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="switch"
+                  accessibilityLabel="Coins on every tap"
+                  accessibilityState={{ checked: coinsPerTap }}
+                >
+                  <CoinIcon size={18} color={coinsPerTap ? colors.accent : colors.textSecondary} />
+                  <View style={styles.optionContent}>
+                    <Text style={styles.optionLabel}>Coins on every tap</Text>
+                    <Text style={styles.optionHint}>
+                      {coinsPerTap
+                        ? 'Each tap earns part of the coins now. The rest, plus any streak bonus, comes when the target is reached'
+                        : 'Earn all the coins when the target is reached'}
+                    </Text>
+                  </View>
+                  <View style={[styles.toggle, coinsPerTap && styles.toggleOn]}>
+                    <View style={[styles.toggleKnob, coinsPerTap && styles.toggleKnobOn]} />
+                  </View>
+                </TouchableOpacity>
+              )}
             </>
           )}
         </CollapsibleField>

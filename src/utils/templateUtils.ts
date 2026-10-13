@@ -83,6 +83,7 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     quotaRampEvery: typeof raw.quotaRampEvery === 'number' && raw.quotaRampEvery > 0 ? Math.round(raw.quotaRampEvery) : null,
     quotaRampGoal: typeof raw.quotaRampGoal === 'number' && raw.quotaRampGoal > 0 ? Math.round(raw.quotaRampGoal) : null,
     allowOvershoot: raw.allowOvershoot ?? false,
+    coinsPerTap: raw.coinsPerTap ?? false,
     quotaReminders: raw.quotaReminders ?? false,
     chainStepOnSchedule: raw.chainStepOnSchedule ?? false,
     phoneNumber: raw.phoneNumber ?? null,
@@ -338,6 +339,7 @@ export function buildDraftsFromTemplate(
       // in its own sweep, so the pair is not offered together.
       ...rampDraftFields(item),
       allowOvershoot: item.targetCount != null && (item.allowOvershoot ?? false),
+      coinsPerTap: item.targetCount != null && (item.coinsPerTap ?? false),
       quotaReminders: item.targetCount != null && (item.quotaReminders ?? false),
       // Only a repeating chain has a "next repeat" to wait for.
       chainStepOnSchedule: item.chainEnabled && item.recurrenceType !== 'none' && (item.chainStepOnSchedule ?? false),

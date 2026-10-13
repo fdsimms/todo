@@ -283,7 +283,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   penaltyCreditedAt: null,
   gatesApps: false,
   showStreak: false,
-  streakRequiresWindow: false, streakCountsUnits: false,
+  streakRequiresWindow: false, streakCountsUnits: false, coinsPerTap: false,
   parentId: null,
   groupId: null,
   projectId: null,
@@ -1848,6 +1848,7 @@ describe('Templates', () => {
     targetUnit: null,
     quotaPeriod: 'day',
     allowOvershoot: false,
+    coinsPerTap: false,
     quotaReminders: false,
     chainStepOnSchedule: false,
     phoneNumber: null,
@@ -6079,7 +6080,7 @@ describe('streakCountsUnits', () => {
   it('round-trips through insert and update', () => {
     dbInsertTask(makeTask({ id: 'weekly', streakCountsUnits: true }));
     expect(dbGetAllTasks().find(t => t.id === 'weekly')!.streakCountsUnits).toBe(true);
-    dbUpdateTask({ ...dbGetAllTasks().find(t => t.id === 'weekly')!, streakCountsUnits: false });
+    dbUpdateTask({ ...dbGetAllTasks().find(t => t.id === 'weekly')!, streakCountsUnits: false, coinsPerTap: false });
     expect(dbGetAllTasks().find(t => t.id === 'weekly')!.streakCountsUnits).toBe(false);
   });
 });

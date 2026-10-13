@@ -282,6 +282,7 @@ export interface TaskDraft {
   /** Carried over when quick add parses "every 5,000 miles on the car". The due reading is left for the editor. */
   meter?: { name: string; unit: string; every: number } | null;
   allowOvershoot?: boolean;
+  coinsPerTap?: boolean;
   quotaIntervalMinutes?: number | null;
   quotaReminders?: boolean;
   quotaAlwaysVisible?: boolean;
@@ -619,6 +620,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const [targetCount, setTargetCount] = useState<number | null>(null);
   const [targetUnit, setTargetUnit] = useState('');
   const [allowOvershoot, setAllowOvershoot] = useState(false);
+  const [coinsPerTap, setCoinsPerTap] = useState(false);
   const [quotaIntervalMinutes, setQuotaIntervalMinutes] = useState<number | null>(null);
   const [quotaReminders, setQuotaReminders] = useState(false);
   const [quotaAlwaysVisible, setQuotaAlwaysVisible] = useState(false);
@@ -1116,6 +1118,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       setProrateFirstWeek(true);
       setTargetUnit(task.targetUnit ?? '');
       setAllowOvershoot(task.allowOvershoot ?? false);
+      setCoinsPerTap(task.coinsPerTap ?? false);
       setQuotaIntervalMinutes(task.quotaIntervalMinutes ?? null);
       setQuotaReminders(task.quotaReminders ?? false);
       setQuotaAlwaysVisible(task.quotaAlwaysVisible ?? false);
@@ -1206,7 +1209,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       // because the one before it was. A new field goes in both branches.
       setTitle(initialDraft?.title ?? ''); titleCaret.resetCaret(initialDraft?.title ?? ''); setNotes(initialDraft?.notes ?? ''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
-      setDueDate(initialDraft?.dueDate ?? null); setExtraDates(initialDraft?.extraDates ?? []); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setDeadlineTime(null); setDeadlineTimePickerOpen(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(initialDraft?.windowEnd ?? null); setWindowStartSun(initialDraft?.windowStartSun ?? null); setWindowEndSun(initialDraft?.windowEndSun ?? null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day');  setStreakCountsUnits(false); setQuotaRampStep(null); setQuotaRampEvery(1); setQuotaRampGoal(null); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setProrateFirstWeek(true); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setWeatherWait(initialDraft?.weatherWait ?? null); setWeatherWaitOpen(false); setMeterInput(meterInputFromDraft(initialDraft)); setMeterOpen(false); setMeterReadingText(''); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
+      setDueDate(initialDraft?.dueDate ?? null); setExtraDates(initialDraft?.extraDates ?? []); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setDeadlineTime(null); setDeadlineTimePickerOpen(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(initialDraft?.windowEnd ?? null); setWindowStartSun(initialDraft?.windowStartSun ?? null); setWindowEndSun(initialDraft?.windowEndSun ?? null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day');  setStreakCountsUnits(false); setQuotaRampStep(null); setQuotaRampEvery(1); setQuotaRampGoal(null); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setCoinsPerTap(initialDraft?.coinsPerTap ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setProrateFirstWeek(true); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setWeatherWait(initialDraft?.weatherWait ?? null); setWeatherWaitOpen(false); setMeterInput(meterInputFromDraft(initialDraft)); setMeterOpen(false); setMeterReadingText(''); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceMonthDay(initialDraft?.recurrenceMonthDay ?? null);
@@ -1319,6 +1322,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       prorateFirstWeek: true,
       targetUnit: normalizeTargetUnit(task ? task.targetUnit : initialDraft?.targetUnit),
       allowOvershoot: task ? (task.allowOvershoot ?? false) : (initialDraft?.allowOvershoot ?? false),
+      coinsPerTap: task ? (task.coinsPerTap ?? false) : (initialDraft?.coinsPerTap ?? false),
       quotaIntervalMinutes: task ? (task.quotaIntervalMinutes ?? null) : (initialDraft?.quotaIntervalMinutes ?? null),
       quotaReminders: task ? (task.quotaReminders ?? false) : (initialDraft?.quotaReminders ?? false),
       quotaAlwaysVisible: task ? (task.quotaAlwaysVisible ?? false) : (initialDraft?.quotaAlwaysVisible ?? false),
@@ -2068,6 +2072,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       // overshoot, and would otherwise silently survive a target being cleared
       // and re-added.
       allowOvershoot: targetCount !== null ? allowOvershoot : false,
+      coinsPerTap: targetCount !== null ? coinsPerTap : false,
       // Both go the same way and for the same reason: a cadence with nothing
       // to pace and a nudge with nothing to nudge about are noise, and left
       // behind they'd come back to life the next time a target was added.
@@ -2985,6 +2990,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       prorateFirstWeek,
       targetUnit: targetCount !== null ? normalizeTargetUnit(targetUnit) : null,
       allowOvershoot: targetCount !== null ? allowOvershoot : false,
+      coinsPerTap: targetCount !== null ? coinsPerTap : false,
       quotaIntervalMinutes: targetCount !== null ? quotaIntervalMinutes : null,
       quotaReminders: targetCount !== null ? quotaReminders : false,
       quotaAlwaysVisible: targetCount !== null ? quotaAlwaysVisible : false,
@@ -4565,6 +4571,32 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                       </View>
                       <View style={[styles.toggle, allowOvershoot && styles.toggleOn]}>
                         <View style={[styles.toggleKnob, allowOvershoot && styles.toggleKnobOn]} />
+                      </View>
+                    </TouchableOpacity>
+                  )}
+                  {/* Only while rewards are on, since nothing else reads it. Not
+                      offered on a rotation or a water-following target, whose
+                      units are logged by paths that don't pay per tap. */}
+                  {rewardsEnabled && targetCount !== null && !rotationEnabled && !(followsWaterTarget && followWaterTarget) && polarity !== 'negative' && (
+                    <TouchableOpacity
+                      style={styles.optionRow}
+                      onPress={() => { haptics.tap(); setCoinsPerTap(v => !v); }}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="switch"
+                      accessibilityLabel="Coins on every tap"
+                      accessibilityState={{ checked: coinsPerTap }}
+                    >
+                      <CoinIcon size={18} color={coinsPerTap ? colors.accent : colors.textSecondary} />
+                      <View style={styles.optionContent}>
+                        <Text style={styles.optionLabel}>Coins on every tap</Text>
+                        <Text style={styles.optionHint}>
+                          {coinsPerTap
+                            ? 'Each tap earns part of the coins now. The rest, plus any streak bonus, comes when the target is reached'
+                            : 'Earn all the coins when the target is reached'}
+                        </Text>
+                      </View>
+                      <View style={[styles.toggle, coinsPerTap && styles.toggleOn]}>
+                        <View style={[styles.toggleKnob, coinsPerTap && styles.toggleKnobOn]} />
                       </View>
                     </TouchableOpacity>
                   )}
