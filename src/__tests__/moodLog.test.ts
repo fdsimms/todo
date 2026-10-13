@@ -233,6 +233,12 @@ describe('seededContextTags', () => {
     expect(seededContextTags(logs, '2026-08-15', { isToday: false, vacationMode: false, away: true })).toEqual(['Travel']);
   });
 
+  it('adds what the day facts offer, without duplicating a tag already logged', () => {
+    expect(seededContextTags(logs, '2026-08-17', {
+      isToday: true, vacationMode: false, offered: ['Holiday', 'Sick'],
+    })).toEqual(['Holiday', 'Sick']);
+  });
+
   it('offers the place only for an entry today', () => {
     expect(seededContextTags([], '2026-08-17', { isToday: true, vacationMode: false, placeTag: 'At Home' })).toEqual(['At Home']);
     expect(seededContextTags([], '2026-08-16', { isToday: false, vacationMode: false, placeTag: 'At Home' })).toEqual([]);

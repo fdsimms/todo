@@ -562,6 +562,9 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // The journal's daily word goal. A typed-in preference, and a count of words
   // rather than anything written, so it needs no switch of its own.
   'journalWordGoal',
+  // Which day facts the mood log may offer as tags (moodDayContext.ts). A
+  // preference about how the person keeps the log, not about this phone.
+  'moodContextSources',
   // The limit tasks deleted for good, and the slips the app logged on them.
   'limitWarningDeclined',
   'limitWarningAutoSlips',

@@ -28,6 +28,7 @@ import { useMoodStore } from '../store/useMoodStore';
 import { dayKeyOf, getCurrentDayStart, getLogicalToday } from '../utils/dateUtils';
 import { isAwayOn } from '../utils/awayDates';
 import { moodPlaceTagNow } from '../utils/moodPlaceNow';
+import { moodDayOffersFor } from '../utils/moodDayOffers';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { EditorSheet } from './EditorSheet';
@@ -177,6 +178,7 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
       ? null
       : seededContextTags(logs, dayKeyOf(getCurrentDayStart()), {
         isToday: true, vacationMode, away: isAwayOn(getCurrentDayStart(), dayResetTime),
+        offered: moodDayOffersFor(getCurrentDayStart(), true),
       });
     seedRef.current = seed;
     placeTagRef.current = null;
@@ -220,11 +222,13 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
     setDay(picked);
     const seed = seedRef.current;
     if (!seed || !sameTags(contextTags, seed)) return;
+    const isToday = isSameDay(picked, getLogicalToday());
     const next = seededContextTags(logs, dayKeyOf(picked), {
-      isToday: isSameDay(picked, getLogicalToday()),
+      isToday,
       vacationMode,
       away: isAwayOn(picked, dayResetTime),
       placeTag: placeTagRef.current,
+      offered: moodDayOffersFor(picked, isToday),
     });
     seedRef.current = next;
     setContextTags(next);

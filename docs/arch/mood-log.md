@@ -110,6 +110,23 @@ telling somebody why they feel a certain way, which is exactly what
 `moodInsights.ts`'s association-not-cause rule exists to forbid. Widening the
 source list is a real feature decision each time, not a default to reach for.
 
+**Four more come from facts about the day, each behind its own switch that
+ships off** (`MoodContextSources`, Settings › Health › Mood log suggestions;
+`moodDayContext.ts` is the rule and `moodDayOffers.ts` reads the stores):
+"Holiday" or "Day off" from `holidays.ts`, "Social event" from a calendar event
+with someone linked (`eventPeople`), "Birthday" from People, and "Exercised"
+once today's Health exercise reaches 30 minutes. Three rules keep them honest.
+Every one answers only with a positive: a calendar that wasn't read and a day
+with no events look the same, and a refused Health read and a day with nothing
+recorded are one answer, so there is never a "no social events" or "didn't
+exercise" tag. Each is rare enough to mean something, since a tag that applied
+every weekday would leave the contrast card nothing to compare, which is also
+why "busy day" and "poor sleep" are not here: they need a threshold the person
+sets, and a guessed one is the app explaining the mood. And they ship off
+because a tag seeded unasked makes the log less the person's own record.
+Exercise is read for today only (a day in progress), the others for any day
+whose facts are known.
+
 **The place suggestion has three rules of its own.** It is opt-in per saved
 place (`SavedPlace.moodTag`, only possible for a place with a pin), and the
 switch is where location permission is asked, so with no place opted in

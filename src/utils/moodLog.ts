@@ -270,8 +270,9 @@ export function dayContextTags(logs: readonly MoodLog[], dayKey: string): string
 
 /**
  * The context tags a fresh entry for `dayKey` opens with: "Vacation" while
- * vacation mode is on, "Travel" on a day a trip's away span covers, the place
- * the phone is at (`placeTag`), plus whatever an earlier entry that same day
+ * vacation mode is on, "Travel" on a day a trip's away span covers, whatever
+ * the person's enabled day facts offer (`offered`), the place the phone is at
+ * (`placeTag`), plus whatever an earlier entry that same day
  * already said. All are offers the user can tap off.
  *
  * Vacation mode and the place are facts about now, so they seed only an entry
@@ -282,10 +283,15 @@ export function dayContextTags(logs: readonly MoodLog[], dayKey: string): string
 export function seededContextTags(
   logs: readonly MoodLog[],
   dayKey: string,
-  opts: { isToday: boolean; vacationMode: boolean; away?: boolean; placeTag?: string | null },
+  opts: {
+    isToday: boolean; vacationMode: boolean; away?: boolean; placeTag?: string | null;
+    /** Tags the enabled day-fact sources offer (`moodDayContext.ts`), in order. */
+    offered?: readonly string[];
+  },
 ): string[] {
   let tags: string[] = opts.isToday && opts.vacationMode ? ['Vacation'] : [];
   if (opts.away) tags = withContextTag(tags, 'Travel');
+  for (const tag of opts.offered ?? []) tags = withContextTag(tags, tag);
   if (opts.isToday && opts.placeTag) tags = withContextTag(tags, opts.placeTag);
   for (const tag of dayContextTags(logs, dayKey)) tags = withContextTag(tags, tag);
   return tags;
