@@ -1,4 +1,5 @@
 import { format } from 'date-fns/format';
+import { SHORT_NIGHT_MINUTES_DEFAULT } from './shortNight';
 import type { HealthNutrientMetric, HealthRule, HealthRuleMetric, Task } from '../types';
 import { generateId } from './id';
 import { parseRuleEstimate } from './ruleEstimate';
@@ -727,9 +728,11 @@ export function healthTaskNote(rule: HealthRule, reading: HealthRuleReading): st
  * weather module's temperature bands. Deliberately a constant rather than the
  * user's own sleep rule: the note is a line in a menu somebody opened and shows
  * whether or not the generator is on, so reading a rule would make it appear
- * and disappear with a switch that is about tasks.
+ * and disappear with a switch that is about tasks. Its own two settings
+ * (`shortNightNoteEnabled`, `shortNightMinutes`) are the person's say instead,
+ * and 6 is where the threshold starts.
  */
-export const SHORT_SLEEP_HOURS = 6;
+export const SHORT_SLEEP_HOURS = SHORT_NIGHT_MINUTES_DEFAULT / 60;
 
 /** "5h 20m". */
 function formatSleep(hours: number): string {
@@ -757,11 +760,14 @@ function formatSleep(hours: number): string {
  * "last night", since a nap counts toward its own day. See
  * `docs/arch/health-data.md`.
  */
-export function shortSleepDeloadNote(sleepHours: number | null): string | null {
+export function shortSleepDeloadNote(
+  sleepHours: number | null,
+  thresholdHours: number = SHORT_SLEEP_HOURS,
+): string | null {
   // Null is a refused read as much as an unrecorded night, so it says nothing
   // at all — the rule the whole feature rests on.
   if (sleepHours === null) return null;
-  if (sleepHours >= SHORT_SLEEP_HOURS) return null;
+  if (sleepHours >= thresholdHours) return null;
   return `Apple Health recorded ${formatSleep(sleepHours)} of sleep for today.`;
 }
 

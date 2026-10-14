@@ -40,6 +40,7 @@ import { DEFAULT_APP_FONT, isAppFont, pickRandomAppFont, type AppFont } from '..
 import { parseGeneratorEstimates, type GeneratorEstimates } from '../utils/ruleEstimate';
 import type { SortOption, RecipeSortOption, ProjectSortOption, Priority, Effort, Difficulty, GeneratedKind, GeneratedTaskExtras, TaskFieldDefaults, MealSlot, TimeOfDay, TitleRule, WeatherRule, EventTaskRule, ScreenTimeRule, HealthRule, NutrientKey, ReminderCapture } from '../types';
 import { clampStepGoal, parseStepGoal } from '../utils/stepGoal';
+import { clampShortNightMinutes, parseShortNightMinutes, SHORT_NIGHT_MINUTES_DEFAULT } from '../utils/shortNight';
 import { parseHealthRowKeys, serializeHealthRowKeys, type HealthRowKey } from '../utils/dayContextRows';
 import {
   parseNutritionTargets,
@@ -1246,6 +1247,11 @@ interface SettingsStore {
   // The steps row's goal, or null for none (the default). Apple Health holds no
   // step goal an app can read, so this is typed in; see `src/utils/stepGoal.ts`.
   stepGoal: number | null;
+  // Whether "Lighten today" says Apple Health recorded a short night, and how
+  // short that is, in minutes. On at 6 hours by default: the note shipped that
+  // way before it was a setting. See `src/utils/shortNight.ts`.
+  shortNightNoteEnabled: boolean;
+  shortNightMinutes: number;
   // Health readings left off Today's rows. Hidden list, so none is off by default.
   healthTodayHidden: HealthRowKey[];
 
@@ -2063,6 +2069,8 @@ interface SettingsStore {
   /** Replaces the whole set of Health readings left off Today's rows. */
   setHealthTodayHidden: (keys: HealthRowKey[]) => void;
   setStepGoal: (goal: number | null) => void;
+  setShortNightNoteEnabled: (on: boolean) => void;
+  setShortNightMinutes: (minutes: number) => void;
   setHealthTasks: (on: boolean) => void;
   setHealthTaskCategory: (category: string | null) => void;
   setHealthRules: (rules: HealthRule[]) => void;
@@ -2842,6 +2850,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   bodyProfile: { ...EMPTY_BODY_PROFILE },
   healthCategory: null,
   stepGoal: null,
+  shortNightNoteEnabled: true,
+  shortNightMinutes: SHORT_NIGHT_MINUTES_DEFAULT,
   healthTodayHidden: [],
   healthTasks: false,
   healthTaskCategory: null,
@@ -3240,6 +3250,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // once the categories themselves have loaded.
     const healthCategory = dbGetSetting('healthCategory') || null;
     const stepGoal = parseStepGoal(dbGetSetting('stepGoal'));
+    const shortNightNoteEnabled = dbGetSetting('shortNightNoteEnabled') !== 'false';
+    const shortNightMinutes = parseShortNightMinutes(dbGetSetting('shortNightMinutes'));
     const healthTodayHidden = parseHealthRowKeys(dbGetSetting('healthTodayHidden'));
     const healthTasks = dbGetSetting('healthTasks') === 'true';
     const healthTaskCategory = dbGetSetting('healthTaskCategory') || null;
@@ -3772,6 +3784,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       scrollNudgeSeconds,
       seenTips,
       shakeToUndoEnabled,
+      shortNightMinutes,
+      shortNightNoteEnabled,
       simpleMode,
       simpleTaskForm,
       sleepGoalMinutes,
@@ -5367,6 +5381,17 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setHealthTodayHidden(keys: HealthRowKey[]) {
     dbSetSetting('healthTodayHidden', serializeHealthRowKeys(keys));
     set({ healthTodayHidden: parseHealthRowKeys(serializeHealthRowKeys(keys)) });
+  },
+
+  setShortNightNoteEnabled(on: boolean) {
+    dbSetSetting('shortNightNoteEnabled', on ? 'true' : 'false');
+    set({ shortNightNoteEnabled: on });
+  },
+
+  setShortNightMinutes(minutes: number) {
+    const next = clampShortNightMinutes(minutes);
+    dbSetSetting('shortNightMinutes', String(next));
+    set({ shortNightMinutes: next });
   },
 
   setStepGoal(goal: number | null) {

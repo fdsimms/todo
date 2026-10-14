@@ -82,7 +82,7 @@ import { tokenChipsFor, applyTokenChip, type TokenChip } from '../utils/titleTok
 import { HighlightedText } from './HighlightedText';
 import { suggestTitles } from '../utils/titleSuggestions';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInputAheadOfRainSkip, scheduleClockInstant, describeSchedule, stripRemindPrefix, parseCategoryAndTagsInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, applyMentionOverrides, withTrailingSpace, type ParsedCategoryAndTags, type ParsedTaskInput, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
+import { parseTaskInputAheadOfRainSkip, scheduleClockInstant, describeSchedule, stripRemindPrefix, parseCategoryAndTagsInput, matchPersonMentions, contactForMention, findAmbiguousMention, getMentionSuggestions, applyMentionOverrides, withTrailingSpace, type ParsedCategoryAndTags, type ParsedTaskInput, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
 import { formatMeterAmount, knownMeterNames, latestReading, meterFieldsFromInput } from '../utils/meters';
 import { canSkipForRain, formatRain, rainUnitFor } from '../utils/rainSkip';
 import { useMeterReadingStore } from '../store/useMeterReadingStore';
@@ -496,6 +496,9 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   const [linkUrl, setLinkUrl] = useState<string | null>(null);
   const [phoneNumber, setPhoneNumber] = useState<string | null>(null);
   const [emailAddress, setEmailAddress] = useState<string | null>(null);
+  // Set once the person clears a number or address that "Call @name" filled in,
+  // so it doesn't come straight back while the mention is still in the title.
+  const [mentionContactOff, setMentionContactOff] = useState(false);
   const [type, setType] = useState<TaskKind>('task');
   const [timedMinutes, setTimedMinutes] = useState<number | null>(null);
   const [customTimedText, setCustomTimedText] = useState('');
@@ -615,6 +618,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     setLinkUrl(null);
     setPhoneNumber(null);
     setEmailAddress(null);
+    setMentionContactOff(false);
     setDeadline(null);
     setReminderTime(null);
     setReminderOffer(null);
@@ -1115,6 +1119,17 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     () => [...new Set(personMentions.map(m => m.personId))],
     [personMentions]
   );
+  // "Call @kelsey", "Text @kelsey", "Email @kelsey": a leading contact verb and
+  // exactly one person named means the task gets that person's number (or
+  // address) and so the row's call/text (or email) buttons, with nothing to
+  // confirm. A number or address typed or picked by hand wins, and a group or
+  // several people name no one in particular, so they add nothing.
+  const mentionedContact = useMemo(() => {
+    if (mentionContactOff || personIds.length !== 1) return { phone: null, email: null };
+    return contactForMention(title, people.find(p => p.id === personIds[0]));
+  }, [title, personIds, people, mentionContactOff]);
+  const effectivePhone = phoneNumber ?? mentionedContact.phone;
+  const effectiveEmail = emailAddress ?? mentionedContact.email;
   // Every mention's span, plus the tooltip's own match (if any) — merged so
   // the input overlay below can render both kinds of token with one pass.
   const highlightRanges = useMemo(() => {
@@ -1539,9 +1554,14 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // tooltip bubble's own tap and the accessory bar's confirm checkmark
   // (TitleTokenAccessory), a second way to accept it without looking away
   // from the keyboard. Excludes ambiguousMention on purpose: that state
-  // offers a row of candidate pills instead of one thing to confirm.
+  // offers a row of candidate pills instead of one thing to confirm. A
+  // mention suggestion with exactly one candidate is one thing to confirm.
+  const soleMentionCandidate = mentionSuggestion?.candidates.length === 1
+    ? mentionSuggestion.candidates[0]
+    : null;
   const applyActiveParse = () => {
-    if (parsed) applyParse();
+    if (soleMentionCandidate) applyMentionSuggestion(soleMentionCandidate);
+    else if (parsed) applyParse();
     else if (categoryTagsParsed) applyCategoryTags();
     else if (priorityParsed) applyPriority();
     else if (projectParsed) applyProject();
@@ -1561,7 +1581,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     else if (subtasksParsed) applySubtasks();
     else if (avoidParsed) applyAvoid();
   };
-  const confirmVisible = activeMatch !== null && !ambiguousMention && !mentionSuggestion;
+  const confirmVisible = activeMatch !== null && !ambiguousMention && (!mentionSuggestion || soleMentionCandidate !== null);
 
   // "No, that's just part of the title" — leaves the title and every other
   // field untouched, just drops the tooltip for this phrase.
@@ -1697,11 +1717,11 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   };
   const resolvePhoneNumber = () => {
     const t = phoneText.trim();
-    return activePanel === 'phone' && t ? t : phoneNumber;
+    return activePanel === 'phone' && t ? t : effectivePhone;
   };
   const resolveEmailAddress = () => {
     const t = emailText.trim();
-    return activePanel === 'email' && t ? t : emailAddress;
+    return activePanel === 'email' && t ? t : effectiveEmail;
   };
   const resolveTags = () => {
     const t = tagInput.trim().toLowerCase();
@@ -2065,10 +2085,10 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       setCustomLinkText(linkUrl);
     }
     if (panel === 'phone') {
-      setPhoneText(phoneNumber ?? '');
+      setPhoneText(effectivePhone ?? '');
     }
     if (panel === 'email') {
-      setEmailText(emailAddress ?? '');
+      setEmailText(effectiveEmail ?? '');
     }
   };
 
@@ -2277,11 +2297,11 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     },
     {
       key: 'phone', icon: 'call-outline', panel: 'phone',
-      value: phoneNumber, truncate: true,
+      value: effectivePhone, truncate: true,
     },
     {
       key: 'email', icon: 'mail-outline', panel: 'email',
-      value: emailAddress, truncate: true,
+      value: effectiveEmail, truncate: true,
     },
     // Only once there's a repeat to spend it, the same gate the tooltip and
     // the editor's own card live under: without one the field would be a
@@ -3365,9 +3385,9 @@ parsed
                 >
                   <Ionicons name="checkmark-circle" size={22} color={colors.accent} />
                 </TouchableOpacity>
-                {phoneNumber !== null && (
+                {effectivePhone !== null && (
                   <TouchableOpacity
-                    onPress={() => { haptics.tap(); setPhoneNumber(null); setPhoneText(''); setActivePanel(null); }}
+                    onPress={() => { haptics.tap(); setPhoneNumber(null); setMentionContactOff(true); setPhoneText(''); setActivePanel(null); }}
                     hitSlop={8}
                     accessibilityRole="button"
                     accessibilityLabel="Clear phone number"
@@ -3398,9 +3418,9 @@ parsed
                   returnKeyType="done"
                   keyboardAppearance={isDark ? 'dark' : 'light'}
                 />
-                {emailAddress !== null && (
+                {effectiveEmail !== null && (
                   <TouchableOpacity
-                    onPress={() => { haptics.tap(); setEmailAddress(null); setEmailText(''); setActivePanel(null); }}
+                    onPress={() => { haptics.tap(); setEmailAddress(null); setMentionContactOff(true); setEmailText(''); setActivePanel(null); }}
                     hitSlop={8}
                     accessibilityRole="button"
                     accessibilityLabel="Clear email address"
