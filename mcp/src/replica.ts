@@ -579,6 +579,8 @@ export interface PersonFields {
   groupId?: string | null;
   /** Filed away: kept, out of the list. */
   archived?: boolean;
+  /** Held at the top of the People list. */
+  pinned?: boolean;
   /** Never write a birthday task, or a birthday gift task, for this person. */
   birthdayTaskOptOut?: boolean;
   birthdayGiftTaskOptOut?: boolean;
@@ -2757,6 +2759,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       out.archived = f.archived;
       out.archivedAt = f.archived ? new Date().toISOString() : null;
     }
+    if (f.pinned !== undefined) out.pinned = f.pinned;
     if (f.birthdayTaskOptOut !== undefined) out.birthdayTaskOptOut = f.birthdayTaskOptOut;
     if (f.birthdayGiftTaskOptOut !== undefined) out.birthdayGiftTaskOptOut = f.birthdayGiftTaskOptOut;
     if (f.birthday !== undefined) {

@@ -54,7 +54,6 @@ import {
   deleteTemplate,
   getTemplate,
   reopenTask,
-  reorderTemplates,
   updateTemplate,
   templateLibraryCheck,
   completeTask,
@@ -82,12 +81,12 @@ import {
 import type { DeliverableKind, MealSlot, TimeOfDay } from '../../src/types';
 import { assignToStack, createStack, deleteStack, listStacks, renameStack, updateStack } from './stackTools';
 import { claimReward, createReward, deleteReward, getRewards, markMissed, setBounty, setRewardGoal, setSlip, unclaimReward, updateReward } from './rewardTools';
-import { addProjectSteps, createProject, deleteProject, getProject, nextInProject, reorderProjects, saveProjectAsTemplate, saveProjectCategory, startFreshProject, updateProject, type CreateProjectInput, type ProjectPlanStepInput } from './projectTools';
-import { addChoiceToList, addIngredientsToList, clearGroceryList, createGroceryList, deleteGroceryItem, deleteGroceryList, finishGroceryTrip, getGroceryItem, grocerySetup, importReceipt, markUnavailable, matchReceipt, listBrands, mergeGroceryItems, renameBrand, renameBrands, renameGroceryList, reorderAisles, reorderGroceryPlaces, resolveList, saveAisle, saveGroceryBox, saveStore, setNutritionPanel, setNutritionPanels, setShoppingTrip, settleChoice, swapForSubstitute, updateGroceryItem, updateStore } from './groceryTools';
+import { addProjectSteps, createProject, deleteProject, getProject, nextInProject, saveProjectAsTemplate, saveProjectCategory, startFreshProject, updateProject, type CreateProjectInput, type ProjectPlanStepInput } from './projectTools';
+import { addChoiceToList, addIngredientsToList, clearGroceryList, createGroceryList, deleteGroceryItem, deleteGroceryList, finishGroceryTrip, getGroceryItem, grocerySetup, importReceipt, markUnavailable, matchReceipt, listBrands, mergeGroceryItems, renameBrand, renameBrands, renameGroceryList, resolveList, saveAisle, saveGroceryBox, saveStore, setNutritionPanel, setNutritionPanels, setShoppingTrip, settleChoice, swapForSubstitute, updateGroceryItem, updateStore } from './groceryTools';
 import { PANTRY_FILTERS, addToPantry, answerPantryReview, getPantryItem, listPantry, logLeftover, pantryReview, deleteLeftover, splitLeftover, updateLeftover, updatePantryBox, updatePantryItem, useUpRecipes } from './pantryTools';
-import { deleteCookbook, deleteIndexEntry, getCookbookIndex, listCookbooks, logCookTime, mergeCookbooks, recipeFromIndexEntry, renameCookbook, reorderUpNext, saveIndexEntry } from './recipeTools';
+import { deleteCookbook, deleteIndexEntry, getCookbookIndex, listCookbooks, logCookTime, mergeCookbooks, recipeFromIndexEntry, renameCookbook, saveIndexEntry } from './recipeTools';
 import { DEFAULT_PLAN_DAYS, MAX_PLAN_DAYS, MEAL_SLOTS as KITCHEN_MEAL_SLOTS, copyMeals, getRecipe, listMealPlan, listRecipes, planMeal, removeMeal, saveMealAsRecipe, setMealCooked, updateMeal } from './kitchenTools';
-import { DEFAULT_BIRTHDAY_DAYS, MAX_BIRTHDAY_DAYS, addPersonHistory, addPersonNote, createPerson, deletePerson, deletePersonNote, reorderPeople, savePersonGroup, updatePerson, updatePersonNote, getPerson, listPeople, upcomingBirthdays } from './peopleTools';
+import { DEFAULT_BIRTHDAY_DAYS, MAX_BIRTHDAY_DAYS, addPersonHistory, addPersonNote, createPerson, deletePerson, deletePersonNote, savePersonGroup, updatePerson, updatePersonNote, getPerson, listPeople, upcomingBirthdays } from './peopleTools';
 import { appLinks, appSiteAssociation, appUrlForOpenPath, openPage } from './appLinks';
 import { ANCHORS, CONTAINERS, QUESTION_KINDS, QUESTION_SOURCES, SCHEDULE_FREQUENCIES } from './templatePlan';
 import { DEFAULT_AGENDA_DAYS, DEFAULT_HISTORY_DAYS, DEFAULT_MIN_PUSHES, DEFAULT_STALE_DAYS, MAX_AGENDA_DAYS, completionHistory, getAgenda, getOverview, reviewTasks } from './insightTools';
@@ -100,7 +99,8 @@ import type { AgentLedgerEntry } from './agentLedger';
 import { PROMPTS } from './prompts';
 import { forget, remember } from './memoryTools';
 import { deleteRule, listAutomations, saveRule, setAutomation, RULE_TYPES } from './automationTools';
-import { deleteCategory, reorderCategories, updateCategory } from './categoryTools';
+import { deleteCategory, updateCategory } from './categoryTools';
+import { REORDER_KINDS, reorder } from './reorderTools';
 import { cancelCalendarRequest, changeCalendarEvent, listCalendarRequests, requestCalendarEvent } from './calendarTools';
 import { ESTIMATE_KEY_LIST, NUTRIENT_KEY_LIST, atFrom, deleteSavedMeal, duplicateFoodEntry, listSavedMeals, logSavedMeal, moveFoodEntry, saveMealFromEntries, setNutritionTargets, renameMedication, renameMoodTag, setMedicationArchived, addMedication, removeMedication, setMedicationProfile, setMedicationLimit, setMedicationSupply, logFood, logMedication, setSupplementNutrients, logMood, logWater, updateRecipe, patchRecipe, deleteRecipe, updateFoodEntry, refreshDishEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
 import { listErrors, MAX_ERRORS } from './errorTools';
@@ -113,7 +113,7 @@ import { SAVED_VIEW_TASK_LIMIT, createSavedView, deleteSavedView, getSavedView, 
 import { setVacationMode } from './vacationTools';
 import { getSettings, updateSettings } from './settingsTools';
 import { SETTINGS_SPEC } from './settingsSpec';
-import { MAX_DELETE, deleteTag, deleteTasks, duplicateTask, reorderTasks, setCompletionDate, setTaskDates, skipOccurrence } from './taskTools';
+import { MAX_DELETE, deleteTag, deleteTasks, duplicateTask, setCompletionDate, setTaskDates, skipOccurrence } from './taskTools';
 import { MAX_BATCH, MAX_QUICK_ADD, batchUpdateTasks, planDay, quickAdd, rebalanceWeek, type BatchChange } from './agentTools';
 import { SERVER_ICONS } from './serverIcon';
 import { generateId } from '../../src/utils/id';
@@ -1507,19 +1507,6 @@ function registerWriteTools(
   );
 
   server.tool(
-    'reorder_up_next',
-    'Put the Up next shelf in an order: recipe ids, first to last. Recipes on the shelf you leave out follow, in their current order. update_recipe with upNext adds or removes one.',
-    { ids: z.array(z.string().min(1)).min(1) },
-    async ({ ids }) => {
-      try {
-        return json(await withWrite(() => reorderUpNext(replica, ids)));
-      } catch (e) {
-        return json({ error: e instanceof Error ? e.message : 'Could not reorder the shelf.' });
-      }
-    }
-  );
-
-  server.tool(
     'log_cook_time',
     'Record how long cooking a recipe took, timed on the person\'s own clock: the same record the recipe\'s cook timer keeps ("took 32m last time"), which also fills in its time the first time.',
     { id: z.string().min(1), minutes: z.number().int().positive() },
@@ -2340,19 +2327,6 @@ function registerWriteTools(
   );
 
   server.tool(
-    'reorder_templates',
-    'Put templates in a new order. The ids listed go first, in the order given; every other template follows in the order it already had. To move one to a different category use update_template.',
-    { ids: z.array(z.string()).min(1).describe('Template ids from list_templates, first to last.') },
-    async ({ ids }) => {
-      try {
-        return json(await withWrite(() => reorderTemplates(replica, ids)));
-      } catch (e) {
-        return json({ error: e instanceof Error ? e.message : 'Could not reorder the templates.' });
-      }
-    }
-  );
-
-  server.tool(
     'complete_task',
     "Complete a task. A recurring one spawns its next occurrence, a chain advances one step, and a dated series lays out its next set, so the result says what was created rather than only that the row is done. A task that asks a question on completion is refused unless deliverableValue is given, including explicitly null to complete it without an answer.",
     {
@@ -2671,18 +2645,23 @@ function registerWriteTools(
   );
 
   server.tool(
-    'reorder_tasks',
-    "Put tasks in a hand-sorted order: a project's open steps (projectId), a task's checklist (parentId), a stack's tasks (stackId), or the Pinned block on Today (pinned: true). Name one list. The tasks named go first, in the order given, and the rest keep their order after them. A project's steps swap the places they already hold, so reordering a project does not move them on Today.",
+    'reorder',
+    "Put a list in a hand-sorted order. kind says which: tasks (ids, plus exactly one list: projectId for a project's open steps, parentId for a task's checklist, stackId for a stack's tasks, or pinned: true for the Pinned block on Today), templates (ids), projects (ids and/or categories, the project category names), categories (names: Today's sections), people (ids; only on the person's say, the order is theirs), aisles (names: the walk order, Other last), stores_and_lists (stores and/or lists, by name) and up_next (recipe ids on the Up next shelf). The ones named go first, in the order given, and the rest keep their order after them. A project's steps swap the places they already hold, so reordering a project does not move them on Today.",
     {
-      projectId: z.string().optional(),
-      parentId: z.string().optional().describe('The task whose checklist to reorder.'),
-      stackId: z.string().optional(),
-      pinned: z.literal(true).optional(),
-      ids: z.array(z.string().min(1)).min(1),
+      kind: z.enum(REORDER_KINDS),
+      ids: z.array(z.string().min(1)).optional().describe('tasks, templates, projects, people, up_next: ids, first to last.'),
+      names: z.array(z.string().min(1)).optional().describe('categories, aisles: names, first to last.'),
+      projectId: z.string().optional().describe('tasks: reorder this project\'s open steps.'),
+      parentId: z.string().optional().describe('tasks: the task whose checklist to reorder.'),
+      stackId: z.string().optional().describe('tasks: reorder this stack\'s tasks.'),
+      pinned: z.literal(true).optional().describe('tasks: reorder the Pinned block on Today.'),
+      categories: z.array(z.string().min(1)).optional().describe('projects: project category names, first to last.'),
+      stores: z.array(z.string().min(1)).optional().describe('stores_and_lists: store names, first to last.'),
+      lists: z.array(z.string().min(1)).optional().describe('stores_and_lists: separate grocery list names, first to last.'),
     },
     async input => {
       try {
-        return json(await withWrite(() => reorderTasks(replica, input)));
+        return json(await withWrite(() => reorder(replica, input)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not reorder.' });
       }
@@ -3187,19 +3166,6 @@ function registerWriteTools(
   );
 
   server.tool(
-    'reorder_aisles',
-    'Put the aisles in walk order: the ones named first, the rest after in their order, Other last.',
-    { names: z.array(z.string().min(1)).min(1) },
-    async ({ names }) => {
-      try {
-        return json(await withWrite(() => reorderAisles(replica, names)));
-      } catch (e) {
-        return json({ error: e instanceof Error ? e.message : 'Could not reorder the aisles.' });
-      }
-    }
-  );
-
-  server.tool(
     'update_store',
     "Change a store's own settings: leave it out of the app's store suggestions, say which aisles it has, set its own walk order (aisleOrder; null follows the usual one), or delete it (delete: true), which takes its item links, the prices recorded there and its receipt names with it. Add or rename a store with save_store.",
     {
@@ -3214,22 +3180,6 @@ function registerWriteTools(
         return json(await withWrite(() => updateStore(replica, input)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not change the store.' });
-      }
-    }
-  );
-
-  server.tool(
-    'reorder_stores_and_lists',
-    'Put the stores (stores) and or the separate grocery lists (lists) in an order: the ones named first, the rest after.',
-    {
-      stores: z.array(z.string().min(1)).optional(),
-      lists: z.array(z.string().min(1)).optional(),
-    },
-    async input => {
-      try {
-        return json(await withWrite(() => reorderGroceryPlaces(replica, input)));
-      } catch (e) {
-        return json({ error: e instanceof Error ? e.message : 'Could not reorder.' });
       }
     }
   );
@@ -3541,7 +3491,7 @@ function registerWriteTools(
 
   server.tool(
     'update_stack',
-    "Change a stack, as its editor does: title, notes, tags, which project page shows it as a section (projectId), whether its tasks are ticked off as a checklist, or its category. A stack owns its members' category, so a new category re-files every open task in it (the result lists each move; finished ones keep theirs). To reorder its tasks use reorder_tasks with stackId.",
+    "Change a stack, as its editor does: title, notes, tags, which project page shows it as a section (projectId), whether its tasks are ticked off as a checklist, or its category. A stack owns its members' category, so a new category re-files every open task in it (the result lists each move; finished ones keep theirs). To reorder its tasks use reorder with kind tasks and stackId.",
     {
       id: z.string().min(1),
       title: z.string().optional(),
@@ -3604,19 +3554,6 @@ function registerWriteTools(
   );
 
   server.tool(
-    'reorder_categories',
-    "Put the task categories (Today's sections) in an order: the ones named go first, the rest keep their order after them.",
-    { names: z.array(z.string().min(1)).min(1) },
-    async ({ names }) => {
-      try {
-        return json(await withWrite(() => reorderCategories(replica, names)));
-      } catch (e) {
-        return json({ error: e instanceof Error ? e.message : 'Could not reorder the categories.' });
-      }
-    }
-  );
-
-  server.tool(
     'delete_project',
     "Delete a project. Its tasks are left in no project, unless deleteTasks is true, which deletes them too (a task the app wrote is only taken out). Stacks shown on its page stay, in no project. Only when the person asks for a delete: archiving (update_project archived: true) keeps it. Ask whether its tasks should go with it. Restorable from Activity.",
     {
@@ -3645,22 +3582,6 @@ function registerWriteTools(
         return json(await withWrite(() => saveProjectCategory(replica, input)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not change the project category.' });
-      }
-    }
-  );
-
-  server.tool(
-    'reorder_projects',
-    'Put projects in an order on the Projects screen (ids: the ones named go first), and or the project categories (categories: by name).',
-    {
-      ids: z.array(z.string().min(1)).optional(),
-      categories: z.array(z.string().min(1)).optional(),
-    },
-    async input => {
-      try {
-        return json(await withWrite(() => reorderProjects(replica, input)));
-      } catch (e) {
-        return json({ error: e instanceof Error ? e.message : 'Could not reorder.' });
       }
     }
   );
@@ -3971,6 +3892,7 @@ function registerWriteTools(
     location: z.string().nullable().optional().describe('Where they live, as free text ("Austin, TX"). The app uses it to find people when planning a trip. null clears it.'),
     groupId: z.string().nullable().optional().describe('The group they are listed under (save_person_group makes one), or null for none.'),
     archived: z.boolean().optional().describe('Take them off the list but keep everything about them. false brings them back.'),
+    pinned: z.boolean().optional().describe('true holds them at the top of the People list, above the people and business sections. false unpins.'),
     birthdayTaskOptOut: z.boolean().optional().describe('true: the app writes no birthday task for them.'),
     birthdayGiftTaskOptOut: z.boolean().optional().describe('true: the app writes no birthday gift task for them.'),
   };
@@ -4013,19 +3935,6 @@ function registerWriteTools(
         return json(await withWrite(() => deletePerson(replica, id)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not delete that person.' });
-      }
-    }
-  );
-
-  server.tool(
-    'reorder_people',
-    'Put people in an order on the People screen: the ones named go first, the rest keep their order after them. Only on the person\'s say: the order is theirs.',
-    { ids: z.array(z.string().min(1)).min(1) },
-    async ({ ids }) => {
-      try {
-        return json(await withWrite(() => reorderPeople(replica, ids)));
-      } catch (e) {
-        return json({ error: e instanceof Error ? e.message : 'Could not reorder.' });
       }
     }
   );

@@ -51,6 +51,7 @@ export function blankPerson(name: string, sortOrder: number): Person {
     archived: false,
     archivedAt: null,
     createdAt: new Date().toISOString(),
+    pinned: false,
     birthdayMonth: null,
     birthdayDay: null,
     birthYear: null,
@@ -82,7 +83,7 @@ export function displayNameOf(person: Pick<Person, 'name' | 'nickname'>): string
 
 /** The fields the editor may write. Deliberately every field except identity and order. */
 export type PersonPatch = Partial<Pick<Person,
-  | 'name' | 'kind' | 'nickname' | 'notes'
+  | 'name' | 'kind' | 'nickname' | 'notes' | 'pinned'
   | 'birthdayMonth' | 'birthdayDay' | 'birthYear' | 'birthdayTaskOptOut' | 'birthdayGiftTaskOptOut'
   | 'phoneNumber' | 'faxNumber' | 'email' | 'linkUrl'
   | 'cadenceDays' | 'nudgeOptIn' | 'cadenceSetAt' | 'reachOutDeclinedAt' | 'reachOutOfferDeclinedAt' | 'askAbout'

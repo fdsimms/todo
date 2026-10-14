@@ -31,7 +31,7 @@ const COUNTERPARTS: Record<string, string[]> = {
   save_project_as_template: ['update_template', 'delete_template'],
   create_reward: ['update_reward', 'delete_reward'],
   log_slip: ['undo_slip'],
-  create_template: ['update_template', 'delete_template', 'reorder_templates'],
+  create_template: ['update_template', 'delete_template', 'reorder'],
   create_person: ['update_person', 'delete_person'],
   add_person_note: ['update_person_note', 'delete_person_note'],
   log_food: ['update_food_entry', 'delete_food_entry'],

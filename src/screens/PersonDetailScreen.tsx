@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
+import { PinIcon } from '../components/PinIcon';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { format } from 'date-fns/format';
@@ -162,6 +163,7 @@ export function PersonDetailScreen() {
   // and filing one away doesn't make the title any clearer about which.
   const allPeople = usePersonStore(useShallow(s => s.people));
   const notePendingReachOut = usePersonStore(s => s.notePendingReachOut);
+  const updatePerson = usePersonStore(s => s.updatePerson);
   const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
   const calendarPeopleHistory = useSettingsStore(s => s.calendarPeopleHistory);
   const pastEvents = useCalendarStore(useShallow(s => s.pastEvents));
@@ -390,14 +392,29 @@ export function PersonDetailScreen() {
         title={name}
         onBack={handleBack}
         actions={
-          <TouchableOpacity
-            onPress={() => { haptics.tap(); setEditing(true); }}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel={`Edit ${name}`}
-          >
-            <Ionicons name="ellipsis-horizontal" size={iconSize.md} color={colors.textSecondary} />
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              onPress={() => { haptics.tap(); updatePerson(person.id, { pinned: !person.pinned }); }}
+              hitSlop={8}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: person.pinned }}
+              accessibilityLabel={`Pin ${name} to the top of the list`}
+            >
+              <PinIcon
+                filled={person.pinned}
+                size={iconSize.md}
+                color={person.pinned ? colors.accent : colors.textSecondary}
+              />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => { haptics.tap(); setEditing(true); }}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={`Edit ${name}`}
+            >
+              <Ionicons name="ellipsis-horizontal" size={iconSize.md} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
         }
       />
 
@@ -779,6 +796,7 @@ function ReachButton({ icon, label, onPress, styles, colors }: {
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   scroll: { flex: 1 },
   scrollContent: { padding: spacing.md, paddingBottom: 120 },
   actionRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },

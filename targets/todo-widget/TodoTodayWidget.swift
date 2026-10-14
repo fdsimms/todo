@@ -327,17 +327,28 @@ struct TodoTodayWidgetEntryView: View {
     /// mood check-in task and the deep link `isFoodLogUrl` handles.
     private var shortcuts: [WidgetHeaderShortcut] {
         guard showsShortcuts else { return [] }
-        return [
-            WidgetHeaderShortcut(symbolName: "cart.fill", label: "Groceries", destination: groceriesURL),
-            WidgetHeaderShortcut(symbolName: "fork.knife", label: "Meal plan", destination: mealPlanURL),
-            WidgetHeaderShortcut(symbolName: "face.smiling", label: "Mood", destination: moodURL),
-            WidgetHeaderShortcut(symbolName: "fork.knife.circle", label: "Food log", destination: foodLogURL),
+        let config = entry.configuration
+        var links: [WidgetHeaderShortcut] = []
+        if config.showGroceriesShortcut {
+            links.append(WidgetHeaderShortcut(symbolName: "cart.fill", label: "Groceries", destination: groceriesURL))
+        }
+        if config.showMealPlanShortcut {
+            links.append(WidgetHeaderShortcut(symbolName: "fork.knife", label: "Meal plan", destination: mealPlanURL))
+        }
+        if config.showMoodShortcut {
+            links.append(WidgetHeaderShortcut(symbolName: "face.smiling", label: "Mood", destination: moodURL))
+        }
+        if config.showFoodLogShortcut {
+            links.append(WidgetHeaderShortcut(symbolName: "fork.knife.circle", label: "Food log", destination: foodLogURL))
+        }
+        if config.showAddEventShortcut {
             // Opens QuickEventSheet — a separate glyph from the "+" add
             // button, since that one adds a *task* and this adds a calendar
             // event (see AddTaskFab's own "Event" row, its own entry beside
             // "Task" rather than a variant of it).
-            WidgetHeaderShortcut(symbolName: "calendar.badge.plus", label: "Add event", destination: addEventURL),
-        ]
+            links.append(WidgetHeaderShortcut(symbolName: "calendar.badge.plus", label: "Add event", destination: addEventURL))
+        }
+        return links
     }
 
     private var header: WidgetHeaderView {

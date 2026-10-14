@@ -1541,6 +1541,11 @@ export interface Person {
   archived: boolean;
   archivedAt: string | null;
   createdAt: string;
+  // Held at the top of the People list, above the people/business sections.
+  // Something you chose one person at a time, like pinning a task: it moves a
+  // row up and never ranks anybody against anybody (pinned people are still A to
+  // Z among themselves). Off for every new person and never set by the app.
+  pinned: boolean;
 
   // Month (1-12) and day, held apart from the year because the year is the part
   // people genuinely don't know — a birthday with no year is the common case and
