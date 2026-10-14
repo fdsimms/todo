@@ -1,6 +1,7 @@
-import type { FoodLogEntry, FoodNutrition, MealPlanEntry, MealSlot, NutrientKey, SavedMealItem } from '../types';
+import type { FoodLogEntry, FoodNutrition, MealPlanEntry, MealSlot, NutrientKey, SavedMeal, SavedMealItem } from '../types';
 import { MEAL_SLOTS, NUTRIENT_KEYS } from '../types';
 import { aisleForName } from './groceryAisles';
+import { groceryNameKey } from './groceryParse';
 import { isWaterEntry } from './waterLog';
 import { mealHelping, weighedHelping, type DishFigures } from './mealLog';
 import { isNutrientOnlyEntry } from './nutrientLog';
@@ -764,6 +765,19 @@ export function savedMealCalories(items: readonly SavedMealItem[]): number | nul
     total = round((total ?? 0) + amount);
   }
   return total;
+}
+
+/**
+ * The saved meals whose name contains what was typed, for the add-food search.
+ * Compared on `groceryNameKey` like the catalog rows beside them, so "Protein
+ * shake" is found by "shakes". Nothing typed matches nothing: the search only
+ * offers a saved meal to someone who is looking for one, and the full list is
+ * the "Log a saved meal" button's job.
+ */
+export function savedMealsMatching(meals: readonly SavedMeal[], query: string): SavedMeal[] {
+  const key = groceryNameKey(query);
+  if (!key) return [];
+  return meals.filter(m => groceryNameKey(m.name).includes(key));
 }
 
 /**
