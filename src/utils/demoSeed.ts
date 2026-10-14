@@ -4703,10 +4703,9 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
    * pack size off and stopped there, on purpose, because going further means
    * guessing what the words mean.
    *
-   * Named so a shorter name is actually reachable: `itemNameSuggestions`
-   * only ever drops leading words, so this offers "Riced Cauliflower" and
-   * "Cauliflower", and the catalog holds neither, so it demonstrates the plain
-   * rename rather than the merge. Off-list for `ensureCatalogItem`'s usual
+   * Named so a shorter name ("Riced Cauliflower", "Cauliflower") is one the
+   * catalog holds neither of, so it demonstrates the plain rename rather
+   * than the merge. Off-list for `ensureCatalogItem`'s usual
    * reason, and because an unpack puts things away rather than on a list.
    */
   const ricedCauliflower = ensureCatalogItem('Organic Riced Cauliflower', { nameFromScan: true });
