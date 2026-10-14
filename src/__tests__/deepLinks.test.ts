@@ -64,8 +64,8 @@ jest.mock('../store/useFocusStore', () => ({
     getState: () => ({ advance: mockFocusAdvance, pause: mockFocusPause, resume: mockFocusResume }),
   },
 }));
-jest.mock('../store/useNfcKeyStore', () => ({
-  useNfcKeyStore: { getState: () => ({ applyScan: (...args: unknown[]) => mockApplyScan(...args) }) },
+jest.mock('../utils/releaseBlocks', () => ({
+  applyKeyScan: (...args: unknown[]) => mockApplyScan(...args),
 }));
 jest.mock('../utils/haptics', () => ({
   // Read mockSuccess lazily: jest hoists jest.mock above the const inits, so
@@ -1103,9 +1103,9 @@ describe('the key tag link', () => {
   });
 
   it('says which way an enrolled tag flipped the lock', () => {
-    mockApplyScan.mockReturnValue({ outcome: 'unlocked', key: { name: 'Desk tag' } });
+    mockApplyScan.mockReturnValue({ outcome: 'released', key: { name: 'Desk tag' }, ended: ['key'] });
     openInAppUrl(`dundundun://key?token=${token}`);
-    expect(mockAlert).toHaveBeenCalledWith('Apps unlocked', expect.stringContaining('Other blocks'));
+    expect(mockAlert).toHaveBeenCalledWith('Blocks ended', expect.stringContaining('Desk tag ended your key tag lock'));
   });
 
   it('answers a token nobody enrolled with only "not recognized"', () => {

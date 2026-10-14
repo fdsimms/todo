@@ -5,18 +5,16 @@ jest.mock('../db/database', () => ({
 }));
 
 import { useAppGroupStore, resolvedAssignments, resolveGroupNow } from '../store/useAppGroupStore';
-import { useNfcKeyStore } from '../store/useNfcKeyStore';
 
 const draft = {
   name: 'Work', groupId: 'default', days: [1, 2, 3, 4, 5], startMinutes: 540, endMinutes: 1020,
-  enabled: true, tagCanPause: true,
+  enabled: true,
 };
 const WED_10 = new Date(2026, 7, 12, 10);
 
 beforeEach(() => {
   for (const key of Object.keys(mockSettings)) delete mockSettings[key];
   useAppGroupStore.getState().reload();
-  useNfcKeyStore.getState().reload();
 });
 
 describe('groups', () => {
@@ -66,52 +64,5 @@ describe('schedules', () => {
     expect(useAppGroupStore.getState().schedules[0].pausedUntil).not.toBeNull();
     useAppGroupStore.getState().setScheduleEnabled(result.schedule.id, true);
     expect(useAppGroupStore.getState().schedules[0].pausedUntil).toBeNull();
-  });
-});
-
-describe('a key tag scan', () => {
-  const enroll = () => {
-    const enrolled = useNfcKeyStore.getState().enrollTag('04A1B2C3D4E5F6', 'Desk');
-    if (!enrolled.ok) throw new Error('enroll failed');
-  };
-
-  it('pauses an open schedule instead of locking, without touching the lock', () => {
-    enroll();
-    jest.useFakeTimers().setSystemTime(WED_10);
-    try {
-      useAppGroupStore.getState().addSchedule(draft);
-      const scan = useNfcKeyStore.getState().applyScan('tag', '04A1B2C3D4E5F6');
-      expect(scan).toMatchObject({ outcome: 'paused', count: 1 });
-      expect(useNfcKeyStore.getState().locked).toBe(false);
-      // Nothing left to pause, so the next scan locks as it always did.
-      expect(useNfcKeyStore.getState().applyScan('tag', '04A1B2C3D4E5F6').outcome).toBe('locked');
-    } finally {
-      jest.useRealTimers();
-    }
-  });
-
-  it('unlocks a lock first even while a schedule is open', () => {
-    enroll();
-    jest.useFakeTimers().setSystemTime(WED_10);
-    try {
-      useAppGroupStore.getState().addSchedule(draft);
-      useNfcKeyStore.getState().lock();
-      const scan = useNfcKeyStore.getState().applyScan('tag', '04A1B2C3D4E5F6');
-      expect(scan.outcome).toBe('unlocked');
-      expect(useAppGroupStore.getState().schedules[0].pausedUntil).toBeNull();
-    } finally {
-      jest.useRealTimers();
-    }
-  });
-
-  it('locks as before when no schedule is open', () => {
-    enroll();
-    jest.useFakeTimers().setSystemTime(new Date(2026, 7, 15, 10));
-    try {
-      useAppGroupStore.getState().addSchedule(draft);
-      expect(useNfcKeyStore.getState().applyScan('tag', '04A1B2C3D4E5F6').outcome).toBe('locked');
-    } finally {
-      jest.useRealTimers();
-    }
   });
 });

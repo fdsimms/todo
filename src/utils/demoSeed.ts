@@ -398,7 +398,7 @@ export function seedDemoData(): void {
     startMinutes: 21 * 60,
     endMinutes: 6 * 60,
     enabled: true,
-    tagCanPause: true,
+   
   });
   addTask({
     title: 'Morning walk',

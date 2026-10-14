@@ -12,7 +12,7 @@ const make = (over: Partial<BlockSchedule> = {}): BlockSchedule => ({
   startMinutes: 9 * 60,
   endMinutes: 17 * 60,
   enabled: true,
-  tagCanPause: true,
+ 
   pausedUntil: null,
   ...over,
 });
@@ -64,7 +64,7 @@ describe('an overnight window', () => {
   });
 });
 
-describe('pausing with a key tag', () => {
+describe('ending blocks early', () => {
   it('lifts the open window until it ends, then the next one starts on time', () => {
     const { schedules, paused } = pauseActiveSchedules([make()], WED(10));
     expect(paused).toBe(1);
@@ -73,13 +73,12 @@ describe('pausing with a key tag', () => {
     expect(isScheduleActive(schedules[0], THU(9))).toBe(true);
   });
 
-  it('skips a schedule that opts out, one that is not open and one already paused', () => {
-    const opted = make({ id: 'a', tagCanPause: false });
+  it('skips a schedule that is not open and one already paused', () => {
     const closed = make({ id: 'b', startMinutes: 18 * 60, endMinutes: 20 * 60 });
     const already = make({ id: 'c', pausedUntil: WED(17).toISOString() });
-    const { paused, schedules } = pauseActiveSchedules([opted, closed, already], WED(10));
+    const { paused, schedules } = pauseActiveSchedules([closed, already], WED(10));
     expect(paused).toBe(0);
-    expect(schedules).toEqual([opted, closed, already]);
+    expect(schedules).toEqual([closed, already]);
   });
 
   it('pauses only the schedules that are open', () => {
@@ -112,11 +111,13 @@ describe('activeSchedules', () => {
     expect(activeSchedules([a, b], WED(10)).map(s => s.id)).toEqual(['b']);
   });
 
-  it('still blocks when a tag pauses one of two overlapping schedules but the other refuses it', () => {
-    const a = make({ id: 'a' });
-    const b = make({ id: 'b', tagCanPause: false });
-    const { schedules } = pauseActiveSchedules([a, b], WED(10));
-    expect(activeSchedules(schedules, WED(10)).map(s => s.id)).toEqual(['b']);
+  it('pauses every overlapping schedule at once, each until its own window ends', () => {
+    const a = make({ id: 'a', startMinutes: 9 * 60, endMinutes: 12 * 60 });
+    const b = make({ id: 'b', startMinutes: 11 * 60, endMinutes: 15 * 60 });
+    const { schedules, paused } = pauseActiveSchedules([a, b], WED(11, 30));
+    expect(paused).toBe(2);
+    expect(activeSchedules(schedules, WED(11, 30))).toEqual([]);
+    expect(isScheduleActive(schedules[0], THU(9))).toBe(true);
   });
 });
 

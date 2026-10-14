@@ -6,7 +6,7 @@
  * Defensive on purpose, `parseQueuedDreams`' posture: the file is written by
  * Swift in another process, so anything that does not parse is dropped rather
  * than thrown, and a drain must never fail a launch. A code is not judged here:
- * whether it belongs to a key is `applyScan`'s answer, so a malformed one costs
+ * whether it belongs to a key is `applyKeyScan`'s answer, so a malformed one costs
  * the same single "not recognized" as a wrong one.
  */
 

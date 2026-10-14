@@ -1,5 +1,6 @@
 import { gateGroupFor, nextPendingGate, outstandingGates } from './appGate';
-import { syncAppShield } from './appShield';
+import { shieldReasons, syncAppShield, type AppShieldState, type ShieldReasonEntry } from './appShield';
+import { isFocusReleased, isGateReleased } from './shieldRelease';
 import { canLock } from './nfcKey';
 import type { Task } from '../types';
 import { nextScheduleBoundary } from './blockSchedule';
@@ -8,6 +9,7 @@ import { resolvedAssignments, resolveGroupNow, useAppGroupStore } from '../store
 import { useFocusStore } from '../store/useFocusStore';
 import { useNfcKeyStore } from '../store/useNfcKeyStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useShieldReleaseStore } from '../store/useShieldReleaseStore';
 import { useTaskStore } from '../store/useTaskStore';
 
 /**
@@ -37,14 +39,47 @@ import { useTaskStore } from '../store/useTaskStore';
  * something would be the same hole one layer up.
  */
 export function reconcileAppShield(): Date | null {
+  const now = new Date();
+  const state = buildShieldState(now);
+  syncAppShield(state);
+
+  const boundary = nextScheduleBoundary(state.schedules, now);
+  const gateAt = state.pendingGate?.liveAt ?? null;
+  if (gateAt && boundary) return gateAt < boundary ? gateAt : boundary;
+  return gateAt ?? boundary;
+}
+
+/**
+ * Every gate task standing in the way, whether or not it has been released. The
+ * set a release prunes against: a released gate that is no longer in it is gone.
+ */
+export function outstandingGatesNow(): Task[] {
+  return outstandingGates(useTaskStore.getState().tasks, isTaskVisible);
+}
+
+/**
+ * The gates still holding the apps: outstanding and not released. A release is
+ * remembered per task row, so a repeating task's next occurrence gates again.
+ */
+export function liveGatesNow(): Task[] {
+  const { releases } = useShieldReleaseStore.getState();
+  return outstandingGatesNow().filter(t => !isGateReleased(t.id, releases));
+}
+
+/**
+ * The state every reader of "is the shield up" starts from: the stores, with
+ * what has been released applied. Kept in one place so the shield, the Screen
+ * Time page and a release deciding what to end cannot read different answers.
+ */
+function buildShieldState(now: Date): AppShieldState {
   const settings = useSettingsStore.getState();
   const tasks = useTaskStore.getState().tasks;
-  const now = new Date();
   const schedules = useAppGroupStore.getState().schedules;
+  const { releases } = useShieldReleaseStore.getState();
   // A gate holds its own group when it names one, else the gate setting's.
   const settingGroup = resolvedAssignments().gate;
   const groupOf = (t: Task) => gateGroupFor(t, settingGroup, resolveGroupNow);
-  const gates = outstandingGates(tasks, isTaskVisible);
+  const gates = liveGatesNow();
 
   // One pass shared across every task, the way every other bulk read of this
   // does it: it caches the day boundary and the segment thresholds, which are
@@ -54,11 +89,18 @@ export function reconcileAppShield(): Date | null {
   // vacation, so a gate task vacation mode is hiding would otherwise get a
   // window armed for tomorrow morning: being gated by something the app is
   // withholding is the one outcome appGate.ts rules out. A paused project's
-  // task stays in, since getVisibleAt does return the day its pause lifts.
-  const pending = nextPendingGate(tasks.filter(t => !isHiddenForVacation(t)), task => getVisibleAt(task, pass), now);
+  // task stays in, since getVisibleAt does return the day its pause lifts. A
+  // released gate is left out for the same reason: a window armed for it would
+  // raise the shield at the moment it was released from.
+  const pending = nextPendingGate(
+    tasks.filter(t => !isHiddenForVacation(t) && !isGateReleased(t.id, releases)),
+    task => getVisibleAt(task, pass),
+    now,
+  );
 
-  syncAppShield({
-    session: useFocusStore.getState().session,
+  const session = useFocusStore.getState().session;
+  return {
+    session: isFocusReleased(session?.id, releases) ? null : session,
     focusEnabled: settings.focusShieldEnabled,
     penaltyUntil: settings.penaltyShieldUntil,
     penaltyEnabled: settings.penaltyShieldEnabled,
@@ -74,12 +116,12 @@ export function reconcileAppShield(): Date | null {
       ? { liveAt: pending.liveAt, titles: pending.tasks.map(t => t.title), groupIds: pending.tasks.map(groupOf) }
       : null,
     now,
-  });
+  };
+}
 
-  const boundary = nextScheduleBoundary(schedules, now);
-  const gateAt = pending?.liveAt ?? null;
-  if (gateAt && boundary) return gateAt < boundary ? gateAt : boundary;
-  return gateAt ?? boundary;
+/** Why the apps are blocked right now, as the shield itself would say it. */
+export function currentShieldReasons(now: Date = new Date()): ShieldReasonEntry[] {
+  return shieldReasons(buildShieldState(now));
 }
 
 /**
@@ -99,12 +141,12 @@ export function keyLockedNow(): boolean {
  */
 export function gateKeyNow(): string {
   const settingGroup = resolvedAssignments().gate;
-  return outstandingGates(useTaskStore.getState().tasks, isTaskVisible)
+  return liveGatesNow()
     .map(t => `${t.title}:${gateGroupFor(t, settingGroup, resolveGroupNow)}`)
     .join('\n');
 }
 
 /** The gate titles standing in the way right now. */
 export function gateTitlesNow(): string[] {
-  return outstandingGates(useTaskStore.getState().tasks, isTaskVisible).map(t => t.title);
+  return liveGatesNow().map(t => t.title);
 }

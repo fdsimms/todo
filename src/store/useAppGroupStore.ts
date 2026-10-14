@@ -53,7 +53,7 @@ interface AppGroupStore {
   updateSchedule: (id: string, draft: NewSchedule) => ScheduleResult;
   removeSchedule: (id: string) => void;
   setScheduleEnabled: (id: string, enabled: boolean) => void;
-  /** A key tag was scanned: lift every open schedule that allows it. Returns how many. */
+  /** Lift every open schedule until its window ends. Returns how many. */
   pauseOpenSchedules: (now: Date) => number;
 }
 

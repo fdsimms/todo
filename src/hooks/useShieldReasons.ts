@@ -8,6 +8,8 @@ import { resolvedAssignments, resolveGroupNow, useAppGroupStore } from '../store
 import { useFocusStore } from '../store/useFocusStore';
 import { useNfcKeyStore } from '../store/useNfcKeyStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useShieldReleaseStore } from '../store/useShieldReleaseStore';
+import { isFocusReleased, isGateReleased } from '../utils/shieldRelease';
 import { useTaskStore } from '../store/useTaskStore';
 
 /** Just under 24.8 days, the largest delay setTimeout stores without overflowing. */
@@ -27,7 +29,9 @@ const MAX_TIMER_MS = 2_147_483_647;
  * happened to change.
  */
 export function useShieldReasons(): ShieldReasonEntry[] {
-  const session = useFocusStore(s => s.session);
+  const focusSession = useFocusStore(s => s.session);
+  const releases = useShieldReleaseStore(s => s.releases);
+  const session = isFocusReleased(focusSession?.id, releases) ? null : focusSession;
   const focusEnabled = useSettingsStore(s => s.focusShieldEnabled);
   const penaltyEnabled = useSettingsStore(s => s.penaltyShieldEnabled);
   const penaltyUntil = useSettingsStore(s => s.penaltyShieldUntil);
@@ -38,7 +42,7 @@ export function useShieldReasons(): ShieldReasonEntry[] {
   // Held as one string so a task write that changes no gate costs no render.
   const gateKey = useTaskStore(s => (
     gateEnabled
-      ? JSON.stringify(outstandingGates(s.tasks, isTaskVisible).map(t => ({ title: t.title, own: t.gateGroupId ?? null })))
+      ? JSON.stringify(outstandingGates(s.tasks, isTaskVisible).filter(t => !isGateReleased(t.id, releases)).map(t => ({ title: t.title, own: t.gateGroupId ?? null })))
       : '[]'
   ));
   const groups = useAppGroupStore(s => s.groups);

@@ -21,9 +21,8 @@ import Foundation
 // The code is checked in the app, not here. This runs in a process with no
 // access to the key list, so perform() only queues the code and opens the app,
 // and processPendingKeyScans in src/utils/widgetSync.ts hands it to
-// `useNfcKeyStore.applyScan('link', code)`, the call a tapped link tag makes.
-// That is also why a scan here pauses an open schedule before it locks, exactly
-// as a tag does, and why it can never end a penalty, a gate or a focus session.
+// `applyKeyScan('link', code)`, the call a tapped link tag makes. That is also
+// why a run here ends every live block and is recorded, exactly as a tag is.
 private enum PendingKeyScanStore {
     // Must match the same literals in TodoWidgetBridgeModule.swift, which
     // drains the file. File-scoped `private`, so each file keeps its own copy,

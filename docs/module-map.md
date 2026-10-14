@@ -36,7 +36,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/appLock.ts` — APP_LOCK_GRACE_OPTIONS, DEFAULT_APP_LOCK_GRACE_SECONDS, graceLabel, parseGraceSeconds, shouldLockOnResume, biometryLabel
 - `src/utils/appLockAuth.ts` — AppLockCapability, AppLockSupport, getAppLockSupport, UnlockResult, authenticateForAppLock
 - `src/utils/appShield.ts` — AppShieldState, ShieldReasonKind, ShieldReasonEntry, shieldReasons, shieldGroupIds, appShieldWanted, syncAppShield
-- `src/utils/appShieldReconcile.ts` — reconcileAppShield, keyLockedNow, gateKeyNow, gateTitlesNow
+- `src/utils/appShieldReconcile.ts` — reconcileAppShield, outstandingGatesNow, liveGatesNow, currentShieldReasons, keyLockedNow, gateKeyNow, gateTitlesNow
 - `src/utils/archiveMatch.ts` — findArchivedMatch
 - `src/utils/awayDates.ts` — AwaySpan, AwayPhase, AwayStatus, awayNoonIso, departureFromAnswer, departureMoveFromAnswer, awaySpanOf, liveAwaySpans, isAwayDay, awayNights, +13 more
 - `src/utils/awayShift.ts` — AwayShiftProposal, AwayShiftPlan, shiftDateOf, buildAwayShiftPlan, awayShiftUpdates, describeAwayShift, hasAnchoredMember
@@ -364,6 +364,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/recordTasks.ts` — isAnsweredByRecord, recordLogUrl, RecordContext, isRecordAnswered
 - `src/utils/recurrenceLabels.ts` — recurrenceUnitLabel, ORDINAL_OPTIONS, MONTH_NAMES, MONTH_ABBREVIATIONS, RecurrenceRule, describeTaskRecurrence, recurrenceRuleOf, describeRecurrence
 - `src/utils/refreshGuard.ts` — RefreshGuard, createRefreshGuard
+- `src/utils/releaseBlocks.ts` — releaseAllBlocks, applyKeyScan
 - `src/utils/reminderCaptures.ts` — CAPTURE_TITLE_MAX_LENGTH, MAX_REMINDER_CAPTURES, makeReminderCapture, parseReminderCaptures, serializeReminderCaptures, activeReminderCaptures, drainableReminderCaptures, captureListIds, captureDraftFields, describeReminderCaptureFiling
 - `src/utils/reminderNudge.ts` — ReminderNudge, nudgeReminderPastMeeting, meetingSignature, meetingAtStart
 - `src/utils/reminderPermission.ts` — askForReminderPermissionIfNeeded
@@ -415,6 +416,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/sheetMotion.ts` — SHEET_TRAVEL_SLACK, sheetTravel
 - `src/utils/shelfLabel.ts` — ScanBox, ScanText, printedPricesIn, priceNearBarcode
 - `src/utils/shieldReasonText.ts` — MAX_NAMED_GATES, shieldReasonLines, shieldHeadline, shieldHeadlineNote, selectionLabel
+- `src/utils/shieldRelease.ts` — SHIELD_RELEASES_SETTING, SHIELD_RELEASE_LOG_SETTING, MAX_RELEASE_LOG, MIN_RELEASE_REASON_LENGTH, MAX_RELEASE_REASON_LENGTH, ShieldReleases, NO_RELEASES, parseShieldReleases, withReleased, isGateReleased, +10 more
 - `src/utils/shoppingTrip.ts` — MAX_TRIP_STOPS, ShopCoverage, TripPlan, TripSummary, planTrip, summarizeTrip, describeShopCoverage, joinNames
 - `src/utils/shortNight.ts` — SHORT_NIGHT_MINUTES_MIN, SHORT_NIGHT_MINUTES_MAX, SHORT_NIGHT_MINUTES_STEP, SHORT_NIGHT_MINUTES_DEFAULT, clampShortNightMinutes, parseShortNightMinutes
 - `src/utils/simpleMode.ts` — SimpleArea, SimpleFeatureId, SimpleFeature, SIMPLE_AREA_LABELS, SIMPLE_AREAS, SIMPLE_FEATURES, simpleFeaturesIn, featureHidden, featureShown, SIMPLE_HIDDEN_SCREENS, +11 more
@@ -561,6 +563,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useScreenTimeStore.ts` — useScreenTimeStore, useScreenTimeSync
 - `src/store/useSettingsStore.ts` — PatchNoteQaStatus, WeekStart, FabHand, MapsApp, MealsOnToday, NewTaskDefaults, DEFAULT_REMINDER_LEAD_OPTIONS, useSettingsStore
 - `src/store/useSharedLinkStore.ts` — useSharedLinkStore
+- `src/store/useShieldReleaseStore.ts` — useShieldReleaseStore
 - `src/store/useStepTimerStore.ts` — useStepTimerStore
 - `src/store/useSyncStore.ts` — SERVER_HEALTH_LOGS_KEY, SERVER_HEALTH_RESEND_KEY, NOTHING_OWED, SERVER_JOURNAL_KEY, SERVER_JOURNAL_RESEND_KEY, SYNC_EPOCH, withholdingFor, markHealthLogsWithheld, settleHealthLogResend, SyncPhase, +3 more
 - `src/store/useTaskGroupStore.ts` — useTaskGroupStore

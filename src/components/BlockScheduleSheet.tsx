@@ -36,7 +36,6 @@ interface Draft {
   days: number[];
   startMinutes: number;
   endMinutes: number;
-  tagCanPause: boolean;
 }
 
 const NEW_DRAFT: Draft = {
@@ -45,10 +44,9 @@ const NEW_DRAFT: Draft = {
   days: [...WEEKDAYS],
   startMinutes: 9 * 60,
   endMinutes: 17 * 60,
-  tagCanPause: true,
 };
 
-const draftKey = (d: Draft) => JSON.stringify([d.name.trim(), d.groupId, [...d.days].sort(), d.startMinutes, d.endMinutes, d.tagCanPause]);
+const draftKey = (d: Draft) => JSON.stringify([d.name.trim(), d.groupId, [...d.days].sort(), d.startMinutes, d.endMinutes]);
 
 function minutesToDate(minutes: number): Date {
   const d = new Date();
@@ -87,7 +85,6 @@ export function BlockScheduleSheet({ visible, onClose, scheduleId }: Props) {
         days: [...existing.days],
         startMinutes: existing.startMinutes,
         endMinutes: existing.endMinutes,
-        tagCanPause: existing.tagCanPause,
       }
       : NEW_DRAFT;
     setDraft(seed);
@@ -263,16 +260,6 @@ export function BlockScheduleSheet({ visible, onClose, scheduleId }: Props) {
               hint="Choose the apps in each group on the Screen Time screen."
               value={groupName(customGroups, draft.groupId)}
               onPress={chooseGroup}
-            />
-            <View style={settingsStyles.sep} />
-            <SettingsRow
-              icon="radio-outline"
-              label="Key tag can pause it"
-              hint={draft.tagCanPause
-                ? 'Tapping a key tag during a block lifts it until it ends. The next block starts on time.'
-                : 'A key tag does nothing to this schedule.'}
-              toggle={draft.tagCanPause}
-              onPress={() => { haptics.tap(); setDraft(d => ({ ...d, tagCanPause: !d.tagCanPause })); }}
             />
           </SettingsSection>
 

@@ -35,7 +35,8 @@ import { haptics } from './haptics';
 import { parseQueuedDreams } from './dreamQueue';
 import { keyCodeToken, parseQueuedKeyScans } from './keyScanQueue';
 import { alertKeyScanResult } from './keyScanAlert';
-import { useNfcKeyStore, type KeyScanResult } from '../store/useNfcKeyStore';
+import { applyKeyScan } from './releaseBlocks';
+import type { KeyScanResult } from '../store/useNfcKeyStore';
 import { useJournalStore } from '../store/useJournalStore';
 import { isProjectLocked } from '../store/useProjectLockStore';
 
@@ -215,7 +216,7 @@ async function processPendingDreams(): Promise<void> {
 }
 
 // Key codes run from Shortcuts (ToggleKeyLockIntent), the route for a plain NFC
-// tag. Each goes through `applyScan('link', …)`, the call a tapped link tag
+// tag. Each goes through `applyKeyScan('link', …)`, the call a tapped link tag
 // makes, so a code is matched against the enrolled link keys and nothing else
 // decides anything here: an unknown or malformed code gets the same single
 // "not recognized". The result is spoken once, for the last code, since the
@@ -231,7 +232,7 @@ async function processPendingKeyScans(): Promise<void> {
     if (queued.length === 0) return;
     let last: KeyScanResult | null = null;
     for (const scan of queued) {
-      last = useNfcKeyStore.getState().applyScan('link', keyCodeToken(scan.code));
+      last = applyKeyScan('link', keyCodeToken(scan.code));
     }
     if (last) {
       alertKeyScanResult(last, {

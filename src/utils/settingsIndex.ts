@@ -768,6 +768,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['screen time', 'apps to block', 'which apps', 'picker', 'choose', 'distraction', 'social media', 'restrict', 'group', 'groups'] },
   { id: 'blockSchedules', iosOnly: true, groupId: 'screenTime', label: 'Add a schedule', section: 'Schedules', simple: true,
     keywords: ['screen time', 'block apps', 'hours', 'times', 'bedtime', 'work hours', 'downtime', 'automatic', 'recurring', 'weekdays', 'distraction', 'restrict'] },
+  { id: 'emergencyRelease', iosOnly: true, groupId: 'screenTime', label: 'End all blocks now', section: 'Emergency', simple: true,
+    keywords: ['screen time', 'emergency', 'unblock', 'unlock', 'end block', 'override', 'turn off block', 'lift', 'penalty', 'locked out'] },
   { id: 'focusShield', iosOnly: true, groupId: 'screenTime', label: 'While focusing', section: 'Reasons to block', simple: true,
     keywords: ['screen time', 'block apps', 'pomodoro', 'focus session', 'distraction', 'shield', 'social media', 'restrict'] },
   { id: 'gateShield', iosOnly: true, groupId: 'screenTime', label: 'Until a task is done', section: 'Reasons to block', simple: true,

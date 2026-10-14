@@ -483,7 +483,7 @@ describe('shieldReasons', () => {
 describe('app groups and schedules', () => {
   const SCHEDULE = {
     id: 'sch', name: 'Work hours', groupId: 'social', days: [0, 1, 2, 3, 4, 5, 6],
-    startMinutes: 0, endMinutes: 23 * 60 + 59, enabled: true, tagCanPause: true, pausedUntil: null,
+    startMinutes: 0, endMinutes: 23 * 60 + 59, enabled: true, pausedUntil: null,
   };
   // NOW is 09:00Z; schedules use the device's clock, so build the window around it.
   const around = {

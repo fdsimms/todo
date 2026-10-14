@@ -9,7 +9,7 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useStepTimerStore } from '../store/useStepTimerStore';
 import { useFocusStore } from '../store/useFocusStore';
-import { useNfcKeyStore } from '../store/useNfcKeyStore';
+import { applyKeyScan } from './releaseBlocks';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { haptics } from './haptics';
 import { normalizeLinkToken } from './nfcKey';
@@ -856,7 +856,7 @@ export function openInAppUrl(url: string | null | undefined): boolean {
     // real tag must not flip a lock inside the throwaway database.
     if (!isDemoModeActive()) {
       alertKeyScanResult(
-        useNfcKeyStore.getState().applyScan('link', keyUrlToken(url)),
+        applyKeyScan('link', keyUrlToken(url)),
         { message: 'This tag isn’t one of your key tags. Add it on the Screen Time screen.' },
       );
     }

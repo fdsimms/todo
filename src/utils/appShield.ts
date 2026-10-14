@@ -27,10 +27,12 @@ import { activeSchedules, currentWindowEnd, nativeScheduleWindows, type BlockSch
  * single call. Adding another is a predicate and a line here, which is what the
  * arbiter was for.
  *
- * **A key tag is one reason among the four, not an override of them.** Scanning
- * it flips only `keyLocked`, so it ends the block a tag raised and can never
- * end a penalty or a gate. That is the same invariant as above, applied to the
- * one reason a person can lift by hand.
+ * **A key tag and the emergency button end every live reason, on purpose, and
+ * leave a record.** That is `releaseAllBlocks` (`releaseBlocks.ts`), which ends
+ * each reason where it lives rather than through this arbiter, so this file
+ * still only ORs what is live. An earlier rule had a tag flip only `keyLocked`;
+ * it was reversed because a lock that nothing could end early was worse than one
+ * that could be ended and counted.
  *
  * Safe to over-call, which is the point: it runs on every session write, every
  * settings change, every foreground, every task write and every penalty expiry,

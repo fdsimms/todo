@@ -1,5 +1,6 @@
 import { Alert } from 'react-native';
 import { haptics } from './haptics';
+import { describeEnded } from './shieldRelease';
 import type { KeyScanResult } from '../store/useNfcKeyStore';
 
 /**
@@ -15,12 +16,12 @@ export function alertKeyScanResult(result: KeyScanResult, unknown: { title?: str
     return;
   }
   haptics.success();
+  if (result.outcome === 'locked') {
+    Alert.alert('Apps locked', `${result.key.name} locked your chosen apps. Tap it again to unlock them.`);
+    return;
+  }
   Alert.alert(
-    result.outcome === 'locked' ? 'Apps locked' : result.outcome === 'paused' ? 'Schedule paused' : 'Apps unlocked',
-    result.outcome === 'locked'
-      ? `${result.key.name} locked your chosen apps. Tap it again to unlock them.`
-      : result.outcome === 'paused'
-        ? `${result.key.name} paused ${result.count === 1 ? 'the schedule' : 'the schedules'} that ${result.count === 1 ? 'was' : 'were'} blocking apps. ${result.count === 1 ? 'It starts' : 'They start'} again at the next window. Other blocks, like a focus session, stay on.`
-        : `${result.key.name} unlocked your chosen apps. Other blocks, like a focus session, stay on.`,
+    'Blocks ended',
+    `${result.key.name} ended your ${describeEnded(result.ended)}. ${result.ended.includes('schedule') ? 'A schedule starts again at its next window. ' : ''}This is saved in the record on the Screen Time screen.`,
   );
 }
