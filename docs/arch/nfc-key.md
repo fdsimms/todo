@@ -4,7 +4,7 @@ A key tag is an NFC tag that locks and unlocks the apps picked in Settings. Tapp
 
 ## The rule everything else follows
 
-**A tag is one reason among four for the one system shield, never an override of the other three.** `src/utils/appShield.ts` ORs focus, penalty, gate and key, and the first rule of that file is that no reason may lift another's block. A scan flips `keyLocked` and nothing else, so it ends the block a tag raised and never ends a failed-task penalty, a gate or a focus session. A tag that overrode those would be a way out of the features that exist to have none. If you want a master key, that is a different feature and it needs a different answer to what the penalty is for.
+**A tag is one reason among five for the one system shield, never an override of the other four.** `src/utils/appShield.ts` ORs focus, penalty, gate, schedule and key, and the first rule of that file is that no reason may lift another's block. A scan flips `keyLocked` and nothing else, so it ends the block a tag raised and never ends a failed-task penalty, a gate or a focus session. A tag that overrode those would be a way out of the features that exist to have none. If you want a master key, that is a different feature and it needs a different answer to what the penalty is for.
 
 Two consequences are easy to break:
 
@@ -42,6 +42,17 @@ Two consequences are easy to break:
 - The module uses the `pollingOption` initializer of `NFCTagReaderSession`. The `Configuration` struct that replaces it is iOS 26.4 only, and the older initializer is the one that works on every version the app runs on.
 - Needs `NFCReaderUsageDescription` and the `com.apple.developer.nfc.readersession.formats` entitlement (`["TAG"]`) in `app.json`, and the **NFC Tag Reading** capability on the App ID. A fresh native build is required.
 - Not checked against the compiler or a device from the sandbox the feature was written in: the `NFCTagReaderSessionDelegate` method signatures could not be fetched from Apple's JSON docs, and the cancel-versus-failure distinction is deliberately not made (every early end is `ended`). Check these first if an EAS build fails.
+
+## Schedules and app groups
+
+A schedule (`src/utils/blockSchedule.ts`) blocks a group of apps on chosen weekdays between two times, and a tag can pause it. Groups (`src/utils/appGroups.ts`, `useAppGroupStore`) are named lists of apps, each with its own selection file in the App Group container; the original single selection is the Default group and keeps its file name.
+
+- **The shield is the union of the groups its live reasons name.** Focus, gate, penalty, key and each schedule point at a group (`appShield.ts` `shieldGroupIds`). A reason whose group was deleted resolves to Default, never to nothing, or a switch would read as on while blocking no apps.
+- **A scan pauses before it locks.** With the lock off and a schedule open, a scan lifts every open schedule that allows it (`tagCanPause`) until its window ends, and does not raise the lock. With the lock on, a scan unlocks as before. `pausedUntil` is the end of that one window instance, so the next block starts on time with nothing to clear. This is the only thing a tag does to a schedule; it still cannot touch a penalty, gate or focus session.
+- **A window is wall-clock time, not a logical day.** `dayResetTime` is not read: the iOS schedule is made of clock times and the monitor extension cannot read the setting. A window that ends at or before its start runs overnight and belongs to the day it starts on. `windowCovering` in `blockSchedule.ts` and `ScreenTimeShared.windowCovers` in Swift are the same rule written twice; change them together.
+- **The extension rebuilds the shield instead of trusting an edge.** Each schedule is armed as daily activities (an overnight one as two, since whether an end before a start crosses midnight is undocumented), and every wake calls `ScreenTimeShared.heldGroupIds`, which unions the groups the app last wrote for focus/gate/key, a penalty still running, a gate whose moment has come, and the schedules open by their own clock. A wake on a day the schedule doesn't cover changes nothing, and one reason ending never lifts another's group.
+- **Limits.** iOS allows about twenty monitored activities in all, so there are at most 8 schedules (`MAX_BLOCK_SCHEDULES`) and 7 custom groups. A segment under about 15 minutes is refused by iOS and swallowed; the foreground reconcile covers the edge.
+- **Not verified from the sandbox that wrote it:** the `DeviceActivitySchedule` daily-repeat behavior with these bounds, and that `intervalDidStart` fires when monitoring is restarted inside a window. Both are harmless if wrong (the foreground reconcile still lifts and raises), but check them first on a device.
 
 ## Phase 2, not built
 

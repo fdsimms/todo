@@ -3,6 +3,13 @@ import { View, Alert, Share } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { useNfcKeyStore } from '../../store/useNfcKeyStore';
+import { useAppGroupStore } from '../../store/useAppGroupStore';
+import { BlockScheduleSheet } from '../../components/BlockScheduleSheet';
+import {
+  DEFAULT_GROUP_ID, DEFAULT_GROUP_NAME, allGroups, groupName, resolveAssignments, resolveGroupId, type GroupedReason,
+} from '../../utils/appGroups';
+import { describeDays, describeWindow, formatMinutes, isScheduleActive, MAX_BLOCK_SCHEDULES, type BlockSchedule } from '../../utils/blockSchedule';
+import { selectionLabel } from '../../utils/shieldReasonText';
 import { useColors } from '../../theme/ThemeContext';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
@@ -23,11 +30,10 @@ import { clockTimeToken } from '../../utils/clockTime';
 interface Props {
   /** Why the apps are blocked right now, so each switch can say what it is doing. */
   reasons: readonly ShieldReasonEntry[];
-  /** How many apps and categories are picked, and how that reads. */
-  selectedTotal: number;
-  selectionLabel: string;
-  /** Opens the system picker. Owned by the screen, which also shows the count. */
-  onChooseApps: () => Promise<void>;
+  /** How many apps and categories each group has picked, by group id. */
+  counts: Record<string, { applications: number; categories: number }>;
+  /** Opens the system picker for one group. Owned by the screen, which also shows the counts. */
+  onChooseApps: (groupId: string) => Promise<void>;
 }
 
 /**
@@ -46,7 +52,7 @@ interface Props {
  * button that lifts a focus, gate or penalty block: the penalty's only way out
  * is switching the feature off, which is deliberate.
  */
-export function ScreenTimeSettings({ reasons, selectedTotal, selectionLabel, onChooseApps }: Props) {
+export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
   const navigation = useNavigation();
@@ -77,10 +83,146 @@ export function ScreenTimeSettings({ reasons, selectedTotal, selectionLabel, onC
     return false;
   };
 
-  const handleChooseApps = async () => {
+  // ==== app groups ====
+
+  const customGroups = useAppGroupStore(s => s.groups);
+  const assignments = useAppGroupStore(s => s.assignments);
+  const schedules = useAppGroupStore(s => s.schedules);
+  const resolved = useMemo(() => resolveAssignments(customGroups, assignments), [customGroups, assignments]);
+
+  const countLabel = (groupId: string) => {
+    const c = counts[groupId];
+    return c ? selectionLabel(c.applications, c.categories) : 'None';
+  };
+  const totalOf = (groupId: string) => {
+    const c = counts[groupId];
+    return c ? c.applications + c.categories : 0;
+  };
+
+  const handleChooseApps = async (groupId: string) => {
     haptics.tap();
     if (!(await ensureAuthorized('Choosing apps to block needs Screen Time access. Grant it in Settings, under Screen Time.'))) return;
-    await onChooseApps();
+    await onChooseApps(groupId);
+  };
+
+  const groupNameFailed = (reason: 'full' | 'duplicate' | 'invalid') => {
+    Alert.alert(
+      reason === 'full' ? 'Too many groups' : 'Name already used',
+      reason === 'full' ? 'Delete a group before adding another.' : 'Pick a name no other group has.',
+    );
+  };
+
+  const handleNewGroup = () => {
+    haptics.tap();
+    Alert.prompt('Name this group', 'For example, Social or Games.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Add',
+        onPress: (text?: string) => {
+          const added = useAppGroupStore.getState().addGroup(text ?? '');
+          if (!added.ok) { groupNameFailed(added.reason); return; }
+          haptics.success();
+          if (added.group) void handleChooseApps(added.group.id);
+        },
+      },
+    ], 'plain-text');
+  };
+
+  const handleGroupRow = (groupId: string, name: string) => {
+    haptics.tap();
+    if (groupId === DEFAULT_GROUP_ID) { void handleChooseApps(groupId); return; }
+    const used = [
+      ...(['focus', 'gate', 'penalty', 'key'] as const).filter(r => resolved[r] === groupId),
+      ...schedules.filter(sc => resolveGroupId(customGroups, sc.groupId) === groupId).map(() => 'schedule' as const),
+    ];
+    Alert.alert(name, undefined, [
+      { text: 'Choose apps', onPress: () => { void handleChooseApps(groupId); } },
+      {
+        text: 'Rename',
+        onPress: () => Alert.prompt('Rename group', undefined, [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Save',
+            onPress: (text?: string) => {
+              const renamed = useAppGroupStore.getState().renameGroup(groupId, text ?? '');
+              if (!renamed.ok) groupNameFailed(renamed.reason);
+            },
+          },
+        ], 'plain-text', name),
+      },
+      {
+        text: 'Delete',
+        style: 'destructive' as const,
+        onPress: () => Alert.alert(
+          `Delete ${name}?`,
+          used.length > 0
+            ? `Anything using this group will block the ${DEFAULT_GROUP_NAME} group instead.`
+            : 'The apps you picked for this group are forgotten.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Delete',
+              style: 'destructive',
+              onPress: () => {
+                useAppGroupStore.getState().removeGroup(groupId);
+                screenTimeBridge()?.clearScreenTimeSelection(groupId);
+              },
+            },
+          ],
+        ),
+      },
+      { text: 'Cancel', style: 'cancel' as const },
+    ]);
+  };
+
+  /** Pick which group one reason blocks. */
+  const chooseReasonGroup = (reason: GroupedReason, title: string) => {
+    haptics.tap();
+    Alert.alert(title, 'Choose which group of apps this blocks.', [
+      ...allGroups(customGroups).map(g => ({
+        text: g.id === resolved[reason] ? `${g.name} (selected)` : g.name,
+        onPress: () => useAppGroupStore.getState().assignGroup(reason, g.id),
+      })),
+      { text: 'Cancel', style: 'cancel' as const },
+    ]);
+  };
+
+  // ==== schedules ====
+
+  const [scheduleSheet, setScheduleSheet] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
+
+  const handleAddSchedule = async () => {
+    haptics.tap();
+    if (schedules.length >= MAX_BLOCK_SCHEDULES) {
+      Alert.alert('Too many schedules', 'Remove a schedule before adding another.');
+      return;
+    }
+    if (!(await ensureAuthorized('Blocking apps on a schedule needs Screen Time access. Grant it in Settings, under Screen Time.'))) return;
+    setScheduleSheet({ open: true, id: null });
+  };
+
+  const handleScheduleRow = (schedule: BlockSchedule) => {
+    haptics.tap();
+    Alert.alert(schedule.name, undefined, [
+      { text: 'Edit', onPress: () => setScheduleSheet({ open: true, id: schedule.id }) },
+      {
+        text: schedule.enabled ? 'Turn off' : 'Turn on',
+        onPress: () => useAppGroupStore.getState().setScheduleEnabled(schedule.id, !schedule.enabled),
+      },
+      { text: 'Cancel', style: 'cancel' as const },
+    ]);
+  };
+
+  const scheduleHint = (schedule: BlockSchedule) => {
+    const parts = [
+      describeDays(schedule.days),
+      describeWindow(schedule, use24HourTime),
+      groupName(customGroups, schedule.groupId),
+    ];
+    if (schedule.pausedUntil && new Date(schedule.pausedUntil) > new Date()) {
+      parts.push(`Paused until ${formatMinutes(new Date(schedule.pausedUntil).getHours() * 60 + new Date(schedule.pausedUntil).getMinutes(), use24HourTime)}`);
+    }
+    return parts.join(' · ');
   };
 
   /**
@@ -90,6 +232,7 @@ export function ScreenTimeSettings({ reasons, selectedTotal, selectionLabel, onC
    * the feature is broken.
    */
   const toggleReason = async (
+    reason: GroupedReason,
     enabled: boolean,
     setEnabled: (on: boolean) => void,
     message: string,
@@ -103,7 +246,7 @@ export function ScreenTimeSettings({ reasons, selectedTotal, selectionLabel, onC
     }
     if (!(await ensureAuthorized(message))) return;
     setEnabled(true);
-    if (selectedTotal === 0) await onChooseApps();
+    if (totalOf(resolved[reason]) === 0) await onChooseApps(resolved[reason]);
   };
 
   // ==== reasons ====
@@ -243,7 +386,7 @@ export function ScreenTimeSettings({ reasons, selectedTotal, selectionLabel, onC
       return;
     }
     if (!(await ensureAuthorized('Locking apps with a tag needs Screen Time access. Grant it in Settings, under Screen Time.'))) return;
-    if (selectedTotal === 0) await onChooseApps();
+    if (totalOf(resolved.key) === 0) await onChooseApps(resolved.key);
     useNfcKeyStore.getState().lock();
   };
 
@@ -251,15 +394,37 @@ export function ScreenTimeSettings({ reasons, selectedTotal, selectionLabel, onC
 
   return (
     <>
-      <SettingsSection label="Apps">
+      <SettingsSection
+        label="App groups"
+        footer="Each group is its own list of apps. iOS doesn’t share which apps you picked, so only the count shows here."
+      >
         <SettingsRow
           entryId="screenTimeApps"
           icon="apps-outline"
-          iconColor={selectedTotal > 0 ? colors.accent : undefined}
-          label="Apps to block"
-          hint="One list for every reason below. iOS doesn’t share which apps you picked, so only the count shows here."
-          value={selectionLabel}
-          onPress={handleChooseApps}
+          iconColor={totalOf(DEFAULT_GROUP_ID) > 0 ? colors.accent : undefined}
+          label={DEFAULT_GROUP_NAME}
+          value={countLabel(DEFAULT_GROUP_ID)}
+          onPress={() => handleGroupRow(DEFAULT_GROUP_ID, DEFAULT_GROUP_NAME)}
+        />
+        {customGroups.map(group => (
+          <React.Fragment key={group.id}>
+            <View style={styles.sep} />
+            <SettingsRow
+              icon="apps-outline"
+              iconColor={totalOf(group.id) > 0 ? colors.accent : undefined}
+              label={group.name}
+              value={countLabel(group.id)}
+              onPress={() => handleGroupRow(group.id, group.name)}
+            />
+          </React.Fragment>
+        ))}
+        <View style={styles.sep} />
+        <SettingsRow
+          icon="add-circle-outline"
+          iconColor={colors.accent}
+          label="New group"
+          hint="Make another list of apps, for example Social or Games."
+          onPress={handleNewGroup}
         />
       </SettingsSection>
 
@@ -276,7 +441,7 @@ export function ScreenTimeSettings({ reasons, selectedTotal, selectionLabel, onC
             : 'Apps stay available during a session.'}
           toggle={focusShieldEnabled}
           onPress={() => toggleReason(
-            focusShieldEnabled, setFocusShieldEnabled,
+            'focus', focusShieldEnabled, setFocusShieldEnabled,
             'Blocking apps during a focus session needs Screen Time access. Grant it in Settings, under Screen Time.',
           )}
         />
@@ -293,7 +458,7 @@ export function ScreenTimeSettings({ reasons, selectedTotal, selectionLabel, onC
             : 'No tasks block apps.'}
           toggle={gateShieldEnabled}
           onPress={() => toggleReason(
-            gateShieldEnabled, setGateShieldEnabled,
+            'gate', gateShieldEnabled, setGateShieldEnabled,
             'Blocking apps until a task is done needs Screen Time access. Grant it in Settings, under Screen Time.',
           )}
         />
@@ -310,7 +475,7 @@ export function ScreenTimeSettings({ reasons, selectedTotal, selectionLabel, onC
             : 'Failing a task blocks nothing.'}
           toggle={penaltyShieldEnabled}
           onPress={() => toggleReason(
-            penaltyShieldEnabled, setPenaltyShieldEnabled,
+            'penalty', penaltyShieldEnabled, setPenaltyShieldEnabled,
             'Blocking apps when you fail a task needs Screen Time access. Grant it in Settings, under Screen Time.',
             // Switching the feature off is the way out of a block being
             // served, so the block must not be left waiting to resume the
@@ -319,6 +484,67 @@ export function ScreenTimeSettings({ reasons, selectedTotal, selectionLabel, onC
             // thing the feature is for.
             () => setPenaltyShieldUntil(null),
           )}
+        />
+      </SettingsSection>
+
+      <SettingsSection
+        label="Apps by reason"
+        footer="Choose which group of apps each reason blocks. When two reasons are on at once, both groups are blocked."
+      >
+        <SettingsRow
+          icon="timer-outline"
+          label="While focusing"
+          value={groupName(customGroups, resolved.focus)}
+          onPress={() => chooseReasonGroup('focus', 'While focusing')}
+        />
+        <View style={styles.sep} />
+        <SettingsRow
+          icon="checkbox-outline"
+          label="Until a task is done"
+          value={groupName(customGroups, resolved.gate)}
+          onPress={() => chooseReasonGroup('gate', 'Until a task is done')}
+        />
+        <View style={styles.sep} />
+        <SettingsRow
+          icon="alert-circle-outline"
+          label="When you fail a task"
+          value={groupName(customGroups, resolved.penalty)}
+          onPress={() => chooseReasonGroup('penalty', 'When you fail a task')}
+        />
+        <View style={styles.sep} />
+        <SettingsRow
+          icon="lock-closed-outline"
+          label="Key tag lock"
+          value={groupName(customGroups, resolved.key)}
+          onPress={() => chooseReasonGroup('key', 'Key tag lock')}
+        />
+      </SettingsSection>
+
+      <SettingsSection
+        label="Schedules"
+        footer="A schedule blocks a group of apps during set hours, even when dundundun is closed. A key tag can pause one block. Focus sessions, tasks and failed tasks still block on their own."
+      >
+        {schedules.map(schedule => (
+          <React.Fragment key={schedule.id}>
+            <SettingsRow
+              icon="calendar-outline"
+              iconColor={isScheduleActive(schedule, new Date()) ? colors.accent : undefined}
+              label={schedule.name}
+              hint={scheduleHint(schedule)}
+              alwaysShowHint
+              value={schedule.enabled ? undefined : 'Off'}
+              onPress={() => handleScheduleRow(schedule)}
+            />
+            <View style={styles.sep} />
+          </React.Fragment>
+        ))}
+        <SettingsRow
+          entryId="blockSchedules"
+          icon="add-circle-outline"
+          iconColor={colors.accent}
+          label="Add a schedule"
+          hint="Block apps on certain days between two times."
+          onPress={() => { void handleAddSchedule(); }}
         />
       </SettingsSection>
 
@@ -332,7 +558,7 @@ export function ScreenTimeSettings({ reasons, selectedTotal, selectionLabel, onC
             ? 'The apps are locked. Tap a key tag to unlock them. A tag never ends a focus session or a block from a task.'
             : nfcKeys.length === 0
               ? 'Add a key tag to use this.'
-              : 'Turn on to lock the apps until you tap a key tag.'}
+              : 'Turn on to lock the apps until you tap a key tag. While a schedule is blocking, a tap pauses it instead.'}
           toggle={keyLocked}
           onPress={handleKeyLock}
         />
@@ -369,6 +595,12 @@ export function ScreenTimeSettings({ reasons, selectedTotal, selectionLabel, onC
           onPress={() => { haptics.tap(); navigateToSettingsEntry(navigation, 'gen:screenTime'); }}
         />
       </SettingsSection>
+    
+      <BlockScheduleSheet
+        visible={scheduleSheet.open}
+        scheduleId={scheduleSheet.id}
+        onClose={() => setScheduleSheet(prev => ({ ...prev, open: false }))}
+      />
     </>
   );
 }

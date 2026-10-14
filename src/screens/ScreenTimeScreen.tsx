@@ -12,6 +12,8 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useShieldReasons } from '../hooks/useShieldReasons';
 import { usePullToSearch } from '../hooks/usePullToSearch';
 import { screenTimeBridge } from '../utils/screenTimeBridge';
+import { allGroups, DEFAULT_GROUP_ID } from '../utils/appGroups';
+import { useAppGroupStore } from '../store/useAppGroupStore';
 import { clockTimeToken } from '../utils/clockTime';
 import {
   selectionLabel, shieldHeadline, shieldHeadlineNote, shieldReasonLines,
@@ -28,7 +30,8 @@ type ScreenTimeParams = {
   } | undefined;
 };
 
-const NO_SELECTION = { applications: 0, categories: 0 };
+type GroupCount = { applications: number; categories: number };
+const NO_SELECTION: GroupCount = { applications: 0, categories: 0 };
 
 /**
  * Whether the picked apps are blocked right now, why, and every setting that
@@ -61,16 +64,21 @@ export function ScreenTimeScreen() {
 
   // Counts, not names: iOS hands the app opaque tokens for the apps somebody
   // picked and only SwiftUI can render them (see modules/todo-screentime-bridge).
-  const [selection, setSelection] = useState(
-    () => screenTimeBridge()?.screenTimeSelectionCount() ?? NO_SELECTION,
-  );
+  // One count per group, since each group has its own selection.
+  const customGroups = useAppGroupStore(s => s.groups);
+  const [counts, setCounts] = useState<Record<string, GroupCount>>({});
   const refreshSelection = useCallback(() => {
-    setSelection(screenTimeBridge()?.screenTimeSelectionCount() ?? NO_SELECTION);
-  }, []);
-  const chooseApps = useCallback(async () => {
+    const bridge = screenTimeBridge();
+    const next: Record<string, GroupCount> = {};
+    for (const group of allGroups(customGroups)) {
+      next[group.id] = bridge?.screenTimeSelectionCount(group.id) ?? NO_SELECTION;
+    }
+    setCounts(next);
+  }, [customGroups]);
+  const chooseApps = useCallback(async (groupId: string = DEFAULT_GROUP_ID) => {
     const bridge = screenTimeBridge();
     if (!bridge) return;
-    const picked = await bridge.presentAppPicker();
+    const picked = await bridge.presentAppPicker(groupId);
     if (picked) refreshSelection();
   }, [refreshSelection]);
 
@@ -90,8 +98,17 @@ export function ScreenTimeScreen() {
     };
   }, [entryId, navigation, refreshSelection]));
 
-  const total = selection.applications + selection.categories;
-  const label = selectionLabel(selection.applications, selection.categories);
+  // Which groups count toward "are my apps blocked": the ones a live reason
+  // names. With no reason live, every group counts, so the card can still say
+  // whether anything is chosen at all.
+  const heldIds = reasons.length > 0 ? new Set(reasons.map(r => r.groupId)) : null;
+  const sum = (pick: (c: GroupCount) => number) => Object.entries(counts)
+    .filter(([id]) => heldIds === null || heldIds.has(id))
+    .reduce((n, [, c]) => n + pick(c), 0);
+  const applications = sum(c => c.applications);
+  const categories = sum(c => c.categories);
+  const total = applications + categories;
+  const label = selectionLabel(applications, categories);
   const blocked = reasons.length > 0 && total > 0;
   const headline = shieldHeadline(reasons.length, total);
   const note = shieldHeadlineNote(reasons.length, total);
@@ -146,8 +163,7 @@ export function ScreenTimeScreen() {
           <SettingsFocusProvider focusedEntryId={entryId ?? null} reportRow={reportRow}>
             <ScreenTimeSettings
               reasons={reasons}
-              selectedTotal={total}
-              selectionLabel={label}
+              counts={counts}
               onChooseApps={chooseApps}
             />
           </SettingsFocusProvider>

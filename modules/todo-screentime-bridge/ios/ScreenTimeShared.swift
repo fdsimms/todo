@@ -3,8 +3,11 @@ import Foundation
 #if canImport(FamilyControls)
 import FamilyControls
 #endif
+#if canImport(ManagedSettings)
+import ManagedSettings
+#endif
 
-/// The App Group container, and the four files in it that the app and the
+/// The App Group container, and the files in it that the app and the
 /// DeviceActivity monitor extension pass state through.
 ///
 /// This file is compiled into **both** targets — the podspec's `**/*.swift`
@@ -21,7 +24,18 @@ enum ScreenTimeShared {
 
   /// The apps and categories the user picked, as an encoded FamilyActivitySelection.
   /// App writes, both read.
+  /// This is the Default group's file. It keeps the name it had when there was
+  /// only one selection, so an install that upgrades blocks the same apps.
   static let selectionFileName = "screentime_selection.json"
+  /// The id of the group whose selection is `selectionFileName`.
+  static let defaultGroupID = "default"
+  /// The schedules the monitor evaluates when one of their edges wakes it.
+  /// App writes, extension reads.
+  static let schedulesFileName = "screentime_schedules.json"
+  /// Prefix of every DeviceActivity name armed for a schedule, so the app can
+  /// stop the ones it no longer wants and the extension can tell them from the
+  /// penalty and gate windows. Hand-matched in `TodoActivityMonitor.swift`.
+  static let scheduleActivityPrefix = "todo.schedule."
   /// The usage rules the monitor is watching. App writes, extension reads.
   static let rulesFileName = "screentime_rules.json"
   /// Thresholds that have been crossed and not yet turned into tasks.
@@ -120,7 +134,7 @@ struct ShieldStateShared: Codable {
   /// session, in practice. The monitor extension reads only this: it is what
   /// says whether the end of a penalty window may lift the shield.
   let otherReasonWantsShield: Bool
-  /// "penalty", "focus", "gate", "key" or "none" — what the shield screen leads with.
+  /// "penalty", "focus", "gate", "key", "schedule" or "none" — what the shield screen leads with.
   let reason: String
   /// When a penalty block runs out, as an ISO instant, or nil when the shield
   /// is up for some other reason. The shield screen turns this into a time;
@@ -138,20 +152,54 @@ struct ShieldStateShared: Codable {
   /// so a state file written by an older build still decodes, with the gate
   /// half simply absent.
   let pendingGateDetail: String?
+  /// Which groups of apps each reason holds, so an extension that lifts one
+  /// reason can rebuild the shield from the rest. Optional so a file written
+  /// by an older build still decodes; absent reads as "Default for everything".
+  let groups: ShieldGroupsShared?
 
   init(
     otherReasonWantsShield: Bool,
     reason: String,
     untilIso: String?,
     detail: String?,
-    pendingGateDetail: String? = nil
+    pendingGateDetail: String? = nil,
+    groups: ShieldGroupsShared? = nil
   ) {
+    self.groups = groups
     self.otherReasonWantsShield = otherReasonWantsShield
     self.reason = reason
     self.untilIso = untilIso
     self.detail = detail
     self.pendingGateDetail = pendingGateDetail
   }
+}
+
+/// The groups each kind of reason holds. See `ShieldGroupsState` in the bridge's
+/// index.ts, which this mirrors field for field.
+struct ShieldGroupsShared: Codable {
+  let otherGroupIds: [String]
+  let penaltyGroupId: String?
+  let penaltyEndIso: String?
+  let pendingGateGroupId: String?
+  let pendingGateLiveAtIso: String?
+}
+
+/// One schedule, as the extension evaluates it. Clock times and weekdays, no
+/// dates: the extension has no access to the app's day boundary, and a window
+/// here means what the phone's clock says. `ScreenTimeShared.windowCovers` is
+/// the same rule as `windowCovering` in `src/utils/blockSchedule.ts`; change
+/// them together.
+struct ScheduleWindowShared: Codable {
+  let id: String
+  /// What the person called it, for the shield screen when the app wasn't
+  /// running to write a reason. Optional so an older file still decodes.
+  let name: String?
+  let groupId: String
+  /// 0 = Sunday.
+  let days: [Int]
+  let startMinutes: Int
+  let endMinutes: Int
+  let pausedUntilIso: String?
 }
 
 /// A threshold that fired, waiting to be turned into a task.
@@ -223,18 +271,137 @@ extension ScreenTimeShared {
     writeData(data, to: crossingsFileName)
   }
 
+  /// Group ids become file names, so anything outside this alphabet is refused
+  /// rather than escaped.
+  static func isValidGroupID(_ id: String) -> Bool {
+    guard !id.isEmpty, id.count <= 40 else { return false }
+    return id.unicodeScalars.allSatisfy { CharacterSet.alphanumerics.contains($0) && $0.isASCII || $0 == "-" || $0 == "_" }
+  }
+
+  static func selectionFileName(forGroup groupId: String) -> String? {
+    if groupId == defaultGroupID { return selectionFileName }
+    guard isValidGroupID(groupId) else { return nil }
+    return "screentime_selection_\(groupId).json"
+  }
+
+  static func parseIso(_ iso: String?) -> Date? {
+    guard let iso = iso else { return nil }
+    let withFraction = ISO8601DateFormatter()
+    withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    if let date = withFraction.date(from: iso) { return date }
+    return ISO8601DateFormatter().date(from: iso)
+  }
+
+  static func readSchedules() -> [ScheduleWindowShared] {
+    guard let data = readData(schedulesFileName) else { return [] }
+    return (try? JSONDecoder().decode([ScheduleWindowShared].self, from: data)) ?? []
+  }
+
+  @discardableResult
+  static func writeSchedules(_ windows: [ScheduleWindowShared]) -> Bool {
+    guard let data = try? JSONEncoder().encode(windows) else { return false }
+    return writeData(data, to: schedulesFileName)
+  }
+
+  /// Whether a window covers `now`, before looking at a pause. A window that
+  /// ends at or before its start runs overnight and belongs to the day it
+  /// starts on.
+  static func windowCovers(_ window: ScheduleWindowShared, now: Date, calendar: Calendar = .current) -> Bool {
+    let parts = calendar.dateComponents([.weekday, .hour, .minute], from: now)
+    let today = ((parts.weekday ?? 1) - 1 + 7) % 7
+    let minute = (parts.hour ?? 0) * 60 + (parts.minute ?? 0)
+    if window.endMinutes > window.startMinutes {
+      return window.days.contains(today) && minute >= window.startMinutes && minute < window.endMinutes
+    }
+    if window.days.contains(today) && minute >= window.startMinutes { return true }
+    return window.days.contains((today + 6) % 7) && minute < window.endMinutes
+  }
+
+  /// The schedules blocking at `now`: covered, and not lifted by a tag.
+  static func activeSchedules(now: Date) -> [ScheduleWindowShared] {
+    readSchedules().filter { window in
+      guard windowCovers(window, now: now) else { return false }
+      if let until = parseIso(window.pausedUntilIso), now < until { return false }
+      return true
+    }
+  }
+
+  static func activeScheduleGroupIds(now: Date) -> [String] {
+    activeSchedules(now: now).map { $0.groupId }
+  }
+
+  /// Every group the shield should hold at `now`, rebuilt from what the app last
+  /// wrote and the schedules' own clocks.
+  ///
+  /// This is the whole of what an extension may decide. It never reasons about
+  /// *why* a group is held, only that the app has named the reason and the
+  /// reason's moment has or hasn't arrived. `penaltyEnded` and `gateStarting` are
+  /// for the callbacks that fire because that moment arrived, where a few
+  /// milliseconds of early delivery must not leave the penalty's group up or
+  /// the gate's out.
+  static func heldGroupIds(now: Date, penaltyEnded: Bool = false, gateStarting: Bool = false) -> [String] {
+    // No readable state is "assume the app's own reasons still hold" for
+    // everything but what we can compute ourselves, the same cautious default
+    // `readShieldState` documents: the Default group stays up and the app
+    // lifts it on the next foreground.
+    guard let state = readShieldState() else {
+      return [defaultGroupID] + activeScheduleGroupIds(now: now)
+    }
+    var ids = state.groups?.otherGroupIds ?? (state.otherReasonWantsShield ? [defaultGroupID] : [])
+    if !penaltyEnded,
+       let group = state.groups?.penaltyGroupId,
+       let end = parseIso(state.groups?.penaltyEndIso), end > now {
+      ids.append(group)
+    }
+    if let group = state.groups?.pendingGateGroupId,
+       state.pendingGateDetail != nil,
+       gateStarting || (parseIso(state.groups?.pendingGateLiveAtIso).map { $0 <= now } ?? false) {
+      ids.append(group)
+    }
+    ids.append(contentsOf: activeScheduleGroupIds(now: now))
+    var seen = Set<String>()
+    return ids.filter { seen.insert($0).inserted }
+  }
+
   #if canImport(FamilyControls)
   @available(iOS 16.0, *)
-  static func readSelection() -> FamilyActivitySelection? {
-    guard let data = readData(selectionFileName) else { return nil }
+  static func readSelection(groupId: String = defaultGroupID) -> FamilyActivitySelection? {
+    guard let name = selectionFileName(forGroup: groupId), let data = readData(name) else { return nil }
     return try? JSONDecoder().decode(FamilyActivitySelection.self, from: data)
   }
 
   @available(iOS 16.0, *)
   @discardableResult
-  static func writeSelection(_ selection: FamilyActivitySelection) -> Bool {
-    guard let data = try? JSONEncoder().encode(selection) else { return false }
-    return writeData(data, to: selectionFileName)
+  static func writeSelection(_ selection: FamilyActivitySelection, groupId: String = defaultGroupID) -> Bool {
+    guard let name = selectionFileName(forGroup: groupId),
+          let data = try? JSONEncoder().encode(selection) else { return false }
+    return writeData(data, to: name)
   }
+
+  #if canImport(ManagedSettings)
+  /// Write the shield as the union of these groups' apps, or lift it when they
+  /// hold nothing. Idempotent, which is what lets both processes call it freely.
+  ///
+  /// nil rather than an empty set for an empty pick: an empty `applications`
+  /// set is a shield over nothing, but an empty `applicationCategories` is read
+  /// as ".all" by ManagedSettings and would lock the entire phone.
+  @available(iOS 16.0, *)
+  @discardableResult
+  static func applyGroups(_ groupIds: [String]) -> Bool {
+    var applications = Set<ApplicationToken>()
+    var categories = Set<ActivityCategoryToken>()
+    for id in groupIds {
+      guard let selection = readSelection(groupId: id) else { continue }
+      applications.formUnion(selection.applicationTokens)
+      categories.formUnion(selection.categoryTokens)
+    }
+    let store = ManagedSettingsStore(named: .init(shieldStoreName))
+    store.shield.applications = applications.isEmpty ? nil : applications
+    store.shield.applicationCategories = categories.isEmpty
+      ? nil
+      : ShieldSettings.ActivityCategoryPolicy.specific(categories)
+    return !applications.isEmpty || !categories.isEmpty
+  }
+  #endif
   #endif
 }

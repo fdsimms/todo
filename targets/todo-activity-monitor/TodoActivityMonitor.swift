@@ -58,8 +58,8 @@ class TodoActivityMonitor: DeviceActivityMonitor {
   /// The start of a gate block: a task the apps are held behind becoming due
   /// while the app is closed.
   ///
-  /// This is the one place outside the app that *raises* a shield, and it is a
-  /// deliberate relaxation of the "only ever clears" rule below rather than an
+  /// Together with a schedule opening, this is one of two places outside the app
+  /// that *raise* a shield, and it is a deliberate relaxation of the "only ever clears" rule below rather than an
   /// oversight. A gate that only bit when the app was next opened was dodgeable
   /// by not opening it, which is the one hole that made the feature decorative:
   /// the block is supposed to be what gets you to do the walk, not a reward for
@@ -78,9 +78,9 @@ class TodoActivityMonitor: DeviceActivityMonitor {
   ///   starts every day, and answering that one would raise a shield on the
   ///   strength of a threshold nobody crossed.
   /// - **It shields exactly the picked apps**, read from the same App Group
-  ///   selection `applyShield` uses, with the same empty-set care: an empty
-  ///   `applicationCategories` is read as `.all` by ManagedSettings and would
-  ///   lock the whole phone.
+  ///   selections `applyShield` uses, through `applyGroups`, which keeps the
+  ///   empty-set care: an empty `applicationCategories` is read as `.all` by
+  ///   ManagedSettings and would lock the whole phone.
   ///
   /// The block it raises is lifted by the app's own reconcile, as every other
   /// gate block is — completing the task is a task write, and that is what
@@ -88,19 +88,21 @@ class TodoActivityMonitor: DeviceActivityMonitor {
   override func intervalDidStart(for activity: DeviceActivityName) {
     super.intervalDidStart(for: activity)
 
-    guard activity.rawValue == ScreenTimeShared.gateActivityName else { return }
-    guard let state = ScreenTimeShared.readShieldState(),
-          let detail = state.pendingGateDetail, !detail.isEmpty
-    else { return }
-
     #if canImport(FamilyControls)
     if #available(iOS 16.0, *) {
-      guard let selection = ScreenTimeShared.readSelection() else { return }
-      let store = ManagedSettingsStore(named: .init(ScreenTimeShared.shieldStoreName))
-      store.shield.applications = selection.applicationTokens.isEmpty ? nil : selection.applicationTokens
-      store.shield.applicationCategories = selection.categoryTokens.isEmpty
-        ? nil
-        : ShieldSettings.ActivityCategoryPolicy.specific(selection.categoryTokens)
+      if activity.rawValue == ScreenTimeShared.gateActivityName {
+        // The app's permission is the pending gate detail; without it this is a
+        // stale schedule and nothing is raised.
+        guard let state = ScreenTimeShared.readShieldState(),
+              let detail = state.pendingGateDetail, !detail.isEmpty
+        else { return }
+        ScreenTimeShared.applyGroups(ScreenTimeShared.heldGroupIds(now: Date(), gateStarting: true))
+      } else if activity.rawValue.hasPrefix(ScreenTimeShared.scheduleActivityPrefix) {
+        // A schedule's edge. The held groups are rebuilt from the schedules
+        // themselves, so a wake on a day the schedule doesn't cover changes
+        // nothing, and a schedule opening never lifts another reason's group.
+        ScreenTimeShared.applyGroups(ScreenTimeShared.heldGroupIds(now: Date()))
+      }
     }
     #endif
   }
@@ -115,15 +117,15 @@ class TodoActivityMonitor: DeviceActivityMonitor {
   ///
   /// Three rules keep that from undoing the arbitration in `appShield.ts`:
   ///
-  /// - **This callback only ever clears.** Raising is `intervalDidStart`'s job
-  ///   above and needs the app's written permission for the specific window;
-  ///   the worst a bug here can do is end a block early rather than start one
-  ///   nobody earned.
+  /// - **A penalty ending only ever removes the penalty's own group.** The shield
+  ///   is the union of the groups its reasons hold, so this rebuilds it from
+  ///   `ScreenTimeShared.heldGroupIds` with the penalty left out. A schedule
+  ///   closing is the same rebuild with the schedule's clock deciding.
   /// - **It defers to any other reason.** A focus session running when a
-  ///   penalty runs out still wants the apps blocked, and this process cannot
-  ///   ask — so the app writes the answer ahead of time and this reads it. An
-  ///   absent or unreadable answer counts as "yes, something else wants it"
-  ///   (see `ScreenTimeShared.readShieldState`), leaving the block for the app to lift.
+  ///   penalty runs out still wants its group blocked, and this process cannot
+  ///   ask — so the app writes each reason's group ahead of time and this reads
+  ///   them. An absent or unreadable answer counts as "the Default group is
+  ///   still wanted" (see `heldGroupIds`), leaving the block for the app to lift.
   /// - **It is not the only mechanism.** `useAppShieldSync` reconciles on every
   ///   foreground regardless, because `intervalDidEnd` is reported not to fire
   ///   reliably for non-repeating schedules and a schedule's survival across a
@@ -132,12 +134,18 @@ class TodoActivityMonitor: DeviceActivityMonitor {
   override func intervalDidEnd(for activity: DeviceActivityName) {
     super.intervalDidEnd(for: activity)
 
-    guard activity.rawValue == ScreenTimeShared.penaltyActivityName else { return }
-    // No readable state counts as "something else wants it" — see readShieldState.
-    guard let state = ScreenTimeShared.readShieldState(), !state.otherReasonWantsShield else { return }
-
-    let store = ManagedSettingsStore(named: .init(ScreenTimeShared.shieldStoreName))
-    store.shield.applications = nil
-    store.shield.applicationCategories = nil
+    #if canImport(FamilyControls)
+    if #available(iOS 16.0, *) {
+      if activity.rawValue == ScreenTimeShared.penaltyActivityName {
+        // Rebuild from everything else that still holds a group. No readable
+        // state keeps the Default group up (see `heldGroupIds`), which leaves
+        // the block for the app to lift, as before.
+        ScreenTimeShared.applyGroups(ScreenTimeShared.heldGroupIds(now: Date(), penaltyEnded: true))
+      } else if activity.rawValue.hasPrefix(ScreenTimeShared.scheduleActivityPrefix) {
+        // A schedule closing lifts only the groups nothing else holds.
+        ScreenTimeShared.applyGroups(ScreenTimeShared.heldGroupIds(now: Date()))
+      }
+    }
+    #endif
   }
 }

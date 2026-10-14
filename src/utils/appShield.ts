@@ -4,14 +4,16 @@ import { shieldWanted } from './focusShield';
 import { KEY_LOCK_DETAIL } from './nfcKey';
 import { penaltyShieldWanted } from './penaltyShield';
 import { screenTimeBridge } from './screenTimeBridge';
+import { uniqueGroupIds, type GroupAssignments } from './appGroups';
+import { activeSchedules, currentWindowEnd, nativeScheduleWindows, type BlockSchedule } from './blockSchedule';
 
 /**
  * The one place that decides whether the system shield is on, and the only
  * place that writes it.
  *
- * Four reasons this app blocks apps — a focus session is running, a task was
- * failed, a task has to be done first, and a key tag locked them — and they
- * share a single
+ * Five reasons this app blocks apps — a focus session is running, a task was
+ * failed, a task has to be done first, a key tag locked them, and a schedule's
+ * window is open — and they share a single
  * `ManagedSettingsStore`. That sharing is not an implementation detail to route
  * around: the native side exposes one shield, so a reconciler per reason is not
  * three features, it is one feature with a race. Whichever ran last would win,
@@ -69,11 +71,22 @@ export interface AppShieldState {
    * live has nothing to arm.
    */
   pendingGate: { liveAt: Date; titles: readonly string[] } | null;
+  /**
+   * The group each of the four reasons blocks, already resolved (a removed
+   * group is Default). Every reason names a group of apps rather than one
+   * shared selection, and the shield is the union of the groups its live
+   * reasons name.
+   */
+  groups: GroupAssignments;
+  /** Every schedule; which are open right now is decided here against `now`. */
+  schedules: readonly BlockSchedule[];
+  /** Resolves a schedule's stored group id (a removed group becomes Default). */
+  resolveGroup: (groupId: string) => string;
   now: Date;
 }
 
 /** Why the apps are blocked, in the order a person should read the reasons. */
-export type ShieldReasonKind = 'focus' | 'gate' | 'penalty' | 'key';
+export type ShieldReasonKind = 'focus' | 'gate' | 'penalty' | 'key' | 'schedule';
 
 /** One reason the shield is up, with only what a screen needs to say it. */
 export interface ShieldReasonEntry {
@@ -84,6 +97,10 @@ export interface ShieldReasonEntry {
   until?: string | null;
   /** The task a penalty was charged for, when it is known. Set for `penalty` only. */
   cause?: string | null;
+  /** The schedule's name. Set for `schedule` only; its window end is `until`. */
+  name?: string;
+  /** The app group this reason blocks. */
+  groupId: string;
 }
 
 /**
@@ -101,15 +118,33 @@ export interface ShieldReasonEntry {
  */
 export function shieldReasons(state: AppShieldState): ShieldReasonEntry[] {
   const reasons: ShieldReasonEntry[] = [];
-  if (shieldWanted(state.session, state.focusEnabled)) reasons.push({ reason: 'focus' });
+  if (shieldWanted(state.session, state.focusEnabled)) reasons.push({ reason: 'focus', groupId: state.groups.focus });
   if (gateShieldWanted(state.gateTitles.length, state.gateEnabled)) {
-    reasons.push({ reason: 'gate', titles: state.gateTitles });
+    reasons.push({ reason: 'gate', titles: state.gateTitles, groupId: state.groups.gate });
   }
   if (penaltyShieldWanted(state.penaltyUntil, state.penaltyEnabled, state.now)) {
-    reasons.push({ reason: 'penalty', until: state.penaltyUntil, cause: state.penaltyReason });
+    reasons.push({
+      reason: 'penalty', until: state.penaltyUntil, cause: state.penaltyReason, groupId: state.groups.penalty,
+    });
   }
-  if (state.keyLocked) reasons.push({ reason: 'key' });
+  // A schedule is a window that opens and closes on the clock, so it reads
+  // after the reasons that name something the person did and before a key lock,
+  // which only the tag ends.
+  for (const schedule of activeSchedules(state.schedules, state.now)) {
+    reasons.push({
+      reason: 'schedule',
+      name: schedule.name,
+      until: currentWindowEnd(schedule, state.now)?.toISOString() ?? null,
+      groupId: state.resolveGroup(schedule.groupId),
+    });
+  }
+  if (state.keyLocked) reasons.push({ reason: 'key', groupId: state.groups.key });
   return reasons;
+}
+
+/** The groups of apps to block right now: the union across every live reason. */
+export function shieldGroupIds(state: AppShieldState): string[] {
+  return uniqueGroupIds(shieldReasons(state).map(r => r.groupId));
 }
 
 /** Whether anything wants the apps blocked right now. */
@@ -118,6 +153,7 @@ export function appShieldWanted(state: AppShieldState): boolean {
     shieldWanted(state.session, state.focusEnabled) ||
     penaltyShieldWanted(state.penaltyUntil, state.penaltyEnabled, state.now) ||
     gateShieldWanted(state.gateTitles.length, state.gateEnabled) ||
+    activeSchedules(state.schedules, state.now).length > 0 ||
     state.keyLocked
   );
 }
@@ -152,10 +188,12 @@ export function syncAppShield(state: AppShieldState): void {
   const bridge = screenTimeBridge();
   if (!bridge) return;
 
-  const focusWants = shieldWanted(state.session, state.focusEnabled);
-  const penaltyWants = penaltyShieldWanted(state.penaltyUntil, state.penaltyEnabled, state.now);
-  const gateWants = gateShieldWanted(state.gateTitles.length, state.gateEnabled);
-  const keyWants = state.keyLocked;
+  const reasons = shieldReasons(state);
+  const focusWants = reasons.some(r => r.reason === 'focus');
+  const penaltyWants = reasons.some(r => r.reason === 'penalty');
+  const gateWants = reasons.some(r => r.reason === 'gate');
+  const keyWants = reasons.some(r => r.reason === 'key');
+  const scheduleWants = reasons.some(r => r.reason === 'schedule');
   // A window is armed only while the feature is on, so switching it off
   // disarms whatever was armed rather than leaving a shield to be raised for a
   // setting that no longer holds.
@@ -167,34 +205,52 @@ export function syncAppShield(state: AppShieldState): void {
     : null;
 
   // The screen can only lead with one of them, in the order they're worth
-  // reading: a session is what the person is in the middle of, a gate is the
-  // one they can act on right now, a penalty is the one that only runs out, and
-  // a key lock comes last because it is the one that only the tag ends and
-  // names nothing the person did.
+  // reading (`shieldReasons`).
   //
-  // `otherReasonWantsShield` is what the monitor extension checks before
-  // lifting a shield at the end of a penalty window, so a gate has to count as
-  // one of the others, and so does a key lock, or a penalty running out would
-  // hand back apps a tag was still holding. Left out, a penalty running out would hand back apps a
-  // gate was still holding — the same race this arbiter exists to prevent,
-  // reappearing in the one process that can't see any of this.
+  // The extension answers three questions with the app closed, and each needs
+  // the groups a reason holds rather than a yes or no, because the shield is
+  // the union of groups and lifting one reason's must leave the others':
+  //
+  // - `otherGroupIds`: the groups held by reasons that don't end on a clock the
+  //   extension watches (focus, gate, key). A penalty running out, a gate
+  //   coming due or a schedule closing all keep these.
+  // - the penalty's group and end, so a schedule closing doesn't lift a penalty
+  //   that is still running, and a penalty ending doesn't lift a schedule.
+  // - the pending gate's group and moment, so a schedule closing after a gate
+  //   window has started doesn't lift the gate the extension raised.
+  const lead = reasons[0];
   bridge.setShieldState({
-    otherReasonWantsShield: focusWants || gateWants || keyWants,
-    reason: shieldReasons(state)[0]?.reason ?? 'none',
-    untilIso: penaltyWants && !focusWants && !gateWants ? state.penaltyUntil : null,
-    detail: focusWants
+    otherReasonWantsShield: focusWants || gateWants || keyWants || scheduleWants,
+    reason: lead?.reason ?? 'none',
+    untilIso: lead?.reason === 'penalty' || lead?.reason === 'schedule' ? lead.until ?? null : null,
+    detail: !lead
       ? null
-      : gateWants
+      : lead.reason === 'gate'
         ? gateSubtitle(state.gateTitles)
-        : penaltyWants ? state.penaltyReason : keyWants ? KEY_LOCK_DETAIL : null,
+        : lead.reason === 'penalty'
+          ? state.penaltyReason
+          : lead.reason === 'schedule'
+            ? lead.name ?? null
+            : lead.reason === 'key' ? KEY_LOCK_DETAIL : null,
     // Written only when a window is actually armed: it is what the monitor
     // extension checks before raising a shield, so a detail left behind by an
     // earlier reconcile would be a standing permission to block for a gate
     // that has since been completed or deferred.
     pendingGateDetail: gateWindow ? pendingDetail : null,
+    groups: {
+      otherGroupIds: uniqueGroupIds(reasons
+        .filter(r => r.reason === 'focus' || r.reason === 'gate' || r.reason === 'key')
+        .map(r => r.groupId)),
+      penaltyGroupId: penaltyWants ? state.groups.penalty : null,
+      penaltyEndIso: penaltyWants ? state.penaltyUntil : null,
+      pendingGateGroupId: gateWindow ? state.groups.gate : null,
+      pendingGateLiveAtIso: gateWindow ? gateWindow.startIso : null,
+    },
   });
+  bridge.setBlockSchedules(nativeScheduleWindows(state.schedules, state.resolveGroup));
 
-  if (focusWants || penaltyWants || gateWants || keyWants) bridge.applyShield();
+  const groupIds = shieldGroupIds(state);
+  if (groupIds.length > 0) bridge.applyShield(groupIds);
   else bridge.clearShield();
 
   // Nothing is armed for a gate that is already live — the shield is up, and a

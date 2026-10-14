@@ -117,19 +117,23 @@ public class TodoScreenTimeBridgeModule: Module {
     /// never named to JS: `ApplicationToken` is opaque and only renderable by
     /// SwiftUI, which is the whole reason this presents a native sheet rather
     /// than handing a list back for React to draw.
-    AsyncFunction("presentAppPicker") { (promise: Promise) in
+    AsyncFunction("presentAppPicker") { (groupId: String, promise: Promise) in
       #if canImport(FamilyControls)
       if #available(iOS 16.0, *) {
         guard let presenter = Self.topViewController() else {
           promise.resolve(false)
           return
         }
-        let initial = ScreenTimeShared.readSelection() ?? FamilyActivitySelection()
+        guard ScreenTimeShared.selectionFileName(forGroup: groupId) != nil else {
+          promise.resolve(false)
+          return
+        }
+        let initial = ScreenTimeShared.readSelection(groupId: groupId) ?? FamilyActivitySelection()
         var host: UIViewController?
         let view = ScreenTimePickerView(
           initialSelection: initial,
           onDone: { selection in
-            ScreenTimeShared.writeSelection(selection)
+            ScreenTimeShared.writeSelection(selection, groupId: groupId)
             host?.dismiss(animated: true) { promise.resolve(true) }
           },
           onCancel: {
@@ -148,12 +152,12 @@ public class TodoScreenTimeBridgeModule: Module {
 
     /// How many apps and categories are picked. Counts only — see the note on
     /// `presentAppPicker` for why there are no names here.
-    Function("selectionCount") { () -> [String: Int] in
+    Function("selectionCount") { (groupId: String) -> [String: Int] in
       #if canImport(FamilyControls)
       if #available(iOS 16.0, *) {
         var counts = ["applications": 0, "categories": 0]
         TodoScreenTimeExceptionCatcher.runCatchingExceptions {
-          guard let selection = ScreenTimeShared.readSelection() else { return }
+          guard let selection = ScreenTimeShared.readSelection(groupId: groupId) else { return }
           counts["applications"] = selection.applicationTokens.count
           counts["categories"] = selection.categoryTokens.count
         }
@@ -163,32 +167,25 @@ public class TodoScreenTimeBridgeModule: Module {
       return ["applications": 0, "categories": 0]
     }
 
-    Function("clearSelection") { () -> Bool in
-      ScreenTimeShared.remove(ScreenTimeShared.selectionFileName)
+    Function("clearSelection") { (groupId: String) -> Bool in
+      guard let name = ScreenTimeShared.selectionFileName(forGroup: groupId) else { return false }
+      ScreenTimeShared.remove(name)
       return true
     }
 
     // ─── Shielding ────────────────────────────────────────────────────────
 
-    /// Block the picked apps. Idempotent — writing the same shield twice is a
-    /// no-op, which is what lets the JS side re-assert it on every foreground
-    /// without tracking whether it already did.
-    Function("applyShield") { () -> Bool in
+    /// Block the union of these groups' apps, given as a JSON array of group
+    /// ids. Idempotent — writing the same shield twice is a no-op, which is
+    /// what lets the JS side re-assert it on every foreground without tracking
+    /// whether it already did.
+    Function("applyShield") { (groupIdsJson: String) -> Bool in
       #if canImport(ManagedSettings) && canImport(FamilyControls)
       if #available(iOS 16.0, *) {
         var applied = false
         TodoScreenTimeExceptionCatcher.runCatchingExceptions {
-          guard let selection = ScreenTimeShared.readSelection() else { return }
-          let store = ManagedSettingsStore(named: .init(Self.shieldStoreName))
-          // nil rather than an empty set for an empty pick: an empty
-          // `applications` set is a shield over nothing, but an empty
-          // `applicationCategories` is read as ".all" by ManagedSettings and
-          // would lock the entire phone.
-          store.shield.applications = selection.applicationTokens.isEmpty ? nil : selection.applicationTokens
-          store.shield.applicationCategories = selection.categoryTokens.isEmpty
-            ? nil
-            : ShieldSettings.ActivityCategoryPolicy.specific(selection.categoryTokens)
-          applied = !selection.applicationTokens.isEmpty || !selection.categoryTokens.isEmpty
+          let ids = (try? JSONDecoder().decode([String].self, from: Data(groupIdsJson.utf8))) ?? []
+          applied = ScreenTimeShared.applyGroups(ids)
         }
         return applied
       }
@@ -209,7 +206,8 @@ public class TodoScreenTimeBridgeModule: Module {
       reason: String,
       untilIso: String?,
       detail: String?,
-      pendingGateDetail: String?
+      pendingGateDetail: String?,
+      groupsJson: String
     ) -> Bool in
       var written = false
       TodoScreenTimeExceptionCatcher.runCatchingExceptions {
@@ -218,10 +216,76 @@ public class TodoScreenTimeBridgeModule: Module {
           reason: reason,
           untilIso: untilIso,
           detail: detail,
-          pendingGateDetail: pendingGateDetail
+          pendingGateDetail: pendingGateDetail,
+          groups: try? JSONDecoder().decode(ShieldGroupsShared.self, from: Data(groupsJson.utf8))
         ))
       }
       return written
+    }
+
+    /// Hand the extension the schedules and arm the OS to wake it at their edges.
+    ///
+    /// **Each schedule is armed as daily activities and the weekday is decided
+    /// by the extension.** A `DeviceActivitySchedule` can recur daily or
+    /// weekly, but what is documented about its bounds is hour/minute/second
+    /// only; nothing says whether an end before its start crosses midnight, or
+    /// what a weekday component does. So an overnight window is two daily
+    /// activities, one ending at 23:59:59 and one starting at 00:00, and the
+    /// callbacks do not trust the edge they were woken at: both rebuild the
+    /// whole shield from `ScreenTimeShared.heldGroupIds`, which asks the
+    /// schedule's own rule. A wake on a day the schedule doesn't cover changes
+    /// nothing.
+    ///
+    /// Replaces what was armed, stopping the activities of schedules that were
+    /// switched off or deleted. A segment under about a quarter of an hour is
+    /// refused by iOS (`intervalTooShort`) and swallowed here; the foreground
+    /// reconcile covers that edge.
+    Function("setBlockSchedules") { (windowsJson: String) -> Bool in
+      guard let windows = try? JSONDecoder().decode([ScheduleWindowShared].self, from: Data(windowsJson.utf8)) else {
+        return false
+      }
+      ScreenTimeShared.writeSchedules(windows)
+      #if canImport(DeviceActivity)
+      if #available(iOS 16.0, *) {
+        var armed = false
+        TodoScreenTimeExceptionCatcher.runCatchingExceptions {
+          let center = DeviceActivityCenter()
+          var wanted: [(DeviceActivityName, DeviceActivitySchedule)] = []
+          func segment(_ id: String, _ suffix: String, _ start: (Int, Int, Int), _ end: (Int, Int, Int)) {
+            wanted.append((
+              DeviceActivityName(ScreenTimeShared.scheduleActivityPrefix + id + suffix),
+              DeviceActivitySchedule(
+                intervalStart: DateComponents(hour: start.0, minute: start.1, second: start.2),
+                intervalEnd: DateComponents(hour: end.0, minute: end.1, second: end.2),
+                repeats: true
+              )
+            ))
+          }
+          for window in windows {
+            let start = (window.startMinutes / 60, window.startMinutes % 60, 0)
+            let end = (window.endMinutes / 60, window.endMinutes % 60, 0)
+            if window.endMinutes > window.startMinutes {
+              segment(window.id, "", start, end)
+            } else {
+              segment(window.id, ".a", start, (23, 59, 59))
+              segment(window.id, ".b", (0, 0, 0), end)
+            }
+          }
+          let wantedNames = Set(wanted.map { $0.0 })
+          let stale = center.activities.filter {
+            $0.rawValue.hasPrefix(ScreenTimeShared.scheduleActivityPrefix) && !wantedNames.contains($0)
+          }
+          if !stale.isEmpty { center.stopMonitoring(stale) }
+          for (name, schedule) in wanted {
+            center.stopMonitoring([name])
+            try? center.startMonitoring(name, during: schedule)
+          }
+          armed = true
+        }
+        return armed
+      }
+      #endif
+      return false
     }
 
     /// Arm a one-shot window whose end lifts the current penalty block, so it

@@ -4,37 +4,37 @@ const time = (iso: string) => (iso === 'bad' ? null : '10:30 AM');
 
 describe('shieldReasonLines', () => {
   it('says a focus session and a key lock plainly', () => {
-    expect(shieldReasonLines({ reason: 'focus' }, time)).toEqual(['A focus session is running.']);
-    expect(shieldReasonLines({ reason: 'key' }, time)).toEqual(['Locked with a key tag. Tap one to unlock.']);
+    expect(shieldReasonLines({ groupId: 'default', reason: 'focus' }, time)).toEqual(['A focus session is running.']);
+    expect(shieldReasonLines({ groupId: 'default', reason: 'key' }, time)).toEqual(['Locked with a key tag. Tap one to unlock.']);
   });
 
   it('gives each gate task its own line', () => {
-    expect(shieldReasonLines({ reason: 'gate', titles: ['Morning walk', 'Pay rent'] }, time))
+    expect(shieldReasonLines({ groupId: 'default', reason: 'gate', titles: ['Morning walk', 'Pay rent'] }, time))
       .toEqual(['Morning walk isn’t done yet.', 'Pay rent isn’t done yet.']);
   });
 
   it('collapses gate tasks past the cap into a count', () => {
     const titles = Array.from({ length: MAX_NAMED_GATES + 2 }, (_, i) => `Task ${i}`);
-    const lines = shieldReasonLines({ reason: 'gate', titles }, time);
+    const lines = shieldReasonLines({ groupId: 'default', reason: 'gate', titles }, time);
     expect(lines).toHaveLength(MAX_NAMED_GATES + 1);
     expect(lines[MAX_NAMED_GATES]).toBe('2 more tasks aren’t done yet.');
-    const one = shieldReasonLines({ reason: 'gate', titles: [...titles.slice(0, MAX_NAMED_GATES), 'Last'] }, time);
+    const one = shieldReasonLines({ groupId: 'default', reason: 'gate', titles: [...titles.slice(0, MAX_NAMED_GATES), 'Last'] }, time);
     expect(one[MAX_NAMED_GATES]).toBe('1 more task isn’t done yet.');
   });
 
   it('still speaks when a gate has no usable title', () => {
-    expect(shieldReasonLines({ reason: 'gate', titles: ['  '] }, time)).toEqual(['A task has to be done first.']);
-    expect(shieldReasonLines({ reason: 'gate' }, time)).toEqual(['A task has to be done first.']);
+    expect(shieldReasonLines({ groupId: 'default', reason: 'gate', titles: ['  '] }, time)).toEqual(['A task has to be done first.']);
+    expect(shieldReasonLines({ groupId: 'default', reason: 'gate' }, time)).toEqual(['A task has to be done first.']);
   });
 
   it('names the failed task and when the block ends, whichever it knows', () => {
-    expect(shieldReasonLines({ reason: 'penalty', until: 'x', cause: 'Pay rent' }, time))
+    expect(shieldReasonLines({ groupId: 'default', reason: 'penalty', until: 'x', cause: 'Pay rent' }, time))
       .toEqual(['Pay rent wasn’t done in time. Blocked until 10:30 AM.']);
-    expect(shieldReasonLines({ reason: 'penalty', until: 'x', cause: null }, time))
+    expect(shieldReasonLines({ groupId: 'default', reason: 'penalty', until: 'x', cause: null }, time))
       .toEqual(['A task wasn’t done in time. Blocked until 10:30 AM.']);
-    expect(shieldReasonLines({ reason: 'penalty', until: 'bad', cause: 'Pay rent' }, time))
+    expect(shieldReasonLines({ groupId: 'default', reason: 'penalty', until: 'bad', cause: 'Pay rent' }, time))
       .toEqual(['Pay rent wasn’t done in time.']);
-    expect(shieldReasonLines({ reason: 'penalty', until: null, cause: '  ' }, time))
+    expect(shieldReasonLines({ groupId: 'default', reason: 'penalty', until: null, cause: '  ' }, time))
       .toEqual(['A task wasn’t done in time.']);
   });
 });

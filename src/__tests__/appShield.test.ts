@@ -11,6 +11,7 @@ const mockBridge = {
   applyShield: jest.fn(() => true),
   clearShield: jest.fn(() => true),
   setShieldState: jest.fn(() => true),
+  setBlockSchedules: jest.fn(() => true),
   schedulePenaltyExpiry: jest.fn(() => true),
   cancelPenaltyExpiry: jest.fn(() => true),
   scheduleGateWindow: jest.fn(() => true),
@@ -55,6 +56,9 @@ const state = (over: Partial<AppShieldState> = {}): AppShieldState => ({
   keyLocked: false,
   gateTitles: [],
   pendingGate: null,
+  groups: { focus: 'default', gate: 'default', penalty: 'default', key: 'default' },
+  schedules: [],
+  resolveGroup: id => id,
   now: NOW,
   ...over,
 });
@@ -195,13 +199,13 @@ describe('what syncAppShield leaves behind for the extension', () => {
 
   it('tells the extension nothing else wants them when a penalty is the only reason', () => {
     syncAppShield(state({ penaltyUntil: LATER, penaltyEnabled: true, penaltyReason: 'Morning walk' }));
-    expect(mockBridge.setShieldState).toHaveBeenCalledWith({
+    expect(mockBridge.setShieldState).toHaveBeenCalledWith(expect.objectContaining({
       otherReasonWantsShield: false,
       reason: 'penalty',
       untilIso: LATER,
       pendingGateDetail: null,
       detail: 'Morning walk',
-    });
+    }));
   });
 
   it('keeps that answer current on every reconcile, not just when a block starts', () => {
@@ -223,13 +227,13 @@ describe('what syncAppShield leaves behind for the extension', () => {
     // A stale reason is what would put a finished block's task on the next
     // shield screen.
     syncAppShield(state({ penaltyUntil: EARLIER, penaltyEnabled: true, penaltyReason: 'Morning walk' }));
-    expect(mockBridge.setShieldState).toHaveBeenCalledWith({
+    expect(mockBridge.setShieldState).toHaveBeenCalledWith(expect.objectContaining({
       otherReasonWantsShield: false,
       reason: 'none',
       untilIso: null,
       detail: null,
       pendingGateDetail: null,
-    });
+    }));
   });
 
   it('touches none of it when the gate is closed', () => {
@@ -473,5 +477,86 @@ describe('shieldReasons', () => {
     for (const over of [{}, { keyLocked: true }, { gateEnabled: true, gateTitles: ['x'] }] as Partial<AppShieldState>[]) {
       expect(shieldReasons(state(over)).length > 0).toBe(appShieldWanted(state(over)));
     }
+  });
+});
+
+describe('app groups and schedules', () => {
+  const SCHEDULE = {
+    id: 'sch', name: 'Work hours', groupId: 'social', days: [0, 1, 2, 3, 4, 5, 6],
+    startMinutes: 0, endMinutes: 23 * 60 + 59, enabled: true, tagCanPause: true, pausedUntil: null,
+  };
+  // NOW is 09:00Z; schedules use the device's clock, so build the window around it.
+  const around = {
+    ...SCHEDULE,
+    startMinutes: NOW.getHours() * 60 + NOW.getMinutes() - 30,
+    endMinutes: NOW.getHours() * 60 + NOW.getMinutes() + 60,
+  };
+  const spec = (id: string) => ({ ...around, id });
+
+  beforeEach(() => jest.clearAllMocks());
+
+  it('blocks the union of the groups its live reasons name', () => {
+    syncAppShield(state({
+      keyLocked: true,
+      groups: { focus: 'default', gate: 'default', penalty: 'default', key: 'games' },
+      session: session(), focusEnabled: true,
+    }));
+    expect(mockBridge.applyShield).toHaveBeenCalledWith(['default', 'games']);
+  });
+
+  it('blocks a schedule open now, and counts as wanting the shield', () => {
+    const s = state({ schedules: [spec('a')] });
+    expect(appShieldWanted(s)).toBe(true);
+    syncAppShield(s);
+    expect(mockBridge.applyShield).toHaveBeenCalledWith(['social']);
+    expect(mockBridge.clearShield).not.toHaveBeenCalled();
+  });
+
+  it('resolves a removed schedule group through the caller', () => {
+    syncAppShield(state({ schedules: [spec('a')], resolveGroup: () => 'default' }));
+    expect(mockBridge.applyShield).toHaveBeenCalledWith(['default']);
+  });
+
+  it('does not block for a schedule that is off, paused or outside its window', () => {
+    const off = { ...spec('a'), enabled: false };
+    const paused = { ...spec('b'), pausedUntil: LATER };
+    const later = { ...spec('c'), startMinutes: around.endMinutes + 10, endMinutes: around.endMinutes + 40 };
+    expect(appShieldWanted(state({ schedules: [off, paused, later] }))).toBe(false);
+    syncAppShield(state({ schedules: [off, paused, later] }));
+    expect(mockBridge.clearShield).toHaveBeenCalled();
+  });
+
+  it('hands the schedules to the native side on every reconcile, including when none is open', () => {
+    syncAppShield(state({ schedules: [{ ...spec('a'), enabled: false }, spec('b')] }));
+    expect(mockBridge.setBlockSchedules).toHaveBeenCalledWith([expect.objectContaining({ id: 'b', name: 'Work hours' })]);
+  });
+
+  it('writes each reason class its own group so one ending leaves the rest', () => {
+    syncAppShield(state({
+      penaltyUntil: LATER, penaltyEnabled: true,
+      keyLocked: true,
+      groups: { focus: 'default', gate: 'default', penalty: 'games', key: 'social' },
+    }));
+    const written = mockBridge.setShieldState.mock.calls[0] as unknown as [{ groups: unknown }];
+    expect(written[0].groups).toEqual({
+      otherGroupIds: ['social'],
+      penaltyGroupId: 'games',
+      penaltyEndIso: LATER,
+      pendingGateGroupId: null,
+      pendingGateLiveAtIso: null,
+    });
+  });
+
+  it('leads with the schedule on the shield screen, naming it and when it ends', () => {
+    syncAppShield(state({ schedules: [spec('a')] }));
+    const written = mockBridge.setShieldState.mock.calls[0] as unknown as [{ reason: string; detail: string; untilIso: string }];
+    expect(written[0]).toMatchObject({ reason: 'schedule', detail: 'Work hours' });
+    expect(written[0].untilIso).toEqual(expect.any(String));
+  });
+
+  it('keeps a penalty reading first when a schedule is also open', () => {
+    syncAppShield(state({ schedules: [spec('a')], penaltyUntil: LATER, penaltyEnabled: true, penaltyReason: 'Walk' }));
+    const written = mockBridge.setShieldState.mock.calls[0] as unknown as [{ reason: string }];
+    expect(written[0].reason).toBe('penalty');
   });
 });

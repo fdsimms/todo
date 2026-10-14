@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { dbGetSetting, dbSetSetting } from '../db/database';
 import { generateId } from '../utils/id';
+import { useAppGroupStore } from './useAppGroupStore';
 import {
   NFC_KEYS_SETTING, NFC_KEY_LOCK_SETTING, canLock, cleanKeyName, lockAfterRemoval, matchKey,
   newLinkToken, nextKeyLock, normalizeLinkToken, normalizeTagUid, parseNfcKeys, withKeyAdded,
@@ -17,7 +18,7 @@ import {
  * phone that has never read it.
  *
  * The shield itself is not written here. `useAppShieldSync` watches this store
- * and `appShield.ts` decides, because the lock is one of four reasons for the
+ * and `appShield.ts` decides, because the lock is one of five reasons for the
  * one system shield and none of them may lift another's block.
  *
  * Held in memory and written through, so demo mode has to `reload()` it when
@@ -28,6 +29,8 @@ import {
 export type KeyScanResult =
   | { outcome: 'locked'; key: NfcKey }
   | { outcome: 'unlocked'; key: NfcKey }
+  /** A schedule's window was open, and the tag lifted it until it ends. */
+  | { outcome: 'paused'; key: NfcKey; count: number }
   | { outcome: 'unknown' };
 
 export type EnrollResult =
@@ -129,6 +132,15 @@ export const useNfcKeyStore = create<NfcKeyStore>((set, get) => ({
   applyScan(kind, secret) {
     const key = matchKey(get().keys, kind, secret);
     if (!key) return { outcome: 'unknown' };
+    // A lock the tag raised is ended first. Otherwise, if a schedule's window
+    // is open, the scan lifts that window until it closes instead of raising
+    // a lock on top of it. Either way a tag ends only what a tag may: never a
+    // penalty, a gate or a focus session, which `pauseOpenSchedules` does not
+    // touch.
+    if (!get().locked) {
+      const count = useAppGroupStore.getState().pauseOpenSchedules(new Date());
+      if (count > 0) return { outcome: 'paused', key, count };
+    }
     const locked = nextKeyLock(get().locked);
     persistLocked(locked);
     set({ locked });

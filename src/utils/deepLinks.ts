@@ -861,10 +861,12 @@ export function openInAppUrl(url: string | null | undefined): boolean {
       } else {
         haptics.success();
         Alert.alert(
-          result.outcome === 'locked' ? 'Apps locked' : 'Apps unlocked',
+          result.outcome === 'locked' ? 'Apps locked' : result.outcome === 'paused' ? 'Schedule paused' : 'Apps unlocked',
           result.outcome === 'locked'
             ? `${result.key.name} locked your chosen apps. Tap it again to unlock them.`
-            : `${result.key.name} unlocked your chosen apps. Other blocks, like a focus session, stay on.`,
+            : result.outcome === 'paused'
+              ? `${result.key.name} paused ${result.count === 1 ? 'the schedule' : 'the schedules'} that ${result.count === 1 ? 'was' : 'were'} blocking apps. ${result.count === 1 ? 'It starts' : 'They start'} again at the next window. Other blocks, like a focus session, stay on.`
+              : `${result.key.name} unlocked your chosen apps. Other blocks, like a focus session, stay on.`,
         );
       }
     }
