@@ -144,7 +144,7 @@ import { isTripLive, resolveActiveTrip } from '../utils/activeTrip';
 import { shopAisleOrderToSave } from '../utils/groceryShops';
 import { scheduleTripReminder, cancelTripReminder } from '../utils/notifications';
 import { substituteQuantity } from '../utils/itemSubs';
-import { productForGtin, productKeyFor, productsForItem } from '../utils/groceryProduct';
+import { productForGtin, productKeyFor, productsForItem, ratingCandidate } from '../utils/groceryProduct';
 import { planBrandRename } from '../utils/brands';
 import type { ScannedGtinLink } from '../utils/scanResolve';
 import {
@@ -550,6 +550,22 @@ interface GroceryStore extends UndoHistoryActions {
    */
   disposalOffer: { itemId: string; stage: 'ask' | 'shelfLife' } | null;
   dismissDisposalOffer: () => void;
+  /**
+   * "How was it?" for a product the person has just finished. Raised by a
+   * per-product "Out of it" and by "Used it up" (`ratingCandidate` decides
+   * whether there is one product it is unambiguously about), and never by
+   * "Went bad": spoiled is not disliked. Session-only for the reason
+   * `disposalOffer` is. `rateOfferedProduct` writes through `updateProduct`, so
+   * a rating given here is the same row write as one given in ProductSheet.
+   */
+  ratingOffer: { itemId: string; productId: string } | null;
+  rateOfferedProduct: (rating: ProductRating) => void;
+  dismissRatingOffer: () => void;
+  /**
+   * Ask about a product the person just ate (a food log entry made from one).
+   * Does nothing when it is already rated or no longer exists.
+   */
+  offerProductRating: (productId: string) => void;
   initialized: boolean;
 
   /**
@@ -1968,6 +1984,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   activeListId: null,
   pendingUseUpItemId: null,
   disposalOffer: null,
+  ratingOffer: null,
   initialized: false,
   lastAction: null,
   undoStack: [],
@@ -2044,6 +2061,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       activeListId,
       pendingUseUpItemId: null,
       disposalOffer: null,
+      ratingOffer: null,
       initialized: true,
     });
   },
@@ -2209,6 +2227,24 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
 
   dismissDisposalOffer() {
     set({ disposalOffer: null });
+  },
+
+  rateOfferedProduct(rating) {
+    const offer = get().ratingOffer;
+    set({ ratingOffer: null });
+    if (offer) get().updateProduct(offer.productId, { rating });
+  },
+
+  dismissRatingOffer() {
+    set({ ratingOffer: null });
+  },
+
+  offerProductRating(productId) {
+    const product = get().itemProducts.find(p => p.id === productId);
+    if (!product) return;
+    const item = get().items.find(i => i.id === product.itemId);
+    const asked = ratingCandidate(get().itemProducts, product.itemId, item?.preferredProductId ?? null, productId);
+    if (asked) set({ ratingOffer: { itemId: asked.itemId, productId: asked.id } });
   },
 
   /**
@@ -3041,6 +3077,12 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     set(s => ({
       itemProducts: s.itemProducts.filter(p => !gone.has(p.id)).map(p => byId.get(p.id) ?? p),
     }));
+    // One product and it's a real box rather than a portion: ask how it was.
+    // A batch names no single product, so it gets no question.
+    const asked = before.length === 1 && portions.length === 0
+      ? ratingCandidate(get().itemProducts, before[0].itemId, get().items.find(i => i.id === before[0].itemId)?.preferredProductId ?? null, before[0].id)
+      : null;
+    if (asked) set({ ratingOffer: { itemId: asked.itemId, productId: asked.id } });
     get().setLastAction({
       label: `Out of ${before.length === 1 ? '1 thing' : `${before.length} things`}`,
       destructive: true,
@@ -3055,6 +3097,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
             ...s.itemProducts.map(p => restore.get(p.id) ?? p),
             ...portions.filter(p => !s.itemProducts.some(q => q.id === p.id)),
           ],
+          ratingOffer: null,
         }));
       },
     });
@@ -3209,12 +3252,18 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // The prompt is judged on the row as it stands *after* the answer, which is
     // what makes it a reaction rather than a banner that could go stale. An
     // answer that isn't the second waste just closes the question.
+    // Finished it up (not spoiled): the one moment the person has certainly
+    // tried the thing, so ask how it was if that's unambiguous.
+    const asked = outcome === 'usedUp'
+      ? ratingCandidate(get().itemProducts, itemId, item.preferredProductId ?? null)
+      : null;
     set(s => ({
       items: s.items.map(i => (i.id === itemId ? updated : i)),
       disposalOffer:
         outcome === 'spoiled' && wantsShelfLifePrompt(updated)
           ? { itemId, stage: 'shelfLife' }
           : null,
+      ratingOffer: asked ? { itemId, productId: asked.id } : s.ratingOffer,
     }));
   },
 

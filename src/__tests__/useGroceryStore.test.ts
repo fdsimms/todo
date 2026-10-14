@@ -375,6 +375,7 @@ function seed(
     tripBudgetMinor: null,
     cartHoldIds: [],
     disposalOffer: null,
+    ratingOffer: null,
     initialized: true,
   });
 }
@@ -8958,5 +8959,67 @@ describe('mergeItems: what it moves onto the survivor', () => {
 
     expect(entryOf(cilantro.id, AWAY.id)).not.toBeNull();
     expect(entryOf(coriander.id, AWAY.id)).toBeNull();
+  });
+});
+
+describe('asking how a product was', () => {
+  function chips() {
+    const item = makeItem({ name: 'Chips' });
+    seed([item]);
+    const store = useGroceryStore.getState();
+    const nacho = store.addProduct(item.id, { brand: 'Doritos', variant: 'nacho' })!;
+    const ranch = store.addProduct(item.id, { brand: 'Doritos', variant: 'ranch' })!;
+    return { item, nacho, ranch };
+  }
+
+  it('asks about the one product marked out of the pantry', () => {
+    const { item, ranch } = chips();
+    useGroceryStore.getState().markProductsOutOf([ranch.id]);
+    expect(useGroceryStore.getState().ratingOffer).toEqual({ itemId: item.id, productId: ranch.id });
+  });
+
+  it('asks nothing about a batch, or a product that already has a verdict', () => {
+    const { nacho, ranch } = chips();
+    useGroceryStore.getState().markProductsOutOf([nacho.id, ranch.id]);
+    expect(useGroceryStore.getState().ratingOffer).toBeNull();
+
+    useGroceryStore.getState().updateProduct(nacho.id, { rating: 'loved' });
+    useGroceryStore.getState().markProductsOutOf([nacho.id]);
+    expect(useGroceryStore.getState().ratingOffer).toBeNull();
+  });
+
+  it('writes the answer to the offered product and closes the question', () => {
+    const { ranch } = chips();
+    useGroceryStore.getState().markProductsOutOf([ranch.id]);
+    useGroceryStore.getState().rateOfferedProduct('fine');
+    expect(useGroceryStore.getState().itemProducts.find(p => p.id === ranch.id)!.rating).toBe('fine');
+    expect(useGroceryStore.getState().ratingOffer).toBeNull();
+  });
+
+  it('is dismissed without writing anything', () => {
+    const { ranch } = chips();
+    useGroceryStore.getState().markProductsOutOf([ranch.id]);
+    useGroceryStore.getState().dismissRatingOffer();
+    expect(useGroceryStore.getState().ratingOffer).toBeNull();
+    expect(useGroceryStore.getState().itemProducts.find(p => p.id === ranch.id)!.rating).toBeNull();
+  });
+
+  it('asks after "Used it up" only when it can tell which product, and never after "Went bad"', () => {
+    const { item, nacho } = chips();
+    // Two unrated boxes and the first one became the preference, so it's named.
+    useGroceryStore.getState().recordDisposal(item.id, 'usedUp');
+    expect(useGroceryStore.getState().ratingOffer).toEqual({ itemId: item.id, productId: nacho.id });
+
+    useGroceryStore.getState().dismissRatingOffer();
+    useGroceryStore.getState().recordDisposal(item.id, 'spoiled');
+    expect(useGroceryStore.getState().ratingOffer).toBeNull();
+  });
+
+  it('asks about a product that was eaten from the food log', () => {
+    const { item, ranch } = chips();
+    useGroceryStore.getState().offerProductRating(ranch.id);
+    expect(useGroceryStore.getState().ratingOffer).toEqual({ itemId: item.id, productId: ranch.id });
+    useGroceryStore.getState().offerProductRating('missing');
+    expect(useGroceryStore.getState().ratingOffer).toEqual({ itemId: item.id, productId: ranch.id });
   });
 });

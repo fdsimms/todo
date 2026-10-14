@@ -333,14 +333,18 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
             </Text>
           )}
 
-          {/* A closed set of three, so a track rather than pills — see
-              SegmentedControl. Three states and not a 1-to-5 scale: the
-              question you ask at the shelf is whether you've had this and
-              hated it. See ProductRating. */}
+          {/* A closed set of four, so a track rather than pills — see
+              SegmentedControl. Four segments are two rows of two, since
+              "Never again" does not fit a quarter of a phone's width at the
+              scale's smallest text. Answers rather than a 1-to-5 scale: the
+              question you ask at the shelf is whether you'd get this again.
+              See ProductRating. */}
           <Text style={[styles.label, styles.labelSpaced]}>RATING</Text>
           <SegmentedControl<ProductRating | null>
+            columns={2}
             options={[
               { value: 'loved', label: 'Loved it' },
+              { value: 'fine', label: 'It was fine' },
               { value: null, label: 'No opinion' },
               { value: 'avoid', label: 'Never again' },
             ]}
@@ -355,11 +359,14 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
           </Text>
 
           <Text style={[styles.label, styles.labelSpaced]}>NOTE</Text>
+          <Text style={styles.hint}>
+            Why you rated it this way, or anything else worth remembering.
+          </Text>
           <TextField
             style={[styles.input, styles.noteInput]}
             value={note}
             onChangeText={setNote}
-            placeholder="e.g. the blue bag, on the bottom shelf"
+            placeholder="e.g. too sweet, great crunch, the blue bag"
             placeholderTextColor={colors.textTertiary}
             multiline
             maxLength={GROCERY_PRODUCT_NOTE_MAX_LENGTH}

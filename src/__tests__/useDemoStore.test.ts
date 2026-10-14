@@ -3195,6 +3195,10 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const avoided = itemProducts.find(p => p.rating === 'avoid');
     expect(avoided).toBeDefined();
     expect(items.find(i => i.id === avoided!.itemId)!.preferredProductId).not.toBe(avoided!.id);
+    // ...and the middle answer, with its reason in the note.
+    const shrugged = itemProducts.find(p => p.rating === 'fine');
+    expect(shrugged).toBeDefined();
+    expect(shrugged!.note).not.toBe('');
     // ...and two boxes of one item in two different places, which is what the
     // per-box pantry columns exist for. A frozen one and an on-hand one on the
     // same item: with one slot per item the app could only have called both of

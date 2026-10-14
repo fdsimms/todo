@@ -4494,6 +4494,8 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   // The brandless case, in the one place it's ordinary: a store's own label
   // has a variant worth naming and no maker worth naming.
   const sourdough = addProduct(bread, { brand: null, variant: 'seeded sourdough' });
+  // The middle answer: tried it, it was fine, and the reason says when.
+  if (sourdough) updateProduct(sourdough.id, { rating: 'fine', note: 'Fine toasted, dry on its own' });
   // Already the preference by virtue of being added first — set explicitly so
   // the seed says what it means rather than depending on insertion order.
   if (arnolds) setPreferredProduct(bread, arnolds.id);

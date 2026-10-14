@@ -257,6 +257,17 @@ describe('the catalog tools', () => {
     });
   });
 
+  describe('rating a variant', () => {
+    it('writes the middle answer with its reason, shows both back, and clears with null', () => {
+      addGroceryItem(replica, 'soda');
+      const box = saveGroceryBox(replica, { name: 'soda' }, { brand: 'Olipop', variant: 'Caramel Apple' }).box!;
+      saveGroceryBox(replica, { name: 'soda' }, { boxId: box.id, rating: 'fine', note: 'too sweet' });
+      expect(getGroceryItem(replica, { name: 'soda' }).boxes[0]).toMatchObject({ rating: 'fine', note: 'too sweet' });
+      saveGroceryBox(replica, { name: 'soda' }, { boxId: box.id, rating: null });
+      expect(getGroceryItem(replica, { name: 'soda' }).boxes[0]).not.toHaveProperty('rating');
+    });
+  });
+
   describe('merge_grocery_items', () => {
     it('keeps the loser’s brands and their barcodes on the survivor', () => {
       addGroceryItem(replica, 'stroopwafels');

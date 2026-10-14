@@ -178,8 +178,9 @@ export function productsForItem(
   const rank = (p: ItemProduct): number => {
     if (p.id === preferredId) return 0;
     if (p.rating === 'loved') return 1;
-    if (p.rating === null) return 2;
-    return 3;
+    if (p.rating === 'fine') return 2;
+    if (p.rating === null) return 3;
+    return 4;
   };
   return products
     .filter(p => p.itemId === itemId && !isPortionBox(p))
@@ -250,6 +251,33 @@ export function describePreferredProduct(
 }
 
 /**
+ * The one product a "how was it?" question after finishing something is about,
+ * or null when asking would be a guess.
+ *
+ * Only a product nobody has rated is worth asking about: a verdict already
+ * given is the person's to change in ProductSheet, not to be re-asked every
+ * time they finish a bag. A named product (the pantry's per-product "Out of
+ * it") is the answer by itself. An item-level finish (`ItemDisposalOffer`)
+ * names no product, so it takes the item's preferred one, and failing that the
+ * only box the item has; with several unrated boxes and no preference the app
+ * cannot know which was eaten, and rating the wrong product is worse than not
+ * asking.
+ */
+export function ratingCandidate(
+  products: readonly ItemProduct[],
+  itemId: string,
+  preferredId: string | null,
+  productId?: string,
+): ItemProduct | null {
+  const boxes = productsForItem(itemId, products, preferredId);
+  const unrated = (p: ItemProduct | undefined): ItemProduct | null =>
+    p && p.rating === null ? p : null;
+  if (productId !== undefined) return unrated(boxes.find(p => p.id === productId));
+  if (boxes.length === 1) return unrated(boxes[0]);
+  return unrated(boxes.find(p => p.id === preferredId));
+}
+
+/**
  * What a rating says, in the app's own voice.
  *
  * Written out rather than left to each surface, for `describeProduct`'s
@@ -259,6 +287,7 @@ export function describePreferredProduct(
  */
 export const RATING_LABELS: Record<ProductRating, string> = {
   loved: 'Loved it',
+  fine: 'It was fine',
   avoid: 'Never again',
 };
 

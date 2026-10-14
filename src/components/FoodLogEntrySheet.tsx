@@ -1228,6 +1228,9 @@ export function FoodLogEntrySheet({
       haptics.error();
       return false;
     }
+    // Eating a catalog product is a moment the person has certainly tried it:
+    // ask how it was if it hasn't been rated (ProductRatingOffer).
+    if (draft.productId) useGroceryStore.getState().offerProductRating(draft.productId);
     return true;
   };
 

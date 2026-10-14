@@ -47,6 +47,7 @@ import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { ItemDisposalOffer } from './ItemDisposalOffer';
+import { ProductRatingOffer } from './ProductRatingOffer';
 import { describeDisposalHistory } from '../utils/itemDisposal';
 import { SearchField } from './SearchField';
 import { CollapsibleField } from './CollapsibleField';
@@ -1769,6 +1770,7 @@ export function GroceryItemSheet({
             component unscoped, and an offer raised there is that screen's to
             show, not this sheet's. */}
         <ItemDisposalOffer itemId={item.id} onOpenShelfLife={() => setOpenField('useBy')} />
+        <ProductRatingOffer itemId={item.id} />
 
         <ScrollView
           ref={keyboardScroll.ref}

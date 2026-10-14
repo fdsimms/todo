@@ -60,6 +60,7 @@ import { PressableScale } from '../components/PressableScale';
 import { GroceryItemSheet, type CollapsibleFieldKey } from '../components/GroceryItemSheet';
 import { navigateToFoodSearchSettings } from '../components/NutritionSearchSheet';
 import { ItemDisposalOffer } from '../components/ItemDisposalOffer';
+import { ProductRatingOffer } from '../components/ProductRatingOffer';
 import { LeftoverSheet } from '../components/LeftoverSheet';
 import { useSheetMount } from '../hooks/useSheetMount';
 import { PantryReviewSheet } from '../components/PantryReviewSheet';
@@ -853,6 +854,7 @@ export function KitchenScreen() {
           setOpenItemId(id);
         }}
       />
+      <ProductRatingOffer />
 
       <View style={styles.searchWrap}>
         <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} />
