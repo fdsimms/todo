@@ -26,7 +26,7 @@ import { haptics } from '../utils/haptics';
 import { CountStepper } from './CountStepper';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
-import { SheetHeaderButton } from './SheetHeaderButton';
+import { PressableScale } from './PressableScale';
 import { TextField } from './TextField';
 
 /** The two ways of saying how much of a dish was eaten. */
@@ -332,44 +332,61 @@ export function LogMealPrompt() {
             </>
           )}
 
+          {/* One primary, one neutral beside it, and the two "no, and stop
+              bringing it up" answers as quiet links underneath. They were four
+              equal text rows, so the one that logs read as one of a list. */}
           <View style={styles.actions}>
-            <SheetHeaderButton label="Log it" onPress={handleLog} disabled={!helping} />
-            <TouchableOpacity
-              style={styles.secondary}
-              activeOpacity={interaction.activeOpacity}
-              onPress={() => { haptics.tap(); close(); }}
-              accessibilityRole="button"
-              accessibilityLabel="Not this time"
-            >
-              <Text style={styles.secondaryText}>Not this time</Text>
-            </TouchableOpacity>
-            {!!shown.mealPlanEntryId && (
-              <TouchableOpacity
-                style={styles.secondary}
-                activeOpacity={interaction.activeOpacity}
-                onPress={handleNever}
+            <View style={styles.buttonRow}>
+              <PressableScale
+                style={[styles.button, styles.buttonNeutral]}
+                onPress={() => { haptics.tap(); close(); }}
                 accessibilityRole="button"
-                accessibilityLabel="Don’t ask about this meal"
+                accessibilityLabel="Not this time"
               >
-                <Text style={styles.secondaryText}>Don’t ask about this meal</Text>
-              </TouchableOpacity>
-            )}
-            {!shown.asked && (
-              <>
-                <TouchableOpacity
-                  style={styles.secondary}
-                  activeOpacity={interaction.activeOpacity}
-                  onPress={handleStopAsking}
-                  accessibilityRole="button"
-                  accessibilityLabel="Stop asking after meals"
-                  accessibilityHint="Turn “Ask what you ate” back on in Settings, under Groceries & meals."
-                >
-                  <Text style={styles.secondaryText}>Stop asking after meals</Text>
-                </TouchableOpacity>
-                <Text style={styles.hint}>
-                  {'Turn “Ask what you ate” back on in Settings, under Groceries & meals.'}
-                </Text>
-              </>
+                <Text style={styles.buttonNeutralText}>Not this time</Text>
+              </PressableScale>
+              <PressableScale
+                style={[styles.button, styles.buttonPrimary, !helping && styles.buttonDisabled]}
+                onPress={handleLog}
+                disabled={!helping}
+                accessibilityRole="button"
+                accessibilityLabel="Log it"
+                accessibilityState={{ disabled: !helping }}
+              >
+                <Text style={styles.buttonPrimaryText}>Log it</Text>
+              </PressableScale>
+            </View>
+            {(!!shown.mealPlanEntryId || !shown.asked) && (
+              <View style={styles.quietLinks}>
+                {!!shown.mealPlanEntryId && (
+                  <TouchableOpacity
+                    style={styles.quietLink}
+                    activeOpacity={interaction.activeOpacity}
+                    onPress={handleNever}
+                    accessibilityRole="button"
+                    accessibilityLabel="Don’t ask about this meal"
+                  >
+                    <Text style={styles.quietLinkText}>Don’t ask about this meal</Text>
+                  </TouchableOpacity>
+                )}
+                {!shown.asked && (
+                  <View style={styles.quietGroup}>
+                    <TouchableOpacity
+                      style={[styles.quietLink, styles.quietLinkTight]}
+                      activeOpacity={interaction.activeOpacity}
+                      onPress={handleStopAsking}
+                      accessibilityRole="button"
+                      accessibilityLabel="Stop asking after meals"
+                      accessibilityHint="Turn “Ask what you ate” back on in Settings, under Groceries & meals."
+                    >
+                      <Text style={styles.quietLinkText}>Stop asking after meals</Text>
+                    </TouchableOpacity>
+                    <Text style={[styles.hint, styles.hintCentered]}>
+                      Turn it back on in Settings, under Groceries & meals.
+                    </Text>
+                  </View>
+                )}
+              </View>
             )}
           </View>
         </View>
@@ -418,8 +435,26 @@ function makeStyles(colors: Colors) {
     },
     weightUnit: { color: colors.textSecondary, fontSize: font.sm },
     hint: { color: colors.textSecondary, fontSize: font.xs, lineHeight: 16 },
-    actions: { marginTop: spacing.md, gap: spacing.sm, alignItems: 'flex-start' },
-    secondary: { paddingVertical: spacing.xs },
-    secondaryText: { color: colors.textSecondary, fontSize: font.sm },
+    hintCentered: { textAlign: 'center' },
+    actions: { marginTop: spacing.md, gap: spacing.sm },
+    buttonRow: { flexDirection: 'row', gap: spacing.sm },
+    button: {
+      flex: 1,
+      minHeight: 48,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: radius.md,
+      paddingHorizontal: spacing.md,
+    },
+    buttonPrimary: { backgroundColor: colors.accentFill },
+    buttonPrimaryText: { color: colors.onAccent, fontSize: font.md, fontWeight: fontWeight.semibold },
+    buttonNeutral: { backgroundColor: colors.bgTertiary },
+    buttonNeutralText: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium },
+    buttonDisabled: { opacity: 0.4 },
+    quietLinks: { alignItems: 'center', marginTop: spacing.xs },
+    quietGroup: { alignItems: 'center' },
+    quietLinkTight: { paddingBottom: spacing.xxs },
+    quietLink: { paddingVertical: spacing.sm, paddingHorizontal: spacing.md },
+    quietLinkText: { color: colors.textSecondary, fontSize: font.sm },
   });
 }
