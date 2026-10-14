@@ -3210,6 +3210,17 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (missing.length > 0) errors.push(`personIds: no person with id ${missing.join(', ')}. list_people names them.`);
     }
     if (errors.length === 0) settleDateRules(input, patch, current, errors);
+    // On a cadence the count is arithmetic over the window, so it is worked out
+    // against the whole task as it will be (a window given in this same call
+    // counts), with the app's own function. An update that moves only the
+    // window or the cadence gets the same re-derive from `mergeTaskUpdate`.
+    if (errors.length === 0 && fields.target && fields.target.everyMinutes != null) {
+      const merged: Task = current
+        ? { ...current, ...patch }
+        : taskDraft.newTaskFromDraft({ title: input.title ?? 'task', ...patch } as Partial<TaskDraft>, new Date().toISOString(), 0, false);
+      const count = taskUpdate.derivedTargetCount(merged);
+      if (count !== null) patch.targetCount = count;
+    }
     // A reminder is a wall-clock time by default (Task.reminderTimeAnchor), and
     // the phone re-anchors it after a time zone change against the offset it
     // was set under. Captured here as the editor captures it on save, or an

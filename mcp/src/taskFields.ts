@@ -64,7 +64,16 @@ export const LIMITS = {
    */
   supplyCount: [0, 999],
   supplyReorderAt: [1, 999],
+  /**
+   * `MIN_QUOTA_INTERVAL_MINUTES` / `MAX_QUOTA_INTERVAL_MINUTES` in
+   * src/utils/taskKinds.ts, copied for the reason `supplyCount` is.
+   * taskFields.test.ts pins the two together.
+   */
+  quotaInterval: [5, 240],
 } as const;
+
+/** Stands in for `targetCount` on a cadence until the replica derives the real one from the window. */
+const MIN_CADENCE_PLACEHOLDER = 2;
 
 /** `DEFAULT_SUPPLY_REORDER_AT`: on the last one. Pinned in taskFields.test.ts like the limits above. */
 const DEFAULT_SUPPLY_REORDER_AT = 1;
@@ -111,9 +120,14 @@ export interface ChainInput {
 }
 
 export interface TargetInput {
-  count: number;
+  /** Omitted with `everyMinutes`: the replica works the count out from the cadence and the window. */
+  count?: number;
   per: 'day' | 'week';
   unit?: string | null;
+  /** Per day only: one unit every this many minutes across the window. null clears the cadence. */
+  everyMinutes?: number | null;
+  /** Per day only: notify as each unit falls due. */
+  remind?: boolean;
   allowOvershoot?: boolean;
   /** Pay coins on every tap instead of when the target is reached. Same total either way. */
   coinsPerTap?: boolean;
@@ -490,8 +504,21 @@ export function taskFieldsPatch(
       } satisfies Partial<Task>);
     } else {
       const t = input.target;
-      if (!inRange(t.count, LIMITS.target)) errors.push(`target.count must be ${LIMITS.target[0]} to ${LIMITS.target[1]}. A task done once needs no target.`);
+      // With a cadence the count is arithmetic over the window, so it is not
+      // asked for; the replica writes it once the whole patch is known
+      // (`derivedTargetCount`). A placeholder stands in until then.
+      const cadence = t.everyMinutes != null;
+      if (cadence) {
+        if (!inRange(t.everyMinutes, LIMITS.quotaInterval)) errors.push(`target.everyMinutes must be a whole number of minutes from ${LIMITS.quotaInterval[0]} to ${LIMITS.quotaInterval[1]}.`);
+        if (t.per !== 'day') errors.push('target.everyMinutes only applies to a target per day.');
+        if (t.allowOvershoot) errors.push('A target on a cadence cannot also allow going past the target.');
+        if (t.rampUp) errors.push('A target on a cadence cannot also ramp up: its count follows the time window.');
+      } else if (t.count === undefined) {
+        // An update that changes only the reminders keeps the count it has.
+        if (current?.targetCount == null) errors.push(`target.count is required unless target.everyMinutes is given. ${LIMITS.target[0]} to ${LIMITS.target[1]}.`);
+      } else if (!inRange(t.count, LIMITS.target)) errors.push(`target.count must be ${LIMITS.target[0]} to ${LIMITS.target[1]}. A task done once needs no target.`);
       if (t.per !== 'day' && t.per !== 'week') errors.push('target.per must be "day" or "week".');
+      if (t.remind && t.per !== 'day') errors.push('target.remind only applies to a target per day.');
       if (t.per === 'week') {
         // A weekly count resets with the week, so it repeats weekly, and the
         // per-day machinery (an interval, nudges, going over) doesn't apply.
@@ -509,8 +536,13 @@ export function taskFieldsPatch(
         }
         patch.allowOvershoot = t.allowOvershoot ?? false;
       }
-      patch.targetCount = t.count;
+      patch.targetCount = t.count ?? (cadence ? MIN_CADENCE_PLACEHOLDER : current?.targetCount ?? null);
       patch.quotaPeriod = t.per;
+      if (cadence) patch.quotaIntervalMinutes = t.everyMinutes;
+      // A count typed over a task that was on a cadence replaces it, or the two
+      // would disagree until the next time the window moved.
+      else if (t.everyMinutes === null || (t.count !== undefined && current?.quotaIntervalMinutes != null)) patch.quotaIntervalMinutes = null;
+      if (t.remind !== undefined) patch.quotaReminders = t.remind;
       if (t.coinsPerTap !== undefined) patch.coinsPerTap = t.coinsPerTap;
       if (t.unit !== undefined) patch.targetUnit = t.unit;
       // Ramp up: the app's own rule (src/utils/quotaRamp.ts). Only a plain count
@@ -521,7 +553,7 @@ export function taskFieldsPatch(
         const r = t.rampUp;
         if (!Number.isInteger(r.add) || r.add < 1 || r.add > 20) errors.push('target.rampUp.add must be a whole number from 1 to 20.');
         if (!Number.isInteger(r.every) || r.every < 1 || r.every > 60) errors.push('target.rampUp.every must be a whole number from 1 to 60.');
-        if (r.upTo != null && (!Number.isInteger(r.upTo) || r.upTo <= t.count || r.upTo > 99)) errors.push('target.rampUp.upTo must be a whole number above the count, at most 99.');
+        if (r.upTo != null && (!Number.isInteger(r.upTo) || r.upTo <= (t.count ?? current?.targetCount ?? 0) || r.upTo > 99)) errors.push('target.rampUp.upTo must be a whole number above the count, at most 99.');
         if (patch.allowOvershoot ?? t.allowOvershoot) errors.push('A target that ramps up cannot also allow going past the target.');
         else {
           Object.assign(patch, {
