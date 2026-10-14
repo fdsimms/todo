@@ -967,6 +967,23 @@ export function detectContactIntent(title: string): ContactIntent | null {
   return match[1].toLowerCase() === 'email' ? 'email' : 'phone';
 }
 
+/**
+ * The contact detail a title's leading verb asks for from the one person it names:
+ * "Call @kelsey" and "Text @kelsey" take her number, "Email @kelsey" her address.
+ * Null for any other title or a person without that detail on file; the caller
+ * decides whether a number or address already set by hand takes precedence.
+ */
+export function contactForMention(
+  title: string,
+  person: { phoneNumber: string | null; email: string | null } | undefined
+): { phone: string | null; email: string | null } {
+  const intent = person ? detectContactIntent(title) : null;
+  if (!person || !intent) return { phone: null, email: null };
+  return intent === 'email'
+    ? { phone: null, email: person.email || null }
+    : { phone: person.phoneNumber || null, email: null };
+}
+
 export interface ParsedDuration {
   /** The countdown target in whole minutes. */
   minutes: number;
