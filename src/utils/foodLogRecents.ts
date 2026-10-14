@@ -181,6 +181,10 @@ export function usualForSlot<T extends { key: string }>(
 /** How many earlier helpings the picker offers at once, above the list proper. */
 export const RECENT_HELPING_LIMIT = 3;
 
+/** How many days back, and how many times, a food must be logged to be offered unsearched. */
+export const RECENT_HELPING_DAYS = 14;
+export const RECENT_HELPING_MIN_LOGS = 2;
+
 /**
  * Foods logged under no row, most recent first, for the picker to offer as
  * the same helping again (#2914).
@@ -201,6 +205,13 @@ export const RECENT_HELPING_LIMIT = 3;
  * last under the other's name. Filtered before it is capped, so a search can
  * reach past the first few.
  *
+ * **With nothing typed, only a food that is a habit is offered:** logged at
+ * least `RECENT_HELPING_MIN_LOGS` times within the last `RECENT_HELPING_DAYS`
+ * days. Without that, a meal eaten once last week sat in the top three only
+ * because nothing newer had been logged outside the catalog, under a heading
+ * that says it is a repeat. A search drops both rules: typing the name is the
+ * person saying they want it, so it still reaches a one-off from further back.
+ *
  * Left out: anything linked, which the list proper already offers as its row,
  * and the day's water, which is the water card's own entry and is stepped
  * rather than logged again.
@@ -209,19 +220,35 @@ export function recentUnlinkedHelpings(
   entries: readonly FoodLogEntry[],
   query = '',
   limit = RECENT_HELPING_LIMIT,
+  now: Date = new Date(),
 ): FoodLogEntry[] {
   const queryKey = groceryNameKey(query);
+  const habitOnly = !queryKey;
+  const cutoffISO = new Date(now.getTime() - RECENT_HELPING_DAYS * 86_400_000).toISOString();
+  const identityOf = (entry: FoodLogEntry): string | null => {
+    if (entry.recipeId || entry.itemId || entry.productId) return null;
+    if (isNutrientOnlyEntry(entry)) return null;
+    const key = groceryNameKey(entry.label);
+    return key ? `${key}|${entry.nutrition.source}` : null;
+  };
+  const counts = new Map<string, number>();
+  if (habitOnly) {
+    for (const entry of entries) {
+      if (entry.atISO < cutoffISO) continue;
+      const identity = identityOf(entry);
+      if (identity) counts.set(identity, (counts.get(identity) ?? 0) + 1);
+    }
+  }
   const newestFirst = [...entries].sort((a, b) => b.atISO.localeCompare(a.atISO));
   const seen = new Set<string>();
   const out: FoodLogEntry[] = [];
   for (const entry of newestFirst) {
     if (out.length >= limit) break;
-    if (entry.recipeId || entry.itemId || entry.productId) continue;
-    if (isNutrientOnlyEntry(entry)) continue;
+    const identity = identityOf(entry);
+    if (!identity) continue;
     const key = groceryNameKey(entry.label);
-    if (!key) continue;
     if (queryKey && !key.includes(queryKey)) continue;
-    const identity = `${key}|${entry.nutrition.source}`;
+    if (habitOnly && (counts.get(identity) ?? 0) < RECENT_HELPING_MIN_LOGS) continue;
     if (seen.has(identity)) continue;
     seen.add(identity);
     out.push(entry);

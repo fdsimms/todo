@@ -1591,7 +1591,7 @@ export function FoodLogEntrySheet({
   const helpingsAfterResults = query.trim().length > 0 && results.length > 0;
   const helpingsBlock = helpings.length > 0 ? (
     <View>
-      <Text style={[styles.label, styles.helpingsLabel]}>LOG THE SAME AGAIN</Text>
+      <Text style={[styles.label, styles.helpingsLabel]}>RECENTLY LOGGED</Text>
       {helpings.map(entry => (
         <View key={entry.id} style={[styles.row, styles.helpingRow]}>
           {/* The body opens the amount first, like a row below. */}

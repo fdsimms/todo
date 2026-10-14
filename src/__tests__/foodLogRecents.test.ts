@@ -178,12 +178,20 @@ describe('recentUnlinkedHelpings (#2914)', () => {
     },
   });
 
+  const now = new Date('2026-04-10T12:00:00.000Z');
+  // A food logged twice, the second time on `day`, so it counts as a habit.
+  const twice = (label: string, day: number, calorieKcal = 900) => [
+    estimated(label, Math.max(1, day - 1), calorieKcal),
+    estimated(label, day, calorieKcal),
+  ];
+
   it('offers foods logged under no row, most recent first', () => {
     const helpings = recentUnlinkedHelpings([
-      estimated('Pad thai', 1),
+      ...twice('Pad thai', 2),
       entry({ label: 'Chicken breast', atISO: at(3) }),
-      estimated('Burrito bowl', 2),
-    ]);
+      entry({ label: 'Chicken breast', atISO: at(5) }),
+      ...twice('Burrito bowl', 4),
+    ], '', RECENT_HELPING_LIMIT, now);
     expect(helpings.map(e => e.label)).toEqual(['Chicken breast', 'Burrito bowl', 'Pad thai']);
   });
 
@@ -192,8 +200,8 @@ describe('recentUnlinkedHelpings (#2914)', () => {
       entry({ label: 'Milk', itemId: 'milk', atISO: at(3) }),
       entry({ label: 'Yogurt', productId: 'fage', itemId: 'yogurt', atISO: at(3) }),
       entry({ label: 'Lasagne', recipeId: 'r1', atISO: at(3) }),
-      estimated('Pad thai', 1),
-    ]);
+      ...twice('Pad thai', 2),
+    ], '', RECENT_HELPING_LIMIT, now);
     expect(helpings.map(e => e.label)).toEqual(['Pad thai']);
   });
 
@@ -206,7 +214,8 @@ describe('recentUnlinkedHelpings (#2914)', () => {
         portions: [], source: 'manual', sourceId: null, recordedAt: at(3),
       },
     });
-    expect(recentUnlinkedHelpings([water, estimated('Pad thai', 1)]).map(e => e.label)).toEqual(['Pad thai']);
+    const water2 = { ...water, id: 'water-2', atISO: at(4) };
+    expect(recentUnlinkedHelpings([water, water2, ...twice('Pad thai', 2)], '', RECENT_HELPING_LIMIT, now).map(e => e.label)).toEqual(['Pad thai']);
   });
 
   it('keeps one per description and source, the most recent', () => {
@@ -214,26 +223,41 @@ describe('recentUnlinkedHelpings (#2914)', () => {
       estimated('Pad thai', 1, 800),
       estimated('pad Thai', 4, 950),
       estimated('Pad thai', 2, 700),
-    ]);
+    ], '', RECENT_HELPING_LIMIT, now);
     expect(helpings).toHaveLength(1);
     expect(helpings[0].nutrition.amounts.calorieKcal).toBe(950);
   });
 
   it('keeps an estimate and a database answer for one food apart, since they are two claims', () => {
     const helpings = recentUnlinkedHelpings([
-      estimated('Chicken breast', 1),
-      entry({ label: 'Chicken breast', atISO: at(2) }),
-    ]);
+      ...twice('Chicken breast', 2),
+      entry({ label: 'Chicken breast', atISO: at(3) }),
+      entry({ label: 'Chicken breast', atISO: at(4) }),
+    ], '', RECENT_HELPING_LIMIT, now);
     expect(helpings.map(e => e.nutrition.source)).toEqual(['fdc', 'estimated']);
   });
 
   it('caps the offer, and narrows by the search before capping', () => {
-    const many = Array.from({ length: 8 }, (_, i) => estimated(`Takeout ${i + 1}`, i + 2));
+    const many = Array.from({ length: 8 }, (_, i) => twice(`Takeout ${i + 1}`, i + 2)).flat();
     many.push(estimated('Pho', 1));
-    expect(recentUnlinkedHelpings(many)).toHaveLength(RECENT_HELPING_LIMIT);
+    expect(recentUnlinkedHelpings(many, '', RECENT_HELPING_LIMIT, now)).toHaveLength(RECENT_HELPING_LIMIT);
     // The oldest of all, still found when it is what was typed.
-    expect(recentUnlinkedHelpings(many, 'pho').map(e => e.label)).toEqual(['Pho']);
-    expect(recentUnlinkedHelpings(many, 'sushi')).toEqual([]);
+    expect(recentUnlinkedHelpings(many, 'pho', RECENT_HELPING_LIMIT, now).map(e => e.label)).toEqual(['Pho']);
+    expect(recentUnlinkedHelpings(many, 'sushi', RECENT_HELPING_LIMIT, now)).toEqual([]);
+  });
+
+  it('offers nothing for a food logged only once, until it is searched for', () => {
+    const once = [estimated('Chocolate pie', 5)];
+    expect(recentUnlinkedHelpings(once, '', RECENT_HELPING_LIMIT, now)).toEqual([]);
+    expect(recentUnlinkedHelpings(once, 'pie', RECENT_HELPING_LIMIT, now)).toHaveLength(1);
+  });
+
+  it('counts only logs inside the window, so two old logs are not a habit', () => {
+    const old = [estimated('Pad thai', 1), estimated('Pad thai', 2)];
+    const later = new Date('2026-04-30T12:00:00.000Z');
+    expect(recentUnlinkedHelpings(old, '', RECENT_HELPING_LIMIT, now)).toHaveLength(1);
+    expect(recentUnlinkedHelpings(old, '', RECENT_HELPING_LIMIT, later)).toEqual([]);
+    expect(recentUnlinkedHelpings(old, 'thai', RECENT_HELPING_LIMIT, later)).toHaveLength(1);
   });
 });
 
