@@ -1739,3 +1739,12 @@ outside". `runDietQuery` refuses a type whose `aggregationStyle` isn't
 `.cumulative`, because a cumulative-sum query on a discrete type raises. An
 install that allowed Health before this was added is not asked for it until
 somebody taps the access row again, like every addition to `readTypes`.
+
+The note has two settings of its own, in Settings › Health › Sleep:
+`shortNightNoteEnabled` (on by default) and `shortNightMinutes` (6 hours by
+default, 3 to 9 in half-hour steps), both in `src/utils/shortNight.ts`. The
+defaults are what the note did before it was configurable, so nobody's menu
+changes until they open the row. The threshold only moves where the line starts
+appearing: it still never changes what the sheet pre-checks, and a null reading
+is silent at every threshold. The switch is for the note and nothing else; the
+`health` generator's sleep rule keeps its own threshold on its own sheet.

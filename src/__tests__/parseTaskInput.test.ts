@@ -1,4 +1,4 @@
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseWeatherWaitInput, parseMeterInput, parseRainSkipInput, parseTaskInputAheadOfRainSkip, parseSunWindowInput, parseProjectInput, parseWaitingOnInput, parseSubtasksInput, parseAvoidInput, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, getEditorMentionSuggestions, applyMentionOverrides, parseFromCompletionSuffix, scheduleClockInstant, type ParsedSchedule } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, contactForMention, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseWeatherWaitInput, parseMeterInput, parseRainSkipInput, parseTaskInputAheadOfRainSkip, parseSunWindowInput, parseProjectInput, parseWaitingOnInput, parseSubtasksInput, parseAvoidInput, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, getEditorMentionSuggestions, applyMentionOverrides, parseFromCompletionSuffix, scheduleClockInstant, type ParsedSchedule } from '../utils/parseTaskInput';
 
 // Tuesday, June 10 2025, 10:00 AM — same anchor as parseNaturalDate.test.ts
 const NOW = new Date(2025, 5, 10, 10, 0, 0);
@@ -1536,6 +1536,45 @@ describe('getMentionSuggestions', () => {
     { id: 'p3', name: 'Gideon', nickname: '' },
   ];
 
+  describe('a business with a multi-word name', () => {
+    const eyeQ = { id: 'b1', name: 'Eye Q', nickname: '', kind: 'business' as const };
+    const withBiz = [...people, eyeQ];
+
+    it('is offered by its first word, as the full name', () => {
+      const r = getMentionSuggestions('Call @eye', withBiz);
+      expect(r?.candidates.map(c => c.name)).toEqual(['Eye Q']);
+      expect(r?.candidates[0].resolveKey).toBe('Eye Q');
+    });
+
+    it('is still offered once the space is typed, spanning the whole tail', () => {
+      const title = 'Call @eye q';
+      const r = getMentionSuggestions(title, withBiz);
+      expect(r?.candidates[0].resolveKey).toBe('Eye Q');
+      expect(r?.start).toBe(5);
+      expect(r?.end).toBe(title.length);
+      expect(getMentionSuggestions('Call @eye ', withBiz)?.candidates[0].id).toBe('b1');
+    });
+
+    it('is offered to fix the casing of a name typed in full, then goes quiet', () => {
+      expect(getMentionSuggestions('Call @eye q', withBiz)).not.toBeNull();
+      expect(getMentionSuggestions('Call @Eye Q', withBiz)).toBeNull();
+    });
+
+    it('stays quiet once the line moves on to other words', () => {
+      expect(getMentionSuggestions('Call @eye about contacts', withBiz)).toBeNull();
+    });
+
+    it('does not offer an individual again after "@gideon "', () => {
+      expect(getMentionSuggestions('Call @gideon ', withBiz)).toBeNull();
+    });
+
+    it('offers a nickname with a space in it', () => {
+      const opt = { id: 'b2', name: 'Pearle Vision', nickname: 'the optometrist', kind: 'business' as const };
+      const r = getMentionSuggestions('call @the opt', [opt]);
+      expect(r?.candidates[0].resolveKey).toBe('the optometrist');
+    });
+  });
+
   it('suggests candidates for a one-letter prefix nothing else can resolve yet', () => {
     const r = getMentionSuggestions('respond to @l', people);
     expect(r?.token).toBe('l');
@@ -2246,5 +2285,24 @@ describe('parseSunWindowInput', () => {
     expect(parseTaskInput('porch lights after sunset', NOW)).toBeNull();
     expect(parseTaskInput('walk the dog expires at sunset', NOW)).toBeNull();
     expect(parseTaskInput('walk the dog only until dark', NOW)).toBeNull();
+  });
+});
+
+describe('contactForMention', () => {
+  const kelsey = { phoneNumber: '555-0100', email: 'k@example.com' };
+
+  it('takes the number for a call or a text', () => {
+    expect(contactForMention('Call @kelsey about dinner', kelsey)).toEqual({ phone: '555-0100', email: null });
+    expect(contactForMention('text @kelsey', kelsey).phone).toBe('555-0100');
+  });
+
+  it('takes the address for an email', () => {
+    expect(contactForMention('Email @kelsey', kelsey)).toEqual({ phone: null, email: 'k@example.com' });
+  });
+
+  it('adds nothing without a contact verb, a person, or the detail on file', () => {
+    expect(contactForMention('Dinner with @kelsey', kelsey)).toEqual({ phone: null, email: null });
+    expect(contactForMention('Call @kelsey', undefined)).toEqual({ phone: null, email: null });
+    expect(contactForMention('Call @kelsey', { phoneNumber: null, email: null })).toEqual({ phone: null, email: null });
   });
 });

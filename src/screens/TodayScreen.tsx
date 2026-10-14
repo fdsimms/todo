@@ -1864,6 +1864,8 @@ export function TodayScreen() {
   // useSettingsStore). `useHealthSync` in App.tsx is what keeps the reading
   // current — nothing here fetches, the same split useCalendarStore draws.
   const healthReadEnabled = useSettingsStore(s => s.healthReadEnabled);
+  const shortNightNoteEnabled = useSettingsStore(s => s.shortNightNoteEnabled);
+  const shortNightMinutes = useSettingsStore(s => s.shortNightMinutes);
   const healthCategory = useSettingsStore(s => s.healthCategory);
   const stepGoal = useSettingsStore(s => s.stepGoal);
   const healthTodayHidden = useSettingsStore(s => s.healthTodayHidden);
@@ -1920,11 +1922,11 @@ export function TodayScreen() {
   // needs no switch of its own — the same argument lowMoodDeloadNote makes for
   // having none.
   const shortSleepNote = useMemo(() => {
-    if (!healthReadEnabled) return null;
+    if (!healthReadEnabled || !shortNightNoteEnabled) return null;
     const key = getLogicalDayKey(new Date(), dayResetTime);
     if (!healthToday || healthToday.dayKey !== key) return null;
-    return shortSleepDeloadNote(healthToday.sleepHours);
-  }, [healthReadEnabled, healthToday, dayResetTime]);
+    return shortSleepDeloadNote(healthToday.sleepHours, shortNightMinutes / 60);
+  }, [healthReadEnabled, shortNightNoteEnabled, shortNightMinutes, healthToday, dayResetTime]);
 
   const deloadNotes = useMemo(
     () => [lowMoodNote, shortSleepNote].filter((n): n is string => n !== null),
