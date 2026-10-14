@@ -128,42 +128,6 @@ export function shopperNameFor(fullName: string, brand: string | null): string {
   return tidied || full;
 }
 
-/**
- * Shorter names to offer for a row still wearing a barcode source's words.
- *
- * The same trick `genericNameSuggestions` uses one shelf over, aimed at a
- * different question: that one asks which catalog row a name is a *variety of*,
- * and answers only in keys the catalog already holds. This one asks what to
- * call the row itself, so it proposes plain suffixes of the words that are
- * there — "Great Value 2% Reduced Fat Milk" offers "2% Reduced Fat Milk",
- * "Reduced Fat Milk", "Fat Milk", "Milk" — and knows nothing about the catalog.
- *
- * **Suffixes only, and that is the whole restraint.** A product name puts the
- * maker and the qualifiers in front of the thing, so the last words are the
- * thing; dropping from the front can only ever produce a phrase that was
- * already printed on the box. Nothing here reads the words, drops one from the
- * middle, or re-capitalises anything, which keeps this on the safe side of the
- * line `shopperNameFor` draws: it is still a tidy-up somebody confirms, never a
- * claim about what the product is.
- *
- * A suggestion nobody would tap is left out rather than shown and ignored: the
- * full name (which is what the row already says), anything a single character
- * long, and duplicates.
- */
-export function shorterNameSuggestions(name: string): string[] {
-  const words = name.trim().replace(/\s+/g, ' ').split(' ');
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (let drop = 1; drop < words.length; drop++) {
-    const candidate = words.slice(drop).join(' ').replace(EDGE_JUNK, '');
-    const key = candidate.toLowerCase();
-    if (candidate.length < 2 || seen.has(key)) continue;
-    seen.add(key);
-    out.push(candidate);
-  }
-  return out;
-}
-
 /** Words a name suggestion shouldn't start with: what's left of a clause, not a thing. */
 const SUGGESTION_LEAD_WORDS = new Set([
   'a', 'an', 'and', 'by', 'for', 'from', 'in', 'of', 'on', 'or', 'the', 'to', 'with',
@@ -176,10 +140,10 @@ const SUGGESTION_MAX_WORDS = 3;
  * What to offer as the *name* of a new item, for a row still wearing a barcode
  * source's words.
  *
- * `shorterNameSuggestions` offers every suffix, which is right for "Great Value
+ * Offering every suffix is right for "Great Value
  * 2% Reduced Fat Milk" and nonsense for "Caramel! ACTION! Directed by Ava
  * DuVernay", where the words are a marketing line and no suffix of them is a
- * food. This keeps the same suffix idea and adds the three restraints that
+ * food. This offers suffixes with three restraints that
  * separate the two cases, without reading what any word means:
  *
  * - **The source's own category comes first.** It is the one field that says

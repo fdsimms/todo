@@ -9,7 +9,6 @@ import {
   scanLinkTarget,
   scannedItemFor,
   shopperNameFor,
-  shorterNameSuggestions,
   sourceLabelFor,
   sourceLineFor,
   unknownScannedItem,
@@ -100,26 +99,6 @@ describe('nameFromScanFor', () => {
 
   it('is false for a row still sitting blank', () => {
     expect(nameFromScanFor(unknownScannedItem('1'))).toBe(false);
-  });
-});
-
-describe('shorterNameSuggestions', () => {
-  it('offers each suffix, longest first', () => {
-    expect(shorterNameSuggestions('2% Reduced Fat Milk'))
-      .toEqual(['Reduced Fat Milk', 'Fat Milk', 'Milk']);
-  });
-
-  it('never offers the name it was given', () => {
-    expect(shorterNameSuggestions('Milk')).toEqual([]);
-  });
-
-  it('drops a one-character tail rather than offering it', () => {
-    expect(shorterNameSuggestions('Vitamin D')).toEqual([]);
-  });
-
-  it('collapses runs of whitespace instead of emitting a blank', () => {
-    expect(shorterNameSuggestions('Organic   Riced  Cauliflower'))
-      .toEqual(['Riced Cauliflower', 'Cauliflower']);
   });
 });
 

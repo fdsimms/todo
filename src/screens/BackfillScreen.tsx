@@ -101,7 +101,7 @@ import { observedCadenceDays, describeObservedCadence } from '../utils/reachOutT
 import { genericNameSuggestions } from '../utils/itemVarieties';
 import { substitutesFor, describeSubstitutes } from '../utils/itemSubs';
 import { groceryNameKey } from '../utils/groceryParse';
-import { shorterNameSuggestions } from '../utils/scanResolve';
+import { itemNameSuggestions } from '../utils/scanResolve';
 import { describeFoodPanel } from '../utils/foodNutrition';
 import {
   EFFORT_LABELS, GROCERY_NAME_MAX_LENGTH,
@@ -3090,10 +3090,11 @@ export function BackfillScreen() {
         onPress: () => applyVariety(key),
       }))
     : [];
-  // Suffixes of the row's own name, one tap each — see shorterNameSuggestions
-  // for why they can only ever be words already printed on the box.
+  // Short endings of the row's own name, one tap each — see itemNameSuggestions
+  // for why they can only ever be words already printed on the box, and why a
+  // slogan gets none. An item stores no source category, so there is none here.
   const renameOptions = currentItem
-    ? shorterNameSuggestions(currentItem.name).map(label => ({
+    ? itemNameSuggestions({ name: currentItem.name, label: currentItem.name }).map(label => ({
         key: label,
         label,
         selected: false,

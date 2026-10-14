@@ -4673,7 +4673,7 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
    * pack size off and stopped there, on purpose, because going further means
    * guessing what the words mean.
    *
-   * Named so a shorter name is actually reachable: `shorterNameSuggestions`
+   * Named so a shorter name is actually reachable: `itemNameSuggestions`
    * only ever drops leading words, so this offers "Riced Cauliflower" and
    * "Cauliflower", and the catalog holds neither, so it demonstrates the plain
    * rename rather than the merge. Off-list for `ensureCatalogItem`'s usual

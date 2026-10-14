@@ -1164,12 +1164,11 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                 // fields, because a barcode source's words are often a slogan
                 // and no rule can pick the right split out of them.
                 const mintsNew = nameable && !pickedTarget(row) && !rowItemId && !pendingId;
-                // Every scanned code gets the labelled Name field, and the field
-                // stays mounted whether or not the name has just matched an item:
-                // swapping it for a plain one mid-keystroke would drop the keyboard.
-                // Brand and Variant are the new item's alone.
-                const showFields = !!row.gtin;
-                const showBox = showFields && mintsNew;
+                // Every row gets the labelled Name field, and it stays mounted
+                // whether or not the name has just matched an item: swapping it
+                // for a plain one mid-keystroke would drop the keyboard. Brand
+                // and Variant are the new item's alone, typed rows included.
+                const showBox = mintsNew;
                 const newBox = newItemBox(row);
                 // Still wearing the source's words: offer what the source says
                 // the product is. See `itemNameSuggestions` for what it refuses.
@@ -1244,7 +1243,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                     </TouchableOpacity>
 
                     <View style={styles.rowBody}>
-                      {showFields ? (
+                      {(
                         <>
                           {/* Three plain fields, in the order the box prints
                               them. Name is the item itself; Brand and Variant
@@ -1295,35 +1294,12 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                               />
                             </>
                           )}
-                          {showBox ? (
-                            !!row.label && <Text style={styles.rowLabel}>Barcode lookup: {row.label}</Text>
+                          {showBox && !!row.gtin && !!row.label ? (
+                            <Text style={styles.rowLabel}>Barcode lookup: {row.label}</Text>
                           ) : (
                             !!sourceLineFor(row.name, row.label, row.brand) && (
                               <Text style={styles.rowLabel}>{sourceLineFor(row.name, row.label, row.brand)}</Text>
                             )
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          <TextField
-                            style={styles.rowInput}
-                            value={row.name}
-                            editable={nameable}
-                            onChangeText={onNameChange}
-                            placeholder="Name this item"
-                            placeholderTextColor={colors.textTertiary}
-                            // A shelf word, not prose — see GroceryRow's inline
-                            // rename field for what autocorrect does to one.
-                            autoCorrect={false}
-                            spellCheck={false}
-                            accessibilityLabel="Item name"
-                          />
-                          {/* The words the lookup used, kept verbatim: the only way
-                              to check the name above is against the box in hand.
-                              The maker leads it when the name doesn't already say
-                              who it is — see `sourceLabelFor`. */}
-                          {!!sourceLineFor(row.name, row.label, row.brand) && (
-                            <Text style={styles.rowLabel}>{sourceLineFor(row.name, row.label, row.brand)}</Text>
                           )}
                         </>
                       )}
