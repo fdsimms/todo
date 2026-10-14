@@ -1,5 +1,5 @@
 import type { ComponentPlacement, MealPlanEntry, Recipe, RecipeComponent, RecipeIngredient, RecipeOverride, RecipePrepTask } from '../types';
-import { RECIPE_CHOICE_GROUP_MAX_LENGTH, RECIPE_NAME_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH } from '../types';
+import { GROCERY_QUANTITY_MAX_LENGTH, RECIPE_CHOICE_GROUP_MAX_LENGTH, RECIPE_NAME_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH } from '../types';
 import { generateId } from './id';
 import { applyStandingSwap, NO_STANDING_SWAPS, type StandingSwapMap } from './standingSwaps';
 
@@ -103,12 +103,16 @@ export function normalizeComponent(raw: unknown): RecipeComponent | null {
     ? r.choiceGroup.trim().slice(0, RECIPE_CHOICE_GROUP_MAX_LENGTH)
     : '';
   const placement = normalizePlacement(r.placement);
+  const amountUsed = typeof r.amountUsed === 'string'
+    ? r.amountUsed.trim().slice(0, GROCERY_QUANTITY_MAX_LENGTH)
+    : '';
   return {
     id: typeof r.id === 'string' && r.id ? r.id : generateId(),
     recipeId,
     name: typeof r.name === 'string' ? r.name.trim().slice(0, RECIPE_NAME_MAX_LENGTH) : '',
     choiceGroup: choiceGroup || null,
     ...(placement ? { placement } : {}),
+    ...(amountUsed ? { amountUsed } : {}),
   };
 }
 

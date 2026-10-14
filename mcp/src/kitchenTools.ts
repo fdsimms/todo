@@ -76,7 +76,7 @@ export interface RecipeDetail extends SerializedRecipe {
   /** Other recipes used inside this one ("the pie crust"). */
   uses?: string[];
   /** The same, by recipe id; ones sharing a choiceGroup are alternatives (cook one). */
-  components?: { recipeId: string; name: string; choiceGroup?: string }[];
+  components?: { recipeId: string; name: string; choiceGroup?: string; amountUsed?: string }[];
   /** Tasks written ahead of a planned meal of it, days before the meal (negative) or on the day (0). */
   prepTasks?: { title: string; offsetDays: number; reminderOffsetMinutes?: number }[];
   cookbookId?: string;
@@ -134,7 +134,7 @@ export function getRecipe(replica: Replica, id: string): RecipeDetail | null {
     })),
     ...(r.components.length > 0 ? { uses: r.components.map(c => names.get(c.recipeId) ?? c.name) } : {}),
     ...(r.components.length > 0
-      ? { components: r.components.map(c => ({ recipeId: c.recipeId, name: names.get(c.recipeId) ?? c.name, ...(c.choiceGroup ? { choiceGroup: c.choiceGroup } : {}) })) }
+      ? { components: r.components.map(c => ({ recipeId: c.recipeId, name: names.get(c.recipeId) ?? c.name, ...(c.choiceGroup ? { choiceGroup: c.choiceGroup } : {}), ...(c.amountUsed ? { amountUsed: c.amountUsed } : {}) })) }
       : {}),
     ...(r.prepTasks.length > 0
       ? { prepTasks: r.prepTasks.map(p => ({ title: p.title, offsetDays: p.offsetDays, ...(p.reminderOffsetMinutes != null ? { reminderOffsetMinutes: p.reminderOffsetMinutes } : {}) })) }

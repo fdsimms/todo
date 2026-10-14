@@ -1339,6 +1339,7 @@ function registerWriteTools(
     components: z.array(z.object({
       recipeId: z.string().min(1),
       choiceGroup: z.string().nullable().optional(),
+      amountUsed: z.string().max(24).nullable().optional().describe('How much of that recipe\'s batch goes into this one: "1 tbsp", "2 fillets", or "1/4" for a quarter of the batch. Nutrition counts only this much; without it the whole batch counts. Omit to leave an existing amount alone, null to clear it.'),
     })).optional().describe('Other saved recipes used inside this one (the crust, the sauce), replacing the list. Ones sharing a choiceGroup are alternatives: one is cooked.'),
     prepTasks: z.array(z.object({
       title: z.string().min(1),

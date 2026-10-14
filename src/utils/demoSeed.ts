@@ -3622,6 +3622,7 @@ function seedRecipes(): DemoRecipes {
     updateIngredient,
     addEmptySection,
     addComponent,
+    setComponentAmountUsed,
     addPrepTask,
     updatePrepTask,
     setMealType,
@@ -4070,6 +4071,10 @@ function seedRecipes(): DemoRecipes {
   // The shared component — the same mash inside two different dinners, which
   // is the whole point of a reference rather than a copy.
   addComponent(salmon.id, mash.id);
+  // And only half of what that batch makes goes into this dinner, so its nutrition
+  // counts half of the mash rather than the whole pot (RecipeComponent.amountUsed).
+  const mashLink = useRecipeStore.getState().recipeById(salmon.id)?.components.find(c => c.recipeId === mash.id);
+  if (mashLink) setComponentAmountUsed(salmon.id, mashLink.id, '1/2');
 
   const soup = newRecipe('Weeknight vegetable soup');
   addIngredientsFromText(

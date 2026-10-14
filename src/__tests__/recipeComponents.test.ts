@@ -116,6 +116,16 @@ describe('parseRecipeComponents', () => {
     ]);
   });
 
+  it('keeps a trimmed amountUsed and leaves the key off when there is none', () => {
+    const stored = JSON.stringify([
+      { id: 'c1', recipeId: 'r2', name: 'A', amountUsed: '  1 tbsp ' },
+      { id: 'c2', recipeId: 'r3', name: 'B', amountUsed: '   ' },
+    ]);
+    const [a, b] = parseRecipeComponents(stored);
+    expect(a.amountUsed).toBe('1 tbsp');
+    expect('amountUsed' in b).toBe(false);
+  });
+
   it('tolerates null, junk and a non-array', () => {
     expect(parseRecipeComponents(null)).toEqual([]);
     expect(parseRecipeComponents('not json')).toEqual([]);

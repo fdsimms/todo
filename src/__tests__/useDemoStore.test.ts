@@ -3461,6 +3461,12 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(items.find(i => i.nameKey === 'scallions')?.otherNames).toEqual(['Green onions']);
   });
 
+  it('seeds a used recipe with an amount, so its nutrition counts part of the batch', () => {
+    const recipes = useRecipeStore.getState().recipes;
+    const salmon = recipes.find(r => r.components.some(c => c.amountUsed));
+    expect(salmon?.components.find(c => c.amountUsed)?.amountUsed).toBe('1/2');
+  });
+
   it('seeds a variety declaration, covering the generic name end to end', () => {
     // The one vertical relation in the catalog, invisible until something
     // declares one — and on hand, so a line naming plain "onion" actually

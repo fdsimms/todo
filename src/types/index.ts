@@ -6935,6 +6935,14 @@ export interface RecipeComponent {
   // surface that flattens the recipe (the shopping list, cook mode, the share
   // text) honors it, so the order on the recipe page is the order everywhere.
   placement?: ComponentPlacement;
+  // How much of the part's own batch this dish uses: "1 tbsp" of a 3/4 cup
+  // seasoning, "2 fillets" of 4, or a bare "1/4" for a quarter of the batch
+  // (a number with no unit counts batches). **Absent means the whole batch**,
+  // which is how every link that predates the field reads. Only nutrition
+  // reads it (`componentShares`): shopping still flattens the part whole, and
+  // an amount the part's `recipeYield` can't be compared against is ignored
+  // rather than guessed at.
+  amountUsed?: string;
 }
 
 // A component's slot among its parent's ingredient lines. `before` names the

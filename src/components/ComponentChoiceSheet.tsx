@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Recipe } from '../types';
-import { RECIPE_CHOICE_GROUP_MAX_LENGTH } from '../types';
+import { GROCERY_QUANTITY_MAX_LENGTH, RECIPE_CHOICE_GROUP_MAX_LENGTH } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, type Colors } from '../theme';
@@ -14,6 +14,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import { EditorSheet } from './EditorSheet';
 import { SegmentedControl } from './SegmentedControl';
+import { TextField } from './TextField';
 import { InlineAction } from './InlineAction';
 import { PillGroup } from './PillGroup';
 import { useSheetSubject } from '../hooks/useSheetSubject';
@@ -51,6 +52,7 @@ export function ComponentChoiceSheet({ visible, recipe, component: liveComponent
 
   const setComponentChoiceGroup = useRecipeStore(s => s.setComponentChoiceGroup);
   const makeComponentDefault = useRecipeStore(s => s.makeComponentDefault);
+  const setComponentAmountUsed = useRecipeStore(s => s.setComponentAmountUsed);
 
   const [label, setLabel] = useState('');
   // Held apart from the label for the same reason the ingredient sheet keeps
@@ -58,11 +60,14 @@ export function ComponentChoiceSheet({ visible, recipe, component: liveComponent
   // deriving this from the label would snap the control straight back to
   // "Always included" the moment someone opens the picker with no groups yet.
   const [choiceOn, setChoiceOn] = useState(false);
+  // Typed freely and saved with the label on the way out, like the group.
+  const [amount, setAmount] = useState('');
 
   useEffect(() => {
     if (component) {
       setLabel(component.component.choiceGroup ?? '');
       setChoiceOn(!!component.component.choiceGroup);
+      setAmount(component.component.amountUsed ?? '');
     }
   }, [component?.component.id, visible]);
 
@@ -105,7 +110,10 @@ export function ComponentChoiceSheet({ visible, recipe, component: liveComponent
   }, [recipe.components, component?.component.id, component?.component.choiceGroup, defaultIngredientName]);
 
   const saveAndClose = () => {
-    if (component) setComponentChoiceGroup(recipe.id, component.component.id, cleanChoiceGroup(label));
+    if (component) {
+      setComponentChoiceGroup(recipe.id, component.component.id, cleanChoiceGroup(label));
+      setComponentAmountUsed(recipe.id, component.component.id, amount);
+    }
     onClose();
   };
 
@@ -132,6 +140,27 @@ export function ComponentChoiceSheet({ visible, recipe, component: liveComponent
         />
       }
     >
+      <View style={styles.sectionCard}>
+        <Text style={styles.groupLabel}>Amount used</Text>
+        <TextField
+          style={styles.amountInput}
+          value={amount}
+          onChangeText={setAmount}
+          placeholder="e.g. 1 tbsp"
+          placeholderTextColor={colors.textTertiary}
+          maxLength={GROCERY_QUANTITY_MAX_LENGTH}
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="done"
+          accessibilityLabel={`Amount of ${name} this recipe uses`}
+        />
+        <Text style={styles.hint}>
+          How much of {name.toLowerCase()} goes into this recipe, like “1 tbsp”, “2 fillets” or
+          “1/4” for a quarter of what it makes. Nutrition counts only this much. Leave it empty to
+          count everything it makes.
+        </Text>
+      </View>
+
       <View style={styles.sectionCard}>
         <Text style={styles.groupLabel}>Alternatives</Text>
         <SegmentedControl
@@ -282,5 +311,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   defaultRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.xs },
   defaultText: { color: colors.text, fontSize: font.sm },
+  amountInput: {
+    color: colors.text,
+    fontSize: font.md,
+    minHeight: 36,
+    paddingVertical: spacing.xs,
+  },
   hint: { color: colors.textTertiary, fontSize: font.xs, lineHeight: font.xs * 1.4 },
 });

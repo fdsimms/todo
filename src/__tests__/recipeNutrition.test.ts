@@ -911,6 +911,41 @@ describe('a used recipe is counted at the share the parent eats', () => {
     expect(recipeNutrition(c, [salt()], [], new Map([[count.id, count], [c.id, c]]))!.total.sodiumMg).toBeCloseTo(120, 5);
   });
 
+  describe('an amount typed on the link', () => {
+    const withAmount = (amountUsed: string, yieldText: string | null) => {
+      const mix = recipe('Mix', [ing('Salt', { quantity: '12 g' })], { recipeYield: yieldText });
+      const dish = recipe('Dish', [], { components: [{ ...comp(mix.id), amountUsed }] });
+      return recipeNutrition(dish, [salt()], [], new Map([[mix.id, mix], [dish.id, dish]]))!.total.sodiumMg;
+    };
+
+    it('counts a volume against the yield with no line naming the part', () => {
+      expect(withAmount('1 tbsp', '12 tbsp')).toBeCloseTo(10, 5);
+    });
+
+    it('counts a bare number as batches, with or without a yield', () => {
+      expect(withAmount('1/4', null)).toBeCloseTo(30, 5);
+      expect(withAmount('2', '12 tbsp')).toBeCloseTo(240, 5);
+    });
+
+    it('counts two of four fillets as half', () => {
+      expect(withAmount('2 fillets', '4 fillets')).toBeCloseTo(60, 5);
+    });
+
+    it('counts whole when the amount cannot be compared with the yield', () => {
+      expect(withAmount('1 tbsp', '4 fillets')).toBeCloseTo(120, 5);
+      expect(withAmount('1 tbsp', null)).toBeCloseTo(120, 5);
+      expect(withAmount('to taste', '12 tbsp')).toBeCloseTo(120, 5);
+    });
+
+    it('wins over the parent line that names the part', () => {
+      const mix = recipe('Mix', [ing('Salt', { quantity: '12 g' })], { recipeYield: '12 tbsp' });
+      const dish = recipe('Dish', [ing('Mix', { quantity: '6 tbsp', excludeFromNutrition: true })], {
+        components: [{ ...comp(mix.id), amountUsed: '1 tbsp' }],
+      });
+      expect(recipeNutrition(dish, [salt()], [], new Map([[mix.id, mix], [dish.id, dish]]))!.total.sodiumMg).toBeCloseTo(10, 5);
+    });
+  });
+
   it('leaves a recipe with no parts as it was', () => {
     const solo = recipe('Solo', [ing('Salt', { quantity: '12 g' })]);
     expect(recipeNutrition(solo, [salt()])!.total.sodiumMg).toBeCloseTo(120, 5);
