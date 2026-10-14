@@ -1522,7 +1522,7 @@ describe('isTaskNew when a hold comes off', () => {
     const gideon = {
       id: 'p1', name: 'Gideon', kind: 'individual' as const, nickname: '', notes: '', sortOrder: 1,
       archived: true, archivedAt: releasedAt, createdAt: NOW.toISOString(),
-      birthdayMonth: null, birthdayDay: null, birthYear: null, birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,
+      birthdayMonth: null, birthdayDay: null, birthYear: null, birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false, pinned: false,
       phoneNumber: null, email: null, linkUrl: null,
       cadenceDays: 0, nudgeOptIn: false, cadenceSetAt: null, reachOutDeclinedAt: null, reachOutOfferDeclinedAt: null, askAbout: '',
       backfillDismissedFields: [],
@@ -2234,7 +2234,7 @@ describe('blocking', () => {
     const gideon = {
       id: 'p1', name: 'Gideon', kind: 'individual' as const, nickname: '', notes: '', sortOrder: 1,
       archived: false, archivedAt: null, createdAt: NOW.toISOString(),
-      birthdayMonth: null, birthdayDay: null, birthYear: null, birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,
+      birthdayMonth: null, birthdayDay: null, birthYear: null, birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false, pinned: false,
       phoneNumber: null, email: null, linkUrl: null,
       cadenceDays: 0, nudgeOptIn: false, cadenceSetAt: null, reachOutDeclinedAt: null, reachOutOfferDeclinedAt: null, askAbout: '',
       backfillDismissedFields: [],

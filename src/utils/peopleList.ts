@@ -11,7 +11,7 @@ import type { ReachOutKind } from './reachOutIntent';
  * order here ever comes from something that measures a person.
  */
 
-export type PeopleSectionKind = Person['kind'];
+export type PeopleSectionKind = Person['kind'] | 'pinned';
 
 export interface PeopleSection {
   kind: PeopleSectionKind;
@@ -20,6 +20,7 @@ export interface PeopleSection {
 }
 
 const SECTION_TITLES: Record<PeopleSectionKind, string> = {
+  pinned: 'Pinned',
   individual: 'People',
   business: 'Businesses',
 };
@@ -34,18 +35,22 @@ export function sortPeopleAlphabetically(
   );
 }
 
-/** People, then businesses, each A–Z. A kind nobody is filed under has no section. */
+/**
+ * Pinned first (both kinds together, A to Z), then people, then businesses,
+ * each A to Z. A pinned person appears only in Pinned, not again under their
+ * kind. A section nobody is filed under is left out.
+ */
 export function peopleSections(
   people: Person[],
   nameOf: (person: Person) => string,
 ): PeopleSection[] {
   const sorted = sortPeopleAlphabetically(people, nameOf);
-  const kinds: PeopleSectionKind[] = ['individual', 'business'];
+  const kinds: PeopleSectionKind[] = ['pinned', 'individual', 'business'];
   return kinds
     .map(kind => ({
       kind,
       title: SECTION_TITLES[kind],
-      people: sorted.filter(p => p.kind === kind),
+      people: sorted.filter(p => (p.pinned ? kind === 'pinned' : p.kind === kind)),
     }))
     .filter(section => section.people.length > 0);
 }

@@ -17,6 +17,7 @@ function person(overrides: Partial<Person> = {}): Person {
     birthYear: null,
     birthdayTaskOptOut: false,
     birthdayGiftTaskOptOut: false,
+    pinned: false,
     phoneNumber: null,
     faxNumber: null,
     email: null,
@@ -67,6 +68,20 @@ describe('peopleSections', () => {
     expect(sections.map(s => [s.title, s.people.map(p => p.id)])).toEqual([
       ['People', ['gideon', 'tessa']],
       ['Businesses', ['acme', 'eyeq']],
+    ]);
+  });
+
+  it('puts pinned people first, A to Z across both kinds, and not again under their kind', () => {
+    const sections = peopleSections([
+      person({ id: 'tessa', name: 'Tessa' }),
+      person({ id: 'vet', name: 'Vet', kind: 'business', pinned: true }),
+      person({ id: 'gideon', name: 'Gideon', pinned: true }),
+      person({ id: 'acme', name: 'Acme', kind: 'business' }),
+    ], nameOf);
+    expect(sections.map(s => [s.title, s.people.map(p => p.id)])).toEqual([
+      ['Pinned', ['gideon', 'vet']],
+      ['People', ['tessa']],
+      ['Businesses', ['acme']],
     ]);
   });
 

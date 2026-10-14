@@ -3971,6 +3971,7 @@ function registerWriteTools(
     location: z.string().nullable().optional().describe('Where they live, as free text ("Austin, TX"). The app uses it to find people when planning a trip. null clears it.'),
     groupId: z.string().nullable().optional().describe('The group they are listed under (save_person_group makes one), or null for none.'),
     archived: z.boolean().optional().describe('Take them off the list but keep everything about them. false brings them back.'),
+    pinned: z.boolean().optional().describe('true holds them at the top of the People list, above the people and business sections. false unpins.'),
     birthdayTaskOptOut: z.boolean().optional().describe('true: the app writes no birthday task for them.'),
     birthdayGiftTaskOptOut: z.boolean().optional().describe('true: the app writes no birthday gift task for them.'),
   };

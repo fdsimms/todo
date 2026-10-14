@@ -76,6 +76,15 @@ carry Call, Text, Email and link buttons for the details a person has
 (`personContactActions`), under the name rather than beside it, and the first
 three stamp a pending reach-out exactly as the person's own screen does.
 
+**Pinning is the one grouping the list has, and it is the person's own act.**
+`Person.pinned` (a pin on the person's own screen, never set by the app) lifts
+somebody into a "Pinned" section above the others. It sits next to the "Never"
+bullet about tiers and is allowed under it for the reasons pinning a task is:
+it is one flag you set per person, nobody starts in it, there is no second
+level, and pinned people are still A to Z among themselves, so it never ranks
+anybody against anybody else. Anything that would sort or fill Pinned from how
+often you see somebody is out for the same reason a neglect sort is.
+
 **4. Every person starts with no cadence and no nudges.** `nudgeOptIn` is false
 and `cadenceDays` is 0 on a new row, and nothing about a person may appear in
 any nudge surface until that is explicitly changed. This is what keeps "who am
