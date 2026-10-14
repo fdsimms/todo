@@ -1,6 +1,6 @@
 import React from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import Svg, { Circle, Rect } from 'react-native-svg';
+import Svg, { Circle, Path } from 'react-native-svg';
 import { useColors } from '../theme/ThemeContext';
 import { COIN_ICON } from '../constants/coinIcon';
 
@@ -29,8 +29,8 @@ interface Props {
  *
  * Drawn rather than taken from an icon set for the same reason `PinIcon` and
  * `TargetIcon` are: Ionicons has no coin (`cash` is a banknote, `ellipse` a
- * plain disc). A rim, a pressed-in inner edge and a center bar on the 24-unit
- * grid. The bar is what tells it from `TargetIcon`'s two rings and a dot, which
+ * plain disc). A rim, a pressed-in inner edge and a center star on the 24-unit
+ * grid. The star is what tells it from `TargetIcon`'s two rings and a dot, which
  * it would otherwise be at 14pt. Stroke 1.8, the weight of the icons beside it.
  */
 export function CoinIcon({ size, color, filled = false, markColor }: Props) {
@@ -47,8 +47,13 @@ export function CoinIcon({ size, color, filled = false, markColor }: Props) {
         stroke={line}
         strokeWidth={1.8}
       />
-      <Circle cx={12} cy={12} r={6} fill="none" stroke={line} strokeWidth={1.4} strokeOpacity={filled ? 0.55 : 0.7} />
-      <Rect x={11} y={8} width={2} height={8} rx={1} fill={line} />
+      <Circle cx={12} cy={12} r={filled ? 7.8 : 6} fill="none" stroke={line} strokeWidth={filled ? 1.2 : 1.4} strokeOpacity={filled ? 0.45 : 0.7} />
+      {/* The outlined coin's ring is tighter (r6), so its star is scaled down to clear it. */}
+      <Path
+        d="M12 6.6l1.7 3.5 3.8.5-2.8 2.6.7 3.8-3.4-1.9-3.4 1.9.7-3.8-2.8-2.6 3.8-.5z"
+        fill={line}
+        transform={filled ? undefined : 'translate(12 12) scale(0.72) translate(-12 -12.2)'}
+      />
     </Svg>
   );
 }
