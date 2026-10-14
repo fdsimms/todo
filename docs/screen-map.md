@@ -150,8 +150,8 @@ Where each component can appear.
 - `src/components/EventPeoplePanel.tsx` — on CalendarScreen, TodayScreen
 - `src/components/EventRulesSheet.tsx` — on AutomationsScreen
 - `src/components/ExtractedIngredientRow.tsx` — on RecipeDetailScreen, RecipesScreen
-- `src/components/Fab.tsx` — on CalendarScreen, CategoriesScreen, CategoryDetailScreen, FoodLogScreen, GroceryScreen, PeopleScreen, ProjectDetailScreen, ProjectsScreen, RecipesScreen, StacksScreen, TagsScreen, TemplateDetailScreen, +2 more
-- `src/components/FabDropZones.tsx` — on FoodLogScreen, GroceryScreen, MealPlanScreen, PeopleScreen, ProjectDetailScreen, ProjectsScreen, RecipesScreen, TemplateDetailScreen, TemplatesScreen, TodayScreen
+- `src/components/Fab.tsx` — on CalendarScreen, CategoriesScreen, CategoryDetailScreen, FoodLogScreen, GroceryScreen, PeopleScreen, ProjectDetailScreen, ProjectsScreen, RecipesScreen, SearchScreen, StacksScreen, TagsScreen, +3 more
+- `src/components/FabDropZones.tsx` — on FoodLogScreen, GroceryScreen, MealPlanScreen, PeopleScreen, ProjectDetailScreen, ProjectsScreen, RecipesScreen, SearchScreen, StacksScreen, TemplateDetailScreen, TemplatesScreen, TodayScreen
 - `src/components/FinishLeftoverPrompt.tsx` — on app shell
 - `src/components/FinishShoppingSheet.tsx` — on GroceryScreen
 - `src/components/FirstRunSheet.tsx` — on SettingsGroupScreen, app shell

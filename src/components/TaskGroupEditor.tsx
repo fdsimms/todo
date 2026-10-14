@@ -33,6 +33,16 @@ import { useSheetMount } from '../hooks/useSheetMount';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { useStableCallback } from '../hooks/useStableCallback';
 import { SheetHeader } from './SheetHeader';
+import { FabMenu, FAB_SIZE, useFabBottom, type FabDragHandlers, type FabMenuItem } from './Fab';
+import {
+  FabDropZone,
+  FabDropZoneProvider,
+  useFabIntentChannel,
+  useFabIntentSelector,
+  type FabDropZonesHandle,
+  type FabIntentChannel,
+} from './FabDropZones';
+import type { DragScroller, FabDropIntent } from '../utils/fabDrop';
 import { TaskEditor, type TaskDraft } from './TaskEditor';
 import { QuickAddModal } from './QuickAddModal';
 import { useFilterField } from '../hooks/useFilterField';
@@ -64,6 +74,31 @@ function memberSchedule(task: Task): string {
     }
   }
   return formatTaskDate(task) ?? '';
+}
+
+// Bottom-up: "New task" ends up closest to the button.
+const ADD_MENU_ITEMS: FabMenuItem[] = [
+  { key: 'existing', label: 'Add existing', icon: 'albums-outline' },
+  { key: 'new', label: 'New task', icon: 'checkbox' },
+];
+
+// The add button, naming what a release right now would do. Same wrapper shape
+// as the project page's and Today's, kept to this leaf so a change of target
+// re-renders the button and nothing else.
+function AddTaskFabWithDropLabel({
+  channel,
+  ...props
+}: {
+  channel: FabIntentChannel;
+} & Omit<React.ComponentProps<typeof FabMenu>, 'dragLabel'>) {
+  const label = useFabIntentSelector(channel, intent => {
+    switch (intent?.kind) {
+      case 'cancel': return 'Cancel';
+      case 'insert': return 'New task here';
+      default: return null;
+    }
+  });
+  return <FabMenu {...props} dragLabel={label} />;
 }
 
 interface Props {
@@ -133,11 +168,21 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
   // onDragStateChange) — without it the scroll eats the gesture and the row
   // never moves.
   const [draggingChild, setDraggingChild] = useState(false);
-  // The "New task" InlineAction raises QuickAddModal (nested in this sheet's
+  // The add button's "New task" raises QuickAddModal (nested in this sheet's
   // own Modal, seeded with this stack) rather than an inline field — a bare
   // TextInput at the bottom of a long roster sits right where the keyboard
   // covers it, and the full sheet gives a date/category/tags picker for free.
   const [quickAddVisible, setQuickAddVisible] = useState(false);
+  // The add button can be dragged onto the roster to say where the new task
+  // goes. What it was dropped on is held until the task exists (see the effect
+  // below), and `knownIds` is who was already here, so the newcomer can be told
+  // from the rest.
+  const dropZonesRef = useRef<FabDropZonesHandle>(null);
+  const dragScrollRef = useRef<DragScroller | null>(null);
+  const fabIntentChannel = useFabIntentChannel();
+  const [fabDragging, setFabDragging] = useState(false);
+  const pendingDropRef = useRef<{ anchorId: string; before: boolean; knownIds: Set<string> } | null>(null);
+  const fabBottom = useFabBottom();
   const [showExistingPicker, setShowExistingPicker] = useState(false);
   const { query: existingSearch, clear: clearExistingSearch, props: filterField } = useFilterField();
   // The tag field and existing-task search both open (and autofocus) while a
@@ -229,7 +274,12 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
 
   // Stable, because QuickAddModal is memoized and stays mounted once used: a
   // fresh prop each render would re-render the hidden sheet with this one.
-  const onQuickAddClose = useStableCallback(() => setQuickAddVisible(false));
+  const onQuickAddClose = useStableCallback(() => {
+    setQuickAddVisible(false);
+    // Every way out of the sheet comes through here, so a drop that was never
+    // followed by a task can't place the next one.
+    pendingDropRef.current = null;
+  });
   const onQuickAddCreated = useStableCallback((task: Task) => {
     if (filingProjectId) addExistingToProject(task.id, filingProjectId);
   });
@@ -240,6 +290,67 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
   });
   const groupId = group?.id;
   const quickAddSeed = useMemo(() => (groupId ? { groupId, category } : undefined), [groupId, category]);
+
+  // Gives a task made after a drop of the add button the spot it was dropped
+  // at. Watched on the roster rather than done from the sheet's onCreated,
+  // which "Add another" never calls.
+  useEffect(() => {
+    const pending = pendingDropRef.current;
+    if (!pending || !group) return;
+    const created = members.find(m => !pending.knownIds.has(m.id));
+    if (!created) return;
+    pendingDropRef.current = null;
+    const rest = members.filter(m => m.id !== created.id).map(m => m.id);
+    const anchor = rest.indexOf(pending.anchorId);
+    if (anchor < 0) return;
+    rest.splice(pending.before ? anchor : anchor + 1, 0, created.id);
+    reorderGroupChildren(group.id, rest);
+  }, [members]);
+
+  const handleAddMenuSelect = (key: string) => {
+    if (key === 'existing') {
+      animateLayout();
+      setShowExistingPicker(true);
+      // After the picker has laid out, or the end it scrolls to is the old one.
+      setTimeout(() => {
+        const scroller = dragScrollRef.current;
+        scroller?.scrollToOffset(scroller.getMaxOffset());
+      }, 100);
+      return;
+    }
+    pendingDropRef.current = null;
+    setQuickAddVisible(true);
+  };
+
+  const openQuickAddForDrop = (intent: FabDropIntent) => {
+    // Dropped back on the button: the drag was the whole of it.
+    if (intent.kind === 'cancel') {
+      haptics.tap();
+      return;
+    }
+    pendingDropRef.current = intent.kind === 'insert'
+      ? { anchorId: intent.anchorKey, before: intent.before, knownIds: new Set(members.map(m => m.id)) }
+      : null;
+    setQuickAddVisible(true);
+  };
+
+  // Rebuilt each render so it closes over fresh state; the button reads it
+  // through a ref and builds its responder once.
+  const fabDrag: FabDragHandlers = {
+    onStart: () => {
+      setFabDragging(true);
+      dropZonesRef.current?.begin();
+    },
+    onMove: (pageY, home) => dropZonesRef.current?.moveTo(pageY, home),
+    onEnd: (pageY, home) => {
+      setFabDragging(false);
+      openQuickAddForDrop(dropZonesRef.current?.end(pageY, home) ?? { kind: 'plain' });
+    },
+    onCancel: () => {
+      setFabDragging(false);
+      dropZonesRef.current?.cancel();
+    },
+  };
 
   const commitExisting = (taskId: string) => {
     if (!group) return;
@@ -370,8 +481,14 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
       rootStyle={styles.root}
       headerStyle={styles.header}
       scrollStyle={styles.scroll}
-      scrollContentStyle={styles.scrollContent}
-      scrollEnabled={!draggingChild}
+      scrollContentStyle={{ paddingBottom: fabBottom + FAB_SIZE + spacing.lg }}
+      scrollEnabled={!draggingChild && !fabDragging}
+      dragScrollRef={dragScrollRef}
+      wrapScroll={scroll => (
+        <FabDropZoneProvider ref={dropZonesRef} onIntentChange={fabIntentChannel.publish} scroller={dragScrollRef}>
+          {scroll}
+        </FabDropZoneProvider>
+      )}
       /*
         Inside this sheet's own Modal, not beside it — the same call GroceryCatalogSheet
         makes about GroceryItemSheet. A Modal presents from the view controller
@@ -389,7 +506,7 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
           />}
           {/*
             Also inside this sheet's own Modal, for the same reason as
-            TaskEditor above — raised by the "New task" InlineAction rather
+            TaskEditor above — raised by the add button's "New task" rather
             than a bare inline field, so a long roster's add field doesn't
             sit right where the keyboard covers it.
           */}
@@ -405,6 +522,14 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
             onCreated={onQuickAddCreated}
             onOpenFull={onQuickAddOpenFull}
           />}
+          <AddTaskFabWithDropLabel
+            channel={fabIntentChannel}
+            items={ADD_MENU_ITEMS}
+            onSelect={handleAddMenuSelect}
+            accessibilityLabel={`Add task to ${sectionWord}`}
+            drag={fabDrag}
+            dragHint={`Drop on a task to add a new one at that spot. Drop on the button to cancel.`}
+          />
         </>
       }
       header={
@@ -624,6 +749,7 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
             renderItem={(child, _i, drag) => {
               const subtitle = memberSchedule(child);
               return (
+                <FabDropZone zone={{ kind: 'task', key: child.id, category: null }}>
                 <View style={styles.childRow}>
                   <TouchableOpacity
                     style={styles.childText}
@@ -652,6 +778,7 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
                     <Ionicons name="close" size={14} color={colors.textTertiary} />
                   </TouchableOpacity>
                 </View>
+                </FabDropZone>
               );
             }}
           />
@@ -686,17 +813,6 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
             )}
             </View>
           )}
-          <View style={styles.addRow}>
-            <InlineAction icon="add" label="New task" onPress={() => setQuickAddVisible(true)} />
-            {!showExistingPicker && (
-              <InlineAction
-                icon="albums-outline"
-                label="Add existing"
-                variant="neutral"
-                onPress={() => setShowExistingPicker(true)}
-              />
-            )}
-          </View>
           {onCompleteToday && openToday.length > 0 && (
             <View style={styles.addRow}>
               <InlineAction
@@ -730,7 +846,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   scroll: { flex: 1 },
-  scrollContent: { paddingBottom: 80 },
   titleInput: {
     color: colors.text, fontSize: font.xl, fontWeight: '500',
     paddingHorizontal: spacing.md, paddingTop: spacing.lg, paddingBottom: spacing.md, minHeight: 60,

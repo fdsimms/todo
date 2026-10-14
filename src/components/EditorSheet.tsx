@@ -1,13 +1,17 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   View,
   ScrollView,
+  type LayoutChangeEvent,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
 import { SheetModal } from './SheetModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardScrollIntoViewContext, useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
+import type { DragScroller } from '../utils/fabDrop';
 
 interface Props {
   visible: boolean;
@@ -42,6 +46,17 @@ interface Props {
    * `useKeyboardInsetScroll`.
    */
   keyboardAccessoryHeight?: number;
+  /**
+   * Filled with a `DragScroller` for the sheet's own ScrollView, so a dragged
+   * add button (FabDropZoneProvider's `scroller`) can scroll a long form while
+   * it is aimed at a row. Omit and the scroll view tracks nothing extra.
+   */
+  dragScrollRef?: React.MutableRefObject<DragScroller | null>;
+  /**
+   * Wraps the ScrollView, for a provider that has to measure the scrolling
+   * viewport rather than the content inside it (FabDropZoneProvider).
+   */
+  wrapScroll?: (scroll: React.ReactElement) => React.ReactNode;
 }
 
 /**
@@ -93,6 +108,8 @@ export function EditorSheet({
   footer,
   scrollEnabled = true,
   keyboardAccessoryHeight = 0,
+  dragScrollRef,
+  wrapScroll,
 }: Props) {
   const insets = useSafeAreaInsets();
   // Gives the ScrollView itself a correct bottom inset for the focused field
@@ -106,6 +123,55 @@ export function EditorSheet({
   // scrolling far past where it needed to, occasionally all the way to the
   // bottom of the content. One mechanism owning the adjustment fixes that.
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true, accessoryHeight: keyboardAccessoryHeight });
+
+  // What a DragScroller needs, kept off React state: it is read a frame at a
+  // time while a drag is in flight. The offset is written back synchronously by
+  // scrollToOffset, because the scroll event confirming it lands a frame later.
+  const metrics = useRef({ offset: 0, content: 0, viewport: 0 });
+  useEffect(() => {
+    if (!dragScrollRef) return;
+    dragScrollRef.current = {
+      getOffset: () => metrics.current.offset,
+      getMaxOffset: () => Math.max(0, metrics.current.content - metrics.current.viewport),
+      scrollToOffset: (y: number) => {
+        metrics.current.offset = y;
+        keyboardScroll.ref.current?.scrollTo({ y, animated: false });
+      },
+    };
+    return () => { dragScrollRef.current = null; };
+  }, [dragScrollRef, keyboardScroll.ref]);
+  const trackScroll = dragScrollRef
+    ? {
+        scrollEventThrottle: 16,
+        onScroll: (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+          keyboardScroll.noteScroll(e);
+          const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+          metrics.current = {
+            offset: contentOffset.y,
+            content: contentSize.height,
+            viewport: layoutMeasurement.height,
+          };
+        },
+        onContentSizeChange: (_w: number, h: number) => { metrics.current.content = h; },
+        onLayout: (e: LayoutChangeEvent) => { metrics.current.viewport = e.nativeEvent.layout.height; },
+      }
+    : null;
+
+  const scroll = (
+    <ScrollView
+      ref={keyboardScroll.ref}
+      style={scrollStyle}
+      scrollEnabled={scrollEnabled}
+      keyboardShouldPersistTaps="handled"
+      contentContainerStyle={scrollContentStyle}
+      {...keyboardScroll.props}
+      {...trackScroll}
+    >
+      <KeyboardScrollIntoViewContext.Provider value={keyboardScroll.focusInput}>
+        {children}
+      </KeyboardScrollIntoViewContext.Provider>
+    </ScrollView>
+  );
 
   return (
     <SheetModal
@@ -127,18 +193,7 @@ export function EditorSheet({
           <View style={headerStyle}>{header}</View>
         </View>
 
-        <ScrollView
-          ref={keyboardScroll.ref}
-          style={scrollStyle}
-          scrollEnabled={scrollEnabled}
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={scrollContentStyle}
-          {...keyboardScroll.props}
-        >
-          <KeyboardScrollIntoViewContext.Provider value={keyboardScroll.focusInput}>
-            {children}
-          </KeyboardScrollIntoViewContext.Provider>
-        </ScrollView>
+        {wrapScroll ? wrapScroll(scroll) : scroll}
 
         {footer}
       </View>
