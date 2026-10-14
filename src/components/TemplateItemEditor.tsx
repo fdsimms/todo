@@ -23,6 +23,7 @@ import type { HolidayRule, Priority, Effort, TimeOfDay, TemplateAnchor, Template
 import { PRIORITY_LABELS, EFFORT_LABELS, EFFORT_HINTS, TITLE_MAX_LENGTH, MEAL_SLOTS, MEAL_SLOT_LABELS } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
+import { slotForHour } from '../utils/mealLog';
 import { haptics } from '../utils/haptics';
 import { CoinIcon } from './CoinIcon';
 import { medicationVocabulary, medicationKey } from '../utils/medicationLog';
@@ -283,6 +284,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [medicationAmount, setMedicationAmount] = useState('');
   const [medicationUnit, setMedicationUnit] = useState<string | null>(null);
   const [logMealSlot, setLogMealSlot] = useState<MealSlot | null>(null);
+  const [logMealSlotByTime, setLogMealSlotByTime] = useState(false);
   const [penaltyMinutes, setPenaltyMinutes] = useState<number | null>(null);
   const [gatesApps, setGatesApps] = useState(false);
   const [penaltyCutoffTime, setPenaltyCutoffTime] = useState<string | null>(null);
@@ -395,6 +397,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     }
     setMedicationUnit(item?.medicationUnit ?? draft?.medicationUnit ?? null);
     setLogMealSlot(item?.logMealSlot ?? draft?.logMealSlot ?? null);
+    setLogMealSlotByTime(item?.logMealSlotByTime ?? draft?.logMealSlotByTime ?? false);
     setPenaltyMinutes(item?.penaltyMinutes ?? draft?.penaltyMinutes ?? null);
     setGatesApps(item?.gatesApps ?? draft?.gatesApps ?? false);
     setPenaltyCutoffTime(item?.penaltyCutoffTime ?? draft?.penaltyCutoffTime ?? null);
@@ -674,6 +677,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       medicationAmount: resolveMedicationAmount(),
       medicationUnit: resolveMedicationAmount() !== null ? medicationUnit : null,
       logMealSlot,
+      logMealSlotByTime: logMealSlot !== null && logMealSlotByTime,
       penaltyMinutes,
       // Cleared on an avoid-item for the reason TaskEditor clears it: an
       // avoid-task is never completed, so a gate on one could never be met.
@@ -1640,11 +1644,31 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           <SegmentedControl<MealSlot>
             options={MEAL_SLOTS.map(slot => ({ value: slot, label: MEAL_SLOT_LABELS[slot] }))}
             value={logMealSlot ?? 'breakfast'}
-            onChange={next => { haptics.tap(); setLogMealSlot(prev => (prev === next ? null : next)); }}
+            onChange={next => { haptics.tap(); setLogMealSlot(prev => (prev === next ? null : next)); setLogMealSlotByTime(false); }}
             columns={2}
             label="Meal"
             surface="card"
           />
+          <TouchableOpacity
+            style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.smd }}
+            onPress={() => {
+              haptics.tap();
+              if (logMealSlot === null) setLogMealSlot(slotForHour(new Date().getHours()));
+              setLogMealSlotByTime(!logMealSlotByTime);
+            }}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: logMealSlotByTime }}
+            accessibilityLabel="Pick the meal from the time of day"
+          >
+            <Ionicons
+              name={logMealSlotByTime ? 'checkbox' : 'square-outline'}
+              size={22}
+              color={logMealSlotByTime ? colors.accent : colors.controlBorder}
+            />
+            <Text style={[styles.optionHint, { flex: 1 }]}>
+              Choose the meal from the time the task is completed: breakfast 5 to 11 AM, lunch 11 AM to 4 PM, dinner 4 to 10 PM, snack otherwise.
+            </Text>
+          </TouchableOpacity>
         </CollapsibleField>
         <View style={styles.sep} />
         <TouchableOpacity

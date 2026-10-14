@@ -17116,6 +17116,21 @@ describe('Task.logSavedMealId logs a named food when the task is completed', () 
     expect(useFoodLogStore.getState().pendingManualMealLog).toBeNull();
   });
 
+  it('files the entry under the slot the clock says when logMealSlotByTime is on', () => {
+    jest.useFakeTimers().setSystemTime(new Date(2026, 3, 2, 19, 0));
+    try {
+      const task = useTaskStore.getState().addTask({
+        title: 'Metamucil', logMealSlot: 'breakfast', logSavedMealId: 'sm-1', logMealSlotByTime: true,
+      });
+
+      useTaskStore.getState().completeTask(task.id);
+
+      expect(addEntry.mock.calls[0][0]).toMatchObject({ slot: 'dinner', taskId: task.id });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('falls back to the manual offer when the saved meal has been deleted', () => {
     useSavedMealsStore.setState({ meals: [] });
     const task = useTaskStore.getState().addTask({ title: 'Metamucil', logMealSlot: 'breakfast', logSavedMealId: 'sm-1' });

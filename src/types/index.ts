@@ -2491,6 +2491,13 @@ export interface Task {
   // carries `FoodLogEntry.taskId`, and uncompleting the task takes them back.
   // Rides ...effective onto the next occurrence like logMealSlot does.
   logSavedMealId?: string | null;
+  // When true, completing the task files its meal under the slot the clock
+  // says (`slotForHour`) at the moment of completion, instead of the fixed
+  // `logMealSlot`, which stays the fallback shown in the editor. For one task
+  // done at different meals on different days (a supplement, a shake). Optional
+  // so a row or fixture from before it reads as off. Rides ...effective onto the
+  // next occurrence like logMealSlot does.
+  logMealSlotByTime?: boolean;
   deferUntil: string | null;
   timeSegments: TimeOfDay[];
   windowStart: string | null; // "HH:MM" — task only becomes visible/active from this time on its day
@@ -4350,6 +4357,9 @@ export interface TemplateItem {
   // daily "Log breakfast" routine would otherwise need its slot re-picked by
   // hand on every application.
   logMealSlot: MealSlot | null;
+  // Seeds Task.logMealSlotByTime: the slot is picked from the clock when the
+  // task is completed. Optional so a stored item from before it reads as off.
+  logMealSlotByTime?: boolean;
 
   // What the task created from this item asks for when it's completed, or null
   // for the ordinary "ticking it is the whole answer" item. Another field

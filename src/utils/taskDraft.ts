@@ -434,6 +434,7 @@ export function newTaskFromDraft(
     medicationUnit: draft.medicationUnit ?? null,
     logMealSlot: draft.logMealSlot ?? null,
     logSavedMealId: draft.logSavedMealId ?? null,
+    logMealSlotByTime: draft.logMealSlotByTime ?? false,
     previousOccurrenceId: draft.previousOccurrenceId ?? null,
     generatedKind: draft.generatedKind ?? null,
     generatedSourceId: draft.generatedSourceId ?? null,

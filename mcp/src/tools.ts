@@ -231,6 +231,8 @@ export interface GetTaskResult {
     logsMedication?: { name: string; amount?: number; unit?: string };
     logsHealth?: { metric: string; amount?: number };
     logsMealSlot?: string;
+    /** True when the slot above is picked from the time of day at completion (`logMealSlotByTime`). */
+    logsMealSlotByTime?: boolean;
     /** The saved meal's id, when completing the task logs it straight away (`logSavedMealId`). */
     logsSavedMealId?: string;
   };
@@ -310,6 +312,7 @@ function taskExtras(replica: Replica, task: Task): Partial<GetTaskResult> {
     };
   }
   if (task.logMealSlot) onCompletion.logsMealSlot = task.logMealSlot;
+  if (task.logMealSlot && task.logMealSlotByTime) onCompletion.logsMealSlotByTime = true;
   if (task.logSavedMealId) onCompletion.logsSavedMealId = task.logSavedMealId;
   if (Object.keys(onCompletion).length > 0) out.onCompletion = onCompletion;
 
