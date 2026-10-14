@@ -38,6 +38,10 @@ const NOT_SEEDED: Record<string, string[]> = {
     'meterHeldUntil', 'rainSkippedOn', 'reviewOfTaskId',
   ],
 
+  // A group of apps is a selection of tokens that exists only on one phone, and
+  // a template syncs, so it would carry an id that names nothing on the next.
+  'a device-local id': ['gateGroupId'],
+
   // A template has no calendar date of its own. These are written as offsets
   // from the run's anchors (dueOffsetDays, deferOffsetDays, deadlineOffsetDays,
   // reminderOffsetMinutes), and the draft builder derives the task's dates and

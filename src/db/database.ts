@@ -2159,6 +2159,9 @@ function runInitDatabase(): void {
     // Task.quotaPlaceIds: JSON array of saved-place ids a daily target's reminders
     // are limited to. '[]' on every existing row, which is reminders anywhere.
     "ALTER TABLE tasks ADD COLUMN quota_place_ids TEXT NOT NULL DEFAULT '[]'",
+    // Task.gateGroupId: the group of apps a gate task holds. NULL on every
+    // existing row, which is the gate setting's own group, as before.
+    'ALTER TABLE tasks ADD COLUMN gate_group_id TEXT',
     // The task whose completion wrote this entry, so un-completing it can take
     // the entry back. NULL on every row but those. See FoodLogEntry.taskId.
     'ALTER TABLE food_logs ADD COLUMN task_id TEXT',
@@ -3644,6 +3647,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     logSavedMealId: (row.log_saved_meal_id as string | null) || null,
     logMealSlotByTime: Boolean(row.log_meal_slot_by_time),
     quotaPlaceIds: parseIdList(row.quota_place_ids),
+    gateGroupId: (row.gate_group_id as string | null) ?? null,
     reviewOfTaskId: (row.review_of_task_id as string | null) ?? null,
     targetCount: (row.target_count as number | null) ?? null,
     progressCount: (row.progress_count as number) ?? 0,
@@ -3857,8 +3861,8 @@ export function dbInsertTask(task: Task): void {
       blocked_by_ids, deliverable_options, deliverable_sets_away, follow_up_on, extra_task_source_id,
       pin_each_occurrence, bounty_pushes, difficulty, answer_gate, deliverable_why, deliverable_revisit_if, extra_task_at_end, weather_wait, wait_for_series_end, rotation_plan, slip_allowance, done_by_other_at, window_start_sun, window_end_sun, recurrence_holidays,
       meter_name, meter_unit, meter_every, meter_due_at, meter_limit_months, meter_held_until, rain_skip_mm, rain_skipped_on, review_of_task_id,
-      quota_ramp_step, quota_ramp_every, quota_ramp_goal, quota_ramp_hits, streak_counts_units, log_saved_meal_id, coins_per_tap, log_meal_slot_by_time, quota_place_ids
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      quota_ramp_step, quota_ramp_every, quota_ramp_goal, quota_ramp_hits, streak_counts_units, log_saved_meal_id, coins_per_tap, log_meal_slot_by_time, quota_place_ids, gate_group_id
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deadlineTime ?? null, task.deferUntil,
@@ -4004,6 +4008,7 @@ export function dbInsertTask(task: Task): void {
       task.coinsPerTap ? 1 : 0,
       task.logMealSlotByTime ? 1 : 0,
       JSON.stringify(task.quotaPlaceIds ?? []),
+      task.gateGroupId ?? null,
     ]
   );
 }
@@ -4042,7 +4047,7 @@ export function dbUpdateTask(task: Task): void {
       blocked_by_ids=?, deliverable_options=?, deliverable_sets_away=?, follow_up_on=?, extra_task_source_id=?,
       pin_each_occurrence=?, bounty_pushes=?, difficulty=?, answer_gate=?, deliverable_why=?, deliverable_revisit_if=?, extra_task_at_end=?, weather_wait=?, wait_for_series_end=?, rotation_plan=?, slip_allowance=?, done_by_other_at=?, window_start_sun=?, window_end_sun=?, recurrence_holidays=?,
       meter_name=?, meter_unit=?, meter_every=?, meter_due_at=?, meter_limit_months=?, meter_held_until=?, rain_skip_mm=?, rain_skipped_on=?, review_of_task_id=?,
-      quota_ramp_step=?, quota_ramp_every=?, quota_ramp_goal=?, quota_ramp_hits=?, streak_counts_units=?, log_saved_meal_id=?, coins_per_tap=?, log_meal_slot_by_time=?, quota_place_ids=?
+      quota_ramp_step=?, quota_ramp_every=?, quota_ramp_goal=?, quota_ramp_hits=?, streak_counts_units=?, log_saved_meal_id=?, coins_per_tap=?, log_meal_slot_by_time=?, quota_place_ids=?, gate_group_id=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -4189,6 +4194,7 @@ export function dbUpdateTask(task: Task): void {
       task.coinsPerTap ? 1 : 0,
       task.logMealSlotByTime ? 1 : 0,
       JSON.stringify(task.quotaPlaceIds ?? []),
+      task.gateGroupId ?? null,
       task.id,
     ]
   );

@@ -123,7 +123,7 @@ describe('reconcileAppShield', () => {
     const liveAt = reconcileAppShield();
     expect(liveAt).toEqual(sixAm);
     expect(mockSync).toHaveBeenCalledWith(expect.objectContaining({
-      pendingGate: { liveAt: sixAm, titles: ['Morning walk'] },
+      pendingGate: { liveAt: sixAm, titles: ['Morning walk'], groupIds: ['default'] },
     }));
   });
 
@@ -194,6 +194,28 @@ describe('schedules', () => {
       expect(next!.getTime()).toBeGreaterThan(Date.now());
     } finally {
       mockGroupState.schedules = [];
+    }
+  });
+});
+
+describe('gate groups', () => {
+  it('gives each gate the group it names, else the gate setting\'s', () => {
+    mockTasks.length = 0;
+    mockVisible.mockReturnValue(true);
+    mockTasks.push(
+      task({ id: 'a', title: 'Walk', gateGroupId: 'social' }),
+      task({ id: 'b', title: 'Read' }),
+    );
+    mockGroupState.assignments = { ...mockGroupState.assignments, gate: 'games' };
+    try {
+      reconcileAppShield();
+      expect(mockSync).toHaveBeenLastCalledWith(expect.objectContaining({
+        gateTitles: ['Walk', 'Read'],
+        gateGroupIds: ['social', 'games'],
+      }));
+    } finally {
+      mockGroupState.assignments = { focus: 'default', gate: 'default', penalty: 'default', key: 'default' };
+      mockTasks.length = 0;
     }
   });
 });

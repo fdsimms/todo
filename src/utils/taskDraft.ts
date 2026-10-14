@@ -358,6 +358,7 @@ export function newTaskFromDraft(
     penaltyFiredAt: null,
     penaltyCreditedAt: null,
     gatesApps: draft.gatesApps ?? false,
+    gateGroupId: draft.gatesApps ? draft.gateGroupId ?? null : null,
     polarity: resolvedPolarity,
     // Only an avoid-task has slips to allow; anything else would carry a number nothing reads.
     slipAllowance: resolvedPolarity === 'negative' ? (draft.slipAllowance ?? null) : null,

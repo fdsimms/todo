@@ -11,6 +11,7 @@ import type { Task } from '../types';
 import {
   GATE_ARM_HORIZON_MS,
   GATE_WINDOW_MINUTES,
+  gateGroupFor,
   gateShieldWanted,
   gateSubtitle,
   gateWindowFor,
@@ -207,5 +208,19 @@ describe('nextPendingGate', () => {
 
   it('is null when nothing gates anything', () => {
     expect(nextPendingGate([task({ id: 'walk', gatesApps: false })], visibleAt({ walk: SIX_AM }), NOW)).toBeNull();
+  });
+});
+
+describe('gateGroupFor', () => {
+  const resolve = (id: string) => (id === 'gone' ? 'default' : id);
+
+  it('uses the task\'s own group, resolved', () => {
+    expect(gateGroupFor(task({ gateGroupId: 'social' }), 'games', resolve)).toBe('social');
+    expect(gateGroupFor(task({ gateGroupId: 'gone' }), 'games', resolve)).toBe('default');
+  });
+
+  it('falls back to the gate setting\'s group when the task names none', () => {
+    expect(gateGroupFor(task({}), 'games', resolve)).toBe('games');
+    expect(gateGroupFor(task({ gateGroupId: null }), 'games', resolve)).toBe('games');
   });
 });

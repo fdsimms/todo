@@ -45,6 +45,15 @@ export function isGateTask(task: Task): boolean {
 }
 
 /**
+ * The group of apps one gate task holds: its own, resolved (a removed group
+ * reads as Default), or the gate setting's group when it names none. The
+ * resolver arrives as a parameter because the groups live in a store.
+ */
+export function gateGroupFor(task: Task, settingGroupId: string, resolve: (groupId: string) => string): string {
+  return task.gateGroupId ? resolve(task.gateGroupId) : settingGroupId;
+}
+
+/**
  * The gate tasks standing between the person and their apps right now.
  *
  * `isVisible` is the caller's — `isTaskVisible` in practice — because it reads

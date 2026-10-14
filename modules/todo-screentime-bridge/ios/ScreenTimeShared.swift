@@ -180,7 +180,7 @@ struct ShieldGroupsShared: Codable {
   let otherGroupIds: [String]
   let penaltyGroupId: String?
   let penaltyEndIso: String?
-  let pendingGateGroupId: String?
+  let pendingGateGroupIds: [String]?
   let pendingGateLiveAtIso: String?
 }
 
@@ -353,10 +353,10 @@ extension ScreenTimeShared {
        let end = parseIso(state.groups?.penaltyEndIso), end > now {
       ids.append(group)
     }
-    if let group = state.groups?.pendingGateGroupId,
+    if let groups = state.groups?.pendingGateGroupIds,
        state.pendingGateDetail != nil,
        gateStarting || (parseIso(state.groups?.pendingGateLiveAtIso).map { $0 <= now } ?? false) {
-      ids.append(group)
+      ids.append(contentsOf: groups)
     }
     ids.append(contentsOf: activeScheduleGroupIds(now: now))
     var seen = Set<String>()

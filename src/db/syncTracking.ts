@@ -258,6 +258,9 @@ export const SYNC_DEVICE_LOCAL_COLUMNS: Readonly<Record<string, readonly string[
     'calendar_event_id', 'calendar_event_external_id',
     'completion_calendar_event_id', 'completion_calendar_event_external_id',
     'time_block_event_id', 'time_block_external_id',
+    // An app group's id names a selection of opaque tokens that exist only on
+    // this phone, so a peer's copy would point at nothing here.
+    'gate_group_id',
   ],
 };
 

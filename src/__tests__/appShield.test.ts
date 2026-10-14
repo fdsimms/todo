@@ -24,7 +24,7 @@ jest.mock('../utils/screenTimeBridge', () => ({
 }));
 
 import type { FocusSession, FocusStep } from '../types';
-import { appShieldWanted, syncAppShield, type AppShieldState } from '../utils/appShield';
+import { appShieldWanted, shieldReasons, syncAppShield, type AppShieldState } from '../utils/appShield';
 
 const NOW = new Date('2026-08-22T09:00:00.000Z');
 const LATER = new Date('2026-08-22T10:00:00.000Z').toISOString();
@@ -542,7 +542,7 @@ describe('app groups and schedules', () => {
       otherGroupIds: ['social'],
       penaltyGroupId: 'games',
       penaltyEndIso: LATER,
-      pendingGateGroupId: null,
+      pendingGateGroupIds: [],
       pendingGateLiveAtIso: null,
     });
   });
@@ -558,5 +558,42 @@ describe('app groups and schedules', () => {
     syncAppShield(state({ schedules: [spec('a')], penaltyUntil: LATER, penaltyEnabled: true, penaltyReason: 'Walk' }));
     const written = mockBridge.setShieldState.mock.calls[0] as unknown as [{ reason: string }];
     expect(written[0].reason).toBe('penalty');
+  });
+
+  describe('per-task gate groups', () => {
+    const gated = { gateEnabled: true, gateTitles: ['Walk', 'Read', 'Stretch'] };
+
+    it('blocks each gate\'s own group, and the setting\'s group for a gate that names none', () => {
+      syncAppShield(state({
+        ...gated,
+        gateGroupIds: ['social', 'games', 'social'],
+      }));
+      expect(mockBridge.applyShield).toHaveBeenCalledWith(['social', 'games']);
+    });
+
+    it('lists one gate reason per group, each naming only its own tasks', () => {
+      const reasons = shieldReasons(state({ ...gated, gateGroupIds: ['social', 'games', 'social'] }));
+      expect(reasons).toEqual([
+        { reason: 'gate', titles: ['Walk', 'Stretch'], groupId: 'social' },
+        { reason: 'gate', titles: ['Read'], groupId: 'games' },
+      ]);
+    });
+
+    it('uses the gate setting\'s group when no group list is given', () => {
+      syncAppShield(state({ ...gated, groups: { focus: 'default', gate: 'games', penalty: 'default', key: 'default' } }));
+      expect(mockBridge.applyShield).toHaveBeenCalledWith(['games']);
+    });
+
+    it('writes every held gate group for the extension, and the pending gate\'s groups', () => {
+      const liveAt = new Date(NOW.getTime() + 60 * 60 * 1000);
+      syncAppShield(state({
+        ...gated,
+        gateGroupIds: ['social', 'games', 'social'],
+        pendingGate: { liveAt, titles: ['Later'], groupIds: ['music'] },
+      }));
+      const written = mockBridge.setShieldState.mock.calls[0] as unknown as [{ groups: Record<string, unknown> }];
+      expect(written[0].groups.otherGroupIds).toEqual(['social', 'games']);
+      expect(written[0].groups.pendingGateGroupIds).toEqual(['music']);
+    });
   });
 });
