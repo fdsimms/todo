@@ -15,11 +15,10 @@
  * day it starts on: a Friday 22:00 to 06:00 window is still on at 02:00
  * Saturday, and Saturday is not one of its days.
  *
- * **A key tag pauses one window, not the schedule.** `pausedUntil` is the end
- * of the window instance a tag lifted, so the next one starts on time without
- * anything having to clear it. Pausing never touches another reason: the
- * arbiter (`appShield.ts`) ORs schedules with focus, gate, penalty and key, and
- * a tag has never been able to end any of the first three.
+ * **Ending a block pauses one window, not the schedule.** `pausedUntil` is the
+ * end of the window instance that was lifted (by a key tag or the emergency
+ * button, `releaseBlocks.ts`), so the next one starts on time without anything
+ * having to clear it.
  */
 
 /** The settings row holding the schedules, as JSON. Device-local, like the groups they point at. */
@@ -47,8 +46,6 @@ export interface BlockSchedule {
   startMinutes: number;
   endMinutes: number;
   enabled: boolean;
-  /** Whether scanning a key tag during the window lifts it. */
-  tagCanPause: boolean;
   /** ISO end of the window instance a tag lifted; null when none is. */
   pausedUntil: string | null;
 }
@@ -110,7 +107,6 @@ export function parseBlockSchedules(raw: string | null | undefined): BlockSchedu
       startMinutes: o.startMinutes,
       endMinutes: o.endMinutes,
       enabled: o.enabled !== false,
-      tagCanPause: o.tagCanPause !== false,
       pausedUntil: typeof o.pausedUntil === 'string' ? o.pausedUntil : null,
     };
     if (scheduleProblem(schedule)) continue;
@@ -170,9 +166,8 @@ export function currentWindowEnd(s: BlockSchedule, now: Date): Date | null {
 }
 
 /**
- * Lift every schedule blocking at `now` that allows it, until its window ends.
- * Returns the schedules to store and how many were lifted; zero means a scan
- * has nothing to pause and falls through to the key lock.
+ * Lift every schedule blocking at `now` until its window ends. Returns the
+ * schedules to store and how many were lifted.
  */
 export function pauseActiveSchedules(
   schedules: readonly BlockSchedule[],
@@ -180,7 +175,7 @@ export function pauseActiveSchedules(
 ): { schedules: BlockSchedule[]; paused: number } {
   let paused = 0;
   const next = schedules.map(s => {
-    if (!s.tagCanPause || !isScheduleActive(s, now)) return s;
+    if (!isScheduleActive(s, now)) return s;
     const end = currentWindowEnd(s, now);
     if (!end) return s;
     paused += 1;

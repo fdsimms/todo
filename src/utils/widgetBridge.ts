@@ -60,6 +60,11 @@ export interface WidgetBridge {
    * dreamQueue.ts. Optional for the reason the dose drain is.
    */
   drainPendingDreams?: () => Promise<string>;
+  /**
+   * Key codes queued by ToggleKeyLockIntent (`{ code, at }` as JSON) — see
+   * keyScanQueue.ts. Optional for the reason the dose drain is.
+   */
+  drainPendingKeyScans?: () => Promise<string>;
   drainSharedLinks: () => Promise<string[]>;
   syncTimerLiveActivities: (jsonString: string) => Promise<boolean>;
   syncTripLiveActivity: (jsonString: string) => Promise<boolean>;

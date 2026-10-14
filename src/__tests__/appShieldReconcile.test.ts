@@ -34,8 +34,17 @@ jest.mock('../store/useTaskStore', () => ({
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: { getState: () => mockSettings },
 }));
+const mockFocus: { session: { id: string } | null } = { session: null };
 jest.mock('../store/useFocusStore', () => ({
-  useFocusStore: { getState: () => ({ session: null }) },
+  useFocusStore: { getState: () => mockFocus },
+}));
+const mockReleases = { focusSessionId: null as string | null, gateTaskIds: [] as string[] };
+const mockManual: { block: { untilIso: string; groupId: string } | null } = { block: null };
+jest.mock('../store/useManualBlockStore', () => ({
+  useManualBlockStore: { getState: () => mockManual },
+}));
+jest.mock('../store/useShieldReleaseStore', () => ({
+  useShieldReleaseStore: { getState: () => ({ releases: mockReleases }) },
 }));
 const mockGroupState = {
   groups: [] as unknown[],
@@ -72,6 +81,10 @@ beforeEach(() => {
   mockKeyState.locked = false;
   mockKeyState.keys = [];
   mockTasks.length = 0;
+  mockFocus.session = null;
+  mockManual.block = null;
+  mockReleases.focusSessionId = null;
+  mockReleases.gateTaskIds = [];
   mockVisible.mockReturnValue(true);
   mockVisibleAt.mockImplementation(() => new Date(NOW));
   mockHiddenForVacation.mockReturnValue(false);
@@ -127,6 +140,53 @@ describe('reconcileAppShield', () => {
     }));
   });
 
+  it('leaves out a gate that was released, and arms no window for it', () => {
+    const sixAm = new Date(NOW + 8 * 60 * 60 * 1000);
+    mockTasks.push(task({ id: 'walk', title: 'Morning walk' }), task({ id: 'run', title: 'Run' }));
+    mockReleases.gateTaskIds = ['walk'];
+    reconcileAppShield();
+    expect(mockSync).toHaveBeenCalledWith(expect.objectContaining({ gateTitles: ['Run'] }));
+
+    mockSync.mockClear();
+    mockVisible.mockReturnValue(false);
+    mockVisibleAt.mockImplementation(() => sixAm);
+    reconcileAppShield();
+    expect(mockSync).toHaveBeenCalledWith(expect.objectContaining({
+      pendingGate: { liveAt: sixAm, titles: ['Run'], groupIds: ['default'] },
+    }));
+  });
+
+  it('hands over no session once its shield was released, and the next session blocks again', () => {
+    mockFocus.session = { id: 's1' };
+    mockReleases.focusSessionId = 's1';
+    reconcileAppShield();
+    expect(mockSync).toHaveBeenCalledWith(expect.objectContaining({ session: null }));
+
+    mockSync.mockClear();
+    mockFocus.session = { id: 's2' };
+    reconcileAppShield();
+    expect(mockSync).toHaveBeenCalledWith(expect.objectContaining({ session: { id: 's2' } }));
+  });
+
+  it('hands over a running timed block with its group, and returns its end to wait at', () => {
+    const end = new Date(NOW + 60 * 60 * 1000);
+    mockManual.block = { untilIso: end.toISOString(), groupId: 'games' };
+    expect(reconcileAppShield()).toEqual(end);
+    expect(mockSync).toHaveBeenCalledWith(expect.objectContaining({
+      manual: { untilIso: end.toISOString(), groupId: 'games' },
+    }));
+  });
+
+  it('waits at whichever of a gate and a timed block comes first', () => {
+    const sixAm = new Date(NOW + 8 * 60 * 60 * 1000);
+    const end = new Date(NOW + 60 * 60 * 1000);
+    mockManual.block = { untilIso: end.toISOString(), groupId: 'default' };
+    mockTasks.push(task({ id: 'walk', title: 'Morning walk' }));
+    mockVisible.mockReturnValue(false);
+    mockVisibleAt.mockImplementation(() => sixAm);
+    expect(reconcileAppShield()).toEqual(end);
+  });
+
   it('returns nothing to wait at when no gate is coming', () => {
     mockTasks.push(task({ id: 'walk', title: 'Morning walk' }));
     expect(reconcileAppShield()).toBeNull();
@@ -169,7 +229,7 @@ describe('schedules', () => {
   it('hands the schedules and each reason\'s group to the rule', () => {
     const schedule = {
       id: 's', name: 'Work', groupId: 'default', days: [0, 1, 2, 3, 4, 5, 6], startMinutes: 0,
-      endMinutes: 600, enabled: true, tagCanPause: true, pausedUntil: null,
+      endMinutes: 600, enabled: true, pausedUntil: null,
     };
     mockGroupState.schedules = [schedule];
     try {
@@ -186,7 +246,7 @@ describe('schedules', () => {
   it('returns a schedule edge as the moment to wait for when nothing is sooner', () => {
     mockGroupState.schedules = [{
       id: 's', name: 'Work', groupId: 'default', days: [0, 1, 2, 3, 4, 5, 6], startMinutes: 0,
-      endMinutes: 600, enabled: true, tagCanPause: true, pausedUntil: null,
+      endMinutes: 600, enabled: true, pausedUntil: null,
     }];
     try {
       const next = reconcileAppShield();

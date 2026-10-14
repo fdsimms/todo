@@ -328,6 +328,52 @@ public class TodoScreenTimeBridgeModule: Module {
       return false
     }
 
+    /// Arm a one-shot window whose end lifts a block the person started by hand.
+    /// `schedulePenaltyExpiry`'s twin: the same clock-time bounds, `repeats:
+    /// false` and quarter-hour floor apply (the JS side refuses under 15
+    /// minutes and over 12 hours), and a throw is not fatal because the JS
+    /// reconciler still lifts the block on the next foreground. Its own
+    /// activity name, so arming or stopping it never disarms the penalty window.
+    Function("scheduleManualExpiry") { (untilIso: String) -> Bool in
+      #if canImport(DeviceActivity)
+      if #available(iOS 16.0, *) {
+        var scheduled = false
+        TodoScreenTimeExceptionCatcher.runCatchingExceptions {
+          guard let until = Self.parseIso(untilIso), until > Date() else { return }
+
+          let calendar = Calendar.current
+          let schedule = DeviceActivitySchedule(
+            intervalStart: calendar.dateComponents([.hour, .minute, .second], from: Date()),
+            intervalEnd: calendar.dateComponents([.hour, .minute, .second], from: until),
+            repeats: false
+          )
+          let center = DeviceActivityCenter()
+          let name = DeviceActivityName(ScreenTimeShared.manualActivityName)
+          center.stopMonitoring([name])
+          try? center.startMonitoring(name, during: schedule)
+          scheduled = true
+        }
+        return scheduled
+      }
+      #endif
+      return false
+    }
+
+    /// Disarm the window above, on every reconcile that finds no manual block.
+    Function("cancelManualExpiry") { () -> Bool in
+      #if canImport(DeviceActivity)
+      if #available(iOS 16.0, *) {
+        var cancelled = false
+        TodoScreenTimeExceptionCatcher.runCatchingExceptions {
+          DeviceActivityCenter().stopMonitoring([DeviceActivityName(ScreenTimeShared.manualActivityName)])
+          cancelled = true
+        }
+        return cancelled
+      }
+      #endif
+      return false
+    }
+
     /// Arm a one-shot window whose *start* raises a gate block, so a gate that
     /// comes due while the app is closed still holds the apps.
     ///

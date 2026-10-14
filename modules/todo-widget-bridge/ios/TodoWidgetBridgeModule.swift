@@ -38,6 +38,9 @@ private let pendingDosesFileName = "pending_doses.json"
 // Matching LogDreamIntent.swift. The dream log's own queue, drained by
 // processPendingDreams in src/utils/widgetSync.ts.
 private let pendingDreamsFileName = "pending_dreams.json"
+// Matching ToggleKeyLockIntent.swift. The key lock's own queue, drained by
+// processPendingKeyScans in src/utils/widgetSync.ts.
+private let pendingKeyScansFileName = "pending_key_scans.json"
 // Must match QuietTapQueue.fileName in targets/todo-widget/WidgetQuietIntents.swift
 // (a separate target, so the literal can't be shared).
 private let quietTapsFileName = "widget_quiet_taps.json"
@@ -64,6 +67,14 @@ private struct PendingDosePayload: Codable {
 // widgetSync.ts expects back. `at` is the ISO 8601 moment Siri was asked.
 private struct PendingDreamPayload: Codable {
   let text: String
+  let at: String
+}
+
+// Mirrors what ToggleKeyLockIntent queues and what processPendingKeyScans() in
+// widgetSync.ts expects back. `code` is the key code the person typed into the
+// Shortcuts action; it is checked against the key list in the app, never here.
+private struct PendingKeyScanPayload: Codable {
+  let code: String
   let at: String
 }
 
@@ -428,6 +439,34 @@ public class TodoWidgetBridgeModule: Module {
         guard let data = try? Data(contentsOf: fileURL) else { return }
         defer { try? FileManager.default.removeItem(at: fileURL) }
         guard let decoded = try? JSONDecoder().decode([PendingDreamPayload].self, from: data) else {
+          return
+        }
+        guard let reencoded = try? JSONEncoder().encode(decoded) else { return }
+        json = String(data: reencoded, encoding: .utf8) ?? "[]"
+      }
+      return json
+    }
+
+    // Reads and clears the queue ToggleKeyLockIntent writes (the Shortcuts
+    // action a tag automation runs). The same read-and-delete shape as
+    // drainPendingDreams: a corrupt file is deleted rather than failing on
+    // every launch.
+    AsyncFunction("drainPendingKeyScans") { () -> String in
+      var json = "[]"
+      TodoWidgetExceptionCatcher.runCatchingExceptions {
+        guard let containerURL = FileManager.default.containerURL(
+          forSecurityApplicationGroupIdentifier: appGroupID
+        ) else {
+          return
+        }
+
+        let fileURL = containerURL
+          .appendingPathComponent("Library/Application Support", isDirectory: true)
+          .appendingPathComponent(pendingKeyScansFileName)
+
+        guard let data = try? Data(contentsOf: fileURL) else { return }
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+        guard let decoded = try? JSONDecoder().decode([PendingKeyScanPayload].self, from: data) else {
           return
         }
         guard let reencoded = try? JSONEncoder().encode(decoded) else { return }

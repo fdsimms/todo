@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
@@ -7,13 +7,18 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format } from 'date-fns/format';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { useColors } from '../theme/ThemeContext';
-import { font, fontWeight, radius, spacing, type Colors } from '../theme';
+import { font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useShieldReasons } from '../hooks/useShieldReasons';
 import { usePullToSearch } from '../hooks/usePullToSearch';
 import { screenTimeBridge } from '../utils/screenTimeBridge';
 import { allGroups, DEFAULT_GROUP_ID } from '../utils/appGroups';
 import { useAppGroupStore } from '../store/useAppGroupStore';
+import { useNfcKeyStore } from '../store/useNfcKeyStore';
+import { isNfcSupported, scanKeyTag } from '../utils/nfcBridge';
+import { applyKeyScan } from '../utils/releaseBlocks';
+import { alertKeyScanResult } from '../utils/keyScanAlert';
+import { haptics } from '../utils/haptics';
 import { clockTimeToken } from '../utils/clockTime';
 import {
   selectionLabel, shieldHeadline, shieldHeadlineNote, shieldReasonLines,
@@ -118,6 +123,23 @@ export function ScreenTimeScreen() {
   }, [use24HourTime]);
   const lines = reasons.flatMap(r => shieldReasonLines(r, formatTime));
 
+  // The way out when something is blocking: a key tag. Scanning in the app
+  // reads a hardware-id tag; a link tag is read by iOS itself (hold it to the top
+  // of the phone, no button), so a phone with only link keys gets the sentence
+  // rather than a button that could not read its tag.
+  const keys = useNfcKeyStore(s => s.keys);
+  const [nfcSupported] = useState(isNfcSupported);
+  const canScanInApp = nfcSupported && keys.some(k => k.kind === 'tag');
+  const showTagCta = blocked && keys.length > 0;
+  const scanToEnd = async () => {
+    haptics.tap();
+    const result = await scanKeyTag('Hold your phone to your key tag to end the block.');
+    if (result.kind !== 'tag') return;
+    alertKeyScanResult(applyKeyScan('tag', result.uid), {
+      message: 'This tag isn’t one of your key tags. A link tag ends the block when you hold it to the top of your phone.',
+    });
+  };
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader
@@ -132,30 +154,51 @@ export function ScreenTimeScreen() {
         contentContainerStyle={{ paddingBottom: tabBarHeight + spacing.xl }}
         {...scrollProps}
       >
-        <View
-          style={styles.statusWrap}
-          accessible
-          accessibilityRole="summary"
-          accessibilityLabel={[headline, ...lines].join('. ')}
-        >
+        <View style={styles.statusWrap}>
           <View style={styles.statusCard}>
-            <View style={[styles.badge, blocked ? styles.badgeOn : styles.badgeOff]}>
-              <Ionicons
-                name={blocked ? 'lock-closed' : 'lock-open-outline'}
-                size={22}
-                color={blocked ? colors.onAccent : colors.textSecondary}
-              />
+            <View
+              style={styles.statusRow}
+              accessible
+              accessibilityRole="summary"
+              accessibilityLabel={[headline, ...lines].join('. ')}
+            >
+              <View style={[styles.badge, blocked ? styles.badgeOn : styles.badgeOff]}>
+                <Ionicons
+                  name={blocked ? 'lock-closed' : 'lock-open-outline'}
+                  size={22}
+                  color={blocked ? colors.onAccent : colors.textSecondary}
+                />
+              </View>
+              <View style={styles.statusText}>
+                <Text style={styles.headline}>{headline}</Text>
+                {lines.map((line, index) => (
+                  <View key={`${index}:${line}`} style={styles.reasonLine}>
+                    <View style={styles.dot} />
+                    <Text style={styles.reasonText}>{line}</Text>
+                  </View>
+                ))}
+                {note && <Text style={styles.note}>{note}</Text>}
+              </View>
             </View>
-            <View style={styles.statusText}>
-              <Text style={styles.headline}>{headline}</Text>
-              {lines.map((line, index) => (
-                <View key={`${index}:${line}`} style={styles.reasonLine}>
-                  <View style={styles.dot} />
-                  <Text style={styles.reasonText}>{line}</Text>
+            {showTagCta && (
+              canScanInApp ? (
+                <TouchableOpacity
+                  style={styles.cta}
+                  onPress={() => { void scanToEnd(); }}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel="Scan your key tag to end the block"
+                >
+                  <Ionicons name="radio-outline" size={20} color={colors.onAccent} />
+                  <Text style={styles.ctaText}>Scan key tag to end the block</Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.ctaHint} accessible accessibilityLabel="Hold your key tag to the top of your phone to end the block">
+                  <Ionicons name="radio-outline" size={20} color={colors.accent} />
+                  <Text style={styles.ctaHintText}>Hold your key tag to the top of your phone to end the block.</Text>
                 </View>
-              ))}
-              {note && <Text style={styles.note}>{note}</Text>}
-            </View>
+              )
+            )}
           </View>
         </View>
 
@@ -178,9 +221,19 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   statusWrap: { paddingHorizontal: spacing.md, marginTop: spacing.sm },
   statusCard: {
-    flexDirection: 'row', gap: spacing.smd, alignItems: 'flex-start',
     backgroundColor: colors.bgSecondary, borderRadius: radius.md, padding: spacing.md,
   },
+  statusRow: { flexDirection: 'row', gap: spacing.smd, alignItems: 'flex-start' },
+  cta: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm,
+    marginTop: spacing.md, minHeight: 48, borderRadius: radius.md, backgroundColor: colors.accentFill,
+  },
+  ctaText: { color: colors.onAccent, fontSize: font.md, fontWeight: fontWeight.semibold },
+  ctaHint: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    marginTop: spacing.md, padding: spacing.smd, borderRadius: radius.md, backgroundColor: colors.bgTertiary,
+  },
+  ctaHintText: { flex: 1, color: colors.text, fontSize: font.md, lineHeight: 20 },
   badge: {
     width: 44, height: 44, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center',
   },

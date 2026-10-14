@@ -5,6 +5,11 @@ import { useSettingsStore } from '../../store/useSettingsStore';
 import { useNfcKeyStore } from '../../store/useNfcKeyStore';
 import { useAppGroupStore } from '../../store/useAppGroupStore';
 import { BlockScheduleSheet } from '../../components/BlockScheduleSheet';
+import { EmergencyReleaseSheet } from '../../components/EmergencyReleaseSheet';
+import { useShieldReleaseStore } from '../../store/useShieldReleaseStore';
+import { describeEnded, releasesThisMonth, timesWord } from '../../utils/shieldRelease';
+import { useManualBlockStore } from '../../store/useManualBlockStore';
+import { MANUAL_BLOCK_PRESETS, describeDuration, manualBlockWanted } from '../../utils/manualBlock';
 import {
   DEFAULT_GROUP_ID, DEFAULT_GROUP_NAME, allGroups, groupName, resolveAssignments, resolveGroupId, type GroupedReason,
 } from '../../utils/appGroups';
@@ -19,11 +24,13 @@ import { isDemoModeActive } from '../../utils/demoState';
 import { screenTimeBridge } from '../../utils/screenTimeBridge';
 import { isNfcSupported, scanKeyTag } from '../../utils/nfcBridge';
 import { keyLinkUrl, type NfcKey } from '../../utils/nfcKey';
+import { applyKeyScan } from '../../utils/releaseBlocks';
 import { UNIVERSAL_LINK_HOSTS } from '../../utils/deepLinks';
 import { alertPermissionOff } from '../../utils/permissionAlert';
 import type { ShieldReasonEntry } from '../../utils/appShield';
 import { shieldReasonLines } from '../../utils/shieldReasonText';
 import { navigateToSettingsEntry } from '../../navigation/openSettings';
+import * as Clipboard from 'expo-clipboard';
 import { format } from 'date-fns/format';
 import { clockTimeToken } from '../../utils/clockTime';
 
@@ -47,10 +54,10 @@ interface Props {
  * block" rows, which are now one (`screenTimeApps`), so Settings search lands
  * on the same switches.
  *
- * **A tag is one reason among four and never ends the other three** (see
- * `appShield.ts` and `docs/arch/nfc-key.md`). Nothing on this screen may add a
- * button that lifts a focus, gate or penalty block: the penalty's only way out
- * is switching the feature off, which is deliberate.
+ * **A tag and the emergency button end every live block, and both are
+ * recorded** (`releaseBlocks.ts`, `docs/arch/nfc-key.md`). Any other way of
+ * lifting a block from this screen would bypass that record, so a new one goes
+ * through `releaseAllBlocks` rather than writing a store.
  */
 export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
   const colors = useColors();
@@ -304,6 +311,24 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
     await Share.share({ message: url }).catch(() => {});
   };
 
+  // The code a Shortcuts action takes in place of the tag, which Shortcuts
+  // can't read the identity of: the link key's own token (see
+  // ToggleKeyLockIntent.swift). Copied rather than shown, since it is only ever
+  // pasted into the other app.
+  const copyKeyCode = async (key: NfcKey) => {
+    try {
+      await Clipboard.setStringAsync(key.secret);
+    } catch {
+      Alert.alert('Couldn’t copy', 'Try again, or use Share link and take the code after “token=”.');
+      return;
+    }
+    haptics.success();
+    Alert.alert(
+      'Key code copied',
+      'In Shortcuts, add the Toggle Key Lock action from dundundun to an NFC automation and paste this code into it. Anyone who has the code can lock or unlock your apps.',
+    );
+  };
+
   const handleAddLink = () => {
     nameThen('Name this link tag', 'Link tag', name => {
       const enrolled = useNfcKeyStore.getState().enrollLink(name);
@@ -352,6 +377,7 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
     };
     Alert.alert(key.name, undefined, [
       ...(key.kind === 'link' ? [{ text: 'Share link', onPress: () => { void shareKeyLink(key); } }] : []),
+      ...(key.kind === 'link' ? [{ text: 'Copy key code for Shortcuts', onPress: () => { void copyKeyCode(key); } }] : []),
       { text: 'Remove', style: 'destructive' as const, onPress: remove },
       { text: 'Cancel', style: 'cancel' as const },
     ]);
@@ -368,7 +394,7 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
       }
       const result = await scanKeyTag('Hold your phone to your key tag to unlock your apps.');
       if (result.kind !== 'tag') return;
-      const scan = useNfcKeyStore.getState().applyScan('tag', result.uid);
+      const scan = applyKeyScan('tag', result.uid);
       if (scan.outcome === 'unknown') {
         haptics.warning();
         Alert.alert('Tag not recognized', 'This tag isn’t one of your key tags. A link tag unlocks by tapping it with the app closed.');
@@ -386,10 +412,132 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
     useNfcKeyStore.getState().lock();
   };
 
+  // ==== block now ====
+
+  const manualBlock = useManualBlockStore(s => s.block);
+  const manualLive = manualBlockWanted(manualBlock, new Date());
+
+  const confirmManual = async (minutes: number | null, groupId: string) => {
+    // The same first-use step as the key lock: a block with no apps chosen
+    // blocks nothing, and a button that visibly does nothing reads as broken.
+    if (totalOf(groupId) === 0) await onChooseApps(groupId);
+    const endsAt = minutes === null
+      ? null
+      : formatReasonTime(new Date(Date.now() + minutes * 60_000).toISOString());
+    Alert.alert(
+      minutes === null ? 'Block apps until you end it?' : `Block apps for ${describeDuration(minutes)}?`,
+      `${minutes === null ? 'They stay blocked until you end it.' : `They stay blocked until ${endsAt ?? 'then'}.`} Ending it${minutes === null ? '' : ' earlier'} takes a key tag or the emergency button, and is saved in the record.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Start block',
+          onPress: () => {
+            if (useManualBlockStore.getState().start(minutes, groupId)) haptics.success();
+          },
+        },
+      ],
+    );
+  };
+
+  const chooseManualGroup = (minutes: number | null) => {
+    if (customGroups.length === 0) { void confirmManual(minutes, DEFAULT_GROUP_ID); return; }
+    Alert.alert('Which apps?', 'Choose the group of apps to block.', [
+      ...allGroups(customGroups).map(g => ({ text: g.name, onPress: () => { void confirmManual(minutes, g.id); } })),
+      { text: 'Cancel', style: 'cancel' as const },
+    ]);
+  };
+
+  const handleBlockNow = async () => {
+    haptics.tap();
+    if (!(await ensureAuthorized('Blocking apps needs Screen Time access. Grant it in Settings, under Screen Time.'))) return;
+    Alert.alert(
+      'Block apps for how long?',
+      'Ending a block takes a key tag or the emergency button, and is saved in the record.',
+      [
+        ...MANUAL_BLOCK_PRESETS.map(m => ({ text: m === null ? 'Until I end it' : describeDuration(m), onPress: () => chooseManualGroup(m) })),
+        { text: 'Cancel', style: 'cancel' as const },
+      ],
+    );
+  };
+
+  // ==== ending blocks early ====
+
+  const [emergencyOpen, setEmergencyOpen] = useState(false);
+  const releaseLog = useShieldReleaseStore(s => s.log);
+  const recentReleases = useMemo(() => releaseLog.slice(-5).reverse(), [releaseLog]);
+  const monthReleases = releasesThisMonth(releaseLog, new Date()).length;
+  const formatReasonTime = (iso: string) => {
+    const when = new Date(iso);
+    return Number.isNaN(when.getTime()) ? null : format(when, clockTimeToken(use24HourTime));
+  };
+
   const activeRuleCount = screenTimeRules.filter(r => r.enabled).length;
 
   return (
     <>
+      <SettingsSection
+        label="Block now"
+        footer="Blocks a group of apps for a length of time you choose, or until you end it, even when dundundun is closed."
+      >
+        {manualLive && manualBlock ? (
+          <SettingsRow
+            entryId="manualBlock"
+            icon="hourglass-outline"
+            iconColor={colors.accent}
+            label={manualBlock.untilIso ? `Blocking until ${formatReasonTime(manualBlock.untilIso) ?? ''}` : 'Blocking until you end it'}
+            hint="Ending it takes a key tag or the emergency button, and is saved in the record."
+            alwaysShowHint
+          />
+        ) : (
+          <SettingsRow
+            entryId="manualBlock"
+            icon="hourglass-outline"
+            label="Block apps now"
+            hint="Pick a length of time, or block until you end it."
+            onPress={() => { void handleBlockNow(); }}
+          />
+        )}
+      </SettingsSection>
+
+      {reasons.length > 0 && (
+        <SettingsSection
+          label="Emergency"
+          footer="Ends every block that is on right now. You write why, and it is saved in the record below. A key tag does the same without the reason."
+        >
+          <SettingsRow
+            entryId="emergencyRelease"
+            icon="warning-outline"
+            iconColor={colors.red}
+            label="End all blocks now"
+            hint="Ends focus, task, failed-task, schedule, timed and key tag blocks."
+            onPress={() => { haptics.tap(); setEmergencyOpen(true); }}
+          />
+        </SettingsSection>
+      )}
+
+      {releaseLog.length > 0 && (
+        <SettingsSection
+          label="Ended early"
+          footer="Each time a key tag or the emergency button ended blocks. The latest five are listed."
+        >
+          <SettingsRow
+            icon="time-outline"
+            label={`Ended early ${timesWord(monthReleases)} this month`}
+          />
+          {recentReleases.map(record => (
+            <React.Fragment key={record.id}>
+              <View style={styles.sep} />
+              <SettingsRow
+                icon={record.source === 'tag' ? 'radio-outline' : 'warning-outline'}
+                label={`${format(new Date(record.at), 'MMM d')} at ${formatReasonTime(record.at) ?? ''}, ${record.source === 'tag' ? 'key tag' : 'emergency button'}`}
+                hint={`Ended: ${describeEnded(record.ended)}.${record.reason ? ` Reason: ${record.reason}` : ''}`}
+                alwaysShowHint
+              />
+            </React.Fragment>
+          ))}
+        </SettingsSection>
+      )}
+
       <SettingsSection
         label="App groups"
         footer="Each group is its own list of apps. iOS doesn’t share which apps you picked, so only the count shows here."
@@ -518,7 +666,7 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
 
       <SettingsSection
         label="Schedules"
-        footer="A schedule blocks a group of apps during set hours, even when dundundun is closed. When schedules overlap, every app in each group is blocked until the last one ends. A key tag can pause one block. Focus sessions, tasks and failed tasks still block on their own."
+        footer="A schedule blocks a group of apps during set hours, even when dundundun is closed. When schedules overlap, every app in each group is blocked until the last one ends. A key tag or the emergency button can end a block early."
       >
         {schedules.map(schedule => (
           <React.Fragment key={schedule.id}>
@@ -562,10 +710,10 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
           iconColor={keyLocked ? colors.accent : undefined}
           label="Locked"
           hint={keyLocked
-            ? 'The apps are locked. Tap a key tag to unlock them. A tag never ends a focus session or a block from a task.'
+            ? 'The apps are locked. Tap a key tag to unlock them. A tag also ends any other block that is on, and the use is saved in the record below.'
             : nfcKeys.length === 0
               ? 'Add a key tag to use this.'
-              : 'Turn on to lock the apps until you tap a key tag. While a schedule is blocking, a tap pauses it instead.'}
+              : 'Turn on to lock the apps until you tap a key tag. While anything else is blocking, a tap ends it instead.'}
           toggle={keyLocked}
           onPress={handleKeyLock}
         />
@@ -603,6 +751,12 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
         />
       </SettingsSection>
     
+      <EmergencyReleaseSheet
+        visible={emergencyOpen}
+        reasons={reasons}
+        formatTime={formatReasonTime}
+        onClose={() => setEmergencyOpen(false)}
+      />
       <BlockScheduleSheet
         visible={scheduleSheet.open}
         scheduleId={scheduleSheet.id}

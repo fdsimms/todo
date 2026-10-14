@@ -160,6 +160,13 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
       case let (nil, until?): return "A schedule is blocking these apps until \(until)."
       case (nil, nil): return "A schedule is blocking these apps."
       }
+    case "manual":
+      // A block the person started themselves. Only the time is on this side;
+      // the app writes no detail for it.
+      if let until = state.untilIso.flatMap(Self.timeLabel) {
+        return "You started a block on these apps. It ends at \(until)."
+      }
+      return "You started a block on these apps."
     case "penalty":
       let cause = state.detail.flatMap { $0.isEmpty ? nil : $0 }
       let until = state.untilIso.flatMap(Self.timeLabel)

@@ -2,12 +2,13 @@
  * A tag that locks and unlocks the apps picked in Settings: the rules, with no
  * store, no clock and no native call in them.
  *
- * **The tag is a lock held by one reason, not a master key.** `appShield.ts`
- * ORs four reasons (focus, penalty, gate, and this) and the first rule of that
- * file is that no reason may lift another's block. A scan therefore flips
- * `keyLocked` and nothing else: it can end the block a tag raised, and it can
- * never end a penalty or a gate. A tag that overrode those would be a way out
- * of the feature that exists to have none.
+ * **A tag is a lock held by one reason, and also the way out of all of them.**
+ * `appShield.ts` ORs five reasons (focus, penalty, gate, schedule, and this).
+ * A scan with anything blocking ends every live reason and writes a record of
+ * it (`releaseAllBlocks`, `releaseBlocks.ts`); with nothing blocking it raises
+ * this lock. That reverses an earlier rule that a tag could only end its own
+ * lock: a block nothing can end early is worse than one that can be ended and
+ * counted. The record is what the rule gives up in exchange.
  *
  * Two kinds of key, because two things read a tag:
  *

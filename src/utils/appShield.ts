@@ -2,6 +2,7 @@ import type { FocusSession } from '../types';
 import { gateShieldWanted, gateSubtitle, gateWindowFor } from './appGate';
 import { shieldWanted } from './focusShield';
 import { KEY_LOCK_DETAIL } from './nfcKey';
+import { isTimedBlock, manualBlockWanted, type ManualBlock } from './manualBlock';
 import { penaltyShieldWanted } from './penaltyShield';
 import { screenTimeBridge } from './screenTimeBridge';
 import { uniqueGroupIds, type GroupAssignments } from './appGroups';
@@ -11,9 +12,9 @@ import { activeSchedules, currentWindowEnd, nativeScheduleWindows, type BlockSch
  * The one place that decides whether the system shield is on, and the only
  * place that writes it.
  *
- * Five reasons this app blocks apps — a focus session is running, a task was
- * failed, a task has to be done first, a key tag locked them, and a schedule's
- * window is open — and they share a single
+ * Six reasons this app blocks apps — a focus session is running, a task was
+ * failed, a task has to be done first, a key tag locked them, a schedule's
+ * window is open, and the person started a timed block — and they share a single
  * `ManagedSettingsStore`. That sharing is not an implementation detail to route
  * around: the native side exposes one shield, so a reconciler per reason is not
  * three features, it is one feature with a race. Whichever ran last would win,
@@ -27,10 +28,12 @@ import { activeSchedules, currentWindowEnd, nativeScheduleWindows, type BlockSch
  * single call. Adding another is a predicate and a line here, which is what the
  * arbiter was for.
  *
- * **A key tag is one reason among the four, not an override of them.** Scanning
- * it flips only `keyLocked`, so it ends the block a tag raised and can never
- * end a penalty or a gate. That is the same invariant as above, applied to the
- * one reason a person can lift by hand.
+ * **A key tag and the emergency button end every live reason, on purpose, and
+ * leave a record.** That is `releaseAllBlocks` (`releaseBlocks.ts`), which ends
+ * each reason where it lives rather than through this arbiter, so this file
+ * still only ORs what is live. An earlier rule had a tag flip only `keyLocked`;
+ * it was reversed because a lock that nothing could end early was worse than one
+ * that could be ended and counted.
  *
  * Safe to over-call, which is the point: it runs on every session write, every
  * settings change, every foreground, every task write and every penalty expiry,
@@ -46,6 +49,12 @@ export interface AppShieldState {
   /** What earned the block — a task's title — for the shield screen to name. */
   penaltyReason: string | null;
   gateEnabled: boolean;
+  /**
+   * A block the person started by hand, with its group already resolved (a
+   * removed group is Default). Optional so a caller that predates it, and a
+   * test that doesn't care, needn't supply it.
+   */
+  manual?: ManualBlock | null;
   /**
    * A key tag has locked the apps and not yet unlocked them. The caller has
    * already required a key to be enrolled (`canLock`), so a lock with nothing
@@ -93,14 +102,14 @@ export interface AppShieldState {
 }
 
 /** Why the apps are blocked, in the order a person should read the reasons. */
-export type ShieldReasonKind = 'focus' | 'gate' | 'penalty' | 'key' | 'schedule';
+export type ShieldReasonKind = 'focus' | 'gate' | 'penalty' | 'key' | 'schedule' | 'manual';
 
 /** One reason the shield is up, with only what a screen needs to say it. */
 export interface ShieldReasonEntry {
   reason: ShieldReasonKind;
   /** The gate tasks standing in the way. Set for `gate` only. */
   titles?: readonly string[];
-  /** When a penalty block runs out. Set for `penalty` only. */
+  /** When a penalty, manual or schedule block runs out. Set for those only. */
   until?: string | null;
   /** The task a penalty was charged for, when it is known. Set for `penalty` only. */
   cause?: string | null;
@@ -126,6 +135,11 @@ export interface ShieldReasonEntry {
 export function shieldReasons(state: AppShieldState): ShieldReasonEntry[] {
   const reasons: ShieldReasonEntry[] = [];
   if (shieldWanted(state.session, state.focusEnabled)) reasons.push({ reason: 'focus', groupId: state.groups.focus });
+  // The person's own timed block reads right after the session: it is the
+  // other thing they chose, and it names nothing but the clock.
+  if (state.manual && manualBlockWanted(state.manual, state.now)) {
+    reasons.push({ reason: 'manual', until: state.manual.untilIso, groupId: state.manual.groupId });
+  }
   if (gateShieldWanted(state.gateTitles.length, state.gateEnabled)) {
     // One entry per group, so a gate for Social and a gate for Games are two
     // lines on the status card and two groups in the union, each naming only
@@ -168,6 +182,7 @@ export function appShieldWanted(state: AppShieldState): boolean {
     shieldWanted(state.session, state.focusEnabled) ||
     penaltyShieldWanted(state.penaltyUntil, state.penaltyEnabled, state.now) ||
     gateShieldWanted(state.gateTitles.length, state.gateEnabled) ||
+    manualBlockWanted(state.manual ?? null, state.now) ||
     activeSchedules(state.schedules, state.now).length > 0 ||
     state.keyLocked
   );
@@ -209,6 +224,12 @@ export function syncAppShield(state: AppShieldState): void {
   const gateWants = reasons.some(r => r.reason === 'gate');
   const keyWants = reasons.some(r => r.reason === 'key');
   const scheduleWants = reasons.some(r => r.reason === 'schedule');
+  const manualWants = reasons.some(r => r.reason === 'manual');
+  // Only a timed block ends on a clock the extension watches. An open-ended one
+  // has no end to arm, so it is held like the key lock: a standing reason that
+  // a penalty or schedule ending must not lift.
+  const manualTimed = manualWants && isTimedBlock(state.manual ?? null);
+  const manualOpen = manualWants && !manualTimed;
   // A window is armed only while the feature is on, so switching it off
   // disarms whatever was armed rather than leaving a shield to be raised for a
   // setting that no longer holds.
@@ -229,15 +250,16 @@ export function syncAppShield(state: AppShieldState): void {
   // - `otherGroupIds`: the groups held by reasons that don't end on a clock the
   //   extension watches (focus, gate, key). A penalty running out, a gate
   //   coming due or a schedule closing all keep these.
-  // - the penalty's group and end, so a schedule closing doesn't lift a penalty
-  //   that is still running, and a penalty ending doesn't lift a schedule.
+  // - the penalty's and the manual block's group and end, so a schedule closing
+  //   doesn't lift a penalty or a timed block that is still running, and either
+  //   ending doesn't lift another.
   // - the pending gate's group and moment, so a schedule closing after a gate
   //   window has started doesn't lift the gate the extension raised.
   const lead = reasons[0];
   bridge.setShieldState({
-    otherReasonWantsShield: focusWants || gateWants || keyWants || scheduleWants,
+    otherReasonWantsShield: focusWants || gateWants || keyWants || scheduleWants || manualOpen,
     reason: lead?.reason ?? 'none',
-    untilIso: lead?.reason === 'penalty' || lead?.reason === 'schedule' ? lead.until ?? null : null,
+    untilIso: lead?.reason === 'penalty' || lead?.reason === 'schedule' || lead?.reason === 'manual' ? lead.until ?? null : null,
     detail: !lead
       ? null
       : lead.reason === 'gate'
@@ -254,10 +276,12 @@ export function syncAppShield(state: AppShieldState): void {
     pendingGateDetail: gateWindow ? pendingDetail : null,
     groups: {
       otherGroupIds: uniqueGroupIds(reasons
-        .filter(r => r.reason === 'focus' || r.reason === 'gate' || r.reason === 'key')
+        .filter(r => r.reason === 'focus' || r.reason === 'gate' || r.reason === 'key' || (r.reason === 'manual' && manualOpen))
         .map(r => r.groupId)),
       penaltyGroupId: penaltyWants ? state.groups.penalty : null,
       penaltyEndIso: penaltyWants ? state.penaltyUntil : null,
+      manualGroupId: manualTimed ? state.manual?.groupId ?? null : null,
+      manualEndIso: manualTimed ? state.manual?.untilIso ?? null : null,
       pendingGateGroupIds: gateWindow
         ? uniqueGroupIds(state.pendingGate?.groupIds ?? [state.groups.gate])
         : [],
@@ -280,4 +304,9 @@ export function syncAppShield(state: AppShieldState): void {
   // first thing that predicate checks.
   if (penaltyWants && state.penaltyUntil) bridge.schedulePenaltyExpiry(state.penaltyUntil);
   else bridge.cancelPenaltyExpiry();
+
+  // The manual block's own window, for the reason the penalty has one: it has
+  // to end on time with the app closed, and only this arms that.
+  if (manualTimed && isTimedBlock(state.manual ?? null)) bridge.scheduleManualExpiry(state.manual!.untilIso!);
+  else bridge.cancelManualExpiry();
 }

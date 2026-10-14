@@ -5,6 +5,8 @@ import { useAppGroupStore } from '../store/useAppGroupStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { useNfcKeyStore } from '../store/useNfcKeyStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useManualBlockStore } from '../store/useManualBlockStore';
+import { useShieldReleaseStore } from '../store/useShieldReleaseStore';
 import { useTaskStore } from '../store/useTaskStore';
 
 /**
@@ -109,6 +111,15 @@ export function useAppShieldSync(): void {
     const unsubscribeKey = useNfcKeyStore.subscribe((state, prev) => {
       if (state.locked !== prev.locked || state.keys !== prev.keys) reconcile();
     });
+    // Starting a timed block (or releasing one) changes the shield at once.
+    const unsubscribeManual = useManualBlockStore.subscribe((state, prev) => {
+      if (state.block !== prev.block) reconcile();
+    });
+    // Ending a gate's or a focus session's block is remembered here, and the
+    // shield has to follow at once, like a scan or a schedule being paused.
+    const unsubscribeReleases = useShieldReleaseStore.subscribe((state, prev) => {
+      if (state.releases !== prev.releases) reconcile();
+    });
     // Ticking off the task a gate hangs on is a task write, and the block has
     // to come off in the same breath — waiting for the next foreground would
     // mean finishing the walk and still being locked out of the apps. Compared
@@ -130,6 +141,8 @@ export function useAppShieldSync(): void {
       unsubscribeFocus();
       unsubscribeSettings();
       unsubscribeKey();
+      unsubscribeReleases();
+      unsubscribeManual();
       unsubscribeGroups();
       unsubscribeTasks();
       subscription.remove();

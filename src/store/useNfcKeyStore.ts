@@ -1,11 +1,11 @@
 import { create } from 'zustand';
 import { dbGetSetting, dbSetSetting } from '../db/database';
 import { generateId } from '../utils/id';
-import { useAppGroupStore } from './useAppGroupStore';
+import type { ShieldReasonKind } from '../utils/appShield';
 import {
-  NFC_KEYS_SETTING, NFC_KEY_LOCK_SETTING, canLock, cleanKeyName, lockAfterRemoval, matchKey,
-  newLinkToken, nextKeyLock, normalizeLinkToken, normalizeTagUid, parseNfcKeys, withKeyAdded,
-  withKeyRemoved, type NfcKey, type NfcKeyKind,
+  NFC_KEYS_SETTING, NFC_KEY_LOCK_SETTING, canLock, cleanKeyName, lockAfterRemoval,
+  newLinkToken, normalizeLinkToken, normalizeTagUid, parseNfcKeys, withKeyAdded,
+  withKeyRemoved, type NfcKey,
 } from '../utils/nfcKey';
 
 /**
@@ -28,9 +28,8 @@ import {
 /** What reading a tag did, for the screen to say. */
 export type KeyScanResult =
   | { outcome: 'locked'; key: NfcKey }
-  | { outcome: 'unlocked'; key: NfcKey }
-  /** A schedule's window was open, and the tag lifted it until it ends. */
-  | { outcome: 'paused'; key: NfcKey; count: number }
+  /** Something was blocking, and the tag ended all of it. `ended` names the reasons. */
+  | { outcome: 'released'; key: NfcKey; ended: ShieldReasonKind[] }
   | { outcome: 'unknown' };
 
 export type EnrollResult =
@@ -51,8 +50,8 @@ interface NfcKeyStore {
   removeKey: (id: string) => void;
   /** Raise the lock from the app. Refused with no key enrolled to end it. */
   lock: () => boolean;
-  /** A tag was read (hardware id) or a link was opened (token): flip the lock if it is ours. */
-  applyScan: (kind: NfcKeyKind, secret: string | null) => KeyScanResult;
+  /** End the lock. The caller decides it may: a scan (`applyKeyScan`) or the emergency button. */
+  unlock: () => void;
 }
 
 function persistKeys(keys: NfcKey[]): void {
@@ -129,21 +128,9 @@ export const useNfcKeyStore = create<NfcKeyStore>((set, get) => ({
     return true;
   },
 
-  applyScan(kind, secret) {
-    const key = matchKey(get().keys, kind, secret);
-    if (!key) return { outcome: 'unknown' };
-    // A lock the tag raised is ended first. Otherwise, if a schedule's window
-    // is open, the scan lifts that window until it closes instead of raising
-    // a lock on top of it. Either way a tag ends only what a tag may: never a
-    // penalty, a gate or a focus session, which `pauseOpenSchedules` does not
-    // touch.
-    if (!get().locked) {
-      const count = useAppGroupStore.getState().pauseOpenSchedules(new Date());
-      if (count > 0) return { outcome: 'paused', key, count };
-    }
-    const locked = nextKeyLock(get().locked);
-    persistLocked(locked);
-    set({ locked });
-    return { outcome: locked ? 'locked' : 'unlocked', key };
+  unlock() {
+    if (!get().locked) return;
+    persistLocked(false);
+    set({ locked: false });
   },
 }));

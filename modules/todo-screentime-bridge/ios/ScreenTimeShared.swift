@@ -69,6 +69,12 @@ enum ScreenTimeShared {
   /// must not disarm the other.
   static let penaltyActivityName = "todo.penaltyWindow"
 
+  /// The one-shot DeviceActivity window whose end lifts a block the person
+  /// started by hand. The penalty window's twin, and its own activity so that
+  /// stopping either never disarms the other. Hand-matched in
+  /// `TodoActivityMonitor.swift`.
+  static let manualActivityName = "todo.manualWindow"
+
   /// The one-shot DeviceActivity window whose *start* raises a gate block, so a
   /// gate that comes due while the app is closed still holds the apps.
   ///
@@ -134,7 +140,7 @@ struct ShieldStateShared: Codable {
   /// session, in practice. The monitor extension reads only this: it is what
   /// says whether the end of a penalty window may lift the shield.
   let otherReasonWantsShield: Bool
-  /// "penalty", "focus", "gate", "key", "schedule" or "none" — what the shield screen leads with.
+  /// "penalty", "focus", "gate", "key", "schedule", "manual" or "none" — what the shield screen leads with.
   let reason: String
   /// When a penalty block runs out, as an ISO instant, or nil when the shield
   /// is up for some other reason. The shield screen turns this into a time;
@@ -180,6 +186,10 @@ struct ShieldGroupsShared: Codable {
   let otherGroupIds: [String]
   let penaltyGroupId: String?
   let penaltyEndIso: String?
+  /// The block the person started by hand. Optional so a state file written by
+  /// an older build still decodes, with this half simply absent.
+  let manualGroupId: String?
+  let manualEndIso: String?
   let pendingGateGroupIds: [String]?
   let pendingGateLiveAtIso: String?
 }
@@ -339,7 +349,12 @@ extension ScreenTimeShared {
   /// for the callbacks that fire because that moment arrived, where a few
   /// milliseconds of early delivery must not leave the penalty's group up or
   /// the gate's out.
-  static func heldGroupIds(now: Date, penaltyEnded: Bool = false, gateStarting: Bool = false) -> [String] {
+  static func heldGroupIds(
+    now: Date,
+    penaltyEnded: Bool = false,
+    gateStarting: Bool = false,
+    manualEnded: Bool = false
+  ) -> [String] {
     // No readable state is "assume the app's own reasons still hold" for
     // everything but what we can compute ourselves, the same cautious default
     // `readShieldState` documents: the Default group stays up and the app
@@ -351,6 +366,11 @@ extension ScreenTimeShared {
     if !penaltyEnded,
        let group = state.groups?.penaltyGroupId,
        let end = parseIso(state.groups?.penaltyEndIso), end > now {
+      ids.append(group)
+    }
+    if !manualEnded,
+       let group = state.groups?.manualGroupId,
+       let end = parseIso(state.groups?.manualEndIso), end > now {
       ids.append(group)
     }
     if let groups = state.groups?.pendingGateGroupIds,

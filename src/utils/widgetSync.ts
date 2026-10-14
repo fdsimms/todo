@@ -33,6 +33,10 @@ import { defaultUsualDose, prefsFor } from './medicationSettings';
 import { recordDose } from './doseRecording';
 import { haptics } from './haptics';
 import { parseQueuedDreams } from './dreamQueue';
+import { keyCodeToken, parseQueuedKeyScans } from './keyScanQueue';
+import { alertKeyScanResult } from './keyScanAlert';
+import { applyKeyScan } from './releaseBlocks';
+import type { KeyScanResult } from '../store/useNfcKeyStore';
 import { useJournalStore } from '../store/useJournalStore';
 import { isProjectLocked } from '../store/useProjectLockStore';
 
@@ -208,6 +212,36 @@ async function processPendingDreams(): Promise<void> {
     haptics.success();
   } catch {
     // A build predating drainPendingDreams — no-op.
+  }
+}
+
+// Key codes run from Shortcuts (ToggleKeyLockIntent), the route for a plain NFC
+// tag. Each goes through `applyKeyScan('link', …)`, the call a tapped link tag
+// makes, so a code is matched against the enrolled link keys and nothing else
+// decides anything here: an unknown or malformed code gets the same single
+// "not recognized". The result is spoken once, for the last code, since the
+// person ran one action and a queue of several only means the app was closed
+// for a while. Like every drain it waits for a real foreground in demo mode,
+// and `widgetBridge()` is what returns null there.
+async function processPendingKeyScans(): Promise<void> {
+  const bridge = widgetBridge();
+  // Optional on the bridge: a binary built before the intent has no drain.
+  if (!bridge?.drainPendingKeyScans) return;
+  try {
+    const queued = parseQueuedKeyScans(await bridge.drainPendingKeyScans());
+    if (queued.length === 0) return;
+    let last: KeyScanResult | null = null;
+    for (const scan of queued) {
+      last = applyKeyScan('link', keyCodeToken(scan.code));
+    }
+    if (last) {
+      alertKeyScanResult(last, {
+        title: 'Key code not recognized',
+        message: 'This code isn’t one of your key tags. Copy it again from the key’s row on the Screen Time screen.',
+      });
+    }
+  } catch {
+    // A build predating drainPendingKeyScans — no-op.
   }
 }
 
@@ -559,6 +593,7 @@ export function useWidgetSync(): void {
       processPendingDisposals(),
       processPendingDoses(),
       processPendingDreams(),
+      processPendingKeyScans(),
       processQuietWidgetTaps(),
     ]).finally(() => {
       // Deferred rather than called synchronously during mount — avoids
@@ -582,6 +617,7 @@ export function useWidgetSync(): void {
           processPendingDisposals(),
           processPendingDoses(),
           processPendingDreams(),
+          processPendingKeyScans(),
           processQuietWidgetTaps(),
         ]).finally(scheduleSnapshotWrite);
       }
