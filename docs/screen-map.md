@@ -75,6 +75,7 @@ components below.
 Where each component can appear.
 
 - `src/components/ActionMenu.tsx` — on FoodLogScreen
+- `src/components/ActionRow.tsx` — on FoodLogScreen, GroceryScreen, KitchenScreen, app shell
 - `src/components/ActiveTripBanner.tsx` — on GroceryScreen, KitchenScreen, MealPlanScreen, RecipesScreen
 - `src/components/ActivityRingsCard.tsx` — on SettingsGroupScreen, TodayScreen
 - `src/components/ActivitySourceSheet.tsx` — on UnattendedLogScreen
