@@ -256,11 +256,11 @@ export function describePreferredProduct(
  *
  * Only a product nobody has rated is worth asking about: a verdict already
  * given is the person's to change in ProductSheet, not to be re-asked every
- * time they finish a bag. A named product (the pantry's per-flavor "Out of
+ * time they finish a bag. A named product (the pantry's per-product "Out of
  * it") is the answer by itself. An item-level finish (`ItemDisposalOffer`)
  * names no product, so it takes the item's preferred one, and failing that the
  * only box the item has; with several unrated boxes and no preference the app
- * cannot know which was eaten, and rating the wrong flavor is worse than not
+ * cannot know which was eaten, and rating the wrong product is worse than not
  * asking.
  */
 export function ratingCandidate(

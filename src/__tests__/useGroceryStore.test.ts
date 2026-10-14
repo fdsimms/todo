@@ -8962,7 +8962,7 @@ describe('mergeItems: what it moves onto the survivor', () => {
   });
 });
 
-describe('asking how a flavor was', () => {
+describe('asking how a product was', () => {
   function chips() {
     const item = makeItem({ name: 'Chips' });
     seed([item]);
@@ -8972,13 +8972,13 @@ describe('asking how a flavor was', () => {
     return { item, nacho, ranch };
   }
 
-  it('asks about the one flavor marked out of the pantry', () => {
+  it('asks about the one product marked out of the pantry', () => {
     const { item, ranch } = chips();
     useGroceryStore.getState().markProductsOutOf([ranch.id]);
     expect(useGroceryStore.getState().ratingOffer).toEqual({ itemId: item.id, productId: ranch.id });
   });
 
-  it('asks nothing about a batch, or a flavor that already has a verdict', () => {
+  it('asks nothing about a batch, or a product that already has a verdict', () => {
     const { nacho, ranch } = chips();
     useGroceryStore.getState().markProductsOutOf([nacho.id, ranch.id]);
     expect(useGroceryStore.getState().ratingOffer).toBeNull();
@@ -8988,7 +8988,7 @@ describe('asking how a flavor was', () => {
     expect(useGroceryStore.getState().ratingOffer).toBeNull();
   });
 
-  it('writes the answer to the offered flavor and closes the question', () => {
+  it('writes the answer to the offered product and closes the question', () => {
     const { ranch } = chips();
     useGroceryStore.getState().markProductsOutOf([ranch.id]);
     useGroceryStore.getState().rateOfferedProduct('fine');
@@ -9004,7 +9004,7 @@ describe('asking how a flavor was', () => {
     expect(useGroceryStore.getState().itemProducts.find(p => p.id === ranch.id)!.rating).toBeNull();
   });
 
-  it('asks after "Used it up" only when it can tell which flavor, and never after "Went bad"', () => {
+  it('asks after "Used it up" only when it can tell which product, and never after "Went bad"', () => {
     const { item, nacho } = chips();
     // Two unrated boxes and the first one became the preference, so it's named.
     useGroceryStore.getState().recordDisposal(item.id, 'usedUp');
@@ -9015,7 +9015,7 @@ describe('asking how a flavor was', () => {
     expect(useGroceryStore.getState().ratingOffer).toBeNull();
   });
 
-  it('asks about a flavor that was eaten from the food log', () => {
+  it('asks about a product that was eaten from the food log', () => {
     const { item, ranch } = chips();
     useGroceryStore.getState().offerProductRating(ranch.id);
     expect(useGroceryStore.getState().ratingOffer).toEqual({ itemId: item.id, productId: ranch.id });

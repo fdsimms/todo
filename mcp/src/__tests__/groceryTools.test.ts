@@ -257,7 +257,7 @@ describe('the catalog tools', () => {
     });
   });
 
-  describe('rating a flavor', () => {
+  describe('rating a variant', () => {
     it('writes the middle answer with its reason, shows both back, and clears with null', () => {
       addGroceryItem(replica, 'soda');
       const box = saveGroceryBox(replica, { name: 'soda' }, { brand: 'Olipop', variant: 'Caramel Apple' }).box!;

@@ -2938,7 +2938,7 @@ function registerWriteTools(
       brand: z.string().nullable().optional(),
       variant: z.string().nullable().optional(),
       note: z.string().optional(),
-      rating: z.enum(['loved', 'fine', 'avoid']).nullable().optional().describe('How it was: loved (Loved it), fine (It was fine) or avoid (Never again); null clears it. Put the reason in note ("too sweet"). Rate a flavor only once the person has tried it, never from what they bought.'),
+      rating: z.enum(['loved', 'fine', 'avoid']).nullable().optional().describe('How it was: loved (Loved it), fine (It was fine) or avoid (Never again); null clears it. Put the reason in note ("too sweet"). Rate a variant only once the person has tried it, never from what they bought.'),
       gtin: z.string().optional().describe('The barcode printed on the package, digits only or as scanned. A scan of it then lands on this variant. A code belongs to one variant at a time: it moves here from whichever variant held it. A store\'s own by-weight code is refused.'),
       delete: z.boolean().optional(),
     },

@@ -134,7 +134,7 @@ describe('productsForItem', () => {
     expect(productsForItem('bread', all, 'preferred')[0].id).toBe('preferred');
   });
 
-  // 'fine' is a known quantity and unrated is a gamble, so a flavor you have had
+  // 'fine' is a known quantity and unrated is a gamble, so a product you have had
   // and shrugged at ranks above one you have never tried.
   it('then ranks loved, fine, unrated, then never-again', () => {
     expect(productsForItem('bread', all, 'preferred').map(p => p.id))
@@ -331,7 +331,7 @@ describe('ratingCandidate', () => {
     expect(ratingCandidate([nacho, taco], 'chips', 'taco')?.id).toBe('taco');
   });
 
-  // Rating the wrong flavor is worse than not asking.
+  // Rating the wrong product is worse than not asking.
   it('asks nothing when it cannot tell which box was eaten', () => {
     expect(ratingCandidate([nacho, taco], 'chips', null)).toBeNull();
   });

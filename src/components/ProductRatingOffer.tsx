@@ -15,13 +15,13 @@ interface Props {
 }
 
 /**
- * "How was it?" for the flavor you just finished: Loved it, It was fine or
+ * "How was it?" for the product you just finished: Loved it, It was fine or
  * Never again, one tap.
  *
  * **It is asked after the product is out, never on the way in.** Rating a
- * flavor from the shopping list asks about something nobody has tried yet, so
+ * product from the shopping list asks about something nobody has tried yet, so
  * the only moments offered are the ones where the person has had it: marking a
- * flavor out of the pantry, and "Used it up". "Went bad" never raises it,
+ * product out of the pantry, and "Used it up". "Went bad" never raises it,
  * because spoiled is not disliked. The reason ("too sweet") lives in the
  * product's note and is added in ProductSheet; this banner records the verdict
  * and nothing else, so ignoring it costs nothing.
@@ -51,7 +51,7 @@ export function ProductRatingOffer({ itemId }: Props) {
   return (
     <OfferBanner
       lead={lead}
-      rest="Rating it helps you pick between flavors next time."
+      rest="Rating it helps you pick between versions next time."
       actionLabel="Loved it"
       onAction={() => rate('loved')}
       actionTint={colors.greenFill}

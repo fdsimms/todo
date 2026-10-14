@@ -5986,7 +5986,7 @@ export const GROCERY_VARIANT_MAX_LENGTH = 40;
 // for a precision nobody applies consistently to a bag of chips — four stars
 // versus three is not a distinction anyone reproduces a month later, while
 // "never again" is. 'fine' exists because "tried it, it was okay" is a verdict
-// that silence cannot carry: without it a flavor you have had and shrugged at
+// that silence cannot carry: without it a product you have had and shrugged at
 // reads the same as one you have never bought. The reason lives in
 // `ItemProduct.note`, not in a second field.
 export type ProductRating = 'loved' | 'fine' | 'avoid';

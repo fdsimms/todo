@@ -144,16 +144,16 @@ chips are scoped to the item's own products**, deliberately: brands don't genera
 - **A rating is three answers, never a 1-to-5 scale.** The question at the shelf is "would I get
   this again". Four stars versus three is not a distinction anyone reproduces a month later;
   "loved it", "it was fine" and "never again" are. `fine` exists because silence cannot carry it:
-  without it a flavor you tried and shrugged at reads the same as one you have never bought. Null
+  without it a product you tried and shrugged at reads the same as one you have never bought. Null
   — no opinion — is the overwhelmingly common state and is not "fine". Nothing infers one, in
   either direction: buying something is not liking it. The reason ("too sweet") is the product's
   existing `note`, not a second field.
 - **A rating is asked for only after the person has had the thing** (`ProductRatingOffer`):
-  a flavor marked out of the pantry, "Used it up", or a food log entry made from a product. Never
+  a product marked out of the pantry, "Used it up", or a food log entry made from a product. Never
   from the shopping list or after a trip, which asks about something nobody has tried, and never
   from "Went bad", because spoiled is not disliked. `ratingCandidate` (`groceryProduct.ts`) decides
   whether a question is unambiguous: only an unrated box is asked about, and an item-level finish
-  that cannot say which of several boxes was eaten asks nothing, since rating the wrong flavor is
+  that cannot say which of several boxes was eaten asks nothing, since rating the wrong product is
   worse than not asking.
 - **A rating sorts, it never filters.** An `avoid` product stays in the list. Remembering that
   you hated it is the whole point, and hiding it takes the memory away exactly when you're

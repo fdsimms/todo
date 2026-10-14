@@ -551,8 +551,8 @@ interface GroceryStore extends UndoHistoryActions {
   disposalOffer: { itemId: string; stage: 'ask' | 'shelfLife' } | null;
   dismissDisposalOffer: () => void;
   /**
-   * "How was it?" for a flavor the person has just finished. Raised by a
-   * per-flavor "Out of it" and by "Used it up" (`ratingCandidate` decides
+   * "How was it?" for a product the person has just finished. Raised by a
+   * per-product "Out of it" and by "Used it up" (`ratingCandidate` decides
    * whether there is one product it is unambiguously about), and never by
    * "Went bad": spoiled is not disliked. Session-only for the reason
    * `disposalOffer` is. `rateOfferedProduct` writes through `updateProduct`, so
@@ -3077,8 +3077,8 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     set(s => ({
       itemProducts: s.itemProducts.filter(p => !gone.has(p.id)).map(p => byId.get(p.id) ?? p),
     }));
-    // One flavor and it's a real box rather than a portion: ask how it was.
-    // A batch names no single flavor, so it gets no question.
+    // One product and it's a real box rather than a portion: ask how it was.
+    // A batch names no single product, so it gets no question.
     const asked = before.length === 1 && portions.length === 0
       ? ratingCandidate(get().itemProducts, before[0].itemId, get().items.find(i => i.id === before[0].itemId)?.preferredProductId ?? null, before[0].id)
       : null;
