@@ -377,7 +377,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/savedPlaces.ts` — SAVED_PLACES_KEY, SAVED_PLACES_LIMIT, SAVED_PLACE_SUGGEST_MIN_LENGTH, SavedPlace, savedPlaceKey, parseSavedPlaces, SavedPlaceInput, addSavedPlace, renameSavedPlace, editSavedPlace, +6 more
 - `src/utils/savedViews.ts` — SAVED_VIEW_CLAUSE_KINDS, savedViewClauseLabel, SAVED_VIEW_ICONS, DEFAULT_SAVED_VIEW_ICON, SavedViewContext, matchesClause, matchesSavedView, isSavedViewCandidate, filterTasksForView, SavedViewLabels, +11 more
 - `src/utils/scanPortion.ts` — PackageChoice, servingsPerPackage, packageChoices, packageFractions, servingDescription, packageHelping
-- `src/utils/scanResolve.ts` — ScannedItem, ScannedGtinLink, shopperNameFor, shorterNameSuggestions, nameFromScanFor, sourceLabelFor, sourceLineFor, variantFor, ScanBoxSource, scanBoxChoice, +9 more
+- `src/utils/scanResolve.ts` — ScannedItem, ScannedGtinLink, shopperNameFor, itemNameSuggestions, newItemBox, nameFromScanFor, sourceLabelFor, sourceLineFor, variantFor, ScanBoxSource, +10 more
 - `src/utils/scheduleMovePrompt.ts` — confirmScheduleMove, confirmSegmentScope, confirmBulkSetWhen
 - `src/utils/screenSettings.ts` — SCREEN_SETTINGS, screenSettingsEntries
 - `src/utils/screenTimeBridge.ts` — ScreenTimeBridge, screenTimeBridge, isScreenTimeSupported

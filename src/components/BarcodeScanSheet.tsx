@@ -52,18 +52,24 @@ import {
   scanBoxChoice,
   scanLinkTarget,
   pluScannedItem,
+  itemNameSuggestions,
   nameFromScanFor,
+  newItemBox,
   scannedItemFor,
-  shorterNameSuggestions,
   sourceLineFor,
   unknownScannedItem,
-  variantFor,
   type ScannedGtinLink,
   type ScannedItem,
 } from '../utils/scanResolve';
 import { generateId } from '../utils/id';
 import { haptics } from '../utils/haptics';
-import { GROCERY_NAME_MAX_LENGTH, type FoodNutrition, type GroceryItem } from '../types';
+import {
+  GROCERY_BRAND_MAX_LENGTH,
+  GROCERY_NAME_MAX_LENGTH,
+  GROCERY_VARIANT_MAX_LENGTH,
+  type FoodNutrition,
+  type GroceryItem,
+} from '../types';
 import type { ReceiptMatchConfidence } from '../utils/receiptMatch';
 import { TextField } from './TextField';
 
@@ -188,6 +194,15 @@ interface ScanRow extends ScannedItem {
    * Nutrition line doesn't offer to photograph a label the database already read.
    */
   hasNutrition?: boolean;
+  /**
+   * What was typed into the Brand / Variant fields of a row that mints a new
+   * item. `undefined` means untouched, so the barcode's own words answer; an
+   * empty string is an answer too ("no variant"). Kept apart from `brand` so
+   * editing the field never moves the baseline `nameFromScanFor` and
+   * `variantFor` read the source's words against. Resolved by `newItemBox`.
+   */
+  brandEdit?: string;
+  variantEdit?: string;
   /**
    * The panel the lookup stated, kept so a match can be checked against what
    * the catalog already holds for that item. See `panelLooksWrongFor`.
@@ -440,6 +455,31 @@ function DetailRow({
       ) : done ? (
         <Ionicons name="checkmark-circle" size={iconSize.sm} color={colors.greenText} />
       ) : null}
+    </View>
+  );
+}
+
+/**
+ * One "label, text field" line in a new item's form. The label column matches
+ * `DetailRow`'s, so the fields and the answers under them read as one grid.
+ */
+function FieldInput({
+  styles, label, ...input
+}: {
+  styles: ReturnType<typeof makeStyles>;
+  label: string;
+} & React.ComponentProps<typeof TextField>) {
+  return (
+    <View style={styles.fieldRow}>
+      <Text style={styles.detailLabel}>{label}</Text>
+      <TextField
+        style={styles.fieldInput}
+        // Shelf words, not prose: see the name field below.
+        autoCorrect={false}
+        spellCheck={false}
+        accessibilityLabel={label}
+        {...input}
+      />
     </View>
   );
 }
@@ -879,9 +919,10 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
         // exactly as a receipt hands over its printed line. Falls back to the
         // shopper name for a typed row, which has no other words to offer.
         label: row.label || row.name.trim(),
-        // Only a looked-up row has one; a typed row's brand is null, and the
-        // screen skips the product write rather than storing an empty box.
-        brand: row.brand,
+        // A looked-up row's brand, or the one typed over it. A row with neither
+        // has none, and the screen skips the product write rather than storing
+        // an empty box.
+        brand: newItemBox(row).brand,
         aisle: row.aisle,
         quantity: row.quantity,
         priceMinor: row.priceMinor,
@@ -893,9 +934,9 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
         // lookup proposed it is the source's words, not the user's — see
         // `nameFromScanFor`, which is where that test lives.
         nameFromScan: nameFromScanFor(row),
-        // Shortening the name leaves the rest of the product's words, which
-        // are the variant: the item is the thing and this is which one.
-        variant: row.gtin ? variantFor(row.label, row.brand, row.name.trim()) : null,
+        // What was typed in the Variant field, else what shortening the name
+        // left of the product's words: the item is the thing and this is which one.
+        variant: newItemBox(row).variant,
       });
     });
     // Only rows whose label came off a lookup are worth remembering. A typed
@@ -1015,8 +1056,8 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
     if (pendingMatchId(row, match)) return 'Confirm it is the same food, or choose another item';
     // Still wearing the barcode source's own words: say so, because the full
     // product name is what ends up as the item's name if nobody shortens it.
-    if (nameFromScanFor(row) && shorterNameSuggestions(row.name).length > 0) {
-      return 'New item. Tap a shorter name below, or choose an existing item';
+    if (nameFromScanFor(row)) {
+      return 'New item. Check the name, brand and variant above, or choose an existing item';
     }
     return 'Added to your catalog when you continue';
   };
@@ -1117,14 +1158,32 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                 const rowItem = rowItemId ? items.find(i => i.id === rowItemId) : null;
                 const rowBoxes = rowItemId ? productsForItem(rowItemId, itemProducts) : [];
                 const boxCount = rowBoxes.length;
-                // A scan nothing in the catalog claimed, still named with the
-                // barcode source's words. Offered the shorter names that
-                // are suffixes of them ("Milk" for "Great Value 2% Reduced Fat
-                // Milk"), so the item is the thing and the rest is a variant.
+                // A scanned code nothing in the catalog claimed will mint a new
+                // item, so it is asked for the three things that make one: who
+                // makes it, what it is, and which one. All three are plain
+                // fields, because a barcode source's words are often a slogan
+                // and no rule can pick the right split out of them.
+                const mintsNew = nameable && !pickedTarget(row) && !rowItemId && !pendingId;
+                // Every row gets the labelled Name field, and it stays mounted
+                // whether or not the name has just matched an item: swapping it
+                // for a plain one mid-keystroke would drop the keyboard. Brand
+                // and Variant are the new item's alone, typed rows included.
+                const showBox = mintsNew;
+                const newBox = newItemBox(row);
+                // Still wearing the source's words: offer what the source says
+                // the product is. See `itemNameSuggestions` for what it refuses.
                 const nameSuggestions =
-                  nameable && !pickedTarget(row) && !rowItemId && !pendingId && nameFromScanFor(row)
-                    ? shorterNameSuggestions(row.name).slice(0, 4)
+                  showBox && nameFromScanFor(row)
+                    ? itemNameSuggestions({ name: row.name, label: row.label, category: row.category })
                     : [];
+                const onNameChange = (text: string) =>
+                  patchRow(row.key, {
+                    name: text.slice(0, GROCERY_NAME_MAX_LENGTH),
+                    // Naming a row is the act that makes it recordable;
+                    // clearing the name takes that back rather than
+                    // leaving a checked row with nothing in it.
+                    included: text.trim().length > 0,
+                  });
                 const resolvedName = rowItem?.name ?? null;
                 const captionNote = captionNoteFor(row, index);
                 // What Add will file this row's product as, from the same rule
@@ -1184,47 +1243,65 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                     </TouchableOpacity>
 
                     <View style={styles.rowBody}>
-                      <TextField
-                        style={styles.rowInput}
-                        value={row.name}
-                        editable={nameable}
-                        onChangeText={text =>
-                          patchRow(row.key, {
-                            name: text.slice(0, GROCERY_NAME_MAX_LENGTH),
-                            // Naming a row is the act that makes it recordable;
-                            // clearing the name takes that back rather than
-                            // leaving a checked row with nothing in it.
-                            included: text.trim().length > 0,
-                          })
-                        }
-                        placeholder="Name this item"
-                        placeholderTextColor={colors.textTertiary}
-                        // A shelf word, not prose — see GroceryRow's inline
-                        // rename field for what autocorrect does to one.
-                        autoCorrect={false}
-                        spellCheck={false}
-                        accessibilityLabel="Item name"
-                      />
-                      {/* The words the lookup used, kept verbatim: the only way
-                          to check the name above is against the box in hand.
-                          The maker leads it when the name doesn't already say
-                          who it is — see `sourceLabelFor`. */}
-                      {!!sourceLineFor(row.name, row.label, row.brand) && (
-                        <Text style={styles.rowLabel}>{sourceLineFor(row.name, row.label, row.brand)}</Text>
-                      )}
-                      {nameSuggestions.length > 0 && (
-                        <View style={styles.captionRow}>
-                          {nameSuggestions.map(suggestion => (
-                            <InlineAction
-                              key={suggestion}
-                              label={suggestion}
-                              variant="neutral"
-                              onPress={() => patchRow(row.key, { name: suggestion.slice(0, GROCERY_NAME_MAX_LENGTH), included: true })}
-                              accessibilityLabel={`Name it ${suggestion}`}
-                              style={styles.confirmPill}
-                            />
-                          ))}
-                        </View>
+                      {(
+                        <>
+                          {/* Three plain fields, in the order the box prints
+                              them. Name is the item itself; Brand and Variant
+                              are the product under it. Shortening Name leaves
+                              the rest of the source's words in Variant until
+                              Variant is typed in. */}
+                          <FieldInput
+                            styles={styles}
+                            label="Name"
+                            value={row.name}
+                            placeholder="Name this item"
+                            placeholderTextColor={colors.textTertiary}
+                            onChangeText={onNameChange}
+                            editable={nameable}
+                            selectTextOnFocus
+                          />
+                          {nameSuggestions.length > 0 && (
+                            <View style={[styles.captionRow, styles.fieldIndent]}>
+                              {nameSuggestions.map(suggestion => (
+                                <InlineAction
+                                  key={suggestion}
+                                  label={suggestion}
+                                  variant="neutral"
+                                  onPress={() => patchRow(row.key, { name: suggestion.slice(0, GROCERY_NAME_MAX_LENGTH), included: true })}
+                                  accessibilityLabel={`Name it ${suggestion}`}
+                                  style={styles.confirmPill}
+                                />
+                              ))}
+                            </View>
+                          )}
+                          {showBox && (
+                            <>
+                              <FieldInput
+                                styles={styles}
+                                label="Brand"
+                                value={newBox.brand ?? ''}
+                                placeholder="Optional"
+                                placeholderTextColor={colors.textTertiary}
+                                onChangeText={text => patchRow(row.key, { brandEdit: text.slice(0, GROCERY_BRAND_MAX_LENGTH) })}
+                              />
+                              <FieldInput
+                                styles={styles}
+                                label="Variant"
+                                value={newBox.variant ?? ''}
+                                placeholder="Optional"
+                                placeholderTextColor={colors.textTertiary}
+                                onChangeText={text => patchRow(row.key, { variantEdit: text.slice(0, GROCERY_VARIANT_MAX_LENGTH) })}
+                              />
+                            </>
+                          )}
+                          {showBox && !!row.gtin && !!row.label ? (
+                            <Text style={styles.rowLabel}>Barcode lookup: {row.label}</Text>
+                          ) : (
+                            !!sourceLineFor(row.name, row.label, row.brand) && (
+                              <Text style={styles.rowLabel}>{sourceLineFor(row.name, row.label, row.brand)}</Text>
+                            )
+                          )}
+                        </>
                       )}
                       {/* A price read off the shelf label the barcode was on.
                           Shown as its own line with a way out, because it is a
@@ -1606,6 +1683,20 @@ function makeStyles(colors: Colors) {
       fontSize: font.xs,
       marginTop: spacing.xxs,
       fontVariant: ['tabular-nums'],
+    },
+    // The label column is `detailLabel`'s, so `fieldIndent` lines a chip row up
+    // under the inputs. The input sits on `bgSunken`, a step down from the card
+    // it is in, because a bare field on a card reads as a line of text.
+    fieldRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.xsm },
+    fieldIndent: { marginLeft: 72 + spacing.sm, marginBottom: spacing.xsm },
+    fieldInput: {
+      flex: 1,
+      color: colors.text,
+      fontSize: font.md,
+      paddingHorizontal: spacing.smd,
+      paddingVertical: spacing.xsm,
+      backgroundColor: colors.bgSunken,
+      borderRadius: radius.md,
     },
     manualRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     manualInput: {
