@@ -125,6 +125,7 @@ export function HealthRulesSheet({ visible, onClose }: Props) {
       }
       rules={rules}
       categoryFallback={fallbackCategory}
+      logOnComplete
       onChange={next => setRules(clearMarksOnRuleEdit(rules, next))}
       makeRule={() => ({
         id: generateId(),

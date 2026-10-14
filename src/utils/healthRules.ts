@@ -4,6 +4,7 @@ import type { HealthNutrientMetric, HealthRule, HealthRuleMetric, Task } from '.
 import { generateId } from './id';
 import { parseRuleEstimate } from './ruleEstimate';
 import { parseRuleCategory } from './ruleCategory';
+import { parseRuleLog } from './ruleLog';
 import { generatedSourceOf } from './generatedTasks';
 
 /**
@@ -535,6 +536,7 @@ export function parseHealthRules(raw: string | null | undefined): HealthRule[] {
       lastFiredDayKey: typeof rule.lastFiredDayKey === 'string' ? rule.lastFiredDayKey : null,
       ...parseRuleEstimate(rule),
       ...parseRuleCategory(rule),
+      ...parseRuleLog(rule),
     }];
   });
 }

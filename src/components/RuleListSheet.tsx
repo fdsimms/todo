@@ -13,9 +13,13 @@ import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { CategoryPickerSheet } from './CategoryPicker';
 import { EmptyState } from './EmptyState';
 import { InlineAction } from './InlineAction';
+import { RuleLogFields } from './RuleLogFields';
+import { useSavedMealsStore } from '../store/useSavedMealsStore';
+import { describeRuleLog } from '../utils/ruleLog';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { TextField } from './TextField';
+import type { RuleTaskLog } from '../types';
 
 /** Same constraint EmptyState puts on its own icon. */
 type IoniconName = keyof typeof Ionicons.glyphMap;
@@ -115,6 +119,12 @@ interface Props<T extends EditableRule> {
    * is that setting being empty. Omit it to leave the field out.
    */
   categoryFallback?: string | null;
+  /**
+   * Turns on the "When completed" controls in each rule's editor, for the rule
+   * kinds that carry a dose or a food log entry (`RuleTaskLog`): the same four
+   * as `categoryFallback`, so reminder captures leave it off.
+   */
+  logOnComplete?: boolean;
 }
 
 export function RuleListSheet<T extends EditableRule>({
@@ -137,11 +147,14 @@ export function RuleListSheet<T extends EditableRule>({
   header,
   toggleOnColor,
   categoryFallback,
+  logOnComplete,
 }: Props<T>) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const hideHelpText = useSettingsStore(s => s.hideHelpText);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
+  const savedMeals = useSavedMealsStore(s => s.meals);
+  const savedMealName = (id: string) => savedMeals.find(m => m.id === id)?.name ?? null;
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [categoryPickId, setCategoryPickId] = useState<string | null>(null);
@@ -255,6 +268,10 @@ export function RuleListSheet<T extends EditableRule>({
                           {rule.title || 'Untitled rule'}
                         </Text>
                         <Text style={styles.meta} numberOfLines={1}>{describeRule(rule)}</Text>
+                        {logOnComplete && (() => {
+                          const logs = describeRuleLog(rule as T & RuleTaskLog, savedMealName);
+                          return logs ? <Text style={styles.note} numberOfLines={1}>{logs}</Text> : null;
+                        })()}
                         {(() => {
                           const note = rowNote?.(rule) ?? null;
                           if (!note) return null;
@@ -349,6 +366,17 @@ export function RuleListSheet<T extends EditableRule>({
                                     : 'Uses the “File them under” setting: None.'}
                               </Text>
                             )}
+                          </>
+                        )}
+                        {logOnComplete && (
+                          <>
+                            <Text style={[styles.editorLabel, styles.editorLabelSpaced]}>When completed</Text>
+                            <RuleLogFields
+                              key={rule.id}
+                              rule={rule as T & RuleTaskLog}
+                              onChange={patch => update(rule.id, patch as unknown as Partial<T>)}
+                              menuName={`${title} dose unit menu`}
+                            />
                           </>
                         )}
                         <TouchableOpacity

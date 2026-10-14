@@ -382,6 +382,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/rsvp.ts` — parseGuestNames
 - `src/utils/ruleCategory.ts` — parseRuleCategory, ruleCategoryFor, renameInRuleCategories, withRuleCategory
 - `src/utils/ruleEstimate.ts` — GeneratorEstimate, GeneratorEstimates, holdsKindEstimate, parseRuleEstimate, ruleEstimateDraft, withRuleEstimate, parseGeneratorEstimates, withGeneratorEstimate
+- `src/utils/ruleLog.ts` — RULE_MEDICATION_NAME_MAX_LENGTH, parseRuleLog, ruleLogDraft, ruleLogOfTask, taskLogChanged, withRuleLog, renamedRuleLogs, describeRuleLog
 - `src/utils/savedEventTasks.ts` — BOOK_LEAD_DAYS, bookSourceId, bookEventSourceOf, bookDueDay, wantsBookTask, bookTaskTitle, bookTaskNotes
 - `src/utils/savedEvents.ts` — SAVED_EVENTS_KEY, BOOK_EVERY_MONTHS_MAX, SavedEvent, SavedEventFields, parseSavedEvents, readSavedEvents, writeSavedEvents, findSavedEvent, sortedSavedEvents, saveEventAs, +10 more
 - `src/utils/savedMealReview.ts` — ReviewLine, reviewLinesFor, ItemAmountEdit, itemAmountEdit, ESTIMATE_CHOICES, ItemChange, itemAtAmount, itemAtEstimateFactor, replaceLine, appendLine, +6 more

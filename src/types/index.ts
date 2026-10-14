@@ -427,7 +427,24 @@ export interface RuleTaskCategory {
   category?: string;
 }
 
-export interface WeatherRule extends RuleTaskEstimate, RuleTaskCategory {
+/**
+ * What completing the task a rule writes records: a dose in the medication log
+ * (`Task.medicationName`/`medicationAmount`/`medicationUnit`), a food log entry
+ * (`Task.logMealSlot`/`logSavedMealId`/`logMealSlotByTime`), either or both.
+ * The same fields and meanings as on a task; a rule carries them so each task it
+ * writes starts with them. See `src/utils/ruleLog.ts`. All absent on a rule that
+ * logs nothing.
+ */
+export interface RuleTaskLog {
+  medicationName?: string | null;
+  medicationAmount?: number | null;
+  medicationUnit?: string | null;
+  logMealSlot?: MealSlot | null;
+  logSavedMealId?: string | null;
+  logMealSlotByTime?: boolean;
+}
+
+export interface WeatherRule extends RuleTaskEstimate, RuleTaskCategory, RuleTaskLog {
   id: string;
   condition: WeatherCondition;
   /** The task's title, e.g. "Put on sunscreen". */
@@ -476,7 +493,7 @@ export interface WeatherRule extends RuleTaskEstimate, RuleTaskCategory {
  * Group as opaque tokens iOS never resolves for the app, so every rule watches
  * the same one selection — see modules/todo-screentime-bridge.
  */
-export interface ScreenTimeRule extends RuleTaskEstimate, RuleTaskCategory {
+export interface ScreenTimeRule extends RuleTaskEstimate, RuleTaskCategory, RuleTaskLog {
   id: string;
   /** Minutes of use across the chosen apps that trips this rule. */
   thresholdMinutes: number;
@@ -543,7 +560,7 @@ export type HealthRuleMetric =
  * both, and `docs/arch/health-data.md` for why a missing reading can never
  * match.
  */
-export interface HealthRule extends RuleTaskEstimate, RuleTaskCategory {
+export interface HealthRule extends RuleTaskEstimate, RuleTaskCategory, RuleTaskLog {
   id: string;
   /** Which reading this rule watches. */
   metric: HealthRuleMetric;
@@ -621,7 +638,7 @@ export interface HealthRule extends RuleTaskEstimate, RuleTaskCategory {
  * this reads titles where `calendarHistory.ts` — which infers — may only
  * offer.
  */
-export interface EventTaskRule extends RuleTaskEstimate, RuleTaskCategory {
+export interface EventTaskRule extends RuleTaskEstimate, RuleTaskCategory, RuleTaskLog {
   id: string;
   /**
    * The words or phrases looked for in an event's title — the rule fires if

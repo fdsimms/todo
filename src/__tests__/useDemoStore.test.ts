@@ -4721,6 +4721,11 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     });
   });
 
+  it('seeds a health rule whose task logs a dose when completed', () => {
+    const rule = useSettingsStore.getState().healthRules.find(r => r.medicationName);
+    expect(rule).toMatchObject({ medicationName: 'Salt tablet', medicationAmount: 1, medicationUnit: 'tablet' });
+  });
+
   it('seeds an event task and the rules alongside it', () => {
     const { tasks } = useTaskStore.getState();
     const settings = useSettingsStore.getState();

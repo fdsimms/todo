@@ -75,6 +75,7 @@ export function WeatherRulesSheet({ visible, onClose }: Props) {
       }
       rules={rules}
       categoryFallback={fallbackCategory}
+      logOnComplete
       onChange={next => setRules(clearWeatherMarksOnEdit(rules, next))}
       makeRule={() => ({
         id: generateId(),

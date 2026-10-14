@@ -2,6 +2,7 @@ import type { ScreenTimeRule, Task } from '../types';
 import { generateId } from './id';
 import { parseRuleEstimate } from './ruleEstimate';
 import { parseRuleCategory } from './ruleCategory';
+import { parseRuleLog } from './ruleLog';
 import { generatedSourceOf } from './generatedTasks';
 
 /**
@@ -92,6 +93,7 @@ export function parseScreenTimeRules(raw: string | null | undefined): ScreenTime
       lastFiredDayKey: typeof rule.lastFiredDayKey === 'string' ? rule.lastFiredDayKey : null,
       ...parseRuleEstimate(rule),
       ...parseRuleCategory(rule),
+      ...parseRuleLog(rule),
     }];
   });
 }

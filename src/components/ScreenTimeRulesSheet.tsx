@@ -101,6 +101,7 @@ export function ScreenTimeRulesSheet({ visible, onClose }: Props) {
       }
       rules={rules}
       categoryFallback={fallbackCategory}
+      logOnComplete
       onChange={setRules}
       makeRule={() => ({
         id: generateId(),

@@ -1920,6 +1920,13 @@ export function seedDemoData(): void {
   const [sleepRule, ...otherHealthRules] = defaultHealthRules();
   useSettingsStore.getState().setHealthRules([
     { ...sleepRule, lastFiredDayKey: dayKeyOf(today) },
+    // A rule whose task logs a dose when it is completed (RuleTaskLog), so the
+    // "When completed" section of the rule sheet has something to show.
+    {
+      id: generateId(), metric: 'sodiumMg', threshold: 3000, checkpointHour: 12, direction: 'under',
+      title: 'Take a salt tablet', enabled: true, lastFiredDayKey: null,
+      medicationName: 'Salt tablet', medicationAmount: 1, medicationUnit: 'tablet',
+    },
     ...otherHealthRules,
   ]);
   addTask({
