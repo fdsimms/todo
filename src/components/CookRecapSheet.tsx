@@ -126,13 +126,12 @@ interface Props {
  *   as the cooking earned. A repeat cook of a rated dish with a full pantry is
  *   one row: the fridge question. `CookRecap` declines to open it at all when
  *   every section is empty.
- * - **Nothing in the pantry checklist is ticked when it opens**, the rule
- *   `CookedUseUpSheet` set and the reason its rows are the ones the app
- *   already claims you have: a pre-ticked sheet makes silence mean "out of
- *   everything". The restock checklist is the deliberate exception — its rows
- *   start ticked, the same default `RecipeToListSheet` already uses for this
- *   exact set (`restockRows`), because that set is already a narrow,
- *   already-trusted recommendation rather than a guess being asked about.
+ * - **Nothing in either checklist is ticked when it opens**, the rule
+ *   `CookedUseUpSheet` set: a pre-ticked sheet makes silence mean "out of
+ *   everything". The restock rows (`restockRows`) were once pre-ticked on the
+ *   argument that the set is narrow, but it is only "known items with no record
+ *   of you having them", which for someone who doesn't log purchases is most of
+ *   a recipe, so a tap on Add would have bought the whole dish again.
  * - **The rating, the fridge, and "Add to list" write immediately; the pantry
  *   ticks wait for Done.** A segment, a logged container, and a restock add
  *   are each a complete answer on their own, while the pantry ticks are a
@@ -263,8 +262,8 @@ export function CookRecapSheet({
   const [ticked, setTicked] = useState<Set<string>>(new Set());
   const [weightText, setWeightText] = useState('');
   const weightTextWidth = useMeasuredTextWidth();
-  // Which restock rows are queued to add — unlike `ticked` above, this starts
-  // *full*, not empty (see the class doc's note on that).
+  // Which restock rows are queued to add. Starts empty like `ticked` above:
+  // the app only knows it has no record of the item, not that it ran out.
   const [restockTicked, setRestockTicked] = useState<Set<string>>(new Set());
 
   // Cleared/reseeded on every opening. A sheet that hands back last cook's
@@ -273,7 +272,7 @@ export function CookRecapSheet({
     if (visible) {
       setTicked(new Set());
       setWeightText('');
-      setRestockTicked(new Set(restockRows.map(r => r.nameKey)));
+      setRestockTicked(new Set());
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
@@ -549,8 +548,8 @@ export function CookRecapSheet({
                 <Text style={styles.groupLabel}>{showPantry ? 'Restock' : 'Restock?'}</Text>
                 {!hideHelpText && (
                   <Text style={styles.hint}>
-                    Ingredients from this recipe that aren’t on your grocery list. Checked ones get added when
-                    you tap Add.
+                    Ingredients from this recipe that aren’t on your grocery list. Check the ones you need,
+                    then tap Add to list.
                   </Text>
                 )}
 
