@@ -2,8 +2,10 @@ import { dbUpdateTask } from '../db/database';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useTemplateStore } from '../store/useTemplateStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { medicationKey } from './medicationLog';
 import { renamedTask, type DoseFill } from './medicationRename';
+import { renamedRuleLogs } from './ruleLog';
 import { syncOkAgainNotification } from './doseRecording';
 import { cancelMedicationOkAgain } from './notifications';
 
@@ -37,6 +39,18 @@ export function renameMedicationEverywhere(
   }));
   touched.forEach(t => { if (t) dbUpdateTask(t); });
   useTemplateStore.getState().renameItemMedication(fromKey, name);
+
+  // The four kinds of rule that write a task keep the dose their tasks log, so
+  // they follow too, or the next task one writes would start the old name again.
+  const settings = useSettingsStore.getState();
+  const weatherRules = renamedRuleLogs(settings.weatherRules, fromKey, name);
+  if (weatherRules !== settings.weatherRules) settings.setWeatherRules(weatherRules);
+  const screenTimeRules = renamedRuleLogs(settings.screenTimeRules, fromKey, name);
+  if (screenTimeRules !== settings.screenTimeRules) settings.setScreenTimeRules(screenTimeRules);
+  const healthRules = renamedRuleLogs(settings.healthRules, fromKey, name);
+  if (healthRules !== settings.healthRules) settings.setHealthRules(healthRules);
+  const eventRules = renamedRuleLogs(settings.eventRules, fromKey, name);
+  if (eventRules !== settings.eventRules) settings.setEventRules(eventRules);
 
   // The "OK again" notification is keyed by medication, so the old key's goes
   // and the new one is rescheduled from the doses it now holds.

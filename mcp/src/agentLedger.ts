@@ -65,7 +65,9 @@ function hourLabel(h: number): string {
 
 /** One rule in the words its sheet would use: when it fires, then what it adds. */
 export function describeRule(type: string, rule: LooseRule): string {
-  const extras = [rule.category && `category ${rule.category}`, typeof rule.estimatedMinutes === 'number' && `${rule.estimatedMinutes} min`].filter(Boolean).join(', ');
+  const extras = [rule.category && `category ${rule.category}`, typeof rule.estimatedMinutes === 'number' && `${rule.estimatedMinutes} min`,
+    typeof rule.medicationName === 'string' && rule.medicationName && `logs a dose of ${rule.medicationName}`,
+    typeof rule.logMealSlot === 'string' && rule.logMealSlot && 'logs to the food log'].filter(Boolean).join(', ');
   const adds = `${typeof rule.title === 'string' && rule.title ? `add the task "${rule.title}"` : 'add a task'}${extras ? ` (${extras})` : ''}`;
   const off = rule.enabled === false ? ' (off)' : '';
   switch (type) {

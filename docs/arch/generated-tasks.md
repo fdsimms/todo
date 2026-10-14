@@ -763,6 +763,30 @@ The write-back compares values, not the patch's keys, because an undo snapshot
 names both fields without changing them. Only a draft with no estimate of its
 own is ever filled, and a task somebody typed never is.
 
+## What completing one logs is kept on its rule
+
+A rule-written task can log a dose or a food log entry when it is completed ("Take
+sodium chloride" logs the dose), so the four rule kinds carry the task's own log
+fields (`RuleTaskLog`: `medicationName`/`Amount`/`Unit`, `logMealSlot`,
+`logSavedMealId`, `logMealSlotByTime`). `src/utils/ruleLog.ts` is the one home:
+`parseRuleLog` in each rule's parser, `ruleLogDraft` in each draft, `withRuleLog` for the
+write-back, `renamedRuleLogs` for a renamed medication.
+
+- **Two ways in, one stored answer.** The rule sheet's "When completed" section
+  (`RuleLogFields`, switched on per sheet by `RuleListSheet`'s `logOnComplete`) sets it, and
+  editing the fields on a live generated task writes them back (`writeLogToSource`, beside
+  `writeEstimateToSource`). The write-back is silent and compares values, like the estimate's,
+  so it fires on a change to what the task logs and on nothing else.
+- **Dose and food are independent**, as on a task, so a rule can carry both. Turning one off in
+  the sheet clears its fields rather than storing "on with nothing filled in".
+- **The dose resolves as a set.** No name, no amount; an amount with no unit is no amount, which
+  completion reads as the medication's usual amount. A saved meal and the by-time switch mean
+  nothing without a slot, so they go with it.
+- **A medication rename follows into the rules** (`renameMedicationEverywhere`), or the next task
+  a rule wrote would log the old name as a new medication. A deleted saved meal is resolve-or-shrug
+  at completion, as on a task.
+- **MCP**: `save_rule` takes the same fields for every rule type but `title`.
+
 ## A category set on one is offered to its generator
 
 Moving an app-written task to another category (a drag on Today, say) is also an

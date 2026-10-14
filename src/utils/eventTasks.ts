@@ -6,6 +6,7 @@ import { pluralKeyVariants } from './groceryPlural';
 import { generateId } from './id';
 import { parseRuleEstimate } from './ruleEstimate';
 import { parseRuleCategory } from './ruleCategory';
+import { parseRuleLog } from './ruleLog';
 import { MIN_SIMILAR_LENGTH, isSingleTransposition, withinOneEdit } from './textSimilar';
 
 /**
@@ -171,6 +172,7 @@ export function parseEventRules(raw: string | null | undefined): EventTaskRule[]
       ...(afterEvent && r.skipIfUpcoming === true ? { skipIfUpcoming: true } : {}),
       ...parseRuleEstimate(r),
       ...parseRuleCategory(r),
+      ...parseRuleLog(r),
     });
   }
   return out;

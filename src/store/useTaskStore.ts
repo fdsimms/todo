@@ -190,6 +190,7 @@ import { applyMeasuredTime, draftHasEstimate } from '../utils/effort';
 import {
   ruleEstimateDraft, withRuleEstimate, withGeneratorEstimate, holdsKindEstimate,
 } from '../utils/ruleEstimate';
+import { ruleLogDraft, ruleLogOfTask, taskLogChanged, withRuleLog } from '../utils/ruleLog';
 import { chainStepDatedByAnswer, cleanDeliverableReasoning, deliverableDate, deliverableKindFor, isTentativeAnswer, reasoningOf, type DeliverableReasoning } from '../utils/deliverables';
 import type { ReviewAfter } from '../utils/decisionReview';
 import { totalMinutes } from '../utils/recipeUtils';
@@ -2381,6 +2382,45 @@ function writeEstimateToSource(task: Task): void {
 }
 
 /**
+ * What a rule-written task records on completion (a dose, a food log entry),
+ * written back onto the rule that wrote it, so the next task starts with it.
+ * The estimate's write-back above, for the log fields (`utils/ruleLog.ts`).
+ * Only the four rule kinds have a rule to hold it.
+ */
+function writeLogToSource(task: Task): void {
+  const log = ruleLogOfTask(task);
+  const settings = useSettingsStore.getState();
+  switch (task.generatedKind) {
+    case 'weather': {
+      const ruleId = weatherRuleIdOf(task);
+      const next = ruleId ? withRuleLog(settings.weatherRules, ruleId, log) : null;
+      if (next) settings.setWeatherRules(next);
+      break;
+    }
+    case 'screenTime': {
+      const ruleId = screenTimeRuleIdOf(task);
+      const next = ruleId ? withRuleLog(settings.screenTimeRules, ruleId, log) : null;
+      if (next) settings.setScreenTimeRules(next);
+      break;
+    }
+    case 'health': {
+      const ruleId = healthRuleIdOf(task);
+      const next = ruleId ? withRuleLog(settings.healthRules, ruleId, log) : null;
+      if (next) settings.setHealthRules(next);
+      break;
+    }
+    case 'eventTask': {
+      const ruleId = eventTaskRuleIdOf(task);
+      const next = ruleId ? withRuleLog(settings.eventRules, ruleId, log) : null;
+      if (next) settings.setEventRules(next);
+      break;
+    }
+    default:
+      break;
+  }
+}
+
+/**
  * The `waterShortfall` generator's whole pass: a one-off task for the water
  * still owed, once the daily water task that follows the food log's target was
  * finished before the target rose. See `src/utils/waterShortfallTasks.ts`.
@@ -3596,6 +3636,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (current && edited && (edited.generatedKind || edited.followUpTaskSourceId)
       && (current.estimatedMinutes !== edited.estimatedMinutes || current.effort !== edited.effort)) {
       writeEstimateToSource(edited);
+    }
+    if (current && edited && edited.generatedKind && taskLogChanged(current, edited)) {
+      writeLogToSource(edited);
     }
     if (scope === 'series' && edited?.seriesId) {
       const patched = seriesFanOutRows(edited, updates, get().tasks);
@@ -7187,6 +7230,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           category,
           linkUrl: WEATHER_LINK_URL,
           ...ruleEstimateDraft(rule),
+          ...ruleLogDraft(rule),
           ...generatedBy('weather', sourceId),
         }),
       });
@@ -7349,6 +7393,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           title: match.rule.title,
           category,
           ...ruleEstimateDraft(match.rule),
+          ...ruleLogDraft(match.rule),
           ...generatedBy('eventTask', match.sourceId),
         }),
       });
@@ -7550,6 +7595,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           dueDate: dueDate.toISOString(),
           category,
           ...ruleEstimateDraft(rule),
+          ...ruleLogDraft(rule),
           ...generatedBy('screenTime', sourceId),
         }),
       });
@@ -7666,6 +7712,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
             category,
             linkUrl: healthTaskLinkUrl(rule.metric),
             ...ruleEstimateDraft(rule),
+            ...ruleLogDraft(rule),
             ...generatedBy('health', sourceId),
           }),
         });

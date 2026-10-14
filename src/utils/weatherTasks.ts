@@ -5,6 +5,7 @@ import { generatedSourceOf } from './generatedTasks';
 import { generateId } from './id';
 import { parseRuleEstimate } from './ruleEstimate';
 import { parseRuleCategory } from './ruleCategory';
+import { parseRuleLog } from './ruleLog';
 import { KNOWN_LINK_APPS } from '../constants/linkApps';
 
 /**
@@ -119,6 +120,7 @@ export function parseWeatherRules(raw: string | null | undefined): WeatherRule[]
       lastAheadDayKey: typeof r.lastAheadDayKey === 'string' ? r.lastAheadDayKey : null,
       ...parseRuleEstimate(r),
       ...parseRuleCategory(r),
+      ...parseRuleLog(r),
     });
   }
   return out;

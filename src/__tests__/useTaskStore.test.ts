@@ -20345,3 +20345,71 @@ describe('bounties', () => {
     expect(next.bountyPushes ?? null).toBeNull();
   });
 });
+
+// ─── a rule's log, written back from the task it wrote ───────────────────────
+
+describe('updateTask: what a rule-written task logs is kept on its rule', () => {
+  const { useSettingsStore: settingsMock } = jest.requireMock('../store/useSettingsStore') as {
+    useSettingsStore: { getState: jest.Mock };
+  };
+
+  const ruleOf = (over: Record<string, unknown> = {}) => ({
+    id: 'rule1', metric: 'sodiumMg', threshold: 6000, title: 'Take sodium chloride',
+    enabled: true, lastFiredDayKey: null, ...over,
+  });
+
+  const withRules = (rules: unknown[]) => {
+    const setHealthRules = jest.fn();
+    settingsMock.getState.mockReturnValue({
+      dayResetTime: '00:00', weekStartsOn: 0, titleRules: [], weatherRules: [], screenTimeRules: [],
+      healthRules: rules, eventRules: [], setHealthRules,
+    });
+    return setHealthRules;
+  };
+
+  const healthTask = (over: Partial<Task> = {}) => makeTask({
+    id: 'task1', title: 'Take sodium chloride', generatedKind: 'health', generatedSourceId: '2026-10-14#rule1', ...over,
+  });
+
+  it('writes a dose added to the task onto the health rule that wrote it', () => {
+    const setHealthRules = withRules([ruleOf()]);
+    useTaskStore.setState({ tasks: [healthTask()] });
+
+    useTaskStore.getState().updateTask('task1', { medicationName: 'Sodium chloride', medicationAmount: 1000, medicationUnit: 'mg' });
+
+    expect(setHealthRules).toHaveBeenCalledTimes(1);
+    expect(setHealthRules.mock.calls[0][0][0]).toMatchObject({
+      id: 'rule1', medicationName: 'Sodium chloride', medicationAmount: 1000, medicationUnit: 'mg',
+    });
+  });
+
+  it('writes a saved meal and its slot, and clears them when taken off the task', () => {
+    const setHealthRules = withRules([ruleOf()]);
+    useTaskStore.setState({ tasks: [healthTask()] });
+    useTaskStore.getState().updateTask('task1', { logMealSlot: 'snack', logSavedMealId: 'meal1' });
+    expect(setHealthRules.mock.calls[0][0][0]).toMatchObject({ logMealSlot: 'snack', logSavedMealId: 'meal1' });
+
+    const cleared = withRules([ruleOf({ logMealSlot: 'snack', logSavedMealId: 'meal1' })]);
+    useTaskStore.getState().updateTask('task1', { logMealSlot: null, logSavedMealId: null });
+    expect(cleared.mock.calls[0][0][0]).not.toHaveProperty('logMealSlot');
+    expect(cleared.mock.calls[0][0][0]).not.toHaveProperty('logSavedMealId');
+  });
+
+  it('writes nothing when the task already logs what the rule says', () => {
+    const setHealthRules = withRules([ruleOf({ medicationName: 'Sodium chloride' })]);
+    useTaskStore.setState({ tasks: [healthTask({ medicationName: 'Sodium chloride' })] });
+
+    useTaskStore.getState().updateTask('task1', { title: 'Take salt', medicationName: 'Sodium chloride' });
+
+    expect(setHealthRules).not.toHaveBeenCalled();
+  });
+
+  it('writes nothing for a task no rule wrote', () => {
+    const setHealthRules = withRules([ruleOf()]);
+    useTaskStore.setState({ tasks: [makeTask({ id: 'plain', title: 'Plain' })] });
+
+    useTaskStore.getState().updateTask('plain', { medicationName: 'Sodium chloride' });
+
+    expect(setHealthRules).not.toHaveBeenCalled();
+  });
+});
