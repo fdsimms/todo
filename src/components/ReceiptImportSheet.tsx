@@ -57,6 +57,7 @@ import { formatScheduledDate } from '../utils/dateUtils';
 import { haptics } from '../utils/haptics';
 import { GROCERY_NAME_MAX_LENGTH, SHOP_NAME_MAX_LENGTH, type GroceryItem, type ReceiptStyle } from '../types';
 import { TextField } from './TextField';
+import { ActionRow } from './ActionRow';
 
 /**
  * One "Left alone" line the user opted to add as bought instead — either
@@ -1101,43 +1102,52 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
                         checkbox, the way BarcodeScanSheet's row controls are. */}
                     <View style={styles.rowControls}>
                       {showNameField && (
-                        <TextField
-                          style={styles.nameInput}
-                          value={nameEdits.get(i) ?? match.line.name}
-                          onChangeText={text => renameFor(i, text)}
-                          placeholder="Name for the new item"
-                          placeholderTextColor={colors.textTertiary}
-                          // A shelf word, not prose: same reason as the
-                          // barcode sheet's own name field.
-                          autoCorrect={false}
-                          spellCheck={false}
-                          accessibilityLabel={`Name for the new item from ${match.line.label}`}
-                        />
-                      )}
-                      <View style={styles.rowActions}>
-                        <InlineAction
-                          label={picked ? 'Change' : catalogName ? 'Not it' : 'Match to an item'}
-                          icon="albums-outline"
-                          variant="neutral"
-                          onPress={() => setPickingIndex(p => (p === i ? null : i))}
-                          accessibilityLabel={
-                            picked
-                              ? `Change which item ${match.line.label} is`
-                              : `Choose which item ${match.line.label} is`
-                          }
-                          style={styles.actionPill}
-                        />
-                        {!!picked && (
-                          <InlineAction
-                            label="Undo"
-                            icon="close-circle-outline"
-                            variant="neutral"
-                            onPress={() => clearPick(i)}
-                            accessibilityLabel={`Stop matching ${match.line.label} to ${picked.name}`}
-                            style={styles.actionPill}
+                        <View>
+                          <Text style={styles.fieldLabel}>NAME</Text>
+                          <TextField
+                            style={styles.nameInput}
+                            value={nameEdits.get(i) ?? match.line.name}
+                            onChangeText={text => renameFor(i, text)}
+                            placeholder="Name for the new item"
+                            placeholderTextColor={colors.textTertiary}
+                            // A shelf word, not prose: same reason as the
+                            // barcode sheet's own name field.
+                            autoCorrect={false}
+                            spellCheck={false}
+                            accessibilityLabel={`Name for the new item from ${match.line.label}`}
                           />
-                        )}
-                      </View>
+                        </View>
+                      )}
+                      {/* The same block the barcode sheet asks this question with. */}
+                      <ActionRow
+                        icon="link-outline"
+                        title={
+                          picked
+                            ? `Matched to ${picked.name}`
+                            : catalogName
+                              ? 'Choose a different item'
+                              : 'Match to an item you already have'
+                        }
+                        note={picked ? 'Tap to change' : catalogName ? null : 'Or leave it and it is added as a new item'}
+                        tone={picked || catalogName ? 'plain' : 'action'}
+                        onPress={() => setPickingIndex(p => (p === i ? null : i))}
+                        accessibilityLabel={
+                          picked
+                            ? `Change which item ${match.line.label} is`
+                            : `Choose which item ${match.line.label} is`
+                        }
+                        extra={
+                          picked ? (
+                            <InlineAction
+                              label="Undo"
+                              variant="neutral"
+                              onPress={() => clearPick(i)}
+                              accessibilityLabel={`Stop matching ${match.line.label} to ${picked.name}`}
+                              style={styles.actionPill}
+                            />
+                          ) : null
+                        }
+                      />
                     </View>
 
                     {/* Its own full-width block, for the reason the barcode
@@ -1317,18 +1327,24 @@ function makeStyles(colors: Colors) {
       paddingLeft: spacing.md + CHECK_SIZE + spacing.sm,
       paddingRight: spacing.md,
       paddingBottom: spacing.sm,
-      gap: spacing.xs,
+      gap: spacing.sm,
+    },
+    fieldLabel: {
+      color: colors.textSecondary,
+      fontSize: font.xs,
+      fontWeight: fontWeight.semibold,
+      letterSpacing: 0.8,
+      marginBottom: spacing.xs,
     },
     // No lineHeight on a TextInput (see CLAUDE.md); the padding sets the box.
     nameInput: {
       color: colors.text,
-      fontSize: font.sm,
-      backgroundColor: colors.bgTertiary,
-      borderRadius: radius.sm,
-      paddingHorizontal: spacing.sm,
-      paddingVertical: spacing.xs,
+      fontSize: font.md,
+      backgroundColor: colors.bgSunken,
+      borderRadius: radius.md,
+      paddingHorizontal: spacing.smd,
+      paddingVertical: spacing.smd,
     },
-    rowActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
     // Tighter than InlineAction's default, as the barcode sheet's row pills
     // are, so they read as part of the row rather than a grid of chips.
     actionPill: { paddingVertical: 3, minHeight: 0 },
