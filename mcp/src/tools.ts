@@ -668,6 +668,19 @@ export interface SerializedFoodEntry {
   grams?: number;
   recipeId?: string;
   /**
+   * This entry's own figures, by nutrient (calorieKcal, sodiumMg and so on). A
+   * nutrient the entry did not state is absent rather than zero. They are what
+   * the day's totals add up, so reading them is how to tell which entry a
+   * surprising total came from.
+   */
+  amounts?: Record<string, number>;
+  /**
+   * True when the entry was written to Apple Health. Only the phone can change
+   * or delete one: refresh_dish_entry, update_food_entry and delete_food_entry
+   * refuse it. Absent otherwise.
+   */
+  inAppleHealth?: true;
+  /**
    * What an estimated meal's total was made of, one line per thing it named.
    * Absent for an entry that was measured or that the model did not split.
    * The lines are the same estimate split apart and add up to the entry's own
@@ -723,6 +736,8 @@ export function listFoodLog(replica: Replica, input: LogRangeInput = {}): FoodLo
       quantity: e.quantity || undefined,
       grams: e.grams ?? undefined,
       recipeId: e.recipeId ?? undefined,
+      amounts: e.nutrition?.amounts && Object.keys(e.nutrition.amounts).length > 0 ? (e.nutrition.amounts as Record<string, number>) : undefined,
+      inAppleHealth: e.healthSampleIds?.length > 0 ? true : undefined,
       breakdown: e.nutrition?.breakdown?.length ? e.nutrition.breakdown : undefined,
     })),
     totals: {

@@ -750,6 +750,25 @@ describe('listFoodLog', () => {
     expect('breakdown' in result.entries[1] && result.entries[1].breakdown).toBeFalsy();
   });
 
+  it('shows each entry\'s own figures and marks the ones written to Apple Health', () => {
+    const nutrition = (amounts: Record<string, number>) =>
+      ({ basis: 'perServing', amounts }) as unknown as FoodLogEntry['nutrition'];
+    const result = listFoodLog(
+      stubReplica({
+        foodLogEntries: () => [
+          entry({ id: 'f1', label: 'Hot pot', nutrition: nutrition({ calorieKcal: 400, sodiumMg: 1740 }), healthSampleIds: ['s1'] }),
+          entry({ id: 'f2', label: 'Toast', nutrition: nutrition({ calorieKcal: 210 }), healthSampleIds: [] }),
+          entry({ id: 'f3', label: 'Water', nutrition: nutrition({}) }),
+        ],
+      })
+    );
+    expect(result.entries[0]).toMatchObject({ amounts: { calorieKcal: 400, sodiumMg: 1740 }, inAppleHealth: true });
+    expect(result.entries[1].amounts).toEqual({ calorieKcal: 210 });
+    expect(result.entries[1].inAppleHealth).toBeUndefined();
+    // No stated figures reads as absent, never as an empty object.
+    expect(result.entries[2].amounts).toBeUndefined();
+  });
+
   it('estimates vegetable and fruit servings per day, and says what it could not weigh', () => {
     const result = listFoodLog(
       stubReplica({
