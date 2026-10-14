@@ -1094,7 +1094,7 @@ export function BackfillScreen() {
       for (const task of batch) next.add(task.id);
       return next;
     });
-    offerGroupDefault(offerFor, activeBatch.scope, defaultsFromAnswer(active.id, patchFor(offerFor), dismissed));
+    offerGroupDefault(offerFor, activeBatch.scope, defaultsFromAnswer(active.id, patchFor(offerFor), dismissed), `${fieldLabel} to ${valueText}`);
   };
 
   /**
@@ -1103,7 +1103,7 @@ export function BackfillScreen() {
    * than part of the toggle, because answering the backlog and deciding what
    * future tasks start with are two different calls.
    */
-  const offerGroupDefault = (sample: Task, scope: BatchScope, answer: Partial<TaskFieldDefaults> | null) => {
+  const offerGroupDefault = (sample: Task, scope: BatchScope, answer: Partial<TaskFieldDefaults> | null, setting: string) => {
     // Only the two sets that own a default can keep one: a category or a stack
     // has nowhere to store it, and reading the sample's own project there would
     // set a default for a set the person never chose.
@@ -1116,8 +1116,8 @@ export function BackfillScreen() {
     if (!defaultsDiffer(current, answer)) return;
     const name = groupLabel ?? 'this group';
     Alert.alert(
-      `Use this for new tasks in ${name}?`,
-      'New tasks there start with this answer, so they won’t come up here. Change it later in the project editor or Settings.',
+      `Set ${setting} for new tasks in “${name}”?`,
+      'New tasks added there will start with this answer, so they won’t show up in Backfill. You can change it later in the project editor or Settings.',
       [
         { text: 'Not now', style: 'cancel' },
         {
