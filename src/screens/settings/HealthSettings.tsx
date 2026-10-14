@@ -11,6 +11,7 @@ import { categoryLabel } from '../../utils/categoryLabel';
 import { PillGroup } from '../../components/PillGroup';
 import { CountStepper } from '../../components/CountStepper';
 import { HEALTH_ROW_KEYS, HEALTH_ROW_LABELS } from '../../utils/dayContextRows';
+import { SHORT_NIGHT_MINUTES_MAX, SHORT_NIGHT_MINUTES_MIN, SHORT_NIGHT_MINUTES_STEP } from '../../utils/shortNight';
 import { STEP_GOAL_DEFAULT, STEP_GOAL_MAX, STEP_GOAL_MIN, STEP_GOAL_STEP } from '../../utils/stepGoal';
 import { ActivityRingsCard } from '../../components/ActivityRingsCard';
 import { HEALTH_WRITABLE_NUTRIENTS } from '../../types';
@@ -120,6 +121,10 @@ export function HealthSettings() {
   const healthCategory = useSettingsStore(s => s.healthCategory);
   const stepGoal = useSettingsStore(s => s.stepGoal);
   const setStepGoal = useSettingsStore(s => s.setStepGoal);
+  const shortNightNoteEnabled = useSettingsStore(s => s.shortNightNoteEnabled);
+  const setShortNightNoteEnabled = useSettingsStore(s => s.setShortNightNoteEnabled);
+  const shortNightMinutes = useSettingsStore(s => s.shortNightMinutes);
+  const setShortNightMinutes = useSettingsStore(s => s.setShortNightMinutes);
   const setHealthCategory = useSettingsStore(s => s.setHealthCategory);
   const healthTodayHidden = useSettingsStore(s => s.healthTodayHidden);
   const setHealthTodayHidden = useSettingsStore(s => s.setHealthTodayHidden);
@@ -624,6 +629,46 @@ export function HealthSettings() {
         value={sleepGoalMinutes === null ? 'None' : formatSleepDuration(sleepGoalMinutes)}
         onPress={() => { haptics.tap(); setSleepGoalOpen(true); }}
       />
+      {healthReadEnabled && (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="shortNightNote"
+            icon="battery-half-outline"
+            label="Short night note"
+            hint={shortNightNoteEnabled
+              ? 'Lighten today says when Apple Health recorded less sleep than the threshold below'
+              : 'Lighten today does not mention sleep'}
+            toggle={shortNightNoteEnabled}
+            onPress={() => { haptics.tap(); setShortNightNoteEnabled(!shortNightNoteEnabled); }}
+            accessibilityLabel="Short night note"
+            tight={shortNightNoteEnabled}
+          />
+          {shortNightNoteEnabled && (
+            <>
+              <SettingsRow
+                entryId="shortNightThreshold"
+                icon="time-outline"
+                label="Short night threshold"
+                hint="The note appears when Apple Health recorded less sleep than this for today"
+                tight
+              />
+              <View style={styles.cadenceRow}>
+                <CountStepper
+                  value={shortNightMinutes}
+                  onChange={next => { if (next !== null) setShortNightMinutes(next); }}
+                  min={SHORT_NIGHT_MINUTES_MIN}
+                  max={SHORT_NIGHT_MINUTES_MAX}
+                  step={SHORT_NIGHT_MINUTES_STEP}
+                  format={formatSleepDuration}
+                  label="Short night threshold"
+                  describeValue={n => (n === null ? '' : formatSleepDuration(n))}
+                />
+              </View>
+            </>
+          )}
+        </>
+      )}
     </SettingsSection>
     {/* The sheet the Sleep screen's own target icon opens, not a second
         stepper for the same number. */}
