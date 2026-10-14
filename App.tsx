@@ -36,6 +36,7 @@ import { useMeterHoldSync } from './src/hooks/useMeterHoldSync';
 import { useTravelTaskSync } from './src/hooks/useTravelTaskSync';
 import { useEventTaskSync } from './src/hooks/useEventTaskSync';
 import { useReminderMeetingResync } from './src/hooks/useReminderMeetingResync';
+import { usePlaceGateRefresh } from './src/hooks/usePlaceGateRefresh';
 import { useScreenTimeSync } from './src/store/useScreenTimeStore';
 import { useHealthSync } from './src/store/useHealthStore';
 import { useAppShieldSync } from './src/hooks/useAppShieldSync';
@@ -294,6 +295,7 @@ function AppRoot() {
   // reminder a meeting was booked over after it was scheduled still gets
   // pushed past it. Inert while the meeting nudge or calendar reading is off.
   useReminderMeetingResync();
+  usePlaceGateRefresh();
   // Keeps the OS usage monitor armed against the current rules and drains
   // what it has reported. Inert until screenTimeTasks is switched on.
   useScreenTimeSync();
