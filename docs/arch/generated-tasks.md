@@ -1672,8 +1672,11 @@ is in `useTaskStore.ts`, run beside the snack one on the same triggers.
   vacation (the task hides and its streak holds), files under its own category
   setting (default Health).
 - **The task is the nutrient's face on Today, not a second thing beside its row.**
-  Both this and `goalTarget` draw the progress bar under their title
-  (`NutrientTaskBar`, fill and tone from `nutrientTaskBar`), and Today's info row
+  Both this and `goalTarget` have no checkbox and draw one line in place of
+  their title ("Sat fat  24.9 / 16g", with the streak flame, or a check once an
+  Aim for is met) with the progress bar under it (`NutrientTaskBar`, fill and tone
+  from `nutrientTaskBar`, the line from `nutrientTaskLine`). The title still holds
+  the full sentence for accessibility and Search, and Today's info row
   for a nutrient is left out while its task exists (`nutrientsCoveredByTasks`),
   the way a meal row yields to its cook task. A nutrient with no task keeps the
   row; archiving or declining the task brings the row back.
@@ -1690,8 +1693,10 @@ limit one.
   (`proteinG|2026-10-13`), so a past day's is dropped (no opt-out) and the next day
   writes a fresh one. There is no streak: with no direction known, a streak would
   be the app scoring a body.
-- **The app checks it off when the day reaches the goal**, as a `neutral`
-  completion (no coins, nothing moves). "Reached" is `targetStatus` not being
+- **The app checks it off when the day reaches the goal**, as an ordinary
+  completion that earns coins (reaching it is the person's doing, since they
+  logged the food; the finished task blocks a second one that day, so it pays once
+  per nutrient per day). "Reached" is `targetStatus` not being
   `under`, the same band the Food log calls met. Nothing says a day went past a
   goal. A total that falls back under later (an entry deleted) leaves it checked.
 - **A goal of zero gets no task**: an empty day meets it, so the task would
