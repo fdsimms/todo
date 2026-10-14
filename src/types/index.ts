@@ -5977,16 +5977,19 @@ export const GROCERY_PRODUCT_NOTE_MAX_LENGTH = 120;
 // them changing shouldn't silently move the other. Same length for now.
 export const GROCERY_VARIANT_MAX_LENGTH = 40;
 
-// What the user thought of one product, when they've bothered to say. Null —
-// the overwhelmingly common state — is no opinion, not "fine": a product
-// nobody has rated is one nobody has judged.
+// What the user thought of one product, once they've tried it. Null — the
+// overwhelmingly common state — is no opinion: a product nobody has rated is
+// one nobody has judged, which is a different answer from 'fine'.
 //
-// Three states rather than a 1..5 scale on purpose. The question this answers
-// at the shelf is "have I had this and hated it", and a scale asks for a
-// precision nobody applies consistently to a loaf of bread — four stars versus
-// three is not a distinction anyone reproduces a month later, while "never
-// again" is. Two poles and silence is the whole vocabulary.
-export type ProductRating = 'loved' | 'avoid';
+// Three answers rather than a 1..5 scale on purpose. The question this answers
+// at the shelf is "have I had this and would I get it again", and a scale asks
+// for a precision nobody applies consistently to a bag of chips — four stars
+// versus three is not a distinction anyone reproduces a month later, while
+// "never again" is. 'fine' exists because "tried it, it was okay" is a verdict
+// that silence cannot carry: without it a flavor you have had and shrugged at
+// reads the same as one you have never bought. The reason lives in
+// `ItemProduct.note`, not in a second field.
+export type ProductRating = 'loved' | 'fine' | 'avoid';
 
 // One box on the shelf — Arnold's wheat, Dave's Killer 21 grain, the store
 // brand. A product *of* a GroceryItem, never a GroceryItem itself.

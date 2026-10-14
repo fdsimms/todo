@@ -8,6 +8,8 @@ import {
   productForGtin,
   productKeyFor,
   productsForItem,
+  ratingCandidate,
+  RATING_LABELS,
 } from '../utils/groceryProduct';
 import { PORTION_PRODUCT_KEY, type ItemProduct } from '../types';
 
@@ -125,15 +127,18 @@ describe('productsForItem', () => {
   const loved = product({ id: 'loved', rating: 'loved' });
   const plain = product({ id: 'plain' });
   const avoided = product({ id: 'avoided', rating: 'avoid' });
-  const all = [avoided, plain, loved, preferred];
+  const fine = product({ id: 'fine', rating: 'fine' });
+  const all = [avoided, plain, fine, loved, preferred];
 
   it('puts the preferred one first, whatever it is rated', () => {
     expect(productsForItem('bread', all, 'preferred')[0].id).toBe('preferred');
   });
 
-  it('then ranks loved, then unrated, then never-again', () => {
+  // 'fine' is a known quantity and unrated is a gamble, so a flavor you have had
+  // and shrugged at ranks above one you have never tried.
+  it('then ranks loved, fine, unrated, then never-again', () => {
     expect(productsForItem('bread', all, 'preferred').map(p => p.id))
-      .toEqual(['preferred', 'loved', 'plain', 'avoided']);
+      .toEqual(['preferred', 'loved', 'fine', 'plain', 'avoided']);
   });
 
   // A rating sorts rather than filters: remembering that you hated it is the
@@ -291,5 +296,48 @@ describe('a frozen portion among the boxes', () => {
     expect(productKeyFor('portion', null)).not.toBe(PORTION_PRODUCT_KEY);
     expect(productKeyFor(null, 'portion')).not.toBe(PORTION_PRODUCT_KEY);
     expect(productKeyFor('Portion', 'Portion')).not.toBe(PORTION_PRODUCT_KEY);
+  });
+});
+
+describe('RATING_LABELS', () => {
+  it('names all three answers', () => {
+    expect(RATING_LABELS).toEqual({ loved: 'Loved it', fine: 'It was fine', avoid: 'Never again' });
+  });
+});
+
+describe('ratingCandidate', () => {
+  const nacho = product({ id: 'nacho', itemId: 'chips' });
+  const taco = product({ id: 'taco', itemId: 'chips' });
+  const rated = product({ id: 'rated', itemId: 'chips', rating: 'fine' });
+
+  it('is the named product when it is unrated', () => {
+    expect(ratingCandidate([nacho, taco], 'chips', null, 'taco')?.id).toBe('taco');
+  });
+
+  it('never re-asks about a product that already has a verdict', () => {
+    expect(ratingCandidate([nacho, rated], 'chips', null, 'rated')).toBeNull();
+    expect(ratingCandidate([rated], 'chips', null)).toBeNull();
+  });
+
+  it('refuses a product that belongs to another item', () => {
+    expect(ratingCandidate([nacho, product({ id: 'milk1', itemId: 'milk' })], 'chips', null, 'milk1')).toBeNull();
+  });
+
+  it('with no product named, takes the item only box', () => {
+    expect(ratingCandidate([nacho], 'chips', null)?.id).toBe('nacho');
+  });
+
+  it('with no product named and several boxes, takes the preferred one', () => {
+    expect(ratingCandidate([nacho, taco], 'chips', 'taco')?.id).toBe('taco');
+  });
+
+  // Rating the wrong flavor is worse than not asking.
+  it('asks nothing when it cannot tell which box was eaten', () => {
+    expect(ratingCandidate([nacho, taco], 'chips', null)).toBeNull();
+  });
+
+  it('never offers a frozen portion', () => {
+    const portion = product({ id: 'p', itemId: 'chips', productKey: PORTION_PRODUCT_KEY, isPortion: true });
+    expect(ratingCandidate([portion], 'chips', null)).toBeNull();
   });
 });

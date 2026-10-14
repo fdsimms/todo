@@ -3126,7 +3126,16 @@ describe('grocery items', () => {
     expect(dbGetAllItemProducts()).toHaveLength(2);
   });
 
-  // Anything that isn't one of the two known ratings reads as no opinion, so a
+  it('round-trips the middle rating', () => {
+    insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Chips' }));
+    mockRawDb
+      .prepare('INSERT INTO grocery_item_products (id, item_id, brand, product_key, rating, created_at) VALUES (?,?,?,?,?,?)')
+      .run('p1', 'g1', 'Cape Cod', 'cape cod|', 'fine', '2026-01-01T00:00:00.000Z');
+
+    expect(dbGetAllItemProducts()[0].rating).toBe('fine');
+  });
+
+  // Anything that isn't one of the three known ratings reads as no opinion, so a
   // column written by a newer build can't render as a rating this one can't
   // explain.
   it('reads an unknown rating as no opinion', () => {

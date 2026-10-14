@@ -6175,7 +6175,7 @@ function rowToItemProduct(row: Record<string, unknown>): ItemProduct {
     // Anything that isn't one of the two known ratings reads as no opinion —
     // a column written by a newer build, or a hand-edited backup, must not
     // render as a rating this build can't explain.
-    rating: row.rating === 'loved' || row.rating === 'avoid' ? row.rating : null,
+    rating: row.rating === 'loved' || row.rating === 'fine' || row.rating === 'avoid' ? row.rating : null,
     note: (row.note as string) ?? '',
     purchaseCount: (row.purchase_count as number) ?? 0,
     lastPurchasedAt: (row.last_purchased_at as string) ?? null,

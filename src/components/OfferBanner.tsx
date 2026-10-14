@@ -32,6 +32,16 @@ interface Props {
   onSecondaryAction?: () => void;
   secondaryActionAccessibilityLabel?: string;
   /**
+   * A third answer, for an offer with three ways to go (`ProductRatingOffer`:
+   * loved it, it was fine, never again). Only read when the secondary is also
+   * supplied; the answers row wraps, since three pills with their labels are
+   * wider than the row at 390pt on a larger text size.
+   */
+  tertiaryActionLabel?: string;
+  onTertiaryAction?: () => void;
+  tertiaryActionAccessibilityLabel?: string;
+  tertiaryActionTint?: string;
+  /**
    * Put the buttons on their own row without a second one. For an offer whose
    * sentence needs the full width: the single-button layout caps its text at
    * two lines, and a question that doesn't fit is a question that gets
@@ -100,6 +110,10 @@ export function OfferBanner({
   secondaryActionLabel,
   onSecondaryAction,
   secondaryActionAccessibilityLabel,
+  tertiaryActionLabel,
+  onTertiaryAction,
+  tertiaryActionAccessibilityLabel,
+  tertiaryActionTint,
   stacked: stackedProp = false,
   actionTint,
   secondaryActionTint,
@@ -133,6 +147,11 @@ export function OfferBanner({
   const handleSecondary = () => {
     haptics.tap();
     onSecondaryAction?.();
+  };
+
+  const handleTertiary = () => {
+    haptics.tap();
+    onTertiaryAction?.();
   };
 
   const handleDismiss = () => {
@@ -215,6 +234,25 @@ export function OfferBanner({
               </Text>
             </PressableScale>
           )}
+          {tertiaryActionLabel !== undefined && (
+            <PressableScale
+              style={[
+                styles.button,
+                tertiaryActionTint ? { backgroundColor: tertiaryActionTint } : styles.secondaryButton,
+              ]}
+              onPress={handleTertiary}
+              accessibilityLabel={tertiaryActionAccessibilityLabel}
+            >
+              <Text
+                style={[
+                  styles.buttonText,
+                  tertiaryActionTint ? { color: textOnFill(tertiaryActionTint, colors) } : styles.secondaryButtonText,
+                ]}
+              >
+                {tertiaryActionLabel}
+              </Text>
+            </PressableScale>
+          )}
         </View>
       )}
     </Animated.View>
@@ -242,7 +280,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   // Indented to the text's own left edge rather than the container's, so the
   // answers read as belonging to the question rather than to the card.
-  answers: { flexDirection: 'row', gap: spacing.sm, paddingBottom: spacing.xs },
+  answers: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingBottom: spacing.xs },
   text: { flex: 1, color: colors.text, fontSize: font.sm, lineHeight: font.sm * 1.35 },
   lead: { fontWeight: fontWeight.bold },
   button: {

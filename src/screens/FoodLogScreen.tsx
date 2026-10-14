@@ -92,6 +92,7 @@ import { SavedMealsSheet } from '../components/SavedMealsSheet';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { SavedMealReviewSheet } from '../components/SavedMealReviewSheet';
 import { PendingEstimatesCard } from '../components/PendingEstimatesCard';
+import { ProductRatingOffer } from '../components/ProductRatingOffer';
 import type { PendingEstimate } from '../utils/estimateQueue';
 import { NutrientContributorsSheet } from '../components/NutrientContributorsSheet';
 import { NutritionTargetsSheet } from '../components/NutritionTargetsSheet';
@@ -1355,6 +1356,8 @@ export function FoodLogScreen() {
           <Ionicons name="chevron-forward" size={iconSize.sm} color={isToday ? colors.textTertiary : colors.text} />
         </TouchableOpacity>
       </View>
+
+      <ProductRatingOffer />
 
       {dayEntries.length === 0 ? (
         // Scrolls, because the cards above can take more than the screen: with
