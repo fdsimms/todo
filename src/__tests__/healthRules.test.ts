@@ -536,9 +536,16 @@ describe('shortSleepDeloadNote', () => {
     expect(shortSleepDeloadNote(9)).toBeNull();
   });
 
+  it('measures against the threshold it is given', () => {
+    expect(shortSleepDeloadNote(6.5, 7)).toBe('Apple Health recorded 6h 30m of sleep for today.');
+    expect(shortSleepDeloadNote(6.5, 6)).toBeNull();
+    expect(shortSleepDeloadNote(7, 7)).toBeNull();
+  });
+
   it('says nothing at all when there is no reading', () => {
-    // Null is a refused read as much as an unrecorded night.
+    // Null is a refused read as much as an unrecorded night, whatever the threshold.
     expect(shortSleepDeloadNote(null)).toBeNull();
+    expect(shortSleepDeloadNote(null, 9)).toBeNull();
   });
 
   it('gives no advice and names no state', () => {

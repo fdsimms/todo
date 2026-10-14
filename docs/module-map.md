@@ -412,6 +412,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/shelfLabel.ts` — ScanBox, ScanText, printedPricesIn, priceNearBarcode
 - `src/utils/shieldReasonText.ts` — MAX_NAMED_GATES, shieldReasonLines, shieldHeadline, shieldHeadlineNote, selectionLabel
 - `src/utils/shoppingTrip.ts` — MAX_TRIP_STOPS, ShopCoverage, TripPlan, TripSummary, planTrip, summarizeTrip, describeShopCoverage, joinNames
+- `src/utils/shortNight.ts` — SHORT_NIGHT_MINUTES_MIN, SHORT_NIGHT_MINUTES_MAX, SHORT_NIGHT_MINUTES_STEP, SHORT_NIGHT_MINUTES_DEFAULT, clampShortNightMinutes, parseShortNightMinutes
 - `src/utils/simpleMode.ts` — SimpleArea, SimpleFeatureId, SimpleFeature, SIMPLE_AREA_LABELS, SIMPLE_AREAS, SIMPLE_FEATURES, simpleFeaturesIn, featureHidden, featureShown, SIMPLE_HIDDEN_SCREENS, +11 more
 - `src/utils/simpleTaskForm.ts` — SIMPLE_QUICK_ADD_CHIPS, isSimpleChip
 - `src/utils/sleepLog.ts` — SleepEpisode, SleepStages, SLEEP_STAGE_ORDER, SLEEP_STAGE_LABEL, parseSleepEpisodes, SleepNight, sleepNights, sleepReadings, nightsInWindow, MIN_CLOCK_CONCENTRATION, +15 more
