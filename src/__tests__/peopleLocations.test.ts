@@ -17,6 +17,7 @@ function person(overrides: Partial<Person> = {}): Person {
     birthYear: null,
     birthdayTaskOptOut: false,
     birthdayGiftTaskOptOut: false,
+    pinned: false,
     phoneNumber: null,
     email: null,
     linkUrl: null,

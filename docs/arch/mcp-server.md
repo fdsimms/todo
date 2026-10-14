@@ -709,7 +709,7 @@ previewed and confirmed like any other.
 it is the one delete the server offers. It leans on the preview every write already has: the dry
 run reports "Delete the template ... It cannot be restored from here" before anything is removed,
 and the result names any template that nested it, since the app leaves those references broken
-rather than rewriting them. `reorder_templates` puts the listed ids first and keeps the rest in
+rather than rewriting them. `reorder` with kind `templates` puts the listed ids first and keeps the rest in
 their order, because the app's own reorder needs the whole list and a model rarely has it.
 A template's category is also registered in `template_categories`, which the editor lists from.
 
@@ -938,13 +938,13 @@ so the finished occurrences behind a repeating task stay where they were.
   tasks out, and the description tells the model to ask. Finished occurrences are only taken out, as in
   `deleteGroup`, and a task the app generated is never deleted. The entry carries the stack and the rows
   it took (`deletedStackRevert`), so Activity can restore both.
-- **Reordering a stack** is `reorder_tasks` with `stackId`, in the stack's own 1..K space, finished
+- **Reordering a stack** is `reorder` with kind `tasks` and `stackId`, in the stack's own 1..K space, finished
   rows keeping their slots (`reorderSubset`).
 
 ### Categories and projects: the editor's other half
 
 `update_category` renames a task category and sets its own fields (emoji, schedule, vacation,
-suggestions, the default time of day); `reorder_categories` orders Today's sections. A rename goes
+suggestions, the default time of day); `reorder` with kind `categories` orders Today's sections. A rename goes
 through `useCategoryStore.renameCategory` (which renames the column on tasks, stacks and project
 defaults in SQL) and then reaches everything else the app's `renameCategory` reaches: series defaults
 and follow-up drafts, saved views, template items, the generators' "File them under", the calendar
@@ -961,7 +961,15 @@ and drops the quiet-project review task that names it, and its entry carries eve
 (`deletedProjectRevert`). `start_fresh_project` and `save_project_as_template` are the editor's two
 "reuse" actions, through `projectBlueprint`, `freshCopyDraft` and `templateFromProject` in
 `projectTemplate.ts`, which the store also calls. Project categories (the Projects screen's sections)
-are `save_project_category` and `reorder_projects`.
+are `save_project_category` and `reorder` with kind `projects`.
+
+One `reorder` tool, not eight. Every list that can be put in order takes the same "these first, the rest
+after in their old order" rule, so a `kind` (`tasks`, `templates`, `projects`, `categories`, `people`,
+`aisles`, `stores_and_lists`, `up_next`) picks the list and `reorderTools.ts` calls the function each
+tool used to. The input is one flat object because the kinds disagree on shape (ids, names, a task
+scope, two lists for stores and lists), and a call that leaves out what its kind needs is told which
+fields it wants. It is annotated as a destructive, idempotent write, which was already true of seven of
+the eight.
 
 ### Rewards: Claude acts only on the person's word
 
@@ -1047,7 +1055,7 @@ These are the task writes that are not a field edit (`mcp/src/taskTools.ts`). Ea
 the store also calls, lifted out for the purpose, so the tap and the tool cannot drift: `skipPatch`
 (`taskSkip.ts`) for `skip_occurrence`, `datesAnchorStep` and `datesReconcile` (`taskDates.ts`) for
 `set_task_dates`, `duplicateRows` (`taskDuplicate.ts`) for `duplicate_task`, and `slotUpdates` for a
-project's order in `reorder_tasks`.
+project's order in `reorder` (kind `tasks`).
 
 - **A delete keeps what it took.** `delete_task` used to be left out because a deleted row cannot be
   restored and the model is the one deciding what goes. It is in now, for the person who asks, and the
@@ -1174,7 +1182,7 @@ is. Decisions specific to the server:
   through the task store; the phone catches up).
 - **The catalog's structure is the aisle editor's and the store sheet's own rules.** `save_aisle` adds,
   renames (every item, the remembered filings, the non-food set and each store's aisles follow), deletes
-  (its items move to Other) and marks non-food; `reorder_aisles` sets the walk order through the same
+  (its items move to Other) and marks non-food; `reorder` with kind `aisles` sets the walk order through the same
   `normalizeAisleOrder` and hidden-default tombstones. `update_store` deletes a store (its links, prices and
   receipt names go with it, and a trip there ends) or sets its aisles, its own walk order and whether it is
   suggested. These are records in Activity, not undoable from there: each rewrites rows across the catalog.
@@ -1304,7 +1312,7 @@ user's own small act, and an agent doing it for them is the "make you declare a 
 doc opens with; a new person starts with none, as in the app (`blankPerson`). A birthday is checked
 as a real month and day (29 Feb is allowed) with an optional year, and the year is never turned into
 an age. Groups, archive and order used to be left out with cadence; they are organizing a list, not a
-judgement about anyone, so they are in (`save_person_group`, `reorder_people`), and the tool text still
+judgement about anyone, so they are in (`save_person_group`, `reorder` with kind `people`), and the tool text still
 says the order is the person's to choose.
 
 What is written about someone (`PersonNote`: a gift idea, a food note, or any other note, optionally
@@ -1357,7 +1365,7 @@ re-mirror every recipe in the book) and `delete_cookbook` (which unlinks its rec
 source mirrored onto them, and takes its index), and an index is `get_cookbook_index`, `save_index_entry`,
 `delete_index_entry` and `recipe_from_index_entry`, the store's index actions with their refusals
 (a dish an index already lists). An index line is still not a recipe (`docs/arch/recipes.md`), which
-is why making one from it is its own tool. `reorder_up_next` orders the shelf and `log_cook_time`
+is why making one from it is its own tool. `reorder` with kind `up_next` orders the shelf and `log_cook_time`
 records a cook timed on the person's own clock, the timer's `applyMeasuredCookTime`.
 
 ### Calendar events: a request the phone answers

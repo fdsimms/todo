@@ -66,10 +66,24 @@ because pulling in 400 contacts is precisely what makes the feature cold: a
 list you did not write, full of people you do not think about, which then has
 to be sorted somehow. People are added one at a time, and the act of adding
 somebody is the act of saying they matter. **That hand order is the only ranking
-the feature contains**: `PeopleScreen` defaults to `sortOrder`, the same rule
-`aisleOrder` and the category list follow. An opt-in alphabetical sort is
-allowed, being neutral about the people in it; a sort by anything that measures
-them (recency, neglect, how often you see them) never is.
+the feature contains**, the same rule `aisleOrder` and the category list follow,
+and it is a flat view behind the People header's reorder button, not the
+default. `PeopleScreen` opens as people then businesses (`Person.kind`), each
+A to Z (`peopleSections` in `peopleList.ts`), because a name and a kind are
+facts you typed and say nothing about anybody. A sort by anything that measures
+people (recency, neglect, how often you see them) never is allowed. The rows
+carry Call, Text, Email and link buttons for the details a person has
+(`personContactActions`), under the name rather than beside it, and the first
+three stamp a pending reach-out exactly as the person's own screen does.
+
+**Pinning is the one grouping the list has, and it is the person's own act.**
+`Person.pinned` (a pin on the person's own screen, never set by the app) lifts
+somebody into a "Pinned" section above the others. It sits next to the "Never"
+bullet about tiers and is allowed under it for the reasons pinning a task is:
+it is one flag you set per person, nobody starts in it, there is no second
+level, and pinned people are still A to Z among themselves, so it never ranks
+anybody against anybody else. Anything that would sort or fill Pinned from how
+often you see somebody is out for the same reason a neglect sort is.
 
 **4. Every person starts with no cadence and no nudges.** `nudgeOptIn` is false
 and `cadenceDays` is 0 on a new row, and nothing about a person may appear in
@@ -1138,8 +1152,9 @@ it lives and what it asks.
   all: you went to look.
 - **The queue is `sortOrder`, not alphabetical**, where the sibling pools sort by
   name. Here a default of alphabetical would be the app replacing an order
-  somebody made on purpose with one it worked out (the People screen's own A–Z
-  is opt-in for the same reason). `reachOutTasks` breaks its
+  somebody made on purpose with one it worked out (the People screen's own
+  A–Z is the default there, but it never writes `sortOrder`, so the hand order
+  is still what this queue reads). `reachOutTasks` breaks its
   cap tie the same way for the same reason.
 - **Four fields, and they are the ones that unlock something**: a birthday
   (the birthday and gift generators are gated on nothing else), a cadence (the
