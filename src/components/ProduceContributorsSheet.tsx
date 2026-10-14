@@ -16,11 +16,11 @@ import {
 } from '../utils/produceServings';
 
 /**
- * Which of a day's entries counted toward its vegetable or fruit servings, and
- * which were left out because they could not be weighed.
+ * Which of a day's entries counted toward its vegetable and fruit servings, and
+ * which were left out because they could not be weighed, in one list.
  *
  * `NutrientContributorsSheet`'s shape for the Food log's produce card: opened
- * from a tap on the Vegetables or Fruit row, nothing is edited here, and a row
+ * from a tap on any row of the produce card, nothing is edited here, and a row
  * the entry editor can reopen hands off to it through `onEdit` (the same
  * `foodLogEntryEdit` rule). The rows come from `produceContributions`, which
  * shares its per-entry rule with `dayProduce`, so they add up to the figure
@@ -29,10 +29,9 @@ import {
 
 interface Props {
   visible: boolean;
-  kind: 'vegetable' | 'fruit' | null;
   entries: readonly FoodLogEntry[];
   recipeGrams: RecipeProduceResolver;
-  /** The card's figure for this kind, already worded. */
+  /** The card's figures, already worded ("about 3 vegetable, about 0 fruit"). */
   total: string | null;
   onEdit?: (entry: FoodLogEntry) => void;
   onClose: () => void;
@@ -42,6 +41,8 @@ interface Row {
   entry: FoodLogEntry;
   /** Null on a row that could not be weighed. */
   servings: number | null;
+  /** What the servings are of; empty on a row that could not be weighed. */
+  kinds: string;
 }
 
 interface Section {
@@ -50,35 +51,41 @@ interface Section {
   data: Row[];
 }
 
-export function ProduceContributorsSheet({ visible, kind, entries, recipeGrams, total, onEdit, onClose }: Props) {
+export function ProduceContributorsSheet({ visible, entries, recipeGrams, total, onEdit, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const sections = useMemo<Section[]>(() => {
-    if (!kind) return [];
-    const { counted, unmeasured } = produceContributions(entries, kind, recipeGrams);
+    const { counted, unmeasured } = produceContributions(entries, recipeGrams);
     const out: Section[] = [];
     if (counted.length > 0) {
       out.push({
         key: 'counted',
         title: 'Counted',
-        data: counted.map(c => ({ entry: c.entry, servings: c.servings })),
+        data: counted.map(c => ({
+          entry: c.entry,
+          servings: c.vegetable + c.fruit,
+          kinds: c.vegetable > 0 && c.fruit > 0 ? 'Vegetable and fruit' : c.vegetable > 0 ? 'Vegetable' : 'Fruit',
+        })),
       });
     }
     if (unmeasured.length > 0) {
       out.push({
         key: 'unmeasured',
         title: 'Not counted: could not be measured',
-        data: unmeasured.map(entry => ({ entry, servings: null })),
+        data: unmeasured.map(entry => ({ entry, servings: null, kinds: '' })),
       });
     }
     return out;
-  }, [entries, kind, recipeGrams]);
+  }, [entries, recipeGrams]);
 
   const renderItem: SectionListRenderItem<Row, Section> = ({ item }) => {
     const body = (
       <>
-        <Text style={styles.rowLabel} numberOfLines={1}>{item.entry.label}</Text>
+        <View style={styles.rowText}>
+          <Text style={styles.rowLabel} numberOfLines={1}>{item.entry.label}</Text>
+          {!!item.kinds && <Text style={styles.rowKind}>{item.kinds}</Text>}
+        </View>
         {item.servings === null ? (
           <Text style={styles.rowUnstated}>Not measured</Text>
         ) : (
@@ -117,7 +124,7 @@ export function ProduceContributorsSheet({ visible, kind, entries, recipeGrams, 
     >
       <View style={styles.root}>
         <SheetHeader
-          title={kind === 'fruit' ? 'Fruit' : 'Vegetables'}
+          title="Vegetables and fruit"
           left={<SheetHeaderButton label="Close" role="cancel" onPress={onClose} minWidth={60} />}
           right={<View style={{ minWidth: 60 }} />}
         />
@@ -166,7 +173,9 @@ function makeStyles(colors: Colors) {
       marginBottom: spacing.sm,
       gap: spacing.sm,
     },
-    rowLabel: { flex: 1, color: colors.text, fontSize: font.md },
+    rowText: { flex: 1 },
+    rowKind: { color: colors.textSecondary, fontSize: font.xs },
+    rowLabel: { color: colors.text, fontSize: font.md },
     rowAmount: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
     rowUnstated: { color: colors.textSecondary, fontSize: font.sm },
     chevronSpace: { width: iconSize.sm },

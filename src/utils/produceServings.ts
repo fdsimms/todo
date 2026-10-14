@@ -273,30 +273,31 @@ export function dayProduce(
   return { ...servingsFromGrams(grams), unmeasured };
 }
 
-/** One entry's share of a day's vegetable or fruit servings. */
+/** One entry's share of a day's produce servings. */
 export interface ProduceContribution {
   entry: FoodLogEntry;
-  /** Servings this entry put toward the figure, with the daily bean cap already applied. */
-  servings: number;
+  /** Servings toward the vegetable figure, with the daily bean cap already applied. */
+  vegetable: number;
+  /** Servings toward the fruit figure. */
+  fruit: number;
 }
 
 export interface ProduceContributions {
-  /** Entries that counted toward the figure, largest first. */
+  /** Entries that counted toward either figure, largest first. */
   counted: ProduceContribution[];
   /** Entries left out because they could not be weighed, in log order. */
   unmeasured: FoodLogEntry[];
 }
 
 /**
- * The entries behind one of `dayProduce`'s two figures. Beans count toward
+ * The entries behind both of `dayProduce`'s figures. Beans count toward
  * vegetables once a day in total, so when the day's beans exceed that cap each
  * bean entry is scaled down by the same factor and the rows still add up to the
- * figure. Unmeasured entries are the same ones `dayProduce` counts, listed so a
+ * figures. Unmeasured entries are the same ones `dayProduce` counts, listed so a
  * low figure can be traced to what was left out.
  */
 export function produceContributions(
   entries: readonly FoodLogEntry[],
-  kind: 'vegetable' | 'fruit',
   recipeGrams?: RecipeProduceResolver,
 ): ProduceContributions {
   const measured: Array<{ entry: FoodLogEntry; grams: ProduceGrams }> = [];
@@ -317,12 +318,11 @@ export function produceContributions(
   const beanScale = legumeServings > LEGUME_DAILY_CAP ? LEGUME_DAILY_CAP / legumeServings : 1;
   const counted: ProduceContribution[] = [];
   for (const { entry, grams } of measured) {
-    const servings = kind === 'vegetable'
-      ? grams.vegetable / PORTION_GRAMS + (grams.legume / PORTION_GRAMS) * beanScale
-      : grams.fruit / PORTION_GRAMS + grams.dried / DRIED_PORTION_GRAMS;
-    if (servings > 0) counted.push({ entry, servings });
+    const vegetable = grams.vegetable / PORTION_GRAMS + (grams.legume / PORTION_GRAMS) * beanScale;
+    const fruit = grams.fruit / PORTION_GRAMS + grams.dried / DRIED_PORTION_GRAMS;
+    if (vegetable + fruit > 0) counted.push({ entry, vegetable, fruit });
   }
-  counted.sort((a, b) => b.servings - a.servings);
+  counted.sort((x, y) => y.vegetable + y.fruit - (x.vegetable + x.fruit));
   return { counted, unmeasured };
 }
 

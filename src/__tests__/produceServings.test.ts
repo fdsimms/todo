@@ -239,7 +239,7 @@ describe('dailyProduceProgress', () => {
 });
 
 describe('produceContributions', () => {
-  it('lists the entries behind each figure, largest first, and the unmeasured ones apart', () => {
+  it('lists the entries behind both figures, largest first, and the unmeasured ones apart', () => {
     const entries = [
       entry('Carrot', { grams: 80 }),
       entry('Broccoli', { grams: 160 }),
@@ -247,10 +247,11 @@ describe('produceContributions', () => {
       entry('Spinach', { grams: null }),
       entry('Chicken', { grams: 150 }),
     ];
-    const veg = produceContributions(entries, 'vegetable');
-    expect(veg.counted.map(c => c.entry.label)).toEqual(['Broccoli', 'Carrot']);
-    expect(veg.unmeasured.map(e => e.label)).toEqual(['Spinach']);
-    expect(produceContributions(entries, 'fruit').counted.map(c => c.entry.label)).toEqual(['Apple']);
+    const { counted, unmeasured } = produceContributions(entries);
+    expect(counted.map(c => c.entry.label)).toEqual(['Broccoli', 'Apple', 'Carrot']);
+    expect(counted[1].fruit).toBeCloseTo(1.5);
+    expect(counted[1].vegetable).toBe(0);
+    expect(unmeasured.map(e => e.label)).toEqual(['Spinach']);
   });
 
   it('adds up to dayProduce, including the daily bean cap', () => {
@@ -258,9 +259,12 @@ describe('produceContributions', () => {
       entry('Lentils', { grams: 160 }),
       entry('Chickpeas', { grams: 160 }),
       entry('Carrot', { grams: 80 }),
+      entry('Apple', { grams: 80 }),
     ];
-    const total = produceContributions(entries, 'vegetable').counted.reduce((n, c) => n + c.servings, 0);
-    expect(total).toBeCloseTo(dayProduce(entries).vegetable);
-    expect(total).toBeCloseTo(2);
+    const { counted } = produceContributions(entries);
+    const day = dayProduce(entries);
+    expect(counted.reduce((n, c) => n + c.vegetable, 0)).toBeCloseTo(day.vegetable);
+    expect(counted.reduce((n, c) => n + c.fruit, 0)).toBeCloseTo(day.fruit);
+    expect(day.vegetable).toBeCloseTo(2);
   });
 });

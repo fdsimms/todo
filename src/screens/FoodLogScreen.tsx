@@ -347,7 +347,7 @@ export function FoodLogScreen() {
   // Which nutrient's contributors are open in the breakdown sheet, or null
   // while it's closed.
   const [contributorsKey, setContributorsKey] = useState<NutrientKey | null>(null);
-  const [produceKind, setProduceKind] = useState<'vegetable' | 'fruit' | null>(null);
+  const [produceOpen, setProduceOpen] = useState(false);
   // The day picker, opened from the date in the header. The arrows step one
   // day; reaching a day last month through them alone was twenty-odd taps.
   const [dayPickerOpen, setDayPickerOpen] = useState(false);
@@ -1226,9 +1226,9 @@ export function FoodLogScreen() {
             key={kind}
             style={styles.totalRow}
             activeOpacity={interaction.activeOpacity}
-            onPress={() => { haptics.tap(); setProduceKind(kind); }}
+            onPress={() => { haptics.tap(); setProduceOpen(true); }}
             accessibilityRole="button"
-            accessibilityLabel={`See which entries counted as ${label.toLowerCase()}`}
+            accessibilityLabel="See which entries counted as vegetables and fruit"
           >
             <Text style={styles.totalLabel}>{label}</Text>
             <Text style={styles.totalValue}>{`about ${formatServings(produce[kind])}`}</Text>
@@ -1239,12 +1239,18 @@ export function FoodLogScreen() {
           bars and no status colour: it shows how far along the day is, and
           nothing changes when it fills. */}
       <View style={styles.totalBlock}>
-        <View style={styles.totalRow}>
+        <TouchableOpacity
+          style={styles.totalRow}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => { haptics.tap(); setProduceOpen(true); }}
+          accessibilityRole="button"
+          accessibilityLabel="See which entries counted as vegetables and fruit"
+        >
           <Text style={styles.totalLabel}>{`${DAILY_PRODUCE_SERVINGS} a day`}</Text>
           <Text style={styles.waterTarget}>
             {`about ${formatServings(produce.vegetable + produce.fruit)} of ${DAILY_PRODUCE_SERVINGS}`}
           </Text>
-        </View>
+        </TouchableOpacity>
         <View
           style={styles.targetTrack}
           accessible
@@ -1659,15 +1665,14 @@ export function FoodLogScreen() {
           onClose={() => setContributorsKey(null)}
         />
       </LazySheet>
-      <LazySheet open={produceKind !== null}>
+      <LazySheet open={produceOpen}>
         <ProduceContributorsSheet
-          visible={produceKind !== null}
-          kind={produceKind}
+          visible={produceOpen}
           entries={dayEntries}
           recipeGrams={produceResolver}
-          total={produceKind ? `about ${formatServings(produce[produceKind])}` : null}
-          onEdit={entry => { setProduceKind(null); setEditingEntry(entry); }}
-          onClose={() => setProduceKind(null)}
+          total={`about ${formatServings(produce.vegetable)} vegetable, about ${formatServings(produce.fruit)} fruit`}
+          onEdit={entry => { setProduceOpen(false); setEditingEntry(entry); }}
+          onClose={() => setProduceOpen(false)}
         />
       </LazySheet>
       <LazySheet open={targetsOpen}>
