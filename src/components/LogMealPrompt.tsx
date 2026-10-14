@@ -370,23 +370,23 @@ export function LogMealPrompt() {
                   </TouchableOpacity>
                 )}
                 {!shown.asked && (
-                  <TouchableOpacity
-                    style={styles.quietLink}
-                    activeOpacity={interaction.activeOpacity}
-                    onPress={handleStopAsking}
-                    accessibilityRole="button"
-                    accessibilityLabel="Stop asking after meals"
-                    accessibilityHint="Turn “Ask what you ate” back on in Settings, under Groceries & meals."
-                  >
-                    <Text style={styles.quietLinkText}>Stop asking after meals</Text>
-                  </TouchableOpacity>
+                  <View style={styles.quietGroup}>
+                    <TouchableOpacity
+                      style={[styles.quietLink, styles.quietLinkTight]}
+                      activeOpacity={interaction.activeOpacity}
+                      onPress={handleStopAsking}
+                      accessibilityRole="button"
+                      accessibilityLabel="Stop asking after meals"
+                      accessibilityHint="Turn “Ask what you ate” back on in Settings, under Groceries & meals."
+                    >
+                      <Text style={styles.quietLinkText}>Stop asking after meals</Text>
+                    </TouchableOpacity>
+                    <Text style={[styles.hint, styles.hintCentered]}>
+                      Turn it back on in Settings, under Groceries & meals.
+                    </Text>
+                  </View>
                 )}
               </View>
-            )}
-            {!shown.asked && (
-              <Text style={[styles.hint, styles.hintCentered]}>
-                {'Turn “Ask what you ate” back on in Settings, under Groceries & meals.'}
-              </Text>
             )}
           </View>
         </View>
@@ -452,6 +452,8 @@ function makeStyles(colors: Colors) {
     buttonNeutralText: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium },
     buttonDisabled: { opacity: 0.4 },
     quietLinks: { alignItems: 'center', marginTop: spacing.xs },
+    quietGroup: { alignItems: 'center' },
+    quietLinkTight: { paddingBottom: spacing.xxs },
     quietLink: { paddingVertical: spacing.sm, paddingHorizontal: spacing.md },
     quietLinkText: { color: colors.textSecondary, fontSize: font.sm },
   });
