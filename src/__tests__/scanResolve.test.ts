@@ -1,7 +1,9 @@
 import {
   alreadyScanned,
+  itemNameSuggestions,
   matchScans,
   nameFromScanFor,
+  newItemBox,
   scanBoxChoice,
   scanBoxFor,
   scanLinkTarget,
@@ -449,5 +451,65 @@ describe('scanBoxChoice', () => {
 
   it('does not derive from a label when the item cannot be found', () => {
     expect(scanBoxChoice({ ...base, itemName: null })).toBeNull();
+  });
+});
+
+
+describe('itemNameSuggestions', () => {
+  it('offers the source category first, then short tails', () => {
+    expect(
+      itemNameSuggestions({
+        name: '2% Reduced Fat Milk',
+        label: 'Great Value 2% Reduced Fat Milk',
+        category: 'dairy milks',
+      })
+    ).toEqual(['Dairy milks', 'Reduced Fat Milk', 'Fat Milk', 'Milk']);
+  });
+
+  it('offers no tails for a slogan, only the category', () => {
+    const slogan = 'Caramel! ACTION! Directed by Ava DuVernay';
+    expect(
+      itemNameSuggestions({ name: slogan, label: `Lights! ${slogan}`, category: 'ice cream tubs' })
+    ).toEqual(['Ice cream tubs']);
+    expect(itemNameSuggestions({ name: slogan, label: `Lights! ${slogan}`, category: null })).toEqual([]);
+  });
+
+  it('skips tails that are too long or start mid-clause', () => {
+    expect(
+      itemNameSuggestions({ name: 'Rolled Oats with Honey', label: 'Rolled Oats with Honey' })
+    ).toEqual(['Oats with Honey', 'Honey']);
+  });
+
+  it('never repeats the current name', () => {
+    const out = itemNameSuggestions({ name: 'Ice cream', label: 'Ice cream', category: 'ice cream' });
+    expect(out.map(x => x.toLowerCase())).not.toContain('ice cream');
+  });
+
+  it('does not offer the same text twice', () => {
+    expect(
+      itemNameSuggestions({ name: 'Rich Yogurt', label: 'Rich Yogurt', category: 'yogurt' })
+    ).toEqual(['Yogurt']);
+  });
+});
+
+describe('newItemBox', () => {
+  const base = { gtin: '1', label: 'Great Value 2% Reduced Fat Milk', brand: 'Great Value', name: 'Milk' };
+
+  it('falls back to the barcode brand and the words the name left over', () => {
+    expect(newItemBox(base)).toEqual({ brand: 'Great Value', variant: '2% Reduced Fat' });
+  });
+
+  it('lets typed values win, and an empty one means none', () => {
+    expect(newItemBox({ ...base, brandEdit: 'Horizon', variantEdit: 'Whole' }))
+      .toEqual({ brand: 'Horizon', variant: 'Whole' });
+    expect(newItemBox({ ...base, brandEdit: '', variantEdit: '' }))
+      .toEqual({ brand: null, variant: null });
+  });
+
+  it('has no derived variant for a row with no barcode, but takes a typed one', () => {
+    const typed = { gtin: null, label: '', brand: null, name: 'Yogurt' };
+    expect(newItemBox(typed)).toEqual({ brand: null, variant: null });
+    expect(newItemBox({ ...typed, brandEdit: 'Chobani', variantEdit: 'Vanilla' }))
+      .toEqual({ brand: 'Chobani', variant: 'Vanilla' });
   });
 });

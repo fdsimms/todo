@@ -1,5 +1,9 @@
 import type { GroceryItem, ItemProduct } from '../types';
-import { GROCERY_NAME_MAX_LENGTH, GROCERY_VARIANT_MAX_LENGTH } from '../types';
+import {
+  GROCERY_BRAND_MAX_LENGTH,
+  GROCERY_NAME_MAX_LENGTH,
+  GROCERY_VARIANT_MAX_LENGTH,
+} from '../types';
 import { aisleForProductCategory } from './productCategory';
 import { matchReceiptLines, type AliasResolver, type ReceiptMatch } from './receiptMatch';
 import type { ReceiptLine } from '../services/aiSuggestions';
@@ -57,6 +61,11 @@ export interface ScannedItem {
    * See `aisleForProductCategory`.
    */
   aisle: string | null;
+  /**
+   * The source's own category, in its words ("ice cream tubs"), for offering as
+   * a name. Optional because only a looked-up row has one; see `itemNameSuggestions`.
+   */
+  category?: string | null;
 }
 
 /**
@@ -153,6 +162,95 @@ export function shorterNameSuggestions(name: string): string[] {
     out.push(candidate);
   }
   return out;
+}
+
+/** Words a name suggestion shouldn't start with: what's left of a clause, not a thing. */
+const SUGGESTION_LEAD_WORDS = new Set([
+  'a', 'an', 'and', 'by', 'for', 'from', 'in', 'of', 'on', 'or', 'the', 'to', 'with',
+]);
+
+/** The longest tail of a product name offered as a name: past this it is a phrase, not a food. */
+const SUGGESTION_MAX_WORDS = 3;
+
+/**
+ * What to offer as the *name* of a new item, for a row still wearing a barcode
+ * source's words.
+ *
+ * `shorterNameSuggestions` offers every suffix, which is right for "Great Value
+ * 2% Reduced Fat Milk" and nonsense for "Caramel! ACTION! Directed by Ava
+ * DuVernay", where the words are a marketing line and no suffix of them is a
+ * food. This keeps the same suffix idea and adds the three restraints that
+ * separate the two cases, without reading what any word means:
+ *
+ * - **The source's own category comes first.** It is the one field that says
+ *   what the product *is* rather than what it is called, so "ice cream tubs"
+ *   beats any tail of a slogan. It is offered as written, never singularized.
+ * - **Only short tails.** At most `SUGGESTION_MAX_WORDS` words, shortest last,
+ *   and never one that starts with a joining word ("by Ava DuVernay").
+ * - **A slogan gets no tails at all.** A "!" or "?" in the product's own name
+ *   means it is a tagline, so a tail of it is not a name. The category, if
+ *   there is one, still stands.
+ *
+ * At most four suggestions, because a row of chips nobody reads is the failure
+ * this replaced. An empty list is a fine answer: the name field is right there.
+ */
+export function itemNameSuggestions(args: {
+  name: string;
+  label: string;
+  category?: string | null;
+}): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>([args.name.trim().toLowerCase()]);
+  const add = (candidate: string) => {
+    const text = candidate.trim();
+    const key = text.toLowerCase();
+    if (text.length < 3 || seen.has(key)) return;
+    seen.add(key);
+    out.push(text);
+  };
+
+  const category = args.category?.trim().replace(/\s+/g, ' ');
+  if (category) add(category.charAt(0).toUpperCase() + category.slice(1));
+
+  if (!/[!?]/.test(args.label || args.name)) {
+    const words = args.name.trim().replace(/\s+/g, ' ').split(' ');
+    for (let drop = 1; drop < words.length; drop++) {
+      const tail = words.slice(drop);
+      if (tail.length > SUGGESTION_MAX_WORDS) continue;
+      if (SUGGESTION_LEAD_WORDS.has(tail[0].toLowerCase())) continue;
+      add(tail.join(' ').replace(EDGE_JUNK, ''));
+    }
+  }
+  return out.slice(0, 4);
+}
+
+/**
+ * The brand and variant a row that mints a new item is filed under.
+ *
+ * What the person typed wins outright, and an empty field is an answer ("no
+ * variant"), not a gap to fill: `undefined` is the only state that falls back to
+ * the barcode's own words. The variant falls back to `variantFor`, so shortening
+ * the name still leaves the rest of the product's words as the variant, which is
+ * what the sheet shows in the field and so what Add writes. `variantFor`
+ * subtracts the *source's* brand, not the edited one, because it is reading the
+ * source's words.
+ */
+export function newItemBox(row: {
+  gtin: string | null;
+  label: string;
+  brand: string | null;
+  name: string;
+  brandEdit?: string;
+  variantEdit?: string;
+}): { brand: string | null; variant: string | null } {
+  const brand = (row.brandEdit ?? row.brand)?.trim().slice(0, GROCERY_BRAND_MAX_LENGTH) || null;
+  const variant =
+    row.variantEdit !== undefined
+      ? row.variantEdit.trim().slice(0, GROCERY_VARIANT_MAX_LENGTH) || null
+      : row.gtin
+        ? variantFor(row.label, row.brand, row.name.trim())
+        : null;
+  return { brand, variant };
 }
 
 /**
@@ -299,6 +397,7 @@ export function scannedItemFor(record: ProductRecord): ScannedItem {
     brand: record.brand,
     quantity: record.quantity ?? '',
     aisle: aisleForProductCategory(record.category),
+    category: record.category,
   };
 }
 
