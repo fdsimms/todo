@@ -120,7 +120,7 @@ struct ShieldStateShared: Codable {
   /// session, in practice. The monitor extension reads only this: it is what
   /// says whether the end of a penalty window may lift the shield.
   let otherReasonWantsShield: Bool
-  /// "penalty", "focus" or "none" — what the shield screen leads with.
+  /// "penalty", "focus", "gate", "key" or "none" — what the shield screen leads with.
   let reason: String
   /// When a penalty block runs out, as an ISO instant, or nil when the shield
   /// is up for some other reason. The shield screen turns this into a time;

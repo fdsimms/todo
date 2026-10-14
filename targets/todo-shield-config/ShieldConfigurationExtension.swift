@@ -144,6 +144,13 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
       // which is the one thing the app cannot work out for this screen.
       return state.detail.flatMap { $0.isEmpty ? nil : $0 }
         ?? "A task has to be done first. Open dundundun to see which."
+    case "key":
+      // A tag locked these, and only the tag ends it. The app writes the whole
+      // sentence, for the same reason a gate does: a fixed line here would be a
+      // copy of words that belong to the app and nothing in this target can be
+      // tested against them.
+      return state.detail.flatMap { $0.isEmpty ? nil : $0 }
+        ?? "These apps are locked until you tap your key tag."
     case "penalty":
       let cause = state.detail.flatMap { $0.isEmpty ? nil : $0 }
       let until = state.untilIso.flatMap(Self.timeLabel)

@@ -16,7 +16,7 @@
  */
 
 /** App link paths this server hands out, each of which the app routes. */
-export const OPEN_PATHS = ['task', 'project', 'groceries', 'recipe', 'mealplan', 'people', 'kitchen'] as const;
+export const OPEN_PATHS = ['task', 'project', 'groceries', 'recipe', 'mealplan', 'people', 'kitchen', 'key'] as const;
 export type OpenPath = (typeof OPEN_PATHS)[number];
 
 const SCHEME = 'dundundun';

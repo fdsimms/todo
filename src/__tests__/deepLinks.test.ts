@@ -31,8 +31,12 @@ const mockResetToFocusSession = jest.fn();
 const mockFocusAdvance = jest.fn();
 const mockFocusPause = jest.fn();
 const mockFocusResume = jest.fn();
+const mockApplyScan = jest.fn();
+const mockAlert = jest.fn();
+const mockWarning = jest.fn();
 
 jest.mock('react-native', () => ({
+  Alert: { alert: (...args: unknown[]) => mockAlert(...args) },
   Linking: {
     getInitialURL: jest.fn().mockResolvedValue(null),
     addEventListener: jest.fn(() => ({ remove: jest.fn() })),
@@ -60,10 +64,16 @@ jest.mock('../store/useFocusStore', () => ({
     getState: () => ({ advance: mockFocusAdvance, pause: mockFocusPause, resume: mockFocusResume }),
   },
 }));
+jest.mock('../store/useNfcKeyStore', () => ({
+  useNfcKeyStore: { getState: () => ({ applyScan: (...args: unknown[]) => mockApplyScan(...args) }) },
+}));
 jest.mock('../utils/haptics', () => ({
   // Read mockSuccess lazily: jest hoists jest.mock above the const inits, so
   // capturing the fn directly would grab `undefined`.
-  haptics: { success: (...args: unknown[]) => mockSuccess(...args) },
+  haptics: {
+    success: (...args: unknown[]) => mockSuccess(...args),
+    warning: (...args: unknown[]) => mockWarning(...args),
+  },
 }));
 jest.mock('../navigation/navigationRef', () => ({
   resetToToday: (...args: unknown[]) => mockResetToToday(...args),
@@ -129,6 +139,8 @@ import {
   completeTaskUrlId,
   isStopTimerUrl,
   stopTimerUrlKey,
+  isKeyUrl,
+  keyUrlToken,
   linkIconFor,
   isTaskUrl,
   taskUrlId,
@@ -1059,5 +1071,60 @@ describe('journal and dreams links', () => {
     mockResetToJournal.mockClear();
     expect(openInAppUrl('dundundun://journal?entry=abc')).toBe(true);
     expect(mockResetToJournal).toHaveBeenCalledWith('journal', false, 'abc');
+  });
+});
+
+describe('the key tag link', () => {
+  const token = 'abcdefghijklmnop1234';
+
+  beforeEach(() => {
+    mockApplyScan.mockReset();
+    mockAlert.mockReset();
+    mockResetToToday.mockReset();
+    mockDemoActive = false;
+  });
+
+  it('is recognized in every spelling and reads its token', () => {
+    expect(isKeyUrl(`dundundun://key?token=${token}`)).toBe(true);
+    expect(isKeyUrl(`dundundun:///key/?token=${token}`)).toBe(true);
+    expect(isKeyUrl('dundundun://keys')).toBe(false);
+    expect(keyUrlToken(`dundundun://key?token=${token.toUpperCase()}`)).toBe(token);
+    expect(keyUrlToken('dundundun://key')).toBeNull();
+    expect(keyUrlToken('dundundun://key?token=short')).toBeNull();
+    expect(keyUrlToken(`dundundun://completeTask?token=${token}`)).toBeNull();
+  });
+
+  it('arrives from the https link a tag carries', () => {
+    mockApplyScan.mockReturnValue({ outcome: 'locked', key: { name: 'Desk tag' } });
+    expect(openInAppUrl(`https://dundundun-mcp.fly.dev/open/key?token=${token}`)).toBe(true);
+    expect(mockApplyScan).toHaveBeenCalledWith('link', token);
+    expect(mockAlert).toHaveBeenCalledWith('Apps locked', expect.stringContaining('Desk tag'));
+    expect(mockResetToToday).toHaveBeenCalled();
+  });
+
+  it('says which way an enrolled tag flipped the lock', () => {
+    mockApplyScan.mockReturnValue({ outcome: 'unlocked', key: { name: 'Desk tag' } });
+    openInAppUrl(`dundundun://key?token=${token}`);
+    expect(mockAlert).toHaveBeenCalledWith('Apps unlocked', expect.stringContaining('Other blocks'));
+  });
+
+  it('answers a token nobody enrolled with only "not recognized"', () => {
+    mockApplyScan.mockReturnValue({ outcome: 'unknown' });
+    expect(openInAppUrl(`dundundun://key?token=${token}`)).toBe(true);
+    expect(mockWarning).toHaveBeenCalled();
+    expect(mockAlert).toHaveBeenCalledWith('Tag not recognized', expect.any(String));
+  });
+
+  it('hands a link with no usable token to the store as null, which matches nothing', () => {
+    mockApplyScan.mockReturnValue({ outcome: 'unknown' });
+    openInAppUrl('dundundun://key');
+    expect(mockApplyScan).toHaveBeenCalledWith('link', null);
+  });
+
+  it('does nothing to a lock in demo mode', () => {
+    mockDemoActive = true;
+    expect(openInAppUrl(`dundundun://key?token=${token}`)).toBe(true);
+    expect(mockApplyScan).not.toHaveBeenCalled();
+    expect(mockAlert).not.toHaveBeenCalled();
   });
 });
