@@ -4357,6 +4357,9 @@ export interface TemplateItem {
   // daily "Log breakfast" routine would otherwise need its slot re-picked by
   // hand on every application.
   logMealSlot: MealSlot | null;
+  // Seeds Task.logMealSlotByTime: the slot is picked from the clock when the
+  // task is completed. Optional so a stored item from before it reads as off.
+  logMealSlotByTime?: boolean;
 
   // What the task created from this item asks for when it's completed, or null
   // for the ordinary "ticking it is the whole answer" item. Another field

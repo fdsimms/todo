@@ -1884,6 +1884,7 @@ describe('Templates', () => {
     medicationAmount: null,
     medicationUnit: null,
     logMealSlot: null,
+    logMealSlotByTime: false,
     deliverableKind: null,
     deliverableOptions: [],
     deliverableSetsAway: false,

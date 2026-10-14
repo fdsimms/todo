@@ -31,7 +31,7 @@ const NOT_EXPOSED: Record<string, string[]> = {
   // timer and meal slot are device-side behavior with no MCP use yet.
   'withheld on purpose, as they are on a task': [
     'gatesApps', 'penaltyMinutes', 'penaltyCutoffTime', 'medicationName', 'medicationAmount', 'medicationUnit',
-    'completionTimerMinutes', 'completionTimerNote', 'logMealSlot',
+    'completionTimerMinutes', 'completionTimerNote', 'logMealSlot', 'logMealSlotByTime',
   ],
 
   // Written as `chain` and `rotation` in a plan, which the applier turns into
