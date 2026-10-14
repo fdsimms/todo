@@ -3627,8 +3627,15 @@ export function TodayScreen() {
         // the expensive case lives — a paint drag mutates the selection on
         // every frame, and with the memo only the rows whose `selected`
         // flipped re-render.
+        //
+        // A Later Today row can't be dragged in the main list (it has no slot
+        // in the category ordering), but its pinned copy can: the block orders
+        // by pinnedOrder, a number space of its own, so the copy passes
+        // `duplicateRow` and keeps its handle.
         drag={
-          selectionMode || !opts?.drag || upcomingTaskIds.has(task.id) ? undefined : opts.drag
+          selectionMode || !opts?.drag || (upcomingTaskIds.has(task.id) && !opts.duplicateRow)
+            ? undefined
+            : opts.drag
         }
         isActive={opts?.isActive}
         selectionMode={selectionMode}
