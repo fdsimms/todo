@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View, type GestureResponderEvent } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -976,6 +976,18 @@ export function FoodLogScreen() {
     [plannedOpen, plannedMenu],
   );
 
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const [optionsAnchor, setOptionsAnchor] = useState<CardAnchor | null>(null);
+  // totalCount rather than this day's entries for Export: it reaches across
+  // the whole history, the condition the mood and medication screens carry.
+  const optionsActions = useMemo<ActionMenuAction[]>(() => [
+    { key: 'saved', label: 'Saved meals', icon: 'bookmark-outline', onPress: () => setBrowseMealsOpen(true) },
+    { key: 'targets', label: 'Nutrition settings', icon: 'flag-outline', onPress: () => setTargetsOpen(true) },
+    ...(totalCount > 0
+      ? [{ key: 'export', label: 'Export food log', icon: 'share-outline', onPress: () => setExportOpen(true) } as ActionMenuAction]
+      : []),
+  ], [totalCount]);
+
   const plannedMenuActions = useMemo<ActionMenuAction[]>(() => {
     const coverage = plannedMenuCoverage;
     if (!coverage) return [];
@@ -1365,29 +1377,22 @@ export function FoodLogScreen() {
             onPress: () => { haptics.tap(); setAddingSlot(guessedSlot); setAddOpen(true); },
             accessibilityLabel: 'Estimate a meal from a description',
           } satisfies ScreenHeaderAction] : []),
-          {
-            icon: 'bookmark-outline',
-            onPress: () => { haptics.tap(); setBrowseMealsOpen(true); },
-            accessibilityLabel: 'Saved meals',
-          } satisfies ScreenHeaderAction,
           ...(scanShown ? [{
             icon: 'barcode-outline',
             onPress: () => { haptics.tap(); setAddingSlot(guessedSlot); setAddOpen(true); setScanOpen(true); },
             accessibilityLabel: 'Scan a barcode to log',
           } satisfies ScreenHeaderAction] : []),
+          // Saved meals, nutrition settings and export live in one menu: three
+          // rarely-used icons beside the two logging shortcuts crowded the title.
           {
-            icon: 'target',
-            onPress: () => { haptics.tap(); setTargetsOpen(true); },
-            accessibilityLabel: 'Nutrition settings',
-          },
-          // Once there's anything to share, the condition the mood and
-          // medication screens' share actions carry. totalCount rather than
-          // this day's entries: the export reaches across the whole history.
-          ...(totalCount > 0 ? [{
-            icon: 'share-outline',
-            onPress: () => { haptics.tap(); setExportOpen(true); },
-            accessibilityLabel: 'Export your food log',
-          } satisfies ScreenHeaderAction] : []),
+            icon: 'ellipsis-horizontal',
+            onPress: (e: GestureResponderEvent) => {
+              haptics.tap();
+              setOptionsAnchor({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY });
+              setOptionsOpen(true);
+            },
+            accessibilityLabel: 'Food log options',
+          } satisfies ScreenHeaderAction,
           // Plain logging moved to the FAB below, same as every other
           // primary-add list screen — selecting is reached by swiping a row.
         ], screenSettings.action)}
@@ -1673,6 +1678,13 @@ export function FoodLogScreen() {
       </LazySheet>
       {/* Provenance only: the entry's own figures are a snapshot of what was
           eaten and must not follow the pointer. See `FoodLogPatch`. */}
+      <ActionMenu
+        visible={optionsOpen}
+        title="Food log"
+        actions={optionsActions}
+        anchor={optionsAnchor}
+        onClose={() => setOptionsOpen(false)}
+      />
       <ActionMenu
         visible={plannedMenuCoverage !== null}
         title={plannedMenuCoverage ? describePlannedSlot(plannedMenuCoverage) : ''}
