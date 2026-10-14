@@ -1,4 +1,4 @@
 {
-  "message": "The scan sheet is easier to read: each scan is one line with its name, what it matched and a status, and tapping a line opens its editor. The camera folds to a strip while you type, and the wording now says \"food\" instead of \"item\".",
+  "message": "The scan sheet is easier to read: each scan is one line with its name, what it matched and a status, and tapping a line opens its editor. The camera folds to a strip while you type. The receipt sheet asks which item a line is the same way.",
   "date": "2026-10-14"
 }

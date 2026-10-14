@@ -113,7 +113,7 @@ export function ProductPicker({ itemId, products, value, onPick, label, allowNon
             icon="add"
             variant="neutral"
             onPress={() => setAdding(true)}
-            accessibilityLabel="Add a new brand or flavor to this food"
+            accessibilityLabel="Add a new brand or flavor to this item"
           />
         </View>
       )}

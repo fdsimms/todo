@@ -39,6 +39,7 @@ import { InlineAction } from './InlineAction';
 import { CatalogLinkPicker } from './CatalogLinkPicker';
 import { ProductPicker } from './ProductPicker';
 import { EmptyState } from './EmptyState';
+import { ActionRow } from './ActionRow';
 import type { ReceiptAddDraft } from './ReceiptImportSheet';
 import type { ReceiptMatch } from '../utils/receiptMatch';
 import { lookupGtin, describeLookupError } from '../services/productLookup';
@@ -389,8 +390,6 @@ interface Props {
  * rule `acceptedByDefault` applies to a weak receipt match, for the same
  * reason: an unchecked row is a question and a checked one is an assertion.
  */
-type ActionTone = 'plain' | 'muted' | 'action' | 'error';
-
 /** What a collapsed row says about itself, which is also its colour. */
 type ChipTone = 'neutral' | 'new' | 'warn';
 
@@ -416,82 +415,6 @@ function StatusChip({
   return (
     <View style={[styles.chip, { backgroundColor: palette.backgroundColor }]}>
       <Text style={[styles.chipText, { color: palette.color }]}>{label}</Text>
-    </View>
-  );
-}
-
-/**
- * One tappable question inside an open row's editor: an icon, what it is
- * currently set to, and a quieter line saying where that came from. Each is its
- * own tinted block rather than a line in a table, so a row that has three of
- * them reads as three separate things to decide instead of one dense form.
- *
- * Without `onPress` it is a plain statement (nothing to change, so no chevron),
- * with a check when `done`. `extra` is the single pill that may sit beside the
- * text, kept a sibling of the tap area so touchables never nest.
- */
-function ActionRow({
-  styles, colors, icon, title, note, tone, onPress, accessibilityLabel, extra, done, role, checked,
-}: {
-  styles: ReturnType<typeof makeStyles>;
-  colors: Colors;
-  icon: React.ComponentProps<typeof Ionicons>['name'];
-  title: string;
-  note?: string | null;
-  tone: ActionTone;
-  onPress?: () => void;
-  accessibilityLabel: string;
-  extra?: React.ReactNode;
-  done?: boolean;
-  /** `'switch'` for an on/off row, which then reports `checked`. */
-  role?: 'switch';
-  checked?: boolean;
-}) {
-  const titleStyle =
-    tone === 'action'
-      ? styles.actionTitleAction
-      : tone === 'error'
-        ? styles.actionTitleError
-        : tone === 'muted'
-          ? styles.actionTitleMuted
-          : styles.actionTitle;
-  const body = (
-    <>
-      <Ionicons
-        name={icon}
-        size={iconSize.md}
-        color={checked || tone === 'action' ? colors.accent : colors.textTertiary}
-      />
-      <View style={styles.actionText}>
-        <Text style={titleStyle} numberOfLines={3}>{title}</Text>
-        {!!note && <Text style={styles.actionNote}>{note}</Text>}
-      </View>
-    </>
-  );
-  return (
-    <View style={styles.actionRow}>
-      {onPress ? (
-        <TouchableOpacity
-          style={styles.actionTap}
-          activeOpacity={interaction.activeOpacity}
-          onPress={onPress}
-          accessibilityRole={role ?? 'button'}
-          accessibilityState={role ? { checked: !!checked } : undefined}
-          accessibilityLabel={accessibilityLabel}
-        >
-          {body}
-        </TouchableOpacity>
-      ) : (
-        <View style={styles.actionTap} accessible accessibilityLabel={accessibilityLabel}>
-          {body}
-        </View>
-      )}
-      {extra}
-      {onPress && !role ? (
-        <Ionicons name="chevron-forward" size={iconSize.xs} color={colors.textTertiary} />
-      ) : done ? (
-        <Ionicons name="checkmark-circle" size={iconSize.sm} color={colors.greenText} />
-      ) : null}
     </View>
   );
 }
@@ -1108,19 +1031,19 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
           )
         : [];
       if (known.length > 0 && known.every(n => panelLooksWrongFor(row.scanPanel, n))) {
-        return `Its nutrition is very different from your ${matchedItem?.name}. Check this is the same food`;
+        return `Its nutrition is very different from your ${matchedItem?.name}. Check this is the same item`;
       }
       return match?.confidence === 'remembered'
         ? 'Matched by name, as you matched it before'
         : 'Matched by name';
     }
-    if (pendingMatchId(row, match)) return 'Confirm it is the same food, or choose another';
+    if (pendingMatchId(row, match)) return 'Confirm it is the same item, or choose another';
     // Still wearing the barcode source's own words: say so, because the full
     // product name is what ends up as the item's name if nobody shortens it.
     if (nameFromScanFor(row)) {
-      return 'Check the name, brand and flavor above, or match it to a food you already have';
+      return 'Check the name, brand and flavor above, or match it to an item you already have';
     }
-    return 'Saved as a new food when you continue';
+    return 'Saved as a new item when you continue';
   };
 
   const camera = () => {
@@ -1227,7 +1150,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                 const caption = captionFor(row, index);
                 const pendingId = pendingMatchId(row, match);
                 const nameable = !row.pending;
-                // The brand question, asked only once there is a food to ask it
+                // The brand question, asked only once there is an item to ask it
                 // about and brands to answer with.
                 const rowItemId = resolvedItemId(row, match);
                 const rowItem = rowItemId ? items.find(i => i.id === rowItemId) : null;
@@ -1305,7 +1228,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                     ? row.error
                     : caption && (needsName || pendingId || rowItemId)
                       ? caption
-                      : [newBox.brand, newBox.variant].filter(Boolean).join(' · ') || 'New food';
+                      : [newBox.brand, newBox.variant].filter(Boolean).join(' · ') || 'New item';
                 const chip: { tone: ChipTone; label: string } | null = row.pending
                   ? null
                   : row.error
@@ -1442,22 +1365,18 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                         </View>
                       )}
 
-                      {/* Which food this is: a match to one you already have, or
-                          the way to pick one. "Food" and not "item": the screen
-                          says what the thing is rather than what the app calls
-                          its record of it. */}
+                      {/* Which item this is: a match to one you already have, or
+                          the way to pick one. */}
                       <ActionRow
-                        styles={styles}
-                        colors={colors}
                         icon="link-outline"
-                        title={matchSaysFound ? (caption as string) : row.error ?? 'Match to a food you already have'}
+                        title={matchSaysFound ? (caption as string) : row.error ?? 'Match to an item you already have'}
                         note={needsName ? 'Or type what it is above' : captionNote}
                         tone={row.error ? 'error' : matchSaysFound ? 'plain' : 'action'}
                         onPress={() => setPicking(p => (p?.key === row.key && p.mode === 'item' ? null : { key: row.key, mode: 'item' }))}
                         accessibilityLabel={
                           row.pickedItemId
-                            ? `Change which food ${subject} is matched to`
-                            : `Match ${subject} to a food you already have`
+                            ? `Change which item ${subject} is matched to`
+                            : `Match ${subject} to an item you already have`
                         }
                         extra={
                           // The one decision worth a button: accepting the
@@ -1483,9 +1402,9 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                       />
                       {/* Under the line it belongs to rather than at the foot of the
                           row: a result list sharing a line with its row would take
-                          its width from whatever was left, and a food you cannot
+                          its width from whatever was left, and an item you cannot
                           read is one you cannot pick. Same `CatalogLinkPicker` a
-                          recipe ingredient is tied to a food with. */}
+                          recipe ingredient is tied to an item with. */}
                       {picking?.key === row.key && picking.mode === 'item' && (
                         <View style={styles.pickerWrap}>
                           <CatalogLinkPicker
@@ -1502,7 +1421,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                         </View>
                       )}
 
-                      {/* Once the row is matched to a food. With brands on file it
+                      {/* Once the row is matched to an item. With brands on file it
                           is a choice among them; without, it is the way to add the
                           first one, so the brand and flavor can be recorded from
                           here rather than in the grocery screen afterwards. A row
@@ -1510,8 +1429,6 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                           above, which is why this line isn't shown for it. */}
                       {!!rowItemId && (
                         <ActionRow
-                          styles={styles}
-                          colors={colors}
                           icon="pricetag-outline"
                           title={boxText ?? 'No brand or flavor chosen'}
                           note={boxNote}
@@ -1519,15 +1436,15 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                           onPress={() => setPicking(p => (p?.key === row.key && p.mode === 'box' ? null : { key: row.key, mode: 'box' }))}
                           accessibilityLabel={
                             boxText
-                              ? `Filed as ${boxText}. Change which brand or flavor of ${resolvedName ?? 'this food'} this is`
+                              ? `Filed as ${boxText}. Change which brand or flavor of ${resolvedName ?? 'this item'} this is`
                               : boxCount > 0
-                                ? `Choose which brand or flavor of ${resolvedName ?? 'this food'} this is`
-                                : `Add a brand or flavor to ${resolvedName ?? 'this food'}`
+                                ? `Choose which brand or flavor of ${resolvedName ?? 'this item'} this is`
+                                : `Add a brand or flavor to ${resolvedName ?? 'this item'}`
                           }
                         />
                       )}
                       {/* The second question, and deliberately its own control
-                          rather than a step of the first: which food this is, then
+                          rather than a step of the first: which item this is, then
                           which kind of it. Most scans never need it, because the
                           barcode's own words derive one perfectly well, so it sits
                           behind its own tap rather than lengthening every row. */}
@@ -1568,8 +1485,6 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                       {context === 'log' && !pendingId && !!row.name.trim() && (
                         nutritionSource ? (
                           <ActionRow
-                            styles={styles}
-                            colors={colors}
                             icon="nutrition-outline"
                             title={nutritionSource === 'catalog' ? 'Nutrition on file' : 'Nutrition from the barcode lookup'}
                             tone="plain"
@@ -1578,8 +1493,6 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                           />
                         ) : !!onPhotographLabel && !row.pickedItemId ? (
                           <ActionRow
-                            styles={styles}
-                            colors={colors}
                             icon="nutrition-outline"
                             title="Add nutrition from the label"
                             note="Not found yet. Photograph the label to log it"
@@ -1589,11 +1502,9 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                           />
                         ) : (
                           <ActionRow
-                            styles={styles}
-                            colors={colors}
                             icon="nutrition-outline"
                             title="No nutrition yet"
-                            note="This food can't be logged until it has nutrition facts"
+                            note="This item can't be logged until it has nutrition facts"
                             tone="muted"
                             accessibilityLabel={`${row.name.trim()} has no nutrition facts yet`}
                           />
@@ -1604,8 +1515,6 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                           opinion about: it records that something was eaten. */}
                       {CONTEXT_COPY[context].freezer && (
                         <ActionRow
-                          styles={styles}
-                          colors={colors}
                           icon={row.frozen ? 'snow' : 'snow-outline'}
                           title="Going in the freezer"
                           note={row.frozen ? 'On' : 'Off. It goes in the fridge or pantry'}
@@ -1773,22 +1682,6 @@ function makeStyles(colors: Colors) {
     // grid of chips.
     confirmPill: { paddingVertical: 3, minHeight: 0 },
     editor: { paddingHorizontal: spacing.md, paddingBottom: spacing.smd, gap: spacing.sm },
-    actionRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.sm,
-      minHeight: 48,
-      paddingHorizontal: spacing.smd,
-      backgroundColor: colors.bgTertiary,
-      borderRadius: radius.md,
-    },
-    actionTap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.smd, minHeight: 48, paddingVertical: spacing.sm },
-    actionText: { flex: 1 },
-    actionTitle: { color: colors.text, fontSize: font.sm },
-    actionTitleMuted: { color: colors.textSecondary, fontSize: font.sm },
-    actionTitleError: { color: colors.orangeText, fontSize: font.sm },
-    actionTitleAction: { color: colors.accentText, fontSize: font.sm, fontWeight: fontWeight.semibold },
-    actionNote: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xxs },
     editorFoot: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     removeButton: { minHeight: 44, justifyContent: 'center', paddingLeft: spacing.md },
     removeText: { color: colors.redText, fontSize: font.sm, fontWeight: fontWeight.medium },
