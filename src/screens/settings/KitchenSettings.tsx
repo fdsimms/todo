@@ -226,7 +226,7 @@ export function KitchenSettings() {
           icon="cart-outline"
           iconColor={runningLowAddsToList ? colors.accent : undefined}
           label="Running low adds to the list"
-          hint="Adds an item to the grocery list when you mark it as running low. When off, it stays a note in the pantry."
+          hint="Adds an item to the grocery list when you mark it as running low. When off, it stays a note in the pantry. When you log food, you can change this for that item."
           toggle={runningLowAddsToList}
           onPress={() => setRunningLowAddsToList(!runningLowAddsToList)}
           accessibilityLabel="Running low adds to the list"

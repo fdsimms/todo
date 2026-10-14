@@ -335,14 +335,14 @@ export function addToPantry(replica: Replica, names: string[]): { added: { id: s
   return { added: replica.addToPantry(clean).map(a => ({ id: a.item.id, name: a.item.name, isNew: a.isNew })) };
 }
 
-export function answerPantryReview(replica: Replica, answers: { id: string; answer: 'have' | 'low' | 'out' }[]): { answered: SerializedPantryItem[] } {
+export function answerPantryReview(replica: Replica, answers: { id: string; answer: 'have' | 'low' | 'out'; addToList?: boolean }[]): { answered: SerializedPantryItem[] } {
   if (answers.length === 0) throw new Error('Give at least one answer.');
   // Resolved before anything is written, so one unknown id cannot leave a
   // half-answered deck.
   const known = new Set(replica.groceryItems().map(i => i.id));
   const missing = answers.find(a => !known.has(a.id));
   if (missing) throw new Error(`No grocery item with id ${missing.id}.`);
-  const answered = answers.map(a => serializePantryItem(replica, replica.answerPantryReview(a.id, a.answer)));
+  const answered = answers.map(a => serializePantryItem(replica, replica.answerPantryReview(a.id, a.answer, { addToList: a.addToList })));
   return { answered };
 }
 

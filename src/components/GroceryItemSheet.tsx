@@ -13,6 +13,7 @@ import {
 import {
   Keyboard,
   Platform,
+  Switch,
   View,
   Text,
   TouchableOpacity,
@@ -245,7 +246,10 @@ export function GroceryItemSheet({
   const clearItemShopPrice = useGroceryStore(s => s.clearItemShopPrice);
   const useUpTasksEnabled = useSettingsStore(s => s.groceryUseUpTasks);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
-  const runningLowAddsToList = useSettingsStore(s => s.runningLowAddsToList);
+  const runningLowAddsToListSetting = useSettingsStore(s => s.runningLowAddsToList);
+  // Chosen here for this item; undefined follows the setting.
+  const [lowAddsToListChoice, setLowAddsToListChoice] = useState<boolean | undefined>(undefined);
+  const runningLowAddsToList = lowAddsToListChoice ?? runningLowAddsToListSetting;
   const simpleMode = useSettingsStore(s => s.simpleMode);
   const removeFromList = useGroceryStore(s => s.removeFromList);
   const deleteItem = useGroceryStore(s => s.deleteItem);
@@ -625,7 +629,7 @@ export function GroceryItemSheet({
   };
   const toggleRunningLow = () => {
     haptics.tap();
-    setRunningLow(item.id, !runningLow);
+    setRunningLow(item.id, !runningLow, { addToList: runningLowAddsToList });
   };
 
   // "Freeze some" (#2925): part of a pack in the freezer while the rest stays
@@ -1396,11 +1400,16 @@ export function GroceryItemSheet({
             <PillGroup options={pantryOptions} noun="state" />
             {/* What the lit pill is going to do, said before it is tapped: the
                 hint above only describes the state once it is already set. */}
-            <Text style={styles.portionHint}>
-              {runningLowAddsToList
-                ? 'Running low also adds it to the grocery list. The mark lapses after up to two weeks.'
-                : 'Running low marks it as nearly out without adding it to the list. The mark lapses after up to two weeks.'}
-            </Text>
+            <View style={styles.lowSwitchRow}>
+              <Text style={styles.lowSwitchLabel}>Add to grocery list when running low</Text>
+              <Switch
+                value={runningLowAddsToList}
+                onValueChange={setLowAddsToListChoice}
+                trackColor={{ false: colors.bgTertiary, true: colors.accent }}
+                accessibilityLabel="Add to grocery list when running low"
+              />
+            </View>
+            <Text style={styles.portionHint}>The running low mark lapses after up to two weeks.</Text>
             {/* The frozen half of a split pack, under the pills rather than
                 as a seventh one: the pills describe the item, and this is a
                 second thing in the kitchen with its own row in the pantry.
@@ -2281,6 +2290,8 @@ function makeStyles(colors: Colors) {
     // textSecondary rather than the hint grey: it states where some of the
     // food is, which is information rather than an aside.
     portionText: { fontSize: font.sm, color: colors.textSecondary },
+    lowSwitchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.smd, marginTop: spacing.smd },
+    lowSwitchLabel: { fontSize: font.sm, color: colors.text, flexShrink: 1 },
     portionHint: { fontSize: font.sm, color: colors.textTertiary, marginTop: spacing.xs },
     body: { padding: spacing.md, paddingBottom: spacing.xl },
     // No marginHorizontal on either — `body`'s own padding already insets them.
