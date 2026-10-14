@@ -1043,7 +1043,7 @@ export function BackfillScreen() {
       undo,
     });
     advance(currentTask.id);
-    offerKindDefault(currentTask, patch, false);
+    offerKindDefault(currentTask, patch, false, valueText);
   };
 
   /**
@@ -1053,12 +1053,14 @@ export function BackfillScreen() {
    * exactly the case where the answer is worth keeping: the next one the app
    * writes would otherwise come back here.
    */
-  const offerKindDefault = (task: Task, patch: Partial<Task>, dismissed: boolean) => {
+  const offerKindDefault = (task: Task, patch: Partial<Task>, dismissed: boolean, valueText: string) => {
     if (active?.kind !== 'task' || !task.generatedKind) return;
+    const fieldLabel = BACKFILL_FIELDS.find(f => f.id === active.id)!.label;
     offerGroupDefault(
       task,
       { kind: 'generated', id: task.generatedKind, key: `generated:${task.generatedKind}` },
       defaultsFromAnswer(active.id, patch, dismissed),
+      `${fieldLabel} to ${valueText}`,
     );
   };
 
@@ -1559,7 +1561,7 @@ export function BackfillScreen() {
         undo: restoreRows(snapshots),
       });
       advance(currentTask.id);
-      offerKindDefault(currentTask, {}, true);
+      offerKindDefault(currentTask, {}, true, dismissedText);
     } else if (active.kind === 'category') {
       if (!currentCategory) return;
       const categoryName = currentCategory.name;
