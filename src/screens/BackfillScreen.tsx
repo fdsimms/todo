@@ -101,7 +101,6 @@ import { observedCadenceDays, describeObservedCadence } from '../utils/reachOutT
 import { genericNameSuggestions } from '../utils/itemVarieties';
 import { substitutesFor, describeSubstitutes } from '../utils/itemSubs';
 import { groceryNameKey } from '../utils/groceryParse';
-import { itemNameSuggestions } from '../utils/scanResolve';
 import { describeProduct, preferredProductOf, productsForItem, RATING_LABELS } from '../utils/groceryProduct';
 import { describeFoodPanel } from '../utils/foodNutrition';
 import {
@@ -3234,17 +3233,6 @@ export function BackfillScreen() {
         onPress: () => applyVariety(key),
       }))
     : [];
-  // Short endings of the row's own name, one tap each — see itemNameSuggestions
-  // for why they can only ever be words already printed on the box, and why a
-  // slogan gets none. An item stores no source category, so there is none here.
-  const renameOptions = currentItem
-    ? itemNameSuggestions({ name: currentItem.name, label: currentItem.name }).map(label => ({
-        key: label,
-        label,
-        selected: false,
-        onPress: () => applyRename(label),
-      }))
-    : [];
   // Blank, or the name it already has: neither is an answer, so the button
   // that commits them is off rather than doing nothing when tapped.
   const nameChanged =
@@ -3382,14 +3370,6 @@ export function BackfillScreen() {
 
           {active.id === 'scannedName' && (
             <View style={styles.renameField}>
-              {renameOptions.length > 0 && (
-                <>
-                  <Text style={styles.renameHint}>
-                    Tap a shorter name, or edit the full one below.
-                  </Text>
-                  <PillGroup options={renameOptions} noun="name" />
-                </>
-              )}
               <View style={styles.askAboutRow}>
                 <TextField
                   style={styles.askAboutInput}

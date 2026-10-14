@@ -52,7 +52,6 @@ import {
   scanBoxChoice,
   scanLinkTarget,
   pluScannedItem,
-  itemNameSuggestions,
   nameFromScanFor,
   newItemBox,
   scannedItemFor,
@@ -1170,12 +1169,6 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                 // and Variant are the new item's alone, typed rows included.
                 const showBox = mintsNew;
                 const newBox = newItemBox(row);
-                // Still wearing the source's words: offer what the source says
-                // the product is. See `itemNameSuggestions` for what it refuses.
-                const nameSuggestions =
-                  showBox && nameFromScanFor(row)
-                    ? itemNameSuggestions({ name: row.name, label: row.label, category: row.category })
-                    : [];
                 const onNameChange = (text: string) =>
                   patchRow(row.key, {
                     name: text.slice(0, GROCERY_NAME_MAX_LENGTH),
@@ -1260,26 +1253,12 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                             editable={nameable}
                             selectTextOnFocus
                           />
-                          {nameSuggestions.length > 0 && (
-                            <View style={[styles.captionRow, styles.fieldIndent]}>
-                              {nameSuggestions.map(suggestion => (
-                                <InlineAction
-                                  key={suggestion}
-                                  label={suggestion}
-                                  variant="neutral"
-                                  onPress={() => patchRow(row.key, { name: suggestion.slice(0, GROCERY_NAME_MAX_LENGTH), included: true })}
-                                  accessibilityLabel={`Name it ${suggestion}`}
-                                  style={styles.confirmPill}
-                                />
-                              ))}
-                            </View>
-                          )}
                           {showBox && (
                             <>
                               <FieldInput
                                 styles={styles}
                                 label="Brand"
-                                value={newBox.brand ?? ''}
+                                value={row.brandEdit ?? newBox.brand ?? ''}
                                 placeholder="Optional"
                                 placeholderTextColor={colors.textTertiary}
                                 onChangeText={text => patchRow(row.key, { brandEdit: text.slice(0, GROCERY_BRAND_MAX_LENGTH) })}
@@ -1287,7 +1266,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                               <FieldInput
                                 styles={styles}
                                 label="Variant"
-                                value={newBox.variant ?? ''}
+                                value={row.variantEdit ?? newBox.variant ?? ''}
                                 placeholder="Optional"
                                 placeholderTextColor={colors.textTertiary}
                                 onChangeText={text => patchRow(row.key, { variantEdit: text.slice(0, GROCERY_VARIANT_MAX_LENGTH) })}

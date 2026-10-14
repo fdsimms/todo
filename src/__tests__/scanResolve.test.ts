@@ -1,6 +1,5 @@
 import {
   alreadyScanned,
-  itemNameSuggestions,
   matchScans,
   nameFromScanFor,
   newItemBox,
@@ -433,43 +432,6 @@ describe('scanBoxChoice', () => {
   });
 });
 
-
-describe('itemNameSuggestions', () => {
-  it('offers the source category first, then short tails', () => {
-    expect(
-      itemNameSuggestions({
-        name: '2% Reduced Fat Milk',
-        label: 'Great Value 2% Reduced Fat Milk',
-        category: 'dairy milks',
-      })
-    ).toEqual(['Dairy milks', 'Reduced Fat Milk', 'Fat Milk', 'Milk']);
-  });
-
-  it('offers no tails for a slogan, only the category', () => {
-    const slogan = 'Caramel! ACTION! Directed by Ava DuVernay';
-    expect(
-      itemNameSuggestions({ name: slogan, label: `Lights! ${slogan}`, category: 'ice cream tubs' })
-    ).toEqual(['Ice cream tubs']);
-    expect(itemNameSuggestions({ name: slogan, label: `Lights! ${slogan}`, category: null })).toEqual([]);
-  });
-
-  it('skips tails that are too long or start mid-clause', () => {
-    expect(
-      itemNameSuggestions({ name: 'Rolled Oats with Honey', label: 'Rolled Oats with Honey' })
-    ).toEqual(['Oats with Honey', 'Honey']);
-  });
-
-  it('never repeats the current name', () => {
-    const out = itemNameSuggestions({ name: 'Ice cream', label: 'Ice cream', category: 'ice cream' });
-    expect(out.map(x => x.toLowerCase())).not.toContain('ice cream');
-  });
-
-  it('does not offer the same text twice', () => {
-    expect(
-      itemNameSuggestions({ name: 'Rich Yogurt', label: 'Rich Yogurt', category: 'yogurt' })
-    ).toEqual(['Yogurt']);
-  });
-});
 
 describe('newItemBox', () => {
   const base = { gtin: '1', label: 'Great Value 2% Reduced Fat Milk', brand: 'Great Value', name: 'Milk' };

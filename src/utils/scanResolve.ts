@@ -63,7 +63,7 @@ export interface ScannedItem {
   aisle: string | null;
   /**
    * The source's own category, in its words ("ice cream tubs"), for offering as
-   * a name. Optional because only a looked-up row has one; see `itemNameSuggestions`.
+   * a name. Optional because only a looked-up row has one.
    */
   category?: string | null;
 }
@@ -126,66 +126,6 @@ export function shopperNameFor(fullName: string, brand: string | null): string {
 
   const tidied = name.replace(EDGE_JUNK, '').replace(/\s+/g, ' ');
   return tidied || full;
-}
-
-/** Words a name suggestion shouldn't start with: what's left of a clause, not a thing. */
-const SUGGESTION_LEAD_WORDS = new Set([
-  'a', 'an', 'and', 'by', 'for', 'from', 'in', 'of', 'on', 'or', 'the', 'to', 'with',
-]);
-
-/** The longest tail of a product name offered as a name: past this it is a phrase, not a food. */
-const SUGGESTION_MAX_WORDS = 3;
-
-/**
- * What to offer as the *name* of a new item, for a row still wearing a barcode
- * source's words.
- *
- * Offering every suffix is right for "Great Value
- * 2% Reduced Fat Milk" and nonsense for "Caramel! ACTION! Directed by Ava
- * DuVernay", where the words are a marketing line and no suffix of them is a
- * food. This offers suffixes with three restraints that
- * separate the two cases, without reading what any word means:
- *
- * - **The source's own category comes first.** It is the one field that says
- *   what the product *is* rather than what it is called, so "ice cream tubs"
- *   beats any tail of a slogan. It is offered as written, never singularized.
- * - **Only short tails.** At most `SUGGESTION_MAX_WORDS` words, shortest last,
- *   and never one that starts with a joining word ("by Ava DuVernay").
- * - **A slogan gets no tails at all.** A "!" or "?" in the product's own name
- *   means it is a tagline, so a tail of it is not a name. The category, if
- *   there is one, still stands.
- *
- * At most four suggestions, because a row of chips nobody reads is the failure
- * this replaced. An empty list is a fine answer: the name field is right there.
- */
-export function itemNameSuggestions(args: {
-  name: string;
-  label: string;
-  category?: string | null;
-}): string[] {
-  const out: string[] = [];
-  const seen = new Set<string>([args.name.trim().toLowerCase()]);
-  const add = (candidate: string) => {
-    const text = candidate.trim();
-    const key = text.toLowerCase();
-    if (text.length < 3 || seen.has(key)) return;
-    seen.add(key);
-    out.push(text);
-  };
-
-  const category = args.category?.trim().replace(/\s+/g, ' ');
-  if (category) add(category.charAt(0).toUpperCase() + category.slice(1));
-
-  if (!/[!?]/.test(args.label || args.name)) {
-    const words = args.name.trim().replace(/\s+/g, ' ').split(' ');
-    for (let drop = 1; drop < words.length; drop++) {
-      const tail = words.slice(drop);
-      if (tail.length > SUGGESTION_MAX_WORDS) continue;
-      if (SUGGESTION_LEAD_WORDS.has(tail[0].toLowerCase())) continue;
-      add(tail.join(' ').replace(EDGE_JUNK, ''));
-    }
-  }
-  return out.slice(0, 4);
 }
 
 /**
