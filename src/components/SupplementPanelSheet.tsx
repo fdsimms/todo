@@ -25,6 +25,7 @@ import { haptics } from '../utils/haptics';
 import { canReadTextOnDevice } from '../utils/receiptOcr';
 import { readLabelPhoto } from '../utils/labelOcr';
 import { pickRecipePhoto } from '../utils/recipePhoto';
+import { afterMenuDismissed } from '../utils/sheetModal';
 import {
   describeAIError, nutritionLabelPhotoAiAvailable, readLabelPhotoWithAi,
 } from '../services/aiSuggestions';
@@ -97,6 +98,9 @@ export function SupplementPanelSheet({ visible, name, panel, onClose, onSave }: 
   const handlePhoto = useCallback(async (source: 'camera' | 'library') => {
     const opening = openingRef.current;
     const stillHere = () => openingRef.current === opening;
+    // Started from the action menu, which is still leaving; the system
+    // picker can't present until it has.
+    await afterMenuDismissed();
     const picked = await pickRecipePhoto(source);
     if (!stillHere() || picked.status === 'canceled') return;
     if (picked.status === 'denied') {

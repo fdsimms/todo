@@ -401,3 +401,13 @@ export function afterSheetsDismissed(): Promise<void> {
     poll();
   });
 }
+
+/**
+ * `afterSheetsDismissed` for a menu opened from inside a sheet that stays open.
+ * The host sheet keeps `anySheetOpen` true, so only the menu's own dismissal is
+ * waited out, by time. A native picker presents from the topmost controller, so
+ * the host sheet underneath is no obstacle.
+ */
+export function afterMenuDismissed(): Promise<void> {
+  return new Promise(resolve => { setTimeout(resolve, NATIVE_DISMISS_SETTLE_MS); });
+}

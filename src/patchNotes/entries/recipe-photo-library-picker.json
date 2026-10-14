@@ -1,1 +1,1 @@
-{ "message": "Fixed Choose from library on a recipe photo doing nothing and showing a spinner that never went away.", "date": "2026-10-14" }
+{ "message": "Fixed photo pickers doing nothing after choosing from a menu: Choose from library on a recipe photo, and Take a photo or Choose a photo when reading a nutrition or supplement label.", "date": "2026-10-14" }

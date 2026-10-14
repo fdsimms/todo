@@ -34,6 +34,7 @@ import { panelWarnings } from '../utils/nutritionSanity';
 import { canReadTextOnDevice } from '../utils/receiptOcr';
 import { readLabelPhoto, type LabelReading } from '../utils/labelOcr';
 import { pickRecipePhoto } from '../utils/recipePhoto';
+import { afterMenuDismissed } from '../utils/sheetModal';
 import {
   describeAIError, nutritionLabelPhotoAiAvailable, readLabelPhotoWithAi,
 } from '../services/aiSuggestions';
@@ -236,6 +237,9 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
   const handlePhoto = useCallback(async (source: 'camera' | 'library') => {
     const opening = openingRef.current;
     const stillHere = () => openingRef.current === opening;
+    // Started from the action menu, which is still leaving; the system
+    // picker can't present until it has.
+    await afterMenuDismissed();
     const picked = await pickRecipePhoto(source);
     if (!stillHere()) return;
     if (picked.status === 'canceled') return;
