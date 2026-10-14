@@ -70,6 +70,16 @@ export function currentTabName(): string | undefined {
   return tabs?.index !== undefined ? tabs.routes[tabs.index]?.name : undefined;
 }
 
+/**
+ * The tab to hand the person back to when a screen they opened from another one
+ * closes, or undefined when nobody should be (a deep link, or the tab the
+ * destination itself lives on). Read before navigating away.
+ */
+function returnTabFor(handBack: boolean, destinationTab: string): string | undefined {
+  const tab = handBack ? currentTabName() : undefined;
+  return tab !== destinationTab ? tab : undefined;
+}
+
 // Bare `dundundun://` launches (the Today widget's `.widgetURL`, and the
 // timer Live Activity's) should always land on the Today tab's Today sub-view, even if
 // the app was left on Later/Search/Projects when it was backgrounded.
@@ -146,16 +156,19 @@ export function resetToMedications(): void {
 // doubled chili opened from Today reads doubled (#2931).
 export function resetToRecipeDetail(
   recipeId: string,
-  opts: { openCookMode?: boolean; choices?: string[]; overrides?: RecipeOverride[]; scale?: number } = {}
+  opts: { openCookMode?: boolean; choices?: string[]; overrides?: RecipeOverride[]; scale?: number; handBack?: boolean } = {}
 ): void {
-  const { openCookMode = false, ...planned } = opts;
+  const { openCookMode = false, handBack = false, ...planned } = opts;
   runWhenReady(() => {
+    // `returnTo` is Backfill's: the recipe's back chevron hands the person back
+    // to the screen they were working through. See resetToTask's `handBack`.
+    const returnTo = returnTabFor(handBack, 'Recipes');
     navigateToTab('Recipes');
     navigationRef.navigate({
       name: 'RecipeDetail',
       params: openCookMode
-        ? { recipeId, ...planned, openCookMode: Date.now() }
-        : { recipeId, ...planned },
+        ? { recipeId, ...planned, returnTo, openCookMode: Date.now() }
+        : { recipeId, ...planned, returnTo },
     });
   });
 }
@@ -469,11 +482,10 @@ export function resetToProjectPull(projectId?: string | null, onDayKey?: string 
  */
 export function resetToTask(taskId: string, handBack = false): void {
   runWhenReady(() => {
-    const returnTo = handBack ? currentTabName() : undefined;
     navigateToTab('Today', {
       openTask: Date.now(),
       openTaskId: taskId,
-      openTaskReturnTo: returnTo !== 'Today' ? returnTo : undefined,
+      openTaskReturnTo: returnTabFor(handBack, 'Today'),
     });
   });
 }
@@ -494,26 +506,32 @@ export function resetToLocateTask(taskId: string): void {
  * There is no page for a single category, so its editor is the destination.
  * Stamped like the other handoffs so the same category opened twice opens twice.
  */
-export function resetToCategories(categoryName?: string | null): void {
+export function resetToCategories(categoryName?: string | null, handBack = false): void {
   runWhenReady(() => {
     navigateToTab(
       'Categories',
-      categoryName ? { openCategory: categoryName, openCategoryStamp: Date.now() } : undefined
+      categoryName
+        ? { openCategory: categoryName, openCategoryStamp: Date.now(), openCategoryReturnTo: returnTabFor(handBack, 'Categories') }
+        : undefined
     );
   });
 }
 
 /** One catalog item's sheet on the grocery screen (the param Search results use). */
-export function resetToGroceryItem(itemId: string): void {
+export function resetToGroceryItem(itemId: string, handBack = false): void {
   runWhenReady(() => {
-    navigateToTab('Groceries', { openItem: itemId, openItemStamp: Date.now() });
+    navigateToTab('Groceries', {
+      openItem: itemId,
+      openItemStamp: Date.now(),
+      openItemReturnTo: returnTabFor(handBack, 'Groceries'),
+    });
   });
 }
 
 /** One project's own page (`dundundun://project?id=…`). */
-export function resetToProject(projectId: string): void {
+export function resetToProject(projectId: string, handBack = false): void {
   runWhenReady(() => {
-    navigateToTab('ProjectDetail', { projectId });
+    navigateToTab('ProjectDetail', { projectId, returnTo: returnTabFor(handBack, 'ProjectDetail') });
   });
 }
 

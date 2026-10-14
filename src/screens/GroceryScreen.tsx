@@ -45,6 +45,7 @@ import {
 import { GroceryRow } from '../components/GroceryRow';
 import { GroceryCatalogSheet } from '../components/GroceryCatalogSheet';
 import { SubstituteSheet } from '../components/SubstituteSheet';
+import { navigateToTab } from '../navigation/navigationRef';
 import { GroceryItemSheet } from '../components/GroceryItemSheet';
 import { navigateToFoodSearchSettings } from '../components/NutritionSearchSheet';
 import { GroceryAislesSheet } from '../components/GroceryAislesSheet';
@@ -856,9 +857,17 @@ export function GroceryScreen() {
   const openItemId: string | undefined = route.params?.openItem;
   const openItemStamp: number | undefined = route.params?.openItemStamp;
   const [handledItemStamp, setHandledItemStamp] = useState<number | undefined>(undefined);
+  // The tab Backfill opened this from, handed back to when the sheet closes.
+  // Consumed by the first close, and dropped when the sheet goes some other way
+  // (to a recipe, to settings), so a sheet opened by hand never navigates.
+  const itemReturnToRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (editingId === null) itemReturnToRef.current = null;
+  }, [editingId]);
   useEffect(() => {
     if (openItemStamp === undefined || openItemStamp === handledItemStamp) return;
     setHandledItemStamp(openItemStamp);
+    itemReturnToRef.current = route.params?.openItemReturnTo ?? null;
     if (openItemId && items.some(i => i.id === openItemId)) setEditingId(openItemId);
   }, [openItemStamp, handledItemStamp, openItemId, items]);
 
@@ -1912,7 +1921,12 @@ export function GroceryScreen() {
         <GroceryItemSheet
           visible={editingId !== null}
           itemId={editingId}
-          onClose={() => setEditingId(null)}
+          onClose={() => {
+            setEditingId(null);
+            const returnTo = itemReturnToRef.current;
+            itemReturnToRef.current = null;
+            if (returnTo) navigateToTab(returnTo);
+          }}
           onOpenRecipe={recipeId => {
             setEditingId(null);
             openRecipe(recipeId);

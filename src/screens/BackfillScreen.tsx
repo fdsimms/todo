@@ -2406,7 +2406,7 @@ export function BackfillScreen() {
                 text={currentCategory.emoji ? `${currentCategory.emoji} ${currentCategory.name}` : currentCategory.name}
                 lines={2}
                 openLabel={`Open ${currentCategory.name}`}
-                onOpen={() => resetToCategories(currentCategory.name)}
+                onOpen={() => resetToCategories(currentCategory.name, true)}
                 colors={colors}
                 styles={styles}
               />
@@ -2837,7 +2837,7 @@ export function BackfillScreen() {
                 text={currentProject.title}
                 lines={2}
                 openLabel="Open this project"
-                onOpen={() => resetToProject(currentProject.id)}
+                onOpen={() => resetToProject(currentProject.id, true)}
                 colors={colors}
                 styles={styles}
               />
@@ -2998,7 +2998,7 @@ export function BackfillScreen() {
                 text={currentRecipe.name}
                 lines={2}
                 openLabel="Open this recipe"
-                onOpen={() => resetToRecipeDetail(currentRecipe.id)}
+                onOpen={() => resetToRecipeDetail(currentRecipe.id, { handBack: true })}
                 colors={colors}
                 styles={styles}
               />
@@ -3170,7 +3170,7 @@ export function BackfillScreen() {
               text={currentItem.name}
               lines={2}
               openLabel={`Open ${currentItem.name}`}
-              onOpen={() => resetToGroceryItem(currentItem.id)}
+              onOpen={() => resetToGroceryItem(currentItem.id, true)}
               colors={colors}
               styles={styles}
             />

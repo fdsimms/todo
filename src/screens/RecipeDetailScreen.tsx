@@ -133,7 +133,7 @@ import { formatOffsetLabel } from '../utils/templateUtils';
 import { splitAlternativeNames, splitGroceryLines } from '../utils/groceryParse';
 import { dayKeyOf, getCurrentDayStart, getLogicalToday } from '../utils/dateUtils';
 import { plannedMealLabel } from '../utils/recipePlanned';
-import { resetToMealPlan } from '../navigation/navigationRef';
+import { resetToMealPlan, navigateToTab } from '../navigation/navigationRef';
 import { TextField } from '../components/TextField';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton, SCROLL_TO_TOP_SIZE } from '../components/ScrollToTopButton';
@@ -149,7 +149,7 @@ type RootStackParamList = {
    * written back to the entry. `overrides` does the same for the meal's one-off
    * replacements (MealPlanEntry.recipeOverrides).
    */
-  RecipeDetail: { recipeId: string; choices?: string[]; overrides?: RecipeOverride[]; scale?: number; openCookMode?: number; openDetails?: number };
+  RecipeDetail: { recipeId: string; choices?: string[]; overrides?: RecipeOverride[]; scale?: number; openCookMode?: number; openDetails?: number; returnTo?: string };
 };
 
 /** One row of the merged list the ingredients SortableList drags over — see mergedIngredientRows. */
@@ -170,6 +170,13 @@ export function RecipeDetailScreen() {
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RootStackParamList, 'RecipeDetail'>>();
   const { recipeId } = route.params;
+  // Opened from Backfill, the back chevron returns there rather than to the
+  // Recipes tab `resetToRecipeDetail` switched to on the way in.
+  const returnTo = route.params.returnTo;
+  const handleBack = () => {
+    if (returnTo) navigateToTab(returnTo);
+    else navigation.goBack();
+  };
   const colors = useColors();
   const textScaleFactor = useTextScale();
   const styles = useMemo(() => makeStyles(colors, textScaleFactor), [colors, textScaleFactor]);
@@ -804,7 +811,7 @@ export function RecipeDetailScreen() {
   if (!recipe) {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
-        <DetailHeader title="Recipe" onBack={() => navigation.goBack()} />
+        <DetailHeader title="Recipe" onBack={handleBack} />
         <EmptyState
           icon="restaurant-outline"
           title="This recipe is gone"
@@ -1857,7 +1864,7 @@ export function RecipeDetailScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <DetailHeader
         title={recipe.name}
-        onBack={() => navigation.goBack()}
+        onBack={handleBack}
         actions={
           <View style={styles.headerActions}>
             {!selectionMode && recipeImportRoute !== 'unavailable' && (

@@ -119,7 +119,7 @@ import { usePullToSearch } from '../hooks/usePullToSearch';
 import { TextField } from '../components/TextField';
 
 type RootStackParamList = {
-  ProjectDetail: { projectId: string };
+  ProjectDetail: { projectId: string; returnTo?: string };
 };
 
 // One shared empty array for a task with no subtasks — a fresh `[]` per row per
@@ -644,7 +644,9 @@ function ProjectDetailContent() {
 
   const onClose = () => {
     if (selectionMode) exitSelection();
-    navigation.goBack();
+    // Opened from Backfill: back goes there, not to wherever the stack last was.
+    if (route.params.returnTo) navigateToTab(route.params.returnTo);
+    else navigation.goBack();
   };
 
   // Deleting the project from its own editor used to leave this screen open
