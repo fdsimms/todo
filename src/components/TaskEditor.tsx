@@ -3531,7 +3531,10 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   // ==== render. Everything below is JSX; grep `label="…"` for a card ====
   // The Start / End pills and their pickers, shared by the Time window row and
   // a daily target's Pace window row: both edit the same windowStart/windowEnd.
-  const windowControls = (
+  // `unsetLabels` is what an empty pill says in place of "Start"/"End": the
+  // Pace window row passes the active hours it falls back to, so the pills show
+  // the real window rather than two blank buttons.
+  const renderWindowControls = (unsetLabels?: { start: string; end: string }) => (
       <>
         <View style={styles.windowPillRow}>
           {polarity !== 'negative' && (
@@ -3543,8 +3546,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             ]}
             onPress={() => openWindowPicker('start')}
           >
-            <Text style={[styles.timePillText, !!windowStart && styles.timePillTextActive]}>
-              {windowBoundLabel(windowStart, windowStartSun) ?? 'Start'}
+            <Text style={[styles.timePillText, !!windowStart && styles.timePillTextActive]} numberOfLines={1}>
+              {windowBoundLabel(windowStart, windowStartSun) ?? (unsetLabels ? `Start ${unsetLabels.start}` : 'Start')}
             </Text>
           </TouchableOpacity>
           )}
@@ -3556,8 +3559,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             ]}
             onPress={() => openWindowPicker('end')}
           >
-            <Text style={[styles.timePillText, !!windowEnd && styles.timePillTextActive]}>
-              {windowBoundLabel(windowEnd, windowEndSun) ?? 'End'}
+            <Text style={[styles.timePillText, !!windowEnd && styles.timePillTextActive]} numberOfLines={1}>
+              {windowBoundLabel(windowEnd, windowEndSun) ?? (unsetLabels ? `End ${unsetLabels.end}` : 'End')}
             </Text>
           </TouchableOpacity>
         </View>
@@ -4476,14 +4479,18 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                             icon="timer-outline"
                             label="Pace window"
                             hint="The hours the target is spread across. Without one, your active hours are used. The task also expires when the window ends."
-                            value={timeWindowSummary ?? `Active hours, ${formatHHMM(activeHoursStart, use24HourTime)} to ${formatHHMM(activeHoursEnd, use24HourTime)}`}
+                            value={timeWindowSummary ?? `${formatHHMM(activeHoursStart, use24HourTime)} to ${formatHHMM(activeHoursEnd, use24HourTime)}`}
+                            caption={timeWindowSummary ? undefined : 'Your active hours'}
                             expanded={showPaceWindow}
                             onPress={() => { animateLayout(); setShowPaceWindow(v => !v); }}
                             onClear={(windowStart || windowEnd)
                               ? () => { setWindowStart(null); setWindowEnd(null); setWindowStartSun(null); setWindowEndSun(null); setWindowPickerMode('none'); applyDerivedTargetCount({ windowStart: null, windowEnd: null }); }
                               : undefined}
                           />
-                          {showPaceWindow && windowControls}
+                          {showPaceWindow && renderWindowControls({
+                            start: formatHHMM(activeHoursStart, use24HourTime),
+                            end: formatHHMM(activeHoursEnd, use24HourTime),
+                          })}
                           <View style={styles.sep} />
                         </>
                       )}
@@ -5738,7 +5745,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                 ? () => { setWindowStart(null); setWindowEnd(null); setWindowStartSun(null); setWindowEndSun(null); setWindowPickerMode('none'); applyDerivedTargetCount({ windowStart: null, windowEnd: null }); }
                 : undefined}
             />
-            {showTimeWindow && windowControls}
+            {showTimeWindow && renderWindowControls()}
               </>
             ),
           },
