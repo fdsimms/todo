@@ -122,3 +122,23 @@ export function offersMealLogOnCompletion(task: Task, mealLogPromptEnabled: bool
   if (!mealLogPromptEnabled) return false;
   return (mealSlotOf(task) !== null && completesMealSlot(task)) || mealLogNudgeEntryId(task) !== null;
 }
+
+/** How long after a target completes that a tap on its box is read as a stray one. */
+export const TARGET_FINISH_TAP_GUARD_MS = 1500;
+
+/**
+ * True when a tap on a completed target's box lands so soon after the unit that
+ * finished it that it is almost certainly the next tap of the same burst.
+ *
+ * The box is one control with two meanings: on an open target it logs a unit,
+ * on a completed one it un-completes. The unit that reaches the target flips it
+ * from the first to the second, so a quick extra tap on Search or the palette
+ * (which hold the row in place) took the finished day straight back to
+ * target - 1 with an empty box and nothing to say why. Judged off
+ * `completedAt` rather than component state so a remounted row is guarded too.
+ */
+export function isStrayTapOnFinishedTarget(task: Task, now: number): boolean {
+  if (!task.completed || !task.completedAt || !isQuotaTask(task)) return false;
+  const elapsed = now - new Date(task.completedAt).getTime();
+  return elapsed >= 0 && elapsed < TARGET_FINISH_TAP_GUARD_MS;
+}

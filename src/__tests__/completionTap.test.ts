@@ -1,4 +1,4 @@
-import { completionTapFor, offersMealLogOnCompletion } from '../utils/completionTap';
+import { completionTapFor, isStrayTapOnFinishedTarget, offersMealLogOnCompletion } from '../utils/completionTap';
 import type { Task } from '../types';
 
 const mockSettingsState = {
@@ -417,5 +417,32 @@ describe('offersMealLogOnCompletion', () => {
   it('is false for a completed task with logMealSlot set', () => {
     const captureTask = { ...baseTask, logMealSlot: 'breakfast', completed: true } as Task;
     expect(offersMealLogOnCompletion(captureTask, true)).toBe(false);
+  });
+});
+
+describe('isStrayTapOnFinishedTarget', () => {
+  const finishedAt = new Date(2025, 5, 10, 10, 0, 0).getTime();
+  const target = {
+    ...baseTask,
+    targetCount: 16,
+    progressCount: 16,
+    completed: true,
+    completedAt: new Date(finishedAt).toISOString(),
+  } as Task;
+
+  it('is true for a tap just after a target finished', () => {
+    expect(isStrayTapOnFinishedTarget(target, finishedAt + 300)).toBe(true);
+  });
+
+  it('is false once the guard window has passed', () => {
+    expect(isStrayTapOnFinishedTarget(target, finishedAt + 5000)).toBe(false);
+  });
+
+  it('is false for an ordinary task completed a moment ago', () => {
+    expect(isStrayTapOnFinishedTarget({ ...target, targetCount: null }, finishedAt + 300)).toBe(false);
+  });
+
+  it('is false for a task that is not completed', () => {
+    expect(isStrayTapOnFinishedTarget({ ...target, completed: false }, finishedAt + 300)).toBe(false);
   });
 });
