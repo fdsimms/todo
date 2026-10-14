@@ -142,6 +142,7 @@ export const WRITE_TOOLS: Record<string, { title: string; destructive: boolean; 
   cancel_calendar_request: { title: 'Cancel a calendar request', destructive: false, idempotent: true },
   change_calendar_event: { title: 'Change or remove a calendar event Claude added', destructive: true, idempotent: false },
   update_food_entry: { title: 'Correct a food entry', destructive: true, idempotent: true },
+  refresh_dish_entry: { title: 'Recalculate a dish entry from its recipe', destructive: true, idempotent: true },
   delete_food_entry: { title: 'Delete a food entry', destructive: true, idempotent: true },
   update_mood_log: { title: 'Correct a mood check-in', destructive: true, idempotent: true },
   delete_mood_log: { title: 'Delete a mood check-in', destructive: true, idempotent: true },

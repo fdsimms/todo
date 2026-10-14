@@ -2,6 +2,7 @@ import type { FoodLogEntry, FoodNutrition, MealPlanEntry, MealSlot, NutrientKey,
 import { MEAL_SLOTS, NUTRIENT_KEYS } from '../types';
 import { aisleForName } from './groceryAisles';
 import { isWaterEntry } from './waterLog';
+import { mealHelping, weighedHelping, type DishFigures } from './mealLog';
 import { isNutrientOnlyEntry } from './nutrientLog';
 import { gramsForLine, hasKnownDensity, panelMultiplier } from './ingredientGrams';
 import { formatQuantityAmount, inflectUnit, parseQuantity, rationalToNumber } from './quantity';
@@ -1002,7 +1003,7 @@ export function remeasureEntry(
   amount: string,
   now: Date = new Date(),
 ): { ok: true; fields: RemeasuredFields; approximate: boolean } | { ok: false; reason: string } {
-  if (entry.recipeId) return { ok: false, reason: 'This entry is a dish, whose amount is rebuilt from its recipe. Change it in the app.' };
+  if (entry.recipeId) return { ok: false, reason: 'This entry is a dish, whose amount is rebuilt from its recipe. Change it in the app, or use refresh_dish_entry to work it out again from the recipe at the same amount.' };
   if (!foodLogEntryEdit(entry)) return { ok: false, reason: 'This entry has no food record to measure a new amount against (it was described rather than looked up, or answers extra lines). Change it in the app.' };
   const linked = !!(entry.itemId || entry.productId);
   const panel = linked ? linkedPanel : keptDatabasePanel(entry);
@@ -1017,6 +1018,41 @@ export function remeasureEntry(
     // disclaimer beside it, so a caller has to be able to say so too.
     approximate: scaled.approximate,
   };
+}
+
+/**
+ * What a dish logged from a recipe becomes when its figures are worked out
+ * again from the recipe as it is now, at the amount it was logged with.
+ *
+ * `remeasureEntry` refuses a dish because it has no way to see the recipe; this
+ * is the same arithmetic the entry sheet runs for one (`mealHelping` or
+ * `weighedHelping` over the dish's figures), for a caller that has already
+ * worked those figures out. The amount comes back out of the sentence the entry
+ * recorded (`foodLogEntryEdit`), so "1 serving" stays one serving of a recipe
+ * whose ingredients have since been corrected. The entry's own time, slot,
+ * link to the plan and label are untouched.
+ *
+ * Refused, with the reason, for an entry with extra lines folded in (`, plus`),
+ * whose extras this cannot see, and for a dish whose figures the rollup
+ * declined (null). An entry already in Apple Health is the caller's to refuse.
+ */
+export function remeasureDishEntry(
+  entry: FoodLogEntry,
+  figures: DishFigures | null,
+  now: Date = new Date(),
+): { ok: true; fields: Pick<RemeasuredFields, 'quantity' | 'grams' | 'nutrition'> } | { ok: false; reason: string } {
+  if (!entry.recipeId) return { ok: false, reason: 'This entry was not logged from a recipe.' };
+  const edit = foodLogEntryEdit(entry);
+  if (!edit || !edit.dishMeasure) {
+    return { ok: false, reason: 'This dish was logged with extra lines or an amount this cannot read back. Re-log it in the app.' };
+  }
+  if (!figures) return { ok: false, reason: 'The recipe no longer has enough known ingredients to work out its figures.' };
+  const typed = Number(edit.amount);
+  const helping = edit.dishMeasure === 'weight' ? weighedHelping(figures, typed) : mealHelping(figures, typed);
+  if (!helping) return { ok: false, reason: 'The recipe cannot give figures for that amount now. Re-log it in the app.' };
+  const nutrition = helpingNutrition(helping.amounts, helping.servingText, helping.grams, 'estimated', now);
+  if (!nutrition) return { ok: false, reason: 'The recipe cannot give figures for that amount now. Re-log it in the app.' };
+  return { ok: true, fields: { quantity: helping.servingText, grams: helping.grams, nutrition } };
 }
 
 /**

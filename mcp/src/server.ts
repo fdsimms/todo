@@ -102,7 +102,7 @@ import { forget, remember } from './memoryTools';
 import { deleteRule, listAutomations, saveRule, setAutomation, RULE_TYPES } from './automationTools';
 import { deleteCategory, reorderCategories, updateCategory } from './categoryTools';
 import { cancelCalendarRequest, changeCalendarEvent, listCalendarRequests, requestCalendarEvent } from './calendarTools';
-import { ESTIMATE_KEY_LIST, NUTRIENT_KEY_LIST, atFrom, deleteSavedMeal, duplicateFoodEntry, listSavedMeals, logSavedMeal, moveFoodEntry, saveMealFromEntries, setNutritionTargets, renameMedication, renameMoodTag, setMedicationArchived, addMedication, removeMedication, setMedicationProfile, setMedicationLimit, setMedicationSupply, logFood, logMedication, setSupplementNutrients, logMood, logWater, updateRecipe, patchRecipe, deleteRecipe, updateFoodEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
+import { ESTIMATE_KEY_LIST, NUTRIENT_KEY_LIST, atFrom, deleteSavedMeal, duplicateFoodEntry, listSavedMeals, logSavedMeal, moveFoodEntry, saveMealFromEntries, setNutritionTargets, renameMedication, renameMoodTag, setMedicationArchived, addMedication, removeMedication, setMedicationProfile, setMedicationLimit, setMedicationSupply, logFood, logMedication, setSupplementNutrients, logMood, logWater, updateRecipe, patchRecipe, deleteRecipe, updateFoodEntry, refreshDishEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
 import { listErrors, MAX_ERRORS } from './errorTools';
 import { DEFAULT_PATTERN_DAYS, focusHistory, habitPatterns, moodInsights } from './patternTools';
 import { addMilestone, deleteMilestone, listMilestones, updateMilestone } from './milestoneTools';
@@ -1313,6 +1313,7 @@ function registerWriteTools(
       text: z.string().min(1),
       section: z.string().nullable().optional(),
       alternativeGroup: z.string().nullable().optional(),
+      excludeFromNutrition: z.boolean().optional().describe('True leaves this line out of the recipe\'s nutrition total, for flavoring taken out before eating (kombu, a bay leaf) or a garnish. Omit to leave a kept line\'s answer alone; false counts it again.'),
     })).optional(),
     steps: z.array(z.object({
       text: z.string().min(1),
@@ -1385,11 +1386,11 @@ function registerWriteTools(
 
   server.tool(
     'patch_recipe',
-    'Make small edits to a saved recipe without resending its lists (update_recipe replaces whole lists, so a small edit means resending every line). Give changes in order; each applies to the recipe as the earlier ones left it, and all land or none do. Steps and ingredients are numbered from 1 in the order get_recipe lists them. op is setStepNote (step, note; null clears), setStepOnlyWith (step, onlyWith: names of the recipe\'s either/or options; null clears), insertStep (at, text, optional section, note, onlyWith), replaceStep (step, text; keeps its timer, note and cook questions), removeStep (step), insertIngredient (at, text as printed, optional section and alternativeGroup), replaceIngredient (ingredient, text; keeps its id and group unless alternativeGroup is given), removeIngredient (ingredient). at is the position the new line takes, 1 to the length + 1. Pass expect (a snippet the line must contain) on every change to an existing line: a number read from an older copy of the recipe is refused instead of editing the wrong line.',
+    'Make small edits to a saved recipe without resending its lists (update_recipe replaces whole lists, so a small edit means resending every line). Give changes in order; each applies to the recipe as the earlier ones left it, and all land or none do. Steps and ingredients are numbered from 1 in the order get_recipe lists them. op is setStepNote (step, note; null clears), setStepOnlyWith (step, onlyWith: names of the recipe\'s either/or options; null clears), insertStep (at, text, optional section, note, onlyWith), replaceStep (step, text; keeps its timer, note and cook questions), removeStep (step), insertIngredient (at, text as printed, optional section and alternativeGroup), replaceIngredient (ingredient, text; keeps its id and group unless alternativeGroup is given), setIngredientNutrition (ingredient, excludeFromNutrition: true leaves the line out of the recipe\'s nutrition total, false counts it again), removeIngredient (ingredient). insertIngredient and replaceIngredient also take excludeFromNutrition. at is the position the new line takes, 1 to the length + 1. Pass expect (a snippet the line must contain) on every change to an existing line: a number read from an older copy of the recipe is refused instead of editing the wrong line.',
     {
       id: z.string().min(1),
       changes: z.array(z.object({
-        op: z.enum(['setStepNote', 'setStepOnlyWith', 'insertStep', 'replaceStep', 'removeStep', 'insertIngredient', 'replaceIngredient', 'removeIngredient']),
+        op: z.enum(['setStepNote', 'setStepOnlyWith', 'insertStep', 'replaceStep', 'removeStep', 'insertIngredient', 'replaceIngredient', 'setIngredientNutrition', 'removeIngredient']),
         step: z.number().int().positive().optional(),
         ingredient: z.number().int().positive().optional(),
         at: z.number().int().positive().optional(),
@@ -1399,6 +1400,7 @@ function registerWriteTools(
         note: z.string().nullable().optional(),
         onlyWith: z.array(z.string()).nullable().optional(),
         alternativeGroup: z.string().nullable().optional(),
+        excludeFromNutrition: z.boolean().optional(),
       })).min(1).max(50),
     },
     async ({ id, changes }) => {
@@ -1747,7 +1749,7 @@ function registerWriteTools(
 
   server.tool(
     'update_food_entry',
-    'Correct a food log entry: its name, its meal slot, and its amount. Two kinds of entry take an amount differently, so check list_food_log first. An entry that was estimated takes quantity and amounts (amounts replaces every figure, so give the full set; the old breakdown is dropped, since its lines would no longer add up, so give a new breakdown with it when the meal has parts). An entry measured against a food\'s own label or database record (it has grams and a database-style label) takes grams, or quantity such as "2 servings", and its nutrients are re-measured from that record, as changing the amount in the app does; do not restate its amounts. A dish logged from a recipe, and an entry whose record is gone, are changed in the app. One already written to Apple Health is changed only on the phone. To log a different amount as a new entry instead of changing this one, use duplicate_food_entry with grams.' + dayNote,
+    'Correct a food log entry: its name, its meal slot, and its amount. Two kinds of entry take an amount differently, so check list_food_log first. An entry that was estimated takes quantity and amounts (amounts replaces every figure, so give the full set; the old breakdown is dropped, since its lines would no longer add up, so give a new breakdown with it when the meal has parts). An entry measured against a food\'s own label or database record (it has grams and a database-style label) takes grams, or quantity such as "2 servings", and its nutrients are re-measured from that record, as changing the amount in the app does; do not restate its amounts. A dish logged from a recipe is worked out again from its recipe with refresh_dish_entry (or changed in the app); an entry whose record is gone is changed in the app. One already written to Apple Health is changed only on the phone. To log a different amount as a new entry instead of changing this one, use duplicate_food_entry with grams.' + dayNote,
     {
       id: entryId,
       label: z.string().min(1).optional(),
@@ -1762,6 +1764,19 @@ function registerWriteTools(
         return json(await withWrite(() => updateFoodEntry(replica, id, patch)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not correct that entry.' });
+      }
+    }
+  );
+
+  server.tool(
+    'refresh_dish_entry',
+    'Work a dish logged from a recipe out again from the recipe as it is now, at the amount it was logged with (1 serving stays 1 serving). Use it after correcting a recipe, its ingredients or an ingredient\'s nutrition, since an entry keeps the figures from when it was logged. The entry keeps its time, slot and link to the plan; only its figures change, and the result says what they were and are. Refused for an entry written to Apple Health, one with extra lines added to it, and one whose recipe is gone. A food or an estimate is corrected with update_food_entry instead.',
+    { id: entryId },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => refreshDishEntry(replica, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not refresh that entry.' });
       }
     }
   );

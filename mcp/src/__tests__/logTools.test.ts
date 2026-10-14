@@ -7,7 +7,7 @@
 import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
 import { useMedicationStore } from '../../../src/store/useMedicationStore';
-import { atFrom, deleteMedicationLog, deleteSavedMeal, setSupplementNutrients, duplicateFoodEntry, listSavedMeals, logFood, logMedication, logMood, logSavedMeal, logWater, moveFoodEntry, renameMedication, renameMoodTag, saveMealFromEntries, saveRecipe, setMedicationArchived, addMedication, removeMedication, setMedicationProfile, setMedicationLimit, setMedicationSupply, setNutritionTargets, updateFoodEntry, updateMoodLog } from '../logTools';
+import { atFrom, deleteMedicationLog, deleteSavedMeal, setSupplementNutrients, duplicateFoodEntry, listSavedMeals, logFood, logMedication, logMood, logSavedMeal, logWater, moveFoodEntry, renameMedication, renameMoodTag, saveMealFromEntries, saveRecipe, patchRecipe, updateRecipe, setMedicationArchived, addMedication, removeMedication, setMedicationProfile, setMedicationLimit, setMedicationSupply, setNutritionTargets, updateFoodEntry, updateMoodLog } from '../logTools';
 
 let mockRaw: ShimDatabase;
 
@@ -53,6 +53,45 @@ describe('saveRecipe', () => {
     expect(() => saveRecipe(replica, { name: 'salsa verde', cookbook: 'Weeknights' })).toThrow(/already/);
     // Another book may have its own.
     expect(saveRecipe(replica, { name: 'Salsa verde', cookbook: 'Summer' }).name).toBe('Salsa verde');
+  });
+});
+
+describe('leaving an ingredient out of a recipe\'s nutrition', () => {
+  let n = 0;
+  const seed = () => saveRecipe(replica, {
+    name: `Stock ${++n}`,
+    ingredients: [{ text: '2 cups water' }, { text: '2 squares kombu' }],
+  });
+  const flagged = (detail: { ingredients: { name: string; notCountedInNutrition?: boolean }[] }) =>
+    detail.ingredients.filter(i => i.notCountedInNutrition).map(i => i.name);
+
+  it('sets it on a new line, flips it on an existing one, and shows it in the recipe', () => {
+    const saved = saveRecipe(replica, {
+      name: 'Broth for exclusion',
+      ingredients: [{ text: '1 qt water' }, { text: '1 bay leaf', excludeFromNutrition: true }],
+    });
+    expect(flagged(saved)).toEqual(['bay leaf']);
+
+    const stock = seed();
+    expect(flagged(stock)).toEqual([]);
+    const set = patchRecipe(replica, stock.id, [{ op: 'setIngredientNutrition', ingredient: 2, expect: 'kombu', excludeFromNutrition: true }]);
+    expect(flagged(set)).toEqual(['squares kombu']);
+    const cleared = patchRecipe(replica, stock.id, [{ op: 'setIngredientNutrition', ingredient: 2, expect: 'kombu', excludeFromNutrition: false }]);
+    expect(flagged(cleared)).toEqual([]);
+  });
+
+  it('keeps a kept line\'s answer when a rewrite does not name it', () => {
+    const stock = seed();
+    patchRecipe(replica, stock.id, [{ op: 'setIngredientNutrition', ingredient: 2, excludeFromNutrition: true }]);
+    const rewritten = updateRecipe(replica, stock.id, { ingredients: [{ text: '2 cups water' }, { text: '2 squares kombu' }] });
+    expect(flagged(rewritten)).toEqual(['squares kombu']);
+    const named = updateRecipe(replica, stock.id, { ingredients: [{ text: '2 cups water' }, { text: '2 squares kombu', excludeFromNutrition: false }] });
+    expect(flagged(named)).toEqual([]);
+  });
+
+  it('needs a value for setIngredientNutrition', () => {
+    const stock = seed();
+    expect(() => patchRecipe(replica, stock.id, [{ op: 'setIngredientNutrition', ingredient: 2 }])).toThrow(/excludeFromNutrition/);
   });
 });
 

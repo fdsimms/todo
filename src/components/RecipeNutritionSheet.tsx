@@ -24,6 +24,7 @@ import { describeAIError, estimateRecipeNutrition, recipeNutritionEstimateAvaila
 import { usePendingRecipeEstimateStore } from '../store/usePendingRecipeEstimateStore';
 import { isQueueableFailure } from '../utils/estimateQueue';
 import { liveFor } from '../utils/recipeEstimateQueue';
+import { isUsuallyRemovedBeforeEating } from '../utils/removedBeforeEating';
 import { EditorSheet } from './EditorSheet';
 import { GroceryItemSheet } from './GroceryItemSheet';
 import { InlineAction } from './InlineAction';
@@ -596,7 +597,20 @@ export function RecipeNutritionSheet({ visible, reading, recipeId, recipeName, s
                           </Text>
                         </View>
                       ))}
+                      {isUsuallyRemovedBeforeEating(line.name) && (
+                        <Text style={styles.hint}>
+                          This is usually taken out before eating, so it may not belong in the total.
+                        </Text>
+                      )}
                       <View style={styles.countedDetailActions}>
+                        {isUsuallyRemovedBeforeEating(line.name) && (
+                          <InlineAction
+                            label="Don’t count this"
+                            variant="neutral"
+                            onPress={() => excludeLine(line)}
+                            accessibilityLabel={`Leave ${line.name} out of this recipe’s nutrition total`}
+                          />
+                        )}
                         <InlineAction
                           label="Edit these figures"
                           variant="neutral"
