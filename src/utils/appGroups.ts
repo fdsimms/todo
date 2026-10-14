@@ -8,7 +8,8 @@
  * session, a task gate, a failed-task penalty, a key tag and each schedule
  * point at.
  *
- * **A group that cannot be found resolves to Default, never to nothing.** A
+ * **A group that cannot be found resolves to the fallback group (Default unless
+ * the person made another group the default), never to nothing.** A
  * reason pointing at a removed group would otherwise block no apps at all while
  * every switch still read as on. Default is also the group that held the one
  * app selection before groups existed, so an install that upgrades blocks
@@ -20,7 +21,16 @@ export const APP_GROUPS_SETTING = 'appGroups';
 /** The settings row holding which group each reason uses, as JSON. Device-local. */
 export const GROUP_ASSIGNMENTS_SETTING = 'appGroupAssignments';
 
-/** The group that holds the original app selection. Always present, never renamed or removed. */
+/** The settings row holding the original group's display name, plain text. Device-local. */
+export const BASE_GROUP_NAME_SETTING = 'appGroupBaseName';
+/** The settings row holding the id of the group a missing group resolves to, plain text. Device-local. */
+export const FALLBACK_GROUP_SETTING = 'appGroupFallback';
+
+/**
+ * The group that holds the original app selection. Always present and never
+ * removed; its name can be changed (`GroupsMeta.baseName`) but its id is the
+ * native selection file's name, so that never changes.
+ */
 export const DEFAULT_GROUP_ID = 'default';
 export const DEFAULT_GROUP_NAME = 'Default';
 
@@ -51,6 +61,30 @@ export const DEFAULT_ASSIGNMENTS: GroupAssignments = {
 const ID_PATTERN = /^[A-Za-z0-9_-]{1,40}$/;
 
 export const DEFAULT_GROUP: AppGroup = { id: DEFAULT_GROUP_ID, name: DEFAULT_GROUP_NAME };
+
+/**
+ * The two things about the original group that a person can change: what it is
+ * called, and whether it is still the group a missing group falls back to. The
+ * id of the fallback may be any group, so "Default" is a role as well as a name.
+ */
+export interface GroupsMeta {
+  baseName: string;
+  fallbackId: string;
+}
+
+export const DEFAULT_GROUPS_META: GroupsMeta = { baseName: DEFAULT_GROUP_NAME, fallbackId: DEFAULT_GROUP_ID };
+
+export function parseGroupsMeta(
+  baseName: string | null | undefined,
+  fallbackId: string | null | undefined,
+  custom: readonly AppGroup[],
+): GroupsMeta {
+  return {
+    baseName: baseName ? cleanGroupName(baseName, DEFAULT_GROUP_NAME) : DEFAULT_GROUP_NAME,
+    // A fallback that no longer exists is the original group, never nothing.
+    fallbackId: fallbackId && custom.some(g => g.id === fallbackId) ? fallbackId : DEFAULT_GROUP_ID,
+  };
+}
 
 /** The name as stored: trimmed, capped, and never empty. */
 export function cleanGroupName(raw: string, fallback = 'New group'): string {
@@ -86,8 +120,8 @@ export function parseAppGroups(raw: string | null | undefined): AppGroup[] {
 }
 
 /** Default first, then the custom groups in the order the person made them. */
-export function allGroups(custom: readonly AppGroup[]): AppGroup[] {
-  return [DEFAULT_GROUP, ...custom];
+export function allGroups(custom: readonly AppGroup[], meta: GroupsMeta = DEFAULT_GROUPS_META): AppGroup[] {
+  return [{ id: DEFAULT_GROUP_ID, name: meta.baseName }, ...custom];
 }
 
 export type AddGroupResult =
@@ -95,19 +129,28 @@ export type AddGroupResult =
   | { ok: false; reason: 'full' | 'duplicate' | 'invalid' };
 
 /** Add a group, refusing a repeated name (case aside) since two would be indistinguishable in a picker. */
-export function withGroupAdded(custom: readonly AppGroup[], group: AppGroup): AddGroupResult {
+export function withGroupAdded(
+  custom: readonly AppGroup[],
+  group: AppGroup,
+  meta: GroupsMeta = DEFAULT_GROUPS_META,
+): AddGroupResult {
   if (!ID_PATTERN.test(group.id) || group.id === DEFAULT_GROUP_ID) return { ok: false, reason: 'invalid' };
   if (custom.length >= MAX_APP_GROUPS) return { ok: false, reason: 'full' };
   const key = group.name.toLowerCase();
-  if (key === DEFAULT_GROUP_NAME.toLowerCase() || custom.some(g => g.name.toLowerCase() === key)) {
+  if (key === meta.baseName.toLowerCase() || custom.some(g => g.name.toLowerCase() === key)) {
     return { ok: false, reason: 'duplicate' };
   }
   return { ok: true, groups: [...custom, group] };
 }
 
-export function withGroupRenamed(custom: readonly AppGroup[], id: string, name: string): AddGroupResult {
+export function withGroupRenamed(
+  custom: readonly AppGroup[],
+  id: string,
+  name: string,
+  meta: GroupsMeta = DEFAULT_GROUPS_META,
+): AddGroupResult {
   const key = name.toLowerCase();
-  if (key === DEFAULT_GROUP_NAME.toLowerCase() || custom.some(g => g.id !== id && g.name.toLowerCase() === key)) {
+  if (key === meta.baseName.toLowerCase() || custom.some(g => g.id !== id && g.name.toLowerCase() === key)) {
     return { ok: false, reason: 'duplicate' };
   }
   return { ok: true, groups: custom.map(g => (g.id === id ? { ...g, name } : g)) };
@@ -117,16 +160,25 @@ export function withGroupRemoved(custom: readonly AppGroup[], id: string): AppGr
   return custom.filter(g => g.id !== id);
 }
 
-/** The group a stored id means: itself when it exists, otherwise Default. */
-export function resolveGroupId(custom: readonly AppGroup[], id: string | null | undefined): string {
-  if (!id || id === DEFAULT_GROUP_ID) return DEFAULT_GROUP_ID;
-  return custom.some(g => g.id === id) ? id : DEFAULT_GROUP_ID;
+/** The group a stored id means: itself when it exists, otherwise the fallback group. */
+export function resolveGroupId(
+  custom: readonly AppGroup[],
+  id: string | null | undefined,
+  meta: GroupsMeta = DEFAULT_GROUPS_META,
+): string {
+  if (id === DEFAULT_GROUP_ID) return DEFAULT_GROUP_ID;
+  if (id && custom.some(g => g.id === id)) return id;
+  return custom.some(g => g.id === meta.fallbackId) ? meta.fallbackId : DEFAULT_GROUP_ID;
 }
 
-/** The name to show for an id, resolving a missing group to Default's. */
-export function groupName(custom: readonly AppGroup[], id: string | null | undefined): string {
-  const resolved = resolveGroupId(custom, id);
-  return resolved === DEFAULT_GROUP_ID ? DEFAULT_GROUP_NAME : custom.find(g => g.id === resolved)?.name ?? DEFAULT_GROUP_NAME;
+/** The name to show for an id, resolving a missing group to the fallback's. */
+export function groupName(
+  custom: readonly AppGroup[],
+  id: string | null | undefined,
+  meta: GroupsMeta = DEFAULT_GROUPS_META,
+): string {
+  const resolved = resolveGroupId(custom, id, meta);
+  return resolved === DEFAULT_GROUP_ID ? meta.baseName : custom.find(g => g.id === resolved)?.name ?? meta.baseName;
 }
 
 export function parseGroupAssignments(raw: string | null | undefined): GroupAssignments {
@@ -147,12 +199,16 @@ export function parseGroupAssignments(raw: string | null | undefined): GroupAssi
 }
 
 /** Every reason's group with missing groups resolved to Default. */
-export function resolveAssignments(custom: readonly AppGroup[], assignments: GroupAssignments): GroupAssignments {
+export function resolveAssignments(
+  custom: readonly AppGroup[],
+  assignments: GroupAssignments,
+  meta: GroupsMeta = DEFAULT_GROUPS_META,
+): GroupAssignments {
   return {
-    focus: resolveGroupId(custom, assignments.focus),
-    gate: resolveGroupId(custom, assignments.gate),
-    penalty: resolveGroupId(custom, assignments.penalty),
-    key: resolveGroupId(custom, assignments.key),
+    focus: resolveGroupId(custom, assignments.focus, meta),
+    gate: resolveGroupId(custom, assignments.gate, meta),
+    penalty: resolveGroupId(custom, assignments.penalty, meta),
+    key: resolveGroupId(custom, assignments.key, meta),
   };
 }
 

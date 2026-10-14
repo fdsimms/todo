@@ -66,3 +66,31 @@ describe('schedules', () => {
     expect(useAppGroupStore.getState().schedules[0].pausedUntil).toBeNull();
   });
 });
+
+describe('the original group', () => {
+  it('can be renamed, and the name survives a reload', () => {
+    expect(useAppGroupStore.getState().renameGroup('default', 'Everything').ok).toBe(true);
+    expect(mockSettings.appGroupBaseName).toBe('Everything');
+    useAppGroupStore.getState().reload();
+    expect(useAppGroupStore.getState().meta.baseName).toBe('Everything');
+  });
+
+  it('refuses a name a custom group has, and a custom group refuses its new name', () => {
+    useAppGroupStore.getState().addGroup('Social');
+    expect(useAppGroupStore.getState().renameGroup('default', 'social')).toEqual({ ok: false, reason: 'duplicate' });
+    useAppGroupStore.getState().renameGroup('default', 'Everything');
+    const id = useAppGroupStore.getState().groups[0].id;
+    expect(useAppGroupStore.getState().renameGroup(id, 'everything')).toEqual({ ok: false, reason: 'duplicate' });
+  });
+
+  it('hands the default role to another group, and back when that group is deleted', () => {
+    useAppGroupStore.getState().addGroup('Social');
+    const id = useAppGroupStore.getState().groups[0].id;
+    useAppGroupStore.getState().setDefaultGroup(id);
+    expect(resolveGroupNow('gone')).toBe(id);
+    expect(resolveGroupNow('default')).toBe('default');
+    useAppGroupStore.getState().removeGroup(id);
+    expect(useAppGroupStore.getState().meta.fallbackId).toBe('default');
+    expect(resolveGroupNow('gone')).toBe('default');
+  });
+});

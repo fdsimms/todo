@@ -66,6 +66,7 @@ export function BlockScheduleSheet({ visible, onClose, scheduleId }: Props) {
   const use24HourTime = useSettingsStore(s => s.use24HourTime);
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
   const customGroups = useAppGroupStore(s => s.groups);
+  const groupsMeta = useAppGroupStore(s => s.meta);
   const existing = useAppGroupStore(s => s.schedules.find(x => x.id === scheduleId) ?? null);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
@@ -81,7 +82,7 @@ export function BlockScheduleSheet({ visible, onClose, scheduleId }: Props) {
     const seed: Draft = existing
       ? {
         name: existing.name,
-        groupId: resolveGroupId(customGroups, existing.groupId),
+        groupId: resolveGroupId(customGroups, existing.groupId, groupsMeta),
         days: [...existing.days],
         startMinutes: existing.startMinutes,
         endMinutes: existing.endMinutes,
@@ -143,7 +144,7 @@ export function BlockScheduleSheet({ visible, onClose, scheduleId }: Props) {
   const chooseGroup = () => {
     haptics.tap();
     Alert.alert('Apps to block', 'Choose which group of apps this schedule blocks.', [
-      ...allGroups(customGroups).map(g => ({
+      ...allGroups(customGroups, groupsMeta).map(g => ({
         text: g.id === draft.groupId ? `${g.name} (selected)` : g.name,
         onPress: () => setDraft(d => ({ ...d, groupId: g.id })),
       })),
@@ -258,7 +259,7 @@ export function BlockScheduleSheet({ visible, onClose, scheduleId }: Props) {
               icon="apps-outline"
               label="Apps to block"
               hint="Choose the apps in each group on the Screen Time screen."
-              value={groupName(customGroups, draft.groupId)}
+              value={groupName(customGroups, draft.groupId, groupsMeta)}
               onPress={chooseGroup}
             />
           </SettingsSection>
