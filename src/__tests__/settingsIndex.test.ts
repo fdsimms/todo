@@ -399,7 +399,11 @@ describe('settings index', () => {
 
     it('leaves no group emptied by either switch', () => {
       const on = visibleSettingsEntries('ios', false, true);
-      for (const group of visibleSettingsGroups('ios', false)) {
+      // The groups Settings draws a row for. A group that lives on a screen of
+      // its own has no row here, and its screen is hidden wholesale in
+      // simplified mode (`screenTimeScreen` in simpleMode.ts), so emptying it
+      // strands nothing.
+      for (const group of settingsIndexGroups('ios', false)) {
         expect(on.filter(e => e.groupId === group.id).length).toBeGreaterThan(0);
       }
     });
@@ -442,16 +446,28 @@ describe('settings index', () => {
       expect(visibleSettingsEntries('ios').some(e => e.groupId === 'generated')).toBe(true);
     });
 
-    it('leaves it out of the list of groups Settings draws, and only it', () => {
+    it('leaves them out of the list of groups Settings draws, and only them', () => {
       const drawn = settingsIndexGroups('ios').map(g => g.id);
       expect(drawn).not.toContain('generated');
-      expect(drawn).toHaveLength(visibleSettingsGroups('ios').length - 1);
+      expect(drawn).not.toContain('screenTime');
+      expect(drawn).toHaveLength(visibleSettingsGroups('ios').length - 2);
     });
 
-    // IndexedSettingsGroupId excludes 'generated' by name, so a second group
-    // given a screen would type-check while its summary line went missing.
-    it('is only the one group the summaries type leaves out', () => {
-      expect(SETTINGS_GROUPS.filter(g => g.screen).map(g => g.id)).toEqual(['generated']);
+    it('sends the Screen Time rows to the Screen Time screen, still on the matched row', () => {
+      expect(settingsEntryTarget('gateShield'))
+        .toEqual({ kind: 'screen', route: 'ScreenTime', entryId: 'gateShield' });
+      expect(settingsEntryTarget('nfcKeyLock'))
+        .toEqual({ kind: 'screen', route: 'ScreenTime', entryId: 'nfcKeyLock' });
+    });
+
+    it('is off Android, where Screen Time does not exist', () => {
+      expect(visibleSettingsEntries('android').some(e => e.groupId === 'screenTime')).toBe(false);
+    });
+
+    // IndexedSettingsGroupId excludes these by name, so a third group given a
+    // screen would type-check while its summary line went missing.
+    it('is only the two groups the summaries type leaves out', () => {
+      expect(SETTINGS_GROUPS.filter(g => g.screen).map(g => g.id)).toEqual(['screenTime', 'generated']);
     });
   });
 });

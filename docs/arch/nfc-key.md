@@ -34,7 +34,7 @@ Two consequences are easy to break:
 - `useAppShieldSync` subscribes to the store, so a scan reaches the shield in the same breath.
 - `deepLinks.ts` (`isKeyUrl`, `keyUrlToken`, and the branch in `openInAppUrl`) handles a tapped link tag. It does nothing in demo mode.
 - `src/utils/nfcBridge.ts` is the one door to the reader, gated like `screenTimeBridge()` (iOS, not demo, module present).
-- `FocusSettings.tsx` has the rows. Enrolling and removing use system alerts rather than a sheet.
+- `ScreenTimeSettings.tsx` has the rows, on the Screen Time screen (`ScreenTimeScreen.tsx`), under Key tags. Enrolling and removing use system alerts rather than a sheet.
 
 ## Native and build notes
 

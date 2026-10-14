@@ -1,5 +1,6 @@
 /**
- * What the side menu contains, as data — fourteen rows, four of which are hubs.
+ * What the side menu contains, as data — fourteen rows, four of which are hubs,
+ * and a fifteenth (Screen Time) wherever it can work.
  *
  * The menu used to be eighteen flat rows of equal weight, about twice what
  * fits on a phone, so half of it lived below a fold nothing announced. Reading
@@ -97,7 +98,7 @@ export interface NavHub {
 }
 
 export type NavMenuRow =
-  | { kind: 'screen'; kitchen?: boolean; destination: NavDestination }
+  | { kind: 'screen'; kitchen?: boolean; screenTime?: boolean; destination: NavDestination }
   | { kind: 'hub'; hub: NavHub };
 
 const KITCHEN_HUB: NavHub = {
@@ -210,6 +211,22 @@ export const NAV_MENU_ROWS: readonly NavMenuRow[] = [
       keywords: ['coins', 'points', 'gold', 'treat', 'shop', 'habitica', 'gamification', 'earn'],
     },
   },
+  // Where the apps you've chosen to block are managed, and whether they are
+  // blocked right now and why. A row of its own, beside Rewards, because the
+  // two are the carrot and the stick for the same tasks and because it is a
+  // page people return to for its status rather than a setting set once. It is
+  // dropped where Screen Time can't work (`screenTimeSupported`), the way
+  // Groceries drops with the kitchen off.
+  {
+    kind: 'screen',
+    screenTime: true,
+    destination: {
+      route: 'ScreenTime',
+      icon: 'lock-closed-outline',
+      label: 'Screen Time',
+      keywords: ['block apps', 'shield', 'distraction', 'social media', 'nfc', 'tag', 'key tag', 'penalty', 'gate', 'restrict', 'lock'],
+    },
+  },
   // Out of the bottom tab bar to make room for Groceries there. The pull to
   // refresh on Today opens the quick-search card; this row is the way to the
   // full screen.
@@ -306,6 +323,14 @@ export interface NavMenuOptions {
   kitchenEnabled: boolean;
   simpleMode: boolean;
   counts: NavContentCounts;
+  /**
+   * This build on this phone can offer Screen Time (iOS 16+ with the native
+   * module), or demo mode is showing it. Not a setting, so it can't be read
+   * here: the caller works it out once. Left out means off, which hides the
+   * row, so a caller that forgets it fails toward not offering a screen that
+   * can't work.
+   */
+  screenTimeSupported?: boolean;
 }
 
 /**
@@ -313,11 +338,12 @@ export interface NavMenuOptions {
  * reach. A hub with nothing left drops out entirely rather than opening onto
  * an empty pill row.
  */
-export function visibleMenuRows({ kitchenEnabled, simpleMode, counts }: NavMenuOptions): NavMenuRow[] {
+export function visibleMenuRows({ kitchenEnabled, simpleMode, counts, screenTimeSupported = false }: NavMenuOptions): NavMenuRow[] {
   const rows: NavMenuRow[] = [];
   for (const row of NAV_MENU_ROWS) {
     if (row.kind === 'screen') {
       if (row.kitchen && !kitchenEnabled) continue;
+      if (row.screenTime && !screenTimeSupported) continue;
       if (!screenShown(row.destination.route, simpleMode, counts)) continue;
       rows.push(row);
       continue;

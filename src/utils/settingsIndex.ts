@@ -48,6 +48,7 @@ export type SettingsGroupId =
   | 'calendar'
   | 'tasksProjects'
   | 'focus'
+  | 'screenTime'
   | 'generated'
   | 'health'
   | 'kitchen'
@@ -117,9 +118,15 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
   { id: 'capture', title: 'Reminders & Siri', icon: 'download-outline', tint: 'green', iosOnly: true },
   { id: 'calendar', title: 'Calendar', icon: 'calendar-outline', tint: 'orange', iosOnly: true },
   { id: 'tasksProjects', title: 'Tasks & projects', icon: 'checkbox-outline', tint: 'purple' },
-  // Focus sessions, app blocking and the timers' Lock Screen activity: 17 rows
-  // that were the biggest section of Tasks & projects.
-  { id: 'focus', title: 'Focus & app blocking', icon: 'timer-outline', tint: 'accent' },
+  // Focus sessions, the scroll suggestion and the timers' Lock Screen activity.
+  // The app blocking that used to sit in here is the Screen Time screen now.
+  { id: 'focus', title: 'Focus & timers', icon: 'timer-outline', tint: 'accent' },
+  // Which apps are blocked, and every reason they can be: a focus session, a
+  // task that has to be done first, a failed task, a key tag. A screen in the
+  // side menu rather than a group here, for Automations' reason: it opens to a
+  // status (are my apps blocked right now, and why) that a list of switches
+  // can't show, and people return to it rather than configuring it once.
+  { id: 'screenTime', title: 'Screen Time', icon: 'lock-closed-outline', tint: 'accent', iosOnly: true, screen: 'ScreenTime' },
   // Its own group rather than one section of fourteen inside Tasks & projects,
   // which is where half that screen's rows were. It answers the question people
   // actually have about these (*what writes tasks into my list*), and it grows
@@ -753,22 +760,18 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // "Screen time" is the name most people have for this and appears nowhere in
   // the copy, same argument as "pomodoro" on the rows above. So are "block"
   // and "distraction", which is what somebody is actually looking for.
-  { id: 'focusShield', iosOnly: true, groupId: 'focus', label: 'Block apps while focusing', section: 'Focus sessions', simple: true,
-    keywords: ['screen time', 'pomodoro', 'distraction', 'shield', 'social media', 'restrict'] },
-  { id: 'focusShieldApps', iosOnly: true, requires: 'focusShield', groupId: 'focus', label: 'Apps to block', section: 'Focus sessions', simple: true,
-    keywords: ['screen time', 'distraction', 'which apps', 'picker', 'choose'] },
-  { id: 'gateShield', iosOnly: true, groupId: 'focus', label: 'Block apps until a task is done', section: 'Focus sessions', simple: true,
-    keywords: ['screen time', 'gate', 'first', 'before', 'unlock', 'precondition', 'accountability', 'restrict', 'morning'] },
-  { id: 'penaltyShield', iosOnly: true, groupId: 'focus', label: 'Block apps when you fail a task', section: 'Focus sessions', simple: true,
-    keywords: ['screen time', 'penalty', 'punish', 'consequence', 'miss', 'missed', 'slip', 'deadline', 'cutoff', 'accountability', 'restrict'] },
-  { id: 'penaltyShieldApps', iosOnly: true, requires: 'penaltyShield', groupId: 'focus', label: 'Apps to block', section: 'Focus sessions', simple: true,
-    keywords: ['screen time', 'penalty', 'which apps', 'picker', 'choose'] },
-  { id: 'penaltyShieldActive', iosOnly: true, requires: 'penaltyShield', groupId: 'focus', label: 'Blocked until', section: 'Focus sessions', simple: true,
-    keywords: ['screen time', 'penalty', 'locked out', 'how long', 'end early', 'unblock'] },
-  { id: 'nfcKey', iosOnly: true, groupId: 'focus', label: 'Key tags', section: 'Focus sessions', simple: true,
+  { id: 'screenTimeApps', iosOnly: true, groupId: 'screenTime', label: 'Apps to block', section: 'Apps', simple: true,
+    keywords: ['screen time', 'which apps', 'picker', 'choose', 'distraction', 'social media', 'restrict'] },
+  { id: 'focusShield', iosOnly: true, groupId: 'screenTime', label: 'While focusing', section: 'Reasons to block', simple: true,
+    keywords: ['screen time', 'block apps', 'pomodoro', 'focus session', 'distraction', 'shield', 'social media', 'restrict'] },
+  { id: 'gateShield', iosOnly: true, groupId: 'screenTime', label: 'Until a task is done', section: 'Reasons to block', simple: true,
+    keywords: ['screen time', 'block apps', 'gate', 'first', 'before', 'unlock', 'precondition', 'accountability', 'restrict', 'morning'] },
+  { id: 'penaltyShield', iosOnly: true, groupId: 'screenTime', label: 'When you fail a task', section: 'Reasons to block', simple: true,
+    keywords: ['screen time', 'block apps', 'penalty', 'punish', 'consequence', 'miss', 'missed', 'slip', 'deadline', 'cutoff', 'accountability', 'restrict', 'blocked until', 'end early'] },
+  { id: 'nfcKey', iosOnly: true, groupId: 'screenTime', label: 'Add a key tag', section: 'Key tags', simple: true,
     keywords: ['nfc', 'sticker', 'tap', 'physical key', 'screen time', 'lock', 'unlock', 'ritual'] },
-  { id: 'nfcKeyLock', iosOnly: true, groupId: 'focus', label: 'Lock apps with a key tag', section: 'Focus sessions', simple: true,
-    keywords: ['nfc', 'tap', 'screen time', 'unlock', 'block', 'physical'] },
+  { id: 'nfcKeyLock', iosOnly: true, groupId: 'screenTime', label: 'Locked', section: 'Key tags', simple: true,
+    keywords: ['nfc', 'tap', 'screen time', 'unlock', 'block', 'physical', 'key tag'] },
   { id: 'timerLiveActivity', iosOnly: true, groupId: 'focus', label: 'Live Activity while timing', section: 'Timers',
     keywords: ['lock screen', 'dynamic island', 'timer', 'stopwatch', 'cooking', 'recipe', 'countdown', 'completion timer', 'reminder'] },
   { id: 'autoRemoveExpired', groupId: 'tasksProjects', label: 'Auto-remove expired tasks', section: 'Time-limited tasks',
@@ -1095,7 +1098,7 @@ export function settingsGroup(id: SettingsGroupId): SettingsGroup | undefined {
  * needn't carry a line for a row that is never drawn.
  */
 export type IndexedSettingsGroup = SettingsGroup & { id: IndexedSettingsGroupId };
-export type IndexedSettingsGroupId = Exclude<SettingsGroupId, 'generated'>;
+export type IndexedSettingsGroupId = Exclude<SettingsGroupId, 'generated' | 'screenTime'>;
 
 export function settingsIndexGroups(platformOS: string, kitchenEnabled = true, simpleMode = false): IndexedSettingsGroup[] {
   return visibleSettingsGroups(platformOS, kitchenEnabled, simpleMode)
