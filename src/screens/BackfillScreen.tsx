@@ -78,7 +78,7 @@ import {
   personCadencePatch, groupmatesOf, groupmateCadenceOffer, type PersonBackfillFieldId,
 } from '../utils/peopleBackfill';
 import {
-  ITEM_BACKFILL_FIELDS, itemBackfillCandidates, itemBackfillFieldCounts, dismissItemBackfillField,
+  ITEM_BACKFILL_FIELDS, itemBackfillCandidates, itemBackfillFieldCounts, dismissItemBackfillField, unratedBoxesOf,
   type ItemBackfillFieldId,
 } from '../utils/itemBackfill';
 import {
@@ -102,10 +102,11 @@ import { genericNameSuggestions } from '../utils/itemVarieties';
 import { substitutesFor, describeSubstitutes } from '../utils/itemSubs';
 import { groceryNameKey } from '../utils/groceryParse';
 import { itemNameSuggestions } from '../utils/scanResolve';
+import { describeProduct, preferredProductOf, productsForItem, RATING_LABELS } from '../utils/groceryProduct';
 import { describeFoodPanel } from '../utils/foodNutrition';
 import {
-  EFFORT_LABELS, GROCERY_NAME_MAX_LENGTH,
-  type Difficulty, type Effort, type HolidayRule, type FoodNutrition, type GroceryItem, type Person, type Recipe, type ReminderKind, type Task, type TaskFieldDefaults,
+  EFFORT_LABELS, GROCERY_NAME_MAX_LENGTH, GROCERY_BRAND_MAX_LENGTH, GROCERY_VARIANT_MAX_LENGTH,
+  type Difficulty, type Effort, type HolidayRule, type FoodNutrition, type GroceryItem, type ItemProduct, type ProductRating, type Person, type Recipe, type ReminderKind, type Task, type TaskFieldDefaults,
 } from '../types';
 import { TextField } from '../components/TextField';
 
@@ -169,6 +170,8 @@ const ITEM_FIELD_ICONS: Record<ItemBackfillFieldId, keyof typeof Ionicons.glyphM
   variety: 'layers-outline',
   nutrition: 'nutrition-outline',
   nutritionDetail: 'water-outline',
+  product: 'cube-outline',
+  rating: 'thumbs-up-outline',
 };
 
 // Every recipe field is a count somebody types, so there is no filled/outline
@@ -397,6 +400,10 @@ export function BackfillScreen() {
   const renameItem = useGroceryStore(s => s.renameItem);
   const mergeItems = useGroceryStore(s => s.mergeItems);
   const setNameFromScan = useGroceryStore(s => s.setNameFromScan);
+  const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
+  const addProduct = useGroceryStore(s => s.addProduct);
+  const updateProduct = useGroceryStore(s => s.updateProduct);
+  const deleteProduct = useGroceryStore(s => s.deleteProduct);
   const setItemNutrition = useGroceryStore(s => s.setItemNutrition);
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const setServings = useRecipeStore(s => s.setServings);
@@ -472,6 +479,11 @@ export function BackfillScreen() {
   // rather than left blank, because most of the work here is deleting words
   // somebody else wrote rather than typing a name from nothing.
   const [renameText, setRenameText] = useState('');
+  // The brand and product the `scannedName` and `product` cards offer, seeded
+  // from the box the item already has (a scan files one) so the card shows what
+  // is on record rather than asking again.
+  const [brandText, setBrandText] = useState('');
+  const [variantText, setVariantText] = useState('');
   // The recipe pool's own draft — one number, since only one of its three
   // fields is ever on screen. Separate from the item drafts above for the
   // reason personCadenceDraft is separate from nudgeDraft: they are different
@@ -536,8 +548,8 @@ export function BackfillScreen() {
   const projectCounts = useMemo(() => projectBackfillFieldCounts(projects), [projects]);
   const personCounts = useMemo(() => personBackfillFieldCounts(people), [people]);
   const itemCounts = useMemo(
-    () => itemBackfillFieldCounts(groceryItems, itemSubs, nonFoodAisles),
-    [groceryItems, itemSubs, nonFoodAisles]
+    () => itemBackfillFieldCounts(groceryItems, itemSubs, nonFoodAisles, itemProducts),
+    [groceryItems, itemSubs, nonFoodAisles, itemProducts]
   );
   const recipeCounts = useMemo(() => recipeBackfillFieldCounts(recipes), [recipes]);
 
@@ -567,9 +579,9 @@ export function BackfillScreen() {
   );
   const itemQueue = useMemo(
     () => active?.kind === 'item'
-      ? itemBackfillCandidates(groceryItems, active.id, itemSubs, nonFoodAisles, { fromScratch }).filter(i => !skippedIds.has(i.id))
+      ? itemBackfillCandidates(groceryItems, active.id, itemSubs, nonFoodAisles, { fromScratch }, itemProducts).filter(i => !skippedIds.has(i.id))
       : [],
-    [groceryItems, active, fromScratch, skippedIds, itemSubs, nonFoodAisles]
+    [groceryItems, active, fromScratch, skippedIds, itemSubs, nonFoodAisles, itemProducts]
   );
   const recipeQueue = useMemo(
     () => active?.kind === 'recipe' ? recipeBackfillCandidates(recipes, active.id, { fromScratch }).filter(r => !skippedIds.has(r.id)) : [],
@@ -736,6 +748,9 @@ export function BackfillScreen() {
   useEffect(() => {
     if (!currentItem) return;
     setRenameText(currentItem.name);
+    const box = boxOfRecord(currentItem, itemProducts);
+    setBrandText(box?.brand ?? '');
+    setVariantText(box?.variant ?? '');
   }, [currentItem?.id]);
 
   // Same default RemindMePicker's own caller (TaskEditor) opens with: 9am on
@@ -822,7 +837,7 @@ export function BackfillScreen() {
     setManualCurrentId(null);
     setSessionLog([]);
     clearSuggestions();
-    setSessionTotal(itemBackfillCandidates(groceryItems, id, itemSubs, nonFoodAisles).length);
+    setSessionTotal(itemBackfillCandidates(groceryItems, id, itemSubs, nonFoodAisles, {}, itemProducts).length);
   };
 
   const chooseRecipeField = (id: RecipeBackfillFieldId) => {
@@ -873,7 +888,7 @@ export function BackfillScreen() {
       : active.kind === 'category' ? categoryBackfillCandidates(categories, active.id, opts).length
       : active.kind === 'project' ? projectBackfillCandidates(projects, active.id, opts).length
       : active.kind === 'person' ? personBackfillCandidates(people, active.id, opts).length
-      : active.kind === 'item' ? itemBackfillCandidates(groceryItems, active.id, itemSubs, nonFoodAisles, opts).length
+      : active.kind === 'item' ? itemBackfillCandidates(groceryItems, active.id, itemSubs, nonFoodAisles, opts, itemProducts).length
       : recipeBackfillCandidates(recipes, active.id, opts).length
     );
   };
@@ -1703,6 +1718,85 @@ export function BackfillScreen() {
   };
 
   /**
+   * Files the brand and product typed on a card as the item's box, and returns
+   * a function that puts the products back as they were, or null when nothing
+   * was written.
+   *
+   * **One box, edited in place when the item already has one.** A scan files the
+   * box it read, so a scanned item usually has it already, and typing a
+   * correction on the card has to fix that row instead of leaving the wrong one
+   * beside a right one. Only an item with no box gets a new one, and then
+   * `addProduct` makes it the preference (the first one is the answer to "which
+   * one?"). `updateProduct` cannot clear both words, so a blank pair is no
+   * change rather than a delete.
+   */
+  const saveProductDraft = (item: GroceryItem): (() => void) | null => {
+    const brand = brandText.trim() || null;
+    const variant = variantText.trim() || null;
+    if (!brand && !variant) return null;
+    const existing = boxOfRecord(item, itemProducts);
+    if (existing) {
+      if ((existing.brand ?? null) === brand && (existing.variant ?? null) === variant) return null;
+      const before = { brand: existing.brand, variant: existing.variant };
+      if (!updateProduct(existing.id, { brand, variant })) {
+        Alert.alert('Already saved', 'This item already has a brand with that name and product.');
+        return null;
+      }
+      return () => { updateProduct(existing.id, before); };
+    }
+    const knownIds = new Set(useGroceryStore.getState().itemProducts.map(p => p.id));
+    const created = addProduct(item.id, { brand, variant });
+    if (!created || knownIds.has(created.id)) return null;
+    return () => deleteProduct(created.id);
+  };
+
+  /** The `product` field: name the box and drop out of the queue. */
+  const applyProduct = () => {
+    if (!currentItem || active?.kind !== 'item') return;
+    const item = currentItem;
+    haptics.tap();
+    animateLayout();
+    const undoProduct = saveProductDraft(item);
+    if (!undoProduct) return;
+    recordVisited();
+    setManualCurrentId(null);
+    commit('Brand and product saved', {
+      itemId: item.id,
+      title: item.name,
+      valueText: describeProduct({ brand: brandText.trim() || null, variant: variantText.trim() || null }) ?? '',
+      undo: undoProduct,
+    });
+  };
+
+  /**
+   * The `rating` field. A box is rated with one tap and the card stays up while
+   * another box of the same item is unrated; the item leaves the queue by the
+   * ordinary "still missing?" test once none is. A redo has no such test, so it
+   * moves on after every tap. Each box is its own session entry (keyed by the
+   * box, since the session log removes by id and one item can log several).
+   */
+  const applyRating = (product: ItemProduct, rating: ProductRating) => {
+    if (!currentItem || active?.kind !== 'item') return;
+    const item = currentItem;
+    if (product.rating === rating) return;
+    haptics.tap();
+    animateLayout();
+    const before = product.rating;
+    if (!updateProduct(product.id, { rating })) return;
+    const stillUnrated = unratedBoxesOf(item.id, useGroceryStore.getState().itemProducts).length;
+    if (fromScratch || stillUnrated === 0) {
+      recordVisited();
+      setManualCurrentId(null);
+    }
+    commit('Product rated', {
+      itemId: product.id,
+      title: `${item.name} (${describeProduct(product) ?? 'box'})`,
+      valueText: RATING_LABELS[rating],
+      undo: () => { updateProduct(product.id, { rating: before }); },
+    });
+  };
+
+  /**
    * The item pool's `scannedName` field: the row keeps its id and history and
    * only its words change.
    *
@@ -1762,6 +1856,8 @@ export function BackfillScreen() {
     recordVisited();
     setManualCurrentId(null);
     if (!renameItem(itemId, trimmed)) return;
+    // After the rename, so a refused rename never leaves a box behind.
+    const undoProduct = saveProductDraft(currentItem);
     commit('Item renamed', {
       itemId,
       title,
@@ -1770,8 +1866,36 @@ export function BackfillScreen() {
       // (that is what takes a row out of this queue) and an undone rename has
       // to land back in it. See setNameFromScan.
       undo: () => {
+        undoProduct?.();
         renameItem(itemId, title);
         setNameFromScan(itemId, true);
+      },
+    });
+  };
+
+  /**
+   * Save the brand and product typed on the scanned-name card while keeping the
+   * name as it is. Keeping the name is the dismissal, so the card leaves the
+   * queue and does not come back asking about a name the person just looked at.
+   */
+  const applyProductKeepName = () => {
+    if (!currentItem || active?.kind !== 'item') return;
+    const item = currentItem;
+    const undoProduct = saveProductDraft(item);
+    if (!undoProduct) return;
+    haptics.tap();
+    animateLayout();
+    recordVisited();
+    setManualCurrentId(null);
+    const before = item.backfillDismissedFields;
+    setItemBackfillDismissedFields(item.id, dismissItemBackfillField(item, 'scannedName').backfillDismissedFields);
+    commit('Brand and product saved', {
+      itemId: item.id,
+      title: item.name,
+      valueText: describeProduct({ brand: brandText.trim() || null, variant: variantText.trim() || null }) ?? '',
+      undo: () => {
+        undoProduct();
+        setItemBackfillDismissedFields(item.id, before);
       },
     });
   };
@@ -3103,8 +3227,53 @@ export function BackfillScreen() {
     : [];
   // Blank, or the name it already has: neither is an answer, so the button
   // that commits them is off rather than doing nothing when tapped.
-  const renameReady =
+  const nameChanged =
     !!currentItem && !!renameText.trim() && renameText.trim() !== currentItem.name;
+  // The brand and product typed differ from the box on record, and say
+  // something: a blank pair is nothing to save (see saveProductDraft).
+  const recordedBox = currentItem ? boxOfRecord(currentItem, itemProducts) : null;
+  const draftBrand = brandText.trim() || null;
+  const draftVariant = variantText.trim() || null;
+  const productDirty =
+    (draftBrand !== null || draftVariant !== null) &&
+    (draftBrand !== (recordedBox?.brand ?? null) || draftVariant !== (recordedBox?.variant ?? null));
+  const renameReady = nameChanged || productDirty;
+  const ratingBoxes = currentItem
+    ? (fromScratch
+        ? productsForItem(currentItem.id, itemProducts, currentItem.preferredProductId)
+        : unratedBoxesOf(currentItem.id, itemProducts))
+    : [];
+  const ratingOptions = (Object.keys(RATING_LABELS) as ProductRating[]).map(value => ({
+    value,
+    label: RATING_LABELS[value],
+  }));
+  const productFields = currentItem ? (
+    <View style={styles.productFields}>
+      <TextField
+        style={styles.askAboutInput}
+        value={brandText}
+        onChangeText={text => setBrandText(text.slice(0, GROCERY_BRAND_MAX_LENGTH))}
+        placeholder="Brand, e.g. Good Culture"
+        placeholderTextColor={colors.textTertiary}
+        autoCorrect={false}
+        spellCheck={false}
+        returnKeyType="next"
+        accessibilityLabel={`Brand of ${currentItem.name}`}
+      />
+      <TextField
+        style={styles.askAboutInput}
+        value={variantText}
+        onChangeText={text => setVariantText(text.slice(0, GROCERY_VARIANT_MAX_LENGTH))}
+        placeholder="Product, e.g. low fat"
+        placeholderTextColor={colors.textTertiary}
+        autoCorrect={false}
+        spellCheck={false}
+        returnKeyType="done"
+        onSubmitEditing={active.id === 'product' ? applyProduct : undefined}
+        accessibilityLabel={`Product name of ${currentItem.name}`}
+      />
+    </View>
+  ) : null;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -3209,24 +3378,68 @@ export function BackfillScreen() {
                   placeholder="e.g. Milk"
                   placeholderTextColor={colors.textTertiary}
                   returnKeyType="done"
-                  onSubmitEditing={() => applyRename(renameText)}
+                  onSubmitEditing={() => (nameChanged ? applyRename(renameText) : undefined)}
                   accessibilityLabel={`New name for ${currentItem.name}`}
                 />
+                <Text style={styles.renameHint}>
+                  Add the brand and product if they are not in the name. Either one is enough.
+                </Text>
+                {productFields}
                 <PressableScale
                   style={[
                     styles.toggleButton,
                     { backgroundColor: colors.accentFill },
                     !renameReady && styles.toggleButtonIdle,
                   ]}
-                  onPress={() => applyRename(renameText)}
+                  onPress={() => (nameChanged ? applyRename(renameText) : applyProductKeepName())}
                   disabled={!renameReady}
                   accessibilityRole="button"
-                  accessibilityLabel={`Rename ${currentItem.name}`}
+                  accessibilityLabel={nameChanged ? `Rename ${currentItem.name}` : `Save brand and product for ${currentItem.name}`}
                 >
-                  <Ionicons name="pricetag" size={iconSize.md} color={colors.onAccent} />
-                  <Text style={styles.toggleButtonText}>Rename</Text>
+                  <Ionicons name={nameChanged ? 'pricetag' : 'checkmark'} size={iconSize.md} color={colors.onAccent} />
+                  <Text style={styles.toggleButtonText}>{nameChanged ? 'Rename' : 'Save'}</Text>
                 </PressableScale>
               </View>
+            </View>
+          )}
+
+          {active.id === 'product' && (
+            <View style={styles.renameField}>
+              <Text style={styles.renameHint}>
+                Who makes it and which one. Either is enough, and it shows under
+                the item on your list.
+              </Text>
+              {productFields}
+              <PressableScale
+                style={[
+                  styles.toggleButton,
+                  { backgroundColor: colors.accentFill },
+                  !productDirty && styles.toggleButtonIdle,
+                ]}
+                onPress={applyProduct}
+                disabled={!productDirty}
+                accessibilityRole="button"
+                accessibilityLabel={`Save brand and product for ${currentItem.name}`}
+              >
+                <Ionicons name="checkmark" size={iconSize.md} color={colors.onAccent} />
+                <Text style={styles.toggleButtonText}>Save</Text>
+              </PressableScale>
+            </View>
+          )}
+
+          {active.id === 'rating' && (
+            <View style={styles.renameField}>
+              {ratingBoxes.map(box => (
+                <View key={box.id} style={styles.ratingBox}>
+                  <Text style={styles.ratingName}>{describeProduct(box) ?? 'This box'}</Text>
+                  <SegmentedControl<ProductRating | null>
+                    options={ratingOptions}
+                    value={box.rating}
+                    onChange={value => { if (value) applyRating(box, value); }}
+                    label={`Rating for ${describeProduct(box) ?? 'this box'}`}
+                  />
+                </View>
+              ))}
             </View>
           )}
 
@@ -3350,6 +3563,18 @@ export function BackfillScreen() {
       />
     </View>
   );
+}
+
+/**
+ * The box a card shows and edits for an item: its preferred one, else the only
+ * one it has. With several and no preference there is no single box the card
+ * could be about, so it offers a blank pair rather than picking one.
+ */
+function boxOfRecord(item: GroceryItem, products: readonly ItemProduct[]): ItemProduct | null {
+  const preferred = preferredProductOf(item, products);
+  if (preferred) return preferred;
+  const boxes = productsForItem(item.id, products);
+  return boxes.length === 1 ? boxes[0] : null;
 }
 
 function categoryLabel(
@@ -3980,6 +4205,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // spacing.md between stacked blocks, per the design-system note on giving a
   // new element margin on both sides it needs.
   renameField: { gap: spacing.md },
+  productFields: { gap: spacing.sm },
+  ratingBox: {
+    backgroundColor: colors.bgSecondary,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  ratingName: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
   nutritionField: { gap: spacing.md },
   stepperField: { gap: spacing.md },
   renameHint: { color: colors.textSecondary, fontSize: font.sm, lineHeight: lineHeight.sm },

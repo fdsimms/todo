@@ -10,7 +10,7 @@ what "missing" means for it:
 | Categories | `src/utils/categoryBackfill.ts` | vacation, suggestions, new-tasks banner |
 | Projects | `src/utils/projectBackfill.ts` | nudge, weekend source |
 | People | `src/utils/peopleBackfill.ts` | birthday, cadence, ask about, location |
-| Items | `src/utils/itemBackfill.ts` | scanned name, substitutes, counts as, nutrition, fat and sugar detail |
+| Items | `src/utils/itemBackfill.ts` | scanned name, substitutes, counts as, nutrition, fat and sugar detail, brand and product, rate products |
 | Recipes | `src/utils/recipeBackfill.ts` | servings, cook time, prep time, cooked weight |
 
 Each module exports the field list, the inclusion test (`isFieldMissing` and its siblings), the
@@ -73,6 +73,14 @@ tap), and a store's `receiptStyle`.
   and no added sugars, from queueing for ever. An estimate is excluded because it was never read
   off a label. Absent stays absent: nothing here writes a zero, and a food with none to add is
   left with **Nothing more to add**.
+- **Brand, product and rating read `ItemProduct`, not the item.** `product` queues an item with
+  no box and `rating` queues one with an unrated box, so both take the products list
+  (`isItemFieldMissing`'s last argument, `itemBackfillFieldCounts`' last). A frozen portion is
+  not a box (`isPortionBox`). The scanned-name card also offers the brand and product, because a
+  scan's own words usually hold them: it edits the box the item already has (`boxOfRecord`, the
+  preferred one or the only one) instead of adding a second, and saving them without renaming
+  keeps the name, which is the same dismissal as **Keep this name**. A box is rated one at a
+  time, so the card stays up while another box of the item is unrated.
 - **A new field is not finished until these are updated:** the field's id and entry in the
   module, its dismiss label (`backfillDismissCopy.ts`, at most `MAX_DISMISS_LABEL_LENGTH`
   characters), the batch lists (`backfillBatch.ts`) if a set can share the answer, the screen's

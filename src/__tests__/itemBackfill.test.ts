@@ -1,10 +1,10 @@
 import {
   isItemFieldMissing, isItemBackfillDismissed, itemBackfillCandidates, itemBackfillFieldCounts,
-  dismissItemBackfillField, ITEM_BACKFILL_FIELDS,
+  dismissItemBackfillField, unratedBoxesOf, ITEM_BACKFILL_FIELDS,
 } from '../utils/itemBackfill';
 import { groceryNameKey } from '../utils/groceryParse';
 import { OTHER_AISLE } from '../utils/groceryAisles';
-import type { FoodNutrition, GroceryItem, ItemSubLink } from '../types';
+import type { FoodNutrition, GroceryItem, ItemProduct, ItemSubLink } from '../types';
 
 function makeItem(name: string, overrides: Partial<GroceryItem> = {}): GroceryItem {
   return {
@@ -51,6 +51,31 @@ function makeItem(name: string, overrides: Partial<GroceryItem> = {}): GroceryIt
     backfillDismissedFields: [],
     ...overrides,
   };
+}
+
+let boxSeq = 0;
+function box(itemId: string, overrides: Partial<ItemProduct> = {}): ItemProduct {
+  boxSeq++;
+  return {
+    id: `box-${boxSeq}`,
+    itemId,
+    brand: 'Good Culture',
+    variant: null,
+    productKey: `k-${boxSeq}`,
+    rating: null,
+    nutrition: null,
+    note: '',
+    purchaseCount: 0,
+    lastPurchasedAt: null,
+    gtin: null,
+    onHandUntil: null,
+    expiresAt: null,
+    frozenAt: null,
+    openedAt: null,
+    isPortion: false,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  } as ItemProduct;
 }
 
 function sub(itemId: string, subItemId: string, overrides: Partial<ItemSubLink> = {}): ItemSubLink {
@@ -250,7 +275,7 @@ describe('itemBackfillFieldCounts', () => {
       makeItem('B', { id: 'b' }),
     ];
     expect(itemBackfillFieldCounts(items)).toEqual({
-      variety: 1, substitutes: 2, nutrition: 2, nutritionDetail: 0, scannedName: 0,
+      variety: 1, substitutes: 2, nutrition: 2, nutritionDetail: 0, scannedName: 0, product: 2, rating: 0,
     });
   });
 
@@ -263,7 +288,7 @@ describe('itemBackfillFieldCounts', () => {
     const counts = itemBackfillFieldCounts([
       { ...butter, nameFromScan: true },
       { ...margarine, nutrition: panel() },
-    ]);
+    ], [], [], [box(margarine.id)]);
     for (const field of ITEM_BACKFILL_FIELDS) {
       expect(counts[field.id]).toBeGreaterThan(0);
     }
@@ -272,7 +297,55 @@ describe('itemBackfillFieldCounts', () => {
   it('does not count an item dismissed for that field', () => {
     const item = { ...butter, backfillDismissedFields: ['variety'] };
     expect(itemBackfillFieldCounts([item])).toEqual({
-      variety: 0, substitutes: 1, nutrition: 1, nutritionDetail: 0, scannedName: 0,
+      variety: 0, substitutes: 1, nutrition: 1, nutritionDetail: 0, scannedName: 0, product: 1, rating: 0,
+    });
+  });
+
+  describe('product', () => {
+    it('queues an item with no box and drops it once one is named', () => {
+      expect(isItemFieldMissing(butter, 'product', [], [], [], [])).toBe(true);
+      expect(isItemFieldMissing(butter, 'product', [], [], [], [box(butter.id)])).toBe(false);
+    });
+
+    it('does not count a frozen portion as the item having a product', () => {
+      const portion = box(butter.id, { isPortion: true, brand: null });
+      expect(isItemFieldMissing(butter, 'product', [], [], [], [portion])).toBe(true);
+    });
+
+    it('is not answered by another item’s box', () => {
+      expect(isItemFieldMissing(butter, 'product', [], [], [], [box(margarine.id)])).toBe(true);
+    });
+  });
+
+  describe('rating', () => {
+    it('queues an item only while one of its boxes is unrated', () => {
+      const a = box(butter.id);
+      const b = box(butter.id, { rating: 'loved' });
+      expect(isItemFieldMissing(butter, 'rating', [], [], [], [a, b])).toBe(true);
+      expect(isItemFieldMissing(butter, 'rating', [], [], [], [{ ...a, rating: 'fine' }, b])).toBe(false);
+    });
+
+    it('never queues an item with no boxes, or only a portion', () => {
+      expect(isItemFieldMissing(butter, 'rating', [], [], [], [])).toBe(false);
+      expect(isItemFieldMissing(butter, 'rating', [], [], [], [box(butter.id, { isPortion: true })])).toBe(false);
+    });
+
+    it('lists the unrated boxes of one item and no other', () => {
+      const mine = box(butter.id);
+      const rated = box(butter.id, { rating: 'avoid' });
+      const theirs = box(margarine.id);
+      expect(unratedBoxesOf(butter.id, [mine, rated, theirs])).toEqual([mine]);
+    });
+
+    it('a redo covers every item that has a box, rated or not', () => {
+      const rated = box(butter.id, { rating: 'loved' });
+      const out = itemBackfillCandidates([butter, margarine], 'rating', [], [], { fromScratch: true }, [rated]);
+      expect(out.map(i => i.id)).toEqual([butter.id]);
+    });
+
+    it('honors a dismissal', () => {
+      const item = { ...butter, backfillDismissedFields: ['rating'] };
+      expect(itemBackfillCandidates([item], 'rating', [], [], {}, [box(butter.id)])).toEqual([]);
     });
   });
 });

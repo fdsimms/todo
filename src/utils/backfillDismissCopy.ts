@@ -67,6 +67,8 @@ export const ITEM_DISMISS_LABELS: Record<ItemBackfillFieldId, string> = {
   variety: 'Mark as generic item',
   nutrition: 'No nutrition info',
   nutritionDetail: 'Nothing more to add',
+  product: 'Any brand is fine',
+  rating: 'Don’t rate',
 };
 
 export const RECIPE_DISMISS_LABELS: Record<RecipeBackfillFieldId, string> = {
