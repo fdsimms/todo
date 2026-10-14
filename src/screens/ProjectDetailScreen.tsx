@@ -1505,10 +1505,6 @@ function ProjectDetailContent() {
       );
     }
   };
-  // The trailing "New task" under a project's list. Only once there's a
-  // list to be under: the empty state already has its own button.
-  const showInlineNewTask = !!project && !selectionMode && projectListItems.length > 0;
-
   return (
     <SpotlightProvider progress={spotlightProgress}>
       <View style={[styles.detailRoot, { paddingTop: insets.top + spacing.md }]}>
@@ -2079,7 +2075,7 @@ function ProjectDetailContent() {
             // completed the footer is bare padding — and that padding comes off
             // the box the empty state centres in.
             ListFooterComponent={
-              completedProjectTasks.length === 0 && !showInlineNewTask && !namingSection && taskLineOpen === null ? null : (
+              completedProjectTasks.length === 0 && !namingSection && taskLineOpen === null ? null : (
               <View style={[styles.detailFooter, { paddingBottom: fabBottom + FAB_SIZE + spacing.lg }]}>
                 {/* Where the new section will land: after everything else. */}
                 {namingSection && (
@@ -2102,15 +2098,7 @@ function ProjectDetailContent() {
                     placeholderColor={colors.textTertiary}
                     placeholder="New task"
                   />
-                ) : showInlineNewTask && (
-                  <View style={styles.inlineNewTask}>
-                    <InlineAction
-                      icon="add"
-                      label="New task"
-                      onPress={openTaskLine}
-                    />
-                  </View>
-                )}
+                ) : null}
                 {completedProjectTasks.length > 0 && (
                   <View style={styles.completedSection}>
                     <TouchableOpacity
@@ -2525,14 +2513,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // section tray, so it needs the same side gutter as the cards around it.
   listSortRow: { marginHorizontal: spacing.md },
   newSectionField: { marginTop: spacing.sm },
-  inlineNewTask: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.xs,
-  },
   uncheckAllRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
