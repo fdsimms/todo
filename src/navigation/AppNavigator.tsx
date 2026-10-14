@@ -40,6 +40,7 @@ import { AutomationsScreen } from '../screens/AutomationsScreen';
 import { BackfillScreen } from '../screens/BackfillScreen';
 import { StuckScreen } from '../screens/StuckScreen';
 import { RewardsScreen } from '../screens/RewardsScreen';
+import { ScreenTimeScreen } from '../screens/ScreenTimeScreen';
 import { SavedViewsScreen } from '../screens/SavedViewsScreen';
 import { SavedViewDetailScreen } from '../screens/SavedViewDetailScreen';
 import { RemindersScreen } from '../screens/RemindersScreen';
@@ -163,6 +164,7 @@ const TAB_SCREENS: Record<string, React.ComponentType<any>> = {
   Archived: freezeWhenBlurred(ArchivedScreen),
   UnattendedLog: freezeWhenBlurred(UnattendedLogScreen),
   Rewards: freezeWhenBlurred(RewardsScreen),
+  ScreenTime: freezeWhenBlurred(ScreenTimeScreen),
   Tips: freezeWhenBlurred(TipsScreen),
 };
 

@@ -5757,7 +5757,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                 <View style={styles.optionContent}>
                   <Text style={styles.optionLabel}>Block apps until this is done</Text>
                   <Text style={styles.optionHint}>
-                    Blocks the apps you picked in Settings while this task is on Today. Finishing it or moving it to another day unblocks them.
+                    Blocks the apps you picked in Screen Time while this task is on Today. Finishing it or moving it to another day unblocks them.
                   </Text>
                 </View>
                 <View style={[styles.toggle, gatesApps && styles.toggleOn]}>
@@ -5777,8 +5777,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                   icon="lock-closed-outline"
                   label={polarity === 'negative' ? 'Block apps on a slip' : 'Block apps if missed'}
                   hint={polarity === 'negative'
-                    ? 'Blocks the apps you picked in Settings as soon as you log a slip.'
-                    : 'Blocks the apps you picked in Settings if this isn’t done by the cutoff.'}
+                    ? 'Blocks the apps you picked in Screen Time as soon as you log a slip.'
+                    : 'Blocks the apps you picked in Screen Time if this isn’t done by the cutoff.'}
                   value={penaltySummary}
                   expanded={showPenalty}
                   onPress={() => { animateLayout(); setShowPenalty(v => !v); }}

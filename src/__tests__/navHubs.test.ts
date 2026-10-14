@@ -7,7 +7,7 @@ import {
 } from '../utils/navHubs';
 import { SIMPLE_HIDDEN_SCREENS } from '../utils/simpleMode';
 
-const FULL = { kitchenEnabled: true, simpleMode: false, counts: { stacks: 3, templates: 2, people: 4, mood: 5, medications: 2, foodLog: 6 } };
+const FULL = { kitchenEnabled: true, simpleMode: false, screenTimeSupported: true, counts: { stacks: 3, templates: 2, people: 4, mood: 5, medications: 2, foodLog: 6 } };
 const routesOf = (rows: ReturnType<typeof visibleMenuRows>) => rows.map(rowEntryRoute);
 
 describe('the menu as data', () => {
@@ -39,8 +39,9 @@ describe('the menu as data', () => {
     }
   });
 
-  it('fits on a phone: fourteen rows with everything switched on', () => {
-    expect(visibleMenuRows(FULL)).toHaveLength(14);
+  it('fits on a phone: fifteen rows with everything switched on, fourteen without Screen Time', () => {
+    expect(visibleMenuRows(FULL)).toHaveLength(15);
+    expect(visibleMenuRows({ ...FULL, screenTimeSupported: false })).toHaveLength(14);
   });
 
   it('opens a hub row on its first member', () => {
@@ -344,5 +345,46 @@ describe('tab slots', () => {
     const recent = ['Weight', 'Recipes', 'Logbook', 'Mood'];
     expect(recentMenuDestinations(recent, FULL, null, ['Weight', 'Today', 'Projects']).map(d => d.route))
       .toEqual(['Recipes', 'Logbook', 'Mood']);
+  });
+});
+
+
+describe('Screen Time', () => {
+  const route = 'ScreenTime';
+
+  it('has a row of its own, beside Rewards', () => {
+    const routes = routesOf(visibleMenuRows(FULL));
+    expect(routes).toContain(route);
+    expect(routes.indexOf(route)).toBe(routes.indexOf('Rewards') + 1);
+    expect(hubForRoute(route)).toBeUndefined();
+  });
+
+  it('drops out where Screen Time cannot work, and is not findable there either', () => {
+    const off = { ...FULL, screenTimeSupported: false };
+    expect(routesOf(visibleMenuRows(off))).not.toContain(route);
+    expect(menuDestinations(off).map(d => d.route)).not.toContain(route);
+  });
+
+  it('is off when the caller says nothing, so a forgotten option fails toward not offering it', () => {
+    const { screenTimeSupported: _omit, ...bare } = FULL;
+    expect(routesOf(visibleMenuRows(bare))).not.toContain(route);
+  });
+
+  it('is taken away by simplified mode, like Rewards', () => {
+    expect(SIMPLE_HIDDEN_SCREENS).toContain(route);
+    expect(routesOf(visibleMenuRows({ ...FULL, simpleMode: true }))).not.toContain(route);
+  });
+
+  it('is findable by the words people use for it', () => {
+    const found = (q: string) => searchMenu(menuDestinations(FULL), menuSearchTerms(q)).map(d => d.route);
+    expect(found('block apps')).toContain(route);
+    expect(found('nfc')).toContain(route);
+    expect(found('distraction')).toContain(route);
+  });
+
+  it('can be picked as a tab, which is why it is gated like any other screen', () => {
+    const offered = tabPickerGroups(FULL).flatMap(g => g.destinations.map(d => d.route));
+    expect(offered).toContain(route);
+    expect(visibleTabRoutes(['Today', route, 'Groceries'], { ...FULL, screenTimeSupported: false })).not.toContain(route);
   });
 });

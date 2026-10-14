@@ -857,7 +857,7 @@ export function openInAppUrl(url: string | null | undefined): boolean {
       const result = useNfcKeyStore.getState().applyScan('link', keyUrlToken(url));
       if (result.outcome === 'unknown') {
         haptics.warning();
-        Alert.alert('Tag not recognized', 'This tag isn’t one of your key tags. Add it in Settings, under Focus sessions.');
+        Alert.alert('Tag not recognized', 'This tag isn’t one of your key tags. Add it on the Screen Time screen.');
       } else {
         haptics.success();
         Alert.alert(

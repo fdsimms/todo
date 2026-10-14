@@ -426,3 +426,52 @@ describe('a key tag lock', () => {
     expect(mockBridge.applyShield).not.toHaveBeenCalled();
   });
 });
+
+describe('shieldReasons', () => {
+  const { shieldReasons } = require('../utils/appShield') as typeof import('../utils/appShield');
+
+  it('is empty when nothing wants the apps', () => {
+    expect(shieldReasons(state())).toEqual([]);
+  });
+
+  it('lists every reason in the order the shield screen leads with them', () => {
+    const reasons = shieldReasons(state({
+      session: session(), focusEnabled: true,
+      gateEnabled: true, gateTitles: ['Morning walk'],
+      penaltyUntil: LATER, penaltyEnabled: true, penaltyReason: 'Pay rent',
+      keyLocked: true,
+    }));
+    expect(reasons.map(r => r.reason)).toEqual(['focus', 'gate', 'penalty', 'key']);
+    expect(reasons[1].titles).toEqual(['Morning walk']);
+    expect(reasons[2]).toMatchObject({ until: LATER, cause: 'Pay rent' });
+  });
+
+  it('leaves out a feature that is switched off, and a penalty that has run out', () => {
+    expect(shieldReasons(state({ gateEnabled: false, gateTitles: ['Walk'] }))).toEqual([]);
+    expect(shieldReasons(state({ penaltyUntil: EARLIER, penaltyEnabled: true }))).toEqual([]);
+  });
+
+  it('agrees with the reason the shield is written with', () => {
+    jest.clearAllMocks();
+    const cases: Partial<AppShieldState>[] = [
+      { keyLocked: true },
+      { keyLocked: true, penaltyUntil: LATER, penaltyEnabled: true },
+      { keyLocked: true, penaltyUntil: LATER, penaltyEnabled: true, gateEnabled: true, gateTitles: ['Walk'] },
+      { session: session(), focusEnabled: true, keyLocked: true },
+      {},
+    ];
+    for (const over of cases) {
+      jest.clearAllMocks();
+      const s = state(over);
+      syncAppShield(s);
+      const lead = shieldReasons(s)[0]?.reason ?? 'none';
+      expect(mockBridge.setShieldState).toHaveBeenCalledWith(expect.objectContaining({ reason: lead }));
+    }
+  });
+
+  it('agrees with whether the shield is wanted at all', () => {
+    for (const over of [{}, { keyLocked: true }, { gateEnabled: true, gateTitles: ['x'] }] as Partial<AppShieldState>[]) {
+      expect(shieldReasons(state(over)).length > 0).toBe(appShieldWanted(state(over)));
+    }
+  });
+});

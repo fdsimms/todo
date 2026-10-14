@@ -1681,7 +1681,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
         >
           <View style={styles.optionContent}>
             <Text style={styles.optionLabel}>Block apps until done</Text>
-            <Text style={styles.optionHint}>Blocks the apps you picked in Settings until tasks made from this item are done</Text>
+            <Text style={styles.optionHint}>Blocks the apps you picked in Screen Time until tasks made from this item are done</Text>
           </View>
           <View style={[styles.toggle, gatesApps && styles.toggleOn]}>
             <View style={[styles.toggleKnob, gatesApps && styles.toggleKnobOn]} />
@@ -1697,7 +1697,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               : penaltyCutoffTime
                 ? `${formatDuration(penaltyMinutes)} after ${formatHHMM(penaltyCutoffTime)}`
                 : `${formatDuration(penaltyMinutes)} if not done that day`}
-          hint="Sets how long apps are blocked for tasks made from this item. Nothing is blocked until “Block apps when you fail a task” is turned on in Settings."
+          hint="Sets how long apps are blocked for tasks made from this item. Nothing is blocked until “When you fail a task” is turned on in Screen Time."
           expanded={fieldOpen('penalty')}
           onToggle={() => toggleField('penalty')}
         >

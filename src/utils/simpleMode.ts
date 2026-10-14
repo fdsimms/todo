@@ -85,6 +85,7 @@ export type SimpleFeatureId =
   | 'backfillScreen'
   | 'stuckScreen'
   | 'rewardsScreen'
+  | 'screenTimeScreen'
   // Everything Today offers besides the list itself.
   | 'focusSessions'
   | 'suggestedPins'
@@ -206,6 +207,11 @@ export const SIMPLE_FEATURES: readonly SimpleFeature[] = [
   // ledger stay stored and come back with the screen, and nothing else in the
   // app needs them reachable meanwhile.
   { id: 'rewardsScreen', label: 'Rewards', area: 'screens', screen: 'Rewards' },
+  // A plain hidden screen like Rewards: the apps picked and every switch on it
+  // stay stored and come back with the screen. The focus session blocking it
+  // configures is already out of reach in this mode, and the shield itself
+  // keeps running off what was set, so nothing is stranded.
+  { id: 'screenTimeScreen', label: 'Screen Time', area: 'screens', screen: 'ScreenTime' },
 
   { id: 'focusSessions', label: 'Focus sessions', area: 'today' },
   { id: 'suggestedPins', label: 'Suggested pins', area: 'today' },

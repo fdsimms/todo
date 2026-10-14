@@ -1,5 +1,7 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import { Platform } from 'react-native';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useDemoStore } from '../store/useDemoStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { usePersonStore } from '../store/usePersonStore';
@@ -9,11 +11,12 @@ import { useMoodStore } from '../store/useMoodStore';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { useJournalStore } from '../store/useJournalStore';
 import type { NavMenuOptions } from '../utils/navHubs';
+import { isScreenTimeSupported } from '../utils/screenTimeBridge';
 
 /**
  * What `visibleMenuRows`/`menuDestinations` need to decide which screens are
- * reachable: the kitchen switch, simplified mode, and the content counts
- * `screenShown` reads.
+ * reachable: the kitchen switch, simplified mode, whether Screen Time can work
+ * here, and the content counts `screenShown` reads.
  *
  * Shared by the side menu and the pull-down quick search, which both search
  * the same destinations. Two copies of this would be two answers to "is
@@ -36,10 +39,19 @@ export function useNavMenuOptions(): NavMenuOptions {
   // The whole history, not today's rows — see useFoodLogStore.totalCount.
   const foodLogCount = useFoodLogStore(s => s.totalCount);
   const meterCount = useMeterReadingStore(s => s.readings.length);
+  // Asked once: whether this build has the native half, on a phone new enough,
+  // cannot change while the app runs. Demo mode answers yes on iOS even though
+  // the bridge itself is refused there, because the page is built from stores
+  // that the demo seeds and a row that vanished in a demo would read as a
+  // feature the app doesn't have.
+  const [nativeScreenTime] = useState(() => Platform.OS === 'ios' && isScreenTimeSupported());
+  const demoActive = useDemoStore(s => s.active);
+  const screenTimeSupported = nativeScreenTime || (demoActive && Platform.OS === 'ios');
 
   return useMemo(() => ({
     kitchenEnabled,
     simpleMode,
+    screenTimeSupported,
     counts: { stacks: stackCount, templates: templateCount, people: peopleCount, mood: moodCount, medications: medicationCount, foodLog: foodLogCount, journal: journalCount, dreams: dreamCount, meters: meterCount },
-  }), [kitchenEnabled, simpleMode, stackCount, templateCount, peopleCount, moodCount, medicationCount, foodLogCount, journalCount, dreamCount, meterCount]);
+  }), [kitchenEnabled, simpleMode, screenTimeSupported, stackCount, templateCount, peopleCount, moodCount, medicationCount, foodLogCount, journalCount, dreamCount, meterCount]);
 }

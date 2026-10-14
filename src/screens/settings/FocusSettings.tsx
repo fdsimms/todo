@@ -1,19 +1,14 @@
-import React, { useState, useMemo } from 'react';
-import { View, Platform, Alert, Share } from 'react-native';
-import { format } from 'date-fns/format';
+import React, { useMemo } from 'react';
+import { View, Platform } from 'react-native';
 import { useSettingsStore } from '../../store/useSettingsStore';
-import { useNfcKeyStore } from '../../store/useNfcKeyStore';
 import { useColors } from '../../theme/ThemeContext';
-import { clockTimeToken } from '../../utils/clockTime';
+import { useNavMenuOptions } from '../../hooks/useNavMenuOptions';
+import { navigateToTab } from '../../navigation/navigationRef';
+import { haptics } from '../../utils/haptics';
 import { CountStepper } from '../../components/CountStepper';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
 import { makeSettingsStyles } from './settingsStyles';
-import { haptics } from '../../utils/haptics';
-import { isScreenTimeSupported, screenTimeBridge } from '../../utils/screenTimeBridge';
-import { isNfcSupported, scanKeyTag } from '../../utils/nfcBridge';
-import { keyLinkUrl, type NfcKey } from '../../utils/nfcKey';
-import { UNIVERSAL_LINK_HOSTS } from '../../utils/deepLinks';
 import {
   FOCUS_DEFAULTS,
   FOCUS_LONG_REST_EVERY_MAX, FOCUS_LONG_REST_EVERY_MIN,
@@ -21,7 +16,6 @@ import {
   FOCUS_REST_MAX, FOCUS_REST_MIN, FOCUS_WORK_CAP_MAX, FOCUS_WORK_CAP_MIN,
   focusRestsDisabled,
 } from '../../utils/focusSettings';
-import { alertPermissionOff } from '../../utils/permissionAlert';
 import {
   SCROLL_NUDGE_COOLDOWN_STEP_MINUTES, SCROLL_NUDGE_DEFAULT_COOLDOWN_MINUTES, SCROLL_NUDGE_DEFAULT_DAILY_CAP,
   SCROLL_NUDGE_DEFAULT_SECONDS, SCROLL_NUDGE_MAX_COOLDOWN_MINUTES, SCROLL_NUDGE_MAX_DAILY_CAP,
@@ -30,10 +24,13 @@ import {
 } from '../../utils/scrollNudge';
 
 /**
- * Focus sessions, the apps that stay blocked around them, and the timers' Lock
- * Screen activity. Split out of Tasks & projects, which held 36 settings across
- * ten sections with this one alone at sixteen rows: a group named for what it
- * is about, rather than the rows' being found by scrolling past everything else.
+ * Focus sessions, the scroll suggestion and the timers' Lock Screen activity.
+ * Blocking apps (during a session, until a task is done, after failing one, or
+ * with a key tag) is the Screen Time screen, which this points to.
+ *
+ * Split out of Tasks & projects, which held 36 settings across ten sections
+ * with this one alone at sixteen rows: a group named for what it is about,
+ * rather than the rows' being found by scrolling past everything else.
  * Every row keeps its entry id, so search and the screen gears resolve unchanged.
  */
 export function FocusSettings() {
@@ -61,6 +58,7 @@ export function FocusSettings() {
   const timerLiveActivity = useSettingsStore(s => s.timerLiveActivity);
   const setTimerLiveActivity = useSettingsStore(s => s.setTimerLiveActivity);
   const simpleMode = useSettingsStore(s => s.simpleMode);
+  const { screenTimeSupported } = useNavMenuOptions();
   const scrollNudgeEnabled = useSettingsStore(s => s.scrollNudgeEnabled);
   const setScrollNudgeEnabled = useSettingsStore(s => s.setScrollNudgeEnabled);
   const scrollNudgeSeconds = useSettingsStore(s => s.scrollNudgeSeconds);
@@ -72,257 +70,6 @@ export function FocusSettings() {
 
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
-
-  // --- Screen Time -----------------------------------------------------
-  // Asked once on mount rather than subscribed to: whether this build has the
-  // native half, on a device new enough, cannot change while the screen is up.
-  const [screenTimeSupported] = useState(isScreenTimeSupported);
-  const focusShieldEnabled = useSettingsStore(s => s.focusShieldEnabled);
-  const setFocusShieldEnabled = useSettingsStore(s => s.setFocusShieldEnabled);
-  // Counts, not names. iOS hands the app opaque tokens for the apps somebody
-  // picked and only SwiftUI can render them, so this is the most the row can
-  // say — see modules/todo-screentime-bridge.
-  const [shieldCount, setShieldCount] = useState(
-    () => screenTimeBridge()?.screenTimeSelectionCount() ?? { applications: 0, categories: 0 },
-  );
-  const shieldTotal = shieldCount.applications + shieldCount.categories;
-  const shieldSelectionLabel = shieldTotal === 0
-    ? 'None'
-    : [
-      shieldCount.applications > 0
-        ? `${shieldCount.applications} ${shieldCount.applications === 1 ? 'app' : 'apps'}`
-        : null,
-      shieldCount.categories > 0
-        ? `${shieldCount.categories} ${shieldCount.categories === 1 ? 'category' : 'categories'}`
-        : null,
-    ].filter(Boolean).join(', ');
-
-  const handleChooseApps = async () => {
-    haptics.tap();
-    const bridge = screenTimeBridge();
-    if (!bridge) return;
-    const picked = await bridge.presentAppPicker();
-    if (picked) setShieldCount(bridge.screenTimeSelectionCount());
-  };
-
-  const handleToggleShield = async () => {
-    haptics.tap();
-    if (focusShieldEnabled) {
-      setFocusShieldEnabled(false);
-      return;
-    }
-    const bridge = screenTimeBridge();
-    if (!bridge) return;
-    // Asking is a Settings action and never something the app does on its own
-    // — the same rule the weather rules sheet follows for location.
-    const status = await bridge.requestScreenTimeAuthorization();
-    if (status !== 'approved') {
-      alertPermissionOff(
-        'Screen Time access needed',
-        'Blocking apps during a focus session needs Screen Time access. Grant it in Settings, under Screen Time.',
-      );
-      return;
-    }
-    setFocusShieldEnabled(true);
-    // Straight into the picker the first time: the setting does nothing at all
-    // until some apps are chosen, and a toggle that visibly changes nothing is
-    // how somebody concludes the feature is broken.
-    if (shieldTotal === 0) await handleChooseApps();
-  };
-
-  const penaltyShieldEnabled = useSettingsStore(s => s.penaltyShieldEnabled);
-  const gateShieldEnabled = useSettingsStore(s => s.gateShieldEnabled);
-  const setGateShieldEnabled = useSettingsStore(s => s.setGateShieldEnabled);
-  const setPenaltyShieldEnabled = useSettingsStore(s => s.setPenaltyShieldEnabled);
-  const penaltyShieldUntil = useSettingsStore(s => s.penaltyShieldUntil);
-  const setPenaltyShieldUntil = useSettingsStore(s => s.setPenaltyShieldUntil);
-  const use24HourTime = useSettingsStore(s => s.use24HourTime);
-  // Only while one is actually being served. A row reporting a time that has
-  // already passed reads as a block still in force.
-  const penaltyUntilLabel = penaltyShieldUntil && new Date(penaltyShieldUntil) > new Date()
-    ? format(new Date(penaltyShieldUntil), clockTimeToken(use24HourTime))
-    : null;
-
-  const handleToggleGate = async () => {
-    haptics.tap();
-    if (gateShieldEnabled) {
-      setGateShieldEnabled(false);
-      return;
-    }
-    const bridge = screenTimeBridge();
-    if (!bridge) return;
-    const status = await bridge.requestScreenTimeAuthorization();
-    if (status !== 'approved') {
-      alertPermissionOff(
-        'Screen Time access needed',
-        'Blocking apps until a task is done needs Screen Time access. Grant it in Settings, under Screen Time.',
-      );
-      return;
-    }
-    setGateShieldEnabled(true);
-    if (shieldTotal === 0) await handleChooseApps();
-  };
-
-  const handleTogglePenalty = async () => {
-    haptics.tap();
-    if (penaltyShieldEnabled) {
-      setPenaltyShieldEnabled(false);
-      // Switching the feature off is the way out of a block being served, so
-      // the block must not be left waiting to resume the moment it comes back
-      // on. This is deliberately the *only* way out from inside the app: a
-      // "lift it now" button would undo the one thing the feature is for.
-      setPenaltyShieldUntil(null);
-      return;
-    }
-    const bridge = screenTimeBridge();
-    if (!bridge) return;
-    const status = await bridge.requestScreenTimeAuthorization();
-    if (status !== 'approved') {
-      alertPermissionOff(
-        'Screen Time access needed',
-        'Blocking apps when you fail a task needs Screen Time access. Grant it in Settings, under Screen Time.',
-      );
-      return;
-    }
-    setPenaltyShieldEnabled(true);
-    if (shieldTotal === 0) await handleChooseApps();
-  };
-
-
-  // --- Key tags --------------------------------------------------------
-  // A tag is a lock held by one reason among four (`appShield.ts`): tapping it
-  // locks the picked apps and tapping it again unlocks them, and it never ends
-  // a focus session, a penalty or a gate. Reading a tag needs the reader, so
-  // asked once like Screen Time above.
-  const [nfcSupported] = useState(isNfcSupported);
-  const nfcKeys = useNfcKeyStore(s => s.keys);
-  const keyLocked = useNfcKeyStore(s => s.locked);
-
-  const nameThen = (title: string, fallback: string, then: (name: string) => void) => {
-    // iOS only, like the rest of this section, so the prompt needs no Android branch.
-    Alert.prompt(title, 'Choose a name so you can tell your tags apart.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Add', onPress: (text?: string) => then(text ?? '') },
-    ], 'plain-text', fallback);
-  };
-
-  const enrollFailed = (reason: 'unreadable' | 'full' | 'duplicate') => {
-    Alert.alert(
-      reason === 'duplicate' ? 'Already added' : reason === 'full' ? 'Too many tags' : 'Couldn’t read the tag',
-      reason === 'duplicate'
-        ? 'This tag is already one of your keys.'
-        : reason === 'full'
-          ? 'Remove a tag before adding another.'
-          : 'Hold the top of your phone to the tag and try again.',
-    );
-  };
-
-  const handleScanTag = async () => {
-    const result = await scanKeyTag('Hold your phone to the tag you want to use as a key.');
-    if (result.kind !== 'tag') return;
-    nameThen('Name this tag', 'Key tag', name => {
-      const enrolled = useNfcKeyStore.getState().enrollTag(result.uid, name);
-      if (!enrolled.ok) enrollFailed(enrolled.reason);
-      else haptics.success();
-    });
-  };
-
-  const shareKeyLink = async (key: NfcKey) => {
-    const url = keyLinkUrl(key.secret, UNIVERSAL_LINK_HOSTS);
-    if (!url) return;
-    await Share.share({ message: url }).catch(() => {});
-  };
-
-  const handleAddLink = () => {
-    nameThen('Name this link tag', 'Link tag', name => {
-      const enrolled = useNfcKeyStore.getState().enrollLink(name);
-      if (!enrolled.ok) {
-        enrollFailed(enrolled.reason);
-        return;
-      }
-      haptics.success();
-      Alert.alert(
-        'Write the link to a tag',
-        'Next, share the link and write it to an NFC tag with an NFC writer app. After that, tapping the tag with the app closed locks or unlocks your apps.',
-        [{ text: 'Share link', onPress: () => { void shareKeyLink(enrolled.key); } }, { text: 'Later', style: 'cancel' }],
-      );
-    });
-  };
-
-  const handleAddKey = () => {
-    haptics.tap();
-    const buttons = [
-      ...(nfcSupported ? [{ text: 'Scan a tag', onPress: () => { void handleScanTag(); } }] : []),
-      { text: 'Write a link to a tag', onPress: handleAddLink },
-      { text: 'Cancel', style: 'cancel' as const },
-    ];
-    Alert.alert(
-      'Add a key tag',
-      nfcSupported
-        ? 'Scan a tag to use as a key, or write a link to a tag so a tap works with the app closed.'
-        : 'This phone can’t scan tags in the app. Write a link to a tag instead, and a tap works with the app closed.',
-      buttons,
-    );
-  };
-
-  const handleKeyRow = (key: NfcKey) => {
-    haptics.tap();
-    const remove = () => {
-      Alert.alert(
-        `Remove ${key.name}?`,
-        keyLocked && nfcKeys.length === 1
-          ? 'This is your only key tag, so removing it also unlocks your apps.'
-          : 'This tag will no longer lock or unlock your apps.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Remove', style: 'destructive', onPress: () => useNfcKeyStore.getState().removeKey(key.id) },
-        ],
-      );
-    };
-    Alert.alert(key.name, undefined, [
-      ...(key.kind === 'link' ? [{ text: 'Share link', onPress: () => { void shareKeyLink(key); } }] : []),
-      { text: 'Remove', style: 'destructive' as const, onPress: remove },
-      { text: 'Cancel', style: 'cancel' as const },
-    ]);
-  };
-
-  const handleKeyLock = async () => {
-    haptics.tap();
-    if (keyLocked) {
-      // Unlocking from the app takes a scan: a button here would be the way
-      // out of a lock whose whole purpose is to need the tag.
-      if (!nfcSupported) {
-        Alert.alert('Tap your tag to unlock', 'This phone can’t scan tags in the app. Tap a link tag with the app closed to unlock.');
-        return;
-      }
-      const result = await scanKeyTag('Hold your phone to your key tag to unlock your apps.');
-      if (result.kind !== 'tag') return;
-      const scan = useNfcKeyStore.getState().applyScan('tag', result.uid);
-      if (scan.outcome === 'unknown') {
-        haptics.warning();
-        Alert.alert('Tag not recognized', 'This tag isn’t one of your key tags. A link tag unlocks by tapping it with the app closed.');
-      } else {
-        haptics.success();
-      }
-      return;
-    }
-    if (nfcKeys.length === 0) {
-      Alert.alert('Add a key tag first', 'Locking needs a tag to unlock it with.');
-      return;
-    }
-    const bridge = screenTimeBridge();
-    if (!bridge) return;
-    const status = await bridge.requestScreenTimeAuthorization();
-    if (status !== 'approved') {
-      alertPermissionOff(
-        'Screen Time access needed',
-        'Locking apps with a tag needs Screen Time access. Grant it in Settings, under Screen Time.',
-      );
-      return;
-    }
-    if (shieldTotal === 0) await handleChooseApps();
-    useNfcKeyStore.getState().lock();
-  };
 
   return (
     <>
@@ -528,127 +275,18 @@ export function FocusSettings() {
           </>
         )}
 
-        {/*
-          Screen Time. Hidden outright rather than shown disabled when the
-          device or build can't do it — the authorization it wants is one an
-          iOS 15 phone can never grant, so offering the row would be asking a
-          question with no answer. Same call the Live Activity row above makes
-          about a non-iOS device.
-        */}
+        {/* A pointer, not a switch: blocking apps moved to its own screen, and
+            somebody looking for it here is looking where it used to be. No
+            entry id, since the rows it points at are found by their own. */}
         {screenTimeSupported && (
           <>
             <View style={styles.sep} />
             <SettingsRow
-              entryId="focusShield"
               icon="lock-closed-outline"
-              iconColor={focusShieldEnabled ? colors.accent : undefined}
-              label="Block apps while focusing"
-              hint={focusShieldEnabled
-                ? 'The apps you choose are blocked while a session is running, and unblocked when you pause or finish it'
-                : 'Apps stay available during a session'}
-              toggle={focusShieldEnabled}
-              onPress={handleToggleShield}
-            />
-            {focusShieldEnabled && (
-              <>
-                <View style={styles.sep} />
-                <SettingsRow
-                  entryId="focusShieldApps"
-                  icon="apps-outline"
-                  label="Apps to block"
-                  hint="Chosen in the system picker. iOS doesn’t share which apps you picked, so only the count shows here."
-                  value={shieldSelectionLabel}
-                  onPress={handleChooseApps}
-                />
-              </>
-            )}
-            <View style={styles.sep} />
-            <SettingsRow
-              entryId="gateShield"
-              icon="lock-closed-outline"
-              iconColor={gateShieldEnabled ? colors.accent : undefined}
-              label="Block apps until a task is done"
-              hint={gateShieldEnabled
-                ? 'Tasks you mark keep the same apps blocked while they sit on Today undone. Finishing one, or moving it to another day, unblocks them'
-                : 'No tasks block apps'}
-              toggle={gateShieldEnabled}
-              onPress={handleToggleGate}
-            />
-            <View style={styles.sep} />
-            <SettingsRow
-              entryId="penaltyShield"
-              icon="alert-circle-outline"
-              iconColor={penaltyShieldEnabled ? colors.accent : undefined}
-              label="Block apps when you fail a task"
-              hint={penaltyShieldEnabled
-                ? 'Each task sets how long. The same apps are blocked when you miss a cutoff, or log a slip on a task you’re avoiding'
-                : 'Failing a task blocks nothing'}
-              toggle={penaltyShieldEnabled}
-              onPress={handleTogglePenalty}
-            />
-            {penaltyShieldEnabled && (
-              <>
-                {shieldTotal === 0 && !focusShieldEnabled && (
-                  <>
-                    <View style={styles.sep} />
-                    <SettingsRow
-                      entryId="penaltyShieldApps"
-                      icon="apps-outline"
-                      label="Apps to block"
-                      hint="The same apps blocked during a focus session. iOS doesn’t share which apps you picked, so only the count shows here."
-                      value={shieldSelectionLabel}
-                      onPress={handleChooseApps}
-                    />
-                  </>
-                )}
-                {penaltyUntilLabel && (
-                  <>
-                    <View style={styles.sep} />
-                    <SettingsRow
-                      entryId="penaltyShieldActive"
-                      icon="time-outline"
-                      iconColor={colors.accent}
-                      label="Blocked until"
-                      hint="To end this early, turn off “Block apps when you fail a task.”"
-                      value={penaltyUntilLabel}
-                    />
-                  </>
-                )}
-              </>
-            )}
-            <View style={styles.sep} />
-            <SettingsRow
-              entryId="nfcKey"
-              icon="radio-outline"
-              label="Key tags"
-              hint={nfcKeys.length === 0
-                ? 'Tap an NFC tag to lock or unlock the same apps. Add a tag to use it.'
-                : 'Tags that lock and unlock the same apps. A tag never ends a focus session or a block from a task.'}
-              value={nfcKeys.length === 0 ? 'None' : `${nfcKeys.length} ${nfcKeys.length === 1 ? 'tag' : 'tags'}`}
-              onPress={handleAddKey}
-            />
-            {nfcKeys.map(key => (
-              <React.Fragment key={key.id}>
-                <View style={styles.sep} />
-                <SettingsRow
-                  icon={key.kind === 'link' ? 'link-outline' : 'radio-outline'}
-                  label={key.name}
-                  value={key.kind === 'link' ? 'Link tag' : 'Scanned tag'}
-                  onPress={() => handleKeyRow(key)}
-                />
-              </React.Fragment>
-            ))}
-            <View style={styles.sep} />
-            <SettingsRow
-              entryId="nfcKeyLock"
-              icon="lock-closed-outline"
-              iconColor={keyLocked ? colors.accent : undefined}
-              label="Lock apps with a key tag"
-              hint={keyLocked
-                ? 'The apps are locked. Tap a key tag to unlock them.'
-                : 'Locks the same apps until you tap a key tag. Add a tag first.'}
-              toggle={keyLocked}
-              onPress={handleKeyLock}
+              label="Blocking apps"
+              hint="Block apps during a session, until a task is done, after failing one, or with a key tag. Set up on the Screen Time screen."
+              value="Screen Time"
+              onPress={() => { haptics.tap(); navigateToTab('ScreenTime'); }}
             />
           </>
         )}

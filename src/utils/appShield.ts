@@ -72,6 +72,46 @@ export interface AppShieldState {
   now: Date;
 }
 
+/** Why the apps are blocked, in the order a person should read the reasons. */
+export type ShieldReasonKind = 'focus' | 'gate' | 'penalty' | 'key';
+
+/** One reason the shield is up, with only what a screen needs to say it. */
+export interface ShieldReasonEntry {
+  reason: ShieldReasonKind;
+  /** The gate tasks standing in the way. Set for `gate` only. */
+  titles?: readonly string[];
+  /** When a penalty block runs out. Set for `penalty` only. */
+  until?: string | null;
+  /** The task a penalty was charged for, when it is known. Set for `penalty` only. */
+  cause?: string | null;
+}
+
+/**
+ * Every reason the shield is up right now, in the order the shield screen
+ * leads with them: a session is what the person is in the middle of, a gate is
+ * the one they can act on right now, a penalty is the one that only runs out,
+ * and a key lock comes last because only the tag ends it and it names nothing
+ * the person did.
+ *
+ * The one place that order lives. `syncAppShield` takes its lead reason from
+ * the first entry, and the Screen Time page draws the whole list, so the page
+ * and the iOS shield screen cannot disagree about which reason comes first.
+ * Structured rather than sentences because a time has to be formatted against
+ * the person's own 12/24-hour setting, which this module does not read.
+ */
+export function shieldReasons(state: AppShieldState): ShieldReasonEntry[] {
+  const reasons: ShieldReasonEntry[] = [];
+  if (shieldWanted(state.session, state.focusEnabled)) reasons.push({ reason: 'focus' });
+  if (gateShieldWanted(state.gateTitles.length, state.gateEnabled)) {
+    reasons.push({ reason: 'gate', titles: state.gateTitles });
+  }
+  if (penaltyShieldWanted(state.penaltyUntil, state.penaltyEnabled, state.now)) {
+    reasons.push({ reason: 'penalty', until: state.penaltyUntil, cause: state.penaltyReason });
+  }
+  if (state.keyLocked) reasons.push({ reason: 'key' });
+  return reasons;
+}
+
 /** Whether anything wants the apps blocked right now. */
 export function appShieldWanted(state: AppShieldState): boolean {
   return (
@@ -140,10 +180,7 @@ export function syncAppShield(state: AppShieldState): void {
   // reappearing in the one process that can't see any of this.
   bridge.setShieldState({
     otherReasonWantsShield: focusWants || gateWants || keyWants,
-    reason: focusWants ? 'focus'
-      : gateWants ? 'gate'
-        : penaltyWants ? 'penalty'
-          : keyWants ? 'key' : 'none',
+    reason: shieldReasons(state)[0]?.reason ?? 'none',
     untilIso: penaltyWants && !focusWants && !gateWants ? state.penaltyUntil : null,
     detail: focusWants
       ? null
