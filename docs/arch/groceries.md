@@ -1425,6 +1425,15 @@ useful part starts.
   field filters the list, and a block ignoring the query would be the one part of the screen not
   answering it. Capped at two.
 
+### The restock list after a meal never starts checked (`restockRows`)
+
+The "Meal eaten" sheet (`CookRecapSheet`) offers the recipe's known catalog items with no record of
+you having them. That is absence of a record, not evidence you ran out: someone who doesn't log
+purchases gets most of the recipe back, so pre-checked rows turned one tap on "Add to list" into
+buying the whole dish again. Rows start unchecked, like the pantry section above them, and nothing
+is added until you check some and tap "Add to list". `RecipeToListSheet` still starts every needed
+line checked, because there you asked for the shop by name.
+
 ## Grocery either/or — two rows you pick between at the shelf
 
 Typing "apples or pears" into the add field offers to put **both on the list under
