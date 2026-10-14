@@ -967,6 +967,23 @@ export function detectContactIntent(title: string): ContactIntent | null {
   return match[1].toLowerCase() === 'email' ? 'email' : 'phone';
 }
 
+/**
+ * The contact detail a title's leading verb asks for from the one person it names:
+ * "Call @kelsey" and "Text @kelsey" take her number, "Email @kelsey" her address.
+ * Null for any other title or a person without that detail on file; the caller
+ * decides whether a number or address already set by hand takes precedence.
+ */
+export function contactForMention(
+  title: string,
+  person: { phoneNumber: string | null; email: string | null } | undefined
+): { phone: string | null; email: string | null } {
+  const intent = person ? detectContactIntent(title) : null;
+  if (!person || !intent) return { phone: null, email: null };
+  return intent === 'email'
+    ? { phone: null, email: person.email || null }
+    : { phone: person.phoneNumber || null, email: null };
+}
+
 export interface ParsedDuration {
   /** The countdown target in whole minutes. */
   minutes: number;
@@ -2321,6 +2338,51 @@ export interface MentionSuggestionCandidate {
   memberIds?: string[];
 }
 
+// What follows the last "@" when it runs on past one word: "eye q", or "eye " with the
+// space already typed. Only the end of the line counts, and only one space between words.
+const MULTI_WORD_TAIL = /^[a-z][\w'-]*(?: [\w'-]+)*(?: )?$/i;
+
+/**
+ * The "@name" being typed at the very end of the title, or null. Usually one word,
+ * but it runs on over a space ("@eye q") so a multi-word business name can be
+ * suggested as it is typed; `typed` is that whole tail, lowercased.
+ */
+function trailingMentionToken(
+  input: string
+): { start: number; end: number; token: string; typed: string } | null {
+  let last: RegExpMatchArray | null = null;
+  for (const m of input.matchAll(PERSON_TOKEN_PATTERN)) last = m;
+  if (!last || last.index === undefined) return null;
+  const start = last.index;
+  const wordEnd = start + last[0].length;
+  const token = last[1].toLowerCase();
+  if (wordEnd === input.length) return { start, end: wordEnd, token, typed: token };
+  const rest = input.slice(start + 1);
+  if (!MULTI_WORD_TAIL.test(rest)) return null;
+  return { start, end: input.length, token, typed: rest.toLowerCase() };
+}
+
+/**
+ * People whose multi-word answer starts with what's typed: a business's full name
+ * ("Eye Q") and any nickname with a space in it. `buildPersonNameIndex` leaves
+ * both out of its prefix scan on purpose (a business never answers to its first
+ * word), so a suggestion has to look here to offer them at all. An individual's
+ * full name isn't scanned: their first word already resolves, and offering the
+ * full name after "@gideon " would put a tooltip on every finished mention.
+ */
+function phrasePrefixIds(people: PersonToken[], typed: string): string[] {
+  const ids: string[] = [];
+  for (const p of people) {
+    const keys = [p.nickname, p.kind === 'business' ? p.name : ''];
+    const hit = keys.some(k => {
+      const n = k.trim().replace(/\s+/g, ' ').toLowerCase();
+      return n.includes(' ') && n.startsWith(typed);
+    });
+    if (hit) ids.push(p.id);
+  }
+  return ids;
+}
+
 /** A "@name" token still being typed, offered as a row of candidates. See `getMentionSuggestions`. */
 export interface MentionSuggestion {
   start: number;
@@ -2358,22 +2420,30 @@ export function getMentionSuggestions(
   people: PersonToken[],
   groups: GroupMentionToken[] = []
 ): MentionSuggestion | null {
-  let last: RegExpMatchArray | null = null;
-  for (const m of input.matchAll(PERSON_TOKEN_PATTERN)) last = m;
-  if (!last || last.index === undefined) return null;
-  const start = last.index;
-  const end = start + last[0].length;
-  if (end !== input.length) return null; // done growing — not what's being typed right now
-
-  const token = last[1].toLowerCase();
+  const tail = trailingMentionToken(input);
+  if (!tail) return null; // done growing — not what's being typed right now
+  const { start, end, token, typed } = tail;
+  const spaced = typed.includes(' ');
   const { byName, toCandidates } = buildPersonNameIndex(people);
 
-  // An exact match, unique or ambiguous, is already spoken for above.
-  if (byName.has(token)) return null;
+  // An exact match, unique or ambiguous, is already spoken for above. A tail that
+  // runs past a space is only ever a multi-word name, and a first word that
+  // already resolves ("@gideon reyes") has nothing left to suggest.
+  if (byName.has(spaced ? token : typed)) return null;
 
   const prefixIds = new Set<string>();
-  for (const [key, ids] of byName) {
-    if (key.startsWith(token)) ids.forEach(id => prefixIds.add(id));
+  if (!spaced) {
+    for (const [key, ids] of byName) {
+      if (key.startsWith(token)) ids.forEach(id => prefixIds.add(id));
+    }
+  }
+  phrasePrefixIds(people, typed).forEach(id => prefixIds.add(id));
+  // "@eye q" typed out in full already tints, but a business is always written
+  // as its full name: stay quiet only once the text is exactly that.
+  if (prefixIds.size === 1) {
+    const only = people.find(p => prefixIds.has(p.id));
+    const written = input.slice(start + 1).trimEnd();
+    if (only && written.toLowerCase() === typed.trimEnd() && written === mentionResolveKey(only)) return null;
   }
   if (prefixIds.size > 0) {
     return {
@@ -2386,7 +2456,7 @@ export function getMentionSuggestions(
     };
   }
 
-  if (groups.length === 0) return null;
+  if (spaced || groups.length === 0) return null;
   const groupByName = buildGroupNameIndex(groups);
   if (groupByName.has(token)) return null; // exact match already resolves live
 
@@ -2428,21 +2498,21 @@ export function getEditorMentionSuggestions(
   linkedIds: readonly string[],
   groups: GroupMentionToken[] = []
 ): MentionSuggestion | null {
-  let last: RegExpMatchArray | null = null;
-  for (const m of input.matchAll(PERSON_TOKEN_PATTERN)) last = m;
-  if (!last || last.index === undefined) return null;
-  const start = last.index;
-  const end = start + last[0].length;
-  if (end !== input.length) return null; // done growing — not what's being typed right now
-
-  const token = last[1].toLowerCase();
+  const tail = trailingMentionToken(input);
+  if (!tail) return null; // done growing — not what's being typed right now
+  const { start, end, token, typed } = tail;
+  const spaced = typed.includes(' ');
   const linked = new Set(linkedIds);
-  const { byName, toCandidates } = buildPersonNameIndex(people.filter(p => !linked.has(p.id)));
+  const unlinked = people.filter(p => !linked.has(p.id));
+  const { byName, toCandidates } = buildPersonNameIndex(unlinked);
 
   const prefixIds = new Set<string>();
-  for (const [key, ids] of byName) {
-    if (key.startsWith(token)) ids.forEach(id => prefixIds.add(id));
+  if (!spaced) {
+    for (const [key, ids] of byName) {
+      if (key.startsWith(token)) ids.forEach(id => prefixIds.add(id));
+    }
   }
+  phrasePrefixIds(unlinked, typed).forEach(id => prefixIds.add(id));
   if (prefixIds.size > 0) {
     return {
       start, end, token,
@@ -2454,7 +2524,7 @@ export function getEditorMentionSuggestions(
     };
   }
 
-  if (groups.length === 0) return null;
+  if (spaced || groups.length === 0) return null;
   // A group every member of which is already linked has nothing left to add.
   const groupCandidates = groups.filter(g => !g.memberIds.every(id => linked.has(id)));
   if (groupCandidates.length === 0) return null;
