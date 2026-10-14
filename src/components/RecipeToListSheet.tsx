@@ -23,7 +23,6 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import {
   classifyPlanned,
   plannedIngredientsForRecipe,
-  restockRows,
   groupBySourceRecipe,
   type ClassifiedIngredient,
   type PlanCategory,
@@ -84,19 +83,6 @@ interface Props {
    * here is written back.
    */
   initialScale?: number;
-  /**
-   * Which rows start ticked. `'all'` — every `needToBuy` line — is right when
-   * the user asked for this sheet by name ("Add ingredients to list"): they
-   * said they want the shop, and making them tick it out again is busywork.
-   *
-   * `'restock'` narrows that to the lines `restockRows` will defend — known
-   * items that are off the list — and is what the meal plan's post-cook offer
-   * passes. There the ticks have to match the claim that got the sheet opened:
-   * the banner counted those rows and nothing else, so pre-ticking a line the
-   * app has never seen before would be the sheet quietly asking for more than
-   * the banner did. Those lines are still listed and still tickable by hand.
-   */
-  initialSelection?: 'all' | 'restock';
   /**
    * Fires once the sheet's own "On the list" alert is dismissed, with the
    * scale the shop was made at. Only meaningful when something was actually
@@ -167,7 +153,6 @@ export function RecipeToListSheet({
   initialChoices,
   initialOverrides,
   initialScale,
-  initialSelection = 'all',
   onAdded,
   onClose,
 }: Props) {
@@ -328,12 +313,11 @@ export function RecipeToListSheet({
   // stay unticked when they double the batch.
   useEffect(() => {
     if (!visible) return;
-    const rows = (initialSelection === 'restock'
-      ? restockRows(byCategory.needToBuy)
-      : byCategory.needToBuy
+    // Every line still needed starts ticked: the user named this sheet
+    // ("Add ingredients to list"), so ticking the shop out again is busywork.
     // A garnish or serving suggestion (RecipeIngredient.optional) starts
     // unticked — it's still listed and one tap away, just not assumed.
-    ).filter(r => !r.optional);
+    const rows = byCategory.needToBuy.filter(r => !r.optional);
     const rowKeys = new Set(rows.map(r => r.nameKey));
     const knownBefore = knownRowKeysRef.current;
     setTicked(prev => {
@@ -348,7 +332,7 @@ export function RecipeToListSheet({
     tickedBaselineRef.current = JSON.stringify([...rowKeys].sort());
     setExpandedSections(defaultExpandedSections());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, choiceKey, initialSelection]);
+  }, [visible, choiceKey]);
 
   const toggleSection = (category: PlanCategory) => {
     haptics.tap();

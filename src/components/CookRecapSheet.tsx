@@ -351,9 +351,7 @@ export function CookRecapSheet({
 
   /**
    * Writes the checked restock rows straight to the shopping list — no
-   * intermediate sheet. `restockRows` is the same narrow set
-   * `RecipeToListSheet` calls "already trusted" (see its own `restock`
-   * selection mode), and this sheet now shows those rows by name, so there's
+   * intermediate sheet. This sheet shows the `restockRows` by name, so there's
    * nothing left for a second review screen to add.
    */
   const handleAddToList = () => {

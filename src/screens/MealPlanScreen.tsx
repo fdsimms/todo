@@ -2666,10 +2666,8 @@ export function MealPlanScreen() {
       </LazySheet>
 
       {/*
-        One meal's shop, asked for from its own sheet. `initialSelection` is
-        the default "all": the user named the action, so every line they still
-        need starts ticked — where the restock offer below has to stay inside
-        what its banner counted.
+        One meal's shop, asked for from its own sheet: the user named the
+        action, so every line they still need starts ticked.
       */}
       <LazySheet open={mealShopVisible}>
         <RecipeToListSheet
