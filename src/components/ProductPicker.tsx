@@ -109,46 +109,54 @@ export function ProductPicker({ itemId, products, value, onPick, label, allowNon
       {!!onCreate && !adding && (
         <View style={styles.addRow}>
           <InlineAction
-            label="New product"
+            label="New brand or flavor"
             icon="add"
             variant="neutral"
             onPress={() => setAdding(true)}
-            accessibilityLabel="Add a new product to this item"
+            accessibilityLabel="Add a new brand or flavor to this food"
           />
         </View>
       )}
       {!!onCreate && adding && (
         <View style={styles.form}>
-          <TextField
-            style={styles.input}
-            value={brand}
-            onChangeText={t => { setBrand(t); setRefused(false); }}
-            placeholder="Brand, e.g. Spindrift"
-            placeholderTextColor={colors.textTertiary}
-            autoCapitalize="words"
-            autoCorrect={false}
-            accessibilityLabel="Brand"
-          />
-          <TextField
-            style={styles.input}
-            value={variant}
-            onChangeText={t => { setVariant(t); setRefused(false); }}
-            placeholder="Flavor or type, e.g. Nojito"
-            placeholderTextColor={colors.textTertiary}
-            autoCapitalize="words"
-            autoCorrect={false}
-            accessibilityLabel="Flavor or type"
-          />
+          <View style={styles.pair}>
+            <View style={styles.half}>
+              <Text style={styles.fieldLabel}>BRAND</Text>
+              <TextField
+                style={styles.input}
+                value={brand}
+                onChangeText={t => { setBrand(t); setRefused(false); }}
+                placeholder="e.g. Spindrift"
+                placeholderTextColor={colors.textTertiary}
+                autoCapitalize="words"
+                autoCorrect={false}
+                accessibilityLabel="Brand"
+              />
+            </View>
+            <View style={styles.half}>
+              <Text style={styles.fieldLabel}>FLAVOR OR TYPE</Text>
+              <TextField
+                style={styles.input}
+                value={variant}
+                onChangeText={t => { setVariant(t); setRefused(false); }}
+                placeholder="e.g. Lime"
+                placeholderTextColor={colors.textTertiary}
+                autoCapitalize="words"
+                autoCorrect={false}
+                accessibilityLabel="Flavor or type"
+              />
+            </View>
+          </View>
           {refused && <Text style={styles.refused}>Enter a brand or a flavor.</Text>}
           <View style={styles.addRow}>
             <InlineAction
-              label="Add product"
+              label="Add"
               icon="checkmark"
               onPress={() => {
                 const made = onCreate({ brand: brand.trim() || null, variant: variant.trim() || null });
                 if (made) { setAdding(false); setBrand(''); setVariant(''); } else setRefused(true);
               }}
-              accessibilityLabel="Save this product"
+              accessibilityLabel="Save this brand or flavor"
             />
             <InlineAction label="Cancel" variant="neutral" onPress={() => setAdding(false)} />
           </View>
@@ -185,7 +193,16 @@ function makeStyles(colors: Colors) {
       backgroundColor: colors.bgTertiary,
       borderRadius: radius.sm,
       paddingHorizontal: spacing.sm,
-      paddingVertical: spacing.sm,
+      paddingVertical: spacing.smd,
+    },
+    pair: { flexDirection: 'row', gap: spacing.sm },
+    half: { flex: 1 },
+    fieldLabel: {
+      color: colors.textSecondary,
+      fontSize: font.xs,
+      fontWeight: fontWeight.semibold,
+      letterSpacing: 0.8,
+      marginBottom: spacing.xs,
     },
     refused: { fontSize: font.xs, color: colors.redText },
     rowText: { flex: 1, color: colors.text, fontSize: font.md },
