@@ -121,6 +121,7 @@ export function ProductPicker({ itemId, products, value, onPick, label, allowNon
         <View style={styles.form}>
           <TextField
             style={styles.input}
+            value={brand}
             onChangeText={t => { setBrand(t); setRefused(false); }}
             placeholder="Brand, e.g. Spindrift"
             placeholderTextColor={colors.textTertiary}
@@ -130,6 +131,7 @@ export function ProductPicker({ itemId, products, value, onPick, label, allowNon
           />
           <TextField
             style={styles.input}
+            value={variant}
             onChangeText={t => { setVariant(t); setRefused(false); }}
             placeholder="Flavor or type, e.g. Nojito"
             placeholderTextColor={colors.textTertiary}
