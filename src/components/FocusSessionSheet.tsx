@@ -142,6 +142,14 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
   const stepDone = isFocusStepDone(session, now);
   const remaining = focusStepRemaining(session, now);
   const totals = focusPlanTotals(session.steps);
+  // `steps` is pruned as tasks are finished, so by the end it no longer lists
+  // them. The planned count is every task the session ever held: what is left
+  // in the plan, what was worked (stepLog) and what was checked off.
+  const plannedTaskCount = new Set([
+    ...session.steps.flatMap(s => (s.kind === 'work' && s.taskId ? [s.taskId] : [])),
+    ...session.stepLog.flatMap(r => (r.kind === 'work' && r.taskId ? [r.taskId] : [])),
+    ...session.completedTaskIds,
+  ]).size;
   const endsAt = focusProjectedEnd(session, now);
   const currentTask: Task | undefined = step?.taskId ? byId.get(step.taskId) : undefined;
 
@@ -421,7 +429,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
       <Text style={styles.finishedSub}>
         {session.completedTaskIds.length === 0
           ? `You worked through ${formatDuration(totals.workMinutes)} of the plan. Nothing was checked off.`
-          : `${session.completedTaskIds.length} task${session.completedTaskIds.length === 1 ? '' : 's'} done, out of ${totals.taskCount} planned.`}
+          : `${session.completedTaskIds.length} task${session.completedTaskIds.length === 1 ? '' : 's'} done, out of ${plannedTaskCount} planned.`}
       </Text>
       {session.completedTaskIds.length > 0 && (
         <View style={styles.finishedList}>
@@ -535,7 +543,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
               </Text>
               <Text style={styles.clockCaption}>
                 {stepDone
-                  ? `over ${formatDuration(step.minutes)}`
+                  ? `over ${formatDuration(step.minutes)}${running ? '' : ' · paused'}`
                   : `of ${formatDuration(step.minutes)}${running ? '' : ' · paused'}`}
               </Text>
             </>
@@ -594,6 +602,21 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
               >
                 <Ionicons name="checkmark-circle-outline" size={iconSize.md} color={colors.done} />
                 <Text style={styles.secondaryLabel}>{quotaTask ? 'Log one' : 'Done'}</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Past the estimate the primary button is "Next", so pausing moves
+                here. Running over is not a reason to lose the pause. */}
+            {stepDone && (
+              <TouchableOpacity
+                style={styles.secondaryBtn}
+                onPress={handlePauseResume}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={running ? 'Pause session' : 'Resume session'}
+              >
+                <Ionicons name={running ? 'pause-circle-outline' : 'play-circle-outline'} size={iconSize.md} color={colors.textSecondary} />
+                <Text style={styles.secondaryLabel}>{running ? 'Pause' : 'Resume'}</Text>
               </TouchableOpacity>
             )}
 
