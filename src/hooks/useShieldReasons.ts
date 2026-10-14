@@ -60,7 +60,7 @@ export function useShieldReasons(): ShieldReasonEntry[] {
     const current = new Date();
     setNow(current);
     const penaltyAt = penaltyUntil ? new Date(penaltyUntil) : null;
-    const manualAt = manualBlock ? new Date(manualBlock.untilIso) : null;
+    const manualAt = manualBlock?.untilIso ? new Date(manualBlock.untilIso) : null;
     const boundary = nextScheduleBoundary(schedules, current);
     const next = [penaltyAt, manualAt, boundary].filter((d): d is Date => d !== null && d > current)
       .reduce<Date | null>((a, d) => (a === null || d < a ? d : a), null);

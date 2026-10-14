@@ -417,14 +417,16 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
   const manualBlock = useManualBlockStore(s => s.block);
   const manualLive = manualBlockWanted(manualBlock, new Date());
 
-  const confirmManual = async (minutes: number, groupId: string) => {
+  const confirmManual = async (minutes: number | null, groupId: string) => {
     // The same first-use step as the key lock: a block with no apps chosen
     // blocks nothing, and a button that visibly does nothing reads as broken.
     if (totalOf(groupId) === 0) await onChooseApps(groupId);
-    const endsAt = formatReasonTime(new Date(Date.now() + minutes * 60_000).toISOString());
+    const endsAt = minutes === null
+      ? null
+      : formatReasonTime(new Date(Date.now() + minutes * 60_000).toISOString());
     Alert.alert(
-      `Block apps for ${describeDuration(minutes)}?`,
-      `They stay blocked until ${endsAt ?? 'then'}. Ending it earlier takes a key tag or the emergency button, and is saved in the record.`,
+      minutes === null ? 'Block apps until you end it?' : `Block apps for ${describeDuration(minutes)}?`,
+      `${minutes === null ? 'They stay blocked until you end it.' : `They stay blocked until ${endsAt ?? 'then'}.`} Ending it${minutes === null ? '' : ' earlier'} takes a key tag or the emergency button, and is saved in the record.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -437,7 +439,7 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
     );
   };
 
-  const chooseManualGroup = (minutes: number) => {
+  const chooseManualGroup = (minutes: number | null) => {
     if (customGroups.length === 0) { void confirmManual(minutes, DEFAULT_GROUP_ID); return; }
     Alert.alert('Which apps?', 'Choose the group of apps to block.', [
       ...allGroups(customGroups).map(g => ({ text: g.name, onPress: () => { void confirmManual(minutes, g.id); } })),
@@ -450,9 +452,9 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
     if (!(await ensureAuthorized('Blocking apps needs Screen Time access. Grant it in Settings, under Screen Time.'))) return;
     Alert.alert(
       'Block apps for how long?',
-      'Ending it earlier takes a key tag or the emergency button, and is saved in the record.',
+      'Ending a block takes a key tag or the emergency button, and is saved in the record.',
       [
-        ...MANUAL_BLOCK_PRESETS.map(m => ({ text: describeDuration(m), onPress: () => chooseManualGroup(m) })),
+        ...MANUAL_BLOCK_PRESETS.map(m => ({ text: m === null ? 'Until I end it' : describeDuration(m), onPress: () => chooseManualGroup(m) })),
         { text: 'Cancel', style: 'cancel' as const },
       ],
     );
@@ -475,15 +477,15 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
     <>
       <SettingsSection
         label="Block now"
-        footer="Blocks a group of apps for a length of time you choose, even when dundundun is closed."
+        footer="Blocks a group of apps for a length of time you choose, or until you end it, even when dundundun is closed."
       >
         {manualLive && manualBlock ? (
           <SettingsRow
             entryId="manualBlock"
             icon="hourglass-outline"
             iconColor={colors.accent}
-            label={`Blocking until ${formatReasonTime(manualBlock.untilIso) ?? ''}`}
-            hint="Ending it earlier takes a key tag or the emergency button, and is saved in the record."
+            label={manualBlock.untilIso ? `Blocking until ${formatReasonTime(manualBlock.untilIso) ?? ''}` : 'Blocking until you end it'}
+            hint="Ending it takes a key tag or the emergency button, and is saved in the record."
             alwaysShowHint
           />
         ) : (
@@ -491,7 +493,7 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
             entryId="manualBlock"
             icon="hourglass-outline"
             label="Block apps now"
-            hint="Pick 15 minutes up to 4 hours."
+            hint="Pick a length of time, or block until you end it."
             onPress={() => { void handleBlockNow(); }}
           />
         )}

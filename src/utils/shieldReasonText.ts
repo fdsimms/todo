@@ -42,6 +42,7 @@ export function shieldReasonLines(entry: ShieldReasonEntry, formatTime: (iso: st
     }
     case 'manual': {
       const time = entry.until ? formatTime(entry.until) : null;
+      if (entry.until === null || entry.until === undefined) return ['A block you started is on until you end it.'];
       return [time ? `A block you started runs until ${time}.` : 'A block you started is running.'];
     }
     case 'key':

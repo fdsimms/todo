@@ -1,5 +1,5 @@
 import {
-  MAX_MANUAL_MINUTES, MIN_MANUAL_MINUTES, describeDuration, manualBlockWanted, manualMinutesProblem,
+  MAX_MANUAL_MINUTES, MIN_MANUAL_MINUTES, describeDuration, endsSooner, isTimedBlock, manualBlockWanted, manualMinutesProblem,
   newManualBlock, parseManualBlock,
 } from '../utils/manualBlock';
 
@@ -59,5 +59,33 @@ describe('describeDuration', () => {
     expect(describeDuration(60)).toBe('1 hour');
     expect(describeDuration(120)).toBe('2 hours');
     expect(describeDuration(90)).toBe('1 hour 30 minutes');
+  });
+});
+
+describe('an open-ended block', () => {
+  const open = newManualBlock(null, 'games', NOW);
+
+  it('has no end, and holds until something ends it', () => {
+    expect(open).toEqual({ untilIso: null, groupId: 'games' });
+    expect(isTimedBlock(open)).toBe(false);
+    expect(manualBlockWanted(open, new Date(2030, 0, 1))).toBe(true);
+  });
+
+  it('is accepted as a length and survives a round trip', () => {
+    expect(manualMinutesProblem(null)).toBeNull();
+    expect(parseManualBlock(JSON.stringify(open))).toEqual(open);
+  });
+
+  it('is the longest a block can be', () => {
+    const timed = newManualBlock(240, 'games', NOW);
+    expect(endsSooner(timed, open)).toBe(true);
+    expect(endsSooner(open, timed)).toBe(false);
+    expect(endsSooner(open, open)).toBe(false);
+    expect(endsSooner(newManualBlock(30, 'games', NOW), timed)).toBe(true);
+    expect(endsSooner(newManualBlock(480, 'games', NOW), timed)).toBe(false);
+  });
+
+  it('is worded as until you end it', () => {
+    expect(describeDuration(null)).toBe('until you end it');
   });
 });

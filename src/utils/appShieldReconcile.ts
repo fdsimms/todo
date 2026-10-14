@@ -2,7 +2,7 @@ import { gateGroupFor, nextPendingGate, outstandingGates } from './appGate';
 import { shieldReasons, syncAppShield, type AppShieldState, type ShieldReasonEntry } from './appShield';
 import { isFocusReleased, isGateReleased } from './shieldRelease';
 import { canLock } from './nfcKey';
-import { manualBlockWanted } from './manualBlock';
+import { isTimedBlock, manualBlockWanted } from './manualBlock';
 import type { Task } from '../types';
 import { nextScheduleBoundary } from './blockSchedule';
 import { beginVisibleAtPass, getVisibleAt, isHiddenForVacation, isTaskVisible } from './visibilityUtils';
@@ -49,7 +49,9 @@ export function reconcileAppShield(): Date | null {
   const gateAt = state.pendingGate?.liveAt ?? null;
   // The moments nothing writes anything at: a gate coming due, a schedule
   // opening or closing, and a timed block running out.
-  const manualEnd = state.manual && manualBlockWanted(state.manual, now) ? new Date(state.manual.untilIso) : null;
+  const manualEnd = isTimedBlock(state.manual ?? null) && manualBlockWanted(state.manual ?? null, now)
+    ? new Date(state.manual!.untilIso!)
+    : null;
   return [gateAt, boundary, manualEnd]
     .filter((d): d is Date => d !== null)
     .reduce<Date | null>((a, d) => (a === null || d < a ? d : a), null);

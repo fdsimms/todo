@@ -46,4 +46,11 @@ describe('useManualBlockStore', () => {
     expect(useManualBlockStore.getState().block).toBeNull();
     expect(mockDb.manualBlock).toBe('');
   });
+
+  it('starts an open-ended block, which a timed one cannot replace but can be lengthened into', () => {
+    useManualBlockStore.getState().start(60, 'default', NOW);
+    expect(useManualBlockStore.getState().start(null, 'default', NOW)).toEqual({ untilIso: null, groupId: 'default' });
+    expect(useManualBlockStore.getState().start(240, 'default', NOW)).toBeNull();
+    expect(useManualBlockStore.getState().block?.untilIso).toBeNull();
+  });
 });

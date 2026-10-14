@@ -649,4 +649,26 @@ describe('a block the person started by hand', () => {
     expect(mockBridge.scheduleManualExpiry).not.toHaveBeenCalled();
     expect(mockBridge.clearShield).toHaveBeenCalled();
   });
+
+  describe('with no end', () => {
+    const open = { untilIso: null, groupId: 'games' };
+
+    it('wants the shield on until something ends it', () => {
+      expect(appShieldWanted(state({ manual: open, now: new Date('2031-01-01T00:00:00Z') }))).toBe(true);
+    });
+
+    it('is held like a key lock: nothing armed, and a penalty ending must not lift it', () => {
+      syncAppShield(state({ manual: open, penaltyUntil: LATER, penaltyEnabled: true }));
+      expect(mockBridge.scheduleManualExpiry).not.toHaveBeenCalled();
+      expect(mockBridge.cancelManualExpiry).toHaveBeenCalledTimes(1);
+      const written = mockBridge.setShieldState.mock.calls[0] as unknown as [{ groups: Record<string, unknown>; otherReasonWantsShield: boolean }];
+      expect(written[0].otherReasonWantsShield).toBe(true);
+      expect(written[0].groups).toMatchObject({ otherGroupIds: ['games'], manualGroupId: null, manualEndIso: null });
+    });
+
+    it('is named as having no end', () => {
+      const [reason] = shieldReasons(state({ manual: open }));
+      expect(reason).toEqual({ reason: 'manual', until: null, groupId: 'games' });
+    });
+  });
 });

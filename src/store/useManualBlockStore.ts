@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { dbGetSetting, dbSetSetting } from '../db/database';
 import {
-  MANUAL_BLOCK_SETTING, manualBlockWanted, manualMinutesProblem, newManualBlock, parseManualBlock, type ManualBlock,
+  MANUAL_BLOCK_SETTING, endsSooner, manualBlockWanted, manualMinutesProblem, newManualBlock, parseManualBlock, type ManualBlock,
 } from '../utils/manualBlock';
 
 /**
@@ -25,8 +25,8 @@ interface ManualBlockStore {
   initialize: () => void;
   /** Re-read from the current database, after a demo-mode swap. */
   reload: () => void;
-  /** Start a block. Refused (null) for a length the native window can't hold, or one shorter than the block already running. */
-  start: (minutes: number, groupId: string, now?: Date) => ManualBlock | null;
+  /** Start a block, timed or (with null minutes) open-ended. Refused (null) for a length the native window can't hold, or one that would end sooner than the block already running. */
+  start: (minutes: number | null, groupId: string, now?: Date) => ManualBlock | null;
   /** Drop the block. Only `releaseAllBlocks` calls this. */
   clear: () => void;
 }
@@ -48,7 +48,7 @@ export const useManualBlockStore = create<ManualBlockStore>((set, get) => ({
     // A running block can be lengthened but never shortened from here: a
     // shorter one would be a way to end it early that leaves no record.
     const running = get().block;
-    if (running && manualBlockWanted(running, now) && new Date(running.untilIso) > new Date(block.untilIso)) return null;
+    if (running && manualBlockWanted(running, now) && endsSooner(block, running)) return null;
     dbSetSetting(MANUAL_BLOCK_SETTING, JSON.stringify(block));
     set({ block });
     return block;

@@ -2,7 +2,7 @@ import type { FocusSession } from '../types';
 import { gateShieldWanted, gateSubtitle, gateWindowFor } from './appGate';
 import { shieldWanted } from './focusShield';
 import { KEY_LOCK_DETAIL } from './nfcKey';
-import { manualBlockWanted, type ManualBlock } from './manualBlock';
+import { isTimedBlock, manualBlockWanted, type ManualBlock } from './manualBlock';
 import { penaltyShieldWanted } from './penaltyShield';
 import { screenTimeBridge } from './screenTimeBridge';
 import { uniqueGroupIds, type GroupAssignments } from './appGroups';
@@ -225,6 +225,11 @@ export function syncAppShield(state: AppShieldState): void {
   const keyWants = reasons.some(r => r.reason === 'key');
   const scheduleWants = reasons.some(r => r.reason === 'schedule');
   const manualWants = reasons.some(r => r.reason === 'manual');
+  // Only a timed block ends on a clock the extension watches. An open-ended one
+  // has no end to arm, so it is held like the key lock: a standing reason that
+  // a penalty or schedule ending must not lift.
+  const manualTimed = manualWants && isTimedBlock(state.manual ?? null);
+  const manualOpen = manualWants && !manualTimed;
   // A window is armed only while the feature is on, so switching it off
   // disarms whatever was armed rather than leaving a shield to be raised for a
   // setting that no longer holds.
@@ -252,7 +257,7 @@ export function syncAppShield(state: AppShieldState): void {
   //   window has started doesn't lift the gate the extension raised.
   const lead = reasons[0];
   bridge.setShieldState({
-    otherReasonWantsShield: focusWants || gateWants || keyWants || scheduleWants,
+    otherReasonWantsShield: focusWants || gateWants || keyWants || scheduleWants || manualOpen,
     reason: lead?.reason ?? 'none',
     untilIso: lead?.reason === 'penalty' || lead?.reason === 'schedule' || lead?.reason === 'manual' ? lead.until ?? null : null,
     detail: !lead
@@ -271,12 +276,12 @@ export function syncAppShield(state: AppShieldState): void {
     pendingGateDetail: gateWindow ? pendingDetail : null,
     groups: {
       otherGroupIds: uniqueGroupIds(reasons
-        .filter(r => r.reason === 'focus' || r.reason === 'gate' || r.reason === 'key')
+        .filter(r => r.reason === 'focus' || r.reason === 'gate' || r.reason === 'key' || (r.reason === 'manual' && manualOpen))
         .map(r => r.groupId)),
       penaltyGroupId: penaltyWants ? state.groups.penalty : null,
       penaltyEndIso: penaltyWants ? state.penaltyUntil : null,
-      manualGroupId: manualWants ? state.manual?.groupId ?? null : null,
-      manualEndIso: manualWants ? state.manual?.untilIso ?? null : null,
+      manualGroupId: manualTimed ? state.manual?.groupId ?? null : null,
+      manualEndIso: manualTimed ? state.manual?.untilIso ?? null : null,
       pendingGateGroupIds: gateWindow
         ? uniqueGroupIds(state.pendingGate?.groupIds ?? [state.groups.gate])
         : [],
@@ -302,6 +307,6 @@ export function syncAppShield(state: AppShieldState): void {
 
   // The manual block's own window, for the reason the penalty has one: it has
   // to end on time with the app closed, and only this arms that.
-  if (manualWants && state.manual) bridge.scheduleManualExpiry(state.manual.untilIso);
+  if (manualTimed && isTimedBlock(state.manual ?? null)) bridge.scheduleManualExpiry(state.manual!.untilIso!);
   else bridge.cancelManualExpiry();
 }

@@ -11,6 +11,8 @@ describe('shieldReasonLines', () => {
   it('says a block the person started, with its end when there is one', () => {
     expect(shieldReasonLines({ groupId: 'default', reason: 'manual', until: '2026-10-14T15:00:00Z' }, time))
       .toEqual(['A block you started runs until 10:30 AM.']);
+    expect(shieldReasonLines({ groupId: 'default', reason: 'manual', until: null }, time))
+      .toEqual(['A block you started is on until you end it.']);
     expect(shieldReasonLines({ groupId: 'default', reason: 'manual', until: 'bad' }, time))
       .toEqual(['A block you started is running.']);
   });
