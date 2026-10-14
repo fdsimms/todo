@@ -135,6 +135,14 @@ units count the whole batch, as before. Shares compound down a chain of parts. N
 the planned-week total and recipe cost still read whole parts, and `amountUsed` is shown on the row ("uses
 1 tbsp") and settable over MCP (`update_recipe` components).
 
+**A line can be left out of a recipe's nutrition (`RecipeIngredient.excludeFromNutrition`), and the app only offers it.**
+It is per line, not per catalog item, because the same ingredient is eaten in one recipe and removed in another
+(kombu in a stock, a bay leaf in a stew). `isUsuallyRemovedBeforeEating` (`removedBeforeEating.ts`) is a closed list
+of whole phrases, never a pattern, that makes the nutrition sheet say so on a counted line and offer "Don't count
+this"; nothing is excluded until the person taps. It is all or nothing: excluding kombu also drops whatever it gave
+the broth. The MCP sets it with `excludeFromNutrition` on `update_recipe`/`save_recipe` lines and
+`setIngredientNutrition` in `patch_recipe`, and `get_recipe` shows `notCountedInNutrition`.
+
 **A component has a position among the ingredients (`RecipeComponent.placement`).** It is a row in
 the Ingredients list on the recipe page, dragged like an ingredient, and the position is honored by
 every surface that flattens the recipe, because there is one walk (`flattenRecipeIngredients`, over

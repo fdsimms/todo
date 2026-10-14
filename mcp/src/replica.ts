@@ -351,7 +351,7 @@ export interface RecipeInput {
   name: string;
   /** A cookbook by title, created when there is none by that name. */
   cookbook?: string | null;
-  ingredients?: { text: string; section?: string | null; alternativeGroup?: string | null }[];
+  ingredients?: { text: string; section?: string | null; alternativeGroup?: string | null; excludeFromNutrition?: boolean }[];
   /**
    * The method. On an edit the whole list is replaced, but a step whose text
    * is unchanged keeps its identity (and so its timer, its note and the cook
@@ -419,6 +419,7 @@ export interface RecipePatchOp {
     | 'removeStep'
     | 'insertIngredient'
     | 'replaceIngredient'
+    | 'setIngredientNutrition'
     | 'removeIngredient';
   /** The step an op targets (1-based). */
   step?: number;
@@ -432,6 +433,8 @@ export interface RecipePatchOp {
   note?: string | null;
   onlyWith?: string[] | null;
   alternativeGroup?: string | null;
+  /** Leaves the line out of the recipe's nutrition total (flavoring taken out before eating, a garnish). */
+  excludeFromNutrition?: boolean;
 }
 
 /** A change to a planned meal. Only what is given changes. */
@@ -2470,7 +2473,9 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const made = f.ingredients
         .map(line => {
           const m = recipeUtils.makeIngredient(line.text, line.section?.trim() || null);
-          return m ? { ...m, choiceGroup: recipeUtils.cleanChoiceGroup(line.alternativeGroup) } : null;
+          // `excludeFromNutrition` rides along only when the call named it, so a
+          // rewrite that did not mention it leaves a kept line's answer alone.
+          return m ? { ...m, choiceGroup: recipeUtils.cleanChoiceGroup(line.alternativeGroup), ...(line.excludeFromNutrition !== undefined ? { excludeFromNutrition: line.excludeFromNutrition } : {}) } : null;
         })
         .filter((x): x is NonNullable<typeof x> => x !== null);
       // A line that is still wanted keeps its row (id and everything the text
@@ -2485,7 +2490,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         const at = unclaimed.findIndex(old => recipeUtils.ingredientDedupeKey(old) === key);
         if (at < 0) return line;
         const [old] = unclaimed.splice(at, 1);
-        return { ...old, quantity: line.quantity, choiceGroup: line.choiceGroup };
+        return { ...old, quantity: line.quantity, choiceGroup: line.choiceGroup, ...(line.excludeFromNutrition !== undefined ? { excludeFromNutrition: line.excludeFromNutrition } : {}) };
       });
       store().bulkRemoveIngredients(id, current().ingredients.map(i => i.id));
       if (kept.length > 0) store().addStructuredIngredients(id, kept);
@@ -4279,6 +4284,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
                   const made = recipeUtils.makeIngredient(need(op.text, 'insertIngredient'), section);
                   if (!made) throw new Error('Could not read an ingredient out of that text.');
                   made.choiceGroup = recipeUtils.cleanChoiceGroup(op.alternativeGroup);
+                  if (op.excludeFromNutrition) made.excludeFromNutrition = true;
                   const before = new Set(list.map(x => x.id));
                   if (store().addStructuredIngredients(id, [made]) === 0) {
                     throw new Error('A line with the same name, section, prep and purpose is already in the recipe.');
@@ -4291,12 +4297,18 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
                   break;
                 }
                 case 'replaceIngredient':
+                case 'setIngredientNutrition':
                 case 'removeIngredient': {
                   const list = current().ingredients;
                   const target = list[index(op.ingredient, list.length, 'Ingredient')];
                   guard(op.expect, [target.quantity, target.name, target.prep].filter(Boolean).join(' '), `Ingredient ${op.ingredient}`);
                   if (op.op === 'removeIngredient') {
                     store().removeIngredient(id, target.id);
+                    break;
+                  }
+                  if (op.op === 'setIngredientNutrition') {
+                    if (op.excludeFromNutrition === undefined) throw new Error('setIngredientNutrition needs excludeFromNutrition (true or false).');
+                    store().updateIngredient(id, target.id, { excludeFromNutrition: op.excludeFromNutrition });
                     break;
                   }
                   // Edited in place, so the line keeps its id: a planned meal's
@@ -4312,6 +4324,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
                     section,
                     choiceGroup: op.alternativeGroup !== undefined ? recipeUtils.cleanChoiceGroup(op.alternativeGroup) : target.choiceGroup,
                     example: made.example,
+                    ...(op.excludeFromNutrition !== undefined ? { excludeFromNutrition: op.excludeFromNutrition } : {}),
                   });
                   break;
                 }

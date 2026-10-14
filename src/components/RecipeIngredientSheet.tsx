@@ -690,8 +690,8 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
           <View style={styles.toggleBody}>
             <Text style={styles.toggleLabel}>Don’t count toward nutrition</Text>
             <Text style={styles.hint}>
-              Leaves this line out of the recipe’s nutrition total. For an amount too small
-              to matter, like a garnish.
+              Leaves this line out of the recipe’s nutrition total. For flavoring you take
+              out before eating, like kombu or a bay leaf, or an amount too small to matter.
             </Text>
           </View>
         </TouchableOpacity>
