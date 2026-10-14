@@ -2143,6 +2143,8 @@ function runInitDatabase(): void {
     // The saved meal completing this task logs straight to the food log. NULL on
     // every existing row, which is the feature being off. See Task.logSavedMealId.
     'ALTER TABLE tasks ADD COLUMN log_saved_meal_id TEXT',
+    // Task.logMealSlotByTime: 0 on every existing row, which is the slot staying fixed.
+    'ALTER TABLE tasks ADD COLUMN log_meal_slot_by_time INTEGER NOT NULL DEFAULT 0',
     // The task whose completion wrote this entry, so un-completing it can take
     // the entry back. NULL on every row but those. See FoodLogEntry.taskId.
     'ALTER TABLE food_logs ADD COLUMN task_id TEXT',
@@ -3626,6 +3628,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     streakCountsUnits: Boolean(row.streak_counts_units),
     coinsPerTap: Boolean(row.coins_per_tap),
     logSavedMealId: (row.log_saved_meal_id as string | null) || null,
+    logMealSlotByTime: Boolean(row.log_meal_slot_by_time),
     reviewOfTaskId: (row.review_of_task_id as string | null) ?? null,
     targetCount: (row.target_count as number | null) ?? null,
     progressCount: (row.progress_count as number) ?? 0,
@@ -3839,8 +3842,8 @@ export function dbInsertTask(task: Task): void {
       blocked_by_ids, deliverable_options, deliverable_sets_away, follow_up_on, extra_task_source_id,
       pin_each_occurrence, bounty_pushes, difficulty, answer_gate, deliverable_why, deliverable_revisit_if, extra_task_at_end, weather_wait, wait_for_series_end, rotation_plan, slip_allowance, done_by_other_at, window_start_sun, window_end_sun, recurrence_holidays,
       meter_name, meter_unit, meter_every, meter_due_at, meter_limit_months, meter_held_until, rain_skip_mm, rain_skipped_on, review_of_task_id,
-      quota_ramp_step, quota_ramp_every, quota_ramp_goal, quota_ramp_hits, streak_counts_units, log_saved_meal_id, coins_per_tap
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      quota_ramp_step, quota_ramp_every, quota_ramp_goal, quota_ramp_hits, streak_counts_units, log_saved_meal_id, coins_per_tap, log_meal_slot_by_time
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deadlineTime ?? null, task.deferUntil,
@@ -3984,6 +3987,7 @@ export function dbInsertTask(task: Task): void {
       task.streakCountsUnits ? 1 : 0,
       task.logSavedMealId ?? null,
       task.coinsPerTap ? 1 : 0,
+      task.logMealSlotByTime ? 1 : 0,
     ]
   );
 }
@@ -4022,7 +4026,7 @@ export function dbUpdateTask(task: Task): void {
       blocked_by_ids=?, deliverable_options=?, deliverable_sets_away=?, follow_up_on=?, extra_task_source_id=?,
       pin_each_occurrence=?, bounty_pushes=?, difficulty=?, answer_gate=?, deliverable_why=?, deliverable_revisit_if=?, extra_task_at_end=?, weather_wait=?, wait_for_series_end=?, rotation_plan=?, slip_allowance=?, done_by_other_at=?, window_start_sun=?, window_end_sun=?, recurrence_holidays=?,
       meter_name=?, meter_unit=?, meter_every=?, meter_due_at=?, meter_limit_months=?, meter_held_until=?, rain_skip_mm=?, rain_skipped_on=?, review_of_task_id=?,
-      quota_ramp_step=?, quota_ramp_every=?, quota_ramp_goal=?, quota_ramp_hits=?, streak_counts_units=?, log_saved_meal_id=?, coins_per_tap=?
+      quota_ramp_step=?, quota_ramp_every=?, quota_ramp_goal=?, quota_ramp_hits=?, streak_counts_units=?, log_saved_meal_id=?, coins_per_tap=?, log_meal_slot_by_time=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -4167,6 +4171,7 @@ export function dbUpdateTask(task: Task): void {
       task.streakCountsUnits ? 1 : 0,
       task.logSavedMealId ?? null,
       task.coinsPerTap ? 1 : 0,
+      task.logMealSlotByTime ? 1 : 0,
       task.id,
     ]
   );

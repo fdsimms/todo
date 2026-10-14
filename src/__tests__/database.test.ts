@@ -6132,3 +6132,14 @@ describe('streakCountsUnits', () => {
     expect(dbGetAllTasks().find(t => t.id === 'weekly')!.streakCountsUnits).toBe(false);
   });
 });
+
+describe('logMealSlotByTime', () => {
+  it('round-trips through insert and update, and reads as off when unset', () => {
+    dbInsertTask(makeTask({ id: 'bytime', logMealSlotByTime: true }));
+    expect(dbGetAllTasks().find(t => t.id === 'bytime')!.logMealSlotByTime).toBe(true);
+    dbUpdateTask({ ...dbGetAllTasks().find(t => t.id === 'bytime')!, logMealSlotByTime: false });
+    expect(dbGetAllTasks().find(t => t.id === 'bytime')!.logMealSlotByTime).toBe(false);
+    dbInsertTask(makeTask({ id: 'plain2' }));
+    expect(dbGetAllTasks().find(t => t.id === 'plain2')!.logMealSlotByTime).toBe(false);
+  });
+});

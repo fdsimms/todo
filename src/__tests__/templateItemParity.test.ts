@@ -65,6 +65,10 @@ const NOT_SEEDED: Record<string, string[]> = {
   // to another person (or run on another device before sync) can't resolve.
   'names a saved meal outside the template': ['logSavedMealId'],
 
+  // Modifies logSavedMealId's slot choice and is meaningless without a slot; a
+  // template seeds the fixed slot only.
+  'refines a slot the template seeds': ['logMealSlotByTime'],
+
   // The reading a task is due at is where one meter stood at one moment. A run
   // can't know where the odometer is now, so a seeded "due at 45,000" would be
   // wrong for every run but the first.

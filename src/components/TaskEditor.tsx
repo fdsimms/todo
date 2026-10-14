@@ -272,6 +272,7 @@ export interface TaskDraft {
   medicationUnit?: string | null;
   logMealSlot?: MealSlot | null;
   logSavedMealId?: string | null;
+  logMealSlotByTime?: boolean;
   phoneNumber?: string | null;
   emailAddress?: string | null;
   location?: string | null;
@@ -737,6 +738,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const [medicationUnit, setMedicationUnit] = useState<string | null>(null);
   const [logMealSlot, setLogMealSlot] = useState<MealSlot | null>(null);
   const [logSavedMealId, setLogSavedMealId] = useState<string | null>(null);
+  const [logMealSlotByTime, setLogMealSlotByTime] = useState(false);
   const savedMeals = useSavedMealsStore(s => s.meals);
   const addSavedMeal = useSavedMealsStore(s => s.addMeal);
   const [newMealOpen, setNewMealOpen] = useState(false);
@@ -1186,6 +1188,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       setMedicationUnit(task.medicationUnit ?? null);
       setLogMealSlot(task.logMealSlot ?? null);
       setLogSavedMealId(task.logSavedMealId ?? null);
+      setLogMealSlotByTime(task.logMealSlotByTime ?? false);
       setPhoneNumber(task.phoneNumber ?? null);
       setEmailAddress(task.emailAddress ?? null);
       setLocation(task.location ?? null);
@@ -1259,6 +1262,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       setMedicationUnit(initialDraft?.medicationUnit ?? null);
       setLogMealSlot(initialDraft?.logMealSlot ?? null);
       setLogSavedMealId(initialDraft?.logSavedMealId ?? null);
+      setLogMealSlotByTime(initialDraft?.logMealSlotByTime ?? false);
       setPhoneNumber(initialDraft?.phoneNumber ?? null);
       setEmailAddress(initialDraft?.emailAddress ?? null);
       setLocation(initialDraft?.location ?? null);
@@ -1414,6 +1418,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       medicationUnit: task ? (task.medicationUnit ?? null) : (initialDraft?.medicationUnit ?? null),
       logMealSlot: task ? (task.logMealSlot ?? null) : (initialDraft?.logMealSlot ?? null),
       logSavedMealId: task ? (task.logSavedMealId ?? null) : (initialDraft?.logSavedMealId ?? null),
+      logMealSlotByTime: task ? (task.logMealSlotByTime ?? false) : (initialDraft?.logMealSlotByTime ?? false),
       phoneNumber: task ? (task.phoneNumber ?? null) : (initialDraft?.phoneNumber ?? null),
       emailAddress: task ? (task.emailAddress ?? null) : (initialDraft?.emailAddress ?? null),
       location: task ? (task.location ?? null) : (initialDraft?.location ?? null),
@@ -2208,6 +2213,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       logMealSlot,
       // A food needs a slot to be logged under, so clearing the slot clears it.
       logSavedMealId: logMealSlot !== null ? logSavedMealId : null,
+      logMealSlotByTime: logMealSlot !== null && logMealSlotByTime,
       phoneNumber: resolvePhoneNumber(),
       emailAddress: resolveEmailAddress(),
       location: resolveLocation(),
@@ -3047,6 +3053,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       medicationUnit,
       logMealSlot,
       logSavedMealId,
+      logMealSlotByTime,
       phoneNumber,
       emailAddress,
       location,
@@ -7737,7 +7744,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                   label="Log to food log"
                   summary={
                     chosenMeal && logMealSlot
-                      ? `Logs ${chosenMeal.name} when completed`
+                      ? `Logs ${chosenMeal.name}${logMealSlotByTime ? ' by time of day' : ''} when completed`
                       : logMealSlot ? `Offers to log ${MEAL_SLOT_LABELS[logMealSlot].toLowerCase()} when completed` : undefined
                   }
                   hint="Adds a food log entry each time you complete this task, under the meal below. Pick a saved meal to log it right away, or leave it on Ask each time to choose the food then. Unchecking the task removes what it logged."
@@ -7749,6 +7756,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                         haptics.tap();
                         setLogMealSlot(null);
                         setLogSavedMealId(null);
+                        setLogMealSlotByTime(false);
                         closeField('logMealSlot');
                       }}
                       hitSlop={8}
@@ -7762,11 +7770,31 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                   <SegmentedControl<MealSlot>
                     options={MEAL_SLOTS.map(slot => ({ value: slot, label: MEAL_SLOT_LABELS[slot] }))}
                     value={logMealSlot ?? 'breakfast'}
-                    onChange={next => { haptics.tap(); setLogMealSlot(next); }}
+                    onChange={next => { haptics.tap(); setLogMealSlot(next); setLogMealSlotByTime(false); }}
                     columns={2}
                     label="Meal"
                     surface="card"
                   />
+                  <TouchableOpacity
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.smd }}
+                    onPress={() => {
+                      haptics.tap();
+                      if (logMealSlot === null) setLogMealSlot(slotForHour(new Date().getHours()));
+                      setLogMealSlotByTime(!logMealSlotByTime);
+                    }}
+                    accessibilityRole="switch"
+                    accessibilityState={{ checked: logMealSlotByTime }}
+                    accessibilityLabel="Pick the meal from the time of day"
+                  >
+                    <Ionicons
+                      name={logMealSlotByTime ? 'checkbox' : 'square-outline'}
+                      size={iconSize.md}
+                      color={logMealSlotByTime ? colors.accent : colors.controlBorder}
+                    />
+                    <Text style={[styles.kindHint, { flex: 1 }]}>
+                      Choose the meal from the time you complete the task: breakfast 5 to 11 AM, lunch 11 AM to 4 PM, dinner 4 to 10 PM, snack otherwise.
+                    </Text>
+                  </TouchableOpacity>
                   {/* Saved meals are the one open set here, built from the food
                       log's Save as meal, so this is a PillGroup rather than a
                       track. "Ask each time" is pinned for the reason PillGroup
