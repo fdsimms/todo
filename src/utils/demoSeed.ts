@@ -33,6 +33,7 @@ import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore, type WeekStart } from '../store/useSettingsStore';
 import { useNfcKeyStore } from '../store/useNfcKeyStore';
+import { useAppGroupStore } from '../store/useAppGroupStore';
 import { sunAnchorHHMM } from './sunTimes';
 import { supplyReorderTitle } from './supply';
 import { useTemplateStore } from '../store/useTemplateStore';
@@ -386,6 +387,19 @@ export function seedDemoData(): void {
   // exists, and the lock itself is left off so the demo doesn't open locked.
   // Enrolled by id rather than scanned, since the reader is refused in demo mode.
   useNfcKeyStore.getState().enrollTag('04A1B2C3D4E5F6', 'Desk tag');
+  // One extra group of apps and a schedule that blocks it on weekday evenings,
+  // so the Schedules and App groups rows aren't empty. The group holds no apps
+  // (tokens only exist on a real device); the rows say so.
+  const social = useAppGroupStore.getState().addGroup('Social');
+  useAppGroupStore.getState().addSchedule({
+    name: 'Wind down',
+    groupId: social.group?.id ?? 'default',
+    days: [0, 1, 2, 3, 4],
+    startMinutes: 21 * 60,
+    endMinutes: 6 * 60,
+    enabled: true,
+    tagCanPause: true,
+  });
   addTask({
     title: 'Morning walk',
     notes: 'Apps you picked in Settings stay blocked until this is done. If it’s still undone at 8 AM, they’re blocked for two hours as well. Doing it late lifts what’s left of that block.',

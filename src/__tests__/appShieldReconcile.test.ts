@@ -37,6 +37,16 @@ jest.mock('../store/useSettingsStore', () => ({
 jest.mock('../store/useFocusStore', () => ({
   useFocusStore: { getState: () => ({ session: null }) },
 }));
+const mockGroupState = {
+  groups: [] as unknown[],
+  assignments: { focus: 'default', gate: 'default', penalty: 'default', key: 'default' },
+  schedules: [] as unknown[],
+};
+jest.mock('../store/useAppGroupStore', () => ({
+  useAppGroupStore: { getState: () => mockGroupState },
+  resolvedAssignments: () => mockGroupState.assignments,
+  resolveGroupNow: (id: string) => id,
+}));
 const mockKeyState = { locked: false, keys: [] as unknown[] };
 jest.mock('../store/useNfcKeyStore', () => ({
   useNfcKeyStore: { getState: () => mockKeyState },
@@ -152,5 +162,38 @@ describe('the key tag lock', () => {
     mockKeyState.keys = [tag];
     reconcileAppShield();
     expect(mockSync).toHaveBeenLastCalledWith(expect.objectContaining({ keyLocked: false }));
+  });
+});
+
+describe('schedules', () => {
+  it('hands the schedules and each reason\'s group to the rule', () => {
+    const schedule = {
+      id: 's', name: 'Work', groupId: 'default', days: [0, 1, 2, 3, 4, 5, 6], startMinutes: 0,
+      endMinutes: 600, enabled: true, tagCanPause: true, pausedUntil: null,
+    };
+    mockGroupState.schedules = [schedule];
+    try {
+      reconcileAppShield();
+      expect(mockSync).toHaveBeenLastCalledWith(expect.objectContaining({
+        schedules: [schedule],
+        groups: mockGroupState.assignments,
+      }));
+    } finally {
+      mockGroupState.schedules = [];
+    }
+  });
+
+  it('returns a schedule edge as the moment to wait for when nothing is sooner', () => {
+    mockGroupState.schedules = [{
+      id: 's', name: 'Work', groupId: 'default', days: [0, 1, 2, 3, 4, 5, 6], startMinutes: 0,
+      endMinutes: 600, enabled: true, tagCanPause: true, pausedUntil: null,
+    }];
+    try {
+      const next = reconcileAppShield();
+      expect(next).toBeInstanceOf(Date);
+      expect(next!.getTime()).toBeGreaterThan(Date.now());
+    } finally {
+      mockGroupState.schedules = [];
+    }
   });
 });

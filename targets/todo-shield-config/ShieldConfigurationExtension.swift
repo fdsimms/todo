@@ -151,6 +151,15 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
       // tested against them.
       return state.detail.flatMap { $0.isEmpty ? nil : $0 }
         ?? "These apps are locked until you tap your key tag."
+    case "schedule":
+      let name = state.detail.flatMap { $0.isEmpty ? nil : $0 }
+      let until = state.untilIso.flatMap(Self.timeLabel)
+      switch (name, until) {
+      case let (name?, until?): return "\(name) is blocking these apps until \(until)."
+      case let (name?, nil): return "\(name) is blocking these apps."
+      case let (nil, until?): return "A schedule is blocking these apps until \(until)."
+      case (nil, nil): return "A schedule is blocking these apps."
+      }
     case "penalty":
       let cause = state.detail.flatMap { $0.isEmpty ? nil : $0 }
       let until = state.untilIso.flatMap(Self.timeLabel)
@@ -173,6 +182,13 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
       // fallback below — otherwise the one block somebody can act on right now
       // is the one that refuses to say what it wants.
       if let pending = state.pendingGateDetail, !pending.isEmpty { return pending }
+      // A schedule that opened while the app was closed lands here too: the
+      // app's last reconcile wrote "none" because the window wasn't open yet,
+      // and the monitor raised the shield from the schedules file.
+      if let window = ScreenTimeShared.activeSchedules(now: Date()).first {
+        let name = (window.name ?? "").isEmpty ? "A schedule" : window.name!
+        return "\(name) is blocking these apps."
+      }
       // The shield is up but the app's last reconcile says nothing wants it —
       // a state the app's own next foreground resolves by lifting it. Saying
       // so is better than claiming a reason that isn't there.

@@ -1,7 +1,9 @@
 import { nextPendingGate, outstandingGates } from './appGate';
 import { syncAppShield } from './appShield';
 import { canLock } from './nfcKey';
+import { nextScheduleBoundary } from './blockSchedule';
 import { beginVisibleAtPass, getVisibleAt, isHiddenForVacation, isTaskVisible } from './visibilityUtils';
+import { resolvedAssignments, resolveGroupNow, useAppGroupStore } from '../store/useAppGroupStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { useNfcKeyStore } from '../store/useNfcKeyStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -26,7 +28,9 @@ import { useTaskStore } from '../store/useTaskStore';
  *   window is armed from, and the only reason a gate can take hold without the
  *   app being opened.
  *
- * Returns that moment so a caller with a running process can wait at it too.
+ * Returns the next moment the shield changes with nothing writing anything — a
+ * gate coming due or a schedule's window opening or closing — so a caller with
+ * a running process can wait at it too.
  * The armed window is for the app being closed; with it open and idle nothing
  * else would fire at 06:00 either, and a gate that only bit once you touched
  * something would be the same hole one layer up.
@@ -35,6 +39,7 @@ export function reconcileAppShield(): Date | null {
   const settings = useSettingsStore.getState();
   const tasks = useTaskStore.getState().tasks;
   const now = new Date();
+  const schedules = useAppGroupStore.getState().schedules;
 
   // One pass shared across every task, the way every other bulk read of this
   // does it: it caches the day boundary and the segment thresholds, which are
@@ -55,12 +60,18 @@ export function reconcileAppShield(): Date | null {
     penaltyReason: settings.penaltyShieldReason,
     gateEnabled: settings.gateShieldEnabled,
     keyLocked: keyLockedNow(),
+    groups: resolvedAssignments(),
+    schedules,
+    resolveGroup: resolveGroupNow,
     gateTitles: outstandingGates(tasks, isTaskVisible).map(t => t.title),
     pendingGate: pending ? { liveAt: pending.liveAt, titles: pending.tasks.map(t => t.title) } : null,
     now,
   });
 
-  return pending?.liveAt ?? null;
+  const boundary = nextScheduleBoundary(schedules, now);
+  const gateAt = pending?.liveAt ?? null;
+  if (gateAt && boundary) return gateAt < boundary ? gateAt : boundary;
+  return gateAt ?? boundary;
 }
 
 /**

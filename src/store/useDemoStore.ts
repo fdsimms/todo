@@ -8,6 +8,7 @@ import { useSettingsStore } from './useSettingsStore';
 import { useSharedLinkStore } from './useSharedLinkStore';
 import { useStepTimerStore } from './useStepTimerStore';
 import { useNfcKeyStore } from './useNfcKeyStore';
+import { useAppGroupStore } from './useAppGroupStore';
 import { useGroceryStore } from './useGroceryStore';
 import { useMealPlanStore } from './useMealPlanStore';
 import { useLeftoverStore } from './useLeftoverStore';
@@ -86,6 +87,9 @@ export const useDemoStore = create<DemoStore>((set, get) => ({
     // The enrolled key tags are in memory too, and a real tag must not lock the
     // demo's apps (or the demo's tag read as real) across the swap.
     useNfcKeyStore.getState().reload();
+    // Groups and schedules too: a real schedule must not block the demo's apps,
+    // and the demo's must not outlive it.
+    useAppGroupStore.getState().reload();
     seedDemoData();
     // After the seed, not before: the seed builds its rows through the normal
     // store actions, so it registers undo entries of its own on the way past.
@@ -111,6 +115,7 @@ export const useDemoStore = create<DemoStore>((set, get) => ({
     useSharedLinkStore.getState().reload();
     useStepTimerStore.getState().reload();
     useNfcKeyStore.getState().reload();
+    useAppGroupStore.getState().reload();
     // And the demo's own history leaves with the scratch database, rather than
     // staying armed to write invented rows into the user's real one.
     clearUndoHistories();

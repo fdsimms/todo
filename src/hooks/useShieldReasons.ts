@@ -3,6 +3,8 @@ import { outstandingGates } from '../utils/appGate';
 import { shieldReasons, type AppShieldState, type ShieldReasonEntry } from '../utils/appShield';
 import { canLock } from '../utils/nfcKey';
 import { isTaskVisible } from '../utils/visibilityUtils';
+import { nextScheduleBoundary } from '../utils/blockSchedule';
+import { resolvedAssignments, resolveGroupNow, useAppGroupStore } from '../store/useAppGroupStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { useNfcKeyStore } from '../store/useNfcKeyStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -37,16 +39,28 @@ export function useShieldReasons(): ShieldReasonEntry[] {
   const gateKey = useTaskStore(s => (
     gateEnabled ? JSON.stringify(outstandingGates(s.tasks, isTaskVisible).map(t => t.title)) : '[]'
   ));
+  const groups = useAppGroupStore(s => s.groups);
+  const assignments = useAppGroupStore(s => s.assignments);
+  const schedules = useAppGroupStore(s => s.schedules);
   const [now, setNow] = useState(() => new Date());
+  // Bumped by the timer below so the effect re-arms for the following boundary.
+  const [tick, setTick] = useState(0);
 
+  // Waits at whichever comes first: the penalty's end, or a schedule opening
+  // or closing. Neither writes anything at that instant.
   useEffect(() => {
-    setNow(new Date());
-    if (!penaltyUntil) return;
-    const remaining = new Date(penaltyUntil).getTime() - Date.now();
+    const current = new Date();
+    setNow(current);
+    const penaltyAt = penaltyUntil ? new Date(penaltyUntil) : null;
+    const boundary = nextScheduleBoundary(schedules, current);
+    const next = [penaltyAt, boundary].filter((d): d is Date => d !== null && d > current)
+      .reduce<Date | null>((a, d) => (a === null || d < a ? d : a), null);
+    if (!next) return;
+    const remaining = next.getTime() - Date.now();
     if (remaining <= 0 || remaining > MAX_TIMER_MS) return;
-    const timer = setTimeout(() => setNow(new Date()), remaining + 50);
+    const timer = setTimeout(() => setTick(t => t + 1), remaining + 50);
     return () => clearTimeout(timer);
-  }, [penaltyUntil]);
+  }, [penaltyUntil, schedules, tick]);
 
   return useMemo(() => {
     const state: AppShieldState = {
@@ -59,8 +73,11 @@ export function useShieldReasons(): ShieldReasonEntry[] {
       keyLocked: locked && canLock(keys),
       gateTitles: JSON.parse(gateKey) as string[],
       pendingGate: null,
+      groups: resolvedAssignments(),
+      schedules,
+      resolveGroup: resolveGroupNow,
       now,
     };
     return shieldReasons(state);
-  }, [session, focusEnabled, penaltyUntil, penaltyEnabled, penaltyReason, gateEnabled, locked, keys, gateKey, now]);
+  }, [session, focusEnabled, penaltyUntil, penaltyEnabled, penaltyReason, gateEnabled, locked, keys, gateKey, now, groups, assignments, schedules]);
 }

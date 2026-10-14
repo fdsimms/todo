@@ -47,10 +47,10 @@ interface TodoScreenTimeNativeModule {
   isAvailable(): boolean;
   authorizationStatus(): ScreenTimeAuthorization;
   requestAuthorization(): Promise<ScreenTimeAuthorization>;
-  presentAppPicker(): Promise<boolean>;
-  selectionCount(): ScreenTimeSelectionCount;
-  clearSelection(): boolean;
-  applyShield(): boolean;
+  presentAppPicker(groupId: string): Promise<boolean>;
+  selectionCount(groupId: string): ScreenTimeSelectionCount;
+  clearSelection(groupId: string): boolean;
+  applyShield(groupIdsJson: string): boolean;
   clearShield(): boolean;
   setShieldState(
     otherReasonWantsShield: boolean,
@@ -58,7 +58,9 @@ interface TodoScreenTimeNativeModule {
     untilIso: string | null,
     detail: string | null,
     pendingGateDetail: string | null,
+    groupsJson: string,
   ): boolean;
+  setBlockSchedules(windowsJson: string): boolean;
   schedulePenaltyExpiry(untilIso: string): boolean;
   cancelPenaltyExpiry(): boolean;
   scheduleGateWindow(startIso: string, endIso: string): boolean;
@@ -110,22 +112,29 @@ export function requestScreenTimeAuthorization(): Promise<ScreenTimeAuthorizatio
   return degradeOnReject(() => nativeModule!.requestAuthorization(), 'unavailable');
 }
 
-/** Resolves true when the user confirmed a choice, false on cancel. */
-export function presentAppPicker(): Promise<boolean> {
-  return degradeOnReject(() => nativeModule!.presentAppPicker(), false);
+/**
+ * Resolves true when the user confirmed a choice, false on cancel. Each group
+ * of apps has its own selection, keyed by the group's id; `'default'` is the
+ * original single selection.
+ */
+export function presentAppPicker(groupId: string): Promise<boolean> {
+  return degradeOnReject(() => nativeModule!.presentAppPicker(groupId), false);
 }
 
-export function screenTimeSelectionCount(): ScreenTimeSelectionCount {
-  return degradeOnThrow(() => nativeModule!.selectionCount(), { applications: 0, categories: 0 });
+export function screenTimeSelectionCount(groupId: string): ScreenTimeSelectionCount {
+  return degradeOnThrow(() => nativeModule!.selectionCount(groupId), { applications: 0, categories: 0 });
 }
 
-export function clearScreenTimeSelection(): boolean {
-  return degradeOnThrow(() => nativeModule!.clearSelection(), false);
+export function clearScreenTimeSelection(groupId: string): boolean {
+  return degradeOnThrow(() => nativeModule!.clearSelection(groupId), false);
 }
 
-/** True when a shield was actually written, false when nothing is picked. */
-export function applyShield(): boolean {
-  return degradeOnThrow(() => nativeModule!.applyShield(), false);
+/**
+ * Block the union of these groups' apps. True when a shield was actually
+ * written, false when none of them has anything picked.
+ */
+export function applyShield(groupIds: readonly string[]): boolean {
+  return degradeOnThrow(() => nativeModule!.applyShield(JSON.stringify(groupIds)), false);
 }
 
 export function clearShield(): boolean {
@@ -133,7 +142,7 @@ export function clearShield(): boolean {
 }
 
 /** Why the apps are blocked, as the two extensions will read it back. */
-export type ShieldReason = 'penalty' | 'focus' | 'gate' | 'key' | 'none';
+export type ShieldReason = 'penalty' | 'focus' | 'gate' | 'key' | 'schedule' | 'none';
 
 export interface ShieldState {
   /**
@@ -159,6 +168,43 @@ export interface ShieldState {
    * app says so on every reconcile and a stale window finds nothing.
    */
   pendingGateDetail: string | null;
+  groups: ShieldGroupsState;
+}
+
+/**
+ * Which groups of apps each kind of reason holds, for the extension to rebuild
+ * the shield from when one reason ends with the app closed. The shield is the
+ * union of groups, so lifting one reason must leave the rest; the extension
+ * cannot ask the app which they are, so it reads them from here.
+ */
+export interface ShieldGroupsState {
+  /** Groups held by a focus session, a gate and a key lock. */
+  otherGroupIds: string[];
+  penaltyGroupId: string | null;
+  penaltyEndIso: string | null;
+  pendingGateGroupId: string | null;
+  pendingGateLiveAtIso: string | null;
+}
+
+/** One schedule as the native side watches it. Clock times, evaluated by weekday on the device. */
+export interface ScreenTimeScheduleWindow {
+  id: string;
+  name: string;
+  groupId: string;
+  /** 0 = Sunday. */
+  days: number[];
+  startMinutes: number;
+  endMinutes: number;
+  pausedUntilIso: string | null;
+}
+
+/**
+ * Hand the extension the schedules and arm the OS to wake it at their edges.
+ * Replaces whatever was armed, so a schedule that was switched off or deleted
+ * stops waking it.
+ */
+export function setBlockSchedules(windows: readonly ScreenTimeScheduleWindow[]): boolean {
+  return degradeOnThrow(() => nativeModule!.setBlockSchedules(JSON.stringify(windows)), false);
 }
 
 /**
@@ -169,7 +215,7 @@ export function setShieldState(state: ShieldState): boolean {
   return degradeOnThrow(
     () => nativeModule!.setShieldState(
       state.otherReasonWantsShield, state.reason, state.untilIso, state.detail,
-      state.pendingGateDetail,
+      state.pendingGateDetail, JSON.stringify(state.groups),
     ),
     false,
   );

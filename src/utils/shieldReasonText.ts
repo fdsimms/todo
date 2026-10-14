@@ -35,6 +35,11 @@ export function shieldReasonLines(entry: ShieldReasonEntry, formatTime: (iso: st
       if (time) return [`A task wasn’t done in time. Blocked until ${time}.`];
       return ['A task wasn’t done in time.'];
     }
+    case 'schedule': {
+      const time = entry.until ? formatTime(entry.until) : null;
+      const name = entry.name?.trim() ? entry.name.trim() : 'A schedule';
+      return [time ? `${name} is blocking apps until ${time}.` : `${name} is blocking apps.`];
+    }
     case 'key':
       return ['Locked with a key tag. Tap one to unlock.'];
   }

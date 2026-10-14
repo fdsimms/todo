@@ -764,8 +764,10 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // "Screen time" is the name most people have for this and appears nowhere in
   // the copy, same argument as "pomodoro" on the rows above. So are "block"
   // and "distraction", which is what somebody is actually looking for.
-  { id: 'screenTimeApps', iosOnly: true, groupId: 'screenTime', label: 'Apps to block', section: 'Apps', simple: true,
-    keywords: ['screen time', 'which apps', 'picker', 'choose', 'distraction', 'social media', 'restrict'] },
+  { id: 'screenTimeApps', iosOnly: true, groupId: 'screenTime', label: 'Default', section: 'App groups', simple: true,
+    keywords: ['screen time', 'apps to block', 'which apps', 'picker', 'choose', 'distraction', 'social media', 'restrict', 'group', 'groups'] },
+  { id: 'blockSchedules', iosOnly: true, groupId: 'screenTime', label: 'Add a schedule', section: 'Schedules', simple: true,
+    keywords: ['screen time', 'block apps', 'hours', 'times', 'bedtime', 'work hours', 'downtime', 'automatic', 'recurring', 'weekdays', 'distraction', 'restrict'] },
   { id: 'focusShield', iosOnly: true, groupId: 'screenTime', label: 'While focusing', section: 'Reasons to block', simple: true,
     keywords: ['screen time', 'block apps', 'pomodoro', 'focus session', 'distraction', 'shield', 'social media', 'restrict'] },
   { id: 'gateShield', iosOnly: true, groupId: 'screenTime', label: 'Until a task is done', section: 'Reasons to block', simple: true,

@@ -14,6 +14,7 @@ import {
   SCREEN_TIME_THRESHOLD_MIN,
 } from '../utils/screenTimeRules';
 import { screenTimeBridge } from '../utils/screenTimeBridge';
+import { DEFAULT_GROUP_ID } from '../utils/appGroups';
 import type { ScreenTimeAuthorization } from 'todo-screentime-bridge';
 import { CountStepper } from './CountStepper';
 import { InlineAction } from './InlineAction';
@@ -55,7 +56,7 @@ export function ScreenTimeRulesSheet({ visible, onClose }: Props) {
       return;
     }
     setAuthorization(bridge.screenTimeAuthorizationStatus());
-    setSelection(bridge.screenTimeSelectionCount());
+    setSelection(bridge.screenTimeSelectionCount(DEFAULT_GROUP_ID));
   }, []);
 
   // Authorization can be revoked while the user is off in the system Settings
@@ -74,7 +75,7 @@ export function ScreenTimeRulesSheet({ visible, onClose }: Props) {
     haptics.tap();
     const bridge = screenTimeBridge();
     if (!bridge) return;
-    if (await bridge.presentAppPicker()) setSelection(bridge.screenTimeSelectionCount());
+    if (await bridge.presentAppPicker(DEFAULT_GROUP_ID)) setSelection(bridge.screenTimeSelectionCount(DEFAULT_GROUP_ID));
   };
 
   const totalPicked = selection.applications + selection.categories;
