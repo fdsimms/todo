@@ -404,6 +404,7 @@ export function seedDemoData(): void {
     title: 'Morning walk',
     notes: 'Apps you picked in Settings stay blocked until this is done. If it’s still undone at 8 AM, they’re blocked for two hours as well. Doing it late lifts what’s left of that block.',
     gatesApps: true,
+    gateGroupId: social.group?.id ?? null,
     category: 'Health',
     dueDate: today.toISOString(),
     timeSegments: ['morning'],

@@ -39,6 +39,8 @@ const NOT_EXPOSED: Record<string, string[]> = {
     'deadlineOnCalendar', 'logCompletionToCalendar', 'calendarEventId', 'calendarEventExternalId',
     'completionCalendarEventId', 'completionCalendarEventExternalId', 'timeBlockEventId', 'timeBlockExternalId',
     'reminderKind', 'completionTimerMinutes', 'completionTimerNote', 'completionTimerStartedAt',
+    // A group of apps is a selection of tokens that exists only on the phone.
+    'gateGroupId',
   ],
 
   // Bookkeeping the app derives or stamps itself: a snapshot taken so an undo

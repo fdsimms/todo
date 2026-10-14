@@ -182,7 +182,7 @@ export interface ShieldGroupsState {
   otherGroupIds: string[];
   penaltyGroupId: string | null;
   penaltyEndIso: string | null;
-  pendingGateGroupId: string | null;
+  pendingGateGroupIds: string[];
   pendingGateLiveAtIso: string | null;
 }
 

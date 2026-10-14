@@ -82,6 +82,8 @@ import {
 import { ordinal } from '../utils/ordinal';
 import { tagColor } from '../utils/tagColor';
 import { useTaskStore, CONTENT_FIELDS, derivedTargetCount, type TimeBlockPlan } from '../store/useTaskStore';
+import { useAppGroupStore } from '../store/useAppGroupStore';
+import { allGroups as allAppGroups, groupName } from '../utils/appGroups';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { meetingAtStart, nudgeReminderPastMeeting } from '../utils/reminderNudge';
@@ -253,6 +255,7 @@ export interface TaskDraft {
   penaltyCutoffTime?: string | null;
   /** Whether the apps stay blocked until this is done. */
   gatesApps?: boolean;
+  gateGroupId?: string | null;
   /** Preselects the Chain toggle when opening a brand-new task. */
   chainEnabled?: boolean;
   /** Steps already built in quick add, so "More details" doesn't drop them. */
@@ -660,6 +663,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const [windowPickerDate, setWindowPickerDate] = useState(new Date());
   const [penaltyMinutes, setPenaltyMinutes] = useState<number | null>(null);
   const [gatesApps, setGatesApps] = useState(false);
+  const [gateGroupId, setGateGroupId] = useState<string | null>(null);
   const [penaltyCutoffTime, setPenaltyCutoffTime] = useState<string | null>(null);
   const [showPenalty, setShowPenalty] = useState(false);
   const [penaltyPickerOpen, setPenaltyPickerOpen] = useState(false);
@@ -947,6 +951,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
   const penaltyShieldEnabled = useSettingsStore(s => s.penaltyShieldEnabled);
   const gateShieldEnabled = useSettingsStore(s => s.gateShieldEnabled);
+  const appGroups = useAppGroupStore(s => s.groups);
   const defaultReminderLeadMinutes = useSettingsStore(s => s.defaultReminderLeadMinutes);
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const simpleMode = useSettingsStore(s => s.simpleMode);
@@ -1121,6 +1126,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       setWindowEndSun(task.windowEndSun ?? null);
       setPenaltyMinutes(task.penaltyMinutes ?? null);
       setGatesApps(task.gatesApps ?? false);
+      setGateGroupId(task.gateGroupId ?? null);
       setPenaltyCutoffTime(task.penaltyCutoffTime ?? null);
       // The full weekly count, not this week's scaled-down one: that's what
       // the stepper edits, and the scaling is the toggle under it.
@@ -1221,7 +1227,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       // because the one before it was. A new field goes in both branches.
       setTitle(initialDraft?.title ?? ''); titleCaret.resetCaret(initialDraft?.title ?? ''); setNotes(initialDraft?.notes ?? ''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
-      setDueDate(initialDraft?.dueDate ?? null); setExtraDates(initialDraft?.extraDates ?? []); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setDeadlineTime(null); setDeadlineTimePickerOpen(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(initialDraft?.windowEnd ?? null); setWindowStartSun(initialDraft?.windowStartSun ?? null); setWindowEndSun(initialDraft?.windowEndSun ?? null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day');  setStreakCountsUnits(false); setQuotaRampStep(null); setQuotaRampEvery(1); setQuotaRampGoal(null); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setCoinsPerTap(initialDraft?.coinsPerTap ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaPlaceIds(initialDraft?.quotaPlaceIds ?? []); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setProrateFirstWeek(true); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setWeatherWait(initialDraft?.weatherWait ?? null); setWeatherWaitOpen(false); setMeterInput(meterInputFromDraft(initialDraft)); setMeterOpen(false); setMeterReadingText(''); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
+      setDueDate(initialDraft?.dueDate ?? null); setExtraDates(initialDraft?.extraDates ?? []); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setDeadlineTime(null); setDeadlineTimePickerOpen(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(initialDraft?.windowEnd ?? null); setWindowStartSun(initialDraft?.windowStartSun ?? null); setWindowEndSun(initialDraft?.windowEndSun ?? null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setGateGroupId(initialDraft?.gateGroupId ?? null); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day');  setStreakCountsUnits(false); setQuotaRampStep(null); setQuotaRampEvery(1); setQuotaRampGoal(null); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setCoinsPerTap(initialDraft?.coinsPerTap ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaPlaceIds(initialDraft?.quotaPlaceIds ?? []); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setProrateFirstWeek(true); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setWeatherWait(initialDraft?.weatherWait ?? null); setWeatherWaitOpen(false); setMeterInput(meterInputFromDraft(initialDraft)); setMeterOpen(false); setMeterReadingText(''); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceMonthDay(initialDraft?.recurrenceMonthDay ?? null);
@@ -1330,6 +1336,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       windowEndSun: task ? (task.windowEndSun ?? null) : (initialDraft?.windowEndSun ?? null),
       penaltyMinutes: task ? (task.penaltyMinutes ?? null) : (initialDraft?.penaltyMinutes ?? null),
       gatesApps: task ? (task.gatesApps ?? false) : (initialDraft?.gatesApps ?? false),
+      gateGroupId: task ? (task.gateGroupId ?? null) : (initialDraft?.gateGroupId ?? null),
       penaltyCutoffTime: task ? (task.penaltyCutoffTime ?? null) : (initialDraft?.penaltyCutoffTime ?? null),
       targetCount: task ? (proratedFrom(task) ?? task.targetCount ?? null) : (initialDraft?.targetCount ?? null),
       prorateFirstWeek: true,
@@ -2074,6 +2081,9 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       // never satisfy a gate. Cleared rather than carried so flipping the
       // polarity cannot leave a block nothing can lift.
       gatesApps: polarity === 'negative' ? false : gatesApps,
+      // Kept only while the gate is on, so turning it off cannot leave a group
+      // behind that a later re-enable would silently reuse.
+      gateGroupId: polarity === 'negative' || !gatesApps ? null : gateGroupId,
       // Meaningless without a penalty to be late for, and meaningless on an
       // avoid-task, which fails on a tap rather than at a time. Cleared rather
       // than carried so a task that stops costing anything doesn't keep a
@@ -3005,7 +3015,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       timeSegments,
       windowStart, windowEnd,
       windowStartSun, windowEndSun,
-      penaltyMinutes, gatesApps, penaltyCutoffTime,
+      penaltyMinutes, gatesApps, gateGroupId, penaltyCutoffTime,
       targetCount,
       prorateFirstWeek,
       targetUnit: targetCount !== null ? normalizeTargetUnit(targetUnit) : null,
@@ -5764,6 +5774,33 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                   <View style={[styles.toggleKnob, gatesApps && styles.toggleKnobOn]} />
                 </View>
               </TouchableOpacity>
+            ),
+          }] : []),
+          // Which apps this gate holds. Only while the gate is on, and the
+          // choices are the groups made on the Screen Time screen.
+          ...(gateShieldEnabled && polarity !== 'negative' && gatesApps ? [{
+            key: 'gateGroup',
+            label: 'Apps to block',
+            set: gateGroupId !== null,
+            keywords: ['block', 'gate', 'group', 'apps', 'screen time', 'which apps'],
+            node: (
+              <EditorRow
+                icon="apps-outline"
+                label="Apps to block"
+                hint="Which group of apps this task holds. Groups are made on the Screen Time screen."
+                value={gateGroupId === null ? 'Gate default' : groupName(appGroups, gateGroupId)}
+                onPress={() => {
+                  haptics.tap();
+                  Alert.alert('Apps to block', 'Choose which group of apps this task holds.', [
+                    { text: gateGroupId === null ? 'Gate default (selected)' : 'Gate default', onPress: () => setGateGroupId(null) },
+                    ...allAppGroups(appGroups).map(g => ({
+                      text: g.id === gateGroupId ? `${g.name} (selected)` : g.name,
+                      onPress: () => setGateGroupId(g.id),
+                    })),
+                    { text: 'Cancel', style: 'cancel' as const },
+                  ]);
+                }}
+              />
             ),
           }] : []),
           ...(penaltyShieldEnabled ? [{

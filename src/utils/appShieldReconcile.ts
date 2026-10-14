@@ -1,6 +1,7 @@
-import { nextPendingGate, outstandingGates } from './appGate';
+import { gateGroupFor, nextPendingGate, outstandingGates } from './appGate';
 import { syncAppShield } from './appShield';
 import { canLock } from './nfcKey';
+import type { Task } from '../types';
 import { nextScheduleBoundary } from './blockSchedule';
 import { beginVisibleAtPass, getVisibleAt, isHiddenForVacation, isTaskVisible } from './visibilityUtils';
 import { resolvedAssignments, resolveGroupNow, useAppGroupStore } from '../store/useAppGroupStore';
@@ -40,6 +41,10 @@ export function reconcileAppShield(): Date | null {
   const tasks = useTaskStore.getState().tasks;
   const now = new Date();
   const schedules = useAppGroupStore.getState().schedules;
+  // A gate holds its own group when it names one, else the gate setting's.
+  const settingGroup = resolvedAssignments().gate;
+  const groupOf = (t: Task) => gateGroupFor(t, settingGroup, resolveGroupNow);
+  const gates = outstandingGates(tasks, isTaskVisible);
 
   // One pass shared across every task, the way every other bulk read of this
   // does it: it caches the day boundary and the segment thresholds, which are
@@ -63,8 +68,11 @@ export function reconcileAppShield(): Date | null {
     groups: resolvedAssignments(),
     schedules,
     resolveGroup: resolveGroupNow,
-    gateTitles: outstandingGates(tasks, isTaskVisible).map(t => t.title),
-    pendingGate: pending ? { liveAt: pending.liveAt, titles: pending.tasks.map(t => t.title) } : null,
+    gateTitles: gates.map(t => t.title),
+    gateGroupIds: gates.map(groupOf),
+    pendingGate: pending
+      ? { liveAt: pending.liveAt, titles: pending.tasks.map(t => t.title), groupIds: pending.tasks.map(groupOf) }
+      : null,
     now,
   });
 
@@ -84,7 +92,19 @@ export function keyLockedNow(): boolean {
   return locked && canLock(keys);
 }
 
-/** The gate titles standing in the way right now, for the sync hook's own change check. */
+/**
+ * The gates standing in the way right now, each with the group it holds, as one
+ * string for the sync hook's own change check. The group is part of it because
+ * moving a gate to another group changes what is blocked while changing no title.
+ */
+export function gateKeyNow(): string {
+  const settingGroup = resolvedAssignments().gate;
+  return outstandingGates(useTaskStore.getState().tasks, isTaskVisible)
+    .map(t => `${t.title}:${gateGroupFor(t, settingGroup, resolveGroupNow)}`)
+    .join('\n');
+}
+
+/** The gate titles standing in the way right now. */
 export function gateTitlesNow(): string[] {
   return outstandingGates(useTaskStore.getState().tasks, isTaskVisible).map(t => t.title);
 }

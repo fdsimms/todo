@@ -62,6 +62,13 @@ export interface AppShieldState {
    */
   gateTitles: readonly string[];
   /**
+   * The resolved group of each gate in `gateTitles`, in the same order. A gate
+   * with no entry here (or no array at all) holds the gate setting's group
+   * (`groups.gate`). Optional so a caller that predates per-task groups, and a
+   * test that doesn't care, needn't supply it.
+   */
+  gateGroupIds?: readonly string[];
+  /**
    * The next gate that isn't live yet: when it becomes live, and the titles to
    * name for it. Null when there is none within reach.
    *
@@ -70,7 +77,7 @@ export interface AppShieldState {
    * monitor extension should block for while the app is closed. A gate already
    * live has nothing to arm.
    */
-  pendingGate: { liveAt: Date; titles: readonly string[] } | null;
+  pendingGate: { liveAt: Date; titles: readonly string[]; groupIds?: readonly string[] } | null;
   /**
    * The group each of the four reasons blocks, already resolved (a removed
    * group is Default). Every reason names a group of apps rather than one
@@ -120,7 +127,15 @@ export function shieldReasons(state: AppShieldState): ShieldReasonEntry[] {
   const reasons: ShieldReasonEntry[] = [];
   if (shieldWanted(state.session, state.focusEnabled)) reasons.push({ reason: 'focus', groupId: state.groups.focus });
   if (gateShieldWanted(state.gateTitles.length, state.gateEnabled)) {
-    reasons.push({ reason: 'gate', titles: state.gateTitles, groupId: state.groups.gate });
+    // One entry per group, so a gate for Social and a gate for Games are two
+    // lines on the status card and two groups in the union, each naming only
+    // its own tasks.
+    const byGroup = new Map<string, string[]>();
+    state.gateTitles.forEach((title, i) => {
+      const groupId = state.gateGroupIds?.[i] ?? state.groups.gate;
+      byGroup.set(groupId, [...(byGroup.get(groupId) ?? []), title]);
+    });
+    for (const [groupId, titles] of byGroup) reasons.push({ reason: 'gate', titles, groupId });
   }
   if (penaltyShieldWanted(state.penaltyUntil, state.penaltyEnabled, state.now)) {
     reasons.push({
@@ -243,7 +258,9 @@ export function syncAppShield(state: AppShieldState): void {
         .map(r => r.groupId)),
       penaltyGroupId: penaltyWants ? state.groups.penalty : null,
       penaltyEndIso: penaltyWants ? state.penaltyUntil : null,
-      pendingGateGroupId: gateWindow ? state.groups.gate : null,
+      pendingGateGroupIds: gateWindow
+        ? uniqueGroupIds(state.pendingGate?.groupIds ?? [state.groups.gate])
+        : [],
       pendingGateLiveAtIso: gateWindow ? gateWindow.startIso : null,
     },
   });

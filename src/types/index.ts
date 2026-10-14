@@ -3574,6 +3574,13 @@ export interface Task {
    * to hide the row.
    */
   gatesApps: boolean;
+  /**
+   * The group of apps this gate holds (`appGroups.ts`), or null for the gate
+   * setting's own group. Only read while `gatesApps` is on. An id that no
+   * longer names a group reads as Default, as for every reason. Device-local:
+   * group ids mean nothing on another phone (`SYNC_DEVICE_LOCAL_COLUMNS`).
+   */
+  gateGroupId?: string | null;
 
   // Streaks
   //

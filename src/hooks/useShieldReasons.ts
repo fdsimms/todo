@@ -37,7 +37,9 @@ export function useShieldReasons(): ShieldReasonEntry[] {
   const locked = useNfcKeyStore(s => s.locked);
   // Held as one string so a task write that changes no gate costs no render.
   const gateKey = useTaskStore(s => (
-    gateEnabled ? JSON.stringify(outstandingGates(s.tasks, isTaskVisible).map(t => t.title)) : '[]'
+    gateEnabled
+      ? JSON.stringify(outstandingGates(s.tasks, isTaskVisible).map(t => ({ title: t.title, own: t.gateGroupId ?? null })))
+      : '[]'
   ));
   const groups = useAppGroupStore(s => s.groups);
   const assignments = useAppGroupStore(s => s.assignments);
@@ -63,6 +65,8 @@ export function useShieldReasons(): ShieldReasonEntry[] {
   }, [penaltyUntil, schedules, tick]);
 
   return useMemo(() => {
+    const gateRows = JSON.parse(gateKey) as { title: string; own: string | null }[];
+    const settingGroup = resolvedAssignments().gate;
     const state: AppShieldState = {
       session,
       focusEnabled,
@@ -71,7 +75,8 @@ export function useShieldReasons(): ShieldReasonEntry[] {
       penaltyReason,
       gateEnabled,
       keyLocked: locked && canLock(keys),
-      gateTitles: JSON.parse(gateKey) as string[],
+      gateTitles: gateRows.map(g => g.title),
+      gateGroupIds: gateRows.map(g => (g.own ? resolveGroupNow(g.own) : settingGroup)),
       pendingGate: null,
       groups: resolvedAssignments(),
       schedules,
