@@ -109,6 +109,8 @@ import { previewCategoryDefault, previewSeededFields } from '../utils/taskFieldD
 import { apportionedMinutes, timerSegments } from '../utils/timerSegments';
 import { CollapsibleField } from './CollapsibleField';
 import { PillGroup } from './PillGroup';
+import { pinnedPlaces } from '../utils/placeGate';
+import { readSavedPlaces } from '../utils/savedPlaces';
 import { useGroceryStore } from '../store/useGroceryStore';
 import {
   DEFAULT_SUPPLY_REORDER_AT,
@@ -288,6 +290,7 @@ export interface TaskDraft {
   coinsPerTap?: boolean;
   quotaIntervalMinutes?: number | null;
   quotaReminders?: boolean;
+  quotaPlaceIds?: string[];
   quotaAlwaysVisible?: boolean;
   followWaterTarget?: boolean;
   supplyCount?: number | null;
@@ -626,6 +629,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const [coinsPerTap, setCoinsPerTap] = useState(false);
   const [quotaIntervalMinutes, setQuotaIntervalMinutes] = useState<number | null>(null);
   const [quotaReminders, setQuotaReminders] = useState(false);
+  const [quotaPlaceIds, setQuotaPlaceIds] = useState<string[]>([]);
   const [quotaAlwaysVisible, setQuotaAlwaysVisible] = useState(false);
   // Whether a weekly target set up partway through a week asks for fewer that
   // first week. On by default; only offered when it would change the count.
@@ -1127,6 +1131,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       setCoinsPerTap(task.coinsPerTap ?? false);
       setQuotaIntervalMinutes(task.quotaIntervalMinutes ?? null);
       setQuotaReminders(task.quotaReminders ?? false);
+      setQuotaPlaceIds(task.quotaPlaceIds ?? []);
       setQuotaAlwaysVisible(task.quotaAlwaysVisible ?? false);
       setFollowWaterTarget(task.followWaterTarget ?? false);
       setSupplyCount(task.supplyCount ?? null);
@@ -1216,7 +1221,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       // because the one before it was. A new field goes in both branches.
       setTitle(initialDraft?.title ?? ''); titleCaret.resetCaret(initialDraft?.title ?? ''); setNotes(initialDraft?.notes ?? ''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
-      setDueDate(initialDraft?.dueDate ?? null); setExtraDates(initialDraft?.extraDates ?? []); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setDeadlineTime(null); setDeadlineTimePickerOpen(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(initialDraft?.windowEnd ?? null); setWindowStartSun(initialDraft?.windowStartSun ?? null); setWindowEndSun(initialDraft?.windowEndSun ?? null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day');  setStreakCountsUnits(false); setQuotaRampStep(null); setQuotaRampEvery(1); setQuotaRampGoal(null); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setCoinsPerTap(initialDraft?.coinsPerTap ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setProrateFirstWeek(true); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setWeatherWait(initialDraft?.weatherWait ?? null); setWeatherWaitOpen(false); setMeterInput(meterInputFromDraft(initialDraft)); setMeterOpen(false); setMeterReadingText(''); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
+      setDueDate(initialDraft?.dueDate ?? null); setExtraDates(initialDraft?.extraDates ?? []); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setDeadlineTime(null); setDeadlineTimePickerOpen(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(initialDraft?.windowEnd ?? null); setWindowStartSun(initialDraft?.windowStartSun ?? null); setWindowEndSun(initialDraft?.windowEndSun ?? null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day');  setStreakCountsUnits(false); setQuotaRampStep(null); setQuotaRampEvery(1); setQuotaRampGoal(null); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setCoinsPerTap(initialDraft?.coinsPerTap ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaPlaceIds(initialDraft?.quotaPlaceIds ?? []); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setProrateFirstWeek(true); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setWeatherWait(initialDraft?.weatherWait ?? null); setWeatherWaitOpen(false); setMeterInput(meterInputFromDraft(initialDraft)); setMeterOpen(false); setMeterReadingText(''); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceMonthDay(initialDraft?.recurrenceMonthDay ?? null);
@@ -1333,6 +1338,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       coinsPerTap: task ? (task.coinsPerTap ?? false) : (initialDraft?.coinsPerTap ?? false),
       quotaIntervalMinutes: task ? (task.quotaIntervalMinutes ?? null) : (initialDraft?.quotaIntervalMinutes ?? null),
       quotaReminders: task ? (task.quotaReminders ?? false) : (initialDraft?.quotaReminders ?? false),
+      quotaPlaceIds: task ? (task.quotaPlaceIds ?? []) : (initialDraft?.quotaPlaceIds ?? []),
       quotaAlwaysVisible: task ? (task.quotaAlwaysVisible ?? false) : (initialDraft?.quotaAlwaysVisible ?? false),
       followWaterTarget: task ? (task.followWaterTarget ?? false) : (initialDraft?.followWaterTarget ?? false),
       quotaPeriod: task ? (task.quotaPeriod ?? 'day') : (initialDraft?.quotaPeriod ?? 'day'),
@@ -2087,6 +2093,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       // behind they'd come back to life the next time a target was added.
       quotaIntervalMinutes: targetCount !== null ? quotaIntervalMinutes : null,
       quotaReminders: targetCount !== null ? quotaReminders : false,
+      quotaPlaceIds: targetCount !== null && quotaReminders ? quotaPlaceIds : [],
       quotaAlwaysVisible: targetCount !== null ? quotaAlwaysVisible : false,
       // Cleared when what it follows goes: it only means anything on a daily
       // target that logs water.
@@ -3006,6 +3013,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       coinsPerTap: targetCount !== null ? coinsPerTap : false,
       quotaIntervalMinutes: targetCount !== null ? quotaIntervalMinutes : null,
       quotaReminders: targetCount !== null ? quotaReminders : false,
+      quotaPlaceIds: targetCount !== null && quotaReminders ? quotaPlaceIds : [],
       quotaAlwaysVisible: targetCount !== null ? quotaAlwaysVisible : false,
       // Cleared when what it follows goes: it only means anything on a daily
       // target that logs water.
@@ -4561,6 +4569,27 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                           <View style={[styles.toggleKnob, quotaReminders && styles.toggleKnobOn]} />
                         </View>
                       </TouchableOpacity>
+                      {quotaReminders && pinnedPlaces(readSavedPlaces()).length > 0 && (
+                        <View style={styles.placeLimit}>
+                          <Text style={styles.optionLabel}>Only notify me at</Text>
+                          <Text style={styles.optionHint}>
+                            Checked when you open the app, so notifications stop within about 2 hours of leaving. Leave all unchecked to be notified anywhere
+                          </Text>
+                          <PillGroup
+                            noun="place"
+                            surface="card"
+                            options={pinnedPlaces(readSavedPlaces()).map(p => ({
+                              key: p.id,
+                              label: p.name,
+                              selected: quotaPlaceIds.includes(p.id),
+                              onPress: () => {
+                                haptics.tap();
+                                setQuotaPlaceIds(ids => ids.includes(p.id) ? ids.filter(x => x !== p.id) : [...ids, p.id]);
+                              },
+                            }))}
+                          />
+                        </View>
+                      )}
                     </>
                   )}
                   {/* Hidden under a cadence, where it's already implied: an
@@ -8586,6 +8615,7 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   optionContent: { flex: 1 },
   optionLabel: { color: colors.text, fontSize: font.md },
   optionHint: { color: colors.textSecondary, fontSize: font.xs, marginTop: 1 },
+  placeLimit: { paddingHorizontal: spacing.md, paddingVertical: spacing.smd, gap: spacing.xsm },
   sep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.separator, marginLeft: spacing.md + 18 + spacing.md },
   intervalRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,

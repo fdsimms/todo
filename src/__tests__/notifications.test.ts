@@ -51,6 +51,10 @@ const DEFAULT_MOCK_SETTINGS = {
   activeHoursEnd: '22:00',
 };
 
+// The place gate reads its stored fix from the database; its own rule is
+// covered in placeGate.test.ts, so these tests see reminders as allowed.
+jest.mock('../utils/placeGate', () => ({ placeGateAllows: () => true, readPlaceFix: () => null }));
+
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: { getState: () => mockSettings },
 }));

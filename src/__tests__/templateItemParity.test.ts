@@ -52,6 +52,11 @@ const NOT_SEEDED: Record<string, string[]> = {
   // those items are tasks).
   'placed by the run itself': ['parentId', 'projectId', 'personIds', 'seriesId', 'blockedById', 'blockedByIds', 'waitForSeriesEnd'],
 
+  // Which saved places a person's reminders are limited to. Saved places are
+  // the person's own settings, so a template shared with somebody else would
+  // carry ids that name nothing on their phone.
+  'a choice among the person\'s own saved places': ['quotaPlaceIds'],
+
   // A count of something on a shelf. Seeded on every run, it would hand each
   // new task a fresh stock nobody bought.
   'inventory, which a template would duplicate on every run': [

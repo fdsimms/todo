@@ -278,6 +278,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     cookbooks: () => [],
     mealPlan: () => [],
     planMeal: () => { throw new Error('not stubbed'); },
+    savedPlaceNames: ids => ids.map(id => `place ${id}`),
     people: () => [],
     personGroups: () => [],
     personNotes: () => [],
@@ -509,6 +510,18 @@ describe('getTask', () => {
     expect(result.hiddenUntil).toBeUndefined();
     // Visible tasks say nothing, whatever their flag.
     expect(getTask(withTasks([task({ id: 'today-1', title: 'x', vacationPause: true })]), 'today-1')!.hiddenReason).toBeUndefined();
+  });
+
+  it('shows a target\'s cadence, reminders and the places they are limited to', () => {
+    const eyeBreaks = task({
+      id: 'eyes', title: '20/20/20', targetCount: 27, quotaPeriod: 'day', quotaIntervalMinutes: 20,
+      quotaReminders: true, quotaPlaceIds: ['office', 'home'],
+    });
+    expect(getTask(withTasks([eyeBreaks]), 'eyes')!.target).toMatchObject({
+      count: 27, everyMinutes: 20, remind: true, onlyAtPlaces: ['place office', 'place home'],
+    });
+    const plain = task({ id: 'plain', title: 'Water', targetCount: 8, quotaPeriod: 'day', quotaPlaceIds: ['office'] });
+    expect(getTask(withTasks([plain]), 'plain')!.target).not.toHaveProperty('onlyAtPlaces');
   });
 
   it('shows the rules behind a recomputed deadline or reminder, a followed water target, a linked supply, and the two per-task flags', () => {

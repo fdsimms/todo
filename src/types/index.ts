@@ -2669,6 +2669,11 @@ export interface Task {
   // to be nudged about is a real thing to ask for, and so is being nudged
   // about a plain count.
   quotaReminders: boolean;
+  // Saved places (`SavedPlace.id`) the reminders above are limited to; empty or
+  // absent = anywhere. See src/utils/placeGate.ts: the app never reads location
+  // in the background, so "at" means the last foreground fix, and a reminder is
+  // only scheduled while that fix is recent and inside one of these places.
+  quotaPlaceIds?: string[];
   // When today's run was started by hand, if it was — the "start now" that
   // makes a fixed window optional.
   //

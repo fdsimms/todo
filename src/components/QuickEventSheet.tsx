@@ -1322,7 +1322,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
             {savedInUse && (
               <View style={styles.captionRow}>
                 <Ionicons name="bookmark" size={13} color={colors.textSecondary} />
-                <Text style={styles.captionText} numberOfLines={1}>{`${savedInUse.name} is ${savedInUse.text}`}</Text>
+                <Text style={styles.captionText} numberOfLines={1}>{savedInUse.text}</Text>
                 <TouchableOpacity
                   onPress={() => { haptics.tap(); animateLayout(); setSavedDismissedKey(savedPlaceKey(savedInUse.name)); }}
                   hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
