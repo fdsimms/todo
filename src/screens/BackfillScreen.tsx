@@ -1043,6 +1043,23 @@ export function BackfillScreen() {
       undo,
     });
     advance(currentTask.id);
+    offerKindDefault(currentTask, patch, false);
+  };
+
+  /**
+   * The same "use this for new tasks" offer a whole-group answer makes, for a
+   * generated task that is the only one of its kind left in the queue. Such a
+   * card has no group toggle (a batch needs two or more cards), yet it is
+   * exactly the case where the answer is worth keeping: the next one the app
+   * writes would otherwise come back here.
+   */
+  const offerKindDefault = (task: Task, patch: Partial<Task>, dismissed: boolean) => {
+    if (active?.kind !== 'task' || !task.generatedKind) return;
+    offerGroupDefault(
+      task,
+      { kind: 'generated', id: task.generatedKind, key: `generated:${task.generatedKind}` },
+      defaultsFromAnswer(active.id, patch, dismissed),
+    );
   };
 
   /**
@@ -1114,7 +1131,7 @@ export function BackfillScreen() {
       ? useSettingsStore.getState().generatedTaskDefaults[kind]
       : projectId ? useProjectStore.getState().getProjectById(projectId)?.taskDefaults : null;
     if (!defaultsDiffer(current, answer)) return;
-    const name = groupLabel ?? 'this group';
+    const name = scopeLabelFor(scope) ?? 'this group';
     Alert.alert(
       `Use this for new tasks in ${name}?`,
       'New tasks there start with this answer, so they won’t come up here. Change it later in the project editor or Settings.',
@@ -1542,6 +1559,7 @@ export function BackfillScreen() {
         undo: restoreRows(snapshots),
       });
       advance(currentTask.id);
+      offerKindDefault(currentTask, {}, true);
     } else if (active.kind === 'category') {
       if (!currentCategory) return;
       const categoryName = currentCategory.name;
