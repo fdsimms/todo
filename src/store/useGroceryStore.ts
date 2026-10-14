@@ -1141,12 +1141,20 @@ interface GroceryStore extends UndoHistoryActions {
    * the affordance a mis-swipe actually reaches for. `revertPantryAnswer` is
    * what that button calls.
    *
+   * `opts.addToList` is "running low" only: whether this answer also puts the
+   * row on the list, over the "Running low adds to the list" setting. The food
+   * log sheets pass it from their own switch; the deck leaves it to the setting.
+   *
    * Returns the thawed portions an "out of it" answer deleted, the same ones
    * `markOutOfMany` deletes (see `ItemProduct.isPortion`), so the deck can
    * hand them back to `revertPantryAnswer`: the row snapshot alone can't
    * restore a box that is no longer there.
    */
-  answerPantryReview: (itemId: string, answer: PantryReviewAnswer) => ItemProduct[];
+  answerPantryReview: (
+    itemId: string,
+    answer: PantryReviewAnswer,
+    opts?: { addToList?: boolean }
+  ) => ItemProduct[];
   /**
    * Write an item's own fields back, and the remembered aisle for its name (the
    * Activity screen's undo of an agent's catalog edit, `agentCatalogRevert.ts`).
@@ -3579,7 +3587,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     }
   },
 
-  answerPantryReview(itemId, answer) {
+  answerPantryReview(itemId, answer, opts = {}) {
     // 'low' is setRunningLow outright, including its one-directional reach into
     // onList — that reach is the whole reason this answer is in the deck (see
     // PantryReviewAnswer), so routing round it would leave the middle answer
@@ -3589,7 +3597,9 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // flagged low onto an away list (the active one, once checkAwayGroceryList
     // has switched to it) is never restocked by that trip and never offered to
     // the home list after it.
-    if (answer === 'low') get().setRunningLow(itemId, true, { registerUndo: false, listId: null });
+    if (answer === 'low') {
+      get().setRunningLow(itemId, true, { registerUndo: false, listId: null, addToList: opts.addToList });
+    }
     const item = get().items.find(i => i.id === itemId);
     if (!item) return [];
     // The other two answers are one column, which is why they share a path:

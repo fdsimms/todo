@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
+import { View, Text, Switch, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, spacing, type Colors } from '../theme';
 import { useGroceryStore } from '../store/useGroceryStore';
@@ -17,6 +17,13 @@ interface Props {
    */
   value: PantryReviewAnswer | null;
   onChange: (answer: PantryReviewAnswer | null) => void;
+  /**
+   * Whether "Running low" also puts the item on the grocery list, or undefined
+   * for the "Running low adds to the list" setting. Shown only while "Running
+   * low" is the picked answer, since it means nothing for the other two.
+   */
+  addToList?: boolean;
+  onAddToListChange?: (on: boolean) => void;
   /** Names the group for screen readers. */
   label?: string;
   surface?: 'page' | 'card';
@@ -41,7 +48,7 @@ const OPTIONS: { value: PantryReviewAnswer | null; label: string }[] = [
  * sheet's write (`answerPantryReview`) happens only for something the person
  * changed, never for a standing the row already held.
  */
-export function PantryAnswerField({ itemId, value, onChange, label = 'Pantry', surface, style }: Props) {
+export function PantryAnswerField({ itemId, value, onChange, addToList, onAddToListChange, label = 'Pantry', surface, style }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const item = useGroceryStore(s => s.items.find(i => i.id === itemId));
@@ -78,8 +85,16 @@ export function PantryAnswerField({ itemId, value, onChange, label = 'Pantry', s
         label={label}
         surface={surface}
       />
-      {value === 'low' && runningLowAddsToList && (
-        <Text style={styles.hint}>Running low also adds it to your grocery list.</Text>
+      {value === 'low' && onAddToListChange && (
+        <View style={styles.switchRow}>
+          <Text style={styles.switchLabel}>Add to grocery list</Text>
+          <Switch
+            value={addToList ?? runningLowAddsToList}
+            onValueChange={onAddToListChange}
+            trackColor={{ false: colors.bgTertiary, true: colors.accent }}
+            accessibilityLabel="Add to grocery list"
+          />
+        </View>
       )}
     </View>
   );
@@ -94,5 +109,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   status: { flexDirection: 'row', alignItems: 'center', gap: spacing.xsm, flexShrink: 1 },
   dot: { width: 7, height: 7, borderRadius: 4 },
   statusText: { color: colors.text, fontSize: font.xs, fontWeight: fontWeight.medium, flexShrink: 1 },
-  hint: { color: colors.textSecondary, fontSize: font.xs, lineHeight: 16 },
+  switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.smd },
+  switchLabel: { color: colors.text, fontSize: font.sm, flexShrink: 1 },
 });

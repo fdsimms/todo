@@ -5942,6 +5942,20 @@ describe('answerPantryReview', () => {
     expect(updated.onList).toBe(true);
   });
 
+  // Running low without restocking: the food log sheets pass their own switch,
+  // which wins over the "Running low adds to the list" setting either way.
+  it('marks "running low" without listing it when addToList is false', () => {
+    const flour = makeItem({ name: 'Flour', onList: false });
+    seed([flour]);
+
+    useGroceryStore.getState().answerPantryReview(flour.id, 'low', { addToList: false });
+
+    const updated = useGroceryStore.getState().items[0];
+    expect(updated.runningLowAt).not.toBeNull();
+    expect(updated.onList).toBe(false);
+    expect(entryFor(useGroceryStore.getState().listEntries, flour.id, null)).toBeNull();
+  });
+
   // The deck reviews the pantry at home, so the row joins the home list even
   // while an away list is the active one (checkAwayGroceryList switches to it
   // for the trip). Flagged onto the away list it was never restocked by that

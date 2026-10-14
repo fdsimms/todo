@@ -131,6 +131,8 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
   // What was said about each card's pantry stock. Missing is "No change". Only
   // applied to a card that is actually logged, the same as its amount.
   const [pantryAnswers, setPantryAnswers] = useState<Record<string, PantryReviewAnswer | null>>({});
+  // Per card, whether "Running low" also lists it; missing follows the setting.
+  const [pantryAddToList, setPantryAddToList] = useState<Record<string, boolean>>({});
   // Which unit's pill is selected per card, and the bare number typed against
   // it — split the same way `FoodLogEntrySheet`'s amount field is, and reset
   // together with the answers below. 'other' means the free-text field, same
@@ -150,6 +152,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
     setWeighedPanels({});
     setWeighGrams({});
     setPantryAnswers({});
+    setPantryAddToList({});
     setChosenSlot(slot);
   }, [visible, slot]);
 
@@ -264,7 +267,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
         at,
       });
       const pantry = pantryAnswers[food.key];
-      if (pantry && food.itemId) answerPantryReview(food.itemId, pantry);
+      if (pantry && food.itemId) answerPantryReview(food.itemId, pantry, { addToList: pantryAddToList[food.key] });
     }
     haptics.success();
     Keyboard.dismiss();
@@ -442,6 +445,8 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                     itemId={food.itemId}
                     value={pantryAnswers[food.key] ?? null}
                     onChange={v => setPantryAnswers(a => ({ ...a, [food.key]: v }))}
+                    addToList={pantryAddToList[food.key]}
+                    onAddToListChange={on => setPantryAddToList(a => ({ ...a, [food.key]: on }))}
                     label={`Pantry stock of ${food.label}`}
                     style={styles.pantryField}
                   />

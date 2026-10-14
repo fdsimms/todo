@@ -520,6 +520,8 @@ export function FoodLogEntrySheet({
   // Null leaves the pantry alone. Staged until Add, like the meal, so Cancel
   // discards it; reset whenever the picked food changes (effect below).
   const [pantryAnswer, setPantryAnswer] = useState<PantryReviewAnswer | null>(null);
+  // Whether "Running low" also lists it; undefined follows the setting.
+  const [pantryAddToList, setPantryAddToList] = useState<boolean | undefined>(undefined);
   const [weighGrams, setWeighGrams] = useState('');
   // The food database section under the search field: open once its button
   // is tapped, and ranked against what was searched rather than the live
@@ -566,6 +568,7 @@ export function FoodLogEntrySheet({
     setRecalledAmount(null);
     setChosenSlot(slot);
     setPantryAnswer(null);
+    setPantryAddToList(undefined);
     closeDatabase();
     setEstimateOpen(false);
     setReviewId(null);
@@ -597,6 +600,7 @@ export function FoodLogEntrySheet({
     setWeighGrams('');
     setCatalogPickOpen(false);
     setPantryAnswer(null);
+    setPantryAddToList(undefined);
   }, [picked]);
 
   // A fresh dish starts with none of its varying lines answered, same as a
@@ -720,6 +724,7 @@ export function FoodLogEntrySheet({
     setRecalledAmount(null);
     setVaryingAmounts({});
     setPantryAnswer(null);
+    setPantryAddToList(undefined);
     setCatalogPickOpen(false);
   };
 
@@ -1339,7 +1344,7 @@ export function FoodLogEntrySheet({
     }
     // Written only once the entry is, so a refused log leaves the pantry as it
     // was. The same write the pantry review's three answers make.
-    if (pantryAnswer && picked.itemId && !editing && !onPickFood) answerPantryReview(picked.itemId, pantryAnswer);
+    if (pantryAnswer && picked.itemId && !editing && !onPickFood) answerPantryReview(picked.itemId, pantryAnswer, { addToList: pantryAddToList });
     afterSave(picked.label);
   };
 
@@ -2075,6 +2080,8 @@ export function FoodLogEntrySheet({
                   itemId={picked.itemId}
                   value={pantryAnswer}
                   onChange={setPantryAnswer}
+                  addToList={pantryAddToList}
+                  onAddToListChange={setPantryAddToList}
                   surface="page"
                   style={styles.pantryField}
                 />
