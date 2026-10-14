@@ -1,0 +1,7 @@
+{
+  "name": "todo-nfc-bridge",
+  "version": "1.0.0",
+  "description": "Local Expo module for iOS Core NFC: reading a tag's hardware id so a tag can be enrolled as the key that locks and unlocks blocked apps.",
+  "main": "index.ts",
+  "private": true
+}

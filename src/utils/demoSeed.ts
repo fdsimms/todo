@@ -32,6 +32,7 @@ import { stepDurationOffers, stepTimerExcerpt } from './stepTimers';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore, type WeekStart } from '../store/useSettingsStore';
+import { useNfcKeyStore } from '../store/useNfcKeyStore';
 import { sunAnchorHHMM } from './sunTimes';
 import { supplyReorderTitle } from './supply';
 import { useTemplateStore } from '../store/useTemplateStore';
@@ -381,6 +382,10 @@ export function seedDemoData(): void {
   // a time passing, the slip above fails on a tap.
   useSettingsStore.getState().setPenaltyShieldEnabled(true);
   useSettingsStore.getState().setGateShieldEnabled(true);
+  // One enrolled key tag, unlocked: the Key tags rows list nothing until a tag
+  // exists, and the lock itself is left off so the demo doesn't open locked.
+  // Enrolled by id rather than scanned, since the reader is refused in demo mode.
+  useNfcKeyStore.getState().enrollTag('04A1B2C3D4E5F6', 'Desk tag');
   addTask({
     title: 'Morning walk',
     notes: 'Apps you picked in Settings stay blocked until this is done. If it’s still undone at 8 AM, they’re blocked for two hours as well. Doing it late lifts what’s left of that block.',

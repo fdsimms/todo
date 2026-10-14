@@ -37,6 +37,10 @@ jest.mock('../store/useSettingsStore', () => ({
 jest.mock('../store/useFocusStore', () => ({
   useFocusStore: { getState: () => ({ session: null }) },
 }));
+const mockKeyState = { locked: false, keys: [] as unknown[] };
+jest.mock('../store/useNfcKeyStore', () => ({
+  useNfcKeyStore: { getState: () => mockKeyState },
+}));
 
 import type { Task } from '../types';
 import { gateTitlesNow, reconcileAppShield } from '../utils/appShieldReconcile';
@@ -55,6 +59,8 @@ const NOW = Date.now();
 
 beforeEach(() => {
   mockSync.mockClear();
+  mockKeyState.locked = false;
+  mockKeyState.keys = [];
   mockTasks.length = 0;
   mockVisible.mockReturnValue(true);
   mockVisibleAt.mockImplementation(() => new Date(NOW));
@@ -122,5 +128,29 @@ describe('gateTitlesNow', () => {
   it('is the same read the sync hook compares against between task writes', () => {
     mockTasks.push(task({ id: 'walk', title: 'Morning walk' }));
     expect(gateTitlesNow()).toEqual(['Morning walk']);
+  });
+});
+
+describe('the key tag lock', () => {
+  const tag = { id: 'k', name: 'Desk', kind: 'tag', secret: '04A1B2C3', addedAt: '2026-10-14T09:00:00.000Z' };
+
+  it('is on only when the flag is set and a key is enrolled to end it', () => {
+    mockKeyState.locked = true;
+    mockKeyState.keys = [tag];
+    reconcileAppShield();
+    expect(mockSync).toHaveBeenLastCalledWith(expect.objectContaining({ keyLocked: true }));
+  });
+
+  it('is off when the last key is gone, so nothing is stranded', () => {
+    mockKeyState.locked = true;
+    mockKeyState.keys = [];
+    reconcileAppShield();
+    expect(mockSync).toHaveBeenLastCalledWith(expect.objectContaining({ keyLocked: false }));
+  });
+
+  it('is off when the flag is', () => {
+    mockKeyState.keys = [tag];
+    reconcileAppShield();
+    expect(mockSync).toHaveBeenLastCalledWith(expect.objectContaining({ keyLocked: false }));
   });
 });
