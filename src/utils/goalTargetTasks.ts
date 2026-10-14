@@ -12,9 +12,9 @@ import { goalNutrientKeys, targetStatus, type NutritionTargets } from './nutriti
  * own and one from a day that has gone is dropped rather than carried forward.
  * Nobody declines a day that merely ended.
  *
- * **The app checks it off when the day reaches the goal**, quietly: a
- * `neutral` completion, so no coins and no streak, since nobody tapped
- * anything. It uses `targetStatus`, so "reached" is the same band the Food log
+ * **The app checks it off when the day reaches the goal**, and the completion
+ * earns coins like any other (reaching it is the person's doing: they logged
+ * the food). There is no streak. It uses `targetStatus`, so "reached" is the same band the Food log
  * calls met (within 10% below counts, and anything above does too). It
  * deliberately says nothing about having gone past a goal: the app is not told
  * whether more is better, which is the rule `nutritionTargets.ts` opens with.

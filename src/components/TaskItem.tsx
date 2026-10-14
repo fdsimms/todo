@@ -1699,6 +1699,10 @@ const TaskItemRow = React.memo(function TaskItem({
   // it is only ever reached here alongside a flame and a rising count, where
   // nothing about it reads as a warning.
   const streakColor = atRecord ? colors.redText : colors.orangeText;
+  // A Stay under or Aim for task is a reading of the food log, not something to
+  // tick: no checkbox, one line (`NutrientTaskBar`) in place of the title, and
+  // the flame rides that line instead of the meta row.
+  const nutrientRow = task.generatedKind === 'limitWarning' || task.generatedKind === 'goalTarget';
 
   // Both read through the blocker index rather than scanning the task list, so
   // a long list stays O(1) per row. The selector still runs on every store
@@ -1827,7 +1831,7 @@ const TaskItemRow = React.memo(function TaskItem({
   //    copy of the title with its markers is measured (`measuresMarkers`); when
   //    that needs a third line, the markers move to the meta row instead.
   const hasNotes = task.notes.length > 0;
-  const hasTitleMarkers = hasNotes || deadlineDays !== null;
+  const hasTitleMarkers = !nutrientRow && (hasNotes || deadlineDays !== null);
   // A list line is never clamped, so its markers always fit; an edited title
   // has none.
   const measuresMarkers = hasTitleMarkers && !listRow && !isEditingTitle;
@@ -2662,6 +2666,7 @@ const TaskItemRow = React.memo(function TaskItem({
         <View style={[styles.priorityBar, { backgroundColor: priorityColor }]} />
       )}
 
+      {!nutrientRow && (
       <TouchableOpacity
         onPress={
           selectionMode ? () => onSelect?.(task.id)
@@ -2912,9 +2917,10 @@ const TaskItemRow = React.memo(function TaskItem({
           )}
         </View>
       </TouchableOpacity>
+      )}
 
       <TouchableOpacity
-        style={styles.content}
+        style={[styles.content, nutrientRow && styles.contentNoLeading]}
         onPress={handleContentPress}
         onLongPress={drag}
         delayLongPress={interaction.delayLongPress}
@@ -2961,7 +2967,9 @@ const TaskItemRow = React.memo(function TaskItem({
             />
           </View>
         )}
-        {isEditingTitle ? (
+        {nutrientRow ? (
+          <NutrientTaskBar task={task} streak={showStreakChip ? shownStreak : null} streakColor={streakColor} done={completing} />
+        ) : isEditingTitle ? (
           <TextField
             ref={titleInputRef}
             style={styles.titleInput}
@@ -3026,7 +3034,6 @@ const TaskItemRow = React.memo(function TaskItem({
             )}
           </View>
         )}
-        {(task.generatedKind === 'limitWarning' || task.generatedKind === 'goalTarget') && <NutrientTaskBar task={task} />}
         {activeTitleOffer && (
           <TitleSuggestionBanner
             icon={
@@ -3047,7 +3054,7 @@ const TaskItemRow = React.memo(function TaskItem({
             dismissLabel={activeTitleOffer.kind === 'filed' ? 'Hide suggestion' : 'Not a date'}
           />
         )}
-        {(markersOnMeta || isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || showStreakChip || isDrifting || bountyCoins > 0 || guardTitle !== null || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || meterText !== null || reminderTimeLabel !== null || travelNote !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.generatedKind === 'calendarReview') && (
+        {(markersOnMeta || isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || (showStreakChip && !nutrientRow) || isDrifting || bountyCoins > 0 || guardTitle !== null || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || meterText !== null || reminderTimeLabel !== null || travelNote !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.generatedKind === 'calendarReview') && (
           <View style={styles.metaRow}>
             {markersOnMeta && hasNotes && (
               <View style={styles.metaChip} accessibilityLabel="Has notes">
@@ -3559,7 +3566,7 @@ const TaskItemRow = React.memo(function TaskItem({
                 <Text style={styles.autoScheduledLabel} numberOfLines={1}>Scheduled automatically</Text>
               </View>
             )}
-            {showStreakChip && (
+            {showStreakChip && !nutrientRow && (
               <View
                 style={[styles.metaChip, styles.streakChip]}
                 accessibilityLabel={
@@ -3595,7 +3602,7 @@ const TaskItemRow = React.memo(function TaskItem({
                 </Text>
               </View>
             )}
-            {slipsLoggedToday > 0 && (
+            {slipsLoggedToday > 0 && !nutrientRow && (
               // Without this the second tap of the day changes nothing on the
               // row: the shield is already red and the streak is already 0, so
               // frequency logging ("how many, not whether") would be invisible
@@ -5163,6 +5170,10 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => StyleSheet.create({
   content: {
     flex: 1,
     gap: spacing.xxs,
+  },
+  // Stands in for the checkbox's own leading margin on a row that has none.
+  contentNoLeading: {
+    marginLeft: spacing.md,
   },
   title: {
     color: colors.text,

@@ -1,4 +1,4 @@
-import { nutrientTaskBar, nutrientsCoveredByTasks } from '../utils/nutrientTaskBar';
+import { nutrientTaskBar, nutrientTaskLine, nutrientsCoveredByTasks } from '../utils/nutrientTaskBar';
 
 const targets = { satFatG: 16, proteinG: 150 };
 const limit = { generatedKind: 'limitWarning' as const, generatedSourceId: 'satFatG' };
@@ -19,6 +19,18 @@ describe('nutrientTaskBar', () => {
   it('draws nothing for another task or a nutrient with no target', () => {
     expect(nutrientTaskBar({ generatedKind: 'snackNudge', generatedSourceId: 'x' }, {}, targets, 75)).toBeNull();
     expect(nutrientTaskBar({ generatedKind: 'limitWarning', generatedSourceId: 'sugarG' }, {}, targets, 75)).toBeNull();
+  });
+});
+
+describe('nutrientTaskLine', () => {
+  it('names the nutrient and puts the total against the target', () => {
+    expect(nutrientTaskLine(limit, { satFatG: 24.94 }, targets)).toEqual({ name: 'Sat fat', figure: '24.9 / 16g' });
+    expect(nutrientTaskLine(goal, {}, targets)).toEqual({ name: 'Protein', figure: '0 / 150g' });
+  });
+
+  it('is null for another task or a nutrient with no target', () => {
+    expect(nutrientTaskLine({ generatedKind: 'snackNudge', generatedSourceId: 'x' }, {}, targets)).toBeNull();
+    expect(nutrientTaskLine({ generatedKind: 'limitWarning', generatedSourceId: 'sugarG' }, {}, targets)).toBeNull();
   });
 });
 

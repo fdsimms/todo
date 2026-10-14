@@ -1,6 +1,6 @@
 import type { NutrientKey, Task } from '../types';
 import { goalTargetDayOf, goalTargetKeyOf } from './goalTargetTasks';
-import { limitWarningKeyOf } from './limitWarningTasks';
+import { figure, limitWarningKeyOf, shortName } from './limitWarningTasks';
 import { limitStatus, targetProgress, type NutritionTargets } from './nutritionTargets';
 
 /**
@@ -53,6 +53,37 @@ export function nutrientTaskBar(
     return { fraction: targetProgress(key, totals[key], targets), tone: null };
   }
   return null;
+}
+
+export interface NutrientTaskLine {
+  /** "Sat fat": the nutrient, capitalised. The Stay under / Aim for wording stays in the task's own title. */
+  name: string;
+  /** "24.9 / 16g": today's total against the target, the unit once. */
+  figure: string;
+}
+
+/**
+ * The one line a Stay under or Aim for row draws in place of its title, or null
+ * for any other task and for one whose nutrient no longer has a target. The
+ * title still says the whole sentence (it is the accessibility label and what
+ * Search finds); the row only needs the nutrient and where the day stands.
+ */
+export function nutrientTaskLine(
+  task: Pick<Task, 'generatedKind' | 'generatedSourceId'>,
+  totals: Partial<Record<NutrientKey, number>>,
+  targets: NutritionTargets,
+): NutrientTaskLine | null {
+  const key = task.generatedKind === 'limitWarning' ? limitWarningKeyOf(task.generatedSourceId)
+    : task.generatedKind === 'goalTarget' ? goalTargetKeyOf(task.generatedSourceId)
+    : null;
+  const target = key ? targets[key] : undefined;
+  if (!key || target === undefined) return null;
+  const name = shortName(key);
+  const total = Math.round((totals[key] ?? 0) * 10) / 10;
+  return {
+    name: name.charAt(0).toUpperCase() + name.slice(1),
+    figure: `${total.toLocaleString('en-US')} / ${figure(key, target)}`,
+  };
 }
 
 /**

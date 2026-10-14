@@ -2687,8 +2687,10 @@ function reconcileGoalTargets(tasks: Task[]): void {
     });
     if (!reading.reached) continue;
     const live = liveGeneratedTask(useTaskStore.getState().tasks, 'goalTarget', sourceId);
-    // neutral: the app closing it on its own, which nobody did, so no coins.
-    if (live) useTaskStore.getState().completeTask(live.id, { neutral: true });
+    // Not neutral: reaching the goal is the person's own doing (they logged the
+    // food), so it earns the completion's coins. One per nutrient per day, since
+    // the finished task blocks a second.
+    if (live) useTaskStore.getState().completeTask(live.id);
   }
 }
 
