@@ -168,6 +168,7 @@ only the fallback until the first sync.
 | `add_person_history` | **Write.** Records something done with someone, as the app's "Add to history" does: a completed task naming them. The only write to the people section. |
 | `complete_task` | **Write.** Ticks one off, spawning whatever that spawns: the next occurrence, the next chain step, the next set of a dated series. |
 | `update_food_entry` | **Write.** Corrects a food log entry (estimated ones can restate figures; measured ones take `grams` or `quantity` and are re-measured from the food's record). |
+| `refresh_dish_entry` | **Write.** Works a dish logged from a recipe out again from the recipe as it is now, at the amount it was logged with (use it after correcting a recipe or an ingredient's nutrition). Refused once written to Apple Health. |
 | `delete_food_entry` | **Write.** Deletes a food log entry not yet written to Apple Health. |
 | `update_mood_log` | **Write.** Corrects a mood check-in. |
 | `delete_mood_log` | **Write.** Deletes a mood check-in. |

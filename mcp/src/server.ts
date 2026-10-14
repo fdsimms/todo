@@ -102,7 +102,7 @@ import { forget, remember } from './memoryTools';
 import { deleteRule, listAutomations, saveRule, setAutomation, RULE_TYPES } from './automationTools';
 import { deleteCategory, reorderCategories, updateCategory } from './categoryTools';
 import { cancelCalendarRequest, changeCalendarEvent, listCalendarRequests, requestCalendarEvent } from './calendarTools';
-import { ESTIMATE_KEY_LIST, NUTRIENT_KEY_LIST, atFrom, deleteSavedMeal, duplicateFoodEntry, listSavedMeals, logSavedMeal, moveFoodEntry, saveMealFromEntries, setNutritionTargets, renameMedication, renameMoodTag, setMedicationArchived, addMedication, removeMedication, setMedicationProfile, setMedicationLimit, setMedicationSupply, logFood, logMedication, setSupplementNutrients, logMood, logWater, updateRecipe, patchRecipe, deleteRecipe, updateFoodEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
+import { ESTIMATE_KEY_LIST, NUTRIENT_KEY_LIST, atFrom, deleteSavedMeal, duplicateFoodEntry, listSavedMeals, logSavedMeal, moveFoodEntry, saveMealFromEntries, setNutritionTargets, renameMedication, renameMoodTag, setMedicationArchived, addMedication, removeMedication, setMedicationProfile, setMedicationLimit, setMedicationSupply, logFood, logMedication, setSupplementNutrients, logMood, logWater, updateRecipe, patchRecipe, deleteRecipe, updateFoodEntry, refreshDishEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
 import { listErrors, MAX_ERRORS } from './errorTools';
 import { DEFAULT_PATTERN_DAYS, focusHistory, habitPatterns, moodInsights } from './patternTools';
 import { addMilestone, deleteMilestone, listMilestones, updateMilestone } from './milestoneTools';
@@ -1747,7 +1747,7 @@ function registerWriteTools(
 
   server.tool(
     'update_food_entry',
-    'Correct a food log entry: its name, its meal slot, and its amount. Two kinds of entry take an amount differently, so check list_food_log first. An entry that was estimated takes quantity and amounts (amounts replaces every figure, so give the full set; the old breakdown is dropped, since its lines would no longer add up, so give a new breakdown with it when the meal has parts). An entry measured against a food\'s own label or database record (it has grams and a database-style label) takes grams, or quantity such as "2 servings", and its nutrients are re-measured from that record, as changing the amount in the app does; do not restate its amounts. A dish logged from a recipe, and an entry whose record is gone, are changed in the app. One already written to Apple Health is changed only on the phone. To log a different amount as a new entry instead of changing this one, use duplicate_food_entry with grams.' + dayNote,
+    'Correct a food log entry: its name, its meal slot, and its amount. Two kinds of entry take an amount differently, so check list_food_log first. An entry that was estimated takes quantity and amounts (amounts replaces every figure, so give the full set; the old breakdown is dropped, since its lines would no longer add up, so give a new breakdown with it when the meal has parts). An entry measured against a food\'s own label or database record (it has grams and a database-style label) takes grams, or quantity such as "2 servings", and its nutrients are re-measured from that record, as changing the amount in the app does; do not restate its amounts. A dish logged from a recipe is worked out again from its recipe with refresh_dish_entry (or changed in the app); an entry whose record is gone is changed in the app. One already written to Apple Health is changed only on the phone. To log a different amount as a new entry instead of changing this one, use duplicate_food_entry with grams.' + dayNote,
     {
       id: entryId,
       label: z.string().min(1).optional(),
@@ -1762,6 +1762,19 @@ function registerWriteTools(
         return json(await withWrite(() => updateFoodEntry(replica, id, patch)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not correct that entry.' });
+      }
+    }
+  );
+
+  server.tool(
+    'refresh_dish_entry',
+    'Work a dish logged from a recipe out again from the recipe as it is now, at the amount it was logged with (1 serving stays 1 serving). Use it after correcting a recipe, its ingredients or an ingredient\'s nutrition, since an entry keeps the figures from when it was logged. The entry keeps its time, slot and link to the plan; only its figures change, and the result says what they were and are. Refused for an entry written to Apple Health, one with extra lines added to it, and one whose recipe is gone. A food or an estimate is corrected with update_food_entry instead.',
+    { id: entryId },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => refreshDishEntry(replica, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not refresh that entry.' });
       }
     }
   );

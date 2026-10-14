@@ -386,6 +386,13 @@ a different medicine or strength. Food goes through `readNutritionEstimate` and 
 and then `buildFoodLogEntry` (`src/utils/foodLogEntry.ts`), which is `addEntry`'s row lifted out of
 the store, because the store reaches Apple Health and cannot load here.
 
+**A dish logged from a recipe keeps the figures from the day it was logged, and `refresh_dish_entry` is the
+one way to bring it up to date over MCP.** `remeasureEntry` refuses a dish because it cannot see the recipe;
+`remeasureDishEntry` (`foodLog.ts`) is the same arithmetic as the entry sheet (`mealHelping`/`weighedHelping`
+over `recipeNutrition`), taking the amount back out of the sentence the entry recorded, so "1 serving" stays
+one serving of the corrected recipe. Time, slot, label and plan link are untouched. It refuses an entry in
+Apple Health, one with extra lines folded in, and one whose recipe is gone or cannot give figures.
+
 **A dose of a supplement with a nutrient panel writes a food log entry too.** The medication store
 reaches the food log only through `DoseEffects` (`useMedicationStore.ts`), which the replica fills
 in with the same entry written through `buildFood`, flagged `healthWritePending` for the phone.
