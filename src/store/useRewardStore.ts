@@ -70,6 +70,13 @@ interface RewardStore {
   tapCoinsPaid: (taskId: string) => number;
   /** A slip on a negative habit cost `amount`. Every slip is its own entry. */
   recordSlip: (taskId: string, amount: number, label: string) => void;
+  /**
+   * One clean day on a "don't do" habit earned `amount`. Keyed by habit and
+   * day (`dayKey`), so collecting early and the rollover finding it later is one row.
+   */
+  recordCleanDay: (taskId: string, dayKey: string, amount: number, label: string, at: string) => void;
+  /** Reopening a day, or a slip that spoils it: drop what `recordCleanDay` wrote. */
+  takeBackCleanDay: (taskId: string, dayKey: string) => void;
   /** Unticking a task: drop whatever its completion or miss wrote. */
   takeBackTask: (taskId: string) => void;
   /** Undoing a slip: drop the newest slip entry for the task. */
@@ -211,6 +218,19 @@ export const useRewardStore = create<RewardStore>((set, get) => {
       const entry: CoinEntry = { id: generateId(), kind: 'loss', amount, at: new Date().toISOString(), taskId, rewardId: null, label };
       write(entry);
       announce(entry);
+    },
+
+    recordCleanDay(taskId, dayKey, amount, label, at) {
+      if (!enabled() || amount <= 0) return;
+      const entry: CoinEntry = { id: derivedId(spawnSeed.coinClean(taskId, dayKey)), kind: 'earn', amount, at, taskId, rewardId: null, label };
+      write(entry);
+      announce(entry);
+    },
+
+    // Not gated, for the reason takeBackTask gives.
+    takeBackCleanDay(taskId, dayKey) {
+      const id = derivedId(spawnSeed.coinClean(taskId, dayKey));
+      if (get().entries.some(e => e.id === id)) remove([id]);
     },
 
     // Not gated on `rewardsEnabled`: an entry written while the feature was on

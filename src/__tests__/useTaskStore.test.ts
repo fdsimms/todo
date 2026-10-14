@@ -20106,6 +20106,66 @@ describe('coins', () => {
     expect(balance()).toBe(-2);
   });
 
+  describe("clean days on a don't-do habit", () => {
+    const avoid = (over: Partial<Task> = {}) => makeTask({
+      id: 'smoke', title: "Don't smoke", polarity: 'negative',
+      streakCount: 3, streakDate: new Date(2025, 5, 9).toISOString(), ...over,
+    });
+    const seed = (over: Partial<Task> = {}) => useTaskStore.setState({ tasks: [avoid(over)] });
+    const day = (d: number) => new Date(2025, 5, d, 10, 0, 0);
+
+    it('pays today when it is collected by hand, and the rollover does not pay it again', () => {
+      seed();
+      useTaskStore.getState().closeNegativeDay('smoke');
+      expect(balance()).toBe(2);
+      jest.setSystemTime(day(11));
+      useTaskStore.getState().rolloverNegativeStreaks();
+      expect(balance()).toBe(2);
+    });
+
+    it('collects the days nobody collected when the rollover finds them', () => {
+      seed({ streakCount: 1, streakDate: new Date(2025, 5, 6).toISOString() });
+      useTaskStore.getState().rolloverNegativeStreaks();
+      expect(balance()).toBe(6); // the 7th, 8th and 9th
+    });
+
+    it('pays each day at the streak it reached', () => {
+      // Streaks 6, 7 and 8: the bonus is one coin per 7 reached, so 7 and 8 earn it.
+      seed({ estimatedMinutes: 30, streakCount: 5, streakDate: new Date(2025, 5, 6).toISOString() });
+      useTaskStore.getState().rolloverNegativeStreaks();
+      expect(balance()).toBe(3 + (3 + 1) + (3 + 1));
+    });
+
+    it('takes today back when the day is reopened', () => {
+      seed();
+      useTaskStore.getState().closeNegativeDay('smoke');
+      useTaskStore.getState().reopenNegativeDay('smoke');
+      expect(balance()).toBe(0);
+    });
+
+    it('takes today back when a slip spoils it, and returns it when the slip is undone', () => {
+      seed();
+      useTaskStore.getState().closeNegativeDay('smoke');
+      useTaskStore.getState().logSlip('smoke');
+      expect(balance()).toBe(-2); // the slip's cost, with no clean-day pay left
+      useTaskStore.getState().undoSlip('smoke');
+      expect(balance()).toBe(2);
+    });
+
+    it('pays nothing for a trivial habit', () => {
+      seed({ difficulty: 'trivial' });
+      useTaskStore.getState().closeNegativeDay('smoke');
+      expect(balance()).toBe(0);
+    });
+
+    it('pays nothing while rewards are off', () => {
+      settingsMock.mockImplementation(base);
+      seed();
+      useTaskStore.getState().closeNegativeDay('smoke');
+      expect(useRewardStore.getState().entries).toEqual([]);
+    });
+  });
+
   describe('a habit a reward guards', () => {
     const dessert = {
       id: 'dessert', title: 'A dessert', cost: 10, createdAt: '2025-01-01T00:00:00.000Z',

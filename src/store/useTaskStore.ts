@@ -228,7 +228,7 @@ import { isRotationTask, rotationCoversNew, rotationPick, rotationPlanFor, rotat
 import { MIN_TARGET_COUNT, MAX_TARGET_COUNT, taskKindOf } from '../utils/taskKinds';
 import { nextStreakRecord } from '../utils/streakRecord';
 import { countsUnits } from '../utils/streakUnits';
-import { isNegativeTask, slipsToday, slipPatch, undoSlipPatch, cleanDayPatch, nextSlipIsFree, lastSlipWasFree, closeDayPatch, reopenDayPatch, windowCloseDayPatch } from '../utils/negativeHabits';
+import { isNegativeTask, slipsToday, slipPatch, undoSlipPatch, cleanDayPatch, nextSlipIsFree, lastSlipWasFree, closeDayPatch, reopenDayPatch, windowCloseDayPatch, cleanDaysCredited, isClosedToday } from '../utils/negativeHabits';
 import { creditShieldUntil, extendShieldUntil, penaltyChargeFor, penaltyCreditFor, slipPenaltyUntil, uncreditShieldUntil } from '../utils/penaltyShield';
 // One name per line, deliberately, and not to be re-joined. See the note
 // on the settings load in useSettingsStore.ts: this is a list every new
@@ -2749,6 +2749,30 @@ export function redoRestoringRows(ids: string[]): () => void {
 }
 
 /**
+ * Pays the clean days a streak patch just credited to a "don't do" habit, one
+ * entry per day at the streak that day reached (`coinsForCompletion`, so effort,
+ * difficulty and the streak bonus all count). Called by every path that writes
+ * such a patch: collecting today by hand, the habit's end time passing, and the
+ * rollover finding days nobody collected. Each entry is keyed by habit and day,
+ * so the same day reached by two of those paths pays once. A no-op while
+ * rewards are off.
+ */
+function payCleanDays(before: Task, patch: Partial<Task> | null, now: Date): void {
+  if (!taskEarnsCoins(before)) return;
+  const days = cleanDaysCredited(before, patch);
+  if (days.length === 0) return;
+  const todayKey = dayKeyOf(getCurrentDayStart());
+  const rewards = useRewardStore.getState();
+  const label = displayTitleFor(before);
+  for (const { day, streak } of days) {
+    const key = dayKeyOf(day);
+    // Today is paid as it happens; an earlier day is dated to when it ended.
+    const at = key === todayKey ? now : addDays(day, 1);
+    rewards.recordCleanDay(before.id, key, coinsForCompletion(before, streak), label, at.toISOString());
+  }
+}
+
+/**
  * The date a negative habit moves to once its day has gone by, or null when it
  * should stay put. Used by `rolloverNegativeStreaks` only.
  *
@@ -4542,6 +4566,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // *is* refunded by undoSlip: the refund removes this slip's own entry, so
     // a log-and-undo round trip nets zero rather than buying anything back.
     // On a guarded habit the reward's price, floored at the balance, replaces it.
+    // A day already collected as clean, then slipped on, wasn't clean: its
+    // coins go back (undoSlip pays them again when the slip is undone).
+    useRewardStore.getState().takeBackCleanDay(id, dayKeyOf(dayStart));
     if (guard?.kind === 'charge') {
       useRewardStore.getState().recordGuardCharge(id, guard.amount, displayTitleFor(updated), guardChargeSeed(id, dayStart, slipsToday(task, dayStart)));
     } else {
@@ -4573,6 +4600,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // A guarded slip's charge is named by its slip, and one floored to zero
     // wrote nothing, so a guarded habit never falls back to "the newest loss".
     const rewardStore = useRewardStore.getState();
+    // Undoing the slip that broke a day already collected as clean restores the
+    // closed day, so its coins come back with it.
+    if (isClosedToday(updated, dayStart)) {
+      rewardStore.recordCleanDay(id, dayKeyOf(dayStart), coinsForCompletion(updated, updated.streakCount), displayTitleFor(updated), new Date().toISOString());
+    }
     const seed = guardChargeSeed(id, dayStart, slipsToday(task, dayStart) - 1);
     if (!rewardStore.takeBackGuardCharge(seed) && !guardingReward(rewardStore.rewards, id)) rewardStore.takeBackSlip(id);
   },
@@ -4624,6 +4656,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const updated = { ...task, ...patch };
     dbUpdateTask(updated);
     set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+    payCleanDays(task, patch, new Date());
     get().setLastAction({
       label: `Day logged, streak ${updated.streakCount}`,
       undo: () => get().reopenNegativeDay(id),
@@ -4634,17 +4667,22 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   reopenNegativeDay(id) {
     const task = get().tasks.find(t => t.id === id);
     if (!task || !isNegativeTask(task)) return;
-    const patch = reopenDayPatch(task, getCurrentDayStart());
+    const dayStart = getCurrentDayStart();
+    const patch = reopenDayPatch(task, dayStart);
     if (!patch) return;
     const updated = { ...task, ...patch };
     dbUpdateTask(updated);
     set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+    useRewardStore.getState().takeBackCleanDay(id, dayKeyOf(dayStart));
   },
 
   rolloverNegativeStreaks() {
     const todayStart = getCurrentDayStart();
     const now = new Date();
     const resetTime = useSettingsStore.getState().dayResetTime;
+    // Clean days this pass credited, paid once the rows are written. Each is
+    // the row as it stood before that step plus the step's own patch.
+    const toPay: { before: Task; patch: Partial<Task> }[] = [];
     const patched = get().tasks.flatMap(t => {
       if (!isNegativeTask(t) || t.archived) return [];
       // Vacation protects the run rather than growing it, which is the call
@@ -4660,12 +4698,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       const closing = windowCloseDayPatch(rolled, todayStart, end ? onLogicalDay(todayStart, end) : null, now, { paused });
       const due = negativeHabitDuePatch(t, todayStart, resetTime);
       if (!streak && !closing && !due) return [];
+      // Days nobody collected by hand are collected here, so every clean day
+      // pays once whether or not the person got to it.
+      if (streak) toPay.push({ before: t, patch: streak });
+      if (closing) toPay.push({ before: rolled, patch: closing });
       return [{ ...rolled, ...closing, ...due }];
     });
     if (patched.length === 0) return;
     dbTransaction(() => patched.forEach(dbUpdateTask));
     const byId = new Map(patched.map(t => [t.id, t]));
     set(s => ({ tasks: s.tasks.map(t => byId.get(t.id) ?? t) }));
+    toPay.forEach(({ before, patch }) => payCleanDays(before, patch, now));
   },
 
   logQuotaUnit(id) {
