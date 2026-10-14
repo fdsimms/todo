@@ -97,6 +97,27 @@ describe('activeSchedules', () => {
     const b = make({ id: 'b', startMinutes: 8 * 60, endMinutes: 10 * 60 });
     expect(activeSchedules([a, b], WED(9, 30)).map(s => s.id)).toEqual(['a', 'b']);
   });
+
+  it('keeps blocking through the gap between two overlapping windows ending at different times', () => {
+    const a = make({ id: 'a', startMinutes: 9 * 60, endMinutes: 12 * 60 });
+    const b = make({ id: 'b', startMinutes: 11 * 60, endMinutes: 15 * 60 });
+    expect(activeSchedules([a, b], WED(11, 30)).map(s => s.id)).toEqual(['a', 'b']);
+    expect(activeSchedules([a, b], WED(13, 0)).map(s => s.id)).toEqual(['b']);
+    expect(activeSchedules([a, b], WED(15, 0))).toEqual([]);
+  });
+
+  it('skips a turned-off schedule without touching the one it overlaps', () => {
+    const a = make({ id: 'a', enabled: false });
+    const b = make({ id: 'b' });
+    expect(activeSchedules([a, b], WED(10)).map(s => s.id)).toEqual(['b']);
+  });
+
+  it('still blocks when a tag pauses one of two overlapping schedules but the other refuses it', () => {
+    const a = make({ id: 'a' });
+    const b = make({ id: 'b', tagCanPause: false });
+    const { schedules } = pauseActiveSchedules([a, b], WED(10));
+    expect(activeSchedules(schedules, WED(10)).map(s => s.id)).toEqual(['b']);
+  });
 });
 
 describe('nextScheduleBoundary', () => {

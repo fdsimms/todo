@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Alert, Share } from 'react-native';
+import { View, Alert, Share, Switch } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { useNfcKeyStore } from '../../store/useNfcKeyStore';
@@ -8,7 +8,7 @@ import { BlockScheduleSheet } from '../../components/BlockScheduleSheet';
 import {
   DEFAULT_GROUP_ID, DEFAULT_GROUP_NAME, allGroups, groupName, resolveAssignments, resolveGroupId, type GroupedReason,
 } from '../../utils/appGroups';
-import { describeDays, describeWindow, formatMinutes, isScheduleActive, MAX_BLOCK_SCHEDULES, type BlockSchedule } from '../../utils/blockSchedule';
+import { currentWindowEnd, describeDays, describeWindow, formatMinutes, isScheduleActive, MAX_BLOCK_SCHEDULES, type BlockSchedule } from '../../utils/blockSchedule';
 import { selectionLabel } from '../../utils/shieldReasonText';
 import { useColors } from '../../theme/ThemeContext';
 import { SettingsSection } from './SettingsSection';
@@ -203,18 +203,14 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
 
   const handleScheduleRow = (schedule: BlockSchedule) => {
     haptics.tap();
-    Alert.alert(schedule.name, undefined, [
-      { text: 'Edit', onPress: () => setScheduleSheet({ open: true, id: schedule.id }) },
-      {
-        text: schedule.enabled ? 'Turn off' : 'Turn on',
-        onPress: () => useAppGroupStore.getState().setScheduleEnabled(schedule.id, !schedule.enabled),
-      },
-      { text: 'Cancel', style: 'cancel' as const },
-    ]);
+    setScheduleSheet({ open: true, id: schedule.id });
   };
 
   const scheduleHint = (schedule: BlockSchedule) => {
+    const now = new Date();
+    const end = isScheduleActive(schedule, now) ? currentWindowEnd(schedule, now) : null;
     const parts = [
+      ...(end ? [`Blocking now until ${formatMinutes(end.getHours() * 60 + end.getMinutes(), use24HourTime)}`] : []),
       describeDays(schedule.days),
       describeWindow(schedule, use24HourTime),
       groupName(customGroups, schedule.groupId),
@@ -522,7 +518,7 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
 
       <SettingsSection
         label="Schedules"
-        footer="A schedule blocks a group of apps during set hours, even when dundundun is closed. A key tag can pause one block. Focus sessions, tasks and failed tasks still block on their own."
+        footer="A schedule blocks a group of apps during set hours, even when dundundun is closed. When schedules overlap, every app in each group is blocked until the last one ends. A key tag can pause one block. Focus sessions, tasks and failed tasks still block on their own."
       >
         {schedules.map(schedule => (
           <React.Fragment key={schedule.id}>
@@ -532,8 +528,19 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
               label={schedule.name}
               hint={scheduleHint(schedule)}
               alwaysShowHint
-              value={schedule.enabled ? undefined : 'Off'}
               onPress={() => handleScheduleRow(schedule)}
+              trailing={(
+                <Switch
+                  value={schedule.enabled}
+                  onValueChange={next => {
+                    haptics.tap();
+                    useAppGroupStore.getState().setScheduleEnabled(schedule.id, next);
+                  }}
+                  trackColor={{ false: colors.bgTertiary, true: colors.accent }}
+                  thumbColor={colors.onAccent}
+                  accessibilityLabel={`${schedule.name} on`}
+                />
+              )}
             />
             <View style={styles.sep} />
           </React.Fragment>
