@@ -8,7 +8,7 @@ import { BlockScheduleSheet } from '../../components/BlockScheduleSheet';
 import {
   DEFAULT_GROUP_ID, DEFAULT_GROUP_NAME, allGroups, groupName, resolveAssignments, resolveGroupId, type GroupedReason,
 } from '../../utils/appGroups';
-import { describeDays, describeWindow, formatMinutes, isScheduleActive, MAX_BLOCK_SCHEDULES, type BlockSchedule } from '../../utils/blockSchedule';
+import { currentWindowEnd, describeDays, describeWindow, formatMinutes, isScheduleActive, MAX_BLOCK_SCHEDULES, type BlockSchedule } from '../../utils/blockSchedule';
 import { selectionLabel } from '../../utils/shieldReasonText';
 import { useColors } from '../../theme/ThemeContext';
 import { SettingsSection } from './SettingsSection';
@@ -207,7 +207,10 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
   };
 
   const scheduleHint = (schedule: BlockSchedule) => {
+    const now = new Date();
+    const end = isScheduleActive(schedule, now) ? currentWindowEnd(schedule, now) : null;
     const parts = [
+      ...(end ? [`Blocking now until ${formatMinutes(end.getHours() * 60 + end.getMinutes(), use24HourTime)}`] : []),
       describeDays(schedule.days),
       describeWindow(schedule, use24HourTime),
       groupName(customGroups, schedule.groupId),
