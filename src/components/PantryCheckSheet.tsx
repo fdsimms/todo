@@ -16,7 +16,7 @@ interface Props {
 }
 
 interface Row {
-  key: 'have' | 'out' | 'out-list';
+  key: 'have' | 'low' | 'low-list' | 'out' | 'out-list';
   icon: React.ComponentProps<typeof Ionicons>['name'];
   tone: 'accent' | 'red';
   label: string;
@@ -32,6 +32,22 @@ const ROWS: Row[] = [
     label: 'Still have it',
     detail: 'Keeps it in your pantry and starts its window over.',
     feedback: haptics.success,
+  },
+  {
+    key: 'low',
+    icon: 'contrast-outline',
+    tone: 'accent',
+    label: 'Running low',
+    detail: 'Keeps it in your pantry as nearly out, without adding it to your grocery list.',
+    feedback: haptics.tap,
+  },
+  {
+    key: 'low-list',
+    icon: 'cart-outline',
+    tone: 'accent',
+    label: 'Running low, add to list',
+    detail: 'Keeps it in your pantry as nearly out and puts it on your grocery list.',
+    feedback: haptics.tap,
   },
   {
     key: 'out',
@@ -57,7 +73,9 @@ const ROWS: Row[] = [
  * the answer with the same call the pantry review deck uses
  * (`answerPantryReview`), so each button writes exactly what the matching pill
  * on the item's own sheet writes. "Out of it, add to list" is that same "out"
- * plus the row joining the home list. That answer is also what retires the task:
+ * plus the row joining the home list, and "Running low" comes in the same two
+ * forms (running low is the one answer that can reach the list itself, so its
+ * rows pass `addToList` rather than following the setting). That answer is also what retires the task:
  * either one makes the item stop wanting a check, and `checkPantryCheckTasks`
  * drops the row, run here so it leaves now rather than at the next sweep.
  *
@@ -72,7 +90,14 @@ export function PantryCheckSheet({ visible, itemId, onClose }: Props) {
 
   const answer = (key: Row['key']) => {
     const groceries = useGroceryStore.getState();
-    groceries.answerPantryReview(itemId, key === 'have' ? 'have' : 'out');
+    if (key === 'low' || key === 'low-list') {
+      // Says the list choice outright, so the "Running low adds to the list"
+      // setting can't override the row that was tapped. Onto the home list,
+      // which `answerPantryReview` does for 'low'.
+      groceries.answerPantryReview(itemId, 'low', { addToList: key === 'low-list' });
+    } else {
+      groceries.answerPantryReview(itemId, key === 'have' ? 'have' : 'out');
+    }
     // The home list, not whichever one is open: this is answered from a task
     // row, and an away list is that trip's own.
     if (key === 'out-list') groceries.addExistingMany([itemId], { listId: null });
