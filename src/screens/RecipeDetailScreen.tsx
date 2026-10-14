@@ -82,6 +82,7 @@ import { spacing, font, fontWeight, lineHeight, radius, iconSize, interaction, f
 import { useTextScale } from '../hooks/useTextScale';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
+import { afterSheetsDismissed } from '../utils/sheetModal';
 import { pickRecipeImage, recipeImageOnDevice, resolveRecipeImagePath, type RecipePhotoSource } from '../utils/recipePhoto';
 import {
   blockedIngredientNote,
@@ -1124,6 +1125,9 @@ export function RecipeDetailScreen() {
   const pickImage = async (source: RecipePhotoSource) => {
     setPickingImage(true);
     try {
+      // The menu this was chosen from is still leaving; the system picker
+      // can't present until it has.
+      await afterSheetsDismissed();
       const result = await pickRecipeImage(source);
       if (result.status === 'ok') {
         haptics.success();

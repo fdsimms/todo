@@ -373,3 +373,31 @@ export function closeTopmostSheet(): boolean {
 export function anySheetOpen(): boolean {
   return openSheets.length > 0;
 }
+
+// iOS reports a Modal's dismissal ~350ms after RN stops tracking it as open.
+const NATIVE_DISMISS_SETTLE_MS = 450;
+const SHEET_WAIT_BACKSTOP_MS = 2000;
+
+/**
+ * Resolves once no sheet is open and the last one has finished leaving the screen.
+ *
+ * For a native system UI (the photo picker, the camera) raised from a sheet's
+ * own action. iOS presents those from the root view controller, which is still
+ * presenting the closing sheet, so the request is refused with nothing shown
+ * and no error, and the awaited promise never settles. A caller that sets a
+ * "working" flag around it spins for ever. Resolves anyway after a backstop so
+ * a sheet that never lets go can't hold the caller back.
+ */
+export function afterSheetsDismissed(): Promise<void> {
+  return new Promise(resolve => {
+    const startedAt = Date.now();
+    const poll = () => {
+      if (!anySheetOpen() || Date.now() - startedAt >= SHEET_WAIT_BACKSTOP_MS) {
+        setTimeout(resolve, NATIVE_DISMISS_SETTLE_MS);
+        return;
+      }
+      setTimeout(poll, 50);
+    };
+    poll();
+  });
+}
