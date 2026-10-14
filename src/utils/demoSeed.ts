@@ -2500,8 +2500,10 @@ function seedFoodLog(today: Date): void {
    * is marked. It carries no item and no recipe for the same reason. The entry
    * still goes through `addEntry` like every other seeded row.
    */
-  {
-    const at = subDays(today, 3);
+  // Logged twice, a week apart: the picker's "Recently logged" offers only a
+  // food eaten more than once (`recentUnlinkedHelpings`).
+  for (const daysAgo of [3, 10]) {
+    const at = subDays(today, daysAgo);
     at.setHours(13, 0, 0, 0);
     addEntry({
       label: 'Cheeseburger and fries, Five Guys',
@@ -2526,7 +2528,7 @@ function seedFoodLog(today: Date): void {
         source: 'estimated',
         sourceId: null,
         portions: [],
-        recordedAt: subDays(today, 3).toISOString(),
+        recordedAt: at.toISOString(),
         // The split the estimate showed before it was logged, which the
         // expanded row lists under "Made of". The lines add up to the total.
         breakdown: [
@@ -2569,14 +2571,15 @@ function seedFoodLog(today: Date): void {
       recordedAt: subDays(today, 4).toISOString(),
     };
     const built = scalePanelToAmount(kept, '150 g', null, undefined, label);
-    if (built) {
-      const at = subDays(today, 4);
+    // Twice, so it counts as a habit for the picker's "Recently logged".
+    for (const daysAgo of built ? [4, 11] : []) {
+      const at = subDays(today, daysAgo);
       at.setHours(12, 30, 0, 0);
       addEntry({
         label,
         quantity: '150 g',
-        grams: built.grams,
-        nutrition: built.nutrition,
+        grams: built!.grams,
+        nutrition: built!.nutrition,
         sourcePanel: kept,
         slot: 'lunch',
         at,
