@@ -1,4 +1,5 @@
-import type { GroceryItem, ItemSubLink, NutrientKey } from '../types';
+import type { GroceryItem, ItemProduct, ItemSubLink, NutrientKey } from '../types';
+import { isPortionBox } from '../types';
 import { substitutesFor } from './itemSubs';
 import { isNonFoodAisle } from './groceryAisles';
 
@@ -27,13 +28,21 @@ import { isNonFoodAisle } from './groceryAisles';
  *   scan rather than guessed from the text, so this queue only ever holds
  *   rows nobody has renamed.
  *
+ * `product` and `rating` are the two that read `ItemProduct` rows rather than the
+ * item: **`product`** queues an item with no named box ("Good Culture, low fat"),
+ * and **`rating`** queues an item with a box nobody has rated. A box is rated
+ * one at a time, so an item stays queued until every one of its boxes has a
+ * verdict. A frozen portion is not a box (`isPortionBox`), so it is never asked
+ * about and never counts as the item having a product.
+ *
  * Still deliberately not covering the rest. The catalog carries other gaps (no
  * preferred product, no shelf life) but those are choices made *at* the item —
  * a product picked in the product sheet, a shelf life corrected after the fact
  * — rather than facts every item is expected to eventually have, which is
  * what makes a walk-through worth it.
  */
-export type ItemBackfillFieldId = 'variety' | 'substitutes' | 'nutrition' | 'nutritionDetail' | 'scannedName';
+export type ItemBackfillFieldId =
+  | 'variety' | 'substitutes' | 'nutrition' | 'nutritionDetail' | 'scannedName' | 'product' | 'rating';
 
 /**
  * The three label lines the app began recording after it had already saved
@@ -82,7 +91,27 @@ export const ITEM_BACKFILL_FIELDS: ItemBackfillFieldDef[] = [
     label: 'Fat and sugar detail',
     hint: 'Foods saved before trans fat, cholesterol and added sugars were recorded. Add them from the label, or say there are none.',
   },
+  {
+    id: 'product',
+    label: 'Brand and product',
+    hint: 'Who makes it and which one, like Good Culture low fat. Shows under the item on your list.',
+  },
+  {
+    id: 'rating',
+    label: 'Rate products',
+    hint: 'Loved it, it was fine, or never again, for the brands you have named. The rating shows on the item and sorts your brands.',
+  },
 ];
+
+/** The boxes of one item that can be named, rated or preferred: portions are not. */
+function boxesOf(itemId: string, products: readonly ItemProduct[]): ItemProduct[] {
+  return products.filter(p => p.itemId === itemId && !isPortionBox(p));
+}
+
+/** The boxes of `itemId` with no rating, which is what the `rating` card asks about. */
+export function unratedBoxesOf(itemId: string, products: readonly ItemProduct[]): ItemProduct[] {
+  return boxesOf(itemId, products).filter(p => p.rating === null);
+}
 
 /**
  * Whether `item` still needs a value for `fieldId` — the backfill queue's
@@ -98,7 +127,8 @@ export function isItemFieldMissing(
   fieldId: ItemBackfillFieldId,
   links: readonly ItemSubLink[] = [],
   items: readonly GroceryItem[] = [],
-  nonFoodAisles: readonly string[] = []
+  nonFoodAisles: readonly string[] = [],
+  products: readonly ItemProduct[] = []
 ): boolean {
   switch (fieldId) {
     case 'variety':
@@ -125,6 +155,12 @@ export function isItemFieldMissing(
     // is what takes a row out of this queue.
     case 'scannedName':
       return item.nameFromScan;
+    // "Any brand will do" is the common honest answer, which is why the
+    // dismissal exists; an item with a box on file has already been answered.
+    case 'product':
+      return boxesOf(item.id, products).length === 0;
+    case 'rating':
+      return unratedBoxesOf(item.id, products).length > 0;
   }
 }
 
@@ -132,12 +168,15 @@ export function isItemFieldMissing(
  * Whether `fieldId` is a question for this item at all, set or not. Only
  * `nutrition` has a gate that is about the item rather than the value: a
  * non-food row is an answer ("not food"), so a redo has no figures to ask it for.
+ * A redo of `rating` has nothing to ask about an item with no boxes.
  */
 export function isItemFieldApplicable(
   item: GroceryItem,
   fieldId: ItemBackfillFieldId,
-  nonFoodAisles: readonly string[] = []
+  nonFoodAisles: readonly string[] = [],
+  products: readonly ItemProduct[] = []
 ): boolean {
+  if (fieldId === 'rating') return boxesOf(item.id, products).length > 0;
   if (fieldId === 'nutritionDetail') return item.nutrition != null && item.nutrition.source !== 'estimated' && !isNonFoodAisle(item.aisle, nonFoodAisles);
   return fieldId !== 'nutrition' || !isNonFoodAisle(item.aisle, nonFoodAisles);
 }
@@ -175,12 +214,13 @@ export function itemBackfillCandidates(
   fieldId: ItemBackfillFieldId,
   links: ItemSubLink[] = [],
   nonFoodAisles: readonly string[] = [],
-  opts: { fromScratch?: boolean } = {}
+  opts: { fromScratch?: boolean } = {},
+  products: readonly ItemProduct[] = []
 ): GroceryItem[] {
   return items
     .filter(i => opts.fromScratch
-      ? isItemFieldApplicable(i, fieldId, nonFoodAisles)
-      : isItemFieldMissing(i, fieldId, links, items, nonFoodAisles) && !isItemBackfillDismissed(i, fieldId))
+      ? isItemFieldApplicable(i, fieldId, nonFoodAisles, products)
+      : isItemFieldMissing(i, fieldId, links, items, nonFoodAisles, products) && !isItemBackfillDismissed(i, fieldId))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -188,12 +228,15 @@ export function itemBackfillCandidates(
 export function itemBackfillFieldCounts(
   items: GroceryItem[],
   links: ItemSubLink[] = [],
-  nonFoodAisles: readonly string[] = []
+  nonFoodAisles: readonly string[] = [],
+  products: readonly ItemProduct[] = []
 ): Record<ItemBackfillFieldId, number> {
-  const counts = { variety: 0, substitutes: 0, nutrition: 0, nutritionDetail: 0, scannedName: 0 } as Record<ItemBackfillFieldId, number>;
+  const counts = {
+    variety: 0, substitutes: 0, nutrition: 0, nutritionDetail: 0, scannedName: 0, product: 0, rating: 0,
+  } as Record<ItemBackfillFieldId, number>;
   for (const i of items) {
     for (const field of ITEM_BACKFILL_FIELDS) {
-      if (isItemFieldMissing(i, field.id, links, items, nonFoodAisles) && !isItemBackfillDismissed(i, field.id)) counts[field.id]++;
+      if (isItemFieldMissing(i, field.id, links, items, nonFoodAisles, products) && !isItemBackfillDismissed(i, field.id)) counts[field.id]++;
     }
   }
   return counts;

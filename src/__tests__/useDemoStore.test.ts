@@ -1948,8 +1948,8 @@ describe('demo seed — people', () => {
   // plenty are still missing either — this pins that rather than seeding
   // anything new.
   it('leaves each backfillable item field with something to fill it in for', () => {
-    const { items, itemSubs } = useGroceryStore.getState();
-    const counts = itemBackfillFieldCounts(items, itemSubs);
+    const { items, itemSubs, itemProducts } = useGroceryStore.getState();
+    const counts = itemBackfillFieldCounts(items, itemSubs, [], itemProducts);
     for (const field of ITEM_BACKFILL_FIELDS) {
       expect(counts[field.id]).toBeGreaterThan(0);
     }
