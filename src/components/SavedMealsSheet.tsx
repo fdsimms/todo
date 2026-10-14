@@ -8,6 +8,7 @@ import type { SavedMeal } from '../types';
 import { savedMealCalories } from '../utils/foodLog';
 import { haptics } from '../utils/haptics';
 import { EmptyState } from './EmptyState';
+import { InlineAction } from './InlineAction';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 
@@ -18,8 +19,9 @@ interface Props {
   onLog: (meal: SavedMeal) => void;
   onDelete: (meal: SavedMeal) => void;
   /**
-   * Opens a meal for changes before it is logged (`SavedMealReviewSheet`).
-   * Omitted by a caller with nowhere to send it, which leaves the row as it was.
+   * Opens a meal for changes before it is logged (`SavedMealReviewSheet`),
+   * which is what tapping a row does. Omitted by a caller with nowhere to send
+   * it, in which case a tap logs the meal as saved.
    */
   onReview?: (meal: SavedMeal) => void;
   /**
@@ -35,16 +37,16 @@ interface Props {
  * Every saved meal, one tap to log the whole thing again.
  *
  * Reached from the ordinary add-food sheet the same way Scan and Describe
- * are — see `FoodLogEntrySheet`'s `onSavedMeal` — and each row logs
- * immediately rather than opening a picker of its own: a saved meal exists
- * to skip re-finding and re-amounting each food, so tapping it is the whole
- * interaction. Nothing here is staged, so there is no unsaved-changes guard
- * to wire (see the `onRequestClose` rule in CLAUDE.md) — logging and
- * deleting both commit the moment they're tapped, same as `StandingSwapsSheet`.
+ * are (see `FoodLogEntrySheet`'s `onSavedMeal`) and from the Food log's header.
  *
- * The sliders button on a row is the other way in: it opens the meal for
- * changes first (a different amount, a food swapped or left out), and the
- * staging that needs lives in the review sheet it raises, not here.
+ * A row's body opens the meal for changes first (a different amount, a food
+ * swapped or left out), and the staging that needs lives in the review sheet it
+ * raises, not here. The Log button on the row is the one-tap path for a meal
+ * eaten exactly as saved. Opening was made the tap because the other way round
+ * hid it: a row that logged on tap left changing an amount behind a small icon
+ * nobody found. Nothing here is staged, so there is no unsaved-changes guard
+ * to wire (see the `onRequestClose` rule in CLAUDE.md): logging and deleting
+ * both commit the moment they're tapped, same as `StandingSwapsSheet`.
  */
 export function SavedMealsSheet({ visible, meals, onLog, onDelete, onReview, overlays, onClose }: Props) {
   const colors = useColors();
@@ -98,30 +100,28 @@ export function SavedMealsSheet({ visible, meals, onLog, onDelete, onReview, ove
                 return (
                   <View key={meal.id}>
                     {i > 0 && <View style={styles.sep} />}
-                    <TouchableOpacity
-                      style={styles.row}
-                      activeOpacity={interaction.activeOpacity}
-                      onPress={() => handleLog(meal)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Log ${meal.name}`}
-                    >
-                      <View style={styles.body}>
-                        <Text style={styles.name} numberOfLines={1}>{meal.name}</Text>
+                    <View style={styles.row}>
+                      {/* The name wraps rather than truncating: it is what the row is for. */}
+                      <TouchableOpacity
+                        style={styles.body}
+                        activeOpacity={interaction.activeOpacity}
+                        onPress={() => { if (onReview) { haptics.tap(); onReview(meal); } else handleLog(meal); }}
+                        accessibilityRole="button"
+                        accessibilityLabel={onReview ? `Change ${meal.name} before logging` : `Log ${meal.name}`}
+                      >
+                        <Text style={styles.name}>{meal.name}</Text>
                         <Text style={styles.meta} numberOfLines={1}>
                           {meal.items.length} {itemWord}
                           {calories !== null ? ` · ${calories} cal` : ''}
                         </Text>
-                      </View>
+                      </TouchableOpacity>
                       {!!onReview && (
-                        <TouchableOpacity
-                          style={styles.deleteBtn}
-                          hitSlop={8}
-                          onPress={() => { haptics.tap(); onReview(meal); }}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Change ${meal.name} before logging`}
-                        >
-                          <Ionicons name="options-outline" size={iconSize.sm} color={colors.textSecondary} />
-                        </TouchableOpacity>
+                        <InlineAction
+                          label="Log"
+                          icon="add"
+                          onPress={() => handleLog(meal)}
+                          accessibilityLabel={`Log ${meal.name} as saved`}
+                        />
                       )}
                       <TouchableOpacity
                         style={styles.deleteBtn}
@@ -132,7 +132,7 @@ export function SavedMealsSheet({ visible, meals, onLog, onDelete, onReview, ove
                       >
                         <Ionicons name="trash-outline" size={iconSize.sm} color={colors.textTertiary} />
                       </TouchableOpacity>
-                    </TouchableOpacity>
+                    </View>
                   </View>
                 );
               })}

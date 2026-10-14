@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View, type GestureResponderEvent } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -294,10 +294,22 @@ export function FoodLogScreen() {
     const kept = labels.map(label => addSheetRef.current?.keepOpenAfterLog(label) ?? false);
     if (!kept.some(Boolean)) setAddOpen(false);
   };
+  // The saved meals list raised from the add sheet's button, and the same list
+  // opened straight from the header with no add sheet under it. Two instances
+  // because a sheet can only be presented from a sheet that is itself showing.
   const [savedMealsOpen, setSavedMealsOpen] = useState(false);
+  const [browseMealsOpen, setBrowseMealsOpen] = useState(false);
   // The saved meal opened for changes. Kept as an id so the sheet reads the
   // store's current copy after "Save changes to this meal" rewrites it.
   const [reviewMealId, setReviewMealId] = useState<string | null>(null);
+  // Which sheet the review is raised from. It has to be rendered inside that
+  // one's Modal (the sibling Modal rule), so each host renders its own and only
+  // the named one is visible.
+  const [reviewHost, setReviewHost] = useState<'addList' | 'search' | 'browse'>('addList');
+  const openReview = (id: string, host: 'addList' | 'search' | 'browse') => {
+    setReviewHost(host);
+    setReviewMealId(id);
+  };
   const reviewMeal = savedMeals.find(m => m.id === reviewMealId) ?? null;
   const shownReviewMeal = useSheetSubject(reviewMeal);
   /**
@@ -964,6 +976,18 @@ export function FoodLogScreen() {
     [plannedOpen, plannedMenu],
   );
 
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const [optionsAnchor, setOptionsAnchor] = useState<CardAnchor | null>(null);
+  // totalCount rather than this day's entries for Export: it reaches across
+  // the whole history, the condition the mood and medication screens carry.
+  const optionsActions = useMemo<ActionMenuAction[]>(() => [
+    { key: 'saved', label: 'Saved meals', icon: 'bookmark-outline', onPress: () => setBrowseMealsOpen(true) },
+    { key: 'targets', label: 'Nutrition settings', icon: 'flag-outline', onPress: () => setTargetsOpen(true) },
+    ...(totalCount > 0
+      ? [{ key: 'export', label: 'Export food log', icon: 'share-outline', onPress: () => setExportOpen(true) } as ActionMenuAction]
+      : []),
+  ], [totalCount]);
+
   const plannedMenuActions = useMemo<ActionMenuAction[]>(() => {
     const coverage = plannedMenuCoverage;
     if (!coverage) return [];
@@ -1273,6 +1297,59 @@ export function FoodLogScreen() {
     </View>
   ) : null;
 
+  /**
+   * The review of the saved meal in `reviewMealId`, for one host. Only the host
+   * the review was raised from shows it, and it renders inside that host's
+   * Modal. `onLogged` is what the host does once the meal is written.
+   */
+  const renderSavedMealReview = ({ host, slot, onLogged }: {
+    host: 'addList' | 'search' | 'browse';
+    slot: MealSlot | null;
+    onLogged: (label: string) => void;
+  }) => shownReviewMeal && (
+    <SavedMealReviewSheet
+      visible={reviewMeal !== null && reviewHost === host}
+      meal={shownReviewMeal}
+      slot={slot}
+      at={loggingAt}
+      onLog={items => {
+        logSavedMeal({ ...shownReviewMeal, items }, slot, loggingAt);
+        setReviewMealId(null);
+        onLogged(shownReviewMeal.name);
+      }}
+      onSaveChanges={items => replaceSavedMealItems(shownReviewMeal.id, items)}
+      onClose={() => setReviewMealId(null)}
+    />
+  );
+
+  /** The saved meals list for one host, with the review nested inside it. */
+  const renderSavedMealsList = ({ visible, host, slot, onClose, onLogged }: {
+    visible: boolean;
+    host: 'addList' | 'browse';
+    slot: MealSlot | null;
+    onClose: () => void;
+    onLogged: (label: string) => void;
+  }) => (
+    <SavedMealsSheet
+      visible={visible}
+      meals={savedMeals}
+      onLog={meal => {
+        logSavedMeal(meal, slot, loggingAt);
+        onLogged(meal.name);
+      }}
+      onDelete={meal => removeSavedMeal(meal.id)}
+      onReview={meal => openReview(meal.id, host)}
+      onClose={onClose}
+      // Inside the saved meals sheet's own Modal for the same reason that one
+      // is inside the add sheet's.
+      overlays={renderSavedMealReview({
+        host,
+        slot,
+        onLogged: label => { onLogged(label); },
+      })}
+    />
+  );
+
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
       <ScreenHeader
@@ -1305,19 +1382,17 @@ export function FoodLogScreen() {
             onPress: () => { haptics.tap(); setAddingSlot(guessedSlot); setAddOpen(true); setScanOpen(true); },
             accessibilityLabel: 'Scan a barcode to log',
           } satisfies ScreenHeaderAction] : []),
+          // Saved meals, nutrition settings and export live in one menu: three
+          // rarely-used icons beside the two logging shortcuts crowded the title.
           {
-            icon: 'target',
-            onPress: () => { haptics.tap(); setTargetsOpen(true); },
-            accessibilityLabel: 'Nutrition settings',
-          },
-          // Once there's anything to share, the condition the mood and
-          // medication screens' share actions carry. totalCount rather than
-          // this day's entries: the export reaches across the whole history.
-          ...(totalCount > 0 ? [{
-            icon: 'share-outline',
-            onPress: () => { haptics.tap(); setExportOpen(true); },
-            accessibilityLabel: 'Export your food log',
-          } satisfies ScreenHeaderAction] : []),
+            icon: 'ellipsis-horizontal',
+            onPress: (e: GestureResponderEvent) => {
+              haptics.tap();
+              setOptionsAnchor({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY });
+              setOptionsOpen(true);
+            },
+            accessibilityLabel: 'Food log options',
+          } satisfies ScreenHeaderAction,
           // Plain logging moved to the FAB below, same as every other
           // primary-add list screen — selecting is reached by swiping a row.
         ], screenSettings.action)}
@@ -1535,6 +1610,12 @@ export function FoodLogScreen() {
           onScan={scanShown ? () => setScanOpen(true) : undefined}
           onPhotographLabel={scanShown ? setLabel : undefined}
           onSavedMeal={() => setSavedMealsOpen(true)}
+          savedMeals={savedMeals}
+          onPickSavedMeal={meal => openReview(meal.id, 'search')}
+          onLogSavedMeal={meal => {
+            logSavedMeal(meal, addingSlot, loggingAt);
+            keepAddSheetOrClose([meal.name]);
+          }}
           // Inside that sheet's own Modal, not beside it: as siblings these
           // presented from the root view controller, which was already
           // presenting the sheet, so iOS refused and Scan/Describe/Saved meals
@@ -1555,39 +1636,31 @@ export function FoodLogScreen() {
                 // same as backing out of its own database search does.
                 onLogged={labels => keepAddSheetOrClose(labels)}
               />
-              <SavedMealsSheet
-                visible={savedMealsOpen}
-                meals={savedMeals}
-                onLog={meal => {
-                  logSavedMeal(meal, addingSlot, loggingAt);
-                  setSavedMealsOpen(false);
-                  keepAddSheetOrClose([meal.name]);
-                }}
-                onDelete={meal => removeSavedMeal(meal.id)}
-                onReview={meal => setReviewMealId(meal.id)}
-                onClose={() => { setSavedMealsOpen(false); setReviewMealId(null); }}
-                // Inside the saved meals sheet's own Modal for the same reason
-                // that one is inside the add sheet's.
-                overlays={shownReviewMeal && (
-                  <SavedMealReviewSheet
-                    visible={reviewMeal !== null}
-                    meal={shownReviewMeal}
-                    slot={addingSlot}
-                    at={loggingAt}
-                    onLog={items => {
-                      logSavedMeal({ ...shownReviewMeal, items }, addingSlot, loggingAt);
-                      setReviewMealId(null);
-                      setSavedMealsOpen(false);
-                      keepAddSheetOrClose([shownReviewMeal.name]);
-                    }}
-                    onSaveChanges={items => replaceSavedMealItems(shownReviewMeal.id, items)}
-                    onClose={() => setReviewMealId(null)}
-                  />
-                )}
-              />
+              {renderSavedMealsList({
+                visible: savedMealsOpen,
+                host: 'addList',
+                slot: addingSlot,
+                onClose: () => { setSavedMealsOpen(false); setReviewMealId(null); },
+                onLogged: label => { setSavedMealsOpen(false); keepAddSheetOrClose([label]); },
+              })}
+              {renderSavedMealReview({
+                host: 'search',
+                slot: addingSlot,
+                onLogged: label => keepAddSheetOrClose([label]),
+              })}
             </>
           }
         />
+      </LazySheet>
+      {/* The saved meals list opened from the header, with no add sheet under it. */}
+      <LazySheet open={browseMealsOpen}>
+        {renderSavedMealsList({
+          visible: browseMealsOpen,
+          host: 'browse',
+          slot: guessedSlot,
+          onClose: () => { setBrowseMealsOpen(false); setReviewMealId(null); },
+          onLogged: () => setBrowseMealsOpen(false),
+        })}
       </LazySheet>
       {/* The same sheet, reopened on an entry rather than on an empty form. A
           second mount rather than a flag on the one above, so an add halfway
@@ -1605,6 +1678,13 @@ export function FoodLogScreen() {
       </LazySheet>
       {/* Provenance only: the entry's own figures are a snapshot of what was
           eaten and must not follow the pointer. See `FoodLogPatch`. */}
+      <ActionMenu
+        visible={optionsOpen}
+        title="Food log"
+        actions={optionsActions}
+        anchor={optionsAnchor}
+        onClose={() => setOptionsOpen(false)}
+      />
       <ActionMenu
         visible={plannedMenuCoverage !== null}
         title={plannedMenuCoverage ? describePlannedSlot(plannedMenuCoverage) : ''}

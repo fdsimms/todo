@@ -32,6 +32,7 @@ import {
   remeasureEntry,
   resolveFoodLogDrop,
   savedMealCalories,
+  savedMealsMatching,
   scalePanelToAmount,
   wholeEstimate,
   type FoodLogListItem,
@@ -483,6 +484,28 @@ describe('savedMealCalories', () => {
 
   it('answers null for an empty meal', () => {
     expect(savedMealCalories([])).toBeNull();
+  });
+});
+
+describe('savedMealsMatching', () => {
+  const meal = (id: string, name: string) => ({ id, name, items: [savedItem()], createdAt: '2026-01-01T00:00:00.000Z' });
+  const meals = [meal('a', 'Protein shake'), meal('b', 'Oatmeal and berries'), meal('c', 'Shake and fries')];
+
+  it('finds a meal whose name contains the typed text, in the list\'s own order', () => {
+    expect(savedMealsMatching(meals, 'shake').map(m => m.id)).toEqual(['a', 'c']);
+  });
+
+  it('ignores case and spacing around the text', () => {
+    expect(savedMealsMatching(meals, '  OATMEAL ').map(m => m.id)).toEqual(['b']);
+  });
+
+  it('offers nothing when nothing is typed', () => {
+    expect(savedMealsMatching(meals, '')).toEqual([]);
+    expect(savedMealsMatching(meals, '   ')).toEqual([]);
+  });
+
+  it('offers nothing when no name matches', () => {
+    expect(savedMealsMatching(meals, 'pizza')).toEqual([]);
   });
 });
 

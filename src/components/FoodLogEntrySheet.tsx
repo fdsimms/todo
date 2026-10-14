@@ -32,7 +32,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useStoreWhileOpen } from '../hooks/useStoreWhileOpen';
 import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
-import { MEAL_SLOTS, MEAL_SLOT_LABELS, isPortionBox, type FoodLogEntry, type FoodNutrition, type GroceryItem, type ItemProduct, type ItemSubLink, type MealSlot, type Recipe, type SavedMealItem } from '../types';
+import { MEAL_SLOTS, MEAL_SLOT_LABELS, isPortionBox, type FoodLogEntry, type FoodNutrition, type GroceryItem, type ItemProduct, type ItemSubLink, type MealSlot, type Recipe, type SavedMeal, type SavedMealItem } from '../types';
 import { itemFromPick } from '../utils/savedMealReview';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -57,6 +57,8 @@ import {
   parseFoodAmount,
   recallAmount,
   recipeHelpingNutrition,
+  savedMealCalories,
+  savedMealsMatching,
   scalePanelToAmount,
 } from '../utils/foodLog';
 import { cookedDishGrams, mealHelping, servingGrams, weighedHelping } from '../utils/mealLog';
@@ -277,6 +279,17 @@ interface Props {
    */
   onSavedMeal?: () => void;
   /**
+   * The saved meals, so a name typed in the search finds them beside the foods
+   * (`savedMealsMatching`). A row's body opens the meal for changes through
+   * `onPickSavedMeal`, and its plus logs it as saved through `onLogSavedMeal`,
+   * the same split an earlier helping's row draws. All three are needed for the
+   * rows to show; omitted by a caller with nowhere to send them, and never
+   * offered while correcting an entry or picking a food for a saved meal.
+   */
+  savedMeals?: SavedMeal[];
+  onPickSavedMeal?: (meal: SavedMeal) => void;
+  onLogSavedMeal?: (meal: SavedMeal) => void;
+  /**
    * "Don't ask about this meal" — the manual sheet's counterpart to
    * `LogMealPrompt`'s own secondary button of the same name. Present only
    * while there's a meal to decline: `LogMealEntrySheet` supplies it exactly
@@ -434,7 +447,7 @@ const NO_RECIPES: Recipe[] = [];
 const NO_SUBS: ItemSubLink[] = [];
 
 export function FoodLogEntrySheet({
-  visible, slot, at, initialQuery, mealPlanEntryId, editing, reviewing, allowBurst, onClose, canEstimate, onScan, onPhotographLabel, onSavedMeal, onPickFood, onDeclineMeal,
+  visible, slot, at, initialQuery, mealPlanEntryId, editing, reviewing, allowBurst, onClose, canEstimate, onScan, onPhotographLabel, onSavedMeal, savedMeals, onPickSavedMeal, onLogSavedMeal, onPickFood, onDeclineMeal,
   overlays, ref,
 }: Props) {
   const colors = useColors();
@@ -886,6 +899,15 @@ export function FoodLogEntrySheet({
   const helpings = useMemo(
     () => (editing ? [] : recentUnlinkedHelpings(recentLog, query)),
     [editing, recentLog, query],
+  );
+
+  // Saved meals whose name matches what is typed. Nothing before typing starts:
+  // the list of every one is the "Log a saved meal" button's.
+  const savedMatches = useMemo(
+    () => (editing || onPickFood || !onPickSavedMeal || !onLogSavedMeal || !savedMeals
+      ? []
+      : savedMealsMatching(savedMeals, query)),
+    [editing, onPickFood, onPickSavedMeal, onLogSavedMeal, savedMeals, query],
   );
 
   // The dish's own lines with no fixed amount to count them by — a serving
@@ -1630,6 +1652,48 @@ export function FoodLogEntrySheet({
     </View>
   ) : null;
 
+  // Above the foods, since a name someone saved a meal under is a name they
+  // chose to look it up by. Rows laid out like an earlier helping's: the body
+  // opens the meal for changes, the plus logs it as it was saved.
+  const savedBlock = savedMatches.length > 0 ? (
+    <View>
+      <Text style={[styles.label, styles.helpingsLabel]}>SAVED MEALS</Text>
+      {savedMatches.map(meal => {
+        const calories = savedMealCalories(meal.items);
+        const meta = `${meal.items.length} ${meal.items.length === 1 ? 'item' : 'items'}${calories !== null ? ` · ${calories} cal` : ''}`;
+        return (
+          <View key={meal.id} style={[styles.row, styles.helpingRow]}>
+            <TouchableOpacity
+              style={styles.helpingBody}
+              activeOpacity={interaction.activeOpacity}
+              onPress={() => { haptics.tap(); Keyboard.dismiss(); onPickSavedMeal?.(meal); }}
+              accessibilityRole="button"
+              accessibilityLabel={`Change ${meal.name} before logging, ${meta}`}
+            >
+              <View style={styles.rowText}>
+                <Text style={styles.rowTitle}>{meal.name}</Text>
+                <Text style={styles.rowMeta}>{meta}</Text>
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.helpingAdd}
+              activeOpacity={interaction.activeOpacity}
+              onPress={() => { haptics.success(); Keyboard.dismiss(); onLogSavedMeal?.(meal); }}
+              accessibilityRole="button"
+              accessibilityLabel={`Log ${meal.name} as saved, ${meta}`}
+            >
+              <Ionicons name="add-circle-outline" size={iconSize.md} color={colors.accent} />
+            </TouchableOpacity>
+          </View>
+        );
+      })}
+      {/* The helpings and usual blocks label the list when they are in the header; with neither, this does. */}
+      {results.length > 0 && (
+        <Text style={[styles.label, styles.listLabel]}>FOODS AND RECIPES</Text>
+      )}
+    </View>
+  ) : null;
+
   // This meal's usual foods, above the earlier helpings and the list. Rows
   // like the list's own, since that's what they are.
   const usualBlock = usual.length > 0 && chosenSlot ? (
@@ -2209,6 +2273,7 @@ export function FoodLogEntrySheet({
               ListHeaderComponent={
                 <>
                   {lookupBlock}
+                  {savedBlock}
                   {usualBlock}
                   {helpingsAfterResults ? null : helpingsBlock}
                 </>
@@ -2218,7 +2283,7 @@ export function FoodLogEntrySheet({
               // usual foods: those are the
               // answer to "no matching food", and a full-height empty state
               // under them would say there was nothing while showing something.
-              ListEmptyComponent={lookupBlock || usualBlock ? null : (
+              ListEmptyComponent={lookupBlock || usualBlock || savedBlock ? null : (
                 <EmptyState
                   icon="nutrition-outline"
                   // Said about the catalog when logged-before rows are showing
