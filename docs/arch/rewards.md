@@ -18,7 +18,8 @@ default (`rewardsEnabled`), switched on from the Rewards screen (its own menu ro
   chain pays for the live step) scaled by its difficulty (`DIFFICULTY_MULTIPLIER`), plus one coin per `STREAK_BONUS_EVERY` on the streak this completion
   reaches, capped at `STREAK_BONUS_CAP`. Subtasks earn nothing, or splitting a task would be the way
   to earn more.
-- **Only a person moves it.** `neutral` completions (the overshoot and interval sweeps), the quota
+- **Only a person moves it**, with one carve-out: the rollover collects clean days a person didn't
+  collect ("Clean days" below), because it only pays for days the streak already counts. `neutral` completions (the overshoot and interval sweeps), the quota
   rollover (which bypasses `completeTask`) and the expiry sweep earn and cost nothing. Losses come
   from `markMissed` and `logSlip` only. The app never claims a miss on the user's behalf, so it
   doesn't charge for one: a task left undone costs nothing until you say you missed it. **Don't add a
@@ -40,6 +41,26 @@ default (`rewardsEnabled`), switched on from the Rewards screen (its own menu ro
 - **Off means nothing is written.** Every `record*` action and `claimReward` is a no-op while
   `rewardsEnabled` is off. The `takeBack*` actions are not gated, so an entry written while it was on
   still goes when its completion is undone after it was switched off.
+
+## Clean days on a "don't do" habit
+
+A habit you avoid has no completion to pay, so it pays for a clean day instead: the same coins a
+completion earns (`coinsForCompletion`, so effort, difficulty and the streak bonus count, and
+Trivial pays nothing), at the streak that day reached. Rules in `payCleanDays` (`useTaskStore`) over
+`cleanDaysCredited` (`negativeHabits.ts`).
+
+- **Paid when the day enters the streak, never separately.** "Mark today done" (the long press menu)
+  collects today now. Any day nobody collected is collected by `rolloverNegativeStreaks`, and a
+  habit's own end time passing collects today the same way. So a day pays once whether or not you
+  got to it, and forgetting costs nothing.
+- **One entry per habit and day** (`spawnSeed.coinClean`), so collecting by hand and the rollover
+  finding it later, or two phones doing either, is one row.
+- **The app does not decide a day was clean, it credits what the streak already credits.** The
+  rollover's "no slip was reported" reading is the same one the streak uses; this pays on it and adds
+  no claim of its own. Vacation and paused projects credit nothing, so they pay nothing.
+- **Undo takes back exactly that day.** Reopening a counted day removes today's entry. A slip that
+  breaks a day already collected removes it too (a spoiled day isn't clean), and undoing that slip
+  writes it again with the restored run. Earlier days stay paid.
 
 ## Paying per tap
 

@@ -286,6 +286,27 @@ export function closeDayPatch(task: NegativeHabitFields, todayStart: Date): Part
 }
 
 /**
+ * The clean days a streak patch (`cleanDayPatch`, `closeDayPatch`) added, oldest
+ * first, with the streak each one reached. This is what the coin rules pay for:
+ * one entry per day, at the streak that day ended on, so a week credited at once
+ * pays what the same week would have paid a day at a time. A patch that adds no
+ * run (vacation moves the anchor only) credits nothing.
+ */
+export function cleanDaysCredited(
+  before: Pick<Task, 'streakCount'>,
+  patch: Pick<Partial<Task>, 'streakCount' | 'streakDate'> | null,
+): { day: Date; streak: number }[] {
+  if (!patch || patch.streakCount === undefined || !patch.streakDate) return [];
+  const added = patch.streakCount - before.streakCount;
+  if (added < 1) return [];
+  const last = new Date(patch.streakDate);
+  return Array.from({ length: added }, (_, i) => ({
+    day: subDays(last, added - 1 - i),
+    streak: before.streakCount + i + 1,
+  }));
+}
+
+/**
  * Taking a closed day back. The run drops by one and the anchor returns to
  * yesterday, so the day is open again and the rollover credits it normally if it
  * is still clean at the end. Days credited before today stay credited.

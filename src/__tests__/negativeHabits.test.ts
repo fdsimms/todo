@@ -10,6 +10,7 @@ import {
   undoSlipPatch,
   cleanDayPatch,
   closeDayPatch,
+  cleanDaysCredited,
   reopenDayPatch,
   isClosedToday,
   windowCloseDayPatch,
@@ -326,5 +327,21 @@ describe('closing a day early', () => {
     it('offers no reopen once the end time would just close it again', () => {
       expect(negativeHoldFor(habit({ streakCount: 4, streakDate: iso(10) }), day(10), { windowClosed: true })).toBeNull();
     });
+  });
+});
+
+describe('cleanDaysCredited', () => {
+  it('lists each day a close or a rollover added, with the streak it reached', () => {
+    const before = habit({ streakCount: 3, streakDate: iso(7) });
+    const days = cleanDaysCredited(before, closeDayPatch(before, day(10)));
+    expect(days.map(d => [d.day.getDate(), d.streak])).toEqual([[8, 4], [9, 5], [10, 6]]);
+    const rolled = cleanDaysCredited(before, cleanDayPatch(before, day(10)));
+    expect(rolled.map(d => [d.day.getDate(), d.streak])).toEqual([[8, 4], [9, 5]]);
+  });
+
+  it('credits nothing for a patch that adds no run', () => {
+    const before = habit({ streakCount: 3, streakDate: iso(7) });
+    expect(cleanDaysCredited(before, cleanDayPatch(before, day(10), { paused: true }))).toEqual([]);
+    expect(cleanDaysCredited(before, null)).toEqual([]);
   });
 });

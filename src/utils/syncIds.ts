@@ -107,4 +107,10 @@ export const spawnSeed = {
    * row. The tap that reaches the target is the completion and uses `coinEarn`.
    */
   coinTap: (taskId: string, tap: number) => `coin-tap:${taskId}:${tap}`,
+  /**
+   * The coins one clean day on a "don't do" habit earned. Keyed by the habit
+   * and the day, so collecting a day by hand and the rollover finding it later
+   * (or two devices doing either) is one row, and a reopen names what to drop.
+   */
+  coinClean: (taskId: string, dayKey: string) => `coin-clean:${taskId}:${dayKey}`,
 } as const;

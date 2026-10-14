@@ -4,6 +4,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { CardSheet, useCardSheet, type CardAnchor } from './CardSheet';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, interaction, border, iconSize, lineHeight, type Colors } from '../theme';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { haptics } from '../utils/haptics';
 import type { NegativeHold } from '../utils/negativeHabits';
 
@@ -48,6 +49,7 @@ export function NegativeHoldMenu({ visible, anchor, hold, onCount, onReopen, onS
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const card = useCardSheet();
+  const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
 
   const slipped = hold === 'undo-slip' || hold === 'undo-or-close';
   const rows: Row[] = [];
@@ -57,7 +59,9 @@ export function NegativeHoldMenu({ visible, anchor, hold, onCount, onReopen, onS
       icon: 'checkmark-circle-outline',
       tone: 'accent',
       label: 'Mark today done',
-      detail: 'Counts today toward your streak now, before the day ends.',
+      detail: rewardsEnabled
+        ? 'Counts today toward your streak and collects its coins now, before the day ends.'
+        : 'Counts today toward your streak now, before the day ends.',
       feedback: haptics.success,
       action: onCount,
     });
@@ -68,7 +72,9 @@ export function NegativeHoldMenu({ visible, anchor, hold, onCount, onReopen, onS
       icon: 'arrow-undo-outline',
       tone: 'accent',
       label: 'Undo',
-      detail: 'Today comes off your streak until the day ends.',
+      detail: rewardsEnabled
+        ? 'Today comes off your streak and its coins are taken back until the day ends.'
+        : 'Today comes off your streak until the day ends.',
       feedback: haptics.tap,
       action: onReopen,
     });
