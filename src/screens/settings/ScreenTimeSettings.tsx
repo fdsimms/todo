@@ -505,22 +505,6 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
         )}
       </SettingsSection>
 
-      {reasons.length > 0 && (
-        <SettingsSection
-          label="Emergency"
-          footer="Ends every block that is on right now. You write why, and it is saved in the record below. A key tag does the same without the reason."
-        >
-          <SettingsRow
-            entryId="emergencyRelease"
-            icon="warning-outline"
-            iconColor={colors.red}
-            label="End all blocks now"
-            hint="Ends focus, task, failed-task, schedule, timed and key tag blocks."
-            onPress={() => { haptics.tap(); setEmergencyOpen(true); }}
-          />
-        </SettingsSection>
-      )}
-
       {releaseLog.length > 0 && (
         <SettingsSection
           label="Ended early"
@@ -758,7 +742,23 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
           onPress={() => { haptics.tap(); navigateToSettingsEntry(navigation, 'gen:screenTime'); }}
         />
       </SettingsSection>
-    
+
+      {reasons.length > 0 && (
+        <SettingsSection
+          label="Emergency"
+          footer="Ends every block that is on right now. You write why, and it is saved in the record below. A key tag does the same without the reason."
+        >
+          <SettingsRow
+            entryId="emergencyRelease"
+            icon="warning-outline"
+            iconColor={colors.red}
+            label="End all blocks now"
+            hint="Ends focus, task, failed-task, schedule, timed and key tag blocks."
+            onPress={() => { haptics.tap(); setEmergencyOpen(true); }}
+          />
+        </SettingsSection>
+      )}
+
       <EmergencyReleaseSheet
         visible={emergencyOpen}
         reasons={reasons}
