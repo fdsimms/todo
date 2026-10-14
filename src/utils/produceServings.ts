@@ -224,6 +224,32 @@ export function servingsFromGrams(grams: ProduceGrams): ProduceServings {
 export type RecipeProduceResolver = (entry: FoodLogEntry) => ProduceGrams | null;
 
 /**
+ * What one entry puts toward produce: its grams of each kind, `'unmeasured'`
+ * when it holds produce (or a dish that might) the reader could not weigh, or
+ * null when it is not produce at all. The one rule `dayProduce` and
+ * `produceContributions` both read, so the list behind a total cannot disagree
+ * with the total.
+ */
+function entryProduce(
+  entry: FoodLogEntry,
+  recipeGrams?: RecipeProduceResolver,
+): ProduceGrams | 'unmeasured' | null {
+  if (isNutrientOnlyEntry(entry)) return null;
+
+  if (entry.recipeId !== null) {
+    return (recipeGrams ? recipeGrams(entry) : null) ?? 'unmeasured';
+  }
+
+  const kind = produceKindOf(entry.label, entry.sourcePanel?.foodCategory);
+  if (kind === null) return null;
+  if (kind === 'mixed') return 'unmeasured';
+  if (entry.grams === null || entry.grams <= 0) return 'unmeasured';
+  const grams = emptyProduceGrams();
+  grams[kind] = entry.grams;
+  return grams;
+}
+
+/**
  * Servings of vegetables and fruit in one day's entries.
  *
  * Nutrient-only entries (water, a logged sodium figure) are skipped, since they
@@ -238,26 +264,66 @@ export function dayProduce(
   let unmeasured = 0;
 
   for (const entry of entries) {
-    if (isNutrientOnlyEntry(entry)) continue;
-
-    if (entry.recipeId !== null) {
-      const fromRecipe = recipeGrams ? recipeGrams(entry) : null;
-      if (fromRecipe) addProduceGrams(grams, fromRecipe);
-      else unmeasured += 1;
-      continue;
-    }
-
-    const kind = produceKindOf(entry.label, entry.sourcePanel?.foodCategory);
-    if (kind === null) continue;
-    if (kind === 'mixed') {
-      unmeasured += 1;
-      continue;
-    }
-    if (entry.grams !== null && entry.grams > 0) grams[kind] += entry.grams;
-    else unmeasured += 1;
+    const result = entryProduce(entry, recipeGrams);
+    if (result === null) continue;
+    if (result === 'unmeasured') unmeasured += 1;
+    else addProduceGrams(grams, result);
   }
 
   return { ...servingsFromGrams(grams), unmeasured };
+}
+
+/** One entry's share of a day's produce servings. */
+export interface ProduceContribution {
+  entry: FoodLogEntry;
+  /** Servings toward the vegetable figure, with the daily bean cap already applied. */
+  vegetable: number;
+  /** Servings toward the fruit figure. */
+  fruit: number;
+}
+
+export interface ProduceContributions {
+  /** Entries that counted toward either figure, largest first. */
+  counted: ProduceContribution[];
+  /** Entries left out because they could not be weighed, in log order. */
+  unmeasured: FoodLogEntry[];
+}
+
+/**
+ * The entries behind both of `dayProduce`'s figures. Beans count toward
+ * vegetables once a day in total, so when the day's beans exceed that cap each
+ * bean entry is scaled down by the same factor and the rows still add up to the
+ * figures. Unmeasured entries are the same ones `dayProduce` counts, listed so a
+ * low figure can be traced to what was left out.
+ */
+export function produceContributions(
+  entries: readonly FoodLogEntry[],
+  recipeGrams?: RecipeProduceResolver,
+): ProduceContributions {
+  const measured: Array<{ entry: FoodLogEntry; grams: ProduceGrams }> = [];
+  const unmeasured: FoodLogEntry[] = [];
+  let legumeServings = 0;
+
+  for (const entry of entries) {
+    const result = entryProduce(entry, recipeGrams);
+    if (result === null) continue;
+    if (result === 'unmeasured') {
+      unmeasured.push(entry);
+      continue;
+    }
+    measured.push({ entry, grams: result });
+    legumeServings += result.legume / PORTION_GRAMS;
+  }
+
+  const beanScale = legumeServings > LEGUME_DAILY_CAP ? LEGUME_DAILY_CAP / legumeServings : 1;
+  const counted: ProduceContribution[] = [];
+  for (const { entry, grams } of measured) {
+    const vegetable = grams.vegetable / PORTION_GRAMS + (grams.legume / PORTION_GRAMS) * beanScale;
+    const fruit = grams.fruit / PORTION_GRAMS + grams.dried / DRIED_PORTION_GRAMS;
+    if (vegetable + fruit > 0) counted.push({ entry, vegetable, fruit });
+  }
+  counted.sort((x, y) => y.vegetable + y.fruit - (x.vegetable + x.fruit));
+  return { counted, unmeasured };
 }
 
 /** Rounds to the nearest half, which is as fine as a name-based estimate can honestly claim. */
