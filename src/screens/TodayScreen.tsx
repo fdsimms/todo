@@ -917,9 +917,16 @@ export function TodayScreen() {
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   // Stable, so the memoized editor sitting closed under this screen isn't
   // re-rendered by every render of it (see TaskEditor).
+  // The tab a task link was tapped from (Backfill's "Open this task"), handed
+  // back to when the editor it opened closes. Consumed by the first close, so an
+  // editor opened any other way afterwards never navigates anywhere.
+  const editorReturnToRef = useRef<string | null>(null);
   const closeEditor = useCallback(() => {
     setEditorVisible(false);
     setExpandedTaskId(null);
+    const returnTo = editorReturnToRef.current;
+    editorReturnToRef.current = null;
+    if (returnTo) navigateToTab(returnTo);
   }, []);
   const {
     selectionMode,
@@ -2113,6 +2120,7 @@ export function TodayScreen() {
     if (pendingOpenTaskId === null) return;
     if (pendingOpenTaskArrived) {
       handleRowEdit(pendingOpenTaskId);
+      editorReturnToRef.current = (route.params?.openTaskReturnTo as string | undefined) ?? null;
       setPendingOpenTaskId(null);
       return;
     }

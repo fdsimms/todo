@@ -1058,6 +1058,25 @@ export function BackfillScreen() {
       undo,
     });
     advance(currentTask.id);
+    offerKindDefault(currentTask, patch, false, valueText);
+  };
+
+  /**
+   * The same "use this for new tasks" offer a whole-group answer makes, for a
+   * generated task that is the only one of its kind left in the queue. Such a
+   * card has no group toggle (a batch needs two or more cards), yet it is
+   * exactly the case where the answer is worth keeping: the next one the app
+   * writes would otherwise come back here.
+   */
+  const offerKindDefault = (task: Task, patch: Partial<Task>, dismissed: boolean, valueText: string) => {
+    if (active?.kind !== 'task' || !task.generatedKind) return;
+    const fieldLabel = BACKFILL_FIELDS.find(f => f.id === active.id)!.label;
+    offerGroupDefault(
+      task,
+      { kind: 'generated', id: task.generatedKind, key: `generated:${task.generatedKind}` },
+      defaultsFromAnswer(active.id, patch, dismissed),
+      `${fieldLabel} to ${valueText}`,
+    );
   };
 
   /**
@@ -1129,7 +1148,7 @@ export function BackfillScreen() {
       ? useSettingsStore.getState().generatedTaskDefaults[kind]
       : projectId ? useProjectStore.getState().getProjectById(projectId)?.taskDefaults : null;
     if (!defaultsDiffer(current, answer)) return;
-    const name = groupLabel ?? 'this group';
+    const name = scopeLabelFor(scope) ?? 'this group';
     Alert.alert(
       `Set ${setting} for new tasks in “${name}”?`,
       'New tasks added there will start with this answer, so they won’t show up in Backfill. You can change it later in the project editor or Settings.',
@@ -1557,6 +1576,7 @@ export function BackfillScreen() {
         undo: restoreRows(snapshots),
       });
       advance(currentTask.id);
+      offerKindDefault(currentTask, {}, true, dismissedText);
     } else if (active.kind === 'category') {
       if (!currentCategory) return;
       const categoryName = currentCategory.name;
@@ -2347,7 +2367,7 @@ export function BackfillScreen() {
                 text={displayTitleFor(currentTask)}
                 lines={3}
                 openLabel="Open this task"
-                onOpen={() => resetToTask(currentTask.id)}
+                onOpen={() => resetToTask(currentTask.id, true)}
                 colors={colors}
                 styles={styles}
               />
@@ -2512,7 +2532,7 @@ export function BackfillScreen() {
                 text={currentCategory.emoji ? `${currentCategory.emoji} ${currentCategory.name}` : currentCategory.name}
                 lines={2}
                 openLabel={`Open ${currentCategory.name}`}
-                onOpen={() => resetToCategories(currentCategory.name)}
+                onOpen={() => resetToCategories(currentCategory.name, true)}
                 colors={colors}
                 styles={styles}
               />
@@ -2943,7 +2963,7 @@ export function BackfillScreen() {
                 text={currentProject.title}
                 lines={2}
                 openLabel="Open this project"
-                onOpen={() => resetToProject(currentProject.id)}
+                onOpen={() => resetToProject(currentProject.id, true)}
                 colors={colors}
                 styles={styles}
               />
@@ -3104,7 +3124,7 @@ export function BackfillScreen() {
                 text={currentRecipe.name}
                 lines={2}
                 openLabel="Open this recipe"
-                onOpen={() => resetToRecipeDetail(currentRecipe.id)}
+                onOpen={() => resetToRecipeDetail(currentRecipe.id, { handBack: true })}
                 colors={colors}
                 styles={styles}
               />
@@ -3321,7 +3341,7 @@ export function BackfillScreen() {
               text={currentItem.name}
               lines={2}
               openLabel={`Open ${currentItem.name}`}
-              onOpen={() => resetToGroceryItem(currentItem.id)}
+              onOpen={() => resetToGroceryItem(currentItem.id, true)}
               colors={colors}
               styles={styles}
             />

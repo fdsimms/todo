@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { navigateToTab } from '../navigation/navigationRef';
 import {
   View,
   Text,
@@ -54,9 +55,13 @@ export function CategoriesScreen() {
   const openCategoryName: string | undefined = (route.params as { openCategory?: string } | undefined)?.openCategory;
   const openCategoryStamp: number | undefined = (route.params as { openCategoryStamp?: number } | undefined)?.openCategoryStamp;
   const [handledCategoryStamp, setHandledCategoryStamp] = useState<number | undefined>(undefined);
+  // The tab Backfill opened this from, handed back to when the editor closes.
+  // Consumed by the first close so an editor opened by hand never navigates.
+  const editorReturnToRef = useRef<string | null>(null);
   useEffect(() => {
     if (openCategoryStamp === undefined || openCategoryStamp === handledCategoryStamp) return;
     setHandledCategoryStamp(openCategoryStamp);
+    editorReturnToRef.current = (route.params as { openCategoryReturnTo?: string } | undefined)?.openCategoryReturnTo ?? null;
     if (openCategoryName && allCategories.includes(openCategoryName)) setEditingCategory(openCategoryName);
   }, [openCategoryStamp, handledCategoryStamp, openCategoryName, allCategories]);
 
@@ -208,7 +213,12 @@ export function CategoriesScreen() {
       <CategoryEditor
         visible={editingCategory !== null}
         category={editingCategory}
-        onClose={() => setEditingCategory(null)}
+        onClose={() => {
+          setEditingCategory(null);
+          const returnTo = editorReturnToRef.current;
+          editorReturnToRef.current = null;
+          if (returnTo) navigateToTab(returnTo);
+        }}
       />
       {pullSearch.sheet}
     </View>
