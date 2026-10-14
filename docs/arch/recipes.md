@@ -124,6 +124,17 @@ meal that uses it. The graph walk — flatten, cycle check, reverse lookup — l
   the quantities it's written with and the parent's factor multiplies them on the way out. Nothing
   about `servings` is consulted, and nothing is written back onto the recipe.
 
+**A used recipe's nutrition counts the share the parent eats, not the whole batch (`componentShares`,
+`recipeNutrition.ts`, `RecipeComponent.amountUsed`).** Flattening lists a part's lines in whole, which is
+right for shopping and wrong for "1 tbsp Fishy Seasoning" out of a 3/4 cup batch, or a sauce only served
+alongside. The share comes from the link's own **amount used** (typed in the sheet a long press on the
+part opens; "1 tbsp", "2 fillets", or a bare "1/4" meaning a quarter of the batch), else from the
+parent's own ingredient line naming the part. It is measured against the part's `recipeYield` and only
+when the two compare (one dimension, or one counted unit); no amount, no yield, "to taste" or mismatched
+units count the whole batch, as before. Shares compound down a chain of parts. Nutrition only: shopping,
+the planned-week total and recipe cost still read whole parts, and `amountUsed` is shown on the row ("uses
+1 tbsp") and settable over MCP (`update_recipe` components).
+
 **A component has a position among the ingredients (`RecipeComponent.placement`).** It is a row in
 the Ingredients list on the recipe page, dragged like an ingredient, and the position is honored by
 every surface that flattens the recipe, because there is one walk (`flattenRecipeIngredients`, over

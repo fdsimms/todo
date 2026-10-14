@@ -395,7 +395,7 @@ export interface RecipeInput {
    */
   cookedWeightG?: number | null;
   /** Other recipes used inside this one, replacing the list. Sharing a choiceGroup makes them alternatives. */
-  components?: { recipeId: string; choiceGroup?: string | null }[];
+  components?: { recipeId: string; choiceGroup?: string | null; amountUsed?: string | null }[];
   /** Tasks written ahead of a planned meal of it ("soak the beans"), replacing the list. */
   prepTasks?: { title: string; offsetDays?: number; reminderOffsetMinutes?: number | null }[];
 }
@@ -2526,11 +2526,16 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           if ((existing.choiceGroup ?? null) !== (c.choiceGroup ?? null)) {
             store().setComponentChoiceGroup(id, existing.id, c.choiceGroup ?? null);
           }
+          // Left alone when the call did not name it, so a list sent only to
+          // change a group does not clear an amount someone typed.
+          if (c.amountUsed !== undefined) store().setComponentAmountUsed(id, existing.id, c.amountUsed);
           continue;
         }
         if (!store().addComponent(id, c.recipeId, c.choiceGroup ?? null)) {
           throw new Error(`Could not use recipe ${c.recipeId} inside this one.`);
         }
+        const added = current().components.find(x => x.recipeId === c.recipeId);
+        if (added && c.amountUsed) store().setComponentAmountUsed(id, added.id, c.amountUsed);
       }
       // The order given is the order kept (it decides a group's default), and
       // no placement is touched.

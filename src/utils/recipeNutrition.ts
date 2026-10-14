@@ -5,6 +5,7 @@ import type {
   MealPlanEntry,
   NutrientKey,
   Recipe,
+  RecipeComponent,
 } from '../types';
 import { NUTRIENT_KEYS } from '../types';
 import { nutritionFor } from './foodNutrition';
@@ -16,6 +17,8 @@ import { flattenRecipeIngredients, type ChoiceResolution } from './recipeCompone
 import { normalizeScale, scaleQuantity } from './recipeScale';
 import { NO_STANDING_SWAPS, type StandingSwapMap } from './standingSwaps';
 import { onHandNameKeys } from './grocerySuggest';
+import { groceryNameKey } from './groceryParse';
+import { parseQuantity, rationalToNumber } from './quantity';
 import { measureQuantity, ML_PER_TBSP } from './unitConvert';
 
 /**
@@ -338,6 +341,72 @@ export function recipeNutrition(
   return readRecipeNutrition(recipe, items, products, recipesById, resolution, scale, swaps).nutrition;
 }
 
+/**
+ * How much of each used recipe a dish actually eats, as a fraction of the
+ * batch the part's own recipe makes, keyed by that recipe's id. A recipe not
+ * in the map counts whole.
+ *
+ * A used recipe's lines are flattened in whole, so "1 tbsp Fishy Seasoning"
+ * charged the dish for the entire 3/4 cup batch. The amount comes from the
+ * link's own `amountUsed` when one was typed ("1 tbsp", "2 fillets", or a
+ * bare "1/4" for a quarter of the batch), else from the parent's own
+ * ingredient line naming the part. It is only believed when it can be
+ * compared with the part's `recipeYield`: both measured in one dimension, or
+ * both counting the same unit. Anything else (no amount, no yield, "to taste",
+ * mismatched units) counts whole, as it always did. Shares compound down a
+ * chain of parts. A recipe's `cookedWeightG` is not consulted: a line in
+ * tablespoons has no weight until the part's own panel is worked out.
+ */
+export function componentShares(
+  root: Recipe,
+  recipesById: ReadonlyMap<string, Recipe>,
+): Map<string, number> {
+  const shares = new Map<string, number>();
+  const visited = new Set<string>([root.id]);
+  const walk = (node: Recipe, share: number): void => {
+    for (const component of node.components ?? []) {
+      if (visited.has(component.recipeId)) continue;
+      const part = recipesById.get(component.recipeId);
+      if (!part) continue;
+      visited.add(part.id);
+      const used = usedFraction(node, component, part);
+      const partShare = share * (used ?? 1);
+      if (partShare !== 1) shares.set(part.id, partShare);
+      walk(part, partShare);
+    }
+  };
+  walk(root, 1);
+  return shares;
+}
+
+/** `amount` as a fraction of `yielded`, or null when the two cannot be compared. */
+function fractionOf(amount: string, yielded: string | null): number | null {
+  const q = parseQuantity(amount);
+  if (!q.amount) return null;
+  const used = rationalToNumber(q.amount);
+  if (!(used > 0)) return null;
+  // A bare number is a number of batches: "1/4" is a quarter of it.
+  if (q.unit === null && q.rest === '') return used;
+  if (!yielded) return null;
+  const a = measureQuantity(amount);
+  const y = measureQuantity(yielded);
+  if (a && y) return a.dimension === y.dimension && y.base > 0 ? a.base / y.base : null;
+  // Counts of one thing: "2 fillets" of "4 fillets".
+  const yq = parseQuantity(yielded);
+  if (q.unit && yq.amount && yq.unit === q.unit) {
+    const total = rationalToNumber(yq.amount);
+    return total > 0 ? used / total : null;
+  }
+  return null;
+}
+
+function usedFraction(parent: Recipe, component: RecipeComponent, part: Recipe): number | null {
+  if (component.amountUsed) return fractionOf(component.amountUsed, part.recipeYield);
+  if (!part.recipeYield) return null;
+  const line = parent.ingredients.find(i => i.nameKey === groceryNameKey(part.name));
+  return line ? fractionOf(line.quantity, part.recipeYield) : null;
+}
+
 /** A dish's figures, the lines behind them, and what is missing, from one walk. */
 export interface RecipeNutritionReading {
   /** The rollup, or null while too little of the dish is known to total it. */
@@ -449,6 +518,7 @@ export function recipeNutritionLines(
   const byKey = itemKeyIndex(items);
   const productFor = preferredProductLookup(products);
   const factor = normalizeScale(scale);
+  const shares = componentShares(recipe, recipesById);
 
   const out: NutritionLine[] = [];
   for (const line of flat) {
@@ -458,7 +528,10 @@ export function recipeNutritionLines(
     const quantity = scaleQuantity(line.ingredient.quantity, factor).text;
     // Measured as written, then scaled: see the header for why not `quantity`.
     const resolved = resolveLine(
-      line.ingredient.nameKey, line.ingredient.quantity, line.ingredient.prep, byKey, productFor, factor,
+      line.ingredient.nameKey, line.ingredient.quantity, line.ingredient.prep, byKey, productFor,
+      // The share a used recipe is eaten at rides on the multiplier only; the
+      // quantity shown is still the line as the part's recipe wrote it.
+      factor * (shares.get(line.recipe.id) ?? 1),
     );
     if (!resolved) continue;
     out.push({

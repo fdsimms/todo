@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { ComponentPlacement, Cookbook, CookbookIndexEntry, Recipe, RecipeIngredient, RecipeMealType, RecipePrepTask, RecipeSourceType, RecipeStep, RecipeVote } from '../types';
-import { GROCERY_NAME_MAX_LENGTH, RECIPE_PAGE_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH, RECIPE_STEP_NOTE_MAX_LENGTH, STEP_ONLY_WHEN_MAX, TITLE_MAX_LENGTH } from '../types';
+import { GROCERY_NAME_MAX_LENGTH, GROCERY_QUANTITY_MAX_LENGTH, RECIPE_PAGE_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH, RECIPE_STEP_NOTE_MAX_LENGTH, STEP_ONLY_WHEN_MAX, TITLE_MAX_LENGTH } from '../types';
 import {
   dbGetAllRecipes,
   dbInsertRecipe,
@@ -474,6 +474,11 @@ interface RecipeStore {
    * options it's meant to join are stored under.
    */
   setComponentChoiceGroup: (recipeId: string, componentId: string, choiceGroup: string | null) => void;
+  /**
+   * How much of the used recipe's batch this dish takes (RecipeComponent.amountUsed),
+   * trimmed and length-capped; empty or null clears it, which reads as the whole batch.
+   */
+  setComponentAmountUsed: (recipeId: string, componentId: string, amount: string | null) => void;
 
   /**
    * Makes a component the one its group falls back to, by moving it ahead of
@@ -1382,6 +1387,22 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     save(set, {
       ...recipe,
       components: recipe.components.map(c => (c.id === componentId ? { ...c, choiceGroup: clean } : c)),
+    });
+  },
+
+  setComponentAmountUsed(recipeId, componentId, amount) {
+    const recipe = get().recipes.find(r => r.id === recipeId);
+    if (!recipe) return;
+    const clean = (amount ?? '').trim().slice(0, GROCERY_QUANTITY_MAX_LENGTH);
+    const current = recipe.components.find(c => c.id === componentId);
+    if (!current || (current.amountUsed ?? '') === clean) return;
+    save(set, {
+      ...recipe,
+      components: recipe.components.map(c => {
+        if (c.id !== componentId) return c;
+        const { amountUsed: _dropped, ...rest } = c;
+        return clean ? { ...rest, amountUsed: clean } : rest;
+      }),
     });
   },
 

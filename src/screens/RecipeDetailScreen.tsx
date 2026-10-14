@@ -1648,6 +1648,7 @@ export function RecipeDetailScreen() {
             </Text>
             <Text style={styles.componentMeta} numberOfLines={1}>
               {target ? describeRecipe(target, null, { recipesById }) : 'No longer in your recipes'}
+              {!!resolved.component.amountUsed && ` · uses ${resolved.component.amountUsed}`}
             </Text>
             {!!alternativeNote && (
               <Text style={styles.alternativeNote} numberOfLines={1}>{alternativeNote}</Text>

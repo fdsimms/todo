@@ -1,0 +1,4 @@
+{
+  "message": "A recipe that uses another recipe can now say how much of it goes in, like 1 tablespoon of a seasoning mix. Nutrition counts only that amount instead of the whole batch. Long press the used recipe to set it.",
+  "date": "2026-10-14"
+}

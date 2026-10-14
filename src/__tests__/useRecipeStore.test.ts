@@ -1447,6 +1447,30 @@ describe('a long either/or group keeps its short default name', () => {
   });
 });
 
+describe('setComponentAmountUsed', () => {
+  const seedPair = () => {
+    const steak = makeRecipe('Steak');
+    const mash = makeRecipe('Mash');
+    seed([steak, mash]);
+    useRecipeStore.getState().addComponent(steak.id, mash.id);
+    return { steak, link: useRecipeStore.getState().recipeById(steak.id)!.components[0] };
+  };
+
+  it('stores a trimmed amount, and clears it with null or blank so the key is absent', () => {
+    const { steak, link } = seedPair();
+    useRecipeStore.getState().setComponentAmountUsed(steak.id, link.id, '  1 tbsp ');
+    expect(useRecipeStore.getState().recipeById(steak.id)!.components[0].amountUsed).toBe('1 tbsp');
+    useRecipeStore.getState().setComponentAmountUsed(steak.id, link.id, '   ');
+    expect('amountUsed' in useRecipeStore.getState().recipeById(steak.id)!.components[0]).toBe(false);
+  });
+
+  it('ignores a link that does not exist', () => {
+    const { steak } = seedPair();
+    useRecipeStore.getState().setComponentAmountUsed(steak.id, 'nope', '1 cup');
+    expect(useRecipeStore.getState().recipeById(steak.id)!.components[0].amountUsed).toBeUndefined();
+  });
+});
+
 describe('setComponentChoiceGroup / makeComponentDefault', () => {
   // Steak, with mash and roast potatoes both linked — the state the user is in
   // right before saying "these two are alternatives".

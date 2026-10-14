@@ -875,3 +875,79 @@ describe('readRecipeNutrition', () => {
     expect(read.gaps.total).toBe(1);
   });
 });
+
+describe('a used recipe is counted at the share the parent eats', () => {
+  const comp = (id: string) => ({ id: `c-${id}`, recipeId: id, name: id, choiceGroup: null });
+  const salt = () => item({ name: 'Salt', nutrition: panel({ amounts: { calorieKcal: 0, sodiumMg: 1000 } }) });
+
+  it('counts "1 tbsp" of a 3/4 cup batch as 1/12 of it, not the whole batch', () => {
+    const mix = recipe('Mix', [ing('Salt', { quantity: '12 g' })], { recipeYield: '12 tbsp' });
+    const fish = recipe('Fish', [ing('Mix', { quantity: '1 tbsp' })], { components: [comp(mix.id)] });
+    const byId = new Map([[mix.id, mix], [fish.id, fish]]);
+    // 12 g of salt at 1000 mg per 100 g is 120 mg for the batch; a twelfth is 10.
+    const read = recipeNutrition(fish, [salt()], [], byId)!;
+    expect(read.total.sodiumMg).toBeCloseTo(10, 5);
+  });
+
+  it('compounds down a chain of parts', () => {
+    const inner = recipe('Inner', [ing('Salt', { quantity: '12 g' })], { recipeYield: '4 cup' });
+    const mid = recipe('Mid', [ing('Inner', { quantity: '2 cup', excludeFromNutrition: true })], { recipeYield: '4 cup', components: [comp(inner.id)] });
+    const top = recipe('Top', [ing('Mid', { quantity: '1 cup', excludeFromNutrition: true })], { components: [comp(mid.id)] });
+    const byId = new Map([[inner.id, inner], [mid.id, mid], [top.id, top]]);
+    expect(recipeNutrition(top, [salt()], [], byId)!.total.sodiumMg).toBeCloseTo(120 / 8, 5);
+  });
+
+  it('counts a part whole when no line names it, it has no yield, or the units differ', () => {
+    const noLine = recipe('Dressing', [ing('Salt', { quantity: '12 g' })], { recipeYield: '12 tbsp' });
+    const a = recipe('A', [], { components: [comp(noLine.id)] });
+    expect(recipeNutrition(a, [salt()], [], new Map([[noLine.id, noLine], [a.id, a]]))!.total.sodiumMg).toBeCloseTo(120, 5);
+
+    const noYield = recipe('Mix2', [ing('Salt', { quantity: '12 g' })]);
+    const b = recipe('B', [ing('Mix2', { quantity: '1 tbsp' })], { components: [comp(noYield.id)] });
+    expect(recipeNutrition(b, [salt()], [], new Map([[noYield.id, noYield], [b.id, b]]))!.total.sodiumMg).toBeCloseTo(120, 5);
+
+    const count = recipe('Mix3', [ing('Salt', { quantity: '12 g' })], { recipeYield: '4 fillets' });
+    const c = recipe('C', [ing('Mix3', { quantity: '1 tbsp' })], { components: [comp(count.id)] });
+    expect(recipeNutrition(c, [salt()], [], new Map([[count.id, count], [c.id, c]]))!.total.sodiumMg).toBeCloseTo(120, 5);
+  });
+
+  describe('an amount typed on the link', () => {
+    const withAmount = (amountUsed: string, yieldText: string | null) => {
+      const mix = recipe('Mix', [ing('Salt', { quantity: '12 g' })], { recipeYield: yieldText });
+      const dish = recipe('Dish', [], { components: [{ ...comp(mix.id), amountUsed }] });
+      return recipeNutrition(dish, [salt()], [], new Map([[mix.id, mix], [dish.id, dish]]))!.total.sodiumMg;
+    };
+
+    it('counts a volume against the yield with no line naming the part', () => {
+      expect(withAmount('1 tbsp', '12 tbsp')).toBeCloseTo(10, 5);
+    });
+
+    it('counts a bare number as batches, with or without a yield', () => {
+      expect(withAmount('1/4', null)).toBeCloseTo(30, 5);
+      expect(withAmount('2', '12 tbsp')).toBeCloseTo(240, 5);
+    });
+
+    it('counts two of four fillets as half', () => {
+      expect(withAmount('2 fillets', '4 fillets')).toBeCloseTo(60, 5);
+    });
+
+    it('counts whole when the amount cannot be compared with the yield', () => {
+      expect(withAmount('1 tbsp', '4 fillets')).toBeCloseTo(120, 5);
+      expect(withAmount('1 tbsp', null)).toBeCloseTo(120, 5);
+      expect(withAmount('to taste', '12 tbsp')).toBeCloseTo(120, 5);
+    });
+
+    it('wins over the parent line that names the part', () => {
+      const mix = recipe('Mix', [ing('Salt', { quantity: '12 g' })], { recipeYield: '12 tbsp' });
+      const dish = recipe('Dish', [ing('Mix', { quantity: '6 tbsp', excludeFromNutrition: true })], {
+        components: [{ ...comp(mix.id), amountUsed: '1 tbsp' }],
+      });
+      expect(recipeNutrition(dish, [salt()], [], new Map([[mix.id, mix], [dish.id, dish]]))!.total.sodiumMg).toBeCloseTo(10, 5);
+    });
+  });
+
+  it('leaves a recipe with no parts as it was', () => {
+    const solo = recipe('Solo', [ing('Salt', { quantity: '12 g' })]);
+    expect(recipeNutrition(solo, [salt()])!.total.sodiumMg).toBeCloseTo(120, 5);
+  });
+});
