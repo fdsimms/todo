@@ -461,10 +461,20 @@ export function resetToProjectPull(projectId?: string | null, onDayKey?: string 
  * Opens one task's editor on Today (`dundundun://task?id=…`). Today waits a
  * moment for a task it doesn't have yet, since a link to something just made
  * elsewhere usually arrives before the sync that brings the task.
+ *
+ * `handBack` is for a caller that is a screen the person is working through
+ * (Backfill): `openTaskReturnTo` carries the tab it was tapped from, and Today
+ * navigates back to it when the editor closes, so the link isn't a one-way trip
+ * onto Today. Off for a deep link, which has no tab to return to.
  */
-export function resetToTask(taskId: string): void {
+export function resetToTask(taskId: string, handBack = false): void {
   runWhenReady(() => {
-    navigateToTab('Today', { openTask: Date.now(), openTaskId: taskId });
+    const returnTo = handBack ? currentTabName() : undefined;
+    navigateToTab('Today', {
+      openTask: Date.now(),
+      openTaskId: taskId,
+      openTaskReturnTo: returnTo !== 'Today' ? returnTo : undefined,
+    });
   });
 }
 

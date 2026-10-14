@@ -2223,7 +2223,7 @@ export function BackfillScreen() {
                 text={displayTitleFor(currentTask)}
                 lines={3}
                 openLabel="Open this task"
-                onOpen={() => resetToTask(currentTask.id)}
+                onOpen={() => resetToTask(currentTask.id, true)}
                 colors={colors}
                 styles={styles}
               />
