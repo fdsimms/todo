@@ -15,7 +15,7 @@ import { usePlanMeal } from '../hooks/usePlanMeal';
 import { useSheetMount } from '../hooks/useSheetMount';
 import { useColors } from '../theme/ThemeContext';
 import { animation, border, checkboxRadius, iconSize, interaction, spacing, type Colors } from '../theme';
-import { completionTapFor, offersMealLogOnCompletion } from '../utils/completionTap';
+import { completionTapFor, isStrayTapOnFinishedTarget, offersMealLogOnCompletion } from '../utils/completionTap';
 import { recordLogUrl } from '../utils/recordTasks';
 import { useRecordTaskReady } from '../hooks/useRecordTaskReady';
 import { openInAppUrl } from '../utils/deepLinks';
@@ -218,6 +218,9 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
         logQuotaUnit(task.id);
         return;
       case 'uncomplete':
+        // The tap right after a target's last unit is the same burst, not a
+        // decision to take the day back (see isStrayTapOnFinishedTarget).
+        if (isStrayTapOnFinishedTarget(task, Date.now())) return;
         await haptics.tap();
         onTicked?.(task.id);
         animateLayout();
