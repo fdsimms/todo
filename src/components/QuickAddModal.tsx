@@ -1539,9 +1539,14 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // tooltip bubble's own tap and the accessory bar's confirm checkmark
   // (TitleTokenAccessory), a second way to accept it without looking away
   // from the keyboard. Excludes ambiguousMention on purpose: that state
-  // offers a row of candidate pills instead of one thing to confirm.
+  // offers a row of candidate pills instead of one thing to confirm. A
+  // mention suggestion with exactly one candidate is one thing to confirm.
+  const soleMentionCandidate = mentionSuggestion?.candidates.length === 1
+    ? mentionSuggestion.candidates[0]
+    : null;
   const applyActiveParse = () => {
-    if (parsed) applyParse();
+    if (soleMentionCandidate) applyMentionSuggestion(soleMentionCandidate);
+    else if (parsed) applyParse();
     else if (categoryTagsParsed) applyCategoryTags();
     else if (priorityParsed) applyPriority();
     else if (projectParsed) applyProject();
@@ -1561,7 +1566,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     else if (subtasksParsed) applySubtasks();
     else if (avoidParsed) applyAvoid();
   };
-  const confirmVisible = activeMatch !== null && !ambiguousMention && !mentionSuggestion;
+  const confirmVisible = activeMatch !== null && !ambiguousMention && (!mentionSuggestion || soleMentionCandidate !== null);
 
   // "No, that's just part of the title" — leaves the title and every other
   // field untouched, just drops the tooltip for this phrase.

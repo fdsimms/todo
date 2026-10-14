@@ -1536,6 +1536,45 @@ describe('getMentionSuggestions', () => {
     { id: 'p3', name: 'Gideon', nickname: '' },
   ];
 
+  describe('a business with a multi-word name', () => {
+    const eyeQ = { id: 'b1', name: 'Eye Q', nickname: '', kind: 'business' as const };
+    const withBiz = [...people, eyeQ];
+
+    it('is offered by its first word, as the full name', () => {
+      const r = getMentionSuggestions('Call @eye', withBiz);
+      expect(r?.candidates.map(c => c.name)).toEqual(['Eye Q']);
+      expect(r?.candidates[0].resolveKey).toBe('Eye Q');
+    });
+
+    it('is still offered once the space is typed, spanning the whole tail', () => {
+      const title = 'Call @eye q';
+      const r = getMentionSuggestions(title, withBiz);
+      expect(r?.candidates[0].resolveKey).toBe('Eye Q');
+      expect(r?.start).toBe(5);
+      expect(r?.end).toBe(title.length);
+      expect(getMentionSuggestions('Call @eye ', withBiz)?.candidates[0].id).toBe('b1');
+    });
+
+    it('is offered to fix the casing of a name typed in full, then goes quiet', () => {
+      expect(getMentionSuggestions('Call @eye q', withBiz)).not.toBeNull();
+      expect(getMentionSuggestions('Call @Eye Q', withBiz)).toBeNull();
+    });
+
+    it('stays quiet once the line moves on to other words', () => {
+      expect(getMentionSuggestions('Call @eye about contacts', withBiz)).toBeNull();
+    });
+
+    it('does not offer an individual again after "@gideon "', () => {
+      expect(getMentionSuggestions('Call @gideon ', withBiz)).toBeNull();
+    });
+
+    it('offers a nickname with a space in it', () => {
+      const opt = { id: 'b2', name: 'Pearle Vision', nickname: 'the optometrist', kind: 'business' as const };
+      const r = getMentionSuggestions('call @the opt', [opt]);
+      expect(r?.candidates[0].resolveKey).toBe('the optometrist');
+    });
+  });
+
   it('suggests candidates for a one-letter prefix nothing else can resolve yet', () => {
     const r = getMentionSuggestions('respond to @l', people);
     expect(r?.token).toBe('l');
