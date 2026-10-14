@@ -1472,6 +1472,7 @@ export function TodayScreen() {
         const dayKey = getLogicalDayKey(new Date(), useSettingsStore.getState().dayResetTime);
         if (dayKey !== foodTaskDayKey) {
           foodTaskDayKey = dayKey;
+          useTaskStore.getState().syncSnackNudgeTasks();
           useTaskStore.getState().syncLimitWarningTasks();
           useTaskStore.getState().syncGoalTargetTasks();
         }
@@ -1571,6 +1572,7 @@ export function TodayScreen() {
           // empties it: without this a phone reopened the next morning showed
           // yesterday's "24.9g so far" until the first meal was logged, since
           // the food log's writes were the only trigger outside a cold start.
+          useTaskStore.getState().syncSnackNudgeTasks();
           useTaskStore.getState().syncLimitWarningTasks();
           useTaskStore.getState().syncGoalTargetTasks();
           // Same shape one shelf over: a pantry guess runs out purely by time
