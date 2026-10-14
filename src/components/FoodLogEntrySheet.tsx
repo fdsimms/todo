@@ -2101,6 +2101,11 @@ export function FoodLogEntrySheet({
                 inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
                 placeholderTextColor={colors.textTertiary}
                 autoCorrect={false}
+                // Typing a food is the usual way in, so a fresh add opens with
+                // the keyboard up. Correcting an entry or reviewing a saved
+                // estimate opens on something already filled in, not a blank
+                // search.
+                autoFocus={!editing && !reviewing}
               />
               {/* In the field rather than in a row of its own: a packet in hand
                   is most often reached for after a search has come up empty,
