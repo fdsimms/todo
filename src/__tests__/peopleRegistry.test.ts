@@ -16,7 +16,7 @@ import {
 const person = (id: string, name: string, groupId: string | null = null): Person => ({
   id, name, kind: 'individual', nickname: '', notes: '', sortOrder: 1,
   archived: false, archivedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
-  birthdayMonth: null, birthdayDay: null, birthYear: null, birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,
+  birthdayMonth: null, birthdayDay: null, birthYear: null, birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false, pinned: false,
   phoneNumber: null, email: null, linkUrl: null,
   cadenceDays: 0, nudgeOptIn: false, cadenceSetAt: null, reachOutDeclinedAt: null, reachOutOfferDeclinedAt: null, askAbout: '',
   backfillDismissedFields: [], groupId, location: null, faxNumber: null,

@@ -1849,6 +1849,8 @@ function runInitDatabase(): void {
     'ALTER TABLE people ADD COLUMN location TEXT',
     // Null on every existing row. See Person.faxNumber.
     'ALTER TABLE people ADD COLUMN fax_number TEXT',
+    // Person.pinned. Default 0 on every existing row: nobody starts pinned.
+    'ALTER TABLE people ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0',
     // Null on every existing row: a completion timer is something a task opts
     // into, not something to infer. See Task.completionTimerMinutes.
     'ALTER TABLE tasks ADD COLUMN completion_timer_minutes INTEGER',
@@ -8421,6 +8423,7 @@ function rowToPerson(row: Record<string, unknown>): Person {
     groupId: (row.group_id as string) ?? null,
     location: (row.location as string) ?? null,
     faxNumber: (row.fax_number as string) ?? null,
+    pinned: Boolean(row.pinned),
   };
 }
 
@@ -8436,8 +8439,8 @@ export function dbInsertPerson(person: Person): void {
       birthday_month, birthday_day, birth_year, birthday_task_opt_out, birthday_gift_task_opt_out,
       phone_number, email, link_url, cadence_days, nudge_opt_in, cadence_set_at, reach_out_declined_at,
       reach_out_offer_declined_at, ask_about,
-      backfill_dismissed_fields, group_id, location, fax_number
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      backfill_dismissed_fields, group_id, location, fax_number, pinned
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       person.id, person.name, person.kind, person.nickname, person.notes, person.sortOrder,
       person.archived ? 1 : 0, person.archivedAt, person.createdAt,
@@ -8451,6 +8454,7 @@ export function dbInsertPerson(person: Person): void {
       person.groupId,
       person.location,
       person.faxNumber,
+      person.pinned ? 1 : 0,
     ]
   );
 }
@@ -8462,7 +8466,7 @@ export function dbUpdatePerson(person: Person): void {
       birthday_month=?, birthday_day=?, birth_year=?, birthday_task_opt_out=?, birthday_gift_task_opt_out=?,
       phone_number=?, email=?, link_url=?, cadence_days=?, nudge_opt_in=?, cadence_set_at=?, reach_out_declined_at=?,
       reach_out_offer_declined_at=?, ask_about=?,
-      backfill_dismissed_fields=?, group_id=?, location=?, fax_number=?
+      backfill_dismissed_fields=?, group_id=?, location=?, fax_number=?, pinned=?
     WHERE id=?`,
     [
       person.name, person.kind, person.nickname, person.notes, person.sortOrder,
@@ -8477,6 +8481,7 @@ export function dbUpdatePerson(person: Person): void {
       person.groupId,
       person.location,
       person.faxNumber,
+      person.pinned ? 1 : 0,
       person.id,
     ]
   );
