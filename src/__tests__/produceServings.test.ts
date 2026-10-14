@@ -3,6 +3,7 @@ import {
   dailyProduceProgress,
   dayProduce,
   formatServings,
+  produceContributions,
   produceKindOf,
   roundToHalf,
   servingsFromGrams,
@@ -234,5 +235,32 @@ describe('dailyProduceProgress', () => {
 
   it('stops at a full bar rather than overflowing', () => {
     expect(dailyProduceProgress(4, 3)).toBe(1);
+  });
+});
+
+describe('produceContributions', () => {
+  it('lists the entries behind each figure, largest first, and the unmeasured ones apart', () => {
+    const entries = [
+      entry('Carrot', { grams: 80 }),
+      entry('Broccoli', { grams: 160 }),
+      entry('Apple', { grams: 120 }),
+      entry('Spinach', { grams: null }),
+      entry('Chicken', { grams: 150 }),
+    ];
+    const veg = produceContributions(entries, 'vegetable');
+    expect(veg.counted.map(c => c.entry.label)).toEqual(['Broccoli', 'Carrot']);
+    expect(veg.unmeasured.map(e => e.label)).toEqual(['Spinach']);
+    expect(produceContributions(entries, 'fruit').counted.map(c => c.entry.label)).toEqual(['Apple']);
+  });
+
+  it('adds up to dayProduce, including the daily bean cap', () => {
+    const entries = [
+      entry('Lentils', { grams: 160 }),
+      entry('Chickpeas', { grams: 160 }),
+      entry('Carrot', { grams: 80 }),
+    ];
+    const total = produceContributions(entries, 'vegetable').counted.reduce((n, c) => n + c.servings, 0);
+    expect(total).toBeCloseTo(dayProduce(entries).vegetable);
+    expect(total).toBeCloseTo(2);
   });
 });

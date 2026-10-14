@@ -95,6 +95,7 @@ import { PendingEstimatesCard } from '../components/PendingEstimatesCard';
 import { ProductRatingOffer } from '../components/ProductRatingOffer';
 import type { PendingEstimate } from '../utils/estimateQueue';
 import { NutrientContributorsSheet } from '../components/NutrientContributorsSheet';
+import { ProduceContributorsSheet } from '../components/ProduceContributorsSheet';
 import { NutritionTargetsSheet } from '../components/NutritionTargetsSheet';
 import { CsvExportSheet } from '../components/CsvExportSheet';
 import { foodLogExportCsv, foodLogExportFileName, foodLogExportSummary } from '../utils/foodLogExport';
@@ -346,6 +347,7 @@ export function FoodLogScreen() {
   // Which nutrient's contributors are open in the breakdown sheet, or null
   // while it's closed.
   const [contributorsKey, setContributorsKey] = useState<NutrientKey | null>(null);
+  const [produceKind, setProduceKind] = useState<'vegetable' | 'fruit' | null>(null);
   // The day picker, opened from the date in the header. The arrows step one
   // day; reaching a day last month through them alone was twenty-odd taps.
   const [dayPickerOpen, setDayPickerOpen] = useState(false);
@@ -463,10 +465,11 @@ export function FoodLogScreen() {
   );
   const totals = useMemo(() => foodLogTotals(dayEntries), [dayEntries]);
   const swaps = useMemo(() => standingSwapMap(itemSubs, items), [itemSubs, items]);
-  const produce = useMemo(
-    () => dayProduce(dayEntries, recipeProduceResolver(recipes, items, itemProducts, swaps)),
-    [dayEntries, recipes, items, itemProducts, swaps],
+  const produceResolver = useMemo(
+    () => recipeProduceResolver(recipes, items, itemProducts, swaps),
+    [recipes, items, itemProducts, swaps],
   );
+  const produce = useMemo(() => dayProduce(dayEntries, produceResolver), [dayEntries, produceResolver]);
 
   // The flat row list ReorderableList actually drags — a header opens each
   // section's entries, same shape `CategoryListItem` gives Today's own
@@ -1216,14 +1219,22 @@ export function FoodLogScreen() {
   // empty day does not carry a row of zeros.
   const produceCard = produce.vegetable > 0 || produce.fruit > 0 || produce.unmeasured > 0 ? (
     <View style={styles.produceCard}>
-      <View style={styles.totalRow}>
-        <Text style={styles.totalLabel}>Vegetables</Text>
-        <Text style={styles.totalValue}>{`about ${formatServings(produce.vegetable)}`}</Text>
-      </View>
-      <View style={styles.totalRow}>
-        <Text style={styles.totalLabel}>Fruit</Text>
-        <Text style={styles.totalValue}>{`about ${formatServings(produce.fruit)}`}</Text>
-      </View>
+      {(['vegetable', 'fruit'] as const).map(kind => {
+        const label = kind === 'vegetable' ? 'Vegetables' : 'Fruit';
+        return (
+          <TouchableOpacity
+            key={kind}
+            style={styles.totalRow}
+            activeOpacity={interaction.activeOpacity}
+            onPress={() => { haptics.tap(); setProduceKind(kind); }}
+            accessibilityRole="button"
+            accessibilityLabel={`See which entries counted as ${label.toLowerCase()}`}
+          >
+            <Text style={styles.totalLabel}>{label}</Text>
+            <Text style={styles.totalValue}>{`about ${formatServings(produce[kind])}`}</Text>
+          </TouchableOpacity>
+        );
+      })}
       {/* One neutral bar for the combined "5 a day". Same accent as the other
           bars and no status colour: it shows how far along the day is, and
           nothing changes when it fills. */}
@@ -1646,6 +1657,17 @@ export function FoodLogScreen() {
           // siblings, and `SheetModal` holds the open until the close has landed.
           onEdit={entry => { setContributorsKey(null); setEditingEntry(entry); }}
           onClose={() => setContributorsKey(null)}
+        />
+      </LazySheet>
+      <LazySheet open={produceKind !== null}>
+        <ProduceContributorsSheet
+          visible={produceKind !== null}
+          kind={produceKind}
+          entries={dayEntries}
+          recipeGrams={produceResolver}
+          total={produceKind ? `about ${formatServings(produce[produceKind])}` : null}
+          onEdit={entry => { setProduceKind(null); setEditingEntry(entry); }}
+          onClose={() => setProduceKind(null)}
         />
       </LazySheet>
       <LazySheet open={targetsOpen}>
