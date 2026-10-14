@@ -1159,6 +1159,8 @@ const taskFieldsShape = {
       .describe('Per day only: one unit every this many minutes, 5 to 240, across the task\'s time window (or the person\'s active hours when it has none). "Look away every 20 minutes" is 20 with window 09:00 to 18:00. The count follows the window, so give the window in the same call. Not with allowOvershoot or rampUp. null goes back to a plain count.'),
     remind: z.boolean().optional()
       .describe('Per day only, needs a count of 2 or more: send a notification as each unit falls due, which reaches the Apple Watch the way any iPhone notification does. The phone holds only the next few ahead, so the rest are scheduled as the app is opened through the day.'),
+    onlyAtPlaces: z.array(z.string()).nullable().optional()
+      .describe('With remind: only notify while the phone is at one of these saved places, by name (as the person named them, e.g. "Home", "Office"; each needs a map pin). The phone checks where it is when the app is opened, never in the background, so notifications stop within about 2 hours of leaving and nothing is sent when it cannot tell. [] or null: notify anywhere.'),
     allowOvershoot: z.boolean().optional().describe('Per day only: keep counting past the target.'),
     coinsPerTap: z.boolean().optional().describe('Pay coins on every tap instead of when the target is reached. The total is the same; each tap earns its share and the last one the rest. Only matters while rewards are on. Omit to leave as is.'),
     rampUp: z.object({

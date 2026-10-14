@@ -242,6 +242,23 @@ describe('target', () => {
     expect(errorsOf({ target: { per: 'week', count: 3, remind: true } })).toMatch(/per day/);
   });
 
+  it('limits reminders to named places and hands the names on', () => {
+    const r = patchOf({ target: { per: 'day', everyMinutes: 20, remind: true, onlyAtPlaces: [' Office ', 'Home'] } });
+    expect(r.errors).toEqual([]);
+    expect(r.placeNames).toEqual(['Office', 'Home']);
+    expect(patchOf({ target: { per: 'day', everyMinutes: 20, remind: true, onlyAtPlaces: [] } }).placeNames).toEqual([]);
+  });
+
+  it('refuses places without reminders, or on a weekly target', () => {
+    expect(errorsOf({ target: { per: 'day', everyMinutes: 20, onlyAtPlaces: ['Office'] } })).toMatch(/needs target.remind/);
+    expect(errorsOf({ target: { per: 'week', count: 3, onlyAtPlaces: ['Office'] } })).toMatch(/per day/);
+  });
+
+  it('clears the places with the reminders and the target', () => {
+    expect(ok({ target: { per: 'day', count: 8, remind: false } })).toMatchObject({ quotaReminders: false, quotaPlaceIds: [] });
+    expect(ok({ target: null })).toMatchObject({ quotaPlaceIds: [] });
+  });
+
   it('needs a count when there is no cadence', () => {
     expect(errorsOf({ target: { per: 'day' } })).toMatch(/count is required/);
   });

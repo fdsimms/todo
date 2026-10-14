@@ -291,6 +291,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/phone.ts` — phoneDigits, telUrl, isDialable, smsUrl, formatPhoneInput, looksLikePhoneNumber
 - `src/utils/pillOverflow.ts` — OverflowPill, PillOverflowResult, PillOverflowOptions, DEFAULT_PILL_LIMIT, resolvePillOverflow, PillSubmit, resolvePillSubmit
 - `src/utils/pinSuggest.ts` — MAX_SUGGESTED_PINS, PinContext, buildCoOccurrenceIndex, currentTimeSegment, buildPinContext, overdueDays, scoreTask, nextPinSuggestion, suggestPins, pinReason, +1 more
+- `src/utils/placeGate.ts` — PLACE_FIX_TTL_MS, PLACE_FIX_KEY, StoredPlaceFix, pinnedPlaces, placeIdAt, isPlaceLimited, placeGateAllows, readPlaceFix, writePlaceFix, placeLimitedTasks
 - `src/utils/places.ts` — PlaceResult, parsePlaceResults, placeLocationText, placeSubtitle, placeRowTitle, PLACE_SUGGESTION_LIMIT, PLACE_QUERY_MIN_LENGTH
 - `src/utils/plannedDayNutrition.ts` — PlannedDayNutrition, plannedDayNutrition
 - `src/utils/plu.ts` — normalizePlu, splitOrganicPlu, pluNameFor
@@ -597,6 +598,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useOnDeviceAi.ts` — useOnDeviceAvailability, useAiRoute
 - `src/hooks/useOverlapPicker.ts` — OverlapPickerState, useOverlapPicker
 - `src/hooks/usePendingEdits.ts` — PendingEdits, usePendingEdits, useRegisterPendingEdit
+- `src/hooks/usePlaceGateRefresh.ts` — usePlaceGateRefresh
 - `src/hooks/usePlaceSuggestions.ts` — usePlaceSuggestions
 - `src/hooks/usePlanMeal.ts` — usePlanMeal
 - `src/hooks/useProjectAccess.ts` — unlockProjects, useProjectAccess

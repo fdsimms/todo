@@ -128,6 +128,8 @@ export interface TargetInput {
   everyMinutes?: number | null;
   /** Per day only: notify as each unit falls due. */
   remind?: boolean;
+  /** With remind: limit the notifications to these saved places, by name. [] or null = anywhere. */
+  onlyAtPlaces?: string[] | null;
   allowOvershoot?: boolean;
   /** Pay coins on every tap instead of when the target is reached. Same total either way. */
   coinsPerTap?: boolean;
@@ -305,6 +307,8 @@ export interface TaskFieldsResult {
   waitsOn?: string[];
   /** An answer gate, for the replica to check against the question and write. Absent when not given or cleared. */
   onlyIfAnswer?: { taskId: string; answers: string[] };
+  /** Saved-place names for the replica to resolve to ids and write as `quotaPlaceIds`. Absent when not given. */
+  placeNames?: string[];
   errors: string[];
 }
 
@@ -407,6 +411,8 @@ export function taskFieldsPatch(
 ): TaskFieldsResult {
   const errors: string[] = [];
   const patch: Partial<Task> = {};
+  // Saved-place names to resolve to `quotaPlaceIds`: the replica holds the places.
+  let placeNames: string[] | undefined;
 
   // ---- plain fields -------------------------------------------------------
   if (input.title !== undefined) {
@@ -495,6 +501,7 @@ export function taskFieldsPatch(
         coinsPerTap: false,
         quotaIntervalMinutes: null,
         quotaReminders: false,
+        quotaPlaceIds: [],
         quotaAlwaysVisible: false,
         quotaPeriod: 'day',
         quotaRampStep: null,
@@ -524,7 +531,7 @@ export function taskFieldsPatch(
         // per-day machinery (an interval, nudges, going over) doesn't apply.
         if (input.repeat && recurrence !== 'weekly') errors.push('A target per week repeats weekly; leave repeat out or set every to "week".');
         if (t.allowOvershoot) errors.push('allowOvershoot only applies to a target per day.');
-        Object.assign(patch, { recurrenceType: 'weekly', quotaIntervalMinutes: null, quotaReminders: false, allowOvershoot: false } satisfies Partial<Task>);
+        Object.assign(patch, { recurrenceType: 'weekly', quotaIntervalMinutes: null, quotaReminders: false, quotaPlaceIds: [], allowOvershoot: false } satisfies Partial<Task>);
         if (recurrence !== 'weekly' && !input.repeat) Object.assign(patch, { ...NO_REPEAT, recurrenceType: 'weekly' });
         recurrence = 'weekly';
       } else {
@@ -543,6 +550,13 @@ export function taskFieldsPatch(
       // would disagree until the next time the window moved.
       else if (t.everyMinutes === null || (t.count !== undefined && current?.quotaIntervalMinutes != null)) patch.quotaIntervalMinutes = null;
       if (t.remind !== undefined) patch.quotaReminders = t.remind;
+      if (t.remind === false) patch.quotaPlaceIds = [];
+      if (t.onlyAtPlaces !== undefined) {
+        const names = (t.onlyAtPlaces ?? []).map(n => n.trim()).filter(Boolean);
+        if (names.length > 0 && t.per !== 'day') errors.push('target.onlyAtPlaces only applies to a target per day.');
+        else if (names.length > 0 && !(t.remind ?? current?.quotaReminders)) errors.push('target.onlyAtPlaces limits the reminders, so it needs target.remind: true.');
+        else placeNames = names;
+      }
       if (t.coinsPerTap !== undefined) patch.coinsPerTap = t.coinsPerTap;
       if (t.unit !== undefined) patch.targetUnit = t.unit;
       // Ramp up: the app's own rule (src/utils/quotaRamp.ts). Only a plain count
@@ -972,7 +986,7 @@ export function taskFieldsPatch(
     onlyIfAnswer = { taskId: input.onlyIfAnswer.taskId, answers };
   }
 
-  return { patch, ...(waitsOn ? { waitsOn } : {}), ...(onlyIfAnswer ? { onlyIfAnswer } : {}), errors };
+  return { patch, ...(placeNames ? { placeNames } : {}), ...(waitsOn ? { waitsOn } : {}), ...(onlyIfAnswer ? { onlyIfAnswer } : {}), errors };
 }
 
 /**
