@@ -1463,7 +1463,18 @@ export function TodayScreen() {
         // is registered. A no-op on all but the first call of each day.
         useTaskStore.getState().rolloverNegativeStreaks();
       });
+      // The logical day the food-log tasks were last caught up on. The tick below
+      // re-runs them only when it changes, so a phone left open across midnight
+      // swaps yesterday's Stay under / Aim for figures without a database read
+      // every 30 seconds.
+      let foodTaskDayKey = getLogicalDayKey(new Date(), useSettingsStore.getState().dayResetTime);
       const interval = setInterval(() => {
+        const dayKey = getLogicalDayKey(new Date(), useSettingsStore.getState().dayResetTime);
+        if (dayKey !== foodTaskDayKey) {
+          foodTaskDayKey = dayKey;
+          useTaskStore.getState().syncLimitWarningTasks();
+          useTaskStore.getState().syncGoalTargetTasks();
+        }
         // On the tick as well as on foreground, unlike every other maintenance
         // pass, because this is the one whose trigger can arrive while the
         // user is looking at the row: a run ends when its window shuts, not at
@@ -1556,6 +1567,12 @@ export function TodayScreen() {
           // in the launch sequence costs one day's work at most and can never
           // double-fire.
           useTaskStore.getState().checkMealSlotTasks();
+          // The Stay under and Aim for tasks read the food log, and a new day
+          // empties it: without this a phone reopened the next morning showed
+          // yesterday's "24.9g so far" until the first meal was logged, since
+          // the food log's writes were the only trigger outside a cold start.
+          useTaskStore.getState().syncLimitWarningTasks();
+          useTaskStore.getState().syncGoalTargetTasks();
           // Same shape one shelf over: a pantry guess runs out purely by time
           // passing, and stops needing an answer the moment the user gives one
           // from the sheet this task links to.
