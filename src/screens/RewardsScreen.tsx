@@ -863,7 +863,6 @@ export function RewardsScreen() {
             </Reanimated.View>
             <Text style={[styles.balance, balance < 0 && { color: colors.redText }]}>{balance}</Text>
           </View>
-          <Text style={styles.balanceUnit}>{Math.abs(balance) === 1 ? 'coin' : 'coins'}</Text>
           {goal && goalShown && (
             <View
               style={styles.goal}
@@ -1178,10 +1177,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
   },
   burstAnchor: { position: 'absolute', left: 0, right: 0 },
-  balanceRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd },
+  balanceRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd, marginBottom: spacing.smd },
   // A hero number, which is one of the things a literal font size is for.
   balance: { color: colors.text, fontSize: 48, fontWeight: fontWeight.bold, fontVariant: ['tabular-nums'] },
-  balanceUnit: { color: colors.textSecondary, fontSize: font.sm, marginBottom: spacing.smd },
   goal: { alignSelf: 'stretch', marginBottom: spacing.md, gap: spacing.xs },
   goalLabel: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold, textAlign: 'center' },
   goalTrack: { height: 8, borderRadius: radius.full, backgroundColor: colors.bgTertiary, overflow: 'hidden' },
