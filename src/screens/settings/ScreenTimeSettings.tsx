@@ -11,7 +11,7 @@ import { describeEnded, releasesThisMonth, timesWord } from '../../utils/shieldR
 import { useManualBlockStore } from '../../store/useManualBlockStore';
 import { MANUAL_BLOCK_PRESETS, describeDuration, manualBlockWanted } from '../../utils/manualBlock';
 import {
-  DEFAULT_GROUP_ID, DEFAULT_GROUP_NAME, allGroups, groupName, resolveAssignments, resolveGroupId, type GroupedReason,
+  DEFAULT_GROUP_ID, allGroups, groupName, resolveAssignments, resolveGroupId, type GroupedReason,
 } from '../../utils/appGroups';
 import { currentWindowEnd, describeDays, describeWindow, formatMinutes, isScheduleActive, MAX_BLOCK_SCHEDULES, type BlockSchedule } from '../../utils/blockSchedule';
 import { selectionLabel } from '../../utils/shieldReasonText';
@@ -93,9 +93,10 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
   // ==== app groups ====
 
   const customGroups = useAppGroupStore(s => s.groups);
+  const groupsMeta = useAppGroupStore(s => s.meta);
   const assignments = useAppGroupStore(s => s.assignments);
   const schedules = useAppGroupStore(s => s.schedules);
-  const resolved = useMemo(() => resolveAssignments(customGroups, assignments), [customGroups, assignments]);
+  const resolved = useMemo(() => resolveAssignments(customGroups, assignments, groupsMeta), [customGroups, assignments, groupsMeta]);
 
   const countLabel = (groupId: string) => {
     const c = counts[groupId];
@@ -137,11 +138,12 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
 
   const handleGroupRow = (groupId: string, name: string) => {
     haptics.tap();
-    if (groupId === DEFAULT_GROUP_ID) { void handleChooseApps(groupId); return; }
+    const isOriginal = groupId === DEFAULT_GROUP_ID;
     const used = [
       ...(['focus', 'gate', 'penalty', 'key'] as const).filter(r => resolved[r] === groupId),
-      ...schedules.filter(sc => resolveGroupId(customGroups, sc.groupId) === groupId).map(() => 'schedule' as const),
+      ...schedules.filter(sc => resolveGroupId(customGroups, sc.groupId, groupsMeta) === groupId).map(() => 'schedule' as const),
     ];
+    const fallbackName = groupName(customGroups, groupsMeta.fallbackId, groupsMeta);
     Alert.alert(name, undefined, [
       { text: 'Choose apps', onPress: () => { void handleChooseApps(groupId); } },
       {
@@ -157,19 +159,23 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
           },
         ], 'plain-text', name),
       },
-      {
+      ...(groupsMeta.fallbackId === groupId ? [] : [{
+        text: 'Make default',
+        onPress: () => useAppGroupStore.getState().setDefaultGroup(groupId),
+      }]),
+      ...(isOriginal ? [] : [{
         text: 'Delete',
         style: 'destructive' as const,
         onPress: () => Alert.alert(
           `Delete ${name}?`,
           used.length > 0
-            ? `Anything using this group will block the ${DEFAULT_GROUP_NAME} group instead.`
+            ? `Anything using this group will block the ${groupsMeta.fallbackId === groupId ? groupsMeta.baseName : fallbackName} group instead.`
             : 'The apps you picked for this group are forgotten.',
           [
-            { text: 'Cancel', style: 'cancel' },
+            { text: 'Cancel', style: 'cancel' as const },
             {
               text: 'Delete',
-              style: 'destructive',
+              style: 'destructive' as const,
               onPress: () => {
                 useAppGroupStore.getState().removeGroup(groupId);
                 screenTimeBridge()?.clearScreenTimeSelection(groupId);
@@ -177,7 +183,7 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
             },
           ],
         ),
-      },
+      }]),
       { text: 'Cancel', style: 'cancel' as const },
     ]);
   };
@@ -186,7 +192,7 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
   const chooseReasonGroup = (reason: GroupedReason, title: string) => {
     haptics.tap();
     Alert.alert(title, 'Choose which group of apps this blocks.', [
-      ...allGroups(customGroups).map(g => ({
+      ...allGroups(customGroups, groupsMeta).map(g => ({
         text: g.id === resolved[reason] ? `${g.name} (selected)` : g.name,
         onPress: () => useAppGroupStore.getState().assignGroup(reason, g.id),
       })),
@@ -220,7 +226,7 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
       ...(end ? [`Blocking now until ${formatMinutes(end.getHours() * 60 + end.getMinutes(), use24HourTime)}`] : []),
       describeDays(schedule.days),
       describeWindow(schedule, use24HourTime),
-      groupName(customGroups, schedule.groupId),
+      groupName(customGroups, schedule.groupId, groupsMeta),
     ];
     if (schedule.pausedUntil && new Date(schedule.pausedUntil) > new Date()) {
       parts.push(`Paused until ${formatMinutes(new Date(schedule.pausedUntil).getHours() * 60 + new Date(schedule.pausedUntil).getMinutes(), use24HourTime)}`);
@@ -440,9 +446,9 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
   };
 
   const chooseManualGroup = (minutes: number | null) => {
-    if (customGroups.length === 0) { void confirmManual(minutes, DEFAULT_GROUP_ID); return; }
+    if (customGroups.length === 0) { void confirmManual(minutes, groupsMeta.fallbackId); return; }
     Alert.alert('Which apps?', 'Choose the group of apps to block.', [
-      ...allGroups(customGroups).map(g => ({ text: g.name, onPress: () => { void confirmManual(minutes, g.id); } })),
+      ...allGroups(customGroups, groupsMeta).map(g => ({ text: g.name, onPress: () => { void confirmManual(minutes, g.id); } })),
       { text: 'Cancel', style: 'cancel' as const },
     ]);
   };
@@ -540,15 +546,16 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
 
       <SettingsSection
         label="App groups"
-        footer="Each group is its own list of apps. iOS doesn’t share which apps you picked, so only the count shows here."
+        footer="Each group is its own list of apps. iOS doesn’t share which apps you picked, so only the count shows here. The default group is used when a group is deleted."
       >
         <SettingsRow
           entryId="screenTimeApps"
           icon="apps-outline"
           iconColor={totalOf(DEFAULT_GROUP_ID) > 0 ? colors.accent : undefined}
-          label={DEFAULT_GROUP_NAME}
+          label={groupsMeta.baseName}
+          hint={groupsMeta.fallbackId === DEFAULT_GROUP_ID ? 'Default group' : undefined}
           value={countLabel(DEFAULT_GROUP_ID)}
-          onPress={() => handleGroupRow(DEFAULT_GROUP_ID, DEFAULT_GROUP_NAME)}
+          onPress={() => handleGroupRow(DEFAULT_GROUP_ID, groupsMeta.baseName)}
         />
         {customGroups.map(group => (
           <React.Fragment key={group.id}>
@@ -557,6 +564,7 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
               icon="apps-outline"
               iconColor={totalOf(group.id) > 0 ? colors.accent : undefined}
               label={group.name}
+              hint={groupsMeta.fallbackId === group.id ? 'Default group' : undefined}
               value={countLabel(group.id)}
               onPress={() => handleGroupRow(group.id, group.name)}
             />
@@ -638,28 +646,28 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
         <SettingsRow
           icon="timer-outline"
           label="While focusing"
-          value={groupName(customGroups, resolved.focus)}
+          value={groupName(customGroups, resolved.focus, groupsMeta)}
           onPress={() => chooseReasonGroup('focus', 'While focusing')}
         />
         <View style={styles.sep} />
         <SettingsRow
           icon="checkbox-outline"
           label="Until a task is done"
-          value={groupName(customGroups, resolved.gate)}
+          value={groupName(customGroups, resolved.gate, groupsMeta)}
           onPress={() => chooseReasonGroup('gate', 'Until a task is done')}
         />
         <View style={styles.sep} />
         <SettingsRow
           icon="alert-circle-outline"
           label="When you fail a task"
-          value={groupName(customGroups, resolved.penalty)}
+          value={groupName(customGroups, resolved.penalty, groupsMeta)}
           onPress={() => chooseReasonGroup('penalty', 'When you fail a task')}
         />
         <View style={styles.sep} />
         <SettingsRow
           icon="lock-closed-outline"
           label="Key tag lock"
-          value={groupName(customGroups, resolved.key)}
+          value={groupName(customGroups, resolved.key, groupsMeta)}
           onPress={() => chooseReasonGroup('key', 'Key tag lock')}
         />
       </SettingsSection>

@@ -2,10 +2,11 @@ import { create } from 'zustand';
 import { dbGetSetting, dbSetSetting } from '../db/database';
 import { generateId } from '../utils/id';
 import {
-  APP_GROUPS_SETTING, GROUP_ASSIGNMENTS_SETTING, assignmentsAfterRemoval, cleanGroupName,
-  parseAppGroups, parseGroupAssignments, resolveAssignments, resolveGroupId, withGroupAdded,
-  withGroupRemoved, withGroupRenamed, type AddGroupResult, type AppGroup, type GroupAssignments,
-  type GroupedReason,
+  APP_GROUPS_SETTING, BASE_GROUP_NAME_SETTING, DEFAULT_GROUPS_META, DEFAULT_GROUP_ID, DEFAULT_GROUP_NAME,
+  FALLBACK_GROUP_SETTING, GROUP_ASSIGNMENTS_SETTING, assignmentsAfterRemoval, cleanGroupName,
+  parseAppGroups, parseGroupAssignments, parseGroupsMeta, resolveAssignments, resolveGroupId,
+  withGroupAdded, withGroupRemoved, withGroupRenamed, type AddGroupResult, type AppGroup,
+  type GroupAssignments, type GroupedReason, type GroupsMeta,
 } from '../utils/appGroups';
 import {
   BLOCK_SCHEDULES_SETTING, MAX_BLOCK_SCHEDULES, cleanScheduleName, parseBlockSchedules,
@@ -41,11 +42,16 @@ interface AppGroupStore {
   groups: AppGroup[];
   assignments: GroupAssignments;
   schedules: BlockSchedule[];
+  /** The original group's name and which group a missing group falls back to. */
+  meta: GroupsMeta;
   initialize: () => void;
   /** Re-read from the current database, after a demo-mode swap. */
   reload: () => void;
   addGroup: (name: string) => AddGroupResult & { group?: AppGroup };
+  /** Rename a custom group, or the original (Default) one when `id` is its id. */
   renameGroup: (id: string, name: string) => AddGroupResult;
+  /** Make a group the one a deleted or missing group falls back to. */
+  setDefaultGroup: (id: string) => void;
   removeGroup: (id: string) => void;
   /** Point a reason at a group. */
   assignGroup: (reason: GroupedReason, groupId: string) => void;
@@ -57,11 +63,13 @@ interface AppGroupStore {
   pauseOpenSchedules: (now: Date) => number;
 }
 
-function readState(): { groups: AppGroup[]; assignments: GroupAssignments; schedules: BlockSchedule[] } {
+function readState(): { groups: AppGroup[]; assignments: GroupAssignments; schedules: BlockSchedule[]; meta: GroupsMeta } {
+  const groups = parseAppGroups(dbGetSetting(APP_GROUPS_SETTING));
   return {
-    groups: parseAppGroups(dbGetSetting(APP_GROUPS_SETTING)),
+    groups,
     assignments: parseGroupAssignments(dbGetSetting(GROUP_ASSIGNMENTS_SETTING)),
     schedules: parseBlockSchedules(dbGetSetting(BLOCK_SCHEDULES_SETTING)),
+    meta: parseGroupsMeta(dbGetSetting(BASE_GROUP_NAME_SETTING), dbGetSetting(FALLBACK_GROUP_SETTING), groups),
   };
 }
 
@@ -73,6 +81,7 @@ export const useAppGroupStore = create<AppGroupStore>((set, get) => ({
   groups: [],
   assignments: parseGroupAssignments(null),
   schedules: [],
+  meta: DEFAULT_GROUPS_META,
 
   initialize() {
     set(readState());
@@ -84,7 +93,7 @@ export const useAppGroupStore = create<AppGroupStore>((set, get) => ({
 
   addGroup(name) {
     const group: AppGroup = { id: generateId(), name: cleanGroupName(name) };
-    const added = withGroupAdded(get().groups, group);
+    const added = withGroupAdded(get().groups, group, get().meta);
     if (!added.ok) return added;
     persistGroups(added.groups);
     set({ groups: added.groups });
@@ -92,11 +101,27 @@ export const useAppGroupStore = create<AppGroupStore>((set, get) => ({
   },
 
   renameGroup(id, name) {
-    const renamed = withGroupRenamed(get().groups, id, cleanGroupName(name));
+    const { groups, meta } = get();
+    if (id === DEFAULT_GROUP_ID) {
+      const baseName = cleanGroupName(name, DEFAULT_GROUP_NAME);
+      // Same uniqueness rule as any other rename, checked against the custom groups.
+      const taken = withGroupRenamed(groups, id, baseName, { ...meta, baseName: '' });
+      if (!taken.ok) return taken;
+      dbSetSetting(BASE_GROUP_NAME_SETTING, baseName);
+      set({ meta: { ...meta, baseName } });
+      return { ok: true, groups };
+    }
+    const renamed = withGroupRenamed(groups, id, cleanGroupName(name), meta);
     if (!renamed.ok) return renamed;
     persistGroups(renamed.groups);
     set({ groups: renamed.groups });
     return renamed;
+  },
+
+  setDefaultGroup(id) {
+    const fallbackId = get().groups.some(g => g.id === id) ? id : DEFAULT_GROUP_ID;
+    dbSetSetting(FALLBACK_GROUP_SETTING, fallbackId);
+    set({ meta: { ...get().meta, fallbackId } });
   },
 
   removeGroup(id) {
@@ -104,6 +129,11 @@ export const useAppGroupStore = create<AppGroupStore>((set, get) => ({
     const assignments = assignmentsAfterRemoval(get().assignments, id);
     persistGroups(groups);
     persistAssignments(assignments);
+    // The fallback going away hands the role back to the original group.
+    if (get().meta.fallbackId === id) {
+      dbSetSetting(FALLBACK_GROUP_SETTING, DEFAULT_GROUP_ID);
+      set({ meta: { ...get().meta, fallbackId: DEFAULT_GROUP_ID } });
+    }
     // Schedules keep the dangling id: resolving it to Default at use time is
     // the single rule (`resolveGroupId`), and rewriting them here would be a
     // second copy of it.
@@ -111,7 +141,7 @@ export const useAppGroupStore = create<AppGroupStore>((set, get) => ({
   },
 
   assignGroup(reason, groupId) {
-    const assignments = { ...get().assignments, [reason]: resolveGroupId(get().groups, groupId) };
+    const assignments = { ...get().assignments, [reason]: resolveGroupId(get().groups, groupId, get().meta) };
     persistAssignments(assignments);
     set({ assignments });
   },
@@ -176,11 +206,12 @@ export const useAppGroupStore = create<AppGroupStore>((set, get) => ({
 
 /** The groups each reason resolves to right now, with a removed group read as Default. */
 export function resolvedAssignments(): GroupAssignments {
-  const { groups, assignments } = useAppGroupStore.getState();
-  return resolveAssignments(groups, assignments);
+  const { groups, assignments, meta } = useAppGroupStore.getState();
+  return resolveAssignments(groups, assignments, meta);
 }
 
 /** A stored group id as the shield will use it. */
 export function resolveGroupNow(groupId: string): string {
-  return resolveGroupId(useAppGroupStore.getState().groups, groupId);
+  const { groups, meta } = useAppGroupStore.getState();
+  return resolveGroupId(groups, groupId, meta);
 }

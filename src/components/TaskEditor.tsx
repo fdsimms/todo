@@ -952,6 +952,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const penaltyShieldEnabled = useSettingsStore(s => s.penaltyShieldEnabled);
   const gateShieldEnabled = useSettingsStore(s => s.gateShieldEnabled);
   const appGroups = useAppGroupStore(s => s.groups);
+  const appGroupsMeta = useAppGroupStore(s => s.meta);
   const defaultReminderLeadMinutes = useSettingsStore(s => s.defaultReminderLeadMinutes);
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const simpleMode = useSettingsStore(s => s.simpleMode);
@@ -5795,12 +5796,12 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                 icon="apps-outline"
                 label="Apps to block"
                 hint="Which group of apps this task holds. Groups are made on the Screen Time screen."
-                value={gateGroupId === null ? 'Gate default' : groupName(appGroups, gateGroupId)}
+                value={gateGroupId === null ? 'Gate default' : groupName(appGroups, gateGroupId, appGroupsMeta)}
                 onPress={() => {
                   haptics.tap();
                   Alert.alert('Apps to block', 'Choose which group of apps this task holds.', [
                     { text: gateGroupId === null ? 'Gate default (selected)' : 'Gate default', onPress: () => setGateGroupId(null) },
-                    ...allAppGroups(appGroups).map(g => ({
+                    ...allAppGroups(appGroups, appGroupsMeta).map(g => ({
                       text: g.id === gateGroupId ? `${g.name} (selected)` : g.name,
                       onPress: () => setGateGroupId(g.id),
                     })),
