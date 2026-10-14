@@ -8,6 +8,8 @@ import { BlockScheduleSheet } from '../../components/BlockScheduleSheet';
 import { EmergencyReleaseSheet } from '../../components/EmergencyReleaseSheet';
 import { useShieldReleaseStore } from '../../store/useShieldReleaseStore';
 import { describeEnded, releasesThisMonth, timesWord } from '../../utils/shieldRelease';
+import { useManualBlockStore } from '../../store/useManualBlockStore';
+import { MANUAL_BLOCK_PRESETS, describeDuration, manualBlockWanted } from '../../utils/manualBlock';
 import {
   DEFAULT_GROUP_ID, DEFAULT_GROUP_NAME, allGroups, groupName, resolveAssignments, resolveGroupId, type GroupedReason,
 } from '../../utils/appGroups';
@@ -410,6 +412,52 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
     useNfcKeyStore.getState().lock();
   };
 
+  // ==== block now ====
+
+  const manualBlock = useManualBlockStore(s => s.block);
+  const manualLive = manualBlockWanted(manualBlock, new Date());
+
+  const confirmManual = async (minutes: number, groupId: string) => {
+    // The same first-use step as the key lock: a block with no apps chosen
+    // blocks nothing, and a button that visibly does nothing reads as broken.
+    if (totalOf(groupId) === 0) await onChooseApps(groupId);
+    const endsAt = formatReasonTime(new Date(Date.now() + minutes * 60_000).toISOString());
+    Alert.alert(
+      `Block apps for ${describeDuration(minutes)}?`,
+      `They stay blocked until ${endsAt ?? 'then'}. Ending it earlier takes a key tag or the emergency button, and is saved in the record.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Start block',
+          onPress: () => {
+            if (useManualBlockStore.getState().start(minutes, groupId)) haptics.success();
+          },
+        },
+      ],
+    );
+  };
+
+  const chooseManualGroup = (minutes: number) => {
+    if (customGroups.length === 0) { void confirmManual(minutes, DEFAULT_GROUP_ID); return; }
+    Alert.alert('Which apps?', 'Choose the group of apps to block.', [
+      ...allGroups(customGroups).map(g => ({ text: g.name, onPress: () => { void confirmManual(minutes, g.id); } })),
+      { text: 'Cancel', style: 'cancel' as const },
+    ]);
+  };
+
+  const handleBlockNow = async () => {
+    haptics.tap();
+    if (!(await ensureAuthorized('Blocking apps needs Screen Time access. Grant it in Settings, under Screen Time.'))) return;
+    Alert.alert(
+      'Block apps for how long?',
+      'Ending it earlier takes a key tag or the emergency button, and is saved in the record.',
+      [
+        ...MANUAL_BLOCK_PRESETS.map(m => ({ text: describeDuration(m), onPress: () => chooseManualGroup(m) })),
+        { text: 'Cancel', style: 'cancel' as const },
+      ],
+    );
+  };
+
   // ==== ending blocks early ====
 
   const [emergencyOpen, setEmergencyOpen] = useState(false);
@@ -425,6 +473,30 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
 
   return (
     <>
+      <SettingsSection
+        label="Block now"
+        footer="Blocks a group of apps for a length of time you choose, even when dundundun is closed."
+      >
+        {manualLive && manualBlock ? (
+          <SettingsRow
+            entryId="manualBlock"
+            icon="hourglass-outline"
+            iconColor={colors.accent}
+            label={`Blocking until ${formatReasonTime(manualBlock.untilIso) ?? ''}`}
+            hint="Ending it earlier takes a key tag or the emergency button, and is saved in the record."
+            alwaysShowHint
+          />
+        ) : (
+          <SettingsRow
+            entryId="manualBlock"
+            icon="hourglass-outline"
+            label="Block apps now"
+            hint="Pick 15 minutes up to 4 hours."
+            onPress={() => { void handleBlockNow(); }}
+          />
+        )}
+      </SettingsSection>
+
       {reasons.length > 0 && (
         <SettingsSection
           label="Emergency"
@@ -435,7 +507,7 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
             icon="warning-outline"
             iconColor={colors.red}
             label="End all blocks now"
-            hint="Ends focus, task, failed-task, schedule and key tag blocks."
+            hint="Ends focus, task, failed-task, schedule, timed and key tag blocks."
             onPress={() => { haptics.tap(); setEmergencyOpen(true); }}
           />
         </SettingsSection>

@@ -22,6 +22,7 @@ jest.mock('../store/useFocusStore', () => ({
 
 import { applyKeyScan, releaseAllBlocks } from '../utils/releaseBlocks';
 import { useAppGroupStore } from '../store/useAppGroupStore';
+import { useManualBlockStore } from '../store/useManualBlockStore';
 import { useNfcKeyStore } from '../store/useNfcKeyStore';
 import { useShieldReleaseStore } from '../store/useShieldReleaseStore';
 
@@ -37,6 +38,7 @@ beforeEach(() => {
   useAppGroupStore.getState().reload();
   useNfcKeyStore.getState().reload();
   useShieldReleaseStore.getState().reload();
+  useManualBlockStore.getState().reload();
   jest.useFakeTimers().setSystemTime(WED_10);
 });
 
@@ -62,6 +64,14 @@ describe('releaseAllBlocks', () => {
     live('key');
     releaseAllBlocks('tag');
     expect(useNfcKeyStore.getState().locked).toBe(false);
+  });
+
+  it('ends a block the person started by hand', () => {
+    useManualBlockStore.getState().start(60, 'default');
+    live('manual');
+    expect(releaseAllBlocks('emergency', 'Need the map to get home')).toEqual(['manual']);
+    expect(useManualBlockStore.getState().block).toBeNull();
+    expect(useShieldReleaseStore.getState().log[0].ended).toEqual(['manual']);
   });
 
   it('pauses every open schedule, whatever its own settings', () => {

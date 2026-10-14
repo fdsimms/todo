@@ -99,7 +99,7 @@ export interface ReleaseRecord {
   ended: ShieldReasonKind[];
 }
 
-const KINDS: readonly ShieldReasonKind[] = ['focus', 'gate', 'penalty', 'key', 'schedule'];
+const KINDS: readonly ShieldReasonKind[] = ['focus', 'gate', 'penalty', 'key', 'schedule', 'manual'];
 
 export function parseReleaseLog(raw: string | null | undefined): ReleaseRecord[] {
   if (!raw) return [];
@@ -158,6 +158,7 @@ const KIND_WORDS: Record<ShieldReasonKind, string> = {
   penalty: 'failed-task block',
   key: 'key tag lock',
   schedule: 'schedule',
+  manual: 'timed block',
 };
 
 /** "focus session and schedule", for a sentence about what ended. */

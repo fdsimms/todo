@@ -8,6 +8,7 @@ import { resolvedAssignments, resolveGroupNow, useAppGroupStore } from '../store
 import { useFocusStore } from '../store/useFocusStore';
 import { useNfcKeyStore } from '../store/useNfcKeyStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useManualBlockStore } from '../store/useManualBlockStore';
 import { useShieldReleaseStore } from '../store/useShieldReleaseStore';
 import { isFocusReleased, isGateReleased } from '../utils/shieldRelease';
 import { useTaskStore } from '../store/useTaskStore';
@@ -31,6 +32,7 @@ const MAX_TIMER_MS = 2_147_483_647;
 export function useShieldReasons(): ShieldReasonEntry[] {
   const focusSession = useFocusStore(s => s.session);
   const releases = useShieldReleaseStore(s => s.releases);
+  const manualBlock = useManualBlockStore(s => s.block);
   const session = isFocusReleased(focusSession?.id, releases) ? null : focusSession;
   const focusEnabled = useSettingsStore(s => s.focusShieldEnabled);
   const penaltyEnabled = useSettingsStore(s => s.penaltyShieldEnabled);
@@ -58,15 +60,16 @@ export function useShieldReasons(): ShieldReasonEntry[] {
     const current = new Date();
     setNow(current);
     const penaltyAt = penaltyUntil ? new Date(penaltyUntil) : null;
+    const manualAt = manualBlock ? new Date(manualBlock.untilIso) : null;
     const boundary = nextScheduleBoundary(schedules, current);
-    const next = [penaltyAt, boundary].filter((d): d is Date => d !== null && d > current)
+    const next = [penaltyAt, manualAt, boundary].filter((d): d is Date => d !== null && d > current)
       .reduce<Date | null>((a, d) => (a === null || d < a ? d : a), null);
     if (!next) return;
     const remaining = next.getTime() - Date.now();
     if (remaining <= 0 || remaining > MAX_TIMER_MS) return;
     const timer = setTimeout(() => setTick(t => t + 1), remaining + 50);
     return () => clearTimeout(timer);
-  }, [penaltyUntil, schedules, tick]);
+  }, [penaltyUntil, manualBlock, schedules, tick]);
 
   return useMemo(() => {
     const gateRows = JSON.parse(gateKey) as { title: string; own: string | null }[];
@@ -78,6 +81,7 @@ export function useShieldReasons(): ShieldReasonEntry[] {
       penaltyEnabled,
       penaltyReason,
       gateEnabled,
+      manual: manualBlock ? { ...manualBlock, groupId: resolveGroupNow(manualBlock.groupId) } : null,
       keyLocked: locked && canLock(keys),
       gateTitles: gateRows.map(g => g.title),
       gateGroupIds: gateRows.map(g => (g.own ? resolveGroupNow(g.own) : settingGroup)),
@@ -88,5 +92,5 @@ export function useShieldReasons(): ShieldReasonEntry[] {
       now,
     };
     return shieldReasons(state);
-  }, [session, focusEnabled, penaltyUntil, penaltyEnabled, penaltyReason, gateEnabled, locked, keys, gateKey, now, groups, assignments, schedules]);
+  }, [session, focusEnabled, penaltyUntil, penaltyEnabled, penaltyReason, gateEnabled, locked, keys, gateKey, manualBlock, now, groups, assignments, schedules]);
 }

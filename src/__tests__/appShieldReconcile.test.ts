@@ -39,6 +39,10 @@ jest.mock('../store/useFocusStore', () => ({
   useFocusStore: { getState: () => mockFocus },
 }));
 const mockReleases = { focusSessionId: null as string | null, gateTaskIds: [] as string[] };
+const mockManual: { block: { untilIso: string; groupId: string } | null } = { block: null };
+jest.mock('../store/useManualBlockStore', () => ({
+  useManualBlockStore: { getState: () => mockManual },
+}));
 jest.mock('../store/useShieldReleaseStore', () => ({
   useShieldReleaseStore: { getState: () => ({ releases: mockReleases }) },
 }));
@@ -78,6 +82,7 @@ beforeEach(() => {
   mockKeyState.keys = [];
   mockTasks.length = 0;
   mockFocus.session = null;
+  mockManual.block = null;
   mockReleases.focusSessionId = null;
   mockReleases.gateTaskIds = [];
   mockVisible.mockReturnValue(true);
@@ -161,6 +166,25 @@ describe('reconcileAppShield', () => {
     mockFocus.session = { id: 's2' };
     reconcileAppShield();
     expect(mockSync).toHaveBeenCalledWith(expect.objectContaining({ session: { id: 's2' } }));
+  });
+
+  it('hands over a running timed block with its group, and returns its end to wait at', () => {
+    const end = new Date(NOW + 60 * 60 * 1000);
+    mockManual.block = { untilIso: end.toISOString(), groupId: 'games' };
+    expect(reconcileAppShield()).toEqual(end);
+    expect(mockSync).toHaveBeenCalledWith(expect.objectContaining({
+      manual: { untilIso: end.toISOString(), groupId: 'games' },
+    }));
+  });
+
+  it('waits at whichever of a gate and a timed block comes first', () => {
+    const sixAm = new Date(NOW + 8 * 60 * 60 * 1000);
+    const end = new Date(NOW + 60 * 60 * 1000);
+    mockManual.block = { untilIso: end.toISOString(), groupId: 'default' };
+    mockTasks.push(task({ id: 'walk', title: 'Morning walk' }));
+    mockVisible.mockReturnValue(false);
+    mockVisibleAt.mockImplementation(() => sixAm);
+    expect(reconcileAppShield()).toEqual(end);
   });
 
   it('returns nothing to wait at when no gate is coming', () => {

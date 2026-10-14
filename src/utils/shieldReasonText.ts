@@ -40,6 +40,10 @@ export function shieldReasonLines(entry: ShieldReasonEntry, formatTime: (iso: st
       const name = entry.name?.trim() ? entry.name.trim() : 'A schedule';
       return [time ? `${name} is blocking apps until ${time}.` : `${name} is blocking apps.`];
     }
+    case 'manual': {
+      const time = entry.until ? formatTime(entry.until) : null;
+      return [time ? `A block you started runs until ${time}.` : 'A block you started is running.'];
+    }
     case 'key':
       return ['Locked with a key tag. Tap one to unlock.'];
   }
@@ -62,7 +66,7 @@ export function shieldHeadlineNote(reasonCount: number, selectedCount: number): 
       : 'Choose apps below, or these reasons have nothing to block.';
   }
   if (reasonCount === 0) return null;
-  return 'The block lifts when every reason is gone. A key tag only ends its own lock.';
+  return 'The block lifts when every reason is gone, or when a key tag or the emergency button ends them.';
 }
 
 /** The count of what is picked, as the page's subtitle and the apps row's value. */

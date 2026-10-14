@@ -5,6 +5,7 @@ import { canLock, matchKey, type NfcKeyKind } from './nfcKey';
 import { cleanReleaseReason, type ReleaseSource } from './shieldRelease';
 import { useAppGroupStore } from '../store/useAppGroupStore';
 import { useFocusStore } from '../store/useFocusStore';
+import { useManualBlockStore } from '../store/useManualBlockStore';
 import { useNfcKeyStore, type KeyScanResult } from '../store/useNfcKeyStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useShieldReleaseStore } from '../store/useShieldReleaseStore';
@@ -18,6 +19,7 @@ import { useShieldReleaseStore } from '../store/useShieldReleaseStore';
  *
  * - the key lock: `unlock`;
  * - schedules: paused until their open window ends (`pauseOpenSchedules`);
+ * - a block the person started by hand: dropped (`useManualBlockStore.clear`);
  * - a failed-task block: cleared (`setPenaltyShieldUntil(null)`), and the next
  *   failed task starts a fresh one;
  * - a gate and a focus session: remembered as released (`useShieldReleaseStore`),
@@ -39,6 +41,7 @@ export function releaseAllBlocks(source: ReleaseSource, reason?: string): Shield
 
   if (ended.includes('key')) useNfcKeyStore.getState().unlock();
   if (ended.includes('schedule')) useAppGroupStore.getState().pauseOpenSchedules(now);
+  if (ended.includes('manual')) useManualBlockStore.getState().clear();
   if (ended.includes('penalty')) useSettingsStore.getState().setPenaltyShieldUntil(null, null);
   // Every release goes through here, even one that ends neither: it is also
   // where releases that no longer apply (a done task, a finished session) are

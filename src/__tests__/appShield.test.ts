@@ -14,6 +14,8 @@ const mockBridge = {
   setBlockSchedules: jest.fn(() => true),
   schedulePenaltyExpiry: jest.fn(() => true),
   cancelPenaltyExpiry: jest.fn(() => true),
+  scheduleManualExpiry: jest.fn(() => true),
+  cancelManualExpiry: jest.fn(() => true),
   scheduleGateWindow: jest.fn(() => true),
   cancelGateWindow: jest.fn(() => true),
 };
@@ -542,6 +544,8 @@ describe('app groups and schedules', () => {
       otherGroupIds: ['social'],
       penaltyGroupId: 'games',
       penaltyEndIso: LATER,
+      manualGroupId: null,
+      manualEndIso: null,
       pendingGateGroupIds: [],
       pendingGateLiveAtIso: null,
     });
@@ -595,5 +599,54 @@ describe('app groups and schedules', () => {
       expect(written[0].groups.otherGroupIds).toEqual(['social', 'games']);
       expect(written[0].groups.pendingGateGroupIds).toEqual(['music']);
     });
+  });
+});
+
+describe('a block the person started by hand', () => {
+  const manual = { untilIso: LATER, groupId: 'games' };
+
+  it('wants the shield on its own until it runs out', () => {
+    expect(appShieldWanted(state({ manual }))).toBe(true);
+    expect(appShieldWanted(state({ manual: { untilIso: EARLIER, groupId: 'games' } }))).toBe(false);
+  });
+
+  it('names its group and its end, and reads right after a focus session', () => {
+    const reasons = shieldReasons(state({ session: session(), focusEnabled: true, manual, penaltyUntil: LATER, penaltyEnabled: true }));
+    expect(reasons.map(r => r.reason)).toEqual(['focus', 'manual', 'penalty']);
+    expect(reasons[1]).toEqual({ reason: 'manual', until: LATER, groupId: 'games' });
+  });
+
+  it('applies its own group and arms its own window, not the penalty\'s', () => {
+    syncAppShield(state({ manual }));
+    expect(mockBridge.applyShield).toHaveBeenCalledWith(['games']);
+    expect(mockBridge.scheduleManualExpiry).toHaveBeenCalledWith(LATER);
+    expect(mockBridge.cancelPenaltyExpiry).toHaveBeenCalledTimes(1);
+    expect(mockBridge.schedulePenaltyExpiry).not.toHaveBeenCalled();
+  });
+
+  it('writes its group and end for the extension, apart from the penalty\'s', () => {
+    syncAppShield(state({
+      manual, penaltyUntil: LATER, penaltyEnabled: true,
+      groups: { focus: 'default', gate: 'default', penalty: 'social', key: 'default' },
+    }));
+    const written = mockBridge.setShieldState.mock.calls[0] as unknown as [{ groups: Record<string, unknown>; otherReasonWantsShield: boolean }];
+    expect(written[0].groups).toMatchObject({
+      manualGroupId: 'games', manualEndIso: LATER, penaltyGroupId: 'social', penaltyEndIso: LATER, otherGroupIds: [],
+    });
+    // Neither a penalty nor a manual block is an "other" reason: each ends on its own clock.
+    expect(written[0].otherReasonWantsShield).toBe(false);
+  });
+
+  it('leads the shield screen and carries its end', () => {
+    syncAppShield(state({ manual }));
+    const written = mockBridge.setShieldState.mock.calls[0] as unknown as [{ reason: string; untilIso: string }];
+    expect(written[0]).toMatchObject({ reason: 'manual', untilIso: LATER });
+  });
+
+  it('disarms its window once it has run out', () => {
+    syncAppShield(state({ manual: { untilIso: EARLIER, groupId: 'games' } }));
+    expect(mockBridge.cancelManualExpiry).toHaveBeenCalledTimes(1);
+    expect(mockBridge.scheduleManualExpiry).not.toHaveBeenCalled();
+    expect(mockBridge.clearShield).toHaveBeenCalled();
   });
 });

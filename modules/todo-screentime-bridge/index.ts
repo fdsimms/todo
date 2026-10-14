@@ -63,6 +63,8 @@ interface TodoScreenTimeNativeModule {
   setBlockSchedules(windowsJson: string): boolean;
   schedulePenaltyExpiry(untilIso: string): boolean;
   cancelPenaltyExpiry(): boolean;
+  scheduleManualExpiry(untilIso: string): boolean;
+  cancelManualExpiry(): boolean;
   scheduleGateWindow(startIso: string, endIso: string): boolean;
   cancelGateWindow(): boolean;
   startMonitoring(rulesJson: string, dayKey: string): Promise<boolean>;
@@ -142,7 +144,7 @@ export function clearShield(): boolean {
 }
 
 /** Why the apps are blocked, as the two extensions will read it back. */
-export type ShieldReason = 'penalty' | 'focus' | 'gate' | 'key' | 'schedule' | 'none';
+export type ShieldReason = 'penalty' | 'focus' | 'gate' | 'key' | 'schedule' | 'manual' | 'none';
 
 export interface ShieldState {
   /**
@@ -182,6 +184,9 @@ export interface ShieldGroupsState {
   otherGroupIds: string[];
   penaltyGroupId: string | null;
   penaltyEndIso: string | null;
+  /** The block the person started by hand: its group and when it ends. Null when none is running. */
+  manualGroupId: string | null;
+  manualEndIso: string | null;
   pendingGateGroupIds: string[];
   pendingGateLiveAtIso: string | null;
 }
@@ -238,6 +243,20 @@ export function schedulePenaltyExpiry(untilIso: string): boolean {
 
 export function cancelPenaltyExpiry(): boolean {
   return degradeOnThrow(() => nativeModule!.cancelPenaltyExpiry(), false);
+}
+
+/**
+ * Arm a one-shot window whose end lifts the block the person started by hand,
+ * so it comes off on time with the app closed. `schedulePenaltyExpiry`'s
+ * mirror, with the same best-effort caveats and its own activity, so stopping
+ * one never disarms the other.
+ */
+export function scheduleManualExpiry(untilIso: string): boolean {
+  return degradeOnThrow(() => nativeModule!.scheduleManualExpiry(untilIso), false);
+}
+
+export function cancelManualExpiry(): boolean {
+  return degradeOnThrow(() => nativeModule!.cancelManualExpiry(), false);
 }
 
 /**

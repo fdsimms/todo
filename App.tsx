@@ -14,6 +14,7 @@ import { useProjectLockStore } from './src/store/useProjectLockStore';
 import { useNfcKeyStore } from './src/store/useNfcKeyStore';
 import { useAppGroupStore } from './src/store/useAppGroupStore';
 import { useShieldReleaseStore } from './src/store/useShieldReleaseStore';
+import { useManualBlockStore } from './src/store/useManualBlockStore';
 import { useSettingsStore } from './src/store/useSettingsStore';
 import { requestNotificationPermissions, isAlarmKitAvailable, requestAlarmAuthorization } from './src/utils/notifications';
 import { useDailyAgendaSync } from './src/utils/dailyAgendaSync';
@@ -142,6 +143,7 @@ function AppGate() {
       runStartupStep('load key tags', () => useNfcKeyStore.getState().initialize());
       runStartupStep('load app groups and schedules', () => useAppGroupStore.getState().initialize());
       runStartupStep('load released blocks', () => useShieldReleaseStore.getState().initialize());
+      runStartupStep('load timed block', () => useManualBlockStore.getState().initialize());
       runStartupStep('load sync state', () => useSyncStore.getState().initialize());
       await Promise.all([preloadAppFont(useSettingsStore.getState().appFont), preloadBrandFonts()]);
       markMilestone('splash can hide');

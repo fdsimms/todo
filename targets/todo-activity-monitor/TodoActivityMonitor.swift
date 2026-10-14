@@ -141,6 +141,11 @@ class TodoActivityMonitor: DeviceActivityMonitor {
         // state keeps the Default group up (see `heldGroupIds`), which leaves
         // the block for the app to lift, as before.
         ScreenTimeShared.applyGroups(ScreenTimeShared.heldGroupIds(now: Date(), penaltyEnded: true))
+      } else if activity.rawValue == ScreenTimeShared.manualActivityName {
+        // A block the person started by hand running out. The same rebuild as
+        // the penalty's, with the manual group left out and every other
+        // reason's group (including a penalty still running) kept.
+        ScreenTimeShared.applyGroups(ScreenTimeShared.heldGroupIds(now: Date(), manualEnded: true))
       } else if activity.rawValue.hasPrefix(ScreenTimeShared.scheduleActivityPrefix) {
         // A schedule closing lifts only the groups nothing else holds.
         ScreenTimeShared.applyGroups(ScreenTimeShared.heldGroupIds(now: Date()))
