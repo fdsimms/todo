@@ -166,6 +166,7 @@ import { capitalize } from '../utils/capitalize';
 import { useFilterField } from '../hooks/useFilterField';
 import { TextField } from './TextField';
 import { LazySheet } from './LazySheet';
+import { NewSavedMealSheet } from './NewSavedMealSheet';
 
 /** The kind picker's segments. The hint under the track says what the pick does. */
 const TASK_KIND_SEGMENTS = TASK_KIND_META.map(meta => ({
@@ -737,6 +738,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const [logMealSlot, setLogMealSlot] = useState<MealSlot | null>(null);
   const [logSavedMealId, setLogSavedMealId] = useState<string | null>(null);
   const savedMeals = useSavedMealsStore(s => s.meals);
+  const addSavedMeal = useSavedMealsStore(s => s.addMeal);
+  const [newMealOpen, setNewMealOpen] = useState(false);
   // Every task this one waits on, in order. Several are allowed, and it waits
   // for all of them (Task.blockedByIds); stored through blockerFields on save.
   const [blockerIds, setBlockerIds] = useState<string[]>([]);
@@ -7772,7 +7775,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                   <Text style={styles.kindHint}>Food</Text>
                   {savedMeals.length === 0 ? (
                     <Text style={styles.kindHint}>
-                      No saved meals yet. In the food log, select an entry and choose Save as meal, then pick it here.
+                      No saved meals yet. Create one here, or in the food log select entries and choose Save as meal.
                     </Text>
                   ) : (
                     <PillGroup
@@ -7800,6 +7803,31 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                       ]}
                     />
                   )}
+                  <View style={{ flexDirection: 'row', marginTop: spacing.smd }}>
+                    <InlineAction
+                      label="New saved meal"
+                      icon="add"
+                      onPress={() => { haptics.tap(); setNewMealOpen(true); }}
+                    />
+                  </View>
+                  {/* Saved meals are only listed here once they exist, so building
+                      one is offered in place; it is selected as soon as it is saved. */}
+                  <LazySheet open={newMealOpen}>
+                    <NewSavedMealSheet
+                      visible={newMealOpen}
+                      slot={logMealSlot}
+                      at={getLogicalToday()}
+                      onSave={(mealName, mealItems) => {
+                        const made = addSavedMeal(mealName, mealItems);
+                        if (!made) return false;
+                        setLogSavedMealId(made.id);
+                        if (logMealSlot === null) setLogMealSlot(slotForHour(new Date().getHours()));
+                        setNewMealOpen(false);
+                        return true;
+                      }}
+                      onClose={() => setNewMealOpen(false)}
+                    />
+                  </LazySheet>
                 </CollapsibleField>
               );
             })(),
