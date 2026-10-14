@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
-import { Alert, Linking } from 'react-native';
+import { Linking } from 'react-native';
+import { alertKeyScanResult } from './keyScanAlert';
 import type { JournalKind } from '../types';
 import { runOrHoldForDemo } from './demoHold';
 import { isDemoModeActive } from './demoState';
@@ -854,21 +855,10 @@ export function openInAppUrl(url: string | null | undefined): boolean {
     // Nothing happens in demo mode: the shield is refused there anyway, and a
     // real tag must not flip a lock inside the throwaway database.
     if (!isDemoModeActive()) {
-      const result = useNfcKeyStore.getState().applyScan('link', keyUrlToken(url));
-      if (result.outcome === 'unknown') {
-        haptics.warning();
-        Alert.alert('Tag not recognized', 'This tag isn’t one of your key tags. Add it on the Screen Time screen.');
-      } else {
-        haptics.success();
-        Alert.alert(
-          result.outcome === 'locked' ? 'Apps locked' : result.outcome === 'paused' ? 'Schedule paused' : 'Apps unlocked',
-          result.outcome === 'locked'
-            ? `${result.key.name} locked your chosen apps. Tap it again to unlock them.`
-            : result.outcome === 'paused'
-              ? `${result.key.name} paused ${result.count === 1 ? 'the schedule' : 'the schedules'} that ${result.count === 1 ? 'was' : 'were'} blocking apps. ${result.count === 1 ? 'It starts' : 'They start'} again at the next window. Other blocks, like a focus session, stay on.`
-              : `${result.key.name} unlocked your chosen apps. Other blocks, like a focus session, stay on.`,
-        );
-      }
+      alertKeyScanResult(
+        useNfcKeyStore.getState().applyScan('link', keyUrlToken(url)),
+        { message: 'This tag isn’t one of your key tags. Add it on the Screen Time screen.' },
+      );
     }
     resetToToday();
     return true;

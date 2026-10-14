@@ -32,6 +32,10 @@ interface TodoWidgetBridgeNativeModule {
   // Dreams queued by LogDreamIntent ("log a dream"). A JSON string of
   // `{ text, at }` records, read-and-clear — see src/utils/widgetSync.ts.
   drainPendingDreams(): Promise<string>;
+  // Key codes queued by ToggleKeyLockIntent (the Shortcuts action a tag
+  // automation runs). A JSON string of `{ code, at }` records, read-and-clear
+  // — see src/utils/keyScanQueue.ts.
+  drainPendingKeyScans(): Promise<string>;
   // Taps the widget applied without opening the app: CompleteTaskQuietlyIntent
   // and CheckGroceryItemIntent (targets/todo-widget/WidgetQuietIntents.swift).
   // A JSON string of records, read-and-clear — see src/utils/widgetQuietTaps.ts.
@@ -101,6 +105,10 @@ export function drainPendingDoses(): Promise<string> {
 
 export function drainPendingDreams(): Promise<string> {
   return TodoWidgetBridge.drainPendingDreams();
+}
+
+export function drainPendingKeyScans(): Promise<string> {
+  return TodoWidgetBridge.drainPendingKeyScans();
 }
 
 export function drainQuietWidgetTaps(): Promise<string> {

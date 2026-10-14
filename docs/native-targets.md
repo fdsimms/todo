@@ -143,6 +143,7 @@ the two runs compare exactly, which is how to prove a refactor left a target unc
   `src/utils/dreamQueue.ts`) and navigates nowhere, so the journal's Face ID lock stays closed.
   Written without a compiler: it copies the two intents above line for line, and a build is
   the first check on it.
+- **`ToggleKeyLockIntent` (`modules/todo-widget-bridge/ios/ToggleKeyLockIntent.swift`) is `LogDreamIntent`'s shape with a code in place of the text.** One `String` parameter, the key's token; `perform()` appends `{ code, at }` to `pending_key_scans.json` and the app checks it against the key list on the next foreground (`processPendingKeyScans`, `src/utils/keyScanQueue.ts`). **It is deliberately not in `DundundunShortcuts`**: an intent in no provider still shows as an action in the Shortcuts app, which is the one place it should be, and has no Siri phrase. Why a code rather than the tag is in `docs/arch/nfc-key.md`. Written without a compiler, as the one above was.
 - **A spoken Siri phrase for an `AppShortcut` needs the `com.apple.developer.siri` entitlement
   *and* `NSSiriUsageDescription`, even though App Intents otherwise needs neither.** Without the
   entitlement (`plugins/withSiriShortcuts.js`, added via `withEntitlementsPlist`), the same

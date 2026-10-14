@@ -24,6 +24,7 @@ import { alertPermissionOff } from '../../utils/permissionAlert';
 import type { ShieldReasonEntry } from '../../utils/appShield';
 import { shieldReasonLines } from '../../utils/shieldReasonText';
 import { navigateToSettingsEntry } from '../../navigation/openSettings';
+import * as Clipboard from 'expo-clipboard';
 import { format } from 'date-fns/format';
 import { clockTimeToken } from '../../utils/clockTime';
 
@@ -304,6 +305,24 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
     await Share.share({ message: url }).catch(() => {});
   };
 
+  // The code a Shortcuts action takes in place of the tag, which Shortcuts
+  // can't read the identity of: the link key's own token (see
+  // ToggleKeyLockIntent.swift). Copied rather than shown, since it is only ever
+  // pasted into the other app.
+  const copyKeyCode = async (key: NfcKey) => {
+    try {
+      await Clipboard.setStringAsync(key.secret);
+    } catch {
+      Alert.alert('Couldn’t copy', 'Try again, or use Share link and take the code after “token=”.');
+      return;
+    }
+    haptics.success();
+    Alert.alert(
+      'Key code copied',
+      'In Shortcuts, add the Toggle Key Lock action from dundundun to an NFC automation and paste this code into it. Anyone who has the code can lock or unlock your apps.',
+    );
+  };
+
   const handleAddLink = () => {
     nameThen('Name this link tag', 'Link tag', name => {
       const enrolled = useNfcKeyStore.getState().enrollLink(name);
@@ -352,6 +371,7 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
     };
     Alert.alert(key.name, undefined, [
       ...(key.kind === 'link' ? [{ text: 'Share link', onPress: () => { void shareKeyLink(key); } }] : []),
+      ...(key.kind === 'link' ? [{ text: 'Copy key code for Shortcuts', onPress: () => { void copyKeyCode(key); } }] : []),
       { text: 'Remove', style: 'destructive' as const, onPress: remove },
       { text: 'Cancel', style: 'cancel' as const },
     ]);
