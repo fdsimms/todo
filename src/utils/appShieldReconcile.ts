@@ -1,7 +1,9 @@
 import { nextPendingGate, outstandingGates } from './appGate';
 import { syncAppShield } from './appShield';
+import { canLock } from './nfcKey';
 import { beginVisibleAtPass, getVisibleAt, isHiddenForVacation, isTaskVisible } from './visibilityUtils';
 import { useFocusStore } from '../store/useFocusStore';
+import { useNfcKeyStore } from '../store/useNfcKeyStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
 
@@ -52,12 +54,23 @@ export function reconcileAppShield(): Date | null {
     penaltyEnabled: settings.penaltyShieldEnabled,
     penaltyReason: settings.penaltyShieldReason,
     gateEnabled: settings.gateShieldEnabled,
+    keyLocked: keyLockedNow(),
     gateTitles: outstandingGates(tasks, isTaskVisible).map(t => t.title),
     pendingGate: pending ? { liveAt: pending.liveAt, titles: pending.tasks.map(t => t.title) } : null,
     now,
   });
 
   return pending?.liveAt ?? null;
+}
+
+/**
+ * Whether a key tag holds the lock. Requires an enrolled key as well as the
+ * flag, so a lock whose last key was removed (or whose row failed to parse)
+ * never keeps the apps blocked with nothing to end it.
+ */
+export function keyLockedNow(): boolean {
+  const { locked, keys } = useNfcKeyStore.getState();
+  return locked && canLock(keys);
 }
 
 /** The gate titles standing in the way right now, for the sync hook's own change check. */

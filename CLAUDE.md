@@ -402,6 +402,7 @@ file: the two maps are indexes, not write-ups.
 | working a queue of tasks one at a time, with breaks | `src/utils/focusPlan.ts` + `src/store/useFocusStore.ts` — see `docs/arch/focus-sessions.md` |
 | coins for completing tasks, and the rewards they buy | `src/utils/rewards.ts` + `src/store/useRewardStore.ts` + `src/screens/RewardsScreen.tsx` — see `docs/arch/rewards.md`. The balance is a sum over a ledger, never a stored number, and only a person's own action moves it |
 | what failing a task costs, in blocked apps | `src/utils/penaltyShield.ts` (the rule) + `sweepTaskPenalties`/`logSlip` in `useTaskStore` (the two triggers). Read its refusals first: a task the app was withholding is never charged, a charge found on a later day is recorded but not served, and `undoSlip` doesn't refund |
+| an NFC tag that locks and unlocks the blocked apps | `src/utils/nfcKey.ts` (the rules) + `src/store/useNfcKeyStore.ts` + `modules/todo-nfc-bridge/` + `keyUrlToken` in `src/utils/deepLinks.ts` — see `docs/arch/nfc-key.md`. A tag is **one reason among four** in `appShield.ts` and never ends a penalty, gate or focus block; read that file's first section before adding another way to lift a shield |
 | apps held until a task is done ("no YouTube before the walk") | `src/utils/appGate.ts` + `Task.gatesApps`. A gate is live exactly while `isTaskVisible` says its task is, and a negative task can never be one |
 | whether the apps are blocked *right now* | `src/utils/appShield.ts` (the rule) + `src/utils/appShieldReconcile.ts` (reads the stores; a plain function so background refresh can call it). The single arbiter over the focus shield, the penalty and the gate: they drive one system shield, so it ORs them |
 | a block that starts or ends with the app closed | `scheduleGateWindow`/`schedulePenaltyExpiry` in `todo-screentime-bridge` + `intervalDidStart`/`intervalDidEnd` in `targets/todo-activity-monitor/`. Read `gateWindowFor`'s horizon first: a schedule's bounds are clock times, not dates |
@@ -683,6 +684,7 @@ decided, and the design system every screen is built from. Individual features a
 | `docs/arch/health-data.md` | Reading Apple Health: why nothing is stored, and why a refusal is invisible |
 | `docs/arch/simple-mode.md` | Simplified mode: what the one switch hides, and the two rules that make it safe |
 | `docs/arch/away-dates.md` | A project's away span: scheduled vacation mode, the trip move, the destination forecast, the away grocery list |
+| `docs/arch/nfc-key.md` | Key tags: why a tag is one shield reason among four, the two kinds of key, and what isn't verified without a device |
 | `docs/arch/mcp-server.md` | The MCP server: why it is a syncing replica rather than an in-app or backup-file one, and what it costs the "no backend" promise |
 | `docs/arch/desktop-client.md` | A Mac desktop client (design only, not built): why Electron over the existing logic layer, and what the desktop leaves to the phone |
 | `docs/native-targets.md` | Adding an iOS native target (widget, Watch app, Live Activity) |

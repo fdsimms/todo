@@ -1,6 +1,7 @@
 import type { FocusSession } from '../types';
 import { gateShieldWanted, gateSubtitle, gateWindowFor } from './appGate';
 import { shieldWanted } from './focusShield';
+import { KEY_LOCK_DETAIL } from './nfcKey';
 import { penaltyShieldWanted } from './penaltyShield';
 import { screenTimeBridge } from './screenTimeBridge';
 
@@ -8,8 +9,9 @@ import { screenTimeBridge } from './screenTimeBridge';
  * The one place that decides whether the system shield is on, and the only
  * place that writes it.
  *
- * Three reasons this app blocks apps — a focus session is running, a task was
- * failed, and a task has to be done first — and they share a single
+ * Four reasons this app blocks apps — a focus session is running, a task was
+ * failed, a task has to be done first, and a key tag locked them — and they
+ * share a single
  * `ManagedSettingsStore`. That sharing is not an implementation detail to route
  * around: the native side exposes one shield, so a reconciler per reason is not
  * three features, it is one feature with a race. Whichever ran last would win,
@@ -19,9 +21,14 @@ import { screenTimeBridge } from './screenTimeBridge';
  *
  * So the shield is on if *any* reason wants it on, and off only when none does.
  * Each reason keeps its own rule as a pure predicate (`focusShield.ts`,
- * `penaltyShield.ts`, `appGate.ts`); this ORs them and makes the single call.
- * Adding a fourth is a predicate and a line here, which is what the arbiter was
- * for.
+ * `penaltyShield.ts`, `appGate.ts`, `nfcKey.ts`); this ORs them and makes the
+ * single call. Adding another is a predicate and a line here, which is what the
+ * arbiter was for.
+ *
+ * **A key tag is one reason among the four, not an override of them.** Scanning
+ * it flips only `keyLocked`, so it ends the block a tag raised and can never
+ * end a penalty or a gate. That is the same invariant as above, applied to the
+ * one reason a person can lift by hand.
  *
  * Safe to over-call, which is the point: it runs on every session write, every
  * settings change, every foreground, every task write and every penalty expiry,
@@ -37,6 +44,12 @@ export interface AppShieldState {
   /** What earned the block — a task's title — for the shield screen to name. */
   penaltyReason: string | null;
   gateEnabled: boolean;
+  /**
+   * A key tag has locked the apps and not yet unlocked them. The caller has
+   * already required a key to be enrolled (`canLock`), so a lock with nothing
+   * to end it never reaches here.
+   */
+  keyLocked: boolean;
   /**
    * The titles of the gate tasks standing in the way, in the order the screen
    * should name them. Empty when nothing is gating.
@@ -64,7 +77,8 @@ export function appShieldWanted(state: AppShieldState): boolean {
   return (
     shieldWanted(state.session, state.focusEnabled) ||
     penaltyShieldWanted(state.penaltyUntil, state.penaltyEnabled, state.now) ||
-    gateShieldWanted(state.gateTitles.length, state.gateEnabled)
+    gateShieldWanted(state.gateTitles.length, state.gateEnabled) ||
+    state.keyLocked
   );
 }
 
@@ -101,6 +115,7 @@ export function syncAppShield(state: AppShieldState): void {
   const focusWants = shieldWanted(state.session, state.focusEnabled);
   const penaltyWants = penaltyShieldWanted(state.penaltyUntil, state.penaltyEnabled, state.now);
   const gateWants = gateShieldWanted(state.gateTitles.length, state.gateEnabled);
+  const keyWants = state.keyLocked;
   // A window is armed only while the feature is on, so switching it off
   // disarms whatever was armed rather than leaving a shield to be raised for a
   // setting that no longer holds.
@@ -113,22 +128,28 @@ export function syncAppShield(state: AppShieldState): void {
 
   // The screen can only lead with one of them, in the order they're worth
   // reading: a session is what the person is in the middle of, a gate is the
-  // one they can act on right now, and a penalty is the one that only runs out.
+  // one they can act on right now, a penalty is the one that only runs out, and
+  // a key lock comes last because it is the one that only the tag ends and
+  // names nothing the person did.
   //
   // `otherReasonWantsShield` is what the monitor extension checks before
   // lifting a shield at the end of a penalty window, so a gate has to count as
-  // one of the others. Left out, a penalty running out would hand back apps a
+  // one of the others, and so does a key lock, or a penalty running out would
+  // hand back apps a tag was still holding. Left out, a penalty running out would hand back apps a
   // gate was still holding — the same race this arbiter exists to prevent,
   // reappearing in the one process that can't see any of this.
   bridge.setShieldState({
-    otherReasonWantsShield: focusWants || gateWants,
-    reason: focusWants ? 'focus' : gateWants ? 'gate' : penaltyWants ? 'penalty' : 'none',
+    otherReasonWantsShield: focusWants || gateWants || keyWants,
+    reason: focusWants ? 'focus'
+      : gateWants ? 'gate'
+        : penaltyWants ? 'penalty'
+          : keyWants ? 'key' : 'none',
     untilIso: penaltyWants && !focusWants && !gateWants ? state.penaltyUntil : null,
     detail: focusWants
       ? null
       : gateWants
         ? gateSubtitle(state.gateTitles)
-        : penaltyWants ? state.penaltyReason : null,
+        : penaltyWants ? state.penaltyReason : keyWants ? KEY_LOCK_DETAIL : null,
     // Written only when a window is actually armed: it is what the monitor
     // extension checks before raising a shield, so a detail left behind by an
     // earlier reconcile would be a standing permission to block for a gate
@@ -136,7 +157,7 @@ export function syncAppShield(state: AppShieldState): void {
     pendingGateDetail: gateWindow ? pendingDetail : null,
   });
 
-  if (focusWants || penaltyWants || gateWants) bridge.applyShield();
+  if (focusWants || penaltyWants || gateWants || keyWants) bridge.applyShield();
   else bridge.clearShield();
 
   // Nothing is armed for a gate that is already live — the shield is up, and a

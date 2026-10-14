@@ -133,7 +133,7 @@ export function clearShield(): boolean {
 }
 
 /** Why the apps are blocked, as the two extensions will read it back. */
-export type ShieldReason = 'penalty' | 'focus' | 'gate' | 'none';
+export type ShieldReason = 'penalty' | 'focus' | 'gate' | 'key' | 'none';
 
 export interface ShieldState {
   /**

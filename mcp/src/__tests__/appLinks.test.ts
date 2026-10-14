@@ -9,6 +9,7 @@ jest.mock('../../../src/store/useRecipeStore', () => ({ useRecipeStore: {} }));
 jest.mock('../../../src/store/useMealPlanStore', () => ({ useMealPlanStore: {} }));
 jest.mock('../../../src/store/useStepTimerStore', () => ({ useStepTimerStore: {} }));
 jest.mock('../../../src/store/useFocusStore', () => ({ useFocusStore: {} }));
+jest.mock('../../../src/store/useNfcKeyStore', () => ({ useNfcKeyStore: {} }));
 jest.mock('../../../src/store/useWidgetCompletionStore', () => ({ useWidgetCompletionStore: {} }));
 jest.mock('../../../src/utils/haptics', () => ({ haptics: {} }));
 
@@ -65,5 +66,15 @@ describe('openPage', () => {
     const html = openPage('dundundun://task?id=</script><script>alert(1)</script>');
     expect(html).not.toContain('</script><script>alert');
     expect(html).toContain('\\u003c/script>');
+  });
+});
+
+describe('the key tag link', () => {
+  it('is an open path, so a desktop browser hands a tag link off to the scheme', () => {
+    expect(OPEN_PATHS).toContain('key');
+    expect(appUrlForOpenPath('key', '?token=abcdefghijklmnop1234')).toBe('dundundun://key?token=abcdefghijklmnop1234');
+    // And the app turns the same https link back into its own, which is the link a tag carries.
+    expect(appUrlFromUniversalLink('https://dundundun-mcp.fly.dev/open/key?token=abcdefghijklmnop1234'))
+      .toBe('dundundun://key?token=abcdefghijklmnop1234');
   });
 });

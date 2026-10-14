@@ -16,6 +16,7 @@ import { bestStreakOf, isStreakAtRecord } from '../utils/streakRecord';
 import { isCleanToday, isFailedToday } from '../utils/negativeHabits';
 import { MIN_ROTATION_ITEMS, plannedRotationItem, rotationTargetTotal } from '../utils/rotation';
 import { useTaskStore } from '../store/useTaskStore';
+import { useNfcKeyStore } from '../store/useNfcKeyStore';
 import { useMeterReadingStore } from '../store/useMeterReadingStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { usePersonStore } from '../store/usePersonStore';
@@ -836,6 +837,9 @@ describe('demo mode', () => {
     expect(walk?.penaltyCutoffTime).toBe('08:00');
     expect(walk?.gatesApps).toBe(true);
     expect(useSettingsStore.getState().gateShieldEnabled).toBe(true);
+    // And a key tag to lock the same apps with, enrolled but not locking.
+    expect(useNfcKeyStore.getState().keys.map(k => k.name)).toEqual(['Desk tag']);
+    expect(useNfcKeyStore.getState().locked).toBe(false);
     // Fails on a tap — no cutoff, because a slip is the failure itself.
     const slip = s.tasks.find(t => t.title === 'No snacking after dinner');
     expect(slip?.penaltyMinutes).toBe(60);

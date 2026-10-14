@@ -7,6 +7,7 @@ import { useTaskStore } from './useTaskStore';
 import { useSettingsStore } from './useSettingsStore';
 import { useSharedLinkStore } from './useSharedLinkStore';
 import { useStepTimerStore } from './useStepTimerStore';
+import { useNfcKeyStore } from './useNfcKeyStore';
 import { useGroceryStore } from './useGroceryStore';
 import { useMealPlanStore } from './useMealPlanStore';
 import { useLeftoverStore } from './useLeftoverStore';
@@ -82,6 +83,9 @@ export const useDemoStore = create<DemoStore>((set, get) => ({
     // screen inside the demo, where Pause would write to the scratch database
     // and cancel an alarm the cook is relying on.
     useStepTimerStore.getState().reload();
+    // The enrolled key tags are in memory too, and a real tag must not lock the
+    // demo's apps (or the demo's tag read as real) across the swap.
+    useNfcKeyStore.getState().reload();
     seedDemoData();
     // After the seed, not before: the seed builds its rows through the normal
     // store actions, so it registers undo entries of its own on the way past.
@@ -106,6 +110,7 @@ export const useDemoStore = create<DemoStore>((set, get) => ({
     // with the rest of the scratch database.
     useSharedLinkStore.getState().reload();
     useStepTimerStore.getState().reload();
+    useNfcKeyStore.getState().reload();
     // And the demo's own history leaves with the scratch database, rather than
     // staying armed to write invented rows into the user's real one.
     clearUndoHistories();

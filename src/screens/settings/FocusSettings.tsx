@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { View, Platform } from 'react-native';
+import { View, Platform, Alert, Share } from 'react-native';
 import { format } from 'date-fns/format';
 import { useSettingsStore } from '../../store/useSettingsStore';
+import { useNfcKeyStore } from '../../store/useNfcKeyStore';
 import { useColors } from '../../theme/ThemeContext';
 import { clockTimeToken } from '../../utils/clockTime';
 import { CountStepper } from '../../components/CountStepper';
@@ -10,6 +11,9 @@ import { SettingsRow } from './SettingsRow';
 import { makeSettingsStyles } from './settingsStyles';
 import { haptics } from '../../utils/haptics';
 import { isScreenTimeSupported, screenTimeBridge } from '../../utils/screenTimeBridge';
+import { isNfcSupported, scanKeyTag } from '../../utils/nfcBridge';
+import { keyLinkUrl, type NfcKey } from '../../utils/nfcKey';
+import { UNIVERSAL_LINK_HOSTS } from '../../utils/deepLinks';
 import {
   FOCUS_DEFAULTS,
   FOCUS_LONG_REST_EVERY_MAX, FOCUS_LONG_REST_EVERY_MIN,
@@ -182,6 +186,142 @@ export function FocusSettings() {
     }
     setPenaltyShieldEnabled(true);
     if (shieldTotal === 0) await handleChooseApps();
+  };
+
+
+  // --- Key tags --------------------------------------------------------
+  // A tag is a lock held by one reason among four (`appShield.ts`): tapping it
+  // locks the picked apps and tapping it again unlocks them, and it never ends
+  // a focus session, a penalty or a gate. Reading a tag needs the reader, so
+  // asked once like Screen Time above.
+  const [nfcSupported] = useState(isNfcSupported);
+  const nfcKeys = useNfcKeyStore(s => s.keys);
+  const keyLocked = useNfcKeyStore(s => s.locked);
+
+  const nameThen = (title: string, fallback: string, then: (name: string) => void) => {
+    // iOS only, like the rest of this section, so the prompt needs no Android branch.
+    Alert.prompt(title, 'Choose a name so you can tell your tags apart.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Add', onPress: (text?: string) => then(text ?? '') },
+    ], 'plain-text', fallback);
+  };
+
+  const enrollFailed = (reason: 'unreadable' | 'full' | 'duplicate') => {
+    Alert.alert(
+      reason === 'duplicate' ? 'Already added' : reason === 'full' ? 'Too many tags' : 'Couldn’t read the tag',
+      reason === 'duplicate'
+        ? 'This tag is already one of your keys.'
+        : reason === 'full'
+          ? 'Remove a tag before adding another.'
+          : 'Hold the top of your phone to the tag and try again.',
+    );
+  };
+
+  const handleScanTag = async () => {
+    const result = await scanKeyTag('Hold your phone to the tag you want to use as a key.');
+    if (result.kind !== 'tag') return;
+    nameThen('Name this tag', 'Key tag', name => {
+      const enrolled = useNfcKeyStore.getState().enrollTag(result.uid, name);
+      if (!enrolled.ok) enrollFailed(enrolled.reason);
+      else haptics.success();
+    });
+  };
+
+  const shareKeyLink = async (key: NfcKey) => {
+    const url = keyLinkUrl(key.secret, UNIVERSAL_LINK_HOSTS);
+    if (!url) return;
+    await Share.share({ message: url }).catch(() => {});
+  };
+
+  const handleAddLink = () => {
+    nameThen('Name this link tag', 'Link tag', name => {
+      const enrolled = useNfcKeyStore.getState().enrollLink(name);
+      if (!enrolled.ok) {
+        enrollFailed(enrolled.reason);
+        return;
+      }
+      haptics.success();
+      Alert.alert(
+        'Write the link to a tag',
+        'Next, share the link and write it to an NFC tag with an NFC writer app. After that, tapping the tag with the app closed locks or unlocks your apps.',
+        [{ text: 'Share link', onPress: () => { void shareKeyLink(enrolled.key); } }, { text: 'Later', style: 'cancel' }],
+      );
+    });
+  };
+
+  const handleAddKey = () => {
+    haptics.tap();
+    const buttons = [
+      ...(nfcSupported ? [{ text: 'Scan a tag', onPress: () => { void handleScanTag(); } }] : []),
+      { text: 'Write a link to a tag', onPress: handleAddLink },
+      { text: 'Cancel', style: 'cancel' as const },
+    ];
+    Alert.alert(
+      'Add a key tag',
+      nfcSupported
+        ? 'Scan a tag to use as a key, or write a link to a tag so a tap works with the app closed.'
+        : 'This phone can’t scan tags in the app. Write a link to a tag instead, and a tap works with the app closed.',
+      buttons,
+    );
+  };
+
+  const handleKeyRow = (key: NfcKey) => {
+    haptics.tap();
+    const remove = () => {
+      Alert.alert(
+        `Remove ${key.name}?`,
+        keyLocked && nfcKeys.length === 1
+          ? 'This is your only key tag, so removing it also unlocks your apps.'
+          : 'This tag will no longer lock or unlock your apps.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Remove', style: 'destructive', onPress: () => useNfcKeyStore.getState().removeKey(key.id) },
+        ],
+      );
+    };
+    Alert.alert(key.name, undefined, [
+      ...(key.kind === 'link' ? [{ text: 'Share link', onPress: () => { void shareKeyLink(key); } }] : []),
+      { text: 'Remove', style: 'destructive' as const, onPress: remove },
+      { text: 'Cancel', style: 'cancel' as const },
+    ]);
+  };
+
+  const handleKeyLock = async () => {
+    haptics.tap();
+    if (keyLocked) {
+      // Unlocking from the app takes a scan: a button here would be the way
+      // out of a lock whose whole purpose is to need the tag.
+      if (!nfcSupported) {
+        Alert.alert('Tap your tag to unlock', 'This phone can’t scan tags in the app. Tap a link tag with the app closed to unlock.');
+        return;
+      }
+      const result = await scanKeyTag('Hold your phone to your key tag to unlock your apps.');
+      if (result.kind !== 'tag') return;
+      const scan = useNfcKeyStore.getState().applyScan('tag', result.uid);
+      if (scan.outcome === 'unknown') {
+        haptics.warning();
+        Alert.alert('Tag not recognized', 'This tag isn’t one of your key tags. A link tag unlocks by tapping it with the app closed.');
+      } else {
+        haptics.success();
+      }
+      return;
+    }
+    if (nfcKeys.length === 0) {
+      Alert.alert('Add a key tag first', 'Locking needs a tag to unlock it with.');
+      return;
+    }
+    const bridge = screenTimeBridge();
+    if (!bridge) return;
+    const status = await bridge.requestScreenTimeAuthorization();
+    if (status !== 'approved') {
+      alertPermissionOff(
+        'Screen Time access needed',
+        'Locking apps with a tag needs Screen Time access. Grant it in Settings, under Screen Time.',
+      );
+      return;
+    }
+    if (shieldTotal === 0) await handleChooseApps();
+    useNfcKeyStore.getState().lock();
   };
 
   return (
@@ -476,6 +616,40 @@ export function FocusSettings() {
                 )}
               </>
             )}
+            <View style={styles.sep} />
+            <SettingsRow
+              entryId="nfcKey"
+              icon="radio-outline"
+              label="Key tags"
+              hint={nfcKeys.length === 0
+                ? 'Tap an NFC tag to lock or unlock the same apps. Add a tag to use it.'
+                : 'Tags that lock and unlock the same apps. A tag never ends a focus session or a block from a task.'}
+              value={nfcKeys.length === 0 ? 'None' : `${nfcKeys.length} ${nfcKeys.length === 1 ? 'tag' : 'tags'}`}
+              onPress={handleAddKey}
+            />
+            {nfcKeys.map(key => (
+              <React.Fragment key={key.id}>
+                <View style={styles.sep} />
+                <SettingsRow
+                  icon={key.kind === 'link' ? 'link-outline' : 'radio-outline'}
+                  label={key.name}
+                  value={key.kind === 'link' ? 'Link tag' : 'Scanned tag'}
+                  onPress={() => handleKeyRow(key)}
+                />
+              </React.Fragment>
+            ))}
+            <View style={styles.sep} />
+            <SettingsRow
+              entryId="nfcKeyLock"
+              icon="lock-closed-outline"
+              iconColor={keyLocked ? colors.accent : undefined}
+              label="Lock apps with a key tag"
+              hint={keyLocked
+                ? 'The apps are locked. Tap a key tag to unlock them.'
+                : 'Locks the same apps until you tap a key tag. Add a tag first.'}
+              toggle={keyLocked}
+              onPress={handleKeyLock}
+            />
           </>
         )}
       </SettingsSection>

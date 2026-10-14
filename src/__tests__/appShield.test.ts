@@ -52,6 +52,7 @@ const state = (over: Partial<AppShieldState> = {}): AppShieldState => ({
   penaltyEnabled: false,
   penaltyReason: null,
   gateEnabled: false,
+  keyLocked: false,
   gateTitles: [],
   pendingGate: null,
   now: NOW,
@@ -366,5 +367,62 @@ describe('the gate window it arms for the app being closed', () => {
     }));
     expect(mockBridge.applyShield).not.toHaveBeenCalled();
     expect(mockBridge.clearShield).toHaveBeenCalled();
+  });
+});
+
+describe('a key tag lock', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockBridgeOpen = true;
+  });
+
+  it('wants the shield on its own, and leads with the key reason', () => {
+    expect(appShieldWanted(state({ keyLocked: true }))).toBe(true);
+    syncAppShield(state({ keyLocked: true }));
+    expect(mockBridge.applyShield).toHaveBeenCalledTimes(1);
+    expect(mockBridge.clearShield).not.toHaveBeenCalled();
+    expect(mockBridge.setShieldState).toHaveBeenCalledWith(expect.objectContaining({
+      reason: 'key',
+      detail: 'These apps are locked until you tap your key tag.',
+      untilIso: null,
+    }));
+  });
+
+  it('lifts when the tag unlocks and nothing else wants the apps', () => {
+    syncAppShield(state({ keyLocked: false }));
+    expect(mockBridge.clearShield).toHaveBeenCalledTimes(1);
+    expect(mockBridge.applyShield).not.toHaveBeenCalled();
+  });
+
+  it('never lifts a penalty: unlocking leaves the penalty block up', () => {
+    syncAppShield(state({ keyLocked: false, penaltyUntil: LATER, penaltyEnabled: true }));
+    expect(mockBridge.applyShield).toHaveBeenCalledTimes(1);
+    expect(mockBridge.clearShield).not.toHaveBeenCalled();
+  });
+
+  it('never lifts a gate or a focus session either', () => {
+    syncAppShield(state({ keyLocked: false, gateEnabled: true, gateTitles: ['Walk'] }));
+    expect(mockBridge.clearShield).not.toHaveBeenCalled();
+    syncAppShield(state({ keyLocked: false, session: session(), focusEnabled: true }));
+    expect(mockBridge.clearShield).not.toHaveBeenCalled();
+  });
+
+  it('tells the monitor extension a penalty ending must not lift a tag lock', () => {
+    syncAppShield(state({ keyLocked: true, penaltyUntil: LATER, penaltyEnabled: true }));
+    expect(mockBridge.setShieldState).toHaveBeenCalledWith(expect.objectContaining({
+      otherReasonWantsShield: true,
+      reason: 'penalty',
+    }));
+  });
+
+  it('yields the screen to the reasons that name something the person did', () => {
+    syncAppShield(state({ keyLocked: true, gateEnabled: true, gateTitles: ['Walk'] }));
+    expect(mockBridge.setShieldState).toHaveBeenCalledWith(expect.objectContaining({ reason: 'gate' }));
+  });
+
+  it('does nothing without the bridge (demo mode, Android, no native half)', () => {
+    mockBridgeOpen = false;
+    expect(() => syncAppShield(state({ keyLocked: true }))).not.toThrow();
+    expect(mockBridge.applyShield).not.toHaveBeenCalled();
   });
 });

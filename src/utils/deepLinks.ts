@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Linking } from 'react-native';
+import { Alert, Linking } from 'react-native';
 import type { JournalKind } from '../types';
 import { runOrHoldForDemo } from './demoHold';
 import { isDemoModeActive } from './demoState';
@@ -8,8 +8,10 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useStepTimerStore } from '../store/useStepTimerStore';
 import { useFocusStore } from '../store/useFocusStore';
+import { useNfcKeyStore } from '../store/useNfcKeyStore';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { haptics } from './haptics';
+import { normalizeLinkToken } from './nfcKey';
 import { requestDismissAllSheets } from './sheetModal';
 import {
   resetToToday,
@@ -605,6 +607,25 @@ export function completeTaskUrlId(url: string): string | null {
   return id || null;
 }
 
+// `dundundun://key?token=…` — the link written to a key tag. iOS reads an https
+// tag in the background and opens the app on it, which reaches here through
+// `appUrlFromUniversalLink` (`https://<host>/open/key?token=…`). A scan flips
+// the tag lock for an enrolled token and tells a stranger's token nothing but
+// "not recognized": the answer must not say whether any key exists at all.
+const KEY_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?key\\/?(?:\\?(.*))?$`, 'i');
+
+export function isKeyUrl(url: string): boolean {
+  return typeof url === 'string' && KEY_RE.test(url.trim());
+}
+
+/** The token a key link carries, or null when it carries none usable. */
+export function keyUrlToken(url: string): string | null {
+  if (typeof url !== 'string') return null;
+  const match = KEY_RE.exec(url.trim());
+  if (!match) return null;
+  return normalizeLinkToken(parseQuery(match[1] ?? '').token);
+}
+
 // `dundundun://stopTimer?key=cook:<id>|prep:<id>|step:<id>` — the peer of
 // completeTask above for the Done button on a recipe's cook/prep Live Activity
 // and on a cooking step timer's. The host is still named for stopping because
@@ -827,6 +848,27 @@ export function openInAppUrl(url: string | null | undefined): boolean {
       useWidgetCompletionStore.getState().enqueue([id]);
       resetToToday();
     }
+    return true;
+  }
+  if (isKeyUrl(url)) {
+    // Nothing happens in demo mode: the shield is refused there anyway, and a
+    // real tag must not flip a lock inside the throwaway database.
+    if (!isDemoModeActive()) {
+      const result = useNfcKeyStore.getState().applyScan('link', keyUrlToken(url));
+      if (result.outcome === 'unknown') {
+        haptics.warning();
+        Alert.alert('Tag not recognized', 'This tag isn’t one of your key tags. Add it in Settings, under Focus sessions.');
+      } else {
+        haptics.success();
+        Alert.alert(
+          result.outcome === 'locked' ? 'Apps locked' : 'Apps unlocked',
+          result.outcome === 'locked'
+            ? `${result.key.name} locked your chosen apps. Tap it again to unlock them.`
+            : `${result.key.name} unlocked your chosen apps. Other blocks, like a focus session, stay on.`,
+        );
+      }
+    }
+    resetToToday();
     return true;
   }
   if (isFocusUrl(url)) {
