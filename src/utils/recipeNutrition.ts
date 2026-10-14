@@ -16,6 +16,7 @@ import { flattenRecipeIngredients, type ChoiceResolution } from './recipeCompone
 import { normalizeScale, scaleQuantity } from './recipeScale';
 import { NO_STANDING_SWAPS, type StandingSwapMap } from './standingSwaps';
 import { onHandNameKeys } from './grocerySuggest';
+import { groceryNameKey } from './groceryParse';
 import { measureQuantity, ML_PER_TBSP } from './unitConvert';
 
 /**
@@ -338,6 +339,55 @@ export function recipeNutrition(
   return readRecipeNutrition(recipe, items, products, recipesById, resolution, scale, swaps).nutrition;
 }
 
+/**
+ * How much of each used recipe a dish actually eats, as a fraction of the
+ * batch the part's own recipe makes, keyed by that recipe's id. A recipe not
+ * in the map counts whole.
+ *
+ * A used recipe's lines are flattened in whole, so "1 tbsp Fishy Seasoning"
+ * charged the dish for the entire 3/4 cup batch, a dozen times over. The
+ * amount is read where it already is: the parent's own ingredient line naming
+ * the part ("1 tbsp Fishy Seasoning"), measured against the part's
+ * `recipeYield` ("3/4 cup"). It is only believed when both measure in the same
+ * dimension; a part with no such line, no yield, a count ("4 fillets") or a
+ * mismatch counts whole, as it always did, and a share compounds down a chain
+ * of parts. A recipe's `cookedWeightG` is not consulted: a line in
+ * tablespoons has no weight until the part's own panel is worked out.
+ */
+export function componentShares(
+  root: Recipe,
+  recipesById: ReadonlyMap<string, Recipe>,
+): Map<string, number> {
+  const shares = new Map<string, number>();
+  const visited = new Set<string>([root.id]);
+  const walk = (node: Recipe, share: number): void => {
+    for (const component of node.components ?? []) {
+      if (visited.has(component.recipeId)) continue;
+      const part = recipesById.get(component.recipeId);
+      if (!part) continue;
+      visited.add(part.id);
+      const used = usedFraction(node, part);
+      const partShare = share * (used ?? 1);
+      if (partShare !== 1) shares.set(part.id, partShare);
+      walk(part, partShare);
+    }
+  };
+  walk(root, 1);
+  return shares;
+}
+
+function usedFraction(parent: Recipe, part: Recipe): number | null {
+  if (!part.recipeYield) return null;
+  const yielded = measureQuantity(part.recipeYield);
+  if (!yielded || yielded.base <= 0) return null;
+  const partKey = groceryNameKey(part.name);
+  const line = parent.ingredients.find(i => i.nameKey === partKey);
+  if (!line) return null;
+  const used = measureQuantity(line.quantity);
+  if (!used || used.dimension !== yielded.dimension || used.base <= 0) return null;
+  return used.base / yielded.base;
+}
+
 /** A dish's figures, the lines behind them, and what is missing, from one walk. */
 export interface RecipeNutritionReading {
   /** The rollup, or null while too little of the dish is known to total it. */
@@ -449,6 +499,7 @@ export function recipeNutritionLines(
   const byKey = itemKeyIndex(items);
   const productFor = preferredProductLookup(products);
   const factor = normalizeScale(scale);
+  const shares = componentShares(recipe, recipesById);
 
   const out: NutritionLine[] = [];
   for (const line of flat) {
@@ -458,7 +509,10 @@ export function recipeNutritionLines(
     const quantity = scaleQuantity(line.ingredient.quantity, factor).text;
     // Measured as written, then scaled: see the header for why not `quantity`.
     const resolved = resolveLine(
-      line.ingredient.nameKey, line.ingredient.quantity, line.ingredient.prep, byKey, productFor, factor,
+      line.ingredient.nameKey, line.ingredient.quantity, line.ingredient.prep, byKey, productFor,
+      // The share a used recipe is eaten at rides on the multiplier only; the
+      // quantity shown is still the line as the part's recipe wrote it.
+      factor * (shares.get(line.recipe.id) ?? 1),
     );
     if (!resolved) continue;
     out.push({
