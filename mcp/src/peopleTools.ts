@@ -125,6 +125,7 @@ export function getPerson(replica: Replica, id: string): PersonDetail | null {
     ...(food.length > 0 ? { food } : {}),
     ...(other.length > 0 ? { otherNotes: other } : {}),
     ...(p.archived ? { archived: true as const } : {}),
+    ...(p.pinned ? { pinned: true as const } : {}),
     ...(p.birthdayTaskOptOut ? { noBirthdayTask: true as const } : {}),
     ...(p.birthdayGiftTaskOptOut ? { noBirthdayGiftTask: true as const } : {}),
   };

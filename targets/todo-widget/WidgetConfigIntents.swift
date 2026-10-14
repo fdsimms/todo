@@ -57,6 +57,25 @@ struct TodayWidgetIntent: WidgetConfigurationIntent {
     @Parameter(title: "Pinned only", default: false)
     var pinnedOnly: Bool
 
+    /// One switch per header shortcut, all on by default: a widget placed before
+    /// these existed decodes without them and takes the default, so it keeps its
+    /// five. Turning all five off removes the shortcut row. A small widget has
+    /// no room for shortcuts and shows none whatever these say.
+    @Parameter(title: "Groceries shortcut", default: true)
+    var showGroceriesShortcut: Bool
+
+    @Parameter(title: "Meal plan shortcut", default: true)
+    var showMealPlanShortcut: Bool
+
+    @Parameter(title: "Mood shortcut", default: true)
+    var showMoodShortcut: Bool
+
+    @Parameter(title: "Food log shortcut", default: true)
+    var showFoodLogShortcut: Bool
+
+    @Parameter(title: "Add event shortcut", default: true)
+    var showAddEventShortcut: Bool
+
     /// Nil means "every category", which is what the sentinel above stands for.
     var categoryFilter: String? {
         category.isEmpty || category == allCategoriesOption ? nil : category

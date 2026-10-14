@@ -29,7 +29,7 @@ const daysAgo = (n: number) => new Date(TODAY.getTime() - n * 86_400_000);
 const person = (o: Partial<Person> = {}): Person => ({
   id: 'p1', name: 'Sarah', kind: 'individual', nickname: '', notes: '', sortOrder: 1,
   archived: false, archivedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
-  birthdayMonth: null, birthdayDay: null, birthYear: null, birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,
+  birthdayMonth: null, birthdayDay: null, birthYear: null, birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false, pinned: false,
   phoneNumber: null, email: null, linkUrl: null,
   cadenceDays: 30, nudgeOptIn: true, cadenceSetAt: daysAgo(45).toISOString(), reachOutDeclinedAt: null, reachOutOfferDeclinedAt: null, askAbout: '',
   backfillDismissedFields: [], groupId: null, location: null, faxNumber: null,

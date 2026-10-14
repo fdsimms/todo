@@ -331,9 +331,8 @@ it, grouped by day, and it is a `SectionList` rather than the Mood screen's
 **The filter is a sheet of wrapping chips**, per CLAUDE.md's rule, and the
 symptom vocabulary is the clearest case that rule has: it is whatever the user
 has ever typed, so no phone-width scroll row can assume a ceiling for it. The
-chips are multi-select and `ChipFilterSheet` is the shared shell they live in —
-`LogbookFilterSheet` and `RecipeTagFilterSheet` predate it and still carry their
-own copies of the same sheet chrome (#2995).
+chips are multi-select and `ChipFilterSheet` is the shared shell they live in,
+the same one the Logbook's and the recipe box's filter sheets are built on.
 
 Two rules on the filtering itself, both in `moodHistory.ts`:
 

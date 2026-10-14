@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, Linking } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -36,7 +36,7 @@ import { PaintSelectionProvider, usePaintSelectionRow } from '../components/Pain
 import { useRowSelection } from '../hooks/useRowSelection';
 import { usePullToSearch } from '../hooks/usePullToSearch';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, interaction, flattenOverlay, type Colors, textScale } from '../theme';
+import { spacing, font, fontWeight, radius, interaction, iconSize, flattenOverlay, type Colors, textScale } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import {
@@ -45,20 +45,24 @@ import {
 } from '../utils/birthdayTasks';
 import { getCurrentDayStart } from '../utils/dateUtils';
 import { anyoneHasLocation } from '../utils/peopleLocations';
+import {
+  peopleSections,
+  personContactActions,
+  type PersonContactKind,
+} from '../utils/peopleList';
 
 /**
  * The people list.
  *
- * **Ordered by hand and never re-ranked by default**, which is the single most
- * load-bearing thing about this screen. Sorting by "who haven't I seen in
- * longest" is the move that turns a list of the people in your life into a
- * queue of the ones you have let down, and `docs/arch/people.md` rules that
- * out for good — `sortOrder`, the same hand-drag the categories and aisles
- * use, is the only *automatic* ranking the feature contains. The optional
- * alphabetical view is a neutral, opt-in lens on top of that: it never touches
- * `sortOrder` itself, is off again on next launch, and disables drag while
- * active so a reorder can't silently apply to the sorted view instead of the
- * hand order underneath it.
+ * **Never ranked by anything that measures a person.** Sorting by "who haven't
+ * I seen in longest" is the move that turns a list of the people in your life
+ * into a queue of the ones you have let down, and `docs/arch/people.md` rules
+ * that out for good. The default view is people then businesses, each A to Z:
+ * a name and a kind are facts you typed, so neither order says anything about
+ * anybody. The hand order (`sortOrder`, the same drag the categories and aisles
+ * use) is a flat lens behind the header's reorder button. It is off again on
+ * next launch, and the A to Z view disables drag so a reorder can't silently
+ * apply to the sorted view instead of the hand order underneath it.
  *
  * There is no count of anything per person, no colour that means late, and no
  * summary line about how a relationship is going. The one derived thing a row
@@ -106,11 +110,12 @@ export function PeopleScreen() {
   const [contactPickerVisible, setContactPickerVisible] = useState(false);
   const [tripPlannerVisible, setTripPlannerVisible] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
-  // Off by default: the hand-dragged order is the one ranking this feature is
-  // allowed to have (see the header comment and docs/arch/people.md, rule 3).
-  // This is a view lens on top of it, same session-only shape as showArchived
-  // above, not a replacement for it — sortOrder is untouched either way.
-  const [alphabetical, setAlphabetical] = useState(false);
+  // Off by default: the list opens as people then businesses, each A to Z (see
+  // the header comment and docs/arch/people.md, rule 3). The hand-dragged order
+  // is a flat lens on top of that, same session-only shape as showArchived
+  // above. sortOrder is untouched either way.
+  const [handOrder, setHandOrder] = useState(false);
+  const notePendingReachOut = usePersonStore(s => s.notePendingReachOut);
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
 
   // The same bulk-selection machinery every other selectable list uses — see
@@ -134,13 +139,38 @@ export function PeopleScreen() {
     navigation.navigate('PersonDetail', { personId });
   }, [selectionMode, toggleSelection, navigation]);
 
-  const visiblePeople = useMemo(() => {
+  // The list's rows in the order they are drawn: a heading row before each
+  // kind when both are present, otherwise just the people. Hand order is flat.
+  const { visiblePeople, listRows } = useMemo(() => {
     const filtered = people.filter(p => p.archived === showArchived);
-    if (!alphabetical) return filtered;
-    return [...filtered].sort((a, b) =>
-      displayNameOf(a).localeCompare(displayNameOf(b), undefined, { sensitivity: 'base' })
-    );
-  }, [people, showArchived, alphabetical]);
+    if (handOrder) {
+      return {
+        visiblePeople: filtered,
+        listRows: filtered.map((person): ListRow => ({ key: person.id, person })),
+      };
+    }
+    const sections = peopleSections(filtered, displayNameOf);
+    const rows: ListRow[] = [];
+    sections.forEach((section, i) => {
+      if (sections.length > 1) {
+        rows.push({ key: `heading-${section.kind}`, heading: section.title, first: i === 0 });
+      }
+      section.people.forEach(person => rows.push({ key: person.id, person }));
+    });
+    return { visiblePeople: sections.flatMap(s => s.people), listRows: rows };
+  }, [people, showArchived, handOrder]);
+
+  // One handler for every row, like openPerson. Call, Text and Email are an
+  // attempt to reach somebody, so they stamp a pending reach-out before the
+  // hand-off (the question comes back from the app root, see "Tapping Call or
+  // Text" in docs/arch/people.md). The link doesn't: it is a way of looking
+  // somebody up, and no single past-tense sentence fits it.
+  const reachPerson = useCallback((personId: string, kind: PersonContactKind, url: string) => {
+    haptics.tap();
+    if (kind !== 'link') notePendingReachOut(personId, kind);
+    // No canOpenURL check, the same call PersonDetailScreen makes.
+    Linking.openURL(url).catch(() => {});
+  }, [notePendingReachOut]);
 
   // Archiving and unarchiving are both reversible, so — like ArchivedScreen's
   // own bulk restore — there is nothing to confirm. One call per row rather
@@ -195,9 +225,9 @@ export function PeopleScreen() {
   // ——— Dragging the add button into the list ———————————————————————————
   //
   // Same gesture as Templates and Projects: a drop means a spot in the hand
-  // order. Off while the list is sorted alphabetically, for the reason a row
-  // drag is: the visible order isn't the order a new person would be filed in,
-  // so a drop there is a plain add.
+  // order. Off while the list is sorted A to Z, for the reason a row drag is:
+  // the visible order isn't the order a new person would be filed in, so a
+  // drop there is a plain add.
 
   const dropZonesRef = useRef<FabDropZonesHandle>(null);
   const [fabDragging, setFabDragging] = useState(false);
@@ -269,10 +299,10 @@ export function PeopleScreen() {
             accessibilityLabel: 'Add someone from Contacts',
           }]),
           {
-            icon: 'text-outline',
-            onPress: () => { haptics.tap(); animateLayout(); setAlphabetical(v => !v); },
-            active: alphabetical,
-            accessibilityLabel: alphabetical ? 'Sort by hand order' : 'Sort alphabetically',
+            icon: 'reorder-three-outline',
+            onPress: () => { haptics.tap(); animateLayout(); setHandOrder(v => !v); },
+            active: handOrder,
+            accessibilityLabel: handOrder ? 'Sort alphabetically' : 'Sort by hand order',
           },
           // Only once somebody actually has a location on file — a row that
           // opens onto an empty search is a feature with nothing to offer yet.
@@ -318,8 +348,8 @@ export function PeopleScreen() {
           >
           <ReorderableList
             refreshControl={pullSearch.refreshControl}
-            data={visiblePeople}
-            keyExtractor={p => p.id}
+            data={listRows}
+            keyExtractor={row => row.key}
             scrollToTop={{ bottom: fabBottom }}
             contentContainerStyle={styles.list}
             // A paint gesture owns the touch for its duration — see the note in
@@ -339,8 +369,19 @@ export function PeopleScreen() {
             // frames and unthrottled ticks run together into one long buzz. The
             // lift itself is fired by ReorderableList.
             onHoverChange={haptics.dragTick}
-            onReorder={reordered => reorderPeople(reordered.map(p => p.id))}
-            renderItem={({ item: person, drag, isActive }) => {
+            onReorder={reordered => reorderPeople(reordered.flatMap(row => ('person' in row ? [row.person.id] : [])))}
+            renderItem={({ item: row, drag, isActive }) => {
+              if ('heading' in row) {
+                return (
+                  <Text
+                    style={[styles.sectionHeading, row.first && styles.sectionHeadingFirst]}
+                    accessibilityRole="header"
+                  >
+                    {row.heading}
+                  </Text>
+                );
+              }
+              const person = row.person;
               const name = displayNameOf(person);
               const birthday = hasBirthday(person) ? nextBirthday(person, today) : null;
               // Only inside the same window the generator uses, so the row and
@@ -352,17 +393,17 @@ export function PeopleScreen() {
               const birthdayLabel = birthday
                 ? birthday.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
                 : null;
-              // A drag while sorted alphabetically would reorder the visible
-              // (sorted) rows rather than the hand order underneath them, so
-              // dragging is off for the duration — same trade as being off
-              // while selecting, just for a different reason.
-              const canDrag = !selectionMode && !alphabetical;
+              // A drag while sorted A to Z would reorder the visible (sorted)
+              // rows rather than the hand order underneath them, so dragging is
+              // off for the duration. Same trade as being off while selecting,
+              // just for a different reason.
+              const canDrag = !selectionMode && handOrder;
               return (
                 // Every row doubles as a target for the add button being
                 // dragged in; the floating copy of a dragged row registers
-                // nothing, and nothing registers while sorted alphabetically.
+                // nothing, and nothing registers while sorted A to Z.
                 <FabDropZone
-                  zone={isActive || alphabetical ? null : { kind: 'task', key: person.id, category: null }}
+                  zone={isActive || !handOrder ? null : { kind: 'task', key: person.id, category: null }}
                 >
                 <PersonRow
                   person={person}
@@ -373,6 +414,7 @@ export function PeopleScreen() {
                   selectionMode={selectionMode}
                   selected={selectedIds.has(person.id)}
                   onPress={openPerson}
+                  onReach={reachPerson}
                   onLongPress={canDrag ? drag : undefined}
                   canDrag={canDrag}
                   onToggleSelect={toggleSelection}
@@ -470,6 +512,11 @@ export function PeopleScreen() {
   );
 }
 
+/** One drawn row: a person, or the heading over a kind's section. */
+type ListRow =
+  | { key: string; person: Person }
+  | { key: string; heading: string; first: boolean };
+
 interface PersonRowProps {
   person: Person;
   name: string;
@@ -483,8 +530,9 @@ interface PersonRowProps {
   // This list is a ReorderableList, so without it a drag re-rendered every
   // mounted row on every frame of the drag.
   onPress: (personId: string) => void;
+  onReach: (personId: string, kind: PersonContactKind, url: string) => void;
   onLongPress: (() => void) | undefined;
-  // Drag is also off while sorted alphabetically (see canDrag at the call
+  // Drag is also off while sorted A to Z (see canDrag at the call
   // site), which needs its own hint text distinct from selectionMode's.
   canDrag: boolean;
   onToggleSelect: (personId: string) => void;
@@ -500,11 +548,17 @@ interface PersonRowProps {
  * swiping is disabled while already selecting so it can't fight the dot. */
 const PersonRow = React.memo(function PersonRow({
   person, name, birthdayLabel, soon, isActive, selectionMode, selected,
-  onPress, onLongPress, canDrag, onToggleSelect, onSwipeSelect, styles, colors,
+  onPress, onReach, onLongPress, canDrag, onToggleSelect, onSwipeSelect, styles, colors,
 }: PersonRowProps) {
   const paintRef = usePaintSelectionRow(person.id);
   const press = () => onPress(person.id);
   const toggleSelect = () => onToggleSelect(person.id);
+  // Only the ones this person has details for, and none while selecting, when
+  // the row's job is being picked rather than reached.
+  const contactActions = useMemo(
+    () => (selectionMode ? [] : personContactActions(person)),
+    [person, selectionMode],
+  );
   const spokenMeta = birthdayLabel ? `Birthday ${birthdayLabel}` : null;
   // Shared by the swipe and the iPhone Mirroring button.
   const swipeSelect = { onSelect: () => onSwipeSelect(person.id), accessibilityLabel: `Select ${name}` };
@@ -518,6 +572,7 @@ const PersonRow = React.memo(function PersonRow({
         ref={paintRef}
         style={[styles.row, isActive && styles.rowActive, selectionMode && selected && styles.rowSelected]}
       >
+        <View style={styles.rowTop}>
         <TouchableOpacity
           style={styles.rowBody}
           onPress={press}
@@ -556,6 +611,25 @@ const PersonRow = React.memo(function PersonRow({
         ) : (
           <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
         )}
+        </View>
+        {/* Under the name rather than beside it, so the name keeps the whole
+            row and a person with all four buttons still reads in full. */}
+        {contactActions.length > 0 && (
+          <View style={styles.contactRow}>
+            {contactActions.map(action => (
+              <TouchableOpacity
+                key={action.kind}
+                style={styles.contactButton}
+                onPress={() => onReach(person.id, action.kind, action.url)}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={`${action.label} ${name}`}
+              >
+                <Ionicons name={action.icon} size={iconSize.sm} color={colors.accent} />
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
       </View>
     </SwipeableRow>
   );
@@ -579,10 +653,26 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   // Flush, so it slides over the swipe panel rather than beside it.
   row: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.md,
     backgroundColor: colors.bgSecondary,
     paddingHorizontal: spacing.md, paddingVertical: 14,
   },
+  rowTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  // Lined up under the name: the avatar's width plus the gap after it.
+  contactRow: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm,
+    marginLeft: 36 + spacing.md, marginTop: spacing.smd,
+  },
+  contactButton: {
+    width: 36, height: 36, borderRadius: radius.full,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.accentSubtle,
+  },
+  sectionHeading: {
+    color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold,
+    letterSpacing: 0.8, textTransform: 'uppercase',
+    marginTop: spacing.md, marginBottom: spacing.xs, marginLeft: spacing.xs,
+  },
+  sectionHeadingFirst: { marginTop: spacing.xs },
   rowActive: { backgroundColor: colors.bgTertiary },
   // Opaque, not `colors.accentSubtle` directly: this can be applied the
   // instant a swipe-select commits, while SwipeableRow's own panel is still

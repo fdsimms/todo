@@ -107,7 +107,7 @@ only the fallback until the first sync.
 | `list_cookbooks` / `get_cookbook_index` | The cookbooks, and the dishes one's index lists. |
 | `rename_cookbook` / `merge_cookbooks` / `delete_cookbook` | **Write.** Renames a cookbook on every recipe in it, joins two copies of one book, or deletes one (its recipes stay). |
 | `save_index_entry` / `delete_index_entry` / `recipe_from_index_entry` | **Write.** Adds, changes or removes a dish in a cookbook's index, or makes the saved recipe for one. |
-| `reorder_up_next` / `log_cook_time` | **Write.** Orders the Up next shelf; records how long cooking a recipe took. |
+| `log_cook_time` | **Write.** Records how long cooking a recipe took. |
 | `log_food` | **Write.** Something eaten, with estimated nutrition, and optionally a `breakdown` of the parts it named (kept on the entry, and refused if it does not add up to the total; `update_food_entry` takes one too when it restates amounts). Previews unless `apply: true`; marked estimated; written to Apple Health by the phone on its next foreground, not by the server. Refuses water, which is `log_water`'s. |
 | `log_water` | **Write.** A glass of water, in ml or fl oz, added onto the day's single water entry the way the app's stepper does. Reports the day's total in the person's own unit. Written to Apple Health by the phone on its next foreground, not by the server. |
 | `log_mood` / `log_medication` | **Write.** A mood check-in, or a dose taken, in the spellings already in the log. |
@@ -154,7 +154,6 @@ only the fallback until the first sync.
 | `update_template` | **Write.** Edits a template: scalar fields by name, and `groups`, `questions` and `items` as whole lists (an item or group is kept by its id). Lists the changes, and refuses an edit made against an old `version`. Needs `MCP_WRITE_TOKEN`. |
 | `apply_template` | **Write.** Runs a template: creates its tasks (and stack, project or parent task) from dates and answers, the way the apply sheet does. Reports what it left out and why, and any blanks left empty. |
 | `delete_template` | **Write.** Deletes a template. Templates have no archive, so it cannot be undone from here. |
-| `reorder_templates` | **Write.** Puts the listed templates first, in the order given. |
 | `create_task` | **Write.** Adds one task, with the app's own defaults and title rules applied. Takes every repeat rule the app has, chains, daily or weekly targets (optionally ramping up), time windows, blockers, follow-ups and "don't do this" habits, the people it is about, a link, phone, email and location, vacation pause, a medication its completion records, and a deadline or reminder placed by rule. |
 | `update_task` | **Write.** Edits a task by the app's own rules (`src/utils/taskUpdate.ts`), including the "this and later dates" fan-out on a dated series. A fixed deadline replaces a deadline rule and the result says so; a target on a task that follows the water goal is refused. |
 | `create_project` | **Write.** A project and its whole plan in one transaction: steps, their checklists, and which steps wait on which. |
@@ -179,7 +178,7 @@ only the fallback until the first sync.
 | `delete_medication_log` | **Write.** Deletes a recorded dose. |
 | `delete_task` | **Write.** Deletes tasks with their checklists, or single checklist items (up to 100 a call). Refuses a task the app generated. Each can be restored from Activity. |
 | `skip_occurrence` | **Write.** Moves a repeating task to its next date with nothing completed or missed, as the app's Skip does. |
-| `reorder_tasks` | **Write.** Hand-orders a project's open steps, a task's checklist, or the Pinned block. |
+| `reorder` | **Write.** Puts a list in order, the ones named first and the rest after in their old order. `kind` picks the list: `tasks` (a project's open steps, a task's checklist, a stack, or the Pinned block), `templates`, `projects` (and their categories), `categories` (Today's sections), `people`, `aisles`, `stores_and_lists` and `up_next`. |
 | `set_task_dates` | **Write.** Puts one task on several dates (one row per date), changes the set, or takes it back to one; optionally monthly. |
 | `duplicate_task` | **Write.** Copies a task and its checklist, with its progress started over. |
 | `delete_tag` | **Write.** Takes a tag off every task and out of the tag list. |
@@ -189,16 +188,15 @@ only the fallback until the first sync.
 | `remove_meal` | **Write.** Takes a meal off the plan. |
 | `create_person` | **Write.** Adds a person: name, nickname, notes, birthday, contact details (phone, fax, email, link), location (free text), group, archived, birthday task opt-outs. Never a cadence or nudge. |
 | `delete_person` | **Write.** Deletes a person and the notes about them; tasks naming them stay. Restorable from Activity. |
-| `reorder_people` / `save_person_group` | **Write.** The People screen's order, and its groups (add, rename, delete, catch up one at a time). |
+| `save_person_group` | **Write.** The People screen's groups (add, rename, delete, catch up one at a time). |
 | `add_person_note` / `update_person_note` / `delete_person_note` | **Write.** Gift ideas, food notes and other notes about someone, optionally about a day. |
 | `update_person` | **Write.** Changes those same fields on a person. |
 | `rename_stack` | **Write.** Renames a stack. Its category and members are untouched. |
 | `update_stack` | **Write.** A stack's title, notes, tags, checklist, the project page it is a section of, or its category (which re-files its open tasks). |
 | `delete_stack` | **Write.** Deletes a stack, taking its tasks out of it, or with `deleteTasks` deleting its open tasks too. Restorable from Activity. |
 | `update_category` | **Write.** Renames a task category everywhere it is named, or sets its emoji, schedule, vacation and suggestion settings and default time of day. |
-| `reorder_categories` | **Write.** Orders Today's category sections. |
 | `delete_project` | **Write.** Deletes a project, leaving its tasks in no project, or with `deleteTasks` deleting them. Restorable from Activity. |
-| `save_project_category` / `reorder_projects` | **Write.** The Projects screen's sections: add, rename or delete one; order the projects and the sections. |
+| `save_project_category` | **Write.** The Projects screen's sections: add, rename or delete one. |
 | `start_fresh_project` | **Write.** A new copy of a project with every task open and every date cleared. |
 | `save_project_as_template` | **Write.** A template that recreates a project, dated from its own date. |
 | `get_rewards` | The coin balance, the reward being saved for, every reward with what it still needs, live bounties and the latest coin history. |
@@ -223,8 +221,7 @@ only the fallback until the first sync.
 | `save_grocery_box` | **Write.** Add, edit or delete a brand or variant of an item, set the barcode a scan of it lands on, and rate a variant (loved, fine or avoid) with the reason in its note. |
 | `save_store` | **Write.** Add or rename a store, or set its receipt style. |
 | `update_store` | **Write.** A store's own aisles and walk order, whether it is suggested, or delete it. |
-| `reorder_stores_and_lists` | **Write.** The order of the stores and of the separate lists. |
-| `save_aisle` / `reorder_aisles` | **Write.** Add, rename, delete or mark non-food an aisle; the walk order. |
+| `save_aisle` | **Write.** Add, rename, delete or mark non-food an aisle. |
 | `add_ingredients_to_list` | **Write.** A recipe's ingredients, or the planned meals' over a range, onto a list as the app's add-to-list sheets do. |
 | `add_choice_to_list` / `settle_choice` | **Write.** An either/or on a list, and deciding it. |
 | `swap_for_substitute` | **Write.** Swaps a row on a list for one of its substitutes. |
