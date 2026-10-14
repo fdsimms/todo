@@ -351,7 +351,7 @@ export interface RecipeInput {
   name: string;
   /** A cookbook by title, created when there is none by that name. */
   cookbook?: string | null;
-  ingredients?: { text: string; section?: string | null; alternativeGroup?: string | null }[];
+  ingredients?: { text: string; section?: string | null; alternativeGroup?: string | null; excludeFromNutrition?: boolean }[];
   /**
    * The method. On an edit the whole list is replaced, but a step whose text
    * is unchanged keeps its identity (and so its timer, its note and the cook
@@ -419,6 +419,7 @@ export interface RecipePatchOp {
     | 'removeStep'
     | 'insertIngredient'
     | 'replaceIngredient'
+    | 'setIngredientNutrition'
     | 'removeIngredient';
   /** The step an op targets (1-based). */
   step?: number;
@@ -432,6 +433,8 @@ export interface RecipePatchOp {
   note?: string | null;
   onlyWith?: string[] | null;
   alternativeGroup?: string | null;
+  /** Leaves the line out of the recipe's nutrition total (flavoring taken out before eating, a garnish). */
+  excludeFromNutrition?: boolean;
 }
 
 /** A change to a planned meal. Only what is given changes. */
@@ -1290,6 +1293,13 @@ export interface Replica {
    */
   updateFoodEntry(id: string, patch: FoodPatch): FoodLogEntry;
   deleteFoodEntry(id: string): FoodLogEntry;
+  /**
+   * Works a dish logged from a recipe out again from the recipe as it is now,
+   * at the amount it was logged with. The entry keeps its time, slot, label and
+   * link to the plan; only its figures change. Refused for an entry already in
+   * Apple Health, and for one whose recipe is gone or cannot give figures.
+   */
+  refreshDishEntry(id: string): { before: FoodLogEntry; after: FoodLogEntry };
   /**
    * Move a food entry to another moment, as the app's `moveEntry`: the old row
    * goes and a new one is written at the new instant (the day it counts on is
@@ -2463,7 +2473,9 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const made = f.ingredients
         .map(line => {
           const m = recipeUtils.makeIngredient(line.text, line.section?.trim() || null);
-          return m ? { ...m, choiceGroup: recipeUtils.cleanChoiceGroup(line.alternativeGroup) } : null;
+          // `excludeFromNutrition` rides along only when the call named it, so a
+          // rewrite that did not mention it leaves a kept line's answer alone.
+          return m ? { ...m, choiceGroup: recipeUtils.cleanChoiceGroup(line.alternativeGroup), ...(line.excludeFromNutrition !== undefined ? { excludeFromNutrition: line.excludeFromNutrition } : {}) } : null;
         })
         .filter((x): x is NonNullable<typeof x> => x !== null);
       // A line that is still wanted keeps its row (id and everything the text
@@ -2478,7 +2490,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         const at = unclaimed.findIndex(old => recipeUtils.ingredientDedupeKey(old) === key);
         if (at < 0) return line;
         const [old] = unclaimed.splice(at, 1);
-        return { ...old, quantity: line.quantity, choiceGroup: line.choiceGroup };
+        return { ...old, quantity: line.quantity, choiceGroup: line.choiceGroup, ...(line.excludeFromNutrition !== undefined ? { excludeFromNutrition: line.excludeFromNutrition } : {}) };
       });
       store().bulkRemoveIngredients(id, current().ingredients.map(i => i.id));
       if (kept.length > 0) store().addStructuredIngredients(id, kept);
@@ -4272,6 +4284,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
                   const made = recipeUtils.makeIngredient(need(op.text, 'insertIngredient'), section);
                   if (!made) throw new Error('Could not read an ingredient out of that text.');
                   made.choiceGroup = recipeUtils.cleanChoiceGroup(op.alternativeGroup);
+                  if (op.excludeFromNutrition) made.excludeFromNutrition = true;
                   const before = new Set(list.map(x => x.id));
                   if (store().addStructuredIngredients(id, [made]) === 0) {
                     throw new Error('A line with the same name, section, prep and purpose is already in the recipe.');
@@ -4284,12 +4297,18 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
                   break;
                 }
                 case 'replaceIngredient':
+                case 'setIngredientNutrition':
                 case 'removeIngredient': {
                   const list = current().ingredients;
                   const target = list[index(op.ingredient, list.length, 'Ingredient')];
                   guard(op.expect, [target.quantity, target.name, target.prep].filter(Boolean).join(' '), `Ingredient ${op.ingredient}`);
                   if (op.op === 'removeIngredient') {
                     store().removeIngredient(id, target.id);
+                    break;
+                  }
+                  if (op.op === 'setIngredientNutrition') {
+                    if (op.excludeFromNutrition === undefined) throw new Error('setIngredientNutrition needs excludeFromNutrition (true or false).');
+                    store().updateIngredient(id, target.id, { excludeFromNutrition: op.excludeFromNutrition });
                     break;
                   }
                   // Edited in place, so the line keeps its id: a planned meal's
@@ -4305,6 +4324,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
                     section,
                     choiceGroup: op.alternativeGroup !== undefined ? recipeUtils.cleanChoiceGroup(op.alternativeGroup) : target.choiceGroup,
                     example: made.example,
+                    ...(op.excludeFromNutrition !== undefined ? { excludeFromNutrition: op.excludeFromNutrition } : {}),
                   });
                   break;
                 }
@@ -4737,6 +4757,33 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       }
       if (Object.keys(set).length > 0) useSettingsStore.getState().setNutritionTargets(set);
       return { ...useSettingsStore.getState().nutritionTargets };
+    },
+
+    refreshDishEntry(id: string): { before: FoodLogEntry; after: FoodLogEntry } {
+      const entry = db.dbGetFoodLogEntry(id);
+      if (!entry) throw new Error(`No food entry with id ${id}.`);
+      if (!entry.recipeId) throw new Error('That entry was not logged from a recipe. Use update_food_entry for a food or an estimate.');
+      if (entry.healthSampleIds.length > 0) {
+        throw new Error('That entry was written to Apple Health, which only the phone can correct. Delete it and log it again in the app.');
+      }
+      const recipes = db.dbGetAllRecipes();
+      const recipe = recipes.find(r => r.id === entry.recipeId);
+      if (!recipe) throw new Error('The recipe this entry was logged from is gone, so there is nothing to work it out from.');
+      const recipeNutrition = require('../../src/utils/recipeNutrition') as typeof import('../../src/utils/recipeNutrition'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const mealLog = require('../../src/utils/mealLog') as typeof import('../../src/utils/mealLog'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const items = db.dbGetAllGroceryItems();
+      const dish = recipeNutrition.recipeNutrition(
+        recipe, items, db.dbGetAllItemProducts(), new Map(recipes.map(r => [r.id, r])), undefined, 1,
+        standingSwaps.standingSwapMap(db.dbGetAllItemSubLinks(), items),
+      );
+      const figures = dish
+        ? { total: dish.total, perServing: recipeNutrition.perServing(dish), servings: dish.servings, cookedGrams: mealLog.cookedDishGrams(recipe.cookedWeightG, 1) }
+        : null;
+      const result = foodLog.remeasureDishEntry(entry, figures);
+      if (!result.ok) throw new Error(result.reason);
+      const after: FoodLogEntry = { ...entry, ...result.fields };
+      db.dbUpdateFoodLogEntry(after);
+      return { before: entry, after };
     },
 
     deleteFoodEntry(id: string): FoodLogEntry {

@@ -163,6 +163,7 @@ function describeRecipeOps(ops: readonly { op: string; step?: number; ingredient
       case 'removeStep': return `remove step ${o.step}`;
       case 'insertIngredient': return `add an ingredient at ${o.at}`;
       case 'replaceIngredient': return `change ingredient ${o.ingredient}`;
+      case 'setIngredientNutrition': return `set whether ingredient ${o.ingredient} counts toward nutrition`;
       case 'removeIngredient': return `remove ingredient ${o.ingredient}`;
       default: return o.op;
     }

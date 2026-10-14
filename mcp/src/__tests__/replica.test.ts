@@ -287,6 +287,19 @@ describe('the replica', () => {
       expect(() => replica.updateFoodEntry(synced.id, { amounts: { calorieKcal: 1 } })).toThrow(/Apple Health/);
     });
 
+    it('refreshes only a dish from a live recipe that is not in Apple Health', () => {
+      const food = replica.logFood({ label: 'Toast', amounts: { calorieKcal: 100 } });
+      expect(() => replica.refreshDishEntry(food.id)).toThrow(/not logged from a recipe/);
+      expect(() => replica.refreshDishEntry('nope')).toThrow(/No food entry/);
+
+      const dish = replica.logFood({ label: 'Stew', quantity: '1 serving', amounts: { calorieKcal: 400 } });
+      mockRaw.runSync("UPDATE food_logs SET recipe_id = 'gone' WHERE id = ?", [dish.id]);
+      expect(() => replica.refreshDishEntry(dish.id)).toThrow(/recipe .* is gone/);
+
+      mockRaw.runSync("UPDATE food_logs SET health_sample_ids = '[\"s1\"]' WHERE id = ?", [dish.id]);
+      expect(() => replica.refreshDishEntry(dish.id)).toThrow(/Apple Health/);
+    });
+
     it('deletes a food entry', () => {
       const entry = replica.logFood({ label: 'Toast', amounts: { calorieKcal: 100 } });
       expect(replica.deleteFoodEntry(entry.id).label).toBe('Toast');

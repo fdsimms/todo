@@ -247,6 +247,17 @@ export function updateFoodEntry(
   };
 }
 
+export function refreshDishEntry(replica: Replica, id: string) {
+  const { before, after } = replica.refreshDishEntry(id);
+  const sodium = (e: FoodLogEntry) => e.nutrition.amounts.sodiumMg;
+  return {
+    id: after.id, day: after.dayKey, label: after.label, quantity: after.quantity || undefined,
+    before: { calorieKcal: before.nutrition.amounts.calorieKcal, sodiumMg: sodium(before) },
+    after: { calorieKcal: after.nutrition.amounts.calorieKcal, sodiumMg: sodium(after) },
+    note: 'Worked out again from the recipe as it is now, at the same amount. Not in Apple Health yet: the phone writes it there the next time the app is opened, if Health writing is on there.',
+  };
+}
+
 export function deleteFoodEntry(replica: Replica, id: string) {
   const entry = replica.deleteFoodEntry(id);
   return { deleted: { id: entry.id, day: entry.dayKey, label: entry.label } };

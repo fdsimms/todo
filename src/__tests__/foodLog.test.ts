@@ -36,7 +36,9 @@ import {
   wholeEstimate,
   type FoodLogListItem,
   isDescriptionDraft,
+  remeasureDishEntry,
 } from '../utils/foodLog';
+import type { DishFigures } from '../utils/mealLog';
 import type { FoodLogEntry, FoodNutrition, MealPlanEntry, NutrientKey, SavedMealItem } from '../types';
 import { packageChoices } from '../utils/scanPortion';
 
@@ -1450,5 +1452,45 @@ describe('isDescriptionDraft', () => {
   it('treats a meal description as a draft worth keeping', () => {
     expect(isDescriptionDraft('chicken burrito with rice')).toBe(true);
     expect(isDescriptionDraft('pad  thai   takeout')).toBe(true);
+  });
+});
+
+describe('remeasureDishEntry', () => {
+  const figures = (total: number): DishFigures => ({
+    total: { calorieKcal: total, sodiumMg: total * 2 },
+    perServing: { calorieKcal: total / 4, sodiumMg: total / 2 },
+    servings: 4,
+    cookedGrams: 2000,
+  });
+  const dishEntry = (over: Partial<FoodLogEntry> = {}): FoodLogEntry => ({
+    id: 'e1', dayKey: '2026-10-13', atISO: '2026-10-13T20:00:00.000Z', slot: 'dinner', label: 'Hot pot',
+    quantity: '1 serving', grams: 500, recipeId: 'r1', healthSampleIds: [],
+    nutrition: {
+      basis: 'perServing', servingGrams: 500, servingText: '1 serving', amounts: { calorieKcal: 9999 },
+      source: 'estimated', sourceId: null, portions: [], recordedAt: '2026-10-13T20:00:00.000Z',
+    },
+    ...over,
+  } as FoodLogEntry);
+
+  it('works the same servings out again from the corrected figures', () => {
+    const r = remeasureDishEntry(dishEntry(), figures(800));
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.fields.quantity).toBe('1 serving');
+      expect(r.fields.nutrition.amounts.calorieKcal).toBe(200);
+      expect(r.fields.nutrition.amounts.sodiumMg).toBe(400);
+      expect(r.fields.grams).toBe(500);
+    }
+  });
+
+  it('keeps a weighed plate as the same weight of the dish', () => {
+    const r = remeasureDishEntry(dishEntry({ quantity: '500 g', nutrition: { ...dishEntry().nutrition, servingText: '500 g' } }), figures(800));
+    expect(r.ok && r.fields.nutrition.amounts.calorieKcal).toBe(200);
+  });
+
+  it('refuses a food, a dish with extra lines, and a dish the rollup declined', () => {
+    expect(remeasureDishEntry(dishEntry({ recipeId: undefined }), figures(800)).ok).toBe(false);
+    expect(remeasureDishEntry(dishEntry({ quantity: '1 serving, plus a baguette' }), figures(800)).ok).toBe(false);
+    expect(remeasureDishEntry(dishEntry(), null).ok).toBe(false);
   });
 });

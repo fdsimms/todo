@@ -70,7 +70,7 @@ export interface RecipeDetail extends SerializedRecipe {
   notes?: string;
   source?: string;
   /** Numbered from 1 in this order (patch_recipe addresses them that way). */
-  ingredients: { section?: string; quantity?: string; name: string; prep?: string; optional?: boolean; oneOf?: string }[];
+  ingredients: { section?: string; quantity?: string; name: string; prep?: string; optional?: boolean; oneOf?: string; notCountedInNutrition?: boolean }[];
   /** Numbered from 1 in this order (patch_recipe addresses them that way). onlyWith names the either/or options a step applies to. */
   steps: { section?: string; text: string; timerSeconds?: number; note?: string; onlyWith?: string[] }[];
   /** Other recipes used inside this one ("the pie crust"). */
@@ -122,6 +122,8 @@ export function getRecipe(replica: Replica, id: string): RecipeDetail | null {
       name: i.name,
       ...(i.prep ? { prep: i.prep } : {}),
       ...(i.optional ? { optional: true } : {}),
+      // Left out of the recipe's nutrition total (flavoring taken out before eating, a garnish).
+      ...(i.excludeFromNutrition ? { notCountedInNutrition: true } : {}),
       // Lines sharing a group are alternatives: use one of them.
       ...(i.choiceGroup ? { oneOf: i.choiceGroup } : {}),
     })),

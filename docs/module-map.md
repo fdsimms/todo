@@ -143,7 +143,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/focusSuggest.ts` — MAX_SUGGESTED_FOCUS, FOCUS_BUDGET_MINUTES, FocusContext, buildFocusContext, fitsWindow, scoreFocusTask, nextFocusSuggestion, suggestFocusTasks, focusQueueFromPinned, focusReason
 - `src/utils/focusWindow.ts` — FOCUS_CALENDAR_HORIZON_MINUTES, CalendarWindow, calendarWindow, FOCUS_MEETING_LEAD_MINUTES, FOCUS_MEETING_HORIZON_MINUTES, FocusMeetingHeadsUp, focusMeetingHeadsUp
 - `src/utils/followUpTask.ts` — MIN_FOLLOW_UP_TASK_EVERY_N, MAX_FOLLOW_UP_TASK_EVERY_N, canHoldFollowUpTask, FollowUpTaskRule, followUpTaskRule, FollowUpTaskEndRule, repeatHasEnd, followUpTaskEndRule, advanceFollowUpTaskTally, FollowUpTaskSuppression, +8 more
-- `src/utils/foodLog.ts` — FoodLogTotals, FoodLogSection, isBeverageName, scalePanelToAmount, portionExamples, amountHint, amountExample, FoodUnitOption, VOLUME_UNIT_OPTIONS, foodUnitOptionsFor, +44 more
+- `src/utils/foodLog.ts` — FoodLogTotals, FoodLogSection, isBeverageName, scalePanelToAmount, portionExamples, amountHint, amountExample, FoodUnitOption, VOLUME_UNIT_OPTIONS, foodUnitOptionsFor, +45 more
 - `src/utils/foodLogEntry.ts` — buildFoodLogEntry
 - `src/utils/foodLogExport.ts` — FOOD_LOG_EXPORT_COLUMNS, foodLogExportCsv, foodLogExportFileName, foodLogExportSummary
 - `src/utils/foodLogRecents.ts` — FoodRecency, creditedKeys, foodLogRecency, foodLastAmounts, rankByRecency, USUAL_FOR_SLOT_LIMIT, usualForSlot, RECENT_HELPING_LIMIT, recentUnlinkedHelpings, HelpingAgain, +1 more
@@ -361,6 +361,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/reminderPermission.ts` — askForReminderPermissionIfNeeded
 - `src/utils/remindersImport.ts` — draftFromReminder, recurrenceFromRule, reminderTimeFromAlarms, scheduleToDraft, pendingImportFor, describePendingImport, isImportableList, reminderListOptions, findReminderList, reminderCreatedAt, +13 more
 - `src/utils/remindersImportSync.ts` — RemindersPermission, ImportOutcome, lastImportOutcome, getRemindersPermission, requestRemindersPermission, listReminderLists, countImportableReminders, groceryMirrorSignature, importReminders, useRemindersImportSync
+- `src/utils/removedBeforeEating.ts` — isUsuallyRemovedBeforeEating
 - `src/utils/reorder.ts` — moveItem, dropIndexFromTranslation, cumulativeOffsets, rowDragOffset, rowIndexAtContentY, dragRange, dragTranslation, clampCardToSlots, reorderSubset
 - `src/utils/retention.ts` — RetentionDays, RETENTION_OPTIONS, retentionLabel, parseRetentionDays, retentionCutoff, selectPurgeableTaskIds, selectPurgeableFocusSessionIds, LEDGER_MAX_DAYS, ledgerCutoff, selectPurgeableUnattendedIds, +1 more
 - `src/utils/rewardGuard.ts` — GuardedSlip, canGuard, isGuardableHabit, guardingReward, planGuardedSlip, guardChargeSeed, claimedSince, guardedSlipPrompt, describeGuard

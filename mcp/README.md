@@ -168,6 +168,7 @@ only the fallback until the first sync.
 | `add_person_history` | **Write.** Records something done with someone, as the app's "Add to history" does: a completed task naming them. The only write to the people section. |
 | `complete_task` | **Write.** Ticks one off, spawning whatever that spawns: the next occurrence, the next chain step, the next set of a dated series. |
 | `update_food_entry` | **Write.** Corrects a food log entry (estimated ones can restate figures; measured ones take `grams` or `quantity` and are re-measured from the food's record). |
+| `refresh_dish_entry` | **Write.** Works a dish logged from a recipe out again from the recipe as it is now, at the amount it was logged with (use it after correcting a recipe or an ingredient's nutrition). Refused once written to Apple Health. |
 | `delete_food_entry` | **Write.** Deletes a food log entry not yet written to Apple Health. |
 | `update_mood_log` | **Write.** Corrects a mood check-in. |
 | `delete_mood_log` | **Write.** Deletes a mood check-in. |
@@ -211,8 +212,8 @@ only the fallback until the first sync.
 | `mark_done_by_other` | **Write.** Closes a task as done by somebody else: completes it and creates a repeat's next occurrence, with no coins and no streak change. Works on a one-off. `reopen_task` undoes it. |
 | `mark_missed` | **Write.** Marks a repeating task's occurrence missed: breaks the streak, creates the next occurrence, costs coins. `reopen_task` undoes it. |
 | `log_slip` / `undo_slip` | **Write.** Logs or takes back today's slip on a "don't do this" habit. On a habit a reward guards, a slip the balance covers claims the reward instead, and one it doesn't costs the balance up to the reward's price. A habit with a penalty is refused. |
-| `update_recipe` | **Write.** Changes a recipe or moves it to another cookbook; ingredients, steps, components and prep tasks each replace the whole list. Also sets `cookedWeightG`, what the whole finished dish weighs, and each used recipe's `amountUsed` (how much of its batch goes in). |
-| `patch_recipe` | **Write.** Small edits to one recipe without resending its lists: set a step's note or which either/or option it applies to, insert, reword or remove a step or an ingredient. Numbered from 1; `expect` refuses a stale reading; all or nothing; untouched lines keep their ids. |
+| `update_recipe` | **Write.** Changes a recipe or moves it to another cookbook; ingredients, steps, components and prep tasks each replace the whole list. Also sets `cookedWeightG`, what the whole finished dish weighs, each used recipe's `amountUsed` (how much of its batch goes in), and an ingredient line's `excludeFromNutrition`. |
+| `patch_recipe` | **Write.** Small edits to one recipe without resending its lists: set a step's note or which either/or option it applies to, insert, reword or remove a step or an ingredient, or leave an ingredient out of the recipe's nutrition total (`setIngredientNutrition`). Numbered from 1; `expect` refuses a stale reading; all or nothing; untouched lines keep their ids. |
 | `delete_recipe` | **Write.** Deletes a recipe. Not undoable from here. |
 | `defer_task` | **Write.** Moves a task to a date, or clears its date. |
 | `add_grocery_item` | **Write.** Puts something on the home list, re-using the shelf item the user already has where there is one. |
