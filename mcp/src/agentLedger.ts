@@ -1299,9 +1299,9 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return added;
     },
 
-    answerPantryReview(id, answer) {
+    answerPantryReview(id, answer, opts) {
       const before = pantryState(id);
-      const item = replica.answerPantryReview(id, answer);
+      const item = replica.answerPantryReview(id, answer, opts);
       const what = answer === 'have' ? 'still on hand' : answer === 'low' ? 'running low' : 'out of it';
       log({ action: 'edited', subject: 'pantry', title: item.name, taskId: null, recordId: item.id, revert: pantryRevert(before, pantryState(id)), note: `Answer the pantry review for "${item.name}": ${what}` });
       return item;

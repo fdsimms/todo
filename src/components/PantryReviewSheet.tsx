@@ -5,6 +5,7 @@ import {
   PanResponder,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   View,
 } from 'react-native';
@@ -39,6 +40,7 @@ import { haptics } from '../utils/haptics';
 import { EmptyState } from './EmptyState';
 import { PressableScale } from './PressableScale';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { useTextScale } from '../hooks/useTextScale';
 
 interface Props {
@@ -98,6 +100,11 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
   const styles = useMemo(() => makeStyles(colors, textScaleFactor), [colors, textScaleFactor]);
 
   const answerPantryReview = useGroceryStore(s => s.answerPantryReview);
+  const runningLowAddsToList = useSettingsStore(s => s.runningLowAddsToList);
+  // One choice for the whole pass rather than one per card, so a swipe stays a
+  // swipe. Undefined follows the setting; reset each time the deck opens.
+  const [lowAddsToList, setLowAddsToList] = useState<boolean | undefined>(undefined);
+  const addToList = lowAddsToList ?? runningLowAddsToList;
   const revertPantryAnswer = useGroceryStore(s => s.revertPantryAnswer);
 
   const [deck, setDeck] = useState<PantryReviewDeck>(EMPTY_DECK);
@@ -143,6 +150,7 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
     setDeck(buildPantryReviewDeck(grocery.items, new Date(), grocery.itemProducts));
     setIndex(0);
     setHistory([]);
+    setLowAddsToList(undefined);
     pan.setValue({ x: 0, y: 0 });
   }, [visible, pan]);
 
@@ -161,11 +169,11 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
       // for a row the home list already held, and Undo took it off.
       const entry = entryFor(state.listEntries, card.item.id, null);
       haptics.tap();
-      const portions = answerPantryReview(card.item.id, answer);
+      const portions = answerPantryReview(card.item.id, answer, { addToList });
       setHistory(h => [...h, { kind: 'answered', item: live ?? card.item, entry, answer, portions }]);
       setIndex(i => i + 1);
     },
-    [answerPantryReview]
+    [answerPantryReview, addToList]
   );
 
   /**
@@ -273,10 +281,10 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
       if (!entry || entry.kind !== 'answered' || entry.answer === answer) return;
       haptics.tap();
       revertPantryAnswer(entry.item, entry.entry, entry.portions);
-      const portions = answerPantryReview(entry.item.id, answer);
+      const portions = answerPantryReview(entry.item.id, answer, { addToList });
       setHistory(h => h.map((e, idx) => (idx === i && e.kind === 'answered' ? { ...e, answer, portions } : e)));
     },
-    [answerPantryReview, history, revertPantryAnswer]
+    [answerPantryReview, addToList, history, revertPantryAnswer]
   );
 
   const responder = useMemo(
@@ -371,6 +379,15 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
             <Text style={styles.progressText}>
               {reviewed} of {cards.length} reviewed
             </Text>
+            <View style={styles.switchRow}>
+              <Text style={styles.switchLabel}>Add running low items to the grocery list</Text>
+              <Switch
+                value={addToList}
+                onValueChange={setLowAddsToList}
+                trackColor={{ false: colors.bgTertiary, true: colors.accent }}
+                accessibilityLabel="Add running low items to the grocery list"
+              />
+            </View>
           </View>
         )}
 
@@ -720,6 +737,8 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) =>
     progress: { paddingHorizontal: spacing.md, marginTop: spacing.md },
     track: { height: 4, borderRadius: radius.full, backgroundColor: colors.bgTertiary, overflow: 'hidden' },
     fill: { height: '100%', borderRadius: radius.full, backgroundColor: colors.accent },
+    switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.smd, marginTop: spacing.sm },
+    switchLabel: { fontSize: font.sm, color: colors.text, flexShrink: 1 },
     progressText: { fontSize: font.sm, color: colors.textSecondary, marginTop: spacing.sm },
 
     reviewWrap: { flex: 1 },

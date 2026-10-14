@@ -146,6 +146,23 @@ describe('the pantry tools', () => {
       expect(cleared.pantry.status).not.toBe('running_low');
     });
 
+    it('running low with addToList false marks it without putting it on the list', () => {
+      addToPantry(replica, ['butter']);
+      const id = replica.groceryItems()[0].id;
+      const low = updatePantryItem(replica, { id, runningLow: true, addToList: false });
+      expect(low.changed).toEqual(['marked as running low']);
+      expect(low.pantry.status).toBe('running_low');
+      expect(low.pantry.onList).toBe(false);
+    });
+
+    it('a low pantry review answer with addToList false skips the list', () => {
+      addToPantry(replica, ['butter']);
+      const id = replica.groceryItems()[0].id;
+      const { answered } = answerPantryReview(replica, [{ id, answer: 'low', addToList: false }]);
+      expect(answered[0].status).toBe('running_low');
+      expect(answered[0].onList).toBe(false);
+    });
+
     it('refuses a use-by day that is not a day, and an unknown name with the way to create it', () => {
       addToPantry(replica, ['rice']);
       const id = replica.groceryItems()[0].id;

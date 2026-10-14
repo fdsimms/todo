@@ -677,6 +677,8 @@ export interface PantryItemChange {
   freezeSome?: boolean;
   opened?: boolean;
   runningLow?: boolean;
+  /** With `runningLow: true`: false marks it without putting it on the list. Absent adds, as before. */
+  addToList?: boolean;
   /** `YYYY-MM-DD`, or null to clear. */
   expiresAt?: string | null;
   shelfLifeDays?: number | null;
@@ -1757,7 +1759,7 @@ export interface Replica {
    */
   createCatalogItem(name: string): { item: GroceryItem; isNew: boolean };
   /** One card of the pantry review. Every answer stamps the card as reviewed. */
-  answerPantryReview(id: string, answer: 'have' | 'low' | 'out'): GroceryItem;
+  answerPantryReview(id: string, answer: 'have' | 'low' | 'out', opts?: { addToList?: boolean }): GroceryItem;
   updateLeftover(id: string, change: LeftoverChange): Leftover;
   /**
    * Half a container moved across the freezer line, as the leftover sheet's
@@ -6678,11 +6680,14 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         if (change.runningLow !== undefined) {
           const entries = db.dbGetAllGroceryListEntries();
           const onHome = entries.some(e => e.itemId === id && e.listId === null);
-          const next = pantryWrite.runningLowRow(item, change.runningLow, onHome, nowIso);
+          const adds = change.addToList !== false;
+          // Not adding reads as "already on the list" to the row rule, so
+          // `lastAddedAt` stays as it was (the app's own `setRunningLow` does the same).
+          const next = pantryWrite.runningLowRow(item, change.runningLow, onHome || !adds, nowIso);
           save(next, change.runningLow ? 'marked as running low' : 'no longer running low');
           // One direction only, as in the app: running low puts it on the list,
           // and clearing it never takes it off.
-          if (next && change.runningLow && !onHome) {
+          if (next && change.runningLow && adds && !onHome) {
             db.dbSetGroceryListEntry({
               itemId: id, listId: null, checked: false, choiceGroup: null, addedAt: nowIso,
               sortOrder: groceryLists.nextListSortOrder(entries, null),
@@ -6793,7 +6798,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return { item, isNew: true };
     },
 
-    answerPantryReview(id: string, answer: 'have' | 'low' | 'out'): GroceryItem {
+    answerPantryReview(id: string, answer: 'have' | 'low' | 'out', opts: { addToList?: boolean } = {}): GroceryItem {
       if (!db.dbGetAllGroceryItems().some(i => i.id === id)) throw new Error(`No grocery item with id ${id}.`);
       const now = new Date();
       db.dbTransaction(() => {
@@ -6801,10 +6806,11 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           const item = db.dbGetAllGroceryItems().find(i => i.id === id)!;
           const entries = db.dbGetAllGroceryListEntries();
           const onHome = entries.some(e => e.itemId === id && e.listId === null);
-          const next = pantryWrite.runningLowRow(item, true, onHome, now.toISOString());
+          const adds = opts.addToList !== false;
+          const next = pantryWrite.runningLowRow(item, true, onHome || !adds, now.toISOString());
           if (next) {
             db.dbUpdateGroceryItem(next);
-            if (!onHome) {
+            if (adds && !onHome) {
               db.dbSetGroceryListEntry({
                 itemId: id, listId: null, checked: false, choiceGroup: null, addedAt: now.toISOString(),
                 sortOrder: groceryLists.nextListSortOrder(entries, null),

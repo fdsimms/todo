@@ -2797,7 +2797,8 @@ function registerWriteTools(
     frozen: z.boolean().optional().describe('Into the freezer, which pauses its use-by countdown. Out of it restarts a fresh shelf life from today.'),
     freezeSome: z.boolean().optional().describe('Freeze part of it as a separate frozen portion and leave the rest where it is.'),
     opened: z.boolean().optional().describe('Opened a jar or bag. Moves its use-by day to the opened shelf life when the app knows one for it.'),
-    runningLow: z.boolean().optional().describe('True also puts it on the home grocery list. False never takes it off.'),
+    runningLow: z.boolean().optional().describe('True also puts it on the home grocery list unless addToList is false. False never takes it off.'),
+    addToList: z.boolean().optional().describe('With runningLow true: false marks it as running low without putting it on the grocery list. Ask the person when they only said it is running low; running low does not always mean they want to restock.'),
     expiresAt: dayKey.nullable().optional().describe('Use-by day, or null to clear.'),
     shelfLifeDays: z.number().int().min(0).nullable().optional().describe('How long this item keeps once bought or thawed. Used for the next purchase, not the current use-by day.'),
     useUpTask: z.boolean().nullable().optional().describe("true or false forces the 'Use up X' task on or off for this item, null follows the setting. The phone creates or drops the task itself the next time it syncs."),
@@ -2849,8 +2850,8 @@ function registerWriteTools(
 
   server.tool(
     'answer_pantry_review',
-    "Record the person's answers to cards from pantry_review: have (still on hand), low (running low, which also puts it on the home list) or out. Every answer marks the card reviewed so it is not dealt again for a week. Only record what the person actually said.",
-    { answers: z.array(z.object({ id: z.string().min(1), answer: z.enum(['have', 'low', 'out']) })).min(1).max(20) },
+    "Record the person's answers to cards from pantry_review: have (still on hand), low (running low, which also puts it on the home list unless that answer sets addToList to false) or out. Every answer marks the card reviewed so it is not dealt again for a week. Only record what the person actually said.",
+    { answers: z.array(z.object({ id: z.string().min(1), answer: z.enum(['have', 'low', 'out']), addToList: z.boolean().optional().describe('Only for low: false skips the grocery list.') })).min(1).max(20) },
     async ({ answers }) => {
       try {
         return json(withLink(await withWrite(() => answerPantryReview(replica, answers)), LINKS?.pantry()));
