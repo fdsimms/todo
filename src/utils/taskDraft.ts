@@ -269,6 +269,7 @@ export function newTaskFromDraft(
     allowOvershoot: draft.allowOvershoot ?? false,
     quotaIntervalMinutes: draft.quotaIntervalMinutes ?? null,
     quotaReminders: draft.quotaReminders ?? false,
+    quotaPlaceIds: draft.quotaPlaceIds ?? [],
     quotaAlwaysVisible: draft.quotaAlwaysVisible ?? false,
     followWaterTarget: draft.followWaterTarget ?? false,
     quotaPeriod: isRotationTask(draft) ? 'week' : draft.quotaPeriod ?? 'day',

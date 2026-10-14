@@ -1,5 +1,6 @@
 import * as Notifications from 'expo-notifications';
 import { isProjectLockedAtAll } from './projectLock';
+import { placeGateAllows, readPlaceFix } from './placeGate';
 import type { PermissionResponse } from 'expo-modules-core';
 import { Platform } from 'react-native';
 import type { StepTimer, Task } from '../types';
@@ -965,6 +966,10 @@ function quotaNudgeInstants(task: Task, now: Date): { index: number; time: Date 
   if (!task.quotaReminders || task.completed || task.archived) return [];
   if (task.targetCount === null || task.targetCount < 2) return [];
   if (isWithheld(task)) return [];
+  // Limited to places: only while the last foreground fix says the phone is at
+  // one (see placeGate.ts). Inside this function, not beside it, because the
+  // count is also the queue budget `nonReminderSlots` charges.
+  if (!placeGateAllows(task, readPlaceFix(), now)) return [];
 
   const { activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, dayResetTime } =
     useSettingsStore.getState();

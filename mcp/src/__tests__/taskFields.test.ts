@@ -1,3 +1,4 @@
+import { MAX_QUOTA_INTERVAL_MINUTES, MIN_QUOTA_INTERVAL_MINUTES } from '../../../src/utils/taskKinds';
 import { describeDeadlineRule, describeHealthTarget, describeReminderRule, describeRepeat, describeRotation, describeSupplyFields, hasRelativeDeadline, LIMITS, taskFieldsPatch, type TaskFieldsInput } from '../taskFields';
 import { HEALTH_TARGET_RANGES } from '../../../src/utils/healthTarget';
 import type { FollowUpTaskDraft, Task } from '../../../src/types';
@@ -219,6 +220,53 @@ describe('target', () => {
 
   it('refuses a count outside the app\'s range', () => {
     expect(errorsOf({ target: { count: 1, per: 'day' } })).toMatch(/2 to 99/);
+  });
+
+  it('takes a cadence and reminders without a count', () => {
+    expect(ok({ target: { per: 'day', everyMinutes: 20, remind: true } })).toMatchObject({
+      quotaIntervalMinutes: 20, quotaReminders: true, quotaPeriod: 'day', recurrenceType: 'daily',
+    });
+  });
+
+  it('keeps the limits in step with the app\'s own', () => {
+    // Copied rather than imported, like supplyCount; this is what holds them together.
+    expect([MIN_QUOTA_INTERVAL_MINUTES, MAX_QUOTA_INTERVAL_MINUTES]).toEqual([...LIMITS.quotaInterval]);
+  });
+
+  it('refuses a cadence that cannot work', () => {
+    expect(errorsOf({ target: { per: 'day', everyMinutes: 2 } })).toMatch(/5 to 240/);
+    expect(errorsOf({ target: { per: 'day', everyMinutes: 300 } })).toMatch(/5 to 240/);
+    expect(errorsOf({ target: { per: 'week', count: 3, everyMinutes: 20 } })).toMatch(/per day/);
+    expect(errorsOf({ target: { per: 'day', everyMinutes: 20, allowOvershoot: true } })).toMatch(/going past/);
+    expect(errorsOf({ target: { per: 'day', everyMinutes: 20, rampUp: { add: 1, every: 1 } } })).toMatch(/ramp/);
+    expect(errorsOf({ target: { per: 'week', count: 3, remind: true } })).toMatch(/per day/);
+  });
+
+  it('limits reminders to named places and hands the names on', () => {
+    const r = patchOf({ target: { per: 'day', everyMinutes: 20, remind: true, onlyAtPlaces: [' Office ', 'Home'] } });
+    expect(r.errors).toEqual([]);
+    expect(r.placeNames).toEqual(['Office', 'Home']);
+    expect(patchOf({ target: { per: 'day', everyMinutes: 20, remind: true, onlyAtPlaces: [] } }).placeNames).toEqual([]);
+  });
+
+  it('refuses places without reminders, or on a weekly target', () => {
+    expect(errorsOf({ target: { per: 'day', everyMinutes: 20, onlyAtPlaces: ['Office'] } })).toMatch(/needs target.remind/);
+    expect(errorsOf({ target: { per: 'week', count: 3, onlyAtPlaces: ['Office'] } })).toMatch(/per day/);
+  });
+
+  it('clears the places with the reminders and the target', () => {
+    expect(ok({ target: { per: 'day', count: 8, remind: false } })).toMatchObject({ quotaReminders: false, quotaPlaceIds: [] });
+    expect(ok({ target: null })).toMatchObject({ quotaPlaceIds: [] });
+  });
+
+  it('needs a count when there is no cadence', () => {
+    expect(errorsOf({ target: { per: 'day' } })).toMatch(/count is required/);
+  });
+
+  it('a count typed over a cadence replaces it, and null clears it', () => {
+    const onCadence = existing({ targetCount: 27, quotaIntervalMinutes: 20 } as Partial<Task>);
+    expect(ok({ target: { per: 'day', count: 8 } }, onCadence)).toMatchObject({ targetCount: 8, quotaIntervalMinutes: null });
+    expect(ok({ target: { per: 'day', count: 8, everyMinutes: null } }, onCadence)).toMatchObject({ quotaIntervalMinutes: null });
   });
 });
 

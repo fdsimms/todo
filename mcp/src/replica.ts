@@ -2036,6 +2036,9 @@ export interface Replica {
   /** What a planned meal uses instead of its recipe's own lines, one plain sentence each. */
   mealReplacements(entry: MealPlanEntry): string[];
 
+  /** The names of saved places by id, for showing which places a task's reminders are limited to. Ids that no longer exist are left out. */
+  savedPlaceNames(ids: readonly string[]): string[];
+
   people(): Person[];
   personGroups(): PersonGroup[];
   personNotes(): PersonNote[];
@@ -2209,6 +2212,8 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const grocerySuggest = require('../../src/utils/grocerySuggest') as typeof import('../../src/utils/grocerySuggest');
   const shelfLife = require('../../src/utils/groceryShelfLife') as typeof import('../../src/utils/groceryShelfLife');
   const groceryLists = require('../../src/utils/groceryLists') as typeof import('../../src/utils/groceryLists');
+  const savedPlacesUtil = require('../../src/utils/savedPlaces') as typeof import('../../src/utils/savedPlaces');
+  const placeGate = require('../../src/utils/placeGate') as typeof import('../../src/utils/placeGate');
   const taskSkip = require('../../src/utils/taskSkip') as typeof import('../../src/utils/taskSkip');
   const taskDates = require('../../src/utils/taskDates') as typeof import('../../src/utils/taskDates');
   const taskDuplicate = require('../../src/utils/taskDuplicate') as typeof import('../../src/utils/taskDuplicate');
@@ -3151,7 +3156,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   ): Partial<Task> => {
     const { newCategory, ...rest } = input;
     const { fields, errors: eventErrors } = resolveEventDays(rest, current, ctx.eventDate);
-    const { patch, waitsOn, onlyIfAnswer, errors } = taskFieldsPatch(fields, current, {
+    const { patch, waitsOn, onlyIfAnswer, placeNames, errors } = taskFieldsPatch(fields, current, {
       newId: generateId,
       emptyFollowUpDraft: followUp.emptyFollowUpTaskDraft,
       // The clock time a sun anchor resolves to on the task's day, which is
@@ -3178,6 +3183,20 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (!fromProject && !fromRule) {
         errors.push(`"${fields.title ?? 'This task'}" needs a category. Pick the one it belongs under from yours (${categoryList()}), or name a new one with newCategory: true.`);
       }
+    }
+
+    // Saved places are named by the person, so the patch carries names and the
+    // ids are looked up here, against the places the phone has synced. Only
+    // pinned ones can be matched against a position (see placeGate.ts).
+    if (placeNames !== undefined) {
+      const pinned = placeGate.pinnedPlaces(savedPlacesUtil.readSavedPlaces());
+      const ids: string[] = [];
+      for (const name of placeNames) {
+        const found = pinned.find(p => p.name.trim().toLowerCase() === name.toLowerCase());
+        if (!found) errors.push(`target.onlyAtPlaces: no saved place with a map pin is named "${name}". ${pinned.length ? `The pinned ones are ${pinned.map(p => p.name).join(', ')}.` : 'None has a pin yet; the person adds one in Settings, Calendar, Saved places.'}`);
+        else if (!ids.includes(found.id)) ids.push(found.id);
+      }
+      patch.quotaPlaceIds = ids;
     }
 
     if (waitsOn !== undefined) {
@@ -3210,6 +3229,17 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (missing.length > 0) errors.push(`personIds: no person with id ${missing.join(', ')}. list_people names them.`);
     }
     if (errors.length === 0) settleDateRules(input, patch, current, errors);
+    // On a cadence the count is arithmetic over the window, so it is worked out
+    // against the whole task as it will be (a window given in this same call
+    // counts), with the app's own function. An update that moves only the
+    // window or the cadence gets the same re-derive from `mergeTaskUpdate`.
+    if (errors.length === 0 && fields.target && fields.target.everyMinutes != null) {
+      const merged: Task = current
+        ? { ...current, ...patch }
+        : taskDraft.newTaskFromDraft({ title: input.title ?? 'task', ...patch } as Partial<TaskDraft>, new Date().toISOString(), 0, false);
+      const count = taskUpdate.derivedTargetCount(merged);
+      if (count !== null) patch.targetCount = count;
+    }
     // A reminder is a wall-clock time by default (Task.reminderTimeAnchor), and
     // the phone re-anchors it after a time zone change against the offset it
     // was set under. Captured here as the editor captures it on save, or an
@@ -8060,6 +8090,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return note;
     },
 
+    savedPlaceNames: (ids: readonly string[]) => {
+      const byId = new Map(savedPlacesUtil.readSavedPlaces().map(p => [p.id, p.name] as const));
+      return ids.flatMap(id => byId.get(id) ?? []);
+    },
     people,
     personGroups: () => db.dbGetAllPersonGroups(),
     personNotes: () => db.dbGetAllPersonNotes(),
