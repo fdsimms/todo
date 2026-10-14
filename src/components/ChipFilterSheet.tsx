@@ -23,9 +23,14 @@ export interface ChipFilterOption {
   label: string;
   /** Per-item accent colour, for a set that carries its own (a tag's colour). */
   color?: string;
+  /** A number shown after the label, small and dim (how many recipes carry a tag). */
+  count?: number;
+  /** Replaces the label as the chip's spoken name, for a chip that also shows a count. */
+  accessibilityLabel?: string;
 }
 
 export interface ChipFilterGroup {
+  /** The group's heading, and its key. Empty for a sheet with one group and nothing to tell apart. */
   label: string;
   options: ChipFilterOption[];
   /** The keys currently picked. One entry for a single-select group. */
@@ -37,6 +42,15 @@ export interface ChipFilterGroup {
    */
   showAllChip?: boolean;
   onClear?: () => void;
+  /**
+   * How a picked chip looks. `fill` (the default) paints it solid; `tint`
+   * keeps the surface, tints it and outlines it in the option's own colour,
+   * for a group where every chip is its own colour and a solid fill would
+   * drown the label.
+   */
+  activeStyle?: 'fill' | 'tint';
+  /** Chips are independent on/off boxes rather than buttons, and say so to VoiceOver. */
+  checkbox?: boolean;
 }
 
 /**
@@ -48,9 +62,8 @@ export interface ChipFilterGroup {
  * because a vocabulary with no ceiling has no phone-width row that fits it —
  * and the sheet chrome that rule implies (the pan-to-dismiss handle, the scrim,
  * the hidden offset, the edge fade, the clear-all) is 150 lines that were
- * getting written again per filter. `LogbookFilterSheet` and
- * `RecipeTagFilterSheet` are the two that predate this and still hold their own
- * copies.
+ * getting written again per filter. The Logbook's filter, the recipe box's tag
+ * filter and the Mood history filter all use it.
  *
  * Multi-select is the default and single-select is a group whose `selected`
  * holds at most one key — the difference lives in the caller's toggle rather
@@ -136,7 +149,7 @@ export function ChipFilterSheet({ visible, onClose, title = 'Filter', groups, on
           >
             {groups.filter(g => g.options.length > 0).map((group, index) => (
               <View key={group.label} style={index > 0 ? { marginTop: spacing.lg } : undefined}>
-                <Text style={styles.groupLabel}>{group.label}</Text>
+                {group.label !== '' && <Text style={styles.groupLabel}>{group.label}</Text>}
                 <View style={styles.chips}>
                   {group.showAllChip && (
                     <TouchableOpacity
@@ -155,21 +168,37 @@ export function ChipFilterSheet({ visible, onClose, title = 'Filter', groups, on
                   {group.options.map(option => {
                     const active = group.selected.includes(option.key);
                     const color = option.color ?? colors.accent;
+                    const tint = group.activeStyle === 'tint';
                     return (
                       <TouchableOpacity
                         key={option.key}
-                        style={[styles.chip, active && { backgroundColor: color }]}
+                        style={[
+                          styles.chip,
+                          tint && styles.chipOutlined,
+                          active && (tint
+                            ? { backgroundColor: color + '33', borderColor: color }
+                            : { backgroundColor: color }),
+                        ]}
                         onPress={() => { haptics.tap(); group.onToggle(option.key); }}
                         activeOpacity={interaction.activeOpacity}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: active }}
+                        accessibilityRole={group.checkbox ? 'checkbox' : 'button'}
+                        accessibilityState={group.checkbox ? { checked: active } : { selected: active }}
+                        accessibilityLabel={option.accessibilityLabel}
                       >
-                        {!active && option.color && (
+                        {option.color && (tint || !active) && (
                           <View style={[styles.chipDot, { backgroundColor: option.color }]} />
                         )}
-                        <Text style={[styles.chipText, active && styles.chipTextActive, active && option.color && styles.chipTextOnFill]}>
+                        <Text style={[
+                          styles.chipText,
+                          active && !tint && styles.chipTextActive,
+                          active && !tint && option.color && styles.chipTextOnFill,
+                          active && tint && { color },
+                        ]}>
                           {option.label}
                         </Text>
+                        {option.count !== undefined && (
+                          <Text style={[styles.chipCount, active && tint && { color }]}>{option.count}</Text>
+                        )}
                       </TouchableOpacity>
                     );
                   })}
@@ -214,8 +243,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   resetText: { color: colors.accent, fontSize: font.sm },
   content: { paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.md },
-  // Sits on the sheet's bottom *padding* edge, not its border box — see the
-  // same note in LogbookFilterSheet.
+  // Sits on the sheet's bottom *padding* edge, not its border box: Yoga
+  // positions an absolute child from the border box when an inset is
+  // given, so `bottom: 0` would park the band in the 40pt of bare sheet
+  // below the list rather than over the last of its rows.
   scrollFade: { bottom: 40 },
   groupLabel: {
     color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold,
@@ -227,8 +258,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingVertical: 7,
     borderRadius: radius.full, backgroundColor: colors.bgTertiary,
   },
+  chipOutlined: { borderWidth: 1.5, borderColor: colors.bgQuaternary },
   chipDot: { width: 6, height: 6, borderRadius: radius.full },
   chipText: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
+  chipCount: { color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.medium },
   chipTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
   // An option with its own colour fills with it rather than the accent.
   chipTextOnFill: { color: colors.onFill },
