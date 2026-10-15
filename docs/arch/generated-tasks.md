@@ -1329,7 +1329,7 @@ argued out before it was built; read them before reopening one.
   ("Southbound G trains are skipping Bedford-Nostrand Avs") in `notes`, which the sweep rewrites with
   the title. The feed names stops in that prose only on a live alert: planned work also lists
   `stop_id`s in `informed_entity`, a live delay lists none. Matching them against the trip's own stops
-  is not built, because nothing in the app knows those stops (MapKit's ETA returns minutes only) and
+  is not built, because nothing in the app knows those stops (MapKit's ETA returns minutes only, and `MKRoute.Step` has no stop, station or line property: only `instructions` text, `polyline`, `notice`, `distance` and `transportType`) and
   the picked lines are global, not the line the trip rides.
 - **The note never alerts on its own, and that is a constraint rather than a choice.**
   `backgroundRefresh.ts` is a `BGProcessingTask` iOS mostly runs overnight, so nothing can re-read
