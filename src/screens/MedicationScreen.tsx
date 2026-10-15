@@ -232,6 +232,11 @@ export function MedicationScreen() {
     showUndo(log);
   };
 
+  const dismissQuickRecordUndo = () => {
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    setUndo(null);
+  };
+
   const undoQuickRecord = () => {
     if (!undo) return;
     haptics.tap();
@@ -553,6 +558,7 @@ export function MedicationScreen() {
         <SheetUndoBar
           label={`Recorded ${[undo.name, formatDose(undo)].filter(Boolean).join(' ')}`}
           onUndo={undoQuickRecord}
+          onDismiss={dismissQuickRecordUndo}
           bottom={tabBarHeight + spacing.md}
         />
       )}
@@ -560,6 +566,7 @@ export function MedicationScreen() {
         <SheetUndoBar
           label={`Deleted ${[deletedDose.deleted.name, formatDose(deletedDose.deleted)].filter(Boolean).join(' ')}`}
           onUndo={deletedDose.undo}
+          onDismiss={deletedDose.dismiss}
           bottom={tabBarHeight + spacing.md}
         />
       )}

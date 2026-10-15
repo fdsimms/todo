@@ -354,7 +354,7 @@ Where each component can appear.
 - `src/components/SunBoundPanel.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, MedicationDetailScreen, MedicationScreen, MetersScreen, PersonDetailScreen, ProjectDetailScreen, RemindersScreen, SavedViewDetailScreen, SearchScreen, StackDetailScreen, +5 more
 - `src/components/SupplementPanelSheet.tsx` — on MedicationDetailScreen
 - `src/components/SwipeActionButtons.tsx` — on CalendarScreen, CategoryDetailScreen, FoodLogScreen, GroceryScreen, LogbookScreen, MealPlanScreen, MedicationScreen, PeopleScreen, ProjectDetailScreen, ProjectsScreen, RecipeDetailScreen, RecipesScreen, +7 more
-- `src/components/SwipeDismiss.tsx` — on ProjectDetailScreen, TemplateDetailScreen, TemplatesScreen, TodayScreen, app shell
+- `src/components/SwipeDismiss.tsx` — on GroceryScreen, MealPlanScreen, MedicationDetailScreen, MedicationScreen, ProjectDetailScreen, RecipeDetailScreen, TemplateDetailScreen, TemplatesScreen, TodayScreen, app shell
 - `src/components/SwipeableRow.tsx` — on CalendarScreen, CategoryDetailScreen, FoodLogScreen, GroceryScreen, LogbookScreen, MealPlanScreen, MedicationScreen, PeopleScreen, ProjectDetailScreen, ProjectsScreen, RecipeDetailScreen, RecipesScreen, +7 more
 - `src/components/TabSlotPickerSheet.tsx` — on SettingsGroupScreen
 - `src/components/TargetIcon.tsx` — on ArchivedScreen, AutomationsScreen, BackfillScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, CookbookDetailScreen, CookbooksScreen, FoodLogScreen, GroceryScreen, JournalScreen, KitchenScreen, +35 more

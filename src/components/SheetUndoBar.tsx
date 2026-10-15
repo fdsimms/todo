@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { InlineAction } from './InlineAction';
+import { SwipeDismiss } from './SwipeDismiss';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 
@@ -26,11 +27,14 @@ import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 export function SheetUndoBar({
   label,
   onUndo,
+  onDismiss,
   bottom,
 }: {
   /** What was just done, in the user's words. Truncated to one line. */
   label: string;
   onUndo: () => void;
+  /** Swiped away by hand. Without it the bar can't be swiped. */
+  onDismiss?: () => void;
   /** Distance from the bottom of the sheet, safe-area inset included. */
   bottom: number;
 }) {
@@ -40,13 +44,18 @@ export function SheetUndoBar({
   return (
     // box-none so the sheet behind the bar stays tappable either side of it.
     <View style={[styles.wrap, { bottom }]} pointerEvents="box-none">
-      <View style={[styles.bar, shadows.fab]}>
-        {/* The label takes the row and the button is the fixed-width sibling,
-            never the other way round: an action the user just performed has to
-            be readable to be worth undoing. */}
-        <Text style={styles.label} numberOfLines={1}>{label}</Text>
-        <InlineAction label="Undo" onPress={onUndo} accessibilityLabel={`Undo: ${label}`} />
-      </View>
+      {(() => {
+        const bar = (
+          <View style={[styles.bar, shadows.fab]}>
+            {/* The label takes the row and the button is the fixed-width sibling,
+                never the other way round: an action the user just performed has to
+                be readable to be worth undoing. */}
+            <Text style={styles.label} numberOfLines={1}>{label}</Text>
+            <InlineAction label="Undo" onPress={onUndo} accessibilityLabel={`Undo: ${label}`} />
+          </View>
+        );
+        return onDismiss ? <SwipeDismiss onDismiss={onDismiss}>{bar}</SwipeDismiss> : bar;
+      })()}
     </View>
   );
 }
