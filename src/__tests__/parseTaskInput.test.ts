@@ -1,4 +1,4 @@
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, contactForMention, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseWeatherWaitInput, parseMeterInput, parseRainSkipInput, parseTaskInputAheadOfRainSkip, parseSunWindowInput, parseProjectInput, parseWaitingOnInput, parseSubtasksInput, parseAvoidInput, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, getEditorMentionSuggestions, applyMentionOverrides, parseFromCompletionSuffix, scheduleClockInstant, type ParsedSchedule } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, contactForMention, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseWeatherWaitInput, parseMeterInput, parseRainSkipInput, parseTaskInputAheadOfRainSkip, parseSunWindowInput, parseProjectInput, parseWaitingOnInput, parseSubtasksInput, parseAvoidInput, parseAvoidEnd, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, getEditorMentionSuggestions, applyMentionOverrides, parseFromCompletionSuffix, scheduleClockInstant, type ParsedSchedule } from '../utils/parseTaskInput';
 
 // Tuesday, June 10 2025, 10:00 AM — same anchor as parseNaturalDate.test.ts
 const NOW = new Date(2025, 5, 10, 10, 0, 0);
@@ -2230,6 +2230,31 @@ describe('parseAvoidInput', () => {
     expect(said('quit vaping')).toBe('quit vaping');
     expect(said('Stop doomscrolling')).toBe('Stop doomscrolling');
     expect(said('avoid drinking soda')).toBe('avoid drinking');
+  });
+
+  it('reads a closing "until/before <time>" as when the day counts as clean', () => {
+    expect(parseAvoidInput("Don't eat until 4pm")).toEqual({ matchStart: 0, matchEnd: 19, endsAt: '16:00' });
+    expect(parseAvoidInput('No snacking before 8:30 PM')?.endsAt).toBe('20:30');
+    expect(parseAvoidInput('avoid drinking till noon')?.endsAt).toBe('12:00');
+    expect(parseAvoidInput('Never eat until 16:00')?.endsAt).toBe('16:00');
+    expect(said("Don't eat until 4pm")).toBe("Don't eat until 4pm");
+  });
+
+  it('keeps the schedule reader off a closing time the habit already claims', () => {
+    expect(parseTaskInput("Don't eat until 4pm", NOW)).toBeNull();
+    expect(parseTaskInput('No snacking before 8:30pm', NOW)).toBeNull();
+    expect(parseTaskInput("Don't check Twitter tomorrow", NOW)).not.toBeNull();
+    // A task already set to don't-do owns the closing time with no "don't" in front.
+    expect(parseTaskInput('Skip breakfast until 10am', NOW)).not.toBeNull();
+    expect(parseTaskInput('Skip breakfast until 10am', NOW, NOW, undefined, true)).toBeNull();
+    expect(parseAvoidEnd('Skip breakfast until 10am')).toEqual({ endsAt: '10:00', matchStart: 15, matchEnd: 25 });
+  });
+
+  it('offers the habit without an end when the clause names no usable time', () => {
+    expect(parseAvoidInput("Don't eat until 4:00")).toEqual({ matchStart: 0, matchEnd: 5, endsAt: null });
+    expect(parseAvoidInput("Don't eat until bed")?.endsAt).toBeNull();
+    expect(parseAvoidInput("Don't eat until 4pm tomorrow")?.endsAt).toBeNull();
+    expect(parseAvoidInput("Don't check Twitter")?.endsAt).toBeNull();
   });
 
   it('leaves ordinary tasks that open the same way alone', () => {

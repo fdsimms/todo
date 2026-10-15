@@ -877,10 +877,15 @@ export function parseTaskInput(
   now: Date = new Date(),
   clockNow: Date = now,
   dayResetTime?: string,
+  /** The task is already a don't-do habit, so a closing "until 4pm" is its end time even without a "don't" in front. */
+  avoids = false,
 ): ParsedTaskInput | null {
   if (!input) return null;
   const tokens = [...input.matchAll(/\S+/g)];
   if (tokens.length < 2) return null;
+  // "Don't eat until 4pm": the closing time is when the habit's day counts as
+  // clean (see parseAvoidInput), not a date to schedule the task on.
+  if (parseAvoidInput(input)?.endsAt || (avoids && parseAvoidEnd(input))) return null;
 
   const lower = input.toLowerCase();
   // An input that is entirely a schedule phrase ("on tuesday", "every monday")
@@ -1571,12 +1576,13 @@ export function parseTaskInputAheadOfRainSkip(
   now: Date = new Date(),
   clockNow: Date = now,
   dayResetTime?: string,
+  avoids = false,
 ): ParsedTaskInput | null {
-  const direct = parseTaskInput(input, now, clockNow, dayResetTime);
+  const direct = parseTaskInput(input, now, clockNow, dayResetTime, avoids);
   if (direct) return direct;
   const rain = parseRainSkipInput(input);
   if (!rain || input.slice(rain.matchEnd).trim()) return null;
-  const parsed = parseTaskInput(input.slice(0, rain.matchStart), now, clockNow, dayResetTime);
+  const parsed = parseTaskInput(input.slice(0, rain.matchStart), now, clockNow, dayResetTime, avoids);
   if (!parsed) return null;
   return { ...parsed, cleanTitle: `${parsed.cleanTitle} ${input.slice(rain.matchStart, rain.matchEnd)}` };
 }
@@ -1961,9 +1967,14 @@ export function parseSubtasksInput(input: string): ParsedSubtasks | null {
 }
 
 export interface ParsedAvoid {
-  /** The opening words that say it ("Don't", "No snacking"), for the highlight. */
+  /**
+   * The words that say it, for the highlight: the opening ("Don't", "No
+   * snacking"), or through the end of the "until 4pm" clause when there is one.
+   */
   matchStart: number;
   matchEnd: number;
+  /** `"HH:MM"` from a trailing "until/till/before <clock time>": when the habit's day counts as clean. */
+  endsAt: string | null;
 }
 
 // Words ending in "ing" that aren't something a person does: "no morning
@@ -1994,12 +2005,41 @@ export function parseAvoidInput(input: string): ParsedAvoid | null {
   const rest = input.slice(lead);
   // "Don't forget to …" is a reminder (see REMIND_PREFIX), not a habit.
   const plain = rest.match(/^(?:don'?t|don’t|do not|never)\s+(?!forget\b)(?=[a-z])/i);
-  if (plain) return { matchStart: lead, matchEnd: lead + plain[0].trimEnd().length };
+  if (plain) return withAvoidEnd(input, lead, lead + plain[0].trimEnd().length);
   const gerund = rest.match(/^(?:no|stop|quit|avoid)\s+([a-z]+ing)\b/i);
   if (gerund && !NOT_GERUNDS.has(gerund[1].toLowerCase())) {
-    return { matchStart: lead, matchEnd: lead + gerund[0].length };
+    return withAvoidEnd(input, lead, lead + gerund[0].length);
   }
   return null;
+}
+
+/**
+ * A clock time closing the title ("... until 4pm", "... before 8:30pm") as
+ * `Task.windowEnd` holds it, which an avoid-task reads as when its day counts as
+ * clean and never as an expiry. Only a time on its own at the very end counts,
+ * and a bare "until 4:00" is left alone because it could be either half of the
+ * day; "until bed" or "before 4pm tomorrow" name no time to close the day on.
+ * `from` is where the clause may start, so the habit's own opening words can't
+ * be mistaken for it.
+ */
+export function parseAvoidEnd(input: string, from = 0): { endsAt: string; matchStart: number; matchEnd: number } | null {
+  const clause = input.slice(from).match(/\s((?:until|till|before)\s+(\S.*?))\s*$/i);
+  if (!clause) return null;
+  const clock = extractTime(clause[2].toLowerCase());
+  if (!clock || clock.ambiguous || clock.rest) return null;
+  return {
+    endsAt: hhmm(clock.time),
+    matchStart: from + clause.index! + clause[0].indexOf(clause[1]),
+    matchEnd: input.trimEnd().length,
+  };
+}
+
+/** "Don't eat until 4pm": the habit, reaching through its closing time when it has one. */
+function withAvoidEnd(input: string, matchStart: number, leadEnd: number): ParsedAvoid {
+  const end = parseAvoidEnd(input, leadEnd);
+  return end
+    ? { matchStart, matchEnd: end.matchEnd, endsAt: end.endsAt }
+    : { matchStart, matchEnd: leadEnd, endsAt: null };
 }
 
 export interface ParsedPriority {

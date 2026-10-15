@@ -19,6 +19,7 @@ const base: TitleSuggestionContext = {
   weatherTasksOn: true,
   weatherWait: null,
   polarity: 'positive',
+  windowEnd: null,
   hasMeter: false,
   knownMeters: ['Car'],
   hasRainSkip: false,
@@ -113,6 +114,25 @@ describe('pickTitleSuggestion', () => {
     expect(kindOf('pack: socks, charger, passport')).toBe('subtasks');
     expect(kindOf("Don't check Twitter")).toBe('avoid');
     expect(kindOf("Don't check Twitter", { polarity: 'negative' })).toBeNull();
+  });
+
+  it('carries an "until 4pm" into the avoid suggestion and its pill', () => {
+    const s = pickTitleSuggestion("Don't eat until 4pm", base)!;
+    expect(s.kind).toBe('avoid');
+    expect(describeTitleSuggestion(s, 'mm', h => `@${h}`).label).toBe('Avoid this habit · clean at @16:00');
+    expect(describeTitleSuggestion(pickTitleSuggestion("Don't check Twitter", base)!, 'mm', h => h).label).toBe('Avoid this habit');
+  });
+
+  it('offers just the closing time to a habit already set to don\'t-do', () => {
+    const neg = { polarity: 'negative' as const };
+    const s = pickTitleSuggestion('Skip breakfast until 10am', { ...base, ...neg })!;
+    expect(s.kind).toBe('avoid');
+    if (s.kind === 'avoid') expect(s.hit).toMatchObject({ endsAt: '10:00', already: true });
+    expect(describeTitleSuggestion(s, 'mm', h => `@${h}`).label).toBe('Clean at @10:00');
+    expect(suggestionMatch('Skip breakfast until 10am', s).matchedText).toBe('until 10am');
+    // Not again once the window end holds it, and not for a title with no closing time.
+    expect(kindOf('Skip breakfast until 10am', { ...neg, windowEnd: '10:00' })).toBeNull();
+    expect(kindOf("Don't check Twitter", neg)).toBeNull();
   });
 
   it('reads a chain from the plain kind', () => {

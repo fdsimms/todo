@@ -844,8 +844,8 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // Read past a trailing "unless it rains" (parseTaskInputAheadOfRainSkip),
   // which would otherwise block the repeat it needs.
   const parsed = useMemo(
-    () => (title.trim() ? parseTaskInputAheadOfRainSkip(title, getLogicalNow(dayResetTime), new Date(), dayResetTime) : null),
-    [title, dayResetTime]
+    () => (title.trim() ? parseTaskInputAheadOfRainSkip(title, getLogicalNow(dayResetTime), new Date(), dayResetTime, polarity === 'negative') : null),
+    [title, dayResetTime, polarity]
   );
   // "pay rent tmrw #home #errand" — one or more "#word" tokens, the first
   // naming a category and the rest naming tags (see
@@ -958,6 +958,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
         weatherTasksOn,
         weatherWait,
         polarity,
+        windowEnd: titleWindowEnd,
         hasMeter: titleMeter !== null,
         knownMeters: knownMeterNames(meterReadings),
         hasRainSkip: titleRainSkipMm !== null,
@@ -967,7 +968,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       : null),
     // sunLocation is a dep for the re-read alone: sunLocationOn reads it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, type, recurrenceType, recurrenceInterval, recurrenceDays, titleSeries, chainItems, intoProjectId, liveProjects, waitCandidates, weatherTasksOn, weatherWait, polarity, titleMeter, meterReadings, titleRainSkipMm, rainUnit, sunDayStart.getTime(), sunLocationSetting]
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, type, recurrenceType, recurrenceInterval, recurrenceDays, titleSeries, chainItems, intoProjectId, liveProjects, waitCandidates, weatherTasksOn, weatherWait, polarity, titleWindowEnd, titleMeter, meterReadings, titleRainSkipMm, rainUnit, sunDayStart.getTime(), sunLocationSetting]
   );
   const titleSuggestionDescription = titleSuggestion
     ? describeTitleSuggestion(titleSuggestion, rainUnit, hhmm => formatHHMM(hhmm))
@@ -1542,12 +1543,17 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     setSubtaskTitles(prev => [...prev, ...subtasksParsed.subtasks]);
   };
 
-  // Leaves the title alone: "No snacking after 8pm" is the habit's name.
+  // Leaves the title alone: "No snacking after 8pm" is the habit's name. An
+  // "until 4pm" on the end becomes the time its day counts as clean.
   const applyAvoid = () => {
     if (!avoidParsed) return;
     haptics.success();
     animateLayout();
     setPolarity('negative');
+    if (avoidParsed.endsAt) {
+      setTitleWindowEnd(avoidParsed.endsAt);
+      setTitleWindowEndSun(null);
+    }
   };
 
   // Whichever single tooltip is currently up, applied — shared by the

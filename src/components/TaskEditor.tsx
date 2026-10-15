@@ -1469,8 +1469,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   // same way the quick-add modal does. The phrase is highlighted and
   // described in a banner below the title; nothing is applied until tapped.
   const parsedSchedule = useMemo(
-    () => (title.trim() ? parseTaskInputAheadOfRainSkip(title, getLogicalNow(dayResetTime), new Date(), dayResetTime) : null),
-    [title, dayResetTime]
+    () => (title.trim() ? parseTaskInputAheadOfRainSkip(title, getLogicalNow(dayResetTime), new Date(), dayResetTime, polarity === 'negative') : null),
+    [title, dayResetTime, polarity]
   );
   // The banner's own ✕ answers "not a date" for this one phrase — comparing
   // by position+text (rather than a bare boolean) means editing the title so
@@ -1564,6 +1564,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       weatherTasksOn,
       weatherWait,
       polarity,
+      windowEnd,
       hasMeter: meterInput.name.trim() !== '',
       knownMeters: knownMeterNames(meterReadings),
       hasRainSkip: rainSkipMm !== null,
@@ -1576,7 +1577,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   }, [
     title, activeParsedSchedule, activeCategoryTags, titleMentionSuggestion, titleKind, recurrenceType,
     recurrenceInterval, recurrenceDays, extraDates, chainItems, projects, titleWaitCandidates, weatherTasksOn,
-    weatherWait, polarity, meterInput.name, meterReadings, rainSkipMm, rainUnit, titleSunDayStart.getTime(),
+    weatherWait, polarity, windowEnd, meterInput.name, meterReadings, rainSkipMm, rainUnit, titleSunDayStart.getTime(),
     titleSunLocation,
   ]);
   const titleSuggestionMatch = titleSuggestion ? suggestionMatch(title, titleSuggestion) : null;
@@ -1880,8 +1881,13 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         }
         break;
       case 'avoid':
-        // Strips nothing: "No snacking after 8pm" is the habit's name.
+        // Strips nothing: "No snacking after 8pm" is the habit's name. An
+        // "until 4pm" on the end becomes the time its day counts as clean.
         setPolarity('negative');
+        if (s.hit.endsAt) {
+          setWindowEndSun(null);
+          setWindowEnd(s.hit.endsAt);
+        }
         break;
     }
   };
