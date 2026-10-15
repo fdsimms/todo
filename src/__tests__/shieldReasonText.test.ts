@@ -73,5 +73,7 @@ describe('selectionLabel', () => {
     expect(selectionLabel(1, 0)).toBe('1 app');
     expect(selectionLabel(3, 1)).toBe('3 apps, 1 category');
     expect(selectionLabel(0, 2)).toBe('2 categories');
+    expect(selectionLabel(0, 0, 1)).toBe('1 website');
+    expect(selectionLabel(2, 0, 3)).toBe('2 apps, 3 websites');
   });
 });

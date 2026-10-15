@@ -430,17 +430,27 @@ extension ScreenTimeShared {
   static func applyGroups(_ groupIds: [String]) -> Bool {
     var applications = Set<ApplicationToken>()
     var categories = Set<ActivityCategoryToken>()
+    var webDomains = Set<WebDomainToken>()
     for id in groupIds {
       guard let selection = readSelection(groupId: id) else { continue }
       applications.formUnion(selection.applicationTokens)
       categories.formUnion(selection.categoryTokens)
+      webDomains.formUnion(selection.webDomainTokens)
     }
     let store = ManagedSettingsStore(named: .init(shieldStoreName))
     store.shield.applications = applications.isEmpty ? nil : applications
     store.shield.applicationCategories = categories.isEmpty
       ? nil
       : ShieldSettings.ActivityCategoryPolicy.specific(categories)
-    return !applications.isEmpty || !categories.isEmpty
+    // Websites are their own shield settings: the picker stores a site (or a
+    // category's sites) in the selection, but nothing blocks it in Safari
+    // unless it is written here too. A category picked blocks its sites as
+    // well as its apps.
+    store.shield.webDomains = webDomains.isEmpty ? nil : webDomains
+    store.shield.webDomainCategories = categories.isEmpty
+      ? nil
+      : ShieldSettings.ActivityCategoryPolicy.specific(categories)
+    return !applications.isEmpty || !categories.isEmpty || !webDomains.isEmpty
   }
   #endif
   #endif

@@ -71,10 +71,11 @@ export function shieldHeadlineNote(reasonCount: number, selectedCount: number): 
 }
 
 /** The count of what is picked, as the page's subtitle and the apps row's value. */
-export function selectionLabel(applications: number, categories: number): string {
+export function selectionLabel(applications: number, categories: number, websites = 0): string {
   const parts = [
     applications > 0 ? `${applications} ${applications === 1 ? 'app' : 'apps'}` : null,
     categories > 0 ? `${categories} ${categories === 1 ? 'category' : 'categories'}` : null,
+    websites > 0 ? `${websites} ${websites === 1 ? 'website' : 'websites'}` : null,
   ].filter(Boolean);
   return parts.length === 0 ? 'None' : parts.join(', ');
 }

@@ -29,6 +29,8 @@ export type ScreenTimeAuthorization = 'unavailable' | 'notDetermined' | 'denied'
 export interface ScreenTimeSelectionCount {
   applications: number;
   categories: number;
+  /** Absent from a native build older than the website shield. */
+  websites?: number;
 }
 
 /** One `{ id, thresholdMinutes }` rule, as the native side decodes it. */
@@ -124,7 +126,7 @@ export function presentAppPicker(groupId: string): Promise<boolean> {
 }
 
 export function screenTimeSelectionCount(groupId: string): ScreenTimeSelectionCount {
-  return degradeOnThrow(() => nativeModule!.selectionCount(groupId), { applications: 0, categories: 0 });
+  return degradeOnThrow(() => nativeModule!.selectionCount(groupId), { applications: 0, categories: 0, websites: 0 });
 }
 
 export function clearScreenTimeSelection(groupId: string): boolean {
