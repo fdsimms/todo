@@ -1,4 +1,5 @@
 import {
+  CONTAINER_UNITS,
   formatQuantityAmount,
   formatRational,
   inflectUnit,
@@ -6,6 +7,8 @@ import {
   parseQuantity,
   rationalFromNumber,
   rationalToNumber,
+  type Quantity,
+  type Rational,
 } from './quantity';
 
 /**
@@ -128,6 +131,30 @@ function joinTrailing(amount: string, trailing: string): string {
   return `${amount} ${trailing}`;
 }
 
+// Grams and millilitres are never written as fractions, so a scaled one that
+// lands off a whole number reads "33 g", not "33 1/3 g". Under ten the
+// decimals stay ("0.25 g"), where rounding to a whole would change the amount.
+function formatMetricSmall(value: number): string {
+  return String(value >= 10 ? Math.round(value) : Math.round(value * 100) / 100);
+}
+
+function formatScaledAmount(q: Quantity, scaled: Rational): string {
+  if (scaled.den !== 1 && (q.unit === 'g' || q.unit === 'ml')) {
+    return formatMetricSmall(rationalToNumber(scaled));
+  }
+  return formatRational(scaled, q.decimal);
+}
+
+// A parenthesised size before a container word ("(14 oz) can") leaves the word
+// outside the unit, so it needs to agree with the scaled count by hand.
+const SIZED_CONTAINER_TAIL = /^(\s*\([^()]*\)\s+)([a-z]+)\b/i;
+
+function inflectContainerTail(trailing: string, amount: number): string {
+  const m = SIZED_CONTAINER_TAIL.exec(trailing);
+  if (!m || !CONTAINER_UNITS.has(m[2].toLowerCase())) return trailing;
+  return `${m[1]}${inflectUnit(m[2], amount)}${trailing.slice(m[0].length)}`;
+}
+
 export function scaleQuantity(quantity: string, factor: number): ScaledQuantity {
   const q = parseQuantity(quantity);
   const unchanged: ScaledQuantity = { text: q.raw, scaled: false };
@@ -177,13 +204,16 @@ export function scaleQuantity(quantity: string, factor: number): ScaledQuantity 
   }
 
   const scaled = multiplyRational(q.amount, multiplier);
-  const rendered = formatRational(scaled, q.decimal);
+  const rendered = formatScaledAmount(q, scaled);
   if (!q.rest) return { text: rendered, scaled: true };
 
   const trailing = stripSourceCountAside(q.trailing);
   // A size clause rather than a unit — parseGroceryInput emits "1, medium",
   // and splitting that on spaces would produce "2 , medium".
-  if (!q.unitWritten) return { text: joinTrailing(rendered, trailing), scaled: true };
+  if (!q.unitWritten) {
+    const agreed = inflectContainerTail(trailing, rationalToNumber(scaled));
+    return { text: joinTrailing(rendered, agreed), scaled: true };
+  }
 
   const inflected = inflectUnit(q.unitWritten, rationalToNumber(scaled));
   return { text: `${rendered} ${inflected}${trailing}`, scaled: true };
