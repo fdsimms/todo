@@ -194,6 +194,17 @@ public class TodoScreenTimeBridgeModule: Module {
       return false
     }
 
+    /// Whether deleting apps is denied while a shield is up. Written ahead of
+    /// `applyShield` on every reconcile, because `applyGroups` reads it, and
+    /// `applyGroups` is also what the monitor extension runs with the app closed.
+    Function("setShieldOptions") { (denyAppRemoval: Bool) -> Bool in
+      var written = false
+      TodoScreenTimeExceptionCatcher.runCatchingExceptions {
+        written = ScreenTimeShared.writeShieldOptions(ShieldOptionsShared(denyAppRemoval: denyAppRemoval))
+      }
+      return written
+    }
+
     /// Hand both extensions the app's own answer about why the apps are blocked.
     ///
     /// Written on every reconcile rather than only when a block starts: the
@@ -463,6 +474,7 @@ public class TodoScreenTimeBridgeModule: Module {
           store.shield.applicationCategories = nil
           store.shield.webDomains = nil
           store.shield.webDomainCategories = nil
+          store.application.denyAppRemoval = nil
           cleared = true
         }
         return cleared

@@ -46,6 +46,11 @@ export interface AppShieldState {
   focusEnabled: boolean;
   penaltyUntil: string | null;
   penaltyEnabled: boolean;
+  /**
+   * Deny deleting apps while the shield is up. Optional so a caller that
+   * predates it, and a test that doesn't care, needn't supply it.
+   */
+  denyAppRemoval?: boolean;
   /** What earned the block — a task's title — for the shield screen to name. */
   penaltyReason: string | null;
   gateEnabled: boolean;
@@ -292,6 +297,9 @@ export function syncAppShield(state: AppShieldState): void {
   bridge.setBlockSchedules(nativeScheduleWindows(state.schedules, state.resolveGroup));
 
   const groupIds = shieldGroupIds(state);
+  // Before the shield, which reads it. Over the live reasons rather than the
+  // groups' contents, so it holds exactly as long as the block does.
+  bridge.setShieldOptions(state.denyAppRemoval === true);
   if (groupIds.length > 0) bridge.applyShield(groupIds);
   else bridge.clearShield();
 

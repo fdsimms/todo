@@ -10,6 +10,7 @@
 const mockBridge = {
   applyShield: jest.fn(() => true),
   clearShield: jest.fn(() => true),
+  setShieldOptions: jest.fn(() => true),
   setShieldState: jest.fn(() => true),
   setBlockSchedules: jest.fn(() => true),
   schedulePenaltyExpiry: jest.fn(() => true),
@@ -136,6 +137,22 @@ describe('syncAppShield', () => {
     syncAppShield(state());
     expect(mockBridge.clearShield).toHaveBeenCalledTimes(1);
     expect(mockBridge.applyShield).not.toHaveBeenCalled();
+  });
+
+  it('denies app removal only when the setting is on, and says so before applying', () => {
+    syncAppShield(state({ penaltyUntil: LATER, penaltyEnabled: true, denyAppRemoval: true }));
+    expect(mockBridge.setShieldOptions).toHaveBeenLastCalledWith(true);
+    expect(mockBridge.setShieldOptions.mock.invocationCallOrder[0])
+      .toBeLessThan(mockBridge.applyShield.mock.invocationCallOrder[0]);
+
+    syncAppShield(state({ penaltyUntil: LATER, penaltyEnabled: true }));
+    expect(mockBridge.setShieldOptions).toHaveBeenLastCalledWith(false);
+  });
+
+  it('still writes the option when nothing is blocking, so the clear can drop it', () => {
+    syncAppShield(state({ denyAppRemoval: true }));
+    expect(mockBridge.setShieldOptions).toHaveBeenCalledWith(true);
+    expect(mockBridge.clearShield).toHaveBeenCalledTimes(1);
   });
 
   it('touches nothing when the gate is closed', () => {
