@@ -147,6 +147,10 @@ Ranked by cost.
 4. **The trip moving** *(built)*. Its own section below.
 5. **Templates write the span** *(built)*. Its own section below.
 6. **The away grocery list binds to the span** *(built)*. Its own section below.
+7. **The weekend nudge reads a weekend away as not bare** *(built)*, through
+   `DayLoad.away` (`isWeekendBare` in `weekendTasks.ts`). Not a refusal under the
+   rule below: it declines to *offer* filling the weekend, and every day on it can
+   still take whatever you put there.
 
 ---
 

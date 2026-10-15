@@ -173,7 +173,7 @@ import { installSupplementDoseEffects } from '../utils/supplementDoseSync';
 import { eventsIn } from '../utils/calendarBusy';
 import { isDemoModeActive } from '../utils/demoState';
 import type { Category, JournalKind, MealSlot, Project, TaskGroup, WeatherCondition, WeatherRule, NutrientKey } from '../types';
-import { awayPauseDriver, departureFromAnswer, departureMoveFromAnswer, isProjectAwayNow } from '../utils/awayDates';
+import { awayPauseDriver, departureFromAnswer, departureMoveFromAnswer, isProjectAwayNow, liveAwaySpans } from '../utils/awayDates';
 import { generateId } from '../utils/id';
 import {
   applyTitleRulesToDraft,
@@ -7991,6 +7991,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         busyWindow: calendar.windowStart && calendar.windowEnd
           ? { start: new Date(calendar.windowStart), end: new Date(calendar.windowEnd) }
           : null,
+        awaySpans: liveAwaySpans(useProjectStore.getState().projects, settings.dayResetTime),
         dayResetTime: settings.dayResetTime,
         assumedTaskMinutes: assumedMinutesFor(tasks),
       },
