@@ -11,6 +11,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, border, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { Toggle } from './Toggle';
 
 interface Props {
   visible: boolean;
@@ -349,9 +350,7 @@ export function TodayOptionsMenu({
                 {hideCategories ? 'Showing one flat list of tasks' : 'Group tasks under category headers'}
               </Text>
             </View>
-            <View style={[styles.toggle, hideCategories && styles.toggleOn]}>
-              <View style={[styles.toggleKnob, hideCategories && styles.toggleKnobOn]} />
-            </View>
+            <Toggle value={hideCategories} look="settings" />
           </TouchableOpacity>
           {/* Last, the way a settings entry sits at the foot of a menu: the
               rows above act on today, this one changes how Today behaves. */}
@@ -414,15 +413,4 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textSecondary,
     marginTop: spacing.xxs,
   },
-  toggle: {
-    width: 44, height: 26, borderRadius: 13,
-    backgroundColor: colors.bgTertiary,
-    justifyContent: 'center', padding: spacing.xxs,
-  },
-  toggleOn: { backgroundColor: colors.accent },
-  toggleKnob: {
-    width: 22, height: 22, borderRadius: 11,
-    backgroundColor: colors.textSecondary,
-  },
-  toggleKnobOn: { backgroundColor: colors.onAccent, alignSelf: 'flex-end' },
 });

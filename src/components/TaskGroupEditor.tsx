@@ -48,6 +48,7 @@ import { QuickAddModal } from './QuickAddModal';
 import { useFilterField } from '../hooks/useFilterField';
 import { useScrollFieldIntoView } from '../hooks/useKeyboardInsetScroll';
 import { TextField } from './TextField';
+import { Toggle } from './Toggle';
 
 /** Editor sections that collapse to a one-line summary of their current value. */
 type FieldKey = 'category' | 'tags' | 'project';
@@ -609,9 +610,7 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
                   : 'Its tasks are scheduled like the rest of the project'}
               </Text>
             </View>
-            <View style={[styles.toggle, checklist && styles.toggleOn]}>
-              <View style={[styles.toggleKnob, checklist && styles.toggleKnobOn]} />
-            </View>
+            <Toggle value={checklist} />
           </TouchableOpacity>
         </View>
       )}
@@ -634,9 +633,7 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
                 : `The ${sectionWord} header shows its next open task`}
             </Text>
           </View>
-          <View style={[styles.toggle, hideNextStep && styles.toggleOn]}>
-            <View style={[styles.toggleKnob, hideNextStep && styles.toggleKnobOn]} />
-          </View>
+          <Toggle value={hideNextStep} />
         </TouchableOpacity>
       </View>
 
@@ -874,15 +871,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   optionContent: { flex: 1 },
   optionLabel: { color: colors.text, fontSize: font.md },
   optionHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },
-  toggle: {
-    width: 44, height: 26, borderRadius: radius.full,
-    backgroundColor: colors.bgQuaternary, padding: spacing.xxs, justifyContent: 'center',
-  },
-  toggleOn: { backgroundColor: colors.accent },
-  toggleKnob: {
-    width: 22, height: 22, borderRadius: radius.full, backgroundColor: colors.bg,
-  },
-  toggleKnobOn: { alignSelf: 'flex-end' },
   sectionLabel: {
     color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.bold,
     textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: spacing.sm,

@@ -172,6 +172,7 @@ import { TextField } from './TextField';
 import { LazySheet } from './LazySheet';
 import { NewSavedMealSheet } from './NewSavedMealSheet';
 import { ProgressBar } from './ProgressBar';
+import { Toggle } from './Toggle';
 
 /** The kind picker's segments. The hint under the track says what the pick does. */
 const TASK_KIND_SEGMENTS = TASK_KIND_META.map(meta => ({
@@ -4544,9 +4545,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                           {`Aim for ${[proratedCount, normalizeTargetUnit(targetUnit)].filter(Boolean).join(' ')} this week, since ${prorationDaysLeft === 1 ? '1 day is' : `${prorationDaysLeft} days are`} left in it. ${[targetCount, normalizeTargetUnit(targetUnit)].filter(Boolean).join(' ')} a week after that.`}
                         </Text>
                       </View>
-                      <View style={[styles.toggle, prorateFirstWeek && styles.toggleOn]}>
-                        <View style={[styles.toggleKnob, prorateFirstWeek && styles.toggleKnobOn]} />
-                      </View>
+                      <Toggle value={prorateFirstWeek} onColor={colors.orange} />
                     </TouchableOpacity>
                   )}
                   {targetCount !== null && quotaPeriod === 'day' && (
@@ -4589,9 +4588,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                           <Text style={styles.optionLabel}>Notify me when each one is due</Text>
                           <Text style={styles.optionHint}>Send a notification at each one, as well as showing the task on Today</Text>
                         </View>
-                        <View style={[styles.toggle, quotaReminders && styles.toggleOn]}>
-                          <View style={[styles.toggleKnob, quotaReminders && styles.toggleKnobOn]} />
-                        </View>
+                        <Toggle value={quotaReminders} onColor={colors.orange} />
                       </TouchableOpacity>
                       {quotaReminders && pinnedPlaces(readSavedPlaces()).length > 0 && (
                         <View style={styles.placeLimit}>
@@ -4636,9 +4633,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                         <Text style={styles.optionLabel}>Allow going past target</Text>
                         <Text style={styles.optionHint}>Keep logging past {targetCount}×. It stays on Today and completes at day’s end with the count you reached</Text>
                       </View>
-                      <View style={[styles.toggle, allowOvershoot && styles.toggleOn]}>
-                        <View style={[styles.toggleKnob, allowOvershoot && styles.toggleKnobOn]} />
-                      </View>
+                      <Toggle value={allowOvershoot} onColor={colors.orange} />
                     </TouchableOpacity>
                   )}
                   {/* Only while rewards are on, since nothing else reads it. Not
@@ -4662,9 +4657,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                             : 'Earn all the coins when the target is reached'}
                         </Text>
                       </View>
-                      <View style={[styles.toggle, coinsPerTap && styles.toggleOn]}>
-                        <View style={[styles.toggleKnob, coinsPerTap && styles.toggleKnobOn]} />
-                      </View>
+                      <Toggle value={coinsPerTap} onColor={colors.orange} />
                     </TouchableOpacity>
                   )}
                   {offersRamp && (
@@ -4741,9 +4734,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                             : "Keep this on Today all day, even while you’re on pace"}
                         </Text>
                       </View>
-                      <View style={[styles.toggle, quotaAlwaysVisible && styles.toggleOn]}>
-                        <View style={[styles.toggleKnob, quotaAlwaysVisible && styles.toggleKnobOn]} />
-                      </View>
+                      <Toggle value={quotaAlwaysVisible} onColor={colors.orange} />
                     </TouchableOpacity>
                   )}
                 </>
@@ -4821,9 +4812,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                           Uses the goal you set for this ring in Fitness. Until it’s read, the number above applies.
                         </Text>
                       </View>
-                      <View style={[styles.toggle, healthFollowGoal && styles.toggleOn]}>
-                        <View style={[styles.toggleKnob, healthFollowGoal && styles.toggleKnobOn]} />
-                      </View>
+                      <Toggle value={healthFollowGoal} onColor={colors.orange} />
                     </TouchableOpacity>
                   )}
                 </View>
@@ -5550,9 +5539,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                   </Text>
                 </View>
                 {deadlineCalendarId ? (
-                  <View style={[styles.toggle, deadlineOnCalendar && styles.toggleOn]}>
-                    <View style={[styles.toggleKnob, deadlineOnCalendar && styles.toggleKnobOn]} />
-                  </View>
+                  <Toggle value={deadlineOnCalendar} onColor={colors.orange} />
                 ) : (
                   <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
                 )}
@@ -5784,9 +5771,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                     Blocks the apps you picked in Screen Time while this task is on Today. Finishing it or moving it to another day unblocks them.
                   </Text>
                 </View>
-                <View style={[styles.toggle, gatesApps && styles.toggleOn]}>
-                  <View style={[styles.toggleKnob, gatesApps && styles.toggleKnobOn]} />
-                </View>
+                <Toggle value={gatesApps} onColor={colors.orange} />
               </TouchableOpacity>
             ),
           }] : []),
@@ -6547,9 +6532,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                 <Text style={styles.optionLabel}>Vacation pause</Text>
                 <Text style={styles.optionHint}>Hide the task and keep its streak during vacation mode, which you turn on in Settings.</Text>
               </View>
-              <View style={[styles.toggle, vacationShown && styles.toggleOn]}>
-                <View style={[styles.toggleKnob, vacationShown && styles.toggleKnobOn]} />
-              </View>
+              <Toggle value={vacationShown} onColor={colors.orange} />
             </TouchableOpacity>
               </>
             ),
@@ -6831,9 +6814,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                 <Text style={styles.optionLabel}>Pin to Today</Text>
                 <Text style={styles.optionHint}>Show this at the top of Today, above everything else</Text>
               </View>
-              <View style={[styles.toggle, pinned && styles.toggleOn]}>
-                <View style={[styles.toggleKnob, pinned && styles.toggleKnobOn]} />
-              </View>
+              <Toggle value={pinned} onColor={colors.orange} />
             </TouchableOpacity>
             {recurrenceType !== 'none' && (
               <TouchableOpacity
@@ -6849,9 +6830,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                   <Text style={styles.optionLabel}>Pin every occurrence</Text>
                   <Text style={styles.optionHint}>Each new occurrence starts out pinned to Today</Text>
                 </View>
-                <View style={[styles.toggle, pinEachOccurrence && styles.toggleOn]}>
-                  <View style={[styles.toggleKnob, pinEachOccurrence && styles.toggleKnobOn]} />
-                </View>
+                <Toggle value={pinEachOccurrence} onColor={colors.orange} />
               </TouchableOpacity>
             )}
               </>
@@ -6897,9 +6876,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                       : 'Extra coins for a task you keep putting off. Worth the most if you do it before moving it again.'}
                 </Text>
               </View>
-              <View style={[styles.toggle, bounty && styles.toggleOn]}>
-                <View style={[styles.toggleKnob, bounty && styles.toggleKnobOn]} />
-              </View>
+              <Toggle value={bounty} onColor={colors.orange} />
             </TouchableOpacity>
               </>
             ),
@@ -6922,9 +6899,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                 <Text style={styles.optionLabel}>Skip in suggestions</Text>
                 <Text style={styles.optionHint}>Keep this out of suggested pins and focus sessions</Text>
               </View>
-              <View style={[styles.toggle, suggestionsShown && styles.toggleOn]}>
-                <View style={[styles.toggleKnob, suggestionsShown && styles.toggleKnobOn]} />
-              </View>
+              <Toggle value={suggestionsShown} onColor={colors.orange} />
             </TouchableOpacity>
               </>
             ),
@@ -7016,9 +6991,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                         Stay hidden until every repeat of the repeating task is done. A task that repeats with no end never releases this one.
                       </Text>
                     </View>
-                    <View style={[styles.toggle, waitForSeriesEnd && styles.toggleOn]}>
-                      <View style={[styles.toggleKnob, waitForSeriesEnd && styles.toggleKnobOn]} />
-                    </View>
+                    <Toggle value={waitForSeriesEnd} onColor={colors.orange} />
                   </TouchableOpacity>
                 )}
               </View>
@@ -7374,9 +7347,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                         <Text style={styles.optionLabel}>Only one at a time</Text>
                         <Text style={styles.optionHint}>Skip it while the last one is outstanding</Text>
                       </View>
-                      <View style={[styles.toggle, followUpTaskOneAtATime && styles.toggleOn]}>
-                        <View style={[styles.toggleKnob, followUpTaskOneAtATime && styles.toggleKnobOn]} />
-                      </View>
+                      <Toggle value={followUpTaskOneAtATime} onColor={colors.orange} />
                     </TouchableOpacity>
                     )}
                   </View>
@@ -7522,9 +7493,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                       The date you answer becomes the project’s Leaving date, if it doesn’t have one yet
                     </Text>
                   </View>
-                  <View style={[styles.toggle, deliverableSetsAway && styles.toggleOn]}>
-                    <View style={[styles.toggleKnob, deliverableSetsAway && styles.toggleKnobOn]} />
-                  </View>
+                  <Toggle value={deliverableSetsAway} onColor={colors.orange} />
                 </TouchableOpacity>
               )}
               </>
@@ -7568,9 +7537,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                   </Text>
                 </View>
                 {completionCalendarId ? (
-                  <View style={[styles.toggle, logCompletionToCalendar && styles.toggleOn]}>
-                    <View style={[styles.toggleKnob, logCompletionToCalendar && styles.toggleKnobOn]} />
-                  </View>
+                  <Toggle value={logCompletionToCalendar} onColor={colors.orange} />
                 ) : (
                   <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
                 )}
@@ -7711,9 +7678,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                           Sets the daily target from your water target in the food log, including the extra for exercise, divided by the amount above. The target you set here is replaced.
                         </Text>
                       </View>
-                      <View style={[styles.toggle, followWaterTarget && styles.toggleOn]}>
-                        <View style={[styles.toggleKnob, followWaterTarget && styles.toggleKnobOn]} />
-                      </View>
+                      <Toggle value={followWaterTarget} onColor={colors.orange} />
                     </TouchableOpacity>
                   )}
                 </CollapsibleField>
@@ -8198,9 +8163,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                     <Text style={styles.optionLabel}>Show streak on row</Text>
                     <Text style={styles.optionHint}>Show the streak count on the task row</Text>
                   </View>
-                  <View style={[styles.toggle, streakShown && styles.toggleOn]}>
-                    <View style={[styles.toggleKnob, streakShown && styles.toggleKnobOn]} />
-                  </View>
+                  <Toggle value={streakShown} onColor={colors.orange} />
                 </TouchableOpacity>
               </>
             ),
@@ -8230,9 +8193,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                     <Text style={styles.optionLabel}>Streak requires on-time completion</Text>
                     <Text style={styles.optionHint}>Completing outside this task’s time window still counts as done, but restarts the streak</Text>
                   </View>
-                  <View style={[styles.toggle, streakRequiresWindow && styles.toggleOn]}>
-                    <View style={[styles.toggleKnob, streakRequiresWindow && styles.toggleKnobOn]} />
-                  </View>
+                  <Toggle value={streakRequiresWindow} onColor={colors.orange} />
                 </TouchableOpacity>
               </>
             ),
@@ -8260,9 +8221,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                     <Text style={styles.optionLabel}>Streak counts every time</Text>
                     <Text style={styles.optionHint}>Count each time you log this task instead of the weeks in a row you hit the target. A short week doesn’t reset it</Text>
                   </View>
-                  <View style={[styles.toggle, streakCountsUnits && styles.toggleOn]}>
-                    <View style={[styles.toggleKnob, streakCountsUnits && styles.toggleKnobOn]} />
-                  </View>
+                  <Toggle value={streakCountsUnits} onColor={colors.orange} />
                 </TouchableOpacity>
               </>
             ),
@@ -8302,9 +8261,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                         : 'Hide the task and keep its history. Find it later in Archived'}
                     </Text>
                   </View>
-                  <View style={[styles.toggle, task.archived && styles.toggleOn]}>
-                    <View style={[styles.toggleKnob, task.archived && styles.toggleKnobOn]} />
-                  </View>
+                  <Toggle value={task.archived} onColor={colors.orange} />
                 </TouchableOpacity>
           <View style={styles.sep} />
           <TouchableOpacity style={styles.optionRow} onPress={handleDelete} activeOpacity={interaction.activeOpacity}>
@@ -8693,16 +8650,6 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   streakApplyBtnDisabled: { backgroundColor: colors.bgTertiary },
   streakApplyText: { color: colors.onFill, fontSize: font.sm, fontWeight: '600' },
   streakApplyTextDisabled: { color: colors.textTertiary },
-  toggle: {
-    width: 46, height: 27, borderRadius: 14,
-    backgroundColor: colors.bgQuaternary, justifyContent: 'center', paddingHorizontal: 3,
-  },
-  toggleOn: { backgroundColor: colors.orange },
-  toggleKnob: {
-    width: 21, height: 21, borderRadius: 11,
-    backgroundColor: colors.bg,
-  },
-  toggleKnobOn: { backgroundColor: colors.bg, alignSelf: 'flex-end' },
   // The read-only breakdown shown in Duration once the subtasks carry the
   // countdown between them. Numbered rather than bulleted because the order is
   // the order the timer runs through them in.

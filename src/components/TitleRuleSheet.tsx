@@ -27,6 +27,7 @@ import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorSheet } from './EditorSheet';
 import { TextField } from './TextField';
+import { Toggle } from './Toggle';
 
 type FieldKey = 'category' | 'project' | 'tags' | 'priority' | 'effort' | 'link';
 
@@ -466,9 +467,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
                 : 'The matched word is removed from the title, unless that would leave it empty.'}
             </Text>
           </View>
-          <View style={[styles.toggle, draft.stripKeyword && styles.toggleOn]}>
-            <View style={[styles.toggleKnob, draft.stripKeyword && styles.toggleKnobOn]} />
-          </View>
+          <Toggle value={draft.stripKeyword} onColor={colors.orange} />
         </TouchableOpacity>
         <View style={styles.cardSep} />
         <TouchableOpacity
@@ -492,9 +491,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
                 : 'Kept in the list but not applied to new tasks'}
             </Text>
           </View>
-          <View style={[styles.toggle, draft.enabled && styles.toggleOn]}>
-            <View style={[styles.toggleKnob, draft.enabled && styles.toggleKnobOn]} />
-          </View>
+          <Toggle value={draft.enabled} onColor={colors.orange} />
         </TouchableOpacity>
       </View>
 
@@ -598,13 +595,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   optionContent: { flex: 1 },
   optionLabel: { color: colors.text, fontSize: font.md },
   optionHint: { color: colors.textSecondary, fontSize: font.xs, marginTop: 1 },
-  toggle: {
-    width: 46, height: 27, borderRadius: 14,
-    backgroundColor: colors.bgQuaternary, justifyContent: 'center', paddingHorizontal: 3,
-  },
-  toggleOn: { backgroundColor: colors.orange },
-  toggleKnob: { width: 21, height: 21, borderRadius: 11, backgroundColor: colors.bg },
-  toggleKnobOn: { backgroundColor: colors.bg, alignSelf: 'flex-end' },
   blockedNote: {
     color: colors.textTertiary, fontSize: font.xs,
     marginHorizontal: spacing.md + spacing.xs, marginBottom: spacing.lg,

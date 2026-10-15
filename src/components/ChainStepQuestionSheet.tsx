@@ -10,6 +10,7 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { DeliverableKindPicker } from './DeliverableKindPicker';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { Toggle } from './Toggle';
 
 interface Props {
   visible: boolean;
@@ -129,9 +130,7 @@ export function ChainStepQuestionSheet({ visible, step, nextStepTitle, onSave, o
                 {`“${nextStepTitle}” gets the date you answer with, instead of the day you finish this step.`}
               </Text>
             </View>
-            <View style={[styles.toggle, datesNextStep && styles.toggleOn]}>
-              <View style={[styles.toggleKnob, datesNextStep && styles.toggleKnobOn]} />
-            </View>
+            <Toggle value={datesNextStep} onColor={colors.orange} />
           </TouchableOpacity>
         )}
       </View>
@@ -183,14 +182,4 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   optionContent: { flex: 1, gap: spacing.xxs },
   optionLabel: { color: colors.text, fontSize: font.md },
   optionHint: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 18 },
-  toggle: {
-    width: 46, height: 27, borderRadius: 14,
-    backgroundColor: colors.bgQuaternary, justifyContent: 'center', paddingHorizontal: 3,
-  },
-  toggleOn: { backgroundColor: colors.orange },
-  toggleKnob: {
-    width: 21, height: 21, borderRadius: 11,
-    backgroundColor: colors.bg,
-  },
-  toggleKnobOn: { backgroundColor: colors.bg, alignSelf: 'flex-end' },
 });

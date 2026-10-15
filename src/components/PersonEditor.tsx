@@ -41,6 +41,7 @@ import { useSheetSubject } from '../hooks/useSheetSubject';
 import { usePlaceSuggestions } from '../hooks/usePlaceSuggestions';
 import { placeLocationText, placeRowTitle, placeSubtitle, type PlaceResult } from '../utils/places';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { Toggle } from './Toggle';
 
 interface Props {
   visible: boolean;
@@ -363,9 +364,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
                 <Text style={styles.optionLabel}>Remind me</Text>
                 <Text style={styles.optionHint}>Adds a task before this birthday each year.</Text>
               </View>
-              <View style={[styles.toggle, !birthdayTaskOptOut && styles.toggleOn]}>
-                <View style={[styles.toggleKnob, !birthdayTaskOptOut && styles.toggleKnobOn]} />
-              </View>
+              <Toggle value={!birthdayTaskOptOut} />
             </TouchableOpacity>
             <View style={styles.sep} />
             <TouchableOpacity
@@ -380,9 +379,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
                 <Text style={styles.optionLabel}>Remind me to get a gift</Text>
                 <Text style={styles.optionHint}>Adds a separate task to get one, earlier than the reminder above.</Text>
               </View>
-              <View style={[styles.toggle, !birthdayGiftTaskOptOut && styles.toggleOn]}>
-                <View style={[styles.toggleKnob, !birthdayGiftTaskOptOut && styles.toggleKnobOn]} />
-              </View>
+              <Toggle value={!birthdayGiftTaskOptOut} />
             </TouchableOpacity>
           </>
         )}
@@ -630,9 +627,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
             <Text style={styles.optionLabel}>Archive</Text>
             <Text style={styles.optionHint}>Hides them from the list and stops their birthday task.</Text>
           </View>
-          <View style={[styles.toggle, archived && styles.toggleOn]}>
-            <View style={[styles.toggleKnob, archived && styles.toggleKnobOn]} />
-          </View>
+          <Toggle value={archived} />
         </TouchableOpacity>
       </View>
     </EditorSheet>
@@ -749,13 +744,4 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   optionContent: { flex: 1 },
   optionLabel: { color: colors.text, fontSize: font.md },
   optionHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },
-  toggle: {
-    width: 44, height: 26, borderRadius: radius.full,
-    backgroundColor: colors.bgQuaternary, padding: spacing.xxs, justifyContent: 'center',
-  },
-  toggleOn: { backgroundColor: colors.accent },
-  toggleKnob: {
-    width: 22, height: 22, borderRadius: radius.full, backgroundColor: colors.bg,
-  },
-  toggleKnobOn: { alignSelf: 'flex-end' },
 });

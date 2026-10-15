@@ -20,6 +20,7 @@ import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { TextField } from './TextField';
 import type { RuleTaskLog } from '../types';
+import { Toggle } from './Toggle';
 
 /** Same constraint EmptyState puts on its own icon. */
 type IoniconName = keyof typeof Ionicons.glyphMap;
@@ -295,17 +296,13 @@ export function RuleListSheet<T extends EditableRule>({
                         })()}
                       </TouchableOpacity>
                       <TouchableOpacity
-                        style={[
-                          styles.toggle,
-                          rule.enabled && { backgroundColor: toggleOnColor ?? colors.accent },
-                        ]}
                         activeOpacity={interaction.activeOpacity}
                         onPress={() => { haptics.tap(); update(rule.id, { enabled: !rule.enabled } as Partial<T>); }}
                         accessibilityRole="switch"
                         accessibilityLabel={`${rule.title || 'This rule'} is on`}
                         accessibilityState={{ checked: rule.enabled }}
                       >
-                        <View style={[styles.toggleKnob, rule.enabled && styles.toggleKnobOn]} />
+                        <Toggle value={rule.enabled} onColor={toggleOnColor ?? colors.accent} />
                       </TouchableOpacity>
                       <TouchableOpacity
                         activeOpacity={interaction.activeOpacity}
@@ -436,9 +433,6 @@ function makeStyles(colors: Colors) {
     note: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xxs },
     noteWarn: { color: colors.orangeText },
     meta: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },
-    toggle: { width: 46, height: 27, borderRadius: 14, backgroundColor: colors.bgQuaternary, justifyContent: 'center', paddingHorizontal: 3 },
-    toggleKnob: { width: 21, height: 21, borderRadius: 11, backgroundColor: colors.bg },
-    toggleKnobOn: { backgroundColor: colors.bg, alignSelf: 'flex-end' },
     editor: { paddingHorizontal: spacing.md, paddingBottom: spacing.md, gap: spacing.xs },
     editorLabel: { color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold, textTransform: 'uppercase', letterSpacing: 0.8 },
     editorLabelSpaced: { marginTop: spacing.sm },

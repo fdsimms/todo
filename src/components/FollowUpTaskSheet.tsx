@@ -28,6 +28,7 @@ import { EditorSheet } from './EditorSheet';
 import { CountStepper } from './CountStepper';
 import { capitalize } from '../utils/capitalize';
 import { TextField } from './TextField';
+import { Toggle } from './Toggle';
 
 // Ten hours, well past any real estimate. CountStepper needs a bound to
 // disable its + key at; the hand-rolled version it replaced had none.
@@ -474,9 +475,7 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
             <Text style={styles.optionLabel}>Vacation pause</Text>
             <Text style={styles.optionHint}>Don’t add it while vacation mode is on</Text>
           </View>
-          <View style={[styles.toggle, vacationPause && styles.toggleOn]}>
-            <View style={[styles.toggleKnob, vacationPause && styles.toggleKnobOn]} />
-          </View>
+          <Toggle value={vacationPause} onColor={colors.orange} />
         </TouchableOpacity>
       </View>
 
@@ -656,15 +655,5 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   optionContent: { flex: 1 },
   optionLabel: { color: colors.text, fontSize: font.md },
   optionHint: { color: colors.textSecondary, fontSize: font.xs, marginTop: 1 },
-  toggle: {
-    width: 46, height: 27, borderRadius: 14,
-    backgroundColor: colors.bgQuaternary, justifyContent: 'center', paddingHorizontal: 3,
-  },
-  toggleOn: { backgroundColor: colors.orange },
-  toggleKnob: {
-    width: 21, height: 21, borderRadius: 11,
-    backgroundColor: colors.bg,
-  },
-  toggleKnobOn: { backgroundColor: colors.bg, alignSelf: 'flex-end' },
   addBtnSpacing: { marginTop: spacing.sm, alignSelf: 'flex-start' },
 });

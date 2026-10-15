@@ -20,6 +20,7 @@ import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import { TitleRuleSheet } from './TitleRuleSheet';
+import { Toggle } from './Toggle';
 
 interface Props {
   visible: boolean;
@@ -251,14 +252,13 @@ export function TitleRulesSheet({ visible, onClose }: Props) {
                         </Text>
                       </TouchableOpacity>
                       <TouchableOpacity
-                        style={[styles.toggle, rule.enabled && styles.toggleOn]}
                         activeOpacity={interaction.activeOpacity}
                         onPress={() => toggle(rule)}
                         accessibilityRole="switch"
                         accessibilityLabel={`${describeTitleRuleTrigger(rule)} is on`}
                         accessibilityState={{ checked: rule.enabled }}
                       >
-                        <View style={[styles.toggleKnob, rule.enabled && styles.toggleKnobOn]} />
+                        <Toggle value={rule.enabled} onColor={colors.orange} />
                       </TouchableOpacity>
                       <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
                     </View>
@@ -325,13 +325,6 @@ function makeStyles(colors: Colors) {
     name: { color: colors.text, fontSize: font.md },
     nameOff: { color: colors.textSecondary },
     meta: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },
-    toggle: {
-      width: 46, height: 27, borderRadius: 14,
-      backgroundColor: colors.bgQuaternary, justifyContent: 'center', paddingHorizontal: 3,
-    },
-    toggleOn: { backgroundColor: colors.orange },
-    toggleKnob: { width: 21, height: 21, borderRadius: 11, backgroundColor: colors.bg },
-    toggleKnobOn: { backgroundColor: colors.bg, alignSelf: 'flex-end' },
     addBtn: { marginTop: spacing.md, alignSelf: 'flex-start' },
     footnote: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.md, lineHeight: 16 },
   });

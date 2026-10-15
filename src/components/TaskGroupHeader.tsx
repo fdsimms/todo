@@ -17,6 +17,7 @@ import { useTrayFold, useTrayRaised, TRAY_PAD, STACK_EDGE_DEPTH } from './TaskGr
 import { PinIcon } from './PinIcon';
 import { useSheetMount } from '../hooks/useSheetMount';
 import { AnimatedNumber } from './AnimatedNumber';
+import { RotatingChevron } from './RotatingChevron';
 
 interface Props {
   group: TaskGroup;
@@ -319,7 +320,7 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
                       containerStyle={styles.progressBox}
                     />
                   )}
-                  <Ionicons name={isExpanded ? 'chevron-down' : 'chevron-forward'} size={13} color={colors.textTertiary} />
+                  <RotatingChevron open={isExpanded} closed="forward" size={13} color={colors.textTertiary} />
                 </View>
                 {/* Folded away rather than unmounted, on the same clock and
                     easing TaskGroupBody's own collapse runs (AnimatedCollapsible

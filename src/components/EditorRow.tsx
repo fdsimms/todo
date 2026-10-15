@@ -6,6 +6,7 @@ import { spacing, font, interaction, type Colors } from '../theme';
 import { disclosureValue } from '../theme/textStyles';
 import { haptics } from '../utils/haptics';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { RotatingChevron } from './RotatingChevron';
 
 interface Props {
   icon: string;
@@ -35,9 +36,11 @@ export function EditorRow({ icon, label, value, hint, caption, expanded, onPress
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const hideHelpText = useSettingsStore(s => s.hideHelpText);
 
+  // A row that opens a picker points forward; one whose controls unfold in
+  // place turns its chevron as it opens.
   const chevron = expanded === undefined
-    ? 'chevron-forward'
-    : expanded ? 'chevron-up' : 'chevron-down';
+    ? <Ionicons name="chevron-forward" size={14} color={colors.textSecondary} />
+    : <RotatingChevron open={expanded} size={14} color={colors.textSecondary} />;
 
   return (
     <TouchableOpacity
@@ -67,10 +70,10 @@ export function EditorRow({ icon, label, value, hint, caption, expanded, onPress
               <Ionicons name="close-circle" size={16} color={colors.textSecondary} />
             </TouchableOpacity>
           )}
-          <Ionicons name={chevron} size={14} color={colors.textSecondary} />
+          {chevron}
         </View>
       ) : (
-        <Ionicons name={chevron} size={14} color={colors.textSecondary} />
+        chevron
       )}
     </TouchableOpacity>
   );

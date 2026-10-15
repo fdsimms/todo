@@ -12,6 +12,7 @@ import { useSettingsStore } from '../../store/useSettingsStore';
 import { haptics } from '../../utils/haptics';
 import { makeSettingsStyles } from './settingsStyles';
 import { useSettingsFocusFlash } from './SettingsFocus';
+import { Toggle } from '../../components/Toggle';
 
 const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
 
@@ -128,9 +129,7 @@ export function SettingsRow({
       {trailing}
       {busy && <ActivityIndicator size="small" color={colors.textSecondary} />}
       {toggle !== undefined && (
-        <View style={[styles.toggle, toggle && styles.toggleOn]}>
-          <View style={[styles.toggleKnob, toggle && styles.toggleKnobOn]} />
-        </View>
+        <Toggle value={toggle} look="settings" />
       )}
       {chevron && <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />}
       {expanded !== undefined && (
