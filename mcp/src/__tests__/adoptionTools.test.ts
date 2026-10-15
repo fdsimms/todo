@@ -32,6 +32,7 @@ function fakeReplica(opts: {
   people?: unknown[];
   moodLogs?: number;
   milestones?: unknown[];
+  medications?: unknown[];
 } = {}): Replica {
   return {
     tasks: () => opts.tasks ?? [],
@@ -43,6 +44,7 @@ function fakeReplica(opts: {
     people: () => opts.people ?? [],
     allMoodLogs: () => Array.from({ length: opts.moodLogs ?? 0 }),
     milestones: () => opts.milestones ?? [],
+    medicationSettings: () => opts.medications ?? [],
     agentNotes: () => (opts.notes ?? []).map((text, i) => ({ id: String(i), text })),
     tagRegistry: () => opts.tags ?? [],
     templates: () => opts.templates ?? [],
@@ -131,7 +133,49 @@ describe('kitchen, people and mood checks', () => {
   });
 });
 
+describe('since: features that are new to the person', () => {
+  const repeating = (over: Record<string, unknown> = {}) => task({ recurrenceType: 'daily', ...over });
+  const holidayTasks = [repeating(), repeating(), repeating()];
+
+  it('keeps only checks that shipped on or after the date, newest first', () => {
+    const replica = fakeReplica({
+      tasks: holidayTasks,
+      medications: [{ name: 'Vitamin D3' }],
+    });
+    const result = unusedFeatures(replica, { since: '2026-10-01', limit: 20 });
+    expect(result.suggestions.map(s => s.id)).toEqual(['supplement_nutrients', 'holiday_repeats']);
+    expect(result.suggestions[0].shipped).toBe('2026-10-10');
+  });
+
+  it('leaves out a check that shipped before the date, and any check with no recorded date', () => {
+    const replica = fakeReplica({ tasks: manyOpen(40), medications: [{ name: 'Vitamin D3' }] });
+    const ids = unusedFeatures(replica, { since: '2026-10-09', limit: 20 }).suggestions.map(s => s.id);
+    expect(ids).toEqual(['supplement_nutrients']);
+  });
+
+  it('does not suggest holidays once a repeating task uses them, or a supplement that lists its contents', () => {
+    const replica = fakeReplica({
+      tasks: [repeating({ recurrenceHolidays: 'skip' }), repeating(), repeating()],
+      medications: [{ name: 'Vitamin D3', nutrients: 'Per 1 tablet: 1 nutrient' }, { name: 'Ibuprofen' }],
+    });
+    expect(unusedFeatures(replica, { since: '2026-01-01', limit: 20 }).suggestions).toEqual([]);
+  });
+
+  it('suggests a destination only for a trip that has away dates and none', () => {
+    const trip = (over: Record<string, unknown>) => ({ id: 'p', title: 'Lisbon', archived: false, completed: false, awayStart: '2026-11-01', destination: null, ...over });
+    const ids = (projects: unknown[]) =>
+      unusedFeatures(fakeReplica({ projects }), { since: '2026-09-01', limit: 20 }).suggestions.map(s => s.id);
+    expect(ids([trip({})])).toContain('trip_destination');
+    expect(ids([trip({ destination: 'Lisbon' })])).not.toContain('trip_destination');
+    expect(ids([trip({ awayStart: null })])).not.toContain('trip_destination');
+  });
+});
+
 describe('ADOPTION_CHECKS', () => {
+  it('records since as a YYYY-MM-DD date, because the since filter compares it as text', () => {
+    for (const c of ADOPTION_CHECKS) if (c.since !== undefined) expect(c.since).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
   it('has unique ids, because an id is how a declined suggestion is named', () => {
     const ids = ADOPTION_CHECKS.map((c: AdoptionCheck) => c.id);
     expect(new Set(ids).size).toBe(ids.length);

@@ -779,8 +779,12 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'unused_features',
-    `App features this person's own data suggests they would get something from and are not using: for example many open tasks and no time estimates, or several projects and no templates. Each suggestion carries what was seen, what the feature does, and the Settings path when it is a setting. Raise a few at a time (default ${DEFAULT_SUGGESTION_LIMIT}) as options, never as a fault. If the person declines one, offer to remember that, naming its id, and it will not come up again. Features in areas they have switched off are never suggested.`,
-    { limit: z.number().int().positive().max(20).optional() },
+    `App features this person's own data suggests they would get something from and are not using: for example many open tasks and no time estimates, or several projects and no templates. Each suggestion carries what was seen, what the feature does, and the Settings path when it is a setting. Raise a few at a time (default ${DEFAULT_SUGGESTION_LIMIT}) as options, never as a fault. If the person declines one, offer to remember that, naming its id, and it will not come up again. Features in areas they have switched off are never suggested. Pass since (a date) to see only features that shipped from then on, for "what is new that I have not tried"; each carries its ship date.`,
+    {
+      limit: z.number().int().positive().max(20).optional(),
+      since: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
+        .describe('YYYY-MM-DD. Only features that shipped on or after this day, newest first: use it for "what is new that I have not tried". Covers the features that have a recorded ship date, not every patch note.'),
+    },
     async input => json(await withFresh(() => unusedFeatures(replica, input)))
   );
 

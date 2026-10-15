@@ -269,6 +269,11 @@ feature isn't set up" (forty open tasks and no estimates), and it reports what i
 fires on "the setting is off" alone, which is true of every feature for everyone. Simplified mode
 drops the `advanced` checks, and a note naming a check's id silences it, so a declined suggestion
 isn't repeated. Adding a feature worth recommending is one entry in `ADOPTION_CHECKS`.
+A check may carry `since`, the day the feature shipped, and the tool's `since` input keeps only
+checks on or after it, newest first: that is the "what's new that I haven't tried" answer. It is
+curated rather than derived from the patch notes on purpose, since there are thousands and most
+are small tweaks. A feature gets a check when it is worth a pitch and its adoption shows in the
+person's data or settings; a check with no `since` is never returned by a `since` query.
 
 **Patterns are the Stats and Mood screens' own reads** (`patternTools.ts`). `habit_patterns` is
 `rhythms.ts` and `estimateCalibration.ts` over each habit's occurrences, plus the streak and pace
