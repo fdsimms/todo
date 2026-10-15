@@ -70,7 +70,9 @@ export function SwipeActionButtons({ undoAction, whenAction, selectAction, enabl
       ) : null}
       {selectAction && (
         <TouchableOpacity
-          onPress={() => { haptics.tap(); selectAction.onSelect(); }}
+          // No tap of its own: onSelect enters selection mode, which fires a
+          // heavy impact (useRowSelection), and the two landed together.
+          onPress={selectAction.onSelect}
           hitSlop={8}
           style={styles.button}
           accessibilityRole="button"

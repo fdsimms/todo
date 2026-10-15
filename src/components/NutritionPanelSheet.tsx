@@ -387,7 +387,6 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
 
   const changeWeightUnit = (unit: ServingWeightUnit) => {
     if (unit === weightUnit) return;
-    haptics.tap();
     // Both directions go through grams, so this needs no separate table: it's
     // the same read `setWeightAmount` already does for whatever's on screen,
     // shown back in the other unit.

@@ -25,6 +25,9 @@ interface Props {
   onUndo: () => void;
   /** Swiped away by hand; the task stays where it is. */
   onDismiss: () => void;
+  /** On its way out (see useLingering); BannerBar plays the exit, then `onLeft`. */
+  leaving?: boolean;
+  onLeft?: () => void;
 }
 
 /**
@@ -35,7 +38,7 @@ interface Props {
  * due today. This names where the task went and offers a way to it and a
  * way to undo the creation, so staying put costs nothing either.
  */
-export function CreatedTaskToast({ task, destination, mode = 'created', dayResetTime, bottom, onGoToTask, onUndo, onDismiss }: Props) {
+export function CreatedTaskToast({ task, destination, mode = 'created', dayResetTime, bottom, onGoToTask, onUndo, onDismiss, leaving, onLeft }: Props) {
   const message = mode === 'moved'
     ? describeMovedTaskPlacement(task, destination, dayResetTime)
     : describeCreatedTaskPlacement(task, destination, dayResetTime);
@@ -48,6 +51,8 @@ export function CreatedTaskToast({ task, destination, mode = 'created', dayReset
       bottom={bottom}
       label={message}
       onDismiss={onDismiss}
+      leaving={leaving}
+      onLeft={onLeft}
       actions={
         <>
           <InlineAction label="Go to it" onPress={onGoToTask} accessibilityLabel={`Go to “${task.title}”`} />

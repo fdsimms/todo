@@ -275,7 +275,7 @@ export function SupplementPanelSheet({ visible, name, panel, onClose, onSave }: 
                 options={UNIT_OPTIONS}
                 value={form.servingUnit}
                 columns={3}
-                onChange={unit => { haptics.tap(); setForm(f => ({ ...f, servingUnit: unit })); }}
+                onChange={unit => { setForm(f => ({ ...f, servingUnit: unit })); }}
                 surface="card"
               />
               <Text style={styles.hint}>

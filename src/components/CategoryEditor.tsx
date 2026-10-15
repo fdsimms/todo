@@ -36,6 +36,7 @@ import { InlineTimePicker } from '../screens/settings/InlineTimePicker';
 import type { TimeOfDay } from '../types';
 import { TextField } from './TextField';
 import { useSheetSubject } from '../hooks/useSheetSubject';
+import { Toggle } from './Toggle';
 
 const DEFAULT_DAYS = [1, 2, 3, 4, 5];
 const DEFAULT_START = '09:00';
@@ -395,9 +396,7 @@ export function CategoryEditor({ visible, category: liveCategory, onClose }: Pro
                 <Text style={styles.optionLabel}>Hide on vacation</Text>
                 <Text style={styles.optionHint}>Hides these tasks while vacation mode is on.</Text>
               </View>
-              <View style={[styles.toggle, hideOnVacation && styles.toggleOn]}>
-                <View style={[styles.toggleKnob, hideOnVacation && styles.toggleKnobOn]} />
-              </View>
+              <Toggle value={hideOnVacation} />
             </TouchableOpacity>
             <View style={styles.sep} />
             <TouchableOpacity
@@ -413,9 +412,7 @@ export function CategoryEditor({ visible, category: liveCategory, onClose }: Pro
                 <Text style={styles.optionLabel}>Skip in suggestions</Text>
                 <Text style={styles.optionHint}>Keeps these out of suggested pins and focus sessions. You can still pin or queue them by hand</Text>
               </View>
-              <View style={[styles.toggle, excludeFromSuggestions && styles.toggleOn]}>
-                <View style={[styles.toggleKnob, excludeFromSuggestions && styles.toggleKnobOn]} />
-              </View>
+              <Toggle value={excludeFromSuggestions} />
             </TouchableOpacity>
             <View style={styles.sep} />
             <TouchableOpacity
@@ -431,9 +428,7 @@ export function CategoryEditor({ visible, category: liveCategory, onClose }: Pro
                 <Text style={styles.optionLabel}>Skip in new tasks banner</Text>
                 <Text style={styles.optionHint}>Keeps these off the new tasks banner and the new dot on their row.</Text>
               </View>
-              <View style={[styles.toggle, excludeFromNewBanner && styles.toggleOn]}>
-                <View style={[styles.toggleKnob, excludeFromNewBanner && styles.toggleKnobOn]} />
-              </View>
+              <Toggle value={excludeFromNewBanner} />
             </TouchableOpacity>
           </View>
 
@@ -586,11 +581,4 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   optionContent: { flex: 1 },
   optionLabel: { color: colors.text, fontSize: font.md },
   optionHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },
-  toggle: {
-    width: 44, height: 26, borderRadius: radius.full,
-    backgroundColor: colors.bgQuaternary, padding: spacing.xxs, justifyContent: 'center',
-  },
-  toggleOn: { backgroundColor: colors.accent },
-  toggleKnob: { width: 22, height: 22, borderRadius: radius.full, backgroundColor: colors.bg },
-  toggleKnobOn: { alignSelf: 'flex-end' },
 });

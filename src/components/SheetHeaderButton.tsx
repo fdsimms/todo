@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { StyleSheet, Text, TouchableOpacity, type StyleProp, type TextStyle } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, interaction, type Colors } from '../theme';
+import { haptics } from '../utils/haptics';
 
 interface Props {
   label: string;
@@ -44,12 +45,14 @@ export function SheetHeaderButton({
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
+  // A disabled button still takes the press, to say no: a Save that does
+  // nothing when tapped reads as the app not noticing. It never calls onPress,
+  // and it doesn't dim on press, since nothing happened.
   return (
     <TouchableOpacity
-      onPress={onPress}
+      onPress={disabled ? refuse : onPress}
       hitSlop={8}
-      disabled={disabled}
-      activeOpacity={interaction.activeOpacity}
+      activeOpacity={disabled ? 1 : interaction.activeOpacity}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
       accessibilityState={{ disabled }}
@@ -67,6 +70,10 @@ export function SheetHeaderButton({
       </Text>
     </TouchableOpacity>
   );
+}
+
+function refuse() {
+  haptics.error();
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({

@@ -368,7 +368,6 @@ export function PeopleScreen() {
             // dragTick rather than tap: a fast drag crosses several rows between
             // frames and unthrottled ticks run together into one long buzz. The
             // lift itself is fired by ReorderableList.
-            onHoverChange={haptics.dragTick}
             onReorder={reordered => reorderPeople(reordered.flatMap(row => ('person' in row ? [row.person.id] : [])))}
             renderItem={({ item: row, drag, isActive }) => {
               if ('heading' in row) {

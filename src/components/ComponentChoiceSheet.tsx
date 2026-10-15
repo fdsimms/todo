@@ -167,7 +167,6 @@ export function ComponentChoiceSheet({ visible, recipe, component: liveComponent
           label="Alternatives"
           value={choiceOn ? 'choice' : 'always'}
           onChange={next => {
-            haptics.tap();
             animateLayout();
             setChoiceOn(next === 'choice');
             if (next === 'always') setLabel('');

@@ -4,7 +4,6 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import type { MealPlanEntry } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, animation, interaction, iconSize, flattenOverlay, type Colors } from '../theme';
-import { haptics } from '../utils/haptics';
 import { slotLabel } from '../utils/mealPlan';
 import { formatScale, isUnscaled } from '../utils/recipeScale';
 import { SwipeableRow } from './SwipeableRow';
@@ -240,7 +239,9 @@ export function MealSlotRow({
       */}
       {!selectionMode && onToggleCooked && (
         <TouchableOpacity
-          onPress={() => { haptics.tap(); onToggleCooked(); }}
+          // The caller's setCooked picks the haptic (success to cook, tap to
+          // undo), so a tap here doubled it.
+          onPress={onToggleCooked}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           activeOpacity={interaction.activeOpacity}
           accessibilityRole="checkbox"

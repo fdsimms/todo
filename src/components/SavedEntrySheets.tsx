@@ -209,7 +209,7 @@ export function SavedPlaceSheet({ visible, subject: liveSubject, places, onSave,
           <Switch
             value={moodTag}
             disabled={!pin}
-            onValueChange={next => { void toggleMoodTag(next); }}
+            onValueChange={next => { haptics.tap(); void toggleMoodTag(next); }}
             trackColor={{ false: colors.bgTertiary, true: colors.accent }}
             accessibilityLabel="Suggest in mood log"
           />

@@ -156,7 +156,7 @@ export function MedicationRenameSheet({ visible, name, onClose, onRenamed }: Pro
             value={unit ?? ''}
             columns={5}
             label="Unit"
-            onChange={value => { haptics.tap(); setUnit(value === unit ? null : value); }}
+            onChange={value => setUnit(value === unit ? null : value)}
           />
           {!amountValid && <Text style={styles.error}>Enter a number greater than 0.</Text>}
           {needsUnit && <Text style={styles.error}>Pick a unit for that amount.</Text>}

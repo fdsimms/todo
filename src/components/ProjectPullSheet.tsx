@@ -196,8 +196,9 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, landOn
 
   // Slide the sheet away before showing the date picker — rendering both at
   // once causes touch conflicts (same choreography as DeloadSheet).
+  // A long press (both call sites), so it gets the long-press strength.
   const openPicker = (proposal: ProjectPullProposal, task: Task) => {
-    haptics.tap();
+    haptics.impactMedium();
     sheet.slideOut(() => setPickerTarget({ proposal, task }));
   };
 

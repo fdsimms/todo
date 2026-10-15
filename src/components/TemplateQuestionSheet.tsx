@@ -195,7 +195,7 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
         <SegmentedControl
           options={KIND_OPTIONS}
           value={kind}
-          onChange={next => { haptics.tap(); animateLayout(); setKind(next); }}
+          onChange={next => { animateLayout(); setKind(next); }}
           label="Answer type"
         />
         <Text style={styles.note}>{KIND_NOTES[kind]}</Text>
@@ -295,7 +295,7 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
           <SegmentedControl
             options={SOURCE_OPTIONS}
             value={fromDates}
-            onChange={next => { haptics.tap(); animateLayout(); setFromDates(next); }}
+            onChange={next => { animateLayout(); setFromDates(next); }}
             label="Where the number starts"
           />
           <Text style={styles.note}>{SOURCE_NOTES[fromDates]}</Text>

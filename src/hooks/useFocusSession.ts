@@ -3,7 +3,8 @@ import { useFocusStore } from '../store/useFocusStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { focusPlanOptionsFrom } from '../utils/focusSettings';
-import { isFocusRunning } from '../utils/focusPlan';
+import { focusStepRemaining, isFocusRunning } from '../utils/focusPlan';
+import { haptics } from '../utils/haptics';
 import type { FocusSession } from '../types';
 
 /** How often a live countdown redraws. Seconds are on screen, so one second. */
@@ -42,6 +43,42 @@ export function useFocusSession(): { session: FocusSession | null; now: number }
   }, [running, session?.stepIndex, session?.stepStartedAt]);
 
   return { session, now };
+}
+
+/**
+ * How late a step's timeout may fire and still be a finish somebody watched.
+ * A timer held while the app was in the background fires the moment it comes
+ * back, long after the step ran out, and a buzz then would be about nothing.
+ */
+const STEP_DONE_LATE_MS = 2000;
+
+/**
+ * A buzz when the running focus step runs out while the app is open.
+ *
+ * One timeout per step rather than a tick, so it costs nothing between
+ * steps, and mounted once in App.tsx for the same reason as the reconcile
+ * below: the step runs out wherever the person happens to be, and the
+ * FocusBar that ticks can be mounted twice (Today and the floating bar) or
+ * not at all. Running out doesn't move the session on (see focusPlan.ts), so
+ * this is the only thing that happens at that moment while the app is open.
+ */
+export function useFocusStepDoneHaptic(): void {
+  const session = useFocusStore(s => s.session);
+  const running = session !== null && isFocusRunning(session);
+  useEffect(() => {
+    if (!session || !running) return;
+    const remainingMs = focusStepRemaining(session, Date.now()) * 1000;
+    // Already over: that finish happened while nobody was looking.
+    if (remainingMs <= 0) return;
+    const due = Date.now() + remainingMs;
+    const id = setTimeout(() => {
+      if (Date.now() - due > STEP_DONE_LATE_MS) return;
+      haptics.timerDone();
+    }, remainingMs);
+    return () => clearTimeout(id);
+    // The step and its running segment are what the timeout is about.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [running, session?.stepIndex, session?.stepStartedAt]);
 }
 
 /**

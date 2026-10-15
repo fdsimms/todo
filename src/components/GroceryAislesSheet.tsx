@@ -488,7 +488,6 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
           // dragTick, not tap: a fast drag crosses several rows between frames
           // and unthrottled ticks run together into one long buzz. The lift
           // itself is fired by ReorderableList.
-          onHoverChange={haptics.dragTick}
           onReorder={handleReorder}
           renderItem={({ item: aisle, drag, isActive }) => {
             const count = countFor(aisle);
@@ -692,7 +691,6 @@ function StoresTab({
         keyExtractor={s => s.id}
         contentContainerStyle={shops.length === 0 ? styles.listEmpty : styles.list}
         placeholderStyle={styles.dropSlot}
-        onHoverChange={haptics.dragTick}
         onReorder={reordered => onReorder(reordered.map(s => s.id))}
         renderItem={({ item: shop, drag, isActive }) => {
           const count = shopCounts.get(shop.id) ?? 0;
@@ -813,7 +811,6 @@ function StoresTab({
                   label={`What ${shop.name} sells`}
                   value={scoped ? 'some' : 'all'}
                   onChange={v => {
-                    haptics.tap();
                     onSetScoped(shop.id, v === 'some');
                   }}
                   options={RANGE_OPTIONS}

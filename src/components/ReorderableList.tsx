@@ -77,7 +77,11 @@ interface Props<T> {
    * can't stand in for that, since it stays silent when the drop leaves the
    * order unchanged. */
   onDragEnd?: (info: { committed: boolean }) => void;
-  /** Called each time the dragged item shifts to a new slot (e.g. haptics). */
+  /**
+   * Called each time the dragged item shifts to a new slot. The list ticks
+   * (haptics.dragTick) on its own, the way SortableList does; this is for
+   * anything else a caller wants to do at that moment.
+   */
   onHoverChange?: () => void;
   /**
    * Fired on every raw pointer move during a drag with the current
@@ -838,6 +842,9 @@ export function ReorderableList<T>({
     if (next !== hoverIndexRef.current) {
       hoverIndexRef.current = next;
       animateRowsForHover(next);
+      // Ticked here rather than left to callers: two of them forgot, and
+      // their drags lifted with a haptic and then moved in silence.
+      haptics.dragTick();
       onHoverChangeRef.current?.();
     }
   };

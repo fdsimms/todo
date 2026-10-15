@@ -27,7 +27,7 @@ import { useHomeScreenQuickActions } from './src/utils/quickActions';
 import { useWidgetSync } from './src/utils/widgetSync';
 import { useSharedRecipeLinks } from './src/hooks/useSharedRecipeLinks';
 import { useReachOutPrompt } from './src/hooks/useReachOutPrompt';
-import { useFocusPlanReconcile } from './src/hooks/useFocusSession';
+import { useFocusPlanReconcile, useFocusStepDoneHaptic } from './src/hooks/useFocusSession';
 import { useStepTimerStore } from './src/store/useStepTimerStore';
 import { useTimerLiveActivitySync } from './src/utils/liveActivity';
 import { useTripLiveActivitySync } from './src/utils/tripLiveActivity';
@@ -353,6 +353,8 @@ function AppRoot() {
   // Drops a completed, archived or deleted task out of a running focus plan, from
   // whichever tab did it. App-level because a blurred tab no longer renders.
   useFocusPlanReconcile();
+  // A buzz when a focus step runs out, on whichever tab the person is on.
+  useFocusStepDoneHaptic();
 
   // Keeps the pending daily agenda's count matching the tasks it describes.
   useDailyAgendaSync();

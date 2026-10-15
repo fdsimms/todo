@@ -30,6 +30,7 @@ import { groceryRowNameSpace, quantityFitsBesideName } from '../utils/groceryRow
 import { recipeLedgerFor } from '../utils/recipeSources';
 import { haptics } from '../utils/haptics';
 import { TextField } from './TextField';
+import { CheckPop } from './CheckPop';
 
 // Matches GroceryItemSheet's own price field — "10000.00" is the longest a
 // price this app allows (GROCERY_PRICE_MINOR_MAX) ever renders as.
@@ -423,11 +424,14 @@ export const GroceryRow = React.memo(function GroceryRow({
             of the row, the same split every other selectable list makes
             (#2944). The touch target still selects while selecting, and its
             accessibility state follows: the dot is not its own element. */}
-        <View style={[styles.checkbox, item.checked && styles.checkboxChecked]}>
-          {item.checked && (
-            <Ionicons name="checkmark" size={iconSize.sm} color={colors.onDone} />
-          )}
-        </View>
+        <CheckPop
+          checked={item.checked}
+          style={styles.checkbox}
+          checkedStyle={styles.checkboxChecked}
+          markStyle={styles.checkmarkInCart}
+        >
+          <Ionicons name="checkmark" size={iconSize.sm} color={colors.onDone} />
+        </CheckPop>
       </TouchableOpacity>
 
       <TouchableOpacity
@@ -924,6 +928,11 @@ function makeStyles(colors: Colors) {
     checkboxChecked: {
       backgroundColor: colors.done,
       borderColor: colors.done,
+      opacity: 0.7,
+    },
+    // The tick sits beside the box rather than in it (see CheckPop), so it
+    // takes the box's dimming separately.
+    checkmarkInCart: {
       opacity: 0.7,
     },
     tapZone: {

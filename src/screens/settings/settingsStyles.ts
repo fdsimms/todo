@@ -86,15 +86,6 @@ export const makeSettingsStyles = (colors: Colors) => StyleSheet.create({
   pillText: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
   pillTextActive: { color: colors.accent, fontWeight: fontWeight.semibold },
 
-  toggle: {
-    width: 44, height: 26, borderRadius: 13,
-    backgroundColor: colors.bgTertiary,
-    justifyContent: 'center', padding: 2,
-  },
-  toggleOn: { backgroundColor: colors.accent },
-  toggleKnob: { width: 22, height: 22, borderRadius: 11, backgroundColor: colors.textSecondary },
-  toggleKnobOn: { backgroundColor: colors.onAccent, alignSelf: 'flex-end' },
-
   picker: { height: 180 },
   pickerButtons: {
     flexDirection: 'row', gap: spacing.sm,

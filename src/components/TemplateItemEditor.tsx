@@ -89,6 +89,7 @@ import { QUOTA_RAMP_MAX_EVERY, QUOTA_RAMP_MAX_STEP, QUOTA_RAMP_MAX_TARGET, canRa
 import { formatPhoneInput } from '../utils/phone';
 import { capitalize } from '../utils/capitalize';
 import { TextField } from './TextField';
+import { Toggle } from './Toggle';
 
 // Ceilings for the two steppers whose hand-rolled versions had none. Both sit
 // well past any real value; CountStepper needs a bound to disable its + key
@@ -1444,9 +1445,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             <Text style={styles.optionLabel}>Optional</Text>
             <Text style={styles.optionHint}>Starts unchecked when the template is applied, so it’s skipped by default</Text>
           </View>
-          <View style={[styles.toggle, optional && styles.toggleOn]}>
-            <View style={[styles.toggleKnob, optional && styles.toggleKnobOn]} />
-          </View>
+          <Toggle value={optional} />
         </TouchableOpacity>
         <View style={styles.sep} />
         <TouchableOpacity
@@ -1462,9 +1461,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             <Text style={styles.optionLabel}>Pause on vacation</Text>
             <Text style={styles.optionHint}>Hidden while vacation mode is on</Text>
           </View>
-          <View style={[styles.toggle, vacationPause && styles.toggleOn]}>
-            <View style={[styles.toggleKnob, vacationPause && styles.toggleKnobOn]} />
-          </View>
+          <Toggle value={vacationPause} />
         </TouchableOpacity>
         <View style={styles.sep} />
         {recurrenceType !== 'none' && (
@@ -1482,9 +1479,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                 <Text style={styles.optionLabel}>Pin every occurrence</Text>
                 <Text style={styles.optionHint}>Each occurrence of a task made from this item starts pinned to Today</Text>
               </View>
-              <View style={[styles.toggle, pinEachOccurrence && styles.toggleOn]}>
-                <View style={[styles.toggleKnob, pinEachOccurrence && styles.toggleKnobOn]} />
-              </View>
+              <Toggle value={pinEachOccurrence} />
             </TouchableOpacity>
             <View style={styles.sep} />
           </>
@@ -1502,9 +1497,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             <Text style={styles.optionLabel}>Skip in suggestions</Text>
             <Text style={styles.optionHint}>Keeps tasks made from this item out of suggested pins and focus sessions</Text>
           </View>
-          <View style={[styles.toggle, excludeFromSuggestions && styles.toggleOn]}>
-            <View style={[styles.toggleKnob, excludeFromSuggestions && styles.toggleKnobOn]} />
-          </View>
+          <Toggle value={excludeFromSuggestions} />
         </TouchableOpacity>
         <View style={styles.sep} />
         {recurrenceType === 'none' && !chainEnabled && (weatherTasksOn || weatherWait !== null) && (
@@ -1683,9 +1676,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             <Text style={styles.optionLabel}>Block apps until done</Text>
             <Text style={styles.optionHint}>Blocks the apps you picked in Screen Time until tasks made from this item are done</Text>
           </View>
-          <View style={[styles.toggle, gatesApps && styles.toggleOn]}>
-            <View style={[styles.toggleKnob, gatesApps && styles.toggleKnobOn]} />
-          </View>
+          <Toggle value={gatesApps} />
         </TouchableOpacity>
         <View style={styles.sep} />
         <CollapsibleField
@@ -1798,9 +1789,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             <Text style={styles.optionLabel}>Something to avoid</Text>
             <Text style={styles.optionHint}>Never completed. It stays on Today and counts the days you get through without it</Text>
           </View>
-          <View style={[styles.toggle, polarity === 'negative' && styles.toggleOn]}>
-            <View style={[styles.toggleKnob, polarity === 'negative' && styles.toggleKnobOn]} />
-          </View>
+          <Toggle value={polarity === 'negative'} />
         </TouchableOpacity>
         </>
         )}
@@ -1866,9 +1855,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   <Text style={styles.optionLabel}>Notify me when each one is due</Text>
                   <Text style={styles.optionHint}>Send a notification at each one, as well as showing the task on Today</Text>
                 </View>
-                <View style={[styles.toggle, quotaReminders && styles.toggleOn]}>
-                  <View style={[styles.toggleKnob, quotaReminders && styles.toggleKnobOn]} />
-                </View>
+                <Toggle value={quotaReminders} />
               </TouchableOpacity>
               {offersRamp && (
                 <>
@@ -1932,9 +1919,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   <Text style={styles.optionLabel}>Allow going past target</Text>
                   <Text style={styles.optionHint}>Keep logging past {targetCount}×. It stays on Today and completes at the end of the {quotaPeriod} with whatever count you reached</Text>
                 </View>
-                <View style={[styles.toggle, allowOvershoot && styles.toggleOn]}>
-                  <View style={[styles.toggleKnob, allowOvershoot && styles.toggleKnobOn]} />
-                </View>
+                <Toggle value={allowOvershoot} />
               </TouchableOpacity>
               {rewardsEnabled && polarity !== 'negative' && (
                 <TouchableOpacity
@@ -1954,9 +1939,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                         : 'Earn all the coins when the target is reached'}
                     </Text>
                   </View>
-                  <View style={[styles.toggle, coinsPerTap && styles.toggleOn]}>
-                    <View style={[styles.toggleKnob, coinsPerTap && styles.toggleKnobOn]} />
-                  </View>
+                  <Toggle value={coinsPerTap} />
                 </TouchableOpacity>
               )}
             </>
@@ -1991,7 +1974,6 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             onToggle={() => toggleField('chainSteps', chainEnabled)}
             right={
               <TouchableOpacity
-                style={[styles.toggle, chainEnabled && styles.toggleOn]}
                 onPress={() => {
                   haptics.tap();
                   setChainEnabled(v => {
@@ -2005,7 +1987,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                 accessibilityLabel="Chain"
                 accessibilityState={{ checked: chainEnabled }}
               >
-                <View style={[styles.toggleKnob, chainEnabled && styles.toggleKnobOn]} />
+                <Toggle value={chainEnabled} />
               </TouchableOpacity>
             }
           >
@@ -2203,12 +2185,11 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             <TouchableOpacity
               onPress={() => { haptics.tap(); setRotationEnabled(v => !v); }}
               activeOpacity={interaction.activeOpacity}
-              style={[styles.toggle, rotationEnabled && styles.toggleOn]}
               accessibilityRole="switch"
               accessibilityLabel="Rotation"
               accessibilityState={{ checked: rotationEnabled }}
             >
-              <View style={[styles.toggleKnob, rotationEnabled && styles.toggleKnobOn]} />
+              <Toggle value={rotationEnabled} />
             </TouchableOpacity>
           }
         >
@@ -2368,9 +2349,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               <Text style={styles.optionLabel}>Sets the leaving date</Text>
               <Text style={styles.optionHint}>The date you answer becomes the trip’s Leaving date, if it doesn’t have one yet</Text>
             </View>
-            <View style={[styles.toggle, deliverableSetsAway && styles.toggleOn]}>
-              <View style={[styles.toggleKnob, deliverableSetsAway && styles.toggleKnobOn]} />
-            </View>
+            <Toggle value={deliverableSetsAway} />
           </TouchableOpacity>
         )}
       </View>
@@ -2548,9 +2527,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               <Text style={styles.optionLabel}>Add my medicines as subtasks</Text>
               <Text style={styles.optionHint}>One subtask for each medicine you currently take, from your medication log when the template is applied</Text>
             </View>
-            <View style={[styles.toggle, medicationChecklist && styles.toggleOn]}>
-              <View style={[styles.toggleKnob, medicationChecklist && styles.toggleKnobOn]} />
-            </View>
+            <Toggle value={medicationChecklist} />
           </TouchableOpacity>
         </CollapsibleField>
       </View>
@@ -2889,7 +2866,7 @@ function OffsetRow({
             style={styles.intervalBtn}
             onPress={() => onChange(offset - 1)}
             // A week at a time on a hold: "6 weeks before" was 42 taps.
-            onLongPress={() => { haptics.tap(); onChange(offset - 7); }}
+            onLongPress={() => { haptics.impactMedium(); onChange(offset - 7); }}
             delayLongPress={interaction.delayLongPress}
             accessibilityRole="button"
             accessibilityLabel="One day earlier"
@@ -2901,7 +2878,7 @@ function OffsetRow({
           <TouchableOpacity hitSlop={8}
             style={styles.intervalBtn}
             onPress={() => onChange(offset + 1)}
-            onLongPress={() => { haptics.tap(); onChange(offset + 7); }}
+            onLongPress={() => { haptics.impactMedium(); onChange(offset + 7); }}
             delayLongPress={interaction.delayLongPress}
             accessibilityRole="button"
             accessibilityLabel="One day later"
@@ -3061,16 +3038,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flex: 1, color: colors.text, fontSize: font.md, fontWeight: '600',
     textAlign: 'center',
   },
-  toggle: {
-    width: 46, height: 27, borderRadius: 14,
-    backgroundColor: colors.bgQuaternary, justifyContent: 'center', paddingHorizontal: 3,
-  },
-  toggleOn: { backgroundColor: colors.accent },
-  toggleKnob: {
-    width: 21, height: 21, borderRadius: 11,
-    backgroundColor: colors.bg,
-  },
-  toggleKnobOn: { backgroundColor: colors.bg, alignSelf: 'flex-end' },
   // The quiet caption after the estimate stepper, matching how a unit sits
   // beside a stepper elsewhere. CountStepper renders the number itself.
   intervalValueSm: { color: colors.textSecondary, fontSize: font.sm },

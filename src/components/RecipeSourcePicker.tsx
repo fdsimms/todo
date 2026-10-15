@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import {
   View,
   Text,
-  Image,
+  
   TouchableOpacity,
   ActivityIndicator,
   ScrollView,
@@ -30,6 +30,7 @@ import type { RecipePhoto, RecipePhotoSource } from '../utils/recipePhoto';
 import { TextField } from './TextField';
 import { ClipboardPhotoOffer } from './ClipboardPhotoOffer';
 import { useClipboardImage } from '../hooks/useClipboardImage';
+import { FadeInImage } from './FadeInImage';
 
 export type RecipeInputMode = 'paste' | 'link' | 'photo';
 
@@ -228,7 +229,7 @@ export function RecipeSourcePicker({
         // the original single big preview, unchanged.
         photos[0] ? (
           <View style={styles.preview}>
-            <Image
+            <FadeInImage
               source={{ uri: `data:${photos[0].mediaType};base64,${photos[0].base64}` }}
               style={styles.previewImage}
               resizeMode="cover"
@@ -278,7 +279,7 @@ export function RecipeSourcePicker({
             >
               {photos.map((item, i) => (
                 <View key={item.sourceUri} style={styles.thumbWrap}>
-                  <Image
+                  <FadeInImage
                     source={{ uri: `data:${item.mediaType};base64,${item.base64}` }}
                     style={styles.thumbImage}
                     resizeMode="cover"

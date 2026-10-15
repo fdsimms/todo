@@ -231,6 +231,9 @@ import { useNowTick } from '../hooks/useNowTick';
 import { sumEstimatedMinutes, formatDuration } from '../utils/effort';
 import { LazySheet } from '../components/LazySheet';
 import { ProgressBar } from '../components/ProgressBar';
+import { AnimatedNumber } from '../components/AnimatedNumber';
+import { useLingering } from '../hooks/useLingering';
+import { PillHighlightLayer, PillLabel, usePillHighlight } from '../components/SlidingPills';
 
 // The four lenses of the pill switcher. They're disjoint by construction —
 // isUnscheduledTask() excludes inbox tasks, and isTaskVisible() excludes both —
@@ -634,6 +637,9 @@ const veilStyles = StyleSheet.create({
 // `onLeave` runs outside the transition: leaving selection mode calls
 // animateLayout(), which applies to whichever commit lands next, and inside the
 // transition that would be the pill's own render rather than the rows leaving.
+//
+// The highlight slides between pills (SlidingPills), aimed at `shownMode`, so
+// it sets off on the tap rather than waiting for the list.
 function ViewModePills({
   modes,
   viewMode,
@@ -653,7 +659,9 @@ function ViewModePills({
   switchChannel: DropTargetChannel;
   styles: ReturnType<typeof makeStyles>;
 }) {
+  const colors = useColors();
   const [shownMode, showMode] = useOptimistic(viewMode);
+  const highlight = usePillHighlight(shownMode);
   // Clears once the new mode has committed (or the tap changed nothing).
   useEffect(() => {
     switchChannel.publish(null);
@@ -665,6 +673,13 @@ function ViewModePills({
       style={styles.viewModePillsScroll}
       contentContainerStyle={styles.viewModePills}
     >
+      <PillHighlightLayer
+        highlight={highlight}
+        keys={modes}
+        restColor={colors.bgSecondary}
+        activeColor={colors.accentFill}
+        radius={radius.full}
+      />
       {modes.map(mode => {
         const active = shownMode === mode;
         const badge = mode === 'inbox'
@@ -673,7 +688,13 @@ function ViewModePills({
         return (
           <TouchableOpacity
             key={mode}
-            style={[styles.viewModePill, active && styles.viewModePillActive]}
+            onLayout={highlight.onPillLayout(mode)}
+            style={[
+              styles.viewModePill,
+              active && styles.viewModePillActive,
+              // Drawn by the layers underneath once they're placed.
+              highlight.ready && styles.viewModePillLayered,
+            ]}
             onPress={() => {
               haptics.tap();
               onLeave();
@@ -694,20 +715,26 @@ function ViewModePills({
                 : `${VIEW_TITLES[mode]} view`
             }
           >
-            <Text style={[styles.viewModePillText, active && styles.viewModePillTextActive]}>
+            <PillLabel
+              highlight={highlight}
+              pillKey={mode}
+              style={[styles.viewModePillText, active && styles.viewModePillTextActive]}
+              restColor={colors.textSecondary}
+              activeColor={colors.onAccent}
+            >
               {VIEW_TITLES[mode]}
-            </Text>
+            </PillLabel>
             {badge > 0 && (
               <View style={[styles.viewModePillBadge, mode !== 'inbox' && styles.viewModePillBadgeQuiet]}>
-                <Text
+                <AnimatedNumber
+                  text={String(badge)}
+                  value={badge}
                   style={[
                     styles.viewModePillBadgeText,
                     mode !== 'inbox' && styles.viewModePillBadgeTextQuiet,
                   ]}
                   maxFontSizeMultiplier={textScale.badge}
-                >
-                  {badge}
-                </Text>
+                />
               </View>
             )}
           </TouchableOpacity>
@@ -852,6 +879,8 @@ export function TodayScreen() {
     | null
   >(null);
   const createdToastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Held on screen while the toast drops away after it clears (useLingering).
+  const createdToastShown = useLingering(createdToast);
   const [autoCompletingIds, setAutoCompletingIds] = useState<Set<string>>(new Set());
   // The requests in `autoCompletingIds` no row has played yet, mirrored in a
   // ref so the first row to ask takes one synchronously (see TaskItem's
@@ -1310,7 +1339,7 @@ export function TodayScreen() {
     if (!createdToast) return;
     const toast = createdToast;
     dismissCreatedToast();
-    haptics.success();
+    haptics.tap();
     if (toast.source === 'moved') {
       // Whole-snapshot revert, same as deferTask's own undo — the row goes
       // back to exactly what it was before the suggestion was applied,
@@ -1774,7 +1803,7 @@ export function TodayScreen() {
     }
     const sectionTasks = sectionTasksByCategory.get(label) ?? NO_GROUP_CHILDREN;
     if (sectionTasks.length === 0) return;
-    haptics.tap();
+    haptics.impactMedium();
     animateLayout();
     bulkTogglePin(sectionTasks.map(t => t.id));
   };
@@ -4835,7 +4864,7 @@ export function TodayScreen() {
               >
                 <View style={styles.coinPillTop}>
                   <CoinIcon size={iconSize.sm} color={colors.done} filled />
-                  <Text style={styles.coinPillText}>{coinTotal}</Text>
+                  <AnimatedNumber text={String(coinTotal)} value={coinTotal} style={styles.coinPillText} />
                   {savingGoal && <Text style={styles.coinPillGoal}>{`/ ${savingGoal.reward.cost}`}</Text>}
                 </View>
                 {savingGoal && (
@@ -5013,7 +5042,6 @@ export function TodayScreen() {
               return <FabDropZone zone={zone}>{content}</FabDropZone>;
             }}
             onDragBegin={() => setExpandedTaskId(null)}
-            onHoverChange={haptics.dragTick}
             dragRange={(data, idx) => dragRange(data, idx, isLaterHeader)}
             placeholderStyle={styles.dropSlot}
             onReorder={reordered => {
@@ -5137,7 +5165,6 @@ export function TodayScreen() {
               // before the state update committed left it set.
               setDraggingGroupId(null);
             }}
-            onHoverChange={haptics.dragTick}
             onDragMove={({ overIndex, overHeader }) => {
               const draggedItem = draggableData[activeDragIndexRef.current ?? -1];
               // Only a plain loose task can be dragged onto a group, or onto
@@ -5517,16 +5544,18 @@ export function TodayScreen() {
           </View>
         )}
 
-        {createdToast && (
+        {createdToastShown.value && (
           <CreatedTaskToast
-            task={createdToast.task}
-            destination={createdToast.destination}
-            mode={createdToast.source}
+            task={createdToastShown.value.task}
+            destination={createdToastShown.value.destination}
+            mode={createdToastShown.value.source}
             dayResetTime={dayResetTime}
             bottom={fabBottom + FAB_SIZE + spacing.md}
             onGoToTask={handleCreatedToastGoTo}
             onUndo={handleCreatedToastUndo}
             onDismiss={dismissCreatedToast}
+            leaving={createdToastShown.leaving}
+            onLeft={createdToastShown.onLeft}
           />
         )}
 
@@ -5911,6 +5940,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.full, backgroundColor: colors.bgSecondary,
   },
   viewModePillActive: { backgroundColor: colors.accentFill },
+  viewModePillLayered: { backgroundColor: 'transparent' },
   viewModePillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
   viewModePillTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
   viewModePillBadge: {

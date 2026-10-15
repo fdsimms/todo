@@ -1,9 +1,10 @@
-import React, { useMemo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, View, Text, TouchableOpacity, StyleSheet, type LayoutChangeEvent } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
+import { animation, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { useReduceMotion } from '../utils/useReduceMotion';
 import { segmentRows } from '../utils/segmentColumns';
 
 export interface SegmentOption<T> {
@@ -139,6 +140,15 @@ interface Props<T> {
  * theme's `bg` is nearly invisible, which is what kept it out of the one place
  * a lens switch belongs — straight under a screen's header. `surface="page"`
  * is that fix.
+ *
+ * **The raised surface is one thumb that slides**, not a style each segment
+ * switches on. Restyling the newly chosen segment made the highlight jump; one
+ * object travelling on the snappy spring reads as the same thing moving, the
+ * way the iOS control does. The thumb sits behind the segments, absolutely
+ * placed at the chosen one's measured frame (row offset added in grid mode,
+ * so it travels in two dimensions there). Until it has a frame to go to, the
+ * chosen segment raises itself as it used to, so the first frame can't show
+ * nothing chosen. Reduce Motion moves it without the slide.
  */
 export function SegmentedControl<T extends string | number | boolean | null>({
   options, value, onChange, columns, label, surface = 'card', onDeselect,
@@ -146,15 +156,90 @@ export function SegmentedControl<T extends string | number | boolean | null>({
   const colors = useColors();
   const { isDark, shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors, isDark, surface), [colors, isDark, surface]);
+  const reduceMotion = useReduceMotion();
 
-  const renderSegment = (opt: SegmentOption<T>) => {
+  // ==== the sliding thumb ====
+  // Frames are measured, never computed: segments are flex: 1, so where one
+  // sits depends on the track's width, and a grid's rows each have an offset.
+  const frames = useRef(new Map<string, { x: number; y: number; width: number; height: number; row: number }>());
+  const rowOffsets = useRef(new Map<number, { x: number; y: number }>());
+  const thumbX = useRef(new Animated.Value(0)).current;
+  const thumbY = useRef(new Animated.Value(0)).current;
+  const thumbOpacity = useRef(new Animated.Value(0)).current;
+  const [thumbSize, setThumbSize] = useState<{ width: number; height: number } | null>(null);
+  // Whether the thumb is showing; a frame it has never been to is a jump, not a slide.
+  const shownRef = useRef(false);
+
+  const frameOf = (key: string) => {
+    const f = frames.current.get(key);
+    if (!f) return null;
+    const offset = columns ? rowOffsets.current.get(f.row) : { x: 0, y: 0 };
+    if (!offset) return null;
+    return { x: offset.x + f.x, y: offset.y + f.y, width: f.width, height: f.height };
+  };
+
+  const placeThumb = (slide: boolean) => {
+    const target = frameOf(String(value));
+    if (!target) {
+      // Nothing chosen (a control that can be cleared), or not measured yet.
+      if (shownRef.current && !options.some(o => o.value === value)) {
+        shownRef.current = false;
+        Animated.timing(thumbOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }).start();
+      }
+      return;
+    }
+    setThumbSize(prev => (prev && prev.width === target.width && prev.height === target.height
+      ? prev
+      : { width: target.width, height: target.height }));
+    thumbX.stopAnimation();
+    thumbY.stopAnimation();
+    if (!slide || !shownRef.current || reduceMotion) {
+      thumbX.setValue(target.x);
+      thumbY.setValue(target.y);
+      if (!shownRef.current) {
+        shownRef.current = true;
+        thumbOpacity.setValue(1);
+      }
+      return;
+    }
+    Animated.parallel([
+      Animated.spring(thumbX, { toValue: target.x, ...animation.spring.snappy, useNativeDriver: true }),
+      Animated.spring(thumbY, { toValue: target.y, ...animation.spring.snappy, useNativeDriver: true }),
+    ]).start();
+  };
+
+  useEffect(() => {
+    placeThumb(true);
+    // Only a change of choice slides; a re-layout re-places at once (below).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
+  const onSegmentLayout = (key: string, row: number) => (e: LayoutChangeEvent) => {
+    const l = e.nativeEvent?.layout;
+    if (!l) return;
+    frames.current.set(key, { x: l.x, y: l.y, width: l.width, height: l.height, row });
+    if (key === String(value)) placeThumb(false);
+  };
+  const onRowLayout = (row: number) => (e: LayoutChangeEvent) => {
+    const l = e.nativeEvent?.layout;
+    if (!l) return;
+    rowOffsets.current.set(row, { x: l.x, y: l.y });
+    const chosen = frames.current.get(String(value));
+    if (chosen?.row === row) placeThumb(false);
+  };
+  const thumbReady = thumbSize !== null;
+
+  const renderSegment = (opt: SegmentOption<T>, row = 0) => {
     const selected = opt.value === value;
+    const key = String(opt.value);
     return (
       <TouchableOpacity
-        key={String(opt.value)}
+        key={key}
+        onLayout={onSegmentLayout(key, row)}
         style={[
           styles.segment,
-          selected && [styles.segmentSelected, shadows.card],
+          // Raised by the thumb once it's placed; by itself until then.
+          selected && !thumbReady && [styles.segmentSelected, shadows.card],
           opt.disabled && styles.segmentDisabled,
         ]}
         onPress={() => {
@@ -195,15 +280,31 @@ export function SegmentedControl<T extends string | number | boolean | null>({
       accessibilityRole="radiogroup"
       accessibilityLabel={label}
     >
+      {thumbReady && (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.thumb,
+            styles.segmentSelected,
+            shadows.card,
+            {
+              width: thumbSize.width,
+              height: thumbSize.height,
+              opacity: thumbOpacity,
+              transform: [{ translateX: thumbX }, { translateY: thumbY }],
+            },
+          ]}
+        />
+      )}
       {columns
         ? segmentRows(options, columns).map((row, i) => (
-            <View key={i} style={styles.row}>
+            <View key={i} style={styles.row} onLayout={onRowLayout(i)}>
               {row.map((opt, j) => (
-                opt ? renderSegment(opt) : <View key={`gap-${j}`} style={styles.segment} />
+                opt ? renderSegment(opt, i) : <View key={`gap-${j}`} style={styles.segment} />
               ))}
             </View>
           ))
-        : options.map(renderSegment)}
+        : options.map(opt => renderSegment(opt))}
     </View>
   );
 }
@@ -243,6 +344,7 @@ const makeStyles = (colors: Colors, isDark: boolean, surface: 'page' | 'card') =
     backgroundColor: isDark ? colors.bgQuaternary : colors.bgSecondary,
   },
   segmentDisabled: { opacity: 0.4 },
+  thumb: { position: 'absolute', left: 0, top: 0, borderRadius: radius.sm },
   dot: { width: 8, height: 8, borderRadius: 4 },
   segmentText: {
     color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium,
