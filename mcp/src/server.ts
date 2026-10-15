@@ -99,7 +99,7 @@ import type { AgentLedgerEntry } from './agentLedger';
 import { PROMPTS } from './prompts';
 import { forget, remember } from './memoryTools';
 import { deleteRule, listAutomations, saveRule, setAutomation, RULE_TYPES } from './automationTools';
-import { deleteCategory, updateCategory } from './categoryTools';
+import { createCategory, deleteCategory, updateCategory } from './categoryTools';
 import { REORDER_KINDS, reorder } from './reorderTools';
 import { cancelCalendarRequest, changeCalendarEvent, listCalendarRequests, requestCalendarEvent } from './calendarTools';
 import { ESTIMATE_KEY_LIST, NUTRIENT_KEY_LIST, atFrom, deleteSavedMeal, duplicateFoodEntry, listSavedMeals, logSavedMeal, moveFoodEntry, saveMealFromEntries, setNutritionTargets, renameMedication, renameMoodTag, setMedicationArchived, addMedication, removeMedication, setMedicationProfile, setMedicationLimit, setMedicationSupply, logFood, logMedication, setSupplementNutrients, logMood, logWater, updateRecipe, patchRecipe, deleteRecipe, updateFoodEntry, refreshDishEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
@@ -2085,7 +2085,7 @@ function registerWriteTools(
     {
       kind: z.string().min(1),
       on: z.boolean().optional(),
-      category: z.string().nullable().optional().describe('A task category by name, from list_categories. It must already exist; null for none.'),
+      category: z.string().nullable().optional().describe('A task category by name, from list_categories. It must already exist (create_category makes one); null for none.'),
       taskSettings: z.object({
         priority: z.number().int().min(0).max(4).nullable().optional().describe('0 none, 1 low to 4 urgent; 0 is an answer ("no priority, don\'t ask"), null clears it.'),
         effort: z.number().int().min(0).max(6).nullable().optional().describe('An estimate bucket 1-6, or 0 for "no estimate, don\'t ask"; null clears it.'),
@@ -3533,6 +3533,31 @@ function registerWriteTools(
         return json(await withWrite(() => deleteStack(replica, id, deleteTasks ?? false)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not delete the stack.' });
+      }
+    }
+  );
+
+  server.tool(
+    'create_category',
+    "Add a task category with nothing in it, optionally with its emoji, schedule, vacation and suggestion settings and default time of day. Use it when an automation or rule should file under a section that doesn't exist yet: set_automation and save_rule need the category to exist first. A name an existing category already has (any capitalization) is refused. A task can still create one with newCategory when it needs one to file into; say so to the person either way.",
+    {
+      name: z.string().min(1),
+      emoji: z.string().nullable().optional(),
+      schedule: z.object({
+        days: z.array(z.number().int()).describe('0 = Sunday to 6 = Saturday.'),
+        start: z.string().describe('"HH:MM", 24-hour.'),
+        end: z.string().describe('"HH:MM", 24-hour.'),
+      }).nullable().optional(),
+      hideOnVacation: z.boolean().optional(),
+      excludeFromSuggestions: z.boolean().optional(),
+      excludeFromNewTasksBanner: z.boolean().optional(),
+      defaultTimeSegments: z.array(z.enum(TIME_SEGMENTS as unknown as [TimeOfDay, ...TimeOfDay[]])).optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => createCategory(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not create the category.' });
       }
     }
   );

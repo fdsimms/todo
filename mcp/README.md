@@ -194,6 +194,7 @@ only the fallback until the first sync.
 | `rename_stack` | **Write.** Renames a stack. Its category and members are untouched. |
 | `update_stack` | **Write.** A stack's title, notes, tags, checklist, the project page it is a section of, or its category (which re-files its open tasks). |
 | `delete_stack` | **Write.** Deletes a stack, taking its tasks out of it, or with `deleteTasks` deleting its open tasks too. Restorable from Activity. |
+| `create_category` | **Write.** Adds an empty task category, with its emoji and settings if given. `set_automation` and `save_rule` need the category to exist first. |
 | `update_category` | **Write.** Renames a task category everywhere it is named, or sets its emoji, schedule, vacation and suggestion settings and default time of day. |
 | `delete_project` | **Write.** Deletes a project, leaving its tasks in no project, or with `deleteTasks` deleting them. Restorable from Activity. |
 | `save_project_category` | **Write.** The Projects screen's sections: add, rename or delete one. |

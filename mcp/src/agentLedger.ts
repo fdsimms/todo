@@ -513,6 +513,12 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return result;
     },
 
+    createCategory(name) {
+      const category = replica.createCategory(name);
+      log({ action: 'created', subject: 'category', title: category.name, taskId: null, note: `Create the category "${category.name}"` });
+      return category;
+    },
+
     updateCategorySettings(name, patch) {
       const category = replica.updateCategorySettings(name, patch);
       log({ action: 'edited', subject: 'category', title: category.name, taskId: null, note: `Change the category "${category.name}": ${describePatch(patch)}` });

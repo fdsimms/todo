@@ -948,6 +948,10 @@ so the finished occurrences behind a repeating task stay where they were.
 
 ### Categories and projects: the editor's other half
 
+`create_category` adds an empty one (a name that exists, in any capitalization, is refused). It exists
+because `set_automation` and `save_rule` only point at a category that already exists, and the one other
+way to make one was a throwaway task created with `newCategory`.
+
 `update_category` renames a task category and sets its own fields (emoji, schedule, vacation,
 suggestions, the default time of day); `reorder` with kind `categories` orders Today's sections. A rename goes
 through `useCategoryStore.renameCategory` (which renames the column on tasks, stacks and project

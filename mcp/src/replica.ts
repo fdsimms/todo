@@ -1878,6 +1878,8 @@ export interface Replica {
   deleteStack(id: string, cascade: boolean): DeletedStackSnapshot;
   /** Rename a task category everywhere it is named, as the app's rename does. */
   renameCategory(name: string, newName: string): { from: string; to: string };
+  /** Add a task category with nothing in it, as the app's category picker does. Refused when the name is taken. */
+  createCategory(name: string): Category;
   /** A task category's own settings: emoji, schedule, vacation, suggestions, default time of day. */
   updateCategorySettings(name: string, patch: CategorySettingsPatch): Category;
   /** Put the categories (Today's sections) in this order: the named first, the rest after in their order. */
@@ -7259,6 +7261,17 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       });
       refresh();
       return { from, to };
+    },
+
+    createCategory(name: string): Category {
+      const cats = useCategoryStore.getState();
+      const wanted = name.trim();
+      if (!wanted) throw new Error('A category needs a name.');
+      const existing = cats.categories.find(c => c.name.toLowerCase() === wanted.toLowerCase());
+      if (existing) throw new Error(`There is already a category called "${existing.name}".`);
+      const made = cats.addCategory(wanted);
+      refresh();
+      return made;
     },
 
     updateCategorySettings(name: string, patch: CategorySettingsPatch): Category {
