@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { InlineAction } from './InlineAction';
+import { SwipeDismiss } from './SwipeDismiss';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, type Colors } from '../theme';
 
@@ -42,19 +43,21 @@ export function TemplateAppliedToast({ count, bottom, onDismiss, noun = 'task', 
   const message = count === 1 ? `Created 1 ${noun}` : `Created ${count} ${noun}s`;
 
   return (
-    <View style={[styles.wrap, { bottom }]} pointerEvents={goTo ? 'box-none' : 'none'}>
-      <View style={[styles.bar, shadows.fab]}>
-        <Text style={styles.label} numberOfLines={2}>
-          {message}
-        </Text>
-        {goTo && (
-          <InlineAction
-            label={goTo.label}
-            onPress={() => { onDismiss(); goTo.onPress(); }}
-            accessibilityLabel={goTo.label}
-          />
-        )}
-      </View>
+    <View style={[styles.wrap, { bottom }]} pointerEvents="box-none">
+      <SwipeDismiss onDismiss={onDismiss}>
+        <View style={[styles.bar, shadows.fab]}>
+          <Text style={styles.label} numberOfLines={2}>
+            {message}
+          </Text>
+          {goTo && (
+            <InlineAction
+              label={goTo.label}
+              onPress={() => { onDismiss(); goTo.onPress(); }}
+              accessibilityLabel={goTo.label}
+            />
+          )}
+        </View>
+      </SwipeDismiss>
     </View>
   );
 }

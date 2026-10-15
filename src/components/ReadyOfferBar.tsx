@@ -6,6 +6,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useSheetMount } from '../hooks/useSheetMount';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { InlineAction } from './InlineAction';
+import { SwipeDismiss } from './SwipeDismiss';
 import { WhenPicker } from './WhenPicker';
 import { TAB_BAR_HEIGHT } from './DemoBanner';
 import { FAB_SIZE } from './Fab';
@@ -76,25 +77,30 @@ export function ReadyOfferBar() {
         <View style={[styles.wrap, { bottom }]} pointerEvents="box-none">
           {/* The name gets its own line: it's the one thing to read, and two
               buttons beside it would cut it short. */}
-          <View style={[styles.bar, shadows.fab]}>
-            <Text style={styles.label} numberOfLines={2}>{label}</Text>
-            <View style={styles.actions}>
-              <InlineAction
-                label="Today"
-                onPress={() => place(getLogicalToday(dayResetTime))}
-                accessibilityLabel={`Do ${titles.length === 1 ? 'it' : 'them'} today`}
-              />
-              <InlineAction
-                label="Pick a day"
-                variant="neutral"
-                onPress={() => {
-                  haptics.tap();
-                  if (timerRef.current) clearTimeout(timerRef.current);
-                  setPicking(true);
-                }}
-              />
+          <SwipeDismiss onDismiss={() => {
+            if (timerRef.current) clearTimeout(timerRef.current);
+            clearReadyOffer();
+          }}>
+            <View style={[styles.bar, shadows.fab]}>
+              <Text style={styles.label} numberOfLines={2}>{label}</Text>
+              <View style={styles.actions}>
+                <InlineAction
+                  label="Today"
+                  onPress={() => place(getLogicalToday(dayResetTime))}
+                  accessibilityLabel={`Do ${titles.length === 1 ? 'it' : 'them'} today`}
+                />
+                <InlineAction
+                  label="Pick a day"
+                  variant="neutral"
+                  onPress={() => {
+                    haptics.tap();
+                    if (timerRef.current) clearTimeout(timerRef.current);
+                    setPicking(true);
+                  }}
+                />
+              </View>
             </View>
-          </View>
+          </SwipeDismiss>
         </View>
       )}
       {mountPicker && (

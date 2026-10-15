@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TAB_BAR_HEIGHT } from './DemoBanner';
+import { SwipeDismiss } from './SwipeDismiss';
 import { useEventCreatedToastStore } from '../store/useEventCreatedToastStore';
 import { useTheme } from '../theme/ThemeContext';
 import { border, font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
@@ -60,29 +61,31 @@ export function EventCreatedToast() {
       style={[styles.wrap, { bottom: insets.bottom + TAB_BAR_HEIGHT + spacing.md }]}
       pointerEvents="box-none"
     >
-      <View style={[styles.bar, shadows.fab]} accessibilityLiveRegion="polite">
-        <Text style={styles.label}>{justSaved ? 'Added to saved events' : 'Added to Calendar'}</Text>
-        {saveAs && !justSaved && (
+      <SwipeDismiss onDismiss={clear}>
+        <View style={[styles.bar, shadows.fab]} accessibilityLiveRegion="polite">
+          <Text style={styles.label}>{justSaved ? 'Added to saved events' : 'Added to Calendar'}</Text>
+          {saveAs && !justSaved && (
+            <TouchableOpacity
+              onPress={save}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel={`Save ${saveAs.title} as a template so you can add it again quickly`}
+              hitSlop={{ top: spacing.sm, bottom: spacing.sm, left: spacing.sm, right: spacing.sm }}
+            >
+              <Text style={styles.action}>Save as template</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
-            onPress={save}
+            onPress={open}
             activeOpacity={interaction.activeOpacity}
             accessibilityRole="button"
-            accessibilityLabel={`Save ${saveAs.title} as a template so you can add it again quickly`}
+            accessibilityLabel="Open event in Calendar"
             hitSlop={{ top: spacing.sm, bottom: spacing.sm, left: spacing.sm, right: spacing.sm }}
           >
-            <Text style={styles.action}>Save as template</Text>
+            <Text style={styles.action}>Open</Text>
           </TouchableOpacity>
-        )}
-        <TouchableOpacity
-          onPress={open}
-          activeOpacity={interaction.activeOpacity}
-          accessibilityRole="button"
-          accessibilityLabel="Open event in Calendar"
-          hitSlop={{ top: spacing.sm, bottom: spacing.sm, left: spacing.sm, right: spacing.sm }}
-        >
-          <Text style={styles.action}>Open</Text>
-        </TouchableOpacity>
-      </View>
+        </View>
+      </SwipeDismiss>
     </View>
   );
 }

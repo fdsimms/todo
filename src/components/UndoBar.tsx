@@ -10,6 +10,7 @@ import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { InlineAction } from './InlineAction';
+import { SwipeDismiss } from './SwipeDismiss';
 import { TAB_BAR_HEIGHT } from './DemoBanner';
 import { FAB_SIZE } from './Fab';
 import { useTheme } from '../theme/ThemeContext';
@@ -182,20 +183,28 @@ export function UndoBar() {
     shown.run();
   };
 
+  // Swiped away by hand. The action stays undoable by shake, as after the timer.
+  const handleDismiss = () => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    setVisible(false);
+  };
+
   const bottom = insets.bottom + TAB_BAR_HEIGHT + FAB_SIZE + spacing.lg;
 
   return (
     <View style={[styles.wrap, { bottom }]} pointerEvents="box-none">
-      <View style={[styles.bar, shadows.fab]}>
-        <Text style={styles.label} numberOfLines={1}>
-          {shown.mode === 'redo' ? `Undone: ${shown.label}` : shown.label}
-        </Text>
-        <InlineAction
-          label={shown.mode === 'redo' ? 'Redo' : 'Undo'}
-          onPress={handlePress}
-          accessibilityLabel={`${shown.mode === 'redo' ? 'Redo' : 'Undo'} “${shown.label}”`}
-        />
-      </View>
+      <SwipeDismiss onDismiss={handleDismiss}>
+        <View style={[styles.bar, shadows.fab]}>
+          <Text style={styles.label} numberOfLines={1}>
+            {shown.mode === 'redo' ? `Undone: ${shown.label}` : shown.label}
+          </Text>
+          <InlineAction
+            label={shown.mode === 'redo' ? 'Redo' : 'Undo'}
+            onPress={handlePress}
+            accessibilityLabel={`${shown.mode === 'redo' ? 'Redo' : 'Undo'} “${shown.label}”`}
+          />
+        </View>
+      </SwipeDismiss>
     </View>
   );
 }
