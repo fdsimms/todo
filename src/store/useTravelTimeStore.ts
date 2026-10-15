@@ -11,6 +11,7 @@ import {
   travelOriginKey,
   travelLeadFor,
   travelModeFor,
+  travelWalkUnderFor,
   arriveEarlyFor,
   leadWithArrival,
   travelLeaveAt,
@@ -78,11 +79,13 @@ export const useTravelTimeStore = create<TravelTimeState>((set, get) => ({
       .filter(event => eventIsTravelEligible(event, now) && Date.parse(event.start) < horizonEnd)
       .sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
     const places = readSavedPlaces();
+    const walkUnderOf = (eventId: string) =>
+      travelWalkUnderFor(eventId, settings.travelEventPrefs, settings.travelMode, settings.travelWalkUnderMinutes);
     const originOf = (eventId: string) =>
       travelOriginForEvent(eventId, settings.travelEventPrefs, settings.travelOriginPlaceId, places);
     const held = get().estimates;
     const wanted = upcoming
-      .filter(event => needsTravelEstimate(event, held, travelModeFor(event.id, settings.travelEventPrefs, settings.travelMode), travelOriginKey(originOf(event.id)), now))
+      .filter(event => needsTravelEstimate(event, held, travelModeFor(event.id, settings.travelEventPrefs, settings.travelMode), travelOriginKey(originOf(event.id)), now, walkUnderOf(event.id)))
       .slice(0, TRAVEL_ESTIMATES_PER_REFRESH);
 
     // Estimates for occurrences no longer coming up are dropped either way.
@@ -107,13 +110,27 @@ export const useTravelTimeStore = create<TravelTimeState>((set, get) => ({
           byCalendar: settings.travelLeadByCalendar,
         }), arriveEarlyFor(event.id, settings.travelEventPrefs))) ?? now;
         const origin = originOf(event.id);
-        const minutes = await estimateTravelMinutes(event, departAt, mode, origin);
-        if (!estimateGuard.isCurrent(token)) return;
+        // With a walk-under threshold the walk is asked first and kept when it
+        // comes in at or under it; otherwise (too far, or no route on foot)
+        // the Settings mode is asked as it would be with no threshold.
+        const walkUnder = walkUnderOf(event.id);
+        let filedMode = mode;
+        let minutes: number | null = null;
+        if (walkUnder > 0) {
+          const walk = await estimateTravelMinutes(event, departAt, 'walking', origin);
+          if (!estimateGuard.isCurrent(token)) return;
+          if (walk !== null && walk <= walkUnder) { minutes = walk; filedMode = 'walking'; }
+        }
+        if (minutes === null) {
+          minutes = await estimateTravelMinutes(event, departAt, mode, origin);
+          if (!estimateGuard.isCurrent(token)) return;
+        }
         if (minutes === null) continue;
         fresh[travelSourceId(event)] = {
           minutes,
           location: (event.location ?? '').trim(),
-          mode,
+          mode: filedMode,
+          ...(walkUnder > 0 ? { walkUnder } : {}),
           origin: travelOriginKey(origin),
           at: Date.now(),
         };

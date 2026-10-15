@@ -93,7 +93,7 @@ import { type ReachOutKind } from '../utils/reachOutIntent';
 import { mailtoUrl } from '../utils/email';
 import { directionsUrl } from '../utils/maps';
 import { eventCoordinate } from '../utils/calendarSync';
-import { travelModeFor, travelRowNote, travelSourceEventId } from '../utils/travelTasks';
+import { travelModeFor, travelRowNote, travelSourceEventId, travelWalkUnderFor } from '../utils/travelTasks';
 import { useTravelTimeStore } from '../store/useTravelTimeStore';
 import { animateLayout } from '../utils/layoutAnimation';
 import { nextMeasuredHeight } from '../utils/measuredHeight';
@@ -624,6 +624,7 @@ const TaskItemRow = React.memo(function TaskItem({
   // A "Leave for X" row's trip estimate ("25 min by transit"). Every other row
   // selects null, so a travel estimate refresh re-renders only travel rows.
   const travelDefaultMode = useSettingsStore(s => s.travelMode);
+  const travelWalkUnder = useSettingsStore(s => s.travelWalkUnderMinutes);
   const travelEventPrefs = useSettingsStore(s => s.travelEventPrefs);
   const travelNote = useTravelTimeStore(s => {
     if (task.generatedKind !== 'travel' || !task.generatedSourceId) return null;
@@ -634,6 +635,7 @@ const TaskItemRow = React.memo(function TaskItem({
       task.location ?? '',
       s.estimates,
       travelModeFor(eventId, travelEventPrefs, travelDefaultMode),
+      travelWalkUnderFor(eventId, travelEventPrefs, travelDefaultMode, travelWalkUnder),
     );
   });
   const canBreakUp = !!anthropicApiKey || !!onEdit;

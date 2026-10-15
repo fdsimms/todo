@@ -9,6 +9,7 @@ import {
   TRAVEL_ESTIMATE_STALE_MS,
   TRAVEL_ORIGIN_CURRENT,
   travelModeFor,
+  travelWalkUnderFor,
   travelOriginKey,
   travelSourceId,
   travelSourceOf,
@@ -83,6 +84,7 @@ export interface AlreadyThereCheck {
   /** The `travelOriginKey` this event's trip starts from. */
   originKeyFor: (event: BusyEvent) => string;
   modeFor: (event: BusyEvent) => TravelMode;
+  walkUnderFor: (event: BusyEvent) => number;
 }
 
 function clip(text: string, max: number): string {
@@ -98,7 +100,7 @@ function clip(text: string, max: number): string {
 export function isAlreadyThere(event: BusyEvent, check: AlreadyThereCheck | undefined, now: Date): boolean {
   if (!check) return false;
   if (check.originKeyFor(event) !== TRAVEL_ORIGIN_CURRENT) return false;
-  const held = estimateFor(event, check.estimates, check.modeFor(event), TRAVEL_ORIGIN_CURRENT);
+  const held = estimateFor(event, check.estimates, check.modeFor(event), TRAVEL_ORIGIN_CURRENT, check.walkUnderFor(event));
   if (!held || now.getTime() - held.at >= TRAVEL_ESTIMATE_STALE_MS) return false;
   return held.minutes <= ALREADY_THERE_MINUTES;
 }
@@ -165,6 +167,7 @@ function currentRun(): LeaveRun | null {
         mode: settings.travelMode,
         originKeyFor: event => travelOriginKey(travelOriginOfEvent(event.id)),
         modeFor: event => travelModeFor(event.id, settings.travelEventPrefs, settings.travelMode),
+        walkUnderFor: event => travelWalkUnderFor(event.id, settings.travelEventPrefs, settings.travelMode, settings.travelWalkUnderMinutes),
       }
     : undefined;
   return buildLeaveRun(

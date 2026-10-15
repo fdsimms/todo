@@ -76,6 +76,8 @@ import {
   TRAVEL_LEAD_MINUTES_MAX,
   TRAVEL_LEAD_MINUTES_MIN,
   TRAVEL_LEAD_MINUTES_STEP,
+  TRAVEL_WALK_UNDER_MAX,
+  TRAVEL_WALK_UNDER_STEP,
   originCandidates,
   travelOriginFor,
   type TravelMode,
@@ -1178,6 +1180,34 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
               onSelect={s.setTravelMode}
               accessibilityLabelFor={o => `Estimate the trip ${o.label.toLowerCase()}`}
             />
+          )}
+          {s.travelEstimates && s.travelMode !== 'walking' && (
+            <>
+              <View style={styles.sep} />
+              <SettingsRow
+                entryId="travelWalkUnder"
+                icon="walk-outline"
+                iconColor={s.travelWalkUnderMinutes > 0 ? colors.accent : undefined}
+                label="Walk if close"
+                hint={s.travelWalkUnderMinutes > 0
+                  ? `Estimates the trip on foot when the walk is ${s.travelWalkUnderMinutes} minutes or less. Otherwise it uses the mode above. A mode set on an event is never changed. Asks Apple Maps twice for events that are farther away.`
+                  : 'Off. Every event uses the mode above.'}
+                value={s.travelWalkUnderMinutes > 0 ? `${s.travelWalkUnderMinutes} min or less` : 'Off'}
+                tight
+              />
+              <View style={styles.cadenceRow}>
+                <CountStepper
+                  value={s.travelWalkUnderMinutes}
+                  onChange={next => s.setTravelWalkUnderMinutes(next ?? 0)}
+                  min={0}
+                  max={TRAVEL_WALK_UNDER_MAX}
+                  step={TRAVEL_WALK_UNDER_STEP}
+                  format={n => (n === 0 ? 'Off' : `${n}m`)}
+                  label="Walk if the walk takes at most"
+                  describeValue={n => (n ? `Walk when the walk takes ${n} minutes or less` : 'Walk if close is off')}
+                />
+              </View>
+            </>
           )}
           {s.travelEstimates && (
             <>
