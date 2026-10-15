@@ -85,6 +85,7 @@ import {
 import type { CoinEntry, Reward, Task } from '../types';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
+import { AnimatedBarFill } from '../components/AnimatedBarFill';
 
 /**
  * Coins and rewards — the screen for `src/utils/rewards.ts`.
@@ -884,7 +885,7 @@ export function RewardsScreen() {
             >
               <Text style={styles.goalLabel}>{`Saving for: ${goalShown.title}`}</Text>
               <View style={styles.goalTrack}>
-                <View style={[styles.goalFill, { width: `${goalBarFill(balance, goal.cost) * 100}%` }]} />
+                <AnimatedBarFill percent={goalBarFill(balance, goal.cost) * 100} style={styles.goalFill} />
               </View>
               <Text style={styles.goalMeta}>
                 {balance >= goal.cost

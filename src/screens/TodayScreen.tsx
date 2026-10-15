@@ -230,6 +230,7 @@ import { emitNowTick } from '../utils/nowTick';
 import { useNowTick } from '../hooks/useNowTick';
 import { sumEstimatedMinutes, formatDuration } from '../utils/effort';
 import { LazySheet } from '../components/LazySheet';
+import { AnimatedBarFill } from '../components/AnimatedBarFill';
 
 // The four lenses of the pill switcher. They're disjoint by construction —
 // isUnscheduledTask() excludes inbox tasks, and isTaskVisible() excludes both —
@@ -4826,7 +4827,7 @@ export function TodayScreen() {
                 </View>
                 {savingGoal && (
                   <View style={styles.coinPillTrack}>
-                    <View style={[styles.coinPillFill, { width: `${goalBarFill(coinTotal, savingGoal.reward.cost) * 100}%` }]} />
+                    <AnimatedBarFill percent={goalBarFill(coinTotal, savingGoal.reward.cost) * 100} style={styles.coinPillFill} />
                   </View>
                 )}
               </TouchableOpacity>

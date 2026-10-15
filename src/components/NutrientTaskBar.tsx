@@ -9,6 +9,7 @@ import { foodLogTotals } from '../utils/foodLog';
 import { getLogicalDayKey } from '../utils/dateUtils';
 import { nutrientTaskBar, nutrientTaskLine } from '../utils/nutrientTaskBar';
 import type { Task } from '../types';
+import { AnimatedBarFill } from './AnimatedBarFill';
 
 const BAR_HEIGHT = 4;
 
@@ -61,7 +62,7 @@ export function NutrientTaskBar({ task, streak, streakColor, done }: Props) {
         <Text style={[styles.figure, bar.tone === 'over' && styles.figureOver]} numberOfLines={1}>{line.figure}</Text>
       </View>
       <View style={styles.track}>
-        <View style={[styles.fill, { width: `${Math.round(bar.fraction * 100)}%`, backgroundColor: fill }]} />
+        <AnimatedBarFill percent={Math.round(bar.fraction * 100)} style={[styles.fill, { backgroundColor: fill }]} />
       </View>
     </View>
   );

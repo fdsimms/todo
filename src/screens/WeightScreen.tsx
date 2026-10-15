@@ -46,6 +46,7 @@ import { WeightGoalSheet } from '../components/WeightGoalSheet';
 import { SegmentedControl } from '../components/SegmentedControl';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
+import { AnimatedBarFill } from '../components/AnimatedBarFill';
 
 /**
  * How much of the fetched window the chart actually draws.
@@ -450,7 +451,7 @@ export function WeightScreen() {
                     accessible
                     accessibilityLabel={`${Math.round(progress.fraction * 100)} percent of the way from ${formatWeight(goal.startKg, unit)} to ${formatWeight(goal.targetKg, unit)}`}
                   >
-                    <View style={[styles.goalFill, { width: `${Math.max(progress.fraction, GOAL_BAR_MIN_FILL) * 100}%` }]} />
+                    <AnimatedBarFill percent={Math.max(progress.fraction, GOAL_BAR_MIN_FILL) * 100} style={styles.goalFill} />
                   </View>
 
                   {progress.reached ? (

@@ -9,6 +9,7 @@ import { SpotlightScrim } from './SpotlightOverlay';
 import { ActivityRingsGlyph, ringColor } from './ActivityRingsCard';
 import { RING_ORDER, describeRing } from '../utils/activityRings';
 import type { CardPosition } from '../utils/contextCards';
+import { AnimatedBarFill } from './AnimatedBarFill';
 
 interface Props {
   row: ContextRow;
@@ -184,7 +185,7 @@ export function DayContextRow({ row, onPress, onMarkCooked, cardPosition }: Prop
       )}
       {visual?.type === 'bar' && (
         <View style={styles.barTrack} importantForAccessibility="no-hide-descendants">
-          <View style={[styles.barFill, { width: `${Math.round(visual.fraction * 100)}%`, backgroundColor: barColor }]} />
+          <AnimatedBarFill percent={Math.round(visual.fraction * 100)} style={[styles.barFill, { backgroundColor: barColor }]} />
         </View>
       )}
       {/* One meta chip, shaped like TaskItem's. Every caption these rows can

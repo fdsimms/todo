@@ -101,6 +101,7 @@ import { useFoodLogStore } from '../store/useFoodLogStore';
 import { capitalize } from '../utils/capitalize';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
+import { AnimatedBarFill } from '../components/AnimatedBarFill';
 
 const BAR_HEIGHT = 96;
 // The window the focus summary rows describe. Matches HABIT_DAYS below rather
@@ -784,11 +785,11 @@ export function StatsScreen() {
                       <Text style={styles.habitCount}>{count}/{expected}</Text>
                     </View>
                     <View style={styles.track}>
-                      <View
+                      <AnimatedBarFill
+                        percent={Math.round(rate * 100)}
                         style={[
                           styles.fill,
                           {
-                            width: `${Math.round(rate * 100)}%` as `${number}%`,
                             backgroundColor:
                               rate >= 0.8 ? colors.green :
                               rate >= 0.5 ? colors.orange : colors.red,
