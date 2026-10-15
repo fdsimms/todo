@@ -1,0 +1,1 @@
+{ "message": "Fixed Screen Time blocking not covering websites. Sites picked in a block list are now blocked in Safari too, not just apps.", "date": "2026-10-15" }

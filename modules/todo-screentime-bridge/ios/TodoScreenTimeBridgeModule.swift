@@ -460,6 +460,8 @@ public class TodoScreenTimeBridgeModule: Module {
           let store = ManagedSettingsStore(named: .init(Self.shieldStoreName))
           store.shield.applications = nil
           store.shield.applicationCategories = nil
+          store.shield.webDomains = nil
+          store.shield.webDomainCategories = nil
           cleared = true
         }
         return cleared
