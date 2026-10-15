@@ -796,6 +796,10 @@ export function RecipeToListSheet({
           <SheetUndoBar
             label={pantryUndo.label}
             onUndo={handlePantryUndo}
+            onDismiss={() => {
+              if (pantryUndoTimerRef.current) clearTimeout(pantryUndoTimerRef.current);
+              setPantryUndo(null);
+            }}
             bottom={insets.bottom + spacing.lg}
           />
         )}

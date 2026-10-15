@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTaskStore } from '../store/useTaskStore';
 import { useGroceryStore } from '../store/useGroceryStore';
@@ -10,10 +9,10 @@ import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { InlineAction } from './InlineAction';
+import { BannerBar } from './BannerBar';
 import { TAB_BAR_HEIGHT } from './DemoBanner';
 import { FAB_SIZE } from './Fab';
-import { useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, border, type Colors } from '../theme';
+import { spacing } from '../theme';
 import { haptics } from '../utils/haptics';
 import { freshest, offersOnUndoBar, redoIsCurrent, topOf } from '../utils/undoHistory';
 
@@ -73,9 +72,7 @@ const VISIBLE_MS = 6000;
  * action.
  */
 export function UndoBar() {
-  const { colors, shadows } = useTheme();
   const insets = useSafeAreaInsets();
-  const styles = makeStyles(colors);
   const everyAction = useSettingsStore(s => s.mirroringMode);
 
   const taskAction = useTaskStore(s => topOf(s.undoStack));
@@ -182,47 +179,23 @@ export function UndoBar() {
     shown.run();
   };
 
+  // Swiped away by hand. The action stays undoable by shake, as after the timer.
+  const handleDismiss = () => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    setVisible(false);
+  };
+
   const bottom = insets.bottom + TAB_BAR_HEIGHT + FAB_SIZE + spacing.lg;
 
+  const verb = shown.mode === 'redo' ? 'Redo' : 'Undo';
+
   return (
-    <View style={[styles.wrap, { bottom }]} pointerEvents="box-none">
-      <View style={[styles.bar, shadows.fab]}>
-        <Text style={styles.label} numberOfLines={1}>
-          {shown.mode === 'redo' ? `Undone: ${shown.label}` : shown.label}
-        </Text>
-        <InlineAction
-          label={shown.mode === 'redo' ? 'Redo' : 'Undo'}
-          onPress={handlePress}
-          accessibilityLabel={`${shown.mode === 'redo' ? 'Redo' : 'Undo'} “${shown.label}”`}
-        />
-      </View>
-    </View>
+    <BannerBar
+      bottom={bottom}
+      label={shown.mode === 'redo' ? `Undone: ${shown.label}` : shown.label}
+      labelLines={1}
+      onDismiss={handleDismiss}
+      actions={<InlineAction label={verb} onPress={handlePress} accessibilityLabel={`${verb} “${shown.label}”`} />}
+    />
   );
 }
-
-const makeStyles = (colors: Colors) => StyleSheet.create({
-  wrap: {
-    position: 'absolute',
-    left: spacing.md,
-    right: spacing.md,
-  },
-  bar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-    backgroundColor: colors.bgSecondary,
-    borderRadius: radius.lg,
-    borderWidth: border.md,
-    borderColor: colors.separator,
-    paddingVertical: spacing.sm,
-    paddingLeft: spacing.md,
-    paddingRight: spacing.sm,
-  },
-  label: {
-    flex: 1,
-    color: colors.text,
-    fontSize: font.md,
-    fontWeight: fontWeight.medium,
-  },
-});

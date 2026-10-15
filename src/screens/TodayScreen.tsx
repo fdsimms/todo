@@ -5513,6 +5513,7 @@ export function TodayScreen() {
             bottom={fabBottom + FAB_SIZE + spacing.md}
             onGoToTask={handleCreatedToastGoTo}
             onUndo={handleCreatedToastUndo}
+            onDismiss={dismissCreatedToast}
           />
         )}
 

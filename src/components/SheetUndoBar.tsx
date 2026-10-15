@@ -1,8 +1,6 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
 import { InlineAction } from './InlineAction';
-import { useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, type Colors } from '../theme';
+import { BannerBar } from './BannerBar';
 
 /**
  * The transient "X added. Undo" bar that floats at the bottom of a sheet.
@@ -26,52 +24,25 @@ import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 export function SheetUndoBar({
   label,
   onUndo,
+  onDismiss,
   bottom,
 }: {
   /** What was just done, in the user's words. Truncated to one line. */
   label: string;
   onUndo: () => void;
+  /** Swiped away by hand. */
+  onDismiss?: () => void;
   /** Distance from the bottom of the sheet, safe-area inset included. */
   bottom: number;
 }) {
-  const { colors, shadows } = useTheme();
-  const styles = makeStyles(colors);
-
   return (
-    // box-none so the sheet behind the bar stays tappable either side of it.
-    <View style={[styles.wrap, { bottom }]} pointerEvents="box-none">
-      <View style={[styles.bar, shadows.fab]}>
-        {/* The label takes the row and the button is the fixed-width sibling,
-            never the other way round: an action the user just performed has to
-            be readable to be worth undoing. */}
-        <Text style={styles.label} numberOfLines={1}>{label}</Text>
-        <InlineAction label="Undo" onPress={onUndo} accessibilityLabel={`Undo: ${label}`} />
-      </View>
-    </View>
+    <BannerBar
+      bottom={bottom}
+      label={label}
+      labelLines={1}
+      surface="sunken"
+      onDismiss={onDismiss}
+      actions={<InlineAction label="Undo" onPress={onUndo} accessibilityLabel={`Undo: ${label}`} />}
+    />
   );
 }
-
-const makeStyles = (colors: Colors) => StyleSheet.create({
-  wrap: {
-    position: 'absolute',
-    left: spacing.md,
-    right: spacing.md,
-  },
-  bar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-    backgroundColor: colors.bgSunken,
-    borderRadius: radius.lg,
-    paddingVertical: spacing.sm,
-    paddingLeft: spacing.md,
-    paddingRight: spacing.sm,
-  },
-  label: {
-    flex: 1,
-    color: colors.text,
-    fontSize: font.md,
-    fontWeight: fontWeight.medium,
-  },
-});

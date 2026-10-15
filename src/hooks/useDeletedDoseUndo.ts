@@ -31,5 +31,11 @@ export function useDeletedDoseUndo() {
     setDeleted(null);
   }, [deleted]);
 
-  return { deleted, remember, undo };
+  // Swiped away by hand: the dose stays deleted, the offer to bring it back goes.
+  const dismiss = useCallback(() => {
+    if (timer.current) clearTimeout(timer.current);
+    setDeleted(null);
+  }, []);
+
+  return { deleted, remember, undo, dismiss };
 }

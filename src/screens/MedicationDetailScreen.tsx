@@ -696,6 +696,7 @@ export function MedicationDetailScreen() {
         <SheetUndoBar
           label={`Deleted ${[deletedDose.deleted.name, formatDose(deletedDose.deleted)].filter(Boolean).join(' ')}`}
           onUndo={deletedDose.undo}
+          onDismiss={deletedDose.dismiss}
           bottom={insets.bottom + spacing.md}
         />
       )}
