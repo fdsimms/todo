@@ -3403,6 +3403,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const commitSubtask = (title: string): DraftSubtask[] => {
     const trimmed = title.trim();
     if (!trimmed) return draftSubtasks;
+    // Fades the new row in and moves the add field down, rather than jumping.
+    animateLayout();
     const index = pendingSubtaskIndex;
     if (task) {
       const created = addSubtask(task.id, trimmed);

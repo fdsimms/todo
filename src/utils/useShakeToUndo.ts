@@ -10,6 +10,7 @@ import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { isAppLocked } from '../store/useAppLockStore';
 import { haptics } from './haptics';
+import { animateLayout } from './layoutAnimation';
 import {
   createShakeState,
   armShakeState,
@@ -113,9 +114,14 @@ export function useShakeToUndo(enabled: boolean): void {
         if (canRedo && redoStore) {
           buttons.push({
             text: `Redo “${redoEntry!.label}”`,
-            onPress: async () => {
+            // A tap rather than success, and not awaited. The layout animation
+            // lets whatever comes back (or goes again) open and close in place
+            // rather than snapping, which matters most for a row restored after
+            // it had already left the list.
+            onPress: () => {
               confirmOpenRef.current = false;
-              await haptics.success();
+              haptics.tap();
+              animateLayout();
               redoStore.redoLastUndone();
             },
           });
@@ -124,9 +130,10 @@ export function useShakeToUndo(enabled: boolean): void {
           buttons.push({
             text: 'Undo',
             style: 'destructive',
-            onPress: async () => {
+            onPress: () => {
               confirmOpenRef.current = false;
-              await haptics.success();
+              haptics.tap();
+              animateLayout();
               undoStore.undoLastAction();
             },
           });

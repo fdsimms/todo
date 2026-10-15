@@ -106,6 +106,7 @@ Where each component can appear.
 - `src/components/ChainStepLinkSheet.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, MedicationDetailScreen, MedicationScreen, MetersScreen, PersonDetailScreen, ProjectDetailScreen, RemindersScreen, SavedViewDetailScreen, SearchScreen, StackDetailScreen, +5 more
 - `src/components/ChainStepMedicationSheet.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, MedicationDetailScreen, MedicationScreen, MetersScreen, PersonDetailScreen, ProjectDetailScreen, RemindersScreen, SavedViewDetailScreen, SearchScreen, StackDetailScreen, +5 more
 - `src/components/ChainStepQuestionSheet.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, MedicationDetailScreen, MedicationScreen, MetersScreen, PersonDetailScreen, ProjectDetailScreen, RemindersScreen, SavedViewDetailScreen, SearchScreen, StackDetailScreen, +5 more
+- `src/components/CheckPop.tsx` — on CalendarScreen, CategoryDetailScreen, GroceryScreen, ProjectDetailScreen, SavedViewDetailScreen, StackDetailScreen, TagsScreen, TodayScreen
 - `src/components/ChipFilterSheet.tsx` — on LogbookScreen, MoodHistoryScreen, RecipesScreen
 - `src/components/ChoiceMenuChip.tsx` — on ArchivedScreen, AutomationsScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, MedicationDetailScreen, MedicationScreen, MetersScreen, PersonDetailScreen, ProjectDetailScreen, RemindersScreen, SavedViewDetailScreen, +9 more
 - `src/components/ClipboardPhotoOffer.tsx` — on GroceryScreen, KitchenScreen, RecipeDetailScreen, RecipesScreen, TodayScreen
@@ -349,6 +350,7 @@ Where each component can appear.
 - `src/components/StepQuestion.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, MedicationDetailScreen, MedicationScreen, MetersScreen, PersonDetailScreen, ProjectDetailScreen, RemindersScreen, SavedViewDetailScreen, SearchScreen, StackDetailScreen, +5 more
 - `src/components/StepText.tsx` — on RecipeDetailScreen
 - `src/components/StepTimerRow.tsx` — on RecipeDetailScreen
+- `src/components/StrikeReveal.tsx` — on CalendarScreen, CategoryDetailScreen, ProjectDetailScreen, SavedViewDetailScreen, StackDetailScreen, TagsScreen, TodayScreen
 - `src/components/SubstituteSheet.tsx` — on BackfillScreen, GroceryScreen, KitchenScreen, MealPlanScreen, RecipeDetailScreen
 - `src/components/SuggestMealsSheet.tsx` — on MealPlanScreen
 - `src/components/SuggestedPinsSheet.tsx` — on TodayScreen

@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { ContextRow } from '../types';
@@ -10,6 +10,7 @@ import { ActivityRingsGlyph, ringColor } from './ActivityRingsCard';
 import { RING_ORDER, describeRing } from '../utils/activityRings';
 import type { CardPosition } from '../utils/contextCards';
 import { ProgressBar } from './ProgressBar';
+import { CheckPop } from './CheckPop';
 
 interface Props {
   row: ContextRow;
@@ -102,6 +103,31 @@ export function DayContextRow({ row, onPress, onMarkCooked, cardPosition }: Prop
   const { colors, shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
+  // A cooked meal leaves Today, and it used to leave on the tap itself, so the
+  // box never showed a check at all. It now checks (the same pop a task's
+  // circle gives) and hands off a beat later, once the check has been seen.
+  // A row unmounted inside that beat (a tab switch, the list changing) still
+  // counts the tap: the cleanup sends it on the way out.
+  const [marked, setMarked] = useState(false);
+  const pendingMark = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onMarkRef = useRef(onMarkCooked);
+  onMarkRef.current = onMarkCooked;
+  useEffect(() => () => {
+    if (pendingMark.current === null) return;
+    clearTimeout(pendingMark.current);
+    pendingMark.current = null;
+    onMarkRef.current?.();
+  }, []);
+  const markCooked = () => {
+    if (marked) return;
+    haptics.success();
+    setMarked(true);
+    pendingMark.current = setTimeout(() => {
+      pendingMark.current = null;
+      onMarkRef.current?.();
+    }, MARK_COOKED_BEAT_MS);
+  };
+
   // Three sources now, each with a glyph fixed per kind. `footsteps-outline`
   // rather than the heart the Settings group wears: a heart at 16pt in a list
   // of tasks reads as a favourite, and what the row is about is walking
@@ -125,14 +151,22 @@ export function DayContextRow({ row, onPress, onMarkCooked, cardPosition }: Prop
   const leading = onMarkCooked ? (
     <TouchableOpacity
       style={styles.slot}
-      onPress={() => { haptics.success(); onMarkCooked(); }}
+      onPress={markCooked}
+      disabled={marked}
       activeOpacity={interaction.activeOpacity}
       hitSlop={{ top: 12, bottom: 12, left: spacing.md, right: 12 }}
       accessibilityRole="button"
       accessibilityLabel={`Mark ${row.title} cooked`}
     >
-      <View style={styles.glyphBox}>
-        <Ionicons name={glyphName} size={GLYPH_SIZE} color={colors.textSecondary} />
+      <View>
+        <CheckPop checked={marked} style={styles.glyphBox} checkedStyle={styles.glyphBoxDone} popScale={1.35}>
+          <Ionicons name="checkmark" size={GLYPH_SIZE} color={colors.onDone} />
+        </CheckPop>
+        {!marked && (
+          <View pointerEvents="none" style={styles.glyphOver}>
+            <Ionicons name={glyphName} size={GLYPH_SIZE} color={colors.textSecondary} />
+          </View>
+        )}
       </View>
     </TouchableOpacity>
   ) : (
@@ -313,6 +347,8 @@ export function DayContextRow({ row, onPress, onMarkCooked, cardPosition }: Prop
  */
 const GLYPH_BOX_SIZE = 22;
 const GLYPH_SIZE = 13;
+/** How long a cooked meal's check shows before the row leaves: the pop, then a beat. */
+const MARK_COOKED_BEAT_MS = 420;
 
 /** The Activity rings at the row's trailing edge: three 6pt arcs, 2pt apart. */
 const RINGS_SIZE = 52;
@@ -376,6 +412,21 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderCurve: 'continuous',
     borderWidth: border.md,
     borderColor: colors.controlBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // A tick on the box before a cooked meal leaves (see markCooked).
+  glyphBoxDone: {
+    backgroundColor: colors.done,
+    borderColor: colors.done,
+  },
+  // The meal glyph, laid over CheckPop's box.
+  glyphOver: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },

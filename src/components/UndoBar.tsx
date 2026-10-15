@@ -14,6 +14,7 @@ import { TAB_BAR_HEIGHT } from './DemoBanner';
 import { FAB_SIZE } from './Fab';
 import { spacing } from '../theme';
 import { haptics } from '../utils/haptics';
+import { animateLayout } from '../utils/layoutAnimation';
 import { freshest, offersOnUndoBar, redoIsCurrent, topOf } from '../utils/undoHistory';
 
 /** What the bar is currently offering: the undo of an action, or its redo. */
@@ -176,7 +177,9 @@ export function UndoBar() {
     if (timerRef.current) clearTimeout(timerRef.current);
     setVisible(false);
     // tap, not success: undoing takes something back rather than finishing it.
+    // The layout animation lets a restored row open back up in place.
     haptics.tap();
+    animateLayout();
     shown.run();
   };
 
