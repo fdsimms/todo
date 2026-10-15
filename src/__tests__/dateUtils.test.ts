@@ -749,6 +749,19 @@ describe('getNextDueDate', () => {
     expect(result.getDate()).toBe(28);
   });
 
+  it('monthly with recurrenceMonthDay=-2 lands on the second-to-last day and moves forward', () => {
+    // Oct 30 is the second-to-last day of October; the successor must be Nov 29, not Oct 29.
+    const task: Task = {
+      ...baseTask,
+      recurrenceType: 'monthly',
+      recurrenceMonthDay: -2,
+      dueDate: new Date(2025, 9, 30, 0, 0, 0).toISOString(),
+    };
+    const result = getNextDueDate(task, '00:00')!;
+    expect(result.getMonth()).toBe(10); // November
+    expect(result.getDate()).toBe(29);
+  });
+
   it('monthly with recurrenceWeekOrdinal picks the Nth weekday next month when already past it', () => {
     // NOW is June 10 (Tuesday). The 2nd Tuesday of June (the 10th) is today's
     // due date, so the next occurrence is the 2nd Tuesday of July.

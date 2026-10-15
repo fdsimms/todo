@@ -1,0 +1,1 @@
+{ "message": "Search now ignores accents and curly apostrophes (\"resume\" finds \"résumé\"), and an exact title no longer gets pushed off Quick Search by looser matches. An imported \"second-to-last day of the month\" repeat now lands on the right day.", "date": "2026-10-15" }

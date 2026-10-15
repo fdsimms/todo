@@ -11,8 +11,8 @@ import { startOfDay } from 'date-fns/startOfDay';
 import { startOfMonth } from 'date-fns/startOfMonth';
 import type { Day } from 'date-fns';
 import type { Priority, QuotaPeriod, RecurrenceType, TimeOfDay, WeatherCondition } from '../types';
-import { extractDayPart, extractTime, MONTHS, monthDay, NUMBER_WORD_ALT, NUMBER_WORDS, parseCount, parseDatePart, WEEKDAYS, type ClockTime } from './parseNaturalDate';
-import { onLogicalDay, taskDayStart } from './clockTime';
+import { clockBesideDayPart, dayPartBesideClock, extractDayPart, extractTime, MONTHS, monthDay, NUMBER_WORD_ALT, NUMBER_WORDS, parseCount, parseDatePart, WEEKDAYS, type ClockTime } from './parseNaturalDate';
+import { logicalDayStart, onLogicalDay, taskDayStart } from './clockTime';
 import { looksLikePhoneNumber } from './phone';
 
 /**
@@ -157,6 +157,9 @@ const DAY_PART_SEGMENT: Record<string, TimeOfDay> = {
   evening: 'evening',
   night: 'evening',
 };
+
+// See parseSuffix: a day-part word with more of the phrase after it.
+const LEADING_DAY_PART = /^(?:morning|afternoon|evening|night)\s/;
 
 // A bare one-word suffix is only trusted when it's unambiguously a schedule
 // word. Weekday abbreviations ("mon", "sat", "wed") are accepted even though
@@ -508,7 +511,7 @@ function parseRecurrenceSuffix(text: string, now: Date): ParsedSchedule | null {
   const endMatch = extractEndCondition(t, now);
   if (endMatch) t = endMatch.rest;
 
-  const starting = extractStartingClause(t, now);
+  let starting = extractStartingClause(t, now);
   const core = starting ? starting.rest : t;
 
   // A bare duration clause with no recurrence phrase in front of it ("wear
@@ -526,11 +529,17 @@ function parseRecurrenceSuffix(text: string, now: Date): ParsedSchedule | null {
     let segments: TimeOfDay[];
     let rest: string;
     let explicitClockTime: ClockTime | null = null;
+    // A day part said with the clock time ("every tuesday night at 8pm"),
+    // tried after the phrase as said since "every night" is itself the unit.
+    let withoutPart: string | null = null;
     const clock = extractTime(core);
     if (clock) {
-      segments = [segmentForHour(clock.time.h)];
+      const beside = dayPartBesideClock(clock.rest);
+      const read = clockBesideDayPart(clock, beside.part);
+      segments = [segmentForHour(read.time.h)];
       rest = clock.rest;
-      explicitClockTime = clock.time;
+      if (beside.rest !== clock.rest) withoutPart = beside.rest;
+      explicitClockTime = read.time;
     } else {
       const part = extractDayPart(core);
       if (!part) return null;
@@ -542,8 +551,19 @@ function parseRecurrenceSuffix(text: string, now: Date): ParsedSchedule | null {
     // both category and tags) — so a leftover one is left in place and, same
     // as any other stray character, correctly fails the anchored match below
     // rather than being silently swallowed.
-    rest = rest.replace(/\bat\b/g, ' ').replace(/\bin the\b/g, ' ').replace(/\s+/g, ' ').trim();
-    schedule = matchRecurrenceCore(rest, now, segments);
+    const tidy = (s: string) => s.replace(/\bat\b/g, ' ').replace(/\bin the\b/g, ' ').replace(/\s+/g, ' ').trim();
+    for (const candidate of withoutPart !== null ? [rest, withoutPart] : [rest]) {
+      // "every day starting tomorrow at 9am": the clock time sat inside the
+      // starting clause, which can't read one, so the clause is tried again
+      // once the time is out.
+      const tidied = tidy(candidate);
+      const late = starting ? null : extractStartingClause(tidied, now);
+      schedule = matchRecurrenceCore(late ? late.rest : tidied, now, segments);
+      if (schedule) {
+        if (late) starting = late;
+        break;
+      }
+    }
     if (schedule) schedule = { ...schedule, explicitClockTime };
   }
   if (!schedule) return null;
@@ -667,7 +687,19 @@ function betweenStart(hour: number, minute: number, meridiem: string | undefined
 }
 
 /** Try to parse an entire suffix as a one-off date/time or recurrence phrase. */
-function parseSuffix(text: string, now: Date, singleWord: boolean, clockNow: Date = now): ParsedSchedule | null {
+function parseSuffix(
+  text: string,
+  now: Date,
+  singleWord: boolean,
+  clockNow: Date = now,
+  dayResetTime?: string,
+): ParsedSchedule | null {
+  // A day part comes after the day it qualifies ("friday night"), so one
+  // opening the phrase belongs to the title: "game night friday" is a game
+  // night on Friday, not a game on Friday night. Refused here, the shorter
+  // suffix after it is the schedule.
+  if (LEADING_DAY_PART.test(text)) return null;
+
   // Recurrence first — it owns the "every"/plural/frequency-word triggers.
   const rec = parseRecurrenceSuffix(text, now);
   if (rec) return rec;
@@ -715,6 +747,9 @@ function parseSuffix(text: string, now: Date, singleWord: boolean, clockNow: Dat
     t = clock.rest;
     hasTime = true;
     explicitClockTime = clock.time;
+    // "between 2:30 and 4:30": with neither end marked, the window is as
+    // unmarked as a lone "at 4:30", and the flip below moves both ends.
+    ambiguousClock = clock.ambiguous === true && !between[3];
   } else if (connector?.[1] === 'after') {
     if (!clock) return null;
     windowStart = hhmm(clock.time);
@@ -723,11 +758,15 @@ function parseSuffix(text: string, now: Date, singleWord: boolean, clockNow: Dat
     hasTime = true;
     explicitClockTime = clock.time;
   } else if (clock) {
-    segments = [segmentForHour(clock.time.h)];
-    t = clock.rest;
+    // "tomorrow night at 8pm": the day part goes with the clock time, and says
+    // which half of the day an unmarked one is in.
+    const beside = dayPartBesideClock(clock.rest);
+    const read = clockBesideDayPart(clock, beside.part);
+    segments = [segmentForHour(read.time.h)];
+    t = beside.rest;
     hasTime = true;
-    explicitClockTime = clock.time;
-    ambiguousClock = clock.ambiguous === true;
+    explicitClockTime = read.time;
+    ambiguousClock = read.ambiguous;
   } else {
     const part = extractDayPart(t);
     if (part) {
@@ -777,7 +816,8 @@ function parseSuffix(text: string, now: Date, singleWord: boolean, clockNow: Dat
   } else if (titleDate) {
     due = dueAt(titleDate);
   } else {
-    due = dueAt(now); // time-only input ("at 3pm") → today
+    // Time-only input ("at 3pm") → today.
+    due = dueAt(explicitClockTime ? bareClockDay(explicitClockTime, now, clockNow, dayResetTime) : now);
   }
 
   // "today at 5:30" typed at 9am means 5:30 PM: an unmarked clock that has
@@ -787,6 +827,12 @@ function parseSuffix(text: string, now: Date, singleWord: boolean, clockNow: Dat
     if (at.getTime() <= clockNow.getTime() && explicitClockTime.h < 12) {
       explicitClockTime = { h: explicitClockTime.h + 12, m: explicitClockTime.m };
       segments = [segmentForHour(explicitClockTime.h)];
+      if (windowStart) {
+        // betweenStart put the start before an AM end, so it's AM too.
+        const [h, m] = windowStart.split(':').map(Number);
+        windowStart = hhmm({ h: h + 12, m });
+        segments = [segmentForHour(h + 12)];
+      }
     }
   }
 
@@ -804,14 +850,33 @@ function parseSuffix(text: string, now: Date, singleWord: boolean, clockNow: Dat
 }
 
 /**
+ * The logical day a clock time with no date ("at 3pm") goes on. Normally the
+ * logical today, where a time already past stays. In the grace window before
+ * dayResetTime the calendar has already turned, so the reading goes on the
+ * real date and takes whichever logical day that instant is in: "at 3pm" typed
+ * at 1:30 AM under a 2 AM reset is this afternoon rather than the afternoon
+ * already gone, and "at 1:45" is still the end of the day not yet over. Without
+ * the reset there is no telling the two apart, so today it stays.
+ */
+function bareClockDay(clock: ClockTime, now: Date, clockNow: Date, dayResetTime?: string): Date {
+  if (!dayResetTime || isSameDay(now, clockNow)) return now;
+  const at = new Date(clockNow.getFullYear(), clockNow.getMonth(), clockNow.getDate(), clock.h, clock.m);
+  return logicalDayStart(at, dayResetTime);
+}
+
+/**
  * `now` is the logical now (`getLogicalNow`) and `clockNow` the real instant,
  * which "in 2 hours" and "tonight" count from; see parseDatePart. Omit it
  * outside a caller that knows both, where they are the same instant.
+ *
+ * `dayResetTime` places a clock time given without a date in the grace window
+ * (see bareClockDay). A caller with the setting to hand passes it.
  */
 export function parseTaskInput(
   input: string,
   now: Date = new Date(),
   clockNow: Date = now,
+  dayResetTime?: string,
   /** The task is already a don't-do habit, so a closing "until 4pm" is its end time even without a "don't" in front. */
   avoids = false,
 ): ParsedTaskInput | null {
@@ -826,12 +891,12 @@ export function parseTaskInput(
   // An input that is entirely a schedule phrase ("on tuesday", "every monday")
   // stays a literal title — quick add needs a title, and it's almost always
   // mid-typing.
-  if (parseSuffix(lower.trim(), now, false, clockNow)) return null;
+  if (parseSuffix(lower.trim(), now, false, clockNow, dayResetTime)) return null;
 
   for (let i = 1; i < tokens.length; i++) {
     const start = tokens[i].index!;
     const suffix = lower.slice(start).trim();
-    const schedule = parseSuffix(suffix, now, i === tokens.length - 1, clockNow);
+    const schedule = parseSuffix(suffix, now, i === tokens.length - 1, clockNow, dayResetTime);
     if (schedule) {
       // A set of dates can't be a deadline (see parseSuffix), so once "by the
       // 10th and the 15th" has been refused whole, no shorter suffix of it may
@@ -1506,12 +1571,18 @@ export function parseRainSkipInput(input: string): ParsedRainSkip | null {
  * A one-off date is read the same way: the phrase then stays in the title,
  * which is where it would have stayed anyway, and the date isn't lost to it.
  */
-export function parseTaskInputAheadOfRainSkip(input: string, now: Date = new Date(), clockNow: Date = now, avoids = false): ParsedTaskInput | null {
-  const direct = parseTaskInput(input, now, clockNow, avoids);
+export function parseTaskInputAheadOfRainSkip(
+  input: string,
+  now: Date = new Date(),
+  clockNow: Date = now,
+  dayResetTime?: string,
+  avoids = false,
+): ParsedTaskInput | null {
+  const direct = parseTaskInput(input, now, clockNow, dayResetTime, avoids);
   if (direct) return direct;
   const rain = parseRainSkipInput(input);
   if (!rain || input.slice(rain.matchEnd).trim()) return null;
-  const parsed = parseTaskInput(input.slice(0, rain.matchStart), now, clockNow, avoids);
+  const parsed = parseTaskInput(input.slice(0, rain.matchStart), now, clockNow, dayResetTime, avoids);
   if (!parsed) return null;
   return { ...parsed, cleanTitle: `${parsed.cleanTitle} ${input.slice(rain.matchStart, rain.matchEnd)}` };
 }
@@ -2725,6 +2796,11 @@ export function describeSchedule(s: ParsedSchedule, now: Date = new Date()): str
  * a midnight reset the two agree, so quick add, the list line parser and the
  * MCP server all read the moment off this rather than each copying the hours
  * onto the date.
+ *
+ * Midnight is the end of the day it's placed on under every reset. A later
+ * reset already gets that from onLogicalDay; under a midnight reset 00:00 is
+ * the day's own start, so "deploy at midnight" typed at 8 AM set a reminder
+ * eight hours in the past.
  */
 export function scheduleClockInstant(
   schedule: Pick<ParsedSchedule, 'dueDate' | 'explicitClockTime'>,
@@ -2733,5 +2809,8 @@ export function scheduleClockInstant(
   const clock = schedule.explicitClockTime;
   if (!clock) return null;
   const hhmm = `${String(clock.h).padStart(2, '0')}:${String(clock.m).padStart(2, '0')}`;
-  return onLogicalDay(taskDayStart(new Date(schedule.dueDate), dayResetTime), hhmm);
+  const dayStart = taskDayStart(new Date(schedule.dueDate), dayResetTime);
+  const at = onLogicalDay(dayStart, hhmm);
+  if (hhmm === '00:00' && at.getTime() === dayStart.getTime()) at.setDate(at.getDate() + 1);
+  return at;
 }

@@ -341,11 +341,12 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   const travelTasksOn = useSettingsStore(s => s.travelTasks);
   const travelEstimatesOn = useSettingsStore(s => s.travelEstimates);
   const defaultTravelMode = useSettingsStore(s => s.travelMode);
+  const defaultArriveEarly = useSettingsStore(s => s.travelArriveEarlyMinutes);
   const walkUnderMinutes = useSettingsStore(s => s.travelWalkUnderMinutes);
   const defaultOriginPlaceId = useSettingsStore(s => s.travelOriginPlaceId);
   const setTravelEventPref = useSettingsStore(s => s.setTravelEventPref);
   const [travelModePick, setTravelModePick] = useState<TravelMode | null>(null);
-  const [arriveEarlyPick, setArriveEarlyPick] = useState(0);
+  const [arriveEarlyPick, setArriveEarlyPick] = useState<number | null>(null);
   const [travelOriginPick, setTravelOriginPick] = useState<string | null>(null);
   const [originPickerVisible, setOriginPickerVisible] = useState(false);
   const [travelModePickerVisible, setTravelModePickerVisible] = useState(false);
@@ -419,7 +420,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     setAlertPick(alertMinutesFromOffset(event.alertOffset, event.allDay));
     const travelPref = useSettingsStore.getState().travelEventPrefs[target.eventId];
     setTravelModePick(travelPref?.mode ?? null);
-    setArriveEarlyPick(travelPref?.arriveEarlyMinutes ?? 0);
+    setArriveEarlyPick(travelPref?.arriveEarlyMinutes ?? null);
     setTravelOriginPick(travelPref?.originPlaceId ?? null);
     setAvailabilityPick(event.availability);
     const people = peopleForEvent({ id: target.eventId, start: event.start.toISOString() });
@@ -453,7 +454,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     setCalendarPickerVisible(false);
     setAlertPickerVisible(false);
     setTravelModePick(null);
-    setArriveEarlyPick(0);
+    setArriveEarlyPick(null);
     setTravelOriginPick(null);
     setOriginPickerVisible(false);
     setTravelModePickerVisible(false);
@@ -502,6 +503,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
       now: getLogicalNow(dayResetTime),
       today: getCurrentDayStart(),
       wallClock: new Date(),
+      dayResetTime,
       mentionOverrides: personOverrides,
       travel: travelTasksOn,
       originPlaces: originCandidates(savedPlaces).map(p => ({ id: p.id, name: p.name })),
@@ -522,7 +524,10 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   // A trip clause typed in the line is live, like a typed alert: it wins over
   // the chip's pick, and a chip pick takes it out of the line (`cutFromLine`).
   const effectiveTravelMode = draft.travelMode ?? travelModePick;
+  // Null follows the Settings default, so the sheet never writes the default
+  // back as the event's own pick.
   const effectiveArriveEarly = draft.arriveEarlyMinutes ?? arriveEarlyPick;
+  const shownArriveEarly = effectiveArriveEarly ?? defaultArriveEarly;
   const effectiveTravelOrigin = draft.travelOriginId ?? travelOriginPick;
   // A typed "note: …" fills the Notes field; editing the field takes it out of the line.
   const effectiveNotes = draft.notes ?? notesOrLink;
@@ -1058,7 +1063,10 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
       : `Settings default (${TRAVEL_MODE_LABELS[defaultTravelMode]})` },
     ...TRAVEL_MODES.map(m => ({ key: m, label: TRAVEL_MODE_LABELS[m] })),
   ];
-  const arriveOptions: EventOption[] = TRAVEL_ARRIVE_CHOICES.map(m => ({ key: String(m), label: describeArrival(m) }));
+  const arriveOptions: EventOption[] = [
+    { key: 'default', label: `Settings default (${describeArrival(defaultArriveEarly)})` },
+    ...TRAVEL_ARRIVE_CHOICES.map(m => ({ key: String(m), label: describeArrival(m) })),
+  ];
   // Only for an event with a place and a time, the only kind a "Leave for" task is written for.
   // A trip clause typed in the line shows its chip even before a place is named.
   const typedTrip = draft.travelMode !== undefined || draft.arriveEarlyMinutes !== undefined || draft.travelOriginId !== undefined;
@@ -1464,15 +1472,15 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.toolChip, styles.toolChipWide, effectiveArriveEarly !== 0 && styles.toolChipSet]}
+                  style={[styles.toolChip, styles.toolChipWide, effectiveArriveEarly !== null && styles.toolChipSet]}
                   onPress={() => { haptics.tap(); Keyboard.dismiss(); setArrivePickerVisible(true); }}
                   activeOpacity={interaction.activeOpacity}
                   accessibilityRole="button"
-                  accessibilityLabel={`Arrive: ${describeArrival(effectiveArriveEarly)}`}
+                  accessibilityLabel={`Arrive: ${describeArrival(shownArriveEarly)}`}
                 >
-                  <Ionicons name="flag-outline" size={iconSize.sm} color={effectiveArriveEarly !== 0 ? colors.accent : colors.textSecondary} />
-                  <Text style={[styles.toolChipText, effectiveArriveEarly !== 0 && styles.toolChipTextSet]} numberOfLines={1}>
-                    {describeArrival(effectiveArriveEarly)}
+                  <Ionicons name="flag-outline" size={iconSize.sm} color={effectiveArriveEarly !== null ? colors.accent : colors.textSecondary} />
+                  <Text style={[styles.toolChipText, effectiveArriveEarly !== null && styles.toolChipTextSet]} numberOfLines={1}>
+                    {describeArrival(shownArriveEarly)}
                   </Text>
                 </TouchableOpacity>
                 {showOriginChip && (
@@ -1702,10 +1710,10 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
         visible={arrivePickerVisible}
         title="Arrive"
         options={arriveOptions}
-        selectedKey={String(effectiveArriveEarly)}
+        selectedKey={effectiveArriveEarly === null ? 'default' : String(effectiveArriveEarly)}
         onSelect={key => {
           if (draft.arriveSpan) cutFromLine(draft.arriveSpan);
-          setArriveEarlyPick(Number(key));
+          setArriveEarlyPick(key === 'default' ? null : Number(key));
         }}
         onClose={() => setArrivePickerVisible(false)}
       />

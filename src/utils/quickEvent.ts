@@ -417,6 +417,8 @@ export function parseQuickEvent(
      * pulled back a day in the grace window so a parsed "tomorrow" lands right.
      */
     wallClock: Date;
+    /** Places a clock time said without a date in the grace window (parseTaskInput). */
+    dayResetTime?: string;
     /**
      * Read no schedule phrase at all: the user said "not that" to it, so it
      * stays part of the title and the day falls back to the default.
@@ -548,7 +550,7 @@ export function parseQuickEvent(
       // "at 3pm" and "at the park tomorrow" end in a schedule phrase, so they
       // are the time, not the place. Put the place last: "lunch fri 12p at Joe's".
       const endsInTime =
-        !opts.ignoreSchedule && parseTaskInput(`x ${place}`, opts.now, opts.wallClock) !== null;
+        !opts.ignoreSchedule && parseTaskInput(`x ${place}`, opts.now, opts.wallClock, opts.dayResetTime) !== null;
       if (place && !endsInTime) {
         location = place;
         locationSpan = spanOf(locationMatch.index, to);
@@ -566,7 +568,7 @@ export function parseQuickEvent(
   const range = opts.ignoreSchedule || opts.plain ? null : parseClockRange(body);
   const scheduleBody = range ? body.slice(0, range.start) : body;
 
-  const parsed = opts.ignoreSchedule || opts.plain ? null : parseTaskInput(scheduleBody, opts.now, opts.wallClock);
+  const parsed = opts.ignoreSchedule || opts.plain ? null : parseTaskInput(scheduleBody, opts.now, opts.wallClock, opts.dayResetTime);
   const mentions = applyMentionOverrides(
     body,
     matchPersonMentions(body, [...opts.people], [...(opts.groups ?? [])]),

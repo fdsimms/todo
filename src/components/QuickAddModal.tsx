@@ -844,7 +844,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // Read past a trailing "unless it rains" (parseTaskInputAheadOfRainSkip),
   // which would otherwise block the repeat it needs.
   const parsed = useMemo(
-    () => (title.trim() ? parseTaskInputAheadOfRainSkip(title, getLogicalNow(dayResetTime), new Date(), polarity === 'negative') : null),
+    () => (title.trim() ? parseTaskInputAheadOfRainSkip(title, getLogicalNow(dayResetTime), new Date(), dayResetTime, polarity === 'negative') : null),
     [title, dayResetTime, polarity]
   );
   // "pay rent tmrw #home #errand" — one or more "#word" tokens, the first
@@ -1906,6 +1906,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       now: getLogicalNow(dayResetTime),
       today: getCurrentDayStart(),
       wallClock: new Date(),
+      dayResetTime,
       travel: useSettingsStore.getState().travelTasks,
       originPlaces: originCandidates(readSavedPlaces()).map(p => ({ id: p.id, name: p.name })),
       calendars: calendars.map(c => ({ id: c.id, title: c.title })),
@@ -1942,7 +1943,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     if (draft.travelMode !== undefined || draft.arriveEarlyMinutes !== undefined || draft.travelOriginId !== undefined) {
       useSettingsStore.getState().setTravelEventPref(saved.id, {
         mode: draft.travelMode ?? null,
-        arriveEarlyMinutes: draft.arriveEarlyMinutes ?? 0,
+        arriveEarlyMinutes: draft.arriveEarlyMinutes ?? null,
         originPlaceId: draft.travelOriginId ?? null,
       });
     }

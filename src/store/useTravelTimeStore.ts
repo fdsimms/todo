@@ -108,7 +108,8 @@ export const useTravelTimeStore = create<TravelTimeState>((set, get) => ({
         const departAt = travelLeaveAt(event, leadWithArrival(travelLeadFor(event, {
           defaultMinutes: settings.travelLeadMinutes,
           byCalendar: settings.travelLeadByCalendar,
-        }), arriveEarlyFor(event.id, settings.travelEventPrefs))) ?? now;
+          arriveEarlyMinutes: settings.travelArriveEarlyMinutes,
+        }), arriveEarlyFor(event.id, settings.travelEventPrefs, settings.travelArriveEarlyMinutes))) ?? now;
         const origin = originOf(event.id);
         // With a walk-under threshold the walk is asked first and kept when it
         // comes in at or under it; otherwise (too far, or no route on foot)

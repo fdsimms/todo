@@ -1301,7 +1301,7 @@ const TaskItemRow = React.memo(function TaskItem({
   const titleOffer = useMemo(() => {
     if (!expanded || notice || !offerSource || !offerSource.trim()) return null;
     const dayReset = useSettingsStore.getState().dayResetTime;
-    const schedule = parseTaskInput(offerSource, getLogicalNow(dayReset), new Date());
+    const schedule = parseTaskInput(offerSource, getLogicalNow(dayReset), new Date(), dayReset);
     if (schedule) {
       return { kind: 'schedule' as const, parsed: schedule, key: `schedule|${schedule.matchStart}|${schedule.matchedText}` };
     }
