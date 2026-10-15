@@ -11,6 +11,7 @@ import { EmptyState } from '../components/EmptyState';
 import { CardSheet, type CardAnchor } from '../components/CardSheet';
 import { EmptyNote } from '../components/EmptyNote';
 import { InlineAction } from '../components/InlineAction';
+import { SheetHeaderButton } from '../components/SheetHeaderButton';
 import { CoinIcon } from '../components/CoinIcon';
 import { CoinBurst } from '../components/CoinBurst';
 import { TARGET_ICON } from '../components/TargetIcon';
@@ -482,6 +483,20 @@ export function RewardsScreen() {
   // keystroke and drops the field's focus with it.
   const renderDraft = () => (
     <View style={styles.card}>
+      {/* Add/Save and Cancel sit at the top: the form runs several screens
+          long, and at the bottom they were behind the keyboard or off screen. */}
+      <View style={styles.draftHeader}>
+        <SheetHeaderButton label="Cancel" role="cancel" onPress={closeDraft} minWidth={56} />
+        <Text style={styles.draftHeaderTitle} numberOfLines={1}>
+          {draft?.mode === 'edit' ? 'Edit reward' : 'New reward'}
+        </Text>
+        <SheetHeaderButton
+          label={draft?.mode === 'edit' ? 'Save' : 'Add'}
+          onPress={saveDraft}
+          disabled={!canSave}
+          minWidth={56}
+        />
+      </View>
       {draftItem ? (
         <View>
           <Text style={styles.rewardTitle}>{draftItem.title}</Text>
@@ -730,16 +745,14 @@ export function RewardsScreen() {
           })()}
         </>
       )}
-      <View style={[styles.rewardActions, styles.draftActions]}>
-        <InlineAction label={draft?.mode === 'edit' ? 'Save' : 'Add'} icon="checkmark" onPress={saveDraft} disabled={!canSave} />
-        <InlineAction label="Cancel" variant="neutral" onPress={closeDraft} />
-        {draft?.mode === 'edit' && (() => {
-          // Inside the form rather than on the row, so the row's actions fit
-          // one line: Claim, the link, the goal and Edit are the everyday ones.
-          const editing = rewards.find(r => r.id === draft.id);
-          if (!editing) return null;
-          const title = rewardDisplay(editing, sourceOf(editing)).title;
-          return (
+      {draft?.mode === 'edit' && (() => {
+        // Inside the form rather than on the row, so the row's actions fit
+        // one line: Claim, the link, the goal and Edit are the everyday ones.
+        const editing = rewards.find(r => r.id === draft.id);
+        if (!editing) return null;
+        const title = rewardDisplay(editing, sourceOf(editing)).title;
+        return (
+          <View style={[styles.rewardActions, styles.draftActions]}>
             <InlineAction
               label="Delete"
               icon="trash-outline"
@@ -747,9 +760,9 @@ export function RewardsScreen() {
               onPress={() => remove(editing, title)}
               accessibilityLabel={`Delete ${title}`}
             />
-          );
-        })()}
-      </View>
+          </View>
+        );
+      })()}
     </View>
   );
 
@@ -1212,8 +1225,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   rewardTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium },
   note: { color: colors.text, fontSize: font.sm, marginTop: spacing.xxs },
   rewardActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm },
-  // The form's Add/Cancel row sits under the One time only switch, which has no bottom margin of its own.
+  // Delete (edit only) sits under the Linked habit field, which has no bottom margin of its own.
   draftActions: { marginTop: spacing.md },
+  draftHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.xs },
+  draftHeaderTitle: {
+    flex: 1, textAlign: 'center', color: colors.text,
+    fontSize: font.md, fontWeight: fontWeight.semibold,
+  },
   fieldLabel: {
     color: colors.textSecondary,
     fontSize: font.xs,
