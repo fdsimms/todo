@@ -5,8 +5,8 @@ import SwiftUI
 // Shown on the Lock Screen and in the Dynamic Island before an event with a
 // location: a countdown to the moment to leave. Started and ended only by
 // src/utils/leaveLiveActivity.ts, from the live "Leave for X" task, so it
-// ends when that task is finished. Tapping opens the app (the Today view the
-// task is on); there is no button, because finishing the task is the way to
+// ends when that task is finished. Tapping opens that task's editor
+// (`leaveURL`); there is no button, because finishing the task is the way to
 // end it and that needs the app anyway (see TripLiveActivity's Finish note).
 //
 // **It draws two states, and `context.isStale` picks between them**, the way
@@ -21,6 +21,18 @@ import SwiftUI
 @available(iOS 17.0, *)
 private func isTimeToLeave(_ context: ActivityViewContext<LeaveActivityAttributes>) -> Bool {
     context.isStale || context.attributes.leaveAt <= Date()
+}
+
+// `dundundun://task?id=…` (see taskUrlId in src/utils/deepLinks.ts): opens the
+// "Leave for X" task's editor, where the time, the place and the way to finish
+// it (which ends this activity) all are.
+@available(iOS 17.0, *)
+private func leaveURL(_ context: ActivityViewContext<LeaveActivityAttributes>) -> URL? {
+    var components = URLComponents()
+    components.scheme = "dundundun"
+    components.host = "task"
+    components.queryItems = [URLQueryItem(name: "id", value: context.attributes.taskId)]
+    return components.url
 }
 
 @available(iOS 17.0, *)
@@ -105,6 +117,7 @@ struct LeaveLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: LeaveActivityAttributes.self) { context in
             LeaveLockScreenView(context: context)
+                .widgetURL(leaveURL(context))
                 .activityBackgroundTint(WidgetPalette.dark.bgSecondary)
                 .activitySystemActionForegroundColor(WidgetPalette.dark.text)
         } dynamicIsland: { context in
@@ -153,6 +166,7 @@ struct LeaveLiveActivity: Widget {
                 Image(systemName: "figure.walk")
                     .foregroundColor(tint)
             }
+            .widgetURL(leaveURL(context))
             .keylineTint(palette.brand)
         }
     }
