@@ -35,6 +35,7 @@ import {
   formatHHMM,
   formatWindowRemaining,
   getNextOccurrence,
+  getCurrentLogicalDayKey,
 } from '../utils/dateUtils';
 import type { Task } from '../types';
 
@@ -1926,5 +1927,33 @@ describe('a recurring task on a holiday', () => {
   it('leaves an hours rule alone', () => {
     const hours: Task = { ...baseTask, recurrenceType: 'hours', recurrenceInterval: 4, dueDate: new Date(2026, 0, 19, 8).toISOString(), recurrenceHolidays: 'skip' };
     expect(getNextOccurrence(hours)?.gridDate).toBeNull();
+  });
+});
+
+describe('getCurrentLogicalDayKey', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+    settings.dayResetTime = '00:00';
+  });
+
+  it('matches getLogicalDayKey for now', () => {
+    expect(getCurrentLogicalDayKey()).toBe(getLogicalDayKey(new Date()));
+  });
+
+  it('follows the clock across a day boundary', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2026, 0, 10, 23, 59, 59));
+    expect(getCurrentLogicalDayKey()).toBe('2026-01-10');
+    jest.setSystemTime(new Date(2026, 0, 11, 0, 0, 1));
+    expect(getCurrentLogicalDayKey()).toBe('2026-01-11');
+  });
+
+  it('follows a change of dayResetTime within the same millisecond', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2026, 0, 11, 1, 30));
+    settings.dayResetTime = '00:00';
+    expect(getCurrentLogicalDayKey()).toBe('2026-01-11');
+    settings.dayResetTime = '04:00';
+    expect(getCurrentLogicalDayKey()).toBe('2026-01-10');
   });
 });

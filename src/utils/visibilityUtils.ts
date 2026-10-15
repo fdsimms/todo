@@ -1,7 +1,7 @@
 import { addDays } from 'date-fns/addDays';
 import { format } from 'date-fns/format';
 import type { Task, TimeOfDay, Category } from '../types';
-import { getCurrentDayStart, getTaskDayStart, getDayStart, hhmmToDate, getNextDueDate, getLogicalDayKey, dayKeyToDate, formatTimeOfDay } from './dateUtils';
+import { getCurrentDayStart, getTaskDayStart, getDayStart, hhmmToDate, getNextDueDate, getLogicalDayKey, getCurrentLogicalDayKey, dayKeyToDate, formatTimeOfDay } from './dateUtils';
 import { effectiveWindowEndTime, onLogicalDay } from './clockTime';
 import type { ExpiredTaskGraceDays } from './expiredTaskGrace';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -37,7 +37,7 @@ export function isTaskBlocked(task: Task): boolean {
  */
 export function isInPausedProject(task: Pick<Task, 'projectId'>): boolean {
   if (!task.projectId) return false;
-  return isProjectPaused(task.projectId, getLogicalDayKey(new Date()));
+  return isProjectPaused(task.projectId, getCurrentLogicalDayKey());
 }
 
 /**

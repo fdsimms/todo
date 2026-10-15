@@ -52,6 +52,23 @@ export function getCurrentDayStart(): Date {
   return start;
 }
 
+// The key of the current logical day, memoised the way getCurrentDayStart is:
+// the answer is a pure function of the clock reading and the reset time, so a
+// reading taken in the same millisecond under the same reset time can't be
+// stale. Per-task gates (isInPausedProject) ask for it once per project task,
+// twice over on the Later lens, and each ask built a Date, a day start and a
+// string.
+let dayKeyMemo: { now: number; reset: string; key: string } | null = null;
+
+export function getCurrentLogicalDayKey(): string {
+  const now = Date.now();
+  const reset = useSettingsStore.getState().dayResetTime;
+  if (dayKeyMemo && dayKeyMemo.now === now && dayKeyMemo.reset === reset) return dayKeyMemo.key;
+  const key = getLogicalDayKey(new Date(now), reset);
+  dayKeyMemo = { now, reset, key };
+  return key;
+}
+
 /**
  * The logical day (as a `YYYY-MM-DD` key) a real timestamp belongs to —
  * e.g. a task completed at 1am with a 4am dayResetTime keys under
