@@ -12,6 +12,8 @@ import {
   travelRowNote,
   describeTravelEstimate,
   estimatedLeadMinutes,
+  travelDoorFor,
+  clampTravelDoorMinutes,
   estimateFor,
   needsTravelEstimate,
   TRAVEL_ESTIMATE_STALE_MS,
@@ -219,6 +221,55 @@ describe('per-calendar leads', () => {
   });
 });
 
+describe('time to get out the door', () => {
+  const west = event({ id: 'w', calendarId: 'work' });
+  const held = (minutes: number) => ({
+    [travelSourceId(west)]: { minutes, location: '123 Main St', mode: 'transit' as const, origin: 'current', at: NOW.getTime() },
+  });
+  const estimated = (minutes: number) => ({ estimates: held(minutes), mode: 'transit' as const, originKeyFor: () => 'current' });
+  const leaveAt = (leads: Parameters<typeof matchedTravelTasks>[0], est?: ReturnType<typeof estimated>) =>
+    matchedTravelTasks(leads, [west], NOW, HORIZON, {}, est)[0].leaveAt;
+
+  it('adds nothing to a typed lead until a door time is chosen', () => {
+    expect(leaveAt({ defaultMinutes: 30, byCalendar: {} })).toBe('2026-10-05T13:30:00.000Z');
+  });
+
+  it('adds the chosen time to a typed lead', () => {
+    expect(leaveAt({ defaultMinutes: 30, byCalendar: {}, doorMinutes: 10 })).toBe('2026-10-05T13:20:00.000Z');
+  });
+
+  it('keeps the old 5 minute margin on an estimate when none is chosen', () => {
+    expect(leaveAt({ defaultMinutes: 30, byCalendar: {} }, estimated(22))).toBe('2026-10-05T13:30:00.000Z');
+  });
+
+  it('puts the chosen time on an estimate in place of the margin, rounded up to the next 5', () => {
+    expect(leaveAt({ defaultMinutes: 30, byCalendar: {}, doorMinutes: 10 }, estimated(22))).toBe('2026-10-05T13:25:00.000Z');
+    expect(leaveAt({ defaultMinutes: 30, byCalendar: {}, doorMinutes: 0 }, estimated(25))).toBe('2026-10-05T13:35:00.000Z');
+  });
+
+  it('lets the place the trip starts from override the setting, including with 0', () => {
+    const leads = { defaultMinutes: 30, byCalendar: {}, doorMinutes: 10 };
+    expect(leaveAt({ ...leads, doorPlaceFor: () => 15 })).toBe('2026-10-05T13:15:00.000Z');
+    expect(leaveAt({ ...leads, doorPlaceFor: () => 0 })).toBe('2026-10-05T13:30:00.000Z');
+    expect(leaveAt({ ...leads, doorPlaceFor: () => null })).toBe('2026-10-05T13:20:00.000Z');
+  });
+
+  it('resolves place, then setting, then the old default', () => {
+    expect(travelDoorFor(15, 10, true)).toBe(15);
+    expect(travelDoorFor(null, 10, false)).toBe(10);
+    expect(travelDoorFor(undefined, null, true)).toBe(5);
+    expect(travelDoorFor(null, null, false)).toBe(0);
+  });
+
+  it('clamps to the steps and returns null for a value never chosen', () => {
+    expect(clampTravelDoorMinutes(12)).toBe(10);
+    expect(clampTravelDoorMinutes(-5)).toBe(0);
+    expect(clampTravelDoorMinutes(500)).toBe(30);
+    expect(clampTravelDoorMinutes(undefined)).toBeNull();
+    expect(clampTravelDoorMinutes('10')).toBeNull();
+  });
+});
+
 describe('travelSourceStart', () => {
   it('reads the start back out of the occurrence key', () => {
     expect(travelSourceStart(travelSourceId(event()))).toBe(Date.parse('2026-10-05T14:00:00.000Z'));
@@ -355,7 +406,7 @@ describe('travel estimates', () => {
 
 describe('travel origin', () => {
   const place = (over: Partial<SavedPlace> = {}): SavedPlace => ({
-    id: 'p1', name: 'Home', text: '1 Home St', latitude: 40.7128, longitude: -74.006, moodTag: false, ...over,
+    id: 'p1', name: 'Home', text: '1 Home St', latitude: 40.7128, longitude: -74.006, moodTag: false, doorMinutes: null, ...over,
   });
 
   it('is where the phone is when no place is chosen', () => {
@@ -364,7 +415,7 @@ describe('travel origin', () => {
   });
 
   it('is the chosen place, with its pin', () => {
-    expect(travelOriginFor('p1', [place()])).toEqual({ name: 'Home', latitude: 40.7128, longitude: -74.006 });
+    expect(travelOriginFor('p1', [place()])).toEqual({ name: 'Home', latitude: 40.7128, longitude: -74.006, doorMinutes: null });
   });
 
   it('falls back to where the phone is for a place that was removed or has no pin', () => {
@@ -386,8 +437,8 @@ describe('travel origin', () => {
 });
 
 describe('travelOriginForEvent', () => {
-  const home: SavedPlace = { id: 'home', name: 'Home', text: '1 Home St', latitude: 40.7128, longitude: -74.006, moodTag: false };
-  const work: SavedPlace = { id: 'work', name: 'Work', text: '2 Work Ave', latitude: 40.75, longitude: -73.99, moodTag: false };
+  const home: SavedPlace = { id: 'home', name: 'Home', text: '1 Home St', latitude: 40.7128, longitude: -74.006, moodTag: false, doorMinutes: null };
+  const work: SavedPlace = { id: 'work', name: 'Work', text: '2 Work Ave', latitude: 40.75, longitude: -73.99, moodTag: false, doorMinutes: null };
   const places = [home, work];
   const pick = (originPlaceId: string | null) =>
     parseTravelEventPrefs({ 'evt-1': { mode: null, arriveEarlyMinutes: 5, originPlaceId } });

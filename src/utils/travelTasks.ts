@@ -51,6 +51,22 @@ export const TRAVEL_WALK_UNDER_MAX = 60;
 export const TRAVEL_WALK_UNDER_STEP = 5;
 export const TRAVEL_WALK_UNDER_SUGGESTED = 20;
 
+/**
+ * The time to get out the door, the `travelDoorMinutes` setting and a saved
+ * place's own `doorMinutes`: the minutes between "time to go" and being on the
+ * street (elevator, lobby, shoes), which no estimate or typed trip counts.
+ * Null means nothing was chosen; `travelDoorFor` says what that falls back to.
+ */
+export const TRAVEL_DOOR_MINUTES_MAX = 30;
+export const TRAVEL_DOOR_MINUTES_STEP = 5;
+
+/** A door time clamped to its steps, null for a value that was never chosen. */
+export function clampTravelDoorMinutes(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  const stepped = Math.round(value / TRAVEL_DOOR_MINUTES_STEP) * TRAVEL_DOOR_MINUTES_STEP;
+  return Math.min(TRAVEL_DOOR_MINUTES_MAX, Math.max(0, stepped));
+}
+
 /** How a trip is estimated; the `travelMode` setting. */
 export type TravelMode = 'driving' | 'transit' | 'walking';
 export const TRAVEL_MODES: readonly TravelMode[] = ['driving', 'transit', 'walking'];
@@ -158,10 +174,25 @@ export function leadWithArrival(leadMinutes: number, arriveEarlyMinutes: number)
 }
 
 /**
- * Added to an estimate before it becomes a reminder: a few minutes to get out
- * the door, which no routing estimate counts.
+ * What an estimate has always had added when no door time was chosen: a few
+ * minutes to get out the door, which no routing estimate counts. A typed lead
+ * had nothing added, and stays that way until one is chosen, so a person who
+ * never opens the setting keeps the reminders they have.
  */
 export const TRAVEL_ESTIMATE_MARGIN_MINUTES = 5;
+
+/**
+ * The minutes added to a trip for getting out the door: the place the trip
+ * starts from, else the setting, else (nothing chosen anywhere) the old
+ * default, which is the margin for an estimate and nothing for a typed lead.
+ */
+export function travelDoorFor(
+  placeMinutes: number | null | undefined,
+  settingMinutes: number | null | undefined,
+  estimated: boolean,
+): number {
+  return placeMinutes ?? settingMinutes ?? (estimated ? TRAVEL_ESTIMATE_MARGIN_MINUTES : 0);
+}
 
 /** How old an estimate may be before the next trigger asks again; traffic and transit move. */
 export const TRAVEL_ESTIMATE_STALE_MS = 20 * 60 * 1000;
@@ -200,6 +231,8 @@ export interface TravelOrigin {
   name: string;
   latitude: number;
   longitude: number;
+  /** The place's own door time (`SavedPlace.doorMinutes`), or null to use the setting. */
+  doorMinutes: number | null;
 }
 
 /** The saved places a trip can start from: only those with a map pin, since an address alone has no coordinate to send. */
@@ -217,7 +250,7 @@ export function travelOriginFor(placeId: string | null, places: readonly SavedPl
   if (!placeId) return null;
   const place = originCandidates(places).find(p => p.id === placeId);
   if (!place || place.latitude === null || place.longitude === null) return null;
-  return { name: place.name, latitude: place.latitude, longitude: place.longitude };
+  return { name: place.name, latitude: place.latitude, longitude: place.longitude, doorMinutes: place.doorMinutes };
 }
 
 /**
@@ -274,12 +307,12 @@ export function estimateFor(
 }
 
 /**
- * The reminder lead an estimate gives: the trip plus the margin, rounded up to
+ * The reminder lead an estimate gives: the trip plus the door time, rounded up to
  * the stepper's 5 minutes and clamped to its range, so an estimated lead is a
  * number the user could have typed.
  */
-export function estimatedLeadMinutes(minutes: number): number {
-  const padded = Math.max(0, minutes) + TRAVEL_ESTIMATE_MARGIN_MINUTES;
+export function estimatedLeadMinutes(minutes: number, doorMinutes = TRAVEL_ESTIMATE_MARGIN_MINUTES): number {
+  const padded = Math.max(0, minutes) + doorMinutes;
   const stepped = Math.ceil(padded / TRAVEL_LEAD_MINUTES_STEP) * TRAVEL_LEAD_MINUTES_STEP;
   return Math.min(TRAVEL_LEAD_MINUTES_MAX, Math.max(TRAVEL_LEAD_MINUTES_MIN, stepped));
 }
@@ -355,6 +388,10 @@ export function parseTravelLeadByCalendar(raw: unknown): TravelLeadByCalendar {
 export interface TravelLeads {
   defaultMinutes: number;
   byCalendar: Readonly<TravelLeadByCalendar>;
+  /** The `travelDoorMinutes` setting; null is "not chosen" (`travelDoorFor`). */
+  doorMinutes?: number | null;
+  /** An event's starting place's own door time, or null when its trip starts from none. */
+  doorPlaceFor?: (eventId: string) => number | null;
 }
 
 /** An event's lead: its calendar's override if it has one, else the default. */
@@ -498,7 +535,8 @@ export function matchedTravelTasks(
           travelWalkUnderFor(event.id, prefs, estimated.mode, estimated.walkUnder ?? 0),
         )
       : null;
-    const lead = estimate ? estimatedLeadMinutes(estimate.minutes) : travelLeadFor(event, leads);
+    const door = travelDoorFor(leads.doorPlaceFor?.(event.id), leads.doorMinutes, estimate !== null);
+    const lead = estimate ? estimatedLeadMinutes(estimate.minutes, door) : travelLeadFor(event, leads) + door;
     const leaveAt = travelLeaveAt(event, leadWithArrival(lead, arriveEarlyFor(event.id, prefs)));
     if (!leaveAt) continue;
     out.push({

@@ -9,7 +9,7 @@ import type { SavedPlace } from '../utils/savedPlaces';
 
 const place = (over: Partial<SavedPlace> = {}): SavedPlace => ({
   id: 'home', name: 'Home', text: '1 Home St',
-  latitude: 40.7128, longitude: -74.006, moodTag: true, ...over,
+  latitude: 40.7128, longitude: -74.006, moodTag: true, doorMinutes: null, ...over,
 });
 
 // About 0.001 degrees of latitude is 111 m.

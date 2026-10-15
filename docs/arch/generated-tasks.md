@@ -1229,8 +1229,8 @@ argued out before it was built; read them before reopening one.
   default, its own switch, location permission asked on the tap that turns it on) is the opt-in:**
   `useTravelTimeStore` asks MapKit's ETA (`src/services/travelTime.ts`, `estimateTravelTime` in
   `todo-eventkit-bridge`) from the starting point to each upcoming event's place, by
-  `travelMode`, and `estimatedLeadMinutes` turns it into the lead (plus 5 minutes, up to the next
-  5). Four rules hold it to the reasons above:
+  `travelMode`, and `estimatedLeadMinutes` turns it into the lead (plus the door time below, up to the
+  next 5). Four rules hold it to the reasons above:
   - **It says so.** The estimate goes in the title ("Leave for Dentist (25 min by transit)"),
     so a reminder that moved never moved silently, and a wrong figure is visible before it costs
     anything.
@@ -1243,6 +1243,13 @@ argued out before it was built; read them before reopening one.
     location or a changed mode is asked again rather than reused, and one older than 20 minutes
     is refreshed for traffic. The destination is the event's map pin when it has one (a place
     picked in quick add), else Apple Maps' first match for the location text.
+- **The time to get out the door is added to the typed lead and to an estimate, from the place the trip
+  starts, else the setting.** `SavedPlace.doorMinutes` (null = use the setting) beats `travelDoorMinutes`
+  (0 to 30 in 5s), resolved by `travelDoorFor`; the place is the one `travelOriginForEvent` names, so a
+  place needs a pin and has to be the starting point (a Start from pick or an event's own) to count. **Null
+  everywhere keeps the old behavior**: 5 minutes on an estimate and nothing on a typed lead, so a person who
+  never opens the setting sees no reminder move. Choosing 0 is a real answer (no margin on an estimate).
+  The traffic departure time `useTravelTimeStore` asks Apple Maps for still uses the lead without it.
 - **"Walk if close" picks the mode per event from the answer, and files it under the threshold.**
   `travelWalkUnderMinutes` (0 = off, steps of 5, up to 60) makes `useTravelTimeStore.refresh` ask the
   walk first for an event with no mode of its own, keep it at or under the threshold, and otherwise

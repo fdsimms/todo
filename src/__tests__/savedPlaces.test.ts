@@ -24,6 +24,25 @@ describe('savedPlaceKey', () => {
   });
 });
 
+describe('doorMinutes', () => {
+  it('defaults to none, and is clamped when stored', () => {
+    expect(home()[0].doorMinutes).toBeNull();
+    const [read] = parseSavedPlaces(JSON.stringify([{ id: 'a', name: 'Home', text: 'x', doorMinutes: 12 }]));
+    expect(read.doorMinutes).toBe(10);
+  });
+
+  it('keeps what a place had when an edit leaves it out, and clears it on null', () => {
+    const [saved] = addSavedPlace([], { name: 'Home', text: '1 St', place: pin, doorMinutes: 15 });
+    expect(saved.doorMinutes).toBe(15);
+    const [kept] = editSavedPlace([saved], saved.id, { name: 'Home', text: '1 St', place: pin });
+    expect(kept.doorMinutes).toBe(15);
+    const [cleared] = editSavedPlace([saved], saved.id, { name: 'Home', text: '1 St', place: pin, doorMinutes: null });
+    expect(cleared.doorMinutes).toBeNull();
+    const [resaved] = addSavedPlace([saved], { name: 'home', text: '2 St', place: pin });
+    expect(resaved.doorMinutes).toBe(15);
+  });
+});
+
 describe('addSavedPlace', () => {
   it('adds a place with its pin', () => {
     const [saved] = home();

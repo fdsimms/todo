@@ -140,6 +140,7 @@ import {
 import {
   clampTravelLeadMinutes,
   clampTravelWalkUnder,
+  clampTravelDoorMinutes,
   parseTravelLeadByCalendar,
   parseTravelEventPrefs,
   type TravelEventPref,
@@ -1646,6 +1647,9 @@ interface SettingsStore {
   // minutes or fewer, for an event with no mode of its own. 0 is off. Costs a
   // second request for an event whose walk is longer. See travelWalkUnderFor.
   travelWalkUnderMinutes: number;
+  // Minutes to get out the door, added to every leave-by reminder; null is not
+  // chosen yet (travelDoorFor). A saved place can override it.
+  travelDoorMinutes: number | null;
   // The saved place (id in the `savedPlaces` setting) the estimated trip starts
   // from, or null for where the phone is. Read through travelOriginFor, which
   // also answers null for a place that was removed or has no map pin.
@@ -2200,6 +2204,7 @@ interface SettingsStore {
   setTravelEstimates: (on: boolean) => void;
   setTravelMode: (mode: TravelMode) => void;
   setTravelWalkUnderMinutes: (minutes: number) => void;
+  setTravelDoorMinutes: (minutes: number | null) => void;
   setTravelOriginPlaceId: (id: string | null) => void;
   setSunLocation: (location: SunLocation | null) => void;
   setHolidaySet: (set: HolidaySet) => void;
@@ -2941,6 +2946,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   travelEstimates: false,
   travelMode: 'driving',
   travelWalkUnderMinutes: 0,
+  travelDoorMinutes: null,
   travelOriginPlaceId: null,
   sunLocation: null,
   holidaySet: 'us',
@@ -3434,6 +3440,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const travelMode: TravelMode = TRAVEL_MODES.find(m => m === storedTravelMode) ?? 'driving';
     const storedWalkUnder = parseInt(dbGetSetting('travelWalkUnderMinutes') ?? '', 10);
     const travelWalkUnderMinutes = clampTravelWalkUnder(Number.isFinite(storedWalkUnder) ? storedWalkUnder : undefined);
+    const storedTravelDoor = dbGetSetting('travelDoorMinutes');
+    const travelDoorMinutes = storedTravelDoor ? clampTravelDoorMinutes(parseInt(storedTravelDoor, 10)) : null;
     const travelOriginPlaceId = dbGetSetting('travelOriginPlaceId') || null;
     const sunLocation = parseSunLocation(dbGetSetting('sunLocation'));
     const holidaySet = parseHolidaySet(dbGetSetting('holidaySet'));
@@ -3858,6 +3866,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       titleRules,
       transitAlerts,
       transitLines,
+      travelDoorMinutes,
       travelEstimates,
       travelEventPrefs,
       travelLeadByCalendar,
@@ -4550,6 +4559,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const clamped = clampTravelWalkUnder(minutes);
     dbSetSetting('travelWalkUnderMinutes', String(clamped));
     set({ travelWalkUnderMinutes: clamped });
+  },
+
+  setTravelDoorMinutes(minutes: number | null) {
+    const clamped = clampTravelDoorMinutes(minutes);
+    dbSetSetting('travelDoorMinutes', clamped === null ? '' : String(clamped));
+    set({ travelDoorMinutes: clamped });
   },
 
   setTravelOriginPlaceId(id: string | null) {

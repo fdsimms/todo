@@ -7468,7 +7468,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         }
       : undefined;
     const matches = matchedTravelTasks(
-      { defaultMinutes: settings.travelLeadMinutes, byCalendar: settings.travelLeadByCalendar },
+      {
+        defaultMinutes: settings.travelLeadMinutes,
+        byCalendar: settings.travelLeadByCalendar,
+        doorMinutes: settings.travelDoorMinutes,
+        doorPlaceFor: (eventId: string) => travelOriginOfEvent(eventId)?.doorMinutes ?? null,
+      },
       calendar.events, now, horizonEnd, handled, estimated, settings.travelEventPrefs);
     // Read only while the switch is on, so turning it off takes the notes off
     // on the next sweep even if a snapshot is still held.

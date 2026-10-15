@@ -4,7 +4,7 @@ import type { SavedPlace } from '../utils/savedPlaces';
 jest.mock('../db/database', () => ({ dbGetSetting: jest.fn(), dbSetSetting: jest.fn() }));
 
 const place = (id: string, latitude: number | null, longitude: number | null, moodTag = false): SavedPlace =>
-  ({ id, name: id, text: '', latitude, longitude, moodTag });
+  ({ id, name: id, text: '', latitude, longitude, moodTag, doorMinutes: null });
 
 const home = place('home', 40.7128, -74.006);
 const office = place('office', 40.7484, -73.9857);
