@@ -1,4 +1,4 @@
-import { PLACE_FIX_TTL_MS, placeGateAllows, placeIdAt, placeLimitedTasks } from '../utils/placeGate';
+import { PLACE_FIX_TTL_MS, placeGateAllows, placeIdAt, placeLimitedTasks, placeTrustedUntil } from '../utils/placeGate';
 import type { SavedPlace } from '../utils/savedPlaces';
 
 jest.mock('../db/database', () => ({ dbGetSetting: jest.fn(), dbSetSetting: jest.fn() }));
@@ -63,5 +63,21 @@ describe('placeLimitedTasks', () => {
       { completed: false, archived: true, ...limited },
     ];
     expect(placeLimitedTasks(tasks)).toEqual([tasks[0]]);
+  });
+});
+
+describe('placeTrustedUntil', () => {
+  it('is unbounded for a task with no places', () => {
+    expect(placeTrustedUntil({ quotaReminders: true, quotaPlaceIds: [] }, null)).toBe(Infinity);
+    expect(placeTrustedUntil({ quotaReminders: false, quotaPlaceIds: ['office'] }, null)).toBe(Infinity);
+  });
+
+  it('ends when the fix expires, so a reminder laid down now cannot outlive it', () => {
+    const at = +now - 30 * 60 * 1000;
+    expect(placeTrustedUntil(limited, { placeId: 'office', at })).toBe(at + PLACE_FIX_TTL_MS);
+  });
+
+  it('allows no instant at all without a fix', () => {
+    expect(placeTrustedUntil(limited, null)).toBe(-Infinity);
   });
 });

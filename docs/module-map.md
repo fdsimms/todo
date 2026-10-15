@@ -264,7 +264,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/nfcKey.ts` — NFC_KEYS_SETTING, NFC_KEY_LOCK_SETTING, NfcKeyKind, NfcKey, MAX_NFC_KEYS, MAX_KEY_NAME_LENGTH, normalizeTagUid, newLinkToken, normalizeLinkToken, keyLinkUrl, +10 more
 - `src/utils/notificationTapRoute.ts` — NotificationTapData, NotificationTapRoute, routeNotificationTap
 - `src/utils/notificationTapSync.ts` — useNotificationTapSync
-- `src/utils/notifications.ts` — isWithinQuietHours, deferPastQuietHours, TASK_REMINDER_CATEGORY, COMPLETE_ACTION_IDENTIFIER, SNOOZE_ACTION_IDENTIFIER, SNOOZE_MINUTES, requestNotificationPermissions, NotificationPermission, getNotificationPermission, scheduleTaskReminder, +34 more
+- `src/utils/notifications.ts` — isWithinQuietHours, deferPastQuietHours, TASK_REMINDER_CATEGORY, COMPLETE_ACTION_IDENTIFIER, SNOOZE_ACTION_IDENTIFIER, SNOOZE_MINUTES, requestNotificationPermissions, NotificationPermission, getNotificationPermission, scheduleTaskReminder, +36 more
 - `src/utils/nowTick.ts` — NOW_TICK_MS, subscribeToNowTick, emitNowTick
 - `src/utils/nudgeCadence.ts` — NudgeMode, NUDGE_MODES, nudgeModeOf, nudgeFieldsFor, FALLBACK_CADENCE_DAYS, NUDGE_MODE_LABEL, describeNudge, CadenceUnit, CADENCE_UNITS, CADENCE_UNIT_DAYS, +7 more
 - `src/utils/nutrientLog.ts` — isNutrientOnlyEntry, nutrientOnlyKey, nutrientOnlyEntryOf, NutrientHelping, nutrientHelping
@@ -302,7 +302,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/phone.ts` — phoneDigits, telUrl, isDialable, smsUrl, formatPhoneInput, looksLikePhoneNumber
 - `src/utils/pillOverflow.ts` — OverflowPill, PillOverflowResult, PillOverflowOptions, DEFAULT_PILL_LIMIT, resolvePillOverflow, PillSubmit, resolvePillSubmit
 - `src/utils/pinSuggest.ts` — MAX_SUGGESTED_PINS, PinContext, buildCoOccurrenceIndex, currentTimeSegment, buildPinContext, overdueDays, scoreTask, nextPinSuggestion, suggestPins, pinReason, +1 more
-- `src/utils/placeGate.ts` — PLACE_FIX_TTL_MS, PLACE_FIX_KEY, StoredPlaceFix, pinnedPlaces, placeIdAt, isPlaceLimited, placeGateAllows, readPlaceFix, writePlaceFix, placeLimitedTasks
+- `src/utils/placeGate.ts` — PLACE_FIX_TTL_MS, PLACE_FIX_KEY, StoredPlaceFix, pinnedPlaces, placeIdAt, isPlaceLimited, placeGateAllows, placeTrustedUntil, readPlaceFix, writePlaceFix, +1 more
 - `src/utils/places.ts` — PlaceResult, parsePlaceResults, placeLocationText, placeSubtitle, placeRowTitle, PLACE_SUGGESTION_LIMIT, PLACE_QUERY_MIN_LENGTH
 - `src/utils/plannedDayNutrition.ts` — PlannedDayNutrition, plannedDayNutrition
 - `src/utils/plu.ts` — normalizePlu, splitOrganicPlu, pluNameFor
