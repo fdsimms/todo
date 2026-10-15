@@ -217,7 +217,7 @@ function readLine(replica: Replica, line: string): { row: QuickAddRow; draft: Pa
   }
   // Read past a trailing "unless it rains", which the rain phrase below takes
   // once the repeat is set (parseTaskInputAheadOfRainSkip).
-  const sched = p.parseTaskInputAheadOfRainSkip(text, lib.dates.getLogicalNow(dayResetTime), new Date());
+  const sched = p.parseTaskInputAheadOfRainSkip(text, lib.dates.getLogicalNow(dayResetTime), new Date(), dayResetTime);
   if (sched) {
     text = sched.cleanTitle;
     const s = sched.schedule;

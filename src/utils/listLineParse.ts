@@ -68,8 +68,8 @@ export type LineSuggestion =
  * chain puts them in. `now` is the logical now for day words and `clockNow`
  * the real instant for clock times (see the grace-window note in CLAUDE.md).
  */
-export function lineSuggestion(text: string, now: Date, clockNow: Date): LineSuggestion | null {
-  const parsed = parseTaskInput(text, now, clockNow);
+export function lineSuggestion(text: string, now: Date, clockNow: Date, dayResetTime?: string): LineSuggestion | null {
+  const parsed = parseTaskInput(text, now, clockNow, dayResetTime);
   if (parsed) return { kind: 'schedule', parsed };
   const priority = parsePriorityInput(text);
   if (priority) return { kind: 'priority', parsed: priority };
