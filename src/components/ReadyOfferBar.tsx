@@ -1,17 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useShallow } from 'zustand/react/shallow';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSheetMount } from '../hooks/useSheetMount';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { InlineAction } from './InlineAction';
-import { SwipeDismiss } from './SwipeDismiss';
+import { BannerBar } from './BannerBar';
 import { WhenPicker } from './WhenPicker';
 import { TAB_BAR_HEIGHT } from './DemoBanner';
 import { FAB_SIZE } from './Fab';
-import { useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, border, type Colors } from '../theme';
+import { spacing } from '../theme';
 import { haptics } from '../utils/haptics';
 import { getLogicalToday } from '../utils/dateUtils';
 import { displayTitleFor } from '../utils/visibilityUtils';
@@ -35,9 +33,7 @@ const VISIBLE_MS = 8000;
  * it's a few seconds the app is in after a tap, not a place.
  */
 export function ReadyOfferBar() {
-  const { colors, shadows } = useTheme();
   const insets = useSafeAreaInsets();
-  const styles = makeStyles(colors);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const offer = useTaskStore(s => s.readyOffer);
   const titles = useTaskStore(useShallow(s =>
@@ -74,34 +70,33 @@ export function ReadyOfferBar() {
   return (
     <>
       {shown && !picking && (
-        <View style={[styles.wrap, { bottom }]} pointerEvents="box-none">
-          {/* The name gets its own line: it's the one thing to read, and two
-              buttons beside it would cut it short. */}
-          <SwipeDismiss onDismiss={() => {
+        <BannerBar
+          bottom={bottom}
+          label={label}
+          layout="stacked"
+          onDismiss={() => {
             if (timerRef.current) clearTimeout(timerRef.current);
             clearReadyOffer();
-          }}>
-            <View style={[styles.bar, shadows.fab]}>
-              <Text style={styles.label} numberOfLines={2}>{label}</Text>
-              <View style={styles.actions}>
-                <InlineAction
-                  label="Today"
-                  onPress={() => place(getLogicalToday(dayResetTime))}
-                  accessibilityLabel={`Do ${titles.length === 1 ? 'it' : 'them'} today`}
-                />
-                <InlineAction
-                  label="Pick a day"
-                  variant="neutral"
-                  onPress={() => {
-                    haptics.tap();
-                    if (timerRef.current) clearTimeout(timerRef.current);
-                    setPicking(true);
-                  }}
-                />
-              </View>
-            </View>
-          </SwipeDismiss>
-        </View>
+          }}
+          actions={
+            <>
+              <InlineAction
+                label="Today"
+                onPress={() => place(getLogicalToday(dayResetTime))}
+                accessibilityLabel={`Do ${titles.length === 1 ? 'it' : 'them'} today`}
+              />
+              <InlineAction
+                label="Pick a day"
+                variant="neutral"
+                onPress={() => {
+                  haptics.tap();
+                  if (timerRef.current) clearTimeout(timerRef.current);
+                  setPicking(true);
+                }}
+              />
+            </>
+          }
+        />
       )}
       {mountPicker && (
         <WhenPicker
@@ -118,30 +113,3 @@ export function ReadyOfferBar() {
     </>
   );
 }
-
-const makeStyles = (colors: Colors) => StyleSheet.create({
-  wrap: {
-    position: 'absolute',
-    left: spacing.md,
-    right: spacing.md,
-  },
-  bar: {
-    gap: spacing.sm,
-    backgroundColor: colors.bgSecondary,
-    borderRadius: radius.lg,
-    borderWidth: border.md,
-    borderColor: colors.separator,
-    paddingVertical: spacing.smd,
-    paddingHorizontal: spacing.md,
-  },
-  label: {
-    color: colors.text,
-    fontSize: font.md,
-    fontWeight: fontWeight.medium,
-  },
-  actions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-});

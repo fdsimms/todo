@@ -1,9 +1,6 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { BannerBar } from './BannerBar';
 import { InlineAction } from './InlineAction';
-import { SwipeDismiss } from './SwipeDismiss';
-import { useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, border, type Colors } from '../theme';
 import type { Task } from '../types';
 import {
   describeCreatedTaskPlacement,
@@ -39,8 +36,6 @@ interface Props {
  * way to undo the creation, so staying put costs nothing either.
  */
 export function CreatedTaskToast({ task, destination, mode = 'created', dayResetTime, bottom, onGoToTask, onUndo, onDismiss }: Props) {
-  const { colors, shadows } = useTheme();
-  const styles = makeStyles(colors);
   const message = mode === 'moved'
     ? describeMovedTaskPlacement(task, destination, dayResetTime)
     : describeCreatedTaskPlacement(task, destination, dayResetTime);
@@ -49,55 +44,16 @@ export function CreatedTaskToast({ task, destination, mode = 'created', dayReset
     : `Undo creating “${task.title}”`;
 
   return (
-    <View style={[styles.wrap, { bottom }]} pointerEvents="box-none">
-      <SwipeDismiss onDismiss={onDismiss}>
-        <View style={[styles.bar, shadows.fab]}>
-          <Text style={styles.label} numberOfLines={2}>
-            {message}
-          </Text>
-          <View style={styles.actions}>
-            <InlineAction label="Go to it" onPress={onGoToTask} accessibilityLabel={`Go to “${task.title}”`} />
-            <InlineAction
-              label="Undo"
-              onPress={onUndo}
-              variant="neutral"
-              accessibilityLabel={undoHint}
-            />
-          </View>
-        </View>
-      </SwipeDismiss>
-    </View>
+    <BannerBar
+      bottom={bottom}
+      label={message}
+      onDismiss={onDismiss}
+      actions={
+        <>
+          <InlineAction label="Go to it" onPress={onGoToTask} accessibilityLabel={`Go to “${task.title}”`} />
+          <InlineAction label="Undo" onPress={onUndo} variant="neutral" accessibilityLabel={undoHint} />
+        </>
+      }
+    />
   );
 }
-
-const makeStyles = (colors: Colors) => StyleSheet.create({
-  wrap: {
-    position: 'absolute',
-    left: spacing.md,
-    right: spacing.md,
-  },
-  bar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-    backgroundColor: colors.bgSecondary,
-    borderRadius: radius.lg,
-    borderWidth: border.md,
-    borderColor: colors.separator,
-    paddingVertical: spacing.sm,
-    paddingLeft: spacing.md,
-    paddingRight: spacing.sm,
-  },
-  label: {
-    flex: 1,
-    color: colors.text,
-    fontSize: font.md,
-    fontWeight: fontWeight.medium,
-  },
-  actions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-});

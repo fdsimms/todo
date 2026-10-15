@@ -1,9 +1,6 @@
 import React, { useEffect } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
 import { InlineAction } from './InlineAction';
-import { SwipeDismiss } from './SwipeDismiss';
-import { useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, border, type Colors } from '../theme';
+import { BannerBar } from './BannerBar';
 
 const VISIBLE_MS = 4000;
 
@@ -31,9 +28,6 @@ interface Props {
  * otherwise leaves you somewhere the tasks aren't.
  */
 export function TemplateAppliedToast({ count, bottom, onDismiss, noun = 'task', goTo }: Props) {
-  const { colors, shadows } = useTheme();
-  const styles = makeStyles(colors);
-
   useEffect(() => {
     const timeout = setTimeout(onDismiss, VISIBLE_MS);
     return () => clearTimeout(timeout);
@@ -43,47 +37,17 @@ export function TemplateAppliedToast({ count, bottom, onDismiss, noun = 'task', 
   const message = count === 1 ? `Created 1 ${noun}` : `Created ${count} ${noun}s`;
 
   return (
-    <View style={[styles.wrap, { bottom }]} pointerEvents="box-none">
-      <SwipeDismiss onDismiss={onDismiss}>
-        <View style={[styles.bar, shadows.fab]}>
-          <Text style={styles.label} numberOfLines={2}>
-            {message}
-          </Text>
-          {goTo && (
-            <InlineAction
-              label={goTo.label}
-              onPress={() => { onDismiss(); goTo.onPress(); }}
-              accessibilityLabel={goTo.label}
-            />
-          )}
-        </View>
-      </SwipeDismiss>
-    </View>
+    <BannerBar
+      bottom={bottom}
+      label={message}
+      onDismiss={onDismiss}
+      actions={goTo ? (
+        <InlineAction
+          label={goTo.label}
+          onPress={() => { onDismiss(); goTo.onPress(); }}
+          accessibilityLabel={goTo.label}
+        />
+      ) : undefined}
+    />
   );
 }
-
-const makeStyles = (colors: Colors) => StyleSheet.create({
-  wrap: {
-    position: 'absolute',
-    left: spacing.md,
-    right: spacing.md,
-    alignItems: 'center',
-  },
-  bar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    backgroundColor: colors.bgSecondary,
-    borderRadius: radius.lg,
-    borderWidth: border.md,
-    borderColor: colors.separator,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-  },
-  label: {
-    flexShrink: 1,
-    color: colors.text,
-    fontSize: font.md,
-    fontWeight: fontWeight.medium,
-  },
-});
