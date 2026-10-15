@@ -402,7 +402,7 @@ import {
   travelSourceOf,
   travelTaskTitle,
 } from '../utils/travelTasks';
-import { describeDisruptions, journeyDisruptions } from '../utils/transitAlerts';
+import { describeDisruptions, disruptionHeadlines, journeyDisruptions } from '../utils/transitAlerts';
 import { carryClockTime, dateToHHMM, onLogicalDay } from '../utils/clockTime';
 import { deadlineOnto, reminderOnto as reminderOntoDay, skipPatch } from '../utils/taskSkip';
 import { datesAnchorStep, datesReconcile } from '../utils/taskDates';
@@ -7486,9 +7486,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       const leaveMs = Date.parse(match.leaveAt);
       const startMs = Date.parse(match.event.start);
       // Judged over the trip itself, leaving to arriving — see alertOverlaps.
-      const note = describeDisruptions(
-        journeyDisruptions(transit, settings.transitLines, leaveMs, startMs, nowMs));
+      const disruptions = journeyDisruptions(transit, settings.transitLines, leaveMs, startMs, nowMs);
+      const note = describeDisruptions(disruptions);
       const title = travelTaskTitle(match.event.title, note);
+      // The MTA's own wording, which is where the stops are named. The notes
+      // of a "Leave for" row are this and nothing else (it is a notice).
+      const notes = disruptionHeadlines(disruptions) ?? '';
 
       reconcileGeneratedTask({
         kind: 'travel',
@@ -7500,12 +7503,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         drift: existing => {
           const patch: Partial<Task> = {};
           if (existing.title !== title) patch.title = title;
+          if ((existing.notes ?? '') !== notes) patch.notes = notes;
           if (existing.reminderTime !== match.leaveAt) patch.reminderTime = match.leaveAt;
           return Object.keys(patch).length > 0 ? patch : null;
         },
         draft: () => ({
           ...taskFieldsFromEvent(match.event, 0),
           title,
+          notes,
           reminderTime: match.leaveAt,
           // The event's start as the window's close, so the row expires once
           // leaving is no longer possible and the user's expiry setting

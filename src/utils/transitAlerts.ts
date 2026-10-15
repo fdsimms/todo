@@ -47,6 +47,13 @@ export interface TransitAlert {
    * is an open-ended one.
    */
   periods: { start: number | null; end: number | null }[];
+  /**
+   * The MTA's own one-line description ("Southbound [G] trains are skipping
+   * Bedford-Nostrand Avs"), plain text with the line brackets removed. Absent
+   * on a snapshot stored before this was read, and on an alert with no English
+   * text. It is the only place the feed names the stops an effect touches.
+   */
+  headline?: string;
 }
 
 export interface TransitSnapshot {
@@ -134,6 +141,21 @@ export function effectOfAlertType(alertType: string): TransitEffect | null {
   return null;
 }
 
+/** The longest headline kept; the feed's are a sentence, but a few run to a paragraph. */
+const HEADLINE_MAX_LENGTH = 200;
+
+/** The plain English `header_text` of an entity's alert, "[C][E]" shown as "C/E", or undefined. */
+function headlineOf(alert: { header_text?: { translation?: unknown } }): string | undefined {
+  const translations = alert.header_text?.translation;
+  if (!Array.isArray(translations)) return undefined;
+  const english = translations.find((t: { language?: unknown; text?: unknown }) =>
+    t?.language === 'en' && typeof t.text === 'string');
+  if (!english) return undefined;
+  const text = (english.text as string).replace(/\]\s*\[/g, '/').replace(/\[([^\]]+)\]/g, '$1').replace(/\s+/g, ' ').trim();
+  if (!text) return undefined;
+  return text.length > HEADLINE_MAX_LENGTH ? `${text.slice(0, HEADLINE_MAX_LENGTH - 1).trimEnd()}…` : text;
+}
+
 const PLANNED_ID_PREFIX = 'lmm:planned_work:';
 
 /** Epoch seconds to ms, or null for anything that isn't a usable number. */
@@ -178,12 +200,14 @@ export function parseSubwayAlerts(body: unknown): TransitAlert[] {
       }))
       : [];
 
+    const headline = headlineOf(alert);
     out.push({
       id,
       routeIds,
       effect,
       planned: id.startsWith(PLANNED_ID_PREFIX) || /^planned\b/i.test(alertType.trim()),
       periods,
+      ...(headline ? { headline } : {}),
     });
   }
   return out;
@@ -238,6 +262,8 @@ const SEVERITY: readonly TransitEffect[] = [
 export interface LineDisruption {
   line: string;
   effect: TransitEffect;
+  /** The headline of the alert that set `effect`, when it has one. */
+  headline?: string;
 }
 
 /**
@@ -263,12 +289,11 @@ export function journeyDisruptions(
   const out: LineDisruption[] = [];
   for (const line of TRANSIT_LINES) {
     if (!lineKeys.includes(line.key)) continue;
-    const effects = relevant
-      .filter(alert => alert.routeIds.some(id => line.routeIds.includes(id)))
-      .map(alert => alert.effect);
-    if (effects.length === 0) continue;
-    const worst = SEVERITY.find(effect => effects.includes(effect));
-    if (worst) out.push({ line: line.key, effect: worst });
+    const forLine = relevant.filter(alert => alert.routeIds.some(id => line.routeIds.includes(id)));
+    const worst = SEVERITY.find(effect => forLine.some(alert => alert.effect === effect));
+    if (!worst) continue;
+    const headline = forLine.find(alert => alert.effect === worst && alert.headline)?.headline;
+    out.push({ line: line.key, effect: worst, ...(headline ? { headline } : {}) });
   }
   return out;
 }
@@ -312,4 +337,21 @@ export function describeDisruptions(disruptions: readonly LineDisruption[]): str
   const named = groups.slice(0, MAX_NAMED_EFFECTS).map(g => effectPhrase(joinLines(g.lines), g.effect));
   if (groups.length > MAX_NAMED_EFFECTS) named.push('more alerts');
   return named.join('; ');
+}
+
+/** At most this many headlines go in the notes; the rest are left to the MTA's own app. */
+const MAX_HEADLINES = 3;
+
+/**
+ * What the MTA said about each disruption, one headline per line of text, for
+ * the task's notes: the title carries only the line and the effect, and this
+ * is where the stops are named. Most severe first, the same alert shared by
+ * several lines once, null when none of them has a headline.
+ */
+export function disruptionHeadlines(disruptions: readonly LineDisruption[]): string | null {
+  const ordered = [...disruptions].sort((a, b) => SEVERITY.indexOf(a.effect) - SEVERITY.indexOf(b.effect));
+  const seen = new Set<string>();
+  for (const d of ordered) if (d.headline) seen.add(d.headline);
+  const lines = [...seen].slice(0, MAX_HEADLINES);
+  return lines.length > 0 ? lines.join('\n') : null;
 }

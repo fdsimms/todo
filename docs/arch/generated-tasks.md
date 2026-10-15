@@ -1324,6 +1324,13 @@ argued out before it was built; read them before reopening one.
   express-to-local and reduced service. Extra service, station notices, boarding changes, adjusted
   schedules and any `alert_type` this doesn't know are dropped, since a note on a "Leave for" row
   is a claim the trip may take longer.
+- **The MTA's own wording goes in the row's notes, never the title.** The title carries the line and
+  the effect ("G skipping stops"); `disruptionHeadlines` puts the alert's English `header_text`
+  ("Southbound G trains are skipping Bedford-Nostrand Avs") in `notes`, which the sweep rewrites with
+  the title. The feed names stops in that prose only on a live alert: planned work also lists
+  `stop_id`s in `informed_entity`, a live delay lists none. Matching them against the trip's own stops
+  is not built, because nothing in the app knows those stops (MapKit's ETA returns minutes only) and
+  the picked lines are global, not the line the trip rides.
 - **The note never alerts on its own, and that is a constraint rather than a choice.**
   `backgroundRefresh.ts` is a `BGProcessingTask` iOS mostly runs overnight, so nothing can re-read
   the feed at 10:55 for an 11:30 reminder while the app is closed. The background run still calls
