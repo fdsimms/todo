@@ -1102,8 +1102,8 @@ ingredient panel's fold die with the modal.
 - **Leaving does not cancel a cook; the header's trash button does.** Closing with the X keeps the
   cook timer running, because stepping away mid-cook is the ordinary case. Abandoning one is
   `cancelCook` in `CookModeSheet`: it appears only while the timer has time on it, asks first
-  (`recipeTimerResetPrompt`), then resets the recipe's cook timer without logging and closes. Step
-  timers are separate and keep their own cancel.
+  (`recipeTimerResetPrompt`), then resets the recipe's cook timer without logging, clears that recipe's
+  step timers and closes.
 - **`useKeepAwake` is called from inside the Modal's content** (`ScreenAwake`), not at the top of
   the sheet: the sheet stays mounted with `visible` false, and a lock taken there would hold the
   phone awake for the rest of the session. `expo-keep-awake` was already in the tree as one of

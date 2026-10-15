@@ -28,6 +28,7 @@ import { useShallow } from 'zustand/react/shallow';
 import type { Recipe, RecipeOverride } from '../types';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
+import { useStepTimerStore } from '../store/useStepTimerStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useRecipeTimer } from '../hooks/useRecipeTimer';
 import { useStepTimers } from '../hooks/useStepTimers';
@@ -427,17 +428,25 @@ export function CookModeSheet({
   // Leaving with the X keeps the cook timer running on purpose (stepping away
   // mid-cook is the ordinary case), so abandoning a cook is its own action:
   // it throws the timed cook away without logging it, then closes. Asks first
-  // because what it discards is a time that was about to be logged. Step timers
-  // are separate and keep their own cancel.
+  // because what it discards is a time that was about to be logged. This
+  // recipe's step timers go with it, since they belong to the same cook.
+  const cookUnderway = cookTimer.inProgress || stepTimers.timers.length > 0;
   const cancelCook = () => {
     haptics.tap();
     const prompt = recipeTimerResetPrompt('Cook', cookTimer);
+    const stepTimerIds = stepTimers.timers.map(t => t.id);
     const discard = () => {
       cookTimer.onReset();
+      for (const id of stepTimerIds) useStepTimerStore.getState().remove(id);
       close();
     };
-    if (!prompt) { discard(); return; }
-    Alert.alert('Cancel this cook?', `${prompt.message} Cancelling stops the timer without logging a cook time.`, [
+    if (!prompt && stepTimerIds.length === 0) { discard(); return; }
+    const parts = [
+      prompt?.message,
+      stepTimerIds.length > 0 && `${stepTimerIds.length === 1 ? '1 step timer' : `${stepTimerIds.length} step timers`} will be cleared too.`,
+      'Cancelling stops the timers without logging a cook time.',
+    ].filter(Boolean);
+    Alert.alert('Cancel this cook?', parts.join(' '), [
       { text: 'Keep cooking', style: 'cancel' },
       { text: 'Cancel cook', style: 'destructive', onPress: discard },
     ]);
@@ -486,7 +495,7 @@ export function CookModeSheet({
             // written, and a chip repeating that is chrome. When it isn't, this
             // is the one thing on screen explaining why the amounts in the panel
             // below aren't the recipe's own numbers.
-            isUnscaled(scale) && !cookTimer.inProgress ? undefined : (
+            isUnscaled(scale) && !cookUnderway ? undefined : (
               <View style={styles.headerActions}>
                 {!isUnscaled(scale) && (
                   <View style={styles.scaleChip}>
@@ -494,7 +503,7 @@ export function CookModeSheet({
                   </View>
                 )}
                 {/* Only once a cook is underway (the timer has time on it). */}
-                {cookTimer.inProgress && (
+                {cookUnderway && (
                   <TouchableOpacity
                     onPress={cancelCook}
                     activeOpacity={interaction.activeOpacity}
