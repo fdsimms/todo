@@ -10,6 +10,7 @@ import { useStepTimerStore } from './useStepTimerStore';
 import { useNfcKeyStore } from './useNfcKeyStore';
 import { useAppGroupStore } from './useAppGroupStore';
 import { useShieldReleaseStore } from './useShieldReleaseStore';
+import { useBlockTimerStore } from './useBlockTimerStore';
 import { useManualBlockStore } from './useManualBlockStore';
 import { useGroceryStore } from './useGroceryStore';
 import { useMealPlanStore } from './useMealPlanStore';
@@ -94,6 +95,7 @@ export const useDemoStore = create<DemoStore>((set, get) => ({
     useAppGroupStore.getState().reload();
     useShieldReleaseStore.getState().reload();
     useManualBlockStore.getState().reload();
+    useBlockTimerStore.getState().reload();
     seedDemoData();
     // After the seed, not before: the seed builds its rows through the normal
     // store actions, so it registers undo entries of its own on the way past.
@@ -122,6 +124,7 @@ export const useDemoStore = create<DemoStore>((set, get) => ({
     useAppGroupStore.getState().reload();
     useShieldReleaseStore.getState().reload();
     useManualBlockStore.getState().reload();
+    useBlockTimerStore.getState().reload();
     // And the demo's own history leaves with the scratch database, rather than
     // staying armed to write invented rows into the user's real one.
     clearUndoHistories();

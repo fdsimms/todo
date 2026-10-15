@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -20,6 +20,8 @@ import { applyKeyScan } from '../utils/releaseBlocks';
 import { alertKeyScanResult } from '../utils/keyScanAlert';
 import { haptics } from '../utils/haptics';
 import { clockTimeToken } from '../utils/clockTime';
+import { blockedForMs, formatBlockedFor, spokenBlockedFor } from '../utils/blockTimer';
+import { useBlockTimerStore } from '../store/useBlockTimerStore';
 import {
   selectionLabel, shieldHeadline, shieldHeadlineNote, shieldReasonLines,
 } from '../utils/shieldReasonText';
@@ -37,6 +39,34 @@ type ScreenTimeParams = {
 
 type GroupCount = { applications: number; categories: number; websites?: number };
 const NO_SELECTION: GroupCount = { applications: 0, categories: 0, websites: 0 };
+
+/**
+ * How long the apps have been blocked, counting up. Its own component so the
+ * one-second tick re-renders this line and not the whole screen. Renders
+ * nothing without a stamp (a block no reconcile has seen yet, or a build with
+ * no Screen Time bridge).
+ */
+function BlockedFor({ textStyle }: { textStyle: object }) {
+  const stamp = useBlockTimerStore(s => s.stamp);
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    setNow(new Date());
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, [stamp]);
+  const ms = blockedForMs(stamp, now);
+  if (ms === null) return null;
+  return (
+    <Text
+      style={textStyle}
+      accessibilityLabel={`Blocked for ${spokenBlockedFor(ms)}`}
+      // A ticking value read aloud every second would drown the screen reader.
+      accessibilityLiveRegion="none"
+    >
+      Blocked for {formatBlockedFor(ms)}
+    </Text>
+  );
+}
 
 /**
  * Whether the picked apps are blocked right now, why, and every setting that
@@ -172,6 +202,7 @@ export function ScreenTimeScreen() {
               </View>
               <View style={styles.statusText}>
                 <Text style={styles.headline}>{headline}</Text>
+                {blocked && <BlockedFor textStyle={styles.timer} />}
                 {lines.map((line, index) => (
                   <View key={`${index}:${line}`} style={styles.reasonLine}>
                     <View style={styles.dot} />
@@ -242,6 +273,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   badgeOff: { backgroundColor: colors.bgTertiary },
   statusText: { flex: 1 },
   headline: { color: colors.text, fontSize: font.lg, fontWeight: fontWeight.semibold },
+  // Tabular digits so the line doesn't shift sideways as the seconds change.
+  timer: {
+    color: colors.accentText, fontSize: font.md, fontWeight: fontWeight.semibold,
+    marginTop: spacing.xxs, fontVariant: ['tabular-nums'],
+  },
   reasonLine: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, marginTop: spacing.xsm },
   // Aligned to the first line's x-height rather than centred on the row, so a
   // wrapped sentence keeps its dot beside the line it starts.
