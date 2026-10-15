@@ -6,7 +6,7 @@ import {
   ScrollView,
   TextInput,
   TouchableOpacity,
-  Image,
+  
   StyleSheet,
 } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -89,6 +89,7 @@ import { useFilterField } from '../hooks/useFilterField';
 import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { usePullToSearch } from '../hooks/usePullToSearch';
 import { LazySheet } from '../components/LazySheet';
+import { FadeInImage } from '../components/FadeInImage';
 
 /**
  * The recipe box.
@@ -1207,7 +1208,7 @@ const RecipeRow = React.memo(function RecipeRow({
           selectable list makes (#2944): a check filling the tile's place
           read as a recipe marked done rather than one picked. */}
       {recipe.imagePath && photoOnDevice ? (
-        <Image source={{ uri: resolveRecipeImagePath(recipe.imagePath) ?? undefined }} style={styles.thumb} />
+        <FadeInImage source={{ uri: resolveRecipeImagePath(recipe.imagePath) ?? undefined }} style={styles.thumb} />
       ) : recipe.imagePath ? (
         // A photo this device hasn't got yet (#2704): a photo glyph on the
         // thumb's own ground, so it neither draws as an empty square nor

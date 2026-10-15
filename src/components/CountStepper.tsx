@@ -1,13 +1,13 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   StyleSheet,
-  Text,
   View,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PressableScale } from './PressableScale';
+import { AnimatedNumber } from './AnimatedNumber';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, iconSize, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -231,12 +231,13 @@ export function CountStepper({
         />
       ) : (
         <PressableScale style={styles.valuePress} onPress={openEditor}>
-          <Text
+          <AnimatedNumber
+            text={display}
+            value={value}
             style={[styles.value, value === null && styles.valueEmpty]}
+            containerStyle={styles.valueBox}
             accessibilityLabel={`${label}, ${spoken}`}
-          >
-            {display}
-          </Text>
+          />
         </PressableScale>
       )}
       {key(step, 'add', 'Increase')}
@@ -257,9 +258,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   keyDisabled: { opacity: 0.4 },
   valuePress: { paddingVertical: spacing.xs },
+  // Fits the widest value (99×) without the keys shifting as digits change.
+  valueBox: { minWidth: 40, justifyContent: 'center' },
   value: {
-    // Fits the widest value (99×) without the keys shifting as digits change.
-    minWidth: 40, textAlign: 'center',
     color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold,
     fontVariant: ['tabular-nums'],
   },

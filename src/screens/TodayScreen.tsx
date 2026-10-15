@@ -231,6 +231,7 @@ import { useNowTick } from '../hooks/useNowTick';
 import { sumEstimatedMinutes, formatDuration } from '../utils/effort';
 import { LazySheet } from '../components/LazySheet';
 import { ProgressBar } from '../components/ProgressBar';
+import { AnimatedNumber } from '../components/AnimatedNumber';
 
 // The four lenses of the pill switcher. They're disjoint by construction —
 // isUnscheduledTask() excludes inbox tasks, and isTaskVisible() excludes both —
@@ -699,15 +700,15 @@ function ViewModePills({
             </Text>
             {badge > 0 && (
               <View style={[styles.viewModePillBadge, mode !== 'inbox' && styles.viewModePillBadgeQuiet]}>
-                <Text
+                <AnimatedNumber
+                  text={String(badge)}
+                  value={badge}
                   style={[
                     styles.viewModePillBadgeText,
                     mode !== 'inbox' && styles.viewModePillBadgeTextQuiet,
                   ]}
                   maxFontSizeMultiplier={textScale.badge}
-                >
-                  {badge}
-                </Text>
+                />
               </View>
             )}
           </TouchableOpacity>
@@ -4835,7 +4836,7 @@ export function TodayScreen() {
               >
                 <View style={styles.coinPillTop}>
                   <CoinIcon size={iconSize.sm} color={colors.done} filled />
-                  <Text style={styles.coinPillText}>{coinTotal}</Text>
+                  <AnimatedNumber text={String(coinTotal)} value={coinTotal} style={styles.coinPillText} />
                   {savingGoal && <Text style={styles.coinPillGoal}>{`/ ${savingGoal.reward.cost}`}</Text>}
                 </View>
                 {savingGoal && (

@@ -86,6 +86,7 @@ import type { CoinEntry, Reward, Task } from '../types';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { ProgressBar } from '../components/ProgressBar';
+import { AnimatedNumber } from '../components/AnimatedNumber';
 
 /**
  * Coins and rewards — the screen for `src/utils/rewards.ts`.
@@ -875,7 +876,11 @@ export function RewardsScreen() {
             <Reanimated.View style={coinStyle}>
               <CoinIcon size={BALANCE_COIN_SIZE} color={colors.done} filled />
             </Reanimated.View>
-            <Text style={[styles.balance, balance < 0 && { color: colors.redText }]}>{balance}</Text>
+            <AnimatedNumber
+              text={String(balance)}
+              value={balance}
+              style={[styles.balance, balance < 0 && { color: colors.redText }]}
+            />
           </View>
           {goal && goalShown && (
             <View

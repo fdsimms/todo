@@ -116,6 +116,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/demoState.ts` — isDemoModeActive, setDemoModeActive
 - `src/utils/deviceMetrics.ts` — startDeviceMetrics, readDevicePayloads
 - `src/utils/deviceTimeZone.ts` — DEVICE_TIME_ZONE_KEY, isValidTimeZone, currentTimeZone, recordDeviceTimeZone
+- `src/utils/digitRoll.ts` — RollColumn, rollColumns, rollDirection
 - `src/utils/doseRecording.ts` — syncOkAgainNotification, allowOkAgainNotification, confirmWithinLimit, recordDose, unrecordDose, restoreDose
 - `src/utils/dreamQueue.ts` — QueuedDream, QUEUED_DREAM_MAX_LENGTH, parseQueuedDreams
 - `src/utils/editorSearch.ts` — EditorSearchable, editorSearchTerms, matchesEditorQuery, filterEditorRows

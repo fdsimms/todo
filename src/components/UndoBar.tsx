@@ -136,6 +136,8 @@ export function UndoBar() {
 
   const [visible, setVisible] = useState(false);
   const [shown, setShown] = useState<Shown | null>(null);
+  // Still drawn while it drops away, until BannerBar says it has gone.
+  const [leaving, setLeaving] = useState(false);
   const shownAtRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -162,9 +164,12 @@ export function UndoBar() {
         : { mode: 'undo', label: entry.label, run: freshestUndo!.undo }
     );
     setVisible(true);
+    setLeaving(false);
     if (entry.destructive) haptics.warning();
     if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => setVisible(false), VISIBLE_MS);
+    // Time's up: the bar drops away (see BannerBar's `leaving`) and only then
+    // stops rendering, rather than vanishing in one frame.
+    timerRef.current = setTimeout(() => setLeaving(true), VISIBLE_MS);
   }, [latestAt]);
 
   useEffect(() => () => {
@@ -175,7 +180,7 @@ export function UndoBar() {
 
   const handlePress = () => {
     if (timerRef.current) clearTimeout(timerRef.current);
-    setVisible(false);
+    setLeaving(true);
     // tap, not success: undoing takes something back rather than finishing it.
     // The layout animation lets a restored row open back up in place.
     haptics.tap();
@@ -184,8 +189,15 @@ export function UndoBar() {
   };
 
   // Swiped away by hand. The action stays undoable by shake, as after the timer.
+  // SwipeDismiss has already carried it off screen, so it goes at once.
   const handleDismiss = () => {
     if (timerRef.current) clearTimeout(timerRef.current);
+    setLeaving(false);
+    setVisible(false);
+  };
+
+  const handleLeft = () => {
+    setLeaving(false);
     setVisible(false);
   };
 
@@ -199,6 +211,9 @@ export function UndoBar() {
       label={shown.mode === 'redo' ? `Undone: ${shown.label}` : shown.label}
       labelLines={1}
       onDismiss={handleDismiss}
+      leaving={leaving}
+      onLeft={handleLeft}
+      lifetime={{ ms: VISIBLE_MS, key: shown }}
       actions={<InlineAction label={verb} onPress={handlePress} accessibilityLabel={`${verb} “${shown.label}”`} />}
     />
   );

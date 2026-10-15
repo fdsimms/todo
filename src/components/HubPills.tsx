@@ -18,6 +18,7 @@ import { attentionLeftovers, freshnessOf } from '../utils/leftovers';
 // The colour ladder lives with the card that established it — same import
 // RecipePickerSheet makes, and for the reason given there.
 import { freshnessFill } from './LeftoversCard';
+import { AnimatedNumber } from './AnimatedNumber';
 
 interface Props {
   hub: NavHubId;
@@ -134,14 +135,16 @@ export function HubPills({ hub, active }: Props) {
                   tab.route === 'MealPlan' && !isActive && { backgroundColor: freshnessFill(worstFreshness, colors) },
                 ]}
               >
-                <Text
+                <AnimatedNumber
+                  text={String(badge)}
+                  value={badge}
                   style={[
                     styles.pillBadgeText,
                     isActive && styles.pillBadgeTextActive,
                     tab.route === 'MealPlan' && !isActive && { color: textOnFill(freshnessFill(worstFreshness, colors), colors) },
                   ]}
                   maxFontSizeMultiplier={textScale.badge}
-                >{badge}</Text>
+                />
               </View>
             )}
           </TouchableOpacity>

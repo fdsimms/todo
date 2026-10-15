@@ -6,6 +6,7 @@ import { useBrandFace } from '../theme/AppFont';
 import { spacing, font, fontWeight, lineHeight, iconSize, interaction, radius, textScale, type Colors } from '../theme';
 import { PressableScale } from './PressableScale';
 import { TargetIcon, TARGET_ICON } from './TargetIcon';
+import { AnimatedNumber } from './AnimatedNumber';
 
 export interface ScreenHeaderAction {
   icon: keyof typeof Ionicons.glyphMap | typeof TARGET_ICON;
@@ -155,7 +156,12 @@ export function ScreenHeader({ title, subtitle, overline, actions, right, onTitl
               ) : (
                 action.badge != null && action.badge > 0 && (
                   <View style={[styles.badge, action.badgeColor && { backgroundColor: action.badgeColor }]}>
-                    <Text style={styles.badgeText} maxFontSizeMultiplier={textScale.badge}>{action.badge}</Text>
+                    <AnimatedNumber
+                      text={String(action.badge)}
+                      value={action.badge}
+                      style={styles.badgeText}
+                      maxFontSizeMultiplier={textScale.badge}
+                    />
                   </View>
                 )
               )}

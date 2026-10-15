@@ -14,7 +14,7 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
-  Image,
+  
   ActivityIndicator,
   Alert,
   Linking,
@@ -139,6 +139,7 @@ import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton, SCROLL_TO_TOP_SIZE } from '../components/ScrollToTopButton';
 import { useActionMenu } from '../hooks/useActionMenu';
 import type { ActionMenuAction } from '../components/ActionMenu';
+import { FadeInImage } from '../components/FadeInImage';
 
 type RootStackParamList = {
   /**
@@ -1963,7 +1964,7 @@ export function RecipeDetailScreen() {
             accessibilityRole="button"
             accessibilityLabel="Change recipe photo"
           >
-            <Image
+            <FadeInImage
               source={{ uri: resolveRecipeImagePath(recipe.imagePath) ?? undefined }}
               style={styles.heroImage}
               resizeMode="cover"

@@ -40,6 +40,7 @@ import { PinIcon } from './PinIcon';
 import { LockedTaskRow } from './LockedTaskRow';
 import { StrikeReveal } from './StrikeReveal';
 import { CheckPop } from './CheckPop';
+import { AnimatedNumber } from './AnimatedNumber';
 import { useProjectLockStore } from '../store/useProjectLockStore';
 import { isProjectLockedAway } from '../utils/projectLock';
 import { CoinIcon } from './CoinIcon';
@@ -52,6 +53,7 @@ import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animat
 import { weatherWaitChipText } from '../utils/weatherWait';
 import { meterChipText } from '../utils/meters';
 import { useMeterReadingStore } from '../store/useMeterReadingStore';
+import { buildCompletion, completionSettings } from '../utils/taskCompletion';
 import { MeterReadingSheet } from './MeterReadingSheet';
 import { NutrientTaskBar } from './NutrientTaskBar';
 import { formatDeadlineLabel, isDeadlineTimePassed, formatScheduledDate, formatTaskDate, formatHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate, getTaskDayStart, getCurrentDayStart, liveStreakCount, getLogicalDayKey, dayKeyToDate, formatTimeOfDay, hoursUnlockLabel, getLogicalNow } from '../utils/dateUtils';
@@ -773,6 +775,11 @@ const TaskItemRow = React.memo(function TaskItem({
   // so the checkmark and the struck title stay mounted long enough to leave
   // instead of vanishing the frame `completing` goes false.
   const [unwinding, setUnwinding] = useState(false);
+  // The streak this completion is about to record, shown on the row while it's
+  // ticked and waiting to collapse. A completed recurring row leaves the list
+  // and its successor mounts already showing the new number, so without this
+  // the streak going up is never seen happening. Null the rest of the time.
+  const [streakPreview, setStreakPreview] = useState<number | null>(null);
   const rowOpacity = useRef(new Animated.Value(1)).current;
   // The daily-target meter's level, 0–1. An Animated.Value rather than a height
   // computed straight from progressCount so a logged unit slides up instead of
@@ -1726,6 +1733,22 @@ const TaskItemRow = React.memo(function TaskItem({
   // badge shows whether or not the collapsed row opted into the chip, and it
   // takes the same colour.
   const shownStreak = liveStreakCount(task);
+  const chipStreak = streakPreview ?? shownStreak;
+  // Pops whenever the number on the chip goes up: the completion preview
+  // above, or a negative habit's day ticking over while it's on screen.
+  const streakChipScale = useRef(new Animated.Value(1)).current;
+  const lastChipStreak = useRef(chipStreak);
+  useEffect(() => {
+    const before = lastChipStreak.current;
+    lastChipStreak.current = chipStreak;
+    if (chipStreak <= before || reduceMotion) return;
+    streakChipScale.setValue(1);
+    Animated.sequence([
+      Animated.spring(streakChipScale, { toValue: 1.2, ...animation.spring.snappy, useNativeDriver: true }),
+      Animated.spring(streakChipScale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
+    ]).start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chipStreak]);
   const atRecord = isStreakAtRecord({ streakCount: shownStreak, priorBestStreak: task.priorBestStreak });
   // Orange for a run, red once it is the longest this task has had. Red is the
   // app's destructive colour elsewhere (out of stock, an expired window), so
@@ -2028,6 +2051,19 @@ const TaskItemRow = React.memo(function TaskItem({
     const finishing = isChainFinish(task);
     haptics.success();
     setCompleting(true);
+    // Asked of the same function completeTask records it with, so the number
+    // that rolls in is the number that gets stored.
+    if (showStreakChip && !nutrientRow) {
+      const state = useTaskStore.getState();
+      const built = buildCompletion(task, undefined, {
+        ...completionSettings(),
+        now: new Date(),
+        allTasks: state.tasks,
+        subtasks: state.subtasksOf(task.id),
+        meterReadings: useMeterReadingStore.getState().readings,
+      });
+      if (built && built.completed.streakCount !== shownStreak) setStreakPreview(built.completed.streakCount);
+    }
     setQuotaCompleting(viaMeter);
     // Checkmark springs in while the circle pops, then the row fades to
     // invisible but keeps its place in the list — completeTask holds it
@@ -2183,6 +2219,7 @@ const TaskItemRow = React.memo(function TaskItem({
     setInPlaceNextStep({ item: nextItem, index: chainStepIndex + 1 });
     setCompleting(false);
     setQuotaCompleting(false);
+    setStreakPreview(null);
     checkScale.setValue(0);
     fillScale.setValue(0);
     // A small ring pulse on the checkbox marks the reset rather than the box
@@ -2651,6 +2688,7 @@ const TaskItemRow = React.memo(function TaskItem({
     setQuotaCompleting(false);
     setQuotaToppedOut(false);
     setCompleting(false);
+    setStreakPreview(null);
     setAwaitingCollapse(false);
     // Only when a collapse actually committed a height and an opacity —
     // cancelling in flight (the path below), or an undo that beats the batch to
@@ -3291,9 +3329,12 @@ const TaskItemRow = React.memo(function TaskItem({
             {isQuota && (
               <View style={styles.metaChip}>
                 <Ionicons name="speedometer-outline" size={iconSize.xs} color={colors.accent} />
-                <Text style={styles.quotaLabel} numberOfLines={1}>
-                  {quotaProgress}{quotaReturnAt ? ` · next ${quotaReturnAt}` : ''}
-                </Text>
+                {/* The count rolls as a unit lands; the rest stays put and is
+                    what gives way if the chip runs out of room. */}
+                <AnimatedNumber text={quotaProgress} value={quotaLogged} style={styles.quotaLabel} />
+                {quotaReturnAt ? (
+                  <Text style={[styles.quotaLabel, styles.quotaReturn]} numberOfLines={1}>{`· next ${quotaReturnAt}`}</Text>
+                ) : null}
               </View>
             )}
             {rotationLine !== null && (
@@ -3732,8 +3773,8 @@ const TaskItemRow = React.memo(function TaskItem({
               </View>
             )}
             {showStreakChip && !nutrientRow && (
-              <View
-                style={[styles.metaChip, styles.streakChip]}
+              <Animated.View
+                style={[styles.metaChip, styles.streakChip, { transform: [{ scale: streakChipScale }] }]}
                 accessibilityLabel={
                   // Same number, different thing counted: a negative habit's run
                   // is days it survived, not times it was done.
@@ -3751,21 +3792,20 @@ const TaskItemRow = React.memo(function TaskItem({
                 }
               >
                 <Ionicons
-                  name={shownStreak > 0 ? 'flame' : 'flame-outline'}
+                  name={chipStreak > 0 ? 'flame' : 'flame-outline'}
                   size={iconSize.xs}
-                  color={shownStreak > 0 ? streakColor : colors.textSecondary}
+                  color={chipStreak > 0 ? streakColor : colors.textSecondary}
                 />
-                <Text
+                <AnimatedNumber
+                  text={String(chipStreak)}
+                  value={chipStreak}
                   style={[
                     styles.streakChipText,
-                    shownStreak > 0 && styles.streakChipTextActive,
+                    chipStreak > 0 && styles.streakChipTextActive,
                     atRecord && { color: streakColor },
                   ]}
-                  numberOfLines={1}
-                >
-                  {shownStreak}
-                </Text>
-              </View>
+                />
+              </Animated.View>
             )}
             {slipsLoggedToday > 0 && !nutrientRow && (
               // Without this the second tap of the day changes nothing on the
@@ -5506,6 +5546,7 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => StyleSheet.create({
     fontSize: font.xs,
     fontWeight: fontWeight.medium,
   },
+  quotaReturn: { flexShrink: 1 },
   // Only worn once what's outstanding no longer fits in the days left — see
   // rotationOverCommitted, which is deliberately a harder test than "behind".
   rotationTight: { color: colors.orangeText },

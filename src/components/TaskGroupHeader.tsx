@@ -16,6 +16,7 @@ import { AnimatedCollapsible } from './AnimatedCollapsible';
 import { useTrayFold, useTrayRaised, TRAY_PAD, STACK_EDGE_DEPTH } from './TaskGroupTray';
 import { PinIcon } from './PinIcon';
 import { useSheetMount } from '../hooks/useSheetMount';
+import { AnimatedNumber } from './AnimatedNumber';
 
 interface Props {
   group: TaskGroup;
@@ -311,7 +312,12 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
                       the page background was the last thing left reading as
                       a selected chip. */}
                   {showTally && (
-                    <Text style={styles.progressText}>{doneToday}/{totalToday}</Text>
+                    <AnimatedNumber
+                      text={`${doneToday}/${totalToday}`}
+                      value={doneToday}
+                      style={styles.progressText}
+                      containerStyle={styles.progressBox}
+                    />
                   )}
                   <Ionicons name={isExpanded ? 'chevron-down' : 'chevron-forward'} size={13} color={colors.textTertiary} />
                 </View>
@@ -584,13 +590,15 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => StyleSheet.create({
     fontWeight: fontWeight.regular,
     letterSpacing: -0.2,
   },
+  // Nudged onto the title's baseline; centring it on a 17pt line leaves it
+  // sitting visibly high against the cap height.
+  progressBox: {
+    marginTop: spacing.xxs,
+  },
   progressText: {
     color: colors.textSecondary,
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,
-    // Nudged onto the title's baseline; centring it on a 17pt line leaves it
-    // sitting visibly high against the cap height.
-    marginTop: spacing.xxs,
   },
   summary: {
     color: colors.textTertiary,
