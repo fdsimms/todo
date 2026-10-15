@@ -18,7 +18,7 @@ import { currentWindowEnd, describeDays, describeWindow, formatMinutes, isSchedu
 import { selectionLabel } from '../../utils/shieldReasonText';
 import {
   BLOCK_EDIT_LOCKED_MESSAGE, BLOCK_EDIT_LOCKED_TITLE, defaultGroupLocked, groupEditLocked, reasonGroupLocked,
-  scheduleEditLocked,
+  reasonSwitchLocked, scheduleEditLocked,
 } from '../../utils/blockEditLock';
 import { useColors } from '../../theme/ThemeContext';
 import { SettingsSection } from './SettingsSection';
@@ -268,6 +268,8 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
     onOff?: () => void,
   ) => {
     haptics.tap();
+    // Switching a live reason off would end its block with no record.
+    if (enabled && refuseWhileBlocked(reasonSwitchLocked(reason, reasons))) return;
     if (enabled) {
       setEnabled(false);
       onOff?.();
@@ -629,18 +631,17 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
           label="When you fail a task"
           hint={penaltyShieldEnabled
             ? penaltyEndLabel
-              ? `${penaltyLine ?? 'A task wasn’t done in time.'} To end this early, turn this off.`
+              ? `${penaltyLine ?? 'A task wasn’t done in time.'} To end this early, use the emergency button.`
               : 'Each task sets how long. The apps are blocked when you miss a cutoff, or log a slip on a task you’re avoiding.'
             : 'Failing a task blocks nothing.'}
           toggle={penaltyShieldEnabled}
           onPress={() => toggleReason(
             'penalty', penaltyShieldEnabled, setPenaltyShieldEnabled,
             'Blocking apps when you fail a task needs Screen Time access. Grant it in Settings, under Screen Time.',
-            // Switching the feature off is the way out of a block being
-            // served, so the block must not be left waiting to resume the
-            // moment it comes back on. This is deliberately the *only* way out
-            // from inside the app: a "lift it now" button would undo the one
-            // thing the feature is for.
+            // Switching off while a penalty is being served is refused (the
+            // emergency button is the recorded way out), so this only runs when
+            // nothing is live. It still clears a leftover end, so a block does
+            // not resume the moment the switch comes back on.
             () => setPenaltyShieldUntil(null),
           )}
         />

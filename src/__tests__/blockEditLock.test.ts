@@ -1,5 +1,5 @@
 import {
-  defaultGroupLocked, groupEditLocked, liveGroupIds, reasonGroupLocked, scheduleEditLocked,
+  defaultGroupLocked, groupEditLocked, liveGroupIds, reasonGroupLocked, reasonSwitchLocked, scheduleEditLocked,
 } from '../utils/blockEditLock';
 import type { ShieldReasonEntry } from '../utils/appShield';
 import type { BlockSchedule } from '../utils/blockSchedule';
@@ -68,5 +68,14 @@ describe('a schedule', () => {
     expect(scheduleEditLocked(schedule(), WED(20))).toBe(false);
     expect(scheduleEditLocked(schedule({ enabled: false }), WED(12))).toBe(false);
     expect(scheduleEditLocked(schedule({ pausedUntil: WED(17).toISOString() }), WED(12))).toBe(false);
+  });
+});
+
+describe('turning a reason off', () => {
+  it('is locked while that reason is blocking, and open for any other', () => {
+    const live = [reason('penalty', 'default')];
+    expect(reasonSwitchLocked('penalty', live)).toBe(true);
+    expect(reasonSwitchLocked('focus', live)).toBe(false);
+    expect(reasonSwitchLocked('penalty', [])).toBe(false);
   });
 });

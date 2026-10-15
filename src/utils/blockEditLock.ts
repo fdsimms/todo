@@ -39,6 +39,15 @@ export function reasonGroupLocked(reason: GroupedReason, reasons: readonly Shiel
 }
 
 /**
+ * Whether turning a reason's own switch off would end a live block. Same test as
+ * `reasonGroupLocked`, named for what it guards: the switch is as good a way out
+ * as emptying the group. Turning one on is never refused.
+ */
+export function reasonSwitchLocked(reason: GroupedReason, reasons: readonly ShieldReasonEntry[]): boolean {
+  return reasons.some(r => r.reason === reason);
+}
+
+/**
  * Whether changing the default group would move a live block. A reason whose
  * group is missing resolves to the default, so the old default and the new one
  * both count.
