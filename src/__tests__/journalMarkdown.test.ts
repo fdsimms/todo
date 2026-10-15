@@ -114,6 +114,16 @@ describe('toggleLinePrefix', () => {
     expect(toggleLinePrefix('# walk', sel(3), 'quote').text).toBe('> walk');
   });
 
+  it('starts the format on an empty line, with the caret after the prefix', () => {
+    const on = toggleLinePrefix('', sel(0), 'bullet');
+    expect(on.text).toBe('- ');
+    expect(on.selection).toEqual(sel(2));
+    expect(toggleLinePrefix(on.text, on.selection, 'bullet').text).toBe('');
+    expect(toggleLinePrefix('one\n\nthree', sel(4), 'numbered').text).toBe('one\n1. \nthree');
+    expect(toggleLinePrefix('', sel(0), 'heading').text).toBe('# ');
+    expect(toggleLinePrefix('', sel(0), 'quote').text).toBe('> ');
+  });
+
   it('only removes the format when every touched line has it', () => {
     const text = '- a\nb';
     expect(toggleLinePrefix(text, sel(0, text.length), 'bullet').text).toBe('- a\n- b');

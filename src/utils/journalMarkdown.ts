@@ -212,6 +212,9 @@ export function toggleLinePrefix(text: string, selection: EditSelection, format:
   const lines = text.slice(lineStart, lineEnd).split('\n');
   const touched = lines.filter(l => l.trim());
   const allHave = touched.length > 0 && touched.every(l => prefixKind(l) === format);
+  // A caret on one blank line is starting that line's format, so it gets the
+  // prefix to type after. Blank lines inside a longer selection stay blank.
+  const startsBlankLine = lines.length === 1 && touched.length === 0;
 
   let number = 0;
   let shift = 0; // how far the original start moved
@@ -219,13 +222,13 @@ export function toggleLinePrefix(text: string, selection: EditSelection, format:
     const existing = LINE_PREFIX.exec(line)?.[1] ?? '';
     const body = line.slice(existing.length);
     let prefix = '';
-    if (line.trim() && !allHave) {
+    if ((line.trim() || startsBlankLine) && !allHave) {
       if (format === 'heading') prefix = '# ';
       else if (format === 'bullet') prefix = '- ';
       else if (format === 'quote') prefix = '> ';
       else prefix = `${++number}. `;
     }
-    const replaced = line.trim() ? prefix + body : line;
+    const replaced = line.trim() || startsBlankLine ? prefix + body : line;
     if (i === 0) shift = replaced.length - line.length;
     return replaced;
   });
