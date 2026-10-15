@@ -464,6 +464,23 @@ describe('parseTaskInput — recurrence', () => {
     expect(tue.schedule.explicitClockTime).toEqual({ h: 18, m: 0 });
   });
 
+  it('reads a starting clause that carries the clock time', () => {
+    const r = parseTaskInput('standup every day starting tomorrow at 9am', NOW)!;
+    expect(r.cleanTitle).toBe('standup');
+    expect(r.schedule.recurrenceType).toBe('daily');
+    expectDay(r.schedule.dueDate, 2025, 5, 11);
+    expect(r.schedule.explicitClockTime).toEqual({ h: 9, m: 0 });
+
+    const water = parseTaskInput('water plants every 3 days starting friday at 8am', NOW)!;
+    expect(water.cleanTitle).toBe('water plants');
+    expect(water.schedule.recurrenceInterval).toBe(3);
+    expectDay(water.schedule.dueDate, 2025, 5, 13);
+
+    const walk = parseTaskInput('walk every evening starting monday at 6:30', NOW)!;
+    expectDay(walk.schedule.dueDate, 2025, 5, 16);
+    expect(walk.schedule.explicitClockTime).toEqual({ h: 18, m: 30 });
+  });
+
   it('reads an unmarked clock on a recurrence by the day part beside it', () => {
     const journal = parseTaskInput('journal every night at 9:30', NOW)!;
     expect(journal.cleanTitle).toBe('journal');
@@ -1868,6 +1885,19 @@ describe('parseTaskInput time windows', () => {
     expect(parseTaskInput('call between 5pm and 3pm', NOW)?.schedule.windowStart).toBeUndefined();
   });
 
+  it('reads an unmarked window already over today as the afternoon one', () => {
+    // 10am: 2:30–4:30 in the morning is gone, the same call "at 4:30" makes.
+    const r = parseTaskInput('call between 2:30 and 4:30', NOW)!;
+    expect(r.schedule.windowStart).toBe('14:30');
+    expect(r.schedule.explicitClockTime).toEqual({ h: 16, m: 30 });
+    expect(r.schedule.timeSegments).toEqual(['afternoon']);
+
+    // Still ahead, and a marked start, are left alone.
+    expect(parseTaskInput('call between 10:30 and 11:30', NOW)!.schedule.windowStart).toBe('10:30');
+    expect(parseTaskInput('call between 2:30 and 4:30 tomorrow', NOW)!.schedule.windowStart).toBe('02:30');
+    expect(parseTaskInput('call between 1am and 4:30', NOW)!.schedule.windowStart).toBe('01:00');
+  });
+
   it('says so in the label', () => {
     const r = parseTaskInput('call the bank after 3pm', NOW)!;
     expect(describeSchedule(r.schedule, NOW)).toBe('Today · After 3 PM');
@@ -2314,6 +2344,17 @@ describe('scheduleClockInstant', () => {
       .toEqual(new Date(2025, 5, 11, 3, 0, 0));
     expect(scheduleClockInstant({ dueDate: noon, explicitClockTime: { h: 16, m: 30 } }, '04:00'))
       .toEqual(new Date(2025, 5, 10, 16, 30, 0));
+  });
+
+  it('places midnight at the end of the day under every reset', () => {
+    const midnight = { h: 0, m: 0 };
+    expect(scheduleClockInstant({ dueDate: noon, explicitClockTime: midnight }, '00:00'))
+      .toEqual(new Date(2025, 5, 11, 0, 0, 0));
+    expect(scheduleClockInstant({ dueDate: noon, explicitClockTime: midnight }, '04:00'))
+      .toEqual(new Date(2025, 5, 11, 0, 0, 0));
+
+    const r = parseTaskInput('deploy at midnight', NOW)!;
+    expect(scheduleClockInstant(r.schedule, '00:00')).toEqual(new Date(2025, 5, 11, 0, 0, 0));
   });
 });
 

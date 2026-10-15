@@ -511,7 +511,7 @@ function parseRecurrenceSuffix(text: string, now: Date): ParsedSchedule | null {
   const endMatch = extractEndCondition(t, now);
   if (endMatch) t = endMatch.rest;
 
-  const starting = extractStartingClause(t, now);
+  let starting = extractStartingClause(t, now);
   const core = starting ? starting.rest : t;
 
   // A bare duration clause with no recurrence phrase in front of it ("wear
@@ -552,8 +552,18 @@ function parseRecurrenceSuffix(text: string, now: Date): ParsedSchedule | null {
     // as any other stray character, correctly fails the anchored match below
     // rather than being silently swallowed.
     const tidy = (s: string) => s.replace(/\bat\b/g, ' ').replace(/\bin the\b/g, ' ').replace(/\s+/g, ' ').trim();
-    schedule = matchRecurrenceCore(tidy(rest), now, segments)
-      ?? (withoutPart !== null ? matchRecurrenceCore(tidy(withoutPart), now, segments) : null);
+    for (const candidate of withoutPart !== null ? [rest, withoutPart] : [rest]) {
+      // "every day starting tomorrow at 9am": the clock time sat inside the
+      // starting clause, which can't read one, so the clause is tried again
+      // once the time is out.
+      const tidied = tidy(candidate);
+      const late = starting ? null : extractStartingClause(tidied, now);
+      schedule = matchRecurrenceCore(late ? late.rest : tidied, now, segments);
+      if (schedule) {
+        if (late) starting = late;
+        break;
+      }
+    }
     if (schedule) schedule = { ...schedule, explicitClockTime };
   }
   if (!schedule) return null;
@@ -731,6 +741,9 @@ function parseSuffix(text: string, now: Date, singleWord: boolean, clockNow: Dat
     t = clock.rest;
     hasTime = true;
     explicitClockTime = clock.time;
+    // "between 2:30 and 4:30": with neither end marked, the window is as
+    // unmarked as a lone "at 4:30", and the flip below moves both ends.
+    ambiguousClock = clock.ambiguous === true && !between[3];
   } else if (connector?.[1] === 'after') {
     if (!clock) return null;
     windowStart = hhmm(clock.time);
@@ -807,6 +820,12 @@ function parseSuffix(text: string, now: Date, singleWord: boolean, clockNow: Dat
     if (at.getTime() <= clockNow.getTime() && explicitClockTime.h < 12) {
       explicitClockTime = { h: explicitClockTime.h + 12, m: explicitClockTime.m };
       segments = [segmentForHour(explicitClockTime.h)];
+      if (windowStart) {
+        // betweenStart put the start before an AM end, so it's AM too.
+        const [h, m] = windowStart.split(':').map(Number);
+        windowStart = hhmm({ h: h + 12, m });
+        segments = [segmentForHour(h + 12)];
+      }
     }
   }
 
@@ -2702,6 +2721,11 @@ export function describeSchedule(s: ParsedSchedule, now: Date = new Date()): str
  * a midnight reset the two agree, so quick add, the list line parser and the
  * MCP server all read the moment off this rather than each copying the hours
  * onto the date.
+ *
+ * Midnight is the end of the day it's placed on under every reset. A later
+ * reset already gets that from onLogicalDay; under a midnight reset 00:00 is
+ * the day's own start, so "deploy at midnight" typed at 8 AM set a reminder
+ * eight hours in the past.
  */
 export function scheduleClockInstant(
   schedule: Pick<ParsedSchedule, 'dueDate' | 'explicitClockTime'>,
@@ -2710,5 +2734,8 @@ export function scheduleClockInstant(
   const clock = schedule.explicitClockTime;
   if (!clock) return null;
   const hhmm = `${String(clock.h).padStart(2, '0')}:${String(clock.m).padStart(2, '0')}`;
-  return onLogicalDay(taskDayStart(new Date(schedule.dueDate), dayResetTime), hhmm);
+  const dayStart = taskDayStart(new Date(schedule.dueDate), dayResetTime);
+  const at = onLogicalDay(dayStart, hhmm);
+  if (hhmm === '00:00' && at.getTime() === dayStart.getTime()) at.setDate(at.getDate() + 1);
+  return at;
 }

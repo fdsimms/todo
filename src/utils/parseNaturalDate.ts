@@ -232,16 +232,30 @@ function relativeUnit(unit: string, n: number, now: Date, clockNow: Date = now):
   return null;
 }
 
-/** Resolve a month/day (and optional year) to a date, rolling into next year if already past. */
+/**
+ * Resolve a month/day (and optional year) to a date. With no year it is the
+ * next time that date exists, today included, so "feb 29" waits for the next
+ * leap year. Rolling a single year forward and checking for overflow only in
+ * the current one sent it to Mar 1 from a leap year's autumn, and refused it
+ * outright in the year before a leap year.
+ */
 export function monthDay(month: number, day: number, year: number | null, now: Date): DatePart | null {
   if (day < 1 || day > 31) return null;
-  let y = year ?? now.getFullYear();
-  let date = startOfDay(new Date(y, month, day));
-  if (date.getMonth() !== month) return null; // overflow guard, e.g. "feb 31"
-  if (year === null && date < startOfDay(now)) {
-    date = startOfDay(new Date(y + 1, month, day));
+  const exists = (y: number) => {
+    const date = startOfDay(new Date(y, month, day));
+    return date.getMonth() === month ? date : null; // overflow guard, e.g. "feb 31"
+  };
+  if (year !== null) {
+    const date = exists(year);
+    return date ? { date, explicitTime: false } : null;
   }
-  return { date, explicitTime: false };
+  const today = startOfDay(now);
+  // Eight years covers the longest gap between leap years (across 2100).
+  for (let y = now.getFullYear(); y <= now.getFullYear() + 8; y++) {
+    const date = exists(y);
+    if (date && date >= today) return { date, explicitTime: false };
+  }
+  return null;
 }
 
 /**

@@ -161,6 +161,17 @@ describe('parseNaturalDate', () => {
       expect(parse('tomorrow morning at 9:30')).toEqual(new Date(2025, 5, 11, 9, 30));
     });
 
+    it('waits for the next leap year for Feb 29', () => {
+      // From a leap year's autumn, past this year's Feb 29.
+      expect(parseNaturalDate('feb 29', new Date(2028, 9, 15, 10))).toEqual(new Date(2032, 1, 29, 9, 0));
+      // From the year before a leap year.
+      expect(parseNaturalDate('feb 29', new Date(2027, 2, 15, 10))).toEqual(new Date(2028, 1, 29, 9, 0));
+      expect(parseNaturalDate('2/29', new Date(2027, 2, 15, 10))).toEqual(new Date(2028, 1, 29, 9, 0));
+      // A day that never exists, and a named year without one, still refuse.
+      expect(parse('feb 31')).toBeNull();
+      expect(parse('feb 29 2027')).toBeNull();
+    });
+
     it('does not flip a day-part clock a second time once it has passed', () => {
       const late = new Date(2025, 5, 10, 21, 0);
       expect(parseNaturalDate('tonight at 8:30', late)).toEqual(new Date(2025, 5, 10, 20, 30));
