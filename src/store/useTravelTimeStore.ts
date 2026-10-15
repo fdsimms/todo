@@ -105,7 +105,8 @@ export const useTravelTimeStore = create<TravelTimeState>((set, get) => ({
         const departAt = travelLeaveAt(event, leadWithArrival(travelLeadFor(event, {
           defaultMinutes: settings.travelLeadMinutes,
           byCalendar: settings.travelLeadByCalendar,
-        }), arriveEarlyFor(event.id, settings.travelEventPrefs))) ?? now;
+          arriveEarlyMinutes: settings.travelArriveEarlyMinutes,
+        }), arriveEarlyFor(event.id, settings.travelEventPrefs, settings.travelArriveEarlyMinutes))) ?? now;
         const origin = originOf(event.id);
         const minutes = await estimateTravelMinutes(event, departAt, mode, origin);
         if (!estimateGuard.isCurrent(token)) return;

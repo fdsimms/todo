@@ -10,8 +10,9 @@ const mockSettings = {
   travelMode: 'driving' as const,
   travelOriginPlaceId: null as string | null,
   travelLeadMinutes: 30,
+  travelArriveEarlyMinutes: 0,
   travelLeadByCalendar: {} as Record<string, number>,
-  travelEventPrefs: {} as Record<string, { mode: 'driving' | 'transit' | 'walking' | null; arriveEarlyMinutes: number }>,
+  travelEventPrefs: {} as Record<string, { mode: 'driving' | 'transit' | 'walking' | null; arriveEarlyMinutes: number | null }>,
 };
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: { getState: () => mockSettings },

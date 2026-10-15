@@ -5802,6 +5802,7 @@ describe('checkTravelTasks', () => {
     calendarReadEnabled: true,
     travelTaskCategory: 'Calendar',
     travelLeadMinutes: 30,
+    travelArriveEarlyMinutes: 0,
     travelLeadByCalendar: {} as Record<string, number>,
     travelTaskHandled: {} as Record<string, string>,
     setTravelTaskHandled,

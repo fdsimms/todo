@@ -1249,7 +1249,7 @@ argued out before it was built; read them before reopening one.
   choice every week. EventKit has no public field for a travel mode or arrival buffer, so nothing
   is written to the calendar event. A pref overrides `travelMode` (`travelModeFor`) and shifts the
   reminder by `arriveEarlyMinutes` on top of the lead or estimate (`leadWithArrival`, never below
-  zero). Estimates are filed under the mode they were asked for, so a pref asks again, and the same goes for a different starting point (`originPlaceId`: a saved place, `TRAVEL_ORIGIN_PHONE`, or null to follow Settings; `travelOriginForEvent` resolves it, and a removed place follows Settings rather than becoming the phone). The row shows
+  zero). **`arriveEarlyMinutes` null means "follow `travelArriveEarlyMinutes`" (Settings, default 0), and 0 means "On time" for this event**; the sheet writes null until a person picks, so a changed default reaches every event that never chose (`arriveEarlyFor`). Estimates are filed under the mode they were asked for, so a pref asks again, and the same goes for a different starting point (`originPlaceId`: a saved place, `TRAVEL_ORIGIN_PHONE`, or null to follow Settings; `travelOriginForEvent` resolves it, and a removed place follows Settings rather than becoming the phone). The row shows
   a held estimate as a chip (`travelRowNote`); with `travelEstimates` off there is none to show.
 - **The starting point is the phone's position or a saved place, chosen once** (`travelOriginPlaceId`,
   shown as "Start from"). The phone's position is the wrong origin for most of what this makes: a

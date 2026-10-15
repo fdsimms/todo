@@ -138,6 +138,7 @@ import {
   type HandledEventTasks,
 } from '../utils/eventTasks';
 import {
+  clampArriveEarlyMinutes,
   clampTravelLeadMinutes,
   parseTravelLeadByCalendar,
   parseTravelEventPrefs,
@@ -1627,6 +1628,10 @@ interface SettingsStore {
   // travelEstimates is on — see travelTasks.ts for when a routing service is
   // asked. Clamped by clampTravelLeadMinutes.
   travelLeadMinutes: number;
+  // How early to arrive, added to that lead for every event that has no pick of
+  // its own in the event sheet (TravelEventPref.arriveEarlyMinutes). 0 is on
+  // time; clamped by clampArriveEarlyMinutes.
+  travelArriveEarlyMinutes: number;
   // Per-calendar overrides of that lead, by EventKit calendar id: "events on
   // Work get 45 minutes". Holds only the calendars someone set; the rest use
   // travelLeadMinutes. See TravelLeadByCalendar.
@@ -2192,6 +2197,7 @@ interface SettingsStore {
   setTravelTasks: (on: boolean) => void;
   setTravelTaskCategory: (category: string | null) => void;
   setTravelLeadMinutes: (minutes: number) => void;
+  setTravelArriveEarlyMinutes: (minutes: number) => void;
   setTravelEstimates: (on: boolean) => void;
   setTravelMode: (mode: TravelMode) => void;
   setTravelOriginPlaceId: (id: string | null) => void;
@@ -2930,6 +2936,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   travelTasks: false,
   travelTaskCategory: null,
   travelLeadMinutes: TRAVEL_LEAD_MINUTES_DEFAULT,
+  travelArriveEarlyMinutes: 0,
   travelLeadByCalendar: {},
   travelEventPrefs: {},
   travelEstimates: false,
@@ -3420,6 +3427,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const travelLeadMinutes = clampTravelLeadMinutes(
       Number.isFinite(storedTravelLead) ? storedTravelLead : undefined,
     );
+    const travelArriveEarlyMinutes = clampArriveEarlyMinutes(parseInt(dbGetSetting('travelArriveEarlyMinutes') ?? '', 10));
     const travelLeadByCalendar = parseTravelLeadByCalendar(dbGetSetting('travelLeadByCalendar'));
     const travelEventPrefs = parseTravelEventPrefs(dbGetSetting('travelEventPrefs'));
     const travelEstimates = dbGetSetting('travelEstimates') === 'true';
@@ -3849,6 +3857,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       titleRules,
       transitAlerts,
       transitLines,
+      travelArriveEarlyMinutes,
       travelEstimates,
       travelEventPrefs,
       travelLeadByCalendar,
@@ -4524,6 +4533,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const clamped = clampTravelLeadMinutes(minutes);
     dbSetSetting('travelLeadMinutes', String(clamped));
     set({ travelLeadMinutes: clamped });
+  },
+
+  setTravelArriveEarlyMinutes(minutes: number) {
+    const clamped = clampArriveEarlyMinutes(minutes);
+    dbSetSetting('travelArriveEarlyMinutes', String(clamped));
+    set({ travelArriveEarlyMinutes: clamped });
   },
 
   setTravelEstimates(on: boolean) {

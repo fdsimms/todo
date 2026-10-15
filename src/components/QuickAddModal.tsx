@@ -1936,7 +1936,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     if (draft.travelMode !== undefined || draft.arriveEarlyMinutes !== undefined || draft.travelOriginId !== undefined) {
       useSettingsStore.getState().setTravelEventPref(saved.id, {
         mode: draft.travelMode ?? null,
-        arriveEarlyMinutes: draft.arriveEarlyMinutes ?? 0,
+        arriveEarlyMinutes: draft.arriveEarlyMinutes ?? null,
         originPlaceId: draft.travelOriginId ?? null,
       });
     }

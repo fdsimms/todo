@@ -76,6 +76,9 @@ import {
   TRAVEL_LEAD_MINUTES_MAX,
   TRAVEL_LEAD_MINUTES_MIN,
   TRAVEL_LEAD_MINUTES_STEP,
+  TRAVEL_ARRIVE_EARLY_MIN,
+  TRAVEL_ARRIVE_EARLY_MAX,
+  describeArrival,
   originCandidates,
   travelOriginFor,
   type TravelMode,
@@ -1127,6 +1130,27 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
               format={n => `${n}m`}
               label="Minutes before the event"
               describeValue={n => `${n ?? TRAVEL_LEAD_MINUTES_DEFAULT} minutes before the event`}
+            />
+          </View>
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="travelArriveEarlyMinutes"
+            icon="flag-outline"
+            label="Arrive early"
+            hint="Added to the time above for every event. An event can set its own in the event sheet."
+            value={describeArrival(s.travelArriveEarlyMinutes)}
+            tight
+          />
+          <View style={styles.cadenceRow}>
+            <CountStepper
+              value={s.travelArriveEarlyMinutes}
+              onChange={next => s.setTravelArriveEarlyMinutes(next ?? 0)}
+              min={TRAVEL_ARRIVE_EARLY_MIN}
+              max={TRAVEL_ARRIVE_EARLY_MAX}
+              step={5}
+              format={describeArrival}
+              label="Minutes early"
+              describeValue={n => describeArrival(n ?? 0)}
             />
           </View>
           {Platform.OS === 'ios' && (
