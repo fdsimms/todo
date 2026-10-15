@@ -336,10 +336,16 @@ export interface ConvertedQuantity {
  * Both halves are one measurement, so the second is added to the first rather
  * than left as trailing prose, which measured "1 lb 8 oz" as one pound and
  * converted it to "≈450 g 8 oz". Null when the trailing text is anything else.
+ *
+ * The joiner may be spelled out: "1 cup + 2 tbsp", "1 cup plus 2 tbsp" and
+ * "1 cup and 2 tbsp" are the same measurement as "1 cup 2 tbsp". Left as prose
+ * they converted the first half only ("≈240 ml + 2 tbsp").
  */
+const COMPOUND_JOINER = /^\s+(?:\+|plus|and)\s+(?=\S)/i;
+
 function compoundTail(first: KnownUnit, trailing: string): { base: number; trailing: string } | null {
   if (!/^\s+\S/.test(trailing)) return null;
-  const q = parseQuantity(trailing.trim());
+  const q = parseQuantity(trailing.replace(COMPOUND_JOINER, ' ').trim());
   if (q.amount === null || q.container || q.rangeMax || !q.unit) return null;
   const known = KNOWN_UNITS[q.unit];
   if (!known || known.dimension !== first.dimension || known.system !== first.system) return null;
