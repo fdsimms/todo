@@ -1552,7 +1552,7 @@ shown beside it, but **saving the goal writes the figure** to
 `refreshWeight`, which is every time the Weight screen comes into focus with
 reading on and after `LogWeightSheet` records a weight, so the target moves with
 the weight, the profile and the date rather than going stale the moment the
-sheet is closed. The button under the figure ("Use as my calorie target") still
+sheet is closed. (`syncWeightTargets` re-applies it on each foreground too.) The button under the figure ("Use as my calorie target") still
 writes it immediately, without saving the goal.
 
 It stays narrow in four ways, and each is load-bearing:
@@ -1598,13 +1598,15 @@ Stats, the MCP replica) and the replica cannot see a weight at all.
 - **It says so where it happens.** A protein number typed on the sheet while the
   ratio is on is replaced at the next weight read, and the row says that.
 
-It runs from `refreshWeight` (the Weight screen, a weight logged in the app,
-the targets sheet opening with the ratio on) and also from `syncPinnedProtein`
-in `useHealthStore`, which `useHealthSync` calls at launch, on every return to
-the app and when reading is turned on. That one reads a 30-day window through
-`readRecentWeights` and stores nothing, so it is cheap enough for every
-foreground and a weigh-in made in another app is picked up the next time the app
-opens. The calorie sync still moves only with `refreshWeight`.
+Both syncs run from `refreshWeight` (the Weight screen, a weight logged in the
+app, the targets sheet opening with the ratio on) and also from
+`syncWeightTargets` in `useHealthStore`, which `useHealthSync` calls at launch,
+on every return to the app and when reading is turned on. That one reads a
+30-day window through `readRecentWeights` and stores nothing, so it is cheap
+enough for every foreground and a weigh-in made in another app is picked up the
+next time the app opens. With no weigh-in in the window it changes nothing: the
+goal's calorie sync would otherwise fall back to the weight the goal started
+from, which can be older than what the longer `refreshWeight` read found.
 
 **The macro split follows the same rule and is where it was most tempting to
 break.** `MACRO_PRESETS` names four common ways to divide a day's calories and

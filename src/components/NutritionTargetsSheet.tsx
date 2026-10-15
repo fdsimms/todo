@@ -473,8 +473,8 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
             {key === 'proteinG' && renderProteinPin()}
             {key === 'calorieKcal' && calorieFollowsGoal && (
               <Text style={styles.boostHint}>
-                This follows your weight goal and updates each time the
-                Weight screen reads your weight, replacing any number set here.
+                This follows your weight goal and updates whenever the app
+                reads your weight, replacing any number set here.
               </Text>
             )}
           </View>

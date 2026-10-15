@@ -210,11 +210,11 @@ export const HEALTH_HISTORY_DAYS = 90;
 export const WEIGHT_HISTORY_DAYS = 365;
 
 /**
- * How far back the pinned-protein sync looks for a weigh-in. A month, because
+ * How far back the weight-target sync looks for a weigh-in. A month, because
  * this runs on every foreground and a short window is the cheap query; a
- * person with nothing newer keeps the target the last longer read set.
+ * person with nothing newer keeps the targets the last longer read set.
  */
-const PINNED_PROTEIN_WEIGHT_DAYS = 30;
+const WEIGHT_TARGETS_WINDOW_DAYS = 30;
 
 /**
  * How far back the sleep read goes. The readings window's 90 days, because it
@@ -272,11 +272,12 @@ interface HealthState {
    */
   readRecentWeights: (days: number) => Promise<WeightPoint[] | null>;
   /**
-   * Keep a protein target pinned to body weight current without the Weight
-   * screen: reads a short weight window and re-applies the ratio. Does nothing
-   * with the pin off, and a null or empty answer leaves the stored target alone.
+   * Keep the targets that follow body weight (the weight goal's calorie figure
+   * and a protein ratio) current without the Weight screen: reads a short
+   * weight window and re-applies both. Does nothing when neither is on, and a
+   * null or empty answer leaves the stored targets alone.
    */
-  syncPinnedProtein: () => Promise<void>;
+  syncWeightTargets: () => Promise<void>;
   /**
    * A short window of daily active-energy figures, answered without storing
    * one. Null when there was no way to ask; a day with no figure is null
@@ -572,15 +573,23 @@ export const useHealthStore = create<HealthState>((set, get) => ({
     return points;
   },
 
-  async syncPinnedProtein() {
-    if (!useSettingsStore.getState().proteinPerWeight) return;
-    const points = await get().readRecentWeights(PINNED_PROTEIN_WEIGHT_DAYS);
+  async syncWeightTargets() {
+    const wanted = (st: ReturnType<typeof useSettingsStore.getState>) =>
+      st.proteinPerWeight !== null || st.weightGoal !== null;
+    if (!wanted(useSettingsStore.getState())) return;
+    const points = await get().readRecentWeights(WEIGHT_TARGETS_WINDOW_DAYS);
     // Null is "no way to ask" and [] is "nothing recorded"; neither is a weight.
-    // Read back after the await: the pin or the Health read may have been
-    // turned off while it was in flight.
+    // Read back after the await: a pin or the Health read may have been turned
+    // off while it was in flight.
     const settings = useSettingsStore.getState();
-    if (points === null || !settings.healthReadEnabled || !settings.proteinPerWeight) return;
-    settings.syncProteinToWeight(latestWeight(points)?.kilograms ?? null);
+    if (points === null || !settings.healthReadEnabled || !wanted(settings)) return;
+    const kg = latestWeight(points)?.kilograms ?? null;
+    // No weigh-in in the window leaves both targets alone. The goal's sync would
+    // otherwise fall back to the weight the goal started from, which is older
+    // than the longer read `refreshWeight` may have used.
+    if (kg === null) return;
+    settings.syncWeightGoalCalorieTarget(kg);
+    settings.syncProteinToWeight(kg);
   },
 
   /**
@@ -643,7 +652,7 @@ export function useHealthSync(): void {
     const settings = useSettingsStore.getState();
     if (settings.initialized && settings.healthReadEnabled) {
       void useHealthStore.getState().refresh();
-      void useHealthStore.getState().syncPinnedProtein();
+      void useHealthStore.getState().syncWeightTargets();
     }
 
     const unsubscribe = useSettingsStore.subscribe((state, prev) => {
@@ -656,7 +665,7 @@ export function useHealthSync(): void {
       ) {
         if (state.healthReadEnabled) {
           void useHealthStore.getState().refresh();
-          void useHealthStore.getState().syncPinnedProtein();
+          void useHealthStore.getState().syncWeightTargets();
         } else useHealthStore.getState().clear();
       }
     });
@@ -684,7 +693,7 @@ export function useHealthSync(): void {
     const subscription = AppState.addEventListener('change', state => {
       if (state === 'active' && useSettingsStore.getState().healthReadEnabled) {
         void useHealthStore.getState().refresh();
-        void useHealthStore.getState().syncPinnedProtein();
+        void useHealthStore.getState().syncWeightTargets();
       }
     });
 
