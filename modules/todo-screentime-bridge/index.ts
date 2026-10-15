@@ -37,6 +37,8 @@ export interface ScreenTimeSelectionCount {
 export interface ScreenTimeMonitorRule {
   id: string;
   thresholdMinutes: number;
+  /** The app group whose selection this rule counts. Absent from an older caller; native reads it as Default. */
+  groupId?: string;
 }
 
 /** A threshold that fired: which rule, and the logical day it fired on. */

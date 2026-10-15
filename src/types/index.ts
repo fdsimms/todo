@@ -497,6 +497,12 @@ export interface ScreenTimeRule extends RuleTaskEstimate, RuleTaskCategory, Rule
   id: string;
   /** Minutes of use across the chosen apps that trips this rule. */
   thresholdMinutes: number;
+  /**
+   * The app group whose apps this rule counts time across (`appGroups.ts`).
+   * Absent means the fallback group, which is also what a removed group reads
+   * as, so a rule saved before groups existed watches what it always did.
+   */
+  groupId?: string;
   /** The task's title, e.g. "Take a walk". */
   title: string;
   // Off keeps the rule written down but stops it firing, same as WeatherRule.
