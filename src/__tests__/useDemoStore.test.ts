@@ -4762,8 +4762,8 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const task = tasks.find(t => t.generatedKind === 'travel');
     expect(task).toBeDefined();
     expect(task!.title).toBe('Leave for Dentist (L running local)');
-    expect(task!.category).toBe('Calendar');
-    expect(settings.travelTaskCategory).toBe('Calendar');
+    expect(task!.category).toBe('Leave By');
+    expect(settings.travelTaskCategory).toBe('Leave By');
     expect(settings.transitLines).toEqual(['L']);
 
     // The reminder is the event's start less the default lead, and the row

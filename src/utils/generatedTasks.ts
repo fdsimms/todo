@@ -859,7 +859,10 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     pinnableNotice: true,
     kitchen: false,
     categorized: true,
-    defaultCategory: 'Calendar',
+    // Its own section, not the calendar's: a leave-by row is a notice with
+    // nothing to reschedule or complete in the usual sense, and mixed in with
+    // event tasks it reads as one more thing to do.
+    defaultCategory: 'Leave By',
   },
   // Ships off, like pantryCheck, mealShortfall and birthdayGift, and for the
   // reason all three do: it adds a surface nobody had rather than replacing one
