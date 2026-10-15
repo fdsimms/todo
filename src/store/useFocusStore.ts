@@ -13,6 +13,7 @@ import { selectPurgeableFocusSessionIds } from '../utils/retention';
 import {
   advanceFocusSession,
   buildFocusPlan,
+  chainSuccessorSteps,
   closeFocusSession,
   currentFocusStep,
   isFocusSessionFinished,
@@ -79,7 +80,11 @@ interface FocusStore {
    */
   finishForNow: (taskId: string) => void;
   /** Reconcile the plan against the task list. Cheap, and safe to over-call. */
-  syncWithTasks: (tasks: readonly Task[]) => void;
+  /**
+   * `options` lets a completed chain step's successor join the plan (see
+   * `chainSuccessorSteps`); without them a finished task only leaves it.
+   */
+  syncWithTasks: (tasks: readonly Task[], options?: FocusPlanOptions) => void;
   /**
    * Puts the session back exactly as `before` describes — the plan, the
    * cursor, the clock, `completedTaskIds`, all of it.
@@ -245,7 +250,7 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
     persist({ ...next, completedTaskIds: [...next.completedTaskIds, taskId] }, set);
   },
 
-  syncWithTasks(tasks) {
+  syncWithTasks(tasks, options) {
     const { session } = get();
     if (!session || isFocusSessionFinished(session)) return;
 
@@ -264,7 +269,17 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
       return task.archived;
     };
 
-    const pruned = pruneFocusPlan(session, isGone);
+    const pruned = pruneFocusPlan(
+      session,
+      isGone,
+      Date.now(),
+      options
+        ? id => {
+            const done = byId.get(id);
+            return done?.completed ? chainSuccessorSteps(done, tasks, options) : null;
+          }
+        : undefined,
+    );
     const newlyDone = [...doneIds].filter(id => !session.completedTaskIds.includes(id));
     if (pruned === session && newlyDone.length === 0) return;
 

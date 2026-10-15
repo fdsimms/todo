@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useFocusStore } from '../store/useFocusStore';
 import { useTaskStore } from '../store/useTaskStore';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { focusPlanOptionsFrom } from '../utils/focusSettings';
 import { isFocusRunning } from '../utils/focusPlan';
 import type { FocusSession } from '../types';
 
@@ -61,7 +63,10 @@ export function useFocusPlanReconcile(): void {
   useEffect(() => {
     const reconcile = () => {
       if (useFocusStore.getState().session === null) return;
-      useFocusStore.getState().syncWithTasks(useTaskStore.getState().tasks);
+      useFocusStore.getState().syncWithTasks(
+        useTaskStore.getState().tasks,
+        focusPlanOptionsFrom(useSettingsStore.getState()),
+      );
     };
     const unsubTasks = useTaskStore.subscribe((state, prev) => {
       if (state.tasks !== prev.tasks) reconcile();

@@ -57,8 +57,12 @@ estimate mid-session would resize a stretch already under way, and changing a
 setting in Settings would move the finish line of a session someone already
 agreed to. A plan is a commitment to a shape of the next hour.
 
-It only ever shrinks. `pruneFocusPlan` drops the stretches of a task that can
-no longer be worked; nothing adds a step, and nothing reorders one.
+It only ever shrinks, with one exception: a completed chain step whose next
+step spawned on the spot (`chainStepAdvancesInPlace`) hands its place to that
+step's stretches (`chainSuccessorSteps`, spliced in by `pruneFocusPlan`), so a
+routine keeps going instead of stopping at step one. A repeating chain with a
+step per occurrence adds nothing, since its next step is for another day.
+Nothing else adds a step, and nothing reorders one.
 
 ## Breaks: two triggers, whichever fires first
 
