@@ -60,6 +60,26 @@ describe('aisleForName', () => {
     expect(aisleForName('hot dog buns')).toBe('Bakery');
   });
 
+  it('knows the everyday items that used to land in Other or the wrong aisle', () => {
+    expect(aisleForName('tofu')).toBe('Produce');
+    expect(aisleForName('romaine')).toBe('Produce');
+    expect(aisleForName('guacamole')).toBe('Deli');
+    expect(aisleForName('pizza')).toBe('Frozen');
+    expect(aisleForName('pizza sauce')).toBe('Canned & Jarred');
+    expect(aisleForName('ice cream sandwiches')).toBe('Frozen');
+    expect(aisleForName('mac & cheese')).toBe('Pantry');
+    expect(aisleForName('ranch dressing')).toBe('Pantry');
+    expect(aisleForName('steak sauce')).toBe('Pantry');
+    expect(aisleForName('vodka sauce')).toBe('Canned & Jarred');
+    expect(aisleForName('tomato soup')).toBe('Canned & Jarred');
+    expect(aisleForName('cream of mushroom soup')).toBe('Canned & Jarred');
+    expect(aisleForName('canned tuna')).toBe('Canned & Jarred');
+    expect(aisleForName('sweet potato fries')).toBe('Frozen');
+    expect(aisleForName('coffee filters')).toBe('Household');
+    expect(aisleForName('cat litter')).toBe('Household');
+    expect(aisleForName('band-aids')).toBe('Personal Care');
+  });
+
   it('resolves an exact name', () => {
     expect(aisleForName('milk')).toBe('Dairy & Eggs');
     expect(aisleForName('Bananas')).toBe('Produce');
