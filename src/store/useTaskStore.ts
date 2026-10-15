@@ -4575,7 +4575,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (!task || !isNegativeTask(task) || task.archived) return;
     const dayStart = getCurrentDayStart();
     // A habit a reward guards: a slip you can pay for is the claim instead,
-    // and leaves the habit untouched. See rewardGuard.ts.
+    // and leaves the habit untouched. See rewardGuard.ts. Returning before the
+    // penalty below is deliberate: no slip, no slip block (docs/arch/rewards.md).
     const planGuard = () => useRewardStore.getState().slipGuardFor(task, dayStart)?.plan ?? null;
     let guard = planGuard();
     if (guard?.kind === 'claim') {
