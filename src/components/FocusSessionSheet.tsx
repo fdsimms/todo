@@ -732,7 +732,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
                 ? 'Finished'
                 : `Step ${session.stepIndex + 1} of ${session.steps.length}${endsAt ? ` · ends ${formatTimeOfDay(endsAt)}` : ''}`}
             </Text>
-            {coinsEarned !== null && (
+            {coinsEarned !== null && !finished && (
               <View style={styles.coinRow} accessibilityLabel={`${formatCoins(coinsEarned)} earned this session`}>
                 <CoinIcon size={iconSize.sm} color={colors.warning} filled />
                 <Text style={styles.coinText}>{`${coinsEarned} earned`}</Text>
