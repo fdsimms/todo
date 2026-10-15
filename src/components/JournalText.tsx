@@ -21,18 +21,22 @@ export function JournalText({ text, textStyle }: Props) {
   const blocks = useMemo(() => parseJournalMarkdown(text), [text]);
 
   return (
-    <View style={styles.wrap}>
+    <View>
       {blocks.map((block, i) => {
         const spans = <Spans spans={block.spans} />;
+        const prev = blocks[i - 1];
+        const inList = (b: typeof block | undefined) => b?.type === 'bullet' || b?.type === 'numbered';
+        // Items of one list stay close; every other block break is a paragraph break.
+        const gap = !prev ? 0 : inList(prev) && inList(block) ? spacing.xs : spacing.smd;
         switch (block.type) {
           case 'heading':
             return (
-              <Text key={i} style={[textStyle, block.level === 1 ? styles.h1 : styles.h2]}>{spans}</Text>
+              <Text key={i} style={[textStyle, block.level === 1 ? styles.h1 : styles.h2, { marginTop: gap }]}>{spans}</Text>
             );
           case 'bullet':
           case 'numbered':
             return (
-              <View key={i} style={styles.listRow}>
+              <View key={i} style={[styles.listRow, { marginTop: gap }]}>
                 <Text style={[textStyle, styles.marker]}>
                   {block.type === 'bullet' ? '•' : `${block.number}.`}
                 </Text>
@@ -41,12 +45,12 @@ export function JournalText({ text, textStyle }: Props) {
             );
           case 'quote':
             return (
-              <View key={i} style={styles.quote}>
+              <View key={i} style={[styles.quote, { marginTop: gap }]}>
                 <Text style={[textStyle, styles.quoteText]}>{spans}</Text>
               </View>
             );
           default:
-            return <Text key={i} style={textStyle}>{spans}</Text>;
+            return <Text key={i} style={[textStyle, { marginTop: gap }]}>{spans}</Text>;
         }
       })}
     </View>
@@ -74,9 +78,8 @@ function Spans({ spans }: { spans: InlineSpan[] }) {
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
-  wrap: { gap: spacing.xs },
-  h1: { fontSize: font.xl, fontWeight: fontWeight.bold, marginTop: spacing.xs },
-  h2: { fontWeight: fontWeight.semibold, marginTop: spacing.xs },
+  h1: { fontSize: font.xl, fontWeight: fontWeight.bold },
+  h2: { fontWeight: fontWeight.semibold },
   listRow: { flexDirection: 'row', gap: spacing.sm },
   // Fixed so a column of numbered items lines up; scales with the text since it is text.
   marker: { minWidth: 18, color: colors.textSecondary },
