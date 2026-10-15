@@ -174,6 +174,27 @@ never detected, which is what keeps them inside the "nothing is derived" rule.
   person's id stays on the entry and reads as nobody; the export skips it.
 - **Editing is `setEntryMeta`**, separate from `updateEntry` (which refuses an unchanged text).
 
+## Counting an entry as time together
+
+Typing `@` at the end of a page offers the people it could mean (`getEditorMentionSuggestions`,
+the task editor's rule): a tap links them and completes the name in the text, and the text alone
+never links anybody. Linked people show in About as before. A mention edited into the middle of a
+page is not suggested, since only the token at the end is read; the About row covers that case.
+
+Once a new journal entry names somebody, the sheet asks whether to count it as time with them
+(`journalHistory.ts`): **Don't add** (the default), **Hung out** or **Caught up**. Picking one writes an
+ordinary completed task ("Hung out with Gideon and Tessa") through `addCompletedTask` on Save, the
+record every other way into a person's history writes (`docs/arch/people.md`).
+
+- **Offered, never decided.** Nothing is written unless a choice is picked, and the words are never
+  read to guess whether a hangout happened. Same rule as the calendar offer and the Call button.
+- **One entry for everybody named**, so one afternoon is not recorded twice.
+- **Only a new, open journal entry.** An edit would offer the same page again on every save, a
+  dream is not time spent with anybody, and a note sealed for later is not something that happened
+  today. The entry is dated now for today's page and noon for a backdated one.
+- **The history entry does not point back at the page.** The title says nothing about what was
+  written, so the journal lock keeps the words private while the person's history stays plain.
+
 ## Reading it back: on this day, the month, a random page
 
 `onThisDay` finds the same month and day in earlier years (a Feb 29 page appears only on a Feb 29)
