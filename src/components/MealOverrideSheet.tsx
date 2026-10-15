@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { CardSheet, useCardSheet } from './CardSheet';
 import { PillGroup } from './PillGroup';
 import { SegmentedControl } from './SegmentedControl';
@@ -17,6 +17,7 @@ import {
   overrideTargets,
   withOverride,
 } from '../utils/mealOverrides';
+import { confirmDiscard } from '../utils/confirmDiscard';
 
 interface Props {
   visible: boolean;
@@ -105,14 +106,7 @@ export function MealOverrideSheet({ visible, entry: liveEntry, recipe: liveRecip
   const dirty = targetId !== null && (text.trim() !== '' || note.trim() !== '' || mode === 'omit');
   const handleCancel = (close: (after?: () => void) => void) => {
     if (!dirty) { close(onClose); return; }
-    Alert.alert(
-      'Discard changes?',
-      'You have unsaved changes. Are you sure you want to discard them?',
-      [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: () => close(onClose) },
-      ],
-    );
+    confirmDiscard(() => close(onClose));
   };
 
   if (!entry || !recipe) return null;

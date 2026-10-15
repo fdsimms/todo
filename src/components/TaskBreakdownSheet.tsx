@@ -13,6 +13,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { confirmDiscard } from '../utils/confirmDiscard';
 import { useTaskStore } from '../store/useTaskStore';
 import { suggestSubtasks, describeAIError } from '../services/aiSuggestions';
 import { SheetHeader } from './SheetHeader';
@@ -184,14 +185,7 @@ export function TaskBreakdownSheet({ visible, taskId, onClose }: Props) {
   const handleCancel = () => {
     const dirty = steps.length > 0 || context.trim() !== '' || newStep.trim() !== '';
     if (!dirty) { onClose(); return; }
-    Alert.alert(
-      'Discard changes?',
-      'You have unsaved changes. Are you sure you want to discard them?',
-      [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: onClose },
-      ],
-    );
+    confirmDiscard(onClose);
   };
 
   const acceptedCount = accepted.size;

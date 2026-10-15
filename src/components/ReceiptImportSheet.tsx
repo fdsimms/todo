@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   View,
   Text,
   TouchableOpacity,
@@ -55,6 +54,7 @@ import { formatPrice } from '../utils/groceryPrice';
 import { EmptyState } from './EmptyState';
 import { formatScheduledDate } from '../utils/dateUtils';
 import { haptics } from '../utils/haptics';
+import { confirmDiscard } from '../utils/confirmDiscard';
 import { GROCERY_NAME_MAX_LENGTH, SHOP_NAME_MAX_LENGTH, type GroceryItem, type ReceiptStyle } from '../types';
 import { TextField } from './TextField';
 import { ActionRow } from './ActionRow';
@@ -655,14 +655,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
   const handleCancel = () => {
     const dirty = !!receipt || !!photo;
     if (!dirty) { onClose(); return; }
-    Alert.alert(
-      'Discard changes?',
-      'You have unsaved changes. Are you sure you want to discard them?',
-      [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: onClose },
-      ],
-    );
+    confirmDiscard(onClose);
   };
 
   // ==== render ====

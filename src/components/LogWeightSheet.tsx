@@ -134,8 +134,8 @@ export function LogWeightSheet({ visible, onClose }: Props) {
     }
     if (result === 'refused') {
       Alert.alert(
-        'Health didn’t accept the weight',
-        'Open the Health app, find this app under Sharing, and allow it to write weight.',
+        'Couldn’t save to Health',
+        'This app isn’t allowed to write your weight. In Health, go to Sharing, find this app and turn on weight.',
         [
           { text: 'Not now', style: 'cancel' },
           { text: 'Open Health', onPress: () => { void openHealthApp(); } },

@@ -9,7 +9,6 @@ import {
   ScrollView,
   StyleSheet,
   Keyboard,
-  Alert,
   useWindowDimensions,
 } from 'react-native';
 import { SheetModal } from './SheetModal';
@@ -27,6 +26,7 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, animation, interaction, iconSize, sheetBottomInset, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
+import { confirmDiscard } from '../utils/confirmDiscard';
 import { SafeBlurView } from './SafeBlurView';
 import { CountStepper } from './CountStepper';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
@@ -305,14 +305,7 @@ export function LeftoverSheet({
   );
   const requestDismiss = () => {
     if (!draftDirty) { dismiss(); return; }
-    Alert.alert(
-      'Discard changes?',
-      'You have unsaved changes. Are you sure you want to discard them?',
-      [
-        { text: 'Keep editing', style: 'cancel', onPress: () => sheet.restore() },
-        { text: 'Discard', style: 'destructive', onPress: () => dismiss() },
-      ],
-    );
+    confirmDiscard(() => dismiss(), { onKeepEditing: () => sheet.restore() });
   };
   // The pan responder is built once, so it reaches the current draft through
   // a ref rather than the closure it was created in.

@@ -21,6 +21,7 @@ import { BLOCK_EDIT_LOCKED_MESSAGE, BLOCK_EDIT_LOCKED_TITLE, scheduleEditLocked 
 import {
   WEEKDAYS, formatMinutes, scheduleProblem, type BlockSchedule,
 } from '../utils/blockSchedule';
+import { confirmDiscard } from '../utils/confirmDiscard';
 
 interface Props {
   visible: boolean;
@@ -105,14 +106,7 @@ export function BlockScheduleSheet({ visible, onClose, scheduleId }: Props) {
 
   const handleCancel = () => {
     if (!dirty) { onClose(); return; }
-    Alert.alert(
-      'Discard changes?',
-      'You have unsaved changes. Are you sure you want to discard them?',
-      [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: onClose },
-      ],
-    );
+    confirmDiscard(onClose);
   };
 
   // The row refuses to open a live schedule, but a window can start while the

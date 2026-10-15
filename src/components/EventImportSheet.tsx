@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   Keyboard,
   View,
   Text,
@@ -27,6 +26,7 @@ import { parseEventText } from '../utils/eventTextParse';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { getLogicalToday } from '../utils/dateUtils';
 import { haptics } from '../utils/haptics';
+import { confirmDiscard } from '../utils/confirmDiscard';
 import { TextField } from './TextField';
 import { ClipboardPhotoOffer } from './ClipboardPhotoOffer';
 import { useClipboardImage } from '../hooks/useClipboardImage';
@@ -226,14 +226,7 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
   const handleCancel = () => {
     const dirty = !!text.trim() || !!photo;
     if (!dirty) { Keyboard.dismiss(); onClose(); return; }
-    Alert.alert(
-      'Discard changes?',
-      'You have unsaved changes. Are you sure you want to discard them?',
-      [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: () => { Keyboard.dismiss(); onClose(); } },
-      ],
-    );
+    confirmDiscard(() => { Keyboard.dismiss(); onClose(); });
   };
 
   const renderPhotoButton = (

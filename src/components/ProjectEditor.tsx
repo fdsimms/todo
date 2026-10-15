@@ -46,6 +46,7 @@ import { addDays } from 'date-fns/addDays';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { buildAwayShiftPlan } from '../utils/awayShift';
 import { haptics } from '../utils/haptics';
+import { confirmDiscard } from '../utils/confirmDiscard';
 import { useProjectLockStore, isProjectHidden } from '../store/useProjectLockStore';
 import { unlockProjects } from '../hooks/useProjectAccess';
 import { scheduleTaskReminder } from '../utils/notifications';
@@ -452,8 +453,8 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
     // notes and settings entered for it, without a word.
     if (isNew && !title.trim()) {
       Alert.alert(
-        'Name this project',
-        'A new project needs a name before it can be saved.',
+        'Add a name',
+        'Give your project a name to save it, or discard it.',
         [
           { text: 'Keep editing', style: 'cancel' },
           { text: 'Discard project', style: 'destructive', onPress: () => onClose('discarded') },
@@ -540,16 +541,9 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
   const handleCancel = () => {
     const leave = () => onClose(isNew ? 'discarded' : undefined);
     if (!isDirty()) { leave(); return; }
-    Alert.alert(
-      isNew ? 'Discard this project?' : 'Discard changes?',
-      isNew
-        ? "It hasn’t been saved yet. Are you sure you want to discard it?"
-        : 'You have unsaved changes. Are you sure you want to discard them?',
-      [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: leave },
-      ],
-    );
+    confirmDiscard(leave, isNew
+      ? { title: 'Discard this project?', message: 'This project hasn’t been saved yet. If you leave now, it’ll be lost.' }
+      : undefined);
   };
 
   const {

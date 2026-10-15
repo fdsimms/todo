@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   View,
   Text,
   ScrollView,
@@ -52,6 +51,7 @@ import { coveredIngredients, importableReferences } from '../utils/recipeImportC
 import { MAX_RECIPE_PHOTOS } from '../utils/recipePhoto';
 import { haptics } from '../utils/haptics';
 import { capitalize } from '../utils/capitalize';
+import { confirmDiscard } from '../utils/confirmDiscard';
 
 interface Props {
   visible: boolean;
@@ -502,14 +502,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
       || !!input.url.trim()
       || input.photos.length > 0;
     if (!dirty) { onClose(); return; }
-    Alert.alert(
-      'Discard changes?',
-      'You have unsaved changes. Are you sure you want to discard them?',
-      [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: onClose },
-      ],
-    );
+    confirmDiscard(onClose);
   };
 
   // Unlike the method and the prep tasks, these overwrite rather than append
