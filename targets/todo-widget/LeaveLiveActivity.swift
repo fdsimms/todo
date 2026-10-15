@@ -129,33 +129,45 @@ struct LeaveLiveActivity: Widget {
             let tint = isTimeToLeave(context) ? palette.brand : palette.textSecondary
 
             return DynamicIsland {
+                // Icon and countdown flank the camera cutout; the headline and
+                // detail are one centered block in `.bottom`, and `.center` is
+                // left empty so nothing competes with the cutout.
                 DynamicIslandExpandedRegion(.leading) {
                     Image(systemName: "figure.walk")
-                        .font(.system(size: 20))
+                        .font(.system(size: 17))
                         .foregroundColor(tint)
+                        .frame(width: 34, height: 34)
+                        .background(Circle().fill(tint.opacity(0.15)))
                         .padding(.leading, 4)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    LeaveCountdown(context: context, font: .system(size: 15, weight: .semibold).monospacedDigit(), color: palette.text)
-                        .frame(maxWidth: 80, alignment: .trailing)
-                        .minimumScaleFactor(0.7)
-                        .lineLimit(1)
-                        .padding(.trailing, 4)
-                }
-                DynamicIslandExpandedRegion(.center) {
-                    Text(leaveHeadline(context))
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(palette.text)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.center)
+                    VStack(alignment: .trailing, spacing: 0) {
+                        LeaveCountdown(context: context, font: .system(size: 22, weight: .semibold).monospacedDigit(), color: palette.text)
+                            .frame(maxWidth: 96, alignment: .trailing)
+                            .minimumScaleFactor(0.7)
+                            .lineLimit(1)
+                        Text(isTimeToLeave(context) ? "Starts at" : "Leave in")
+                            .font(.system(size: 11))
+                            .foregroundColor(palette.textSecondary)
+                    }
+                    .padding(.trailing, 4)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    if let detail = leaveDetail(context) {
-                        Text(detail)
-                            .font(.system(size: 12))
-                            .foregroundColor(palette.textSecondary)
-                            .lineLimit(1)
+                    VStack(spacing: 2) {
+                        Text(leaveHeadline(context))
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(palette.text)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.center)
+                        if let detail = leaveDetail(context) {
+                            Text(detail)
+                                .font(.system(size: 12))
+                                .foregroundColor(palette.textSecondary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.85)
+                        }
                     }
+                    .frame(maxWidth: .infinity)
                 }
             } compactLeading: {
                 Image(systemName: "figure.walk")
