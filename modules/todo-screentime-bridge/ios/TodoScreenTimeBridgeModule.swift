@@ -150,21 +150,22 @@ public class TodoScreenTimeBridgeModule: Module {
     }
     .runOnQueue(.main)
 
-    /// How many apps and categories are picked. Counts only — see the note on
+    /// How many apps, categories and websites are picked. Counts only — see the note on
     /// `presentAppPicker` for why there are no names here.
     Function("selectionCount") { (groupId: String) -> [String: Int] in
       #if canImport(FamilyControls)
       if #available(iOS 16.0, *) {
-        var counts = ["applications": 0, "categories": 0]
+        var counts = ["applications": 0, "categories": 0, "websites": 0]
         TodoScreenTimeExceptionCatcher.runCatchingExceptions {
           guard let selection = ScreenTimeShared.readSelection(groupId: groupId) else { return }
           counts["applications"] = selection.applicationTokens.count
           counts["categories"] = selection.categoryTokens.count
+          counts["websites"] = selection.webDomainTokens.count
         }
         return counts
       }
       #endif
-      return ["applications": 0, "categories": 0]
+      return ["applications": 0, "categories": 0, "websites": 0]
     }
 
     Function("clearSelection") { (groupId: String) -> Bool in

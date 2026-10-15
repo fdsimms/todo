@@ -38,7 +38,7 @@ interface Props {
   /** Why the apps are blocked right now, so each switch can say what it is doing. */
   reasons: readonly ShieldReasonEntry[];
   /** How many apps and categories each group has picked, by group id. */
-  counts: Record<string, { applications: number; categories: number }>;
+  counts: Record<string, { applications: number; categories: number; websites?: number }>;
   /** Opens the system picker for one group. Owned by the screen, which also shows the counts. */
   onChooseApps: (groupId: string) => Promise<void>;
 }
@@ -100,11 +100,11 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
 
   const countLabel = (groupId: string) => {
     const c = counts[groupId];
-    return c ? selectionLabel(c.applications, c.categories) : 'None';
+    return c ? selectionLabel(c.applications, c.categories, c.websites ?? 0) : 'None';
   };
   const totalOf = (groupId: string) => {
     const c = counts[groupId];
-    return c ? c.applications + c.categories : 0;
+    return c ? c.applications + c.categories + (c.websites ?? 0) : 0;
   };
 
   const handleChooseApps = async (groupId: string) => {
