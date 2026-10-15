@@ -355,6 +355,12 @@ export function describeWeekendNudgePlanThreshold(count: number): string {
  *
  * `busyKnown: false` does not block — see rule 4 in this module's header, which
  * is the one place this deliberately departs from `dayLoad`'s own reading.
+ *
+ * A Saturday or Sunday inside a trip's away span (`DayLoad.away`) blocks the
+ * same way an all-day busy event does, and needs no `busyKnown`, since the
+ * span is something the user typed rather than read off a calendar. Vacation
+ * mode already silences this generator, but only a trip with `awayPauses` arms
+ * it, so without this a weekend in Lisbon was offered as one to fill.
  */
 export function isWeekendBare(
   window: WeekendWindow,
@@ -365,6 +371,7 @@ export function isWeekendBare(
   if (planCount > clampWeekendNudgePlanThreshold(threshold)) return false;
   for (const key of [window.saturdayKey, window.sundayKey]) {
     const load = loads.get(key);
+    if (load?.away) return false;
     if (load?.busyKnown && (load.busyMinutes > 0 || load.busyAllDay)) return false;
   }
   return true;

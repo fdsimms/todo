@@ -145,7 +145,7 @@ export function resetToMedications(): void {
 // shape resetToPeople already uses for PersonDetail.
 //
 // `openCookMode` is the second half, tapped from CookingBar (a running cook
-// timer's own floating return-to-it bar) and the More tab's cook-timer dot:
+// timer's own floating return-to-it bar):
 // land on the recipe *and* pop CookModeSheet open, the same stamped-param
 // handoff resetToGroceries's openFinish uses, and for the same reason — the
 // sheet compares against the last value it handled, so tapping the bar twice

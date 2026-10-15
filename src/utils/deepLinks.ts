@@ -31,6 +31,7 @@ import {
   resetToProject,
   resetToProjects,
   resetToTask,
+  resetToLocateTask,
   resetToFocusSession,
   resetToDeload,
   openQuickAddFromShortcut,
@@ -421,6 +422,19 @@ export function taskUrlId(url: string): string | null {
   if (!match) return null;
   const id = (parseQuery(match[1] ?? '').id ?? '').trim();
   return id || null;
+}
+
+/**
+ * Does a task link ask to scroll to the task's row rather than open its
+ * editor (`dundundun://task?id=…&locate=1`)? The Leave for X Live Activity
+ * writes this: it is a glance at where the task sits on Today, not an edit.
+ */
+export function taskUrlWantsLocate(url: string): boolean {
+  if (typeof url !== 'string') return false;
+  const match = TASK_RE.exec(url.trim());
+  if (!match) return false;
+  const value = (parseQuery(match[1] ?? '').locate ?? '').trim();
+  return value === '1' || value.toLowerCase() === 'true';
 }
 
 // `dundundun://project?id=…` — one project's own page. Singular, unlike
@@ -923,7 +937,8 @@ export function openInAppUrl(url: string | null | undefined): boolean {
   }
   if (isTaskUrl(url)) {
     const id = taskUrlId(url);
-    if (id) resetToTask(id);
+    if (id && taskUrlWantsLocate(url)) resetToLocateTask(id);
+    else if (id) resetToTask(id);
     else resetToToday();
     return true;
   }

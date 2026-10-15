@@ -1,10 +1,10 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { AppState, Linking, View, StyleSheet } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { AppState, Linking, Text, View, StyleSheet } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 import type { ScreenTimeRule } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
-import { spacing } from '../theme';
+import { font, spacing } from '../theme';
 import { haptics } from '../utils/haptics';
 import { generateId } from '../utils/id';
 import {
@@ -14,11 +14,13 @@ import {
   SCREEN_TIME_THRESHOLD_MIN,
 } from '../utils/screenTimeRules';
 import { screenTimeBridge } from '../utils/screenTimeBridge';
-import { DEFAULT_GROUP_ID } from '../utils/appGroups';
-import type { ScreenTimeAuthorization } from 'todo-screentime-bridge';
+import { allGroups, groupName, resolveGroupId } from '../utils/appGroups';
+import { useAppGroupStore } from '../store/useAppGroupStore';
+import type { ScreenTimeAuthorization, ScreenTimeSelectionCount } from 'todo-screentime-bridge';
+import { PillGroup } from './PillGroup';
 import { CountStepper } from './CountStepper';
 import { InlineAction } from './InlineAction';
-import { RuleListSheet, RuleSheetNoticeCard } from './RuleListSheet';
+import { RuleFieldLabel, RuleListSheet, RuleSheetNoticeCard } from './RuleListSheet';
 
 interface Props {
   visible: boolean;
@@ -32,11 +34,10 @@ interface Props {
  * Both of this one's differences come from the same source — the app cannot
  * see usage:
  *
- * - **The app picker is above the rules, not inside one.** iOS hands back
- *   opaque tokens, so there is one selection every rule shares. Putting it in
- *   the header is the honest layout: it's a property of the feature, not of a
- *   rule, and a per-rule set of apps isn't a design that was passed over, it
- *   isn't available.
+ * - **A rule picks an app group, never apps.** iOS hands back opaque tokens
+ *   that live in the App Group container, one selection per group, so a rule
+ *   holds a group id (`ScreenTimeRule.groupId`) and the groups are the ones
+ *   defined on the Screen Time screen.
  * - **A rule with no apps picked does nothing**, and the card says so, because
  *   nothing else here would give it away — the rules look perfectly well formed.
  */
@@ -47,7 +48,10 @@ export function ScreenTimeRulesSheet({ visible, onClose }: Props) {
   const setRules = useSettingsStore(s => s.setScreenTimeRules);
 
   const [authorization, setAuthorization] = useState<ScreenTimeAuthorization | null>(null);
-  const [selection, setSelection] = useState({ applications: 0, categories: 0 });
+  const customGroups = useAppGroupStore(s => s.groups);
+  const groupsMeta = useAppGroupStore(s => s.meta);
+  const groups = useMemo(() => allGroups(customGroups, groupsMeta), [customGroups, groupsMeta]);
+  const [counts, setCounts] = useState<Record<string, ScreenTimeSelectionCount>>({});
 
   const refreshNativeState = useCallback(() => {
     const bridge = screenTimeBridge();
@@ -56,8 +60,12 @@ export function ScreenTimeRulesSheet({ visible, onClose }: Props) {
       return;
     }
     setAuthorization(bridge.screenTimeAuthorizationStatus());
-    setSelection(bridge.screenTimeSelectionCount(DEFAULT_GROUP_ID));
-  }, []);
+    const next: Record<string, ScreenTimeSelectionCount> = {};
+    for (const group of allGroups(customGroups, groupsMeta)) {
+      next[group.id] = bridge.screenTimeSelectionCount(group.id);
+    }
+    setCounts(next);
+  }, [customGroups, groupsMeta]);
 
   // Authorization can be revoked while the user is off in the system Settings
   // app, so it's re-read on every foreground while this sheet is open — the
@@ -71,17 +79,20 @@ export function ScreenTimeRulesSheet({ visible, onClose }: Props) {
     return () => subscription.remove();
   }, [visible, refreshNativeState]);
 
-  const chooseApps = async () => {
+  const chooseApps = async (groupId: string) => {
     haptics.tap();
     const bridge = screenTimeBridge();
     if (!bridge) return;
-    if (await bridge.presentAppPicker(DEFAULT_GROUP_ID)) setSelection(bridge.screenTimeSelectionCount(DEFAULT_GROUP_ID));
+    if (await bridge.presentAppPicker(groupId)) {
+      setCounts(prev => ({ ...prev, [groupId]: bridge.screenTimeSelectionCount(groupId) }));
+    }
   };
 
-  const totalPicked = selection.applications + selection.categories;
-  const selectionLabel = totalPicked === 0
-    ? 'None yet'
-    : [
+  const groupIdOf = (rule: ScreenTimeRule) => resolveGroupId(customGroups, rule.groupId, groupsMeta);
+  const selectionLabelFor = (groupId: string) => {
+    const selection = counts[groupId] ?? { applications: 0, categories: 0 };
+    if (selection.applications + selection.categories === 0) return 'None yet';
+    return [
       selection.applications > 0
         ? `${selection.applications} ${selection.applications === 1 ? 'app' : 'apps'}`
         : null,
@@ -89,6 +100,11 @@ export function ScreenTimeRulesSheet({ visible, onClose }: Props) {
         ? `${selection.categories} ${selection.categories === 1 ? 'category' : 'categories'}`
         : null,
     ].filter(Boolean).join(', ');
+  };
+  const groupIsEmpty = (groupId: string) => {
+    const selection = counts[groupId];
+    return !selection || selection.applications + selection.categories === 0;
+  };
 
   return (
     <RuleListSheet<ScreenTimeRule>
@@ -96,7 +112,7 @@ export function ScreenTimeRulesSheet({ visible, onClose }: Props) {
       onClose={onClose}
       title="Screen Time rules"
       caption={
-        'A rule adds its task once your total time today on the apps you picked '
+        'A rule adds its task once your total time today on its group of apps '
         + 'reaches the time you set. Each rule adds its task at most once a day.'
       }
       rules={rules}
@@ -112,25 +128,56 @@ export function ScreenTimeRulesSheet({ visible, onClose }: Props) {
       })}
       describeRule={rule => `After ${rule.thresholdMinutes} min`}
       editorLabel="After this much use"
-      renderEditor={(rule, update) => (
-        <View style={styles.stepperRow}>
-          <CountStepper
-            value={rule.thresholdMinutes}
-            onChange={next => update({ thresholdMinutes: next ?? SCREEN_TIME_THRESHOLD_DEFAULT })}
-            min={SCREEN_TIME_THRESHOLD_MIN}
-            max={SCREEN_TIME_THRESHOLD_MAX}
-            step={5}
-            format={n => `${n} min`}
-            label="Usage threshold"
-            describeValue={n => `${n} minutes`}
-          />
-        </View>
-      )}
+      rowNote={rule => authorization === 'approved' && groupIsEmpty(groupIdOf(rule))
+        ? { text: `No apps picked in ${groupName(customGroups, rule.groupId, groupsMeta)}, so this rule can’t fire.`, tone: 'warn' }
+        : null}
+      renderEditor={(rule, update) => {
+        const groupId = groupIdOf(rule);
+        return (
+          <>
+            <View style={styles.stepperRow}>
+              <CountStepper
+                value={rule.thresholdMinutes}
+                onChange={next => update({ thresholdMinutes: next ?? SCREEN_TIME_THRESHOLD_DEFAULT })}
+                min={SCREEN_TIME_THRESHOLD_MIN}
+                max={SCREEN_TIME_THRESHOLD_MAX}
+                step={5}
+                format={n => `${n} min`}
+                label="Usage threshold"
+                describeValue={n => `${n} minutes`}
+              />
+            </View>
+            <RuleFieldLabel>Count time on</RuleFieldLabel>
+            <PillGroup
+              noun="group"
+              surface="card"
+              options={groups.map(g => ({
+                key: g.id,
+                label: g.name,
+                selected: g.id === groupId,
+                suffix: groupIsEmpty(g.id) ? 'no apps' : undefined,
+                onPress: () => update({ groupId: g.id }),
+              }))}
+            />
+            {authorization === 'approved' && (
+              <View style={styles.appsRow}>
+                <InlineAction
+                  label="Choose apps"
+                  variant="neutral"
+                  onPress={() => chooseApps(groupId)}
+                  accessibilityLabel={`Choose apps for ${groupName(customGroups, groupId, groupsMeta)}`}
+                />
+                <Text style={[styles.appsCount, { color: colors.textSecondary }]}>{selectionLabelFor(groupId)}</Text>
+              </View>
+            )}
+          </>
+        );
+      }}
       titlePlaceholder="e.g. Take a walk"
       titleMaxLength={SCREEN_TIME_RULE_TITLE_MAX_LENGTH}
       emptyIcon="phone-portrait-outline"
       emptyTitle="No Screen Time rules"
-      emptySubtitle="Add a rule to get a task after you spend a set time on the apps you picked."
+      emptySubtitle="Add a rule to get a task after you spend a set time on a group of apps."
       header={
         <>
           {authorization !== null && authorization !== 'approved' && (
@@ -159,19 +206,6 @@ export function ScreenTimeRulesSheet({ visible, onClose }: Props) {
               )}
             />
           )}
-          {authorization === 'approved' && (
-            <RuleSheetNoticeCard
-              icon="apps-outline"
-              iconColor={colors.accent}
-              title="Apps to watch"
-              hint={totalPicked === 0
-                ? 'No apps picked yet, so no rule below can fire.'
-                : 'Every rule below counts time across these.'}
-              value={selectionLabel}
-              onPress={chooseApps}
-              accessibilityLabel={`Apps to watch: ${selectionLabel}`}
-            />
-          )}
         </>
       }
     />
@@ -181,5 +215,7 @@ export function ScreenTimeRulesSheet({ visible, onClose }: Props) {
 const styles = StyleSheet.create({
   // The stepper is left-aligned rather than stretched, so it reads as a
   // control rather than as a row of the card behind it.
-  stepperRow: { alignItems: 'flex-start', marginTop: spacing.xs },
+  stepperRow: { alignItems: 'flex-start', marginTop: spacing.xs, marginBottom: spacing.xs },
+  appsRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd, marginTop: spacing.xs },
+  appsCount: { fontSize: font.sm },
 });

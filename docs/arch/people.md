@@ -956,10 +956,14 @@ each kind's hint in the sheet actually says.
   the user. `notes` is emphatically theirs to edit, and a drift pass rewriting it
   would eat what they added on the day. In practice ideas are written months
   ahead and the row days ahead, so it arrives carrying them.
-- **Stale gift and food notes are dropped rather than sunk.** A gift idea whose
-  day has passed is one you either bought or missed and a birthday task is not
-  the place to be shown either; a food note that has passed ("dairy-free until
-  March") is simply no longer true.
+- **Stale gift ideas are dropped from the birthday task rather than sunk.** A
+  gift idea whose day has passed is one you either bought or missed, and a
+  birthday task is not the place to be shown either.
+- **There are two kinds, `note` and `gift`.** A third, `food`, was meant to
+  show on a planned meal the person was a guest at; meal plan guests were
+  removed, and the kind followed once nothing read it. `rowToPersonNote` reads
+  a stored `food` row as a plain note, so what was written under it stays on
+  the person's page.
 - **Deleting a person deletes their notes**, and it is the one place this layer
   does not shrug at a dangling pointer. A note is *about* somebody and has no
   meaning without them, unlike a task naming them, which is still a thing you

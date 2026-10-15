@@ -1492,6 +1492,17 @@ describe('travel estimates', () => {
     useSettingsStore.getState().initialize();
     expect(useSettingsStore.getState().travelMode).toBe('driving');
   });
+
+  it('walk-under is off by default, snaps to steps of 5, and reads back clamped', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().travelWalkUnderMinutes).toBe(0);
+    useSettingsStore.getState().setTravelWalkUnderMinutes(22);
+    expect(dbSetSetting).toHaveBeenCalledWith('travelWalkUnderMinutes', '20');
+    expect(useSettingsStore.getState().travelWalkUnderMinutes).toBe(20);
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) => (key === 'travelWalkUnderMinutes' ? '999' : null));
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().travelWalkUnderMinutes).toBe(60);
+  });
 });
 
 describe('hapticsEnabled', () => {

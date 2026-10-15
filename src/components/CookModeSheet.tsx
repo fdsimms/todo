@@ -12,6 +12,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Keyboard,
   View,
   Text,
@@ -27,6 +28,7 @@ import { useShallow } from 'zustand/react/shallow';
 import type { Recipe, RecipeOverride } from '../types';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
+import { useStepTimerStore } from '../store/useStepTimerStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useRecipeTimer } from '../hooks/useRecipeTimer';
 import { useStepTimers } from '../hooks/useStepTimers';
@@ -49,8 +51,9 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, lineHeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
-import { clampStepIndex, cookSteps, describeStepPosition } from '../utils/cookMode';
+import { clampStepIndex, cookNotesPanel, cookSteps, describeStepPosition } from '../utils/cookMode';
 import { formatStepDuration, stepDurationOffers, stepTimerExcerpt } from '../utils/stepTimers';
+import { recipeTimerResetPrompt } from '../utils/recipeTimer';
 import {
   applyChoice, choiceGroupKey, flattenRecipeIngredients, recipeChoiceGroups, type ChoiceGroup,
 } from '../utils/recipeComponents';
@@ -254,6 +257,10 @@ export function CookModeSheet({
   // reset the same way on close.
   const [finished, setFinished] = useState(false);
   const [ingredientsOpen, setIngredientsOpen] = useState(false);
+  // Folded like the ingredients and, like them, kept across steps: the notes are
+  // about the whole cooking, so moving on mustn't close them under the cook.
+  const [notesOpen, setNotesOpen] = useState(false);
+  const notesPanel = useMemo(() => cookNotesPanel(recipe), [recipe]);
   // One question at a time, about the step on screen, and none of it outlives
   // that step: the answer is screen state like the position and the panel's
   // fold, and a step only gains a `note` when someone presses Keep. There is no
@@ -286,6 +293,7 @@ export function CookModeSheet({
       setRawIndex(hasIngredients ? -1 : 0);
       setFinished(false);
       setIngredientsOpen(false);
+      setNotesOpen(false);
     }
   }, [visible, hasIngredients]);
 
@@ -422,6 +430,33 @@ export function CookModeSheet({
     onClose();
   };
 
+  // Leaving with the X keeps the cook timer running on purpose (stepping away
+  // mid-cook is the ordinary case), so abandoning a cook is its own action:
+  // it throws the timed cook away without logging it, then closes. Asks first
+  // because what it discards is a time that was about to be logged. This
+  // recipe's step timers go with it, since they belong to the same cook.
+  const cookUnderway = cookTimer.inProgress || stepTimers.timers.length > 0;
+  const cancelCook = () => {
+    haptics.tap();
+    const prompt = recipeTimerResetPrompt('Cook', cookTimer);
+    const stepTimerIds = stepTimers.timers.map(t => t.id);
+    const discard = () => {
+      cookTimer.onReset();
+      for (const id of stepTimerIds) useStepTimerStore.getState().remove(id);
+      close();
+    };
+    if (!prompt && stepTimerIds.length === 0) { discard(); return; }
+    const parts = [
+      prompt?.message,
+      stepTimerIds.length > 0 && `${stepTimerIds.length === 1 ? '1 step timer' : `${stepTimerIds.length} step timers`} will be cleared too.`,
+      'Cancelling stops the timers without logging a cook time.',
+    ].filter(Boolean);
+    Alert.alert('Cancel this cook?', parts.join(' '), [
+      { text: 'Keep cooking', style: 'cancel' },
+      { text: 'Cancel cook', style: 'destructive', onPress: discard },
+    ]);
+  };
+
   const goNext = () => {
     if (atLast) {
       // Finishing the whole method should read as more than one more step
@@ -465,9 +500,26 @@ export function CookModeSheet({
             // written, and a chip repeating that is chrome. When it isn't, this
             // is the one thing on screen explaining why the amounts in the panel
             // below aren't the recipe's own numbers.
-            isUnscaled(scale) ? undefined : (
-              <View style={styles.scaleChip}>
-                <Text style={styles.scaleChipText}>{formatScale(scale)}</Text>
+            isUnscaled(scale) && !cookUnderway ? undefined : (
+              <View style={styles.headerActions}>
+                {!isUnscaled(scale) && (
+                  <View style={styles.scaleChip}>
+                    <Text style={styles.scaleChipText}>{formatScale(scale)}</Text>
+                  </View>
+                )}
+                {/* Only once a cook is underway (the timer has time on it). */}
+                {cookUnderway && (
+                  <TouchableOpacity
+                    onPress={cancelCook}
+                    activeOpacity={interaction.activeOpacity}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Cancel this cook"
+                    accessibilityHint="Stops the timer without logging a cook time and closes cook mode"
+                  >
+                    <Ionicons name="trash-outline" size={iconSize.md} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                )}
               </View>
             )
           }
@@ -848,6 +900,40 @@ export function CookModeSheet({
             </View>
           )}
 
+          {/* The recipe's own notes ("double the garlic", "freezes well"),
+              where the cook is looking. Hidden on mise en place for the same
+              reason the ingredients are, and absent when the notes are being
+              read as the method (see cookNotesPanel). */}
+          {notesPanel && !atMise && (
+            <View style={styles.panel}>
+              <TouchableOpacity
+                style={styles.panelHeader}
+                activeOpacity={interaction.activeOpacity}
+                onPress={() => { haptics.tap(); animateLayout(); setNotesOpen(v => !v); }}
+                accessibilityRole="button"
+                accessibilityState={{ expanded: notesOpen }}
+                accessibilityLabel="Recipe notes"
+                accessibilityHint="Double tap to show or hide the notes"
+              >
+                <Ionicons name="document-text-outline" size={16} color={colors.accent} />
+                <Text style={styles.panelHeaderText} numberOfLines={1}>
+                  Notes
+                  {!notesOpen && <Text style={styles.notesPreview}>{` · ${notesPanel.preview}`}</Text>}
+                </Text>
+                <Ionicons
+                  name={notesOpen ? 'chevron-up' : 'chevron-down'}
+                  size={12}
+                  color={colors.textTertiary}
+                />
+              </TouchableOpacity>
+              {notesOpen && (
+                <ScrollView style={styles.panelList} nestedScrollEnabled>
+                  <Text style={styles.panelNotes}>{notesPanel.text}</Text>
+                </ScrollView>
+              )}
+            </View>
+          )}
+
           {/* Every countdown started from a step, whichever step it was started
               from. They live here rather than under the step text because the
               whole point of setting one is walking away from the step: pressing
@@ -1074,6 +1160,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bg,
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.smd,
+  },
   scaleChip: {
     backgroundColor: colors.accent + '26',
     borderRadius: radius.sm,
@@ -1169,6 +1260,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   panelList: {
     maxHeight: 220,
     marginTop: spacing.sm,
+  },
+  notesPreview: {
+    color: colors.textTertiary,
+    fontWeight: fontWeight.regular,
+  },
+  panelNotes: {
+    color: colors.text,
+    fontSize: font.md,
+    lineHeight: lineHeight.md,
   },
   panelDivider: {
     height: StyleSheet.hairlineWidth,

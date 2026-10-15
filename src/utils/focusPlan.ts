@@ -1,4 +1,4 @@
-import type { FocusSession, FocusSessionRecord, FocusStep, FocusStepKind, FocusStepRecord } from '../types';
+import type { CoinEntry, FocusSession, FocusSessionRecord, FocusStep, FocusStepKind, FocusStepRecord } from '../types';
 import { chainStepAdvancesInPlace, type ChainCompletionCarrier } from './chain';
 import { estimatedMinutesFor, type EstimateSource } from './effort';
 
@@ -325,6 +325,32 @@ export function upcomingStepsForTask(session: FocusSession, taskId: string): Foc
   return session.steps
     .slice(session.stepIndex)
     .filter(step => step.kind === 'work' && step.taskId === taskId);
+}
+
+/**
+ * Coins the session's own tasks have earned since it began: the `earn` rows
+ * in the ledger dated at or after `startedAt` whose task is one the session
+ * held (still in the plan, worked, or checked off).
+ *
+ * Read off the ledger rather than kept on the session, for the reason the
+ * balance is derived (docs/arch/rewards.md): an unticked task takes its row
+ * back and the total follows, with nothing to keep in step. Losses and
+ * spends are not subtracted, since this is what the session earned, not how
+ * the balance moved. A task done from the Today list behind the session
+ * counts too, because it was part of the plan.
+ */
+export function sessionCoinsEarned(
+  session: Pick<FocusSession, 'startedAt' | 'steps' | 'stepLog' | 'completedTaskIds'>,
+  entries: readonly Pick<CoinEntry, 'kind' | 'amount' | 'at' | 'taskId'>[],
+): number {
+  const ids = new Set<string>(session.completedTaskIds);
+  for (const s of session.steps) if (s.kind === 'work' && s.taskId) ids.add(s.taskId);
+  for (const r of session.stepLog) if (r.kind === 'work' && r.taskId) ids.add(r.taskId);
+  let total = 0;
+  for (const e of entries) {
+    if (e.kind === 'earn' && e.taskId !== null && ids.has(e.taskId) && e.at >= session.startedAt) total += e.amount;
+  }
+  return total;
 }
 
 // ==== Moving through the plan ====

@@ -1060,7 +1060,9 @@ ingredient panel's fold die with the modal.
   breaks is one step** — sentence splitting is the tempting third rule and it's wrong, because
   "add 1.5 cups" and "Mr." are what it does to a real method. One long step is unhelpful; half a
   sentence is misleading. It is display only: nothing is written back, and a bad split is fixed by
-  writing real steps.
+  writing real steps. **Once a recipe has steps, its notes are the cook's tips, not the method**, so
+  cook mode shows them in a collapsible Notes panel in the tray (`cookNotesPanel`), and the panel
+  is withheld while the notes are being read as the steps, or the same text would appear twice.
 - **The cook timer is the recipe's own**, through `useRecipeTimer` — the hook that now owns the
   clock, the derivation against it and the four store calls for *both* of a recipe's timers.
   `RecipeDetailScreen` reads through the same hook, so "start it here, log it there" is structural
@@ -1099,6 +1101,11 @@ ingredient panel's fold die with the modal.
   verbs sit behind one labelled "Made it" control rather than two glyphs; it is a menu even when
   only one of them applies, because `lastCookedAt` steers suggestions for weeks and a stray tap on
   a header icon shouldn't move it.
+- **Leaving does not cancel a cook; the header's trash button does.** Closing with the X keeps the
+  cook timer running, because stepping away mid-cook is the ordinary case. Abandoning one is
+  `cancelCook` in `CookModeSheet`: it appears only while the timer has time on it, asks first
+  (`recipeTimerResetPrompt`), then resets the recipe's cook timer without logging, clears that recipe's
+  step timers and closes.
 - **`useKeepAwake` is called from inside the Modal's content** (`ScreenAwake`), not at the top of
   the sheet: the sheet stays mounted with `visible` false, and a lock taken there would hold the
   phone awake for the rest of the session. `expo-keep-awake` was already in the tree as one of

@@ -9,6 +9,7 @@ import {
   TRAVEL_ESTIMATE_STALE_MS,
   TRAVEL_ORIGIN_CURRENT,
   travelModeFor,
+  travelWalkUnderFor,
   travelOriginKey,
   travelSourceId,
   travelSourceOf,
@@ -67,6 +68,8 @@ const TITLE_MAX = 60;
 const LOCATION_MAX = 80;
 
 export interface LeaveRun {
+  /** The "Leave for X" task. The card's tap scrolls Today to it (`dundundun://task?id=…&locate=1`). */
+  taskId: string;
   eventTitle: string;
   /** The event's location text, shortened to one line's worth; null when blank. */
   location: string | null;
@@ -83,6 +86,7 @@ export interface AlreadyThereCheck {
   /** The `travelOriginKey` this event's trip starts from. */
   originKeyFor: (event: BusyEvent) => string;
   modeFor: (event: BusyEvent) => TravelMode;
+  walkUnderFor: (event: BusyEvent) => number;
 }
 
 function clip(text: string, max: number): string {
@@ -98,7 +102,7 @@ function clip(text: string, max: number): string {
 export function isAlreadyThere(event: BusyEvent, check: AlreadyThereCheck | undefined, now: Date): boolean {
   if (!check) return false;
   if (check.originKeyFor(event) !== TRAVEL_ORIGIN_CURRENT) return false;
-  const held = estimateFor(event, check.estimates, check.modeFor(event), TRAVEL_ORIGIN_CURRENT);
+  const held = estimateFor(event, check.estimates, check.modeFor(event), TRAVEL_ORIGIN_CURRENT, check.walkUnderFor(event));
   if (!held || now.getTime() - held.at >= TRAVEL_ESTIMATE_STALE_MS) return false;
   return held.minutes <= ALREADY_THERE_MINUTES;
 }
@@ -118,7 +122,7 @@ export function buildLeaveRun(
   if (!opts.enabled) return null;
   const nowMs = now.getTime();
 
-  const candidates: { event: BusyEvent; leaveAtMs: number; startMs: number }[] = [];
+  const candidates: { taskId: string; event: BusyEvent; leaveAtMs: number; startMs: number }[] = [];
   for (const task of liveGeneratedTasksOfKind(tasks, 'travel')) {
     const sourceId = travelSourceOf(task);
     if (!sourceId || !task.reminderTime) continue;
@@ -130,7 +134,7 @@ export function buildLeaveRun(
     if (leaveAtMs - nowMs > LEAVE_WINDOW_MS) continue;
     const event = events.find(e => travelSourceId(e) === sourceId);
     if (!event) continue;
-    candidates.push({ event, leaveAtMs, startMs });
+    candidates.push({ taskId: task.id, event, leaveAtMs, startMs });
   }
   candidates.sort((a, b) => a.startMs - b.startMs);
 
@@ -138,6 +142,7 @@ export function buildLeaveRun(
   if (!next) return null;
   const location = (next.event.location ?? '').trim();
   return {
+    taskId: next.taskId,
     eventTitle: clip(next.event.title, TITLE_MAX),
     location: location ? clip(location, LOCATION_MAX) : null,
     leaveAtMs: next.leaveAtMs,
@@ -165,6 +170,7 @@ function currentRun(): LeaveRun | null {
         mode: settings.travelMode,
         originKeyFor: event => travelOriginKey(travelOriginOfEvent(event.id)),
         modeFor: event => travelModeFor(event.id, settings.travelEventPrefs, settings.travelMode),
+        walkUnderFor: event => travelWalkUnderFor(event.id, settings.travelEventPrefs, settings.travelMode, settings.travelWalkUnderMinutes),
       }
     : undefined;
   return buildLeaveRun(

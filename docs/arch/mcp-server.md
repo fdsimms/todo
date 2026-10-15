@@ -1315,7 +1315,7 @@ an age. Groups, archive and order used to be left out with cadence; they are org
 judgement about anyone, so they are in (`save_person_group`, `reorder` with kind `people`), and the tool text still
 says the order is the person's to choose.
 
-What is written about someone (`PersonNote`: a gift idea, a food note, or any other note, optionally
+What is written about someone (`PersonNote`: a gift idea or any other note, optionally
 about a day) is `add_person_note`, `update_person_note` and `delete_person_note`, through
 `usePersonNoteStore`. `get_person` returns each with its id, and each history entry with its task id, so
 a wrong one can be put right with the task tools. The Activity entry for a note is titled by the person,

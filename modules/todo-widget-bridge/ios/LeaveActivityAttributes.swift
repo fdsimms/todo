@@ -17,6 +17,7 @@ import Foundation
 struct LeaveActivityAttributes: ActivityAttributes {
     struct ContentState: Codable, Hashable {}
 
+    let taskId: String // the "Leave for X" task; a tap opens it
     let eventTitle: String // pre-truncated JS-side
     let location: String? // pre-truncated JS-side
     let leaveAt: Date

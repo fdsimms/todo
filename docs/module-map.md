@@ -92,7 +92,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/contactsAccess.ts` — ContactsPermission, getContactsPermission, ContactsAccessScope, getContactsAccessScope, requestContactsPermission, toCandidate, searchContacts, fetchLimitedContacts
 - `src/utils/contactsImport.ts` — MIN_CONTACT_QUERY_LENGTH, MAX_CONTACT_RESULTS, ContactCandidate, ContactPersonDraft, contactBirthday, normalizePhone, alreadyAdded, canSearchContacts, rankContacts, browsableContacts, +4 more
 - `src/utils/contextCards.ts` — CardPosition, isCardRow, contextCardPositions, contextSectionSummaries
-- `src/utils/cookMode.ts` — CookStep, stepsFromNotes, cookSteps, clampStepIndex, describeStepPosition
+- `src/utils/cookMode.ts` — CookStep, stepsFromNotes, cookNotesPanel, cookSteps, clampStepIndex, describeStepPosition
 - `src/utils/cookQuestions.ts` — COOK_QUESTION_MAX_LENGTH, COOK_ANSWER_MAX_LINES, COOK_ANSWER_MAX_CHARS, CookContextIngredient, CookQuestionContext, cookQuestionContext, suggestedCookQuestions, clampCookAnswer
 - `src/utils/cookbookIndex.ts` — MAX_INDEX_INGREDIENTS, cleanIndexTitle, cleanIndexPage, cleanIndexIngredients, IndexEntryFields, cleanIndexEntryFields, indexEntryInBook, splitIngredientText, mentionsIngredient, FinderRecipeHit, +8 more
 - `src/utils/cookbookRecipes.ts` — CookbookPageKey, cookbookPageKey, compareCookbookRecipes, recipesInCookbook, CookbookLinkEffect, cookbookLinkEffect, pageAfterCookbookLink, CookbookLinkCandidate, COOKBOOK_LINK_LIMIT, cookbookLinkCandidates, +1 more
@@ -108,7 +108,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/dayTimeline.ts` — MINUTES_IN_DAY, DEFAULT_FIRST_HOUR, DEFAULT_LAST_HOUR, TimelineEntry, DayTimeline, DayTimelineInput, clockToDayMinutes, instantToDayMinutes, buildDayTimeline, SLOT_STEP_MINUTES, +1 more
 - `src/utils/deadlineCalendarSync.ts` — syncDeadlineEvent, deadlineEventLink, deleteDeadlineEvent, TaskEventSyncPlan, taskEventsAfterSync
 - `src/utils/decisionReview.ts` — ReviewAfter, REVIEW_AFTER_OPTIONS, isReviewAfter, reviewDueDay, canReviewDecision, reviewTaskDraft, DecisionOutcome, decisionOutcomes, pendingReviewOf
-- `src/utils/deepLinks.ts` — AddTaskLink, parseAddTaskUrl, handleIncomingUrl, isQuickAddUrl, isAddEventUrl, isOpenAppUrl, isGroceriesUrl, groceriesUrlFinish, groceriesLinkUrl, groceriesUrlShop, +45 more
+- `src/utils/deepLinks.ts` — AddTaskLink, parseAddTaskUrl, handleIncomingUrl, isQuickAddUrl, isAddEventUrl, isOpenAppUrl, isGroceriesUrl, groceriesUrlFinish, groceriesLinkUrl, groceriesUrlShop, +46 more
 - `src/utils/deliverables.ts` — DELIVERABLE_TEXT_MAX_LENGTH, DeliverableReasoning, DELIVERABLE_REASONING_MAX_LENGTH, cleanDeliverableReasoning, reasoningOf, DELIVERABLE_META, YES_NO_OPTIONS, DELIVERABLE_OPTIONS_MAX, isTentativeAnswer, RSVP_OPTIONS, +12 more
 - `src/utils/deloadPlan.ts` — DeloadDestination, DeloadProposal, DeloadPlan, buildDeloadPlan
 - `src/utils/demoHold.ts` — runOrHoldForDemo, replayHeldForDemo
@@ -140,7 +140,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/fieldBackfill.ts` — BackfillFieldId, BackfillFieldDef, BACKFILL_FIELDS, backfillFieldsFor, BackfillCandidatesOptions, isFieldMissing, isBackfillDismissed, backfillCandidates, backfillSeriesPeers, backfillFieldCounts, +3 more
 - `src/utils/firstRun.ts` — FirstRunAnswers, FIRST_RUN_DEFAULTS, firstRunSettings, FirstRunState, shouldOfferFirstRun
 - `src/utils/focusLiveActivity.ts` — FocusRun, buildFocusRun, useFocusLiveActivitySync
-- `src/utils/focusPlan.ts` — FocusPlanTask, FocusPlanOptions, plannedTaskMinutes, splitMinutes, buildFocusPlan, normalizePlanTail, currentFocusStep, isFocusSessionFinished, isFocusRunning, focusStepElapsed, +18 more
+- `src/utils/focusPlan.ts` — FocusPlanTask, FocusPlanOptions, plannedTaskMinutes, splitMinutes, buildFocusPlan, normalizePlanTail, currentFocusStep, isFocusSessionFinished, isFocusRunning, focusStepElapsed, +19 more
 - `src/utils/focusSettings.ts` — FOCUS_WORK_CAP_MIN, FOCUS_WORK_CAP_MAX, FOCUS_REST_MIN, FOCUS_REST_MAX, FOCUS_REST_AFTER_TASKS_MAX, FOCUS_REST_AFTER_MINUTES_MIN, FOCUS_REST_AFTER_MINUTES_MAX, FOCUS_LONG_REST_EVERY_MIN, FOCUS_LONG_REST_EVERY_MAX, FOCUS_WINDOW_MIN, +19 more
 - `src/utils/focusShield.ts` — shieldWanted
 - `src/utils/focusStats.ts` — MIN_ACCURACY_SAMPLES, FocusDayTotal, focusMinutesByDay, FocusSummary, focusSummary, focusRecordsSince, FocusAccuracy, focusAccuracy, BreakUse, breakUse
@@ -454,6 +454,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/syncMerge.ts` — SyncDeletion, SyncChangeSet, SYNC_FORMAT, SyncPayload, MAX_SYNC_IMAGE_CHARS, isSyncImageName, ParsedPayload, buildPayload, buildImagePayload, serializePayload, +8 more
 - `src/utils/syncStatus.ts` — describeLastSynced
 - `src/utils/tabFreeze.ts` — shouldFreezeTab, isTabFocused, TAB_FREEZE_DELAY_MS
+- `src/utils/tabHubMenu.ts` — HUB_MENU_ROW_HEIGHT, HUB_MENU_PADDING, HUB_MENU_WIDTH, HUB_MENU_EDGE, HUB_MENU_ARROW_SIZE, HUB_MENU_ARROW_TIP, HUB_MENU_TIP_GAP, HUB_MENU_HIT_SLACK, hubMenuItems, HubMenuLayout, +6 more
 - `src/utils/tagColor.ts` — tagColor
 - `src/utils/taskCompletion.ts` — CompletionOptions, CompletionContext, CompletionRows, completionRefusal, buildCompletion, completionSettings
 - `src/utils/taskDates.ts` — calendarDayKey, SeriesRepeat, seriesRows, DatesAnchorStep, datesAnchorStep, DatesReconcile, datesReconcile
@@ -491,7 +492,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/todayProjectBands.ts` — TodayProjectBand, TodayProjectBands, buildTodayProjectBands
 - `src/utils/tooltipAim.ts` — TOOLTIP_CARET_W, aimTooltip
 - `src/utils/transitAlerts.ts` — TransitEffect, TransitAlert, TransitSnapshot, TRANSIT_LINES, parseTransitLines, effectOfAlertType, parseSubwayAlerts, alertOverlaps, LIVE_ALERT_MAX_AGE_MS, PLANNED_ALERT_MAX_AGE_MS, +4 more
-- `src/utils/travelTasks.ts` — TRAVEL_LEAD_MINUTES_DEFAULT, TRAVEL_LEAD_MINUTES_MIN, TRAVEL_LEAD_MINUTES_MAX, TRAVEL_LEAD_MINUTES_STEP, TravelMode, TRAVEL_MODES, TravelEventPref, TRAVEL_ORIGIN_PHONE, TravelEventPrefs, TRAVEL_ARRIVE_CHOICES, +41 more
+- `src/utils/travelTasks.ts` — TRAVEL_LEAD_MINUTES_DEFAULT, TRAVEL_LEAD_MINUTES_MIN, TRAVEL_LEAD_MINUTES_MAX, TRAVEL_LEAD_MINUTES_STEP, TRAVEL_WALK_UNDER_MAX, TRAVEL_WALK_UNDER_STEP, TRAVEL_WALK_UNDER_SUGGESTED, TravelMode, TRAVEL_MODES, TravelEventPref, +46 more
 - `src/utils/tripEvents.ts` — spansDays, tripSpanOf, awayFieldsFromEvent, projectForTripEvent
 - `src/utils/tripForecast.ts` — TripForecast, summarizeTripForecast, describeTripForecast, describeForecastGap
 - `src/utils/tripLiveActivity.ts` — TripRun, buildTripRun, useTripLiveActivitySync
@@ -574,6 +575,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useShieldReleaseStore.ts` — useShieldReleaseStore
 - `src/store/useStepTimerStore.ts` — useStepTimerStore
 - `src/store/useSyncStore.ts` — SERVER_HEALTH_LOGS_KEY, SERVER_HEALTH_RESEND_KEY, NOTHING_OWED, SERVER_JOURNAL_KEY, SERVER_JOURNAL_RESEND_KEY, SYNC_EPOCH, withholdingFor, markHealthLogsWithheld, settleHealthLogResend, SyncPhase, +3 more
+- `src/store/useTabHubMenuStore.ts` — TabHubMenu, useTabHubMenuStore
 - `src/store/useTaskGroupStore.ts` — useTaskGroupStore
 - `src/store/useTaskStore.ts` — offerMealLog, TimeBlockPlan, redoRestoringRows, useTaskStore
 - `src/store/useTemplateCategoryStore.ts` — useTemplateCategoryStore

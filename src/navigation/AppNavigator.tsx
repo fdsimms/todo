@@ -1,7 +1,7 @@
 import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { PanResponder, StyleSheet, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
-import { navigationRef, navigateToTab, resetToRecipeDetail, flushPendingNavigation, currentTabName } from './navigationRef';
+import { navigationRef, navigateToTab, flushPendingNavigation, currentTabName } from './navigationRef';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -58,6 +58,7 @@ import { StackDetailScreen } from '../screens/StackDetailScreen';
 import { PersonDetailScreen } from '../screens/PersonDetailScreen';
 import { TipsScreen } from '../screens/TipsScreen';
 import { SideMenuDrawer } from '../components/SideMenuDrawer';
+import { HubMenuOptionsProvider, TabHubMenuOverlay, hubTabButtonFor } from '../components/TabHubMenu';
 import { BlankTabDiagnostic, freezeWhenBlurred } from '../components/FreezeWhenBlurred';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { SettingsGroupScreen } from '../screens/SettingsGroupScreen';
@@ -81,7 +82,7 @@ import { border, radius, spacing } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { hasRunningRecipeTimer, isCookTimerRunning } from '../utils/recipeTimer';
+import { hasRunningRecipeTimer } from '../utils/recipeTimer';
 import { screenShown } from '../utils/simpleMode';
 import { MENU_ROUTES, NAV_HUBS, NAV_MENU_ROWS, visibleTabRoutes, type NavDestination } from '../utils/navHubs';
 import { useNavMenuOptions } from '../hooks/useNavMenuOptions';
@@ -308,14 +309,8 @@ const MainTabs = React.memo(function MainTabs({
   const visibleTabs = useMemo(() => visibleTabRoutes(tabRoutes, menuOptions), [tabRoutes, menuOptions]);
   const anyTimerRunning = useRecipeStore(state => state.recipes.some(hasRunningRecipeTimer));
   const timerRunning = kitchenEnabled && anyTimerRunning;
-  // Which recipe the dot means, when it means a *cook* specifically: tapping
-  // More jumps straight into that recipe's Cook Mode instead of opening the
-  // drawer, the same destination CookingBar's own tap goes to. A prep timer
-  // alone still just opens the drawer as before — prep has no cook-mode
-  // screen for a tap to land on, so the dot there is see-only.
-  const runningCookRecipeId = useRecipeStore(state => state.recipes.find(isCookTimerRunning)?.id);
-  const cookingRecipeId = kitchenEnabled ? runningCookRecipeId : undefined;
   return (
+    <HubMenuOptionsProvider value={menuOptions}>
     <Tab.Navigator initialRouteName={initialRouteName} screenOptions={screenOptions}>
       {/* The chosen tabs, in the chosen order, then More, then every other
           route hidden. The bar draws its buttons in route order, so this
@@ -331,6 +326,8 @@ const MainTabs = React.memo(function MainTabs({
             listeners={tabPressHaptic}
             options={{
               tabBarAccessibilityLabel: destination?.label ?? route,
+              // A tab in a hub opens that hub's other screens on a long press.
+              tabBarButton: hubTabButtonFor(route),
               tabBarIcon: ({ color, size, focused }) => (
                 <TabIconPlate focused={focused}>
                   {destination?.icon === COIN_ICON
@@ -349,19 +346,13 @@ const MainTabs = React.memo(function MainTabs({
           tabPress: (e) => {
             e.preventDefault();
             haptics.tap();
-            if (cookingRecipeId) {
-              resetToRecipeDetail(cookingRecipeId, { openCookMode: true });
-            } else {
-              onOpenMenu();
-            }
+            onOpenMenu();
           },
         }}
         options={{
-          tabBarAccessibilityLabel: cookingRecipeId
-            ? 'More, a cook timer is running, opens cook mode'
-            : timerRunning
-              ? 'More, a prep timer is running, opens menu'
-              : 'More, opens menu',
+          tabBarAccessibilityLabel: timerRunning
+            ? 'More, a timer is running, opens menu'
+            : 'More, opens menu',
           tabBarIcon: ({ color, focused }) => (
             <TabIconPlate focused={focused}>
               <View>
@@ -378,6 +369,7 @@ const MainTabs = React.memo(function MainTabs({
         <Tab.Screen key={route} name={route} component={TAB_SCREENS[route]} options={HIDDEN} />
       ))}
     </Tab.Navigator>
+    </HubMenuOptionsProvider>
   );
 });
 
@@ -683,6 +675,9 @@ export default function AppNavigator() {
         onOpenSettings={openSettings}
         activeTab={activeTab}
       />
+      {/* The long-press card for a hub's tab. Outside the navigator so it can
+          cover the whole screen, and drawn above the bar it points at. */}
+      <TabHubMenuOverlay />
       {!menuOpen && (
         <View
           style={styles.edgeZone}

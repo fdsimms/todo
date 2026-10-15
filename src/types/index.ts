@@ -497,6 +497,12 @@ export interface ScreenTimeRule extends RuleTaskEstimate, RuleTaskCategory, Rule
   id: string;
   /** Minutes of use across the chosen apps that trips this rule. */
   thresholdMinutes: number;
+  /**
+   * The app group whose apps this rule counts time across (`appGroups.ts`).
+   * Absent means the fallback group, which is also what a removed group reads
+   * as, so a rule saved before groups existed watches what it always did.
+   */
+  groupId?: string;
   /** The task's title, e.g. "Take a walk". */
   title: string;
   // Off keeps the rule written down but stops it firing, same as WeatherRule.
@@ -1714,16 +1720,19 @@ export interface PersonGroup {
 }
 
 /**
- * What kind of thing a `PersonNote` is. Three, and each has exactly one place
+ * What kind of thing a `PersonNote` is. Two, and each has exactly one place
  * it shows up, which is what keeps them from blurring into one another:
  *
  * - `note` — something to remember, on the person's own screen.
  * - `gift` — something to get them, carried onto the birthday task.
- * - `food` — something about what they eat, shown on a meal they're a guest at.
+ *
+ * A third, `food`, was for the meal plan's guests and went with them. A stored
+ * `food` row reads back as a `note` (`rowToPersonNote`), so nothing written
+ * under it is lost.
  */
-export type PersonNoteKind = 'note' | 'gift' | 'food';
+export type PersonNoteKind = 'note' | 'gift';
 
-export const PERSON_NOTE_KINDS: readonly PersonNoteKind[] = ['note', 'gift', 'food'];
+export const PERSON_NOTE_KINDS: readonly PersonNoteKind[] = ['note', 'gift'];
 
 /**
  * One thing you wrote down about somebody — see `docs/arch/people.md`.

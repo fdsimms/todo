@@ -6,6 +6,8 @@ import { screenTimeBridge } from '../utils/screenTimeBridge';
 import { armableRules } from '../utils/screenTimeRules';
 import { getCurrentDayStart, dayKeyOf } from '../utils/dateUtils';
 import { useSettingsStore } from './useSettingsStore';
+import { resolveGroupNow, useAppGroupStore } from './useAppGroupStore';
+import { DEFAULT_GROUP_ID } from '../utils/appGroups';
 import { createRefreshGuard } from '../utils/refreshGuard';
 
 /**
@@ -71,7 +73,7 @@ export const useScreenTimeStore = create<ScreenTimeState>((set, get) => ({
     const bridge = screenTimeBridge();
     if (!bridge) return;
     const settings = useSettingsStore.getState();
-    const rules = armableRules(settings.screenTimeRules);
+    const rules = armableRules(settings.screenTimeRules, id => resolveGroupNow(id ?? DEFAULT_GROUP_ID));
     if (!settings.screenTimeTasks || rules.length === 0) {
       bridge.stopMonitoring();
       return;
@@ -129,12 +131,18 @@ export function useScreenTimeSync(): void {
       }
     });
 
+    // A group removed or made the default changes which apps a rule resolves to.
+    const unsubscribeGroups = useAppGroupStore.subscribe((state, prev) => {
+      if (state.groups !== prev.groups || state.meta !== prev.meta) sync();
+    });
+
     const subscription = AppState.addEventListener('change', state => {
       if (state === 'active') sync();
     });
 
     return () => {
       unsubscribe();
+      unsubscribeGroups();
       subscription.remove();
     };
   }, []);

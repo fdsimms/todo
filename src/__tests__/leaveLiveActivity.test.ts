@@ -62,6 +62,7 @@ describe('buildLeaveRun', () => {
     const event = makeEvent();
     const run = buildLeaveRun([travelTaskFor(event, 60)], [event], NOW, { enabled: true });
     expect(run).toEqual({
+      taskId: 't-ev-1',
       eventTitle: 'Dentist',
       location: '12 Main St',
       leaveAtMs: NOW.getTime() + 60 * 60000,
@@ -122,6 +123,7 @@ describe('buildLeaveRun', () => {
       },
       mode: 'walking',
       modeFor: () => 'walking',
+      walkUnderFor: () => 0,
       originKeyFor: () => originKey,
     });
     const run = (check: AlreadyThereCheck) =>

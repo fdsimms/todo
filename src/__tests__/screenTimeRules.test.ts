@@ -139,7 +139,7 @@ describe('armableRules', () => {
       makeRule({ id: 'b', enabled: false }),
       makeRule({ id: 'c', thresholdMinutes: 0 }),
     ];
-    expect(armableRules(rules)).toEqual([{ id: 'a', thresholdMinutes: 30 }]);
+    expect(armableRules(rules)).toEqual([{ id: 'a', thresholdMinutes: 30, groupId: 'default' }]);
   });
 
   it('leaves a disabled rule out entirely rather than arming and ignoring it', () => {
@@ -149,7 +149,24 @@ describe('armableRules', () => {
   });
 
   it('carries no title — the OS is told a number, never what it is for', () => {
-    expect(Object.keys(armableRules([makeRule()])[0]).sort()).toEqual(['id', 'thresholdMinutes']);
+    expect(Object.keys(armableRules([makeRule()])[0]).sort()).toEqual(['groupId', 'id', 'thresholdMinutes']);
+  });
+
+  it('hands each rule the group it resolves to', () => {
+    const rules = [makeRule({ id: 'a', groupId: 'focus' }), makeRule({ id: 'b', groupId: 'gone' }), makeRule({ id: 'c' })];
+    const resolve = (id: string | undefined) => (id === 'focus' ? 'focus' : 'default');
+    expect(armableRules(rules, resolve).map(r => r.groupId)).toEqual(['focus', 'default', 'default']);
+  });
+});
+
+describe('parseScreenTimeRules groupId', () => {
+  it('keeps a rule\u2019s group and drops a malformed one', () => {
+    const raw = JSON.stringify([
+      { id: 'a', title: 'Walk', thresholdMinutes: 30, groupId: 'g1' },
+      { id: 'b', title: 'Walk', thresholdMinutes: 30, groupId: 5 },
+      { id: 'c', title: 'Walk', thresholdMinutes: 30 },
+    ]);
+    expect(parseScreenTimeRules(raw).map(r => r.groupId)).toEqual(['g1', undefined, undefined]);
   });
 });
 

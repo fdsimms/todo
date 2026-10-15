@@ -1,0 +1,1 @@
+{ "message": "Cook mode now has a Cancel this cook button in its header while a cook is being timed. It stops the cook timer and any step timers without logging a time, and closes cook mode.", "date": "2026-10-15" }

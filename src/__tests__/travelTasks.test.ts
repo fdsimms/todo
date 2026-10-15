@@ -2,6 +2,8 @@ import type { SavedPlace } from '../utils/savedPlaces';
 import type { BusyEvent } from '../utils/calendarBusy';
 import {
   clampTravelLeadMinutes,
+  clampTravelWalkUnder,
+  travelWalkUnderFor,
   arriveEarlyFor,
   describeArrival,
   leadWithArrival,
@@ -511,5 +513,53 @@ describe('per-event travel overrides', () => {
     expect(travelRowNote('k', '123 Main St', estimates, 'driving')).toBeNull();
     expect(travelRowNote('k', '9 Elm', estimates, 'transit')).toBeNull();
     expect(travelRowNote('missing', '123 Main St', estimates, 'transit')).toBeNull();
+  });
+});
+
+describe('walk-under threshold', () => {
+  const ev = { id: 'e1', start: new Date(2026, 9, 5, 14).toISOString(), location: '123 Main St' };
+  const held = (mode: 'driving' | 'walking', walkUnder?: number) => ({
+    [travelSourceId(ev)]: { minutes: 12, location: '123 Main St', mode, origin: 'current', at: 0, ...(walkUnder ? { walkUnder } : {}) },
+  });
+
+  it('clamps to steps of 5 up to 60, and anything unusable is off', () => {
+    expect(clampTravelWalkUnder(20)).toBe(20);
+    expect(clampTravelWalkUnder(22)).toBe(20);
+    expect(clampTravelWalkUnder(500)).toBe(60);
+    expect(clampTravelWalkUnder(-5)).toBe(0);
+    expect(clampTravelWalkUnder(undefined)).toBe(0);
+    expect(clampTravelWalkUnder(NaN)).toBe(0);
+  });
+
+  it('applies only to an event with no mode of its own and a non-walking Settings mode', () => {
+    expect(travelWalkUnderFor('e1', {}, 'driving', 20)).toBe(20);
+    expect(travelWalkUnderFor('e1', { e1: { mode: 'transit', arriveEarlyMinutes: 0, originPlaceId: null } }, 'driving', 20)).toBe(0);
+    expect(travelWalkUnderFor('e1', { e1: { mode: null, arriveEarlyMinutes: 5, originPlaceId: null } }, 'driving', 20)).toBe(20);
+    expect(travelWalkUnderFor('e1', {}, 'walking', 20)).toBe(0);
+  });
+
+  it('matches either the Settings mode or a walk when filed under the same threshold', () => {
+    expect(estimateFor(ev, held('walking', 20), 'driving', 'current', 20)).not.toBeNull();
+    expect(estimateFor(ev, held('driving', 20), 'driving', 'current', 20)).not.toBeNull();
+  });
+
+  it('does not match an estimate filed under a different threshold', () => {
+    expect(estimateFor(ev, held('walking', 20), 'driving', 'current', 10)).toBeNull();
+    expect(estimateFor(ev, held('driving'), 'driving', 'current', 20)).toBeNull();
+    expect(estimateFor(ev, held('driving', 20), 'driving', 'current', 0)).toBeNull();
+  });
+
+  it('does not take a walk as a match with no threshold', () => {
+    expect(estimateFor(ev, held('walking'), 'driving', 'current', 0)).toBeNull();
+  });
+
+  it('needsTravelEstimate asks again when the threshold changed', () => {
+    const now = new Date(0);
+    expect(needsTravelEstimate(ev, held('walking', 20), 'driving', 'current', now, 20)).toBe(false);
+    expect(needsTravelEstimate(ev, held('walking', 20), 'driving', 'current', now, 15)).toBe(true);
+  });
+
+  it('shows the walk on the row note', () => {
+    expect(travelRowNote(travelSourceId(ev), '123 Main St', held('walking', 20), 'driving', 20)).toBe('12 min on foot');
   });
 });

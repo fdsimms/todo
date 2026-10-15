@@ -17,6 +17,7 @@ const mockResetToMedications = jest.fn();
 const mockResetToProjectPull = jest.fn();
 const mockResetToDeload = jest.fn();
 const mockResetToTask = jest.fn();
+const mockResetToLocateTask = jest.fn();
 const mockResetToProject = jest.fn();
 const mockResetToProjects = jest.fn();
 const mockOpenQuickAdd = jest.fn();
@@ -90,6 +91,7 @@ jest.mock('../navigation/navigationRef', () => ({
   resetToFocusSession: (...args: unknown[]) => mockResetToFocusSession(...args),
   resetToDeload: (...args: unknown[]) => mockResetToDeload(...args),
   resetToTask: (...args: unknown[]) => mockResetToTask(...args),
+  resetToLocateTask: (...args: unknown[]) => mockResetToLocateTask(...args),
   resetToProject: (...args: unknown[]) => mockResetToProject(...args),
   resetToProjects: (...args: unknown[]) => mockResetToProjects(...args),
   openQuickAddFromShortcut: (...args: unknown[]) => mockOpenQuickAdd(...args),
@@ -144,6 +146,7 @@ import {
   linkIconFor,
   isTaskUrl,
   taskUrlId,
+  taskUrlWantsLocate,
   isProjectUrl,
   projectUrlId,
   appUrlFromUniversalLink,
@@ -996,6 +999,10 @@ describe('task and project links', () => {
     expect(isTaskUrl('dundundun://task?id=t1')).toBe(true);
     expect(taskUrlId('dundundun://task?id=t1')).toBe('t1');
     expect(taskUrlId('dundundun://task')).toBeNull();
+    expect(taskUrlId('dundundun://task?id=t1&locate=1')).toBe('t1');
+    expect(taskUrlWantsLocate('dundundun://task?id=t1&locate=1')).toBe(true);
+    expect(taskUrlWantsLocate('dundundun://task?id=t1')).toBe(false);
+    expect(taskUrlWantsLocate('dundundun://project?id=t1&locate=1')).toBe(false);
     expect(isProjectUrl('dundundun://project?id=p1')).toBe(true);
     expect(projectUrlId('dundundun://project?id=p1')).toBe('p1');
   });
@@ -1010,6 +1017,13 @@ describe('task and project links', () => {
     expect(mockResetToTask).toHaveBeenCalledWith('t1');
     expect(openInAppUrl('dundundun://project?id=p1')).toBe(true);
     expect(mockResetToProject).toHaveBeenCalledWith('p1');
+  });
+
+  it('scrolls Today to the task instead of opening its editor when asked to locate', () => {
+    mockResetToTask.mockClear();
+    expect(openInAppUrl('dundundun://task?id=t2&locate=1')).toBe(true);
+    expect(mockResetToLocateTask).toHaveBeenCalledWith('t2');
+    expect(mockResetToTask).not.toHaveBeenCalled();
   });
 });
 

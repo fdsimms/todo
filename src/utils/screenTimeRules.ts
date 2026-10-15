@@ -4,6 +4,7 @@ import { parseRuleEstimate } from './ruleEstimate';
 import { parseRuleCategory } from './ruleCategory';
 import { parseRuleLog } from './ruleLog';
 import { generatedSourceOf } from './generatedTasks';
+import { DEFAULT_GROUP_ID } from './appGroups';
 
 /**
  * Screen Time rules — "after 30 minutes on the apps I picked, add a task".
@@ -23,9 +24,10 @@ import { generatedSourceOf } from './generatedTasks';
  *   only legible inside a sandboxed report extension, so the app never learns
  *   how long anything was used for. What arrives instead is "rule X crossed",
  *   already decided by the OS against a threshold the app armed it with.
- * - **Every rule watches one app selection.** The picked apps are opaque
- *   tokens in the App Group, not something a rule could hold, so rules differ
- *   by threshold and title alone.
+ * - **A rule names an app group, not apps.** The picked apps are opaque
+ *   tokens in the App Group, not something a rule could hold, so a rule holds
+ *   the id of a group (`groupId`) and the native side reads that group's
+ *   selection.
  */
 
 /** A rule can't be an empty task title — nothing to show on Today. */
@@ -89,6 +91,7 @@ export function parseScreenTimeRules(raw: string | null | undefined): ScreenTime
       id: rule.id,
       thresholdMinutes: clampThresholdMinutes(rule.thresholdMinutes),
       title: rule.title.slice(0, SCREEN_TIME_RULE_TITLE_MAX_LENGTH),
+      ...(typeof rule.groupId === 'string' && rule.groupId !== '' ? { groupId: rule.groupId } : {}),
       enabled: rule.enabled !== false,
       lastFiredDayKey: typeof rule.lastFiredDayKey === 'string' ? rule.lastFiredDayKey : null,
       ...parseRuleEstimate(rule),
@@ -132,10 +135,12 @@ export function screenTimeRuleIdOf(
  */
 export function armableRules(
   rules: readonly ScreenTimeRule[],
-): Array<{ id: string; thresholdMinutes: number }> {
+  /** Turns a rule's stored group into one that exists (`resolveGroupNow`); a missing group is Default. */
+  resolveGroup: (groupId: string | undefined) => string = id => id ?? DEFAULT_GROUP_ID,
+): Array<{ id: string; thresholdMinutes: number; groupId: string }> {
   return rules
     .filter(rule => rule.enabled && rule.thresholdMinutes > 0)
-    .map(rule => ({ id: rule.id, thresholdMinutes: rule.thresholdMinutes }));
+    .map(rule => ({ id: rule.id, thresholdMinutes: rule.thresholdMinutes, groupId: resolveGroup(rule.groupId) }));
 }
 
 /**

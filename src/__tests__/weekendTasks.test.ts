@@ -289,6 +289,20 @@ describe('whether the weekend is bare', () => {
     expect(isWeekendBare(WINDOW, away, 0)).toBe(false);
   });
 
+  it('a weekend day inside a trip blocks, with or without a readable calendar', () => {
+    const sat = new Map([[SATURDAY, load(SATURDAY, { away: true, busyKnown: false })]]);
+    expect(isWeekendBare(WINDOW, sat, 0)).toBe(false);
+    const sun = new Map([[SUNDAY, load(SUNDAY, { away: true, busyKnown: true })]]);
+    expect(isWeekendBare(WINDOW, sun, 0)).toBe(false);
+  });
+
+  it('a trip that ends before Saturday still nudges', () => {
+    // Away covers Friday only: a Friday's whole-day figures are never read
+    // (see below), and the weekend itself is open.
+    const friday = new Map([[FRIDAY, load(FRIDAY, { away: true })]]);
+    expect(isWeekendBare(WINDOW, friday, 0)).toBe(true);
+  });
+
   it('still nudges when the calendar cannot be read', () => {
     // Rule 4, and the one place this deliberately departs from dayLoad's "no
     // cue is never this day is free". Held to that rule the feature would be
