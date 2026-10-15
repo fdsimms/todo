@@ -1609,7 +1609,7 @@ interface TaskStore extends UndoHistoryActions {
    * a confirmed tap on Call/Text/Email from either a person's page or a task
    * row), two of which are not on a screen that could own it.
    */
-  addCompletedTask: (title: string, at: Date, personIds: string[]) => Task;
+  addCompletedTask: (title: string, at: Date, personIds: string[], linkUrl?: string) => Task;
   /**
    * What the time-block action should open for a task: the in-app event card
    * editing the block it has, or creating one with a proposed slot. Null when
@@ -3266,9 +3266,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     return task;
   },
 
-  addCompletedTask(title, at, personIds) {
+  addCompletedTask(title, at, personIds, linkUrl) {
     const iso = at.toISOString();
-    const task = get().addTask({ title, dueDate: iso, personIds });
+    const task = get().addTask({ title, dueDate: iso, personIds, ...(linkUrl ? { linkUrl } : {}) });
     get().completeTask(task.id);
     get().updateTask(task.id, { completedAt: iso });
     return task;

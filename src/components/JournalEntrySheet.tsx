@@ -14,6 +14,7 @@ import {
   JOURNAL_TAG_MAX_LENGTH,
   countWords,
   entriesOnDay,
+  journalEntryLink,
   formatWordCount,
   journalPromptAt,
   journalPromptList,
@@ -288,6 +289,7 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
           journalHistoryTitle(historyKind, namedPeople),
           journalHistoryAt(day, isToday, new Date()),
           personIds,
+          entry ? journalEntryLink(entry.id) : undefined,
         );
       }
       clearJournalDraft(kind);
