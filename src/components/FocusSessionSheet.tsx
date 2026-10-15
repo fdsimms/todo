@@ -32,9 +32,14 @@ import {
   isFocusRunning,
   isFocusSessionFinished,
   isFocusStepDone,
+  sessionCoinsEarned,
 } from '../utils/focusPlan';
 import { useFocusStore } from '../store/useFocusStore';
 import { useTaskStore } from '../store/useTaskStore';
+import { useRewardStore } from '../store/useRewardStore';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { formatCoins } from '../utils/rewards';
+import { CoinIcon } from './CoinIcon';
 import { useFocusSession } from '../hooks/useFocusSession';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { useAnswerFirstCompletion } from '../hooks/useAnswerFirstCompletion';
@@ -95,6 +100,9 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
   // Today, and with nothing to show, a subscription to every task re-rendered
   // it and rebuilt the lookup below on every store write.
   const tasks = useTaskStore(s => (session ? s.tasks : NO_TASKS));
+  const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
+  // Derived off the ledger, so unticking a task takes its coins off the total.
+  const coinEntries = useRewardStore(s => s.entries);
   const completeTask = useTaskStore(s => s.completeTask);
   const setMeasuredTime = useTaskStore(s => s.setMeasuredTime);
   const { enqueue, queueProps } = useAnswerFirstCompletion();
@@ -151,6 +159,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
     ...session.completedTaskIds,
   ]).size;
   const endsAt = focusProjectedEnd(session, now);
+  const coinsEarned = rewardsEnabled ? sessionCoinsEarned(session, coinEntries) : null;
   const currentTask: Task | undefined = step?.taskId ? byId.get(step.taskId) : undefined;
 
   // ==== the current task's outward actions: link, call, text, email ====
@@ -431,6 +440,12 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
           ? `You worked through ${formatDuration(totals.workMinutes)} of the plan. Nothing was checked off.`
           : `${session.completedTaskIds.length} task${session.completedTaskIds.length === 1 ? '' : 's'} done, out of ${plannedTaskCount} planned.`}
       </Text>
+      {coinsEarned !== null && (
+        <View style={styles.coinRow} accessibilityLabel={`${formatCoins(coinsEarned)} earned this session`}>
+          <CoinIcon size={iconSize.sm} color={colors.warning} filled />
+          <Text style={styles.coinText}>{`${formatCoins(coinsEarned)} earned`}</Text>
+        </View>
+      )}
       {session.completedTaskIds.length > 0 && (
         <View style={styles.finishedList}>
           {session.completedTaskIds.map(id => (
@@ -717,6 +732,12 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
                 ? 'Finished'
                 : `Step ${session.stepIndex + 1} of ${session.steps.length}${endsAt ? ` · ends ${formatTimeOfDay(endsAt)}` : ''}`}
             </Text>
+            {coinsEarned !== null && (
+              <View style={styles.coinRow} accessibilityLabel={`${formatCoins(coinsEarned)} earned this session`}>
+                <CoinIcon size={iconSize.sm} color={colors.warning} filled />
+                <Text style={styles.coinText}>{`${coinsEarned} earned`}</Text>
+              </View>
+            )}
           </View>
 
           <View style={styles.headerRight}>
@@ -758,6 +779,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   closeBtn: { width: 60, alignItems: 'flex-start', paddingVertical: spacing.xs },
   headerCenter: { flex: 1, alignItems: 'center' },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  coinRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: spacing.xxs },
+  coinText: { color: colors.textSecondary, fontSize: font.xs, fontVariant: ['tabular-nums'] },
   settingsBtn: { padding: spacing.xs },
   headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
   headerSub: { color: colors.textTertiary, fontSize: font.xs, marginTop: 1 },

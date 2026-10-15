@@ -20,6 +20,7 @@ import {
   planTotalMinutes,
   pruneFocusPlan,
   resumeFocusSession,
+  sessionCoinsEarned,
   splitMinutes,
   upcomingStepsForTask,
   closeFocusSession,
@@ -642,5 +643,34 @@ describe('chain successors in a session', () => {
     const done = chained('a', 0, { completed: true, recurrenceType: 'daily', chainStepOnSchedule: true });
     const next = chained('a2', 1, { previousOccurrenceId: 'a' });
     expect(chainSuccessorSteps(done, [done, next], noRest)).toBeNull();
+  });
+});
+
+describe('sessionCoinsEarned', () => {
+  const session = {
+    startedAt: '2026-10-15T10:00:00.000Z',
+    steps: [{ kind: 'work', taskId: 'b', minutes: 10, part: 1, partCount: 1 }] as unknown as FocusSession['steps'],
+    stepLog: [{ kind: 'work', taskId: 'c' }] as unknown as FocusSession['stepLog'],
+    completedTaskIds: ['a'],
+  };
+  const earn = (taskId: string | null, amount: number, at: string, kind: 'earn' | 'loss' | 'spend' = 'earn') =>
+    ({ kind, amount, at, taskId });
+
+  it('sums earnings on the session\'s tasks since it began', () => {
+    expect(sessionCoinsEarned(session, [
+      earn('a', 3, '2026-10-15T10:05:00.000Z'),
+      earn('b', 2, '2026-10-15T10:06:00.000Z'),
+      earn('c', 1, '2026-10-15T10:07:00.000Z'),
+    ])).toBe(6);
+  });
+
+  it('ignores other tasks, earlier entries, losses, spends and unlinked rows', () => {
+    expect(sessionCoinsEarned(session, [
+      earn('z', 5, '2026-10-15T10:05:00.000Z'),
+      earn('a', 5, '2026-10-15T09:59:00.000Z'),
+      earn('a', 5, '2026-10-15T10:05:00.000Z', 'loss'),
+      earn(null, 5, '2026-10-15T10:05:00.000Z', 'spend'),
+      earn(null, 5, '2026-10-15T10:05:00.000Z'),
+    ])).toBe(0);
   });
 });
