@@ -15,6 +15,10 @@ import {
 } from '../../utils/appGroups';
 import { currentWindowEnd, describeDays, describeWindow, formatMinutes, isScheduleActive, MAX_BLOCK_SCHEDULES, type BlockSchedule } from '../../utils/blockSchedule';
 import { selectionLabel } from '../../utils/shieldReasonText';
+import {
+  BLOCK_EDIT_LOCKED_MESSAGE, BLOCK_EDIT_LOCKED_TITLE, defaultGroupLocked, groupEditLocked, reasonGroupLocked,
+  scheduleEditLocked,
+} from '../../utils/blockEditLock';
 import { useColors } from '../../theme/ThemeContext';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
@@ -107,8 +111,18 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
     return c ? c.applications + c.categories : 0;
   };
 
+  // A live block's apps, group, reason and schedule can't be edited: that would
+  // end it with no record. Ending it is `releaseAllBlocks` (`blockEditLock.ts`).
+  const refuseWhileBlocked = (locked: boolean): boolean => {
+    if (!locked) return false;
+    haptics.warning();
+    Alert.alert(BLOCK_EDIT_LOCKED_TITLE, BLOCK_EDIT_LOCKED_MESSAGE);
+    return true;
+  };
+
   const handleChooseApps = async (groupId: string) => {
     haptics.tap();
+    if (refuseWhileBlocked(groupEditLocked(groupId, reasons))) return;
     if (!(await ensureAuthorized('Choosing apps to block needs Screen Time access. Grant it in Settings, under Screen Time.'))) return;
     await onChooseApps(groupId);
   };
@@ -161,12 +175,15 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
       },
       ...(groupsMeta.fallbackId === groupId ? [] : [{
         text: 'Make default',
-        onPress: () => useAppGroupStore.getState().setDefaultGroup(groupId),
+        onPress: () => {
+          if (refuseWhileBlocked(defaultGroupLocked(groupsMeta.fallbackId, groupId, reasons))) return;
+          useAppGroupStore.getState().setDefaultGroup(groupId);
+        },
       }]),
       ...(isOriginal ? [] : [{
         text: 'Delete',
         style: 'destructive' as const,
-        onPress: () => Alert.alert(
+        onPress: () => refuseWhileBlocked(groupEditLocked(groupId, reasons)) || Alert.alert(
           `Delete ${name}?`,
           used.length > 0
             ? `Anything using this group will block the ${groupsMeta.fallbackId === groupId ? groupsMeta.baseName : fallbackName} group instead.`
@@ -191,6 +208,7 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
   /** Pick which group one reason blocks. */
   const chooseReasonGroup = (reason: GroupedReason, title: string) => {
     haptics.tap();
+    if (refuseWhileBlocked(reasonGroupLocked(reason, reasons))) return;
     Alert.alert(title, 'Choose which group of apps this blocks.', [
       ...allGroups(customGroups, groupsMeta).map(g => ({
         text: g.id === resolved[reason] ? `${g.name} (selected)` : g.name,
@@ -216,6 +234,7 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
 
   const handleScheduleRow = (schedule: BlockSchedule) => {
     haptics.tap();
+    if (refuseWhileBlocked(scheduleEditLocked(schedule, new Date()))) return;
     setScheduleSheet({ open: true, id: schedule.id });
   };
 
@@ -674,6 +693,7 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
                   value={schedule.enabled}
                   onValueChange={next => {
                     haptics.tap();
+                    if (!next && refuseWhileBlocked(scheduleEditLocked(schedule, new Date()))) return;
                     useAppGroupStore.getState().setScheduleEnabled(schedule.id, next);
                   }}
                   trackColor={{ false: colors.bgTertiary, true: colors.accent }}
