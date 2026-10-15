@@ -5,7 +5,7 @@ import SwiftUI
 // Shown on the Lock Screen and in the Dynamic Island before an event with a
 // location: a countdown to the moment to leave. Started and ended only by
 // src/utils/leaveLiveActivity.ts, from the live "Leave for X" task, so it
-// ends when that task is finished. Tapping opens that task's editor
+// ends when that task is finished. Tapping opens Today scrolled to that task
 // (`leaveURL`); there is no button, because finishing the task is the way to
 // end it and that needs the app anyway (see TripLiveActivity's Finish note).
 //
@@ -23,15 +23,18 @@ private func isTimeToLeave(_ context: ActivityViewContext<LeaveActivityAttribute
     context.isStale || context.attributes.leaveAt <= Date()
 }
 
-// `dundundun://task?id=…` (see taskUrlId in src/utils/deepLinks.ts): opens the
-// "Leave for X" task's editor, where the time, the place and the way to finish
-// it (which ends this activity) all are.
+// `dundundun://task?id=…&locate=1` (see taskUrlWantsLocate in
+// src/utils/deepLinks.ts): opens Today scrolled to the "Leave for X" task's
+// row, where it can be checked off (which ends this activity).
 @available(iOS 17.0, *)
 private func leaveURL(_ context: ActivityViewContext<LeaveActivityAttributes>) -> URL? {
     var components = URLComponents()
     components.scheme = "dundundun"
     components.host = "task"
-    components.queryItems = [URLQueryItem(name: "id", value: context.attributes.taskId)]
+    components.queryItems = [
+        URLQueryItem(name: "id", value: context.attributes.taskId),
+        URLQueryItem(name: "locate", value: "1"),
+    ]
     return components.url
 }
 

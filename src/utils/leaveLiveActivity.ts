@@ -67,7 +67,7 @@ const TITLE_MAX = 60;
 const LOCATION_MAX = 80;
 
 export interface LeaveRun {
-  /** The "Leave for X" task. The card's tap opens it (`dundundun://task?id=…`). */
+  /** The "Leave for X" task. The card's tap scrolls Today to it (`dundundun://task?id=…&locate=1`). */
   taskId: string;
   eventTitle: string;
   /** The event's location text, shortened to one line's worth; null when blank. */
