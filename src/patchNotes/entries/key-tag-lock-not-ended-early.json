@@ -1,0 +1,1 @@
+{ "message": "Scanning a key tag to end the lock it started no longer counts as ending early. Only blocks that had their own end point are recorded.", "date": "2026-10-15" }
