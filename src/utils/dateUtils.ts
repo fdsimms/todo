@@ -40,16 +40,27 @@ export function getDayStart(date: Date = new Date(), dayResetTime?: string): Dat
 // only turns a pass into a few computations (one per millisecond it spans).
 let dayStartMemo: { now: number; reset: string; startMs: number } | null = null;
 
-export function getCurrentDayStart(): Date {
+/**
+ * `getCurrentDayStart().getTime()` without the Date. The gates that only
+ * compare a task's day against today's (the common case, several times per task
+ * in every list selector) have no use for an object they would throw away, and
+ * allocating one per call was a large share of a selector pass. A caller that
+ * needs to read or change the Date still calls getCurrentDayStart.
+ */
+export function getCurrentDayStartMs(): number {
   const now = Date.now();
   const reset = useSettingsStore.getState().dayResetTime;
-  // A fresh Date each time: callers are free to mutate what they are handed.
   if (dayStartMemo && dayStartMemo.now === now && dayStartMemo.reset === reset) {
-    return new Date(dayStartMemo.startMs);
+    return dayStartMemo.startMs;
   }
-  const start = getDayStart(new Date(now), reset);
-  dayStartMemo = { now, reset, startMs: start.getTime() };
-  return start;
+  const startMs = getDayStart(new Date(now), reset).getTime();
+  dayStartMemo = { now, reset, startMs };
+  return startMs;
+}
+
+export function getCurrentDayStart(): Date {
+  // A fresh Date each time: callers are free to mutate what they are handed.
+  return new Date(getCurrentDayStartMs());
 }
 
 // The key of the current logical day, memoised the way getCurrentDayStart is:

@@ -36,6 +36,8 @@ import {
   formatWindowRemaining,
   getNextOccurrence,
   getCurrentLogicalDayKey,
+  getCurrentDayStart,
+  getCurrentDayStartMs,
 } from '../utils/dateUtils';
 import type { Task } from '../types';
 
@@ -1955,5 +1957,27 @@ describe('getCurrentLogicalDayKey', () => {
     expect(getCurrentLogicalDayKey()).toBe('2026-01-11');
     settings.dayResetTime = '04:00';
     expect(getCurrentLogicalDayKey()).toBe('2026-01-10');
+  });
+});
+
+describe('getCurrentDayStartMs', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+    settings.dayResetTime = '00:00';
+  });
+
+  it('is the instant getCurrentDayStart returns', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2026, 0, 11, 1, 30));
+    for (const reset of ['00:00', '04:00']) {
+      settings.dayResetTime = reset;
+      expect(getCurrentDayStartMs()).toBe(getCurrentDayStart().getTime());
+    }
+  });
+
+  it('hands out a fresh Date from getCurrentDayStart each time', () => {
+    const a = getCurrentDayStart();
+    a.setDate(a.getDate() + 5);
+    expect(getCurrentDayStart().getTime()).toBe(getCurrentDayStartMs());
   });
 });
