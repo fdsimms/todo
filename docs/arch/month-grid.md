@@ -33,6 +33,11 @@ exist, which is why the whole feature is a util plus a screen.
   advances `chainIndex` and spawns the next step *undated* — the recurrence only advances at chain
   end, so `getNextDueDate` isn't its next date at all); and an **archived row**. `canProject` is
   the one place that list lives.
+- **Nor is a day before today, on a grid a person reads** (`projectFrom`, which `CalendarScreen` and
+  `WhenPicker` pass as the logical today). An overdue recurring task is walked from its stored
+  date, so its walk crosses days already gone, and no path will ever put a row there: a completion
+  lands after today and a skip on today. The real overdue row still shows on its own day. Windows
+  that start today (Look ahead, the weekend read) don't need it.
 - **The walk decrements `recurrenceCount` itself.** It's "occurrences remaining, including this
   one" and `completeTask` takes one off per spawn — walking without it projects a repeat-3-times
   task all the way to the edge of the grid, because `getNextDueDate` reads the count off the row

@@ -368,6 +368,12 @@ export function mergeTaskUpdate(t: Task, patch: Partial<Task>, ctx: TaskUpdateCo
     // somewhere other than where pullForwardChoice's preview said. A re-save
     // on the same day (the editor writes dueDate every time) still reads the
     // grid, which is what keeps a pulled-forward task's day.
+    //
+    // So a pass that moves a row on the app's behalf passes
+    // `recurrenceAnchorDay: task.recurrenceAnchorDay`, as skipNextRecurrence
+    // and redateRoutines do. Patching dueDate alone reads the day off the
+    // date it was just clamped to, and a routine on the 31st is on the 28th
+    // from then on.
     ...(!('recurrenceAnchorDay' in updates) && SCHEDULE_FIELDS.some(f => f in updates)
       ? {
           recurrenceAnchorDay: recurrenceAnchorDayFor({

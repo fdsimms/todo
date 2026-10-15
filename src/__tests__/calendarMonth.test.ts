@@ -454,6 +454,17 @@ describe('buildDayBuckets with projection', () => {
     expect(buckets.get('2026-08-15')!.marks[0].projected).toBe(true);
   });
 
+  it('projects nothing before projectFrom, but keeps the real overdue row', () => {
+    // Weekly from Aug 3, read on Aug 20: the 10th and 17th have gone by, and
+    // neither a completion nor a skip would ever put a row there.
+    const task = makeTask({ title: 'Bins out', dueDate: iso(2026, 8, 3), recurrenceType: 'weekly' });
+    const buckets = buildDayBuckets([task], { ...GRID, projectFrom: at(2026, 8, 20) });
+    expect(buckets.get('2026-08-03')!.marks[0].projected).toBe(false);
+    expect(buckets.has('2026-08-10')).toBe(false);
+    expect(buckets.has('2026-08-17')).toBe(false);
+    expect(buckets.get('2026-08-24')!.marks[0].projected).toBe(true);
+  });
+
   it('draws only the database when projecting is off', () => {
     const task = makeTask({ dueDate: iso(2026, 8, 10), recurrenceType: 'weekly' });
     const buckets = buildDayBuckets([task], { ...GRID, projecting: false });
