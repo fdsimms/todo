@@ -97,8 +97,10 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
     format.scale = 3
     let renderer = UIGraphicsImageRenderer(size: CGSize(width: side, height: side), format: format)
     return renderer.image { _ in
-      let gold = Self.gold
-      let ink = Self.ink
+      // Named, not `Self`: the class isn't final, and `Self` can't be used in a
+      // stored property initializer.
+      let gold = ShieldConfigurationExtension.gold
+      let ink = ShieldConfigurationExtension.ink
 
       gold.setFill()
       UIBezierPath(roundedRect: CGRect(x: 0, y: 0, width: side, height: side), cornerRadius: side * 0.224).fill()
