@@ -270,6 +270,9 @@ export interface LineDisruption {
  * The picked lines that something can make you late on, during one trip.
  *
  * One entry per line, carrying its most severe effect, in the picker's order.
+ * `liveUntilMs` is when the current logical day ends. A live incident is only
+ * reported for a trip leaving before it; planned work is not held to it.
+ *
  * Empty when there is no snapshot, nothing picked, or nothing applies, and
  * every caller reads empty the same way: no note.
  */
@@ -279,11 +282,17 @@ export function journeyDisruptions(
   fromMs: number,
   toMs: number,
   nowMs: number,
+  liveUntilMs: number = Number.POSITIVE_INFINITY,
 ): LineDisruption[] {
   if (!snapshot || lineKeys.length === 0) return [];
   const fetchedAt = Date.parse(snapshot.fetchedAt);
+  // A live incident says nothing about a trip on a later day: a feed entry with
+  // no end time overlaps every trip, so without this, today's delay is pinned
+  // to tomorrow's row for as long as the read is fresh.
+  const tripIsToday = fromMs < liveUntilMs;
   const relevant = snapshot.alerts.filter(alert =>
-    alertIsFresh(alert, fetchedAt, nowMs) && alertOverlaps(alert, fromMs, toMs));
+    (alert.planned || tripIsToday)
+    && alertIsFresh(alert, fetchedAt, nowMs) && alertOverlaps(alert, fromMs, toMs));
   if (relevant.length === 0) return [];
 
   const out: LineDisruption[] = [];

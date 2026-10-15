@@ -7486,7 +7486,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       const leaveMs = Date.parse(match.leaveAt);
       const startMs = Date.parse(match.event.start);
       // Judged over the trip itself, leaving to arriving — see alertOverlaps.
-      const disruptions = journeyDisruptions(transit, settings.transitLines, leaveMs, startMs, nowMs);
+      // Live incidents only count for a trip leaving today (see journeyDisruptions).
+      const disruptions = journeyDisruptions(
+        transit, settings.transitLines, leaveMs, startMs, nowMs, +addDays(getCurrentDayStart(), 1));
       const note = describeDisruptions(disruptions);
       const title = travelTaskTitle(match.event.title, note);
       // The MTA's own wording, which is where the stops are named. The notes
