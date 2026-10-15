@@ -233,6 +233,7 @@ import { LazySheet } from '../components/LazySheet';
 import { ProgressBar } from '../components/ProgressBar';
 import { AnimatedNumber } from '../components/AnimatedNumber';
 import { useLingering } from '../hooks/useLingering';
+import { PillHighlightLayer, PillLabel, usePillHighlight } from '../components/SlidingPills';
 
 // The four lenses of the pill switcher. They're disjoint by construction —
 // isUnscheduledTask() excludes inbox tasks, and isTaskVisible() excludes both —
@@ -636,6 +637,9 @@ const veilStyles = StyleSheet.create({
 // `onLeave` runs outside the transition: leaving selection mode calls
 // animateLayout(), which applies to whichever commit lands next, and inside the
 // transition that would be the pill's own render rather than the rows leaving.
+//
+// The highlight slides between pills (SlidingPills), aimed at `shownMode`, so
+// it sets off on the tap rather than waiting for the list.
 function ViewModePills({
   modes,
   viewMode,
@@ -655,7 +659,9 @@ function ViewModePills({
   switchChannel: DropTargetChannel;
   styles: ReturnType<typeof makeStyles>;
 }) {
+  const colors = useColors();
   const [shownMode, showMode] = useOptimistic(viewMode);
+  const highlight = usePillHighlight(shownMode);
   // Clears once the new mode has committed (or the tap changed nothing).
   useEffect(() => {
     switchChannel.publish(null);
@@ -667,6 +673,13 @@ function ViewModePills({
       style={styles.viewModePillsScroll}
       contentContainerStyle={styles.viewModePills}
     >
+      <PillHighlightLayer
+        highlight={highlight}
+        keys={modes}
+        restColor={colors.bgSecondary}
+        activeColor={colors.accentFill}
+        radius={radius.full}
+      />
       {modes.map(mode => {
         const active = shownMode === mode;
         const badge = mode === 'inbox'
@@ -675,7 +688,13 @@ function ViewModePills({
         return (
           <TouchableOpacity
             key={mode}
-            style={[styles.viewModePill, active && styles.viewModePillActive]}
+            onLayout={highlight.onPillLayout(mode)}
+            style={[
+              styles.viewModePill,
+              active && styles.viewModePillActive,
+              // Drawn by the layers underneath once they're placed.
+              highlight.ready && styles.viewModePillLayered,
+            ]}
             onPress={() => {
               haptics.tap();
               onLeave();
@@ -696,9 +715,15 @@ function ViewModePills({
                 : `${VIEW_TITLES[mode]} view`
             }
           >
-            <Text style={[styles.viewModePillText, active && styles.viewModePillTextActive]}>
+            <PillLabel
+              highlight={highlight}
+              pillKey={mode}
+              style={[styles.viewModePillText, active && styles.viewModePillTextActive]}
+              restColor={colors.textSecondary}
+              activeColor={colors.onAccent}
+            >
               {VIEW_TITLES[mode]}
-            </Text>
+            </PillLabel>
             {badge > 0 && (
               <View style={[styles.viewModePillBadge, mode !== 'inbox' && styles.viewModePillBadgeQuiet]}>
                 <AnimatedNumber
@@ -5915,6 +5940,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.full, backgroundColor: colors.bgSecondary,
   },
   viewModePillActive: { backgroundColor: colors.accentFill },
+  viewModePillLayered: { backgroundColor: 'transparent' },
   viewModePillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
   viewModePillTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
   viewModePillBadge: {
