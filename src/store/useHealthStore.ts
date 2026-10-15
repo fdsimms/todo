@@ -487,7 +487,10 @@ export const useHealthStore = create<HealthState>((set, get) => ({
       // A fresh weigh-in can move the weight goal's own calorie figure (it's
       // worked out against the current weight), so keep the food log target
       // in step here too, not just when the goal or profile sheet is saved.
-      useSettingsStore.getState().syncWeightGoalCalorieTarget(latestWeight(weightSeries)?.kilograms ?? null);
+      const latestKg = latestWeight(weightSeries)?.kilograms ?? null;
+      useSettingsStore.getState().syncWeightGoalCalorieTarget(latestKg);
+      // The protein target pinned to a ratio of this weight, if it's on.
+      useSettingsStore.getState().syncProteinToWeight(latestKg);
     } finally {
       set({ loadingWeight: false });
     }

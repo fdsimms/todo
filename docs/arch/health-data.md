@@ -1577,6 +1577,32 @@ must not drive the food log. Setting a goal is taken as choosing to have this
 one figure tracked, which is why the exception stops at that figure and why it
 has to be visible on both sheets rather than only in the code.
 
+**The protein target can follow the weight too, as a second asked-for
+exception, and it is built to the same four limits.** `proteinPerWeight`
+(`src/utils/proteinPerWeight.ts`) is a ratio typed in on `NutritionTargetsSheet`
+(grams per pound or per kilogram; off by default, nothing suggested beyond the
+round number its stepper opens on). `useSettingsStore.syncProteinToWeight` writes
+`nutritionTargets.proteinG` from it, called at the end of `refreshWeight` beside
+the goal's calorie sync and again when the ratio changes. It writes the stored
+target rather than computing at display time, unlike the two boosts, because
+this figure has far more readers (food log, Today, widget, tasks, meal plan,
+Stats, the MCP replica) and the replica cannot see a weight at all.
+
+- **Only while the ratio is on and a weight is known.** A missing, refused or
+  implausible reading answers null and leaves the stored number alone; it never
+  moves the target toward zero.
+- **Protein only.** It does not touch calories or the other macros, and it is
+  independent of the weight goal's macro split.
+- **Turning it off keeps the number.** The last figure it wrote stays as an
+  ordinary target.
+- **It says so where it happens.** A protein number typed on the sheet while the
+  ratio is on is replaced at the next weight read, and the row says that.
+
+Like the calorie sync, it runs only when `refreshWeight` does (the Weight screen
+coming into focus, a weight logged in the app, and the targets sheet opening
+with the ratio on), so a weigh-in made in another app moves the target the next
+time one of those happens.
+
 **The macro split follows the same rule and is where it was most tempting to
 break.** `MACRO_PRESETS` names four common ways to divide a day's calories and
 **preselects none of them**, because how somebody splits protein, carbs and fat

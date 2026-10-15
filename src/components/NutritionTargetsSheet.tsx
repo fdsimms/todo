@@ -38,6 +38,13 @@ import { useHealthStore } from '../store/useHealthStore';
 import { openHealthApp } from '../utils/healthBridge';
 import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
 import { isProfileComplete } from '../utils/energyBudget';
+import {
+  PROTEIN_PER_WEIGHT_RANGE,
+  proteinTargetFromWeight,
+  switchProteinUnit,
+  type ProteinPerWeight,
+} from '../utils/proteinPerWeight';
+import { formatWeight, latestWeight, type WeightUnit } from '../utils/weightLog';
 import { haptics } from '../utils/haptics';
 import { navigateToSettingsEntry } from '../navigation/openSettings';
 import { CountStepper } from './CountStepper';
@@ -84,6 +91,11 @@ const PINNABLE_MAIN = EXTERNAL_NUTRIENT_KEYS.filter(k => k !== 'waterMl');
  * pins it on the Food log, because a limit nobody can see without tapping
  * "Show every nutrient" can't be kept.
  */
+
+const WEIGHT_UNIT_OPTIONS: { value: WeightUnit; label: string }[] = [
+  { value: 'lb', label: 'Per pound' },
+  { value: 'kg', label: 'Per kilogram' },
+];
 
 type TargetDirection = 'reach' | 'limit';
 const DIRECTION_OPTIONS: { value: TargetDirection; label: string }[] = [
@@ -198,6 +210,123 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
   }, [visible, healthReadEnabled, boostOn]);
 
   const set = (key: NutrientKey, value: number | null) => setNutritionTarget(key, value);
+
+  // ==== protein follows weight ====
+  // The pin writes the stored protein target (useSettingsStore.syncProteinToWeight),
+  // so every other reader of it needs nothing. This is only the control for it.
+  const proteinPerWeight = useSettingsStore(useShallow(s => s.proteinPerWeight));
+  const setProteinPerWeight = useSettingsStore(s => s.setProteinPerWeight);
+  const weightUnit = useSettingsStore(s => s.weightUnit);
+  const latestKg = useHealthStore(s => (s.weightSeries ? latestWeight(s.weightSeries)?.kilograms ?? null : null));
+  const pinOn = proteinPerWeight !== null;
+
+  // Freshen the weight when the sheet opens with the pin on, so the figure
+  // shown is today's rather than whatever the Weight screen last read.
+  useEffect(() => {
+    if (visible && pinOn && healthReadEnabled) void useHealthStore.getState().refreshWeight();
+  }, [visible, pinOn, healthReadEnabled]);
+
+  const applyProteinPin = (next: ProteinPerWeight | null) => {
+    setProteinPerWeight(next);
+    // The latest read, not the render's: a refresh that lands first would
+    // otherwise be overwritten with an older weight.
+    const series = useHealthStore.getState().weightSeries;
+    if (next !== null) {
+      useSettingsStore.getState().syncProteinToWeight(series ? latestWeight(series)?.kilograms ?? null : null);
+    }
+  };
+
+  const toggleProteinPin = () => {
+    haptics.tap();
+    if (pinOn) { applyProteinPin(null); return; }
+    applyProteinPin({ unit: weightUnit, gramsPerUnit: PROTEIN_PER_WEIGHT_RANGE[weightUnit].default });
+    void useHealthStore.getState().refreshWeight();
+  };
+
+  const renderProteinPin = () => {
+    // Nothing to follow without the Health read, so the way in is the setting.
+    // Someone who already has the pin on keeps the controls to turn it off.
+    if (!healthReadEnabled && !pinOn) {
+      return (
+        <TouchableOpacity
+          style={styles.boostNotice}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => {
+            haptics.tap();
+            onClose();
+            navigateToSettingsEntry(navigation, 'healthRead');
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Turn on Apple Health reading in Settings"
+          accessibilityHint="Opens the Read Apple Health setting"
+        >
+          <Ionicons name="scale-outline" size={iconSize.sm} color={colors.textSecondary} />
+          <Text style={styles.boostNoticeText}>
+            Turn on Apple Health reading in Settings to set protein by body weight.
+          </Text>
+          <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
+        </TouchableOpacity>
+      );
+    }
+    const projected = proteinTargetFromWeight(latestKg, proteinPerWeight);
+    return (
+      <View style={styles.pinBlock}>
+        <TouchableOpacity
+          style={styles.pinToggleRow}
+          activeOpacity={interaction.activeOpacity}
+          onPress={toggleProteinPin}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: pinOn }}
+          accessibilityLabel="Set the protein target from my body weight"
+        >
+          <Ionicons
+            name={pinOn ? 'checkmark-circle' : 'ellipse-outline'}
+            size={iconSize.md}
+            color={pinOn ? colors.accent : colors.textTertiary}
+          />
+          <Text style={styles.boostToggleLabel}>Follow my weight</Text>
+        </TouchableOpacity>
+        {proteinPerWeight && (
+          <>
+            <View style={styles.boostFieldRow}>
+              <Text style={styles.boostFieldLabel}>Protein per {proteinPerWeight.unit} of body weight</Text>
+              <View style={styles.stepperLine}>
+                <CountStepper
+                  value={proteinPerWeight.gramsPerUnit}
+                  onChange={n =>
+                    applyProteinPin({
+                      unit: proteinPerWeight.unit,
+                      gramsPerUnit: n ?? PROTEIN_PER_WEIGHT_RANGE[proteinPerWeight.unit].default,
+                    })
+                  }
+                  min={PROTEIN_PER_WEIGHT_RANGE[proteinPerWeight.unit].min}
+                  max={PROTEIN_PER_WEIGHT_RANGE[proteinPerWeight.unit].max}
+                  step={PROTEIN_PER_WEIGHT_RANGE[proteinPerWeight.unit].step}
+                  format={n => `${n.toFixed(2).replace(/0$/, '')} g`}
+                  label="Protein per unit of body weight"
+                  describeValue={n => `${n} grams per ${proteinPerWeight.unit === 'lb' ? 'pound' : 'kilogram'}`}
+                />
+              </View>
+              <SegmentedControl
+                options={WEIGHT_UNIT_OPTIONS}
+                value={proteinPerWeight.unit}
+                onChange={unit => { haptics.tap(); applyProteinPin(switchProteinUnit(proteinPerWeight, unit)); }}
+                label="Body weight unit for the protein target"
+                surface="card"
+              />
+            </View>
+            <Text style={styles.boostHint}>
+              {latestKg === null
+                ? 'No weight from Apple Health yet. The protein target stays as it is until one is recorded.'
+                : `Latest weight ${formatWeight(latestKg, proteinPerWeight.unit)}${projected === null ? '' : `, so ${projected} g`}.`}
+              {' '}This updates each time the Weight screen reads your weight and replaces any number set
+              above. Turn it off to keep the current number.
+            </Text>
+          </>
+        )}
+      </View>
+    );
+  };
 
   // The vitamins and minerals are folded away until asked for, or until one
   // has a target, so a target that is set is never hidden behind a closed row.
@@ -341,6 +470,7 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
                 surface="card"
               />
             )}
+            {key === 'proteinG' && renderProteinPin()}
             {key === 'calorieKcal' && calorieFollowsGoal && (
               <Text style={styles.boostHint}>
                 This follows your weight goal and updates each time the
@@ -814,6 +944,13 @@ function makeStyles(colors: Colors) {
       gap: spacing.sm,
     },
     limitToggleRule: { borderTopWidth: border.hairline, borderTopColor: colors.separator },
+    pinBlock: {
+      borderTopWidth: border.hairline,
+      borderTopColor: colors.separator,
+      paddingTop: spacing.sm,
+      gap: spacing.sm,
+    },
+    pinToggleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 44 },
     boostFieldRow: { gap: spacing.sm },
     boostFieldLabel: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
     boostHint: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 18 },
