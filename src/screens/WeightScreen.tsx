@@ -46,7 +46,7 @@ import { WeightGoalSheet } from '../components/WeightGoalSheet';
 import { SegmentedControl } from '../components/SegmentedControl';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
-import { AnimatedBarFill } from '../components/AnimatedBarFill';
+import { ProgressBar } from '../components/ProgressBar';
 
 /**
  * How much of the fetched window the chart actually draws.
@@ -446,13 +446,12 @@ export function WeightScreen() {
 
                   {/* One bar, one colour, no end state that reads as a failure —
                       the same call targetProgress makes about its own. */}
-                  <View
+                  <ProgressBar
+                    progress={Math.max(progress.fraction, GOAL_BAR_MIN_FILL)}
+                    height={8}
                     style={styles.goalTrack}
-                    accessible
                     accessibilityLabel={`${Math.round(progress.fraction * 100)} percent of the way from ${formatWeight(goal.startKg, unit)} to ${formatWeight(goal.targetKg, unit)}`}
-                  >
-                    <AnimatedBarFill percent={Math.max(progress.fraction, GOAL_BAR_MIN_FILL) * 100} style={styles.goalFill} />
-                  </View>
+                  />
 
                   {progress.reached ? (
                     <Text style={styles.goalLine}>
@@ -675,15 +674,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   chartCaption: { fontSize: font.xs, color: colors.textTertiary, marginTop: spacing.sm },
   // One colour and one direction. The bar is an aid to the numbers beside it,
   // which stay the record — the rule ContrastBars states for its own pair.
-  goalTrack: {
-    height: 8,
-    borderRadius: radius.sm,
-    backgroundColor: colors.bgTertiary,
-    overflow: 'hidden',
-    marginTop: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  goalFill: { height: '100%', borderRadius: radius.sm, backgroundColor: colors.accent },
+  goalTrack: { marginTop: spacing.md, marginBottom: spacing.sm },
   goalLine: { fontSize: font.sm, color: colors.textSecondary, lineHeight: 20 },
   goalStatRow: { flexDirection: 'row', gap: spacing.sm },
   goalStatCell: {

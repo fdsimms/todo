@@ -1733,7 +1733,7 @@ function ProjectDetailContent() {
                       )}
                     </Text>
                     {summaryProgress !== null && !projectProgressNote(project!, progress) && (
-                      <ProgressBar progress={progress.done / progress.total} />
+                      <ProgressBar progress={progress.done / progress.total} accessibilityLabel="Project progress" />
                     )}
                     {tripLine && <Text style={styles.summaryText}>{tripLine}</Text>}
                     {/* Each count is a button naming who it counts: "3 Maybe"

@@ -47,7 +47,6 @@ import {
 } from '../utils/waterLog';
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
 import { AnimatedCollapsible } from '../components/AnimatedCollapsible';
-import { AnimatedBarFill } from '../components/AnimatedBarFill';
 import {
   DAILY_PRODUCE_SERVINGS,
   dailyProduceProgress,
@@ -124,6 +123,7 @@ import { LazySheet } from '../components/LazySheet';
 import { ActionMenu, type ActionMenuAction, type ActionMenuChoice } from '../components/ActionMenu';
 import type { CardAnchor } from '../components/CardSheet';
 import { resetToMealPlan } from '../navigation/navigationRef';
+import { ProgressBar } from '../components/ProgressBar';
 
 /**
  * A day of eating, read back.
@@ -1103,20 +1103,13 @@ export function FoodLogScreen() {
         </Text>
       )}
       {effectiveWaterTarget !== undefined && shownDayWaterMl > 0 && (
-        <View style={styles.targetTrack}>
-          <AnimatedBarFill
-            percent={targetProgress('waterMl', shownDayWaterMl, waterTargets) * 100}
-            style={[
-              styles.targetFill,
-              {
-                backgroundColor: targetStatusColor(
-                  targetStatus('waterMl', shownDayWaterMl, waterTargets),
-                  colors,
-                ),
-              },
-            ]}
-          />
-        </View>
+        <ProgressBar
+          progress={targetProgress('waterMl', shownDayWaterMl, waterTargets)}
+          height={4}
+          trackColor={colors.separator}
+          color={targetStatusColor(targetStatus('waterMl', shownDayWaterMl, waterTargets), colors)}
+          decorative
+        />
       )}
     </View>
   );
@@ -1184,19 +1177,15 @@ export function FoodLogScreen() {
             marked Stay under: they told the app the direction, so
             it reads through `limitStatus` and goes red past it. */}
         {effectiveTargets[key] !== undefined && (
-          <View style={styles.targetTrack}>
-            <AnimatedBarFill
-              percent={targetProgress(key, totals.total[key], effectiveTargets) * 100}
-              style={[
-                styles.targetFill,
-                {
-                  backgroundColor: isActiveLimit(key, effectiveTargets, nutritionLimits)
-                    ? limitStatusColor(limitStatus(key, totals.total[key], effectiveTargets, limitWarnPercent), colors)
-                    : targetStatusColor(targetStatus(key, totals.total[key], effectiveTargets), colors),
-                },
-              ]}
-            />
-          </View>
+          <ProgressBar
+            progress={targetProgress(key, totals.total[key], effectiveTargets)}
+            height={4}
+            trackColor={colors.separator}
+            color={isActiveLimit(key, effectiveTargets, nutritionLimits)
+              ? limitStatusColor(limitStatus(key, totals.total[key], effectiveTargets, limitWarnPercent), colors)
+              : targetStatusColor(targetStatus(key, totals.total[key], effectiveTargets), colors)}
+            decorative
+          />
         )}
         {isActiveLimit(key, effectiveTargets, nutritionLimits) && (
           <Text
@@ -1276,17 +1265,12 @@ export function FoodLogScreen() {
             {`about ${formatServings(produce.vegetable + produce.fruit)} of ${DAILY_PRODUCE_SERVINGS}`}
           </Text>
         </TouchableOpacity>
-        <View
-          style={styles.targetTrack}
-          accessible
-          accessibilityRole="progressbar"
+        <ProgressBar
+          progress={dailyProduceProgress(produce.vegetable, produce.fruit)}
+          height={4}
+          trackColor={colors.separator}
           accessibilityLabel={`Vegetables and fruit, about ${formatServings(produce.vegetable + produce.fruit)} of ${DAILY_PRODUCE_SERVINGS} servings`}
-        >
-          <AnimatedBarFill
-            percent={dailyProduceProgress(produce.vegetable, produce.fruit) * 100}
-            style={styles.targetFill}
-          />
-        </View>
+        />
       </View>
       <Text style={styles.boostNote}>
         {produce.unmeasured > 0
@@ -1965,8 +1949,6 @@ function makeStyles(colors: Colors) {
     limitNoteOver: { color: colors.redText, fontWeight: fontWeight.semibold },
     totalBlock: { gap: spacing.xs },
     totalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-    targetTrack: { height: 4, borderRadius: 2, backgroundColor: colors.separator, overflow: 'hidden' },
-    targetFill: { height: '100%', borderRadius: 2, backgroundColor: colors.accent },
     totalLabelCol: { flexShrink: 1 },
     totalLabel: { color: colors.text, fontSize: font.sm },
     totalRight: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm },

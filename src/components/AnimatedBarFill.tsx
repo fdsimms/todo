@@ -16,8 +16,9 @@ interface Props {
 /**
  * The fill inside a bar track: it sweeps out from empty when it first appears
  * and glides to a new length when the figure changes. **Every bar fill in the
- * app is this** (`ProgressBar` keeps its own, which is the same motion over a
- * 0..1 value). A new bar uses it rather than writing `width: \`${p}%\`` into a
+ * app is this**, and `ProgressBar` (track, colours, accessibility semantics)
+ * is built on it. A new progress bar uses `ProgressBar`; a bar that isn't
+ * progress toward something (`ContrastBars`) uses this directly rather than writing `width: \`${p}%\`` into a
  * plain `View`, which snaps.
  *
  * Reanimated with the style attached unconditionally, for the reason

@@ -42,7 +42,7 @@ import { PressableScale } from './PressableScale';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTextScale } from '../hooks/useTextScale';
-import { AnimatedBarFill } from './AnimatedBarFill';
+import { ProgressBar } from './ProgressBar';
 
 interface Props {
   visible: boolean;
@@ -374,9 +374,7 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
 
         {cards.length > 0 && (
           <View style={styles.progress}>
-            <View style={styles.track}>
-              <AnimatedBarFill percent={(reviewed / cards.length) * 100} style={styles.fill} />
-            </View>
+            <ProgressBar progress={reviewed / cards.length} height={4} accessibilityLabel="Pantry items reviewed" />
             <Text style={styles.progressText}>
               {reviewed} of {cards.length} reviewed
             </Text>
@@ -736,8 +734,6 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) =>
     },
     title: { fontSize: font.xxl, fontWeight: fontWeight.bold, color: colors.text },
     progress: { paddingHorizontal: spacing.md, marginTop: spacing.md },
-    track: { height: 4, borderRadius: radius.full, backgroundColor: colors.bgTertiary, overflow: 'hidden' },
-    fill: { height: '100%', borderRadius: radius.full, backgroundColor: colors.accent },
     switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.smd, marginTop: spacing.sm },
     switchLabel: { fontSize: font.sm, color: colors.text, flexShrink: 1 },
     progressText: { fontSize: font.sm, color: colors.textSecondary, marginTop: spacing.sm },

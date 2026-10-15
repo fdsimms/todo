@@ -9,7 +9,7 @@ import { SpotlightScrim } from './SpotlightOverlay';
 import { ActivityRingsGlyph, ringColor } from './ActivityRingsCard';
 import { RING_ORDER, describeRing } from '../utils/activityRings';
 import type { CardPosition } from '../utils/contextCards';
-import { AnimatedBarFill } from './AnimatedBarFill';
+import { ProgressBar } from './ProgressBar';
 
 interface Props {
   row: ContextRow;
@@ -184,9 +184,7 @@ export function DayContextRow({ row, onPress, onMarkCooked, cardPosition }: Prop
         </Text>
       )}
       {visual?.type === 'bar' && (
-        <View style={styles.barTrack} importantForAccessibility="no-hide-descendants">
-          <AnimatedBarFill percent={Math.round(visual.fraction * 100)} style={[styles.barFill, { backgroundColor: barColor }]} />
-        </View>
+        <ProgressBar progress={visual.fraction} height={BAR_HEIGHT} color={barColor} style={styles.barTrack} decorative />
       )}
       {/* One meta chip, shaped like TaskItem's. Every caption these rows can
           carry says *when* — "4:15 PM", "All day", "Now", "Lunch", "Use by
@@ -399,17 +397,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.medium,
   },
   // The progress bar under a limit's or the Move goal's figure.
-  barTrack: {
-    height: BAR_HEIGHT,
-    borderRadius: radius.full,
-    backgroundColor: colors.bgTertiary,
-    overflow: 'hidden',
-    marginTop: spacing.xxs,
-  },
-  barFill: {
-    height: BAR_HEIGHT,
-    borderRadius: radius.full,
-  },
+  barTrack: { marginTop: spacing.xxs },
   legend: {
     gap: spacing.xxs,
   },

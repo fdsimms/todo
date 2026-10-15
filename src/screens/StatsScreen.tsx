@@ -101,6 +101,7 @@ import { useFoodLogStore } from '../store/useFoodLogStore';
 import { capitalize } from '../utils/capitalize';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
+import { ProgressBar } from '../components/ProgressBar';
 import { AnimatedBarFill } from '../components/AnimatedBarFill';
 
 const BAR_HEIGHT = 96;
@@ -1128,21 +1129,12 @@ export function StatsScreen() {
                           {`about ${formatServings(eating.produce.vegetable + eating.produce.fruit)} of ${DAILY_PRODUCE_SERVINGS}`}
                         </Text>
                       </View>
-                      <View
-                        style={{ height: 4, borderRadius: 2, backgroundColor: colors.separator, overflow: 'hidden' }}
-                        accessible
-                        accessibilityRole="progressbar"
+                      <ProgressBar
+                        progress={dailyProduceProgress(eating.produce.vegetable, eating.produce.fruit)}
+                        height={4}
+                        trackColor={colors.separator}
                         accessibilityLabel={`Vegetables and fruit on an average day, about ${formatServings(eating.produce.vegetable + eating.produce.fruit)} of ${DAILY_PRODUCE_SERVINGS} servings`}
-                      >
-                        <View
-                          style={{
-                            height: '100%',
-                            borderRadius: 2,
-                            backgroundColor: colors.accent,
-                            width: `${dailyProduceProgress(eating.produce.vegetable, eating.produce.fruit) * 100}%`,
-                          }}
-                        />
-                      </View>
+                      />
                     </View>
                   </>
                 )}

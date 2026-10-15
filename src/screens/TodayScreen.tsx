@@ -230,7 +230,7 @@ import { emitNowTick } from '../utils/nowTick';
 import { useNowTick } from '../hooks/useNowTick';
 import { sumEstimatedMinutes, formatDuration } from '../utils/effort';
 import { LazySheet } from '../components/LazySheet';
-import { AnimatedBarFill } from '../components/AnimatedBarFill';
+import { ProgressBar } from '../components/ProgressBar';
 
 // The four lenses of the pill switcher. They're disjoint by construction —
 // isUnscheduledTask() excludes inbox tasks, and isTaskVisible() excludes both —
@@ -4826,9 +4826,7 @@ export function TodayScreen() {
                   {savingGoal && <Text style={styles.coinPillGoal}>{`/ ${savingGoal.reward.cost}`}</Text>}
                 </View>
                 {savingGoal && (
-                  <View style={styles.coinPillTrack}>
-                    <AnimatedBarFill percent={goalBarFill(coinTotal, savingGoal.reward.cost) * 100} style={styles.coinPillFill} />
-                  </View>
+                  <ProgressBar progress={goalBarFill(coinTotal, savingGoal.reward.cost)} height={4} color={colors.done} decorative />
                 )}
               </TouchableOpacity>
             ) : undefined
@@ -5867,8 +5865,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   coinPill: { paddingHorizontal: spacing.xsm, paddingVertical: spacing.xxs, borderRadius: radius.full, backgroundColor: colors.bgSecondary, gap: spacing.xxs },
   coinPillTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   coinPillGoal: { fontSize: font.xxs, fontWeight: fontWeight.medium, color: colors.textSecondary, fontVariant: ['tabular-nums'] },
-  coinPillTrack: { height: 4, borderRadius: radius.full, backgroundColor: colors.bgTertiary, overflow: 'hidden' },
-  coinPillFill: { height: '100%', borderRadius: radius.full, backgroundColor: colors.done },
   coinPillText: { fontSize: font.md, fontWeight: fontWeight.semibold, color: colors.textSecondary },
   headerWeatherText: { flexShrink: 1, fontSize: font.md, fontWeight: fontWeight.medium, color: colors.textSecondary },
   clearBtn: {
