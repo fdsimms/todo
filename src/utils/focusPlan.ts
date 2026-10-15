@@ -1,4 +1,5 @@
 import type { FocusSession, FocusSessionRecord, FocusStep, FocusStepKind, FocusStepRecord } from '../types';
+import { chainStepAdvancesInPlace, type ChainCompletionCarrier } from './chain';
 import { estimatedMinutesFor, type EstimateSource } from './effort';
 
 /**
@@ -413,15 +414,35 @@ export function pruneFocusPlan(
   session: FocusSession,
   isGone: (taskId: string) => boolean,
   now: number = Date.now(),
+  /**
+   * Steps that take a departed task's place, for a chain step whose successor
+   * is the next step of the same routine. Spliced in once, where the task's
+   * first remaining stretch sat, so the next step follows the one just
+   * finished rather than waiting at the back of the queue (or never showing).
+   */
+  successorSteps?: (taskId: string) => FocusStep[] | null,
 ): FocusSession {
   if (isFocusSessionFinished(session)) return session;
 
   const past = session.steps.slice(0, session.stepIndex);
-  const future = session.steps
-    .slice(session.stepIndex)
-    .filter(step => step.kind === 'rest' || step.taskId === null || !isGone(step.taskId));
+  const original = session.steps.slice(session.stepIndex);
+  const spliced = new Set<string>();
+  let changed = false;
+  const future: FocusStep[] = [];
+  for (const step of original) {
+    if (step.kind === 'rest' || step.taskId === null || !isGone(step.taskId)) {
+      future.push(step);
+      continue;
+    }
+    changed = true;
+    const replacement = spliced.has(step.taskId) ? null : successorSteps?.(step.taskId) ?? null;
+    if (replacement && replacement.length > 0) {
+      spliced.add(step.taskId);
+      future.push(...replacement);
+    }
+  }
   const tidied = normalizePlanTail(future);
-  if (tidied.length === session.steps.length - past.length) return session;
+  if (!changed && tidied.length === original.length) return session;
 
   const wasCurrent = session.steps[session.stepIndex];
   // The cursor doesn't move — whatever slid into its place is now the current
@@ -445,6 +466,29 @@ export function pruneFocusPlan(
       : (isFocusRunning(session) && tidied.length > 0 ? new Date(now).toISOString() : null),
     stepLog: record ? [...session.stepLog, record] : session.stepLog,
   };
+}
+
+/**
+ * The stretches of the next chain step, when a completed task was a chain step
+ * that spawned it on the spot.
+ *
+ * Completing a chain task writes a new row for the next step, so without this
+ * the plan would just lose the finished one and the routine would stop at
+ * step one. Only a chain that advances in place counts
+ * (`chainStepAdvancesInPlace`): a repeating chain with a step per occurrence
+ * leaves the next step for its own day, and a chain's last step has none.
+ * Returns null when there is nothing to add. Never carries a break, since the
+ * plan's own rest rules aren't re-run here (it only ever splices work in).
+ */
+export function chainSuccessorSteps(
+  done: ChainCompletionCarrier & { id: string; chainStepOnSchedule?: boolean },
+  tasks: readonly (FocusPlanTask & { previousOccurrenceId?: string | null; completed: boolean; archived: boolean; parentId?: string | null })[],
+  opts: FocusPlanOptions,
+): FocusStep[] | null {
+  if (!chainStepAdvancesInPlace(done)) return null;
+  const next = tasks.find(t => t.previousOccurrenceId === done.id && !t.completed && !t.archived && !t.parentId);
+  if (!next) return null;
+  return buildFocusPlan([next], { ...opts, restAfterTasks: null, restAfterMinutes: null });
 }
 
 // ==== Closing a session out ====

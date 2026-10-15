@@ -2,6 +2,7 @@ import type { FocusSession, FocusStep } from '../types';
 import {
   advanceFocusSession,
   buildFocusPlan,
+  chainSuccessorSteps,
   currentFocusStep,
   focusMeasuredMinutes,
   focusPlanTotals,
@@ -603,5 +604,43 @@ describe('closeFocusSession', () => {
     expect(isFocusSessionFinished(finished)).toBe(true);
     expect(record?.steps).toHaveLength(1);
     expect(record?.workedSeconds).toBe(1500);
+  });
+});
+
+describe('chain successors in a session', () => {
+  const t0 = Date.parse('2026-08-22T09:00:00.000Z');
+  const items = ['one', 'two', 'three'].map(title => ({ id: title, title, estimatedMinutes: 10 }));
+  const chained = (id: string, chainIndex: number, over: Record<string, unknown> = {}) => ({
+    ...task(id, 10),
+    chainEnabled: true,
+    chainIndex,
+    chainItems: items as never,
+    recurrenceType: 'none',
+    completed: false,
+    archived: false,
+    previousOccurrenceId: null,
+    ...over,
+  });
+  const noRest = { ...OPTIONS, restAfterMinutes: null };
+
+  it('puts the next step where the finished one was', () => {
+    const done = chained('a', 0, { completed: true });
+    const next = chained('a2', 1, { previousOccurrenceId: 'a' });
+    const s = session([work('a', 10), work('b', 25)]);
+    const out = pruneFocusPlan(s, id => id === 'a', t0, id =>
+      id === 'a' ? chainSuccessorSteps(done, [done, next], noRest) : null);
+    expect(shape(out.steps)).toEqual(['a2 10 (1/1)', 'b 25 (1/1)']);
+  });
+
+  it('adds nothing on the last step of a chain', () => {
+    const done = chained('a', 2, { completed: true });
+    const next = chained('a2', 0, { previousOccurrenceId: 'a' });
+    expect(chainSuccessorSteps(done, [done, next], noRest)).toBeNull();
+  });
+
+  it('adds nothing when each step waits for its own occurrence', () => {
+    const done = chained('a', 0, { completed: true, recurrenceType: 'daily', chainStepOnSchedule: true });
+    const next = chained('a2', 1, { previousOccurrenceId: 'a' });
+    expect(chainSuccessorSteps(done, [done, next], noRest)).toBeNull();
   });
 });
