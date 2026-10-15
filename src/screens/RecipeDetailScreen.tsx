@@ -2058,13 +2058,11 @@ export function RecipeDetailScreen() {
             ))}
           </View>
         )}
-        {/* Steps below are the structured replacement for a method written into
-            notes — showing both would say the same thing twice in two
-            formats, so notes renders here only for a recipe that hasn't been
-            given steps yet. Notes itself is untouched and still edits from
-            RecipeEditor; a recipe with steps can still carry notes, they just
-            don't auto-render as the method once steps exist. */}
-        {recipe.steps.length === 0 && !!recipe.notes && <Text style={styles.notes}>{recipe.notes}</Text>}
+        {/* Notes show whether or not the recipe has steps: with none they are the
+            method, and with steps they are the cook's own tips ("double the
+            garlic"), which cook mode shows in its Notes panel too. They are
+            not the method once steps exist, so nothing here repeats them. */}
+        {!!recipe.notes.trim() && <Text style={styles.notes}>{recipe.notes}</Text>}
 
         {totalTimeMinutes != null && (
           <Text style={styles.totalTimeSummary}>Total time {formatDuration(totalTimeMinutes)}</Text>

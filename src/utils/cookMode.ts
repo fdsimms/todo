@@ -88,6 +88,25 @@ export function stepsFromNotes(notes: string): string[] {
 }
 
 /**
+ * The recipe's notes as cook mode's Notes panel shows them, or null when the
+ * panel has nothing to say.
+ *
+ * Only a recipe with structured steps gets one. Without them the notes *are*
+ * the method (`stepsFromNotes` reads them as steps), and a panel repeating the
+ * step on screen would say the same thing twice. Only the root's own notes: a
+ * component's are about that dish's own page, and cook mode already heads its
+ * steps with the component's name. `preview` is the first non-blank line, what
+ * the collapsed header shows so the cook knows the notes are there.
+ */
+export function cookNotesPanel(recipe: Recipe): { text: string; preview: string } | null {
+  if (recipe.steps.length === 0) return null;
+  const text = recipe.notes.trim();
+  if (!text) return null;
+  const preview = text.split(/\r?\n/).map(line => line.trim()).find(Boolean) ?? text;
+  return { text, preview };
+}
+
+/**
  * Take a leading "1.", "2)", "(3)", "Step 4:", "-" or "•" off a step.
  *
  * Cook mode numbers the steps itself, so a blob that already numbers them

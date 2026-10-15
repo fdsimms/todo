@@ -1060,7 +1060,9 @@ ingredient panel's fold die with the modal.
   breaks is one step** — sentence splitting is the tempting third rule and it's wrong, because
   "add 1.5 cups" and "Mr." are what it does to a real method. One long step is unhelpful; half a
   sentence is misleading. It is display only: nothing is written back, and a bad split is fixed by
-  writing real steps.
+  writing real steps. **Once a recipe has steps, its notes are the cook's tips, not the method**, so
+  cook mode shows them in a collapsible Notes panel in the tray (`cookNotesPanel`), and the panel
+  is withheld while the notes are being read as the steps, or the same text would appear twice.
 - **The cook timer is the recipe's own**, through `useRecipeTimer` — the hook that now owns the
   clock, the derivation against it and the four store calls for *both* of a recipe's timers.
   `RecipeDetailScreen` reads through the same hook, so "start it here, log it there" is structural
