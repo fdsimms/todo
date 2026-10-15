@@ -9,6 +9,7 @@ import { foodLogTotals } from '../utils/foodLog';
 import { getLogicalDayKey } from '../utils/dateUtils';
 import { nutrientTaskBar, nutrientTaskLine } from '../utils/nutrientTaskBar';
 import type { Task } from '../types';
+import { ProgressBar } from './ProgressBar';
 
 const BAR_HEIGHT = 4;
 
@@ -60,9 +61,7 @@ export function NutrientTaskBar({ task, streak, streakColor, done }: Props) {
         ) : null}
         <Text style={[styles.figure, bar.tone === 'over' && styles.figureOver]} numberOfLines={1}>{line.figure}</Text>
       </View>
-      <View style={styles.track}>
-        <View style={[styles.fill, { width: `${Math.round(bar.fraction * 100)}%`, backgroundColor: fill }]} />
-      </View>
+      <ProgressBar progress={bar.fraction} height={BAR_HEIGHT} color={fill} style={styles.track} decorative />
     </View>
   );
 }
@@ -78,13 +77,6 @@ function makeStyles(colors: Colors) {
     figureOver: { color: colors.redText, fontWeight: fontWeight.semibold },
     streak: { flexDirection: 'row', alignItems: 'center', gap: spacing.xxs },
     streakText: { fontSize: font.xs, fontWeight: fontWeight.semibold, color: colors.textSecondary },
-    track: {
-      height: BAR_HEIGHT,
-      borderRadius: radius.full,
-      backgroundColor: colors.bgTertiary,
-      overflow: 'hidden',
-      marginTop: spacing.xsm,
-    },
-    fill: { height: BAR_HEIGHT, borderRadius: radius.full },
+    track: { marginTop: spacing.xsm },
   });
 }

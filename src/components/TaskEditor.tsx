@@ -171,6 +171,7 @@ import { useFilterField } from '../hooks/useFilterField';
 import { TextField } from './TextField';
 import { LazySheet } from './LazySheet';
 import { NewSavedMealSheet } from './NewSavedMealSheet';
+import { ProgressBar } from './ProgressBar';
 
 /** The kind picker's segments. The hint under the track says what the pick does. */
 const TASK_KIND_SEGMENTS = TASK_KIND_META.map(meta => ({
@@ -4407,14 +4408,11 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                     )}
                   </View>
                   {loggedProgress !== null && targetCount !== null && quotaIntervalMinutes === null && (
-                    <View
+                    <ProgressBar
+                      progress={loggedProgress / targetCount}
                       style={styles.targetProgressTrack}
-                      accessible
-                      accessibilityRole="progressbar"
                       accessibilityLabel={`Logged ${formatQuotaProgress(loggedProgress, targetCount, targetUnit)} so far this ${quotaPeriod}`}
-                    >
-                      <View style={[styles.targetProgressFill, { width: `${Math.min(100, (loggedProgress / targetCount) * 100)}%` }]} />
-                    </View>
+                    />
                   )}
                   {/* Says what the row will read as rather than what the field is
                       for: the unit's whole job is how the meter comes out, and a
@@ -8526,10 +8524,8 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   /** The static words either side of a stepper, e.g. "Every [4th] completion". */
   stepperSentence: { color: colors.textSecondary, fontSize: font.md },
   targetProgressTrack: {
-    height: 6, borderRadius: 3, overflow: 'hidden', backgroundColor: colors.bgTertiary,
-    marginHorizontal: spacing.md, marginTop: spacing.xs,
+    width: 'auto', marginHorizontal: spacing.md, marginTop: spacing.xs,
   },
-  targetProgressFill: { height: 6, borderRadius: 3, backgroundColor: colors.accent },
   targetStepperCaption: {
     color: colors.textSecondary, fontSize: font.sm,
     paddingHorizontal: spacing.md, paddingTop: spacing.xs, paddingBottom: spacing.sm,

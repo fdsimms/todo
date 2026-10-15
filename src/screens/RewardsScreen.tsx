@@ -85,6 +85,7 @@ import {
 import type { CoinEntry, Reward, Task } from '../types';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
+import { ProgressBar } from '../components/ProgressBar';
 
 /**
  * Coins and rewards — the screen for `src/utils/rewards.ts`.
@@ -883,9 +884,7 @@ export function RewardsScreen() {
               accessibilityLabel={`Saving for ${goalShown.title}: ${Math.max(0, Math.min(balance, goal.cost))} of ${formatCoins(goal.cost)}`}
             >
               <Text style={styles.goalLabel}>{`Saving for: ${goalShown.title}`}</Text>
-              <View style={styles.goalTrack}>
-                <View style={[styles.goalFill, { width: `${goalBarFill(balance, goal.cost) * 100}%` }]} />
-              </View>
+              <ProgressBar progress={goalBarFill(balance, goal.cost)} height={8} color={colors.done} decorative />
               <Text style={styles.goalMeta}>
                 {balance >= goal.cost
                   ? 'Ready to claim'
@@ -1195,8 +1194,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   balance: { color: colors.text, fontSize: 48, fontWeight: fontWeight.bold, fontVariant: ['tabular-nums'] },
   goal: { alignSelf: 'stretch', marginBottom: spacing.md, gap: spacing.xs },
   goalLabel: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold, textAlign: 'center' },
-  goalTrack: { height: 8, borderRadius: radius.full, backgroundColor: colors.bgTertiary, overflow: 'hidden' },
-  goalFill: { height: '100%', borderRadius: radius.full, backgroundColor: colors.done },
   goalMeta: { color: colors.textSecondary, fontSize: font.xs, textAlign: 'center' },
   rulesCard: { padding: spacing.md },
   rulesTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold, marginBottom: spacing.sm },
