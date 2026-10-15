@@ -461,9 +461,17 @@ describe('a sheet that is mid-dismissal', () => {
     expect(fn).toHaveBeenCalledTimes(1);
   });
 
-  it('does not stop a sheet opening in its place', () => {
+  it('holds another sheet back from opening until it finishes', () => {
     const level = createPresentationLevel();
-    beginDismissal(level, 'inner');
-    expect(canShowSheet(level)).toBe(true);
+    beginDismissal(level, 'search');
+    expect(canShowSheet(level, 'editor')).toBe(false);
+    endDismissal(level, 'search');
+    expect(canShowSheet(level, 'editor')).toBe(true);
+  });
+
+  it('does not hold the same sheet back from reopening', () => {
+    const level = createPresentationLevel();
+    beginDismissal(level, 'search');
+    expect(canShowSheet(level, 'search')).toBe(true);
   });
 });

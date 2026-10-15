@@ -187,7 +187,18 @@ export function endDismissal(level: PresentationLevel, id: string): void {
  */
 export function canShowSheet(level: PresentationLevel, id?: string): boolean {
   if (id !== undefined && mustYieldSheet(level, id)) return false;
-  return level.presented.size === 0;
+  if (level.presented.size > 0) return false;
+  // **A sheet still animating off holds its place too.** It has left the
+  // registry at the commit it was handed `visible: false`, but its view
+  // controller is presented until iOS reports the dismissal, and UIKit refuses
+  // a present issued in that window with no error while RN has already marked
+  // the new sheet presented. What was left registered but never on screen: the
+  // search sheet closing into a Today editor froze Today and the side menu,
+  // because every later sheet waits behind a registration nothing will release.
+  // Bounded by `DISMISS_BACKSTOP_MS`, and a sheet's own dismissal never holds
+  // its own reopening.
+  for (const dismissingId of level.dismissing) if (dismissingId !== id) return false;
+  return true;
 }
 
 /**
