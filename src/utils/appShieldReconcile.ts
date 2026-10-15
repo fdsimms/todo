@@ -113,6 +113,7 @@ function buildShieldState(now: Date): AppShieldState {
     focusEnabled: settings.focusShieldEnabled,
     penaltyUntil: settings.penaltyShieldUntil,
     penaltyEnabled: settings.penaltyShieldEnabled,
+    denyAppRemoval: settings.blockAppRemoval,
     penaltyReason: settings.penaltyShieldReason,
     gateEnabled: settings.gateShieldEnabled,
     // A removed group is Default, as for every other reason.

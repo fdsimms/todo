@@ -90,6 +90,7 @@ export function useAppShieldSync(): void {
       if (
         state.focusShieldEnabled !== prev.focusShieldEnabled ||
         state.penaltyShieldEnabled !== prev.penaltyShieldEnabled ||
+        state.blockAppRemoval !== prev.blockAppRemoval ||
         state.penaltyShieldUntil !== prev.penaltyShieldUntil ||
         state.penaltyShieldReason !== prev.penaltyShieldReason ||
         state.gateShieldEnabled !== prev.gateShieldEnabled ||

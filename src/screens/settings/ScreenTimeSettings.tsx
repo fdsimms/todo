@@ -75,6 +75,8 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
   const setGateShieldEnabled = useSettingsStore(s => s.setGateShieldEnabled);
   const penaltyShieldEnabled = useSettingsStore(s => s.penaltyShieldEnabled);
   const setPenaltyShieldEnabled = useSettingsStore(s => s.setPenaltyShieldEnabled);
+  const blockAppRemoval = useSettingsStore(s => s.blockAppRemoval);
+  const setBlockAppRemoval = useSettingsStore(s => s.setBlockAppRemoval);
   const setPenaltyShieldUntil = useSettingsStore(s => s.setPenaltyShieldUntil);
   const use24HourTime = useSettingsStore(s => s.use24HourTime);
   const screenTimeRules = useSettingsStore(s => s.screenTimeRules);
@@ -644,6 +646,23 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
             // not resume the moment the switch comes back on.
             () => setPenaltyShieldUntil(null),
           )}
+        />
+      </SettingsSection>
+
+      <SettingsSection
+        label="While blocked"
+        footer="Applies to every app on the phone, not only the blocked ones. It lifts when the last block ends, including when you scan a key tag or use the emergency button."
+      >
+        <SettingsRow
+          entryId="blockAppRemoval"
+          icon="trash-outline"
+          iconColor={blockAppRemoval ? colors.accent : undefined}
+          label="Prevent deleting apps"
+          hint={blockAppRemoval
+            ? 'While any block is on, apps can’t be deleted.'
+            : 'Apps can be deleted during a block.'}
+          toggle={blockAppRemoval}
+          onPress={() => setBlockAppRemoval(!blockAppRemoval)}
         />
       </SettingsSection>
 
