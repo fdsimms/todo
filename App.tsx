@@ -35,7 +35,7 @@ import { useLeaveLiveActivitySync } from './src/utils/leaveLiveActivity';
 import { useFocusLiveActivitySync } from './src/utils/focusLiveActivity';
 import { useRemindersImportSync } from './src/utils/remindersImportSync';
 import { useCalendarSync } from './src/store/useCalendarStore';
-import { useWeatherSync } from './src/store/useWeatherStore';
+import { useWeatherSync, useWeatherStore } from './src/store/useWeatherStore';
 import { useWeatherWaitSync } from './src/hooks/useWeatherWaitSync';
 import { useMeterHoldSync } from './src/hooks/useMeterHoldSync';
 import { useTravelTaskSync } from './src/hooks/useTravelTaskSync';
@@ -147,6 +147,9 @@ function AppGate() {
       runStartupStep('load timed block', () => useManualBlockStore.getState().initialize());
       runStartupStep('load block timer', () => useBlockTimerStore.getState().initialize());
       runStartupStep('load sync state', () => useSyncStore.getState().initialize());
+      // After settings, which say whether the weather feature is on: puts the
+      // last reading in place so Today's header chip is on the first frame.
+      runStartupStep('load cached weather', () => useWeatherStore.getState().hydrateCache());
       await Promise.all([preloadAppFont(useSettingsStore.getState().appFont), preloadBrandFonts()]);
       markMilestone('splash can hide');
       if (!cancelled) setReady(true);

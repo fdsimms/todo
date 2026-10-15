@@ -10,12 +10,15 @@ import { useWeatherStore } from '../store/useWeatherStore';
 import { getCurrentLocation } from '../utils/weatherLocation';
 import { fetchWeatherSnapshot } from '../services/weatherLookup';
 import { isDemoModeActive } from '../utils/demoState';
+import { dbGetSetting, dbSetSetting, dbDeleteSetting } from '../db/database';
+import { useSettingsStore } from '../store/useSettingsStore';
 
 // Same reason every other store test stubs it: pulling in the real module
 // drags expo-sqlite into the graph, and nothing here touches the database.
 jest.mock('../db/database', () => ({
   dbGetSetting: jest.fn().mockReturnValue(null),
   dbSetSetting: jest.fn(),
+  dbDeleteSetting: jest.fn(),
 }));
 
 jest.mock('react-native', () => ({
@@ -39,7 +42,7 @@ const SNAPSHOT = {
 } as never;
 
 const reset = () =>
-  useWeatherStore.setState({ snapshot: null, snapshotDayKey: null, refreshing: false });
+  useWeatherStore.setState({ snapshot: null, snapshotDayKey: null, refreshing: false, cached: null });
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -127,5 +130,39 @@ describe('a read that lands after the feature was switched off', () => {
     useWeatherStore.getState().clear();
     await useWeatherStore.getState().refresh();
     expect(useWeatherStore.getState().snapshot).toEqual(SNAPSHOT);
+  });
+});
+
+describe('the header cache', () => {
+  const CACHED = { snapshot: { weatherCode: 1, tempF: 61, fetchedAt: 'x' }, dayKey: '2026-10-15' };
+
+  it('writes the reading it took, for the next launch', async () => {
+    await useWeatherStore.getState().refresh();
+    expect(dbSetSetting).toHaveBeenCalledWith('weather_header_cache', expect.stringContaining('"dayKey"'));
+    expect(useWeatherStore.getState().cached?.snapshot).toEqual(SNAPSHOT);
+  });
+
+  it('loads the stored reading only while the weather feature is on', () => {
+    (dbGetSetting as jest.Mock).mockReturnValue(JSON.stringify(CACHED));
+    useSettingsStore.setState({ weatherTasks: false } as never);
+    useWeatherStore.getState().hydrateCache();
+    expect(useWeatherStore.getState().cached).toBeNull();
+    useSettingsStore.setState({ weatherTasks: true } as never);
+    useWeatherStore.getState().hydrateCache();
+    expect(useWeatherStore.getState().cached).toEqual(CACHED);
+  });
+
+  it('ignores a stored value that is not a reading', () => {
+    (dbGetSetting as jest.Mock).mockReturnValue('{"dayKey":"2026-10-15","snapshot":{"tempF":"warm"}}');
+    useSettingsStore.setState({ weatherTasks: true } as never);
+    useWeatherStore.getState().hydrateCache();
+    expect(useWeatherStore.getState().cached).toBeNull();
+  });
+
+  it('leaves nothing on disk once the feature is switched off', () => {
+    useWeatherStore.setState({ cached: CACHED as never });
+    useWeatherStore.getState().clear();
+    expect(dbDeleteSetting).toHaveBeenCalledWith('weather_header_cache');
+    expect(useWeatherStore.getState().cached).toBeNull();
   });
 });
