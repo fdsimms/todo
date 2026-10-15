@@ -39,6 +39,7 @@ import {
   describeAIError, nutritionLabelPhotoAiAvailable, readLabelPhotoWithAi,
 } from '../services/aiSuggestions';
 import { haptics } from '../utils/haptics';
+import { confirmDiscard } from '../utils/confirmDiscard';
 import { InlineAction } from './InlineAction';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { NutrientFieldsCard } from './NutrientFieldsCard';
@@ -470,14 +471,7 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
 
   const handleCancel = () => {
     if (!panelFormDirty(form, baseline.current)) { Keyboard.dismiss(); onClose(); return; }
-    Alert.alert(
-      'Discard changes?',
-      'Your changes haven’t been saved yet. If you leave now, they’ll be lost.',
-      [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: () => { Keyboard.dismiss(); onClose(); } },
-      ],
-    );
+    confirmDiscard(() => { Keyboard.dismiss(); onClose(); });
   };
 
   return (

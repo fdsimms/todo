@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
   Keyboard,
   ScrollView,
   StyleSheet,
@@ -29,6 +28,7 @@ import { addCustomPortion } from '../utils/foodNutrition';
 import { weighableLine, type LineWeighing } from '../utils/ingredientGrams';
 import { haptics } from '../utils/haptics';
 import type { PantryReviewAnswer } from '../utils/pantryReview';
+import { confirmDiscard } from '../utils/confirmDiscard';
 import { PantryAnswerField } from './PantryAnswerField';
 import { InlineAction } from './InlineAction';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
@@ -236,14 +236,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
     // Measured against what actually resolved, so a field typed into and then
     // cleared is not something a swipe-down would lose.
     if (resolved.size === 0) { Keyboard.dismiss(); onClose(); return; }
-    Alert.alert(
-      'Discard changes?',
-      'Your changes haven’t been saved yet. If you leave now, they’ll be lost.',
-      [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: () => { Keyboard.dismiss(); onClose(); } },
-      ],
-    );
+    confirmDiscard(() => { Keyboard.dismiss(); onClose(); });
   };
 
   const handleLog = () => {

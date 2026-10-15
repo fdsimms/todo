@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   Keyboard,
   View,
   Text,
@@ -27,6 +26,7 @@ import { InlineAction } from './InlineAction';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { haptics } from '../utils/haptics';
 import { recipeInBook, recipeNameKey } from '../utils/recipeUtils';
+import { confirmDiscard } from '../utils/confirmDiscard';
 import { TextField } from './TextField';
 
 interface Props {
@@ -225,14 +225,7 @@ export function InventRecipeSheet({ visible, onClose, onCreated }: Props) {
   const handleCancel = () => {
     const dirty = hints.trim() !== '' || ideas.length > 0;
     if (!dirty) { Keyboard.dismiss(); onClose(); return; }
-    Alert.alert(
-      'Discard changes?',
-      'Your changes haven’t been saved yet. If you leave now, they’ll be lost.',
-      [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: () => { Keyboard.dismiss(); onClose(); } },
-      ],
-    );
+    confirmDiscard(() => { Keyboard.dismiss(); onClose(); });
   };
 
   const renderIdeaRow = (idea: MealIdea) => {

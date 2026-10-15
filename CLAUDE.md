@@ -197,7 +197,7 @@ project") or the symptom as the system saw it ("Health didn't accept the weight"
 the reason and the next step in plain sentences, and states the consequence rather than asking
 "Are you sure?", since the buttons are already the question ("If you leave now, they'll be
 lost."). Button labels name the action ("Open Health", "Discard"), and the discard alert's wording
-is the same everywhere (see `handleCancel` below).
+is the same everywhere (`confirmDiscard`, see `handleCancel` below).
 
 **American English, not British.** Britishisms had crept into copy across the app — "tick"/
 "ticked" instead of "check off"/"checked", "trolley" instead of "cart", "Practise" instead of
@@ -1278,17 +1278,10 @@ That difference is invisible in the JSX: a sheet that "already stays open behind
 const handleCancel = () => {
   const dirty = /* differs from what the sheet opened with, or from what's saved */;
   if (!dirty) { onClose(); return; }
-  Alert.alert(
-    'Discard changes?',
-    'Your changes haven’t been saved yet. If you leave now, they’ll be lost.',
-    [
-      { text: 'Keep editing', style: 'cancel' },
-      { text: 'Discard', style: 'destructive', onPress: onClose },
-    ],
-  );
+  confirmDiscard(onClose);
 };
 ```
-Same copy every time, mirroring `TaskEditor`'s own `handleCancel` — don't invent new wording per sheet. The dirty check's *shape* varies with what the sheet stages: `RecipeToListSheet`/`SuggestMealsSheet` (a baseline ref stamped on open, since a recompute can reseed the same state under the user), `ProductSheet`/`SubstituteSheet` (differs from the saved row), `TemplateSuggestionsSheet`/`GroceryAISheet` (any generated batch exists at all, since regenerating costs a real request), `PrepTasksReviewSheet` (something was deselected off an all-checked default). A sheet whose fields **commit immediately** on tap/blur instead (`GroceryItemSheet`, `StandingSwapsSheet`, most plain pickers) has nothing to guard — that's the other valid answer, not a workaround, and no `handleCancel` is needed. Two are their own read: `CategoryEditor`'s `onRequestClose` already runs the same save path "Done" does (autosave instead of a confirm — solves the same bug, just not by asking), and a `presentationStyle="fullScreen"` Modal (`EditorSheet`, `PantryReviewSheet`) has no swipe gesture at all, so there's nothing to guard.
+`confirmDiscard` (`src/utils/confirmDiscard.ts`) owns the alert's wording, so it reads the same on every sheet, and `noHandWrittenDiscard.test.ts` fails the build on a hand-written copy. It takes an optional title and message for something never saved (a new project) and `onKeepEditing` for a sheet that must snap back on "Keep editing". The dirty check's *shape* varies with what the sheet stages: `RecipeToListSheet`/`SuggestMealsSheet` (a baseline ref stamped on open, since a recompute can reseed the same state under the user), `ProductSheet`/`SubstituteSheet` (differs from the saved row), `TemplateSuggestionsSheet`/`GroceryAISheet` (any generated batch exists at all, since regenerating costs a real request), `PrepTasksReviewSheet` (something was deselected off an all-checked default). A sheet whose fields **commit immediately** on tap/blur instead (`GroceryItemSheet`, `StandingSwapsSheet`, most plain pickers) has nothing to guard — that's the other valid answer, not a workaround, and no `handleCancel` is needed. Two are their own read: `CategoryEditor`'s `onRequestClose` already runs the same save path "Done" does (autosave instead of a confirm — solves the same bug, just not by asking), and a `presentationStyle="fullScreen"` Modal (`EditorSheet`, `PantryReviewSheet`) has no swipe gesture at all, so there's nothing to guard.
 
 **Never render `react-native`'s `Modal` directly — use `SheetModal` (`src/components/SheetModal.tsx`), which is the same component with the keyboard guaranteed to be gone before it closes.** Closing a `Modal` while a `TextInput` inside it still holds native keyboard focus races the keyboard's own dismiss animation against the Modal's — the touch handler on whatever renders underneath (usually Today) gets stranded mid-handoff and stops responding to any tap at all, with no crash and no error to point at it. `SheetModal` holds the real `Modal` open for one more commit on the closing edge, dismissing the keyboard first, so the resign-first-responder command is always queued ahead of the dismissal whichever call site set the prop. `noRawModal.test.ts` fails the build on a raw `Modal` anywhere in `src/`, so this is enforced rather than remembered.
 

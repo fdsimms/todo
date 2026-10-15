@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { SheetModal } from './SheetModal';
@@ -29,6 +29,7 @@ import {
   SAVED_VIEW_ICONS,
   DEFAULT_SAVED_VIEW_ICON,
 } from '../utils/savedViews';
+import { confirmDiscard } from '../utils/confirmDiscard';
 import {
   EFFORT_HINTS,
   EFFORT_LABELS,
@@ -110,14 +111,7 @@ export function SavedViewEditorSheet({ visible, view, onClose, onCreated, onDele
 
   const handleCancel = () => {
     if (!dirty) { onClose(); return; }
-    Alert.alert(
-      'Discard changes?',
-      'Your changes haven’t been saved yet. If you leave now, they’ll be lost.',
-      [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: onClose },
-      ],
-    );
+    confirmDiscard(onClose);
   };
 
   const handleSave = () => {

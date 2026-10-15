@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   Keyboard,
   View,
   Text,
@@ -41,6 +40,7 @@ import { InlineAction } from './InlineAction';
 import { EmptyState } from './EmptyState';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { haptics } from '../utils/haptics';
+import { confirmDiscard } from '../utils/confirmDiscard';
 import { TextField } from './TextField';
 import { useActionMenu } from '../hooks/useActionMenu';
 
@@ -904,14 +904,7 @@ export function SuggestMealsSheet({
     if (saving) return;
     const dirty = selected.size > 0 || hints.trim() !== '' || ideas.length > 0;
     if (!dirty) { Keyboard.dismiss(); onClose(); return; }
-    Alert.alert(
-      'Discard changes?',
-      'Your changes haven’t been saved yet. If you leave now, they’ll be lost.',
-      [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: () => { Keyboard.dismiss(); onClose(); } },
-      ],
-    );
+    confirmDiscard(() => { Keyboard.dismiss(); onClose(); });
   };
 
   return (

@@ -81,6 +81,7 @@ import { coveredIngredients, importableReferences } from '../utils/recipeImportC
 import { MAX_RECIPE_PHOTOS } from '../utils/recipePhoto';
 import { haptics } from '../utils/haptics';
 import { capitalize } from '../utils/capitalize';
+import { confirmDiscard } from '../utils/confirmDiscard';
 import { InlineAction } from './InlineAction';
 import { TextField } from './TextField';
 
@@ -708,14 +709,7 @@ export function RecipeCreateSheet({
       || !!input.url.trim()
       || input.photos.length > 0;
     if (!dirty) { Keyboard.dismiss(); onClose(); return; }
-    Alert.alert(
-      'Discard changes?',
-      'Your changes haven’t been saved yet. If you leave now, they’ll be lost.',
-      [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: () => { Keyboard.dismiss(); onClose(); } },
-      ],
-    );
+    confirmDiscard(() => { Keyboard.dismiss(); onClose(); });
   };
 
   // ==== row labels and meta text for the review list ====

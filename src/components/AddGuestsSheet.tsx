@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, Alert } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { SheetModal } from './SheetModal';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -8,6 +8,7 @@ import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { parseGuestNames } from '../utils/rsvp';
 import { RSVP_OPTIONS, parseDeliverableOptions } from '../utils/deliverables';
 import { haptics } from '../utils/haptics';
+import { confirmDiscard } from '../utils/confirmDiscard';
 import { TextField } from './TextField';
 
 interface Props {
@@ -49,14 +50,7 @@ export function AddGuestsSheet({ visible, onClose, onAdd }: Props) {
   // pageSheet rule in CLAUDE.md).
   const handleCancel = () => {
     if (!names.trim() && options === defaultOptions) { onClose(); return; }
-    Alert.alert(
-      'Discard changes?',
-      'Your changes haven’t been saved yet. If you leave now, they’ll be lost.',
-      [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: onClose },
-      ],
-    );
+    confirmDiscard(onClose);
   };
 
   return (

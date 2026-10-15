@@ -12,6 +12,7 @@ import { spacing, radius, font, fontWeight, interaction, type Colors } from '../
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { cleanIndexIngredients, splitIngredientText } from '../utils/cookbookIndex';
+import { confirmDiscard } from '../utils/confirmDiscard';
 import { RECIPE_NAME_MAX_LENGTH, RECIPE_PAGE_MAX_LENGTH } from '../types';
 import { TextField } from './TextField';
 
@@ -74,14 +75,7 @@ export function CookbookIndexEntrySheet({ visible, cookbookId, entryId, onClose 
 
   const handleCancel = () => {
     if (!dirty) { onClose(); return; }
-    Alert.alert(
-      'Discard changes?',
-      'Your changes haven’t been saved yet. If you leave now, they’ll be lost.',
-      [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: onClose },
-      ],
-    );
+    confirmDiscard(onClose);
   };
 
   const handleSave = () => {

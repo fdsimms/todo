@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
-  Alert,
   View,
   Text,
   TouchableOpacity,
@@ -13,6 +12,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, lineHeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { confirmDiscard } from '../utils/confirmDiscard';
 import { useTaskStore } from '../store/useTaskStore';
 import { dbTransaction } from '../db/database';
 import { EmptyState } from './EmptyState';
@@ -121,14 +121,7 @@ export function ProjectTaskSuggestionsSheet({
   // to get back, so a swipe-down with one on screen asks first.
   const handleCancel = () => {
     if (suggestions.length === 0) { onClose(); return; }
-    Alert.alert(
-      'Discard changes?',
-      'Your changes haven’t been saved yet. If you leave now, they’ll be lost.',
-      [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: onClose },
-      ],
-    );
+    confirmDiscard(onClose);
   };
 
   const acceptedCount = accepted.size;

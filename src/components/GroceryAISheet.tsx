@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
-  Alert,
   View,
   Text,
   TouchableOpacity,
@@ -43,6 +42,7 @@ import { useRecipeImportSource } from '../hooks/useRecipeImportSource';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { MAX_RECIPE_PHOTOS } from '../utils/recipePhoto';
 import { haptics } from '../utils/haptics';
+import { confirmDiscard } from '../utils/confirmDiscard';
 import { GROCERY_NAME_MAX_LENGTH } from '../types';
 
 const CHECKBOX_SIZE = 22;
@@ -289,14 +289,7 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
       || !!recipeInput.url.trim()
       || recipeInput.photos.length > 0;
     if (!dirty) { onClose(); return; }
-    Alert.alert(
-      'Discard changes?',
-      'Your changes haven’t been saved yet. If you leave now, they’ll be lost.',
-      [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: onClose },
-      ],
-    );
+    confirmDiscard(onClose);
   };
 
 

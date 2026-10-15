@@ -1,6 +1,5 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import {
-  Alert,
   Keyboard,
   View,
   Text,
@@ -45,6 +44,7 @@ import { GroceryItemSheet } from './GroceryItemSheet';
 import { navigateToFoodSearchSettings } from './NutritionSearchSheet';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
+import { confirmDiscard } from '../utils/confirmDiscard';
 import type { GroceryItem } from '../types';
 import { useFilterField } from '../hooks/useFilterField';
 
@@ -218,14 +218,7 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
   // selection on screen would otherwise throw it away with no way back.
   const handleCancel = () => {
     if (selected.size === 0) { Keyboard.dismiss(); onClose(); return; }
-    Alert.alert(
-      'Discard changes?',
-      'Your changes haven’t been saved yet. If you leave now, they’ll be lost.',
-      [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: () => { Keyboard.dismiss(); onClose(); } },
-      ],
-    );
+    confirmDiscard(() => { Keyboard.dismiss(); onClose(); });
   };
 
   /**

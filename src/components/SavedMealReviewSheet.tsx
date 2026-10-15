@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SheetModal } from './SheetModal';
 import { SheetHeader } from './SheetHeader';
@@ -28,6 +28,7 @@ import {
   toggleRemoved,
   type ReviewLine,
 } from '../utils/savedMealReview';
+import { confirmDiscard } from '../utils/confirmDiscard';
 import type { FoodNutrition, MealSlot, SavedMeal, SavedMealItem } from '../types';
 
 interface Props {
@@ -173,14 +174,7 @@ export function SavedMealReviewSheet({ visible, meal, slot, at, onLog, onSaveCha
 
   const handleCancel = () => {
     if (!changed) { onClose(); return; }
-    Alert.alert(
-      'Discard changes?',
-      'Your changes haven’t been saved yet. If you leave now, they’ll be lost.',
-      [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: onClose },
-      ],
-    );
+    confirmDiscard(onClose);
   };
 
   const handlePicked = (item: SavedMealItem) => {

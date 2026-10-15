@@ -14,6 +14,7 @@ import {  } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, lineHeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { confirmDiscard } from '../utils/confirmDiscard';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { EmptyState } from './EmptyState';
 import { suggestTemplateItems, describeAIError, type TemplateItemSuggestion } from '../services/aiSuggestions';
@@ -140,14 +141,7 @@ export function TemplateSuggestionsSheet({ visible, templateId, templateName, ex
   // asks first rather than throwing it away the way a bare onClose would.
   const handleCancel = () => {
     if (suggestions.length === 0) { onClose(); return; }
-    Alert.alert(
-      'Discard changes?',
-      'Your changes haven’t been saved yet. If you leave now, they’ll be lost.',
-      [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: onClose },
-      ],
-    );
+    confirmDiscard(onClose);
   };
 
   const acceptedCount = accepted.size;

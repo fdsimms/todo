@@ -46,6 +46,7 @@ import { addDays } from 'date-fns/addDays';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { buildAwayShiftPlan } from '../utils/awayShift';
 import { haptics } from '../utils/haptics';
+import { confirmDiscard } from '../utils/confirmDiscard';
 import { useProjectLockStore, isProjectHidden } from '../store/useProjectLockStore';
 import { unlockProjects } from '../hooks/useProjectAccess';
 import { scheduleTaskReminder } from '../utils/notifications';
@@ -540,16 +541,9 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
   const handleCancel = () => {
     const leave = () => onClose(isNew ? 'discarded' : undefined);
     if (!isDirty()) { leave(); return; }
-    Alert.alert(
-      isNew ? 'Discard this project?' : 'Discard changes?',
-      isNew
-        ? 'This project hasn’t been saved yet. If you leave now, it’ll be lost.'
-        : 'Your changes haven’t been saved yet. If you leave now, they’ll be lost.',
-      [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: leave },
-      ],
-    );
+    confirmDiscard(leave, isNew
+      ? { title: 'Discard this project?', message: 'This project hasn’t been saved yet. If you leave now, it’ll be lost.' }
+      : undefined);
   };
 
   const {

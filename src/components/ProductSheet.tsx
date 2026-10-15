@@ -25,6 +25,7 @@ import { describeProduct, productsForItem } from '../utils/groceryProduct';
 import { describeFoodPanel } from '../utils/foodNutrition';
 import { defaultOnHandUntil, OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
 import { haptics } from '../utils/haptics';
+import { confirmDiscard } from '../utils/confirmDiscard';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { NutritionPanelSheet } from './NutritionPanelSheet';
 import { PillGroup, type PillGroupOption } from './PillGroup';
@@ -238,14 +239,7 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
       || note !== (editing?.note ?? '')
       || rating !== (editing?.rating ?? null);
     if (!dirty) { Keyboard.dismiss(); onClose(); return; }
-    Alert.alert(
-      'Discard changes?',
-      'Your changes haven’t been saved yet. If you leave now, they’ll be lost.',
-      [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: () => { Keyboard.dismiss(); onClose(); } },
-      ],
-    );
+    confirmDiscard(() => { Keyboard.dismiss(); onClose(); });
   };
 
   const handleDelete = () => {

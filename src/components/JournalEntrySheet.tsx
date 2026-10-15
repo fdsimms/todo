@@ -44,6 +44,7 @@ import { groupMentionTokens } from '../utils/peopleRegistry';
 import { animateLayout } from '../utils/layoutAnimation';
 import { joinNames } from '../utils/shoppingTrip';
 import { journalPlainText, toggleLinePrefix, toggleWrap } from '../utils/journalMarkdown';
+import { confirmDiscard } from '../utils/confirmDiscard';
 import { useJournalStore } from '../store/useJournalStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -302,14 +303,7 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
   const handleCancel = () => {
     const dirty = text.trim() !== (editing?.text ?? '') || metaChanged || (!editing && (tags.length > 0 || personIds.length > 0));
     if (!dirty) { if (!editing) clearJournalDraft(kind); onClose(); return; }
-    Alert.alert(
-      'Discard changes?',
-      'Your changes haven’t been saved yet. If you leave now, they’ll be lost.',
-      [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: () => { if (!editing) clearJournalDraft(kind); onClose(); } },
-      ],
-    );
+    confirmDiscard(() => { if (!editing) clearJournalDraft(kind); onClose(); });
   };
 
   const confirmDelete = () => {

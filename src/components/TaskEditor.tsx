@@ -167,6 +167,7 @@ import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { describeRecurrence } from '../utils/recurrenceLabels';
 import { knownLinkAppFor, linkAppsFor } from '../constants/linkApps';
 import { capitalize } from '../utils/capitalize';
+import { confirmDiscard } from '../utils/confirmDiscard';
 import { useFilterField } from '../hooks/useFilterField';
 import { TextField } from './TextField';
 import { LazySheet } from './LazySheet';
@@ -3099,14 +3100,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       followUpTaskAtEnd,
     });
     if (current !== initialStateRef.current) {
-      Alert.alert(
-        'Discard changes?',
-        'Your changes haven’t been saved yet. If you leave now, they’ll be lost.',
-        [
-          { text: 'Keep editing', style: 'cancel' },
-          { text: 'Discard', style: 'destructive', onPress: onClose },
-        ],
-      );
+      confirmDiscard(onClose);
     } else {
       onClose();
     }
