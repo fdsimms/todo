@@ -115,6 +115,13 @@ describe('pickTitleSuggestion', () => {
     expect(kindOf("Don't check Twitter", { polarity: 'negative' })).toBeNull();
   });
 
+  it('carries an "until 4pm" into the avoid suggestion and its pill', () => {
+    const s = pickTitleSuggestion("Don't eat until 4pm", base)!;
+    expect(s.kind).toBe('avoid');
+    expect(describeTitleSuggestion(s, 'mm', h => `@${h}`).label).toBe('Avoid this habit · clean at @16:00');
+    expect(describeTitleSuggestion(pickTitleSuggestion("Don't check Twitter", base)!, 'mm', h => h).label).toBe('Avoid this habit');
+  });
+
   it('reads a chain from the plain kind', () => {
     expect(kindOf('call mom -> buy milk -> walk the dog')).toBe('chain');
     expect(kindOf('call mom -> buy milk', { plainKind: false })).toBeNull();

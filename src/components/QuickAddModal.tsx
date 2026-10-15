@@ -1542,12 +1542,17 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     setSubtaskTitles(prev => [...prev, ...subtasksParsed.subtasks]);
   };
 
-  // Leaves the title alone: "No snacking after 8pm" is the habit's name.
+  // Leaves the title alone: "No snacking after 8pm" is the habit's name. An
+  // "until 4pm" on the end becomes the time its day counts as clean.
   const applyAvoid = () => {
     if (!avoidParsed) return;
     haptics.success();
     animateLayout();
     setPolarity('negative');
+    if (avoidParsed.endsAt) {
+      setTitleWindowEnd(avoidParsed.endsAt);
+      setTitleWindowEndSun(null);
+    }
   };
 
   // Whichever single tooltip is currently up, applied — shared by the

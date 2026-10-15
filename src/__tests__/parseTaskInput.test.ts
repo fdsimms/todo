@@ -2112,6 +2112,27 @@ describe('parseAvoidInput', () => {
     expect(said('avoid drinking soda')).toBe('avoid drinking');
   });
 
+  it('reads a closing "until/before <time>" as when the day counts as clean', () => {
+    expect(parseAvoidInput("Don't eat until 4pm")).toEqual({ matchStart: 0, matchEnd: 19, endsAt: '16:00' });
+    expect(parseAvoidInput('No snacking before 8:30 PM')?.endsAt).toBe('20:30');
+    expect(parseAvoidInput('avoid drinking till noon')?.endsAt).toBe('12:00');
+    expect(parseAvoidInput('Never eat until 16:00')?.endsAt).toBe('16:00');
+    expect(said("Don't eat until 4pm")).toBe("Don't eat until 4pm");
+  });
+
+  it('keeps the schedule reader off a closing time the habit already claims', () => {
+    expect(parseTaskInput("Don't eat until 4pm", NOW)).toBeNull();
+    expect(parseTaskInput('No snacking before 8:30pm', NOW)).toBeNull();
+    expect(parseTaskInput("Don't check Twitter tomorrow", NOW)).not.toBeNull();
+  });
+
+  it('offers the habit without an end when the clause names no usable time', () => {
+    expect(parseAvoidInput("Don't eat until 4:00")).toEqual({ matchStart: 0, matchEnd: 5, endsAt: null });
+    expect(parseAvoidInput("Don't eat until bed")?.endsAt).toBeNull();
+    expect(parseAvoidInput("Don't eat until 4pm tomorrow")?.endsAt).toBeNull();
+    expect(parseAvoidInput("Don't check Twitter")?.endsAt).toBeNull();
+  });
+
   it('leaves ordinary tasks that open the same way alone', () => {
     expect(said('stop by the bank')).toBeNull();
     expect(said('no school friday')).toBeNull();

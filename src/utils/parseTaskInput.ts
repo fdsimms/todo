@@ -812,6 +812,9 @@ export function parseTaskInput(input: string, now: Date = new Date(), clockNow: 
   if (!input) return null;
   const tokens = [...input.matchAll(/\S+/g)];
   if (tokens.length < 2) return null;
+  // "Don't eat until 4pm": the closing time is when the habit's day counts as
+  // clean (see parseAvoidInput), not a date to schedule the task on.
+  if (parseAvoidInput(input)?.endsAt) return null;
 
   const lower = input.toLowerCase();
   // An input that is entirely a schedule phrase ("on tuesday", "every monday")
@@ -1887,9 +1890,14 @@ export function parseSubtasksInput(input: string): ParsedSubtasks | null {
 }
 
 export interface ParsedAvoid {
-  /** The opening words that say it ("Don't", "No snacking"), for the highlight. */
+  /**
+   * The words that say it, for the highlight: the opening ("Don't", "No
+   * snacking"), or through the end of the "until 4pm" clause when there is one.
+   */
   matchStart: number;
   matchEnd: number;
+  /** `"HH:MM"` from a trailing "until/till/before <clock time>": when the habit's day counts as clean. */
+  endsAt: string | null;
 }
 
 // Words ending in "ing" that aren't something a person does: "no morning
@@ -1920,12 +1928,27 @@ export function parseAvoidInput(input: string): ParsedAvoid | null {
   const rest = input.slice(lead);
   // "Don't forget to …" is a reminder (see REMIND_PREFIX), not a habit.
   const plain = rest.match(/^(?:don'?t|don’t|do not|never)\s+(?!forget\b)(?=[a-z])/i);
-  if (plain) return { matchStart: lead, matchEnd: lead + plain[0].trimEnd().length };
+  if (plain) return withAvoidEnd(input, lead, lead + plain[0].trimEnd().length);
   const gerund = rest.match(/^(?:no|stop|quit|avoid)\s+([a-z]+ing)\b/i);
   if (gerund && !NOT_GERUNDS.has(gerund[1].toLowerCase())) {
-    return { matchStart: lead, matchEnd: lead + gerund[0].length };
+    return withAvoidEnd(input, lead, lead + gerund[0].length);
   }
   return null;
+}
+
+/**
+ * "Don't eat until 4pm", "No snacking before 8:00pm": a clock time closing the
+ * title says when the habit's day counts as clean (`Task.windowEnd`, which an
+ * avoid-task reads as that and never as an expiry). Only a time on its own at
+ * the very end counts, and a bare "until 4:00" is left alone because it could
+ * be either half of the day; "until bed" or "before 4pm tomorrow" name no time
+ * to close the day on, so the habit is still offered without one.
+ */
+function withAvoidEnd(input: string, matchStart: number, leadEnd: number): ParsedAvoid {
+  const clause = input.slice(leadEnd).match(/\s(?:until|till|before)\s+(\S.*?)\s*$/i);
+  const clock = clause ? extractTime(clause[1].toLowerCase()) : null;
+  if (!clause || !clock || clock.ambiguous || clock.rest) return { matchStart, matchEnd: leadEnd, endsAt: null };
+  return { matchStart, matchEnd: input.trimEnd().length, endsAt: hhmm(clock.time) };
 }
 
 export interface ParsedPriority {

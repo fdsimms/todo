@@ -219,6 +219,9 @@ export function describeTitleSuggestion(
     case 'rain': return { icon: 'rainy-outline', label: `Skip after ${formatRain(s.hit.mm, rainUnit)} of rain` };
     case 'waiting': return { icon: 'hourglass-outline', label: `Waiting on · ${s.hit.title}` };
     case 'subtasks': return { icon: 'list-outline', label: `${s.hit.subtasks.length} subtasks` };
-    case 'avoid': return { icon: 'shield-checkmark-outline', label: 'Avoid this habit' };
+    case 'avoid': return {
+      icon: 'shield-checkmark-outline',
+      label: s.hit.endsAt ? `Avoid this habit · clean at ${formatClock(s.hit.endsAt)}` : 'Avoid this habit',
+    };
   }
 }

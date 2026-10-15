@@ -1880,8 +1880,13 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         }
         break;
       case 'avoid':
-        // Strips nothing: "No snacking after 8pm" is the habit's name.
+        // Strips nothing: "No snacking after 8pm" is the habit's name. An
+        // "until 4pm" on the end becomes the time its day counts as clean.
         setPolarity('negative');
+        if (s.hit.endsAt) {
+          setWindowEndSun(null);
+          setWindowEnd(s.hit.endsAt);
+        }
         break;
     }
   };
