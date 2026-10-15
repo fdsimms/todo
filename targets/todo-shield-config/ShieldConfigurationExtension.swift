@@ -137,7 +137,7 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
 
     switch state.reason {
     case "focus":
-      return "A focus session is running. These apps unblock when you pause or finish it."
+      return "A focus session is running. It unblocks when you pause or finish it."
     case "gate":
       // The whole sentence, written by the app rather than assembled here. A
       // gate can be one task or several, and picking between "isn't done yet"
@@ -154,7 +154,7 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
       // copy of words that belong to the app and nothing in this target can be
       // tested against them.
       return state.detail.flatMap { $0.isEmpty ? nil : $0 }
-        ?? "These apps are locked until you tap your key tag."
+        ?? "Locked until you tap your key tag."
     case "schedule":
       let name = state.detail.flatMap { $0.isEmpty ? nil : $0 }
       let until = state.untilIso.flatMap(Self.timeLabel)
@@ -168,9 +168,9 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
       // A block the person started themselves. Only the time is on this side;
       // the app writes no detail for it.
       if let until = state.untilIso.flatMap(Self.timeLabel) {
-        return "You started a block on these apps. It ends at \(until)."
+        return "You started this block. It ends at \(until)."
       }
-      return "You started a block on these apps."
+      return "You started this block."
     case "penalty":
       let cause = state.detail.flatMap { $0.isEmpty ? nil : $0 }
       let until = state.untilIso.flatMap(Self.timeLabel)
