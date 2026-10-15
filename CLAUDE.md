@@ -618,9 +618,17 @@ a throwaway file, not app code, and the tokens are what you're checking.
 
 It is a proxy, not a screenshot of the app: CSS flexbox is not Yoga, RN's text metrics differ,
 and nothing about gestures, animation or `SwipeableRow` is being exercised. It proves the layout
-numbers and the visual hierarchy and nothing else, so label it that way when you send it. Skip
-it for logic changes and one-line tweaks; reach for it whenever the question is "does this look
-right".
+numbers and the visual hierarchy and nothing else, so label it that way when you send it.
+
+**Always mock a UI change that isn't trivial, and do it before writing the component code.** The
+mock is the proposal: send the screenshot, and build the real change once it looks right (or the
+user has redirected it). Non-trivial means any new element, row, sheet or screen, a change to
+layout, spacing, hierarchy or colour, an empty or error state, or a restyle of a shared component
+that several screens render. Trivial, and exempt, is a copy edit, a one-line spacing or token
+swap, an icon swap, or anything with no visible result (logic, refactors, tests, tooling). When
+you can't tell which side a change is on, treat it as non-trivial. Don't skip the mock because the
+change "looks obvious" in the code: that is when a cramped gap or a dark-theme-only treatment
+ships.
 
 **Verify an unfamiliar API instead of guessing it, when verification is possible.** Native code
 under `modules/` can't be compiled or type-checked from this sandbox, so a wrong signature against
