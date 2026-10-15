@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AppState, Linking, Text, View, StyleSheet } from 'react-native';
+import { Alert, AppState, Linking, Text, View, StyleSheet } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 import type { ScreenTimeRule } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -16,6 +16,8 @@ import {
 import { screenTimeBridge } from '../utils/screenTimeBridge';
 import { allGroups, groupName, resolveGroupId } from '../utils/appGroups';
 import { useAppGroupStore } from '../store/useAppGroupStore';
+import { useShieldReasons } from '../hooks/useShieldReasons';
+import { BLOCK_EDIT_LOCKED_MESSAGE, BLOCK_EDIT_LOCKED_TITLE, groupEditLocked } from '../utils/blockEditLock';
 import type { ScreenTimeAuthorization, ScreenTimeSelectionCount } from 'todo-screentime-bridge';
 import { PillGroup } from './PillGroup';
 import { CountStepper } from './CountStepper';
@@ -79,8 +81,16 @@ export function ScreenTimeRulesSheet({ visible, onClose }: Props) {
     return () => subscription.remove();
   }, [visible, refreshNativeState]);
 
+  const reasons = useShieldReasons();
+
   const chooseApps = async (groupId: string) => {
     haptics.tap();
+    // Same lock as the Screen Time screen: emptying a live group would end its block unrecorded.
+    if (groupEditLocked(groupId, reasons)) {
+      haptics.warning();
+      Alert.alert(BLOCK_EDIT_LOCKED_TITLE, BLOCK_EDIT_LOCKED_MESSAGE);
+      return;
+    }
     const bridge = screenTimeBridge();
     if (!bridge) return;
     if (await bridge.presentAppPicker(groupId)) {

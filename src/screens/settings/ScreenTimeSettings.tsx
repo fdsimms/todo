@@ -114,6 +114,15 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
     return c ? c.applications + c.categories + (c.websites ?? 0) : 0;
   };
 
+  const groupLocked = (groupId: string) => groupEditLocked(groupId, reasons);
+  const groupHint = (groupId: string) => {
+    const parts = [
+      ...(groupLocked(groupId) ? ['Blocking now, so its apps can’t be changed'] : []),
+      ...(groupsMeta.fallbackId === groupId ? ['Default group'] : []),
+    ];
+    return parts.length > 0 ? parts.join(' · ') : undefined;
+  };
+
   // A live block's apps, group, reason and schedule can't be edited: that would
   // end it with no record. Ending it is `releaseAllBlocks` (`blockEditLock.ts`).
   const refuseWhileBlocked = (locked: boolean): boolean => {
@@ -564,7 +573,8 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
           icon="apps-outline"
           iconColor={totalOf(DEFAULT_GROUP_ID) > 0 ? colors.accent : undefined}
           label={groupsMeta.baseName}
-          hint={groupsMeta.fallbackId === DEFAULT_GROUP_ID ? 'Default group' : undefined}
+          hint={groupHint(DEFAULT_GROUP_ID)}
+          alwaysShowHint={groupLocked(DEFAULT_GROUP_ID)}
           value={countLabel(DEFAULT_GROUP_ID)}
           onPress={() => handleGroupRow(DEFAULT_GROUP_ID, groupsMeta.baseName)}
         />
@@ -575,7 +585,8 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
               icon="apps-outline"
               iconColor={totalOf(group.id) > 0 ? colors.accent : undefined}
               label={group.name}
-              hint={groupsMeta.fallbackId === group.id ? 'Default group' : undefined}
+              hint={groupHint(group.id)}
+              alwaysShowHint={groupLocked(group.id)}
               value={countLabel(group.id)}
               onPress={() => handleGroupRow(group.id, group.name)}
             />
