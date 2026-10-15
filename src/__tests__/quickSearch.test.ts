@@ -471,4 +471,16 @@ describe('quickSearch', () => {
       expect(projectResults).toEqual([]);
     });
   });
+
+  describe('exact title versus scattered letters', () => {
+    it('keeps an exact title on a later task on the card ahead of scattered-letter guesses on Today', () => {
+      const today = new Date(2025, 5, 10, 9).toISOString();
+      const guesses = ['Go buy milk', 'Get your mail', 'Grab yummy mints', 'Give yoga mats', 'Gather young males', 'Grow your mint', 'Gone yesterday, maybe']
+        .map((title, i) => makeTask({ id: `g${i}`, title, dueDate: today }));
+      const gym = makeTask({ id: 'gym', title: 'Gym', dueDate: new Date(2030, 0, 1, 9).toISOString() });
+      const { results } = quickSearch([...guesses, gym], 'gym', new Map(), 5);
+      expect(results.map(r => r.task.id)).toContain('gym');
+      expect(results[0].task.id).toBe('gym');
+    });
+  });
 });

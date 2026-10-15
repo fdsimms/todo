@@ -131,3 +131,27 @@ describe('matchExcerpt', () => {
     expect(e.ranges.map(([s, end]) => e.text.slice(s, end))).toEqual(['lo', 'dent']);
   });
 });
+
+describe('scoreSubstring folding', () => {
+  it('finds an accented word from its plain spelling and back', () => {
+    expect(scoreSubstring('Update résumé', 'resume').score).toBeGreaterThanOrEqual(100);
+    expect(scoreSubstring('Update resume', 'résumé').score).toBeGreaterThanOrEqual(100);
+    expect(scoreSubstring('Buy jalapeños', 'jalapeno').score).toBeGreaterThanOrEqual(100);
+  });
+
+  it('highlights the original characters', () => {
+    expect(scoreSubstring('Café with Sam', 'cafe').ranges).toEqual([[0, 4]]);
+  });
+
+  it('treats a curly apostrophe as a straight one', () => {
+    expect(scoreSubstring('Call mom’s house', "mom's").score).toBeGreaterThanOrEqual(100);
+  });
+
+  it('keeps ranges aligned after a character that changes length when lowercased', () => {
+    expect(scoreSubstring('İstanbul trip planning', 'trip').ranges).toEqual([[9, 13]]);
+  });
+
+  it('ranks a whole-word match above a prefix of a longer word', () => {
+    expect(scoreSubstring('Tax', 'tax').score).toBeGreaterThan(scoreSubstring('Taxi to airport', 'tax').score);
+  });
+});
