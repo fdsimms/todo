@@ -21,7 +21,7 @@ import type { GroupedReason } from './appGroups';
 
 /** Groups a live reason names right now. */
 export function liveGroupIds(reasons: readonly ShieldReasonEntry[]): Set<string> {
-  return new Set(reasons.map(r => r.groupId));
+  return new Set(reasons.flatMap(r => r.groupIds));
 }
 
 /** Whether the apps picked for a group, or the group itself, are being blocked right now. */

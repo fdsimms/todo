@@ -4,12 +4,12 @@ import {
 import type { ShieldReasonEntry } from '../utils/appShield';
 import type { BlockSchedule } from '../utils/blockSchedule';
 
-const reason = (r: ShieldReasonEntry['reason'], groupId: string): ShieldReasonEntry => ({ reason: r, groupId });
+const reason = (r: ShieldReasonEntry['reason'], ...groupIds: string[]): ShieldReasonEntry => ({ reason: r, groupIds });
 
 const schedule = (over: Partial<BlockSchedule> = {}): BlockSchedule => ({
   id: 's1',
   name: 'Work',
-  groupId: 'default',
+  groupIds: ['default'],
   days: [1, 2, 3, 4, 5],
   startMinutes: 9 * 60,
   endMinutes: 17 * 60,
