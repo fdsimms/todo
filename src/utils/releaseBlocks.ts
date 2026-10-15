@@ -56,14 +56,21 @@ export function releaseAllBlocks(source: ReleaseSource, reason?: string): Shield
     { focusSessionId: session?.id ?? null, outstandingGateIds: outstandingIds },
   );
 
-  const cleaned = reason ? cleanReleaseReason(reason) : '';
-  useShieldReleaseStore.getState().addRecord({
-    id: generateId(),
-    at: now.toISOString(),
-    source,
-    reason: cleaned || null,
-    ended,
-  });
+  // Scanning the tag that raised the lock is how that lock ends, not an early
+  // end: it never had an end point to come before. So a tag release records
+  // only the other reasons it cut short, and a scan that ended just the lock
+  // records nothing. The emergency button records everything, the lock too.
+  const cutShort = source === 'tag' ? ended.filter(r => r !== 'key') : ended;
+  if (cutShort.length > 0) {
+    const cleaned = reason ? cleanReleaseReason(reason) : '';
+    useShieldReleaseStore.getState().addRecord({
+      id: generateId(),
+      at: now.toISOString(),
+      source,
+      reason: cleaned || null,
+      ended: cutShort,
+    });
+  }
   return ended;
 }
 

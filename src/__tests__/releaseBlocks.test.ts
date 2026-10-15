@@ -108,6 +108,27 @@ describe('releaseAllBlocks', () => {
     expect(JSON.parse(mockDb.shieldReleaseLog)).toHaveLength(1);
   });
 
+  it('does not record a tag scan that only ended the key lock', () => {
+    useNfcKeyStore.getState().enrollTag(UID, 'Desk');
+    useNfcKeyStore.getState().lock();
+    live('key');
+    expect(releaseAllBlocks('tag')).toEqual(['key']);
+    expect(useNfcKeyStore.getState().locked).toBe(false);
+    expect(useShieldReleaseStore.getState().log).toEqual([]);
+  });
+
+  it('records a tag scan that also cut other blocks short, without the key lock', () => {
+    live('key', 'penalty');
+    expect(releaseAllBlocks('tag')).toEqual(['key', 'penalty']);
+    expect(useShieldReleaseStore.getState().log[0].ended).toEqual(['penalty']);
+  });
+
+  it('records the key lock when the emergency button ends it', () => {
+    live('key');
+    releaseAllBlocks('emergency', 'Need the map to get home');
+    expect(useShieldReleaseStore.getState().log[0].ended).toEqual(['key']);
+  });
+
   it('records a tag release with no reason', () => {
     live('penalty');
     releaseAllBlocks('tag');
