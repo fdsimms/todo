@@ -6645,10 +6645,10 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             {/* Always here, pinned at the end of the list — adding a subtask is a
                 burst, not a one-off edit gated behind a button tap. */}
             <View style={styles.subtaskInputRow}>
-              {/* An empty copy of the row checkbox, so the field being typed
-                  into lines up with the subtasks above it. */}
+              {/* A "+" in the row checkbox's slot, so the field lines up with
+                  the subtasks above it without reading as one more of them. */}
               <View style={styles.subtaskCheck}>
-                <View style={styles.subtaskBox} />
+                <Ionicons name="add" size={SUBTASK_CHECKBOX_SIZE} color={colors.accentText} />
               </View>
               <TextField
                 ref={newSubtaskInputRef}
