@@ -51,8 +51,9 @@ interface TodoScreenTimeNativeModule {
   isAvailable(): boolean;
   authorizationStatus(): ScreenTimeAuthorization;
   requestAuthorization(): Promise<ScreenTimeAuthorization>;
-  presentAppPicker(groupId: string): Promise<boolean>;
+  presentAppPicker(groupId: string, live: boolean): Promise<boolean>;
   selectionCount(groupId: string): ScreenTimeSelectionCount;
+  pendingSelectionCount(groupId: string): ScreenTimeSelectionCount & { pending: number };
   clearSelection(groupId: string): boolean;
   applyShield(groupIdsJson: string): boolean;
   clearShield(): boolean;
@@ -123,9 +124,25 @@ export function requestScreenTimeAuthorization(): Promise<ScreenTimeAuthorizatio
  * Resolves true when the user confirmed a choice, false on cancel. Each group
  * of apps has its own selection, keyed by the group's id; `'default'` is the
  * original single selection.
+ *
+ * Pass `live` while a block is holding the group. Apps the person adds are then
+ * saved at once, and apps they remove are staged until the block ends (see
+ * `screenTimePendingCount`), because removing one would lift part of a block
+ * that nobody ended. The caller still has to re-apply the shield after an add.
  */
-export function presentAppPicker(groupId: string): Promise<boolean> {
-  return degradeOnReject(() => nativeModule!.presentAppPicker(groupId), false);
+export function presentAppPicker(groupId: string, live = false): Promise<boolean> {
+  return degradeOnReject(() => nativeModule!.presentAppPicker(groupId, live), false);
+}
+
+/**
+ * The choice staged for a group while a block held it, or null when there is
+ * none. It replaces the live selection the next time the group is not held.
+ */
+export function screenTimePendingCount(groupId: string): ScreenTimeSelectionCount | null {
+  return degradeOnThrow(() => {
+    const { pending, ...counts } = nativeModule!.pendingSelectionCount(groupId);
+    return pending > 0 ? counts : null;
+  }, null);
 }
 
 export function screenTimeSelectionCount(groupId: string): ScreenTimeSelectionCount {

@@ -7,10 +7,17 @@ import type { GroupedReason } from './appGroups';
  *
  * **Editing what a live block holds is a way to end it, and ending a block is
  * `releaseAllBlocks`'s job, because that is the one path that writes a record**
- * (`releaseBlocks.ts`). Emptying the group a block names, deleting it, pointing
- * its reason at another group, or turning off or rewriting the schedule that
- * raised it would all lift the shield with nothing saved. So each of those is
- * refused while it is live, and allowed again the moment the block ends.
+ * (`releaseBlocks.ts`). Deleting the group a block names, pointing its reason
+ * at another group, or turning off or rewriting the schedule that raised it
+ * would all lift the shield with nothing saved. So each of those is refused
+ * while it is live, and allowed again the moment the block ends.
+ *
+ * **A group's apps are the one thing that can still be edited, one way.** Adding
+ * apps only strengthens a block, so it applies at once. Removing one would lift
+ * part of it, so the native picker stages a removal and makes it live the next
+ * time the group isn't held (`promotePendingSelections` in `ScreenTimeShared.swift`).
+ * `groupEditLocked` therefore no longer refuses the picker; it tells the picker
+ * to run in that add-now, remove-later mode.
  *
  * A key tag never edits anything: it ends blocks, and the lock follows what is
  * live, so there is no separate "tag may edit" state.
@@ -24,7 +31,7 @@ export function liveGroupIds(reasons: readonly ShieldReasonEntry[]): Set<string>
   return new Set(reasons.flatMap(r => r.groupIds));
 }
 
-/** Whether the apps picked for a group, or the group itself, are being blocked right now. */
+/** Whether a group is being blocked right now: its apps take adds only, and it can't be deleted or made the default. */
 export function groupEditLocked(groupId: string, reasons: readonly ShieldReasonEntry[]): boolean {
   return liveGroupIds(reasons).has(groupId);
 }
@@ -64,6 +71,22 @@ export function defaultGroupLocked(
 export function scheduleEditLocked(schedule: BlockSchedule, now: Date): boolean {
   return isScheduleActive(schedule, now);
 }
+
+/**
+ * The line under a group that is blocking, or null when there is nothing to
+ * say. `pending` is a removal already staged for it.
+ */
+export function groupBlockHint(live: boolean, pending: boolean): string | null {
+  if (!live) return null;
+  return pending
+    ? 'Blocking now. Apps you removed stay blocked until it ends.'
+    : 'Blocking now. You can add apps, but removing one waits until it ends.';
+}
+
+export const BLOCK_PICKER_NOTE_TITLE = 'Blocking right now';
+
+export const BLOCK_PICKER_NOTE_MESSAGE =
+  'Apps you add are blocked right away. Apps you remove stay blocked until this block ends, then the change applies.';
 
 export const BLOCK_EDIT_LOCKED_TITLE = 'Blocked right now';
 

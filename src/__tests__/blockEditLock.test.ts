@@ -1,5 +1,5 @@
 import {
-  defaultGroupLocked, groupEditLocked, liveGroupIds, reasonGroupLocked, reasonSwitchLocked, scheduleEditLocked,
+  defaultGroupLocked, groupBlockHint, groupEditLocked, liveGroupIds, reasonGroupLocked, reasonSwitchLocked, scheduleEditLocked,
 } from '../utils/blockEditLock';
 import type { ShieldReasonEntry } from '../utils/appShield';
 import type { BlockSchedule } from '../utils/blockSchedule';
@@ -77,5 +77,17 @@ describe('turning a reason off', () => {
     expect(reasonSwitchLocked('penalty', live)).toBe(true);
     expect(reasonSwitchLocked('focus', live)).toBe(false);
     expect(reasonSwitchLocked('penalty', [])).toBe(false);
+  });
+});
+
+describe('the hint under a blocking group', () => {
+  it('says nothing when the group is not blocking, even with a removal staged', () => {
+    expect(groupBlockHint(false, false)).toBeNull();
+    expect(groupBlockHint(false, true)).toBeNull();
+  });
+
+  it('says adds apply now and removals wait, and that a staged removal is still waiting', () => {
+    expect(groupBlockHint(true, false)).toContain('add apps');
+    expect(groupBlockHint(true, true)).toContain('removed stay blocked');
   });
 });

@@ -16,6 +16,10 @@ import {
 import { screenTimeBridge } from '../utils/screenTimeBridge';
 import { allGroups, groupName, resolveGroupId } from '../utils/appGroups';
 import { useAppGroupStore } from '../store/useAppGroupStore';
+import { useShieldReasons } from '../hooks/useShieldReasons';
+import { groupEditLocked } from '../utils/blockEditLock';
+import { confirmLivePicker } from '../utils/livePickerConfirm';
+import { reconcileAppShield } from '../utils/appShieldReconcile';
 import type { ScreenTimeAuthorization, ScreenTimeSelectionCount } from 'todo-screentime-bridge';
 import { PillGroup } from './PillGroup';
 import { CountStepper } from './CountStepper';
@@ -79,12 +83,18 @@ export function ScreenTimeRulesSheet({ visible, onClose }: Props) {
     return () => subscription.remove();
   }, [visible, refreshNativeState]);
 
+  const reasons = useShieldReasons();
+
   const chooseApps = async (groupId: string) => {
     haptics.tap();
+    // A live group takes adds now and removals when its block ends.
+    const live = groupEditLocked(groupId, reasons);
+    if (live && !(await confirmLivePicker())) return;
     const bridge = screenTimeBridge();
     if (!bridge) return;
-    if (await bridge.presentAppPicker(groupId)) {
+    if (await bridge.presentAppPicker(groupId, live)) {
       setCounts(prev => ({ ...prev, [groupId]: bridge.screenTimeSelectionCount(groupId) }));
+      if (live) reconcileAppShield();
     }
   };
 
