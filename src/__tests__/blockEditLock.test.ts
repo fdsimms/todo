@@ -1,5 +1,5 @@
 import {
-  defaultGroupLocked, groupBlockHint, groupEditLocked, liveGroupIds, reasonGroupLocked, reasonSwitchLocked, scheduleEditLocked,
+  appRemovalSwitchLocked, defaultGroupLocked, groupBlockHint, groupEditLocked, liveGroupIds, reasonGroupLocked, reasonSwitchLocked, scheduleEditLocked,
 } from '../utils/blockEditLock';
 import type { ShieldReasonEntry } from '../utils/appShield';
 import type { BlockSchedule } from '../utils/blockSchedule';
@@ -77,6 +77,13 @@ describe('turning a reason off', () => {
     expect(reasonSwitchLocked('penalty', live)).toBe(true);
     expect(reasonSwitchLocked('focus', live)).toBe(false);
     expect(reasonSwitchLocked('penalty', [])).toBe(false);
+  });
+});
+
+describe('turning off Prevent deleting apps', () => {
+  it('is refused while any reason is live, and free otherwise', () => {
+    expect(appRemovalSwitchLocked([reason('focus', 'default')])).toBe(true);
+    expect(appRemovalSwitchLocked([])).toBe(false);
   });
 });
 
