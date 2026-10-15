@@ -145,6 +145,9 @@ enum ScreenTimeShared {
 struct ScreenTimeRuleShared: Codable {
   let id: String
   let thresholdMinutes: Int
+  /// The app group whose selection this rule counts. Absent from a rules file
+  /// an older build wrote, which reads as the default group.
+  let groupId: String?
 }
 
 /// Why the apps are blocked right now, written by the app on every reconcile.

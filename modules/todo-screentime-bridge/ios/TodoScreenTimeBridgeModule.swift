@@ -501,9 +501,7 @@ public class TodoScreenTimeBridgeModule: Module {
         TodoScreenTimeExceptionCatcher.runCatchingExceptions {
           guard let data = rulesJson.data(using: .utf8),
                 let rules = try? JSONDecoder().decode([ScreenTimeRuleShared].self, from: data),
-                !rules.isEmpty,
-                let selection = ScreenTimeShared.readSelection(),
-                !(selection.applicationTokens.isEmpty && selection.categoryTokens.isEmpty)
+                !rules.isEmpty
           else { return }
 
           // Handed to the extension so it can stamp a crossing with the day
@@ -513,13 +511,23 @@ public class TodoScreenTimeBridgeModule: Module {
 
           var events: [DeviceActivityEvent.Name: DeviceActivityEvent] = [:]
           for rule in rules where rule.thresholdMinutes > 0 {
+            // Each rule counts its own group's apps. A group with nothing
+            // picked arms nothing for that rule rather than watching everything.
+            guard let selection = ScreenTimeShared.readSelection(groupId: rule.groupId ?? ScreenTimeShared.defaultGroupID),
+                  !(selection.applicationTokens.isEmpty && selection.categoryTokens.isEmpty)
+            else { continue }
             events[DeviceActivityEvent.Name("\(Self.eventPrefix)\(rule.id)")] = DeviceActivityEvent(
               applications: selection.applicationTokens,
               categories: selection.categoryTokens,
               threshold: DateComponents(minute: rule.thresholdMinutes)
             )
           }
-          guard !events.isEmpty else { return }
+          // Nothing to watch (every rule's group is empty): drop what was armed
+          // before, or a rule would keep firing against apps since removed.
+          guard !events.isEmpty else {
+            DeviceActivityCenter().stopMonitoring([DeviceActivityName(Self.activityName)])
+            return
+          }
 
           let schedule = DeviceActivitySchedule(
             intervalStart: DateComponents(hour: 0, minute: 0),

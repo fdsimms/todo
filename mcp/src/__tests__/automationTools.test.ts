@@ -76,6 +76,13 @@ describe('automations', () => {
     expect(result.adjusted?.join(' ')).toMatch(/thresholdMinutes/);
   });
 
+  it('keeps a Screen Time rule\u2019s app group when it is edited from here', () => {
+    const { saved } = saveRule(replica, 'screenTime', { thresholdMinutes: 30, title: 'Go outside', groupId: 'phone-only' });
+    expect(saved.groupId).toBe('phone-only');
+    const edited = saveRule(replica, 'screenTime', { id: saved.id as string, thresholdMinutes: 45 });
+    expect(edited.saved).toMatchObject({ thresholdMinutes: 45, groupId: 'phone-only' });
+  });
+
   it('deletes by id, and refuses an id it does not have', () => {
     const { saved } = saveRule(replica, 'event', { matches: ['dentist'], title: 'Floss the night before', leadDays: 1 });
     expect(deleteRule(replica, 'event', saved.id as string).removed).toMatchObject({ title: 'Floss the night before' });

@@ -2155,7 +2155,7 @@ function registerWriteTools(
         threshold: z.number().optional().describe('health: in the metric\'s own unit.'),
         direction: z.enum(['under', 'over']).optional().describe('health: which side of the threshold fires it. Each metric has a usual one.'),
         checkpointHour: z.number().int().min(0).max(23).optional().describe('health: the hour of the day it is judged from.'),
-        thresholdMinutes: z.number().int().min(5).max(480).optional().describe('screenTime.'),
+        thresholdMinutes: z.number().int().min(5).max(480).optional().describe('screenTime: minutes of use across the rule\'s app group that fire it. A rule\'s groupId is set on the phone and is kept when you edit the rule.'),
       }),
     },
     async ({ type, rule }) => {
