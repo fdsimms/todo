@@ -517,8 +517,8 @@ export function RecipeDetailScreen() {
   const [extractVisible, setExtractVisible] = useState(false);
   const [cookModeVisible, setCookModeVisible] = useState(false);
   /**
-   * `openCookMode` (route.params) is CookingBar's and the More tab's
-   * cook-timer dot's way back in — resetToRecipeDetail's second param, the
+   * `openCookMode` (route.params) is CookingBar's
+   * way back in — resetToRecipeDetail's second param, the
    * same stamped-and-compare handoff resetToGroceries's openFinish uses. A
    * request that arrives before `cookModeAvailable`/`simpleMode` are known to
    * allow the button at all is answered the same way the button itself
