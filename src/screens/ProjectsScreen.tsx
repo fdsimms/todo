@@ -934,7 +934,7 @@ const ProjectRow = React.memo(function ProjectRow({
             ) : (
               <View style={styles.progressRow}>
                 <View style={styles.progressBarWrap}>
-                  <ProgressBar progress={progress.done / progress.total} />
+                  <ProgressBar progress={progress.done / progress.total} accessibilityLabel="Project progress" />
                 </View>
                 <Text style={styles.progressText}>{progress.done}/{progress.total}</Text>
               </View>

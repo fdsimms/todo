@@ -585,7 +585,7 @@ export function CookModeSheet({
           <>
             <View style={styles.progress}>
               <Text style={styles.position}>{describeStepPosition(index, steps.length)}</Text>
-              <ProgressBar progress={(index + 1) / steps.length} height={4} />
+              <ProgressBar progress={(index + 1) / steps.length} height={4} accessibilityLabel="Recipe steps" />
             </View>
 
             <ScrollView

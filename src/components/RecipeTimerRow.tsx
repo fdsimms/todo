@@ -172,7 +172,7 @@ export function RecipeTimerRow({
       </View>
       {/* Only while something is actually counting: an untouched bar at 0% on
           every recipe is the chrome this row exists to cut. */}
-      {hasTarget && inProgress && <ProgressBar progress={progress} height={4} />}
+      {hasTarget && inProgress && <ProgressBar progress={progress} height={4} accessibilityLabel="Timer" />}
       {expanded && (
         <View style={styles.details}>
           {!!summary && <Text style={styles.timerSummary}>{summary}</Text>}

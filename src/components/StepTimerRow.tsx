@@ -168,7 +168,7 @@ export function StepTimerRow({ timer, now, hideRecipeName, onToggle, onAddTime, 
           {context}
         </Text>
       )}
-      <ProgressBar progress={stepTimerProgress(timer, now)} height={4} />
+      <ProgressBar progress={stepTimerProgress(timer, now)} height={4} accessibilityLabel="Timer" />
     </View>
   );
 }

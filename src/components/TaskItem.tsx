@@ -4252,7 +4252,7 @@ const TaskItemRow = React.memo(function TaskItem({
                   {/* An empty track before the timer has run only repeats
                       the line above, and drew one more rule across the panel. */}
                   {(timerRunning || task.timerElapsedSeconds > 0) && (
-                    <ProgressBar progress={countdownProgress} height={4} />
+                    <ProgressBar progress={countdownProgress} height={4} accessibilityLabel="Countdown" />
                   )}
                 </View>
               )}
@@ -4279,7 +4279,7 @@ const TaskItemRow = React.memo(function TaskItem({
                           : healthLabel}
                     </Text>
                   </View>
-                  <ProgressBar progress={healthTargetProgress(healthState, healthValue)} height={4} />
+                  <ProgressBar progress={healthTargetProgress(healthState, healthValue)} height={4} accessibilityLabel="Health target" />
                 </View>
               )}
 

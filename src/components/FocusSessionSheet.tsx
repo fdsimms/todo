@@ -553,7 +553,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
           )}
 
           <View style={styles.progressWrap}>
-            <ProgressBar progress={focusStepProgress(session, now)} />
+            <ProgressBar progress={focusStepProgress(session, now)} accessibilityLabel="Focus step" />
           </View>
 
           {stepDone && (
