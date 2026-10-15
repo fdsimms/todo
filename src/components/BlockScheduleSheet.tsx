@@ -4,6 +4,7 @@ import { SheetModal } from './SheetModal';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { TextField } from './TextField';
+import { AppGroupChecklist } from './AppGroupChecklist';
 import { SettingsSection } from '../screens/settings/SettingsSection';
 import { SettingsRow } from '../screens/settings/SettingsRow';
 import { InlineTimePicker } from '../screens/settings/InlineTimePicker';
@@ -32,7 +33,7 @@ const DAY_INITIALS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
 interface Draft {
   name: string;
-  groupId: string;
+  groupIds: string[];
   days: number[];
   startMinutes: number;
   endMinutes: number;
@@ -40,13 +41,13 @@ interface Draft {
 
 const NEW_DRAFT: Draft = {
   name: '',
-  groupId: 'default',
+  groupIds: ['default'],
   days: [...WEEKDAYS],
   startMinutes: 9 * 60,
   endMinutes: 17 * 60,
 };
 
-const draftKey = (d: Draft) => JSON.stringify([d.name.trim(), d.groupId, [...d.days].sort(), d.startMinutes, d.endMinutes]);
+const draftKey = (d: Draft) => JSON.stringify([d.name.trim(), [...d.groupIds].sort(), [...d.days].sort(), d.startMinutes, d.endMinutes]);
 
 function minutesToDate(minutes: number): Date {
   const d = new Date();
@@ -82,7 +83,7 @@ export function BlockScheduleSheet({ visible, onClose, scheduleId }: Props) {
     const seed: Draft = existing
       ? {
         name: existing.name,
-        groupId: resolveGroupId(customGroups, existing.groupId, groupsMeta),
+        groupIds: [...new Set(existing.groupIds.map(id => resolveGroupId(customGroups, id, groupsMeta)))],
         days: [...existing.days],
         startMinutes: existing.startMinutes,
         endMinutes: existing.endMinutes,
@@ -141,15 +142,12 @@ export function BlockScheduleSheet({ visible, onClose, scheduleId }: Props) {
     }));
   };
 
-  const chooseGroup = () => {
+  const toggleGroup = (groupId: string) => {
     haptics.tap();
-    Alert.alert('Apps to block', 'Choose which group of apps this schedule blocks.', [
-      ...allGroups(customGroups, groupsMeta).map(g => ({
-        text: g.id === draft.groupId ? `${g.name} (selected)` : g.name,
-        onPress: () => setDraft(d => ({ ...d, groupId: g.id })),
-      })),
-      { text: 'Cancel', style: 'cancel' as const },
-    ]);
+    setDraft(d => ({
+      ...d,
+      groupIds: d.groupIds.includes(groupId) ? d.groupIds.filter(x => x !== groupId) : [...d.groupIds, groupId],
+    }));
   };
 
   const openTime = (which: 'start' | 'end') => {
@@ -254,13 +252,12 @@ export function BlockScheduleSheet({ visible, onClose, scheduleId }: Props) {
           </SettingsSection>
           {problem && <Text style={styles.problem}>{problem}</Text>}
 
-          <SettingsSection label="Apps">
-            <SettingsRow
-              icon="apps-outline"
-              label="Apps to block"
-              hint="Choose the apps in each group on the Screen Time screen."
-              value={groupName(customGroups, draft.groupId, groupsMeta)}
-              onPress={chooseGroup}
+          <SettingsSection label="Apps to block">
+            <AppGroupChecklist
+              groups={allGroups(customGroups, groupsMeta)}
+              selectedIds={draft.groupIds}
+              onToggle={toggleGroup}
+              bare
             />
           </SettingsSection>
 

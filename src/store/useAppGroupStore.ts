@@ -10,7 +10,7 @@ import {
 } from '../utils/appGroups';
 import {
   BLOCK_SCHEDULES_SETTING, MAX_BLOCK_SCHEDULES, cleanScheduleName, parseBlockSchedules,
-  pauseActiveSchedules, scheduleProblem, type BlockSchedule,
+  pauseActiveSchedules, readGroupIds, scheduleProblem, serializeBlockSchedules, type BlockSchedule,
 } from '../utils/blockSchedule';
 
 /**
@@ -75,7 +75,7 @@ function readState(): { groups: AppGroup[]; assignments: GroupAssignments; sched
 
 const persistGroups = (groups: AppGroup[]) => dbSetSetting(APP_GROUPS_SETTING, JSON.stringify(groups));
 const persistAssignments = (a: GroupAssignments) => dbSetSetting(GROUP_ASSIGNMENTS_SETTING, JSON.stringify(a));
-const persistSchedules = (s: BlockSchedule[]) => dbSetSetting(BLOCK_SCHEDULES_SETTING, JSON.stringify(s));
+const persistSchedules = (s: BlockSchedule[]) => dbSetSetting(BLOCK_SCHEDULES_SETTING, serializeBlockSchedules(s));
 
 export const useAppGroupStore = create<AppGroupStore>((set, get) => ({
   groups: [],
@@ -154,6 +154,7 @@ export const useAppGroupStore = create<AppGroupStore>((set, get) => ({
       ...draft,
       id: generateId(),
       name: cleanScheduleName(draft.name),
+      groupIds: readGroupIds(draft.groupIds, undefined),
       days: [...new Set(draft.days)].sort(),
       pausedUntil: null,
     };
@@ -174,6 +175,7 @@ export const useAppGroupStore = create<AppGroupStore>((set, get) => ({
       ...draft,
       id,
       name: cleanScheduleName(draft.name),
+      groupIds: readGroupIds(draft.groupIds, undefined),
       days: [...new Set(draft.days)].sort(),
       pausedUntil: null,
     };

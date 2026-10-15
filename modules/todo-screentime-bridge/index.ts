@@ -186,6 +186,8 @@ export interface ShieldGroupsState {
   penaltyEndIso: string | null;
   /** The block the person started by hand: its group and when it ends. Null when none is running. */
   manualGroupId: string | null;
+  /** Every group the manual block holds; `manualGroupId` is the first, for a native build that predates the list. */
+  manualGroupIds: string[];
   manualEndIso: string | null;
   pendingGateGroupIds: string[];
   pendingGateLiveAtIso: string | null;
@@ -195,7 +197,9 @@ export interface ShieldGroupsState {
 export interface ScreenTimeScheduleWindow {
   id: string;
   name: string;
+  /** The first group, for a native build that predates `groupIds`. */
   groupId: string;
+  groupIds: string[];
   /** 0 = Sunday. */
   days: number[];
   startMinutes: number;

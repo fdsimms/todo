@@ -1,13 +1,14 @@
 import {
   activeSchedules, currentWindowEnd, describeDays, describeWindow, formatMinutes, isScheduleActive,
   nativeScheduleWindows, nextScheduleBoundary, parseBlockSchedules, pauseActiveSchedules, scheduleProblem,
+  serializeBlockSchedules,
   windowLengthMinutes, type BlockSchedule,
 } from '../utils/blockSchedule';
 
 const make = (over: Partial<BlockSchedule> = {}): BlockSchedule => ({
   id: 's1',
   name: 'Work',
-  groupId: 'default',
+  groupIds: ['default'],
   days: [1, 2, 3, 4, 5],
   startMinutes: 9 * 60,
   endMinutes: 17 * 60,
@@ -172,6 +173,31 @@ describe('parseBlockSchedules', () => {
     expect(parsed[1].days).toEqual([1, 3]);
   });
 
+  it('reads a schedule stored before groups could be combined, which has only groupId', () => {
+    const { groupIds: _drop, ...legacy } = make();
+    const parsed = parseBlockSchedules(JSON.stringify([{ ...legacy, groupId: 'games' }]));
+    expect(parsed[0].groupIds).toEqual(['games']);
+  });
+
+  it('prefers the list, keeps its order, and drops repeats and unsafe ids', () => {
+    const parsed = parseBlockSchedules(JSON.stringify([
+      { ...make(), groupId: 'default', groupIds: ['social', 'default', 'social', '../x'] },
+    ]));
+    expect(parsed[0].groupIds).toEqual(['social', 'default']);
+  });
+
+  it('falls back to Default when nothing usable is named', () => {
+    const { groupIds: _drop, ...bare } = make();
+    expect(parseBlockSchedules(JSON.stringify([bare]))[0].groupIds).toEqual(['default']);
+    expect(parseBlockSchedules(JSON.stringify([{ ...bare, groupIds: ['../x'] }]))[0].groupIds).toEqual(['default']);
+  });
+
+  it('writes the first group as groupId beside the list, so an older build blocks that one', () => {
+    const raw = serializeBlockSchedules([make({ groupIds: ['social', 'games'] })]);
+    expect(JSON.parse(raw)[0]).toMatchObject({ groupId: 'social', groupIds: ['social', 'games'] });
+    expect(parseBlockSchedules(raw)[0].groupIds).toEqual(['social', 'games']);
+  });
+
   it('is empty for missing or broken input', () => {
     expect(parseBlockSchedules(null)).toEqual([]);
     expect(parseBlockSchedules('[')).toEqual([]);
@@ -181,13 +207,29 @@ describe('parseBlockSchedules', () => {
 describe('what the native side gets', () => {
   it('has only enabled schedules, with the group resolved', () => {
     const windows = nativeScheduleWindows(
-      [make({ groupId: 'gone' }), make({ id: 'off', enabled: false })],
+      [make({ groupIds: ['gone'] }), make({ id: 'off', enabled: false })],
       id => (id === 'gone' ? 'default' : id),
     );
     expect(windows).toEqual([{
-      id: 's1', name: 'Work', groupId: 'default', days: [1, 2, 3, 4, 5],
+      id: 's1', name: 'Work', groupId: 'default', groupIds: ['default'], days: [1, 2, 3, 4, 5],
       startMinutes: 540, endMinutes: 1020, pausedUntilIso: null,
     }]);
+  });
+});
+
+describe('a schedule holding several groups', () => {
+  it('cannot be saved with none', () => {
+    expect(scheduleProblem(make({ groupIds: [] }))).toMatch(/group/i);
+    expect(scheduleProblem(make({ groupIds: ['a', 'b'] }))).toBeNull();
+  });
+
+  it('hands the native side every group, resolved and without repeats, with the first as groupId', () => {
+    const [window] = nativeScheduleWindows(
+      [make({ groupIds: ['gone', 'default', 'social'] })],
+      id => (id === 'gone' ? 'default' : id),
+    );
+    expect(window.groupIds).toEqual(['default', 'social']);
+    expect(window.groupId).toBe('default');
   });
 });
 

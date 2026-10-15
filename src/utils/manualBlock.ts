@@ -17,6 +17,8 @@
  * setting later cannot change what a running block holds.
  */
 
+import { readGroupIds } from './blockSchedule';
+
 /** The settings row holding the running block, as JSON. Device-local, like the groups it points at. */
 export const MANUAL_BLOCK_SETTING = 'manualBlock';
 
@@ -40,8 +42,8 @@ export interface ManualBlock {
    * held until something ends it.
    */
   untilIso: string | null;
-  /** The app group it holds, resolved when it started. */
-  groupId: string;
+  /** The app groups it holds, at least one. */
+  groupIds: string[];
 }
 
 export function manualMinutesProblem(minutes: number | null): string | null {
@@ -55,21 +57,31 @@ export function manualMinutesProblem(minutes: number | null): string | null {
 export function parseManualBlock(raw: string | null | undefined): ManualBlock | null {
   if (!raw) return null;
   try {
-    const parsed = JSON.parse(raw) as Partial<ManualBlock> | null;
-    if (!parsed || typeof parsed.groupId !== 'string') return null;
+    const parsed = JSON.parse(raw) as (Partial<ManualBlock> & { groupId?: unknown }) | null;
+    if (!parsed || (typeof parsed.groupId !== 'string' && !Array.isArray(parsed.groupIds))) return null;
     if (parsed.untilIso !== null) {
       if (typeof parsed.untilIso !== 'string' || Number.isNaN(new Date(parsed.untilIso).getTime())) return null;
     }
-    if (!/^[A-Za-z0-9_-]{1,40}$/.test(parsed.groupId)) return null;
-    return { untilIso: parsed.untilIso ?? null, groupId: parsed.groupId };
+    // A block stored before groups could be combined has only `groupId`.
+    const groupIds = readGroupIds(parsed.groupIds, parsed.groupId);
+    if (typeof parsed.groupId === 'string' && !Array.isArray(parsed.groupIds) && groupIds[0] !== parsed.groupId) return null;
+    return { untilIso: parsed.untilIso ?? null, groupIds };
   } catch {
     return null;
   }
 }
 
 /** A block of `minutes` starting at `now`, or an open-ended one when `minutes` is null. */
-export function newManualBlock(minutes: number | null, groupId: string, now: Date): ManualBlock {
-  return { untilIso: minutes === null ? null : new Date(now.getTime() + minutes * 60_000).toISOString(), groupId };
+export function newManualBlock(minutes: number | null, groupIds: readonly string[], now: Date): ManualBlock {
+  return {
+    untilIso: minutes === null ? null : new Date(now.getTime() + minutes * 60_000).toISOString(),
+    groupIds: readGroupIds(groupIds, undefined),
+  };
+}
+
+/** The block as stored, with `groupId` (the first group) beside the list for a build that predates it. */
+export function serializeManualBlock(block: ManualBlock): string {
+  return JSON.stringify({ ...block, groupId: block.groupIds[0] });
 }
 
 /** Whether the block has an end instant, which decides whether a window is armed for it. */

@@ -32,14 +32,34 @@ export const MAX_BLOCK_SCHEDULES = 8;
 /** iOS refuses a monitored interval shorter than about a quarter of an hour. */
 export const MIN_WINDOW_MINUTES = 15;
 export const MAX_SCHEDULE_NAME_LENGTH = 24;
+/** Group ids become file names, so nothing else is accepted (the same pattern `appGroups.ts` holds). */
+const GROUP_ID_PATTERN = /^[A-Za-z0-9_-]{1,40}$/;
+
+/**
+ * The group list out of a stored `groupIds`, else the legacy single `groupId`,
+ * else Default. De-duplicated, in the order given, malformed ids dropped.
+ */
+export function readGroupIds(groupIds: unknown, legacyGroupId: unknown): string[] {
+  const listed = Array.isArray(groupIds)
+    ? groupIds.filter((g): g is string => typeof g === 'string' && GROUP_ID_PATTERN.test(g))
+    : [];
+  const ids = listed.length > 0
+    ? listed
+    : [typeof legacyGroupId === 'string' && GROUP_ID_PATTERN.test(legacyGroupId) ? legacyGroupId : 'default'];
+  return [...new Set(ids)];
+}
 
 const MINUTES_PER_DAY = 24 * 60;
 
 export interface BlockSchedule {
   id: string;
   name: string;
-  /** The app group it blocks. A missing group resolves to Default (`appGroups.ts`). */
-  groupId: string;
+  /**
+   * The app groups it blocks, at least one. A missing group resolves to Default
+   * (`appGroups.ts`). Stored beside a legacy `groupId` holding the first, so a
+   * device on an older build still blocks that one (`serializeBlockSchedules`).
+   */
+  groupIds: string[];
   /** Days the window starts on, 0 = Sunday. */
   days: number[];
   /** Minutes after midnight. */
@@ -67,7 +87,8 @@ export function isOvernight(s: Pick<BlockSchedule, 'startMinutes' | 'endMinutes'
 }
 
 /** Why a schedule can't be saved as it stands, or null when it can. */
-export function scheduleProblem(s: Pick<BlockSchedule, 'days' | 'startMinutes' | 'endMinutes'>): string | null {
+export function scheduleProblem(s: Pick<BlockSchedule, 'days' | 'startMinutes' | 'endMinutes'> & { groupIds?: readonly string[] }): string | null {
+  if (s.groupIds !== undefined && s.groupIds.length === 0) return 'Pick at least one group of apps.';
   if (s.days.length === 0) return 'Pick at least one day.';
   if (s.startMinutes === s.endMinutes) return 'The start and end times can’t be the same.';
   if (windowLengthMinutes(s.startMinutes, s.endMinutes) < MIN_WINDOW_MINUTES) {
@@ -102,7 +123,7 @@ export function parseBlockSchedules(raw: string | null | undefined): BlockSchedu
     const schedule: BlockSchedule = {
       id: o.id,
       name: cleanScheduleName(typeof o.name === 'string' ? o.name : ''),
-      groupId: typeof o.groupId === 'string' ? o.groupId : 'default',
+      groupIds: readGroupIds((o as { groupIds?: unknown }).groupIds, (o as { groupId?: unknown }).groupId),
       days,
       startMinutes: o.startMinutes,
       endMinutes: o.endMinutes,
@@ -114,6 +135,11 @@ export function parseBlockSchedules(raw: string | null | undefined): BlockSchedu
     out.push(schedule);
   }
   return out.slice(0, MAX_BLOCK_SCHEDULES);
+}
+
+/** The schedules as stored: each carries `groupId` (the first group) for a build that predates `groupIds`. */
+export function serializeBlockSchedules(schedules: readonly BlockSchedule[]): string {
+  return JSON.stringify(schedules.map(s => ({ ...s, groupId: s.groupIds[0] })));
 }
 
 function atMinutes(day: Date, minutes: number): Date {
@@ -215,11 +241,22 @@ export function nextScheduleBoundary(schedules: readonly BlockSchedule[], now: D
 export interface NativeScheduleWindow {
   id: string;
   name: string;
+  /** The first group, for a native build that predates `groupIds`. */
   groupId: string;
+  groupIds: string[];
   days: number[];
   startMinutes: number;
   endMinutes: number;
   pausedUntilIso: string | null;
+}
+
+/** A group list resolved through `resolveGroup`, de-duplicated, with the legacy first-group field beside it. */
+export function resolvedGroups(
+  groupIds: readonly string[],
+  resolveGroup: (groupId: string) => string,
+): { groupId: string; groupIds: string[] } {
+  const resolved = [...new Set(groupIds.map(resolveGroup))];
+  return { groupId: resolved[0], groupIds: resolved };
 }
 
 export function nativeScheduleWindows(
@@ -229,7 +266,7 @@ export function nativeScheduleWindows(
   return schedules.filter(s => s.enabled && !scheduleProblem(s)).map(s => ({
     id: s.id,
     name: s.name,
-    groupId: resolveGroup(s.groupId),
+    ...resolvedGroups(s.groupIds, resolveGroup),
     days: [...s.days],
     startMinutes: s.startMinutes,
     endMinutes: s.endMinutes,

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { dbGetSetting, dbSetSetting } from '../db/database';
 import {
-  MANUAL_BLOCK_SETTING, endsSooner, manualBlockWanted, manualMinutesProblem, newManualBlock, parseManualBlock, type ManualBlock,
+  MANUAL_BLOCK_SETTING, endsSooner, manualBlockWanted, manualMinutesProblem, newManualBlock, parseManualBlock, serializeManualBlock, type ManualBlock,
 } from '../utils/manualBlock';
 
 /**
@@ -26,7 +26,7 @@ interface ManualBlockStore {
   /** Re-read from the current database, after a demo-mode swap. */
   reload: () => void;
   /** Start a block, timed or (with null minutes) open-ended. Refused (null) for a length the native window can't hold, or one that would end sooner than the block already running. */
-  start: (minutes: number | null, groupId: string, now?: Date) => ManualBlock | null;
+  start: (minutes: number | null, groupIds: readonly string[], now?: Date) => ManualBlock | null;
   /** Drop the block. Only `releaseAllBlocks` calls this. */
   clear: () => void;
 }
@@ -42,14 +42,14 @@ export const useManualBlockStore = create<ManualBlockStore>((set, get) => ({
     set({ block: parseManualBlock(dbGetSetting(MANUAL_BLOCK_SETTING)) });
   },
 
-  start(minutes, groupId, now = new Date()) {
+  start(minutes, groupIds, now = new Date()) {
     if (manualMinutesProblem(minutes)) return null;
-    const block = newManualBlock(minutes, groupId, now);
+    const block = newManualBlock(minutes, groupIds, now);
     // A running block can be lengthened but never shortened from here: a
     // shorter one would be a way to end it early that leaves no record.
     const running = get().block;
     if (running && manualBlockWanted(running, now) && endsSooner(block, running)) return null;
-    dbSetSetting(MANUAL_BLOCK_SETTING, JSON.stringify(block));
+    dbSetSetting(MANUAL_BLOCK_SETTING, serializeManualBlock(block));
     set({ block });
     return block;
   },

@@ -843,6 +843,8 @@ describe('demo mode', () => {
     expect(useNfcKeyStore.getState().locked).toBe(false);
     expect(useAppGroupStore.getState().groups.map(g => g.name)).toEqual(['Social']);
     expect(useAppGroupStore.getState().schedules.map(s => s.name)).toEqual(['Wind down']);
+    // The schedule holds two groups, so the multi-group picker has something to show.
+    expect(useAppGroupStore.getState().schedules[0].groupIds).toHaveLength(2);
     // Fails on a tap — no cutoff, because a slip is the failure itself.
     const slip = s.tasks.find(t => t.title === 'No snacking after dinner');
     expect(slip?.penaltyMinutes).toBe(60);

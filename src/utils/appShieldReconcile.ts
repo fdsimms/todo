@@ -4,7 +4,7 @@ import { isFocusReleased, isGateReleased } from './shieldRelease';
 import { canLock } from './nfcKey';
 import { isTimedBlock, manualBlockWanted } from './manualBlock';
 import type { Task } from '../types';
-import { nextScheduleBoundary } from './blockSchedule';
+import { nextScheduleBoundary, resolvedGroups } from './blockSchedule';
 import { beginVisibleAtPass, getVisibleAt, isHiddenForVacation, isTaskVisible } from './visibilityUtils';
 import { resolvedAssignments, resolveGroupNow, useAppGroupStore } from '../store/useAppGroupStore';
 import { useFocusStore } from '../store/useFocusStore';
@@ -116,7 +116,7 @@ function buildShieldState(now: Date): AppShieldState {
     penaltyReason: settings.penaltyShieldReason,
     gateEnabled: settings.gateShieldEnabled,
     // A removed group is Default, as for every other reason.
-    manual: manualBlock ? { ...manualBlock, groupId: resolveGroupNow(manualBlock.groupId) } : null,
+    manual: manualBlock ? { ...manualBlock, groupIds: resolvedGroups(manualBlock.groupIds, resolveGroupNow).groupIds } : null,
     keyLocked: keyLockedNow(),
     groups: resolvedAssignments(),
     schedules,

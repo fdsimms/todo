@@ -106,7 +106,7 @@ export function ScreenTimeScreen() {
   // Which groups count toward "are my apps blocked": the ones a live reason
   // names. With no reason live, every group counts, so the card can still say
   // whether anything is chosen at all.
-  const heldIds = reasons.length > 0 ? new Set(reasons.map(r => r.groupId)) : null;
+  const heldIds = reasons.length > 0 ? new Set(reasons.flatMap(r => r.groupIds)) : null;
   const sum = (pick: (c: GroupCount) => number) => Object.entries(counts)
     .filter(([id]) => heldIds === null || heldIds.has(id))
     .reduce((n, [, c]) => n + pick(c), 0);
