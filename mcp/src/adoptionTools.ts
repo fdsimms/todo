@@ -21,6 +21,14 @@
  *   (`remember` it when the person declines) silences that check, so a
  *   suggestion declined once is not repeated at every review.
  *
+ * A check can also carry `since`, the day the feature shipped (the date of its
+ * patch note). That is what answers "what have I not tried that is new": the
+ * `since` input keeps only checks that shipped on or after that day. It is a
+ * curated list on purpose. The patch notes number in the thousands and are
+ * mostly small tweaks, so a feature gets a check here only when it is worth a
+ * pitch and its adoption shows in the person's data or settings. A PR that
+ * ships such a feature adds its check and sets `since` (see CLAUDE.md).
+ *
  * Suggestions, not verdicts: the result never says the person is doing it
  * wrong, and the server instructions tell the agent the same.
  */
@@ -47,6 +55,8 @@ export interface AdoptionCheck {
   advanced?: boolean;
   /** Groceries, recipes and the meal plan: never suggested while the person has that area switched off. */
   kitchen?: boolean;
+  /** The day the feature shipped, `YYYY-MM-DD`. Absent on the older checks, which a `since` filter therefore leaves out. */
+  since?: string;
   /** What the data showed, or null when the check does not apply. */
   evidence: (ctx: AdoptionContext) => string | null;
 }
@@ -221,6 +231,60 @@ export const ADOPTION_CHECKS: readonly AdoptionCheck[] = [
     },
   },
   {
+    id: 'holiday_repeats',
+    title: 'Repeating tasks and holidays',
+    benefit: 'A repeating task can skip a public holiday or move to the next day, like a trash pickup after a holiday. It is chosen under Repeat in the task editor.',
+    since: '2026-10-08',
+    evidence: ({ open }) => {
+      const repeating = open.filter(t => t.recurrenceType !== 'none');
+      return repeating.length >= 3 && repeating.every(t => !t.recurrenceHolidays)
+        ? `${repeating.length} open tasks repeat and none skips or moves off holidays.`
+        : null;
+    },
+  },
+  {
+    id: 'supplement_nutrients',
+    title: 'Supplement contents',
+    benefit: 'A supplement can list what one serving contains, typed in or read from a photo of the label. Each dose then adds those vitamins and minerals to the day and to Apple Health.',
+    since: '2026-10-10',
+    advanced: true,
+    evidence: ({ replica }) => {
+      const supplements = replica
+        .medicationSettings()
+        .filter(m => /vitamin|magnesium|zinc|omega|fish oil|iron|calcium|multi|b12|d3|probiotic|supplement/i.test(m.name));
+      const bare = supplements.filter(m => !m.nutrients);
+      return bare.length > 0 ? `${bare.map(m => m.name).slice(0, 3).join(', ')} ${bare.length === 1 ? 'has' : 'have'} no contents listed.` : null;
+    },
+  },
+  {
+    id: 'trip_destination',
+    title: 'Trip destination forecast',
+    benefit: 'A trip can say where you are going and show the forecast for your dates there. It stays off until the destination forecast is turned on in Settings, because looking a place up sends it out.',
+    since: '2026-09-05',
+    settingsQuery: 'destination forecast',
+    advanced: true,
+    evidence: ({ replica }) => {
+      const trips = replica.projects().filter(p => !p.archived && !p.completed && p.awayStart && !p.destination);
+      return trips.length > 0
+        ? `${trips.map(p => `"${p.title}"`).slice(0, 3).join(', ')} ${trips.length === 1 ? 'has' : 'have'} away dates and no destination.`
+        : null;
+    },
+  },
+  {
+    id: 'bounty',
+    title: 'Bounty on a task you keep putting off',
+    benefit: 'A bounty pays extra coins when a task is done and shrinks each time it is moved to a later day. It is turned on in the task editor, one at a time.',
+    since: '2026-10-04',
+    advanced: true,
+    evidence: ({ open, replica }) => {
+      if (!replica.settings().rewardsEnabled) return null;
+      const pushed = open.filter(t => (t.postponeCount ?? 0) >= 3);
+      return pushed.length > 0 && open.every(t => t.bountyPushes == null)
+        ? `${pushed.length} open task${pushed.length === 1 ? ' has' : 's have'} been moved to a later day three or more times and no bounty is posted.`
+        : null;
+    },
+  },
+  {
     id: 'retention',
     title: 'Keeping completed tasks',
     benefit: 'Every completion leaves a row behind, so repeating tasks pile up. A retention window clears old ones and keeps the app quick.',
@@ -240,6 +304,8 @@ export interface UnusedFeature {
   /** What the person's data showed. */
   seen: string;
   benefit: string;
+  /** When the feature shipped, for a check that records it. */
+  shipped?: string;
   /** Where to turn it on or learn more, when it is a setting. */
   settings?: { label: string; path: string }[];
 }
@@ -256,6 +322,8 @@ export const DEFAULT_SUGGESTION_LIMIT = 4;
 
 export interface UnusedFeaturesInput {
   limit?: number;
+  /** `YYYY-MM-DD`. Only features that shipped on or after this day, newest first. */
+  since?: string;
 }
 
 export function unusedFeatures(
@@ -268,10 +336,14 @@ export function unusedFeatures(
   const all = replica.tasks().filter(t => !t.parentId);
   const ctx: AdoptionContext = { replica, all, open: all.filter(t => !t.completed && !t.archived) };
   const notes = replica.agentNotes().map(n => n.text.toLowerCase());
+  const since = input.since;
+  const pool = since
+    ? checks.filter(c => c.since !== undefined && c.since >= since).sort((a, b) => b.since!.localeCompare(a.since!))
+    : checks;
 
   const silencedByNotes: string[] = [];
   const found: UnusedFeature[] = [];
-  for (const check of checks) {
+  for (const check of pool) {
     if (simple && check.advanced) continue;
     if (!kitchenOn && check.kitchen) continue;
     const seen = check.evidence(ctx);
@@ -288,6 +360,7 @@ export function unusedFeatures(
       title: check.title,
       seen,
       benefit: check.benefit,
+      ...(check.since ? { shipped: check.since } : {}),
       ...(settings.length > 0 ? { settings } : {}),
     });
   }

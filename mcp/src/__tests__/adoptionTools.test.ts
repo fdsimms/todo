@@ -32,10 +32,12 @@ function fakeReplica(opts: {
   people?: unknown[];
   moodLogs?: number;
   milestones?: unknown[];
+  medications?: unknown[];
+  rewards?: boolean;
 } = {}): Replica {
   return {
     tasks: () => opts.tasks ?? [],
-    settings: () => ({ simpleMode: !!opts.simpleMode, kitchenEnabled: opts.kitchenEnabled ?? true, completedRetentionDays: null }),
+    settings: () => ({ simpleMode: !!opts.simpleMode, kitchenEnabled: opts.kitchenEnabled ?? true, completedRetentionDays: null, rewardsEnabled: opts.rewards ?? false }),
     recipes: () => Array.from({ length: opts.recipes ?? 0 }),
     mealPlan: () => Array.from({ length: opts.planned ?? 0 }),
     todayKey: () => '2026-10-05',
@@ -43,6 +45,7 @@ function fakeReplica(opts: {
     people: () => opts.people ?? [],
     allMoodLogs: () => Array.from({ length: opts.moodLogs ?? 0 }),
     milestones: () => opts.milestones ?? [],
+    medicationSettings: () => opts.medications ?? [],
     agentNotes: () => (opts.notes ?? []).map((text, i) => ({ id: String(i), text })),
     tagRegistry: () => opts.tags ?? [],
     templates: () => opts.templates ?? [],
@@ -131,7 +134,59 @@ describe('kitchen, people and mood checks', () => {
   });
 });
 
+describe('since: features that are new to the person', () => {
+  const repeating = (over: Record<string, unknown> = {}) => task({ recurrenceType: 'daily', ...over });
+  const holidayTasks = [repeating(), repeating(), repeating()];
+
+  it('keeps only checks that shipped on or after the date, newest first', () => {
+    const replica = fakeReplica({
+      tasks: holidayTasks,
+      medications: [{ name: 'Vitamin D3' }],
+    });
+    const result = unusedFeatures(replica, { since: '2026-10-01', limit: 20 });
+    expect(result.suggestions.map(s => s.id)).toEqual(['supplement_nutrients', 'holiday_repeats']);
+    expect(result.suggestions[0].shipped).toBe('2026-10-10');
+  });
+
+  it('leaves out a check that shipped before the date, and any check with no recorded date', () => {
+    const replica = fakeReplica({ tasks: manyOpen(40), medications: [{ name: 'Vitamin D3' }] });
+    const ids = unusedFeatures(replica, { since: '2026-10-09', limit: 20 }).suggestions.map(s => s.id);
+    expect(ids).toEqual(['supplement_nutrients']);
+  });
+
+  it('does not suggest holidays once a repeating task uses them, or a supplement that lists its contents', () => {
+    const replica = fakeReplica({
+      tasks: [repeating({ recurrenceHolidays: 'skip' }), repeating(), repeating()],
+      medications: [{ name: 'Vitamin D3', nutrients: 'Per 1 tablet: 1 nutrient' }, { name: 'Ibuprofen' }],
+    });
+    expect(unusedFeatures(replica, { since: '2026-01-01', limit: 20 }).suggestions).toEqual([]);
+  });
+
+  it('suggests a bounty only with rewards on, a task moved three or more times, and no bounty posted', () => {
+    const ids = (rewards: boolean, tasks: unknown[]) =>
+      unusedFeatures(fakeReplica({ rewards, tasks }), { since: '2026-10-01', limit: 20 }).suggestions.map(s => s.id);
+    const pushed = task({ postponeCount: 4 });
+    expect(ids(true, [pushed])).toContain('bounty');
+    expect(ids(false, [pushed])).not.toContain('bounty');
+    expect(ids(true, [task({ postponeCount: 1 })])).not.toContain('bounty');
+    expect(ids(true, [pushed, task({ bountyPushes: 0 })])).not.toContain('bounty');
+  });
+
+  it('suggests a destination only for a trip that has away dates and none', () => {
+    const trip = (over: Record<string, unknown>) => ({ id: 'p', title: 'Lisbon', archived: false, completed: false, awayStart: '2026-11-01', destination: null, ...over });
+    const ids = (projects: unknown[]) =>
+      unusedFeatures(fakeReplica({ projects }), { since: '2026-09-01', limit: 20 }).suggestions.map(s => s.id);
+    expect(ids([trip({})])).toContain('trip_destination');
+    expect(ids([trip({ destination: 'Lisbon' })])).not.toContain('trip_destination');
+    expect(ids([trip({ awayStart: null })])).not.toContain('trip_destination');
+  });
+});
+
 describe('ADOPTION_CHECKS', () => {
+  it('records since as a YYYY-MM-DD date, because the since filter compares it as text', () => {
+    for (const c of ADOPTION_CHECKS) if (c.since !== undefined) expect(c.since).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
   it('has unique ids, because an id is how a declined suggestion is named', () => {
     const ids = ADOPTION_CHECKS.map((c: AdoptionCheck) => c.id);
     expect(new Set(ids).size).toBe(ids.length);

@@ -1339,6 +1339,9 @@ a reschedule works) has to be restated. For a `Task` field, `mcp/src/__tests__/t
 fails until the field is exposed or added to its `NOT_EXPOSED` list. For anything else (a feature,
 a rule, a new area) nothing checks, so ask: does Claude need to read it, write it, or know the rule?
 Update `docs/arch/mcp-server.md` and `mcp/README.md`'s tool table when a tool is added.
+A new feature worth recommending also gets an `ADOPTION_CHECKS` entry in `mcp/src/adoptionTools.ts`
+with `since` set to the ship date, so `unused_features` can say it is new and not yet tried; skip it
+when adoption leaves no trace in the person's data or settings.
 
 ### iOS native extension targets (widgets, and future Watch/Live Activity targets)
 
