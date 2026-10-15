@@ -7,6 +7,8 @@ import { fetchWeatherSnapshot, type WeatherSnapshot } from '../services/weatherL
 import { isDemoModeActive } from '../utils/demoState';
 import { useSettingsStore } from './useSettingsStore';
 import { createRefreshGuard } from '../utils/refreshGuard';
+import { dbGetSetting, dbSetSetting, dbDeleteSetting } from '../db/database';
+import { parseCachedWeather, type CachedWeather } from '../utils/weatherHeaderCache';
 
 /**
  * Today's weather, held in memory — the weather-generator equivalent of
@@ -23,6 +25,16 @@ interface WeatherState {
    * day-roll must not be read as an answer for today. */
   snapshotDayKey: string | null;
   refreshing: boolean;
+  /**
+   * The last reading this phone took, read back from the database at launch so
+   * Today's header chip is there on the first frame instead of arriving after
+   * the fetch. Display only: nothing that decides a task (rules, waits) reads
+   * it, because a rule judged against a reading from an earlier launch would
+   * spend its day's mark on stale data. The chip is the one reader.
+   */
+  cached: CachedWeather | null;
+  /** Loads `cached` from the database. Call once at launch, after settings. */
+  hydrateCache: () => void;
   /** Reads a fresh snapshot if the one held is stale or missing, and nothing else is already fetching. */
   refresh: () => Promise<void>;
   clear: () => void;
@@ -45,6 +57,9 @@ interface WeatherState {
  */
 const SNAPSHOT_STALE_MS = 60 * 60 * 1000;
 
+// Not in SYNCED_SETTING_KEYS on purpose: a reading is where this phone is.
+const CACHE_SETTING_KEY = 'weather_header_cache';
+
 // One read, so one guard. See refreshGuard.ts: the snapshot must not be
 // written back after the feature was switched off mid-fetch.
 const snapshotGuard = createRefreshGuard();
@@ -65,6 +80,12 @@ export const useWeatherStore = create<WeatherState>((set, get) => ({
   snapshot: null,
   snapshotDayKey: null,
   refreshing: false,
+  cached: null,
+
+  hydrateCache() {
+    if (isDemoModeActive() || !useSettingsStore.getState().weatherTasks) return;
+    set({ cached: parseCachedWeather(dbGetSetting(CACHE_SETTING_KEY)) });
+  },
 
   async refresh() {
     if (isDemoModeActive()) return;
@@ -83,7 +104,9 @@ export const useWeatherStore = create<WeatherState>((set, get) => ({
       const snapshot = await fetchWeatherSnapshot(location);
       if (!snapshot) return;
       if (!snapshotGuard.isCurrent(token)) return;
-      set({ snapshot, snapshotDayKey: todayKey });
+      const cached = { snapshot, dayKey: todayKey };
+      dbSetSetting(CACHE_SETTING_KEY, JSON.stringify(cached));
+      set({ snapshot, snapshotDayKey: todayKey, cached });
     } finally {
       set({ refreshing: false });
     }
@@ -91,7 +114,9 @@ export const useWeatherStore = create<WeatherState>((set, get) => ({
 
   clear() {
     snapshotGuard.invalidate();
-    set({ snapshot: null, snapshotDayKey: null });
+    // A switched-off feature leaves no reading behind, on screen or on disk.
+    if (!isDemoModeActive()) dbDeleteSetting(CACHE_SETTING_KEY);
+    set({ snapshot: null, snapshotDayKey: null, cached: null });
   },
 }));
 

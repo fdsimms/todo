@@ -512,6 +512,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/waterShortfallTasks.ts` — waterShortfallTitle, WATER_SHORTFALL_NOTES, waterShortfallMl, followedWaterTaskDoneOn
 - `src/utils/waterTargetUnits.ts` — followedWaterTargetCount
 - `src/utils/weatherCondition.ts` — classifyWeather, weatherIconFor, weatherConditionAdjective, conditionNoun, weatherConditionNoun, canWaitForWeather
+- `src/utils/weatherHeaderCache.ts` — CachedWeather, parseCachedWeather
 - `src/utils/weatherLocation.ts` — LocationPermission, getLocationPermission, requestLocationPermission, DeviceLocation, getCurrentLocation
 - `src/utils/weatherTasks.ts` — WEATHER_LINK_URL, WEATHER_RULE_TITLE_MAX_LENGTH, WEATHER_CONDITIONS, WEATHER_AHEAD_FROM_HOUR, weatherConditionLabel, defaultWeatherRules, clearWeatherMarksOnEdit, parseWeatherRules, weatherSourceId, parseWeatherSourceId, +6 more
 - `src/utils/weatherWait.ts` — WEATHER_WAIT_HORIZON_DAYS, dayMatchesCondition, WeatherWaitDecision, decideWeatherWait, weatherWaitLabel, weatherWaitChipText

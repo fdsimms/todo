@@ -1906,8 +1906,13 @@ export function TodayScreen() {
   // (see useSettingsStore) — and `useWeatherSync` in App.tsx is what keeps the
   // snapshot current, same split useHealthSync draws above.
   const weatherTaskCategory = useSettingsStore(s => s.weatherTaskCategory);
-  const weatherSnapshot = useWeatherStore(s => s.snapshot);
-  const weatherSnapshotDayKey = useWeatherStore(s => s.snapshotDayKey);
+  // The live reading, else the one kept from the last launch (display only,
+  // see useWeatherStore.cached), so the chip doesn't wait on the fetch.
+  const liveWeatherSnapshot = useWeatherStore(s => s.snapshot);
+  const liveWeatherDayKey = useWeatherStore(s => s.snapshotDayKey);
+  const cachedWeather = useWeatherStore(s => s.cached);
+  const weatherSnapshot = liveWeatherSnapshot ?? cachedWeather?.snapshot ?? null;
+  const weatherSnapshotDayKey = liveWeatherSnapshot ? liveWeatherDayKey : cachedWeather?.dayKey ?? null;
   const headerWeather = weatherTaskCategory
     && weatherSnapshot
     && weatherSnapshotDayKey === getLogicalDayKey(new Date(), dayResetTime)
@@ -2709,6 +2714,8 @@ export function TodayScreen() {
   // start and end): a new array re-derived the whole list below and re-laid
   // the list every half minute for nothing.
   const contextRowsPrev = useRef<ContextRow[]>([]);
+  const contextRowsPainted = useRef(false);
+  useEffect(() => { contextRowsPainted.current = true; }, []);
   const contextRows = useMemo(() => {
     const rows: ContextRow[] = [];
     // Leads, above the calendar and the food. It is the only one of the four
@@ -2797,6 +2804,12 @@ export function TodayScreen() {
     }
     const prev = contextRowsPrev.current;
     const same = prev.length === rows.length && prev.every((row, i) => JSON.stringify(row) === JSON.stringify(rows[i]));
+    // Rows arriving or leaving after the first paint (the calendar read, Health,
+    // the food log landing) used to pop in and shove every task below them down
+    // in one frame. Easing the next layout makes it a short slide instead. Not
+    // on the first build (nothing has been painted to move) and not on a
+    // same-length rebuild (the minute tick flipping an event to "Now").
+    if (contextRowsPainted.current && prev.length !== rows.length) animateLayout();
     return (contextRowsPrev.current = same ? prev : rows);
   }, [
     todayCalendarEvents, calendarEventCategory, use24HourTime, eventCalendarTags,
