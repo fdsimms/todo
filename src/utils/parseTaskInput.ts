@@ -11,7 +11,7 @@ import { startOfDay } from 'date-fns/startOfDay';
 import { startOfMonth } from 'date-fns/startOfMonth';
 import type { Day } from 'date-fns';
 import type { Priority, QuotaPeriod, RecurrenceType, TimeOfDay, WeatherCondition } from '../types';
-import { extractDayPart, extractTime, MONTHS, monthDay, NUMBER_WORD_ALT, NUMBER_WORDS, parseCount, parseDatePart, WEEKDAYS, type ClockTime } from './parseNaturalDate';
+import { clockBesideDayPart, dayPartBesideClock, extractDayPart, extractTime, MONTHS, monthDay, NUMBER_WORD_ALT, NUMBER_WORDS, parseCount, parseDatePart, WEEKDAYS, type ClockTime } from './parseNaturalDate';
 import { onLogicalDay, taskDayStart } from './clockTime';
 import { looksLikePhoneNumber } from './phone';
 
@@ -157,6 +157,9 @@ const DAY_PART_SEGMENT: Record<string, TimeOfDay> = {
   evening: 'evening',
   night: 'evening',
 };
+
+// See parseSuffix: a day-part word with more of the phrase after it.
+const LEADING_DAY_PART = /^(?:morning|afternoon|evening|night)\s/;
 
 // A bare one-word suffix is only trusted when it's unambiguously a schedule
 // word. Weekday abbreviations ("mon", "sat", "wed") are accepted even though
@@ -526,11 +529,17 @@ function parseRecurrenceSuffix(text: string, now: Date): ParsedSchedule | null {
     let segments: TimeOfDay[];
     let rest: string;
     let explicitClockTime: ClockTime | null = null;
+    // A day part said with the clock time ("every tuesday night at 8pm"),
+    // tried after the phrase as said since "every night" is itself the unit.
+    let withoutPart: string | null = null;
     const clock = extractTime(core);
     if (clock) {
-      segments = [segmentForHour(clock.time.h)];
+      const beside = dayPartBesideClock(clock.rest);
+      const read = clockBesideDayPart(clock, beside.part);
+      segments = [segmentForHour(read.time.h)];
       rest = clock.rest;
-      explicitClockTime = clock.time;
+      if (beside.rest !== clock.rest) withoutPart = beside.rest;
+      explicitClockTime = read.time;
     } else {
       const part = extractDayPart(core);
       if (!part) return null;
@@ -542,8 +551,9 @@ function parseRecurrenceSuffix(text: string, now: Date): ParsedSchedule | null {
     // both category and tags) — so a leftover one is left in place and, same
     // as any other stray character, correctly fails the anchored match below
     // rather than being silently swallowed.
-    rest = rest.replace(/\bat\b/g, ' ').replace(/\bin the\b/g, ' ').replace(/\s+/g, ' ').trim();
-    schedule = matchRecurrenceCore(rest, now, segments);
+    const tidy = (s: string) => s.replace(/\bat\b/g, ' ').replace(/\bin the\b/g, ' ').replace(/\s+/g, ' ').trim();
+    schedule = matchRecurrenceCore(tidy(rest), now, segments)
+      ?? (withoutPart !== null ? matchRecurrenceCore(tidy(withoutPart), now, segments) : null);
     if (schedule) schedule = { ...schedule, explicitClockTime };
   }
   if (!schedule) return null;
@@ -668,6 +678,12 @@ function betweenStart(hour: number, minute: number, meridiem: string | undefined
 
 /** Try to parse an entire suffix as a one-off date/time or recurrence phrase. */
 function parseSuffix(text: string, now: Date, singleWord: boolean, clockNow: Date = now): ParsedSchedule | null {
+  // A day part comes after the day it qualifies ("friday night"), so one
+  // opening the phrase belongs to the title: "game night friday" is a game
+  // night on Friday, not a game on Friday night. Refused here, the shorter
+  // suffix after it is the schedule.
+  if (LEADING_DAY_PART.test(text)) return null;
+
   // Recurrence first — it owns the "every"/plural/frequency-word triggers.
   const rec = parseRecurrenceSuffix(text, now);
   if (rec) return rec;
@@ -723,11 +739,15 @@ function parseSuffix(text: string, now: Date, singleWord: boolean, clockNow: Dat
     hasTime = true;
     explicitClockTime = clock.time;
   } else if (clock) {
-    segments = [segmentForHour(clock.time.h)];
-    t = clock.rest;
+    // "tomorrow night at 8pm": the day part goes with the clock time, and says
+    // which half of the day an unmarked one is in.
+    const beside = dayPartBesideClock(clock.rest);
+    const read = clockBesideDayPart(clock, beside.part);
+    segments = [segmentForHour(read.time.h)];
+    t = beside.rest;
     hasTime = true;
-    explicitClockTime = clock.time;
-    ambiguousClock = clock.ambiguous === true;
+    explicitClockTime = read.time;
+    ambiguousClock = read.ambiguous;
   } else {
     const part = extractDayPart(t);
     if (part) {

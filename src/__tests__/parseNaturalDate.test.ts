@@ -144,6 +144,27 @@ describe('parseNaturalDate', () => {
     it('parses "tomorrow evening"', () => {
       expect(parse('tomorrow evening')!.getHours()).toBe(18);
     });
+
+    it('keeps the date when a clock time is said beside a day part', () => {
+      expect(parse('tomorrow night at 8pm')).toEqual(new Date(2025, 5, 11, 20, 0));
+      expect(parse('friday evening at 7pm')).toEqual(new Date(2025, 5, 13, 19, 0));
+      expect(parse('monday night 9pm')).toEqual(new Date(2025, 5, 16, 21, 0));
+      expect(parse('at 9:30 in the evening')).toEqual(new Date(2025, 5, 10, 21, 30));
+    });
+
+    it('reads an unmarked clock beside a later day part as that half of the day', () => {
+      // 10:30 AM hasn't passed at 10:00, which is why the old "already
+      // passed" flip never caught this one.
+      expect(parse('tonight at 10:30')).toEqual(new Date(2025, 5, 10, 22, 30));
+      expect(parse('friday evening at 7:30')).toEqual(new Date(2025, 5, 13, 19, 30));
+      expect(parse('tomorrow afternoon at 2:15')).toEqual(new Date(2025, 5, 11, 14, 15));
+      expect(parse('tomorrow morning at 9:30')).toEqual(new Date(2025, 5, 11, 9, 30));
+    });
+
+    it('does not flip a day-part clock a second time once it has passed', () => {
+      const late = new Date(2025, 5, 10, 21, 0);
+      expect(parseNaturalDate('tonight at 8:30', late)).toEqual(new Date(2025, 5, 10, 20, 30));
+    });
   });
 
   describe('relative offsets', () => {

@@ -117,6 +117,54 @@ describe('parseTaskInput — one-off dates', () => {
     expect(r.schedule.explicitClockTime).toBeNull();
   });
 
+  it('keeps the date when a clock time is said beside a day part', () => {
+    const r = parseTaskInput('dinner tomorrow night at 8pm', NOW)!;
+    expect(r.cleanTitle).toBe('dinner');
+    expect(r.matchedText).toBe('tomorrow night at 8pm');
+    expectDay(r.schedule.dueDate, 2025, 5, 11);
+    expect(r.schedule.explicitClockTime).toEqual({ h: 20, m: 0 });
+    expect(r.schedule.timeSegments).toEqual(['evening']);
+
+    const call = parseTaskInput('call mom tomorrow morning at 9am', NOW)!;
+    expect(call.cleanTitle).toBe('call mom');
+    expectDay(call.schedule.dueDate, 2025, 5, 11);
+    expect(call.schedule.explicitClockTime).toEqual({ h: 9, m: 0 });
+  });
+
+  it('reads an unmarked clock beside a later day part as that half of the day', () => {
+    const tonight = parseTaskInput('dinner tonight at 10:30', NOW)!;
+    expect(tonight.cleanTitle).toBe('dinner');
+    expectDay(tonight.schedule.dueDate, 2025, 5, 10);
+    expect(tonight.schedule.explicitClockTime).toEqual({ h: 22, m: 30 });
+    expect(tonight.schedule.timeSegments).toEqual(['evening']);
+
+    const gym = parseTaskInput('gym friday evening at 6:30', NOW)!;
+    expectDay(gym.schedule.dueDate, 2025, 5, 13);
+    expect(gym.schedule.explicitClockTime).toEqual({ h: 18, m: 30 });
+
+    const run = parseTaskInput('run tomorrow morning at 6:30', NOW)!;
+    expect(run.schedule.explicitClockTime).toEqual({ h: 6, m: 30 });
+  });
+
+  it('keeps a day-part word that opens a name in the title', () => {
+    const game = parseTaskInput('game night friday', NOW)!;
+    expect(game.cleanTitle).toBe('game night');
+    expectDay(game.schedule.dueDate, 2025, 5, 13);
+    expect(game.schedule.timeSegments).toEqual([]);
+
+    const movie = parseTaskInput('movie night tonight', NOW)!;
+    expect(movie.cleanTitle).toBe('movie night');
+    expect(movie.schedule.timeSegments).toEqual(['evening']);
+
+    const taco = parseTaskInput('taco night every tuesday', NOW)!;
+    expect(taco.cleanTitle).toBe('taco night');
+    expect(taco.schedule.recurrenceType).toBe('weekly');
+    expect(taco.schedule.recurrenceDays).toEqual([2]);
+
+    // The day part still reads where it follows the day.
+    expect(parseTaskInput('pizza friday night', NOW)!.cleanTitle).toBe('pizza');
+  });
+
   it('does not set explicitClockTime for "tonight" — a representative hour, not a typed one', () => {
     const r = parseTaskInput('take out trash tonight', NOW)!;
     expect(r.schedule.explicitClockTime).toBeNull();
@@ -414,6 +462,23 @@ describe('parseTaskInput — recurrence', () => {
 
     const tue = parseTaskInput('trash out every tuesday at 6pm', NOW)!;
     expect(tue.schedule.explicitClockTime).toEqual({ h: 18, m: 0 });
+  });
+
+  it('reads an unmarked clock on a recurrence by the day part beside it', () => {
+    const journal = parseTaskInput('journal every night at 9:30', NOW)!;
+    expect(journal.cleanTitle).toBe('journal');
+    expect(journal.schedule.recurrenceType).toBe('daily');
+    expect(journal.schedule.explicitClockTime).toEqual({ h: 21, m: 30 });
+
+    const walk = parseTaskInput('walk dog every evening at 6:30', NOW)!;
+    expect(walk.schedule.explicitClockTime).toEqual({ h: 18, m: 30 });
+    expect(walk.schedule.timeSegments).toEqual(['evening']);
+
+    const trash = parseTaskInput('trash out every tuesday night at 8:30', NOW)!;
+    expect(trash.cleanTitle).toBe('trash out');
+    expect(trash.schedule.recurrenceDays).toEqual([2]);
+    expect(trash.schedule.explicitClockTime).toEqual({ h: 20, m: 30 });
+    expect(trash.schedule.timeSegments).toEqual(['evening']);
   });
 
   it('does not set explicitClockTime for "every morning" — a day-part word, not a typed clock reading', () => {

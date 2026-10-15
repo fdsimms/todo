@@ -22,7 +22,7 @@ import type { Day } from 'date-fns';
  *   "next monday", "friday 9am", "this weekend"
  *   "in 2 weeks", "in 3 days", "in 1 hour", "in 30 min"
  *   "next week", "next month", "next year"
- *   "noon", "midnight", "tomorrow morning"
+ *   "noon", "midnight", "tomorrow morning", "friday night at 8:30"
  *   "jun 15", "june 15 2026", "15 jun", "12/25", "2026-12-25"
  *
  * Returns null when the input can't be confidently understood, so callers
@@ -163,6 +163,41 @@ export function extractDayPart(text: string): { time: ClockTime; rest: string; p
   const m = text.match(/\b(morning|afternoon|evening|night)\b/);
   if (!m) return null;
   return { time: { h: DAY_PARTS[m[1]], m: 0 }, rest: strip(text, m), part: m[1] };
+}
+
+/**
+ * A clock time said beside a part of the day ("tomorrow night at 8:30",
+ * "tonight at 9:30", "every evening at 6:30"), where the part says which half
+ * of the day an unmarked reading is in. Only extractTime's `ambiguous` readings
+ * move, so "8pm" and "20:30" are never touched, and "morning" keeps the
+ * morning one. Either way the part has answered the question, so the result is
+ * no longer ambiguous and a caller's "already passed, so the other half" flip
+ * must not run on it. The small hours after "night" are left as they were,
+ * since "tonight at 1:30" is after midnight, not lunchtime.
+ *
+ * `part` is extractDayPart's word, or "tonight".
+ */
+export function clockBesideDayPart(
+  clock: { time: ClockTime; ambiguous?: boolean },
+  part: string | null,
+): { time: ClockTime; ambiguous: boolean } {
+  const ambiguous = clock.ambiguous === true;
+  if (!ambiguous || !part) return { time: clock.time, ambiguous };
+  if (part === 'morning') return { time: clock.time, ambiguous: false };
+  if ((part === 'night' || part === 'tonight') && clock.time.h < 5) return { time: clock.time, ambiguous };
+  return { time: { h: clock.time.h + 12, m: clock.time.m }, ambiguous: false };
+}
+
+/**
+ * The part of the day said alongside a clock time, lifted out of what the
+ * clock left behind. Without it "tomorrow night at 8pm" left "tomorrow night",
+ * which isn't a date, and the time landed today. "tonight" is reported but
+ * stays in the text, since it is the date phrase itself.
+ */
+export function dayPartBesideClock(rest: string): { part: string | null; rest: string } {
+  const part = extractDayPart(rest);
+  if (part) return { part: part.part, rest: part.rest };
+  return { part: /\btonight\b/.test(rest) ? 'tonight' : null, rest };
 }
 
 export interface DatePart {
@@ -351,10 +386,14 @@ export function parseNaturalDate(input: string, now: Date = new Date(), clockNow
 
   // Peel off a time-of-day first, so what's left is purely the date phrase.
   let time: ClockTime | null = null;
+  let ambiguous = false;
   const clock = extractTime(text);
   if (clock) {
-    time = clock.time;
-    text = clock.rest;
+    const beside = dayPartBesideClock(clock.rest);
+    const read = clockBesideDayPart(clock, beside.part);
+    time = read.time;
+    ambiguous = read.ambiguous;
+    text = beside.rest;
   } else {
     const part = extractDayPart(text);
     if (part) {
@@ -381,7 +420,7 @@ export function parseNaturalDate(input: string, now: Date = new Date(), clockNow
 
   if (time) {
     date = atTime(date, time.h, time.m);
-    if (clock?.ambiguous && date.getTime() <= clockNow.getTime() && isSameDay(date, clockNow)) {
+    if (ambiguous && date.getTime() <= clockNow.getTime() && isSameDay(date, clockNow)) {
       date = addHours(date, 12);
     }
     // Pure time in the past (e.g. "3pm" typed at 5pm) rolls to tomorrow.
