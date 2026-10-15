@@ -549,9 +549,12 @@ export interface LaterSectionsResult {
 export function laterDaySections(
   ordered: LaterOrderedTask[],
   taskLimit?: number,
-  options?: { cutMidDay?: boolean },
+  options?: { cutMidDay?: boolean; foldStacks?: boolean },
 ): LaterSectionsResult {
   const cutMidDay = options?.cutMidDay === true;
+  // On when the list will fold stacks into one row (off while selecting).
+  const foldStacks = options?.foldStacks === true;
+  const foldedCounts = new Map<string, number>();
   const days = new Map<
     string,
     { dayKeys: Set<string>; groupIds: Set<string>; dateISO: string; segMap: Map<string, { label: string | null; segment: string | null; windowStart: string | null; windowEnd: string | null; data: Task[] }> }
@@ -621,7 +624,18 @@ export function laterDaySections(
       // A multi-segment task is placed once per segment and counts once per
       // placement — these are rows in an unvirtualized list, and it renders
       // under each of its sub-headers.
-      placed += 1;
+      if (foldStacks && task.groupId) {
+        // Members of one stack in one sub-group fold into a single row once
+        // there are LATER_STACK_FOLD_MIN of them (flattenLaterSections), so the
+        // budget charges that one row, not every member: seven supplements
+        // otherwise spend most of a first-paint budget on a row the size of one.
+        const foldKey = `${dayLabel}|${key}|${task.groupId}`;
+        const n = (foldedCounts.get(foldKey) ?? 0) + 1;
+        foldedCounts.set(foldKey, n);
+        placed += n < LATER_STACK_FOLD_MIN ? 1 : n === LATER_STACK_FOLD_MIN ? 2 - LATER_STACK_FOLD_MIN : 0;
+      } else {
+        placed += 1;
+      }
     }
   }
 

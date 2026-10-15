@@ -983,6 +983,22 @@ describe('laterDaySections task budget', () => {
     expect(result.hasMore).toBe(true);
   });
 
+  // A stack of three or more folds into one row, so it costs the budget one
+  // row rather than one per member (seven supplements used up the first paint).
+  it('charges a folding stack as one row when foldStacks is set', () => {
+    const at = new Date(2025, 5, 11, 12, 0, 0);
+    const member = (id: string) => ({ task: makeTask({ id, groupId: 'g' }), visibleAt: at });
+    const loose = (id: string) => ({ task: makeTask({ id }), visibleAt: at });
+    const stack = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map(member);
+    const ordered = [...stack, loose('x'), loose('y'), loose('z')];
+    const folded = laterDaySections(ordered, 4, { cutMidDay: true, foldStacks: true });
+    expect(folded.sections[0].segments[0].data).toHaveLength(10);
+    expect(folded.hasMore).toBe(false);
+    const unfolded = laterDaySections(ordered, 4, { cutMidDay: true });
+    expect(unfolded.sections[0].segments[0].data).toHaveLength(7);
+    expect(unfolded.hasMore).toBe(true);
+  });
+
   it('includes everything, and reports no more, when the budget exceeds the total', () => {
     const result = laterDaySections([...day(1, 10), ...day(2, 10)], 60);
     expect(result.sections).toHaveLength(2);
