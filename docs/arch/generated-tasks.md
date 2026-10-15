@@ -1243,6 +1243,14 @@ argued out before it was built; read them before reopening one.
     location or a changed mode is asked again rather than reused, and one older than 20 minutes
     is refreshed for traffic. The destination is the event's map pin when it has one (a place
     picked in quick add), else Apple Maps' first match for the location text.
+- **"Walk if close" picks the mode per event from the answer, and files it under the threshold.**
+  `travelWalkUnderMinutes` (0 = off, steps of 5, up to 60) makes `useTravelTimeStore.refresh` ask the
+  walk first for an event with no mode of its own, keep it at or under the threshold, and otherwise
+  ask the Settings mode as before (two requests for a farther event). Because the mode is only known
+  after the answer, `estimateFor` takes `walkUnder` (`travelWalkUnderFor` gives 0 for an event with its
+  own pick, or when the Settings mode is already walking) and accepts either the Settings mode or a
+  walk, and an estimate carries the `walkUnder` it was asked under, so changing the number asks again
+  instead of keeping a mode the old number chose. A reader of a held estimate passes `walkUnder` too.
 - **One event can override the mode, how early to arrive and where the trip starts, and that stays in the app.** The quick
   event sheet shows "Getting there" and "Arrive" chips for an event with a place and a time (plus "Start from" while estimates are on), saved
   to `travelEventPrefs` (`TravelEventPref`) by calendar event id, so a repeating event keeps its

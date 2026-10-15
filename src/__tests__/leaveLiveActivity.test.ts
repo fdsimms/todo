@@ -123,6 +123,7 @@ describe('buildLeaveRun', () => {
       },
       mode: 'walking',
       modeFor: () => 'walking',
+      walkUnderFor: () => 0,
       originKeyFor: () => originKey,
     });
     const run = (check: AlreadyThereCheck) =>

@@ -42,6 +42,15 @@ export const TRAVEL_LEAD_MINUTES_MIN = 5;
 export const TRAVEL_LEAD_MINUTES_MAX = 180;
 export const TRAVEL_LEAD_MINUTES_STEP = 5;
 
+/**
+ * The `travelWalkUnderMinutes` setting: walk instead of using the Settings
+ * mode when Apple Maps says the walk is this long or shorter. 0 is off, which
+ * is also the default, so nothing is asked twice until someone opts in.
+ */
+export const TRAVEL_WALK_UNDER_MAX = 60;
+export const TRAVEL_WALK_UNDER_STEP = 5;
+export const TRAVEL_WALK_UNDER_SUGGESTED = 20;
+
 /** How a trip is estimated; the `travelMode` setting. */
 export type TravelMode = 'driving' | 'transit' | 'walking';
 export const TRAVEL_MODES: readonly TravelMode[] = ['driving', 'transit', 'walking'];
@@ -106,6 +115,28 @@ export function travelModeFor(eventId: string, prefs: TravelEventPrefs, defaultM
   return prefs[eventId]?.mode ?? defaultMode;
 }
 
+/** `travelWalkUnderMinutes` clamped to its steps, 0 for anything unusable. */
+export function clampTravelWalkUnder(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
+  const stepped = Math.round(value / TRAVEL_WALK_UNDER_STEP) * TRAVEL_WALK_UNDER_STEP;
+  return Math.min(TRAVEL_WALK_UNDER_MAX, Math.max(0, stepped));
+}
+
+/**
+ * The walk-under threshold that applies to this event: the setting, or 0 when
+ * the event has a mode of its own (a pick always wins) or the Settings mode is
+ * already walking (there is nothing to switch to).
+ */
+export function travelWalkUnderFor(
+  eventId: string,
+  prefs: TravelEventPrefs,
+  defaultMode: TravelMode,
+  walkUnder: number,
+): number {
+  if (prefs[eventId]?.mode) return 0;
+  return defaultMode === 'walking' ? 0 : walkUnder;
+}
+
 /** Minutes to arrive before the start, for this event (0 when it has no override). */
 export function arriveEarlyFor(eventId: string, prefs: TravelEventPrefs): number {
   return prefs[eventId]?.arriveEarlyMinutes ?? 0;
@@ -152,6 +183,13 @@ export interface TravelEstimate {
   origin: string;
   /** Epoch ms when it was read. */
   at: number;
+  /**
+   * The walk-under threshold (minutes) in force when it was asked, 0 or absent
+   * for none. An estimate filed under a different threshold doesn't match, so
+   * changing the setting asks again rather than keeping a mode chosen by the
+   * old number.
+   */
+  walkUnder?: number;
 }
 
 /** `travelOriginKey` for a trip that starts from wherever the phone is. */
@@ -207,16 +245,31 @@ export function travelOriginKey(origin: TravelOrigin | null): string {
 /** Estimates by occurrence key (`travelSourceId`). */
 export type TravelEstimates = Readonly<Record<string, TravelEstimate>>;
 
-/** The estimate held for this event, or null when there is none or it was for a different place or mode. */
+/**
+ * Whether a held estimate answers a request for `mode`. With a walk-under
+ * threshold the mode isn't known until Apple Maps has answered, so either the
+ * Settings mode or a walk is a match, as long as it was filed under the same
+ * threshold. The store only files a walk that came in at or under it.
+ */
+function modeMatches(held: TravelEstimate, mode: TravelMode, walkUnder: number): boolean {
+  if ((held.walkUnder ?? 0) !== walkUnder) return false;
+  return held.mode === mode || (walkUnder > 0 && held.mode === 'walking');
+}
+
+/**
+ * The estimate held for this event, or null when there is none or it was for a
+ * different place or mode. `walkUnder` is `travelWalkUnderFor`'s answer.
+ */
 export function estimateFor(
   event: Pick<BusyEvent, 'id' | 'start' | 'location'>,
   estimates: TravelEstimates,
   mode: TravelMode,
   origin: string,
+  walkUnder = 0,
 ): TravelEstimate | null {
   const held = estimates[travelSourceId(event)];
   if (!held) return null;
-  if (held.mode !== mode || held.origin !== origin || held.location !== (event.location ?? '').trim()) return null;
+  if (!modeMatches(held, mode, walkUnder) || held.origin !== origin || held.location !== (event.location ?? '').trim()) return null;
   return held;
 }
 
@@ -252,8 +305,9 @@ export function needsTravelEstimate(
   mode: TravelMode,
   origin: string,
   now: Date,
+  walkUnder = 0,
 ): boolean {
-  const held = estimateFor(event, estimates, mode, origin);
+  const held = estimateFor(event, estimates, mode, origin, walkUnder);
   return !held || now.getTime() - held.at >= TRAVEL_ESTIMATE_STALE_MS;
 }
 
@@ -425,7 +479,7 @@ export function matchedTravelTasks(
   horizonEnd: Date,
   handled: Readonly<HandledEventTasks>,
   /** Apple Maps estimates, passed only while `travelEstimates` is on. */
-  estimated?: { estimates: TravelEstimates; mode: TravelMode; originKeyFor: (eventId: string) => string },
+  estimated?: { estimates: TravelEstimates; mode: TravelMode; originKeyFor: (eventId: string) => string; walkUnder?: number },
   /** Per-event mode and arrival overrides. */
   prefs: TravelEventPrefs = {},
 ): TravelMatch[] {
@@ -436,7 +490,13 @@ export function matchedTravelTasks(
   for (const event of eligible) {
     const sourceId = travelSourceId(event);
     const estimate = estimated
-      ? estimateFor(event, estimated.estimates, travelModeFor(event.id, prefs, estimated.mode), estimated.originKeyFor(event.id))
+      ? estimateFor(
+          event,
+          estimated.estimates,
+          travelModeFor(event.id, prefs, estimated.mode),
+          estimated.originKeyFor(event.id),
+          travelWalkUnderFor(event.id, prefs, estimated.mode, estimated.walkUnder ?? 0),
+        )
       : null;
     const lead = estimate ? estimatedLeadMinutes(estimate.minutes) : travelLeadFor(event, leads);
     const leaveAt = travelLeaveAt(event, leadWithArrival(lead, arriveEarlyFor(event.id, prefs)));
@@ -526,8 +586,9 @@ export function travelRowNote(
   location: string,
   estimates: TravelEstimates,
   mode: TravelMode,
+  walkUnder = 0,
 ): string | null {
   const held = estimates[sourceId];
-  if (!held || held.mode !== mode || held.location !== location.trim()) return null;
+  if (!held || !modeMatches(held, mode, walkUnder) || held.location !== location.trim()) return null;
   return describeTravelEstimate(held.minutes, held.mode);
 }

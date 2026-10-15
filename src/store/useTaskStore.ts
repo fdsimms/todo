@@ -7463,6 +7463,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       ? {
           estimates: useTravelTimeStore.getState().estimates,
           mode: settings.travelMode,
+          walkUnder: settings.travelWalkUnderMinutes,
           originKeyFor: (eventId: string) => travelOriginKey(travelOriginOfEvent(eventId)),
         }
       : undefined;

@@ -341,6 +341,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   const travelTasksOn = useSettingsStore(s => s.travelTasks);
   const travelEstimatesOn = useSettingsStore(s => s.travelEstimates);
   const defaultTravelMode = useSettingsStore(s => s.travelMode);
+  const walkUnderMinutes = useSettingsStore(s => s.travelWalkUnderMinutes);
   const defaultOriginPlaceId = useSettingsStore(s => s.travelOriginPlaceId);
   const setTravelEventPref = useSettingsStore(s => s.setTravelEventPref);
   const [travelModePick, setTravelModePick] = useState<TravelMode | null>(null);
@@ -1052,7 +1053,9 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     ...EVENT_REPEAT_PRESETS.map(p => ({ key: p.key, label: p.label })),
   ];
   const travelModeOptions: EventOption[] = [
-    { key: 'default', label: `Settings default (${TRAVEL_MODE_LABELS[defaultTravelMode]})` },
+    { key: 'default', label: walkUnderMinutes > 0 && defaultTravelMode !== 'walking'
+      ? `Settings default (Walk if ${walkUnderMinutes} min or less, else ${TRAVEL_MODE_LABELS[defaultTravelMode]})`
+      : `Settings default (${TRAVEL_MODE_LABELS[defaultTravelMode]})` },
     ...TRAVEL_MODES.map(m => ({ key: m, label: TRAVEL_MODE_LABELS[m] })),
   ];
   const arriveOptions: EventOption[] = TRAVEL_ARRIVE_CHOICES.map(m => ({ key: String(m), label: describeArrival(m) }));

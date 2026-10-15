@@ -540,6 +540,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'travelTaskCategory',
   'travelLeadMinutes',
   'travelMode',
+  'travelWalkUnderMinutes',
   'useUpTaskCap',
   'waitingFollowUpTaskCategory',
   'waterShortfallTaskCategory',

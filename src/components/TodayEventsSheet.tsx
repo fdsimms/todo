@@ -7,7 +7,7 @@ import type { BusyEvent } from '../utils/calendarBusy';
 import { formatTimeOfDay } from '../utils/dateUtils';
 import { directionsUrl } from '../utils/maps';
 import { eventCoordinate } from '../utils/calendarSync';
-import { describeTravelEstimate, estimateFor, travelModeFor, travelOriginForEvent, travelOriginKey } from '../utils/travelTasks';
+import { describeTravelEstimate, estimateFor, travelModeFor, travelOriginForEvent, travelOriginKey, travelWalkUnderFor } from '../utils/travelTasks';
 import { useTravelTimeStore } from '../store/useTravelTimeStore';
 import { readSavedPlaces } from '../utils/savedPlaces';
 import { haptics } from '../utils/haptics';
@@ -157,6 +157,7 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
   // estimates the same upcoming events and this only reads what it holds.
   const travelEstimates = useSettingsStore(s => s.travelEstimates);
   const travelMode = useSettingsStore(s => s.travelMode);
+  const travelWalkUnder = useSettingsStore(s => s.travelWalkUnderMinutes);
   const travelEventPrefs = useSettingsStore(s => s.travelEventPrefs);
   const travelOriginPlaceId = useSettingsStore(s => s.travelOriginPlaceId);
   const savedPlaces = useMemo(() => readSavedPlaces(), [travelOriginPlaceId, travelEventPrefs]);
@@ -409,7 +410,7 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
                       </View>
                     )}
                     {(() => {
-                      const estimate = travelEstimates && event.location ? estimateFor(event, estimates, travelModeFor(event.id, travelEventPrefs, travelMode), travelOriginKey(travelOriginForEvent(event.id, travelEventPrefs, travelOriginPlaceId, savedPlaces))) : null;
+                      const estimate = travelEstimates && event.location ? estimateFor(event, estimates, travelModeFor(event.id, travelEventPrefs, travelMode), travelOriginKey(travelOriginForEvent(event.id, travelEventPrefs, travelOriginPlaceId, savedPlaces)), travelWalkUnderFor(event.id, travelEventPrefs, travelMode, travelWalkUnder)) : null;
                       return estimate ? (
                         <Text style={styles.rowEstimate} numberOfLines={1}>
                           {describeTravelEstimate(estimate.minutes, estimate.mode)}

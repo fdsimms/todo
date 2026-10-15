@@ -7,7 +7,8 @@ const mockSettings = {
   travelTasks: true,
   travelEstimates: true,
   calendarReadEnabled: true,
-  travelMode: 'driving' as const,
+  travelMode: 'driving' as 'driving' | 'transit' | 'walking',
+  travelWalkUnderMinutes: 0,
   travelOriginPlaceId: null as string | null,
   travelLeadMinutes: 30,
   travelLeadByCalendar: {} as Record<string, number>,
@@ -49,6 +50,7 @@ beforeEach(() => {
   jest.setSystemTime(NOW);
   mockSettings.travelEstimates = true;
   mockSettings.travelMode = 'driving';
+  mockSettings.travelWalkUnderMinutes = 0;
   mockSettings.travelEventPrefs = {};
   mockSettings.travelOriginPlaceId = null;
   mockPlaces = [];
@@ -66,6 +68,62 @@ describe('travelEstimatesWanted', () => {
     expect(travelEstimatesWanted({ travelTasks: true, travelEstimates: false, calendarReadEnabled: true })).toBe(false);
     expect(travelEstimatesWanted({ travelTasks: false, travelEstimates: true, calendarReadEnabled: true })).toBe(false);
     expect(travelEstimatesWanted({ travelTasks: true, travelEstimates: true, calendarReadEnabled: false })).toBe(false);
+  });
+});
+
+describe('refresh with a walk-under threshold', () => {
+  const e = event('a', 14);
+
+  it('files a walk that comes in at or under the threshold, and asks only once', async () => {
+    mockSettings.travelWalkUnderMinutes = 20;
+    estimateMock.mockResolvedValue(20);
+    await useTravelTimeStore.getState().refresh();
+    expect(estimateMock).toHaveBeenCalledTimes(1);
+    expect(estimateMock.mock.calls[0][2]).toBe('walking');
+    expect(useTravelTimeStore.getState().estimates[key(e)]).toMatchObject({ minutes: 20, mode: 'walking', walkUnder: 20 });
+  });
+
+  it('falls back to the Settings mode when the walk is longer', async () => {
+    mockSettings.travelWalkUnderMinutes = 20;
+    estimateMock.mockImplementation(async (_e, _d, mode) => (mode === 'walking' ? 35 : 12));
+    await useTravelTimeStore.getState().refresh();
+    expect(estimateMock.mock.calls.map(c => c[2])).toEqual(['walking', 'driving']);
+    expect(useTravelTimeStore.getState().estimates[key(e)]).toMatchObject({ minutes: 12, mode: 'driving', walkUnder: 20 });
+  });
+
+  it('falls back to the Settings mode when the walk cannot be estimated', async () => {
+    mockSettings.travelWalkUnderMinutes = 20;
+    estimateMock.mockImplementation(async (_e, _d, mode) => (mode === 'walking' ? null : 12));
+    await useTravelTimeStore.getState().refresh();
+    expect(useTravelTimeStore.getState().estimates[key(e)]).toMatchObject({ minutes: 12, mode: 'driving' });
+  });
+
+  it('does not ask again while fresh, but does once the threshold changes', async () => {
+    mockSettings.travelWalkUnderMinutes = 20;
+    estimateMock.mockResolvedValue(15);
+    await useTravelTimeStore.getState().refresh();
+    await useTravelTimeStore.getState().refresh();
+    expect(estimateMock).toHaveBeenCalledTimes(1);
+    mockSettings.travelWalkUnderMinutes = 10;
+    await useTravelTimeStore.getState().refresh();
+    expect(estimateMock.mock.calls.length).toBeGreaterThan(1);
+    expect(useTravelTimeStore.getState().estimates[key(e)]).toMatchObject({ mode: 'driving', walkUnder: 10 });
+  });
+
+  it('leaves an event with a mode of its own alone', async () => {
+    mockSettings.travelWalkUnderMinutes = 20;
+    mockSettings.travelEventPrefs = { a: { mode: 'transit', arriveEarlyMinutes: 0 } };
+    await useTravelTimeStore.getState().refresh();
+    expect(estimateMock).toHaveBeenCalledTimes(1);
+    expect(estimateMock.mock.calls[0][2]).toBe('transit');
+    expect(useTravelTimeStore.getState().estimates[key(e)].walkUnder).toBeUndefined();
+  });
+
+  it('asks nothing extra when the Settings mode is already walking', async () => {
+    mockSettings.travelWalkUnderMinutes = 20;
+    mockSettings.travelMode = 'walking';
+    await useTravelTimeStore.getState().refresh();
+    expect(estimateMock).toHaveBeenCalledTimes(1);
   });
 });
 
