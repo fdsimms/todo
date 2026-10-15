@@ -996,6 +996,19 @@ describe('getNextDueDate', () => {
     expect(getNextDueDate(task, '00:00')).not.toBeNull();
   });
 
+  it('keeps the end date\'s own day under a reset after midnight', () => {
+    // The occurrence sits at 4 AM on June 11, and the end date at midnight
+    // of June 11 (how the MCP server writes one): the same day, so it stays.
+    const task: Task = {
+      ...baseTask,
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      recurrenceEndDate: new Date(2025, 5, 11).toISOString(),
+    };
+    expect(getNextDueDate(task, '04:00')).not.toBeNull();
+    expect(getNextDueDate({ ...task, recurrenceEndDate: new Date(2025, 5, 10).toISOString() }, '04:00')).toBeNull();
+  });
+
   it('returns null when weekly next date exceeds recurrenceEndDate', () => {
     // NOW is Tuesday June 10. Weekly recurrenceDays=[4] → next = June 12 (Thu).
     // End date = June 11 → next (June 12) is after end date → null.

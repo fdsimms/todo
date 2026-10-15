@@ -158,6 +158,19 @@ describe('rankGrocerySuggestions', () => {
     expect(rankGrocerySuggestions('bananas', items, NOW).map(s => s.item.name)).toEqual(['Banana']);
   });
 
+  it('only reads a plural off a whole word, never the middle of one', () => {
+    const items = [
+      makeItem({ name: 'Peanut butter', purchaseCount: 20, lastPurchasedAt: daysAgo(1) }),
+      makeItem({ name: 'Pears' }),
+      makeItem({ name: 'Eggplant' }),
+      makeItem({ name: 'Nutmeg' }),
+      makeItem({ name: 'Pea shoots' }),
+    ];
+    expect(rankGrocerySuggestions('peas', items, NOW).map(s => s.item.name)).toEqual(['Pea shoots']);
+    expect(rankGrocerySuggestions('eggs', items, NOW)).toEqual([]);
+    expect(rankGrocerySuggestions('nuts', items, NOW)).toEqual([]);
+  });
+
   it('finds a two-word name typed in the other order', () => {
     const items = [makeItem({ name: 'Peanut butter' })];
     expect(rankGrocerySuggestions('butter peanut', items, NOW).map(s => s.item.name))

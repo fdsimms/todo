@@ -2872,9 +2872,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       const occurrence = task.recurrenceFromCompletion ? { date: today, gridDate: null } : getNextOccurrence(task, resetTime, { catchUp: true });
       if (!occurrence) continue;
       // The rule's own day as the anchor when a holiday moved this one off it.
+      // The anchor day goes back unchanged, as skipNextRecurrence's does: the
+      // app moved this row, so updateTask must not read a clamped Feb 28 off
+      // it and turn a routine on the 31st into one on the 28th for good.
       get().updateTask(task.id, {
         dueDate: occurrence.date.toISOString(),
         recurrenceAnchorDate: occurrence.gridDate?.toISOString() ?? null,
+        recurrenceAnchorDay: task.recurrenceAnchorDay,
         deferUntil: null,
       }, { skipPostponeCount: true });
     }

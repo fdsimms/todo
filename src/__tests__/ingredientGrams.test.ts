@@ -191,6 +191,17 @@ describe('a line written as a count', () => {
     expect(grams('1', null, [{ amount: 1, label: 'cup, chopped', grams: 160 }])).toBeNull();
   });
 
+  it('does not answer a bare count off a mass row either', () => {
+    const table: FoodPortion[] = [
+      { amount: 1, label: 'cup', grams: 172 },
+      { amount: 1, label: 'oz', grams: 28.35 },
+    ];
+    expect(grams('2', null, table)).toBeNull();
+    expect(grams('1 (15-ounce) can', null, table)).toBeNull();
+    // A whole-item row beside them still answers.
+    expect(grams('2', null, [...table, { amount: 1, label: 'medium', grams: 110 }])).toBeCloseTo(220, 4);
+  });
+
   it('is tolerant of plurals on both sides', () => {
     const cloves: FoodPortion[] = [{ amount: 1, label: 'clove', grams: 3 }];
     expect(grams('3 cloves', null, cloves)).toBeCloseTo(9, 4);

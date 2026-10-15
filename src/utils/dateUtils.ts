@@ -593,7 +593,10 @@ export function getNextOccurrence(
     }
   }
 
-  if (task.recurrenceEndDate && next > new Date(task.recurrenceEndDate)) {
+  // By calendar day, not instant: an occurrence sits at the reset hour and an
+  // end date at noon or midnight of its day, so under a 4 AM reset an end
+  // stored at midnight came before its own day's occurrence and dropped it.
+  if (task.recurrenceEndDate && dayKeyOf(next) > dayKeyOf(new Date(task.recurrenceEndDate))) {
     return null;
   }
   if (task.recurrenceCount !== null && task.recurrenceCount <= 1) {

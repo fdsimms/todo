@@ -138,8 +138,13 @@ function formatMetricSmall(value: number): string {
   return String(value >= 10 ? Math.round(value) : Math.round(value * 100) / 100);
 }
 
+// By unitKey, which keeps "g" and "grams" apart and leaves the spelled-out
+// millilitre forms uncollapsed, so each spelling is its own entry. Checking
+// "g" and "ml" alone turned "150 grams" at a quarter into "37 1/2 grams".
+const WHOLE_METRIC_UNITS = new Set(['g', 'gram', 'ml', 'milliliter', 'milliliters', 'millilitre', 'millilitres']);
+
 function formatScaledAmount(q: Quantity, scaled: Rational): string {
-  if (scaled.den !== 1 && (q.unit === 'g' || q.unit === 'ml')) {
+  if (scaled.den !== 1 && q.unit !== null && WHOLE_METRIC_UNITS.has(q.unit)) {
     return formatMetricSmall(rationalToNumber(scaled));
   }
   return formatRational(scaled, q.decimal);
@@ -193,8 +198,8 @@ export function scaleQuantity(quantity: string, factor: number): ScaledQuantity 
   if (q.rangeMax) {
     const scaledMin = multiplyRational(q.amount, multiplier);
     const scaledMax = multiplyRational(q.rangeMax, multiplier);
-    const renderedMin = formatRational(scaledMin, q.decimal);
-    const renderedMax = formatRational(scaledMax, q.decimal);
+    const renderedMin = formatScaledAmount(q, scaledMin);
+    const renderedMax = formatScaledAmount(q, scaledMax);
     const joined =
       q.rangeSeparator === '-' ? `${renderedMin}-${renderedMax}` : `${renderedMin} to ${renderedMax}`;
     const trailing = stripSourceCountAside(q.trailing);

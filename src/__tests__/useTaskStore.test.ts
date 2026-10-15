@@ -2020,6 +2020,18 @@ describe('completeTask', () => {
     expect(useTaskStore.getState().tasks[0].dueDate).toBe(due);
   });
 
+  it('keeps a routine on the 31st when moving it onto a shorter month', () => {
+    // Monthly from March 31; today is June 10, so the next one is June 30.
+    useTaskStore.setState({ tasks: [makeTask({
+      id: 'rent', recurrenceType: 'monthly', recurrenceInterval: 1,
+      dueDate: new Date(2025, 2, 31, 12).toISOString(), recurrenceAnchorDay: 31,
+    } as Partial<Task>)] });
+    useTaskStore.getState().redateRoutines(['rent']);
+    const moved = useTaskStore.getState().tasks[0];
+    expect(dayKeyOf(new Date(moved.dueDate!))).toBe('2025-06-30');
+    expect(moved.recurrenceAnchorDay).toBe(31);
+  });
+
   it('offers a day to a task freed by a blocker somebody else did, but not by an unattended close', () => {
     const blocked = () => makeTask({ id: 'w', blockedById: 'b1' } as Partial<Task>);
     useTaskStore.setState({ readyOffer: null, tasks: [makeTask({ id: 'b1' }), blocked()] });

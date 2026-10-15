@@ -242,6 +242,17 @@ describe('scaleQuantity: grams and millilitres', () => {
     expect(scaleQuantity('100 g', 0.5).text).toBe('50 g');
     expect(scaleQuantity('1/2 cup', 0.5).text).toBe('1/4 cup');
   });
+
+  it('rounds a spelled-out unit the same way', () => {
+    expect(scaleQuantity('150 grams', 0.25).text).toBe('38 grams');
+    expect(scaleQuantity('100 grams', 2 / 3).text).toBe('67 grams');
+    expect(scaleQuantity('250 milliliters', 1 / 3).text).toBe('83 milliliters');
+  });
+
+  it('rounds both ends of a range', () => {
+    expect(scaleQuantity('250-300 ml', 0.25).text).toBe('63-75 ml');
+    expect(scaleQuantity('100-150 g', 2 / 3).text).toBe('67-100 g');
+  });
 });
 
 describe('scaleQuantity: a parenthesised size before the container', () => {

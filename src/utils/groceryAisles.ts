@@ -284,7 +284,12 @@ export const AISLE_LEXICON: Record<string, string> = {
  * testable: the full key first, then the *last* token (English puts the head
  * noun last — "greek yogurt" → "yogurt" → Dairy & Eggs, "frozen peas" is
  * already an exact entry), then any token ("chicken noodle soup" → chicken).
- * Multi-word entries win because the full key is tried first.
+ *
+ * Multi-word entries win wherever they end the name, not only when they are
+ * all of it: the trailing phrases are tried longest first, ahead of the last
+ * token. Otherwise one word in front of a compound threw it away, and its
+ * last word decided the aisle: "creamy peanut butter" was Dairy, "red bell
+ * pepper" Baking & Spices and "vanilla ice cream" Dairy.
  */
 export function aisleForName(name: string): string | null {
   const key = groceryNameKey(name);
@@ -299,6 +304,10 @@ export function aisleForName(name: string): string | null {
   // is. Without it the last-token rule sent both to the fresh aisles.
   if (tokens.length > 1 && tokens[0] === 'frozen') return 'Frozen';
   if (tokens.length > 1) {
+    for (let i = 1; i < tokens.length - 1; i++) {
+      const tail = AISLE_LEXICON[tokens.slice(i).join(' ')];
+      if (tail) return tail;
+    }
     const last = AISLE_LEXICON[tokens[tokens.length - 1]];
     if (last) return last;
     for (const token of tokens) {

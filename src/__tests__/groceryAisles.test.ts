@@ -50,6 +50,16 @@ describe('aisleForName', () => {
     expect(aisleForName('peanut butter cups')).toBe('Snacks');
   });
 
+  it('keeps a compound that ends the name, with words in front of it', () => {
+    expect(aisleForName('creamy peanut butter')).toBe('Pantry');
+    expect(aisleForName('vanilla ice cream')).toBe('Frozen');
+    expect(aisleForName('red bell pepper')).toBe('Produce');
+    expect(aisleForName('diet ginger ale')).toBe('Beverages');
+    expect(aisleForName('reese\'s peanut butter cups')).toBe('Snacks');
+    // The head noun still wins over a compound earlier in the name.
+    expect(aisleForName('hot dog buns')).toBe('Bakery');
+  });
+
   it('resolves an exact name', () => {
     expect(aisleForName('milk')).toBe('Dairy & Eggs');
     expect(aisleForName('Bananas')).toBe('Produce');
