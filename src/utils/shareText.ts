@@ -41,7 +41,7 @@ function formatShareIngredientLine(
   const scaledResult = scaleQuantity(ingredient.quantity, scale);
   const scaled = scaledResult.text;
   const quantity = showContainerCount(convertScaledQuantity(scaledResult, unitSystem).text);
-  const weight = weights ? ingredientWeightText(ingredient, scaled, weights, unitSystem) : null;
+  const weight = weights ? ingredientWeightText(ingredient, scaledResult.exact ?? scaled, weights, unitSystem) : null;
   const line = [quantity, ingredient.name, weight && `(${weight})`].filter(Boolean).join(' ').trim();
   const trailing = [ingredient.prep, ingredient.purpose ? `for ${ingredient.purpose}` : null]
     .filter(Boolean)

@@ -645,6 +645,8 @@ describe('parseQuantityAmount', () => {
     expect(mergeQuantities(['1 1/2 cups', '1/2 cup'])).toBe('2 cups');
     expect(mergeQuantities(['1/3 cup', '1/3 cup', '1/3 cup'])).toBe('1 cup');
     expect(mergeQuantities(['1/3 cup', '1/4 cup'])).toBe('7/12 cup');
+    expect(mergeQuantities(['1 T', '1 T'])).toBe('2 T');
+    expect(mergeQuantities(['1 T', '1 t'])).toBe('1 T · 1 t');
   });
 
   it('still refuses anything that is not a whole amount-plus-unit string', () => {

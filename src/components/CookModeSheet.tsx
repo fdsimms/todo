@@ -555,7 +555,7 @@ export function CookModeSheet({
                 const scaled = scaleQuantity(flat.ingredient.quantity, scale);
                 const converted = convertScaledQuantity(scaled, unitSystem);
                 const marked = scaled.scaled || converted.converted || !!flat.swappedFrom;
-                const weight = ingredientWeightText(flat.ingredient, scaled.text, weightLookups, unitSystem);
+                const weight = ingredientWeightText(flat.ingredient, scaled.exact ?? scaled.text, weightLookups, unitSystem);
                 // The same headings the mid-step panel draws (`headings`,
                 // from `ingredientHeadings`): a component's name where one
                 // starts and the recipe's own section label where one does.
@@ -847,7 +847,7 @@ export function CookModeSheet({
                     const scaled = scaleQuantity(flat.ingredient.quantity, scale);
                     const converted = convertScaledQuantity(scaled, unitSystem);
                     const marked = scaled.scaled || converted.converted || !!flat.swappedFrom;
-                    const weight = ingredientWeightText(flat.ingredient, scaled.text, weightLookups, unitSystem);
+                    const weight = ingredientWeightText(flat.ingredient, scaled.exact ?? scaled.text, weightLookups, unitSystem);
                     const heading = headings[position];
                     // A hairline above a section the way the recipe screen
                     // draws one, except at the top of the list and except

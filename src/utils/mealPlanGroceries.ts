@@ -355,7 +355,9 @@ export function mergeQuantities(quantities: readonly string[]): string {
   // every one of them has to qualify, which is what the length check says.
   const whole = parsed.filter(isWholeAmount);
   if (whole.length === parsed.length) {
-    const unit = (whole[0].unitWritten ?? '').toLowerCase();
+    const written = whole[0].unitWritten ?? '';
+    // Case is only dropped where it carries no meaning: "T" stays a tablespoon.
+    const unit = written === 'T' ? written : written.toLowerCase();
     // Compared as unit *identities*, so "cup" and "cups" are the same unit and
     // still sum. Scaling generates both forms itself — a halved line says
     // "1/2 cup" where the recipe said "2 cups" — so a raw string comparison

@@ -208,6 +208,9 @@ const UNIT_SINGULARS: Record<string, string> = Object.fromEntries(
  * lookup does quietly.
  */
 export function unitKey(unit: string): string {
+  // Capital T is a tablespoon and lowercase t a teaspoon, the one pair of unit
+  // words that differ only by case, so it is the one that must not be folded.
+  if (unit.trim() === 'T') return 'T';
   const lower = unit.trim().toLowerCase();
   return UNIT_SINGULARS[lower] ?? lower;
 }

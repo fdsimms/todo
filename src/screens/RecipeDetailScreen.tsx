@@ -1250,7 +1250,7 @@ export function RecipeDetailScreen() {
     // cooking by the scale. Read off the scaled line before conversion, since
     // a converted amount is already rounded, and off the swapped line's name,
     // since that's the food actually going in.
-    const weightText = ingredientWeightText(line, scaledResult.text, weightLookups, unitSystem);
+    const weightText = ingredientWeightText(line, scaledResult.exact ?? scaledResult.text, weightLookups, unitSystem);
     const scaledHere = scaledResult.scaled
       || convertedResult.converted
       // A ratio'd swap is the app's number too — the same tint, for the same
