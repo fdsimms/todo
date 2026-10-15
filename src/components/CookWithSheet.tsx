@@ -199,7 +199,7 @@ export function CookWithSheet({ visible, onClose, onOpenRecipe, onOpenCookbook, 
           keyboardShouldPersistTaps="handled"
           {...keyboardScroll.props}
         >
-          <SegmentedControl options={MODE_OPTIONS} value={mode} onChange={m => { haptics.tap(); setMode(m); }} />
+          <SegmentedControl options={MODE_OPTIONS} value={mode} onChange={m => setMode(m)} />
           {mode === 'have' ? (
             have.length > 0 && (
               <Text style={styles.haveNote}>

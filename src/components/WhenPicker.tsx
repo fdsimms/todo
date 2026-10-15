@@ -468,7 +468,8 @@ export function WhenPicker({
     if (pendingRef.current) return;
     setSuggestion(null);
     setSuggestError(null);
-    haptics.impactLight();
+    // No press haptic: the suggestion is computed synchronously, so success
+    // or error below already lands on this same tap.
     try {
       const draftTask: Task = {
         ...BLANK_SNOOZE_TASK,

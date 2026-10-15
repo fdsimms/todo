@@ -1983,7 +1983,11 @@ const TaskItemRow = React.memo(function TaskItem({
     // is still animating, so tapping the next task keeps the previous one's gap
     // open even though it finished a moment ago.
     beginCompletionAnimation(task.id);
-    await (isChainFinish(task) ? haptics.chainFinish() : haptics.success());
+    // Not awaited: the native call is already on its way the moment this line
+    // runs, and waiting for its promise held the pop back by a bridge round
+    // trip, so the buzz landed a beat ahead of the thing it was about.
+    if (isChainFinish(task)) haptics.chainFinish();
+    else haptics.success();
     setCompleting(true);
     setQuotaCompleting(viaMeter);
     // Checkmark springs in while the circle pops, then the row fades to

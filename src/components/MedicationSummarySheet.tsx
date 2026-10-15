@@ -159,7 +159,6 @@ export function MedicationSummarySheet({ visible, onClose }: Props) {
   ];
 
   const pickPreset = (value: SummaryPreset) => {
-    haptics.tap();
     if (value === 'custom' && !custom) setCustom(range);
     setPreset(value);
   };

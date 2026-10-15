@@ -328,7 +328,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
         <SegmentedControl
           label="Type"
           value={kind}
-          onChange={next => { haptics.tap(); setKind(next); }}
+          onChange={next => setKind(next)}
           options={[
             { value: 'individual', label: 'Person' },
             { value: 'business', label: 'Business' },

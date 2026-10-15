@@ -1047,7 +1047,7 @@ export function StatsScreen() {
                 <SegmentedControl
                   options={EATING_RANGES}
                   value={eatingDays}
-                  onChange={next => { haptics.tap(); setEatingDays(next); }}
+                  onChange={next => setEatingDays(next)}
                   label="Eating range"
                 />
               </View>

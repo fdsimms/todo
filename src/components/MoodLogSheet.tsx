@@ -446,7 +446,7 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
         <SegmentedControl
           options={moodOptions}
           value={mood as MoodLevel}
-          onChange={value => { haptics.tap(); setMood(value); }}
+          onChange={value => setMood(value)}
           label="Mood"
         />
         <Text style={styles.moodCaption}>
@@ -481,7 +481,7 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
             <SegmentedControl
               options={SYMPTOM_SEVERITIES.map(s => ({ value: s.value, label: s.label }))}
               value={symptom.severity}
-              onChange={value => { haptics.tap(); setSeverity(symptom.name, value); }}
+              onChange={value => setSeverity(symptom.name, value)}
               label={`How bad was ${symptom.name}`}
             />
           </View>

@@ -352,7 +352,6 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
     : macroGrams(budget.proposedKcal, macroSplit);
 
   const pickMacroSplit = (next: string | null) => {
-    haptics.tap();
     if (next === CUSTOM_MACRO_ID && macroSplit !== null) {
       setCustomProteinPct(macroSplit.proteinPct);
       setCustomCarbsPct(macroSplit.carbsPct);
@@ -421,7 +420,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                   { value: 'gain' as WeightGoalDirection, label: 'Gain' },
                 ]}
                 value={direction}
-                onChange={next => { haptics.tap(); setDirection(next); }}
+                onChange={next => setDirection(next)}
                 label="Aim to"
               />
             </View>
@@ -552,7 +551,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                   { value: 'male' as BodySex | null, label: 'Male' },
                 ]}
                 value={sex}
-                onChange={next => { haptics.tap(); setSex(next); }}
+                onChange={next => setSex(next)}
                 label="Sex"
               />
               <Text style={styles.help}>
@@ -569,7 +568,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                   label: ACTIVITY_LABEL[level].label,
                 }))}
                 value={activity}
-                onChange={next => { haptics.tap(); setActivity(next); }}
+                onChange={next => setActivity(next)}
                 columns={2}
                 label="Activity"
               />
@@ -603,7 +602,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                         { value: true, label: 'Apple Health' },
                       ]}
                       value={measuredBasis}
-                      onChange={next => { haptics.tap(); setMeasuredBasis(next); }}
+                      onChange={next => setMeasuredBasis(next)}
                       label="How activity is counted"
                     />
                     <Text style={styles.help}>

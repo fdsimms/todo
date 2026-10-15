@@ -813,7 +813,6 @@ function StoresTab({
                   label={`What ${shop.name} sells`}
                   value={scoped ? 'some' : 'all'}
                   onChange={v => {
-                    haptics.tap();
                     onSetScoped(shop.id, v === 'some');
                   }}
                   options={RANGE_OPTIONS}

@@ -265,7 +265,7 @@ export function SleepScreen() {
               accessibilityLabel: `Show the last ${r.spoken}`,
             }))}
             value={rangeDays}
-            onChange={next => { haptics.tap(); setRangeDays(next); }}
+            onChange={next => setRangeDays(next)}
             label="Chart range"
           />
         </View>

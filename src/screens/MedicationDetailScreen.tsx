@@ -422,7 +422,6 @@ export function MedicationDetailScreen() {
             columns={3}
             label="How you take it"
             onChange={value => {
-              haptics.tap();
               setAsNeeded(name, value === 'asNeeded' ? true : value === 'scheduled' ? false : null);
             }}
           />
@@ -592,7 +591,7 @@ export function MedicationDetailScreen() {
                     value={supply?.unit ?? 'dose'}
                     columns={3}
                     label="What the supply counts"
-                    onChange={value => { haptics.tap(); updateSupply({ unit: value }); }}
+                    onChange={value => { updateSupply({ unit: value }); }}
                   />
                 </View>
                 <Text style={styles.fieldHint}>

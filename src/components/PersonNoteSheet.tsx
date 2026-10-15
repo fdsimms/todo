@@ -154,7 +154,7 @@ export function PersonNoteSheet({ visible, personId, personName, note, initialKi
         label="Kind"
         options={PERSON_NOTE_KINDS.map(k => ({ value: k, label: PERSON_NOTE_LABELS[k] }))}
         value={kind}
-        onChange={next => { haptics.tap(); setKind(next); }}
+        onChange={next => setKind(next)}
       />
       <Text style={styles.hint}>{PERSON_NOTE_HINTS[kind]}</Text>
 

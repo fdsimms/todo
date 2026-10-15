@@ -331,7 +331,7 @@ export function MedicationLogSheet({ visible, log, initialName, onClose, onDelet
           value={unit ?? ''}
           columns={5}
           label="Unit"
-          onChange={value => { haptics.tap(); setUnit(value === unit ? null : value); }}
+          onChange={value => setUnit(value === unit ? null : value)}
         />
       </View>
 
@@ -344,7 +344,7 @@ export function MedicationLogSheet({ visible, log, initialName, onClose, onDelet
           ]}
           value={asNeeded}
           label="When you take it"
-          onChange={value => { haptics.tap(); setAsNeeded(value); }}
+          onChange={value => setAsNeeded(value)}
         />
         {asNeeded ? null : (
           <>
@@ -387,7 +387,7 @@ export function MedicationLogSheet({ visible, log, initialName, onClose, onDelet
                 value={agoMinutes}
                 columns={4}
                 label="When you took it"
-                onChange={value => { haptics.tap(); setAgoMinutes(value); }}
+                onChange={value => setAgoMinutes(value)}
               />
             </View>
           )}

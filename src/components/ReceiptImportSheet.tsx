@@ -845,7 +845,6 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
             options={RECEIPT_STYLE_OPTIONS}
             value={receiptStyleOf(shopId)}
             onChange={value => {
-              haptics.tap();
               setShopReceiptStyle(shopId, value);
             }}
             label="What this store’s receipts show"
