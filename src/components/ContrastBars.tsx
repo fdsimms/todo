@@ -1,8 +1,10 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import Reanimated, { useSharedValue, useAnimatedStyle, withDelay, withTiming } from 'react-native-reanimated';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, interaction, type Colors } from '../theme';
+import { spacing, radius, font, interaction, animation, type Colors } from '../theme';
+import { useReduceMotion } from '../utils/useReduceMotion';
 import { useTextScale } from '../hooks/useTextScale';
 import { contrastBarPercent } from '../utils/moodInsights';
 
@@ -65,6 +67,35 @@ export interface ContrastBarsProps {
   onPress?: () => void;
 }
 
+/**
+ * One bar's fill, which sweeps out from empty when the row first appears and
+ * glides to a new length when the figures change. The "without" bar starts a
+ * beat after the "with" one (`delayMs`), so the eye reads them as a pair being
+ * compared rather than two things landing at once. Reduce Motion draws the bar
+ * at its length with no sweep.
+ *
+ * Reanimated, with the style attached unconditionally, for the reason
+ * `EmptyState` gives: the shared value is the one source of truth, so a
+ * re-render can't leave the bar stranded part-way.
+ */
+function BarFill({ percent, delayMs, style }: { percent: number; delayMs: number; style: object }) {
+  const reduceMotion = useReduceMotion();
+  const width = useSharedValue(0);
+
+  useEffect(() => {
+    // Assigning a plain number also cancels a sweep already running, which
+    // matters because the setting resolves asynchronously after first render.
+    if (reduceMotion) {
+      width.value = percent;
+      return;
+    }
+    width.value = withDelay(delayMs, withTiming(percent, { duration: animation.duration.slow }));
+  }, [percent, delayMs, reduceMotion]);
+
+  const animatedStyle = useAnimatedStyle(() => ({ width: `${width.value}%` }));
+  return <Reanimated.View style={[style, animatedStyle]} />;
+}
+
 export function ContrastBars({
   label,
   withLabel,
@@ -102,7 +133,11 @@ export function ContrastBars({
               VoiceOver, so a bar announcing itself would read the same figures
               a second time. */}
           <View style={styles.track} accessible={false} importantForAccessibility="no">
-            <View style={[styles.fill, { width: `${contrastBarPercent(side.fraction)}%` }]} />
+            <BarFill
+              percent={contrastBarPercent(side.fraction)}
+              delayMs={side.muted ? animation.duration.fast : 0}
+              style={styles.fill}
+            />
           </View>
           <Text style={[styles.value, wide && styles.valueWide, side.muted && styles.muted]}>
             {side.text}
