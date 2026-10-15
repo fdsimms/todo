@@ -38,28 +38,66 @@ export function mergeRanges(ranges: [number, number][]): [number, number][] {
   return merged;
 }
 
+/**
+ * A string reduced to what a person means when they type it: lower case, accents
+ * dropped ("résumé" is "resume") and curly apostrophes straightened ("mom’s" is
+ * "mom's"). `starts`/`ends` map each folded index back to the span of the
+ * original character it came from, so a range found in the folded text can be
+ * returned as a range into the text the row actually shows. A character can
+ * fold to a different length ("İ" lowercases to two code units), which is why
+ * the ranges can't simply be reused.
+ */
+function foldForSearch(text: string): { folded: string; starts: number[]; ends: number[] } {
+  let folded = '';
+  const starts: number[] = [];
+  const ends: number[] = [];
+  let pos = 0;
+  for (const ch of text) {
+    const end = pos + ch.length;
+    const out = ch
+      .replace(/[\u2018\u2019\u02BC]/g, "'")
+      .replace(/[\u201C\u201D]/g, '"')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/\p{M}/gu, '');
+    for (let i = 0; i < out.length; i++) {
+      starts.push(pos);
+      ends.push(end);
+    }
+    folded += out;
+    pos = end;
+  }
+  return { folded, starts, ends };
+}
+
 export function scoreSubstring(haystack: string, needle: string): { score: number; ranges: [number, number][] } {
   if (!needle) return { score: 0, ranges: [] };
-  const h = haystack.toLowerCase();
-  const n = needle.toLowerCase();
+  const { folded: h, starts, ends } = foldForSearch(haystack);
+  const n = foldForSearch(needle).folded;
+  if (!n) return { score: 0, ranges: [] };
+  const toRange = (first: number, last: number): [number, number] => [starts[first], ends[last]];
 
   // Exact substring match. Where it lands decides the score: the start of the
   // string beats the start of a later word beats the middle of a word, so "lo"
   // ranks "Look into flights" above "Use the cloud credits" and "Cardiologist".
   // Every occurrence is considered, since the first one can sit mid-word while
-  // a later one starts a word ("cloud ... lock").
+  // a later one starts a word ("cloud ... lock"). A match that also ends on a
+  // word boundary adds a little, so "Tax" outranks "Taxi to airport" for "tax".
   let bestIdx = -1;
   let bestBonus = -1;
   for (let idx = h.indexOf(n); idx !== -1; idx = h.indexOf(n, idx + 1)) {
-    const bonus = idx === 0 ? 40 : /[^\p{L}\p{N}]/u.test(h[idx - 1]) ? 30 : 0;
+    const after = h[idx + n.length];
+    const endsWord = after === undefined || /[^\p{L}\p{N}]/u.test(after);
+    const bonus =
+      (idx === 0 ? 40 : /[^\p{L}\p{N}]/u.test(h[idx - 1]) ? 30 : 0) + (endsWord ? 5 : 0);
     if (bonus > bestBonus) {
       bestIdx = idx;
       bestBonus = bonus;
     }
-    if (bonus === 40) break;
+    if (bonus === 45) break;
   }
   if (bestIdx !== -1) {
-    return { score: 100 + bestBonus, ranges: [[bestIdx, bestIdx + n.length]] };
+    return { score: 100 + bestBonus, ranges: [toRange(bestIdx, bestIdx + n.length - 1)] };
   }
 
   // Fuzzy: all chars of needle appear in order in haystack
@@ -81,7 +119,7 @@ export function scoreSubstring(haystack: string, needle: string): { score: numbe
   const span = lastMatch - firstMatch + 1;
   const density = n.length / span; // 1.0 = all chars consecutive
   const score = Math.round(density * 60);
-  return { score, ranges: firstMatch !== -1 ? [[firstMatch, lastMatch + 1]] : [] };
+  return { score, ranges: firstMatch !== -1 ? [toRange(firstMatch, lastMatch)] : [] };
 }
 
 export interface MatchExcerpt {

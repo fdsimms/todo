@@ -26,6 +26,13 @@ export const QUICK_SEARCH_LIMIT = 7;
  */
 const EXACT_TITLE_SCORE = 260;
 
+/**
+ * Per word, the least a task scores for having that word in its title as a
+ * whole substring (100 in `scoreSubstring`, doubled for a title). Scattered
+ * letters top out at 60 doubled, and notes, tags and the like add far less.
+ */
+const TITLE_SUBSTRING_SCORE = 200;
+
 export interface QuickSearchOutcome {
   /** Stack matches, capped to whatever's left of `limit`. */
   groupResults: GroupSearchResult[];
@@ -96,10 +103,20 @@ export function quickSearch(
   // scheduled for later or has no date, since a habit due today is far more
   // likely the one being looked for than the same words on a future task.
   const onToday = (r: SearchResult) => active(r) && (heldIds.has(r.task.id) || isTaskVisible(r.task));
+  // Real title matches lead scattered-letter guesses ("gym" inside "Go buy
+  // milk"), or seven such guesses on Today fill the card and push an exact
+  // "Gym" due later into the overflow. Same strong/weak line the stacks and
+  // projects get below; Today-first only orders rows within each side of it.
+  const wordsInQuery = query.trim().split(/\s+/).filter(Boolean).length;
+  const strongTask = (r: SearchResult) => r.score >= wordsInQuery * TITLE_SUBSTRING_SCORE;
+  const inTiers = (rows: CollapsedOccurrence<SearchResult>[]) => [
+    ...rows.filter(onToday),
+    ...rows.filter(r => active(r) && !onToday(r)),
+    ...rows.filter(r => !active(r)),
+  ];
   const orderedTasks = [
-    ...taskMatches.filter(onToday),
-    ...taskMatches.filter(r => active(r) && !onToday(r)),
-    ...taskMatches.filter(r => !active(r)),
+    ...inTiers(taskMatches.filter(strongTask)),
+    ...inTiers(taskMatches.filter(r => !strongTask(r))),
   ];
 
   const total = groupMatches.length + projectMatches.length + orderedTasks.length;
