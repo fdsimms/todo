@@ -4654,8 +4654,11 @@ export function TodayScreen() {
   const { sections: visibleLaterSections, hasMore: hasMoreLaterSections } = useMemo(
     // Only the first-paint budget may end a day partway: it is gone one
     // interaction later, and a drag needs whole days (see laterDaySections).
-    () => laterDaySections(laterOrder, laterTaskLimit, { cutMidDay: laterTaskLimit === LATER_INITIAL_TASK_LIMIT }),
-    [laterOrder, laterTaskLimit],
+    () => laterDaySections(laterOrder, laterTaskLimit, {
+      cutMidDay: laterTaskLimit === LATER_INITIAL_TASK_LIMIT,
+      foldStacks: !selectionMode,
+    }),
+    [laterOrder, laterTaskLimit, selectionMode],
   );
 
   // Stacks with three or more tasks on one Later day fold into a row (see
