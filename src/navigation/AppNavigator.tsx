@@ -1,7 +1,7 @@
 import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { PanResponder, StyleSheet, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
-import { navigationRef, navigateToTab, resetToRecipeDetail, flushPendingNavigation, currentTabName } from './navigationRef';
+import { navigationRef, navigateToTab, flushPendingNavigation, currentTabName } from './navigationRef';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -81,7 +81,7 @@ import { border, radius, spacing } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { hasRunningRecipeTimer, isCookTimerRunning } from '../utils/recipeTimer';
+import { hasRunningRecipeTimer } from '../utils/recipeTimer';
 import { screenShown } from '../utils/simpleMode';
 import { MENU_ROUTES, NAV_HUBS, NAV_MENU_ROWS, visibleTabRoutes, type NavDestination } from '../utils/navHubs';
 import { useNavMenuOptions } from '../hooks/useNavMenuOptions';
@@ -308,13 +308,6 @@ const MainTabs = React.memo(function MainTabs({
   const visibleTabs = useMemo(() => visibleTabRoutes(tabRoutes, menuOptions), [tabRoutes, menuOptions]);
   const anyTimerRunning = useRecipeStore(state => state.recipes.some(hasRunningRecipeTimer));
   const timerRunning = kitchenEnabled && anyTimerRunning;
-  // Which recipe the dot means, when it means a *cook* specifically: tapping
-  // More jumps straight into that recipe's Cook Mode instead of opening the
-  // drawer, the same destination CookingBar's own tap goes to. A prep timer
-  // alone still just opens the drawer as before — prep has no cook-mode
-  // screen for a tap to land on, so the dot there is see-only.
-  const runningCookRecipeId = useRecipeStore(state => state.recipes.find(isCookTimerRunning)?.id);
-  const cookingRecipeId = kitchenEnabled ? runningCookRecipeId : undefined;
   return (
     <Tab.Navigator initialRouteName={initialRouteName} screenOptions={screenOptions}>
       {/* The chosen tabs, in the chosen order, then More, then every other
@@ -349,19 +342,13 @@ const MainTabs = React.memo(function MainTabs({
           tabPress: (e) => {
             e.preventDefault();
             haptics.tap();
-            if (cookingRecipeId) {
-              resetToRecipeDetail(cookingRecipeId, { openCookMode: true });
-            } else {
-              onOpenMenu();
-            }
+            onOpenMenu();
           },
         }}
         options={{
-          tabBarAccessibilityLabel: cookingRecipeId
-            ? 'More, a cook timer is running, opens cook mode'
-            : timerRunning
-              ? 'More, a prep timer is running, opens menu'
-              : 'More, opens menu',
+          tabBarAccessibilityLabel: timerRunning
+            ? 'More, a timer is running, opens menu'
+            : 'More, opens menu',
           tabBarIcon: ({ color, focused }) => (
             <TabIconPlate focused={focused}>
               <View>
