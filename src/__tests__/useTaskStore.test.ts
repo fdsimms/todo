@@ -19765,6 +19765,16 @@ describe('addCompletedTask', () => {
     expect(stored.parentId).toBeNull();
     expect(stored.recurrenceType).toBe('none');
   });
+
+  // The journal's "Hung out" choice points the entry back at the page it came from.
+  it('carries a link when given one, and none otherwise', () => {
+    const at = new Date('2026-03-14T18:00:00.000Z');
+    const linked = useTaskStore.getState().addCompletedTask('Hung out with Gideon', at, ['p1'], 'dundundun://journal?entry=j1');
+    const plain = useTaskStore.getState().addCompletedTask('Called Mom', at, ['p1']);
+    const rows = useTaskStore.getState().tasks;
+    expect(rows.find(t => t.id === linked.id)!.linkUrl).toBe('dundundun://journal?entry=j1');
+    expect(rows.find(t => t.id === plain.id)!.linkUrl ?? null).toBeNull();
+  });
 });
 
 // ─── Fixes from the completion-path audit ────────────────────────────────────
