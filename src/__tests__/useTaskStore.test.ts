@@ -5969,7 +5969,7 @@ describe('checkTravelTasks', () => {
     const [task] = travelTasks();
     // 41 minutes plus the 5-minute margin, up to the next 5: 50 minutes ahead.
     expect(task.reminderTime).toBe(new Date(2026, 9, 5, 13, 10, 0).toISOString());
-    expect(task.title).toBe('Leave for Dentist (41 min by transit)');
+    expect(task.title).toBe('Leave for Dentist');
 
     // Switched off, the same held estimate is ignored and the typed lead returns.
     useSettingsStore.getState.mockReturnValue(settings({

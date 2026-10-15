@@ -401,7 +401,6 @@ import {
   travelOriginKey,
   travelSourceOf,
   travelTaskTitle,
-  describeTravelEstimate,
 } from '../utils/travelTasks';
 import { describeDisruptions, journeyDisruptions } from '../utils/transitAlerts';
 import { carryClockTime, dateToHHMM, onLogicalDay } from '../utils/clockTime';
@@ -7485,10 +7484,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // Judged over the trip itself, leaving to arriving — see alertOverlaps.
       const note = describeDisruptions(
         journeyDisruptions(transit, settings.transitLines, leaveMs, startMs, nowMs));
-      const estimateNote = match.estimate
-        ? describeTravelEstimate(match.estimate.minutes, match.estimate.mode)
-        : null;
-      const title = travelTaskTitle(match.event.title, note, estimateNote);
+      const title = travelTaskTitle(match.event.title, note);
 
       reconcileGeneratedTask({
         kind: 'travel',
