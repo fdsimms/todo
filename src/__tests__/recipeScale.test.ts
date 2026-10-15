@@ -15,6 +15,10 @@ import {
 const text = (quantity: string, factor: number) => scaleQuantity(quantity, factor).text;
 
 describe('scaleQuantity', () => {
+  it('keeps a quarter of a third as twelfths rather than a rounded decimal', () => {
+    expect(text('1/3 cup', 0.25)).toBe('1/12 cup');
+  });
+
   it('scales a whole number spaced apart from a Unicode fraction', () => {
     expect(scaleQuantity('1 ½ cups', 2).text).toBe('3 cups');
   });

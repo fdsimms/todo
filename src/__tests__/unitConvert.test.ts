@@ -1,4 +1,5 @@
 import { convertQuantity, describeUnitFamily, formatScaleWeight, measureQuantity, showContainerCount, unitFactor } from '../utils/unitConvert';
+import { scaleQuantity } from '../utils/recipeScale';
 
 const metric = (q: string) => convertQuantity(q, 'metric').text;
 const us = (q: string) => convertQuantity(q, 'us').text;
@@ -330,5 +331,11 @@ describe('showContainerCount', () => {
     for (const text of ['14 oz can', '2 lb, cut into 1-inch pieces', '2 cans', '1 2 cups flour', '', 'x2']) {
       expect(showContainerCount(text)).toBe(text);
     }
+  });
+});
+
+describe('convertQuantity after scaling by thirds', () => {
+  it('converts a quarter of a third cup to 1 1/3 tbsp, not a rounded 1.28', () => {
+    expect(convertQuantity(scaleQuantity('1/3 cup', 0.25).text, 'us').text).toBe('≈1 1/3 tbsp');
   });
 });
