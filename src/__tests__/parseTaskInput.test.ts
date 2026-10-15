@@ -1,4 +1,4 @@
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, contactForMention, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseWeatherWaitInput, parseMeterInput, parseRainSkipInput, parseTaskInputAheadOfRainSkip, parseSunWindowInput, parseProjectInput, parseWaitingOnInput, parseSubtasksInput, parseAvoidInput, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, getEditorMentionSuggestions, applyMentionOverrides, parseFromCompletionSuffix, scheduleClockInstant, type ParsedSchedule } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, contactForMention, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseWeatherWaitInput, parseMeterInput, parseRainSkipInput, parseTaskInputAheadOfRainSkip, parseSunWindowInput, parseProjectInput, parseWaitingOnInput, parseSubtasksInput, parseAvoidInput, parseAvoidEnd, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, getEditorMentionSuggestions, applyMentionOverrides, parseFromCompletionSuffix, scheduleClockInstant, type ParsedSchedule } from '../utils/parseTaskInput';
 
 // Tuesday, June 10 2025, 10:00 AM — same anchor as parseNaturalDate.test.ts
 const NOW = new Date(2025, 5, 10, 10, 0, 0);
@@ -2124,6 +2124,10 @@ describe('parseAvoidInput', () => {
     expect(parseTaskInput("Don't eat until 4pm", NOW)).toBeNull();
     expect(parseTaskInput('No snacking before 8:30pm', NOW)).toBeNull();
     expect(parseTaskInput("Don't check Twitter tomorrow", NOW)).not.toBeNull();
+    // A task already set to don't-do owns the closing time with no "don't" in front.
+    expect(parseTaskInput('Skip breakfast until 10am', NOW)).not.toBeNull();
+    expect(parseTaskInput('Skip breakfast until 10am', NOW, NOW, true)).toBeNull();
+    expect(parseAvoidEnd('Skip breakfast until 10am')).toEqual({ endsAt: '10:00', matchStart: 15, matchEnd: 25 });
   });
 
   it('offers the habit without an end when the clause names no usable time', () => {

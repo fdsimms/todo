@@ -3,7 +3,7 @@ import {
   parsePriorityInput, parseProjectInput, parseChainInput, parseLinkInput, parsePhoneInput, parseEmailInput,
   parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseWeatherWaitInput,
   parseSunWindowInput, parseMeterInput, parseRainSkipInput, parseWaitingOnInput, parseSubtasksInput,
-  parseAvoidInput,
+  parseAvoidInput, parseAvoidEnd,
 } from './parseTaskInput';
 import { canSkipForRain, defaultRainSkipMm, formatRain, type RainUnit } from './rainSkip';
 import { formatMeterAmount, meterKey } from './meters';
@@ -44,6 +44,8 @@ export interface TitleSuggestionContext {
   weatherTasksOn: boolean;
   weatherWait: string | null;
   polarity: 'positive' | 'negative';
+  /** The task's window end, so a closing time it already has isn't offered again. */
+  windowEnd: string | null;
   /** The task already has a meter. */
   hasMeter: boolean;
   /** Meter names already read, so "the car" files under "Car". */
@@ -74,7 +76,7 @@ export type TitleSuggestion =
   | { kind: 'rain'; hit: Hit<typeof parseRainSkipInput> & { mm: number } }
   | { kind: 'waiting'; hit: Hit<typeof parseWaitingOnInput> }
   | { kind: 'subtasks'; hit: Hit<typeof parseSubtasksInput> }
-  | { kind: 'avoid'; hit: Hit<typeof parseAvoidInput> };
+  | { kind: 'avoid'; hit: Hit<typeof parseAvoidInput> & { already: boolean } };
 
 /** The first suggestion the title offers, or null. Priority order is the order of the checks. */
 export function pickTitleSuggestion(title: string, ctx: TitleSuggestionContext): TitleSuggestion | null {
@@ -144,8 +146,17 @@ export function pickTitleSuggestion(title: string, ctx: TitleSuggestionContext):
   const subtasks = parseSubtasksInput(title);
   if (subtasks) return { kind: 'subtasks', hit: subtasks };
 
-  const avoid = ctx.plainKind && ctx.polarity !== 'negative' ? parseAvoidInput(title) : null;
-  if (avoid) return { kind: 'avoid', hit: avoid };
+  // A habit already set to don't-do is offered only its closing time, with or
+  // without a "don't" in front, and not again once the window end holds it.
+  if (ctx.plainKind) {
+    if (ctx.polarity !== 'negative') {
+      const avoid = parseAvoidInput(title);
+      if (avoid) return { kind: 'avoid', hit: { ...avoid, already: false } };
+    } else {
+      const end = parseAvoidEnd(title);
+      if (end && end.endsAt !== ctx.windowEnd) return { kind: 'avoid', hit: { ...end, already: true } };
+    }
+  }
 
   return null;
 }
@@ -221,7 +232,9 @@ export function describeTitleSuggestion(
     case 'subtasks': return { icon: 'list-outline', label: `${s.hit.subtasks.length} subtasks` };
     case 'avoid': return {
       icon: 'shield-checkmark-outline',
-      label: s.hit.endsAt ? `Avoid this habit · clean at ${formatClock(s.hit.endsAt)}` : 'Avoid this habit',
+      label: s.hit.already
+        ? `Clean at ${formatClock(s.hit.endsAt!)}`
+        : s.hit.endsAt ? `Avoid this habit · clean at ${formatClock(s.hit.endsAt)}` : 'Avoid this habit',
     };
   }
 }

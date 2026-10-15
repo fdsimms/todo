@@ -808,13 +808,19 @@ function parseSuffix(text: string, now: Date, singleWord: boolean, clockNow: Dat
  * which "in 2 hours" and "tonight" count from; see parseDatePart. Omit it
  * outside a caller that knows both, where they are the same instant.
  */
-export function parseTaskInput(input: string, now: Date = new Date(), clockNow: Date = now): ParsedTaskInput | null {
+export function parseTaskInput(
+  input: string,
+  now: Date = new Date(),
+  clockNow: Date = now,
+  /** The task is already a don't-do habit, so a closing "until 4pm" is its end time even without a "don't" in front. */
+  avoids = false,
+): ParsedTaskInput | null {
   if (!input) return null;
   const tokens = [...input.matchAll(/\S+/g)];
   if (tokens.length < 2) return null;
   // "Don't eat until 4pm": the closing time is when the habit's day counts as
   // clean (see parseAvoidInput), not a date to schedule the task on.
-  if (parseAvoidInput(input)?.endsAt) return null;
+  if (parseAvoidInput(input)?.endsAt || (avoids && parseAvoidEnd(input))) return null;
 
   const lower = input.toLowerCase();
   // An input that is entirely a schedule phrase ("on tuesday", "every monday")
@@ -1500,12 +1506,12 @@ export function parseRainSkipInput(input: string): ParsedRainSkip | null {
  * A one-off date is read the same way: the phrase then stays in the title,
  * which is where it would have stayed anyway, and the date isn't lost to it.
  */
-export function parseTaskInputAheadOfRainSkip(input: string, now: Date = new Date(), clockNow: Date = now): ParsedTaskInput | null {
-  const direct = parseTaskInput(input, now, clockNow);
+export function parseTaskInputAheadOfRainSkip(input: string, now: Date = new Date(), clockNow: Date = now, avoids = false): ParsedTaskInput | null {
+  const direct = parseTaskInput(input, now, clockNow, avoids);
   if (direct) return direct;
   const rain = parseRainSkipInput(input);
   if (!rain || input.slice(rain.matchEnd).trim()) return null;
-  const parsed = parseTaskInput(input.slice(0, rain.matchStart), now, clockNow);
+  const parsed = parseTaskInput(input.slice(0, rain.matchStart), now, clockNow, avoids);
   if (!parsed) return null;
   return { ...parsed, cleanTitle: `${parsed.cleanTitle} ${input.slice(rain.matchStart, rain.matchEnd)}` };
 }
@@ -1937,18 +1943,32 @@ export function parseAvoidInput(input: string): ParsedAvoid | null {
 }
 
 /**
- * "Don't eat until 4pm", "No snacking before 8:00pm": a clock time closing the
- * title says when the habit's day counts as clean (`Task.windowEnd`, which an
- * avoid-task reads as that and never as an expiry). Only a time on its own at
- * the very end counts, and a bare "until 4:00" is left alone because it could
- * be either half of the day; "until bed" or "before 4pm tomorrow" name no time
- * to close the day on, so the habit is still offered without one.
+ * A clock time closing the title ("... until 4pm", "... before 8:30pm") as
+ * `Task.windowEnd` holds it, which an avoid-task reads as when its day counts as
+ * clean and never as an expiry. Only a time on its own at the very end counts,
+ * and a bare "until 4:00" is left alone because it could be either half of the
+ * day; "until bed" or "before 4pm tomorrow" name no time to close the day on.
+ * `from` is where the clause may start, so the habit's own opening words can't
+ * be mistaken for it.
  */
+export function parseAvoidEnd(input: string, from = 0): { endsAt: string; matchStart: number; matchEnd: number } | null {
+  const clause = input.slice(from).match(/\s((?:until|till|before)\s+(\S.*?))\s*$/i);
+  if (!clause) return null;
+  const clock = extractTime(clause[2].toLowerCase());
+  if (!clock || clock.ambiguous || clock.rest) return null;
+  return {
+    endsAt: hhmm(clock.time),
+    matchStart: from + clause.index! + clause[0].indexOf(clause[1]),
+    matchEnd: input.trimEnd().length,
+  };
+}
+
+/** "Don't eat until 4pm": the habit, reaching through its closing time when it has one. */
 function withAvoidEnd(input: string, matchStart: number, leadEnd: number): ParsedAvoid {
-  const clause = input.slice(leadEnd).match(/\s(?:until|till|before)\s+(\S.*?)\s*$/i);
-  const clock = clause ? extractTime(clause[1].toLowerCase()) : null;
-  if (!clause || !clock || clock.ambiguous || clock.rest) return { matchStart, matchEnd: leadEnd, endsAt: null };
-  return { matchStart, matchEnd: input.trimEnd().length, endsAt: hhmm(clock.time) };
+  const end = parseAvoidEnd(input, leadEnd);
+  return end
+    ? { matchStart, matchEnd: end.matchEnd, endsAt: end.endsAt }
+    : { matchStart, matchEnd: leadEnd, endsAt: null };
 }
 
 export interface ParsedPriority {
