@@ -55,6 +55,15 @@ export function reasonSwitchLocked(reason: GroupedReason, reasons: readonly Shie
 }
 
 /**
+ * Whether turning off "Prevent deleting apps" would lift part of a live block.
+ * Any live reason counts, since the setting covers every block. Turning it on is
+ * never refused: that only strengthens the block.
+ */
+export function appRemovalSwitchLocked(reasons: readonly ShieldReasonEntry[]): boolean {
+  return reasons.length > 0;
+}
+
+/**
  * Whether changing the default group would move a live block. A reason whose
  * group is missing resolves to the default, so the old default and the new one
  * both count.

@@ -17,7 +17,7 @@ import {
 import { currentWindowEnd, describeDays, describeWindow, formatMinutes, isScheduleActive, MAX_BLOCK_SCHEDULES, type BlockSchedule } from '../../utils/blockSchedule';
 import { selectionLabel } from '../../utils/shieldReasonText';
 import {
-  BLOCK_EDIT_LOCKED_MESSAGE, BLOCK_EDIT_LOCKED_TITLE, defaultGroupLocked, groupBlockHint, groupEditLocked, reasonGroupLocked,
+  BLOCK_EDIT_LOCKED_MESSAGE, BLOCK_EDIT_LOCKED_TITLE, appRemovalSwitchLocked, defaultGroupLocked, groupBlockHint, groupEditLocked, reasonGroupLocked,
   reasonSwitchLocked, scheduleEditLocked,
 } from '../../utils/blockEditLock';
 import { confirmLivePicker } from '../../utils/livePickerConfirm';
@@ -677,7 +677,10 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
             ? 'While any block is on, apps can’t be deleted.'
             : 'Apps can be deleted during a block.'}
           toggle={blockAppRemoval}
-          onPress={() => setBlockAppRemoval(!blockAppRemoval)}
+          onPress={() => {
+            if (blockAppRemoval && refuseWhileBlocked(appRemovalSwitchLocked(reasons))) return;
+            setBlockAppRemoval(!blockAppRemoval);
+          }}
         />
       </SettingsSection>
 
