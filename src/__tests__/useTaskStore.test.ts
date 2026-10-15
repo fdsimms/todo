@@ -4439,6 +4439,63 @@ describe('checkProjectReviewTasks', () => {
   });
 });
 
+// ─── checkWeekendNudgeTasks ─────────────────────────────────────────────────
+
+describe('checkWeekendNudgeTasks', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
+    useSettingsStore: { getState: jest.Mock };
+  };
+
+  const settings = () => ({
+    dayResetTime: '00:00',
+    vacationMode: false,
+    calendarReadEnabled: false,
+    weekendNudgeTasks: true,
+    weekendNudgeTaskCategory: 'Personal',
+    weekendNudgeLeadDays: 2,
+    weekendNudgePlanThreshold: 0,
+    weekendNudgeLastWeekendKey: null,
+    setWeekendNudgeLastWeekendKey: jest.fn(),
+    newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+    titleRules: [],
+    collapsedCategories: [],
+  });
+
+  const nudges = () => useTaskStore.getState().tasks.filter(t => t.generatedKind === 'weekendNudge');
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2026, 9, 15, 10, 0, 0)); // Thu Oct 15 2026
+    useSettingsStore.getState.mockReturnValue(settings());
+    useTaskStore.setState({ tasks: [] });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('offers a bare weekend at home', () => {
+    useProjectStore.setState({ projects: [] });
+    useTaskStore.getState().checkWeekendNudgeTasks();
+    expect(nudges()).toHaveLength(1);
+  });
+
+  // A trip's span silences it even when the trip doesn't arm vacation mode,
+  // which is the only other thing that would.
+  it('stays quiet for a weekend inside a trip', () => {
+    useProjectStore.setState({
+      projects: [makeProject({
+        id: 'trip',
+        title: 'Lisbon',
+        awayStart: new Date(2026, 9, 16).toISOString(),
+        awayEnd: new Date(2026, 9, 19).toISOString(),
+      })],
+    });
+    useTaskStore.getState().checkWeekendNudgeTasks();
+    expect(nudges()).toHaveLength(0);
+  });
+});
+
 // ─── supplies ───────────────────────────────────────────────────────────────
 
 describe('supplies', () => {

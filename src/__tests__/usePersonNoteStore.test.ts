@@ -46,7 +46,7 @@ describe('addNote', () => {
   });
 
   it('starts with no day, which is the common case rather than a skipped step', () => {
-    expect(state().addNote('p1', 'food', 'No shellfish')!.relevantOn).toBeNull();
+    expect(state().addNote('p1', 'note', 'No shellfish')!.relevantOn).toBeNull();
   });
 });
 
@@ -76,7 +76,7 @@ describe('removeNotesFor', () => {
   // naming them, which is still a thing you did.
   it('drops every note about one person and leaves the rest', () => {
     state().addNote('p1', 'note', 'theirs');
-    state().addNote('p1', 'food', 'no shellfish');
+    state().addNote('p1', 'gift', 'a chalk bag');
     state().addNote('p2', 'note', 'somebody else');
 
     state().removeNotesFor('p1');

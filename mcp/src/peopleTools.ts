@@ -82,8 +82,6 @@ export interface PersonDetail extends SerializedPerson {
   history: { id: string; title: string; date: string }[];
   /** Each note with its id, for update_person_note and delete_person_note. `about` is the day a dated note is about. */
   giftIdeas?: PersonNoteRow[];
-  /** Food notes: what they like, can't eat, or are allergic to. */
-  food?: PersonNoteRow[];
   otherNotes?: PersonNoteRow[];
   archived?: true;
   /** They get no birthday task, or no birthday gift task, from the app. */
@@ -109,7 +107,6 @@ export function getPerson(replica: Replica, id: string): PersonDetail | null {
     .filter(n => n.kind === kind)
     .map(n => ({ id: n.id, text: n.text, ...(n.relevantOn ? { about: dayKey(new Date(n.relevantOn)) } : {}) }));
   const gifts = ofKind('gift');
-  const food = ofKind('food');
   const other = ofKind('note');
   return {
     ...serializePerson(replica, p, groups),
@@ -122,7 +119,6 @@ export function getPerson(replica: Replica, id: string): PersonDetail | null {
       .slice(0, HISTORY_LIMIT)
       .map(e => ({ id: e.taskId, title: e.title, date: dayKey(new Date(e.at)) })),
     ...(gifts.length > 0 ? { giftIdeas: gifts } : {}),
-    ...(food.length > 0 ? { food } : {}),
     ...(other.length > 0 ? { otherNotes: other } : {}),
     ...(p.archived ? { archived: true as const } : {}),
     ...(p.pinned ? { pinned: true as const } : {}),
@@ -209,7 +205,7 @@ export function savePersonGroup(replica: Replica, input: { name: string; newName
   };
 }
 
-const NOTE_KINDS = ['note', 'gift', 'food'] as const;
+const NOTE_KINDS = ['note', 'gift'] as const;
 export type NoteKind = (typeof NOTE_KINDS)[number];
 
 function aboutIso(about: string | null | undefined): string | null | undefined {

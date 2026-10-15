@@ -2911,16 +2911,16 @@ function seedPeople(today: Date): void {
   // The memory layer (#2047), which is rule 7 and the part that makes this a
   // feature you like rather than one you tolerate. Every kind gets one, and
   // each one lands somewhere: the gift ideas ride onto Gideon's birthday task
-  // (his birthday is two days away, so that task genuinely exists), the food
+  // (his birthday is two days away, so that task genuinely exists), the plain
   // notes show on each person's own page, and the dated one is what a note
   // able to go stale actually looks like.
   const { addNote } = usePersonNoteStore.getState();
   addNote(gideon.id, 'gift', 'The bouldering gym membership');
   addNote(gideon.id, 'gift', 'A good chalk bag');
-  addNote(gideon.id, 'food', 'No shellfish');
+  addNote(gideon.id, 'note', 'No shellfish');
   addNote(tessa.id, 'note', 'Starts the new job in September. Ask how it went.', addDays(today, 16).toISOString());
-  addNote(tessa.id, 'food', "Doesn’t drink");
-  addNote(mom.id, 'food', 'No shellfish');
+  addNote(tessa.id, 'note', "Doesn’t drink");
+  addNote(mom.id, 'note', 'No shellfish');
   // Its day has been and gone, which is the other half of the treatment: shown
   // quieter, sunk below the live ones, and never deleted by the app.
   addNote(mom.id, 'note', 'Ask how the hospital appointment went', subDays(today, 9).toISOString());

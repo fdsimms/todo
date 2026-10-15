@@ -6906,6 +6906,8 @@ function rowToMealPlanEntry(row: Record<string, unknown>): MealPlanEntry {
  * An unrecognised `kind` reads as `note` rather than being dropped, the same
  * call `rowToMealPlanEntry` makes about an unrecognised slot: a note that
  * renders under the wrong heading is recoverable, one that vanishes is not.
+ * That includes `food`, a kind that was removed along with meal plan guests:
+ * those rows are plain notes now, and an edit writes them back as `note`.
  */
 function rowToPersonNote(row: Record<string, unknown>): PersonNote {
   return {

@@ -219,7 +219,11 @@ confirmation (`slipConfirm.ts`), `useTaskStore.logSlip` and the MCP replica thro
   it without claiming.
 - **A slip the balance covers is the claim.** It spends the reward's cost and records no slip, so
   the streak stands; the undo is the claim's. Paying after is the same outcome as paying first; what
-  this exists to stop is never paying.
+  this exists to stop is never paying. With no slip there is no slip penalty either, so a covered
+  slip on a habit that blocks apps on a slip blocks nothing. That is deliberate and not a breach of
+  "coins never touch the app shield": the claim is the honest way to have the thing, the same as
+  claiming first, and the block is for a slip. `logSlip` returns before `chargePenaltyShield` for
+  this reason.
 - **A slip it doesn't cover is a real slip, charged the reward's price down to zero.** The streak
   breaks and the charge replaces the habit's own slip cost. The charge is keyed by habit, day and
   which slip of the day it was (`guardChargeSeed`), because a charge floored to nothing writes no

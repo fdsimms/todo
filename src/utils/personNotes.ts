@@ -13,7 +13,7 @@ import type { PersonNote, PersonNoteKind } from '../types';
  * slice of this, shipped early so the first nudge anybody sees is warm; this is
  * the rest of it.
  *
- * Three kinds, and each has its own heading on the person's own screen so they
+ * Two kinds, and each has its own heading on the person's own screen so they
  * don't blur together — `gift` is additionally carried onto the birthday task.
  *
  * **Nothing here scores, ranks, counts or grades anybody.** It sorts notes,
@@ -28,14 +28,12 @@ import type { PersonNote, PersonNoteKind } from '../types';
 export const PERSON_NOTE_LABELS: Record<PersonNoteKind, string> = {
   note: 'Note',
   gift: 'Gift idea',
-  food: 'Food',
 };
 
 /** The uppercase section heading each kind sits under on a person's screen. */
 export const PERSON_NOTE_HEADINGS: Record<PersonNoteKind, string> = {
   note: 'NOTES',
   gift: 'GIFT IDEAS',
-  food: 'FOOD',
 };
 
 /**
@@ -43,12 +41,11 @@ export const PERSON_NOTE_HEADINGS: Record<PersonNoteKind, string> = {
  *
  * The only in-app documentation these have, same job a `CollapsibleField`'s
  * `hint` does. Each says where the note will actually turn up, because that is
- * the difference between the three and it is not guessable from the name.
+ * the difference between the two and it is not guessable from the name.
  */
 export const PERSON_NOTE_HINTS: Record<PersonNoteKind, string> = {
   note: 'Something to remember. Shows on their page.',
   gift: 'Something to get them. Shows on their birthday task.',
-  food: 'Something about what they eat. Shows on their page.',
 };
 
 /** A note that is still live: not filed away, and with something in it. */

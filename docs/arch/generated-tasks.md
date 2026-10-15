@@ -1391,6 +1391,10 @@ in the mechanism.
   failure directions are not symmetrical the way they are for a cue painted on a
   date picker, where being wrong is read while booking something. Being wrong
   here costs one task, once a weekend, on a row with a checkbox on it.
+- **A Saturday or Sunday inside a trip's away span is not bare**, read off
+  `DayLoad.away` and blocking the way an all-day busy event does. Vacation mode
+  already pauses this generator, but only a trip with `awayPauses` arms vacation
+  mode, so on its own that left a weekend away being offered as one to fill.
 - **`upcomingWeekend` does not roll forward on Saturday and Sunday**, even though
   nothing can be raised on those days. The stale pass runs on them, and a window
   that had rolled forward would read Friday's live row as belonging to a weekend

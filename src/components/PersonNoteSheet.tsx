@@ -40,9 +40,9 @@ interface Props {
  * `utils/personNotes.ts`.
  *
  * Three fields and no more: what it says, which kind it is, and the day it is
- * about. **The kind is a `SegmentedControl` rather than three separate add
+ * about. **The kind is a `SegmentedControl` rather than separate add
  * buttons** because it is exactly what that control is for — one of a small
- * closed set — and because the three read as one question ("what sort of thing
+ * closed set — and because the kinds read as one question ("what sort of thing
  * is this?") rather than as three places to go.
  *
  * The date is optional and null by default, which is the common case rather

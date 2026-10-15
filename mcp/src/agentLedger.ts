@@ -937,21 +937,21 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
     addPersonNote(personId, kind, text, relevantOn) {
       const note = replica.addPersonNote(personId, kind, text, relevantOn);
       const who = replica.people().find(p => p.id === personId)?.name ?? 'someone';
-      log({ action: 'created', subject: 'person', title: who, taskId: null, note: `Add a ${kind === 'gift' ? 'gift idea' : kind === 'food' ? 'food note' : 'note'} for ${who}` });
+      log({ action: 'created', subject: 'person', title: who, taskId: null, note: `Add a ${kind === 'gift' ? 'gift idea' : 'note'} for ${who}` });
       return note;
     },
 
     updatePersonNote(id, patch) {
       const note = replica.updatePersonNote(id, patch);
       const who = replica.people().find(p => p.id === note.personId)?.name ?? 'someone';
-      log({ action: 'edited', subject: 'person', title: who, taskId: null, note: `Change the ${note.kind === 'gift' ? 'gift idea' : note.kind === 'food' ? 'food note' : 'note'} ${snippet(note.text)} for ${who}` });
+      log({ action: 'edited', subject: 'person', title: who, taskId: null, note: `Change the ${note.kind === 'gift' ? 'gift idea' : 'note'} ${snippet(note.text)} for ${who}` });
       return note;
     },
 
     deletePersonNote(id) {
       const note = replica.deletePersonNote(id);
       const who = replica.people().find(p => p.id === note.personId)?.name ?? 'someone';
-      log({ action: 'cleared', subject: 'person', title: who, taskId: null, note: `Delete the ${note.kind === 'gift' ? 'gift idea' : note.kind === 'food' ? 'food note' : 'note'} ${snippet(note.text)} for ${who}` });
+      log({ action: 'cleared', subject: 'person', title: who, taskId: null, note: `Delete the ${note.kind === 'gift' ? 'gift idea' : 'note'} ${snippet(note.text)} for ${who}` });
       return note;
     },
 

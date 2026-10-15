@@ -2073,7 +2073,7 @@ export interface Replica {
   reorderPeople(ids: string[]): void;
   /** Add, rename or delete a person group, or set whether its members are caught up with one at a time. */
   savePersonGroup(name: string, change: { newName?: string; delete?: boolean; catchUpSeparately?: boolean }): { group: PersonGroup | null; members: number };
-  /** A note, a gift idea or a food note about someone, through `usePersonNoteStore.addNote`. */
+  /** A note or a gift idea about someone, through `usePersonNoteStore.addNote`. */
   addPersonNote(personId: string, kind: PersonNote['kind'], text: string, relevantOn?: string | null): PersonNote;
   updatePersonNote(id: string, patch: { text?: string; kind?: PersonNote['kind']; relevantOn?: string | null; archived?: boolean }): PersonNote;
   deletePersonNote(id: string): PersonNote;
@@ -8058,7 +8058,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
 
     addPersonNote(personId: string, kind: PersonNote['kind'], text: string, relevantOn: string | null = null): PersonNote {
       if (!people().some(p => p.id === personId)) throw new Error(`No person with id ${personId}.`);
-      if (!['note', 'gift', 'food'].includes(kind)) throw new Error('kind is note, gift or food.');
+      if (!['note', 'gift'].includes(kind)) throw new Error('kind is note or gift.');
       const { usePersonNoteStore } = require('../../src/store/usePersonNoteStore') as typeof import('../../src/store/usePersonNoteStore'); // eslint-disable-line @typescript-eslint/no-require-imports
       usePersonNoteStore.getState().initialize();
       const note = usePersonNoteStore.getState().addNote(personId, kind, text, relevantOn);
@@ -8073,7 +8073,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const note = store.notes.find(n => n.id === id);
       if (!note) throw new Error(`No note with id ${id}. get_person lists them.`);
       if (patch.text !== undefined && !patch.text.trim()) throw new Error('A note needs some text. To remove it, use delete_person_note.');
-      if (patch.kind !== undefined && !['note', 'gift', 'food'].includes(patch.kind)) throw new Error('kind is note, gift or food.');
+      if (patch.kind !== undefined && !['note', 'gift'].includes(patch.kind)) throw new Error('kind is note or gift.');
       const { archived, ...rest } = patch;
       store.updateNote(id, {
         ...rest,

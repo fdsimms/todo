@@ -137,6 +137,7 @@ import {
   dbGetDeviceId,
   dbGetSyncCursor,
   dbSetSyncCursor,
+  dbGetAllPersonNotes,
 } from '../db/database';
 import { SYNC_FORMAT, type SyncPayload } from '../utils/syncMerge';
 import {
@@ -4235,6 +4236,26 @@ describe('meal plan entries', () => {
     dbInsertMealPlanEntry(planned);
 
     expect(dbGetMealPlanEntries('2026-08-05', '2026-08-05')).toEqual([planned]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Person notes
+// ---------------------------------------------------------------------------
+
+describe('person notes', () => {
+  // `food` was a third kind, for the meal plan's guests, and was removed with
+  // them. Installs that wrote one keep the row, and it has to come back as a
+  // plain note rather than vanish from the person's page.
+  it('reads a removed kind as a plain note', () => {
+    mockRawDb.prepare(
+      `INSERT INTO person_notes (id, person_id, kind, text, created_at, relevant_on, archived_at, sort_order)
+       VALUES (?,?,?,?,?,?,?,?)`
+    ).run('n-food', 'p1', 'food', 'No shellfish', '2026-01-01T00:00:00.000Z', null, null, 1);
+
+    const [note] = dbGetAllPersonNotes();
+    expect(note.kind).toBe('note');
+    expect(note.text).toBe('No shellfish');
   });
 });
 
