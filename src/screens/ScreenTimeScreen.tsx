@@ -13,6 +13,8 @@ import { useShieldReasons } from '../hooks/useShieldReasons';
 import { usePullToSearch } from '../hooks/usePullToSearch';
 import { screenTimeBridge } from '../utils/screenTimeBridge';
 import { allGroups, DEFAULT_GROUP_ID } from '../utils/appGroups';
+import { groupEditLocked } from '../utils/blockEditLock';
+import { reconcileAppShield } from '../utils/appShieldReconcile';
 import { useAppGroupStore } from '../store/useAppGroupStore';
 import { useNfcKeyStore } from '../store/useNfcKeyStore';
 import { isNfcSupported, scanKeyTag } from '../utils/nfcBridge';
@@ -110,12 +112,28 @@ export function ScreenTimeScreen() {
     }
     setCounts(next);
   }, [customGroups]);
+  // A removal staged while a block held the group, by group id (see `blockEditLock.ts`).
+  const [pending, setPending] = useState<Record<string, boolean>>({});
+  const refreshPending = useCallback(() => {
+    const bridge = screenTimeBridge();
+    const next: Record<string, boolean> = {};
+    for (const group of allGroups(customGroups)) {
+      next[group.id] = (bridge?.screenTimePendingCount(group.id) ?? null) !== null;
+    }
+    setPending(next);
+  }, [customGroups]);
   const chooseApps = useCallback(async (groupId: string = DEFAULT_GROUP_ID) => {
     const bridge = screenTimeBridge();
     if (!bridge) return;
-    const picked = await bridge.presentAppPicker(groupId);
-    if (picked) refreshSelection();
-  }, [refreshSelection]);
+    // A live group takes adds now and removals when its block ends.
+    const live = groupEditLocked(groupId, reasons);
+    const picked = await bridge.presentAppPicker(groupId, live);
+    if (!picked) return;
+    refreshSelection();
+    refreshPending();
+    // An add to a live group has to reach the shield now, not at the next reconcile.
+    if (live) reconcileAppShield();
+  }, [reasons, refreshSelection, refreshPending]);
 
   const { scrollRef, contentRef, reportRow, scrollProps } = useSettingsFocusScroll(focusStamp);
 
@@ -125,13 +143,14 @@ export function ScreenTimeScreen() {
   // them from elsewhere.
   useFocusEffect(useCallback(() => {
     refreshSelection();
+    refreshPending();
     return () => {
       if (entryId !== undefined) {
         (navigation as never as { setParams: (p: object) => void })
           .setParams({ entryId: undefined, focusStamp: undefined });
       }
     };
-  }, [entryId, navigation, refreshSelection]));
+  }, [entryId, navigation, refreshSelection, refreshPending]));
 
   // Which groups count toward "are my apps blocked": the ones a live reason
   // names. With no reason live, every group counts, so the card can still say
@@ -239,6 +258,7 @@ export function ScreenTimeScreen() {
             <ScreenTimeSettings
               reasons={reasons}
               counts={counts}
+              pending={pending}
               onChooseApps={chooseApps}
             />
           </SettingsFocusProvider>

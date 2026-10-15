@@ -342,6 +342,54 @@ extension ScreenTimeShared {
     return "screentime_selection_\(groupId).json"
   }
 
+  /// Where a group's staged selection lives while a block holds the group.
+  ///
+  /// Adding apps to a live group takes effect at once, but removing one would
+  /// lift part of a block nobody ended, so a removal is kept here and becomes
+  /// the live selection the next time `applyGroups` runs without the group in
+  /// its list (`promotePendingSelections`). Plain data, so the extension can
+  /// promote one without decoding it.
+  static func pendingFileName(forGroup groupId: String) -> String? {
+    guard isValidGroupID(groupId) else { return nil }
+    return "screentime_pending_\(groupId).json"
+  }
+
+  static let pendingFilePrefix = "screentime_pending_"
+
+  /// Whether a staged selection is waiting for this group.
+  static func hasPending(groupId: String) -> Bool {
+    guard let name = pendingFileName(forGroup: groupId), let url = fileURL(name) else { return false }
+    return FileManager.default.fileExists(atPath: url.path)
+  }
+
+  @discardableResult
+  static func removePending(groupId: String) -> Bool {
+    guard let name = pendingFileName(forGroup: groupId) else { return false }
+    return remove(name)
+  }
+
+  /// Make every staged selection live, for the groups `holding` does not name.
+  ///
+  /// Run by `applyGroups`, which is called both by the app's reconcile and by
+  /// the monitor extension when a block ends with the app closed, so a staged
+  /// removal lands at the same moment in either process. A group still in
+  /// `holding` keeps its pending file for the next pass. Moves the bytes rather
+  /// than decoding them, so it needs neither FamilyControls nor an unlocked app.
+  static func promotePendingSelections(holding: [String]) {
+    guard let container = containerURL() else { return }
+    let directory = container.appendingPathComponent("Library/Application Support", isDirectory: true)
+    guard let names = try? FileManager.default.contentsOfDirectory(atPath: directory.path) else { return }
+    for name in names where name.hasPrefix(pendingFilePrefix) && name.hasSuffix(".json") {
+      let groupId = String(name.dropFirst(pendingFilePrefix.count).dropLast(".json".count))
+      guard !holding.contains(groupId),
+            let target = selectionFileName(forGroup: groupId),
+            let data = readData(name) else { continue }
+      // The pending file goes only once the live one is written, so a failed
+      // write is retried by the next pass rather than lost.
+      if writeData(data, to: target) { _ = remove(name) }
+    }
+  }
+
   static func parseIso(_ iso: String?) -> Date? {
     guard let iso = iso else { return nil }
     let withFraction = ISO8601DateFormatter()
@@ -445,6 +493,44 @@ extension ScreenTimeShared {
     return writeData(data, to: name)
   }
 
+  @available(iOS 16.0, *)
+  static func readPendingSelection(groupId: String) -> FamilyActivitySelection? {
+    guard let name = pendingFileName(forGroup: groupId), let data = readData(name) else { return nil }
+    return try? JSONDecoder().decode(FamilyActivitySelection.self, from: data)
+  }
+
+  @available(iOS 16.0, *)
+  @discardableResult
+  static func writePendingSelection(_ selection: FamilyActivitySelection, groupId: String) -> Bool {
+    guard let name = pendingFileName(forGroup: groupId),
+          let data = try? JSONEncoder().encode(selection) else { return false }
+    return writeData(data, to: name)
+  }
+
+  /// Whether `selection` still holds everything in `other`: no app, category
+  /// or website of `other` is missing from it.
+  @available(iOS 16.0, *)
+  static func selection(_ selection: FamilyActivitySelection, covers other: FamilyActivitySelection) -> Bool {
+    other.applicationTokens.isSubset(of: selection.applicationTokens)
+      && other.categoryTokens.isSubset(of: selection.categoryTokens)
+      && other.webDomainTokens.isSubset(of: selection.webDomainTokens)
+  }
+
+  /// `selection` with everything in `other` added back. Both the picker's own
+  /// sets and the tokens are merged, so the result reads the same whichever
+  /// the picker or the shield looks at.
+  @available(iOS 16.0, *)
+  static func selection(_ selection: FamilyActivitySelection, adding other: FamilyActivitySelection) -> FamilyActivitySelection {
+    var merged = selection
+    merged.applications.formUnion(other.applications)
+    merged.categories.formUnion(other.categories)
+    merged.webDomains.formUnion(other.webDomains)
+    merged.applicationTokens.formUnion(other.applicationTokens)
+    merged.categoryTokens.formUnion(other.categoryTokens)
+    merged.webDomainTokens.formUnion(other.webDomainTokens)
+    return merged
+  }
+
   #if canImport(ManagedSettings)
   /// Write the shield as the union of these groups' apps, or lift it when they
   /// hold nothing. Idempotent, which is what lets both processes call it freely.
@@ -455,6 +541,9 @@ extension ScreenTimeShared {
   @available(iOS 16.0, *)
   @discardableResult
   static func applyGroups(_ groupIds: [String]) -> Bool {
+    // A removal staged while a group was blocking becomes live here, the first
+    // time the group is not part of what is being held.
+    promotePendingSelections(holding: groupIds)
     var applications = Set<ApplicationToken>()
     var categories = Set<ActivityCategoryToken>()
     var webDomains = Set<WebDomainToken>()

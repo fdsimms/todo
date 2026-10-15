@@ -112,12 +112,19 @@ public class TodoScreenTimeBridgeModule: Module {
     /// Present the system app picker, seeded with the current selection, and
     /// save whatever comes back.
     ///
+    /// `live` is true while a block is holding this group. Then the choice is
+    /// split: everything it adds is saved to the live selection at once, and
+    /// anything it removes is staged (`ScreenTimeShared.pendingFileName`) until
+    /// the block ends, so the picker can strengthen a block but never lift part
+    /// of it. The picker is seeded with the staged choice when there is one, so
+    /// a removal made earlier is still shown as removed.
+    ///
     /// Returns true when the user confirmed a choice, false when they
     /// cancelled or the picker could not be shown. The apps themselves are
     /// never named to JS: `ApplicationToken` is opaque and only renderable by
     /// SwiftUI, which is the whole reason this presents a native sheet rather
     /// than handing a list back for React to draw.
-    AsyncFunction("presentAppPicker") { (groupId: String, promise: Promise) in
+    AsyncFunction("presentAppPicker") { (groupId: String, live: Bool, promise: Promise) in
       #if canImport(FamilyControls)
       if #available(iOS 16.0, *) {
         guard let presenter = Self.topViewController() else {
@@ -128,12 +135,26 @@ public class TodoScreenTimeBridgeModule: Module {
           promise.resolve(false)
           return
         }
-        let initial = ScreenTimeShared.readSelection(groupId: groupId) ?? FamilyActivitySelection()
+        let current = ScreenTimeShared.readSelection(groupId: groupId) ?? FamilyActivitySelection()
+        let initial = ScreenTimeShared.readPendingSelection(groupId: groupId) ?? current
         var host: UIViewController?
         let view = ScreenTimePickerView(
           initialSelection: initial,
           onDone: { selection in
-            ScreenTimeShared.writeSelection(selection, groupId: groupId)
+            if live {
+              // Read again: a pass may have promoted a staged choice while the
+              // picker was open, and the live selection is what must be kept.
+              let held = ScreenTimeShared.readSelection(groupId: groupId) ?? current
+              ScreenTimeShared.writeSelection(ScreenTimeShared.selection(selection, adding: held), groupId: groupId)
+              if ScreenTimeShared.selection(selection, covers: held) {
+                ScreenTimeShared.removePending(groupId: groupId)
+              } else {
+                ScreenTimeShared.writePendingSelection(selection, groupId: groupId)
+              }
+            } else {
+              ScreenTimeShared.writeSelection(selection, groupId: groupId)
+              ScreenTimeShared.removePending(groupId: groupId)
+            }
             host?.dismiss(animated: true) { promise.resolve(true) }
           },
           onCancel: {
@@ -149,6 +170,24 @@ public class TodoScreenTimeBridgeModule: Module {
       promise.resolve(false)
     }
     .runOnQueue(.main)
+
+    /// The staged choice for a group, as counts, with `pending` 1 when there is
+    /// one and 0 when there is not. A removal made while a block held the group.
+    Function("pendingSelectionCount") { (groupId: String) -> [String: Int] in
+      var counts = ["pending": 0, "applications": 0, "categories": 0, "websites": 0]
+      #if canImport(FamilyControls)
+      if #available(iOS 16.0, *) {
+        TodoScreenTimeExceptionCatcher.runCatchingExceptions {
+          guard let selection = ScreenTimeShared.readPendingSelection(groupId: groupId) else { return }
+          counts["pending"] = 1
+          counts["applications"] = selection.applicationTokens.count
+          counts["categories"] = selection.categoryTokens.count
+          counts["websites"] = selection.webDomainTokens.count
+        }
+      }
+      #endif
+      return counts
+    }
 
     /// How many apps, categories and websites are picked. Counts only — see the note on
     /// `presentAppPicker` for why there are no names here.
@@ -171,6 +210,7 @@ public class TodoScreenTimeBridgeModule: Module {
     Function("clearSelection") { (groupId: String) -> Bool in
       guard let name = ScreenTimeShared.selectionFileName(forGroup: groupId) else { return false }
       ScreenTimeShared.remove(name)
+      ScreenTimeShared.removePending(groupId: groupId)
       return true
     }
 
@@ -475,6 +515,8 @@ public class TodoScreenTimeBridgeModule: Module {
           store.shield.webDomains = nil
           store.shield.webDomainCategories = nil
           store.application.denyAppRemoval = nil
+          // Nothing is held now, so every staged removal becomes live.
+          ScreenTimeShared.promotePendingSelections(holding: [])
           cleared = true
         }
         return cleared

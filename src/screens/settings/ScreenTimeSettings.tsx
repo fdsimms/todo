@@ -17,9 +17,10 @@ import {
 import { currentWindowEnd, describeDays, describeWindow, formatMinutes, isScheduleActive, MAX_BLOCK_SCHEDULES, type BlockSchedule } from '../../utils/blockSchedule';
 import { selectionLabel } from '../../utils/shieldReasonText';
 import {
-  BLOCK_EDIT_LOCKED_MESSAGE, BLOCK_EDIT_LOCKED_TITLE, defaultGroupLocked, groupEditLocked, reasonGroupLocked,
+  BLOCK_EDIT_LOCKED_MESSAGE, BLOCK_EDIT_LOCKED_TITLE, defaultGroupLocked, groupBlockHint, groupEditLocked, reasonGroupLocked,
   reasonSwitchLocked, scheduleEditLocked,
 } from '../../utils/blockEditLock';
+import { confirmLivePicker } from '../../utils/livePickerConfirm';
 import { useColors } from '../../theme/ThemeContext';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
@@ -44,6 +45,8 @@ interface Props {
   reasons: readonly ShieldReasonEntry[];
   /** How many apps and categories each group has picked, by group id. */
   counts: Record<string, { applications: number; categories: number; websites?: number }>;
+  /** Groups with a removal staged until their block ends, by group id. */
+  pending: Record<string, boolean>;
   /** Opens the system picker for one group. Owned by the screen, which also shows the counts. */
   onChooseApps: (groupId: string) => Promise<void>;
 }
@@ -64,7 +67,7 @@ interface Props {
  * lifting a block from this screen would bypass that record, so a new one goes
  * through `releaseAllBlocks` rather than writing a store.
  */
-export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
+export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
   const navigation = useNavigation();
@@ -117,14 +120,15 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
   const groupLocked = (groupId: string) => groupEditLocked(groupId, reasons);
   const groupHint = (groupId: string) => {
     const parts = [
-      ...(groupLocked(groupId) ? ['Blocking now, so its apps can’t be changed'] : []),
-      ...(groupsMeta.fallbackId === groupId ? ['Default group'] : []),
-    ];
-    return parts.length > 0 ? parts.join(' · ') : undefined;
+      groupBlockHint(groupLocked(groupId), pending[groupId] === true),
+      groupsMeta.fallbackId === groupId ? 'Default group' : null,
+    ].filter((p): p is string => p !== null);
+    return parts.length > 0 ? parts.join(' ') : undefined;
   };
 
-  // A live block's apps, group, reason and schedule can't be edited: that would
-  // end it with no record. Ending it is `releaseAllBlocks` (`blockEditLock.ts`).
+  // A live block's group, reason and schedule can't be edited: that would end it
+  // with no record. Ending it is `releaseAllBlocks` (`blockEditLock.ts`). Its apps
+  // are the exception: the picker adds at once and stages a removal.
   const refuseWhileBlocked = (locked: boolean): boolean => {
     if (!locked) return false;
     haptics.warning();
@@ -134,7 +138,7 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
 
   const handleChooseApps = async (groupId: string) => {
     haptics.tap();
-    if (refuseWhileBlocked(groupEditLocked(groupId, reasons))) return;
+    if (groupLocked(groupId) && !(await confirmLivePicker())) return;
     if (!(await ensureAuthorized('Choosing apps to block needs Screen Time access. Grant it in Settings, under Screen Time.'))) return;
     await onChooseApps(groupId);
   };
