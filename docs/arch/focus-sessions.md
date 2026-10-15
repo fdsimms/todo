@@ -462,6 +462,15 @@ objects and no store standing behind it.
   set up; it doesn't write back to `pinnedOrder` or anything the suggester
   reads next time.
 
+## Coins earned in the session
+
+While rewards are on, the session sheet's header and its finish screen show what the session has
+earned (`sessionCoinsEarned` in `focusPlan.ts`). It is read off the coin ledger on every render,
+never stored on the session: `earn` rows dated at or after `startedAt` whose task the session held.
+Losses and spends are not subtracted (it is what was earned, not how the balance moved), and
+unticking a task takes its row back, so the total follows. A task ticked off from Today behind the
+session counts, since it was in the plan.
+
 ## The meeting heads-up
 
 While a session is on (running or paused), a notification lands `FOCUS_MEETING_LEAD_MINUTES` before
