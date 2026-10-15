@@ -282,7 +282,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/paintSelect.ts` — PaintRowRect, PAINT_GUTTER_WIDTH, ROW_HIT_SLOP, isInPaintGutter, rowIdAtY, rowIdsBetween
 - `src/utils/pantryCheckTasks.ts` — MAX_PANTRY_CHECK_TASKS, PANTRY_CHECK_GRACE_DAYS, pantryCheckTitle, pantryCheckItemId, pantryCheckLinkUrl, pantryCheckLapse, pantryCheckAnswers, PantryCheckWant, wantedPantryChecks, stalePantryCheckTasks
 - `src/utils/pantryIndex.ts` — PantryIndexEntry, MAX_PANTRY_INDEX_ENTRIES, buildPantryIndex, QueuedDisposal, parseQueuedDisposals, resolveQueuedPantryItem, PlannedDisposal, planQueuedDisposals
-- `src/utils/pantryReview.ts` — PantryReviewAnswer, MAX_PANTRY_REVIEW_CARDS, PANTRY_REVIEW_QUIET_DAYS, PANTRY_GUESS_DOUBT_FRACTION, PantryDoubt, PantryReviewCard, PantryReviewDeck, buildPantryReviewDeck, describeLastPurchase, describePantryDoubt, +1 more
+- `src/utils/pantryReview.ts` — PantryReviewAnswer, MAX_PANTRY_REVIEW_CARDS, PANTRY_REVIEW_QUIET_DAYS, PANTRY_PAST_USE_BY_DAYS, PANTRY_GUESS_DOUBT_FRACTION, PantryDoubt, PantryReviewCard, PantryReviewDeck, buildPantryReviewDeck, describeLastPurchase, +2 more
 - `src/utils/pantryReviewTasks.ts` — PANTRY_REVIEW_TITLE, PANTRY_REVIEW_LINK_URL, MIN_PANTRY_REVIEW_CARDS, PANTRY_REVIEW_CADENCE_DAYS, pantryReviewDayKey, pantryReviewCadenceElapsed, wantsPantryReview, stalePantryReviewTasks
 - `src/utils/pantryStanding.ts` — PantryStanding, pantryStanding
 - `src/utils/pantryWrite.ts` — onHandRow, markedOutRow, disposalRow, thawedPortionsOf, frozenRow, openedRow, reviewedRow, runningLowRow, productOnHandRow, productsOutPlan, +16 more
@@ -311,6 +311,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/postpone.ts` — PostponeOutcome, DEFAULT_POSTPONE_THRESHOLD, MIN_POSTPONE_THRESHOLD, MAX_POSTPONE_THRESHOLD, parsePostponeThreshold, postponeOutcome, nextPostponeCount, nextDriftingSince, DriftEntry, isDriftingTask, +3 more
 - `src/utils/priceHistory.ts` — PRICE_HISTORY_LIMIT, parsePriceHistory, appendPriceObservation, PRODUCT_RUN_MIN, priceRunForProduct, priceBaseline, PriceStanding, priceStanding, mergePriceHistories
 - `src/utils/prioritySegments.ts` — PRIORITY_SEGMENTS
+- `src/utils/produceFloorTasks.ts` — DEFAULT_PRODUCE_FLOOR, PRODUCE_FLOOR_MIN, PRODUCE_FLOOR_MAX, clampProduceFloor, stockedProduce, produceFloorApplies, produceFloorTitle, PRODUCE_FLOOR_SUGGESTIONS_SHOWN, restockSuggestions, produceFloorNotes
 - `src/utils/produceNudgeTasks.ts` — DEFAULT_PRODUCE_NUDGE_FROM_HOUR, PRODUCE_NUDGE_FROM_HOUR_MIN, PRODUCE_NUDGE_FROM_HOUR_MAX, DEFAULT_PRODUCE_NUDGE_GOAL, PRODUCE_NUDGE_GOAL_MIN, PRODUCE_NUDGE_GOAL_MAX, clampProduceNudgeFromHour, clampProduceNudgeGoal, describeProduceNudgeHour, ProduceReading, +8 more
 - `src/utils/produceServings.ts` — PORTION_GRAMS, DRIED_PORTION_GRAMS, LEGUME_DAILY_CAP, ProduceKind, ProduceGrams, emptyProduceGrams, ProduceServings, DayProduce, produceKindOf, addProduceGrams, +10 more
 - `src/utils/productCategory.ts` — CATEGORY_AISLES, aisleForProductCategory
