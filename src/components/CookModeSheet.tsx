@@ -49,7 +49,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, lineHeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
-import { clampStepIndex, cookSteps, describeStepPosition } from '../utils/cookMode';
+import { clampStepIndex, cookNotesPanel, cookSteps, describeStepPosition } from '../utils/cookMode';
 import { formatStepDuration, stepDurationOffers, stepTimerExcerpt } from '../utils/stepTimers';
 import {
   applyChoice, choiceGroupKey, flattenRecipeIngredients, recipeChoiceGroups, type ChoiceGroup,
@@ -254,6 +254,10 @@ export function CookModeSheet({
   // reset the same way on close.
   const [finished, setFinished] = useState(false);
   const [ingredientsOpen, setIngredientsOpen] = useState(false);
+  // Folded like the ingredients and, like them, kept across steps: the notes are
+  // about the whole cooking, so moving on mustn't close them under the cook.
+  const [notesOpen, setNotesOpen] = useState(false);
+  const notesPanel = useMemo(() => cookNotesPanel(recipe), [recipe]);
   // One question at a time, about the step on screen, and none of it outlives
   // that step: the answer is screen state like the position and the panel's
   // fold, and a step only gains a `note` when someone presses Keep. There is no
@@ -286,6 +290,7 @@ export function CookModeSheet({
       setRawIndex(hasIngredients ? -1 : 0);
       setFinished(false);
       setIngredientsOpen(false);
+      setNotesOpen(false);
     }
   }, [visible, hasIngredients]);
 
@@ -848,6 +853,40 @@ export function CookModeSheet({
             </View>
           )}
 
+          {/* The recipe's own notes ("double the garlic", "freezes well"),
+              where the cook is looking. Hidden on mise en place for the same
+              reason the ingredients are, and absent when the notes are being
+              read as the method (see cookNotesPanel). */}
+          {notesPanel && !atMise && (
+            <View style={styles.panel}>
+              <TouchableOpacity
+                style={styles.panelHeader}
+                activeOpacity={interaction.activeOpacity}
+                onPress={() => { haptics.tap(); animateLayout(); setNotesOpen(v => !v); }}
+                accessibilityRole="button"
+                accessibilityState={{ expanded: notesOpen }}
+                accessibilityLabel="Recipe notes"
+                accessibilityHint="Double tap to show or hide the notes"
+              >
+                <Ionicons name="document-text-outline" size={16} color={colors.accent} />
+                <Text style={styles.panelHeaderText} numberOfLines={1}>
+                  Notes
+                  {!notesOpen && <Text style={styles.notesPreview}>{` · ${notesPanel.preview}`}</Text>}
+                </Text>
+                <Ionicons
+                  name={notesOpen ? 'chevron-up' : 'chevron-down'}
+                  size={12}
+                  color={colors.textTertiary}
+                />
+              </TouchableOpacity>
+              {notesOpen && (
+                <ScrollView style={styles.panelList} nestedScrollEnabled>
+                  <Text style={styles.panelNotes}>{notesPanel.text}</Text>
+                </ScrollView>
+              )}
+            </View>
+          )}
+
           {/* Every countdown started from a step, whichever step it was started
               from. They live here rather than under the step text because the
               whole point of setting one is walking away from the step: pressing
@@ -1169,6 +1208,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   panelList: {
     maxHeight: 220,
     marginTop: spacing.sm,
+  },
+  notesPreview: {
+    color: colors.textTertiary,
+    fontWeight: fontWeight.regular,
+  },
+  panelNotes: {
+    color: colors.text,
+    fontSize: font.md,
+    lineHeight: lineHeight.md,
   },
   panelDivider: {
     height: StyleSheet.hairlineWidth,

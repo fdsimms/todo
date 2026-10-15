@@ -1,5 +1,6 @@
 import {
   clampStepIndex,
+  cookNotesPanel,
   cookSteps,
   describeStepPosition,
   stepsFromNotes,
@@ -124,6 +125,23 @@ describe('stepsFromNotes', () => {
 
   it('refuses a strip that would leave nothing behind', () => {
     expect(stepsFromNotes('Preheat.\n1.')).toEqual(['Preheat.', '1.']);
+  });
+});
+
+describe('cookNotesPanel', () => {
+  it('is null when the notes are the method, so the steps are not shown twice', () => {
+    expect(cookNotesPanel(recipe('r', 'Soup', { notes: 'Simmer for an hour.' }))).toBeNull();
+  });
+
+  it('is null for a recipe with steps and blank notes', () => {
+    expect(cookNotesPanel(recipe('r', 'Soup', { steps: [step('Simmer.')], notes: ' \n ' }))).toBeNull();
+  });
+
+  it('returns the trimmed notes and the first non-blank line as the preview', () => {
+    const panel = cookNotesPanel(
+      recipe('r', 'Soup', { steps: [step('Simmer.')], notes: '\n  Double the garlic.\n\nFreezes well.\n' })
+    );
+    expect(panel).toEqual({ text: 'Double the garlic.\n\nFreezes well.', preview: 'Double the garlic.' });
   });
 });
 
