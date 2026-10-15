@@ -84,6 +84,7 @@ Where each component can appear.
 - `src/components/AddTaskFab.tsx` — on TodayScreen
 - `src/components/AllClearMark.tsx` — on TodayScreen
 - `src/components/AnimatedCollapsible.tsx` — on FoodLogScreen, ProjectDetailScreen, RecipeDetailScreen, RecipesScreen, StuckScreen, TodayScreen
+- `src/components/AppGroupChecklist.tsx` — on ScreenTimeScreen
 - `src/components/AppLockGate.tsx` — on app shell
 - `src/components/ApplyTemplateSheet.tsx` — on CalendarScreen, ProjectDetailScreen, TemplateDetailScreen, TemplatesScreen, TodayScreen
 - `src/components/AwayShiftSheet.tsx` — on CalendarScreen, ProjectDetailScreen, ProjectsScreen, TodayScreen
@@ -214,6 +215,7 @@ Where each component can appear.
 - `src/components/LogbookEntryMenu.tsx` — on LogbookScreen
 - `src/components/LogbookFilterSheet.tsx` — on LogbookScreen
 - `src/components/LookAheadSheet.tsx` — on ProjectDetailScreen, TodayScreen
+- `src/components/ManualBlockGroupsSheet.tsx` — on ScreenTimeScreen
 - `src/components/MealEntrySheet.tsx` — on MealPlanScreen
 - `src/components/MealOverrideSheet.tsx` — on MealPlanScreen
 - `src/components/MealReplaceItemSheet.tsx` — on MealPlanScreen

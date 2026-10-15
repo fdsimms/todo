@@ -49,7 +49,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/beatMark.ts` — BeatMarkGeometry, beatMarkGeometry, BEAT_STEP_MS
 - `src/utils/beatSound.ts` — playBeatSound
 - `src/utils/birthdayTasks.ts` — DEFAULT_BIRTHDAY_LEAD_DAYS, DEFAULT_BIRTHDAY_GIFT_LEAD_DAYS, MAX_BIRTHDAY_LEAD_DAYS, clampBirthdayLeadDays, clampBirthdayGiftLeadDays, parseBirthdayLeadDays, parseBirthdayGiftLeadDays, birthdaySourceId, parseBirthdaySource, parseBirthdayGiftSource, +15 more
-- `src/utils/blockSchedule.ts` — BLOCK_SCHEDULES_SETTING, MAX_BLOCK_SCHEDULES, MIN_WINDOW_MINUTES, MAX_SCHEDULE_NAME_LENGTH, BlockSchedule, ALL_DAYS, WEEKDAYS, cleanScheduleName, windowLengthMinutes, isOvernight, +13 more
+- `src/utils/blockSchedule.ts` — BLOCK_SCHEDULES_SETTING, MAX_BLOCK_SCHEDULES, MIN_WINDOW_MINUTES, MAX_SCHEDULE_NAME_LENGTH, readGroupIds, BlockSchedule, ALL_DAYS, WEEKDAYS, cleanScheduleName, windowLengthMinutes, +16 more
 - `src/utils/blockerRegistry.ts` — registerTaskSource, resolveBlocker, waitingCountFor
 - `src/utils/blockerStatus.ts` — BlockerWait, describeBlockerWait
 - `src/utils/blocking.ts` — TaskResolver, resolverFor, canBlock, blockerIdsOf, blockerFields, waitIdsOf, answerOpensGate, isNotNeeded, openOccurrenceOf, liveBlockersOf, +17 more
@@ -218,7 +218,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/liveActivity.ts` — TimerRunKind, TimerRun, buildTimerRuns, useTimerLiveActivitySync
 - `src/utils/lookAhead.ts` — LookAheadWindow, LookAheadDay, AwayEntry, TightDeadline, LookAheadTotals, LookAhead, BuildLookAheadOptions, buildLookAhead, carriedOverTasks, awayEntries, +8 more
 - `src/utils/maintenancePasses.ts` — MaintenanceStep, expiryPasses, catchUpPasses, retentionPasses, rebuildNotificationQueue
-- `src/utils/manualBlock.ts` — MANUAL_BLOCK_SETTING, MIN_MANUAL_MINUTES, MAX_MANUAL_MINUTES, MANUAL_BLOCK_PRESETS, ManualBlock, manualMinutesProblem, parseManualBlock, newManualBlock, isTimedBlock, endsSooner, +2 more
+- `src/utils/manualBlock.ts` — MANUAL_BLOCK_SETTING, MIN_MANUAL_MINUTES, MAX_MANUAL_MINUTES, MANUAL_BLOCK_PRESETS, ManualBlock, manualMinutesProblem, parseManualBlock, newManualBlock, serializeManualBlock, isTimedBlock, +3 more
 - `src/utils/maps.ts` — DirectionsApp, DirectionsCoordinate, directionsUrl, isMappable
 - `src/utils/mealCalendarSync.ts` — mealEventTitle, mealEventFields, syncMealEvent, mealEventLink, deleteMealEvent, MealEventSyncPlan, mealEventsAfterSync
 - `src/utils/mealIdeas.ts` — MIN_MEAL_IDEAS, MAX_MEAL_IDEAS, RECENT_MEAL_DAYS, MealIdea, RawMealIdea, mealTitleKey, clampIdeaCount, dedupeMealIdeas, MealSuggestion, mergeMealSuggestions, +7 more

@@ -3,7 +3,7 @@ import { outstandingGates } from '../utils/appGate';
 import { shieldReasons, type AppShieldState, type ShieldReasonEntry } from '../utils/appShield';
 import { canLock } from '../utils/nfcKey';
 import { isTaskVisible } from '../utils/visibilityUtils';
-import { nextScheduleBoundary } from '../utils/blockSchedule';
+import { nextScheduleBoundary, resolvedGroups } from '../utils/blockSchedule';
 import { resolvedAssignments, resolveGroupNow, useAppGroupStore } from '../store/useAppGroupStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { useNfcKeyStore } from '../store/useNfcKeyStore';
@@ -81,7 +81,7 @@ export function useShieldReasons(): ShieldReasonEntry[] {
       penaltyEnabled,
       penaltyReason,
       gateEnabled,
-      manual: manualBlock ? { ...manualBlock, groupId: resolveGroupNow(manualBlock.groupId) } : null,
+      manual: manualBlock ? { ...manualBlock, groupIds: resolvedGroups(manualBlock.groupIds, resolveGroupNow).groupIds } : null,
       keyLocked: locked && canLock(keys),
       gateTitles: gateRows.map(g => g.title),
       gateGroupIds: gateRows.map(g => (g.own ? resolveGroupNow(g.own) : settingGroup)),

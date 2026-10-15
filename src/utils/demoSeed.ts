@@ -387,13 +387,14 @@ export function seedDemoData(): void {
   // exists, and the lock itself is left off so the demo doesn't open locked.
   // Enrolled by id rather than scanned, since the reader is refused in demo mode.
   useNfcKeyStore.getState().enrollTag('04A1B2C3D4E5F6', 'Desk tag');
-  // One extra group of apps and a schedule that blocks it on weekday evenings,
-  // so the Schedules and App groups rows aren't empty. The group holds no apps
+  // One extra group of apps and a schedule that blocks it, together with the
+  // original group, on weekday evenings, so the Schedules and App groups rows
+  // aren't empty and show a schedule holding two groups. The group holds no apps
   // (tokens only exist on a real device); the rows say so.
   const social = useAppGroupStore.getState().addGroup('Social');
   useAppGroupStore.getState().addSchedule({
     name: 'Wind down',
-    groupId: social.group?.id ?? 'default',
+    groupIds: social.group ? ['default', social.group.id] : ['default'],
     days: [0, 1, 2, 3, 4],
     startMinutes: 21 * 60,
     endMinutes: 6 * 60,

@@ -4,7 +4,7 @@ jest.mock('../db/database', () => ({
   dbSetSetting: jest.fn((key: string, value: string) => { mockDb[key] = value; }),
 }));
 
-let mockReasons: { reason: string; groupId: string }[] = [];
+let mockReasons: { reason: string; groupIds: string[] }[] = [];
 let mockGates: { id: string }[] = [];
 jest.mock('../utils/appShieldReconcile', () => ({
   currentShieldReasons: () => mockReasons,
@@ -44,7 +44,7 @@ beforeEach(() => {
 
 afterEach(() => jest.useRealTimers());
 
-const live = (...kinds: string[]) => { mockReasons = kinds.map(reason => ({ reason, groupId: 'default' })); };
+const live = (...kinds: string[]) => { mockReasons = kinds.map(reason => ({ reason, groupIds: ['default'] })); };
 
 describe('releaseAllBlocks', () => {
   it('does nothing and records nothing when nothing is blocking', () => {
@@ -67,7 +67,7 @@ describe('releaseAllBlocks', () => {
   });
 
   it('ends a block the person started by hand', () => {
-    useManualBlockStore.getState().start(60, 'default');
+    useManualBlockStore.getState().start(60, ['default']);
     live('manual');
     expect(releaseAllBlocks('emergency', 'Need the map to get home')).toEqual(['manual']);
     expect(useManualBlockStore.getState().block).toBeNull();
@@ -76,7 +76,7 @@ describe('releaseAllBlocks', () => {
 
   it('pauses every open schedule, whatever its own settings', () => {
     useAppGroupStore.getState().addSchedule({
-      name: 'Work', groupId: 'default', days: [1, 2, 3, 4, 5], startMinutes: 540, endMinutes: 1020, enabled: true,
+      name: 'Work', groupIds: ['default'], days: [1, 2, 3, 4, 5], startMinutes: 540, endMinutes: 1020, enabled: true,
     });
     live('schedule');
     releaseAllBlocks('tag');

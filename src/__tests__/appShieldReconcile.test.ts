@@ -39,7 +39,7 @@ jest.mock('../store/useFocusStore', () => ({
   useFocusStore: { getState: () => mockFocus },
 }));
 const mockReleases = { focusSessionId: null as string | null, gateTaskIds: [] as string[] };
-const mockManual: { block: { untilIso: string; groupId: string } | null } = { block: null };
+const mockManual: { block: { untilIso: string; groupIds: string[] } | null } = { block: null };
 jest.mock('../store/useManualBlockStore', () => ({
   useManualBlockStore: { getState: () => mockManual },
 }));
@@ -170,17 +170,17 @@ describe('reconcileAppShield', () => {
 
   it('hands over a running timed block with its group, and returns its end to wait at', () => {
     const end = new Date(NOW + 60 * 60 * 1000);
-    mockManual.block = { untilIso: end.toISOString(), groupId: 'games' };
+    mockManual.block = { untilIso: end.toISOString(), groupIds: ['games'] };
     expect(reconcileAppShield()).toEqual(end);
     expect(mockSync).toHaveBeenCalledWith(expect.objectContaining({
-      manual: { untilIso: end.toISOString(), groupId: 'games' },
+      manual: { untilIso: end.toISOString(), groupIds: ['games'] },
     }));
   });
 
   it('waits at whichever of a gate and a timed block comes first', () => {
     const sixAm = new Date(NOW + 8 * 60 * 60 * 1000);
     const end = new Date(NOW + 60 * 60 * 1000);
-    mockManual.block = { untilIso: end.toISOString(), groupId: 'default' };
+    mockManual.block = { untilIso: end.toISOString(), groupIds: ['default'] };
     mockTasks.push(task({ id: 'walk', title: 'Morning walk' }));
     mockVisible.mockReturnValue(false);
     mockVisibleAt.mockImplementation(() => sixAm);
@@ -228,7 +228,7 @@ describe('the key tag lock', () => {
 describe('schedules', () => {
   it('hands the schedules and each reason\'s group to the rule', () => {
     const schedule = {
-      id: 's', name: 'Work', groupId: 'default', days: [0, 1, 2, 3, 4, 5, 6], startMinutes: 0,
+      id: 's', name: 'Work', groupIds: ['default'], days: [0, 1, 2, 3, 4, 5, 6], startMinutes: 0,
       endMinutes: 600, enabled: true, pausedUntil: null,
     };
     mockGroupState.schedules = [schedule];
@@ -245,7 +245,7 @@ describe('schedules', () => {
 
   it('returns a schedule edge as the moment to wait for when nothing is sooner', () => {
     mockGroupState.schedules = [{
-      id: 's', name: 'Work', groupId: 'default', days: [0, 1, 2, 3, 4, 5, 6], startMinutes: 0,
+      id: 's', name: 'Work', groupIds: ['default'], days: [0, 1, 2, 3, 4, 5, 6], startMinutes: 0,
       endMinutes: 600, enabled: true, pausedUntil: null,
     }];
     try {
