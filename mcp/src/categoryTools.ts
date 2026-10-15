@@ -44,6 +44,36 @@ export function deleteCategory(
   return replica.deleteCategory(category.name, moveTo);
 }
 
+export interface CreateCategoryInput extends CategorySettingsPatch {
+  name: string;
+}
+
+/**
+ * Add an empty task category, optionally with its settings. Before this the only
+ * way to make one was a task created with `newCategory`, and set_automation and
+ * the rules need the category to exist first, so filing an automation under a
+ * new section took a throwaway task.
+ */
+export function createCategory(replica: Replica, input: CreateCategoryInput) {
+  const { name, ...settings } = input;
+  const made = replica.createCategory(name);
+  if (Object.keys(settings).length > 0) replica.updateCategorySettings(made.name, settings);
+  return updateCategoryResult(replica, made.name);
+}
+
+function updateCategoryResult(replica: Replica, name: string) {
+  const category = replica.categories().find(c => c.name === name)!;
+  return {
+    name: category.name,
+    ...(category.emoji ? { emoji: category.emoji } : {}),
+    ...(category.scheduleDays ? { schedule: { days: category.scheduleDays, start: category.scheduleStart, end: category.scheduleEnd } } : {}),
+    hideOnVacation: category.hideOnVacation,
+    excludeFromSuggestions: category.excludeFromSuggestions,
+    excludeFromNewTasksBanner: category.excludeFromNewTasksBanner,
+    defaultTimeSegments: category.defaultTimeSegments,
+  };
+}
+
 export interface UpdateCategoryInput extends CategorySettingsPatch {
   name: string;
   /** Renames it everywhere it is named: tasks, stacks, projects, views, templates, automations. */
@@ -57,15 +87,8 @@ export function updateCategory(replica: Replica, input: UpdateCategoryInput) {
   let current = name;
   if (newName !== undefined) current = replica.renameCategory(name, newName).to;
   if (Object.keys(settings).length > 0) replica.updateCategorySettings(current, settings);
-  const category = replica.categories().find(c => c.name === current)!;
   return {
-    name: category.name,
-    ...(category.emoji ? { emoji: category.emoji } : {}),
-    ...(category.scheduleDays ? { schedule: { days: category.scheduleDays, start: category.scheduleStart, end: category.scheduleEnd } } : {}),
-    hideOnVacation: category.hideOnVacation,
-    excludeFromSuggestions: category.excludeFromSuggestions,
-    excludeFromNewTasksBanner: category.excludeFromNewTasksBanner,
-    defaultTimeSegments: category.defaultTimeSegments,
+    ...updateCategoryResult(replica, current),
     ...(newName !== undefined ? { renamedFrom: name } : {}),
   };
 }

@@ -1891,7 +1891,9 @@ export function seedDemoData(): void {
   // The occurrence key is invented, as the flight's is, and goes through
   // `travelSourceId` so the row can't drift from what the sweep reads back.
   // Nothing is marked handled, for the same reason eventTaskHandled isn't.
-  useSettingsStore.getState().setTravelTaskCategory('Calendar');
+  addCategory('Leave By');
+  setCategoryEmoji('Leave By', '🚶');
+  useSettingsStore.getState().setTravelTaskCategory('Leave By');
   useSettingsStore.getState().setTransitLines(['L']);
   const demoDentistStart = new Date(today);
   demoDentistStart.setHours(15, 0, 0, 0);
@@ -1903,7 +1905,7 @@ export function seedDemoData(): void {
     reminderTime: demoLeaveAt.toISOString(),
     windowEnd: dateToHHMM(demoDentistStart),
     location: '123 Court St, Brooklyn',
-    category: 'Calendar',
+    category: 'Leave By',
     ...generatedBy('travel', travelSourceId(demoDentist)),
   });
 

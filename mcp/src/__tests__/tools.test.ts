@@ -176,6 +176,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     updateStack: () => { throw new Error('not stubbed'); },
     deleteStack: () => { throw new Error('not stubbed'); },
     renameCategory: () => { throw new Error('not stubbed'); },
+    createCategory: () => { throw new Error('not stubbed'); },
     updateCategorySettings: () => { throw new Error('not stubbed'); },
     reorderCategories: () => { throw new Error('not stubbed'); },
     deleteProject: () => { throw new Error('not stubbed'); },

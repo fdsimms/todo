@@ -27,6 +27,7 @@ const COUNTERPARTS: Record<string, string[]> = {
   quick_add: ['update_task', 'archive_task'],
   add_project_steps: ['update_task', 'archive_task'],
   create_project: ['update_project', 'update_task', 'delete_project'],
+  create_category: ['update_category', 'delete_category'],
   create_stack: ['rename_stack', 'update_stack', 'assign_to_stack', 'delete_stack'],
   save_project_as_template: ['update_template', 'delete_template'],
   create_reward: ['update_reward', 'delete_reward'],

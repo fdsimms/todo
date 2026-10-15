@@ -4,7 +4,7 @@
  */
 import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
-import { reorderCategories, updateCategory } from '../categoryTools';
+import { createCategory, reorderCategories, updateCategory } from '../categoryTools';
 import { listCategories } from '../tools';
 
 let mockRaw: ShimDatabase;
@@ -33,6 +33,19 @@ beforeEach(() => {
   store().getState().initialize();
   ['Home', 'Work', 'Errands'].forEach(n => store().getState().addCategory(n));
   replica.refresh();
+});
+
+describe('create_category', () => {
+  it('adds an empty category with its settings, and list_categories shows it', () => {
+    const result = createCategory(replica, { name: ' Leave By ', emoji: '🚶', excludeFromSuggestions: true });
+    expect(result).toMatchObject({ name: 'Leave By', emoji: '🚶', excludeFromSuggestions: true });
+    expect(listCategories(replica).find(c => c.name === 'Leave By')).toMatchObject({ openTasks: 0, emoji: '🚶' });
+  });
+
+  it('refuses a name a category already has, in any capitalization, and an empty one', () => {
+    expect(() => createCategory(replica, { name: 'home' })).toThrow(/already a category called "Home"/);
+    expect(() => createCategory(replica, { name: '  ' })).toThrow(/needs a name/);
+  });
 });
 
 describe('update_category', () => {

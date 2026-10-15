@@ -119,6 +119,7 @@ export const WRITE_TOOLS: Record<string, { title: string; destructive: boolean; 
   reorder: { title: 'Reorder a list', destructive: true, idempotent: true },
   log_cook_time: { title: 'Log a cook time', destructive: false, idempotent: false },
   set_automation: { title: 'Change an automation', destructive: false, idempotent: true },
+  create_category: { title: 'Create a category', destructive: false, idempotent: false },
   delete_category: { title: 'Delete a category', destructive: true, idempotent: false },
   save_rule: { title: 'Save an automation rule', destructive: true, idempotent: false },
   delete_rule: { title: 'Delete an automation rule', destructive: true, idempotent: true },
