@@ -193,6 +193,24 @@ describe('journeyDisruptions', () => {
     expect(journeyDisruptions(snapshotAt(FEED_READ_MS), ['C'], from, from + 30 * MIN, FEED_READ_MS)).toEqual([]);
   });
 
+  it('does not pin a live delay with no end time onto a trip on a later day', () => {
+    const open: TransitAlert[] = [{ id: 'x', routeIds: ['F'], effect: 'delays', planned: false, periods: [{ start: 0, end: null }] }];
+    const now = FEED_READ_MS;
+    const dayEnd = now + 6 * 60 * MIN;
+    const tomorrow = dayEnd + 8 * 60 * MIN;
+    expect(journeyDisruptions(snapshotAt(now, open), ['F'], tomorrow, tomorrow + 40 * MIN, now, dayEnd)).toEqual([]);
+    expect(journeyDisruptions(snapshotAt(now, open), ['F'], now + 10 * MIN, now + 50 * MIN, now, dayEnd))
+      .toEqual([{ line: 'F', effect: 'delays' }]);
+  });
+
+  it('still reports planned work on a trip on a later day', () => {
+    const open: TransitAlert[] = [{ id: 'y', routeIds: ['G'], effect: 'stopsSkipped', planned: true, periods: [] }];
+    const now = FEED_READ_MS;
+    const tomorrow = now + 20 * 60 * MIN;
+    expect(journeyDisruptions(snapshotAt(now, open), ['G'], tomorrow, tomorrow + 40 * MIN, now, now + 6 * 60 * MIN))
+      .toEqual([{ line: 'G', effect: 'stopsSkipped' }]);
+  });
+
   it('reports planned work days ahead of the trip it affects', () => {
     // The 6 is partly suspended from 01:30 on the 19th; a read on the 16th
     // already knows, which is what lets the reminder say so when it fires.

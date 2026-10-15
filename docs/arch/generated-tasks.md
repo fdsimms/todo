@@ -1320,6 +1320,10 @@ argued out before it was built; read them before reopening one.
   any period overlaps leaving-to-arriving. That is what lets planned work starting at 11am show on
   an 11:30 trip read at 10am, and what stops a delay the MTA expects to clear by 10:20 being pinned
   to the same trip.
+- **A live incident only counts for a trip leaving today.** An alert with no end time overlaps every
+  trip, so `alertOverlaps` alone pinned a delay read minutes ago onto tomorrow's row.
+  `journeyDisruptions` takes `liveUntilMs` (the end of the logical day) and drops live alerts for a
+  trip leaving after it. Planned work is exempt: it is published ahead of the trip it affects.
 - **It only reports what can make you late.** Delays, suspensions, skipped stops, reroutes,
   express-to-local and reduced service. Extra service, station notices, boarding changes, adjusted
   schedules and any `alert_type` this doesn't know are dropped, since a note on a "Leave for" row
