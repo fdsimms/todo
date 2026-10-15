@@ -31,6 +31,17 @@ import {
   writeJournalDraft,
 } from '../utils/journalDraft';
 import { addSealedNoteReminder, dropSealedNoteReminder } from '../utils/sealedNoteTasks';
+import {
+  JOURNAL_HISTORY_OPTIONS,
+  canOfferJournalHistory,
+  journalHistoryAt,
+  journalHistoryTitle,
+  type JournalHistoryKind,
+} from '../utils/journalHistory';
+import { getEditorMentionSuggestions, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
+import { groupMentionTokens } from '../utils/peopleRegistry';
+import { animateLayout } from '../utils/layoutAnimation';
+import { joinNames } from '../utils/shoppingTrip';
 import { journalPlainText, toggleLinePrefix, toggleWrap } from '../utils/journalMarkdown';
 import { useJournalStore } from '../store/useJournalStore';
 import { useTaskStore } from '../store/useTaskStore';
@@ -45,6 +56,8 @@ import { TextField } from './TextField';
 import { InlineAction } from './InlineAction';
 import { CollapsibleField } from './CollapsibleField';
 import { PillGroup } from './PillGroup';
+import { PressableScale } from './PressableScale';
+import { SegmentedControl } from './SegmentedControl';
 import { JournalText } from './JournalText';
 import { JOURNAL_FORMAT_BAR_HEIGHT, JournalFormatBar, type FormatAction } from './JournalFormatBar';
 import { useTitleSelection } from '../hooks/useTitleSelection';
@@ -116,6 +129,9 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
   const [tagsOpen, setTagsOpen] = useState(false);
   const [peopleOpen, setPeopleOpen] = useState(false);
   const [hideOpen, setHideOpen] = useState(false);
+  // Whether to also write this page into the named people's history, and as
+  // what. Null until picked: it is offered, never decided for the person.
+  const [historyKind, setHistoryKind] = useState<JournalHistoryKind | null>(null);
   // Whether the text on the page came back from a kept draft, said once.
   const [restoredDraft, setRestoredDraft] = useState(false);
   // The selection is tracked for the formatting bar (see useTitleSelection for
@@ -139,6 +155,7 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
     setTagsOpen(false);
     setPeopleOpen(false);
     setHideOpen(false);
+    setHistoryKind(null);
     setDay(getLogicalToday());
     setPickerOpen(false);
     setOpenOn(null);
@@ -215,6 +232,41 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
   // that has gone, not leaving a note for one to come.
   const canSeal = kind === 'journal' && !editing && isSameDay(day, getLogicalToday());
 
+  // An "@name" at the end of the page offers the matching people to link, the
+  // task editor's rule: the text alone never links anybody, the tap does. Only
+  // the token being typed at the very end is read, so a mention edited into the
+  // middle of a page is linked from the About row instead.
+  const mentionSuggestion = useMemo(
+    () => (visible && text.includes('@')
+      ? getEditorMentionSuggestions(text, allPeople.filter(p => !p.archived), personIds, groupMentionTokens())
+      : null),
+    [visible, text, allPeople, personIds],
+  );
+  const applyMentionSuggestion = (candidate: MentionSuggestionCandidate) => {
+    if (!mentionSuggestion) return;
+    haptics.success();
+    animateLayout();
+    const next = `${text.slice(0, mentionSuggestion.start)}@${candidate.resolveKey} `;
+    if (next.length > TEXT_MAX_LENGTH) return;
+    setText(next);
+    caret.moveCaret(next);
+    const newIds = candidate.memberIds ?? [candidate.id];
+    setPersonIds(list => [...new Set([...list, ...newIds])]);
+  };
+
+  // Offered once somebody is named on a new page, and written only when one of
+  // the choices is picked and the entry is saved.
+  const namedPeople = useMemo(
+    () => personIds.map(id => allPeople.find(p => p.id === id)).filter(p => !!p).map(p => displayNameOf(p!)),
+    [personIds, allPeople],
+  );
+  const offerHistory = canOfferJournalHistory({
+    kind,
+    editing: !!editing,
+    sealed: canSeal && !!openOn,
+    personCount: namedPeople.length,
+  });
+
   const save = () => {
     if (!canSave) return;
     haptics.success();
@@ -229,6 +281,15 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
       // Writing is what the reminder asks for. Only a new entry for today: the
       // day you missed filled in later is not today's entry.
       if (isToday) completeJournalTaskForToday(kind);
+      // The same record the person's own "Add to history" row writes, for
+      // everybody the page names, only when it was asked for here.
+      if (offerHistory && historyKind) {
+        useTaskStore.getState().addCompletedTask(
+          journalHistoryTitle(historyKind, namedPeople),
+          journalHistoryAt(day, isToday, new Date()),
+          personIds,
+        );
+      }
       clearJournalDraft(kind);
     }
     onClose();
@@ -334,6 +395,22 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
         />
         <Text style={styles.wordCount}>{wordsLine}</Text>
         {restoredDraft && <Text style={styles.wordCount}>Restored the draft you hadn’t saved.</Text>}
+        {mentionSuggestion && (
+          <View style={styles.mentionRow}>
+            {mentionSuggestion.candidates.map(candidate => (
+              <PressableScale
+                key={candidate.id}
+                style={styles.mentionButton}
+                haptic
+                onPress={() => applyMentionSuggestion(candidate)}
+                accessibilityLabel={`Link ${candidate.name} to this entry`}
+              >
+                <Ionicons name="person-add-outline" size={iconSize.sm} color={colors.onAccent} />
+                <Text style={styles.mentionText} numberOfLines={1}>{candidate.name}</Text>
+              </PressableScale>
+            ))}
+          </View>
+        )}
         {kind === 'journal' && promptIndex !== null && (
           <Text style={styles.prompt}>{journalPromptAt(promptIndex, prompts)}</Text>
         )}
@@ -456,6 +533,24 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
         )}
       </View>
 
+      {offerHistory && (
+        <View style={styles.card}>
+          <Text style={styles.historyLabel}>Count this as time with {joinNames(namedPeople)}?</Text>
+          <SegmentedControl<JournalHistoryKind | 'none'>
+            label="Add to their history"
+            options={[
+              { value: 'none', label: 'Don’t add' },
+              ...JOURNAL_HISTORY_OPTIONS.map(o => ({ value: o.kind, label: o.label })),
+            ]}
+            value={historyKind ?? 'none'}
+            onChange={value => { haptics.tap(); setHistoryKind(value === 'none' ? null : value); }}
+          />
+          <Text style={styles.historyHint}>
+            Adds an entry to their history when you save. Nothing is added unless you pick one.
+          </Text>
+        </View>
+      )}
+
       {editing && (
         <TouchableOpacity
           style={[styles.card, styles.deleteRow]}
@@ -533,6 +628,33 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textSecondary,
   },
   shortcuts: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingTop: spacing.sm },
+  mentionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xsm, marginTop: spacing.sm },
+  mentionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xsm,
+    maxWidth: '100%',
+    paddingHorizontal: spacing.smd,
+    paddingVertical: 7,
+    borderRadius: radius.md,
+    backgroundColor: colors.accentFill,
+  },
+  mentionText: {
+    color: colors.onAccent,
+    fontSize: font.sm,
+    fontWeight: fontWeight.semibold,
+    flexShrink: 1,
+  },
+  historyLabel: {
+    fontSize: font.md,
+    color: colors.text,
+    marginBottom: spacing.smd,
+  },
+  historyHint: {
+    fontSize: font.sm,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
+  },
   sealHint: {
     fontSize: font.sm,
     color: colors.textSecondary,
