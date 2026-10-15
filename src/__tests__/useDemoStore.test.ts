@@ -4834,6 +4834,13 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(task!.generatedSourceId).toBe(dayKeyOf(getCurrentDayStart()));
   });
 
+  it('seeds a produce restock task under the Groceries category', () => {
+    const task = useTaskStore.getState().tasks.find(t => t.generatedKind === 'produceFloor');
+    expect(task).toBeDefined();
+    expect(task!.category).toBe('Groceries');
+    expect(useSettingsStore.getState().produceFloorTaskCategory).toBe('Groceries');
+  });
+
   it('seeds a weigh-in request, and no weight behind it', () => {
     const { tasks } = useTaskStore.getState();
     const settings = useSettingsStore.getState();

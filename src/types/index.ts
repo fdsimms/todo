@@ -2362,6 +2362,11 @@ export type GeneratedKind =
   // source row, produceNudgeDeclinedDayKey stops a deleted one coming straight
   // back, and a completed one blocks a second through `blocksOnFinished`.
   | 'produceNudge'
+  // A weekly "Restock vegetables and fruit" task when the pantry lists fewer
+  // than a set number — see src/utils/produceFloorTasks.ts. Keyed by the week's
+  // first day, no source row: produceFloorDeclinedWeekKey stops a deleted one
+  // coming straight back, and a completed one blocks a second that week.
+  | 'produceFloor'
   // A "don't do" task per Stay under limit, slipped automatically when the food
   // log goes past it — see src/utils/limitWarningTasks.ts. Keyed by the
   // nutrient; deleting one adds it to limitWarningDeclined.

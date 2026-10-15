@@ -453,6 +453,15 @@ export const TASK_SETTINGS_SPECS: Partial<Record<GeneratedKind, TaskSettingsSpec
       { key: 'notes', label: 'Notes', summary: 'Where the figure comes from, and a recipe idea', hint: 'The idea uses vegetables and fruit your pantry lists, and changes as the pantry does.' },
     ],
   },
+  produceFloor: {
+    example: 'Restock vegetables and fruit (1 of 4 on hand)',
+    noun: 'Restock task',
+    owned: () => [
+      { key: 'title', label: 'Title', summary: 'Restock vegetables and fruit (count on hand)', hint: 'Updated as the pantry changes.' },
+      { key: 'date', label: 'Date', summary: 'Today', hint: 'Added once a week while the pantry is under the number set above.' },
+      { key: 'notes', label: 'Notes', summary: 'Why it was added, and what you have bought before', hint: 'Names vegetables and fruit from your grocery history that are not on hand.' },
+    ],
+  },
   limitWarning: {
     example: 'Stay under 2,300 mg sodium · 1,200 mg so far',
     noun: 'Limit task',

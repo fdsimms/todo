@@ -63,6 +63,7 @@ import {
 } from './weightTasks';
 import { SNACK_NUDGE_NOTES, snackNudgeTitle } from './snackNudgeTasks';
 import { produceNudgeNotes, produceNudgeTitle } from './produceNudgeTasks';
+import { produceFloorNotes, produceFloorTitle } from './produceFloorTasks';
 import { GOAL_TARGET_LINK, goalTargetNotes, goalTargetSourceId, goalTargetTitle } from './goalTargetTasks';
 import { LIMIT_WARNING_LINK, LIMIT_WARNING_NOTES, limitWarningTitle } from './limitWarningTasks';
 import { helpingNutrition, scalePanelToAmount } from './foodLog';
@@ -2003,6 +2004,18 @@ export function seedDemoData(): void {
     dueDate: today.toISOString(),
     category: 'Health',
     ...generatedBy('produceNudge', dayKeyOf(today)),
+  });
+
+  // The weekly restock task, seeded directly for the same reason: the pass
+  // refuses in demo mode. Illustrative figures.
+  useSettingsStore.getState().setProduceFloorTaskCategory('Groceries');
+  addTask({
+    title: produceFloorTitle(2, 4),
+    notes: produceFloorNotes([]),
+    dueDate: today.toISOString(),
+    category: 'Groceries',
+    linkUrl: 'dundundun://groceries',
+    ...generatedBy('produceFloor', dayKeyOf(today)),
   });
 
   // The limit's "don't do" task, seeded directly for the snack suggestion's

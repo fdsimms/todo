@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { addDays } from 'date-fns/addDays';
+import { startOfWeek } from 'date-fns/startOfWeek';
 import type { Task, TaskDraft, Priority, TimeOfDay, TitleRule, Person, QuotaPeriod, Polarity, Difficulty, MealPlanEntry, FoodLogEntry } from '../types';
 import {
   initDatabase,
@@ -347,6 +348,9 @@ import {
   produceIdeas, produceNudgeApplies, produceNudgeNotes, produceNudgeTitle, produceReadingToday,
 } from '../utils/produceNudgeTasks';
 import { recipeProduceResolver } from '../utils/recipeProduce';
+import {
+  produceFloorApplies, produceFloorNotes, produceFloorTitle, restockSuggestions, stockedProduce,
+} from '../utils/produceFloorTasks';
 import { kitchenInventory } from '../utils/kitchenInventory';
 import {
   limitReadings, limitWarningKeyOf, limitWarningTitle, LIMIT_WARNING_LINK, limitWarningNotes,
@@ -722,6 +726,15 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
       // evening, since a shortfall before then is not a shortfall yet.
       return;
     case 'pantryReview':
+      return;
+    // A settings stamp for the week, since a week names no row: deleting this
+    // week's restock task means "not this week". `null` is the undo path.
+    case 'produceFloor':
+      useSettingsStore.getState().setProduceFloorDeclinedWeekKey(
+        value === false
+          ? dayKeyOf(startOfWeek(getCurrentDayStart(), { weekStartsOn: useSettingsStore.getState().weekStartsOn }))
+          : null,
+      );
       return;
     // Nothing to write, for the nudge's reason: a day and a slot name a square
     // on the calendar, not a row. Swiping today's lunch task away is honoured
@@ -2022,6 +2035,8 @@ interface TaskStore extends UndoHistoryActions {
    * See src/utils/pantryReviewTasks.ts.
    */
   checkPantryReviewTasks: () => void;
+  /** The `produceFloor` pass, called from the catch-up sweep. */
+  checkProduceFloorTasks: () => void;
   /**
    * Give every planned meal the kitchen can't currently make a "Shop for X"
    * task, and clear the ones whose meal has since been re-planned, moved,
@@ -6503,6 +6518,63 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       });
     });
     // No setLastAction, same reasoning as checkMealPlanNudge above.
+  },
+
+  checkProduceFloorTasks() {
+    const settings = useSettingsStore.getState();
+    if (generatorPausedForVacation('produceFloor', settings.vacationMode)) return;
+    // The demo database holds a seeded task for this kind (demoSeed.ts) that
+    // this pass would delete as unwanted, since the seeded pantry is its own.
+    if (isDemoModeActive()) return;
+    const tasks = get().tasks;
+    const creating = settings.produceFloorTasks && settings.kitchenEnabled;
+    if (!creating && liveGeneratedTasksOfKind(tasks, 'produceFloor').length === 0) return;
+
+    const weekKey = dayKeyOf(startOfWeek(getCurrentDayStart(), { weekStartsOn: settings.weekStartsOn }));
+    // A task from a past week is dropped rather than deleted quietly with an
+    // opt-out: nobody declined it, the week just ended.
+    liveGeneratedTasksOfKind(tasks, 'produceFloor')
+      .filter(t => !creating || t.generatedSourceId !== weekKey)
+      .forEach(t => dropGeneratedTask('produceFloor', t.generatedSourceId));
+    if (!creating) return;
+
+    const grocery = useGroceryStore.getState();
+    // Bare `new Date()`: a use-by day is a real calendar day on a label.
+    const entries = kitchenInventory(
+      grocery.items, [], new Date(), grocery.itemProducts, listedAnywhere(grocery.listEntries),
+    );
+    const stocked = stockedProduce(entries);
+    const wanted =
+      produceFloorApplies(stocked.length, settings.produceFloorCount) &&
+      settings.produceFloorDeclinedWeekKey !== weekKey;
+    if (wanted) ensureGeneratedTaskCategory('produceFloor');
+    const category = useSettingsStore.getState().produceFloorTaskCategory;
+    const notes = produceFloorNotes(restockSuggestions(grocery.items, stocked));
+    const dueDate = getCurrentDayStart();
+    dueDate.setHours(12, 0, 0, 0);
+
+    reconcileGeneratedTask({
+      kind: 'produceFloor',
+      sourceId: weekKey,
+      wanted,
+      blocksOnFinished: true,
+      drift: existing => {
+        const title = produceFloorTitle(stocked.length, settings.produceFloorCount);
+        const patch: Partial<Task> = {};
+        if (existing.title !== title) patch.title = title;
+        if (existing.notes !== notes) patch.notes = notes;
+        return Object.keys(patch).length > 0 ? patch : null;
+      },
+      draft: () => ({
+        title: produceFloorTitle(stocked.length, settings.produceFloorCount),
+        notes,
+        dueDate: dueDate.toISOString(),
+        // The list the restock goes onto.
+        linkUrl: 'dundundun://groceries',
+        category,
+        ...generatedBy('produceFloor', weekKey),
+      }),
+    });
   },
 
   checkPantryReviewTasks() {

@@ -65,6 +65,7 @@ import {
   PRODUCE_NUDGE_GOAL_MIN,
   describeProduceNudgeHour,
 } from '../../utils/produceNudgeTasks';
+import { DEFAULT_PRODUCE_FLOOR, PRODUCE_FLOOR_MAX, PRODUCE_FLOOR_MIN } from '../../utils/produceFloorTasks';
 import { MEAL_PLAN_NUDGE_SLOTS } from '../../utils/mealPlanNudge';
 import { dateToHHMM, hhmmToDate } from '../../utils/clockTime';
 import { formatHHMM } from '../../utils/dateUtils';
@@ -404,6 +405,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
       case 'waterShortfall': return s.waterShortfallTaskCategory;
       case 'snackNudge': return s.snackNudgeTaskCategory;
       case 'produceNudge': return s.produceNudgeTaskCategory;
+      case 'produceFloor': return s.produceFloorTaskCategory;
       case 'limitWarning': return s.limitWarningTaskCategory;
       case 'goalTarget': return s.goalTargetTaskCategory;
       case 'bookEvent': return s.bookEventTaskCategory;
@@ -444,6 +446,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
       case 'waterShortfall': s.setWaterShortfallTaskCategory(category); break;
       case 'snackNudge': s.setSnackNudgeTaskCategory(category); break;
       case 'produceNudge': s.setProduceNudgeTaskCategory(category); break;
+      case 'produceFloor': s.setProduceFloorTaskCategory(category); break;
       case 'limitWarning': s.setLimitWarningTaskCategory(category); break;
       case 'goalTarget': s.setGoalTargetTaskCategory(category); break;
       case 'bookEvent': s.setBookEventTaskCategory(category); break;
@@ -860,6 +863,33 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
               format={n => `${n}%`}
               label="Percent of calorie target"
               describeValue={n => `${n ?? DEFAULT_SNACK_NUDGE_SHARE_PERCENT}% of target`}
+            />
+          </View>
+        </>
+      );
+    }
+
+    if (kind === 'produceFloor') {
+      return (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="produceFloorCount"
+            icon="basket-outline"
+            label="Keep at least"
+            hint="Adds the task when the pantry lists fewer than this many vegetables and fruit. Frozen and canned count; anything past its use-by day does not."
+            value={`${s.produceFloorCount} items`}
+            tight
+          />
+          <View style={styles.cadenceRow}>
+            <CountStepper
+              value={s.produceFloorCount}
+              onChange={next => s.setProduceFloorCount(next ?? DEFAULT_PRODUCE_FLOOR)}
+              min={PRODUCE_FLOOR_MIN}
+              max={PRODUCE_FLOOR_MAX}
+              format={n => `${n}`}
+              label="Vegetables and fruit to keep on hand"
+              describeValue={n => `${n ?? DEFAULT_PRODUCE_FLOOR} items`}
             />
           </View>
         </>

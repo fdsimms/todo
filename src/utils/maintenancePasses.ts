@@ -141,6 +141,8 @@ export function catchUpPasses(): MaintenanceStep[] {
     // doubtful enough for the bulk offer.
     ['check pantry reviews', () => tasks().checkPantryReviewTasks()],
     ['check pantry checks', () => tasks().checkPantryCheckTasks()],
+    // And the weekly restock of vegetables and fruit, off the same catalog.
+    ['check produce floor', () => tasks().checkProduceFloorTasks()],
     // And anything planned for the next couple of days that the kitchen
     // can't currently make (off by default). Straight after the pass above
     // for the same reason that one sits after checkMealSlotTasks: it reads

@@ -374,6 +374,8 @@ function generatedCategorySetting(kind: GeneratedKind): {
       return { key: 'waterShortfallTaskCategory', current: s.waterShortfallTaskCategory, assign: s.setWaterShortfallTaskCategory };
     case 'snackNudge':
       return { key: 'snackNudgeTaskCategory', current: s.snackNudgeTaskCategory, assign: s.setSnackNudgeTaskCategory };
+    case 'produceFloor':
+      return { key: 'produceFloorTaskCategory', current: s.produceFloorTaskCategory, assign: s.setProduceFloorTaskCategory };
     case 'produceNudge':
       return { key: 'produceNudgeTaskCategory', current: s.produceNudgeTaskCategory, assign: s.setProduceNudgeTaskCategory };
     case 'limitWarning':

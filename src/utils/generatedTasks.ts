@@ -180,6 +180,9 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   'snackNudge',
   // Beside it: the same log and the same shape, asked about produce servings.
   'produceNudge',
+  // And the pantry-side version of the same question: how much produce is
+  // stocked, rather than how much was eaten.
+  'produceFloor',
   // Beside it, reading the same food log against a limit rather than a goal:
   // a "don't do" task per limit, slipped when the log goes past it.
   'limitWarning',
@@ -258,6 +261,7 @@ export type GeneratedEnabledKey =
   | 'waterShortfallTasks'
   | 'snackNudgeTasks'
   | 'produceNudgeTasks'
+  | 'produceFloorTasks'
   | 'limitWarningTasks'
   | 'goalTargetTasks'
   | 'bookEventTasks'
@@ -1036,6 +1040,21 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     kitchen: false,
     categorized: true,
     defaultCategory: 'Health',
+  },
+  // Ships off. At most one a week; a completed or deleted one blocks the next.
+  produceFloor: {
+    kind: 'produceFloor',
+    pausedOnVacation: true,
+    enabledKey: 'produceFloorTasks',
+    label: 'Restock vegetables and fruit',
+    onHint: 'Adds a weekly task when the pantry lists fewer vegetables and fruit than you set',
+    offHint: 'No task to restock vegetables and fruit',
+    icon: 'basket-outline',
+    sourced: false,
+    notice: false,
+    kitchen: true,
+    categorized: true,
+    defaultCategory: 'Groceries',
   },
   // Ships off: Stay under limits are opt-in, and so is being told about one.
   limitWarning: {

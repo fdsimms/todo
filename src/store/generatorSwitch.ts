@@ -44,6 +44,7 @@ export function setGeneratorEnabled(kind: GeneratedKind, next: boolean): void {
     case 'waterShortfall': s.setWaterShortfallTasks(next); break;
     case 'snackNudge': s.setSnackNudgeTasks(next); break;
     case 'produceNudge': s.setProduceNudgeTasks(next); break;
+    case 'produceFloor': s.setProduceFloorTasks(next); break;
     case 'limitWarning': s.setLimitWarningTasks(next); break;
     case 'goalTarget': s.setGoalTargetTasks(next); break;
     case 'bookEvent': s.setBookEventTasks(next); break;

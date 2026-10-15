@@ -355,3 +355,49 @@ describe('describePantryReviewDone', () => {
     expect(describePantryReviewDone(15, 5, 4)).toBe('Checked 15 things, 5 skipped. 4 more to go through next time.');
   });
 });
+
+describe('the past use-by tier', () => {
+  // 2026-08-22 minus n days, as the YYYY-MM-DD day key the catalog stores.
+  const dayKeyAgo = (n: number) => {
+    const d = new Date(NOW.getTime() - n * 86_400_000);
+    const pad = (v: number) => String(v).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  };
+  const onHand = { onHandUntil: daysFromNow(10) };
+
+  it('puts a long-expired row on hand ahead of every other card', () => {
+    const bread = makeItem({ name: 'Bread', ...onHand, expiresAt: dayKeyAgo(27) });
+    const lapsed = makeItem({ name: 'Rice', lastPurchasedAt: daysAgo(130) });
+    const deck = buildPantryReviewDeck([lapsed, bread], NOW);
+    expect(deck.cards.map(c => c.item.name)).toEqual(['Bread', 'Rice']);
+    expect(deck.cards[0].doubt).toBe('pastUseBy');
+    expect(deck.cards[0].daysPastUseBy).toBe(27);
+  });
+
+  it('orders the longest overdue first', () => {
+    const a = makeItem({ name: 'A', ...onHand, expiresAt: dayKeyAgo(10) });
+    const b = makeItem({ name: 'B', ...onHand, expiresAt: dayKeyAgo(30) });
+    expect(buildPantryReviewDeck([a, b], NOW).cards.map(c => c.item.name)).toEqual(['B', 'A']);
+  });
+
+  it('leaves a row a few days past its date alone', () => {
+    const milk = makeItem({ name: 'Milk', ...onHand, expiresAt: dayKeyAgo(7) });
+    expect(buildPantryReviewDeck([milk], NOW).cards.map(c => c.doubt)).not.toContain('pastUseBy');
+  });
+
+  it('ignores a frozen row, whose old date is suspended', () => {
+    const peas = makeItem({ name: 'Peas', ...onHand, expiresAt: dayKeyAgo(40), frozenAt: daysAgo(30) });
+    expect(buildPantryReviewDeck([peas], NOW).cards.map(c => c.doubt)).not.toContain('pastUseBy');
+  });
+
+  it('skips a row marked out of it, and one answered within the quiet window', () => {
+    const out = makeItem({ name: 'Out', expiresAt: dayKeyAgo(30), onHandUntil: OUT_OF_IT_UNTIL });
+    const answered = makeItem({ name: 'Said', ...onHand, expiresAt: dayKeyAgo(30), pantryReviewedAt: daysAgo(1) });
+    expect(buildPantryReviewDeck([out, answered], NOW).cards).toEqual([]);
+  });
+
+  it('names the pill in days past its use-by date', () => {
+    const bread = makeItem({ name: 'Bread', ...onHand, expiresAt: dayKeyAgo(27) });
+    expect(describePantryDoubt(buildPantryReviewDeck([bread], NOW).cards[0])).toBe('27 days past its use-by date');
+  });
+});

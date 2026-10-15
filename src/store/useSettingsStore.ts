@@ -48,6 +48,7 @@ import {
   clampProduceNudgeFromHour,
   clampProduceNudgeGoal,
 } from '../utils/produceNudgeTasks';
+import { DEFAULT_PRODUCE_FLOOR, clampProduceFloor } from '../utils/produceFloorTasks';
 import { DEFAULT_APP_FONT, isAppFont, pickRandomAppFont, type AppFont } from '../theme/fonts';
 import { parseGeneratorEstimates, type GeneratorEstimates } from '../utils/ruleEstimate';
 import type { SortOption, RecipeSortOption, ProjectSortOption, Priority, Effort, Difficulty, GeneratedKind, GeneratedTaskExtras, TaskFieldDefaults, MealSlot, TimeOfDay, TitleRule, WeatherRule, EventTaskRule, ScreenTimeRule, HealthRule, NutrientKey, ReminderCapture } from '../types';
@@ -1841,6 +1842,15 @@ interface SettingsStore {
   // and the food log is short of a servings goal. The hour and the goal are the
   // person's to set. See src/utils/produceNudgeTasks.ts.
   produceNudgeTasks: boolean;
+  // Opt-in, off by default: a weekly task to restock vegetables and fruit when
+  // the pantry lists fewer than `produceFloorCount`. See
+  // src/utils/produceFloorTasks.ts.
+  produceFloorTasks: boolean;
+  produceFloorTaskCategory: string | null;
+  // The week (its first day's key) a floor task was last deleted in, written by
+  // writeGeneratedOptOut's produceFloor case and held for that week only.
+  produceFloorDeclinedWeekKey: string | null;
+  produceFloorCount: number;
   produceNudgeTaskCategory: string | null;
   // The logical day a produce task was last deleted on, written by
   // writeGeneratedOptOut's produceNudge case and held for that day only.
@@ -2272,6 +2282,10 @@ interface SettingsStore {
   setSnackNudgeFromHour: (hour: number) => void;
   setSnackNudgeSharePercent: (percent: number) => void;
   setProduceNudgeTasks: (on: boolean) => void;
+  setProduceFloorTasks: (on: boolean) => void;
+  setProduceFloorTaskCategory: (category: string | null) => void;
+  setProduceFloorDeclinedWeekKey: (weekKey: string | null) => void;
+  setProduceFloorCount: (count: number) => void;
   setProduceNudgeTaskCategory: (category: string | null) => void;
   setProduceNudgeDeclinedDayKey: (dayKey: string | null) => void;
   setProduceNudgeFromHour: (hour: number) => void;
@@ -3013,6 +3027,10 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   snackNudgeFromHour: DEFAULT_SNACK_NUDGE_FROM_HOUR,
   snackNudgeSharePercent: DEFAULT_SNACK_NUDGE_SHARE_PERCENT,
   produceNudgeTasks: false,
+  produceFloorTasks: false,
+  produceFloorTaskCategory: null,
+  produceFloorDeclinedWeekKey: null,
+  produceFloorCount: DEFAULT_PRODUCE_FLOOR,
   produceNudgeTaskCategory: null,
   produceNudgeDeclinedDayKey: null,
   produceNudgeFromHour: DEFAULT_PRODUCE_NUDGE_FROM_HOUR,
@@ -3533,6 +3551,10 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const storedSnackNudgeSharePercent = parseInt(dbGetSetting('snackNudgeSharePercent') ?? '', 10);
     const snackNudgeSharePercent = clampSnackNudgeSharePercent(storedSnackNudgeSharePercent);
     const produceNudgeTasks = dbGetSetting('produceNudgeTasks') === 'true';
+    const produceFloorTasks = dbGetSetting('produceFloorTasks') === 'true';
+    const produceFloorTaskCategory = dbGetSetting('produceFloorTaskCategory') || null;
+    const produceFloorDeclinedWeekKey = dbGetSetting('produceFloorDeclinedWeekKey') || null;
+    const produceFloorCount = clampProduceFloor(parseInt(dbGetSetting('produceFloorCount') ?? '', 10));
     const produceNudgeTaskCategory = dbGetSetting('produceNudgeTaskCategory') || null;
     const produceNudgeDeclinedDayKey = dbGetSetting('produceNudgeDeclinedDayKey') || null;
     const produceNudgeFromHour = clampProduceNudgeFromHour(parseInt(dbGetSetting('produceNudgeFromHour') ?? '', 10));
@@ -3840,6 +3862,10 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       placeSuggestionsEnabled,
       postponeCheckEnabled,
       postponeCheckThreshold,
+      produceFloorCount,
+      produceFloorDeclinedWeekKey,
+      produceFloorTaskCategory,
+      produceFloorTasks,
       produceNudgeDeclinedDayKey,
       produceNudgeFromHour,
       produceNudgeGoal,
@@ -4885,6 +4911,27 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const clamped = clampSnackNudgeSharePercent(percent);
     dbSetSetting('snackNudgeSharePercent', String(clamped));
     set({ snackNudgeSharePercent: clamped });
+  },
+
+  setProduceFloorTasks(on: boolean) {
+    dbSetSetting('produceFloorTasks', String(on));
+    set({ produceFloorTasks: on });
+  },
+
+  setProduceFloorTaskCategory(category: string | null) {
+    dbSetSetting('produceFloorTaskCategory', category ?? '');
+    set({ produceFloorTaskCategory: category });
+  },
+
+  setProduceFloorDeclinedWeekKey(weekKey: string | null) {
+    dbSetSetting('produceFloorDeclinedWeekKey', weekKey ?? '');
+    set({ produceFloorDeclinedWeekKey: weekKey });
+  },
+
+  setProduceFloorCount(count: number) {
+    const clamped = clampProduceFloor(count);
+    dbSetSetting('produceFloorCount', String(clamped));
+    set({ produceFloorCount: clamped });
   },
 
   setProduceNudgeTasks(on: boolean) {
