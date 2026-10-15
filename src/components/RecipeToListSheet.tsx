@@ -44,6 +44,7 @@ import { EmptyState } from './EmptyState';
 import { SubstituteSheet } from './SubstituteSheet';
 import { haptics } from '../utils/haptics';
 import { SheetUndoBar } from './SheetUndoBar';
+import { useLingering } from '../hooks/useLingering';
 
 // How long the in-sheet "marked in pantry" undo stays up. Same value UndoBar
 // uses for the same reason: long enough to read the label and reach for the
@@ -361,6 +362,8 @@ export function RecipeToListSheet({
   // disconnected moment). One at a time, replacing on every tap, same as
   // UndoBar mirrors for its own three queues.
   const [pantryUndo, setPantryUndo] = useState<{ label: string; undo: () => void } | null>(null);
+  // Held on screen while the bar drops away after it clears (useLingering).
+  const pantryUndoShown = useLingering(pantryUndo);
   const pantryUndoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -792,15 +795,17 @@ export function RecipeToListSheet({
           </ScrollView>
         )}
 
-        {!!pantryUndo && (
+        {!!pantryUndoShown.value && (
           <SheetUndoBar
-            label={pantryUndo.label}
+            label={pantryUndoShown.value.label}
             onUndo={handlePantryUndo}
             onDismiss={() => {
               if (pantryUndoTimerRef.current) clearTimeout(pantryUndoTimerRef.current);
               setPantryUndo(null);
             }}
             bottom={insets.bottom + spacing.lg}
+            leaving={pantryUndoShown.leaving}
+            onLeft={pantryUndoShown.onLeft}
           />
         )}
       </View>

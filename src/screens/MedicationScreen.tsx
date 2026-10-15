@@ -63,6 +63,7 @@ import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { usePullToSearch } from '../hooks/usePullToSearch';
 import { useActionMenu } from '../hooks/useActionMenu';
+import { useLingering } from '../hooks/useLingering';
 
 /** How many recent doses the list shows at first, and how many more each tap adds. */
 const RECENT_PAGE = 25;
@@ -138,6 +139,9 @@ export function MedicationScreen() {
   const [recentLimit, setRecentLimit] = useState(RECENT_PAGE);
   const [undo, setUndo] = useState<MedicationLog | null>(null);
   const deletedDose = useDeletedDoseUndo();
+  // Both bars are held on screen while they drop away (useLingering).
+  const undoShown = useLingering(undo);
+  const deletedShown = useLingering(deletedDose.deleted);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Re-read the clock each minute, so "OK again at 4:15 PM" goes away when
   // 4:15 comes rather than when something else re-renders the screen.
@@ -554,20 +558,24 @@ export function MedicationScreen() {
           </>
         )}
       </ScrollView>
-      {undo && (
+      {undoShown.value && (
         <SheetUndoBar
-          label={`Recorded ${[undo.name, formatDose(undo)].filter(Boolean).join(' ')}`}
+          label={`Recorded ${[undoShown.value.name, formatDose(undoShown.value)].filter(Boolean).join(' ')}`}
           onUndo={undoQuickRecord}
           onDismiss={dismissQuickRecordUndo}
           bottom={tabBarHeight + spacing.md}
+          leaving={undoShown.leaving}
+          onLeft={undoShown.onLeft}
         />
       )}
-      {deletedDose.deleted && (
+      {deletedShown.value && (
         <SheetUndoBar
-          label={`Deleted ${[deletedDose.deleted.name, formatDose(deletedDose.deleted)].filter(Boolean).join(' ')}`}
+          label={`Deleted ${[deletedShown.value.name, formatDose(deletedShown.value)].filter(Boolean).join(' ')}`}
           onUndo={deletedDose.undo}
           onDismiss={deletedDose.dismiss}
           bottom={tabBarHeight + spacing.md}
+          leaving={deletedShown.leaving}
+          onLeft={deletedShown.onLeft}
         />
       )}
       {sheets}

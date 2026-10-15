@@ -40,6 +40,7 @@ import { EmptyState } from './EmptyState';
 import { SubstituteSheet } from './SubstituteSheet';
 import { haptics } from '../utils/haptics';
 import { SheetUndoBar } from './SheetUndoBar';
+import { useLingering } from '../hooks/useLingering';
 
 // Same value UndoBar uses for the same reason: long enough to read the label
 // and reach for the button, short enough not to overstay a moment already
@@ -233,6 +234,8 @@ export function AddMealsToListSheet({
   // reasoning as RecipeToListSheet's own: neither UndoBar nor shake-to-undo
   // can be reached while this sheet's `Modal` is up.
   const [pantryUndo, setPantryUndo] = useState<{ label: string; undo: () => void } | null>(null);
+  // Held on screen while the bar drops away after it clears (useLingering).
+  const pantryUndoShown = useLingering(pantryUndo);
   const pantryUndoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -558,15 +561,17 @@ export function AddMealsToListSheet({
           </ScrollView>
         )}
 
-        {!!pantryUndo && (
+        {!!pantryUndoShown.value && (
           <SheetUndoBar
-            label={pantryUndo.label}
+            label={pantryUndoShown.value.label}
             onUndo={handlePantryUndo}
             onDismiss={() => {
               if (pantryUndoTimerRef.current) clearTimeout(pantryUndoTimerRef.current);
               setPantryUndo(null);
             }}
             bottom={insets.bottom + spacing.lg}
+            leaving={pantryUndoShown.leaving}
+            onLeft={pantryUndoShown.onLeft}
           />
         )}
       </View>

@@ -232,6 +232,7 @@ import { sumEstimatedMinutes, formatDuration } from '../utils/effort';
 import { LazySheet } from '../components/LazySheet';
 import { ProgressBar } from '../components/ProgressBar';
 import { AnimatedNumber } from '../components/AnimatedNumber';
+import { useLingering } from '../hooks/useLingering';
 
 // The four lenses of the pill switcher. They're disjoint by construction —
 // isUnscheduledTask() excludes inbox tasks, and isTaskVisible() excludes both —
@@ -853,6 +854,8 @@ export function TodayScreen() {
     | null
   >(null);
   const createdToastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Held on screen while the toast drops away after it clears (useLingering).
+  const createdToastShown = useLingering(createdToast);
   const [autoCompletingIds, setAutoCompletingIds] = useState<Set<string>>(new Set());
   // The requests in `autoCompletingIds` no row has played yet, mirrored in a
   // ref so the first row to ask takes one synchronously (see TaskItem's
@@ -1311,7 +1314,7 @@ export function TodayScreen() {
     if (!createdToast) return;
     const toast = createdToast;
     dismissCreatedToast();
-    haptics.success();
+    haptics.tap();
     if (toast.source === 'moved') {
       // Whole-snapshot revert, same as deferTask's own undo — the row goes
       // back to exactly what it was before the suggestion was applied,
@@ -5516,16 +5519,18 @@ export function TodayScreen() {
           </View>
         )}
 
-        {createdToast && (
+        {createdToastShown.value && (
           <CreatedTaskToast
-            task={createdToast.task}
-            destination={createdToast.destination}
-            mode={createdToast.source}
+            task={createdToastShown.value.task}
+            destination={createdToastShown.value.destination}
+            mode={createdToastShown.value.source}
             dayResetTime={dayResetTime}
             bottom={fabBottom + FAB_SIZE + spacing.md}
             onGoToTask={handleCreatedToastGoTo}
             onUndo={handleCreatedToastUndo}
             onDismiss={dismissCreatedToast}
+            leaving={createdToastShown.leaving}
+            onLeft={createdToastShown.onLeft}
           />
         )}
 

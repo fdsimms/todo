@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { InlineAction } from './InlineAction';
 import { BannerBar } from './BannerBar';
 
@@ -28,10 +28,12 @@ interface Props {
  * otherwise leaves you somewhere the tasks aren't.
  */
 export function TemplateAppliedToast({ count, bottom, onDismiss, noun = 'task', goTo }: Props) {
+  // Times out by dropping away, and only then tells the parent it's gone. A
+  // swipe has already carried it off, so that one goes straight to onDismiss.
+  const [leaving, setLeaving] = useState(false);
   useEffect(() => {
-    const timeout = setTimeout(onDismiss, VISIBLE_MS);
+    const timeout = setTimeout(() => setLeaving(true), VISIBLE_MS);
     return () => clearTimeout(timeout);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const message = count === 1 ? `Created 1 ${noun}` : `Created ${count} ${noun}s`;
@@ -41,10 +43,12 @@ export function TemplateAppliedToast({ count, bottom, onDismiss, noun = 'task', 
       bottom={bottom}
       label={message}
       onDismiss={onDismiss}
+      leaving={leaving}
+      onLeft={onDismiss}
       actions={goTo ? (
         <InlineAction
           label={goTo.label}
-          onPress={() => { onDismiss(); goTo.onPress(); }}
+          onPress={() => { setLeaving(true); goTo.onPress(); }}
           accessibilityLabel={goTo.label}
         />
       ) : undefined}
