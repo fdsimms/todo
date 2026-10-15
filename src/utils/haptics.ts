@@ -45,6 +45,17 @@ let lastDragTick = 0;
  * `success` means something got finished. Pausing, removing, copying and
  * undoing are `tap`, or success stops meaning anything.
  *
+ * **Never `await` a haptic before the visual it belongs to.** The native call
+ * is on its way the moment it's made; awaiting its promise only holds the
+ * animation back a bridge round trip, so the buzz lands ahead of what it's
+ * about (a task's checkmark waited on exactly this). Fire it and move on. The
+ * one reason to await is a deliberate pause, and then say so where it's done.
+ *
+ * And fire one per action: a control that already buzzes (SegmentedControl,
+ * a SettingsRow switch, ReorderableList's slot tick, enterSelectionMode) owns
+ * that buzz, and a caller adding its own stacks two on one frame.
+ * noSegmentedDoubleTap.test.ts enforces this for SegmentedControl.
+ *
  * All return a promise that is safe to ignore — or nothing at all, when the
  * haptics setting is off or a drag tick lands inside the throttle. Failures
  * are swallowed either way; no caller awaits these.

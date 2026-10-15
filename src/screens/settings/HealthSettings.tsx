@@ -609,7 +609,7 @@ export function HealthSettings() {
           { value: 'lb' as WeightUnit, label: 'lb' },
         ]}
         selected={weightUnit}
-        onSelect={unit => { haptics.tap(); setWeightUnit(unit); }}
+        onSelect={unit => setWeightUnit(unit)}
         accessibilityLabelFor={o => (o.value === 'kg' ? 'Kilograms' : 'Pounds')}
       />
     </SettingsSection>
