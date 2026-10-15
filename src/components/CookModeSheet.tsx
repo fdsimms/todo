@@ -12,6 +12,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Keyboard,
   View,
   Text,
@@ -51,6 +52,7 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { clampStepIndex, cookSteps, describeStepPosition } from '../utils/cookMode';
 import { formatStepDuration, stepDurationOffers, stepTimerExcerpt } from '../utils/stepTimers';
+import { recipeTimerResetPrompt } from '../utils/recipeTimer';
 import {
   applyChoice, choiceGroupKey, flattenRecipeIngredients, recipeChoiceGroups, type ChoiceGroup,
 } from '../utils/recipeComponents';
@@ -422,6 +424,25 @@ export function CookModeSheet({
     onClose();
   };
 
+  // Leaving with the X keeps the cook timer running on purpose (stepping away
+  // mid-cook is the ordinary case), so abandoning a cook is its own action:
+  // it throws the timed cook away without logging it, then closes. Asks first
+  // because what it discards is a time that was about to be logged. Step timers
+  // are separate and keep their own cancel.
+  const cancelCook = () => {
+    haptics.tap();
+    const prompt = recipeTimerResetPrompt('Cook', cookTimer);
+    const discard = () => {
+      cookTimer.onReset();
+      close();
+    };
+    if (!prompt) { discard(); return; }
+    Alert.alert('Cancel this cook?', `${prompt.message} Cancelling stops the timer without logging a cook time.`, [
+      { text: 'Keep cooking', style: 'cancel' },
+      { text: 'Cancel cook', style: 'destructive', onPress: discard },
+    ]);
+  };
+
   const goNext = () => {
     if (atLast) {
       // Finishing the whole method should read as more than one more step
@@ -465,9 +486,26 @@ export function CookModeSheet({
             // written, and a chip repeating that is chrome. When it isn't, this
             // is the one thing on screen explaining why the amounts in the panel
             // below aren't the recipe's own numbers.
-            isUnscaled(scale) ? undefined : (
-              <View style={styles.scaleChip}>
-                <Text style={styles.scaleChipText}>{formatScale(scale)}</Text>
+            isUnscaled(scale) && !cookTimer.inProgress ? undefined : (
+              <View style={styles.headerActions}>
+                {!isUnscaled(scale) && (
+                  <View style={styles.scaleChip}>
+                    <Text style={styles.scaleChipText}>{formatScale(scale)}</Text>
+                  </View>
+                )}
+                {/* Only once a cook is underway (the timer has time on it). */}
+                {cookTimer.inProgress && (
+                  <TouchableOpacity
+                    onPress={cancelCook}
+                    activeOpacity={interaction.activeOpacity}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Cancel this cook"
+                    accessibilityHint="Stops the timer without logging a cook time and closes cook mode"
+                  >
+                    <Ionicons name="trash-outline" size={iconSize.md} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                )}
               </View>
             )
           }
@@ -1073,6 +1111,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: colors.bg,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.smd,
   },
   scaleChip: {
     backgroundColor: colors.accent + '26',
