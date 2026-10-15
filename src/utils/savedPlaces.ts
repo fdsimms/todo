@@ -1,5 +1,6 @@
 import { dbGetSetting, dbSetSetting } from '../db/database';
 import { generateId } from './id';
+import { clampTravelDoorMinutes } from './travelTasks';
 
 /**
  * Places the user has named ("Home", "Mom's", "Gym") so typing the name into
@@ -32,6 +33,12 @@ export interface SavedPlace {
    * a place with a pin: there is nothing to be near otherwise.
    */
   moodTag: boolean;
+  /**
+   * Minutes to get out the door when a trip starts here (`travelTasks.ts`), or
+   * null to use the Settings value. Only read for a place with a pin, since
+   * that is what a trip can start from.
+   */
+  doorMinutes: number | null;
 }
 
 /** The comparison key for a name: lowercased, spaces collapsed, trailing punctuation dropped. */
@@ -54,6 +61,7 @@ function readEntry(raw: unknown): SavedPlace | null {
     latitude: pinned ? lat : null,
     longitude: pinned ? lon : null,
     moodTag: pinned && v.moodTag === true,
+    doorMinutes: clampTravelDoorMinutes(v.doorMinutes),
   };
 }
 
@@ -84,6 +92,8 @@ export interface SavedPlaceInput {
   place: { latitude: number; longitude: number } | null;
   /** Left out, it keeps what the place already had. Dropped when there is no pin. */
   moodTag?: boolean;
+  /** Left out, it keeps what the place already had; null clears it back to the Settings value. */
+  doorMinutes?: number | null;
 }
 
 /**
@@ -103,12 +113,14 @@ export function addSavedPlace(places: readonly SavedPlace[], input: SavedPlaceIn
     latitude: input.place?.latitude ?? null,
     longitude: input.place?.longitude ?? null,
     moodTag: !!input.moodTag && !!input.place,
+    doorMinutes: clampTravelDoorMinutes(input.doorMinutes),
   };
   const at = places.findIndex(p => savedPlaceKey(p.name) === key);
   if (at >= 0) {
     const next = [...places];
     const moodTag = (input.moodTag ?? places[at].moodTag) && !!input.place;
-    next[at] = { ...entry, id: places[at].id, moodTag };
+    const doorMinutes = input.doorMinutes === undefined ? places[at].doorMinutes : entry.doorMinutes;
+    next[at] = { ...entry, id: places[at].id, moodTag, doorMinutes };
     return next;
   }
   if (places.length >= SAVED_PLACES_LIMIT) return [...places];
@@ -140,6 +152,7 @@ export function editSavedPlace(places: readonly SavedPlace[], id: string, input:
       latitude: input.place?.latitude ?? null,
       longitude: input.place?.longitude ?? null,
       moodTag: (input.moodTag ?? p.moodTag) && !!input.place,
+      doorMinutes: input.doorMinutes === undefined ? p.doorMinutes : clampTravelDoorMinutes(input.doorMinutes),
     }
     : p));
 }

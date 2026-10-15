@@ -73,6 +73,7 @@ export function useTravelTaskSync(): void {
       if (
         state.travelTasks !== prev.travelTasks ||
         state.travelLeadMinutes !== prev.travelLeadMinutes ||
+        state.travelDoorMinutes !== prev.travelDoorMinutes ||
         state.travelLeadByCalendar !== prev.travelLeadByCalendar ||
         state.travelEventPrefs !== prev.travelEventPrefs ||
         state.travelTaskCategory !== prev.travelTaskCategory ||

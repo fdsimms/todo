@@ -76,6 +76,9 @@ import {
   TRAVEL_LEAD_MINUTES_MAX,
   TRAVEL_LEAD_MINUTES_MIN,
   TRAVEL_LEAD_MINUTES_STEP,
+  TRAVEL_DOOR_MINUTES_MAX,
+  TRAVEL_DOOR_MINUTES_STEP,
+  TRAVEL_ESTIMATE_MARGIN_MINUTES,
   TRAVEL_WALK_UNDER_MAX,
   TRAVEL_WALK_UNDER_STEP,
   originCandidates,
@@ -1131,6 +1134,32 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
               describeValue={n => `${n ?? TRAVEL_LEAD_MINUTES_DEFAULT} minutes before the event`}
             />
           </View>
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="travelDoorMinutes"
+            icon="exit-outline"
+            label="Time to get out the door"
+            hint={s.travelDoorMinutes === null
+              ? `Not set. Apple Maps estimates get ${TRAVEL_ESTIMATE_MARGIN_MINUTES} minutes added and typed times get none. A saved place can set its own.`
+              : 'Added to every reminder for the time it takes to leave your building. A saved place can set its own.'}
+            value={s.travelDoorMinutes === null ? 'Not set' : `${s.travelDoorMinutes} min`}
+            tight
+          />
+          <View style={styles.cadenceRow}>
+            <CountStepper
+              value={s.travelDoorMinutes}
+              onChange={next => s.setTravelDoorMinutes(next)}
+              min={0}
+              max={TRAVEL_DOOR_MINUTES_MAX}
+              step={TRAVEL_DOOR_MINUTES_STEP}
+              allowNull
+              start={TRAVEL_ESTIMATE_MARGIN_MINUTES}
+              emptyLabel="Not set"
+              format={n => `${n}m`}
+              label="Minutes to get out the door"
+              describeValue={n => (n === null ? 'Time to get out the door is not set' : `${n} minutes to get out the door`)}
+            />
+          </View>
           {Platform.OS === 'ios' && (
             <>
               <View style={styles.sep} />
@@ -1154,7 +1183,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
             iconColor={s.travelEstimates ? colors.accent : undefined}
             label="Estimate travel time"
             hint={s.travelEstimates
-              ? "Sets each reminder from Apple Maps’ estimate of the trip, plus 5 minutes. Sends the event’s address and where the trip starts to Apple while the app is open."
+              ? "Sets each reminder from Apple Maps’ estimate of the trip, plus the time to get out the door. Sends the event’s address and where the trip starts to Apple while the app is open."
               : 'Reminders use the time above. Nothing is sent anywhere.'}
             toggle={s.travelEstimates}
             onPress={async () => {

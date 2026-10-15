@@ -15,6 +15,7 @@ import { requestLocationPermission } from '../utils/weatherLocation';
 import { placeLocationText, placeRowTitle, placeSubtitle, type PlaceResult } from '../utils/places';
 import { editSavedPlace, addSavedPlace, findSavedPlace, type SavedPlace } from '../utils/savedPlaces';
 import { editSavedEvent, type SavedEvent } from '../utils/savedEvents';
+import { TRAVEL_DOOR_MINUTES_MAX, TRAVEL_DOOR_MINUTES_STEP, TRAVEL_ESTIMATE_MARGIN_MINUTES } from '../utils/travelTasks';
 import { ALERT_CHOICES, describeAlert } from '../utils/quickEventSave';
 
 type Pin = { latitude: number; longitude: number } | null;
@@ -103,6 +104,7 @@ export function SavedPlaceSheet({ visible, subject: liveSubject, places, onSave,
   const [text, setText] = useState('');
   const [pin, setPin] = useState<Pin>(null);
   const [moodTag, setMoodTag] = useState(false);
+  const [doorMinutes, setDoorMinutes] = useState<number | null>(null);
 
   // Typing over the address drops its pin, and a place with no pin has nothing
   // to be near, so the mood log switch goes off with it.
@@ -138,6 +140,7 @@ export function SavedPlaceSheet({ visible, subject: liveSubject, places, onSave,
       ? { latitude: existing.latitude, longitude: existing.longitude }
       : null);
     setMoodTag(existing?.moodTag ?? false);
+    setDoorMinutes(existing?.doorMinutes ?? null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, subject === 'new' ? 'new' : subject?.id]);
 
@@ -149,7 +152,7 @@ export function SavedPlaceSheet({ visible, subject: liveSubject, places, onSave,
       Alert.alert('Name and address needed', 'Enter a name and the address it stands for.');
       return;
     }
-    const input = { name, text, place: pin, moodTag };
+    const input = { name, text, place: pin, moodTag, doorMinutes };
     let next: SavedPlace[];
     if (isNew) {
       if (findSavedPlace(places, name)) {
@@ -214,6 +217,29 @@ export function SavedPlaceSheet({ visible, subject: liveSubject, places, onSave,
             accessibilityLabel="Suggest in mood log"
           />
         </View>
+        {pin && (
+          <View style={styles.doorRow}>
+            <View>
+              <Text style={styles.switchLabel}>Time to get out the door</Text>
+              <Text style={styles.switchHint}>
+                Added to leave-by reminders for trips that start here. Default uses the setting under Leave-by reminders.
+              </Text>
+            </View>
+            <CountStepper
+              value={doorMinutes}
+              onChange={setDoorMinutes}
+              min={0}
+              max={TRAVEL_DOOR_MINUTES_MAX}
+              step={TRAVEL_DOOR_MINUTES_STEP}
+              allowNull
+              start={TRAVEL_ESTIMATE_MARGIN_MINUTES}
+              emptyLabel="Default"
+              format={n => `${n}m`}
+              label={`Minutes to get out the door from ${name.trim() || 'this place'}`}
+              describeValue={n => (n === null ? 'Default' : `${n} minutes to get out the door`)}
+            />
+          </View>
+        )}
       </View>
     </CardSheet>
   );
@@ -377,6 +403,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginTop: spacing.lg,
   },
   switchText: { flex: 1 },
+  doorRow: { marginTop: spacing.lg, gap: spacing.smd, alignItems: 'flex-start' },
   switchLabel: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium },
   switchHint: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xxs },
   placeList: {

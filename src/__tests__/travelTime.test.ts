@@ -34,7 +34,7 @@ it('asks Apple Maps for the trip to the event, by the chosen mode', async () => 
 });
 
 it('starts the trip from a saved place when one is given', async () => {
-  const home = { name: 'Home', latitude: 40.7128, longitude: -74.006 };
+  const home = { name: 'Home', latitude: 40.7128, longitude: -74.006, doorMinutes: null };
   await estimateTravelMinutes(dentist, departAt, 'driving', home);
   expect(mockEstimate).toHaveBeenCalledWith('e-1', '123 Main St', departAt, 'driving', home);
 });
