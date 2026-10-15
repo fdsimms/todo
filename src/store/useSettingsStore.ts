@@ -24,6 +24,12 @@ import {
   type ActiveEnergyBoost,
 } from '../utils/activeEnergyBoost';
 import {
+  parseProteinPerWeight,
+  proteinTargetFromWeight,
+  serializeProteinPerWeight,
+  type ProteinPerWeight,
+} from '../utils/proteinPerWeight';
+import {
   EMPTY_BODY_PROFILE,
   parseBodyProfile,
   serializeBodyProfile,
@@ -1221,6 +1227,22 @@ interface SettingsStore {
   activeEnergyBoost: ActiveEnergyBoost | null;
 
   /**
+   * Grams of protein per pound (or kilogram) of the latest weigh-in, which
+   * `syncProteinToWeight` keeps `nutritionTargets.proteinG` equal to — see
+   * `src/utils/proteinPerWeight.ts`. Null until somebody turns it on, which is
+   * the shipping state.
+   *
+   * Unlike the two boosts above this one does write the stored target, the way
+   * the weight goal writes the calorie figure, and for the same reason: the
+   * target has many readers and one of them (the MCP replica) cannot see a
+   * weight at all.
+   *
+   * Kept out of DEFAULT_SETTINGS/resetToDefaults for the mechanical reason
+   * weightGoal is: it's an object, and String(value) doesn't round-trip one.
+   */
+  proteinPerWeight: ProteinPerWeight | null;
+
+  /**
    * Height, year of birth, sex and activity level — the inputs the calorie
    * estimate needs, and nothing else in the app reads them. See
    * src/utils/energyBudget.ts.
@@ -2060,6 +2082,14 @@ interface SettingsStore {
   /** Sets the water exercise boost, or clears it with null. */
   setWaterExerciseBoost: (boost: WaterExerciseBoost | null) => void;
   setActiveEnergyBoost: (boost: ActiveEnergyBoost | null) => void;
+  /**
+   * Turn the protein-per-weight pin on, change its ratio, or clear it (null).
+   * Persists only; the caller follows with `syncProteinToWeight` once it has a
+   * weight, since this store never reads Health itself.
+   */
+  setProteinPerWeight: (setting: ProteinPerWeight | null) => void;
+  /** Re-apply the pin to the stored protein target. A null weight changes nothing. */
+  syncProteinToWeight: (currentKg: number | null) => void;
   /** Replaces the body profile whole — the sheet stages it and saves once. */
   setBodyProfile: (profile: BodyProfile) => void;
   /**
@@ -2855,6 +2885,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   journalCustomPrompts: [],
   waterExerciseBoost: null,
   activeEnergyBoost: null,
+  proteinPerWeight: null,
   bodyProfile: { ...EMPTY_BODY_PROFILE },
   healthCategory: null,
   stepGoal: null,
@@ -3253,6 +3284,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const journalCustomPrompts = parseJournalCustomPrompts(dbGetSetting('journalCustomPrompts'));
     const waterExerciseBoost = parseWaterExerciseBoost(dbGetSetting('waterExerciseBoost'));
     const activeEnergyBoost = parseActiveEnergyBoost(dbGetSetting('activeEnergyBoost'));
+    const proteinPerWeight = parseProteinPerWeight(dbGetSetting('proteinPerWeight'));
     const bodyProfile = parseBodyProfile(dbGetSetting('bodyProfile'));
     // '' persists as "not chosen", matching calendarEventCategory. Nothing
     // creates the category from here — see ensureHealthCategory, which runs
@@ -3764,6 +3796,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       projectReviewTaskCategory,
       projectReviewTasks,
       projectSortOption,
+      proteinPerWeight,
       quietHoursEnd,
       quietHoursStart,
       reachOutTaskCategory,
@@ -5368,6 +5401,21 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setActiveEnergyBoost(boost: ActiveEnergyBoost | null) {
     dbSetSetting('activeEnergyBoost', boost === null ? '' : serializeActiveEnergyBoost(boost));
     set({ activeEnergyBoost: boost });
+  },
+
+  setProteinPerWeight(setting: ProteinPerWeight | null) {
+    dbSetSetting('proteinPerWeight', setting === null ? '' : serializeProteinPerWeight(setting));
+    set({ proteinPerWeight: setting });
+  },
+
+  // Called from useHealthStore's refreshWeight beside the weight goal's sync,
+  // and by NutritionTargetsSheet when the ratio changes. Unlike that one it
+  // has no basis to fall back to when there is no weigh-in, so a null leaves
+  // the stored target alone.
+  syncProteinToWeight(currentKg: number | null) {
+    const proposed = proteinTargetFromWeight(currentKg, get().proteinPerWeight);
+    if (proposed === null || get().nutritionTargets.proteinG === proposed) return;
+    get().setNutritionTarget('proteinG', proposed);
   },
 
   // Replaced whole rather than a field at a time, unlike setNutritionTarget:

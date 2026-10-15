@@ -210,6 +210,13 @@ export const HEALTH_HISTORY_DAYS = 90;
 export const WEIGHT_HISTORY_DAYS = 365;
 
 /**
+ * How far back the weight-target sync looks for a weigh-in. A month, because
+ * this runs on every foreground and a short window is the cheap query; a
+ * person with nothing newer keeps the targets the last longer read set.
+ */
+const WEIGHT_TARGETS_WINDOW_DAYS = 30;
+
+/**
  * How far back the sleep read goes. The readings window's 90 days, because it
  * is the Sleep screen's longest range and nights, unlike a body, have shape
  * inside three months. Its own constant rather than `HEALTH_HISTORY_DAYS`
@@ -264,6 +271,13 @@ interface HealthState {
    * no way to ask at all.
    */
   readRecentWeights: (days: number) => Promise<WeightPoint[] | null>;
+  /**
+   * Keep the targets that follow body weight (the weight goal's calorie figure
+   * and a protein ratio) current without the Weight screen: reads a short
+   * weight window and re-applies both. Does nothing when neither is on, and a
+   * null or empty answer leaves the stored targets alone.
+   */
+  syncWeightTargets: () => Promise<void>;
   /**
    * A short window of daily active-energy figures, answered without storing
    * one. Null when there was no way to ask; a day with no figure is null
@@ -487,7 +501,10 @@ export const useHealthStore = create<HealthState>((set, get) => ({
       // A fresh weigh-in can move the weight goal's own calorie figure (it's
       // worked out against the current weight), so keep the food log target
       // in step here too, not just when the goal or profile sheet is saved.
-      useSettingsStore.getState().syncWeightGoalCalorieTarget(latestWeight(weightSeries)?.kilograms ?? null);
+      const latestKg = latestWeight(weightSeries)?.kilograms ?? null;
+      useSettingsStore.getState().syncWeightGoalCalorieTarget(latestKg);
+      // The protein target pinned to a ratio of this weight, if it's on.
+      useSettingsStore.getState().syncProteinToWeight(latestKg);
     } finally {
       set({ loadingWeight: false });
     }
@@ -556,6 +573,25 @@ export const useHealthStore = create<HealthState>((set, get) => ({
     return points;
   },
 
+  async syncWeightTargets() {
+    const wanted = (st: ReturnType<typeof useSettingsStore.getState>) =>
+      st.proteinPerWeight !== null || st.weightGoal !== null;
+    if (!wanted(useSettingsStore.getState())) return;
+    const points = await get().readRecentWeights(WEIGHT_TARGETS_WINDOW_DAYS);
+    // Null is "no way to ask" and [] is "nothing recorded"; neither is a weight.
+    // Read back after the await: a pin or the Health read may have been turned
+    // off while it was in flight.
+    const settings = useSettingsStore.getState();
+    if (points === null || !settings.healthReadEnabled || !wanted(settings)) return;
+    const kg = latestWeight(points)?.kilograms ?? null;
+    // No weigh-in in the window leaves both targets alone. The goal's sync would
+    // otherwise fall back to the weight the goal started from, which is older
+    // than the longer read `refreshWeight` may have used.
+    if (kg === null) return;
+    settings.syncWeightGoalCalorieTarget(kg);
+    settings.syncProteinToWeight(kg);
+  },
+
   /**
    * A short window of active-energy figures, for the one caller that needs to
    * say what a typical day of somebody's looks like — the baseline stepper in
@@ -616,6 +652,7 @@ export function useHealthSync(): void {
     const settings = useSettingsStore.getState();
     if (settings.initialized && settings.healthReadEnabled) {
       void useHealthStore.getState().refresh();
+      void useHealthStore.getState().syncWeightTargets();
     }
 
     const unsubscribe = useSettingsStore.subscribe((state, prev) => {
@@ -626,8 +663,10 @@ export function useHealthSync(): void {
         // which day "today" is — same reason useWeatherSync watches it.
         state.dayResetTime !== prev.dayResetTime
       ) {
-        if (state.healthReadEnabled) void useHealthStore.getState().refresh();
-        else useHealthStore.getState().clear();
+        if (state.healthReadEnabled) {
+          void useHealthStore.getState().refresh();
+          void useHealthStore.getState().syncWeightTargets();
+        } else useHealthStore.getState().clear();
       }
     });
 
@@ -654,6 +693,7 @@ export function useHealthSync(): void {
     const subscription = AppState.addEventListener('change', state => {
       if (state === 'active' && useSettingsStore.getState().healthReadEnabled) {
         void useHealthStore.getState().refresh();
+        void useHealthStore.getState().syncWeightTargets();
       }
     });
 

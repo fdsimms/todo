@@ -68,15 +68,19 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
       // what makes it do it — a configuration extension never hears about a
       // tap, which is why the two are separate targets.
       //
-      // An ink button, like the app's own filled buttons: `.label` is near
-      // black in light and near white in dark, with `.systemBackground` on it.
-      // System colours rather than the app's hexes because they already
-      // follow the appearance, and the configuration is handed to the system
-      // to draw, where a custom dynamic colour isn't guaranteed to survive.
-      primaryButtonLabel: ShieldConfiguration.Label(text: "Close", color: .systemBackground),
-      primaryButtonBackgroundColor: .label
+      // Fixed colours, never dynamic ones. The configuration is handed to the
+      // system to draw, and `.label` on `.systemBackground` resolved to the
+      // same colour there: a white pill with no readable text. The mark's own
+      // gold and ink are the same in light and dark and have a high contrast
+      // ratio, so the button reads in either appearance.
+      primaryButtonLabel: ShieldConfiguration.Label(text: "Close", color: Self.ink),
+      primaryButtonBackgroundColor: Self.gold
     )
   }
+
+  /// `brand` and `onBrand` from `src/theme/index.ts`.
+  private static let gold = UIColor(red: 1, green: 176.0 / 255.0, blue: 32.0 / 255.0, alpha: 1)
+  private static let ink = UIColor(red: 23.0 / 255.0, green: 19.0 / 255.0, blue: 28.0 / 255.0, alpha: 1)
 
   /// The app's mark: two dots and a check on the gold tile.
   ///
@@ -93,8 +97,8 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
     format.scale = 3
     let renderer = UIGraphicsImageRenderer(size: CGSize(width: side, height: side), format: format)
     return renderer.image { _ in
-      let gold = UIColor(red: 1, green: 176.0 / 255.0, blue: 32.0 / 255.0, alpha: 1)
-      let ink = UIColor(red: 23.0 / 255.0, green: 19.0 / 255.0, blue: 28.0 / 255.0, alpha: 1)
+      let gold = Self.gold
+      let ink = Self.ink
 
       gold.setFill()
       UIBezierPath(roundedRect: CGRect(x: 0, y: 0, width: side, height: side), cornerRadius: side * 0.224).fill()
@@ -133,7 +137,7 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
 
     switch state.reason {
     case "focus":
-      return "A focus session is running. These apps unblock when you pause or finish it."
+      return "A focus session is running. It unblocks when you pause or finish it."
     case "gate":
       // The whole sentence, written by the app rather than assembled here. A
       // gate can be one task or several, and picking between "isn't done yet"
@@ -150,23 +154,23 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
       // copy of words that belong to the app and nothing in this target can be
       // tested against them.
       return state.detail.flatMap { $0.isEmpty ? nil : $0 }
-        ?? "These apps are locked until you tap your key tag."
+        ?? "Locked until you tap your key tag."
     case "schedule":
       let name = state.detail.flatMap { $0.isEmpty ? nil : $0 }
       let until = state.untilIso.flatMap(Self.timeLabel)
       switch (name, until) {
-      case let (name?, until?): return "\(name) is blocking these apps until \(until)."
-      case let (name?, nil): return "\(name) is blocking these apps."
-      case let (nil, until?): return "A schedule is blocking these apps until \(until)."
-      case (nil, nil): return "A schedule is blocking these apps."
+      case let (name?, until?): return "Blocked by the \(name) list until \(until)."
+      case let (name?, nil): return "Blocked by the \(name) list."
+      case let (nil, until?): return "Blocked by a schedule until \(until)."
+      case (nil, nil): return "Blocked by a schedule."
       }
     case "manual":
       // A block the person started themselves. Only the time is on this side;
       // the app writes no detail for it.
       if let until = state.untilIso.flatMap(Self.timeLabel) {
-        return "You started a block on these apps. It ends at \(until)."
+        return "You started this block. It ends at \(until)."
       }
-      return "You started a block on these apps."
+      return "You started this block."
     case "penalty":
       let cause = state.detail.flatMap { $0.isEmpty ? nil : $0 }
       let until = state.untilIso.flatMap(Self.timeLabel)
@@ -193,8 +197,8 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
       // app's last reconcile wrote "none" because the window wasn't open yet,
       // and the monitor raised the shield from the schedules file.
       if let window = ScreenTimeShared.activeSchedules(now: Date()).first {
-        let name = (window.name ?? "").isEmpty ? "A schedule" : window.name!
-        return "\(name) is blocking these apps."
+        if let name = window.name, !name.isEmpty { return "Blocked by the \(name) list." }
+        return "Blocked by a schedule."
       }
       // The shield is up but the app's last reconcile says nothing wants it —
       // a state the app's own next foreground resolves by lifting it. Saying

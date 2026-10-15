@@ -1,5 +1,5 @@
 import { gateGroupFor, nextPendingGate, outstandingGates } from './appGate';
-import { shieldReasons, syncAppShield, type AppShieldState, type ShieldReasonEntry } from './appShield';
+import { shieldGroupIds, shieldReasons, syncAppShield, type AppShieldState, type ShieldReasonEntry } from './appShield';
 import { isFocusReleased, isGateReleased } from './shieldRelease';
 import { canLock } from './nfcKey';
 import { isTimedBlock, manualBlockWanted } from './manualBlock';
@@ -12,6 +12,7 @@ import { useNfcKeyStore } from '../store/useNfcKeyStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useManualBlockStore } from '../store/useManualBlockStore';
 import { useShieldReleaseStore } from '../store/useShieldReleaseStore';
+import { useBlockTimerStore } from '../store/useBlockTimerStore';
 import { useTaskStore } from '../store/useTaskStore';
 
 /**
@@ -44,6 +45,10 @@ export function reconcileAppShield(): Date | null {
   const now = new Date();
   const state = buildShieldState(now);
   syncAppShield(state);
+  // The block timer's start is stamped here, the one place that sees the shield
+  // change. Over the same reasons the shield was just written from.
+  const reasons = shieldReasons(state);
+  useBlockTimerStore.getState().observe(shieldGroupIds(state).length > 0, reasons, now);
 
   const boundary = nextScheduleBoundary(state.schedules, now);
   const gateAt = state.pendingGate?.liveAt ?? null;

@@ -186,7 +186,7 @@ export function nextKeyLock(locked: boolean): boolean {
 }
 
 /** The line the shield screen and the settings row lead with while the lock is on. */
-export const KEY_LOCK_DETAIL = 'These apps are locked until you tap your key tag.';
+export const KEY_LOCK_DETAIL = 'Locked until you tap your key tag.';
 
 /**
  * Removing the last key while locked would strand the lock with nothing to end

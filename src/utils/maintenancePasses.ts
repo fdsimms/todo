@@ -319,8 +319,9 @@ export function retentionPasses(): MaintenanceStep[] {
  * The same three lines `useTaskStore.initialize()` ends with, exported because
  * a warm background run has an initialized store and so never reaches them —
  * and topping the queue back up is half of what the background run is for (a
- * pace run holds only `MAX_QUOTA_NUDGES_AHEAD` pending nudges at a time, so a
- * phone left alone stops being nudged after the sixth; see #2203).
+ * pace run is promised only `MAX_QUOTA_NUDGES_AHEAD` pending nudges, and gets
+ * the rest of its day only when the queue has room for it, so on a crowded
+ * queue a phone left alone stops being nudged after the sixth; see #2203).
  */
 export function rebuildNotificationQueue(): void {
   const { tasks } = useTaskStore.getState();

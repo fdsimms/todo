@@ -8,7 +8,16 @@
  * block somebody for a task the app itself is withholding.
  */
 const mockSync = jest.fn();
-jest.mock('../utils/appShield', () => ({ syncAppShield: (...args: unknown[]) => mockSync(...args) }));
+const mockReasons: { reason: string; groupIds: string[]; until?: string | null }[] = [];
+jest.mock('../utils/appShield', () => ({
+  syncAppShield: (...args: unknown[]) => mockSync(...args),
+  shieldReasons: () => mockReasons,
+  shieldGroupIds: () => mockReasons.flatMap(r => r.groupIds),
+}));
+const mockObserve = jest.fn();
+jest.mock('../store/useBlockTimerStore', () => ({
+  useBlockTimerStore: { getState: () => ({ observe: (...args: unknown[]) => mockObserve(...args) }) },
+}));
 
 const mockVisible = jest.fn();
 const mockVisibleAt = jest.fn();
@@ -78,6 +87,8 @@ const NOW = Date.now();
 
 beforeEach(() => {
   mockSync.mockClear();
+  mockObserve.mockClear();
+  mockReasons.length = 0;
   mockKeyState.locked = false;
   mockKeyState.keys = [];
   mockTasks.length = 0;
@@ -91,6 +102,14 @@ beforeEach(() => {
 });
 
 describe('reconcileAppShield', () => {
+  it('tells the block timer whether the shield is up, from the same reasons', () => {
+    reconcileAppShield();
+    expect(mockObserve).toHaveBeenLastCalledWith(false, [], expect.any(Date));
+    mockReasons.push({ reason: 'focus', groupIds: ['default'] });
+    reconcileAppShield();
+    expect(mockObserve).toHaveBeenLastCalledWith(true, mockReasons, expect.any(Date));
+  });
+
   it('names the gates in the way, by the visibility rule', () => {
     mockTasks.push(task({ id: 'walk', title: 'Morning walk' }));
     reconcileAppShield();

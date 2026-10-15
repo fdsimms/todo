@@ -426,6 +426,50 @@ describe('syncWeightGoalCalorieTarget', () => {
   });
 });
 
+describe('syncProteinToWeight', () => {
+  it('does nothing while the pin is off', () => {
+    useSettingsStore.getState().setNutritionTarget('proteinG', 120);
+    useSettingsStore.getState().syncProteinToWeight(80);
+    expect(useSettingsStore.getState().nutritionTargets.proteinG).toBe(120);
+  });
+
+  it('writes the stored target from the ratio and the weight', () => {
+    useSettingsStore.getState().setProteinPerWeight({ unit: 'kg', gramsPerUnit: 2 });
+    useSettingsStore.getState().syncProteinToWeight(80);
+    expect(useSettingsStore.getState().nutritionTargets.proteinG).toBe(160);
+  });
+
+  it('follows the weight when it moves', () => {
+    useSettingsStore.getState().setProteinPerWeight({ unit: 'kg', gramsPerUnit: 2 });
+    useSettingsStore.getState().syncProteinToWeight(80);
+    useSettingsStore.getState().syncProteinToWeight(78.5);
+    expect(useSettingsStore.getState().nutritionTargets.proteinG).toBe(157);
+  });
+
+  it('leaves the stored target alone when there is no weight', () => {
+    useSettingsStore.getState().setProteinPerWeight({ unit: 'kg', gramsPerUnit: 2 });
+    useSettingsStore.getState().setNutritionTarget('proteinG', 140);
+    useSettingsStore.getState().syncProteinToWeight(null);
+    expect(useSettingsStore.getState().nutritionTargets.proteinG).toBe(140);
+  });
+
+  it('does not write when the target already matches', () => {
+    useSettingsStore.getState().setProteinPerWeight({ unit: 'kg', gramsPerUnit: 2 });
+    useSettingsStore.getState().syncProteinToWeight(80);
+    (dbSetSetting as jest.Mock).mockClear();
+    useSettingsStore.getState().syncProteinToWeight(80);
+    expect(dbSetSetting).not.toHaveBeenCalled();
+  });
+
+  it('persists the ratio and clears it with null', () => {
+    useSettingsStore.getState().setProteinPerWeight({ unit: 'lb', gramsPerUnit: 0.8 });
+    expect(dbSetSetting).toHaveBeenCalledWith('proteinPerWeight', JSON.stringify({ unit: 'lb', gramsPerUnit: 0.8 }));
+    useSettingsStore.getState().setProteinPerWeight(null);
+    expect(dbSetSetting).toHaveBeenLastCalledWith('proteinPerWeight', '');
+    expect(useSettingsStore.getState().proteinPerWeight).toBeNull();
+  });
+});
+
 // ─── setVacationMode / setVacationEnd ───────────────────────────────────────
 
 describe('setVacationMode', () => {
