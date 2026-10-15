@@ -1552,7 +1552,7 @@ shown beside it, but **saving the goal writes the figure** to
 `refreshWeight`, which is every time the Weight screen comes into focus with
 reading on and after `LogWeightSheet` records a weight, so the target moves with
 the weight, the profile and the date rather than going stale the moment the
-sheet is closed. The button under the figure ("Use as my calorie target") still
+sheet is closed. (`syncWeightTargets` re-applies it on each foreground too.) The button under the figure ("Use as my calorie target") still
 writes it immediately, without saving the goal.
 
 It stays narrow in four ways, and each is load-bearing:
@@ -1576,6 +1576,37 @@ The rule it bends is `nutritionTargets`' own note that a figure nobody chose
 must not drive the food log. Setting a goal is taken as choosing to have this
 one figure tracked, which is why the exception stops at that figure and why it
 has to be visible on both sheets rather than only in the code.
+
+**The protein target can follow the weight too, as a second asked-for
+exception, and it is built to the same four limits.** `proteinPerWeight`
+(`src/utils/proteinPerWeight.ts`) is a ratio typed in on `NutritionTargetsSheet`
+(grams per pound or per kilogram; off by default, nothing suggested beyond the
+round number its stepper opens on). `useSettingsStore.syncProteinToWeight` writes
+`nutritionTargets.proteinG` from it, called at the end of `refreshWeight` beside
+the goal's calorie sync and again when the ratio changes. It writes the stored
+target rather than computing at display time, unlike the two boosts, because
+this figure has far more readers (food log, Today, widget, tasks, meal plan,
+Stats, the MCP replica) and the replica cannot see a weight at all.
+
+- **Only while the ratio is on and a weight is known.** A missing, refused or
+  implausible reading answers null and leaves the stored number alone; it never
+  moves the target toward zero.
+- **Protein only.** It does not touch calories or the other macros, and it is
+  independent of the weight goal's macro split.
+- **Turning it off keeps the number.** The last figure it wrote stays as an
+  ordinary target.
+- **It says so where it happens.** A protein number typed on the sheet while the
+  ratio is on is replaced at the next weight read, and the row says that.
+
+Both syncs run from `refreshWeight` (the Weight screen, a weight logged in the
+app, the targets sheet opening with the ratio on) and also from
+`syncWeightTargets` in `useHealthStore`, which `useHealthSync` calls at launch,
+on every return to the app and when reading is turned on. That one reads a
+30-day window through `readRecentWeights` and stores nothing, so it is cheap
+enough for every foreground and a weigh-in made in another app is picked up the
+next time the app opens. With no weigh-in in the window it changes nothing: the
+goal's calorie sync would otherwise fall back to the weight the goal started
+from, which can be older than what the longer `refreshWeight` read found.
 
 **The macro split follows the same rule and is where it was most tempting to
 break.** `MACRO_PRESETS` names four common ways to divide a day's calories and
