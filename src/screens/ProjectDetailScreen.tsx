@@ -243,7 +243,7 @@ function NewLineField({
   const caret = useTitleSelection(text);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const suggestion = useMemo(
-    () => (text.trim() ? lineSuggestion(text, getLogicalNow(dayResetTime), new Date()) : null),
+    () => (text.trim() ? lineSuggestion(text, getLogicalNow(dayResetTime), new Date(), dayResetTime) : null),
     [text, dayResetTime],
   );
   const setPendingBoth = (next: LinePending) => { pendingRef.current = next; setPending(next); };

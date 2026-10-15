@@ -896,7 +896,7 @@ async function drainOnce(): Promise<ImportOutcome> {
             // threw could never leave a deleted reminder behind — though it
             // can't: the whole path is string and date arithmetic over data
             // already in hand.
-            const pending = pendingImportFor(reminder, now, logicalNow);
+            const pending = pendingImportFor(reminder, now, logicalNow, dayResetTime);
             // With review on, the schedule waits beside the task as a suggestion
             // and the row stays bare enough for isInboxTask — a capture nobody
             // has read must not file itself onto Today. With review off the user

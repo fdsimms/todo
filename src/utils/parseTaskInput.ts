@@ -12,7 +12,7 @@ import { startOfMonth } from 'date-fns/startOfMonth';
 import type { Day } from 'date-fns';
 import type { Priority, QuotaPeriod, RecurrenceType, TimeOfDay, WeatherCondition } from '../types';
 import { clockBesideDayPart, dayPartBesideClock, extractDayPart, extractTime, MONTHS, monthDay, NUMBER_WORD_ALT, NUMBER_WORDS, parseCount, parseDatePart, WEEKDAYS, type ClockTime } from './parseNaturalDate';
-import { onLogicalDay, taskDayStart } from './clockTime';
+import { logicalDayStart, onLogicalDay, taskDayStart } from './clockTime';
 import { looksLikePhoneNumber } from './phone';
 
 /**
@@ -687,7 +687,13 @@ function betweenStart(hour: number, minute: number, meridiem: string | undefined
 }
 
 /** Try to parse an entire suffix as a one-off date/time or recurrence phrase. */
-function parseSuffix(text: string, now: Date, singleWord: boolean, clockNow: Date = now): ParsedSchedule | null {
+function parseSuffix(
+  text: string,
+  now: Date,
+  singleWord: boolean,
+  clockNow: Date = now,
+  dayResetTime?: string,
+): ParsedSchedule | null {
   // A day part comes after the day it qualifies ("friday night"), so one
   // opening the phrase belongs to the title: "game night friday" is a game
   // night on Friday, not a game on Friday night. Refused here, the shorter
@@ -810,7 +816,8 @@ function parseSuffix(text: string, now: Date, singleWord: boolean, clockNow: Dat
   } else if (titleDate) {
     due = dueAt(titleDate);
   } else {
-    due = dueAt(now); // time-only input ("at 3pm") → today
+    // Time-only input ("at 3pm") → today.
+    due = dueAt(explicitClockTime ? bareClockDay(explicitClockTime, now, clockNow, dayResetTime) : now);
   }
 
   // "today at 5:30" typed at 9am means 5:30 PM: an unmarked clock that has
@@ -843,11 +850,34 @@ function parseSuffix(text: string, now: Date, singleWord: boolean, clockNow: Dat
 }
 
 /**
+ * The logical day a clock time with no date ("at 3pm") goes on. Normally the
+ * logical today, where a time already past stays. In the grace window before
+ * dayResetTime the calendar has already turned, so the reading goes on the
+ * real date and takes whichever logical day that instant is in: "at 3pm" typed
+ * at 1:30 AM under a 2 AM reset is this afternoon rather than the afternoon
+ * already gone, and "at 1:45" is still the end of the day not yet over. Without
+ * the reset there is no telling the two apart, so today it stays.
+ */
+function bareClockDay(clock: ClockTime, now: Date, clockNow: Date, dayResetTime?: string): Date {
+  if (!dayResetTime || isSameDay(now, clockNow)) return now;
+  const at = new Date(clockNow.getFullYear(), clockNow.getMonth(), clockNow.getDate(), clock.h, clock.m);
+  return logicalDayStart(at, dayResetTime);
+}
+
+/**
  * `now` is the logical now (`getLogicalNow`) and `clockNow` the real instant,
  * which "in 2 hours" and "tonight" count from; see parseDatePart. Omit it
  * outside a caller that knows both, where they are the same instant.
+ *
+ * `dayResetTime` places a clock time given without a date in the grace window
+ * (see bareClockDay). A caller with the setting to hand passes it.
  */
-export function parseTaskInput(input: string, now: Date = new Date(), clockNow: Date = now): ParsedTaskInput | null {
+export function parseTaskInput(
+  input: string,
+  now: Date = new Date(),
+  clockNow: Date = now,
+  dayResetTime?: string,
+): ParsedTaskInput | null {
   if (!input) return null;
   const tokens = [...input.matchAll(/\S+/g)];
   if (tokens.length < 2) return null;
@@ -856,12 +886,12 @@ export function parseTaskInput(input: string, now: Date = new Date(), clockNow: 
   // An input that is entirely a schedule phrase ("on tuesday", "every monday")
   // stays a literal title — quick add needs a title, and it's almost always
   // mid-typing.
-  if (parseSuffix(lower.trim(), now, false, clockNow)) return null;
+  if (parseSuffix(lower.trim(), now, false, clockNow, dayResetTime)) return null;
 
   for (let i = 1; i < tokens.length; i++) {
     const start = tokens[i].index!;
     const suffix = lower.slice(start).trim();
-    const schedule = parseSuffix(suffix, now, i === tokens.length - 1, clockNow);
+    const schedule = parseSuffix(suffix, now, i === tokens.length - 1, clockNow, dayResetTime);
     if (schedule) {
       // A set of dates can't be a deadline (see parseSuffix), so once "by the
       // 10th and the 15th" has been refused whole, no shorter suffix of it may
@@ -1536,12 +1566,17 @@ export function parseRainSkipInput(input: string): ParsedRainSkip | null {
  * A one-off date is read the same way: the phrase then stays in the title,
  * which is where it would have stayed anyway, and the date isn't lost to it.
  */
-export function parseTaskInputAheadOfRainSkip(input: string, now: Date = new Date(), clockNow: Date = now): ParsedTaskInput | null {
-  const direct = parseTaskInput(input, now, clockNow);
+export function parseTaskInputAheadOfRainSkip(
+  input: string,
+  now: Date = new Date(),
+  clockNow: Date = now,
+  dayResetTime?: string,
+): ParsedTaskInput | null {
+  const direct = parseTaskInput(input, now, clockNow, dayResetTime);
   if (direct) return direct;
   const rain = parseRainSkipInput(input);
   if (!rain || input.slice(rain.matchEnd).trim()) return null;
-  const parsed = parseTaskInput(input.slice(0, rain.matchStart), now, clockNow);
+  const parsed = parseTaskInput(input.slice(0, rain.matchStart), now, clockNow, dayResetTime);
   if (!parsed) return null;
   return { ...parsed, cleanTitle: `${parsed.cleanTitle} ${input.slice(rain.matchStart, rain.matchEnd)}` };
 }

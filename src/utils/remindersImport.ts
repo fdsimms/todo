@@ -196,7 +196,8 @@ export function scheduleToDraft(schedule: ParsedSchedule): Partial<Task> {
 export function pendingImportFor(
   reminder: Reminder,
   now: Date = new Date(),
-  logicalNow: Date = now
+  logicalNow: Date = now,
+  dayResetTime?: string,
 ): Partial<Task> | null {
   const suggestion: Partial<Task> = {};
 
@@ -226,7 +227,7 @@ export function pendingImportFor(
   // Same clock QuickAddModal and TaskEditor hand this function. It is
   // deliberately not the `now` above, which is a real-time cutoff for dropping
   // alarms that have already gone off and would resurrect a day of them.
-  const parsed = title ? parseTaskInput(title, logicalNow, now) : null;
+  const parsed = title ? parseTaskInput(title, logicalNow, now, dayResetTime) : null;
   if (parsed) {
     const fromText = scheduleToDraft(parsed.schedule);
     // EventKit wins field by field rather than wholesale: a reminder can carry

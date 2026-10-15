@@ -664,6 +664,31 @@ describe('parseTaskInput — recurrence', () => {
     expectDay(r.schedule.dueDate, 2025, 7, 16);
   });
 
+  it('puts a clock time with no date on the day it falls in, in the grace window', () => {
+    // 01:30 on Aug 16 under a 02:00 reset: the logical day is still Aug 15.
+    const logical = new Date(2025, 7, 15, 1, 30);
+    const clock = new Date(2025, 7, 16, 1, 30);
+    const afternoon = parseTaskInput('call at 3pm', logical, clock, '02:00')!;
+    expectDay(afternoon.schedule.dueDate, 2025, 7, 16);
+    expect(scheduleClockInstant(afternoon.schedule, '02:00')).toEqual(new Date(2025, 7, 16, 15, 0));
+
+    // Still the small hours of the day not yet over.
+    const soon = parseTaskInput('call at 1:45', logical, clock, '02:00')!;
+    expectDay(soon.schedule.dueDate, 2025, 7, 15);
+    expect(scheduleClockInstant(soon.schedule, '02:00')).toEqual(new Date(2025, 7, 16, 1, 45));
+
+    expectDay(parseTaskInput('call after 3pm', logical, clock, '02:00')!.schedule.dueDate, 2025, 7, 16);
+    // A day word still means the logical day's own "tomorrow".
+    expectDay(parseTaskInput('call tomorrow at 3pm', logical, clock, '02:00')!.schedule.dueDate, 2025, 7, 16);
+    // Without the reset there's no telling, so it stays on the logical today.
+    expectDay(parseTaskInput('call at 3pm', logical, clock)!.schedule.dueDate, 2025, 7, 15);
+  });
+
+  it('leaves a past clock time on today outside the grace window', () => {
+    const r = parseTaskInput('standup at 9am', NOW, NOW, '02:00')!;
+    expectDay(r.schedule.dueDate, 2025, 5, 10);
+  });
+
     it('maps a "for N days/weeks/months" duration clause to recurrenceEndDate', () => {
     const r = parseTaskInput('take antibiotics daily for 10 days', NOW)!;
     expect(r.schedule.recurrenceType).toBe('daily');

@@ -501,6 +501,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
       now: getLogicalNow(dayResetTime),
       today: getCurrentDayStart(),
       wallClock: new Date(),
+      dayResetTime,
       mentionOverrides: personOverrides,
       travel: travelTasksOn,
       originPlaces: originCandidates(savedPlaces).map(p => ({ id: p.id, name: p.name })),
