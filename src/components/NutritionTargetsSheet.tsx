@@ -310,7 +310,7 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
               <SegmentedControl
                 options={WEIGHT_UNIT_OPTIONS}
                 value={proteinPerWeight.unit}
-                onChange={unit => { haptics.tap(); applyProteinPin(switchProteinUnit(proteinPerWeight, unit)); }}
+                onChange={unit => applyProteinPin(switchProteinUnit(proteinPerWeight, unit))}
                 label="Body weight unit for the protein target"
                 surface="card"
               />

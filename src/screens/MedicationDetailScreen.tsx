@@ -47,6 +47,7 @@ import { SupplementPanelSheet } from '../components/SupplementPanelSheet';
 import { describeSupplementPanel } from '../utils/supplementDose';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
+import { useLingering } from '../hooks/useLingering';
 
 type RootStackParamList = {
   MedicationDetail: {
@@ -103,6 +104,8 @@ export function MedicationDetailScreen() {
   const [editing, setEditing] = useState<MedicationLog | null>(null);
   const [renameOpen, setRenameOpen] = useState(false);
   const deletedDose = useDeletedDoseUndo();
+  // Held on screen while the bar drops away after it clears (useLingering).
+  const deletedShown = useLingering(deletedDose.deleted);
 
   const stat = useMemo(() => medicationStats(logs, registered, settings).find(s => s.key === key) ?? null, [logs, registered, settings, key]);
   const entries = useMemo(() => logs.filter(l => medicationKey(l.name) === key), [logs, key]);
@@ -422,7 +425,6 @@ export function MedicationDetailScreen() {
             columns={3}
             label="How you take it"
             onChange={value => {
-              haptics.tap();
               setAsNeeded(name, value === 'asNeeded' ? true : value === 'scheduled' ? false : null);
             }}
           />
@@ -592,7 +594,7 @@ export function MedicationDetailScreen() {
                     value={supply?.unit ?? 'dose'}
                     columns={3}
                     label="What the supply counts"
-                    onChange={value => { haptics.tap(); updateSupply({ unit: value }); }}
+                    onChange={value => { updateSupply({ unit: value }); }}
                   />
                 </View>
                 <Text style={styles.fieldHint}>
@@ -692,12 +694,14 @@ export function MedicationDetailScreen() {
           />
         </View>
       </ScrollView>
-      {deletedDose.deleted && (
+      {deletedShown.value && (
         <SheetUndoBar
-          label={`Deleted ${[deletedDose.deleted.name, formatDose(deletedDose.deleted)].filter(Boolean).join(' ')}`}
+          label={`Deleted ${[deletedShown.value.name, formatDose(deletedShown.value)].filter(Boolean).join(' ')}`}
           onUndo={deletedDose.undo}
           onDismiss={deletedDose.dismiss}
           bottom={insets.bottom + spacing.md}
+          leaving={deletedShown.leaving}
+          onLeft={deletedShown.onLeft}
         />
       )}
       <SupplementPanelSheet

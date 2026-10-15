@@ -8,6 +8,7 @@ import { spacing } from '../theme';
 import { openEventInSystemCalendar } from '../utils/calendarSync';
 import { readSavedEvents, saveEventAs, writeSavedEvents } from '../utils/savedEvents';
 import { haptics } from '../utils/haptics';
+import { useLingering } from '../hooks/useLingering';
 
 // Long enough to reach for the button, short enough to stay out of the way.
 const VISIBLE_MS = 5000;
@@ -21,20 +22,22 @@ const VISIBLE_MS = 5000;
  */
 export function EventCreatedToast() {
   const insets = useSafeAreaInsets();
-  const created = useEventCreatedToastStore(s => s.created);
+  const liveCreated = useEventCreatedToastStore(s => s.created);
   const clear = useEventCreatedToastStore(s => s.clear);
+  // Still drawn while it drops away after the store clears (useLingering).
+  const { value: created, leaving, onLeft } = useLingering(liveCreated);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // The title just saved from this toast, so it says so instead of offering again.
   const [savedKey, setSavedKey] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!created) return;
+    if (!liveCreated) return;
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(clear, VISIBLE_MS);
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [created, clear]);
+  }, [liveCreated, clear]);
 
   if (!created) return null;
 
@@ -60,6 +63,8 @@ export function EventCreatedToast() {
       layout="stacked"
       liveRegion
       onDismiss={clear}
+      leaving={leaving}
+      onLeft={onLeft}
       actions={
         <>
           <InlineAction label="Open" onPress={open} accessibilityLabel="Open event in Calendar" />

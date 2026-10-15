@@ -900,7 +900,6 @@ export function KitchenScreen() {
         // dragTick, not tap: a fast drag crosses several rows between frames
         // and unthrottled ticks run together into one long buzz. The lift
         // itself is fired by ReorderableList.
-        onHoverChange={haptics.dragTick}
         dragRange={kitchenDragRange}
         placeholderStyle={styles.dropSlot}
         onReorder={reordered => applyMoves(resolveKitchenDrop(reordered))}

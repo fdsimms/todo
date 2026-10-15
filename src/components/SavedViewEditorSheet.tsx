@@ -213,7 +213,6 @@ export function SavedViewEditorSheet({ visible, view, onClose, onCreated, onDele
           { value: 'no' as const, label: noLabel },
         ]}
         onChange={next => {
-          haptics.tap();
           if (next === 'any') { setClause(kind, null); return; }
           setClause(kind, savedViewTriClause(kind, next === 'yes'));
         }}

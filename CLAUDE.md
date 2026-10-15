@@ -1040,6 +1040,23 @@ right.
   picker over a long list, a filter (see below) or a multi-step flow still wants a bottom sheet.
 - `ScreenHeader` (`src/components/ScreenHeader.tsx`) — every screen's large-title header: title, optional subtitle/overline, 34pt icon actions with badges/active tint/loading, or custom `right` content.
 - `PressableScale` (`src/components/PressableScale.tsx`) — standard press feedback (spring scale + opacity dip) for buttons, chips, FABs, icon buttons. Full-width list rows keep `TouchableOpacity` with `interaction.activeOpacity` — scaling a full row looks wrong.
+- `Toggle` (`src/components/Toggle.tsx`) — the on/off switch drawn in a row whose whole surface is
+  the button: every editor toggle and Settings switch. The knob slides and the track colour eases;
+  `look="settings"` and `onColor` cover the two styles in use. Never draw a knob inside a track by
+  hand: seventeen copies did, and every one jumped. The row keeps the press, the haptic and the
+  `switch` role.
+- `CheckPop` (`src/components/CheckPop.tsx`) — a small checkbox that isn't `TaskItem`'s circle (a
+  subtask, a grocery row, Today's meal row): the box pops and the tick springs in. The tick is a
+  sibling of the box, never a child, so the pop can't resample its bitmap (#1024).
+- `AnimatedNumber` (`src/components/AnimatedNumber.tsx`) — any count that changes while it's on
+  screen (a stepper, a badge, a balance, a tally). Rolls only the digits that changed; at rest it is
+  one plain `Text`. Text styling goes in `style` and layout in `containerStyle`, because while it
+  rolls each character is its own `Text`.
+- `RotatingChevron` (`src/components/RotatingChevron.tsx`) — a disclosure arrow on anything that opens
+  in place. It turns on the layout's own curve; swapping `chevron-down` for `chevron-up` in one frame
+  is what it replaced.
+- `FadeInImage` (`src/components/FadeInImage.tsx`) — a photo loaded from disk or the network. Fades
+  in on load, and appears at once from the cache or under Reduce Motion.
 - `InlineAction` (`src/components/InlineAction.tsx`) — the small tinted pill that adds a thing to the
   list or grid it sits under: "New task", "Add subtask", "Add tag", "New" in a category picker.
   Accent text can't do this job as well as being a link and a selected value, so a card holding two
@@ -1206,7 +1223,7 @@ right.
 - `PaintSelectionProvider` (`src/components/PaintSelection.tsx`) — wraps a task list so that, while bulk selecting, a drag down the column of `SelectionDot`s "paints" a run of rows instead of needing a tap each. Screens get it by spreading `paintProps` from `useTaskSelection` and passing `scrollEnabled={!painting}` to the list; rows register themselves from inside `TaskItem`, so nothing else has to change. The touch is claimed **on touch-down in the capture phase** within `PAINT_GUTTER_WIDTH` of the **trailing** edge — a native scroll can't be taken back once it starts dragging, so deciding later would let the list scroll out from under the paint. That's why a drag started right on the dots can't scroll (the deliberate trade), and why every other pixel of the row scrolls exactly as before. The gutter follows the dots: a gesture that isn't over the thing it changes is a bug. Hit-testing math and its tests live in `src/utils/paintSelect.ts` / `paintSelect.test.ts`.
 - `src/utils/haptics.ts` — semantic haptics (`tap`, `success`, `warning`, `error`, `impactLight/Medium/Heavy`). Never import `expo-haptics` directly; pick by meaning so intensities stay consistent.
 - `src/utils/layoutAnimation.ts` — `animateLayout()` immediately before a state change that inserts/removes list rows (complete, delete, add, selection-mode toggle). **Never call it on a drag-reorder commit path** (`ReorderableList.onReorder`, `DraggableFlatList.onDragEnd`) — those drive their own row animations.
-- **Accessibility on icon-only controls isn't a missing primitive, it's an adoption gap** — `PressableScale` already supplies `accessibilityRole="button"`, and every icon-only `TouchableOpacity` (drag handles, delete X's, calendar day cells, month-nav chevrons) needs an explicit `accessibilityLabel` alongside it, following `TaskItem`'s style (e.g. `` `Reorder subtask ${sub.title}` ``). Hand-rolled on/off controls (a `View` toggle knob inside a `Touchable`, not a real `Switch`) need `accessibilityRole="switch"` + `accessibilityState={{ checked }}` too — see the vacation-pause and archive toggles in `TaskEditor`/`ProjectEditor`.
+- **Accessibility on icon-only controls isn't a missing primitive, it's an adoption gap** — `PressableScale` already supplies `accessibilityRole="button"`, and every icon-only `TouchableOpacity` (drag handles, delete X's, calendar day cells, month-nav chevrons) needs an explicit `accessibilityLabel` alongside it, following `TaskItem`'s style (e.g. `` `Reorder subtask ${sub.title}` ``). An on/off row drawn with `Toggle` (rather than a real `Switch`) needs `accessibilityRole="switch"` + `accessibilityState={{ checked }}` on the row's own touchable, since `Toggle` only draws — see the vacation-pause and archive toggles in `TaskEditor`/`ProjectEditor`.
 
 **Editors are progressive disclosure.** `TaskEditor`, `TemplateItemEditor`, `TaskGroupEditor`, `ProjectEditor` and `TemplateEditor` all follow the same shape: title/notes, then cards under uppercase `groupLabel` headers (Schedule → Organize → Priority & effort → Subtasks → More), rarely-changed rows last. Nothing renders its picker expanded by default — every pill grid lives inside a `CollapsibleField` that shows only its current value until tapped, and picking a single-choice value collapses the section again (`closeField`). Inline controls hung off an `EditorRow` (time-of-day pills, time window, link picker) render only while that row is expanded. When adding a field, give it a `hint` that says what it does in one line: that hint is the only in-app documentation these options have.
 

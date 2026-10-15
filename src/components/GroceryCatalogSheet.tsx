@@ -295,7 +295,7 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
           // it — same convention GroceryRow uses for its own rows, so a
           // catalog item is reachable for editing (brand, aisle, substitutes,
           // pantry) without leaving this sheet to do it from the list first.
-          onLongPress={() => { haptics.tap(); setEditingId(item.id); }}
+          onLongPress={() => { haptics.impactMedium(); setEditingId(item.id); }}
           delayLongPress={interaction.delayLongPress}
           accessibilityRole="checkbox"
           accessibilityState={{ checked: isSelected }}

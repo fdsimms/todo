@@ -1,12 +1,12 @@
 import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, interaction, type Colors } from '../theme';
 import { disclosureValue } from '../theme/textStyles';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { RotatingChevron } from './RotatingChevron';
 
 interface Props {
   /** Uppercase section label, e.g. "Category". */
@@ -100,11 +100,7 @@ export function CollapsibleField({
             {summary || emptySummary}
           </Text>
         )}
-        <Ionicons
-          name={expanded ? 'chevron-up' : 'chevron-down'}
-          size={14}
-          color={colors.textSecondary}
-        />
+        <RotatingChevron open={expanded} size={14} color={colors.textSecondary} />
       </TouchableOpacity>
       {expanded && (
         <>

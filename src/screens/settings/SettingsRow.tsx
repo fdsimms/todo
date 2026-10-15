@@ -9,8 +9,10 @@ import { COIN_ICON } from '../../constants/coinIcon';
 import { useColors } from '../../theme/ThemeContext';
 import { interaction, spacing } from '../../theme';
 import { useSettingsStore } from '../../store/useSettingsStore';
+import { haptics } from '../../utils/haptics';
 import { makeSettingsStyles } from './settingsStyles';
 import { useSettingsFocusFlash } from './SettingsFocus';
+import { Toggle } from '../../components/Toggle';
 
 const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
 
@@ -92,6 +94,13 @@ export function SettingsRow({
   const role: AccessibilityRole | undefined =
     toggle !== undefined ? 'switch' : onPress && !disabled ? 'button' : undefined;
 
+  // Every switch ticks, from here, so a toggle row never has to remember to.
+  // Most of them didn't: eight settings pages flipped switches in silence.
+  // A row that refuses the flip still adds its own warning after this.
+  const handlePress = toggle !== undefined && onPress
+    ? () => { haptics.tap(); onPress(); }
+    : onPress;
+
   // Only the focused row takes a ref or animates at all — see SettingsFocus.
   const { focused, setFocusRef, highlight } = useSettingsFocusFlash(entryId);
 
@@ -120,9 +129,7 @@ export function SettingsRow({
       {trailing}
       {busy && <ActivityIndicator size="small" color={colors.textSecondary} />}
       {toggle !== undefined && (
-        <View style={[styles.toggle, toggle && styles.toggleOn]}>
-          <View style={[styles.toggleKnob, toggle && styles.toggleKnobOn]} />
-        </View>
+        <Toggle value={toggle} look="settings" />
       )}
       {chevron && <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />}
       {expanded !== undefined && (
@@ -157,7 +164,7 @@ export function SettingsRow({
     <AnimatedTouchable
       ref={setFocusRef}
       style={style}
-      onPress={onPress}
+      onPress={handlePress}
       disabled={disabled}
       activeOpacity={interaction.activeOpacity}
       accessibilityRole={role}

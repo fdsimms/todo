@@ -125,7 +125,8 @@ export function QuickAddNameSheet({
   const trimmedEmoji = withEmoji ? emoji.trim() || null : null;
 
   const handleAdd = () => {
-    if (!trimmedName) return;
+    // Return on an empty name used to do nothing at all.
+    if (!trimmedName) { haptics.error(); return; }
     haptics.success();
     onSubmit(trimmedName, trimmedEmoji);
     dismiss();

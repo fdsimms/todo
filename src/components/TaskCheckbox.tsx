@@ -25,6 +25,7 @@ import { getCurrentDayStart } from '../utils/dateUtils';
 import { formatQuotaProgress } from '../utils/quotaUnit';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
+import { useReduceMotion } from '../utils/useReduceMotion';
 import { isChainFinish } from '../utils/chain';
 import { dayKeyToDate } from '../utils/dateUtils';
 import { parseMealSlotSource } from '../utils/mealSlotTasks';
@@ -102,6 +103,7 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
   const [showHoldMenu, setShowHoldMenu] = useState(false);
   const mountHoldMenu = useSheetMount(showHoldMenu);
   const scale = useRef(new Animated.Value(1)).current;
+  const reduceMotion = useReduceMotion();
 
   const recordReady = useRecordTaskReady(task);
   const action = completionTapFor(task, recordReady);
@@ -130,6 +132,15 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
   // rather than from the tap.
   const runComplete = async (deliverableValue?: string | null, deliverableReasoning?: DeliverableReasoning) => {
     await (isChainFinish(task) ? haptics.chainFinish() : haptics.success());
+    // The same pop a task's own circle gives a check, so this box doesn't read
+    // as a different control from the row it stands in for.
+    if (!reduceMotion) {
+      scale.setValue(1);
+      Animated.sequence([
+        Animated.spring(scale, { toValue: 1.35, ...animation.spring.snappy, useNativeDriver: true }),
+        Animated.spring(scale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
+      ]).start();
+    }
     onTicked?.(task.id);
     animateLayout();
     completeTask(task.id, deliverableValue !== undefined ? { deliverableValue, deliverableReasoning } : undefined);
@@ -211,10 +222,12 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
       case 'log-unit':
         await haptics.impactLight();
         scale.setValue(1);
-        Animated.sequence([
-          Animated.spring(scale, { toValue: 1.25, ...animation.spring.snappy, useNativeDriver: true }),
-          Animated.spring(scale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
-        ]).start();
+        if (!reduceMotion) {
+          Animated.sequence([
+            Animated.spring(scale, { toValue: 1.25, ...animation.spring.snappy, useNativeDriver: true }),
+            Animated.spring(scale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
+          ]).start();
+        }
         logQuotaUnit(task.id);
         return;
       case 'uncomplete':

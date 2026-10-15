@@ -30,11 +30,12 @@ export function useCopyToClipboard() {
 
   const copy = useCallback((text: string) => {
     if (!text) return;
-    haptics.success();
-    // A rejected write (no pasteboard access) leaves the tick unshown rather
-    // than claiming a copy that didn't happen.
+    // A rejected write (no pasteboard access) leaves the tick unshown, and the
+    // buzz with it, rather than claiming a copy that didn't happen. It's a tap
+    // rather than success: copying finishes nothing.
     Clipboard.setStringAsync(text)
       .then(() => {
+        haptics.tap();
         setCopied(true);
         if (timer.current) clearTimeout(timer.current);
         timer.current = setTimeout(() => setCopied(false), COPIED_TICK_MS);

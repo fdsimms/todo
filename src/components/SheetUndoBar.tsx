@@ -26,6 +26,8 @@ export function SheetUndoBar({
   onUndo,
   onDismiss,
   bottom,
+  leaving,
+  onLeft,
 }: {
   /** What was just done, in the user's words. Truncated to one line. */
   label: string;
@@ -34,6 +36,9 @@ export function SheetUndoBar({
   onDismiss?: () => void;
   /** Distance from the bottom of the sheet, safe-area inset included. */
   bottom: number;
+  /** On its way out (see useLingering); BannerBar plays the exit, then `onLeft`. */
+  leaving?: boolean;
+  onLeft?: () => void;
 }) {
   return (
     <BannerBar
@@ -42,6 +47,8 @@ export function SheetUndoBar({
       labelLines={1}
       surface="sunken"
       onDismiss={onDismiss}
+      leaving={leaving}
+      onLeft={onLeft}
       actions={<InlineAction label="Undo" onPress={onUndo} accessibilityLabel={`Undo: ${label}`} />}
     />
   );

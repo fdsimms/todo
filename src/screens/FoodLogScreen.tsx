@@ -1475,7 +1475,6 @@ export function FoodLogScreen() {
             scrollEnabled={!painting && !fabDragging}
             contentContainerStyle={[styles.scrollContent, { paddingTop: spacing.sm }]}
             placeholderStyle={styles.dropSlot}
-            onHoverChange={haptics.dragTick}
             onReorder={handleReorder}
             ListHeaderComponent={
               <>

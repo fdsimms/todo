@@ -8,6 +8,7 @@ import { APP_FONT_OPTIONS, resolveFontFace, type AppFont } from '../../theme/fon
 import { useFontPreviewsLoaded } from '../../theme/AppFont';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
+import { haptics } from '../../utils/haptics';
 import { SettingsSegments } from './SettingsSegments';
 import { type SegmentOption } from '../../components/SegmentedControl';
 import { makeSettingsStyles } from './settingsStyles';
@@ -178,7 +179,13 @@ export function AppearanceSettings() {
             ? 'Vibrates when you complete a task, drag a row, or swipe'
             : 'Nothing in the app vibrates'}
           toggle={hapticsEnabled}
-          onPress={() => setHapticsEnabled(!hapticsEnabled)}
+          // The row's own tick runs before the flip, so switching haptics on
+          // would be silent: tick again once they're on, to confirm it.
+          onPress={() => {
+            const next = !hapticsEnabled;
+            setHapticsEnabled(next);
+            if (next) haptics.tap();
+          }}
         />
         <View style={styles.sep} />
         <SettingsRow

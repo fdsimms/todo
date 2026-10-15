@@ -306,7 +306,6 @@ export function TemplatesScreen() {
         }}
         contentContainerStyle={templateListItems.length === 0 ? styles.emptyContainer : styles.list}
         placeholderStyle={styles.dropSlot}
-        onHoverChange={haptics.dragTick}
         // No spacer when the list is empty — the empty state centres itself in
         // whatever box the content container gives it, and a fixed-height
         // footer takes that height off the bottom of the box. When there are

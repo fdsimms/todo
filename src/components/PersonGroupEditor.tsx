@@ -13,6 +13,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { TextField } from './TextField';
+import { Toggle } from './Toggle';
 
 interface Props {
   visible: boolean;
@@ -164,9 +165,7 @@ export function PersonGroupEditor({ visible, person, onClose }: Props) {
                   : 'Members share one reminder, based on any task that names one of them.'}
               </Text>
             </View>
-            <View style={[styles.toggle, currentGroup.catchUpSeparately && styles.toggleOn]}>
-              <View style={[styles.toggleKnob, currentGroup.catchUpSeparately && styles.toggleKnobOn]} />
-            </View>
+            <Toggle value={currentGroup.catchUpSeparately} />
           </TouchableOpacity>
         </View>
         <Text style={styles.sectionFooter}>
@@ -301,13 +300,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   optionContent: { flex: 1 },
   optionLabel: { color: colors.text, fontSize: font.md },
   optionHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },
-  toggle: {
-    width: 44, height: 26, borderRadius: radius.full,
-    backgroundColor: colors.bgQuaternary, padding: spacing.xxs, justifyContent: 'center',
-  },
-  toggleOn: { backgroundColor: colors.accent },
-  toggleKnob: { width: 22, height: 22, borderRadius: radius.full, backgroundColor: colors.bg },
-  toggleKnobOn: { alignSelf: 'flex-end' },
   sectionFooter: {
     color: colors.textTertiary,
     fontSize: font.xs,

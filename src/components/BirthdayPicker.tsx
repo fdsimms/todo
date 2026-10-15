@@ -14,6 +14,7 @@ import { spacing, radius, font, fontWeight, interaction, animation, type Colors 
 import { haptics } from '../utils/haptics';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetScrim } from './SheetScrim';
+import { Toggle } from './Toggle';
 
 /**
  * The birthday picker — month, day and an optional year, as three native
@@ -156,9 +157,7 @@ export function BirthdayPicker({ visible, month, day, year, onConfirm, onClear, 
               <Text style={styles.toggleLabel}>Include year</Text>
               <Text style={styles.toggleHint}>Off leaves the year blank.</Text>
             </View>
-            <View style={[styles.toggle, yearKnown && styles.toggleOn]}>
-              <View style={[styles.toggleKnob, yearKnown && styles.toggleKnobOn]} />
-            </View>
+            <Toggle value={yearKnown} />
           </TouchableOpacity>
 
           <View style={styles.sectionGap} />
@@ -224,15 +223,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   toggleContent: { flex: 1 },
   toggleLabel: { color: colors.text, fontSize: font.sm },
   toggleHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },
-  toggle: {
-    width: 44, height: 26, borderRadius: radius.full,
-    backgroundColor: colors.bgQuaternary, padding: spacing.xxs, justifyContent: 'center',
-  },
-  toggleOn: { backgroundColor: colors.accent },
-  toggleKnob: {
-    width: 22, height: 22, borderRadius: radius.full, backgroundColor: colors.bg,
-  },
-  toggleKnobOn: { alignSelf: 'flex-end' },
   sectionGap: {
     height: spacing.sm,
   },

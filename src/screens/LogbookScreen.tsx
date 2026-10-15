@@ -566,7 +566,6 @@ export function LogbookScreen() {
 
   const switchLens = (next: LogbookLens) => {
     if (next === lens) return;
-    haptics.tap();
     // Selection is over completed *tasks* and has no meaning on the other side,
     // so it leaves with the list it was made in — same call TodayScreen's view
     // pills make. The query deliberately stays: "salmon" is a fair question to

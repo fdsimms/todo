@@ -59,6 +59,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore } from '../store/useSettingsStore';
 import type { Task } from '../types';
 import { useSheetMotion } from '../hooks/useSheetMotion';
+import { Toggle } from './Toggle';
 
 interface Props {
   visible: boolean;
@@ -664,9 +665,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
                   accessibilityLabel="Take breaks"
                   accessibilityState={{ checked: breaksEnabled }}
                 >
-                  <View style={[styles.toggle, breaksEnabled && styles.toggleOn]}>
-                    <View style={[styles.toggleKnob, breaksEnabled && styles.toggleKnobOn]} />
-                  </View>
+                  <Toggle value={breaksEnabled} />
                 </TouchableOpacity>
               </View>
 
@@ -748,9 +747,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
                 {hideTimersEnabled ? 'No countdown for this session' : 'Shows a countdown'}
               </Text>
             </View>
-            <View style={[styles.toggle, hideTimersEnabled && styles.toggleOn]}>
-              <View style={[styles.toggleKnob, hideTimersEnabled && styles.toggleKnobOn]} />
-            </View>
+            <Toggle value={hideTimersEnabled} />
           </TouchableOpacity>
 
           {slots.length === 0 ? (
@@ -944,16 +941,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingTop: spacing.xsm,
   },
   breaksReset: { color: colors.accent, fontSize: font.xs, fontWeight: fontWeight.semibold },
-  toggle: {
-    width: 46, height: 27, borderRadius: 14,
-    backgroundColor: colors.bgQuaternary, justifyContent: 'center', paddingHorizontal: 3,
-  },
-  toggleOn: { backgroundColor: colors.accent },
-  toggleKnob: {
-    width: 21, height: 21, borderRadius: 11,
-    backgroundColor: colors.bg,
-  },
-  toggleKnobOn: { backgroundColor: colors.bg, alignSelf: 'flex-end' },
   hint: {
     color: colors.textTertiary,
     fontSize: font.xs,

@@ -254,14 +254,12 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
   // otherwise under a category made for it. Same default the nutrition
   // sheet's own toggle uses.
   const toggleLimitsOnToday = (): void => {
-    haptics.tap();
     if (s.limitsTodayCategory !== null) { s.setLimitsTodayCategory(null); return; }
     const category = s.healthCategory ?? HEALTH_CATEGORY;
     useCategoryStore.getState().addCategory(category);
     s.setLimitsTodayCategory(category);
   };
   const toggleGoalsOnToday = () => {
-    haptics.tap();
     if (s.goalsTodayCategory !== null) { s.setGoalsTodayCategory(null); return; }
     const category = s.healthCategory ?? HEALTH_CATEGORY;
     useCategoryStore.getState().addCategory(category);

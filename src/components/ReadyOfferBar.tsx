@@ -13,6 +13,7 @@ import { spacing } from '../theme';
 import { haptics } from '../utils/haptics';
 import { getLogicalToday } from '../utils/dateUtils';
 import { displayTitleFor } from '../utils/visibilityUtils';
+import { useLingering } from '../hooks/useLingering';
 
 // Longer than the undo bar's six seconds: this one asks a question with two
 // answers rather than offering one button.
@@ -66,14 +67,19 @@ export function ReadyOfferBar() {
 
   const label = titles.length === 1 ? `“${titles[0]}” is ready` : `${titles.length} tasks are ready`;
   const bottom = insets.bottom + TAB_BAR_HEIGHT + FAB_SIZE + spacing.lg;
+  // The label, held while the bar drops away after the offer clears. Its
+  // titles are gone from the store by then, so it has to be kept, not re-read.
+  const bar = useLingering(shown && !picking ? label : null);
 
   return (
     <>
-      {shown && !picking && (
+      {bar.value !== null && (
         <BannerBar
           bottom={bottom}
-          label={label}
+          label={bar.value}
           layout="stacked"
+          leaving={bar.leaving}
+          onLeft={bar.onLeft}
           onDismiss={() => {
             if (timerRef.current) clearTimeout(timerRef.current);
             clearReadyOffer();

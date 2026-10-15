@@ -419,7 +419,6 @@ export function LeftoverSheet({
   };
 
   const pickDaysAgo = (days: number) => {
-    haptics.tap();
     if (leftover) onSetStoredAt(instantDaysAgo(days));
     else setDraftDaysAgo(days);
   };

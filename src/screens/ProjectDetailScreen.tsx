@@ -1643,7 +1643,6 @@ function ProjectDetailContent() {
                 ? { paddingBottom: selectionListPadding }
                 : baseListBottomPadding !== undefined && { paddingBottom: baseListBottomPadding },
             ]}
-            onHoverChange={haptics.dragTick}
             // A stack hands over its own id, never its children's: it holds a
             // slot in this order itself (see buildProjectListItems), and its
             // members' sortOrders are their within-stack order, which a drag
@@ -1861,7 +1860,7 @@ function ProjectDetailContent() {
                         key={link.id}
                         style={styles.infoLinkRow}
                         onPress={() => { haptics.tap(); Linking.openURL(link.url).catch(() => {}); }}
-                        onLongPress={() => { haptics.tap(); Share.share({ url: link.url, message: link.url }); }}
+                        onLongPress={() => { haptics.impactMedium(); Share.share({ url: link.url, message: link.url }); }}
                         disabled={selectionMode}
                         activeOpacity={interaction.activeOpacity}
                         accessibilityRole="link"

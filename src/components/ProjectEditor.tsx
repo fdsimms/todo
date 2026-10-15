@@ -71,6 +71,7 @@ import { TextField } from './TextField';
 import { usePlaceSuggestions } from '../hooks/usePlaceSuggestions';
 import { placeSubtitle, type PlaceResult } from '../utils/places';
 import { useSheetSubject } from '../hooks/useSheetSubject';
+import { Toggle } from './Toggle';
 
 const NUDGE_MODE_OPTIONS: SegmentOption<NudgeMode>[] = NUDGE_MODES.map(mode => ({
   value: mode,
@@ -885,9 +886,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
                   : 'Off. Turning it on looks up the place by name, for every trip.'}
               </Text>
             </View>
-            <View style={[styles.toggle, forecastOn && styles.toggleOn]}>
-              <View style={[styles.toggleKnob, forecastOn && styles.toggleKnobOn]} />
-            </View>
+            <Toggle value={forecastOn} />
           </TouchableOpacity>
         )}
         {awayStart && (
@@ -913,9 +912,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
                   : 'Vacation mode stays however you set it.'}
               </Text>
             </View>
-            <View style={[styles.toggle, awayPauses && styles.toggleOn]}>
-              <View style={[styles.toggleKnob, awayPauses && styles.toggleKnobOn]} />
-            </View>
+            <Toggle value={awayPauses} />
           </TouchableOpacity>
         )}
         {/* The shopping list this trip buys from. A CollapsibleField holding a
@@ -1138,9 +1135,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
                     : 'Adds a review task and leaves the dates to you'}
                 </Text>
               </View>
-              <View style={[styles.toggle, autoSchedule && styles.toggleOn]}>
-                <View style={[styles.toggleKnob, autoSchedule && styles.toggleKnobOn]} />
-              </View>
+              <Toggle value={autoSchedule} />
             </TouchableOpacity>
           )}
         </CollapsibleField>
@@ -1166,9 +1161,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
                   : 'The weekend task does not name this project'}
             </Text>
           </View>
-          <View style={[styles.toggle, weekendSource && styles.toggleOn]}>
-            <View style={[styles.toggleKnob, weekendSource && styles.toggleKnobOn]} />
-          </View>
+          <Toggle value={weekendSource} />
         </TouchableOpacity>
       </View>
       </>
@@ -1202,9 +1195,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
               Hides all of its tasks, dated ones too, and stops any nudges until you mark it ready
             </Text>
           </View>
-          <View style={[styles.toggle, planning && styles.toggleOn]}>
-            <View style={[styles.toggleKnob, planning && styles.toggleKnobOn]} />
-          </View>
+          <Toggle value={planning} />
         </TouchableOpacity>
         <View style={styles.sepIcon} />
         {!planning && (
@@ -1239,9 +1230,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
                   : "Today shows this project’s tasks in their categories"}
               </Text>
             </View>
-            <View style={[styles.toggle, groupOnToday && styles.toggleOn]}>
-              <View style={[styles.toggleKnob, groupOnToday && styles.toggleKnobOn]} />
-            </View>
+            <Toggle value={groupOnToday} />
           </TouchableOpacity>
           <View style={styles.sepIcon} />
           <TouchableOpacity
@@ -1261,9 +1250,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
                   : 'The project card shows its next open task'}
               </Text>
             </View>
-            <View style={[styles.toggle, hideNextStep && styles.toggleOn]}>
-              <View style={[styles.toggleKnob, hideNextStep && styles.toggleKnobOn]} />
-            </View>
+            <Toggle value={hideNextStep} />
           </TouchableOpacity>
           <View style={styles.sepIcon} />
           <TouchableOpacity
@@ -1283,9 +1270,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
                   : 'Pull and automatic scheduling offer whichever task fits best'}
               </Text>
             </View>
-            <View style={[styles.toggle, inOrder && styles.toggleOn]}>
-              <View style={[styles.toggleKnob, inOrder && styles.toggleKnobOn]} />
-            </View>
+            <Toggle value={inOrder} />
           </TouchableOpacity>
           </>
         )}
@@ -1307,9 +1292,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
                 : 'Offers to mark complete once every task is done'}
             </Text>
           </View>
-          <View style={[styles.toggle, ongoing && styles.toggleOn]}>
-            <View style={[styles.toggleKnob, ongoing && styles.toggleKnobOn]} />
-          </View>
+          <Toggle value={ongoing} />
         </TouchableOpacity>
       </View>
 
@@ -1538,13 +1521,4 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   optionContent: { flex: 1 },
   optionLabel: { color: colors.text, fontSize: font.md },
   optionHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },
-  toggle: {
-    width: 44, height: 26, borderRadius: radius.full,
-    backgroundColor: colors.bgQuaternary, padding: spacing.xxs, justifyContent: 'center',
-  },
-  toggleOn: { backgroundColor: colors.accent },
-  toggleKnob: {
-    width: 22, height: 22, borderRadius: radius.full, backgroundColor: colors.bg,
-  },
-  toggleKnobOn: { alignSelf: 'flex-end' },
 });

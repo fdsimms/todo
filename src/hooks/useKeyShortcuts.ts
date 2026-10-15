@@ -19,6 +19,7 @@ import {
   openQuickSearchFromKeyboard,
   showTodayViewModeFromKeyboard,
 } from '../navigation/navigationRef';
+import { animateLayout } from '../utils/layoutAnimation';
 
 /** The same seven histories `useShakeToUndo` and the UndoBar choose between. */
 function undoHistories() {
@@ -51,8 +52,9 @@ function runShortcut(id: string): void {
     // No confirm and no freshness window, unlike the shake: a key press can't
     // happen by accident the way a jolt can, and the UndoBar names what was
     // undone with a Redo beside it.
-    case 'undo': latestUndoHistory(undoHistories())?.undoLastAction(); return;
-    case 'redo': latestRedoHistory(undoHistories())?.redoLastUndone(); return;
+    // Animated like the shake and the bar, so a restored row opens back up.
+    case 'undo': animateLayout(); latestUndoHistory(undoHistories())?.undoLastAction(); return;
+    case 'redo': animateLayout(); latestRedoHistory(undoHistories())?.redoLastUndone(); return;
     case 'closeSheet': closeTopmostSheet(); return;
     case 'viewToday': showTodayViewModeFromKeyboard('today'); return;
     case 'viewLater': showTodayViewModeFromKeyboard('later'); return;

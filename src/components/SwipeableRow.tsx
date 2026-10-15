@@ -1,13 +1,20 @@
-import React, { useMemo, useRef } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View, type StyleProp, type ViewStyle } from 'react-native';
+import React, { useEffect, useMemo, useRef } from 'react';
+import { Animated, StyleSheet, Text, TouchableOpacity, View, type StyleProp, type ViewStyle } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Swipeable } from 'react-native-gesture-handler';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, iconSize, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { nextSwipeArm, swipeArmDistance } from '../utils/swipeArm';
 
 /** Every revealed panel is this wide, on every screen. */
 const ACTION_WIDTH = 80;
+/** See the note on the Swipeable's `friction` prop below. */
+const FRICTION = 2;
+/** Raw finger travel at which letting go commits (Swipeable's own release rule). */
+const ARM_AT = swipeArmDistance(ACTION_WIDTH, FRICTION);
+/** How far back past that line the finger comes before the row disarms. */
+const DISARM_HYSTERESIS = 8;
 
 export interface WhenAction {
   /** Ionicon for the panel. Defaults to the clock used for rescheduling. */
@@ -113,9 +120,64 @@ export function SwipeableRow({ selectAction, whenAction, undoAction, enabled = t
     action();
   };
 
+  // ==== arming haptic ====
+  // A light tick the moment the swipe crosses the line where letting go would
+  // commit, and a selection tick if the finger brings it back, so the line is
+  // felt before the finger lifts rather than discovered after (nextSwipeArm).
+  //
+  // Swipeable's `dragX` is an Animated.Value driven natively by the pan, so its
+  // updates only reach JS while something is listening. The listener is added
+  // when a drag starts and removed as soon as the row starts opening or
+  // closing, so a list of idle rows costs nothing.
+  //
+  // Processing is deferred a microtask on purpose. On release, Swipeable calls
+  // `dragX.setValue(0)` synchronously *before* onSwipeableWillOpen, which would
+  // otherwise read as the finger coming back and tick a disarm on every commit.
+  // By the time the microtask runs, `released` is set and the update is dropped.
+  const armed = useRef(false);
+  const released = useRef(true);
+  const latestDrag = useRef(0);
+  const pending = useRef(false);
+  const listener = useRef<{ id: string; value: Animated.Value } | null>(null);
+  const hasLeft = !!(undoAction || whenAction);
+  const hasRight = !!selectAction;
+  const sides = useRef({ left: hasLeft, right: hasRight });
+  sides.current = { left: hasLeft, right: hasRight };
+
+  const stopWatching = () => {
+    released.current = true;
+    const l = listener.current;
+    listener.current = null;
+    if (l) l.value.removeListener(l.id);
+  };
+  const startWatching = () => {
+    stopWatching();
+    const value = ref.current?.state.dragX;
+    if (!value) return;
+    released.current = false;
+    armed.current = false;
+    const id = value.addListener(({ value: x }) => {
+      latestDrag.current = x;
+      if (pending.current) return;
+      pending.current = true;
+      queueMicrotask(() => {
+        pending.current = false;
+        if (released.current) return;
+        const next = nextSwipeArm(armed.current, latestDrag.current, sides.current, ARM_AT, DISARM_HYSTERESIS);
+        if (next === armed.current) return;
+        armed.current = next;
+        if (next) haptics.impactLight();
+        else haptics.tap();
+      });
+    });
+    listener.current = { id, value };
+  };
+  useEffect(() => stopWatching, []);
+
   // No haptic here: both routes to an action (a full swipe, or swiping the
   // panel open and tapping it) pass through onSwipeableWillOpen, which already
-  // ticked. Firing again on commit stacks two impacts a few frames apart.
+  // gave the swipe its feedback. Firing again on commit stacks two impacts a
+  // few frames apart.
   const fire = (action: () => void) => {
     ref.current?.close();
     commit(action);
@@ -179,9 +241,10 @@ export function SwipeableRow({ selectAction, whenAction, undoAction, enabled = t
         // finger (see the prop's own doc comment) without changing where it
         // ends up, so the reveal now tracks a swipe long enough to feel
         // deliberate.
-        friction={2}
+        friction={FRICTION}
         enabled={enabled}
-        onSwipeableOpenStartDrag={() => { committed.current = false; }}
+        onSwipeableOpenStartDrag={() => { committed.current = false; startWatching(); }}
+        onSwipeableWillClose={stopWatching}
         // A full swipe commits, rather than parking the panel open and waiting
         // for a tap on it — and it commits **here**, on the frame the row
         // starts animating open, not in onSwipeableOpen when that animation
@@ -197,10 +260,19 @@ export function SwipeableRow({ selectAction, whenAction, undoAction, enabled = t
         //
         // `direction` names the side that opened, so 'right' is the right-hand
         // panel — i.e. the user swiped left.
+        //
+        // The haptic belongs to the arming tick above. A flick fast enough to
+        // open without ever crossing the line gets that same light tick here
+        // instead, so every commit is felt exactly once. Select adds none of
+        // its own: every onSelect enters selection mode, which fires its own
+        // heavy impact (useRowSelection), and a second one here stacked two
+        // impacts on the same frame.
         onSwipeableWillOpen={direction => {
-          haptics.impactMedium();
-          if (direction === 'right') { if (selectAction) commit(selectAction.onSelect); }
-          else if (undoAction) commit(undoAction.onUndo);
+          const wasArmed = armed.current;
+          stopWatching();
+          if (direction === 'right') { if (selectAction) commit(selectAction.onSelect); return; }
+          if (!wasArmed) haptics.impactLight();
+          if (undoAction) commit(undoAction.onUndo);
           else if (whenAction) commit(whenAction.onAction);
         }}
         onSwipeableOpen={() => ref.current?.close()}

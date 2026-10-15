@@ -34,9 +34,27 @@ let lastDragTick = 0;
  *   success      — completing a task, confirming an add
  *   chainFinish  — completing the last step of a non-repeating chain
  *   beat         — Today's All clear: light, light, heavy, in time with the mark
+ *   timerDone    — a countdown reaching zero while the app is open (a task's
+ *                  timer, a cooking step, a recipe's cook or prep, a focus step)
  *   warning      — destructive confirmation prompts
  *   error        — failed actions, validation errors
- *   impact       — physical-feeling moments (drag lift, drop, swipe actions)
+ *   impact       — physical-feeling moments (drag lift, drop, swipe actions).
+ *                  A long press being recognized is impactMedium, the same
+ *                  as a drag lift, whatever it opens
+ *
+ * `success` means something got finished. Pausing, removing, copying and
+ * undoing are `tap`, or success stops meaning anything.
+ *
+ * **Never `await` a haptic before the visual it belongs to.** The native call
+ * is on its way the moment it's made; awaiting its promise only holds the
+ * animation back a bridge round trip, so the buzz lands ahead of what it's
+ * about (a task's checkmark waited on exactly this). Fire it and move on. The
+ * one reason to await is a deliberate pause, and then say so where it's done.
+ *
+ * And fire one per action: a control that already buzzes (SegmentedControl,
+ * a SettingsRow switch, ReorderableList's slot tick, enterSelectionMode) owns
+ * that buzz, and a caller adding its own stacks two on one frame.
+ * noSegmentedDoubleTap.test.ts enforces this for SegmentedControl.
  *
  * All return a promise that is safe to ignore — or nothing at all, when the
  * haptics setting is off or a drag tick lands inside the throttle. Failures
@@ -79,6 +97,10 @@ export const haptics = {
       setTimeout(() => { ExpoHaptics.impactAsync(style).catch(() => {}); }, i * BEAT_STEP_MS);
     });
   },
+  // The two-pulse warning pattern, under its own name so a timer running out
+  // reads as one event everywhere. It used to be success on a task's timer,
+  // warning on a cooking step, and nothing at all on a recipe or focus step.
+  timerDone: () => enabled() ? ExpoHaptics.notificationAsync(ExpoHaptics.NotificationFeedbackType.Warning).catch(() => {}) : undefined,
   warning: () => enabled() ? ExpoHaptics.notificationAsync(ExpoHaptics.NotificationFeedbackType.Warning).catch(() => {}) : undefined,
   error: () => enabled() ? ExpoHaptics.notificationAsync(ExpoHaptics.NotificationFeedbackType.Error).catch(() => {}) : undefined,
   impactLight: () => enabled() ? ExpoHaptics.impactAsync(ExpoHaptics.ImpactFeedbackStyle.Light).catch(() => {}) : undefined,

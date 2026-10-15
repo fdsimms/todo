@@ -423,7 +423,7 @@ export function WeightScreen() {
               }`,
             }))}
             value={rangeDays}
-            onChange={next => { haptics.tap(); setRangeDays(next); }}
+            onChange={next => setRangeDays(next)}
             label="Chart range"
           />
         </View>

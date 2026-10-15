@@ -73,7 +73,7 @@ export function useStepTimers(recipeId: string | undefined): StepTimersBinding {
       }
       if (rung.current.has(timer.id)) continue;
       rung.current.add(timer.id);
-      haptics.warning();
+      haptics.timerDone();
     }
   }, [mine, now]);
 
@@ -82,25 +82,28 @@ export function useStepTimers(recipeId: string | undefined): StepTimersBinding {
   return {
     timers,
     now,
-    start: async input => {
-      await haptics.impactMedium();
+    // None of these await the haptic: the store moves on the same frame as
+    // the buzz rather than a bridge round trip after it. Removing a timer is
+    // a tap rather than success, since nothing has been finished.
+    start: input => {
+      haptics.impactMedium();
       store.start(input);
     },
-    toggle: async timer => {
-      await haptics.tap();
+    toggle: timer => {
+      haptics.tap();
       if (isStepTimerRunning(timer)) store.pause(timer.id);
       else store.resume(timer.id);
     },
-    addTime: async id => {
-      await haptics.impactLight();
+    addTime: id => {
+      haptics.impactLight();
       store.addTime(id);
     },
-    restart: async id => {
-      await haptics.impactMedium();
+    restart: id => {
+      haptics.impactMedium();
       store.restart(id);
     },
-    remove: async id => {
-      await haptics.success();
+    remove: id => {
+      haptics.tap();
       store.remove(id);
     },
   };

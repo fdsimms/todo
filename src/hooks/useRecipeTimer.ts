@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 import type { Recipe } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -86,6 +86,13 @@ export interface RecipeTimerBinding {
  * "the row is gone" guard; the binding then reads as a stopped timer with no
  * target and its handlers do nothing.
  */
+/**
+ * Runs whose finish has already buzzed, by recipe, timer and the moment that
+ * run started. Module-level because the recipe screen and Cook mode can both
+ * be watching the same timer, and the finish is one event, not one per screen.
+ */
+const announcedRuns = new Set<string>();
+
 export function useRecipeTimer(recipe: Recipe | undefined, verb: 'Cook' | 'Prep'): RecipeTimerBinding {
   const isCook = verb === 'Cook';
   const startCookTimer = useRecipeStore(s => s.startCookTimer);
@@ -111,6 +118,25 @@ export function useRecipeTimer(recipe: Recipe | undefined, verb: 'Cook' | 'Prep'
     const interval = setInterval(() => setNowTick(Date.now()), 1000);
     return () => clearInterval(interval);
   }, [running, startedAt]);
+
+  // A buzz when the countdown reaches its target while it's on screen. Only a
+  // finish watched happening: the ref starts at whatever the timer was on
+  // mount, so opening a recipe whose timer ran out an hour ago stays quiet.
+  const readyNow = !!recipe && (isCook
+    ? hasCookTimer(recipe) && isCookTimerReady(recipe, nowTick)
+    : hasPrepTimer(recipe) && isPrepTimerReady(recipe, nowTick));
+  const wasReady = useRef(readyNow);
+  useEffect(() => {
+    const before = wasReady.current;
+    wasReady.current = readyNow;
+    if (!readyNow || before || !running || !recipe) return;
+    const run = `${recipe.id}:${verb}:${startedAt ?? ''}`;
+    if (announcedRuns.has(run)) return;
+    announcedRuns.add(run);
+    haptics.timerDone();
+    // Keyed on the flip alone: the rest is read at the moment it happens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [readyNow]);
 
   if (!recipe) {
     return {
@@ -149,12 +175,14 @@ export function useRecipeTimer(recipe: Recipe | undefined, verb: 'Cook' | 'Prep'
       ? (isCook ? cookTimerProgress(recipe, nowTick) : prepTimerProgress(recipe, nowTick))
       : 0,
     summary: isCook ? describeCookTime(recipe) : describePrepTime(recipe),
-    onToggle: async () => {
+    onToggle: () => {
+      // Pausing is a tap, not success: nothing has finished. Not awaited, so
+      // the timer moves on the same frame as the buzz.
       if (running) {
-        await haptics.success();
+        haptics.tap();
         (isCook ? pauseCookTimer : pausePrepTimer)(recipe.id);
       } else {
-        await haptics.impactMedium();
+        haptics.impactMedium();
         (isCook ? startCookTimer : startPrepTimer)(recipe.id);
       }
     },

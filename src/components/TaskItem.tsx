@@ -38,6 +38,9 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { PinIcon } from './PinIcon';
 import { LockedTaskRow } from './LockedTaskRow';
+import { StrikeReveal } from './StrikeReveal';
+import { CheckPop } from './CheckPop';
+import { AnimatedNumber } from './AnimatedNumber';
 import { useProjectLockStore } from '../store/useProjectLockStore';
 import { isProjectLockedAway } from '../utils/projectLock';
 import { CoinIcon } from './CoinIcon';
@@ -50,6 +53,7 @@ import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animat
 import { weatherWaitChipText } from '../utils/weatherWait';
 import { meterChipText } from '../utils/meters';
 import { useMeterReadingStore } from '../store/useMeterReadingStore';
+import { buildCompletion, completionSettings } from '../utils/taskCompletion';
 import { MeterReadingSheet } from './MeterReadingSheet';
 import { NutrientTaskBar } from './NutrientTaskBar';
 import { formatDeadlineLabel, isDeadlineTimePassed, formatScheduledDate, formatTaskDate, formatHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate, getTaskDayStart, getCurrentDayStart, liveStreakCount, getLogicalDayKey, dayKeyToDate, formatTimeOfDay, hoursUnlockLabel, getLogicalNow } from '../utils/dateUtils';
@@ -169,6 +173,12 @@ const CHECKBOX_SIZE = 20;
 const SUBTASK_CHECKBOX_SIZE = 16;
 // Peak scale of the completion circle's pop bounce (see circleScale below).
 const CIRCLE_POP_SCALE = 1.35;
+// The second, smaller pulse a routine's last step gets, carrying the heavy
+// haptic that tells finishing a routine apart from finishing one more task.
+const CHAIN_FINISH_PULSE_SCALE = 1.2;
+// The beat the pop would have taken, held still under Reduce Motion so the
+// tick has time to be seen before the row moves on.
+const STILL_POP_MS = 250;
 // Where the checkmark's own entrance starts. Deliberately not 0: the glyph is a
 // rasterized font bitmap, so every fractional scale resamples it, and the
 // frames down near 0 undersample a 12pt stroke badly enough to read as jagged.
@@ -750,6 +760,26 @@ const TaskItemRow = React.memo(function TaskItem({
     outputRange: [CHECK_GLYPH_START_SCALE, 1],
     extrapolate: 'clamp',
   });
+  // The gold inside the circle, grown out from its centre during the pop rather
+  // than arriving in one frame. A child of the circle, so the pop scales it
+  // with everything else; clamped so the snappy spring's overshoot can't bulge
+  // it past the ring. Starts full on a row that mounts already completed, for
+  // the same reason checkScale does.
+  const fillScale = useRef(new Animated.Value(task.completed ? 1 : 0)).current;
+  const fillScaleClamped = fillScale.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 1],
+    extrapolate: 'clamp',
+  });
+  // Set while an untick plays the completion backwards (restoreFromCompletion),
+  // so the checkmark and the struck title stay mounted long enough to leave
+  // instead of vanishing the frame `completing` goes false.
+  const [unwinding, setUnwinding] = useState(false);
+  // The streak this completion is about to record, shown on the row while it's
+  // ticked and waiting to collapse. A completed recurring row leaves the list
+  // and its successor mounts already showing the new number, so without this
+  // the streak going up is never seen happening. Null the rest of the time.
+  const [streakPreview, setStreakPreview] = useState<number | null>(null);
   const rowOpacity = useRef(new Animated.Value(1)).current;
   // The daily-target meter's level, 0–1. An Animated.Value rather than a height
   // computed straight from progressCount so a logged unit slides up instead of
@@ -770,6 +800,9 @@ const TaskItemRow = React.memo(function TaskItem({
   // does: a JS-driven height change stutters once other rows have to re-layout
   // under it.
   const collapseProgress = useSharedValue(1);
+  // 1 under Reduce Motion: the row fades and then closes in one frame, so the
+  // rows below move up at once instead of sliding (see collapseStyle).
+  const collapseFadeOnly = useSharedValue(0);
   const collapseStartedRef = useRef(false);
   // This row played its own completion animation and is waiting for the batch,
   // as opposed to one completed elsewhere (a swipe, the bulk bar, the editor):
@@ -901,7 +934,9 @@ const TaskItemRow = React.memo(function TaskItem({
     const measured = rowHeight.value;
     if (measured === null) return { opacity };
     return {
-      height: interpolate(collapseProgress.value, [0, 1], [0, measured], Extrapolation.CLAMP),
+      height: collapseFadeOnly.value
+        ? (collapseProgress.value <= 0 ? 0 : measured)
+        : interpolate(collapseProgress.value, [0, 1], [0, measured], Extrapolation.CLAMP),
       opacity,
       overflow: 'hidden' as const,
     };
@@ -928,6 +963,7 @@ const TaskItemRow = React.memo(function TaskItem({
     if (!collapseSignal || !awaitingCollapse) return;
     setAwaitingCollapse(false);
     collapseStartedRef.current = true;
+    collapseFadeOnly.value = reduceMotion ? 1 : 0;
     collapseProgress.value = withTiming(0, {
       duration: animation.duration.normal,
       easing: Easing.inOut(Easing.cubic),
@@ -1402,25 +1438,27 @@ const TaskItemRow = React.memo(function TaskItem({
     announcedReadyRef.current = true;
     // Only celebrate a finish we actually watched happen — not every mount of
     // a row whose timer ran out at some point in the past.
-    if (timerRunning) haptics.success();
+    if (timerRunning) haptics.timerDone();
   }, [timed, timerRunning, remainingSeconds > 0, task.completed]);
 
   // ==== timer controls ====
-  const handleTimerToggle = async () => {
+  const handleTimerToggle = () => {
+    // Pausing is a tap, not success: nothing has finished. Neither haptic is
+    // awaited, so the timer moves on the same frame as the buzz.
     if (timerRunning) {
-      await haptics.success();
+      haptics.tap();
       // A countdown pauses (banking its progress) rather than finishing and
       // logging — that only happens when the task is completed.
       if (timed) pauseTimer(task.id);
       else stopTimer(task.id);
     } else {
-      await haptics.impactMedium();
+      haptics.impactMedium();
       startTimer(task.id);
     }
   };
 
-  const handleResetTimer = async () => {
-    await haptics.warning();
+  const handleResetTimer = () => {
+    haptics.warning();
     resetTimer(task.id);
   };
 
@@ -1695,6 +1733,22 @@ const TaskItemRow = React.memo(function TaskItem({
   // badge shows whether or not the collapsed row opted into the chip, and it
   // takes the same colour.
   const shownStreak = liveStreakCount(task);
+  const chipStreak = streakPreview ?? shownStreak;
+  // Pops whenever the number on the chip goes up: the completion preview
+  // above, or a negative habit's day ticking over while it's on screen.
+  const streakChipScale = useRef(new Animated.Value(1)).current;
+  const lastChipStreak = useRef(chipStreak);
+  useEffect(() => {
+    const before = lastChipStreak.current;
+    lastChipStreak.current = chipStreak;
+    if (chipStreak <= before || reduceMotion) return;
+    streakChipScale.setValue(1);
+    Animated.sequence([
+      Animated.spring(streakChipScale, { toValue: 1.2, ...animation.spring.snappy, useNativeDriver: true }),
+      Animated.spring(streakChipScale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
+    ]).start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chipStreak]);
   const atRecord = isStreakAtRecord({ streakCount: shownStreak, priorBestStreak: task.priorBestStreak });
   // Orange for a run, red once it is the longest this task has had. Red is the
   // app's destructive colour elsewhere (out of stock, an expired window), so
@@ -1741,6 +1795,10 @@ const TaskItemRow = React.memo(function TaskItem({
   // screen) reads which rows can be picked up now without scanning each row's
   // chips. The chip still says what it waits on.
   const heldBackDim = !task.completed && (!!blockerTitle || !!waitingPersonName || notNeeded);
+  // The strike sweeps on and off, except under Reduce Motion, and except when a
+  // chain step swaps for the next one in place: that new title isn't the one
+  // that was done, so it has nothing to unstrike.
+  const titleStrikeAnimates = !reduceMotion && inPlaceNextStep === null;
 
   // A task that has been put off enough times to count as drifting — the
   // same rule StuckScreen's own Drift section is built on. Shown here too, on
@@ -1983,8 +2041,29 @@ const TaskItemRow = React.memo(function TaskItem({
     // is still animating, so tapping the next task keeps the previous one's gap
     // open even though it finished a moment ago.
     beginCompletionAnimation(task.id);
-    await (isChainFinish(task) ? haptics.chainFinish() : haptics.success());
+    // Not awaited: the native call is already on its way the moment this line
+    // runs, and waiting for its promise held the pop back by a bridge round
+    // trip, so the buzz landed a beat ahead of the thing it was about.
+    //
+    // A routine's last step is haptics.chainFinish split across the animation:
+    // the success here, and its heavy pulse on the second ring pulse below,
+    // so the extra buzz lands on something you can see.
+    const finishing = isChainFinish(task);
+    haptics.success();
     setCompleting(true);
+    // Asked of the same function completeTask records it with, so the number
+    // that rolls in is the number that gets stored.
+    if (showStreakChip && !nutrientRow) {
+      const state = useTaskStore.getState();
+      const built = buildCompletion(task, undefined, {
+        ...completionSettings(),
+        now: new Date(),
+        allTasks: state.tasks,
+        subtasks: state.subtasksOf(task.id),
+        meterReadings: useMeterReadingStore.getState().readings,
+      });
+      if (built && built.completed.streakCount !== shownStreak) setStreakPreview(built.completed.streakCount);
+    }
     setQuotaCompleting(viaMeter);
     // Checkmark springs in while the circle pops, then the row fades to
     // invisible but keeps its place in the list — completeTask holds it
@@ -2016,53 +2095,94 @@ const TaskItemRow = React.memo(function TaskItem({
     // below, which delays its own pop by the same span) rather than
     // appearing on top of a still-rising level.
     checkScale.setValue(0);
-    Animated.spring(checkScale, {
-      toValue: 1,
-      delay: viaMeter ? QUOTA_TOPPING_MS : 0,
-      ...animation.spring.bouncy,
-      useNativeDriver: true,
-    }).start();
-    const sequence = Animated.sequence([
+    // Reduce Motion keeps the fade and drops the bounce: the glyph's scale is
+    // held at 1 in the render, and the opacity eases in without overshooting.
+    (reduceMotion
+      ? Animated.timing(checkScale, {
+        toValue: 1,
+        delay: viaMeter ? QUOTA_TOPPING_MS : 0,
+        duration: animation.duration.fast,
+        useNativeDriver: true,
+      })
+      : Animated.spring(checkScale, {
+        toValue: 1,
+        delay: viaMeter ? QUOTA_TOPPING_MS : 0,
+        ...animation.spring.bouncy,
+        useNativeDriver: true,
+      })
+    ).start();
+    // The gold grows out from the centre inside the pop. A meter row has its
+    // own fill, already risen to the brim by the time the circle pops.
+    if (!viaMeter) {
+      fillScale.stopAnimation();
+      if (reduceMotion) {
+        fillScale.setValue(1);
+      } else {
+        fillScale.setValue(0);
+        Animated.spring(fillScale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }).start();
+      }
+    }
+    const pop = Animated.sequence([
       ...(viaMeter ? [Animated.delay(QUOTA_TOPPING_MS)] : []),
-      Animated.spring(circleScale, { toValue: CIRCLE_POP_SCALE, ...animation.spring.snappy, useNativeDriver: true }),
-      Animated.spring(circleScale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
+      ...(reduceMotion
+        ? [Animated.delay(STILL_POP_MS)]
+        : [
+          Animated.spring(circleScale, { toValue: CIRCLE_POP_SCALE, ...animation.spring.snappy, useNativeDriver: true }),
+          Animated.spring(circleScale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
+        ]),
+    ]);
+    // Split from the pop so the routine's heavy pulse can start exactly when the
+    // second ring pulse does, rather than on a guessed delay.
+    const settle = () => Animated.sequence([
+      ...(finishing && !reduceMotion
+        ? [
+          Animated.spring(circleScale, { toValue: CHAIN_FINISH_PULSE_SCALE, ...animation.spring.snappy, useNativeDriver: true }),
+          Animated.spring(circleScale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
+        ]
+        : []),
       Animated.delay(120),
     ]);
-    completeAnimRef.current = sequence;
-    sequence.start(({ finished }) => {
-      completeAnimRef.current = null;
-      if (!finished) return;
-      if (chainNextItem) {
-        // The row previews its own successor instead of collapsing — see
-        // chainStepAdvancesInPlace's doc comment and runChainStepTransition
-        // below. completingRef stays true for the whole preview (guards
-        // against a re-tap the same way the ordinary hold does) and only
-        // clears once that function actually calls completeTask.
-        void runChainStepTransition(chainNextItem, deliverableValue, logEarly);
-        return;
-      }
-      completingRef.current = false;
-      pendingDeliverableRef.current = undefined;
-      pendingReasoningRef.current = undefined;
-      pendingReviewAfterRef.current = undefined;
-      // Leaves the row checked and fully visible, holding its slot: the send-off
-      // is the batched collapse (see the collapseSignal effect above), which
-      // fades and closes every row of the burst at once. The completed look has
-      // to be held for that whole wait — dropping it here would show a green
-      // tick flicking back to an empty circle on a row that is on its way out,
-      // since the store masks a held completion as incomplete (see
-      // withHeldCompletions) and the row would render as ordinary work again.
-      setAwaitingCollapse(true);
-      completeTask(task.id, {
-        ...(deliverableValue !== undefined ? { deliverableValue, deliverableReasoning, reviewAfter } : {}),
-        ...(logEarly ? { logEarly: true } : {}),
+    completeAnimRef.current = pop;
+    pop.start(({ finished: popped }) => {
+      if (!popped) { completeAnimRef.current = null; return; }
+      if (finishing) haptics.impactHeavy();
+      const sequence = settle();
+      completeAnimRef.current = sequence;
+      sequence.start(({ finished }) => {
+        completeAnimRef.current = null;
+        if (!finished) return;
+        if (chainNextItem) {
+          // The row previews its own successor instead of collapsing — see
+          // chainStepAdvancesInPlace's doc comment and runChainStepTransition
+          // below. completingRef stays true for the whole preview (guards
+          // against a re-tap the same way the ordinary hold does) and only
+          // clears once that function actually calls completeTask.
+          void runChainStepTransition(chainNextItem, deliverableValue, logEarly);
+          return;
+        }
+        completingRef.current = false;
+        pendingDeliverableRef.current = undefined;
+        pendingReasoningRef.current = undefined;
+        pendingReviewAfterRef.current = undefined;
+        // Leaves the row checked and fully visible, holding its slot: the send-off
+        // is the batched collapse (see the collapseSignal effect above), which
+        // fades and closes every row of the burst at once. The completed look has
+        // to be held for that whole wait — dropping it here would show a green
+        // tick flicking back to an empty circle on a row that is on its way out,
+        // since the store masks a held completion as incomplete (see
+        // withHeldCompletions) and the row would render as ordinary work again.
+        setAwaitingCollapse(true);
+        completeTask(task.id, {
+          ...(deliverableValue !== undefined ? { deliverableValue, deliverableReasoning, reviewAfter } : {}),
+          ...(logEarly ? { logEarly: true } : {}),
+        });
+        endQuotaHold();
+        // The row leaves the list via the batched collapse above rather than an
+        // onPress, so the parent's expanded-row state is never told to clear —
+        // collapse it ourselves or the spotlight overlay is stuck dimmed with
+        // no row left to spotlight (same fix as markMissed/skipNextRecurrence).
+        if (expandedRef.current) onPress(rowId);
       });
-      endQuotaHold();
-      // The row leaves the list via the batched collapse above rather than an
-      // onPress, so the parent's expanded-row state is never told to clear —
-      // collapse it ourselves or the spotlight overlay is stuck dimmed with
-      // no row left to spotlight (same fix as markMissed/skipNextRecurrence).
-      if (expandedRef.current) onPress(rowId);
     });
   };
 
@@ -2099,17 +2219,25 @@ const TaskItemRow = React.memo(function TaskItem({
     setInPlaceNextStep({ item: nextItem, index: chainStepIndex + 1 });
     setCompleting(false);
     setQuotaCompleting(false);
+    setStreakPreview(null);
     checkScale.setValue(0);
-    // A small ring pulse on the checkbox marks the reset the same way an
-    // uncomplete does elsewhere in this file, rather than just vanishing.
-    Animated.sequence([
-      Animated.spring(circleScale, { toValue: 1.15, ...animation.spring.snappy, useNativeDriver: true }),
-      Animated.spring(circleScale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
-    ]).start();
+    fillScale.setValue(0);
+    // A small ring pulse on the checkbox marks the reset rather than the box
+    // just emptying. Not under Reduce Motion, which also brings the next step
+    // in with a plain fade below rather than the overshooting spring.
+    if (!reduceMotion) {
+      Animated.sequence([
+        Animated.spring(circleScale, { toValue: 1.15, ...animation.spring.snappy, useNativeDriver: true }),
+        Animated.spring(circleScale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
+      ]).start();
+    }
     await new Promise<void>(resolve => {
       // The spring itself overshoots past 1 — that overshoot, applied directly
       // as the title/badge's own scale, is the "gets slightly bigger" settle.
-      Animated.spring(chainStepAnim, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: true }).start(() => resolve());
+      (reduceMotion
+        ? Animated.timing(chainStepAnim, { toValue: 1, duration: animation.duration.fast, useNativeDriver: true })
+        : Animated.spring(chainStepAnim, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: true })
+      ).start(() => resolve());
     });
     completingRef.current = false;
     const deliverableReasoning = pendingReasoningRef.current;
@@ -2294,12 +2422,14 @@ const TaskItemRow = React.memo(function TaskItem({
       return;
     }
     if (isNew) markTaskSeen(task.id);
-    await haptics.impactLight();
+    haptics.impactLight();
     circleScale.setValue(1);
-    Animated.sequence([
-      Animated.spring(circleScale, { toValue: 1.25, ...animation.spring.snappy, useNativeDriver: true }),
-      Animated.spring(circleScale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
-    ]).start();
+    if (!reduceMotion) {
+      Animated.sequence([
+        Animated.spring(circleScale, { toValue: 1.25, ...animation.spring.snappy, useNativeDriver: true }),
+        Animated.spring(circleScale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
+      ]).start();
+    }
     // Most units leave the row where it is (it was already behind pace, and one
     // unit didn't catch it up), and those are just the pop — the effect above
     // slides the fill as the count lands.
@@ -2358,12 +2488,14 @@ const TaskItemRow = React.memo(function TaskItem({
       handleComplete();
       return;
     }
-    await haptics.impactLight();
+    haptics.impactLight();
     circleScale.setValue(1);
-    Animated.sequence([
-      Animated.spring(circleScale, { toValue: 1.25, ...animation.spring.snappy, useNativeDriver: true }),
-      Animated.spring(circleScale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
-    ]).start();
+    if (!reduceMotion) {
+      Animated.sequence([
+        Animated.spring(circleScale, { toValue: 1.25, ...animation.spring.snappy, useNativeDriver: true }),
+        Animated.spring(circleScale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
+      ]).start();
+    }
     // The same linger a quota unit gets, and the reason the user asked for it:
     // a pick that puts the row back on pace would otherwise take it off Today
     // before a second podcast could be logged. Holding it means the second tap
@@ -2424,6 +2556,7 @@ const TaskItemRow = React.memo(function TaskItem({
     ]).start(({ finished }) => {
       if (!finished) return;
       collapseStartedRef.current = true;
+      collapseFadeOnly.value = reduceMotion ? 1 : 0;
       collapseProgress.value = withTiming(
         0,
         { duration: animation.duration.normal, easing: Easing.inOut(Easing.cubic) },
@@ -2474,7 +2607,7 @@ const TaskItemRow = React.memo(function TaskItem({
   // covers it too, but the meter is tapped often enough to want a local undo.
   const handleQuotaUndo = async () => {
     if (task.progressCount === 0) return;
-    await haptics.tap();
+    haptics.impactMedium();
     // A long press is easy to do by accident while scrolling or reordering, and
     // taking a unit off changes the count with nothing on screen to say so, so
     // it asks first.
@@ -2530,7 +2663,22 @@ const TaskItemRow = React.memo(function TaskItem({
     pendingDeliverableRef.current = undefined;
     pendingReasoningRef.current = undefined;
     pendingReviewAfterRef.current = undefined;
-    checkScale.setValue(0);
+    // Played backwards (the check fades, the gold drains back to the centre,
+    // the strike leaves) unless the row already collapsed, in which case it's
+    // remounting below and there's nothing on screen to unwind.
+    const remounting = collapseStartedRef.current;
+    checkScale.stopAnimation();
+    fillScale.stopAnimation();
+    if (remounting || reduceMotion) {
+      checkScale.setValue(0);
+      fillScale.setValue(0);
+    } else {
+      setUnwinding(true);
+      Animated.parallel([
+        Animated.timing(checkScale, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
+        Animated.timing(fillScale, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
+      ]).start(() => setUnwinding(false));
+    }
     circleScale.setValue(1);
     rowOpacity.setValue(1);
     // setValue stops the run-up mid-rise, so the meter drops back to the level
@@ -2540,11 +2688,17 @@ const TaskItemRow = React.memo(function TaskItem({
     setQuotaCompleting(false);
     setQuotaToppedOut(false);
     setCompleting(false);
+    setStreakPreview(null);
     setAwaitingCollapse(false);
     // Only when a collapse actually committed a height and an opacity —
     // cancelling in flight (the path below), or an undo that beats the batch to
-    // the row, never gets that far and shouldn't pay for a remount.
-    if (collapseStartedRef.current) setCollapseGeneration(g => g + 1);
+    // the row, never gets that far and shouldn't pay for a remount. The remount
+    // is animated, so the row opens back up and fades in rather than snapping
+    // in at full height.
+    if (remounting) {
+      animateLayout();
+      setCollapseGeneration(g => g + 1);
+    }
     collapseStartedRef.current = false;
     collapseProgress.value = 1;
   };
@@ -2561,7 +2715,7 @@ const TaskItemRow = React.memo(function TaskItem({
     pendingReviewAfterRef.current = undefined;
     // Nothing was completed, so the batch shouldn't keep waiting on this row.
     cancelCompletionAnimation(task.id);
-    await haptics.tap();
+    haptics.tap();
     restoreFromCompletion(task);
   };
 
@@ -2570,8 +2724,8 @@ const TaskItemRow = React.memo(function TaskItem({
   // `completingRef` check at the tap site): there's no local animation left
   // to cancel, so the only way back is the real store undo, the same one
   // Logbook's checkbox uses.
-  const handleUncompletePersisted = async () => {
-    await haptics.tap();
+  const handleUncompletePersisted = () => {
+    haptics.tap();
     uncompleteTask(task.id);
   };
 
@@ -2659,6 +2813,9 @@ const TaskItemRow = React.memo(function TaskItem({
     const trimmed = newSubtaskTitle.trim();
     setNewSubtaskTitle('');
     if (!trimmed) return;
+    // The new subtask fades in and the field below moves down to make room,
+    // rather than both jumping.
+    animateLayout();
     addSubtask(task.id, trimmed);
   };
 
@@ -2789,6 +2946,16 @@ const TaskItemRow = React.memo(function TaskItem({
           quotaToppedOut && styles.circleQuotaDone,
           { transform: [{ scale: circleScale }] },
         ]}>
+          {/* The gold, grown from the centre (fillScale). It reaches out under
+              the ring by a border's width each side, so the ring covers its
+              edge and no sliver of the row shows between the two. Not on a
+              meter row, where the meter is the fill. */}
+          {!quotaCompleting && !quotaPartial && (
+            <Animated.View
+              style={[styles.circleFill, { transform: [{ scale: fillScaleClamped }] }]}
+              pointerEvents="none"
+            />
+          )}
           {quotaMeterVisible && (
             <Animated.View
               style={[
@@ -2875,7 +3042,7 @@ const TaskItemRow = React.memo(function TaskItem({
             and it's absolutely positioned so it centres on the circle rather
             than being laid out beside it. */}
         <View pointerEvents="none" style={styles.circleGlyphLayer}>
-          {completing && !quotaPartial && (
+          {(completing || unwinding) && !quotaPartial && (
             // The entrance spring (animation.spring.bouncy) overshoots past 1,
             // so both of these clamp — see checkGlyphOpacity/checkGlyphScale.
             // Opacity does the appearing and the scale only travels the last
@@ -2884,7 +3051,7 @@ const TaskItemRow = React.memo(function TaskItem({
             // this is fixing.
             <Animated.View style={{
               opacity: checkGlyphOpacity,
-              transform: [{ scale: checkGlyphScale }],
+              transform: reduceMotion ? [] : [{ scale: checkGlyphScale }],
             }}>
               <Ionicons name="checkmark" size={12} color={colors.onDone} />
             </Animated.View>
@@ -3008,30 +3175,64 @@ const TaskItemRow = React.memo(function TaskItem({
                 {/* Same crossfade wrapper as the collapsed row below — see
                     chainStepOpacity/chainStepAnim's own comment. A no-op the
                     rest of the time: chainStepAnim rests at 1. */}
-                <Animated.View style={{ opacity: chainStepOpacity, transform: [{ scale: chainStepAnim }] }}>
+                <Animated.View style={{ opacity: chainStepOpacity, transform: reduceMotion ? [] : [{ scale: chainStepAnim }] }}>
+                  <StrikeReveal
+                    struck={completing}
+                    animate={titleStrikeAnimates}
+                    struckCopy={
+                      <HighlightedText
+                        text={displayTitle}
+                        ranges={titleMentionRanges}
+                        style={[styles.title, styles.titleDone]}
+                        highlightStyle={[styles.titleMention, styles.titleDone]}
+                        numberOfLines={listRow ? undefined : 2}
+                        trailing={markersFit ? markerNodes : null}
+                      />
+                    }
+                  >
+                    <HighlightedText
+                      text={displayTitle}
+                      ranges={titleMentionRanges}
+                      style={[styles.title, heldBackDim && styles.titleHeldBack]}
+                      highlightStyle={styles.titleMention}
+                      // Open, a list line shows all of itself: the editor was
+                      // otherwise the only place a long question could be read.
+                      numberOfLines={listRow ? undefined : 2}
+                      trailing={markersFit ? markerNodes : null}
+                    />
+                  </StrikeReveal>
+                </Animated.View>
+              </TouchableOpacity>
+            ) : (
+              <Animated.View style={[styles.titleFlex, { opacity: chainStepOpacity, transform: reduceMotion ? [] : [{ scale: chainStepAnim }] }]}>
+                {/* Struck through as it's checked off: see StrikeReveal. The
+                    copy is the same title with the same props, so it lies
+                    exactly over the original. */}
+                <StrikeReveal
+                  struck={completing}
+                  animate={titleStrikeAnimates}
+                  struckCopy={
+                    <HighlightedText
+                      text={displayTitle}
+                      ranges={titleMentionRanges}
+                      style={[styles.title, styles.titleDone]}
+                      highlightStyle={[styles.titleMention, styles.titleDone]}
+                      numberOfLines={2}
+                      ellipsizeMode="tail"
+                      trailing={markersFit ? markerNodes : null}
+                    />
+                  }
+                >
                   <HighlightedText
                     text={displayTitle}
                     ranges={titleMentionRanges}
                     style={[styles.title, heldBackDim && styles.titleHeldBack]}
                     highlightStyle={styles.titleMention}
-                    // Open, a list line shows all of itself: the editor was
-                    // otherwise the only place a long question could be read.
-                    numberOfLines={listRow ? undefined : 2}
+                    numberOfLines={2}
+                    ellipsizeMode="tail"
                     trailing={markersFit ? markerNodes : null}
                   />
-                </Animated.View>
-              </TouchableOpacity>
-            ) : (
-              <Animated.View style={[styles.titleFlex, { opacity: chainStepOpacity, transform: [{ scale: chainStepAnim }] }]}>
-                <HighlightedText
-                  text={displayTitle}
-                  ranges={titleMentionRanges}
-                  style={[styles.title, heldBackDim && styles.titleHeldBack]}
-                  highlightStyle={styles.titleMention}
-                  numberOfLines={2}
-                  ellipsizeMode="tail"
-                  trailing={markersFit ? markerNodes : null}
-                />
+                </StrikeReveal>
               </Animated.View>
             )}
           </View>
@@ -3128,9 +3329,12 @@ const TaskItemRow = React.memo(function TaskItem({
             {isQuota && (
               <View style={styles.metaChip}>
                 <Ionicons name="speedometer-outline" size={iconSize.xs} color={colors.accent} />
-                <Text style={styles.quotaLabel} numberOfLines={1}>
-                  {quotaProgress}{quotaReturnAt ? ` · next ${quotaReturnAt}` : ''}
-                </Text>
+                {/* The count rolls as a unit lands; the rest stays put and is
+                    what gives way if the chip runs out of room. */}
+                <AnimatedNumber text={quotaProgress} value={quotaLogged} style={styles.quotaLabel} />
+                {quotaReturnAt ? (
+                  <Text style={[styles.quotaLabel, styles.quotaReturn]} numberOfLines={1}>{`· next ${quotaReturnAt}`}</Text>
+                ) : null}
               </View>
             )}
             {rotationLine !== null && (
@@ -3569,8 +3773,8 @@ const TaskItemRow = React.memo(function TaskItem({
               </View>
             )}
             {showStreakChip && !nutrientRow && (
-              <View
-                style={[styles.metaChip, styles.streakChip]}
+              <Animated.View
+                style={[styles.metaChip, styles.streakChip, { transform: [{ scale: streakChipScale }] }]}
                 accessibilityLabel={
                   // Same number, different thing counted: a negative habit's run
                   // is days it survived, not times it was done.
@@ -3588,21 +3792,20 @@ const TaskItemRow = React.memo(function TaskItem({
                 }
               >
                 <Ionicons
-                  name={shownStreak > 0 ? 'flame' : 'flame-outline'}
+                  name={chipStreak > 0 ? 'flame' : 'flame-outline'}
                   size={iconSize.xs}
-                  color={shownStreak > 0 ? streakColor : colors.textSecondary}
+                  color={chipStreak > 0 ? streakColor : colors.textSecondary}
                 />
-                <Text
+                <AnimatedNumber
+                  text={String(chipStreak)}
+                  value={chipStreak}
                   style={[
                     styles.streakChipText,
-                    shownStreak > 0 && styles.streakChipTextActive,
+                    chipStreak > 0 && styles.streakChipTextActive,
                     atRecord && { color: streakColor },
                   ]}
-                  numberOfLines={1}
-                >
-                  {shownStreak}
-                </Text>
-              </View>
+                />
+              </Animated.View>
             )}
             {slipsLoggedToday > 0 && !nutrientRow && (
               // Without this the second tap of the day changes nothing on the
@@ -3963,8 +4166,11 @@ const TaskItemRow = React.memo(function TaskItem({
                     // pinned below the list is always the true last row now.
                     <View style={styles.subtaskRow}>
                       <TouchableOpacity
+                        // A check is the small-check haptic (a grocery row's
+                        // too); unchecking is a tap.
                         onPress={() => {
-                          haptics.tap();
+                          if (sub.completed) haptics.tap();
+                          else haptics.impactLight();
                           toggleSubtask(sub.id);
                         }}
                         // Same split as the row checkbox above — the gap to the
@@ -3976,11 +4182,9 @@ const TaskItemRow = React.memo(function TaskItem({
                         accessibilityState={{ checked: sub.completed }}
                         accessibilityLabel={sub.title}
                       >
-                        <View style={[styles.subtaskCheck, sub.completed && styles.subtaskCheckDone]}>
-                          {sub.completed && (
-                            <Ionicons name="checkmark" size={8} color={colors.onDone} />
-                          )}
-                        </View>
+                        <CheckPop checked={sub.completed} style={styles.subtaskCheck} checkedStyle={styles.subtaskCheckDone}>
+                          <Ionicons name="checkmark" size={8} color={colors.onDone} />
+                        </CheckPop>
                       </TouchableOpacity>
                       {editingSubtaskId === sub.id ? (
                         <TextField
@@ -4600,8 +4804,11 @@ const TaskItemRow = React.memo(function TaskItem({
                     // and deleteTask raises the Undo bar.
                     <PressableScale
                       style={styles.iconActionBtn}
-                      onPress={async () => {
-                        await haptics.tap();
+                      onPress={() => {
+                        haptics.tap();
+                        // The line fades and the ones below close up, where
+                        // they used to jump.
+                        animateLayout();
                         deleteTask(task.id);
                       }}
                       hitSlop={8}
@@ -5064,9 +5271,19 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // The ring turns gold at once; the inside fills from the centre (circleFill).
   circleCompleting: {
-    backgroundColor: colors.done,
     borderColor: colors.done,
+  },
+  circleFill: {
+    position: 'absolute',
+    top: -border.md,
+    left: -border.md,
+    right: -border.md,
+    bottom: -border.md,
+    borderRadius: checkboxRadius(CHECKBOX_SIZE),
+    borderCurve: 'continuous',
+    backgroundColor: colors.done,
   },
   // The circle's glyph, lifted out of the circle entirely so nothing scales it
   // (see the note at the call site) and so it draws over the quota fill rather
@@ -5184,6 +5401,13 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => StyleSheet.create({
     fontWeight: fontWeight.regular,
   },
   titleHeldBack: { color: colors.textSecondary },
+  // The struck copy StrikeReveal draws over a done title. Tertiary, the colour
+  // a checked subtask already takes, and mentions with it.
+  titleDone: {
+    color: colors.textTertiary,
+    textDecorationLine: 'line-through',
+    textDecorationColor: colors.textTertiary,
+  },
   // The tint an "@name" mention keeps once it's part of a saved title — same
   // language quick add uses for a token still being composed.
   titleMention: {
@@ -5322,6 +5546,7 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => StyleSheet.create({
     fontSize: font.xs,
     fontWeight: fontWeight.medium,
   },
+  quotaReturn: { flexShrink: 1 },
   // Only worn once what's outstanding no longer fits in the days left — see
   // rotationOverCommitted, which is deliberately a harder test than "behind".
   rotationTight: { color: colors.orangeText },

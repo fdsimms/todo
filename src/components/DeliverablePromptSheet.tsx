@@ -399,7 +399,7 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
               <SegmentedControl
                 options={REVIEW_AFTER_OPTIONS.map(o => ({ value: o.value, label: o.label }))}
                 value={lookBack}
-                onChange={v => { haptics.tap(); setLookBack(v); }}
+                onChange={v => setLookBack(v)}
                 label="Ask how it turned out after"
                 surface="card"
               />

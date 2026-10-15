@@ -382,7 +382,7 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
               <Text style={styles.switchLabel}>Add running low items to the grocery list</Text>
               <Switch
                 value={addToList}
-                onValueChange={setLowAddsToList}
+                onValueChange={on => { haptics.tap(); setLowAddsToList(on); }}
                 trackColor={{ false: colors.bgTertiary, true: colors.accent }}
                 accessibilityLabel="Add running low items to the grocery list"
               />

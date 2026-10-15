@@ -1694,7 +1694,6 @@ export function GroceryScreen() {
         // dragTick, not tap: a fast drag crosses several rows between frames
         // and unthrottled ticks run together into one long buzz. The lift
         // itself is fired by ReorderableList.
-        onHoverChange={haptics.dragTick}
         onDragBegin={markRowDragging}
         onDragEnd={clearRowDragging}
         dragRange={groceryDragRange}

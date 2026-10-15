@@ -1,13 +1,13 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   StyleSheet,
-  Text,
   View,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PressableScale } from './PressableScale';
+import { AnimatedNumber } from './AnimatedNumber';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, iconSize, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -135,28 +135,38 @@ export function CountStepper({
     stop();
     tick.current = 0;
 
-    const apply = () => {
+    // 'limit' is a step that landed on the end of the range: nothing past it
+    // will move, so the repeat stops there.
+    const apply = (): 'moved' | 'limit' | 'stuck' => {
       const current = latest.current;
       const next = stepCount(current.value, delta, current.range);
       if (next === current.value) {
         stop();
-        return false;
+        return 'stuck';
       }
       // Keep the local copy moving too: a repeat can outrun the re-render.
       latest.current = { ...current, value: next };
       current.onChange(next);
-      return true;
+      return canStep(next, delta, current.range) ? 'moved' : 'limit';
     };
 
+    // Every step is felt, not just the first: a held key used to go silent
+    // after its opening tick. Repeats use dragTick, which is rate-limited, so a
+    // fast ramp doesn't blur into one long buzz. The step that reaches the end
+    // of the range gets a firmer bump in place of its tick, never as well as.
+    const first = apply();
+    if (first === 'stuck') return;
+    if (first === 'limit') { haptics.impactLight(); return; }
     haptics.tap();
-    if (!apply()) return;
 
     const schedule = () => {
       timer.current = setTimeout(() => {
-        if (apply()) {
-          tick.current += 1;
-          schedule();
-        }
+        const result = apply();
+        if (result === 'stuck') return;
+        if (result === 'limit') { haptics.impactLight(); stop(); return; }
+        haptics.dragTick();
+        tick.current += 1;
+        schedule();
       }, holdRepeatDelay(tick.current));
     };
     schedule();
@@ -221,12 +231,13 @@ export function CountStepper({
         />
       ) : (
         <PressableScale style={styles.valuePress} onPress={openEditor}>
-          <Text
+          <AnimatedNumber
+            text={display}
+            value={value}
             style={[styles.value, value === null && styles.valueEmpty]}
+            containerStyle={styles.valueBox}
             accessibilityLabel={`${label}, ${spoken}`}
-          >
-            {display}
-          </Text>
+          />
         </PressableScale>
       )}
       {key(step, 'add', 'Increase')}
@@ -247,9 +258,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   keyDisabled: { opacity: 0.4 },
   valuePress: { paddingVertical: spacing.xs },
+  // Fits the widest value (99×) without the keys shifting as digits change.
+  valueBox: { minWidth: 40, justifyContent: 'center' },
   value: {
-    // Fits the widest value (99×) without the keys shifting as digits change.
-    minWidth: 40, textAlign: 'center',
     color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold,
     fontVariant: ['tabular-nums'],
   },
