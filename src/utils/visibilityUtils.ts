@@ -1,7 +1,7 @@
 import { addDays } from 'date-fns/addDays';
 import { format } from 'date-fns/format';
 import type { Task, TimeOfDay, Category } from '../types';
-import { getCurrentDayStart, getTaskDayStart, getDayStart, hhmmToDate, getNextDueDate, getLogicalDayKey, dayKeyToDate, formatTimeOfDay } from './dateUtils';
+import { getCurrentDayStart, getCurrentDayStartMs, getTaskDayStart, getDayStart, hhmmToDate, getNextDueDate, getLogicalDayKey, getCurrentLogicalDayKey, dayKeyToDate, formatTimeOfDay } from './dateUtils';
 import { effectiveWindowEndTime, onLogicalDay } from './clockTime';
 import type { ExpiredTaskGraceDays } from './expiredTaskGrace';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -37,7 +37,7 @@ export function isTaskBlocked(task: Task): boolean {
  */
 export function isInPausedProject(task: Pick<Task, 'projectId'>): boolean {
   if (!task.projectId) return false;
-  return isProjectPaused(task.projectId, getLogicalDayKey(new Date()));
+  return isProjectPaused(task.projectId, getCurrentLogicalDayKey());
 }
 
 /**
@@ -376,7 +376,7 @@ export function sunLocationOn(dayStart: Date = getCurrentDayStart()): SunLocatio
 function deferBlocksNow(task: Task, now: Date, dayResetTime: string): boolean {
   if (!task.deferUntil) return false;
   if (task.recurrenceType === 'hours') return new Date(task.deferUntil) > now;
-  return getTaskDayStart(new Date(task.deferUntil), dayResetTime) > getCurrentDayStart();
+  return getTaskDayStart(new Date(task.deferUntil), dayResetTime).getTime() > getCurrentDayStartMs();
 }
 
 // The moment deferUntil actually resolves at: the exact timestamp for an
@@ -394,11 +394,11 @@ function deferMoment(task: Task, dayResetTime: string): Date {
 // gate early completion of recurring tasks shown ahead of time in Later.
 export function hasDayArrived(task: Task): boolean {
   const { dayResetTime } = useSettingsStore.getState();
-  const todayStart = getCurrentDayStart();
+  const todayStartMs = getCurrentDayStartMs();
   if (deferBlocksNow(task, new Date(), dayResetTime)) return false;
   if (task.dueDate) {
     const taskDayStart = getTaskDayStart(new Date(task.dueDate), dayResetTime);
-    if (taskDayStart > todayStart) return false;
+    if (taskDayStart.getTime() > todayStartMs) return false;
   }
   return true;
 }
@@ -890,8 +890,7 @@ export function isVisibleApartFromVacation(task: Task): boolean {
 
   if (task.dueDate) {
     const taskDayStart = getTaskDayStart(new Date(task.dueDate), dayResetTime);
-    const todayStart = getCurrentDayStart();
-    if (taskDayStart > todayStart) return false;
+    if (taskDayStart.getTime() > getCurrentDayStartMs()) return false;
   }
 
   // Last of the gates, so a quota task still loses to its own date/defer/window

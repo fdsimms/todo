@@ -35,6 +35,9 @@ import {
   formatHHMM,
   formatWindowRemaining,
   getNextOccurrence,
+  getCurrentLogicalDayKey,
+  getCurrentDayStart,
+  getCurrentDayStartMs,
 } from '../utils/dateUtils';
 import type { Task } from '../types';
 
@@ -1926,5 +1929,55 @@ describe('a recurring task on a holiday', () => {
   it('leaves an hours rule alone', () => {
     const hours: Task = { ...baseTask, recurrenceType: 'hours', recurrenceInterval: 4, dueDate: new Date(2026, 0, 19, 8).toISOString(), recurrenceHolidays: 'skip' };
     expect(getNextOccurrence(hours)?.gridDate).toBeNull();
+  });
+});
+
+describe('getCurrentLogicalDayKey', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+    settings.dayResetTime = '00:00';
+  });
+
+  it('matches getLogicalDayKey for now', () => {
+    expect(getCurrentLogicalDayKey()).toBe(getLogicalDayKey(new Date()));
+  });
+
+  it('follows the clock across a day boundary', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2026, 0, 10, 23, 59, 59));
+    expect(getCurrentLogicalDayKey()).toBe('2026-01-10');
+    jest.setSystemTime(new Date(2026, 0, 11, 0, 0, 1));
+    expect(getCurrentLogicalDayKey()).toBe('2026-01-11');
+  });
+
+  it('follows a change of dayResetTime within the same millisecond', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2026, 0, 11, 1, 30));
+    settings.dayResetTime = '00:00';
+    expect(getCurrentLogicalDayKey()).toBe('2026-01-11');
+    settings.dayResetTime = '04:00';
+    expect(getCurrentLogicalDayKey()).toBe('2026-01-10');
+  });
+});
+
+describe('getCurrentDayStartMs', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+    settings.dayResetTime = '00:00';
+  });
+
+  it('is the instant getCurrentDayStart returns', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2026, 0, 11, 1, 30));
+    for (const reset of ['00:00', '04:00']) {
+      settings.dayResetTime = reset;
+      expect(getCurrentDayStartMs()).toBe(getCurrentDayStart().getTime());
+    }
+  });
+
+  it('hands out a fresh Date from getCurrentDayStart each time', () => {
+    const a = getCurrentDayStart();
+    a.setDate(a.getDate() + 5);
+    expect(getCurrentDayStart().getTime()).toBe(getCurrentDayStartMs());
   });
 });
