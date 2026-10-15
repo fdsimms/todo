@@ -159,8 +159,8 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
       let name = state.detail.flatMap { $0.isEmpty ? nil : $0 }
       let until = state.untilIso.flatMap(Self.timeLabel)
       switch (name, until) {
-      case let (name?, until?): return "Blocked by \(name) until \(until)."
-      case let (name?, nil): return "Blocked by \(name)."
+      case let (name?, until?): return "Blocked by the \(name) list until \(until)."
+      case let (name?, nil): return "Blocked by the \(name) list."
       case let (nil, until?): return "Blocked by a schedule until \(until)."
       case (nil, nil): return "Blocked by a schedule."
       }
@@ -197,8 +197,8 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
       // app's last reconcile wrote "none" because the window wasn't open yet,
       // and the monitor raised the shield from the schedules file.
       if let window = ScreenTimeShared.activeSchedules(now: Date()).first {
-        let name = (window.name ?? "").isEmpty ? "a schedule" : window.name!
-        return "Blocked by \(name)."
+        if let name = window.name, !name.isEmpty { return "Blocked by the \(name) list." }
+        return "Blocked by a schedule."
       }
       // The shield is up but the app's last reconcile says nothing wants it —
       // a state the app's own next foreground resolves by lifting it. Saying
