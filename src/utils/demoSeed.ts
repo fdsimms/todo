@@ -62,6 +62,7 @@ import {
   weighInNotes,
 } from './weightTasks';
 import { SNACK_NUDGE_NOTES, snackNudgeTitle } from './snackNudgeTasks';
+import { produceNudgeNotes, produceNudgeTitle } from './produceNudgeTasks';
 import { GOAL_TARGET_LINK, goalTargetNotes, goalTargetSourceId, goalTargetTitle } from './goalTargetTasks';
 import { LIMIT_WARNING_LINK, LIMIT_WARNING_NOTES, limitWarningTitle } from './limitWarningTasks';
 import { helpingNutrition, scalePanelToAmount } from './foodLog';
@@ -1991,6 +1992,17 @@ export function seedDemoData(): void {
     dueDate: today.toISOString(),
     category: 'Health',
     ...generatedBy('snackNudge', dayKeyOf(today)),
+  });
+
+  // The produce suggestion, seeded directly for the snack one's reason:
+  // `reconcileProduceNudge` refuses in demo mode. Illustrative figures.
+  useSettingsStore.getState().setProduceNudgeTaskCategory('Health');
+  addTask({
+    title: produceNudgeTitle(1.5, 4),
+    notes: produceNudgeNotes({ servings: 1.5, unmeasured: 0 }, []),
+    dueDate: today.toISOString(),
+    category: 'Health',
+    ...generatedBy('produceNudge', dayKeyOf(today)),
   });
 
   // The limit's "don't do" task, seeded directly for the snack suggestion's

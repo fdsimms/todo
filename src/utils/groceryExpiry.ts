@@ -1,10 +1,11 @@
-import type { GroceryItem, Task, TaskDraft } from '../types';
+import type { GroceryItem, Recipe, Task, TaskDraft } from '../types';
 import { GROCERY_USE_UP_LEAD_DAYS_MAX, GROCERY_USE_UP_LEAD_DAYS_MIN } from '../types';
 import { dayKeyOf, dayKeyToDate } from './dateUtils';
 import { generatedBy, generatedSourceOf, wantsGeneratedTask } from './generatedTasks';
 import { OUT_OF_IT_UNTIL } from './grocerySuggest';
 import { liveExpiresAt } from './groceryShelfLife';
-import { kitchenEntryId, kitchenLinkUrl } from './kitchenInventory';
+import { kitchenEntryId, kitchenLinkUrl, type KitchenEntry } from './kitchenInventory';
+import { useUpRecipes } from './useUpRecipes';
 import { resolveOffsetDate } from './templateUtils';
 
 /**
@@ -149,9 +150,61 @@ export function useUpTaskFields(
 export function useUpTaskDraft(
   item: GroceryItem,
   leadDays: number,
-  category: string | null = null
+  category: string | null = null,
+  recipes: readonly Recipe[] = [],
+  catalog: readonly GroceryItem[] = [item]
 ): Partial<TaskDraft> {
-  return { ...useUpTaskFields(item, leadDays), ...generatedBy('groceryUseUp', item.id), category };
+  const notes = useUpRecipeNotes(item, recipes, catalog);
+  return {
+    ...useUpTaskFields(item, leadDays),
+    ...generatedBy('groceryUseUp', item.id),
+    category,
+    ...(notes ? { notes } : {}),
+  };
+}
+
+/** How many recipes the notes name. */
+export const USE_UP_RECIPES_SHOWN = 2;
+
+/**
+ * "Could make: Saag, Spinach pasta" for a new use-up task, or null when no
+ * recipe calls for the item.
+ *
+ * **Written once, at creation, and never chased.** The notes are the person's
+ * to edit, so `useUpTaskDrift` doesn't own them: a recipe added next week
+ * doesn't rewrite a note someone has already read or changed. It is the same
+ * join as the Kitchen screen's suggestions (`useUpRecipes`: exact `nameKey`,
+ * nothing fuzzier), asked of this one item.
+ */
+export function useUpRecipeNotes(
+  item: GroceryItem,
+  recipes: readonly Recipe[],
+  catalog: readonly GroceryItem[] = [item]
+): string | null {
+  if (recipes.length === 0) return null;
+  // Built by hand rather than through `kitchenInventory`, which only lists what
+  // the pantry vouches for: this item has a task *because* it has a live
+  // use-by day, and `useUpRecipes` reads nothing but the key and the title.
+  const entry: KitchenEntry = {
+    id: kitchenEntryId('grocery', item.id),
+    sourceId: item.id,
+    kind: 'grocery',
+    title: item.name,
+    productName: null,
+    itemId: null,
+    section: item.aisle,
+    useBy: item.expiresAt,
+    freshness: 'soon',
+    daysLeft: null,
+    reason: '',
+    useByCaption: '',
+    caption: '',
+    onList: false,
+    matchKey: item.nameKey,
+  };
+  const ideas = useUpRecipes([entry], recipes, catalog).slice(0, USE_UP_RECIPES_SHOWN);
+  if (ideas.length === 0) return null;
+  return `Could make: ${ideas.map(i => i.recipe.name).join(', ')}`;
 }
 
 /**

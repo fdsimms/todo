@@ -163,7 +163,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/goalTargetTasks.ts` — GoalReading, GOAL_TARGET_LINK, GOAL_TARGET_NOTES, goalReadings, goalTargetSourceId, goalTargetKeyOf, goalTargetDayOf, goalTargetTitle, goalTargetNotes
 - `src/utils/groceryAdd.ts` — nextSortOrder, ensureProductFor, newItemRow, GroceryAddOverride, GroceryAddContext, GroceryAddPlan, planGroceryAdd, reAddNotice
 - `src/utils/groceryAisles.ts` — DEFAULT_AISLES, OTHER_AISLE, isNonFoodAisle, AISLE_LEXICON, aisleForName, rememberAisles, remapRememberedAisle, forgetRememberedAisle, renameRememberedAisle, normalizeAisleOrder, +2 more
-- `src/utils/groceryExpiry.ts` — wantsUseUpTask, useUpTaskTitle, clampUseUpLeadDays, useUpTaskFields, useUpTaskDraft, useUpTaskDrift, useUpDeadlineDay, finishedUseUpFor
+- `src/utils/groceryExpiry.ts` — wantsUseUpTask, useUpTaskTitle, clampUseUpLeadDays, useUpTaskFields, useUpTaskDraft, USE_UP_RECIPES_SHOWN, useUpRecipeNotes, useUpTaskDrift, useUpDeadlineDay, finishedUseUpFor
 - `src/utils/groceryFacts.ts` — ItemRelations, linkCounts, hasUserFacts, factSignature, describeForgetLoss
 - `src/utils/groceryItemWrite.ts` — pricedRows, ProductPatch, productEditRow, preferredProductRow, renameClash, renameRows, shopLinkRow, newShopRow, renamedShopRow, SubLinkOptions, +13 more
 - `src/utils/groceryLists.ts` — HOME_LIST_NAME, isAwayList, listNameFor, entryFor, onListAnywhere, listedAnywhere, itemsOnList, withHomeMembership, trolleyStateFor, listCount, +4 more
@@ -311,6 +311,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/postpone.ts` — PostponeOutcome, DEFAULT_POSTPONE_THRESHOLD, MIN_POSTPONE_THRESHOLD, MAX_POSTPONE_THRESHOLD, parsePostponeThreshold, postponeOutcome, nextPostponeCount, nextDriftingSince, DriftEntry, isDriftingTask, +3 more
 - `src/utils/priceHistory.ts` — PRICE_HISTORY_LIMIT, parsePriceHistory, appendPriceObservation, PRODUCT_RUN_MIN, priceRunForProduct, priceBaseline, PriceStanding, priceStanding, mergePriceHistories
 - `src/utils/prioritySegments.ts` — PRIORITY_SEGMENTS
+- `src/utils/produceNudgeTasks.ts` — DEFAULT_PRODUCE_NUDGE_FROM_HOUR, PRODUCE_NUDGE_FROM_HOUR_MIN, PRODUCE_NUDGE_FROM_HOUR_MAX, DEFAULT_PRODUCE_NUDGE_GOAL, PRODUCE_NUDGE_GOAL_MIN, PRODUCE_NUDGE_GOAL_MAX, clampProduceNudgeFromHour, clampProduceNudgeGoal, describeProduceNudgeHour, ProduceReading, +8 more
 - `src/utils/produceServings.ts` — PORTION_GRAMS, DRIED_PORTION_GRAMS, LEGUME_DAILY_CAP, ProduceKind, ProduceGrams, emptyProduceGrams, ProduceServings, DayProduce, produceKindOf, addProduceGrams, +10 more
 - `src/utils/productCategory.ts` — CATEGORY_AISLES, aisleForProductCategory
 - `src/utils/projectBackfill.ts` — ProjectBackfillFieldId, ProjectBackfillFieldDef, PROJECT_BACKFILL_FIELDS, isProjectFieldMissing, isProjectBackfillDismissed, projectBackfillCandidates, projectBackfillFieldCounts, dismissProjectBackfillField

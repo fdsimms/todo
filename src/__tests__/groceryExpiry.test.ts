@@ -8,6 +8,7 @@ import {
 } from '../utils/groceryExpiry';
 import type { GroceryItem } from '../types';
 import { GROCERY_USE_UP_LEAD_DAYS_MAX } from '../types';
+import type { Recipe, RecipeIngredient } from '../types';
 import { OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
 
 jest.mock('../store/useSettingsStore', () => ({
@@ -140,6 +141,37 @@ describe('useUpTaskDraft', () => {
 
   it('takes no category when none is set', () => {
     expect(useUpTaskDraft(item(), 1).category).toBeNull();
+  });
+});
+
+function recipeWith(name: string, nameKeys: string[]): Recipe {
+  return {
+    id: `r-${name}`,
+    name,
+    ingredients: nameKeys.map((nameKey, i) => ({
+      id: `ri-${name}-${i}`, name: nameKey, nameKey, quantity: '', aisle: null, prep: null,
+      purpose: null, section: null, choiceGroup: null, strict: false,
+    }) as RecipeIngredient),
+    components: [],
+  } as unknown as Recipe;
+}
+
+describe('useUpTaskDraft recipe notes', () => {
+  const spinach = item({ name: 'Spinach', nameKey: 'spinach' });
+
+  it('names up to two recipes that call for the item', () => {
+    const recipes = [recipeWith('Saag', ['spinach']), recipeWith('Pasta', ['spinach', 'pasta']), recipeWith('Soup', ['spinach']), recipeWith('Toast', ['bread'])];
+    const draft = useUpTaskDraft(spinach, 1, null, recipes, [spinach]);
+    expect(draft.notes).toMatch(/^Could make: [A-Za-z]+, [A-Za-z]+$/);
+    expect(draft.notes).not.toContain('Toast');
+  });
+
+  it('leaves notes off when no recipe uses the item', () => {
+    expect(useUpTaskDraft(spinach, 1, null, [recipeWith('Toast', ['bread'])], [spinach]).notes).toBeUndefined();
+  });
+
+  it('leaves notes off with no recipes, as before', () => {
+    expect('notes' in useUpTaskDraft(spinach, 1, 'Home')).toBe(false);
   });
 });
 

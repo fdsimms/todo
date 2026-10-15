@@ -2356,6 +2356,12 @@ export type GeneratedKind =
   // coming straight back is snackNudgeDeclinedDayKey, and a completed one blocks
   // a second through `blocksOnFinished`.
   | 'snackNudge'
+  // A produce suggestion once the evening has started and the food log is short
+  // of a servings goal, with a recipe idea from what the kitchen has — see
+  // src/utils/produceNudgeTasks.ts. snackNudge's position: day-keyed with no
+  // source row, produceNudgeDeclinedDayKey stops a deleted one coming straight
+  // back, and a completed one blocks a second through `blocksOnFinished`.
+  | 'produceNudge'
   // A "don't do" task per Stay under limit, slipped automatically when the food
   // log goes past it — see src/utils/limitWarningTasks.ts. Keyed by the
   // nutrient; deleting one adds it to limitWarningDeclined.

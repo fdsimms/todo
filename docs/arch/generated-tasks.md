@@ -1690,6 +1690,36 @@ in `src/utils/snackNudgeTasks.ts`; the pass is in `useTaskStore.ts`. It is
 - Ships off, pauses on vacation, files under its own category setting (default
   Health).
 
+## `produceNudge`: a vegetable and fruit suggestion when the food log runs low
+
+From 5 PM by default, if today's food log estimates fewer vegetable and fruit
+servings than the person's goal (4 by default), `reconcileProduceNudge` writes
+"Add vegetables or fruit (1.5 of 4 servings logged)". Rules are in
+`src/utils/produceNudgeTasks.ts`; the pass is in `useTaskStore.ts`. It is
+`snackNudge`'s shape over `produceServings.ts`, and it is called from
+`syncSnackNudgeTasks` so it rides every call site that re-judges the snack one.
+
+- **It inherits the produce estimate's limits.** Servings are derived from food
+  names and weights (80 g each), a food the lexicon does not name counts as
+  none, and an entry that could not be weighed is `unmeasured`. The notes say
+  how many, so a low figure reads as "could not tell". A day with no food entry
+  (an empty log, or only water) is nothing to judge, never zero.
+- **The goal is the person's, not the app's.** It is a count against a number
+  they typed (`produceNudgeGoal`, 1 to 10), separate from the Food log's fixed
+  5-a-day bar. Judged on the half serving the title shows, so "4 of 4" never
+  leaves a task standing. It says nothing about a day that went over.
+- **The recipe idea is a read, not a plan.** The notes name up to two recipes
+  from `produceIdeas`: recipes that use produce the pantry lists, ranked by how
+  much they use, then how much of it is frozen (the low-effort choice), then
+  fewer ingredients. It is `useUpRecipes`'s exact `nameKey` join, so it cannot
+  know that something missing from the pantry is absent. Leftovers and produce
+  past its use-by day are skipped. The notes are refreshed by the same pass
+  (drift), but pantry or recipe changes alone never create or remove the task.
+- **Completed or deleted blocks a second that day**, through `blocksOnFinished`
+  and `produceNudgeDeclinedDayKey`. Refuses in demo mode, like `snackNudge`.
+- Ships off, pauses on vacation, files under its own category setting (default
+  Health).
+
 ## `limitWarning`: a "don't do" task per Stay under limit
 
 For each nutrient the person marked Stay under (`nutritionLimits`),

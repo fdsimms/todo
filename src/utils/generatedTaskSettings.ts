@@ -444,6 +444,15 @@ export const TASK_SETTINGS_SPECS: Partial<Record<GeneratedKind, TaskSettingsSpec
       { key: 'notes', label: 'Notes', summary: 'Where the figure comes from', hint: 'The same every time.' },
     ],
   },
+  produceNudge: {
+    example: 'Add vegetables or fruit (1.5 of 4 servings logged)',
+    noun: 'Produce nudge',
+    owned: () => [
+      { key: 'title', label: 'Title', summary: 'Add vegetables or fruit (servings so far)', hint: 'Updated as you log food.' },
+      { key: 'date', label: 'Date', summary: 'Today', hint: 'Added from the hour set above, when the day’s servings are under your goal.' },
+      { key: 'notes', label: 'Notes', summary: 'Where the figure comes from, and a recipe idea', hint: 'The idea uses vegetables and fruit your pantry lists, and changes as the pantry does.' },
+    ],
+  },
   limitWarning: {
     example: 'Stay under 2,300 mg sodium · 1,200 mg so far',
     noun: 'Limit task',

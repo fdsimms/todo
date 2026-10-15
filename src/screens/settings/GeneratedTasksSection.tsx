@@ -56,6 +56,15 @@ import {
   SNACK_NUDGE_SHARE_PERCENT_STEP,
   describeSnackNudgeHour,
 } from '../../utils/snackNudgeTasks';
+import {
+  DEFAULT_PRODUCE_NUDGE_FROM_HOUR,
+  DEFAULT_PRODUCE_NUDGE_GOAL,
+  PRODUCE_NUDGE_FROM_HOUR_MAX,
+  PRODUCE_NUDGE_FROM_HOUR_MIN,
+  PRODUCE_NUDGE_GOAL_MAX,
+  PRODUCE_NUDGE_GOAL_MIN,
+  describeProduceNudgeHour,
+} from '../../utils/produceNudgeTasks';
 import { MEAL_PLAN_NUDGE_SLOTS } from '../../utils/mealPlanNudge';
 import { dateToHHMM, hhmmToDate } from '../../utils/clockTime';
 import { formatHHMM } from '../../utils/dateUtils';
@@ -394,6 +403,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
       case 'weighIn': return s.weighInTaskCategory;
       case 'waterShortfall': return s.waterShortfallTaskCategory;
       case 'snackNudge': return s.snackNudgeTaskCategory;
+      case 'produceNudge': return s.produceNudgeTaskCategory;
       case 'limitWarning': return s.limitWarningTaskCategory;
       case 'goalTarget': return s.goalTargetTaskCategory;
       case 'bookEvent': return s.bookEventTaskCategory;
@@ -433,6 +443,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
       case 'weighIn': s.setWeighInTaskCategory(category); break;
       case 'waterShortfall': s.setWaterShortfallTaskCategory(category); break;
       case 'snackNudge': s.setSnackNudgeTaskCategory(category); break;
+      case 'produceNudge': s.setProduceNudgeTaskCategory(category); break;
       case 'limitWarning': s.setLimitWarningTaskCategory(category); break;
       case 'goalTarget': s.setGoalTargetTaskCategory(category); break;
       case 'bookEvent': s.setBookEventTaskCategory(category); break;
@@ -849,6 +860,53 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
               format={n => `${n}%`}
               label="Percent of calorie target"
               describeValue={n => `${n ?? DEFAULT_SNACK_NUDGE_SHARE_PERCENT}% of target`}
+            />
+          </View>
+        </>
+      );
+    }
+
+    if (kind === 'produceNudge') {
+      return (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="produceNudgeFromHour"
+            icon="time-outline"
+            label="Start suggesting at"
+            hint="The task never appears before this time of day."
+            value={describeProduceNudgeHour(s.produceNudgeFromHour)}
+            tight
+          />
+          <View style={styles.cadenceRow}>
+            <CountStepper
+              value={s.produceNudgeFromHour}
+              onChange={next => s.setProduceNudgeFromHour(next ?? DEFAULT_PRODUCE_NUDGE_FROM_HOUR)}
+              min={PRODUCE_NUDGE_FROM_HOUR_MIN}
+              max={PRODUCE_NUDGE_FROM_HOUR_MAX}
+              format={describeProduceNudgeHour}
+              label="Hour to start suggesting"
+              describeValue={n => describeProduceNudgeHour(n ?? DEFAULT_PRODUCE_NUDGE_FROM_HOUR)}
+            />
+          </View>
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="produceNudgeGoal"
+            icon="leaf-outline"
+            label="Servings goal"
+            hint="Adds the task when the vegetable and fruit servings estimated from today’s food log are under this number. A serving is 80 g."
+            value={`${s.produceNudgeGoal} servings`}
+            tight
+          />
+          <View style={styles.cadenceRow}>
+            <CountStepper
+              value={s.produceNudgeGoal}
+              onChange={next => s.setProduceNudgeGoal(next ?? DEFAULT_PRODUCE_NUDGE_GOAL)}
+              min={PRODUCE_NUDGE_GOAL_MIN}
+              max={PRODUCE_NUDGE_GOAL_MAX}
+              format={n => `${n}`}
+              label="Servings of vegetables and fruit"
+              describeValue={n => `${n ?? DEFAULT_PRODUCE_NUDGE_GOAL} servings`}
             />
           </View>
         </>
