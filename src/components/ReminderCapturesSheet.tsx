@@ -334,15 +334,18 @@ export function ReminderCapturesSheet({ visible, onClose, reminderLists, reserve
                   </View>
                   <Switch
                     value={capture.filing.slot !== null}
-                    onValueChange={next => changeFiling(
-                      capture,
-                      // Defaulting to lunch rather than breakfast on the way
-                      // in: it is the middle of the day, so it is the least
-                      // likely to be left wrong by somebody who flipped this
-                      // to see what it did.
-                      { kind: 'meal', slot: next ? 'lunch' : null },
-                      update
-                    )}
+                    onValueChange={next => {
+                      haptics.tap();
+                      changeFiling(
+                        capture,
+                        // Defaulting to lunch rather than breakfast on the way
+                        // in: it is the middle of the day, so it is the least
+                        // likely to be left wrong by somebody who flipped this
+                        // to see what it did.
+                        { kind: 'meal', slot: next ? 'lunch' : null },
+                        update
+                      );
+                    }}
                     trackColor={{ false: colors.bgTertiary, true: colors.accent }}
                     thumbColor={colors.onAccent}
                     accessibilityLabel="Always log this list as the same meal"

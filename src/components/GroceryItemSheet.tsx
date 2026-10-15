@@ -1404,7 +1404,7 @@ export function GroceryItemSheet({
               <Text style={styles.lowSwitchLabel}>Add to grocery list when running low</Text>
               <Switch
                 value={runningLowAddsToList}
-                onValueChange={setLowAddsToListChoice}
+                onValueChange={on => { haptics.tap(); setLowAddsToListChoice(on); }}
                 trackColor={{ false: colors.bgTertiary, true: colors.accent }}
                 accessibilityLabel="Add to grocery list when running low"
               />

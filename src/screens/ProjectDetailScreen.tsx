@@ -1861,7 +1861,7 @@ function ProjectDetailContent() {
                         key={link.id}
                         style={styles.infoLinkRow}
                         onPress={() => { haptics.tap(); Linking.openURL(link.url).catch(() => {}); }}
-                        onLongPress={() => { haptics.tap(); Share.share({ url: link.url, message: link.url }); }}
+                        onLongPress={() => { haptics.impactMedium(); Share.share({ url: link.url, message: link.url }); }}
                         disabled={selectionMode}
                         activeOpacity={interaction.activeOpacity}
                         accessibilityRole="link"

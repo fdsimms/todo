@@ -420,7 +420,7 @@ export function RecipeToListSheet({
   const handlePantryUndo = () => {
     if (!pantryUndo) return;
     if (pantryUndoTimerRef.current) clearTimeout(pantryUndoTimerRef.current);
-    haptics.success();
+    haptics.tap();
     pantryUndo.undo();
     setPantryUndo(null);
   };

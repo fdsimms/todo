@@ -1625,7 +1625,7 @@ export function RecipeDetailScreen() {
           // either/or sheet is one long press away in the Components section.
           onLongPress={row
             ? (selectionMode ? undefined : row.drag)
-            : () => { haptics.impactLight(); setChoiceComponent(resolved); }}
+            : () => { haptics.impactMedium(); setChoiceComponent(resolved); }}
           delayLongPress={interaction.delayLongPress}
           accessibilityRole="button"
           accessibilityLabel={

@@ -50,8 +50,8 @@ export function MedicationAddSheet({ visible, onClose, onAdded }: Props) {
   };
 
   const save = () => {
-    if (!canSave) return;
-    if (!addMedication(name)) return;
+    // Refused (an empty name, or one already listed) used to be silent.
+    if (!canSave || !addMedication(name)) { haptics.error(); return; }
     haptics.success();
     dismiss(() => { onAdded?.(key); onClose(); });
   };

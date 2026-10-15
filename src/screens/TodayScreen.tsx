@@ -1774,7 +1774,7 @@ export function TodayScreen() {
     }
     const sectionTasks = sectionTasksByCategory.get(label) ?? NO_GROUP_CHILDREN;
     if (sectionTasks.length === 0) return;
-    haptics.tap();
+    haptics.impactMedium();
     animateLayout();
     bulkTogglePin(sectionTasks.map(t => t.id));
   };

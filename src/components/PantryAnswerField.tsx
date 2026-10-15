@@ -7,6 +7,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { pantryStanding, type PantryStanding } from '../utils/pantryStanding';
 import type { PantryReviewAnswer } from '../utils/pantryReview';
 import { SegmentedControl } from './SegmentedControl';
+import { haptics } from '../utils/haptics';
 
 interface Props {
   itemId: string;
@@ -90,7 +91,7 @@ export function PantryAnswerField({ itemId, value, onChange, addToList, onAddToL
           <Text style={styles.switchLabel}>Add to grocery list</Text>
           <Switch
             value={addToList ?? runningLowAddsToList}
-            onValueChange={onAddToListChange}
+            onValueChange={on => { haptics.tap(); onAddToListChange(on); }}
             trackColor={{ false: colors.bgTertiary, true: colors.accent }}
             accessibilityLabel="Add to grocery list"
           />

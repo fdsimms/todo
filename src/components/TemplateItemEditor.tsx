@@ -2889,7 +2889,7 @@ function OffsetRow({
             style={styles.intervalBtn}
             onPress={() => onChange(offset - 1)}
             // A week at a time on a hold: "6 weeks before" was 42 taps.
-            onLongPress={() => { haptics.tap(); onChange(offset - 7); }}
+            onLongPress={() => { haptics.impactMedium(); onChange(offset - 7); }}
             delayLongPress={interaction.delayLongPress}
             accessibilityRole="button"
             accessibilityLabel="One day earlier"
@@ -2901,7 +2901,7 @@ function OffsetRow({
           <TouchableOpacity hitSlop={8}
             style={styles.intervalBtn}
             onPress={() => onChange(offset + 1)}
-            onLongPress={() => { haptics.tap(); onChange(offset + 7); }}
+            onLongPress={() => { haptics.impactMedium(); onChange(offset + 7); }}
             delayLongPress={interaction.delayLongPress}
             accessibilityRole="button"
             accessibilityLabel="One day later"

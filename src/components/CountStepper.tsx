@@ -135,28 +135,38 @@ export function CountStepper({
     stop();
     tick.current = 0;
 
-    const apply = () => {
+    // 'limit' is a step that landed on the end of the range: nothing past it
+    // will move, so the repeat stops there.
+    const apply = (): 'moved' | 'limit' | 'stuck' => {
       const current = latest.current;
       const next = stepCount(current.value, delta, current.range);
       if (next === current.value) {
         stop();
-        return false;
+        return 'stuck';
       }
       // Keep the local copy moving too: a repeat can outrun the re-render.
       latest.current = { ...current, value: next };
       current.onChange(next);
-      return true;
+      return canStep(next, delta, current.range) ? 'moved' : 'limit';
     };
 
+    // Every step is felt, not just the first: a held key used to go silent
+    // after its opening tick. Repeats use dragTick, which is rate-limited, so a
+    // fast ramp doesn't blur into one long buzz. The step that reaches the end
+    // of the range gets a firmer bump in place of its tick, never as well as.
+    const first = apply();
+    if (first === 'stuck') return;
+    if (first === 'limit') { haptics.impactLight(); return; }
     haptics.tap();
-    if (!apply()) return;
 
     const schedule = () => {
       timer.current = setTimeout(() => {
-        if (apply()) {
-          tick.current += 1;
-          schedule();
-        }
+        const result = apply();
+        if (result === 'stuck') return;
+        if (result === 'limit') { haptics.impactLight(); stop(); return; }
+        haptics.dragTick();
+        tick.current += 1;
+        schedule();
       }, holdRepeatDelay(tick.current));
     };
     schedule();

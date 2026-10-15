@@ -1402,25 +1402,27 @@ const TaskItemRow = React.memo(function TaskItem({
     announcedReadyRef.current = true;
     // Only celebrate a finish we actually watched happen — not every mount of
     // a row whose timer ran out at some point in the past.
-    if (timerRunning) haptics.success();
+    if (timerRunning) haptics.timerDone();
   }, [timed, timerRunning, remainingSeconds > 0, task.completed]);
 
   // ==== timer controls ====
-  const handleTimerToggle = async () => {
+  const handleTimerToggle = () => {
+    // Pausing is a tap, not success: nothing has finished. Neither haptic is
+    // awaited, so the timer moves on the same frame as the buzz.
     if (timerRunning) {
-      await haptics.success();
+      haptics.tap();
       // A countdown pauses (banking its progress) rather than finishing and
       // logging — that only happens when the task is completed.
       if (timed) pauseTimer(task.id);
       else stopTimer(task.id);
     } else {
-      await haptics.impactMedium();
+      haptics.impactMedium();
       startTimer(task.id);
     }
   };
 
-  const handleResetTimer = async () => {
-    await haptics.warning();
+  const handleResetTimer = () => {
+    haptics.warning();
     resetTimer(task.id);
   };
 
@@ -2478,7 +2480,7 @@ const TaskItemRow = React.memo(function TaskItem({
   // covers it too, but the meter is tapped often enough to want a local undo.
   const handleQuotaUndo = async () => {
     if (task.progressCount === 0) return;
-    await haptics.tap();
+    haptics.impactMedium();
     // A long press is easy to do by accident while scrolling or reordering, and
     // taking a unit off changes the count with nothing on screen to say so, so
     // it asks first.

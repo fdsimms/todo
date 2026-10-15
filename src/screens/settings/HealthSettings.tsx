@@ -195,7 +195,6 @@ export function HealthSettings() {
 
   const onToggle = () => {
     const next = !healthReadEnabled;
-    haptics.tap();
     setHealthReadEnabled(next);
     // Before the sheet, so the section is there for the reading whichever way
     // the permission goes. `force` because this is the moment the answer is
@@ -235,7 +234,6 @@ export function HealthSettings() {
 
   const onToggleWrite = () => {
     const next = !healthWriteEnabled;
-    haptics.tap();
     setHealthWriteEnabled(next);
     // Same moment-of-asking rule the read toggle follows: turning this on is
     // the one unambiguous ask, so it's the one moment the sheet may appear.
@@ -640,7 +638,7 @@ export function HealthSettings() {
               ? 'Lighten today says when Apple Health recorded less sleep than the threshold below'
               : 'Lighten today does not mention sleep'}
             toggle={shortNightNoteEnabled}
-            onPress={() => { haptics.tap(); setShortNightNoteEnabled(!shortNightNoteEnabled); }}
+            onPress={() => setShortNightNoteEnabled(!shortNightNoteEnabled)}
             accessibilityLabel="Short night note"
             tight={shortNightNoteEnabled}
           />
@@ -711,7 +709,7 @@ export function HealthSettings() {
             label={label}
             hint={hint}
             toggle={moodContextSources[key]}
-            onPress={() => { haptics.tap(); setMoodContextSource(key, !moodContextSources[key]); }}
+            onPress={() => setMoodContextSource(key, !moodContextSources[key])}
             accessibilityLabel={label}
           />
         </React.Fragment>

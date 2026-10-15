@@ -34,9 +34,16 @@ let lastDragTick = 0;
  *   success      — completing a task, confirming an add
  *   chainFinish  — completing the last step of a non-repeating chain
  *   beat         — Today's All clear: light, light, heavy, in time with the mark
+ *   timerDone    — a countdown reaching zero while the app is open (a task's
+ *                  timer, a cooking step, a recipe's cook or prep, a focus step)
  *   warning      — destructive confirmation prompts
  *   error        — failed actions, validation errors
- *   impact       — physical-feeling moments (drag lift, drop, swipe actions)
+ *   impact       — physical-feeling moments (drag lift, drop, swipe actions).
+ *                  A long press being recognized is impactMedium, the same
+ *                  as a drag lift, whatever it opens
+ *
+ * `success` means something got finished. Pausing, removing, copying and
+ * undoing are `tap`, or success stops meaning anything.
  *
  * All return a promise that is safe to ignore — or nothing at all, when the
  * haptics setting is off or a drag tick lands inside the throttle. Failures
@@ -79,6 +86,10 @@ export const haptics = {
       setTimeout(() => { ExpoHaptics.impactAsync(style).catch(() => {}); }, i * BEAT_STEP_MS);
     });
   },
+  // The two-pulse warning pattern, under its own name so a timer running out
+  // reads as one event everywhere. It used to be success on a task's timer,
+  // warning on a cooking step, and nothing at all on a recipe or focus step.
+  timerDone: () => enabled() ? ExpoHaptics.notificationAsync(ExpoHaptics.NotificationFeedbackType.Warning).catch(() => {}) : undefined,
   warning: () => enabled() ? ExpoHaptics.notificationAsync(ExpoHaptics.NotificationFeedbackType.Warning).catch(() => {}) : undefined,
   error: () => enabled() ? ExpoHaptics.notificationAsync(ExpoHaptics.NotificationFeedbackType.Error).catch(() => {}) : undefined,
   impactLight: () => enabled() ? ExpoHaptics.impactAsync(ExpoHaptics.ImpactFeedbackStyle.Light).catch(() => {}) : undefined,

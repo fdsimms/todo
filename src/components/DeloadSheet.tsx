@@ -124,8 +124,9 @@ export function DeloadSheet({ visible, todaysTasks, notes, onClose }: Props) {
 
   // Slide the sheet away before showing the date picker — rendering both at
   // once causes touch conflicts (same choreography as ApplyTemplateSheet).
+  // A long press (its only call site), so it gets the long-press strength.
   const openPicker = (proposal: DeloadProposal) => {
-    haptics.tap();
+    haptics.impactMedium();
     sheet.slideOut(() => setPickerTarget(proposal));
   };
 

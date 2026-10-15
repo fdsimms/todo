@@ -175,7 +175,8 @@ export function UndoBar() {
   const handlePress = () => {
     if (timerRef.current) clearTimeout(timerRef.current);
     setVisible(false);
-    haptics.success();
+    // tap, not success: undoing takes something back rather than finishing it.
+    haptics.tap();
     shown.run();
   };
 

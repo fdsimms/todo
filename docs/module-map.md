@@ -607,7 +607,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useEventTaskSync.ts` — useEventTaskSync
 - `src/hooks/useFilterField.ts` — FilterField, useFilterField
 - `src/hooks/useFocusRefreshedRead.ts` — useFocusRefreshedRead
-- `src/hooks/useFocusSession.ts` — useFocusSession, useFocusPlanReconcile
+- `src/hooks/useFocusSession.ts` — useFocusSession, useFocusStepDoneHaptic, useFocusPlanReconcile
 - `src/hooks/useFoodDatabaseSearch.ts` — FoodDatabaseSearch, useFoodDatabaseSearch
 - `src/hooks/useJournalAccess.ts` — useJournalAccess
 - `src/hooks/useKeyShortcuts.ts` — useKeyShortcuts

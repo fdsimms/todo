@@ -282,7 +282,6 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
     message: string,
     onOff?: () => void,
   ) => {
-    haptics.tap();
     // Switching a live reason off would end its block with no record.
     if (enabled && refuseWhileBlocked(reasonSwitchLocked(reason, reasons))) return;
     if (enabled) {
@@ -427,7 +426,6 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
   };
 
   const handleKeyLock = async () => {
-    haptics.tap();
     if (keyLocked) {
       // Unlocking from the app takes a scan: a button here would be the way
       // out of a lock whose whole purpose is to need the tag.
