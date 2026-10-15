@@ -33,10 +33,11 @@ function fakeReplica(opts: {
   moodLogs?: number;
   milestones?: unknown[];
   medications?: unknown[];
+  rewards?: boolean;
 } = {}): Replica {
   return {
     tasks: () => opts.tasks ?? [],
-    settings: () => ({ simpleMode: !!opts.simpleMode, kitchenEnabled: opts.kitchenEnabled ?? true, completedRetentionDays: null }),
+    settings: () => ({ simpleMode: !!opts.simpleMode, kitchenEnabled: opts.kitchenEnabled ?? true, completedRetentionDays: null, rewardsEnabled: opts.rewards ?? false }),
     recipes: () => Array.from({ length: opts.recipes ?? 0 }),
     mealPlan: () => Array.from({ length: opts.planned ?? 0 }),
     todayKey: () => '2026-10-05',
@@ -159,6 +160,16 @@ describe('since: features that are new to the person', () => {
       medications: [{ name: 'Vitamin D3', nutrients: 'Per 1 tablet: 1 nutrient' }, { name: 'Ibuprofen' }],
     });
     expect(unusedFeatures(replica, { since: '2026-01-01', limit: 20 }).suggestions).toEqual([]);
+  });
+
+  it('suggests a bounty only with rewards on, a task moved three or more times, and no bounty posted', () => {
+    const ids = (rewards: boolean, tasks: unknown[]) =>
+      unusedFeatures(fakeReplica({ rewards, tasks }), { since: '2026-10-01', limit: 20 }).suggestions.map(s => s.id);
+    const pushed = task({ postponeCount: 4 });
+    expect(ids(true, [pushed])).toContain('bounty');
+    expect(ids(false, [pushed])).not.toContain('bounty');
+    expect(ids(true, [task({ postponeCount: 1 })])).not.toContain('bounty');
+    expect(ids(true, [pushed, task({ bountyPushes: 0 })])).not.toContain('bounty');
   });
 
   it('suggests a destination only for a trip that has away dates and none', () => {

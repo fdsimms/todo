@@ -271,6 +271,20 @@ export const ADOPTION_CHECKS: readonly AdoptionCheck[] = [
     },
   },
   {
+    id: 'bounty',
+    title: 'Bounty on a task you keep putting off',
+    benefit: 'A bounty pays extra coins when a task is done and shrinks each time it is moved to a later day. It is turned on in the task editor, one at a time.',
+    since: '2026-10-04',
+    advanced: true,
+    evidence: ({ open, replica }) => {
+      if (!replica.settings().rewardsEnabled) return null;
+      const pushed = open.filter(t => (t.postponeCount ?? 0) >= 3);
+      return pushed.length > 0 && open.every(t => t.bountyPushes == null)
+        ? `${pushed.length} open task${pushed.length === 1 ? ' has' : 's have'} been moved to a later day three or more times and no bounty is posted.`
+        : null;
+    },
+  },
+  {
     id: 'retention',
     title: 'Keeping completed tasks',
     benefit: 'Every completion leaves a row behind, so repeating tasks pile up. A retention window clears old ones and keeps the app quick.',
