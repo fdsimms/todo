@@ -406,7 +406,7 @@ describe('a key tag lock', () => {
     expect(mockBridge.clearShield).not.toHaveBeenCalled();
     expect(mockBridge.setShieldState).toHaveBeenCalledWith(expect.objectContaining({
       reason: 'key',
-      detail: 'These apps are locked until you tap your key tag.',
+      detail: 'Locked until you tap your key tag.',
       untilIso: null,
     }));
   });
