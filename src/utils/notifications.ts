@@ -1,6 +1,6 @@
 import * as Notifications from 'expo-notifications';
 import { isProjectLockedAtAll } from './projectLock';
-import { placeGateAllows, readPlaceFix } from './placeGate';
+import { placeGateAllows, placeTrustedUntil, readPlaceFix } from './placeGate';
 import type { PermissionResponse } from 'expo-modules-core';
 import { Platform } from 'react-native';
 import type { StepTimer, Task } from '../types';
@@ -440,6 +440,11 @@ export function upcomingReminders(tasks: Task[], now: Date = new Date()): Task[]
  * and both fire in minutes rather than days, so leaving them uncounted costs at
  * most a handful of slots at the far end of the queue. Named here rather than
  * reserved for with a guessed constant.
+ *
+ * **`nudges` is each run's floor only.** The rest of a run is handed out by
+ * `planNudgeExtension` from what the reminders leave, after them rather than
+ * before, so it can never be what pushes a reminder out and has no place in a
+ * count of what the reminders don't get.
  */
 export interface NonReminderSlots {
   nudges: number;
@@ -566,12 +571,25 @@ export async function rescheduleAllReminders(
   // the two can't disagree about what a kind will actually schedule.
   const slots = nonReminderSlots(tasks, now, { trip, eventReminders });
 
-  for (const task of quotaNudgeTasks(tasks)) await scheduleQuotaNudges(task, now);
-
   const reminderBudget = Math.max(0, MAX_PENDING_REMINDERS - slots.total);
-  for (const task of upcoming.filter(t => !usesAlarmKit(t)).slice(0, reminderBudget)) {
-    await scheduleTaskReminder(task);
+  const budgeted = upcoming.filter(t => !usesAlarmKit(t)).slice(0, reminderBudget);
+
+  // Then whatever is still free goes to the pace runs' later nudges, less the
+  // headroom kept for what is scheduled between rebuilds. Only after the
+  // reminders have been sliced, so a reminder that fit before this existed
+  // still fits: the extension spends slack, never a slot anything else wanted.
+  // Replaced wholesale, so a run that lost its extension (a crowded queue, a
+  // completed task) doesn't keep a reach this rebuild didn't give it.
+  const slack = MAX_PENDING_REMINDERS - NUDGE_EXTENSION_HEADROOM - slots.total - budgeted.length;
+  const plan = planNudgeExtension(tasks, now, slack);
+  nudgeAheadByTask.clear();
+  plan.forEach((ahead, id) => nudgeAheadByTask.set(id, ahead));
+
+  for (const task of quotaNudgeTasks(tasks)) {
+    await scheduleQuotaNudges(task, now, plan.get(task.id) ?? MAX_QUOTA_NUDGES_AHEAD);
   }
+
+  for (const task of budgeted) await scheduleTaskReminder(task);
 
   // Every kind this function schedules is now namespaced and cancelled on its
   // own terms rather than through a blanket `cancelAllScheduledNotificationsAsync`
@@ -903,31 +921,65 @@ export async function cancelFocusMeetingHeadsUp(): Promise<void> {
 const quotaNudgeId = (taskId: string, index: number): string => `pace:${taskId}:${index}`;
 
 /**
- * How many of a run's nudges are held pending at once.
+ * How many of a run's nudges are always held pending: the floor every run gets
+ * whatever else is in the queue.
  *
  * iOS holds 64 local notification requests in total (MAX_PENDING_REMINDERS),
  * and a run at a 20-minute cadence across a working day wants 24 on its own.
- * Handing one task a third of the budget would silently starve the reminders
- * the user actually set on real tasks, so only the next few are ever pending
- * and the rest are laid down as the app is opened through the day
- * (rescheduleAllReminders, and the foreground pass that calls it).
+ * Handing one task a third of the budget *ahead of* the reminders would
+ * silently starve the reminders the user actually set on real tasks, so only
+ * the next few are guaranteed and charged before them (`nonReminderSlots`).
  *
- * The trade is explicit: a phone that never opens the app for four hours stops
- * being nudged after the sixth. That is the right way round — the alternative
- * spends the whole device budget on the one task least likely to be looked at.
+ * **The rest of the run gets whatever the reminders leave** (#2203). Six alone
+ * meant a phone left alone for two hours stopped being nudged after the sixth,
+ * which is exactly the case the feature exists for: a routine you're meant to be
+ * interrupted by is one you are by definition not opening the app to check. So
+ * the rebuild hands a run's later instants the slots nothing else wanted
+ * (`planNudgeExtension`), and only once every reminder that fits has been given
+ * its slot. A crowded queue still falls back to six, topped up at the next
+ * foreground or background run; a quiet one carries the whole day.
  */
 export const MAX_QUOTA_NUDGES_AHEAD = 6;
 
-/** Every id a run could be holding, for the uninformed cancel below. */
-function quotaNudgeIds(taskId: string): string[] {
-  return Array.from({ length: MAX_QUOTA_NUDGES_AHEAD }, (_, i) => quotaNudgeId(taskId, i));
-}
+/**
+ * Slots the rebuild never hands to a run's extra nudges, kept for what gets
+ * scheduled between rebuilds without asking it: a reminder set mid-session
+ * (`scheduleTaskReminder` adds one without a rebuild), a cooking step timer, a
+ * focus step alarm and its meeting heads-up, a completion timer, a medication's
+ * "OK again". A run's extension is a nicety and those are not, so a queue filled
+ * to the cap with nudges would be the extension spending a slot it was only
+ * borrowing. Eight covers a session's worth with room over.
+ */
+export const NUDGE_EXTENSION_HEADROOM = 8;
+
+/**
+ * How many grid positions each run was given at the last rebuild, for the
+ * per-task reschedules between rebuilds (an edit to the run's title, window or
+ * count). Without it the first such edit would cut an extended run back to six
+ * until the next rebuild, which is the very gap the extension closes.
+ *
+ * Reusing the number is budget-safe to within the headroom: a reschedule cancels
+ * the run's own requests before laying any down and looks at no more grid
+ * positions than the rebuild planned. The one way it can hold more than it was
+ * charged is a position quiet hours dropped at the rebuild landing outside them
+ * from a later `now`, the same slack the floor has always had, and
+ * `NUDGE_EXTENSION_HEADROOM` is what absorbs it. Process memory only, on
+ * purpose: a cold launch runs the rebuild, which writes it afresh.
+ */
+const nudgeAheadByTask = new Map<string, number>();
 
 export async function cancelQuotaNudges(taskId: string): Promise<void> {
+  // The floor's ids are named outright, and anything past them is swept by
+  // prefix, because a run's extension is sized per rebuild and there is no
+  // fixed last id to name: a run extended in a previous session, then completed
+  // in this one, still holds positions this process never laid down. The colon
+  // after the task id keeps `eyes` from matching `eyes2`'s requests.
+  const prefix = `pace:${taskId}:`;
+  const pending = await Notifications.getAllScheduledNotificationsAsync().catch(() => []);
+  const ids = new Set(Array.from({ length: MAX_QUOTA_NUDGES_AHEAD }, (_, i) => quotaNudgeId(taskId, i)));
+  for (const n of pending) if (n.identifier.startsWith(prefix)) ids.add(n.identifier);
   await Promise.all(
-    quotaNudgeIds(taskId).map(id =>
-      Notifications.cancelScheduledNotificationAsync(id).catch(() => {})
-    )
+    [...ids].map(id => Notifications.cancelScheduledNotificationAsync(id).catch(() => {}))
   );
 }
 
@@ -961,15 +1013,26 @@ export async function cancelQuotaNudges(taskId: string): Promise<void> {
  *
  * **The index is kept rather than re-numbered** after the quiet-hours filter,
  * so an id still names a position in the day's grid — see `quotaNudgeId`.
+ *
+ * `ahead` is how many grid positions to look at: the floor by default, more for
+ * a run the rebuild extended (`planNudgeExtension`).
  */
-function quotaNudgeInstants(task: Task, now: Date): { index: number; time: Date }[] {
+function quotaNudgeInstants(
+  task: Task,
+  now: Date,
+  ahead: number = MAX_QUOTA_NUDGES_AHEAD
+): { index: number; time: Date }[] {
   if (!task.quotaReminders || task.completed || task.archived) return [];
   if (task.targetCount === null || task.targetCount < 2) return [];
   if (isWithheld(task)) return [];
   // Limited to places: only while the last foreground fix says the phone is at
   // one (see placeGate.ts). Inside this function, not beside it, because the
   // count is also the queue budget `nonReminderSlots` charges.
-  if (!placeGateAllows(task, readPlaceFix(), now)) return [];
+  const fix = readPlaceFix();
+  if (!placeGateAllows(task, fix, now)) return [];
+  // And none may fire after the fix stops being trusted: the gate above vouches
+  // for the phone's whereabouts now, not for wherever it is in six hours.
+  const trustedUntil = placeTrustedUntil(task, fix);
 
   const { activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, dayResetTime } =
     useSettingsStore.getState();
@@ -987,9 +1050,50 @@ function quotaNudgeInstants(task: Task, now: Date): { index: number; time: Date 
     dayStart,
   });
 
-  return quotaDueTimesAfter(span, task.targetCount, now, MAX_QUOTA_NUDGES_AHEAD)
+  return quotaDueTimesAfter(span, task.targetCount, now, ahead)
     .map((time, index) => ({ index, time }))
+    .filter(({ time }) => +time <= trustedUntil)
     .filter(({ time }) => !isWithinQuietHours(time, quietHoursStart, quietHoursEnd));
+}
+
+/**
+ * How far past the floor each run may reach, given `slack` slots nothing else in
+ * the queue wants. Returns grid positions per task id, for the runs that got
+ * any; a run not named keeps `MAX_QUOTA_NUDGES_AHEAD`.
+ *
+ * **Soonest first across every run**, not shared out evenly: the slack goes to
+ * whichever nudges fire next, whoever they belong to, so two runs split the
+ * hours ahead rather than one of them being covered into the evening while the
+ * other stops at lunch. It also means a run's share is always a contiguous
+ * stretch of its own grid from now, which is what a single `ahead` per run can
+ * express.
+ *
+ * A run's positions beyond the floor that quiet hours or a place's expiry drop
+ * are skipped rather than charged, the same rule `quotaNudgeInstants` gives the
+ * floor itself, so a slot is only spent on a nudge that will be scheduled.
+ */
+export function planNudgeExtension(
+  tasks: Task[],
+  now: Date,
+  slack: number
+): Map<string, number> {
+  const plan = new Map<string, number>();
+  if (slack <= 0) return plan;
+
+  const extras: { taskId: string; index: number; time: number }[] = [];
+  for (const task of quotaNudgeTasks(tasks)) {
+    // A run's grid has at most targetCount positions, so asking for that many
+    // is asking for the rest of the run.
+    for (const { index, time } of quotaNudgeInstants(task, now, task.targetCount ?? 0)) {
+      if (index >= MAX_QUOTA_NUDGES_AHEAD) extras.push({ taskId: task.id, index, time: +time });
+    }
+  }
+  extras.sort((a, b) => a.time - b.time || (a.taskId < b.taskId ? -1 : a.taskId > b.taskId ? 1 : 0));
+
+  for (const { taskId, index } of extras.slice(0, slack)) {
+    plan.set(taskId, Math.max(plan.get(taskId) ?? 0, index + 1));
+  }
+  return plan;
 }
 
 /**
@@ -998,13 +1102,20 @@ function quotaNudgeInstants(task: Task, now: Date): { index: number; time: Date 
  * lets a grid instant fall between them, which reserves a slot this then
  * doesn't spend — an off-by-one in the direction of dropping a reminder that
  * would have fit. Every other caller wants the wall clock and takes the default.
+ *
+ * `ahead` is the same: the rebuild passes the reach it just planned, and every
+ * other caller gets whatever the last rebuild gave this run (`nudgeAheadByTask`).
  */
-export async function scheduleQuotaNudges(task: Task, now: Date = new Date()): Promise<void> {
+export async function scheduleQuotaNudges(
+  task: Task,
+  now: Date = new Date(),
+  ahead: number = nudgeAheadByTask.get(task.id) ?? MAX_QUOTA_NUDGES_AHEAD
+): Promise<void> {
   await cancelQuotaNudges(task.id);
   if (isDemoModeActive()) return;
 
   const title = displayTitleFor(task) || 'Daily target';
-  for (const { index, time } of quotaNudgeInstants(task, now)) {
+  for (const { index, time } of quotaNudgeInstants(task, now, ahead)) {
     await Notifications.scheduleNotificationAsync({
       identifier: quotaNudgeId(task.id, index),
       content: {

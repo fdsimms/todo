@@ -17,9 +17,11 @@ import type { SavedPlace } from './savedPlaces';
  *   schedules no reminders. Reminders you asked to be limited to the office
  *   arriving at home because the phone couldn't tell is the wrong failure.
  * - **Leaving a place stops the reminders only once the app is next opened or
- *   the fix expires**, whichever comes first (`PLACE_FIX_TTL_MS`). The queue
- *   holds about two hours of reminders ahead (`MAX_QUOTA_NUDGES_AHEAD`), so
- *   the fix is trusted for that long and no longer.
+ *   the fix expires**, whichever comes first (`PLACE_FIX_TTL_MS`). Nothing is
+ *   scheduled to fire past the fix's expiry (`placeTrustedUntil`), however much
+ *   room the queue has: a slow cadence's six nudges, or a run given the queue's
+ *   spare slots, would otherwise reach hours past the last time the phone was
+ *   known to be there.
  *
  * Pure rule up top, the one persisted fix below. The fix is device-local: it
  * is a statement about where this phone is, so it is not in
@@ -75,6 +77,21 @@ export function placeGateAllows(
   const age = +now - fix.at;
   if (!Number.isFinite(age) || age < 0 || age > PLACE_FIX_TTL_MS) return false;
   return task.quotaPlaceIds!.includes(fix.placeId);
+}
+
+/**
+ * The last instant (epoch ms) a place-limited task's reminder may fire at, on
+ * the strength of `fix`: its expiry. Infinity for a task with no places, which
+ * the fix says nothing about. Gating only the moment of scheduling isn't
+ * enough, since a reminder laid down now fires later, and the fix has to still
+ * be trusted when it does.
+ */
+export function placeTrustedUntil(
+  task: Pick<Task, 'quotaPlaceIds' | 'quotaReminders'>,
+  fix: StoredPlaceFix | null,
+): number {
+  if (!isPlaceLimited(task)) return Infinity;
+  return fix ? fix.at + PLACE_FIX_TTL_MS : -Infinity;
 }
 
 export function readPlaceFix(): StoredPlaceFix | null {

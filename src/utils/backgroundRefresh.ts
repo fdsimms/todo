@@ -24,8 +24,9 @@
  * `BGProcessingTask` rather than an app refresh. iOS typically runs those
  * overnight while charging, not every fifteen minutes. That suits the day-roll
  * work well (the generators for the new day are done before you wake up) and
- * suits a two-hourly nudge top-up much less, which is why #2203 is still open
- * with its own routes rather than closed by this.
+ * suits a two-hourly nudge top-up much less, which is why a pace run's nudges
+ * don't rely on it: the rebuild hands a run the queue's spare slots up front
+ * (`planNudgeExtension`), and this only matters for a queue too crowded to.
  *
  * ## Demo mode
  *

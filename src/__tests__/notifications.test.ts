@@ -53,7 +53,13 @@ const DEFAULT_MOCK_SETTINGS = {
 
 // The place gate reads its stored fix from the database; its own rule is
 // covered in placeGate.test.ts, so these tests see reminders as allowed.
-jest.mock('../utils/placeGate', () => ({ placeGateAllows: () => true, readPlaceFix: () => null }));
+// placeTrustedUntil is mutable for the one block that needs a fix to expire.
+let mockPlaceTrustedUntil = Infinity;
+jest.mock('../utils/placeGate', () => ({
+  placeGateAllows: () => true,
+  readPlaceFix: () => null,
+  placeTrustedUntil: () => mockPlaceTrustedUntil,
+}));
 
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: { getState: () => mockSettings },
@@ -101,6 +107,8 @@ import {
   cancelQuotaNudges,
   quotaNudgeTasks,
   MAX_QUOTA_NUDGES_AHEAD,
+  NUDGE_EXTENSION_HEADROOM,
+  planNudgeExtension,
   scheduleCompletionTimer,
 } from '../utils/notifications';
 import { scheduleNativeAlarm, cancelNativeAlarm } from 'todo-alarmkit-bridge';
@@ -2064,5 +2072,188 @@ describe('rescheduleAllReminders leaves room for the rest of the queue', () => {
     // `/^t\d+$/` rather than a `t` prefix: the timer alarm's own id is
     // `timer:stew`, which a prefix match would count as a reminder.
     expect(scheduled.filter(id => /^t\d+$/.test(id))).toHaveLength(MAX_PENDING_REMINDERS - 2);
+  });
+});
+
+// ─── pace runs and the queue's spare slots (#2203) ───────────────────────────
+
+// Six nudges ahead meant a phone left alone for two hours stopped nudging after
+// the sixth. The rebuild now hands a run whatever the reminders leave, and the
+// cases below are the two halves of that promise: a run gets the room nothing
+// else wanted, and nothing else loses a slot it had.
+//
+// Each block uses its own task ids, because the reach a rebuild plans outlives
+// it (it's what a per-task reschedule between rebuilds reuses) and the
+// scheduleQuotaNudges block above asserts the floor for `eyes`.
+describe('pace runs share the queue\'s spare slots', () => {
+  const NOW = new Date(2026, 7, 26, 9, 5, 0);
+  const at = (minutes: number) => new Date(NOW.getTime() + minutes * 60_000).toISOString();
+  const paced = (id: string, overrides: Partial<Task> = {}): Task =>
+    makeTask({
+      id,
+      title: id,
+      targetCount: 24,
+      quotaIntervalMinutes: 20,
+      quotaReminders: true,
+      windowStart: '09:00',
+      windowEnd: '17:00',
+      recurrenceType: 'daily',
+      ...overrides,
+    });
+  const reminders = (n: number) =>
+    Array.from({ length: n }, (_, i) => makeTask({ id: `t${i}`, reminderTime: at(i + 1) }));
+  const scheduledIds = () =>
+    (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls.map(([arg]) => arg.identifier as string);
+  const nudgeTimes = (taskId: string) =>
+    (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls
+      .filter(([arg]) => (arg.identifier as string).startsWith(`pace:${taskId}:`))
+      .map(([arg]) => arg.trigger.date as Date);
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+    mockPlaceTrustedUntil = Infinity;
+  });
+
+  it('carries a lone run through the rest of its day when the queue is quiet', async () => {
+    await rescheduleAllReminders([paced('walk')]);
+    const times = nudgeTimes('walk');
+    // Every 20 minutes from 09:20 to the window's close: the whole run, where
+    // the floor alone stopped at 11:00.
+    expect(times.length).toBeGreaterThan(MAX_QUOTA_NUDGES_AHEAD);
+    expect(times[0]).toEqual(new Date(2026, 7, 26, 9, 20, 0));
+    expect(times[times.length - 1] <= new Date(2026, 7, 26, 17, 0, 0)).toBe(true);
+    expect(times[times.length - 1] >= new Date(2026, 7, 26, 16, 40, 0)).toBe(true);
+  });
+
+  it('gives the reminders every slot they had, and the run only its floor, on a full queue', async () => {
+    await rescheduleAllReminders([...reminders(MAX_PENDING_REMINDERS), paced('walk')]);
+    expect(nudgeTimes('walk')).toHaveLength(MAX_QUOTA_NUDGES_AHEAD);
+    expect(scheduledIds().filter(id => /^t\d+$/.test(id))).toHaveLength(
+      MAX_PENDING_REMINDERS - MAX_QUOTA_NUDGES_AHEAD
+    );
+  });
+
+  it('stops short of the cap by the headroom kept for what is scheduled between rebuilds', async () => {
+    // Three slots free once the floor, the reminders and the headroom are paid.
+    const n = MAX_PENDING_REMINDERS - NUDGE_EXTENSION_HEADROOM - MAX_QUOTA_NUDGES_AHEAD - 3;
+    await rescheduleAllReminders([...reminders(n), paced('walk')]);
+    expect(nudgeTimes('walk')).toHaveLength(MAX_QUOTA_NUDGES_AHEAD + 3);
+    expect(scheduledIds()).toHaveLength(MAX_PENDING_REMINDERS - NUDGE_EXTENSION_HEADROOM);
+  });
+
+  it('lets a per-task reschedule keep the reach the last rebuild gave it', async () => {
+    // An edit to the run's title between rebuilds reschedules it alone, and
+    // cutting it back to six there would reopen the gap until the next rebuild.
+    await rescheduleAllReminders([paced('stretch')]);
+    const extended = nudgeTimes('stretch').length;
+    expect(extended).toBeGreaterThan(MAX_QUOTA_NUDGES_AHEAD);
+
+    (Notifications.scheduleNotificationAsync as jest.Mock).mockClear();
+    await scheduleQuotaNudges(paced('stretch', { title: 'Stretch' }));
+    expect(nudgeTimes('stretch')).toHaveLength(extended);
+  });
+
+  it('takes the reach back when a later rebuild finds the queue crowded', async () => {
+    await rescheduleAllReminders([paced('stretch')]);
+    await rescheduleAllReminders([...reminders(MAX_PENDING_REMINDERS), paced('stretch')]);
+
+    (Notifications.scheduleNotificationAsync as jest.Mock).mockClear();
+    await scheduleQuotaNudges(paced('stretch'));
+    expect(nudgeTimes('stretch')).toHaveLength(MAX_QUOTA_NUDGES_AHEAD);
+  });
+
+  it('never schedules a place-limited run past the fix it was allowed on', async () => {
+    // A run at an hourly cadence: six nudges reach six hours out, long after
+    // the fix that let them be scheduled has stopped vouching for anything.
+    mockPlaceTrustedUntil = +new Date(2026, 7, 26, 9, 50, 0);
+    await scheduleQuotaNudges(paced('office'));
+    expect(nudgeTimes('office')).toEqual([
+      new Date(2026, 7, 26, 9, 20, 0),
+      new Date(2026, 7, 26, 9, 40, 0),
+    ]);
+  });
+});
+
+describe('planNudgeExtension', () => {
+  const NOW = new Date(2026, 7, 26, 9, 5, 0);
+  const paced = (id: string, overrides: Partial<Task> = {}): Task =>
+    makeTask({
+      id,
+      targetCount: 24,
+      quotaIntervalMinutes: 20,
+      quotaReminders: true,
+      windowStart: '09:00',
+      windowEnd: '17:00',
+      recurrenceType: 'daily',
+      ...overrides,
+    });
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+  });
+  afterEach(() => jest.useRealTimers());
+
+  it('extends nothing without slack', () => {
+    expect(planNudgeExtension([paced('a')], NOW, 0).size).toBe(0);
+    expect(planNudgeExtension([paced('a')], NOW, -5).size).toBe(0);
+  });
+
+  it('hands the slack to whichever nudges fire next, across runs', () => {
+    // Two runs on the same grid: four spare slots are 11:20 and 11:40 for
+    // each, rather than four more for one run while the other stops at 11:00.
+    const plan = planNudgeExtension([paced('a'), paced('b')], NOW, 4);
+    expect(plan.get('a')).toBe(MAX_QUOTA_NUDGES_AHEAD + 2);
+    expect(plan.get('b')).toBe(MAX_QUOTA_NUDGES_AHEAD + 2);
+  });
+
+  it('favours the run whose next nudge is sooner', () => {
+    // Twelve over the same eight hours is every 40 minutes, so its seventh
+    // nudge is hours after the 20-minute run's.
+    const plan = planNudgeExtension([paced('fast'), paced('slow', { targetCount: 12 })], NOW, 2);
+    expect(plan.get('fast')).toBe(MAX_QUOTA_NUDGES_AHEAD + 2);
+    expect(plan.has('slow')).toBe(false);
+  });
+
+  it('spends nothing on positions quiet hours will drop', () => {
+    // 11:30 onward is quiet, so 11:20 is the only extra the run can use, and
+    // a hundred spare slots still buy exactly one.
+    mockSettings.quietHoursStart = '11:30';
+    mockSettings.quietHoursEnd = '23:00';
+    const plan = planNudgeExtension([paced('a')], NOW, 100);
+    expect(plan.get('a')).toBe(MAX_QUOTA_NUDGES_AHEAD + 1);
+  });
+
+  it('extends no run that schedules nothing', () => {
+    expect(planNudgeExtension([paced('a', { quotaReminders: false })], NOW, 50).size).toBe(0);
+    expect(planNudgeExtension([paced('a')], new Date(2026, 7, 26, 18, 0, 0), 50).size).toBe(0);
+  });
+});
+
+describe('cancelQuotaNudges sweeps an extended run', () => {
+  it('cancels positions past the floor by prefix, and only this run\'s', async () => {
+    (Notifications.getAllScheduledNotificationsAsync as jest.Mock).mockResolvedValueOnce([
+      { identifier: 'pace:walk:14' },
+      { identifier: 'pace:walk2:9' },
+      { identifier: 'walk' },
+    ]);
+    await cancelQuotaNudges('walk');
+    const cancelled = (Notifications.cancelScheduledNotificationAsync as jest.Mock).mock.calls.map(([id]) => id);
+    expect(cancelled).toContain('pace:walk:14');
+    expect(cancelled).toContain('pace:walk:0');
+    expect(cancelled).not.toContain('pace:walk2:9');
+    expect(cancelled).not.toContain('walk');
+  });
+
+  it('still names the floor when the pending list cannot be read', async () => {
+    (Notifications.getAllScheduledNotificationsAsync as jest.Mock).mockRejectedValueOnce(new Error('nope'));
+    await cancelQuotaNudges('walk');
+    for (let i = 0; i < MAX_QUOTA_NUDGES_AHEAD; i++) {
+      expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith(`pace:walk:${i}`);
+    }
   });
 });
