@@ -346,9 +346,8 @@ describe('travel estimates', () => {
     expect(match.leaveAt).toBe('2026-10-05T13:15:00.000Z');
   });
 
-  it('puts the estimate ahead of the transit note in the title', () => {
-    expect(travelTaskTitle('Dentist', 'L delayed', '22 min by transit')).toBe('Leave for Dentist (22 min by transit, L delayed)');
-    expect(travelTaskTitle('Dentist', null, '22 min by transit')).toBe('Leave for Dentist (22 min by transit)');
+  it('keeps the estimate out of the title', () => {
+    expect(travelTaskTitle('Dentist', 'L delayed')).toBe('Leave for Dentist (L delayed)');
     expect(travelTaskTitle('Dentist', null)).toBe('Leave for Dentist');
   });
 });

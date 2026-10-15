@@ -27,7 +27,7 @@ import type { SavedPlace } from './savedPlaces';
  * stays the fallback for every event that doesn't. It is opt-in because it
  * sends the addresses of the user's appointments, and their position, to
  * Apple, and an estimate can be wrong in a way the user's own guess isn't, so
- * the title says the estimate out loud ("25 min by transit") rather than
+ * the row says the estimate out loud ("25 min by transit") rather than
  * moving the reminder silently.
  *
  * **The reminder is what makes it useful, and it is deterministic.** "Leave at
@@ -286,7 +286,7 @@ export function estimatedLeadMinutes(minutes: number): number {
 
 const MODE_WORDS: Record<TravelMode, string> = { driving: 'by car', transit: 'by transit', walking: 'on foot' };
 
-/** "25 min by transit", "1 hr 10 min by car": the estimate as the title says it. */
+/** "25 min by transit", "1 hr 10 min by car": the estimate as the row says it. */
 export function describeTravelEstimate(minutes: number, mode: TravelMode): string {
   const rounded = Math.max(1, Math.round(minutes));
   const hours = Math.floor(rounded / 60);
@@ -560,19 +560,20 @@ export function isTravelTaskStale(
 }
 
 /**
- * The task's title: "Leave for <event>", with the notes in brackets when there
- * are any: the travel estimate first, then the MTA note. The event's own words follow the verb unaltered apart from
+ * The task's title: "Leave for <event>", with the MTA note in brackets when
+ * there is one. The event's own words follow the verb unaltered apart from
  * length, and the note is the app's footnote to them, the order
- * `weatherTaskTitle` puts the user's words and the forecast in.
+ * `weatherTaskTitle` puts the user's words and the forecast in. The travel
+ * estimate is not in the title: the row shows it on its own line
+ * (`travelRowNote`), kept current, so the title doesn't repeat it.
  */
-export function travelTaskTitle(eventTitle: string, note: string | null, estimateNote: string | null = null): string {
+export function travelTaskTitle(eventTitle: string, note: string | null): string {
   const trimmed = eventTitle.trim().replace(/\s+/g, ' ');
   const name = trimmed.length > TRAVEL_EVENT_TITLE_MAX_LENGTH
     ? `${trimmed.slice(0, TRAVEL_EVENT_TITLE_MAX_LENGTH - 1).trimEnd()}…`
     : trimmed;
   const base = name ? `Leave for ${name}` : 'Leave for your next event';
-  const notes = [estimateNote, note].filter((n): n is string => !!n);
-  return notes.length > 0 ? `${base} (${notes.join(', ')})` : base;
+  return note ? `${base} (${note})` : base;
 }
 
 /**

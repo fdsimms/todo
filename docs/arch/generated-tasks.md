@@ -1231,8 +1231,8 @@ argued out before it was built; read them before reopening one.
   `todo-eventkit-bridge`) from the starting point to each upcoming event's place, by
   `travelMode`, and `estimatedLeadMinutes` turns it into the lead (plus 5 minutes, up to the next
   5). Four rules hold it to the reasons above:
-  - **It says so.** The estimate goes in the title ("Leave for Dentist (25 min by transit)"),
-    so a reminder that moved never moved silently, and a wrong figure is visible before it costs
+  - **It says so.** The estimate shows on the row ("25 min by transit", `travelRowNote`),
+    never in the title, so a reminder that moved never moved silently, and a wrong figure is visible before it costs
     anything.
   - **The typed number stays the fallback**, per event: one Apple Maps can't place or route keeps
     `travelLeadFor`'s lead, and turning the switch off puts every row back on it on the next sweep.

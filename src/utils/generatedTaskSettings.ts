@@ -374,7 +374,7 @@ export const TASK_SETTINGS_SPECS: Partial<Record<GeneratedKind, TaskSettingsSpec
     ],
   },
   travel: {
-    example: 'Leave for Dentist (25 min by transit)',
+    example: 'Leave for Dentist',
     noun: 'Leave-by reminder',
     locks: ['time'],
     owned: () => [
