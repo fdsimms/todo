@@ -68,17 +68,18 @@ describe('getPerson', () => {
     expect(getPerson(r, 'b')!.location).toBeUndefined();
   });
 
-  it('sorts notes into gift ideas, food and the rest, skipping archived ones', () => {
+  it('sorts notes into gift ideas and the rest, skipping archived ones', () => {
     const r = stub([person({ id: 'a', name: 'Al' })], {
       personNotes: () => [
         { id: '1', personId: 'a', kind: 'gift', text: 'Socks', sortOrder: 1, archivedAt: null },
-        { id: '2', personId: 'a', kind: 'food', text: 'Vegetarian', sortOrder: 1, archivedAt: null },
+        { id: '2', personId: 'a', kind: 'note', text: 'Vegetarian', sortOrder: 1, archivedAt: null },
         { id: '3', personId: 'a', kind: 'note', text: 'Old', sortOrder: 1, archivedAt: '2026-01-01' },
         { id: '4', personId: 'b', kind: 'gift', text: 'Not theirs', sortOrder: 1, archivedAt: null },
       ] as never,
     });
-    expect(getPerson(r, 'a')).toMatchObject({ giftIdeas: [{ id: '1', text: 'Socks' }], food: [{ id: '2', text: 'Vegetarian' }], history: [] });
-    expect(getPerson(r, 'a')!.otherNotes).toBeUndefined();
+    expect(getPerson(r, 'a')).toMatchObject({ giftIdeas: [{ id: '1', text: 'Socks' }], otherNotes: [{ id: '2', text: 'Vegetarian' }], history: [] });
+    // The archived note ('3') is left out, so the live one is all there is.
+    expect(getPerson(r, 'a')!.otherNotes).toEqual([{ id: '2', text: 'Vegetarian' }]);
     expect(getPerson(r, 'nope')).toBeNull();
   });
 });
@@ -138,7 +139,7 @@ describe('the people writes, against a real database', () => {
     tools.updatePerson(real, b.id, { archived: true });
     expect(tools.listPeople(real).map(p => p.id)).not.toContain(b.id);
 
-    tools.addPersonNote(real, { personId: a.id, kind: 'food', text: 'No shellfish' });
+    tools.addPersonNote(real, { personId: a.id, kind: 'note', text: 'No shellfish' });
     expect(tools.deletePerson(real, a.id)).toMatchObject({ deleted: 'Ana', notesDeleted: 1 });
     const entry = ledger().find(e => e.subject === 'person' && e.recordId === a.id)!;
     expect(agentRecordPlan(entry, { person: () => null } as never).kind).toBe('restoreDeletedPerson');

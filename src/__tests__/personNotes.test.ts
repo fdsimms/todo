@@ -118,10 +118,10 @@ describe('notesOfKind', () => {
 describe('notesFor', () => {
   it('spans every kind', () => {
     const rows = [
-      note({ kind: 'note' }), note({ kind: 'gift' }), note({ kind: 'food' }),
-      note({ personId: 'p2', kind: 'food' }),
+      note({ kind: 'note' }), note({ kind: 'gift' }),
+      note({ personId: 'p2', kind: 'note' }),
     ];
-    expect(notesFor(rows, 'p1')).toHaveLength(3);
+    expect(notesFor(rows, 'p1')).toHaveLength(2);
   });
 });
 
@@ -184,17 +184,16 @@ describe('giftIdeasText', () => {
 
 describe('the kind copy', () => {
   it('names every kind and says where it turns up', () => {
-    for (const kind of ['note', 'gift', 'food'] as PersonNoteKind[]) {
+    for (const kind of ['note', 'gift'] as PersonNoteKind[]) {
       expect(PERSON_NOTE_LABELS[kind]).toBeTruthy();
       expect(PERSON_NOTE_HINTS[kind]).toBeTruthy();
     }
   });
 
-  // The three differ only in where they surface, which isn't guessable from the
+  // The kinds differ only in where they surface, which isn't guessable from the
   // name, so each hint has to say it — that's the whole job of the line.
   it('says where each one shows', () => {
     expect(PERSON_NOTE_HINTS.gift).toMatch(/birthday/i);
-    expect(PERSON_NOTE_HINTS.food).toMatch(/page/i);
     expect(PERSON_NOTE_HINTS.note).toMatch(/page/i);
   });
 });

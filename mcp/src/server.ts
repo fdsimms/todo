@@ -711,7 +711,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'get_person',
-    'One person: contact details, birthday, what to ask them about, gift ideas, food notes, and what you did together (newest first).',
+    'One person: contact details, birthday, what to ask them about, gift ideas, other notes, and what you did together (newest first).',
     { id: z.string().min(1) },
     async ({ id }) => {
       const result = await withFresh(() => getPerson(replica, id));
@@ -3934,7 +3934,7 @@ function registerWriteTools(
 
   server.tool(
     'delete_person',
-    "Delete someone, as the app's delete does: the notes, gift ideas and food notes about them go too; tasks that name them stay and stop showing their name. Only when the person asks for a delete: update_person with archived: true keeps them. Restorable from Activity.",
+    "Delete someone, as the app's delete does: the notes and gift ideas about them go too; tasks that name them stay and stop showing their name. Only when the person asks for a delete: update_person with archived: true keeps them. Restorable from Activity.",
     { id: z.string().min(1) },
     async ({ id }) => {
       try {
@@ -3965,10 +3965,10 @@ function registerWriteTools(
 
   server.tool(
     'add_person_note',
-    'Write something down about someone: a gift idea (kind gift), a food note such as what they like or cannot eat (kind food), or anything else (kind note). about is the day a note is about ("starts the new job in September"), left out for one that is always true. Write only what the person told you.',
+    'Write something down about someone: a gift idea (kind gift), or anything else, including what they like or cannot eat (kind note). about is the day a note is about ("starts the new job in September"), left out for one that is always true. Write only what the person told you.',
     {
       personId: z.string().min(1),
-      kind: z.enum(['note', 'gift', 'food']),
+      kind: z.enum(['note', 'gift']),
       text: z.string().min(1),
       about: z.string().nullable().optional().describe('YYYY-MM-DD.'),
     },
@@ -3983,11 +3983,11 @@ function registerWriteTools(
 
   server.tool(
     'update_person_note',
-    'Change a note, gift idea or food note about someone (ids from get_person): its text, its kind, the day it is about, or archived: true to keep it but file it away (a gift already given).',
+    'Change a note or gift idea about someone (ids from get_person): its text, its kind, the day it is about, or archived: true to keep it but file it away (a gift already given).',
     {
       id: z.string().min(1),
       text: z.string().optional(),
-      kind: z.enum(['note', 'gift', 'food']).optional(),
+      kind: z.enum(['note', 'gift']).optional(),
       about: z.string().nullable().optional(),
       archived: z.boolean().optional(),
     },
@@ -4002,7 +4002,7 @@ function registerWriteTools(
 
   server.tool(
     'delete_person_note',
-    'Delete a note, gift idea or food note about someone (ids from get_person).',
+    'Delete a note or gift idea about someone (ids from get_person).',
     { id: z.string().min(1) },
     async ({ id }) => {
       try {

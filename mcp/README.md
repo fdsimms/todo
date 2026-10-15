@@ -130,7 +130,7 @@ only the fallback until the first sync.
 | `next_in_project` | The next unchecked checklist item in one project step (the first open step not waiting on anything, unless one is named), with how many items are checked. |
 | `list_recipes` / `get_recipe` | Recipes by name, tag or ingredient; one recipe's ingredients, steps and source. |
 | `list_meal_plan` | Planned meals over a range of days, the coming week by default. |
-| `list_people` / `get_person` | People in the user's own order; one person's details, gift ideas, food notes and shared history, each with its id. |
+| `list_people` / `get_person` | People in the user's own order; one person's details, gift ideas, other notes and shared history, each with its id. |
 | `upcoming_birthdays` | Birthdays in the next N days, soonest first. |
 | `list_grocery_items` | The home grocery list, or the whole catalog with `onListOnly: false`. A separate list (a trip's, say) is not included. |
 | `grocery_setup` | The aisles (and which are non-food), the stores (with receipt style, their own aisles and order), the lists (home and separate) with item counts, and the trip in progress. |
@@ -189,7 +189,7 @@ only the fallback until the first sync.
 | `create_person` | **Write.** Adds a person: name, nickname, notes, birthday, contact details (phone, fax, email, link), location (free text), group, archived, birthday task opt-outs. Never a cadence or nudge. |
 | `delete_person` | **Write.** Deletes a person and the notes about them; tasks naming them stay. Restorable from Activity. |
 | `save_person_group` | **Write.** The People screen's groups (add, rename, delete, catch up one at a time). |
-| `add_person_note` / `update_person_note` / `delete_person_note` | **Write.** Gift ideas, food notes and other notes about someone, optionally about a day. |
+| `add_person_note` / `update_person_note` / `delete_person_note` | **Write.** Gift ideas and other notes about someone, optionally about a day. |
 | `update_person` | **Write.** Changes those same fields on a person. |
 | `rename_stack` | **Write.** Renames a stack. Its category and members are untouched. |
 | `update_stack` | **Write.** A stack's title, notes, tags, checklist, the project page it is a section of, or its category (which re-files its open tasks). |
