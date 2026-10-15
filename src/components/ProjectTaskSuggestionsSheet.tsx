@@ -123,7 +123,7 @@ export function ProjectTaskSuggestionsSheet({
     if (suggestions.length === 0) { onClose(); return; }
     Alert.alert(
       'Discard changes?',
-      'You have unsaved changes. Are you sure you want to discard them?',
+      'Your changes haven’t been saved yet. If you leave now, they’ll be lost.',
       [
         { text: 'Keep editing', style: 'cancel' },
         { text: 'Discard', style: 'destructive', onPress: onClose },

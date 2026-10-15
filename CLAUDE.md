@@ -191,6 +191,14 @@ option of a pair has to be filed as an alternative for itself. If a label only m
 you've read the type, it's the wrong label — name the state the user is choosing between
 ("Always needed" / "One of a choice") and let the control carry the mechanism.
 
+**An alert says what happened, then what to do.** The title names what failed or what is
+being asked ("Couldn't save to Health", "Discard changes?"), never a command ("Name this
+project") or the symptom as the system saw it ("Health didn't accept the weight"). The body gives
+the reason and the next step in plain sentences, and states the consequence rather than asking
+"Are you sure?", since the buttons are already the question ("If you leave now, they'll be
+lost."). Button labels name the action ("Open Health", "Discard"), and the discard alert's wording
+is the same everywhere (see `handleCancel` below).
+
 **American English, not British.** Britishisms had crept into copy across the app — "tick"/
 "ticked" instead of "check off"/"checked", "trolley" instead of "cart", "Practise" instead of
 "Practice", "autumn" instead of "fall", "fortnight" instead of "two weeks" — cleaned up in
@@ -1272,7 +1280,7 @@ const handleCancel = () => {
   if (!dirty) { onClose(); return; }
   Alert.alert(
     'Discard changes?',
-    'You have unsaved changes. Are you sure you want to discard them?',
+    'Your changes haven’t been saved yet. If you leave now, they’ll be lost.',
     [
       { text: 'Keep editing', style: 'cancel' },
       { text: 'Discard', style: 'destructive', onPress: onClose },

@@ -452,8 +452,8 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
     // notes and settings entered for it, without a word.
     if (isNew && !title.trim()) {
       Alert.alert(
-        'Name this project',
-        'A new project needs a name before it can be saved.',
+        'Add a name',
+        'Give your project a name to save it, or discard it.',
         [
           { text: 'Keep editing', style: 'cancel' },
           { text: 'Discard project', style: 'destructive', onPress: () => onClose('discarded') },
@@ -543,8 +543,8 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
     Alert.alert(
       isNew ? 'Discard this project?' : 'Discard changes?',
       isNew
-        ? "It hasn’t been saved yet. Are you sure you want to discard it?"
-        : 'You have unsaved changes. Are you sure you want to discard them?',
+        ? 'This project hasn’t been saved yet. If you leave now, it’ll be lost.'
+        : 'Your changes haven’t been saved yet. If you leave now, they’ll be lost.',
       [
         { text: 'Keep editing', style: 'cancel' },
         { text: 'Discard', style: 'destructive', onPress: leave },

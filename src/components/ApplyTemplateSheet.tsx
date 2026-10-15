@@ -320,7 +320,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
     // Leaving drops the run name, answers and blanks typed so far.
     Alert.alert(
       'Discard changes?',
-      'You have unsaved changes. Are you sure you want to discard them?',
+      'Your changes haven’t been saved yet. If you leave now, they’ll be lost.',
       [
         { text: 'Keep editing', style: 'cancel' },
         { text: 'Discard', style: 'destructive', onPress: go },

@@ -304,7 +304,7 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
     if (!dirty) { if (!editing) clearJournalDraft(kind); onClose(); return; }
     Alert.alert(
       'Discard changes?',
-      'You have unsaved changes. Are you sure you want to discard them?',
+      'Your changes haven’t been saved yet. If you leave now, they’ll be lost.',
       [
         { text: 'Keep editing', style: 'cancel' },
         { text: 'Discard', style: 'destructive', onPress: () => { if (!editing) clearJournalDraft(kind); onClose(); } },
