@@ -58,6 +58,7 @@ import { StackDetailScreen } from '../screens/StackDetailScreen';
 import { PersonDetailScreen } from '../screens/PersonDetailScreen';
 import { TipsScreen } from '../screens/TipsScreen';
 import { SideMenuDrawer } from '../components/SideMenuDrawer';
+import { HubMenuOptionsProvider, TabHubMenuOverlay, hubTabButtonFor } from '../components/TabHubMenu';
 import { BlankTabDiagnostic, freezeWhenBlurred } from '../components/FreezeWhenBlurred';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { SettingsGroupScreen } from '../screens/SettingsGroupScreen';
@@ -316,6 +317,7 @@ const MainTabs = React.memo(function MainTabs({
   const runningCookRecipeId = useRecipeStore(state => state.recipes.find(isCookTimerRunning)?.id);
   const cookingRecipeId = kitchenEnabled ? runningCookRecipeId : undefined;
   return (
+    <HubMenuOptionsProvider value={menuOptions}>
     <Tab.Navigator initialRouteName={initialRouteName} screenOptions={screenOptions}>
       {/* The chosen tabs, in the chosen order, then More, then every other
           route hidden. The bar draws its buttons in route order, so this
@@ -331,6 +333,8 @@ const MainTabs = React.memo(function MainTabs({
             listeners={tabPressHaptic}
             options={{
               tabBarAccessibilityLabel: destination?.label ?? route,
+              // A tab in a hub opens that hub's other screens on a long press.
+              tabBarButton: hubTabButtonFor(route),
               tabBarIcon: ({ color, size, focused }) => (
                 <TabIconPlate focused={focused}>
                   {destination?.icon === COIN_ICON
@@ -378,6 +382,7 @@ const MainTabs = React.memo(function MainTabs({
         <Tab.Screen key={route} name={route} component={TAB_SCREENS[route]} options={HIDDEN} />
       ))}
     </Tab.Navigator>
+    </HubMenuOptionsProvider>
   );
 });
 
@@ -683,6 +688,9 @@ export default function AppNavigator() {
         onOpenSettings={openSettings}
         activeTab={activeTab}
       />
+      {/* The long-press card for a hub's tab. Outside the navigator so it can
+          cover the whole screen, and drawn above the bar it points at. */}
+      <TabHubMenuOverlay />
       {!menuOpen && (
         <View
           style={styles.edgeZone}

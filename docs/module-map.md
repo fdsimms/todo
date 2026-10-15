@@ -454,6 +454,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/syncMerge.ts` — SyncDeletion, SyncChangeSet, SYNC_FORMAT, SyncPayload, MAX_SYNC_IMAGE_CHARS, isSyncImageName, ParsedPayload, buildPayload, buildImagePayload, serializePayload, +8 more
 - `src/utils/syncStatus.ts` — describeLastSynced
 - `src/utils/tabFreeze.ts` — shouldFreezeTab, isTabFocused, TAB_FREEZE_DELAY_MS
+- `src/utils/tabHubMenu.ts` — HUB_MENU_ROW_HEIGHT, HUB_MENU_PADDING, HUB_MENU_WIDTH, HUB_MENU_EDGE, HUB_MENU_ARROW_SIZE, HUB_MENU_ARROW_TIP, HUB_MENU_TIP_GAP, HUB_MENU_HIT_SLACK, hubMenuItems, HubMenuLayout, +6 more
 - `src/utils/tagColor.ts` — tagColor
 - `src/utils/taskCompletion.ts` — CompletionOptions, CompletionContext, CompletionRows, completionRefusal, buildCompletion, completionSettings
 - `src/utils/taskDates.ts` — calendarDayKey, SeriesRepeat, seriesRows, DatesAnchorStep, datesAnchorStep, DatesReconcile, datesReconcile
@@ -574,6 +575,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useShieldReleaseStore.ts` — useShieldReleaseStore
 - `src/store/useStepTimerStore.ts` — useStepTimerStore
 - `src/store/useSyncStore.ts` — SERVER_HEALTH_LOGS_KEY, SERVER_HEALTH_RESEND_KEY, NOTHING_OWED, SERVER_JOURNAL_KEY, SERVER_JOURNAL_RESEND_KEY, SYNC_EPOCH, withholdingFor, markHealthLogsWithheld, settleHealthLogResend, SyncPhase, +3 more
+- `src/store/useTabHubMenuStore.ts` — TabHubMenu, useTabHubMenuStore
 - `src/store/useTaskGroupStore.ts` — useTaskGroupStore
 - `src/store/useTaskStore.ts` — offerMealLog, TimeBlockPlan, redoRestoringRows, useTaskStore
 - `src/store/useTemplateCategoryStore.ts` — useTemplateCategoryStore
