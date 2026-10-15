@@ -14,6 +14,7 @@ import {
   hasRunningRecipeTimer,
   recipeTimerClock,
   recipeTimerResetPrompt,
+  cancelCookPrompt,
   type CookTimerState,
   type PrepTimerState,
 } from '../utils/recipeTimer';
@@ -301,5 +302,31 @@ describe('recipeTimerResetPrompt', () => {
   it('does not ask when nothing has been timed', () => {
     expect(recipeTimerResetPrompt('Cook', { running: true, elapsedSeconds: 0.4 })).toBeNull();
     expect(recipeTimerResetPrompt('Cook', { running: false, elapsedSeconds: 0 })).toBeNull();
+  });
+});
+
+// ─── cancelCookPrompt ───
+
+describe('cancelCookPrompt', () => {
+  it('names the time on the cook timer and says nothing is logged', () => {
+    expect(cancelCookPrompt({ running: true, elapsedSeconds: 725 }, 0)).toEqual({
+      title: 'Cancel this cook?',
+      message: '12:05 timed so far, not logged yet. Cancelling stops the timers without logging a cook time.',
+    });
+  });
+
+  it('says step timers go too, singular and plural', () => {
+    expect(cancelCookPrompt({ running: false, elapsedSeconds: 90 }, 1)?.message).toContain('1 step timer will be cleared too.');
+    expect(cancelCookPrompt({ running: false, elapsedSeconds: 90 }, 3)?.message).toContain('3 step timers will be cleared too.');
+  });
+
+  it('still asks when only step timers are left', () => {
+    expect(cancelCookPrompt({ running: false, elapsedSeconds: 0 }, 2)?.message).toBe(
+      '2 step timers will be cleared too. Cancelling stops the timers without logging a cook time.',
+    );
+  });
+
+  it('does not ask when there is nothing to lose', () => {
+    expect(cancelCookPrompt({ running: false, elapsedSeconds: 0 }, 0)).toBeNull();
   });
 });

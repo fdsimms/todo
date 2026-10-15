@@ -1,1 +1,1 @@
-{ "message": "Cook mode now has a Cancel this cook button in its header while a cook is being timed. It stops the cook timer and any step timers without logging a time, and closes cook mode.", "date": "2026-10-15" }
+{ "message": "Cook mode and the Cooking banner now have a Cancel this cook button while a cook is being timed. It stops the cook timer and any step timers without logging a time, and closes cook mode.", "date": "2026-10-15" }

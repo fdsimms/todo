@@ -171,3 +171,22 @@ export function recipeTimerResetPrompt(
       : `Paused at ${clock}, not logged yet.`,
   };
 }
+
+/**
+ * The confirmation for abandoning a whole cook: the cook timer plus any step
+ * timers set during it. `null` when there is nothing to lose (no time on the
+ * cook timer and no step timers), so the cancel goes straight through.
+ */
+export function cancelCookPrompt(
+  t: Pick<RecipeTimerReading, 'running' | 'elapsedSeconds'>,
+  stepTimerCount: number,
+): { title: string; message: string } | null {
+  const timed = recipeTimerResetPrompt('Cook', t);
+  if (!timed && stepTimerCount <= 0) return null;
+  const parts = [
+    timed?.message,
+    stepTimerCount > 0 && `${stepTimerCount === 1 ? '1 step timer' : `${stepTimerCount} step timers`} will be cleared too.`,
+    'Cancelling stops the timers without logging a cook time.',
+  ].filter(Boolean);
+  return { title: 'Cancel this cook?', message: parts.join(' ') };
+}

@@ -12,7 +12,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Keyboard,
   View,
   Text,
@@ -28,7 +27,6 @@ import { useShallow } from 'zustand/react/shallow';
 import type { Recipe, RecipeOverride } from '../types';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
-import { useStepTimerStore } from '../store/useStepTimerStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useRecipeTimer } from '../hooks/useRecipeTimer';
 import { useStepTimers } from '../hooks/useStepTimers';
@@ -53,7 +51,7 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { clampStepIndex, cookSteps, describeStepPosition } from '../utils/cookMode';
 import { formatStepDuration, stepDurationOffers, stepTimerExcerpt } from '../utils/stepTimers';
-import { recipeTimerResetPrompt } from '../utils/recipeTimer';
+import { confirmCancelCook } from '../utils/cancelCook';
 import {
   applyChoice, choiceGroupKey, flattenRecipeIngredients, recipeChoiceGroups, type ChoiceGroup,
 } from '../utils/recipeComponents';
@@ -433,23 +431,7 @@ export function CookModeSheet({
   const cookUnderway = cookTimer.inProgress || stepTimers.timers.length > 0;
   const cancelCook = () => {
     haptics.tap();
-    const prompt = recipeTimerResetPrompt('Cook', cookTimer);
-    const stepTimerIds = stepTimers.timers.map(t => t.id);
-    const discard = () => {
-      cookTimer.onReset();
-      for (const id of stepTimerIds) useStepTimerStore.getState().remove(id);
-      close();
-    };
-    if (!prompt && stepTimerIds.length === 0) { discard(); return; }
-    const parts = [
-      prompt?.message,
-      stepTimerIds.length > 0 && `${stepTimerIds.length === 1 ? '1 step timer' : `${stepTimerIds.length} step timers`} will be cleared too.`,
-      'Cancelling stops the timers without logging a cook time.',
-    ].filter(Boolean);
-    Alert.alert('Cancel this cook?', parts.join(' '), [
-      { text: 'Keep cooking', style: 'cancel' },
-      { text: 'Cancel cook', style: 'destructive', onPress: discard },
-    ]);
+    confirmCancelCook(recipe.id, close);
   };
 
   const goNext = () => {

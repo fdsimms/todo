@@ -12,6 +12,7 @@ import { FAB_SIZE } from './Fab';
 import { cookTimerElapsed, isCookTimerRunning } from '../utils/recipeTimer';
 import { formatStopwatch } from '../utils/effort';
 import { haptics } from '../utils/haptics';
+import { confirmCancelCook } from '../utils/cancelCook';
 import { resetToRecipeDetail } from '../navigation/navigationRef';
 import { GlassLayer, glassSupported } from './GlassLayer';
 
@@ -68,21 +69,34 @@ export function CookingBar() {
 
   return (
     <View style={[styles.wrap, { bottom }]} pointerEvents="box-none">
-      <TouchableOpacity
-        style={[styles.bar, glassSupported() ? styles.barGlass : shadows.fab]}
-        activeOpacity={interaction.activeOpacity}
-        onPress={() => { haptics.tap(); resetToRecipeDetail(recipe.id, { openCookMode: true }); }}
-        accessibilityRole="button"
-        accessibilityLabel={`Cooking ${recipe.name}, ${elapsed} elapsed. Return to cook mode`}
-      >
+      <View style={[styles.bar, glassSupported() ? styles.barGlass : shadows.fab]}>
         <GlassLayer interactive style={styles.glassRadius} />
-        <Ionicons name="flame" size={iconSize.sm} color={colors.orangeText} />
-        <Text style={styles.text} numberOfLines={1}>
-          Cooking <Text style={styles.name}>{recipe.name}</Text>
-        </Text>
-        <Text style={styles.elapsed}>{elapsed}</Text>
-        <Ionicons name="chevron-forward" size={iconSize.xs} color={colors.textTertiary} />
-      </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.open}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => { haptics.tap(); resetToRecipeDetail(recipe.id, { openCookMode: true }); }}
+          accessibilityRole="button"
+          accessibilityLabel={`Cooking ${recipe.name}, ${elapsed} elapsed. Return to cook mode`}
+        >
+          <Ionicons name="flame" size={iconSize.sm} color={colors.orangeText} />
+          <Text style={styles.text} numberOfLines={1}>
+            Cooking <Text style={styles.name}>{recipe.name}</Text>
+          </Text>
+          <Text style={styles.elapsed}>{elapsed}</Text>
+          <Ionicons name="chevron-forward" size={iconSize.xs} color={colors.textTertiary} />
+        </TouchableOpacity>
+        {/* Its own target at the trailing edge, not inside the open-cook-mode
+            tap, so reaching for the chevron can't cancel a cook. */}
+        <TouchableOpacity
+          style={styles.cancel}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => { haptics.tap(); confirmCancelCook(recipe.id); }}
+          accessibilityRole="button"
+          accessibilityLabel={`Cancel cooking ${recipe.name}`}
+        >
+          <Ionicons name="close" size={iconSize.md} color={colors.textSecondary} />
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -101,8 +115,20 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.lg,
     borderWidth: border.md,
     borderColor: colors.separator,
+    paddingLeft: spacing.md,
+  },
+  open: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
     paddingVertical: spacing.smd,
-    paddingHorizontal: spacing.md,
+  },
+  cancel: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   // The glass supplies its own fill, edge and depth, so the solid card's come off together.
   barGlass: {
