@@ -148,7 +148,7 @@ describe('buildLeaveRun', () => {
 
     it('moves on to the next event instead of showing nothing', () => {
       const next = makeEvent({ id: 'next', title: 'Lunch', start: at(120) });
-      const tasks = [travelTaskFor(event, 60), travelTaskFor(next, 90)];
+      const tasks = [travelTaskFor(event, 60), travelTaskFor(next, 60)];
       const result = buildLeaveRun(tasks, [event, next], NOW, { enabled: true, check: checkWith(0) });
       expect(result?.eventTitle).toBe('Lunch');
     });

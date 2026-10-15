@@ -42,7 +42,7 @@ import { travelOriginOfEvent, useTravelTimeStore } from '../store/useTravelTimeS
  * **It can only start while the app is open.** ActivityKit refuses a start
  * from the background, and nothing here is pushed, so the activity appears the
  * next time the app is in front inside `LEAVE_WINDOW_MS` of leaving, not at
- * the moment the window opens. That is why the window is hours wide rather
+ * the moment the window opens. That is why the window is an hour wide rather
  * than minutes: a window as narrow as the reminder's would almost never catch
  * the app open. `staleAtMs` is the leave-by time, so the card flips to "Time
  * to leave" on its own with nothing pushed (the mechanism the trip activity
@@ -59,7 +59,7 @@ import { travelOriginOfEvent, useTravelTimeStore } from '../store/useTravelTimeS
  */
 
 /** How long before leaving the activity may start. */
-export const LEAVE_WINDOW_MS = 4 * 60 * 60 * 1000;
+export const LEAVE_WINDOW_MS = 60 * 60 * 1000;
 
 /** A phone-origin trip this short or shorter reads as "already there". */
 export const ALREADY_THERE_MINUTES = 2;
