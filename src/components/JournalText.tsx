@@ -23,7 +23,7 @@ export function JournalText({ text, textStyle }: Props) {
   return (
     <View>
       {blocks.map((block, i) => {
-        const spans = <Spans spans={block.spans} />;
+        const spans = renderSpans(block.spans);
         const prev = blocks[i - 1];
         const inList = (b: typeof block | undefined) => b?.type === 'bullet' || b?.type === 'numbered';
         // Items of one list stay close; every other block break is a paragraph break.
@@ -57,24 +57,27 @@ export function JournalText({ text, textStyle }: Props) {
   );
 }
 
-function Spans({ spans }: { spans: InlineSpan[] }) {
-  return (
-    <>
-      {spans.map((span, i) => (
-        span.bold || span.italic ? (
-          <Text
-            key={i}
-            style={{
-              fontWeight: span.bold ? fontWeight.bold : undefined,
-              fontStyle: span.italic ? 'italic' : undefined,
-            }}
-          >
-            {span.text}
-          </Text>
-        ) : span.text
-      ))}
-    </>
-  );
+/**
+ * The spans as a `Text`'s children. A block with no bold or italic is handed
+ * over as one plain string, the same child every other `Text` in the app has:
+ * a paragraph whose children came through a component was clipped on its last
+ * line on device, with the words after the cut missing.
+ */
+function renderSpans(spans: InlineSpan[]): React.ReactNode {
+  if (spans.every(span => !span.bold && !span.italic)) return spans.map(span => span.text).join('');
+  return spans.map((span, i) => (
+    span.bold || span.italic ? (
+      <Text
+        key={i}
+        style={{
+          fontWeight: span.bold ? fontWeight.bold : undefined,
+          fontStyle: span.italic ? 'italic' : undefined,
+        }}
+      >
+        {span.text}
+      </Text>
+    ) : span.text
+  ));
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
