@@ -600,6 +600,22 @@ export function convertQuantity(quantity: string, system: UnitSystem): Converted
 }
 
 /**
+ * `convertQuantity` over a scaled amount, reading its exact fraction when the
+ * display text had to round ("0.13 cup" is exactly 1/8, which is 2 tbsp, not
+ * 2.08). When nothing converts, the display text comes back untouched.
+ */
+export function convertScaledQuantity(
+  scaled: { text: string; exact?: string },
+  system: UnitSystem,
+): ConvertedQuantity {
+  if (scaled.exact) {
+    const exact = convertQuantity(scaled.exact, system);
+    if (exact.converted) return exact;
+  }
+  return convertQuantity(scaled.text, system);
+}
+
+/**
  * A counted sized container with the count set apart from the size, for the
  * reader's eye only: "2 14 oz cans, drained" shows as "2 × 14 oz cans,
  * drained". Stored text keeps the bare form every parser reads, and

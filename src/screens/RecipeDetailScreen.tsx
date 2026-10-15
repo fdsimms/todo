@@ -97,7 +97,7 @@ import { buildIngredientsText, buildRecipeShareText } from '../utils/shareText';
 import { allSectionsOf, sectionsFromMergedOrder, type SectionListEntry } from '../utils/recipeSections';
 import { PillGroup } from '../components/PillGroup';
 import { describeUnscaled, formatScale, normalizeScale, scaleQuantity } from '../utils/recipeScale';
-import { convertQuantity, showContainerCount } from '../utils/unitConvert';
+import { convertScaledQuantity, showContainerCount } from '../utils/unitConvert';
 import { ingredientWeightText, weightLookups as buildWeightLookups } from '../utils/lineWeight';
 import { RecipeScaleChips } from '../components/RecipeScaleChips';
 import { RecipeChoiceChips } from '../components/RecipeChoiceChips';
@@ -1244,13 +1244,13 @@ export function RecipeDetailScreen() {
       ? `Counted as ${aliasMatch.item.name}`
       : null;
     const scaledResult = scaleQuantity(line.quantity, scale);
-    const convertedResult = convertQuantity(scaledResult.text, unitSystem);
+    const convertedResult = convertScaledQuantity(scaledResult, unitSystem);
     const scaledQuantity = showContainerCount(convertedResult.text);
     // What the line weighs, when its food's own portion table can say — for
     // cooking by the scale. Read off the scaled line before conversion, since
     // a converted amount is already rounded, and off the swapped line's name,
     // since that's the food actually going in.
-    const weightText = ingredientWeightText(line, scaledResult.text, weightLookups, unitSystem);
+    const weightText = ingredientWeightText(line, scaledResult.exact ?? scaledResult.text, weightLookups, unitSystem);
     const scaledHere = scaledResult.scaled
       || convertedResult.converted
       // A ratio'd swap is the app's number too — the same tint, for the same

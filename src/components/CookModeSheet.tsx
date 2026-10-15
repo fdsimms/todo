@@ -62,7 +62,7 @@ import { annotateSteps, stepIngredientLines } from '../utils/stepIngredients';
 import { describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
 import { onHandNameKeys } from '../utils/grocerySuggest';
 import { formatScale, isUnscaled, scaleQuantity } from '../utils/recipeScale';
-import { convertQuantity, showContainerCount } from '../utils/unitConvert';
+import { convertScaledQuantity, showContainerCount } from '../utils/unitConvert';
 import { ingredientWeightText, weightLookups as buildWeightLookups } from '../utils/lineWeight';
 import { TextField } from './TextField';
 
@@ -553,9 +553,9 @@ export function CookModeSheet({
                 // the same component grouping — this is that same list, just
                 // read before the method rather than during it.
                 const scaled = scaleQuantity(flat.ingredient.quantity, scale);
-                const converted = convertQuantity(scaled.text, unitSystem);
+                const converted = convertScaledQuantity(scaled, unitSystem);
                 const marked = scaled.scaled || converted.converted || !!flat.swappedFrom;
-                const weight = ingredientWeightText(flat.ingredient, scaled.text, weightLookups, unitSystem);
+                const weight = ingredientWeightText(flat.ingredient, scaled.exact ?? scaled.text, weightLookups, unitSystem);
                 // The same headings the mid-step panel draws (`headings`,
                 // from `ingredientHeadings`): a component's name where one
                 // starts and the recipe's own section label where one does.
@@ -845,9 +845,9 @@ export function CookModeSheet({
                     // screen's own row runs, and the swap is already applied —
                     // flattenRecipeIngredients took the rules on the way out.
                     const scaled = scaleQuantity(flat.ingredient.quantity, scale);
-                    const converted = convertQuantity(scaled.text, unitSystem);
+                    const converted = convertScaledQuantity(scaled, unitSystem);
                     const marked = scaled.scaled || converted.converted || !!flat.swappedFrom;
-                    const weight = ingredientWeightText(flat.ingredient, scaled.text, weightLookups, unitSystem);
+                    const weight = ingredientWeightText(flat.ingredient, scaled.exact ?? scaled.text, weightLookups, unitSystem);
                     const heading = headings[position];
                     // A hairline above a section the way the recipe screen
                     // draws one, except at the top of the list and except

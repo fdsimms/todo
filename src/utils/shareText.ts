@@ -5,7 +5,7 @@ import { ingredientHeadings } from './recipeSections';
 import { describeAttribution, formatServingsRange, totalMinutes } from './recipeUtils';
 import { formatDuration } from './effort';
 import { scaleQuantity, scaleServings } from './recipeScale';
-import { convertQuantity, showContainerCount, type UnitSystem } from './unitConvert';
+import { convertQuantity, convertScaledQuantity, showContainerCount, type UnitSystem } from './unitConvert';
 import { ingredientWeightText, type WeightLookups } from './lineWeight';
 import { dayKeyOf } from './dateUtils';
 import { describeWeekRange, entriesForDay, mealTitleOffPlan, slotLabel, titleForEntry } from './mealPlan';
@@ -38,9 +38,10 @@ function formatShareIngredientLine(
   unitSystem: UnitSystem,
   weights: WeightLookups | null,
 ): string {
-  const scaled = scaleQuantity(ingredient.quantity, scale).text;
-  const quantity = showContainerCount(convertQuantity(scaled, unitSystem).text);
-  const weight = weights ? ingredientWeightText(ingredient, scaled, weights, unitSystem) : null;
+  const scaledResult = scaleQuantity(ingredient.quantity, scale);
+  const scaled = scaledResult.text;
+  const quantity = showContainerCount(convertScaledQuantity(scaledResult, unitSystem).text);
+  const weight = weights ? ingredientWeightText(ingredient, scaledResult.exact ?? scaled, weights, unitSystem) : null;
   const line = [quantity, ingredient.name, weight && `(${weight})`].filter(Boolean).join(' ').trim();
   const trailing = [ingredient.prep, ingredient.purpose ? `for ${ingredient.purpose}` : null]
     .filter(Boolean)

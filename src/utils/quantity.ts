@@ -78,9 +78,10 @@ export function rationalFromNumber(value: number): Rational {
 }
 
 // The denominators a cook writes. 6 and 16 are in because they're what halving
-// a third and an eighth produce — without them "1/3 cup" halved would fall
+// a third and an eighth produce, and 12 is a quarter of a third ("1/3 cup" at
+// a quarter is 1/12) — without them "1/3 cup" halved would fall
 // back to a decimal, which is the one place a fraction really is clearer.
-const DENOMINATORS = [2, 3, 4, 6, 8, 16];
+const DENOMINATORS = [2, 3, 4, 6, 8, 12, 16];
 
 /**
  * A rational as the text a recipe would be written with: "3", "1/2",
@@ -207,6 +208,9 @@ const UNIT_SINGULARS: Record<string, string> = Object.fromEntries(
  * lookup does quietly.
  */
 export function unitKey(unit: string): string {
+  // Capital T is a tablespoon and lowercase t a teaspoon, the one pair of unit
+  // words that differ only by case, so it is the one that must not be folded.
+  if (unit.trim() === 'T') return 'T';
   const lower = unit.trim().toLowerCase();
   return UNIT_SINGULARS[lower] ?? lower;
 }

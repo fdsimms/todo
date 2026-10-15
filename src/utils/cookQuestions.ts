@@ -3,7 +3,7 @@ import type { CookStep } from './cookMode';
 import type { FlatIngredient } from './recipeComponents';
 import { scaleQuantity } from './recipeScale';
 import { stepNamesIngredient } from './stepIngredients';
-import { convertQuantity, type UnitSystem } from './unitConvert';
+import { convertScaledQuantity, type UnitSystem } from './unitConvert';
 
 /**
  * Asking about the step you're standing in front of (#2241).
@@ -118,7 +118,7 @@ export function cookQuestionContext(
     nextStepText: steps[index + 1]?.text ?? null,
     ingredients: ingredients.slice(0, MAX_CONTEXT_INGREDIENTS).map(flat => {
       const scaled = scaleQuantity(flat.ingredient.quantity, scale);
-      const converted = convertQuantity(scaled.text, unitSystem);
+      const converted = convertScaledQuantity(scaled, unitSystem);
       return {
         name: flat.ingredient.name,
         quantity: converted.text,
