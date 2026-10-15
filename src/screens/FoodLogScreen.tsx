@@ -47,6 +47,7 @@ import {
 } from '../utils/waterLog';
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
 import { AnimatedCollapsible } from '../components/AnimatedCollapsible';
+import { AnimatedBarFill } from '../components/AnimatedBarFill';
 import {
   DAILY_PRODUCE_SERVINGS,
   dailyProduceProgress,
@@ -1103,11 +1104,11 @@ export function FoodLogScreen() {
       )}
       {effectiveWaterTarget !== undefined && shownDayWaterMl > 0 && (
         <View style={styles.targetTrack}>
-          <View
+          <AnimatedBarFill
+            percent={targetProgress('waterMl', shownDayWaterMl, waterTargets) * 100}
             style={[
               styles.targetFill,
               {
-                width: `${targetProgress('waterMl', shownDayWaterMl, waterTargets) * 100}%`,
                 backgroundColor: targetStatusColor(
                   targetStatus('waterMl', shownDayWaterMl, waterTargets),
                   colors,
@@ -1184,11 +1185,11 @@ export function FoodLogScreen() {
             it reads through `limitStatus` and goes red past it. */}
         {effectiveTargets[key] !== undefined && (
           <View style={styles.targetTrack}>
-            <View
+            <AnimatedBarFill
+              percent={targetProgress(key, totals.total[key], effectiveTargets) * 100}
               style={[
                 styles.targetFill,
                 {
-                  width: `${targetProgress(key, totals.total[key], effectiveTargets) * 100}%`,
                   backgroundColor: isActiveLimit(key, effectiveTargets, nutritionLimits)
                     ? limitStatusColor(limitStatus(key, totals.total[key], effectiveTargets, limitWarnPercent), colors)
                     : targetStatusColor(targetStatus(key, totals.total[key], effectiveTargets), colors),
@@ -1281,11 +1282,9 @@ export function FoodLogScreen() {
           accessibilityRole="progressbar"
           accessibilityLabel={`Vegetables and fruit, about ${formatServings(produce.vegetable + produce.fruit)} of ${DAILY_PRODUCE_SERVINGS} servings`}
         >
-          <View
-            style={[
-              styles.targetFill,
-              { width: `${dailyProduceProgress(produce.vegetable, produce.fruit) * 100}%` },
-            ]}
+          <AnimatedBarFill
+            percent={dailyProduceProgress(produce.vegetable, produce.fruit) * 100}
+            style={styles.targetFill}
           />
         </View>
       </View>

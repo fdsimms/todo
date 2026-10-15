@@ -42,6 +42,7 @@ import { PressableScale } from './PressableScale';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTextScale } from '../hooks/useTextScale';
+import { AnimatedBarFill } from './AnimatedBarFill';
 
 interface Props {
   visible: boolean;
@@ -374,7 +375,7 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
         {cards.length > 0 && (
           <View style={styles.progress}>
             <View style={styles.track}>
-              <View style={[styles.fill, { width: `${(reviewed / cards.length) * 100}%` }]} />
+              <AnimatedBarFill percent={(reviewed / cards.length) * 100} style={styles.fill} />
             </View>
             <Text style={styles.progressText}>
               {reviewed} of {cards.length} reviewed

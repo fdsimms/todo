@@ -171,6 +171,7 @@ import { useFilterField } from '../hooks/useFilterField';
 import { TextField } from './TextField';
 import { LazySheet } from './LazySheet';
 import { NewSavedMealSheet } from './NewSavedMealSheet';
+import { AnimatedBarFill } from './AnimatedBarFill';
 
 /** The kind picker's segments. The hint under the track says what the pick does. */
 const TASK_KIND_SEGMENTS = TASK_KIND_META.map(meta => ({
@@ -4413,7 +4414,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                       accessibilityRole="progressbar"
                       accessibilityLabel={`Logged ${formatQuotaProgress(loggedProgress, targetCount, targetUnit)} so far this ${quotaPeriod}`}
                     >
-                      <View style={[styles.targetProgressFill, { width: `${Math.min(100, (loggedProgress / targetCount) * 100)}%` }]} />
+                      <AnimatedBarFill percent={Math.min(100, (loggedProgress / targetCount) * 100)} style={styles.targetProgressFill} />
                     </View>
                   )}
                   {/* Says what the row will read as rather than what the field is
