@@ -158,6 +158,7 @@ import { TaskBreakdownSheet } from './TaskBreakdownSheet';
 import { DeliverablePromptSheet } from './DeliverablePromptSheet';
 import { RecipePickerSheet } from './RecipePickerSheet';
 import { PressableScale } from './PressableScale';
+import { InlineAction } from './InlineAction';
 import { usePaintSelectionRow } from './PaintSelection';
 import { SelectionDot } from './SelectionDot';
 import { SwipeableRow } from './SwipeableRow';
@@ -332,6 +333,36 @@ interface Props {
 
 
 /** Pill label for a "#word" match in a title being renamed: the category, the tag, or both. */
+// One row's share of the connector that ties the subtasks to the task above
+// them: a vertical line under the task's own checkbox (the panel's
+// spacing.md plus the checkbox's 24pt-wide centre, less the row's padding, is
+// x = 12) and a short branch across to the subtask's checkbox. Each row draws
+// its own stretch, running the full height so the rows join up, and the last
+// one stops at its branch. It sits in the row's left padding, so nothing
+// positions outside the row's box (SortableList clips what does).
+function SubtaskRail({ last, color }: { last: boolean; color: string }) {
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      <View style={{
+        position: 'absolute',
+        left: 11,
+        width: border.md,
+        top: 0,
+        ...(last ? { height: '50%' } : { bottom: 0 }),
+        backgroundColor: color,
+      }} />
+      <View style={{
+        position: 'absolute',
+        left: 11,
+        width: spacing.xl - 11 - spacing.xs,
+        top: '50%',
+        height: border.md,
+        backgroundColor: color,
+      }} />
+    </View>
+  );
+}
+
 function filedOfferLabel(parsed: ParsedCategoryAndTags, categories: Parameters<typeof categoryLabel>[1]): string {
   const parts: string[] = [];
   if (parsed.category) parts.push(categoryLabel(parsed.category, categories));
@@ -685,6 +716,10 @@ const TaskItemRow = React.memo(function TaskItem({
   const [editingSubtaskId, setEditingSubtaskId] = useState<string | null>(null);
   const [subtaskTitleEdit, setSubtaskTitleEdit] = useState('');
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
+  // A task with no subtasks shows an "Add subtask" button rather than an empty
+  // field; tapping it opens the field. Once there is a subtask the field is
+  // always shown, so this only matters for the first one.
+  const [addingFirstSubtask, setAddingFirstSubtask] = useState(false);
   // Correcting the time the stopwatch recorded. The draft is separate from the
   // stored value so an abandoned edit leaves it alone, and separate from the
   // open flag because clearing the field is a real state (null = nothing to
@@ -4162,9 +4197,10 @@ const TaskItemRow = React.memo(function TaskItem({
                     const segment = segments.find(s => s.id === sub.id) ?? null;
                     const phase = segment ? segmentPhase(segment, timerElapsedNow) : null;
                     return (
-                    // No more "last row has no border" — the add-subtask field
-                    // pinned below the list is always the true last row now.
+                    // The add-subtask row pinned below the list is always the
+                    // true last row, except on a notice, which has none.
                     <View style={styles.subtaskRow}>
+                      <SubtaskRail last={!!notice && i === subtasks.length - 1} color={colors.separator} />
                       <TouchableOpacity
                         // A check is the small-check haptic (a grocery row's
                         // too); unchecking is a tap.
@@ -4259,21 +4295,37 @@ const TaskItemRow = React.memo(function TaskItem({
                   shouldn't need a trip into the full editor (see
                   commitNewSubtask). A notice offers no subtasks at all. */}
               {!notice && (
-              <View style={[styles.subtaskRow, styles.subtaskRowLast]}>
-                <View style={styles.subtaskCheck} />
-                <TextField
-                  ref={newSubtaskInputRef}
-                  style={styles.subtaskTitleInput}
-                  value={newSubtaskTitle}
-                  onChangeText={setNewSubtaskTitle}
-                  placeholder="Add subtask"
-                  placeholderTextColor={colors.textTertiary}
-                  maxLength={TITLE_MAX_LENGTH}
-                  returnKeyType="done"
-                  blurOnSubmit={false}
-                  onSubmitEditing={commitNewSubtask}
-                  onBlur={commitNewSubtask}
-                />
+              <View style={styles.subtaskRow}>
+                <SubtaskRail last color={colors.separator} />
+                {subtasks.length === 0 && !addingFirstSubtask ? (
+                  <InlineAction
+                    label="Add subtask"
+                    icon="add"
+                    onPress={() => setAddingFirstSubtask(true)}
+                    style={styles.subtaskAddAction}
+                  />
+                ) : (
+                  <>
+                    <Ionicons name="add" size={SUBTASK_CHECKBOX_SIZE} color={colors.accentText} />
+                    <TextField
+                      ref={newSubtaskInputRef}
+                      style={styles.subtaskTitleInput}
+                      value={newSubtaskTitle}
+                      onChangeText={setNewSubtaskTitle}
+                      placeholder="Add subtask"
+                      placeholderTextColor={colors.textTertiary}
+                      maxLength={TITLE_MAX_LENGTH}
+                      returnKeyType="done"
+                      blurOnSubmit={false}
+                      autoFocus={addingFirstSubtask}
+                      onSubmitEditing={commitNewSubtask}
+                      onBlur={() => {
+                        commitNewSubtask();
+                        setAddingFirstSubtask(false);
+                      }}
+                    />
+                  </>
+                )}
               </View>
               )}
             </View>
@@ -5696,7 +5748,6 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => StyleSheet.create({
   // spacing.sm = 48), which is where the title starts.
   subtaskSection: {
     gap: 0,
-    paddingLeft: spacing.xl,
     paddingTop: 0,
   },
   sectionDivider: {
@@ -5704,16 +5755,17 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => StyleSheet.create({
     borderTopColor: colors.separator,
     marginTop: spacing.xxs,
   },
+  // The row sits at the section's left edge and pads itself in, so the rail it
+  // draws (SubtaskRail) lives inside its own box rather than hanging outside it.
   subtaskRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
     paddingVertical: 7,
-    borderBottomWidth: border.hairline,
-    borderBottomColor: colors.separator,
+    paddingLeft: spacing.xl,
   },
-  subtaskRowLast: {
-    borderBottomWidth: 0,
+  subtaskAddAction: {
+    alignSelf: 'flex-start',
   },
   subtaskCheck: {
     width: SUBTASK_CHECKBOX_SIZE,
