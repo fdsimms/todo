@@ -3390,7 +3390,9 @@ const TaskItemRow = React.memo(function TaskItem({
                 </Text>
               </View>
             )}
-            {travelNote !== null && (
+            {/* The title already says the estimate in brackets; the chip is for a
+                held estimate the title doesn't carry (a refresh the title hasn't caught up to). */}
+            {travelNote !== null && !task.title.includes(travelNote) && (
               <View style={styles.metaChip} accessibilityLabel={`Travel time ${travelNote}`}>
                 <Ionicons name="navigate-outline" size={iconSize.xs} color={colors.textSecondary} />
                 <Text style={styles.scheduledLabel} numberOfLines={1}>
