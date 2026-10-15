@@ -15,6 +15,11 @@ import {
 const text = (quantity: string, factor: number) => scaleQuantity(quantity, factor).text;
 
 describe('scaleQuantity', () => {
+  it('carries the exact amount only where the display text rounded it', () => {
+    expect(scaleQuantity('0.5 cup', 0.25)).toEqual({ text: '0.13 cup', scaled: true, exact: '1/8 cup' });
+    expect(scaleQuantity('1 cup', 2).exact).toBeUndefined();
+  });
+
   it('keeps a quarter of a third as twelfths rather than a rounded decimal', () => {
     expect(text('1/3 cup', 0.25)).toBe('1/12 cup');
   });

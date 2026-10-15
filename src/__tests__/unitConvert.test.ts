@@ -1,4 +1,4 @@
-import { convertQuantity, describeUnitFamily, formatScaleWeight, measureQuantity, showContainerCount, unitFactor } from '../utils/unitConvert';
+import { convertQuantity, convertScaledQuantity, describeUnitFamily, formatScaleWeight, measureQuantity, showContainerCount, unitFactor } from '../utils/unitConvert';
 import { scaleQuantity } from '../utils/recipeScale';
 
 const metric = (q: string) => convertQuantity(q, 'metric').text;
@@ -337,5 +337,22 @@ describe('showContainerCount', () => {
 describe('convertQuantity after scaling by thirds', () => {
   it('converts a quarter of a third cup to 1 1/3 tbsp, not a rounded 1.28', () => {
     expect(convertQuantity(scaleQuantity('1/3 cup', 0.25).text, 'us').text).toBe('≈1 1/3 tbsp');
+  });
+});
+
+describe('convertScaledQuantity', () => {
+  const us = (quantity: string, factor: number) => convertScaledQuantity(scaleQuantity(quantity, factor), 'us').text;
+
+  it.each([
+    ['0.5 cup', 0.25, '≈2 tbsp'],
+    ['0.75 cup', 0.25, '≈3 tbsp'],
+    ['1.25 cups', 0.25, '≈5 tbsp'],
+    ['2/3 cup', 2 / 3, '≈7.11 tbsp'],
+  ])('%s at %sx converts from the exact amount', (quantity, factor, expected) => {
+    expect(us(quantity, factor as number)).toBe(expected);
+  });
+
+  it('hands back the display text when nothing converts', () => {
+    expect(convertScaledQuantity(scaleQuantity('0.5 cup', 0.25), 'asWritten').text).toBe('0.13 cup');
   });
 });

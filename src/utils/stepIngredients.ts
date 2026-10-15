@@ -72,7 +72,7 @@
 import { parseQuantity, rationalToNumber } from './quantity';
 import type { FlatIngredient } from './recipeComponents';
 import { scaleQuantity } from './recipeScale';
-import { convertQuantity, type UnitSystem } from './unitConvert';
+import { convertScaledQuantity, type UnitSystem } from './unitConvert';
 
 /** A step, as the annotator needs it. */
 export interface AnnotatableStep {
@@ -220,8 +220,8 @@ export function stepIngredientLines(
     recipeId: entry.recipe.id,
     name: entry.swappedFrom ?? entry.ingredient.name,
     swappedTo: entry.swappedFrom ? entry.ingredient.name : null,
-    quantity: convertQuantity(
-      scaleQuantity(entry.ingredient.quantity, scale).text,
+    quantity: convertScaledQuantity(
+      scaleQuantity(entry.ingredient.quantity, scale),
       unitSystem,
     ).text,
   }));

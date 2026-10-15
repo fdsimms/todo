@@ -62,6 +62,15 @@ export interface ScaledQuantity {
    * it didn't do the arithmetic for. See describeUnscaled.
    */
   scaled: boolean;
+  /**
+   * The same line with its amount written as an exact fraction ("1/8 cup")
+   * wherever `text` had to round it to a decimal or a near fraction ("0.13
+   * cup"). Absent when `text` is already exact. For a reader that does further
+   * arithmetic on the string (unit conversion), because multiplying a rounded
+   * "0.13 cup" by 16 reports 2.08 tbsp for what is exactly 2. Display always
+   * uses `text`.
+   */
+  exact?: string;
 }
 
 /**
@@ -155,6 +164,20 @@ function inflectContainerTail(trailing: string, amount: number): string {
   return `${m[1]}${inflectUnit(m[2], amount)}${trailing.slice(m[0].length)}`;
 }
 
+/** A rational as an exact fraction in any denominator: "1/8", "2 1/8", "4". */
+function exactFraction(value: Rational): string {
+  if (value.den === 1) return String(value.num);
+  const whole = Math.floor(value.num / value.den);
+  const num = value.num - whole * value.den;
+  return whole ? `${whole} ${num}/${value.den}` : `${num}/${value.den}`;
+}
+
+/** `{ exact }` only when writing the amount exactly changes what was rendered. */
+function exactVariant(rendered: string, scaled: Rational, exactText: string): { exact?: string } {
+  const exactAmount = exactFraction(scaled);
+  return exactAmount === rendered ? {} : { exact: exactText === rendered ? exactAmount : exactText };
+}
+
 export function scaleQuantity(quantity: string, factor: number): ScaledQuantity {
   const q = parseQuantity(quantity);
   const unchanged: ScaledQuantity = { text: q.raw, scaled: false };
@@ -205,7 +228,7 @@ export function scaleQuantity(quantity: string, factor: number): ScaledQuantity 
 
   const scaled = multiplyRational(q.amount, multiplier);
   const rendered = formatScaledAmount(q, scaled);
-  if (!q.rest) return { text: rendered, scaled: true };
+  if (!q.rest) return { text: rendered, scaled: true, ...exactVariant(rendered, scaled, rendered) };
 
   const trailing = stripSourceCountAside(q.trailing);
   // A size clause rather than a unit — parseGroceryInput emits "1, medium",
@@ -216,7 +239,12 @@ export function scaleQuantity(quantity: string, factor: number): ScaledQuantity 
   }
 
   const inflected = inflectUnit(q.unitWritten, rationalToNumber(scaled));
-  return { text: `${rendered} ${inflected}${trailing}`, scaled: true };
+  const text = `${rendered} ${inflected}${trailing}`;
+  return {
+    text,
+    scaled: true,
+    ...exactVariant(rendered, scaled, `${exactFraction(scaled)} ${inflected}${trailing}`),
+  };
 }
 
 // ---------------------------------------------------------------------------
