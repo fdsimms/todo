@@ -218,6 +218,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/lineWeight.ts` — lineWeightGrams, lineWeightText, panelForLine, WeightLookups, weightLookups, ingredientWeightText
 - `src/utils/listLineParse.ts` — LineParseContext, LineMarkerFields, lineMarkerFields, LineSuggestion, lineSuggestion, LinePending, NO_LINE_PENDING, confirmLineSuggestion, linePendingFields
 - `src/utils/liveActivity.ts` — TimerRunKind, TimerRun, buildTimerRuns, useTimerLiveActivitySync
+- `src/utils/livePickerConfirm.ts` — confirmLivePicker
 - `src/utils/lookAhead.ts` — LookAheadWindow, LookAheadDay, AwayEntry, TightDeadline, LookAheadTotals, LookAhead, BuildLookAheadOptions, buildLookAhead, carriedOverTasks, awayEntries, +8 more
 - `src/utils/maintenancePasses.ts` — MaintenanceStep, expiryPasses, catchUpPasses, retentionPasses, rebuildNotificationQueue
 - `src/utils/manualBlock.ts` — MANUAL_BLOCK_SETTING, MIN_MANUAL_MINUTES, MAX_MANUAL_MINUTES, MANUAL_BLOCK_PRESETS, ManualBlock, manualMinutesProblem, parseManualBlock, newManualBlock, serializeManualBlock, isTimedBlock, +3 more
