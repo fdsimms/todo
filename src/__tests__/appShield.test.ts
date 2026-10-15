@@ -484,7 +484,7 @@ describe('shieldReasons', () => {
 
 describe('app groups and schedules', () => {
   const SCHEDULE = {
-    id: 'sch', name: 'Work hours', groupId: 'social', days: [0, 1, 2, 3, 4, 5, 6],
+    id: 'sch', name: 'Work hours', groupIds: ['social'], days: [0, 1, 2, 3, 4, 5, 6],
     startMinutes: 0, endMinutes: 23 * 60 + 59, enabled: true, pausedUntil: null,
   };
   // NOW is 09:00Z; schedules use the device's clock, so build the window around it.
@@ -512,6 +512,31 @@ describe('app groups and schedules', () => {
     syncAppShield(s);
     expect(mockBridge.applyShield).toHaveBeenCalledWith(['social']);
     expect(mockBridge.clearShield).not.toHaveBeenCalled();
+  });
+
+  it('blocks every group a schedule names, as one reason', () => {
+    const s = state({ schedules: [{ ...spec('a'), groupIds: ['social', 'games'] }] });
+    const reasons = shieldReasons(s);
+    expect(reasons).toHaveLength(1);
+    expect(reasons[0]).toMatchObject({ reason: 'schedule', groupIds: ['social', 'games'] });
+    syncAppShield(s);
+    expect(mockBridge.applyShield).toHaveBeenCalledWith(['social', 'games']);
+  });
+
+  it('holds a group once when a schedule and another reason both name it', () => {
+    syncAppShield(state({
+      keyLocked: true,
+      groups: { focus: 'default', gate: 'default', penalty: 'default', key: 'games' },
+      schedules: [{ ...spec('a'), groupIds: ['social', 'games'] }],
+    }));
+    expect(mockBridge.applyShield).toHaveBeenCalledWith(['social', 'games']);
+  });
+
+  it('hands the native side the whole group list of a schedule', () => {
+    syncAppShield(state({ schedules: [{ ...spec('a'), groupIds: ['social', 'games'] }] }));
+    expect(mockBridge.setBlockSchedules).toHaveBeenCalledWith([
+      expect.objectContaining({ id: 'a', groupId: 'social', groupIds: ['social', 'games'] }),
+    ]);
   });
 
   it('resolves a removed schedule group through the caller', () => {
@@ -545,6 +570,7 @@ describe('app groups and schedules', () => {
       penaltyGroupId: 'games',
       penaltyEndIso: LATER,
       manualGroupId: null,
+      manualGroupIds: [],
       manualEndIso: null,
       pendingGateGroupIds: [],
       pendingGateLiveAtIso: null,
@@ -578,8 +604,8 @@ describe('app groups and schedules', () => {
     it('lists one gate reason per group, each naming only its own tasks', () => {
       const reasons = shieldReasons(state({ ...gated, gateGroupIds: ['social', 'games', 'social'] }));
       expect(reasons).toEqual([
-        { reason: 'gate', titles: ['Walk', 'Stretch'], groupId: 'social' },
-        { reason: 'gate', titles: ['Read'], groupId: 'games' },
+        { reason: 'gate', titles: ['Walk', 'Stretch'], groupIds: ['social'] },
+        { reason: 'gate', titles: ['Read'], groupIds: ['games'] },
       ]);
     });
 
@@ -603,17 +629,17 @@ describe('app groups and schedules', () => {
 });
 
 describe('a block the person started by hand', () => {
-  const manual = { untilIso: LATER, groupId: 'games' };
+  const manual = { untilIso: LATER, groupIds: ['games'] };
 
   it('wants the shield on its own until it runs out', () => {
     expect(appShieldWanted(state({ manual }))).toBe(true);
-    expect(appShieldWanted(state({ manual: { untilIso: EARLIER, groupId: 'games' } }))).toBe(false);
+    expect(appShieldWanted(state({ manual: { untilIso: EARLIER, groupIds: ['games'] } }))).toBe(false);
   });
 
   it('names its group and its end, and reads right after a focus session', () => {
     const reasons = shieldReasons(state({ session: session(), focusEnabled: true, manual, penaltyUntil: LATER, penaltyEnabled: true }));
     expect(reasons.map(r => r.reason)).toEqual(['focus', 'manual', 'penalty']);
-    expect(reasons[1]).toEqual({ reason: 'manual', until: LATER, groupId: 'games' });
+    expect(reasons[1]).toEqual({ reason: 'manual', until: LATER, groupIds: ['games'] });
   });
 
   it('applies its own group and arms its own window, not the penalty\'s', () => {
@@ -637,6 +663,14 @@ describe('a block the person started by hand', () => {
     expect(written[0].otherReasonWantsShield).toBe(false);
   });
 
+  it('applies every group it holds and writes them all for the extension', () => {
+    const several = { untilIso: LATER, groupIds: ['games', 'social'] };
+    syncAppShield(state({ manual: several }));
+    expect(mockBridge.applyShield).toHaveBeenCalledWith(['games', 'social']);
+    const written = mockBridge.setShieldState.mock.calls[0] as unknown as [{ groups: Record<string, unknown> }];
+    expect(written[0].groups).toMatchObject({ manualGroupId: 'games', manualGroupIds: ['games', 'social'] });
+  });
+
   it('leads the shield screen and carries its end', () => {
     syncAppShield(state({ manual }));
     const written = mockBridge.setShieldState.mock.calls[0] as unknown as [{ reason: string; untilIso: string }];
@@ -644,14 +678,14 @@ describe('a block the person started by hand', () => {
   });
 
   it('disarms its window once it has run out', () => {
-    syncAppShield(state({ manual: { untilIso: EARLIER, groupId: 'games' } }));
+    syncAppShield(state({ manual: { untilIso: EARLIER, groupIds: ['games'] } }));
     expect(mockBridge.cancelManualExpiry).toHaveBeenCalledTimes(1);
     expect(mockBridge.scheduleManualExpiry).not.toHaveBeenCalled();
     expect(mockBridge.clearShield).toHaveBeenCalled();
   });
 
   describe('with no end', () => {
-    const open = { untilIso: null, groupId: 'games' };
+    const open = { untilIso: null, groupIds: ['games'] };
 
     it('wants the shield on until something ends it', () => {
       expect(appShieldWanted(state({ manual: open, now: new Date('2031-01-01T00:00:00Z') }))).toBe(true);
@@ -668,7 +702,7 @@ describe('a block the person started by hand', () => {
 
     it('is named as having no end', () => {
       const [reason] = shieldReasons(state({ manual: open }));
-      expect(reason).toEqual({ reason: 'manual', until: null, groupId: 'games' });
+      expect(reason).toEqual({ reason: 'manual', until: null, groupIds: ['games'] });
     });
   });
 });

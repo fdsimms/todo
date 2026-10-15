@@ -29,6 +29,8 @@ export type ScreenTimeAuthorization = 'unavailable' | 'notDetermined' | 'denied'
 export interface ScreenTimeSelectionCount {
   applications: number;
   categories: number;
+  /** Absent from a native build older than the website shield. */
+  websites?: number;
 }
 
 /** One `{ id, thresholdMinutes }` rule, as the native side decodes it. */
@@ -124,7 +126,7 @@ export function presentAppPicker(groupId: string): Promise<boolean> {
 }
 
 export function screenTimeSelectionCount(groupId: string): ScreenTimeSelectionCount {
-  return degradeOnThrow(() => nativeModule!.selectionCount(groupId), { applications: 0, categories: 0 });
+  return degradeOnThrow(() => nativeModule!.selectionCount(groupId), { applications: 0, categories: 0, websites: 0 });
 }
 
 export function clearScreenTimeSelection(groupId: string): boolean {
@@ -186,6 +188,8 @@ export interface ShieldGroupsState {
   penaltyEndIso: string | null;
   /** The block the person started by hand: its group and when it ends. Null when none is running. */
   manualGroupId: string | null;
+  /** Every group the manual block holds; `manualGroupId` is the first, for a native build that predates the list. */
+  manualGroupIds: string[];
   manualEndIso: string | null;
   pendingGateGroupIds: string[];
   pendingGateLiveAtIso: string | null;
@@ -195,7 +199,9 @@ export interface ShieldGroupsState {
 export interface ScreenTimeScheduleWindow {
   id: string;
   name: string;
+  /** The first group, for a native build that predates `groupIds`. */
   groupId: string;
+  groupIds: string[];
   /** 0 = Sunday. */
   days: number[];
   startMinutes: number;

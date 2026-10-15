@@ -7,7 +7,7 @@ jest.mock('../db/database', () => ({
 import { useAppGroupStore, resolvedAssignments, resolveGroupNow } from '../store/useAppGroupStore';
 
 const draft = {
-  name: 'Work', groupId: 'default', days: [1, 2, 3, 4, 5], startMinutes: 540, endMinutes: 1020,
+  name: 'Work', groupIds: ['default'], days: [1, 2, 3, 4, 5], startMinutes: 540, endMinutes: 1020,
   enabled: true,
 };
 const WED_10 = new Date(2026, 7, 12, 10);
@@ -26,6 +26,19 @@ describe('groups', () => {
     expect(useAppGroupStore.getState().renameGroup(id, 'Feeds').ok).toBe(true);
     useAppGroupStore.getState().removeGroup(id);
     expect(useAppGroupStore.getState().groups).toEqual([]);
+  });
+
+  it('keeps every group of a schedule, de-duplicated, and stores the first as groupId too', () => {
+    const result = useAppGroupStore.getState().addSchedule({ ...draft, groupIds: ['social', 'games', 'social'] });
+    expect(result.ok).toBe(true);
+    expect(useAppGroupStore.getState().schedules[0].groupIds).toEqual(['social', 'games']);
+    expect(JSON.parse(mockSettings.blockSchedules)[0]).toMatchObject({ groupId: 'social', groupIds: ['social', 'games'] });
+    useAppGroupStore.getState().reload();
+    expect(useAppGroupStore.getState().schedules[0].groupIds).toEqual(['social', 'games']);
+  });
+
+  it('refuses a schedule with no group', () => {
+    expect(useAppGroupStore.getState().addSchedule({ ...draft, groupIds: [] })).toMatchObject({ ok: false, reason: 'invalid' });
   });
 
   it('points a reason back at Default when its group is deleted, and a schedule resolves there too', () => {

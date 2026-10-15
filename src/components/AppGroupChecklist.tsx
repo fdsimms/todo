@@ -1,0 +1,62 @@
+import React, { useMemo } from 'react';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { useColors } from '../theme/ThemeContext';
+import { font, iconSize, interaction, radius, spacing, type Colors } from '../theme';
+import type { AppGroup } from '../utils/appGroups';
+
+interface Props {
+  groups: readonly AppGroup[];
+  selectedIds: readonly string[];
+  onToggle: (groupId: string) => void;
+  /** Set where a card already surrounds it (a `SettingsSection`), so it draws rows only. */
+  bare?: boolean;
+}
+
+/**
+ * Every app group as a row with a check, for a schedule or a manual block that
+ * can hold several. Pure picking: it owns no state, so the caller decides when
+ * the choice is kept and whether an empty choice can be saved.
+ */
+export function AppGroupChecklist({ groups, selectedIds, onToggle, bare }: Props) {
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+  return (
+    <View style={bare ? undefined : styles.card}>
+      {groups.map((g, i) => {
+        const on = selectedIds.includes(g.id);
+        return (
+          <TouchableOpacity
+            key={g.id}
+            style={[styles.row, i > 0 && styles.rowRuled]}
+            activeOpacity={interaction.activeOpacity}
+            onPress={() => onToggle(g.id)}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: on }}
+            accessibilityLabel={g.name}
+          >
+            <Text style={styles.rowTitle} numberOfLines={1}>{g.name}</Text>
+            {on && <Ionicons name="checkmark" size={iconSize.sm} color={colors.accent} />}
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
+function makeStyles(colors: Colors) {
+  return StyleSheet.create({
+    card: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden' },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: spacing.sm,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.smd,
+      minHeight: 44,
+    },
+    rowRuled: { borderTopWidth: 1, borderTopColor: colors.separator },
+    rowTitle: { flex: 1, color: colors.text, fontSize: font.md },
+  });
+}

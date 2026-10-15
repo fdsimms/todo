@@ -1,6 +1,6 @@
 import {
   MAX_MANUAL_MINUTES, MIN_MANUAL_MINUTES, describeDuration, endsSooner, isTimedBlock, manualBlockWanted, manualMinutesProblem,
-  newManualBlock, parseManualBlock,
+  newManualBlock, parseManualBlock, serializeManualBlock,
 } from '../utils/manualBlock';
 
 const NOW = new Date(2026, 9, 14, 14, 0);
@@ -21,25 +21,25 @@ describe('manualMinutesProblem', () => {
 
 describe('a block', () => {
   it('ends the stated length after it starts and holds the group it started with', () => {
-    const block = newManualBlock(60, 'games', NOW);
-    expect(block).toEqual({ untilIso: new Date(2026, 9, 14, 15, 0).toISOString(), groupId: 'games' });
+    const block = newManualBlock(60, ['games'], NOW);
+    expect(block).toEqual({ untilIso: new Date(2026, 9, 14, 15, 0).toISOString(), groupIds: ['games'] });
   });
 
   it('wants the apps blocked only until its end', () => {
-    const block = newManualBlock(30, 'default', NOW);
+    const block = newManualBlock(30, ['default'], NOW);
     expect(manualBlockWanted(block, new Date(2026, 9, 14, 14, 29))).toBe(true);
     expect(manualBlockWanted(block, new Date(2026, 9, 14, 14, 30))).toBe(false);
     expect(manualBlockWanted(null, NOW)).toBe(false);
   });
 
   it('reads an unreadable end as not blocking', () => {
-    expect(manualBlockWanted({ untilIso: 'nonsense', groupId: 'default' }, NOW)).toBe(false);
+    expect(manualBlockWanted({ untilIso: 'nonsense', groupIds: ['default'] }, NOW)).toBe(false);
   });
 });
 
 describe('parseManualBlock', () => {
   it('round trips a stored block', () => {
-    const block = newManualBlock(60, 'default', NOW);
+    const block = newManualBlock(60, ['default'], NOW);
     expect(parseManualBlock(JSON.stringify(block))).toEqual(block);
   });
 
@@ -53,6 +53,27 @@ describe('parseManualBlock', () => {
   });
 });
 
+describe('a block holding several groups', () => {
+  it('keeps every group, once each, in the order given', () => {
+    expect(newManualBlock(60, ['games', 'default', 'games'], NOW).groupIds).toEqual(['games', 'default']);
+  });
+
+  it('holds Default when given none', () => {
+    expect(newManualBlock(60, [], NOW).groupIds).toEqual(['default']);
+  });
+
+  it('round trips through the stored form, which also names the first group as groupId', () => {
+    const block = newManualBlock(60, ['games', 'social'], NOW);
+    const raw = serializeManualBlock(block);
+    expect(JSON.parse(raw)).toMatchObject({ groupId: 'games', groupIds: ['games', 'social'] });
+    expect(parseManualBlock(raw)).toEqual(block);
+  });
+
+  it('reads a block stored before groups could be combined', () => {
+    expect(parseManualBlock('{"untilIso":null,"groupId":"games"}')).toEqual({ untilIso: null, groupIds: ['games'] });
+  });
+});
+
 describe('describeDuration', () => {
   it('says minutes and hours in plain words', () => {
     expect(describeDuration(15)).toBe('15 minutes');
@@ -63,10 +84,10 @@ describe('describeDuration', () => {
 });
 
 describe('an open-ended block', () => {
-  const open = newManualBlock(null, 'games', NOW);
+  const open = newManualBlock(null, ['games'], NOW);
 
   it('has no end, and holds until something ends it', () => {
-    expect(open).toEqual({ untilIso: null, groupId: 'games' });
+    expect(open).toEqual({ untilIso: null, groupIds: ['games'] });
     expect(isTimedBlock(open)).toBe(false);
     expect(manualBlockWanted(open, new Date(2030, 0, 1))).toBe(true);
   });
@@ -77,12 +98,12 @@ describe('an open-ended block', () => {
   });
 
   it('is the longest a block can be', () => {
-    const timed = newManualBlock(240, 'games', NOW);
+    const timed = newManualBlock(240, ['games'], NOW);
     expect(endsSooner(timed, open)).toBe(true);
     expect(endsSooner(open, timed)).toBe(false);
     expect(endsSooner(open, open)).toBe(false);
-    expect(endsSooner(newManualBlock(30, 'games', NOW), timed)).toBe(true);
-    expect(endsSooner(newManualBlock(480, 'games', NOW), timed)).toBe(false);
+    expect(endsSooner(newManualBlock(30, ['games'], NOW), timed)).toBe(true);
+    expect(endsSooner(newManualBlock(480, ['games'], NOW), timed)).toBe(false);
   });
 
   it('is worded as until you end it', () => {

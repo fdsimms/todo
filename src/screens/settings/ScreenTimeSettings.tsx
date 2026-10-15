@@ -5,6 +5,7 @@ import { useSettingsStore } from '../../store/useSettingsStore';
 import { useNfcKeyStore } from '../../store/useNfcKeyStore';
 import { useAppGroupStore } from '../../store/useAppGroupStore';
 import { BlockScheduleSheet } from '../../components/BlockScheduleSheet';
+import { ManualBlockGroupsSheet } from '../../components/ManualBlockGroupsSheet';
 import { EmergencyReleaseSheet } from '../../components/EmergencyReleaseSheet';
 import { useShieldReleaseStore } from '../../store/useShieldReleaseStore';
 import { describeEnded, releasesThisMonth, timesWord } from '../../utils/shieldRelease';
@@ -42,7 +43,7 @@ interface Props {
   /** Why the apps are blocked right now, so each switch can say what it is doing. */
   reasons: readonly ShieldReasonEntry[];
   /** How many apps and categories each group has picked, by group id. */
-  counts: Record<string, { applications: number; categories: number }>;
+  counts: Record<string, { applications: number; categories: number; websites?: number }>;
   /** Opens the system picker for one group. Owned by the screen, which also shows the counts. */
   onChooseApps: (groupId: string) => Promise<void>;
 }
@@ -104,11 +105,11 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
 
   const countLabel = (groupId: string) => {
     const c = counts[groupId];
-    return c ? selectionLabel(c.applications, c.categories) : 'None';
+    return c ? selectionLabel(c.applications, c.categories, c.websites ?? 0) : 'None';
   };
   const totalOf = (groupId: string) => {
     const c = counts[groupId];
-    return c ? c.applications + c.categories : 0;
+    return c ? c.applications + c.categories + (c.websites ?? 0) : 0;
   };
 
   // A live block's apps, group, reason and schedule can't be edited: that would
@@ -155,7 +156,7 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
     const isOriginal = groupId === DEFAULT_GROUP_ID;
     const used = [
       ...(['focus', 'gate', 'penalty', 'key'] as const).filter(r => resolved[r] === groupId),
-      ...schedules.filter(sc => resolveGroupId(customGroups, sc.groupId, groupsMeta) === groupId).map(() => 'schedule' as const),
+      ...schedules.filter(sc => sc.groupIds.some(id => resolveGroupId(customGroups, id, groupsMeta) === groupId)).map(() => 'schedule' as const),
     ];
     const fallbackName = groupName(customGroups, groupsMeta.fallbackId, groupsMeta);
     Alert.alert(name, undefined, [
@@ -245,7 +246,7 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
       ...(end ? [`Blocking now until ${formatMinutes(end.getHours() * 60 + end.getMinutes(), use24HourTime)}`] : []),
       describeDays(schedule.days),
       describeWindow(schedule, use24HourTime),
-      groupName(customGroups, schedule.groupId, groupsMeta),
+      schedule.groupIds.map(id => groupName(customGroups, id, groupsMeta)).join(', '),
     ];
     if (schedule.pausedUntil && new Date(schedule.pausedUntil) > new Date()) {
       parts.push(`Paused until ${formatMinutes(new Date(schedule.pausedUntil).getHours() * 60 + new Date(schedule.pausedUntil).getMinutes(), use24HourTime)}`);
@@ -442,10 +443,12 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
   const manualBlock = useManualBlockStore(s => s.block);
   const manualLive = manualBlockWanted(manualBlock, new Date());
 
-  const confirmManual = async (minutes: number | null, groupId: string) => {
+  const confirmManual = async (minutes: number | null, groupIds: string[]) => {
     // The same first-use step as the key lock: a block with no apps chosen
     // blocks nothing, and a button that visibly does nothing reads as broken.
-    if (totalOf(groupId) === 0) await onChooseApps(groupId);
+    // Asked only when none of the chosen groups holds any apps, so a group left
+    // empty beside a filled one is the person's own choice.
+    if (groupIds.every(id => totalOf(id) === 0)) await onChooseApps(groupIds[0]);
     const endsAt = minutes === null
       ? null
       : formatReasonTime(new Date(Date.now() + minutes * 60_000).toISOString());
@@ -457,19 +460,20 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
         {
           text: 'Start block',
           onPress: () => {
-            if (useManualBlockStore.getState().start(minutes, groupId)) haptics.success();
+            if (useManualBlockStore.getState().start(minutes, groupIds)) haptics.success();
           },
         },
       ],
     );
   };
 
+  // The duration the person chose, waiting on which groups to hold. Null while
+  // the groups sheet is closed (a `null` duration is "until I end it").
+  const [manualPick, setManualPick] = useState<{ minutes: number | null } | null>(null);
+
   const chooseManualGroup = (minutes: number | null) => {
-    if (customGroups.length === 0) { void confirmManual(minutes, groupsMeta.fallbackId); return; }
-    Alert.alert('Which apps?', 'Choose the group of apps to block.', [
-      ...allGroups(customGroups, groupsMeta).map(g => ({ text: g.name, onPress: () => { void confirmManual(minutes, g.id); } })),
-      { text: 'Cancel', style: 'cancel' as const },
-    ]);
+    if (customGroups.length === 0) { void confirmManual(minutes, [groupsMeta.fallbackId]); return; }
+    setManualPick({ minutes });
   };
 
   const handleBlockNow = async () => {
@@ -784,6 +788,13 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
         reasons={reasons}
         formatTime={formatReasonTime}
         onClose={() => setEmergencyOpen(false)}
+      />
+      <ManualBlockGroupsSheet
+        visible={manualPick !== null}
+        groups={allGroups(customGroups, groupsMeta)}
+        initialIds={[groupsMeta.fallbackId]}
+        onClose={() => setManualPick(null)}
+        onConfirm={ids => { if (manualPick) void confirmManual(manualPick.minutes, ids); }}
       />
       <BlockScheduleSheet
         visible={scheduleSheet.open}

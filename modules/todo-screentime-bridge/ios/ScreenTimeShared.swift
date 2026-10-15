@@ -189,9 +189,20 @@ struct ShieldGroupsShared: Codable {
   /// The block the person started by hand. Optional so a state file written by
   /// an older build still decodes, with this half simply absent.
   let manualGroupId: String?
+  /// Every group the manual block holds, `manualGroupId` being the first. Optional
+  /// so a state file written before groups could be combined still decodes, and
+  /// then falls back to that one group (`manualHeldGroupIds`).
+  let manualGroupIds: [String]?
   let manualEndIso: String?
   let pendingGateGroupIds: [String]?
   let pendingGateLiveAtIso: String?
+
+  /// The groups the manual block holds: the list when there is one, else the
+  /// single group an older state file named.
+  var manualHeldGroupIds: [String] {
+    if let ids = manualGroupIds, !ids.isEmpty { return ids }
+    return manualGroupId.map { [$0] } ?? []
+  }
 }
 
 /// One schedule, as the extension evaluates it. Clock times and weekdays, no
@@ -205,11 +216,21 @@ struct ScheduleWindowShared: Codable {
   /// running to write a reason. Optional so an older file still decodes.
   let name: String?
   let groupId: String
+  /// Every group the schedule blocks, `groupId` being the first. Optional so a
+  /// schedules file written before groups could be combined still decodes, and
+  /// then falls back to that one group (`heldGroupIds`).
+  let groupIds: [String]?
   /// 0 = Sunday.
   let days: [Int]
   let startMinutes: Int
   let endMinutes: Int
   let pausedUntilIso: String?
+
+  /// The groups this schedule blocks while it is live.
+  var heldGroupIds: [String] {
+    if let ids = groupIds, !ids.isEmpty { return ids }
+    return [groupId]
+  }
 }
 
 /// A threshold that fired, waiting to be turned into a task.
@@ -337,7 +358,7 @@ extension ScreenTimeShared {
   }
 
   static func activeScheduleGroupIds(now: Date) -> [String] {
-    activeSchedules(now: now).map { $0.groupId }
+    activeSchedules(now: now).flatMap { $0.heldGroupIds }
   }
 
   /// Every group the shield should hold at `now`, rebuilt from what the app last
@@ -369,9 +390,8 @@ extension ScreenTimeShared {
       ids.append(group)
     }
     if !manualEnded,
-       let group = state.groups?.manualGroupId,
        let end = parseIso(state.groups?.manualEndIso), end > now {
-      ids.append(group)
+      ids.append(contentsOf: state.groups?.manualHeldGroupIds ?? [])
     }
     if let groups = state.groups?.pendingGateGroupIds,
        state.pendingGateDetail != nil,
@@ -410,17 +430,27 @@ extension ScreenTimeShared {
   static func applyGroups(_ groupIds: [String]) -> Bool {
     var applications = Set<ApplicationToken>()
     var categories = Set<ActivityCategoryToken>()
+    var webDomains = Set<WebDomainToken>()
     for id in groupIds {
       guard let selection = readSelection(groupId: id) else { continue }
       applications.formUnion(selection.applicationTokens)
       categories.formUnion(selection.categoryTokens)
+      webDomains.formUnion(selection.webDomainTokens)
     }
     let store = ManagedSettingsStore(named: .init(shieldStoreName))
     store.shield.applications = applications.isEmpty ? nil : applications
     store.shield.applicationCategories = categories.isEmpty
       ? nil
       : ShieldSettings.ActivityCategoryPolicy.specific(categories)
-    return !applications.isEmpty || !categories.isEmpty
+    // Websites are their own shield settings: the picker stores a site (or a
+    // category's sites) in the selection, but nothing blocks it in Safari
+    // unless it is written here too. A category picked blocks its sites as
+    // well as its apps.
+    store.shield.webDomains = webDomains.isEmpty ? nil : webDomains
+    store.shield.webDomainCategories = categories.isEmpty
+      ? nil
+      : ShieldSettings.ActivityCategoryPolicy.specific(categories)
+    return !applications.isEmpty || !categories.isEmpty || !webDomains.isEmpty
   }
   #endif
   #endif

@@ -35,8 +35,8 @@ type ScreenTimeParams = {
   } | undefined;
 };
 
-type GroupCount = { applications: number; categories: number };
-const NO_SELECTION: GroupCount = { applications: 0, categories: 0 };
+type GroupCount = { applications: number; categories: number; websites?: number };
+const NO_SELECTION: GroupCount = { applications: 0, categories: 0, websites: 0 };
 
 /**
  * Whether the picked apps are blocked right now, why, and every setting that
@@ -106,14 +106,15 @@ export function ScreenTimeScreen() {
   // Which groups count toward "are my apps blocked": the ones a live reason
   // names. With no reason live, every group counts, so the card can still say
   // whether anything is chosen at all.
-  const heldIds = reasons.length > 0 ? new Set(reasons.map(r => r.groupId)) : null;
+  const heldIds = reasons.length > 0 ? new Set(reasons.flatMap(r => r.groupIds)) : null;
   const sum = (pick: (c: GroupCount) => number) => Object.entries(counts)
     .filter(([id]) => heldIds === null || heldIds.has(id))
     .reduce((n, [, c]) => n + pick(c), 0);
   const applications = sum(c => c.applications);
   const categories = sum(c => c.categories);
-  const total = applications + categories;
-  const label = selectionLabel(applications, categories);
+  const websites = sum(c => c.websites ?? 0);
+  const total = applications + categories + websites;
+  const label = selectionLabel(applications, categories, websites);
   const blocked = reasons.length > 0 && total > 0;
   const headline = shieldHeadline(reasons.length, total);
   const note = shieldHeadlineNote(reasons.length, total);

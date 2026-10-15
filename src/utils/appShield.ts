@@ -6,7 +6,7 @@ import { isTimedBlock, manualBlockWanted, type ManualBlock } from './manualBlock
 import { penaltyShieldWanted } from './penaltyShield';
 import { screenTimeBridge } from './screenTimeBridge';
 import { uniqueGroupIds, type GroupAssignments } from './appGroups';
-import { activeSchedules, currentWindowEnd, nativeScheduleWindows, type BlockSchedule } from './blockSchedule';
+import { activeSchedules, currentWindowEnd, nativeScheduleWindows, resolvedGroups, type BlockSchedule } from './blockSchedule';
 
 /**
  * The one place that decides whether the system shield is on, and the only
@@ -115,8 +115,8 @@ export interface ShieldReasonEntry {
   cause?: string | null;
   /** The schedule's name. Set for `schedule` only; its window end is `until`. */
   name?: string;
-  /** The app group this reason blocks. */
-  groupId: string;
+  /** The app groups this reason blocks: one for most reasons, several for a schedule or a manual block. */
+  groupIds: string[];
 }
 
 /**
@@ -134,11 +134,11 @@ export interface ShieldReasonEntry {
  */
 export function shieldReasons(state: AppShieldState): ShieldReasonEntry[] {
   const reasons: ShieldReasonEntry[] = [];
-  if (shieldWanted(state.session, state.focusEnabled)) reasons.push({ reason: 'focus', groupId: state.groups.focus });
+  if (shieldWanted(state.session, state.focusEnabled)) reasons.push({ reason: 'focus', groupIds: [state.groups.focus] });
   // The person's own timed block reads right after the session: it is the
   // other thing they chose, and it names nothing but the clock.
   if (state.manual && manualBlockWanted(state.manual, state.now)) {
-    reasons.push({ reason: 'manual', until: state.manual.untilIso, groupId: state.manual.groupId });
+    reasons.push({ reason: 'manual', until: state.manual.untilIso, groupIds: state.manual.groupIds });
   }
   if (gateShieldWanted(state.gateTitles.length, state.gateEnabled)) {
     // One entry per group, so a gate for Social and a gate for Games are two
@@ -149,11 +149,11 @@ export function shieldReasons(state: AppShieldState): ShieldReasonEntry[] {
       const groupId = state.gateGroupIds?.[i] ?? state.groups.gate;
       byGroup.set(groupId, [...(byGroup.get(groupId) ?? []), title]);
     });
-    for (const [groupId, titles] of byGroup) reasons.push({ reason: 'gate', titles, groupId });
+    for (const [groupId, titles] of byGroup) reasons.push({ reason: 'gate', titles, groupIds: [groupId] });
   }
   if (penaltyShieldWanted(state.penaltyUntil, state.penaltyEnabled, state.now)) {
     reasons.push({
-      reason: 'penalty', until: state.penaltyUntil, cause: state.penaltyReason, groupId: state.groups.penalty,
+      reason: 'penalty', until: state.penaltyUntil, cause: state.penaltyReason, groupIds: [state.groups.penalty],
     });
   }
   // A schedule is a window that opens and closes on the clock, so it reads
@@ -164,16 +164,16 @@ export function shieldReasons(state: AppShieldState): ShieldReasonEntry[] {
       reason: 'schedule',
       name: schedule.name,
       until: currentWindowEnd(schedule, state.now)?.toISOString() ?? null,
-      groupId: state.resolveGroup(schedule.groupId),
+      groupIds: resolvedGroups(schedule.groupIds, state.resolveGroup).groupIds,
     });
   }
-  if (state.keyLocked) reasons.push({ reason: 'key', groupId: state.groups.key });
+  if (state.keyLocked) reasons.push({ reason: 'key', groupIds: [state.groups.key] });
   return reasons;
 }
 
 /** The groups of apps to block right now: the union across every live reason. */
 export function shieldGroupIds(state: AppShieldState): string[] {
-  return uniqueGroupIds(shieldReasons(state).map(r => r.groupId));
+  return uniqueGroupIds(shieldReasons(state).flatMap(r => r.groupIds));
 }
 
 /** Whether anything wants the apps blocked right now. */
@@ -277,10 +277,11 @@ export function syncAppShield(state: AppShieldState): void {
     groups: {
       otherGroupIds: uniqueGroupIds(reasons
         .filter(r => r.reason === 'focus' || r.reason === 'gate' || r.reason === 'key' || (r.reason === 'manual' && manualOpen))
-        .map(r => r.groupId)),
+        .flatMap(r => r.groupIds)),
       penaltyGroupId: penaltyWants ? state.groups.penalty : null,
       penaltyEndIso: penaltyWants ? state.penaltyUntil : null,
-      manualGroupId: manualTimed ? state.manual?.groupId ?? null : null,
+      manualGroupId: manualTimed ? state.manual?.groupIds[0] ?? null : null,
+      manualGroupIds: manualTimed ? state.manual?.groupIds ?? [] : [],
       manualEndIso: manualTimed ? state.manual?.untilIso ?? null : null,
       pendingGateGroupIds: gateWindow
         ? uniqueGroupIds(state.pendingGate?.groupIds ?? [state.groups.gate])
