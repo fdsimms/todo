@@ -144,7 +144,7 @@ Where each component can appear.
 - `src/components/EditorSheet.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, JournalScreen, MedicationDetailScreen, MedicationScreen, MetersScreen, MoodDayScreen, MoodHistoryScreen, MoodScreen, PeopleScreen, PersonDetailScreen, +16 more
 - `src/components/EmergencyReleaseSheet.tsx` — on ScreenTimeScreen
 - `src/components/EmojiPickerSheet.tsx` — on CategoriesScreen, PeopleScreen, RecipesScreen, TagsScreen, TemplatesScreen
-- `src/components/EmptyNote.tsx` — on ArchivedScreen, AutomationsScreen, CalendarScreen, CategoryDetailScreen, CookbookDetailScreen, CookbooksScreen, FoodLogScreen, GroceryScreen, KitchenScreen, MealPlanScreen, MedicationDetailScreen, MedicationScreen, +14 more
+- `src/components/EmptyNote.tsx` — on ArchivedScreen, AutomationsScreen, CalendarScreen, CategoryDetailScreen, CookbookDetailScreen, CookbooksScreen, FoodLogScreen, GroceryScreen, JournalScreen, KitchenScreen, MealPlanScreen, MedicationDetailScreen, +15 more
 - `src/components/EmptyState.tsx` — on ArchivedScreen, AutomationsScreen, BackfillScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, CookbookDetailScreen, CookbooksScreen, FoodLogScreen, GroceryScreen, JournalScreen, KitchenScreen, +34 more
 - `src/components/ErrorBoundary.tsx` — on app shell
 - `src/components/EstimateAmountSheet.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, MedicationDetailScreen, MedicationScreen, MetersScreen, PersonDetailScreen, ProjectDetailScreen, RemindersScreen, SavedViewDetailScreen, SearchScreen, +6 more

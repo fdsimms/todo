@@ -9,6 +9,7 @@ import { EditorSheet } from './EditorSheet';
 import { EditorRow } from './EditorRow';
 import { SegmentedControl } from './SegmentedControl';
 import { SheetHeader } from './SheetHeader';
+import { EmptyNote } from './EmptyNote';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { PressableScale } from './PressableScale';
 import { TextField } from './TextField';
@@ -231,7 +232,7 @@ export function MedicationSummarySheet({ visible, onClose }: Props) {
       <Text style={styles.groupLabel}>MEDICATIONS</Text>
       <View style={styles.card}>
         {candidates.length === 0 && (
-          <Text style={styles.emptyNote}>Nothing was recorded in this range.</Text>
+          <EmptyNote icon="medkit-outline">Nothing was recorded in this range.</EmptyNote>
         )}
         {candidates.map((c, index) => {
           const on = chosen.includes(c.key);
@@ -369,7 +370,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     marginBottom: spacing.lg,
   },
-  emptyNote: { fontSize: font.sm, color: colors.textSecondary, paddingVertical: spacing.md },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd, minHeight: 52, paddingVertical: spacing.sm },
   rowBorder: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator },
   rowText: { flex: 1 },
