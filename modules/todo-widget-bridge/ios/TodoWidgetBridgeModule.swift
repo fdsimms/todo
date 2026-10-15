@@ -103,6 +103,7 @@ private struct TripRunPayload: Codable {
 
 // Mirrors the LeaveRun shape written by src/utils/leaveLiveActivity.ts.
 private struct LeaveRunPayload: Codable {
+  let taskId: String
   let eventTitle: String
   let location: String?
   let leaveAtMs: Double
@@ -723,6 +724,7 @@ public class TodoWidgetBridgeModule: Module {
         // Already live for this exact event and time: keep it. A different
         // lead (an estimate arriving) changes `leaveAt` and so restarts it.
         if let current = existing.first,
+           current.attributes.taskId == run.taskId,
            current.attributes.eventTitle == run.eventTitle,
            current.attributes.location == run.location,
            current.attributes.leaveAt == leaveAt,
@@ -738,6 +740,7 @@ public class TodoWidgetBridgeModule: Module {
           Task { await activity.end(nil, dismissalPolicy: .immediate) }
         }
         let attributes = LeaveActivityAttributes(
+          taskId: run.taskId,
           eventTitle: run.eventTitle,
           location: run.location,
           leaveAt: leaveAt,
