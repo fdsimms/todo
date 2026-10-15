@@ -210,6 +210,13 @@ export const HEALTH_HISTORY_DAYS = 90;
 export const WEIGHT_HISTORY_DAYS = 365;
 
 /**
+ * How far back the pinned-protein sync looks for a weigh-in. A month, because
+ * this runs on every foreground and a short window is the cheap query; a
+ * person with nothing newer keeps the target the last longer read set.
+ */
+const PINNED_PROTEIN_WEIGHT_DAYS = 30;
+
+/**
  * How far back the sleep read goes. The readings window's 90 days, because it
  * is the Sleep screen's longest range and nights, unlike a body, have shape
  * inside three months. Its own constant rather than `HEALTH_HISTORY_DAYS`
@@ -264,6 +271,12 @@ interface HealthState {
    * no way to ask at all.
    */
   readRecentWeights: (days: number) => Promise<WeightPoint[] | null>;
+  /**
+   * Keep a protein target pinned to body weight current without the Weight
+   * screen: reads a short weight window and re-applies the ratio. Does nothing
+   * with the pin off, and a null or empty answer leaves the stored target alone.
+   */
+  syncPinnedProtein: () => Promise<void>;
   /**
    * A short window of daily active-energy figures, answered without storing
    * one. Null when there was no way to ask; a day with no figure is null
@@ -559,6 +572,17 @@ export const useHealthStore = create<HealthState>((set, get) => ({
     return points;
   },
 
+  async syncPinnedProtein() {
+    if (!useSettingsStore.getState().proteinPerWeight) return;
+    const points = await get().readRecentWeights(PINNED_PROTEIN_WEIGHT_DAYS);
+    // Null is "no way to ask" and [] is "nothing recorded"; neither is a weight.
+    // Read back after the await: the pin or the Health read may have been
+    // turned off while it was in flight.
+    const settings = useSettingsStore.getState();
+    if (points === null || !settings.healthReadEnabled || !settings.proteinPerWeight) return;
+    settings.syncProteinToWeight(latestWeight(points)?.kilograms ?? null);
+  },
+
   /**
    * A short window of active-energy figures, for the one caller that needs to
    * say what a typical day of somebody's looks like — the baseline stepper in
@@ -619,6 +643,7 @@ export function useHealthSync(): void {
     const settings = useSettingsStore.getState();
     if (settings.initialized && settings.healthReadEnabled) {
       void useHealthStore.getState().refresh();
+      void useHealthStore.getState().syncPinnedProtein();
     }
 
     const unsubscribe = useSettingsStore.subscribe((state, prev) => {
@@ -629,8 +654,10 @@ export function useHealthSync(): void {
         // which day "today" is — same reason useWeatherSync watches it.
         state.dayResetTime !== prev.dayResetTime
       ) {
-        if (state.healthReadEnabled) void useHealthStore.getState().refresh();
-        else useHealthStore.getState().clear();
+        if (state.healthReadEnabled) {
+          void useHealthStore.getState().refresh();
+          void useHealthStore.getState().syncPinnedProtein();
+        } else useHealthStore.getState().clear();
       }
     });
 
@@ -657,6 +684,7 @@ export function useHealthSync(): void {
     const subscription = AppState.addEventListener('change', state => {
       if (state === 'active' && useSettingsStore.getState().healthReadEnabled) {
         void useHealthStore.getState().refresh();
+        void useHealthStore.getState().syncPinnedProtein();
       }
     });
 

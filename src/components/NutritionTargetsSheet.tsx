@@ -319,7 +319,7 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
               {latestKg === null
                 ? 'No weight from Apple Health yet. The protein target stays as it is until one is recorded.'
                 : `Latest weight ${formatWeight(latestKg, proteinPerWeight.unit)}${projected === null ? '' : `, so ${projected} g`}.`}
-              {' '}This updates each time the Weight screen reads your weight and replaces any number set
+              {' '}This updates whenever the app reads your weight and replaces any number set
               above. Turn it off to keep the current number.
             </Text>
           </>

@@ -1598,10 +1598,13 @@ Stats, the MCP replica) and the replica cannot see a weight at all.
 - **It says so where it happens.** A protein number typed on the sheet while the
   ratio is on is replaced at the next weight read, and the row says that.
 
-Like the calorie sync, it runs only when `refreshWeight` does (the Weight screen
-coming into focus, a weight logged in the app, and the targets sheet opening
-with the ratio on), so a weigh-in made in another app moves the target the next
-time one of those happens.
+It runs from `refreshWeight` (the Weight screen, a weight logged in the app,
+the targets sheet opening with the ratio on) and also from `syncPinnedProtein`
+in `useHealthStore`, which `useHealthSync` calls at launch, on every return to
+the app and when reading is turned on. That one reads a 30-day window through
+`readRecentWeights` and stores nothing, so it is cheap enough for every
+foreground and a weigh-in made in another app is picked up the next time the app
+opens. The calorie sync still moves only with `refreshWeight`.
 
 **The macro split follows the same rule and is where it was most tempting to
 break.** `MACRO_PRESETS` names four common ways to divide a day's calories and

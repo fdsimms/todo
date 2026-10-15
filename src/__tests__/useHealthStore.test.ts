@@ -132,6 +132,44 @@ describe('refresh', () => {
   });
 });
 
+describe('syncPinnedProtein', () => {
+  const pin = { unit: 'kg' as const, gramsPerUnit: 2 };
+  const recentWeight = (kilograms: number) => ({ start: new Date().toISOString(), kilograms });
+
+  beforeEach(() => {
+    useSettingsStore.setState({ healthReadEnabled: true, proteinPerWeight: pin, nutritionTargets: {} });
+  });
+
+  it('writes the target from the latest recent weight', async () => {
+    bridge.readWeightSeries.mockResolvedValue([recentWeight(80)]);
+    await useHealthStore.getState().syncPinnedProtein();
+    expect(useSettingsStore.getState().nutritionTargets.proteinG).toBe(160);
+  });
+
+  it('does not read Health with the pin off', async () => {
+    useSettingsStore.setState({ proteinPerWeight: null });
+    await useHealthStore.getState().syncPinnedProtein();
+    expect(bridge.readWeightSeries).not.toHaveBeenCalled();
+  });
+
+  it('leaves the target alone when nothing was recorded or there is no way to ask', async () => {
+    useSettingsStore.setState({ nutritionTargets: { proteinG: 140 } });
+    bridge.readWeightSeries.mockResolvedValue([]);
+    await useHealthStore.getState().syncPinnedProtein();
+    expect(useSettingsStore.getState().nutritionTargets.proteinG).toBe(140);
+
+    (healthBridge as jest.Mock).mockReturnValue(null);
+    await useHealthStore.getState().syncPinnedProtein();
+    expect(useSettingsStore.getState().nutritionTargets.proteinG).toBe(140);
+  });
+
+  it('does not store the short window as the Weight screen series', async () => {
+    bridge.readWeightSeries.mockResolvedValue([recentWeight(80)]);
+    await useHealthStore.getState().syncPinnedProtein();
+    expect(useHealthStore.getState().weightSeries).toBeNull();
+  });
+});
+
 describe('readRecentActiveEnergy', () => {
   it('answers null without the bridge, which is not the same as no days', async () => {
     (healthBridge as jest.Mock).mockReturnValue(null);
