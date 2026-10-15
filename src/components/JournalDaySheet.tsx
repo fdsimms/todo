@@ -5,6 +5,7 @@ import { SheetModal } from './SheetModal';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { InlineAction } from './InlineAction';
+import { EmptyNote } from './EmptyNote';
 import { JournalText } from './JournalText';
 import type { JournalEntry, JournalKind } from '../types';
 import { useJournalStore } from '../store/useJournalStore';
@@ -55,7 +56,7 @@ export function JournalDaySheet({ visible, kind, dayKey, onEdit, onAnother, onCl
         />
         <ScrollView contentContainerStyle={styles.content}>
           {entries.length === 0 ? (
-            <Text style={styles.empty}>Nothing was written on this day.</Text>
+            <EmptyNote icon="document-text-outline">Nothing was written on this day.</EmptyNote>
           ) : (
             <View style={styles.card}>
               {entries.map((entry, index) => (
@@ -96,6 +97,5 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   gap: { marginTop: spacing.md },
   time: { fontSize: font.xs, color: colors.textSecondary, marginBottom: spacing.xxs },
   text: { fontSize: font.md, color: colors.text },
-  empty: { color: colors.textSecondary, fontSize: font.md, textAlign: 'center', paddingVertical: spacing.xl },
   another: { alignSelf: 'center', marginTop: spacing.md },
 });
