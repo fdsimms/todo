@@ -551,6 +551,11 @@ interface SettingsStore {
   // and the focus shield already names it, so this blocks the same set rather
   // than pretending to a second one it has nowhere to keep.
   penaltyShieldEnabled: boolean;
+  // Deny deleting apps for as long as any block is up (Screen Time's
+  // `denyAppRemoval`, device-wide). Off by default: it is strict and it reaches
+  // every app, not only the blocked ones. Written by the arbiter on each
+  // reconcile (src/utils/appShield.ts), so the block, not this flag, decides when.
+  blockAppRemoval: boolean;
   // Coins for completing tasks, lost for misses and slips, spent on rewards
   // you define (src/utils/rewards.ts). Off by default and asked for on the
   // Rewards screen: a score is a thing this app otherwise refuses to keep, so
@@ -1991,6 +1996,7 @@ interface SettingsStore {
   setFocusLongRestMinutes: (minutes: number) => void;
   setFocusShieldEnabled: (on: boolean) => void;
   setPenaltyShieldEnabled: (on: boolean) => void;
+  setBlockAppRemoval: (on: boolean) => void;
   setRewardsEnabled: (on: boolean) => void;
   setRewardGoalId: (id: string | null) => void;
   setRewardListProjectId: (id: string | null) => void;
@@ -2299,6 +2305,7 @@ const DEFAULT_SETTINGS = {
   focusLongRestMinutes: FOCUS_DEFAULTS.longRestMinutes,
   focusShieldEnabled: false,
   penaltyShieldEnabled: false,
+  blockAppRemoval: false,
   rewardsEnabled: false,
   rewardGoalId: null,
   rewardListProjectId: null,
@@ -2739,6 +2746,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   focusLongRestMinutes: FOCUS_DEFAULTS.longRestMinutes,
   focusShieldEnabled: false,
   penaltyShieldEnabled: false,
+  blockAppRemoval: false,
   rewardsEnabled: false,
   rewardGoalId: null,
   rewardListProjectId: null,
@@ -3063,6 +3071,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const focusLongRestMinutes = parseFocusLongRestMinutes(dbGetSetting('focusLongRestMinutes'));
     const focusShieldEnabled = dbGetSetting('focusShieldEnabled') === 'true';
     const penaltyShieldEnabled = dbGetSetting('penaltyShieldEnabled') === 'true';
+    const blockAppRemoval = dbGetSetting('blockAppRemoval') === 'true';
     const rewardsEnabled = dbGetSetting('rewardsEnabled') === 'true';
     const rewardGoalId = dbGetSetting('rewardGoalId') || null;
     const rewardListProjectId = dbGetSetting('rewardListProjectId') || null;
@@ -3589,6 +3598,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       birthdayLeadDays,
       birthdayTaskCategory,
       birthdayTasks,
+      blockAppRemoval,
       bodyProfile,
       bookEventTaskCategory,
       bookEventTasks,
@@ -4878,6 +4888,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setPenaltyShieldEnabled(on: boolean) {
     dbSetSetting('penaltyShieldEnabled', on ? 'true' : 'false');
     set({ penaltyShieldEnabled: on });
+  },
+
+  setBlockAppRemoval(on: boolean) {
+    dbSetSetting('blockAppRemoval', on ? 'true' : 'false');
+    set({ blockAppRemoval: on });
   },
 
   setRewardsEnabled(on: boolean) {

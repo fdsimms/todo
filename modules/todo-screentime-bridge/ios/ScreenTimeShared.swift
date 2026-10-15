@@ -52,6 +52,11 @@ enum ScreenTimeShared {
   /// blocked app. One file rather than two because both answers come from the
   /// same reconcile and a second file is a second thing to go stale.
   static let shieldStateFileName = "screentime_shield_state.json"
+  /// Settings that change how a live shield behaves rather than what it covers
+  /// (today only whether apps can be deleted). App writes on every reconcile,
+  /// and `applyGroups` reads it in both processes, so the extension keeps the
+  /// setting when it raises or lifts a shield with the app closed.
+  static let shieldOptionsFileName = "screentime_shield_options.json"
 
   /// The `ManagedSettingsStore` both processes write the shield to.
   ///
@@ -82,6 +87,19 @@ enum ScreenTimeShared {
   /// callbacks — that one acts at `intervalDidEnd`, this one at
   /// `intervalDidStart` — and stopping either must not disarm the other.
   static let gateActivityName = "todo.gateWindow"
+
+  static func readShieldOptions() -> ShieldOptionsShared {
+    guard let data = readData(shieldOptionsFileName),
+          let options = try? JSONDecoder().decode(ShieldOptionsShared.self, from: data)
+    else { return ShieldOptionsShared(denyAppRemoval: false) }
+    return options
+  }
+
+  @discardableResult
+  static func writeShieldOptions(_ options: ShieldOptionsShared) -> Bool {
+    guard let data = try? JSONEncoder().encode(options) else { return false }
+    return writeData(data, to: shieldOptionsFileName)
+  }
 
   static func containerURL() -> URL? {
     FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID)
@@ -135,6 +153,12 @@ struct ScreenTimeRuleShared: Codable {
 /// has already decided; this carries the decision, the moment it runs out, and
 /// a line of text to show for it. Neither extension can reach the app's SQLite,
 /// its stores or its JS, so anything not in here does not exist to them.
+/// How a live shield behaves, as opposed to what it covers. Off unless the
+/// person turned it on, which is also what a missing or unreadable file means.
+struct ShieldOptionsShared: Codable {
+  var denyAppRemoval: Bool
+}
+
 struct ShieldStateShared: Codable {
   /// Whether a reason *other* than a penalty wants the apps blocked — a focus
   /// session, in practice. The monitor extension reads only this: it is what
@@ -450,6 +474,12 @@ extension ScreenTimeShared {
     store.shield.webDomainCategories = categories.isEmpty
       ? nil
       : ShieldSettings.ActivityCategoryPolicy.specific(categories)
+    // Deleting apps is denied for as long as any reason is live and the person
+    // turned this on, and cleared with the shield. Keyed on the reasons rather
+    // than on what they cover: a block with nothing picked is still a block,
+    // and deleting this app is the way round all of them. nil rather than
+    // false, so a lifted block leaves the store holding no setting at all.
+    store.application.denyAppRemoval = (!groupIds.isEmpty && readShieldOptions().denyAppRemoval) ? true : nil
     return !applications.isEmpty || !categories.isEmpty || !webDomains.isEmpty
   }
   #endif

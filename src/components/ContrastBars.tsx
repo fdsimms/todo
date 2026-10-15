@@ -2,7 +2,8 @@ import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, interaction, type Colors } from '../theme';
+import { spacing, radius, font, interaction, animation, type Colors } from '../theme';
+import { AnimatedBarFill } from './AnimatedBarFill';
 import { useTextScale } from '../hooks/useTextScale';
 import { contrastBarPercent } from '../utils/moodInsights';
 
@@ -102,7 +103,11 @@ export function ContrastBars({
               VoiceOver, so a bar announcing itself would read the same figures
               a second time. */}
           <View style={styles.track} accessible={false} importantForAccessibility="no">
-            <View style={[styles.fill, { width: `${contrastBarPercent(side.fraction)}%` }]} />
+            <AnimatedBarFill
+              percent={contrastBarPercent(side.fraction)}
+              delayMs={side.muted ? animation.duration.fast : 0}
+              style={styles.fill}
+            />
           </View>
           <Text style={[styles.value, wide && styles.valueWide, side.muted && styles.muted]}>
             {side.text}

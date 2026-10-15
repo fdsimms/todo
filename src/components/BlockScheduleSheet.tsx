@@ -17,6 +17,7 @@ import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { allGroups, groupName, resolveGroupId } from '../utils/appGroups';
+import { BLOCK_EDIT_LOCKED_MESSAGE, BLOCK_EDIT_LOCKED_TITLE, scheduleEditLocked } from '../utils/blockEditLock';
 import {
   WEEKDAYS, formatMinutes, scheduleProblem, type BlockSchedule,
 } from '../utils/blockSchedule';
@@ -114,8 +115,18 @@ export function BlockScheduleSheet({ visible, onClose, scheduleId }: Props) {
     );
   };
 
+  // The row refuses to open a live schedule, but a window can start while the
+  // sheet is already up, so the writes check again (`blockEditLock.ts`).
+  const refuseWhileBlocked = (): boolean => {
+    if (!existing || !scheduleEditLocked(existing, new Date())) return false;
+    haptics.warning();
+    Alert.alert(BLOCK_EDIT_LOCKED_TITLE, BLOCK_EDIT_LOCKED_MESSAGE);
+    return true;
+  };
+
   const handleSave = () => {
     if (problem) return;
+    if (refuseWhileBlocked()) return;
     const fields: Omit<BlockSchedule, 'id' | 'pausedUntil'> = {
       ...draft,
       name: draft.name,
@@ -165,6 +176,7 @@ export function BlockScheduleSheet({ visible, onClose, scheduleId }: Props) {
 
   const remove = () => {
     if (!scheduleId) return;
+    if (refuseWhileBlocked()) return;
     confirmDelete({
       title: 'Delete this schedule?',
       message: 'Its apps stay as they are; the schedule just stops blocking them.',

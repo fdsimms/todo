@@ -778,6 +778,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['screen time', 'block apps', 'gate', 'first', 'before', 'unlock', 'precondition', 'accountability', 'restrict', 'morning'] },
   { id: 'penaltyShield', iosOnly: true, groupId: 'screenTime', label: 'When you fail a task', section: 'Reasons to block', simple: true,
     keywords: ['screen time', 'block apps', 'penalty', 'punish', 'consequence', 'miss', 'missed', 'slip', 'deadline', 'cutoff', 'accountability', 'restrict', 'blocked until', 'end early'] },
+  { id: 'blockAppRemoval', iosOnly: true, groupId: 'screenTime', label: 'Prevent deleting apps', section: 'While blocked', simple: true,
+    keywords: ['screen time', 'delete', 'uninstall', 'remove apps', 'block', 'loophole', 'offload', 'restrict'] },
   { id: 'nfcKey', iosOnly: true, groupId: 'screenTime', label: 'Add a key tag', section: 'Key tags', simple: true,
     keywords: ['nfc', 'sticker', 'tap', 'physical key', 'screen time', 'lock', 'unlock', 'ritual'] },
   { id: 'nfcKeyLock', iosOnly: true, groupId: 'screenTime', label: 'Locked', section: 'Key tags', simple: true,

@@ -16,6 +16,10 @@ import {
 } from '../../utils/appGroups';
 import { currentWindowEnd, describeDays, describeWindow, formatMinutes, isScheduleActive, MAX_BLOCK_SCHEDULES, type BlockSchedule } from '../../utils/blockSchedule';
 import { selectionLabel } from '../../utils/shieldReasonText';
+import {
+  BLOCK_EDIT_LOCKED_MESSAGE, BLOCK_EDIT_LOCKED_TITLE, defaultGroupLocked, groupEditLocked, reasonGroupLocked,
+  reasonSwitchLocked, scheduleEditLocked,
+} from '../../utils/blockEditLock';
 import { useColors } from '../../theme/ThemeContext';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
@@ -71,6 +75,8 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
   const setGateShieldEnabled = useSettingsStore(s => s.setGateShieldEnabled);
   const penaltyShieldEnabled = useSettingsStore(s => s.penaltyShieldEnabled);
   const setPenaltyShieldEnabled = useSettingsStore(s => s.setPenaltyShieldEnabled);
+  const blockAppRemoval = useSettingsStore(s => s.blockAppRemoval);
+  const setBlockAppRemoval = useSettingsStore(s => s.setBlockAppRemoval);
   const setPenaltyShieldUntil = useSettingsStore(s => s.setPenaltyShieldUntil);
   const use24HourTime = useSettingsStore(s => s.use24HourTime);
   const screenTimeRules = useSettingsStore(s => s.screenTimeRules);
@@ -108,8 +114,18 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
     return c ? c.applications + c.categories + (c.websites ?? 0) : 0;
   };
 
+  // A live block's apps, group, reason and schedule can't be edited: that would
+  // end it with no record. Ending it is `releaseAllBlocks` (`blockEditLock.ts`).
+  const refuseWhileBlocked = (locked: boolean): boolean => {
+    if (!locked) return false;
+    haptics.warning();
+    Alert.alert(BLOCK_EDIT_LOCKED_TITLE, BLOCK_EDIT_LOCKED_MESSAGE);
+    return true;
+  };
+
   const handleChooseApps = async (groupId: string) => {
     haptics.tap();
+    if (refuseWhileBlocked(groupEditLocked(groupId, reasons))) return;
     if (!(await ensureAuthorized('Choosing apps to block needs Screen Time access. Grant it in Settings, under Screen Time.'))) return;
     await onChooseApps(groupId);
   };
@@ -162,12 +178,15 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
       },
       ...(groupsMeta.fallbackId === groupId ? [] : [{
         text: 'Make default',
-        onPress: () => useAppGroupStore.getState().setDefaultGroup(groupId),
+        onPress: () => {
+          if (refuseWhileBlocked(defaultGroupLocked(groupsMeta.fallbackId, groupId, reasons))) return;
+          useAppGroupStore.getState().setDefaultGroup(groupId);
+        },
       }]),
       ...(isOriginal ? [] : [{
         text: 'Delete',
         style: 'destructive' as const,
-        onPress: () => Alert.alert(
+        onPress: () => refuseWhileBlocked(groupEditLocked(groupId, reasons)) || Alert.alert(
           `Delete ${name}?`,
           used.length > 0
             ? `Anything using this group will block the ${groupsMeta.fallbackId === groupId ? groupsMeta.baseName : fallbackName} group instead.`
@@ -192,6 +211,7 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
   /** Pick which group one reason blocks. */
   const chooseReasonGroup = (reason: GroupedReason, title: string) => {
     haptics.tap();
+    if (refuseWhileBlocked(reasonGroupLocked(reason, reasons))) return;
     Alert.alert(title, 'Choose which group of apps this blocks.', [
       ...allGroups(customGroups, groupsMeta).map(g => ({
         text: g.id === resolved[reason] ? `${g.name} (selected)` : g.name,
@@ -217,6 +237,7 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
 
   const handleScheduleRow = (schedule: BlockSchedule) => {
     haptics.tap();
+    if (refuseWhileBlocked(scheduleEditLocked(schedule, new Date()))) return;
     setScheduleSheet({ open: true, id: schedule.id });
   };
 
@@ -249,6 +270,8 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
     onOff?: () => void,
   ) => {
     haptics.tap();
+    // Switching a live reason off would end its block with no record.
+    if (enabled && refuseWhileBlocked(reasonSwitchLocked(reason, reasons))) return;
     if (enabled) {
       setEnabled(false);
       onOff?.();
@@ -610,20 +633,36 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
           label="When you fail a task"
           hint={penaltyShieldEnabled
             ? penaltyEndLabel
-              ? `${penaltyLine ?? 'A task wasn’t done in time.'} To end this early, turn this off.`
+              ? `${penaltyLine ?? 'A task wasn’t done in time.'} To end this early, use the emergency button.`
               : 'Each task sets how long. The apps are blocked when you miss a cutoff, or log a slip on a task you’re avoiding.'
             : 'Failing a task blocks nothing.'}
           toggle={penaltyShieldEnabled}
           onPress={() => toggleReason(
             'penalty', penaltyShieldEnabled, setPenaltyShieldEnabled,
             'Blocking apps when you fail a task needs Screen Time access. Grant it in Settings, under Screen Time.',
-            // Switching the feature off is the way out of a block being
-            // served, so the block must not be left waiting to resume the
-            // moment it comes back on. This is deliberately the *only* way out
-            // from inside the app: a "lift it now" button would undo the one
-            // thing the feature is for.
+            // Switching off while a penalty is being served is refused (the
+            // emergency button is the recorded way out), so this only runs when
+            // nothing is live. It still clears a leftover end, so a block does
+            // not resume the moment the switch comes back on.
             () => setPenaltyShieldUntil(null),
           )}
+        />
+      </SettingsSection>
+
+      <SettingsSection
+        label="While blocked"
+        footer="Applies to every app on the phone, not only the blocked ones. It lifts when the last block ends, including when you scan a key tag or use the emergency button."
+      >
+        <SettingsRow
+          entryId="blockAppRemoval"
+          icon="trash-outline"
+          iconColor={blockAppRemoval ? colors.accent : undefined}
+          label="Prevent deleting apps"
+          hint={blockAppRemoval
+            ? 'While any block is on, apps can’t be deleted.'
+            : 'Apps can be deleted during a block.'}
+          toggle={blockAppRemoval}
+          onPress={() => setBlockAppRemoval(!blockAppRemoval)}
         />
       </SettingsSection>
 
@@ -678,6 +717,7 @@ export function ScreenTimeSettings({ reasons, counts, onChooseApps }: Props) {
                   value={schedule.enabled}
                   onValueChange={next => {
                     haptics.tap();
+                    if (!next && refuseWhileBlocked(scheduleEditLocked(schedule, new Date()))) return;
                     useAppGroupStore.getState().setScheduleEnabled(schedule.id, next);
                   }}
                   trackColor={{ false: colors.bgTertiary, true: colors.accent }}

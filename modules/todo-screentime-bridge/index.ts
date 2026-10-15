@@ -54,6 +54,7 @@ interface TodoScreenTimeNativeModule {
   clearSelection(groupId: string): boolean;
   applyShield(groupIdsJson: string): boolean;
   clearShield(): boolean;
+  setShieldOptions(denyAppRemoval: boolean): boolean;
   setShieldState(
     otherReasonWantsShield: boolean,
     reason: string,
@@ -143,6 +144,15 @@ export function applyShield(groupIds: readonly string[]): boolean {
 
 export function clearShield(): boolean {
   return degradeOnThrow(() => nativeModule!.clearShield(), false);
+}
+
+/**
+ * Whether deleting apps is denied for as long as a shield is up. Call it before
+ * `applyShield`, which reads it; the monitor extension reads the same answer
+ * when it raises or lifts a shield with the app closed.
+ */
+export function setShieldOptions(denyAppRemoval: boolean): boolean {
+  return degradeOnThrow(() => nativeModule!.setShieldOptions(denyAppRemoval), false);
 }
 
 /** Why the apps are blocked, as the two extensions will read it back. */

@@ -9,6 +9,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { SheetModal } from './SheetModal';
+import { EmptyNote } from './EmptyNote';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeBlurView } from './SafeBlurView';
 import { useColors, useTheme } from '../theme/ThemeContext';
@@ -302,11 +303,11 @@ export function DeloadSheet({ visible, todaysTasks, notes, onClose }: Props) {
           ))}
 
           {plan.proposals.length === 0 ? (
-            <Text style={styles.emptyHint}>Nothing to move today.</Text>
+            <EmptyNote icon="checkmark-circle-outline">Nothing to move today.</EmptyNote>
           ) : plan.proposals.every(p => p.suggested === null && p.tomorrow === null) ? (
-            <Text style={styles.emptyHint}>
+            <EmptyNote icon="lock-closed-outline">
               Nothing today can move: everything here is pinned, urgent, or already underway.
-            </Text>
+            </EmptyNote>
           ) : (
             <>
               <View style={styles.modeRow}>
@@ -461,13 +462,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingTop: spacing.xs,
     paddingBottom: spacing.sm,
-  },
-  emptyHint: {
-    color: colors.textTertiary,
-    fontSize: font.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    textAlign: 'center',
   },
   list: { maxHeight: 340 },
   row: {

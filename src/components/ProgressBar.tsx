@@ -1,8 +1,8 @@
-import React, { useEffect, useRef } from 'react';
-import { Animated, View, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
+import React from 'react';
+import { View, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
-import { radius, animation } from '../theme';
-import { useReduceMotion } from '../utils/useReduceMotion';
+import { radius } from '../theme';
+import { AnimatedBarFill } from './AnimatedBarFill';
 
 interface ProgressBarProps {
   progress: number; // 0-1
@@ -29,21 +29,7 @@ export function clampProgress(progress: number): number {
 
 export function ProgressBar({ progress, height = 6, accessibilityLabel, color, trackColor, style, decorative }: ProgressBarProps) {
   const colors = useColors();
-  const reduceMotion = useReduceMotion();
   const clamped = clampProgress(progress);
-  const widthAnim = useRef(new Animated.Value(clamped)).current;
-
-  useEffect(() => {
-    if (reduceMotion) {
-      widthAnim.setValue(clamped);
-      return;
-    }
-    Animated.timing(widthAnim, {
-      toValue: clamped,
-      duration: animation.duration.normal,
-      useNativeDriver: false,
-    }).start();
-  }, [clamped, widthAnim, reduceMotion]);
 
   return (
     <View
@@ -57,15 +43,9 @@ export function ProgressBar({ progress, height = 6, accessibilityLabel, color, t
             accessibilityValue: { min: 0, max: 100, now: Math.round(clamped * 100) },
           })}
     >
-      <Animated.View
-        style={[
-          styles.fill,
-          {
-            borderRadius: radius.full,
-            backgroundColor: color ?? colors.accent,
-            width: widthAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
-          },
-        ]}
+      <AnimatedBarFill
+        percent={clamped * 100}
+        style={[styles.fill, { borderRadius: radius.full, backgroundColor: color ?? colors.accent }]}
       />
     </View>
   );

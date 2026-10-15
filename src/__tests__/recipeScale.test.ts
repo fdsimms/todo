@@ -227,6 +227,35 @@ describe('scaleQuantity', () => {
   });
 });
 
+describe('scaleQuantity: grams and millilitres', () => {
+  it('rounds a scaled amount to a whole number instead of writing a fraction', () => {
+    expect(scaleQuantity('100 g', 1 / 3).text).toBe('33 g');
+    expect(scaleQuantity('250 ml', 1 / 3).text).toBe('83 ml');
+  });
+
+  it('keeps decimals under ten, where a whole number would change the amount', () => {
+    expect(scaleQuantity('5 g', 0.5).text).toBe('2.5 g');
+    expect(scaleQuantity('1 g', 0.25).text).toBe('0.25 g');
+  });
+
+  it('leaves exact results and other units alone', () => {
+    expect(scaleQuantity('100 g', 0.5).text).toBe('50 g');
+    expect(scaleQuantity('1/2 cup', 0.5).text).toBe('1/4 cup');
+  });
+});
+
+describe('scaleQuantity: a parenthesised size before the container', () => {
+  it('makes the container word agree with the scaled count', () => {
+    expect(scaleQuantity('1 (14 oz) can', 3).text).toBe('3 (14 oz) cans');
+    expect(scaleQuantity('2 (14 oz) cans', 0.5).text).toBe('1 (14 oz) can');
+    expect(scaleQuantity('1 (14 oz) can', 0.5).text).toBe('1/2 (14 oz) can');
+  });
+
+  it('leaves a parenthetical that is not followed by a container word', () => {
+    expect(scaleQuantity('2 (about 1 lb) potatoes', 2).text).toBe('4 (about 1 lb) potatoes');
+  });
+});
+
 describe('formatScale', () => {
   it('labels a chip', () => {
     expect(formatScale(0.5)).toBe('½×');

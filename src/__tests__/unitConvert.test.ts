@@ -279,6 +279,20 @@ describe('a compound amount ("1 lb 8 oz")', () => {
     expect(measureQuantity('1 lb 2 cups')!.base).toBeCloseTo(453.6, 1);
   });
 
+  it('reads "+", "plus" and "and" as the joiner of one measurement', () => {
+    for (const text of ['1 cup + 2 tbsp', '1 cup plus 2 tbsp', '1 cup and 2 tbsp']) {
+      expect(measureQuantity(text)!.base).toBeCloseTo(236.6 + 29.6, 0);
+      const out = convertQuantity(text, 'metric');
+      expect(out).toEqual({ text: '≈270 ml', converted: true });
+    }
+    expect(convertQuantity('1 lb + 8 oz, trimmed', 'metric').text).toMatch(/^≈\d+ g, trimmed$/);
+  });
+
+  it('still treats a joiner before a different dimension as prose', () => {
+    expect(measureQuantity('1 lb + 2 cups')!.base).toBeCloseTo(453.6, 1);
+    expect(convertQuantity('1 cup + 2 eggs', 'metric').text).toBe('≈240 ml + 2 eggs');
+  });
+
   it('does not rewrite a compound already in the target system', () => {
     expect(convertQuantity('1 cup 2 tbsp', 'us')).toEqual({ text: '1 cup 2 tbsp', converted: false });
   });

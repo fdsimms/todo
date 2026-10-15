@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SafeBlurView } from './SafeBlurView';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
+import { EmptyNote } from './EmptyNote';
 import { WhenPicker } from './WhenPicker';
 import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { SheetScrim } from './SheetScrim';
@@ -508,7 +509,7 @@ export function LookAheadSheet({ visible, onClose, tripProjectId = null }: Props
       <View>
         {renderSectionHeader('Before you go', la.totals.taskCount)}
         {la.days.every(d => d.tasks.length === 0 && d.expected.length === 0) ? (
-          <Text style={styles.emptyHint}>Nothing is scheduled between now and then.</Text>
+          <EmptyNote icon="calendar-outline">Nothing is scheduled between now and then.</EmptyNote>
         ) : (
           la.days
             .filter(d => d.tasks.length > 0 || d.expected.length > 0)
@@ -887,12 +888,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.sm,
     paddingHorizontal: 14,
     paddingBottom: spacing.xs,
-  },
-  emptyHint: {
-    color: colors.textTertiary,
-    fontSize: font.sm,
-    paddingHorizontal: spacing.xs,
-    paddingBottom: spacing.sm,
   },
   hint: { color: colors.textTertiary, fontSize: font.xs, paddingHorizontal: spacing.xs },
 

@@ -192,8 +192,11 @@ record every other way into a person's history writes (`docs/arch/people.md`).
 - **Only a new, open journal entry.** An edit would offer the same page again on every save, a
   dream is not time spent with anybody, and a note sealed for later is not something that happened
   today. The entry is dated now for today's page and noon for a backdated one.
-- **The history entry does not point back at the page.** The title says nothing about what was
-  written, so the journal lock keeps the words private while the person's history stays plain.
+- **The history entry links back to the page** (`linkUrl` is `journalEntryLink(entry.id)`, the
+  link a sealed note's reminder uses), so its link button opens the entry. The title still says
+  nothing about what was written, and the Journal sits behind its lock, so opening the page asks
+  for it. Deleting the page leaves the history entry in place and its link opens nothing, the
+  resolve-or-shrug every id here gets.
 
 ## Reading it back: on this day, the month, a random page
 
