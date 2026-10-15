@@ -2,6 +2,7 @@ import {
   alertIsFresh,
   alertOverlaps,
   describeDisruptions,
+  disruptionHeadlines,
   effectOfAlertType,
   journeyDisruptions,
   LIVE_ALERT_MAX_AGE_MS,
@@ -49,6 +50,7 @@ describe('parseSubwayAlerts', () => {
       effect: 'delays',
       planned: false,
       periods: [{ start: 1789569614000, end: 1789570800000 }],
+      headline: 'Uptown C/E trains are running with delays after we addressed a mechanical problem on a train at 14 St.',
     });
   });
 
@@ -177,7 +179,7 @@ describe('journeyDisruptions', () => {
   it('reports the live delay on a trip during it, read moments ago', () => {
     const now = FEED_READ_MS;
     const result = journeyDisruptions(snapshotAt(FEED_READ_MS), ['E', 'L'], now, now + 20 * MIN, now);
-    expect(result).toEqual([{ line: 'E', effect: 'delays' }]);
+    expect(result.map(({ line, effect }) => ({ line, effect }))).toEqual([{ line: 'E', effect: 'delays' }]);
   });
 
   it('stops reporting the live delay once the read is half an hour old', () => {
@@ -196,7 +198,7 @@ describe('journeyDisruptions', () => {
     // already knows, which is what lets the reminder say so when it fires.
     const from = utc('2026-09-19T13:00:00Z');
     const result = journeyDisruptions(snapshotAt(FEED_READ_MS), ['6'], from, from + 40 * MIN, FEED_READ_MS + MIN);
-    expect(result).toEqual([{ line: '6', effect: 'partSuspended' }]);
+    expect(result.map(({ line, effect }) => ({ line, effect }))).toEqual([{ line: '6', effect: 'partSuspended' }]);
   });
 
   it('names each picked line once, by its most severe effect, in picker order', () => {
@@ -267,5 +269,50 @@ describe('parseTransitLines', () => {
     expect(parseTransitLines(['L', 'X', 7, null])).toEqual(['L']);
     expect(parseTransitLines('not json')).toEqual([]);
     expect(parseTransitLines(null)).toEqual([]);
+  });
+});
+
+describe('headlines', () => {
+  const alerts = parseSubwayAlerts(feed);
+
+  it('reads the English header with line brackets removed', () => {
+    const sixStops = alerts.find(a => a.id === 'lmm:planned_work:33826')!;
+    expect(sixStops.headline).toBe('No 6 between Hunts Point Av and 125 St');
+  });
+
+  it('is absent when the alert has no English text', () => {
+    const body = { entity: [{ id: 'x', alert: {
+      'transit_realtime.mercury_alert': { alert_type: 'Stops Skipped' },
+      informed_entity: [{ route_id: 'G' }],
+    } }] };
+    expect(parseSubwayAlerts(body)[0].headline).toBeUndefined();
+  });
+
+  it('caps a very long header', () => {
+    const body = { entity: [{ id: 'x', alert: {
+      'transit_realtime.mercury_alert': { alert_type: 'Stops Skipped' },
+      informed_entity: [{ route_id: 'G' }],
+      header_text: { translation: [{ language: 'en', text: 'x'.repeat(500) }] },
+    } }] };
+    expect(parseSubwayAlerts(body)[0].headline).toHaveLength(200);
+  });
+
+  it('carries the alert that set a line\'s effect into the disruption', () => {
+    const list: TransitAlert[] = [
+      { id: '1', routeIds: ['G'], effect: 'delays', planned: true, periods: [], headline: 'G delayed' },
+      { id: '2', routeIds: ['G'], effect: 'stopsSkipped', planned: true, periods: [], headline: 'G skips Bedford-Nostrand Avs' },
+    ];
+    expect(journeyDisruptions(snapshotAt(0, list), ['G'], 0, 1, 0))
+      .toEqual([{ line: 'G', effect: 'stopsSkipped', headline: 'G skips Bedford-Nostrand Avs' }]);
+  });
+
+  it('lists each distinct headline once, most severe first, and none when there are none', () => {
+    expect(disruptionHeadlines([
+      { line: 'L', effect: 'delays', headline: 'L delayed' },
+      { line: 'G', effect: 'stopsSkipped', headline: 'G skips stops' },
+      { line: 'C', effect: 'delays', headline: 'L delayed' },
+    ])).toBe('G skips stops\nL delayed');
+    expect(disruptionHeadlines([{ line: 'L', effect: 'delays' }])).toBeNull();
+    expect(disruptionHeadlines([])).toBeNull();
   });
 });
