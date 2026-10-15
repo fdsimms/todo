@@ -55,7 +55,7 @@ function event(overrides: Partial<BusyEvent> = {}): BusyEvent {
 
 const NOW = new Date('2026-10-05T09:00:00.000Z');
 const HORIZON = new Date('2026-10-07T04:00:00.000Z');
-const LEADS = { defaultMinutes: 30, byCalendar: {} };
+const LEADS = { defaultMinutes: 30, byCalendar: {}, arriveEarlyMinutes: 0 };
 
 describe('eventHasLocation', () => {
   it('reads empty, blank and null all as no location', () => {
@@ -191,7 +191,7 @@ describe('matchedTravelTasks', () => {
 
 describe('per-calendar leads', () => {
   it('uses a calendar\'s own lead and falls back to the default', () => {
-    const leads = { defaultMinutes: 30, byCalendar: { work: 45 } };
+    const leads = { defaultMinutes: 30, byCalendar: { work: 45 }, arriveEarlyMinutes: 0 };
     expect(travelLeadFor({ calendarId: 'work' }, leads)).toBe(45);
     expect(travelLeadFor({ calendarId: 'home' }, leads)).toBe(30);
   });
@@ -200,7 +200,7 @@ describe('per-calendar leads', () => {
     const work = event({ id: 'w', calendarId: 'work' });
     const home = event({ id: 'h', calendarId: 'home', start: '2026-10-05T16:00:00.000Z', end: '2026-10-05T17:00:00.000Z' });
     const matches = matchedTravelTasks(
-      { defaultMinutes: 30, byCalendar: { work: 60 } }, [work, home], NOW, HORIZON, {});
+      { defaultMinutes: 30, byCalendar: { work: 60 }, arriveEarlyMinutes: 0 }, [work, home], NOW, HORIZON, {});
     expect(matches.map(m => m.leaveAt)).toEqual([
       '2026-10-05T13:00:00.000Z',
       '2026-10-05T15:30:00.000Z',
@@ -341,7 +341,7 @@ describe('travel estimates', () => {
   });
 
   it('ignores held estimates when none are passed (the switch is off)', () => {
-    const [match] = matchedTravelTasks({ defaultMinutes: 45, byCalendar: {} }, [event()], NOW, HORIZON, {});
+    const [match] = matchedTravelTasks({ defaultMinutes: 45, byCalendar: {}, arriveEarlyMinutes: 0 }, [event()], NOW, HORIZON, {});
     expect(match.estimate).toBeNull();
     expect(match.leaveAt).toBe('2026-10-05T13:15:00.000Z');
   });
@@ -442,15 +442,15 @@ describe('per-event travel overrides', () => {
 
   it('parses defensively and drops an entry that overrides nothing', () => {
     expect(parseTravelEventPrefs('not json')).toEqual({});
-    expect(parseTravelEventPrefs({ a: { mode: 'rocket', arriveEarlyMinutes: 0 } })).toEqual({});
+    expect(parseTravelEventPrefs({ a: { mode: 'rocket', arriveEarlyMinutes: null } })).toEqual({});
     expect(parseTravelEventPrefs({ a: { mode: null, arriveEarlyMinutes: 999 } })).toEqual({
       a: { mode: null, arriveEarlyMinutes: 60, originPlaceId: null },
     });
   });
 
   it('keeps an entry that overrides only the starting point', () => {
-    expect(parseTravelEventPrefs({ a: { mode: null, arriveEarlyMinutes: 0, originPlaceId: 'p1' } })).toEqual({
-      a: { mode: null, arriveEarlyMinutes: 0, originPlaceId: 'p1' },
+    expect(parseTravelEventPrefs({ a: { mode: null, arriveEarlyMinutes: null, originPlaceId: 'p1' } })).toEqual({
+      a: { mode: null, arriveEarlyMinutes: null, originPlaceId: 'p1' },
     });
     expect(parseTravelEventPrefs({ a: { originPlaceId: '' } })).toEqual({});
   });
@@ -459,6 +459,23 @@ describe('per-event travel overrides', () => {
     expect(travelModeFor('evt-1', prefs, 'driving')).toBe('walking');
     expect(travelModeFor('other', prefs, 'driving')).toBe('driving');
     expect(arriveEarlyFor('other', prefs)).toBe(0);
+  });
+
+  it('keeps an explicit on-time pick apart from following the default', () => {
+    const parsed = parseTravelEventPrefs({ a: { mode: null, arriveEarlyMinutes: 0, originPlaceId: null } });
+    expect(parsed).toEqual({ a: { mode: null, arriveEarlyMinutes: 0, originPlaceId: null } });
+    expect(arriveEarlyFor('a', parsed, 10)).toBe(0);
+    expect(arriveEarlyFor('b', parsed, 10)).toBe(10);
+  });
+
+  it('applies the Settings default to an event with no pick, and not to one with its own', () => {
+    const leads = { ...LEADS, arriveEarlyMinutes: 10 };
+    const base = matchedTravelTasks(LEADS, [event()], NOW, HORIZON, {})[0];
+    const withDefault = matchedTravelTasks(leads, [event()], NOW, HORIZON, {})[0];
+    const own = matchedTravelTasks(leads, [event()], NOW, HORIZON, {}, undefined,
+      parseTravelEventPrefs({ 'evt-1': { mode: null, arriveEarlyMinutes: 0 } }))[0];
+    expect(Date.parse(base.leaveAt) - Date.parse(withDefault.leaveAt)).toBe(10 * 60 * 1000);
+    expect(own.leaveAt).toBe(base.leaveAt);
   });
 
   it('never lets a late arrival put the reminder after the start', () => {

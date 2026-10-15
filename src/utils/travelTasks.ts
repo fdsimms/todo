@@ -64,8 +64,13 @@ export const TRAVEL_MODES: readonly TravelMode[] = ['driving', 'transit', 'walki
  */
 export interface TravelEventPref {
   mode: TravelMode | null;
-  /** Minutes to arrive before the start; negative arrives after it. 0 is on time. */
-  arriveEarlyMinutes: number;
+  /**
+   * Minutes to arrive before the start; negative arrives after it. 0 is on
+   * time. Null follows the Settings default (`travelArriveEarlyMinutes`), which
+   * is a different answer from 0: an event set to "On time" stays on time when
+   * the default changes.
+   */
+  arriveEarlyMinutes: number | null;
   /**
    * A saved place id, `TRAVEL_ORIGIN_PHONE` for "where I am", or null to follow
    * the Settings starting point. Its own value for the phone, since null is
@@ -83,10 +88,18 @@ export type TravelEventPrefs = Readonly<Record<string, TravelEventPref>>;
 /** The arrival choices the event sheet offers: early (positive), on time, late (negative). */
 export const TRAVEL_ARRIVE_CHOICES: readonly number[] = [30, 15, 10, 5, 0, -5, -10, -15];
 
+export const TRAVEL_ARRIVE_EARLY_MIN = -30;
+export const TRAVEL_ARRIVE_EARLY_MAX = 60;
+
 export function clampArriveEarlyMinutes(value: unknown): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
   const stepped = Math.round(value / 5) * 5;
-  return Math.min(60, Math.max(-30, stepped));
+  return Math.min(TRAVEL_ARRIVE_EARLY_MAX, Math.max(TRAVEL_ARRIVE_EARLY_MIN, stepped));
+}
+
+/** A stored per-event arrival: a number is the event's own pick, anything else follows the default. */
+function parseArriveEarlyOverride(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? clampArriveEarlyMinutes(value) : null;
 }
 
 /** `travelEventPrefs` off settings, defensively; an entry that overrides nothing is dropped. */
@@ -102,10 +115,10 @@ export function parseTravelEventPrefs(raw: unknown): TravelEventPrefs {
     const { mode, arriveEarlyMinutes, originPlaceId } = entry as Record<string, unknown>;
     const pref: TravelEventPref = {
       mode: TRAVEL_MODES.find(m => m === mode) ?? null,
-      arriveEarlyMinutes: clampArriveEarlyMinutes(arriveEarlyMinutes),
+      arriveEarlyMinutes: parseArriveEarlyOverride(arriveEarlyMinutes),
       originPlaceId: typeof originPlaceId === 'string' && originPlaceId ? originPlaceId : null,
     };
-    if (pref.mode !== null || pref.arriveEarlyMinutes !== 0 || pref.originPlaceId !== null) out[eventId] = pref;
+    if (pref.mode !== null || pref.arriveEarlyMinutes !== null || pref.originPlaceId !== null) out[eventId] = pref;
   }
   return out;
 }
@@ -137,9 +150,9 @@ export function travelWalkUnderFor(
   return defaultMode === 'walking' ? 0 : walkUnder;
 }
 
-/** Minutes to arrive before the start, for this event (0 when it has no override). */
-export function arriveEarlyFor(eventId: string, prefs: TravelEventPrefs): number {
-  return prefs[eventId]?.arriveEarlyMinutes ?? 0;
+/** Minutes to arrive before the start, for this event: its own pick, else the Settings default. */
+export function arriveEarlyFor(eventId: string, prefs: TravelEventPrefs, defaultMinutes = 0): number {
+  return prefs[eventId]?.arriveEarlyMinutes ?? defaultMinutes;
 }
 
 /** "10 min early", "On time", "5 min late". */
@@ -354,6 +367,8 @@ export function parseTravelLeadByCalendar(raw: unknown): TravelLeadByCalendar {
 /** The leads a sweep reads: the default, and the per-calendar overrides on top. */
 export interface TravelLeads {
   defaultMinutes: number;
+  /** How early to arrive where an event has no pick of its own; see `arriveEarlyFor`. */
+  arriveEarlyMinutes: number;
   byCalendar: Readonly<TravelLeadByCalendar>;
 }
 
@@ -499,7 +514,7 @@ export function matchedTravelTasks(
         )
       : null;
     const lead = estimate ? estimatedLeadMinutes(estimate.minutes) : travelLeadFor(event, leads);
-    const leaveAt = travelLeaveAt(event, leadWithArrival(lead, arriveEarlyFor(event.id, prefs)));
+    const leaveAt = travelLeaveAt(event, leadWithArrival(lead, arriveEarlyFor(event.id, prefs, leads.arriveEarlyMinutes)));
     if (!leaveAt) continue;
     out.push({
       sourceId,
