@@ -945,7 +945,6 @@ export function RecipesScreen() {
                   ) : recipeRow(item.recipe, drag, isActive);
                   return <FabDropZone zone={zone}>{row}</FabDropZone>;
                 }}
-                onHoverChange={haptics.dragTick}
                 // Row 0 is always a header (groupRecipesByMealType never emits
                 // an empty section) — see the note on resolveRecipeMealTypeDrop.
                 // Keeping it off-limits means every recipe row always has a

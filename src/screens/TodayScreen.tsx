@@ -5013,7 +5013,6 @@ export function TodayScreen() {
               return <FabDropZone zone={zone}>{content}</FabDropZone>;
             }}
             onDragBegin={() => setExpandedTaskId(null)}
-            onHoverChange={haptics.dragTick}
             dragRange={(data, idx) => dragRange(data, idx, isLaterHeader)}
             placeholderStyle={styles.dropSlot}
             onReorder={reordered => {
@@ -5137,7 +5136,6 @@ export function TodayScreen() {
               // before the state update committed left it set.
               setDraggingGroupId(null);
             }}
-            onHoverChange={haptics.dragTick}
             onDragMove={({ overIndex, overHeader }) => {
               const draggedItem = draggableData[activeDragIndexRef.current ?? -1];
               // Only a plain loose task can be dragged onto a group, or onto

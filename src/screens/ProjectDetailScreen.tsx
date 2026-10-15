@@ -1643,7 +1643,6 @@ function ProjectDetailContent() {
                 ? { paddingBottom: selectionListPadding }
                 : baseListBottomPadding !== undefined && { paddingBottom: baseListBottomPadding },
             ]}
-            onHoverChange={haptics.dragTick}
             // A stack hands over its own id, never its children's: it holds a
             // slot in this order itself (see buildProjectListItems), and its
             // members' sortOrders are their within-stack order, which a drag

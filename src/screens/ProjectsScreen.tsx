@@ -657,7 +657,6 @@ export function ProjectsScreen() {
             <View style={{ height: selectionMode ? selectionListPadding : tabBarHeight + FAB_SIZE + spacing.xl }} />
           }
           placeholderStyle={styles.dropSlot}
-          onHoverChange={haptics.dragTick}
           onReorder={reordered => {
             const { projectIds, categoryUpdates } = resolveProjectDrop(reordered, projectCategoryOrder);
             reorderProjectsWithCategoryUpdates(projectIds, categoryUpdates);
