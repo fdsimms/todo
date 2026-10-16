@@ -116,7 +116,7 @@ import { getLogicalToday, getLogicalTomorrow, getLogicalNow, getCurrentDayStart,
 import { sunLocationOn } from '../utils/visibilityUtils';
 import { describeSunAnchor, parseSunAnchor, sunAnchorHHMM } from '../utils/sunTimes';
 import { blockerFields } from '../utils/blocking';
-import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
+import { minutesToEffort, formatDuration, ESTIMATE_PRESET_MINUTES, estimatePatchForMinutes, chosenEstimateMinutes } from '../utils/effort';
 import { TaskEditor, type TaskDraft } from './TaskEditor';
 import { RECURRENCE_LABELS, onlyNewestWeekday } from './RecurrencePicker';
 import { SegmentedControl } from './SegmentedControl';
@@ -1457,7 +1457,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     titleCaret.moveCaret(nextTitle);
     setEstimatedMinutes(estimateParsed.minutes);
     setEffort(minutesToEffort(estimateParsed.minutes));
-    setCustomEffortText(EFFORT_MINUTES.includes(estimateParsed.minutes) ? '' : String(estimateParsed.minutes));
+    setCustomEffortText(ESTIMATE_PRESET_MINUTES.includes(estimateParsed.minutes) ? '' : String(estimateParsed.minutes));
   };
 
   // Holds the task for that kind of day. Nothing else on the sheet changes:
@@ -2124,18 +2124,19 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   };
 
 
-  const customEffortActive = estimatedMinutes != null && estimatedMinutes !== effortToMinutes(effort);
+  const customEffortActive = estimatedMinutes != null && !ESTIMATE_PRESET_MINUTES.includes(estimatedMinutes);
 
-  const applyEffortPreset = (e: Effort) => {
+  const applyEstimatePreset = (minutes: number) => {
     haptics.tap();
     setCustomEffortText('');
     // Tapping the active preset clears the estimate.
-    if (!customEffortActive && effort === e) {
+    if (!customEffortActive && chosenEstimateMinutes({ estimatedMinutes, effort }) === minutes) {
       setEffort(0);
       setEstimatedMinutes(null);
     } else {
-      setEffort(e);
-      setEstimatedMinutes(EFFORT_MINUTES[e]);
+      const patch = estimatePatchForMinutes(minutes);
+      setEffort(patch.effort);
+      setEstimatedMinutes(patch.estimatedMinutes);
     }
   };
 
@@ -3186,19 +3187,18 @@ parsed
           {activePanel === 'effort' && (
             <View style={styles.panel}>
               <View style={styles.presetRow}>
-                {([1, 2, 3, 4, 5, 6] as Effort[]).map(e => {
-                  const active = !customEffortActive && effort === e;
+                {ESTIMATE_PRESET_MINUTES.map(mins => {
+                  const active = !customEffortActive && chosenEstimateMinutes({ estimatedMinutes, effort }) === mins;
                   return (
                     <TouchableOpacity
-                      key={e}
+                      key={mins}
                       style={[styles.presetChip, active && styles.presetChipActive]}
-                      onPress={() => applyEffortPreset(e)}
+                      onPress={() => applyEstimatePreset(mins)}
                       activeOpacity={interaction.activeOpacity}
                     >
                       <Text style={[styles.presetChipText, active && styles.presetChipTextActive]}>
-                        {EFFORT_LABELS[e]}
+                        {formatDuration(mins)}
                       </Text>
-                      <Text style={styles.presetChipHint}>{formatDuration(EFFORT_MINUTES[e]!)}</Text>
                     </TouchableOpacity>
                   );
                 })}
@@ -4027,11 +4027,6 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number, textScaleFactor = 1)
   presetChipTextActive: {
     color: colors.onAccent,
     fontWeight: fontWeight.semibold,
-  },
-  presetChipHint: {
-    color: colors.textSecondary,
-    fontSize: font.xs,
-    marginTop: 1,
   },
   effortCustomRow: {
     flexDirection: 'row',

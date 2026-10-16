@@ -102,6 +102,36 @@ export function minutesToEffort(min: number | null): Effort {
   return 6;                  // XL ~480+
 }
 
+/**
+ * The durations the estimate pickers offer, in the order they render. These are
+ * what people actually say ("five minutes", "an hour"), so a pill writes that
+ * exact figure as `estimatedMinutes` and the coarse bucket is derived from it
+ * (`minutesToEffort`). They are deliberately not `EFFORT_MINUTES`: changing the
+ * buckets' own minutes would silently re-size every task that only has a
+ * bucket, so those stay as they are and only the pickers moved.
+ */
+export const ESTIMATE_PRESET_MINUTES: readonly number[] = [5, 15, 30, 60, 120, 240, 480];
+
+/** The `effort`/`estimatedMinutes` pair a picker writes for a chosen duration. */
+export function estimatePatchForMinutes(min: number): { effort: Effort; estimatedMinutes: number } {
+  return { effort: minutesToEffort(min), estimatedMinutes: min };
+}
+
+/** The picker duration closest to `min`, for speaking in the pickers' own values. */
+export function nearestPresetMinutes(min: number): number {
+  return ESTIMATE_PRESET_MINUTES.reduce((best, p) => (Math.abs(p - min) < Math.abs(best - min) ? p : best));
+}
+
+/**
+ * The duration a picker should show as chosen: the exact estimate if there is
+ * one, else the bucket's own minutes, and null when neither is set. A value that
+ * isn't one of the presets is the "Custom" case.
+ */
+export function chosenEstimateMinutes(task: { estimatedMinutes: number | null; effort: Effort }): number | null {
+  if (task.effort === 0 && task.estimatedMinutes == null) return null;
+  return task.estimatedMinutes ?? effortToMinutes(task.effort);
+}
+
 /** What estimatedMinutesFor needs: the task's own estimate, plus its chain position. */
 export type EstimateSource = ChainCarrier & {
   estimatedMinutes: number | null;

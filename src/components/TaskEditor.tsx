@@ -106,7 +106,7 @@ import { parseTaskInputAheadOfRainSkip, scheduleClockInstant, stripRemindPrefix,
 import { groupMentionTokens } from '../utils/peopleRegistry';
 import { mergeRanges } from '../utils/ranges';
 import { HighlightedText } from './HighlightedText';
-import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration, estimatedMinutesFor, effortTimeLabel } from '../utils/effort';
+import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration, estimatedMinutesFor, effortTimeLabel, ESTIMATE_PRESET_MINUTES, estimatePatchForMinutes, chosenEstimateMinutes } from '../utils/effort';
 import { previewCategoryDefault, previewSeededFields } from '../utils/taskFieldDefaults';
 import { apportionedMinutes, timerSegments } from '../utils/timerSegments';
 import { CollapsibleField } from './CollapsibleField';
@@ -3226,7 +3226,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
 
 
   // Whether the current estimate is a precise value that isn't one of the presets.
-  const customEffortActive = estimatedMinutes != null && estimatedMinutes !== effortToMinutes(effort);
+  const customEffortActive = estimatedMinutes != null && !ESTIMATE_PRESET_MINUTES.includes(estimatedMinutes);
   // A countdown no preset names, so it came from the typed field.
   const customDurationActive = timedMinutes != null && !(DURATION_PRESETS as readonly number[]).includes(timedMinutes);
 
@@ -3234,6 +3234,14 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
     setEffortTouched(true);
     setEffort(e);
     setEstimatedMinutes(EFFORT_MINUTES[e]);
+    setCustomEffortOpen(false);
+  };
+
+  const applyEstimatePreset = (minutes: number) => {
+    const patch = estimatePatchForMinutes(minutes);
+    setEffortTouched(true);
+    setEffort(patch.effort);
+    setEstimatedMinutes(patch.estimatedMinutes);
     setCustomEffortOpen(false);
   };
 
@@ -6705,21 +6713,21 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             onToggle={() => toggleField('effort')}
           >
             <View style={styles.pillRow}>
-              {([0, 1, 2, 3, 4, 5, 6] as Effort[]).map(e => {
-                const active = !customEffortActive && effort === e;
-                const presetMins = EFFORT_MINUTES[e];
+              <TouchableOpacity
+                style={[styles.pill, !customEffortActive && effort === 0 && styles.pillActiveNeutral]}
+                onPress={() => { haptics.tap(); applyEffortPreset(0); closeField('effort'); }}
+              >
+                <Text style={[styles.pillText, !customEffortActive && effort === 0 && styles.pillTextActive]}>—</Text>
+              </TouchableOpacity>
+              {ESTIMATE_PRESET_MINUTES.map(mins => {
+                const active = !customEffortActive && chosenEstimateMinutes({ estimatedMinutes, effort }) === mins;
                 return (
                   <TouchableOpacity
-                    key={e}
+                    key={mins}
                     style={[styles.pill, active && styles.pillActiveNeutral]}
-                    onPress={() => { haptics.tap(); applyEffortPreset(e); closeField('effort'); }}
+                    onPress={() => { haptics.tap(); applyEstimatePreset(mins); closeField('effort'); }}
                   >
-                    <Text style={[styles.pillText, active && styles.pillTextActive]}>
-                      {e === 0 ? '—' : EFFORT_LABELS[e]}
-                    </Text>
-                    {presetMins != null ? (
-                      <Text style={styles.pillHint}>{formatDuration(presetMins)}</Text>
-                    ) : null}
+                    <Text style={[styles.pillText, active && styles.pillTextActive]}>{formatDuration(mins)}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -6735,7 +6743,6 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                 ) : (
                   <Text style={styles.pillText}>Custom</Text>
                 )}
-                <Text style={styles.pillHint}>exact</Text>
               </TouchableOpacity>
             </View>
             {customEffortOpen && (
