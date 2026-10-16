@@ -1,6 +1,6 @@
-import type { Priority } from '../types';
+import type { Difficulty, Priority } from '../types';
 import {
-  parsePriorityInput, parseProjectInput, parseChainInput, parseLinkInput, parsePhoneInput, parseEmailInput,
+  parsePriorityInput, parseDifficultyInput, parseProjectInput, parseChainInput, parseLinkInput, parsePhoneInput, parseEmailInput,
   parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseWeatherWaitInput,
   parseSunWindowInput, parseMeterInput, parseRainSkipInput, parseWaitingOnInput, parseSubtasksInput,
   parseAvoidInput, parseAvoidEnd,
@@ -61,6 +61,7 @@ type Hit<T extends (...args: never[]) => unknown> = NonNullable<ReturnType<T>>;
 
 export type TitleSuggestion =
   | { kind: 'priority'; hit: Hit<typeof parsePriorityInput> }
+  | { kind: 'difficulty'; hit: Hit<typeof parseDifficultyInput> }
   | { kind: 'project'; hit: Hit<typeof parseProjectInput> }
   | { kind: 'chain'; hit: Hit<typeof parseChainInput> }
   | { kind: 'link'; hit: Hit<typeof parseLinkInput> }
@@ -84,6 +85,9 @@ export function pickTitleSuggestion(title: string, ctx: TitleSuggestionContext):
 
   const priority = parsePriorityInput(title);
   if (priority) return { kind: 'priority', hit: priority };
+
+  const difficulty = parseDifficultyInput(title);
+  if (difficulty) return { kind: 'difficulty', hit: difficulty };
 
   const project = ctx.projects ? parseProjectInput(title, ctx.projects) : null;
   if (project) return { kind: 'project', hit: project };
@@ -197,6 +201,10 @@ export function linkLabel(url: string): string {
 
 const PRIORITY_LABELS_SHORT = ['None', 'Low', 'Med', 'High', 'Urgent'] as const;
 
+const DIFFICULTY_LABELS_SHORT: Record<Difficulty, string> = {
+  trivial: 'Trivial', easy: 'Easy', normal: 'Normal', hard: 'Hard',
+};
+
 /** The pill's icon and wording for one suggestion. */
 export function describeTitleSuggestion(
   s: TitleSuggestion,
@@ -206,6 +214,7 @@ export function describeTitleSuggestion(
 ): { icon: string; label: string } {
   switch (s.kind) {
     case 'priority': return { icon: 'alert-circle-outline', label: `Priority · ${PRIORITY_LABELS_SHORT[s.hit.priority as Priority]}` };
+    case 'difficulty': return { icon: 'speedometer-outline', label: `Difficulty · ${DIFFICULTY_LABELS_SHORT[s.hit.difficulty]}` };
     case 'project': return { icon: 'briefcase-outline', label: `Project · ${s.hit.title}` };
     case 'chain': return { icon: 'git-commit-outline', label: `Chain · ${s.hit.steps.length} steps` };
     case 'link': return { icon: 'link-outline', label: linkLabel(s.hit.url) };

@@ -1,4 +1,4 @@
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, contactForMention, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseWeatherWaitInput, parseMeterInput, parseRainSkipInput, parseTaskInputAheadOfRainSkip, parseSunWindowInput, parseProjectInput, parseWaitingOnInput, parseSubtasksInput, parseAvoidInput, parseAvoidEnd, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, getEditorMentionSuggestions, applyMentionOverrides, parseFromCompletionSuffix, scheduleClockInstant, type ParsedSchedule } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, contactForMention, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseWeatherWaitInput, parseMeterInput, parseRainSkipInput, parseTaskInputAheadOfRainSkip, parseSunWindowInput, parseProjectInput, parseWaitingOnInput, parseSubtasksInput, parseAvoidInput, parseAvoidEnd, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseDifficultyInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, getEditorMentionSuggestions, applyMentionOverrides, parseFromCompletionSuffix, scheduleClockInstant, type ParsedSchedule } from '../utils/parseTaskInput';
 
 // Tuesday, June 10 2025, 10:00 AM — same anchor as parseNaturalDate.test.ts
 const NOW = new Date(2025, 5, 10, 10, 0, 0);
@@ -1184,6 +1184,34 @@ describe('parseCategoryAndTagsInput', () => {
   it('still requires an exact match for tags, even when a prefix is unambiguous', () => {
     const result = parseCategoryAndTagsInput('buy milk #err', [], ['errand']);
     expect(result).toBeNull();
+  });
+});
+
+// ─── parseDifficultyInput ───
+
+describe('parseDifficultyInput', () => {
+  it('reads a full word and strips the token', () => {
+    const result = parseDifficultyInput('clean the garage ^hard');
+    expect(result?.difficulty).toBe('hard');
+    expect(result?.cleanTitle).toBe('clean the garage');
+  });
+
+  it('resolves unambiguous prefixes, case-insensitively', () => {
+    expect(parseDifficultyInput('a ^tr')?.difficulty).toBe('trivial');
+    expect(parseDifficultyInput('a ^Ea')?.difficulty).toBe('easy');
+    expect(parseDifficultyInput('a ^no')?.difficulty).toBe('normal');
+    expect(parseDifficultyInput('a ^HARD')?.difficulty).toBe('hard');
+  });
+
+  it('leaves a one-letter, unknown or mid-word caret as text', () => {
+    expect(parseDifficultyInput('a ^h')).toBeNull();
+    expect(parseDifficultyInput('a ^impossible')).toBeNull();
+    expect(parseDifficultyInput('2^hard')).toBeNull();
+    expect(parseDifficultyInput('buy a shirt $20')).toBeNull();
+  });
+
+  it('works from the middle of a title', () => {
+    expect(parseDifficultyInput('pay ^easy rent')?.cleanTitle).toBe('pay rent');
   });
 });
 

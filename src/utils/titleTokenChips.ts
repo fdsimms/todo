@@ -1,6 +1,6 @@
 /**
  * What to offer on the keyboard bar once a sigil is typed at the end of a
- * quick-add title: "!" offers the four priority words, "#" the categories and
+ * quick-add title: "!" offers the four priority words, "^" the four difficulties, "#" the categories and
  * tags, "+" the live projects and "~" a few common estimates. Tapping one
  * finishes the token, so the word never has to be typed.
  *
@@ -21,7 +21,7 @@
 
 import { chipUseKey, rankByUse, type ChipUses } from './chipUses';
 
-export type TokenChipKind = 'priority' | 'category' | 'project' | 'estimate';
+export type TokenChipKind = 'priority' | 'difficulty' | 'category' | 'project' | 'estimate';
 
 export interface TokenChip {
   /** What the button shows. */
@@ -58,11 +58,12 @@ export interface TokenChipSources {
 /** Past this many a row is a list to scroll rather than a shortcut. */
 export const MAX_TOKEN_CHIPS = 10;
 
-const TRAILING_TOKEN = /(?<![\w+])([#!+~])([\w-]*)$/;
+const TRAILING_TOKEN = /(?<![\w+])([#!^+~])([\w-]*)$/;
 
 // Most urgent first: it is the one a person reaching for "!" is most likely
 // to want, and the order the row reads in.
 const PRIORITY_CHIPS = ['urgent', 'high', 'medium', 'low'];
+const DIFFICULTY_CHIPS = ['hard', 'normal', 'easy', 'trivial'];
 const ESTIMATE_CHIPS = ['5m', '15m', '30m', '1h'];
 
 /** One word after a sigil, as every token pattern in `parseTaskInput` reads it. */
@@ -103,6 +104,10 @@ export function tokenChipsFor(title: string, sources: TokenChipSources): TokenCh
     case '!':
       kind = 'priority';
       values = PRIORITY_CHIPS;
+      break;
+    case '^':
+      kind = 'difficulty';
+      values = DIFFICULTY_CHIPS;
       break;
     case '~':
       kind = 'estimate';
