@@ -186,7 +186,9 @@ async function fetchFromOff(gtin: string, now: Date): Promise<ProductRecord | nu
       // here, which is why this was free to add and not free to omit. See
       // `readOffNutrition`.
       + `?fields=product_name,generic_name,brands,quantity,categories_tags`
-      + `,nutriments,serving_size,serving_quantity,serving_quantity_unit`,
+      // `nova_group` is Open Food Facts' own processing classification, kept
+      // on the panel (`FoodNutrition.novaGroup`) and never worked out here.
+      + `,nutriments,serving_size,serving_quantity,serving_quantity_unit,nova_group`,
       // Cast for the reason httpSyncTransport.ts gives (mcp/ reaches this file).
       { headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' }, signal: controller.signal as unknown as RequestInit['signal'] }
     );

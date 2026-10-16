@@ -120,6 +120,21 @@ describe('convertNutrientAmount', () => {
   });
 });
 
+describe('readOffNutrition and the NOVA group', () => {
+  const base = { nutriments: { 'energy-kcal_100g': 250 } };
+
+  it('keeps the group Open Food Facts states, as a number or a string', () => {
+    expect(readOffNutrition({ ...base, nova_group: 4 }, 'x', RECORDED_AT)!.novaGroup).toBe(4);
+    expect(readOffNutrition({ ...base, nova_group: '3' }, 'x', RECORDED_AT)!.novaGroup).toBe(3);
+  });
+
+  it('adds no key for a missing or out-of-range group, which is unclassified and not group 1', () => {
+    for (const nova_group of [undefined, null, 0, 5, '', 'four']) {
+      expect('novaGroup' in readOffNutrition({ ...base, nova_group }, 'x', RECORDED_AT)!).toBe(false);
+    }
+  });
+});
+
 describe('readOffNutrition', () => {
   it('reads a full panel off the _100g fields', () => {
     const read = readOffNutrition(NUTELLA, '3017620422003', RECORDED_AT);

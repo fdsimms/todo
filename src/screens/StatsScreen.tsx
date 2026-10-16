@@ -95,6 +95,7 @@ import {
   formatServings,
 } from '../utils/produceServings';
 import { recipeProduceResolver } from '../utils/recipeProduce';
+import { describeProcessingCoverage, formatShare, processingMix } from '../utils/processingStats';
 import { standingSwapMap } from '../utils/standingSwaps';
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
 import { useFoodLogStore } from '../store/useFoodLogStore';
@@ -486,6 +487,8 @@ export function StatsScreen() {
         span,
         recipeProduceResolver(recipes, groceryItems, itemProducts, standingSwapMap(itemSubs, groceryItems)),
       ),
+      // Only entries carrying a NOVA group count toward the share; see processingStats.ts.
+      processing: processingMix(foodEntries, span),
       mix: sourceMix(foodEntries, span),
       // A food is named by the catalog row or recipe it is, as it is called
       // now, rather than by whichever box of it was logged last.
@@ -1077,7 +1080,7 @@ export function StatsScreen() {
                 {eating.averages.map((row, i) => (
                   <View
                     key={row.key}
-                    style={[styles.row, (i < eating.averages.length - 1 || eating.produce !== null) && styles.rowBorder]}
+                    style={[styles.row, (i < eating.averages.length - 1 || eating.processing !== null || eating.produce !== null) && styles.rowBorder]}
                   >
                     <View style={styles.instanceMain}>
                       <Text style={styles.rowText}>{NUTRIENT_LABEL[row.key].label} a day</Text>
@@ -1100,6 +1103,19 @@ export function StatsScreen() {
                     </Text>
                   </View>
                 ))}
+                {/* A share of the classified calories, with what it was built
+                    on beside it: a share without its coverage says too much. */}
+                {eating.processing !== null && (
+                  <View style={[styles.row, eating.produce !== null && styles.rowBorder]}>
+                    <View style={styles.instanceMain}>
+                      <Text style={styles.rowText}>Ultra-processed calories</Text>
+                      <Text style={styles.instanceMeta}>
+                        {`NOVA group 4. ${describeProcessingCoverage(eating.processing)}`}
+                      </Text>
+                    </View>
+                    <Text style={styles.cookValue}>{formatShare(eating.processing.ultraProcessedShare)}</Text>
+                  </View>
+                )}
                 {/* Counts, never a score, and an estimate from food names and
                     weights (`produceServings.ts`), so the rows say so. */}
                 {eating.produce !== null && (

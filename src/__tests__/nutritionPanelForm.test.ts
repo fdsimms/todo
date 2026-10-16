@@ -17,6 +17,30 @@ import {
 } from '../utils/nutritionPanelForm';
 import type { FoodNutrition } from '../types';
 
+describe('the processing group on the form', () => {
+  const withGroup = (novaGroup: PanelForm['novaGroup']) => form({ amounts: { calorieKcal: '100' }, novaGroup });
+
+  it('reads a stored group into the form and builds it back', () => {
+    const stored = panelFormFrom({ ...panel(), novaGroup: 3 });
+    expect(stored.novaGroup).toBe('3');
+    expect(buildPanelNutrition(stored, null, NOW)?.novaGroup).toBe(3);
+  });
+
+  it('adds no key when blank, so clearing it clears it', () => {
+    expect('novaGroup' in buildPanelNutrition(withGroup(''), { ...panel(), novaGroup: 2 }, NOW)!).toBe(false);
+  });
+
+  it('counts a change of group as dirty', () => {
+    expect(panelFormDirty(withGroup('4'), withGroup(''))).toBe(true);
+    expect(panelFormDirty(withGroup('4'), withGroup('4'))).toBe(false);
+  });
+
+  it('lets a scan that states a group set it, and one that does not leave what was typed', () => {
+    expect(applyFoodNutrition(withGroup(''), { ...panel(), novaGroup: 4 }).novaGroup).toBe('4');
+    expect(applyFoodNutrition(withGroup('2'), panel()).novaGroup).toBe('2');
+  });
+});
+
 const NOW = new Date('2026-03-04T09:00:00.000Z');
 
 type FormOverrides = Partial<Omit<PanelForm, 'amounts'>> & { amounts?: Partial<PanelForm['amounts']> };

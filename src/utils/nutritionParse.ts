@@ -1,4 +1,4 @@
-import type { FoodNutrition, FoodPortion, MicronutrientKey, NutrientKey } from '../types';
+import type { FoodNutrition, FoodPortion, MicronutrientKey, NovaGroup, NutrientKey } from '../types';
 
 /**
  * Reading a nutrition panel out of the two product databases `productLookup.ts`
@@ -531,7 +531,20 @@ export function readOffNutrition(
     source: 'openFoodFacts',
     sourceId: code,
     recordedAt,
+    ...novaField(product.nova_group),
   };
+}
+
+/**
+ * Open Food Facts' own NOVA group for a product, a number from 1 to 4 (a string
+ * on some responses). Anything else is absent, and absent adds no key: the
+ * source states a group only for products it could classify, and a missing one
+ * is "unclassified", never group 1. This is OFF's published classification, not
+ * something this app works out from the ingredient list.
+ */
+function novaField(raw: unknown): { novaGroup: NovaGroup } | Record<string, never> {
+  const n = typeof raw === 'string' && raw.trim() !== '' ? Number(raw) : raw;
+  return n === 1 || n === 2 || n === 3 || n === 4 ? { novaGroup: n } : {};
 }
 
 /**

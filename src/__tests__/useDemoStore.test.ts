@@ -4818,6 +4818,14 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(useSettingsStore.getState().goalTargetTaskCategory).toBe('Health');
   });
 
+  it('seeds foods with a processing group, so Stats has a share to show', () => {
+    const entries = useFoodLogStore.getState().windowEntries;
+    const groups = new Set(entries.map(e => e.nutrition.novaGroup).filter(Boolean));
+    expect(groups.has(4)).toBe(true);
+    expect(groups.size).toBeGreaterThan(1);
+    expect(entries.some(e => !e.nutrition.novaGroup)).toBe(true);
+  });
+
   it('seeds a snack suggestion under the Health category', () => {
     const task = useTaskStore.getState().tasks.find(t => t.generatedKind === 'snackNudge');
     expect(task).toBeDefined();

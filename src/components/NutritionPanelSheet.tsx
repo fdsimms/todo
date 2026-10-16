@@ -27,6 +27,7 @@ import {
   readPanelNumber,
   servingWeightToGrams,
   type PanelFieldKey,
+  type NovaGroupText,
   type PanelForm,
   type ServingWeightUnit,
 } from '../utils/nutritionPanelForm';
@@ -153,6 +154,14 @@ const BASIS_OPTIONS = (['per100g', 'per100ml', 'perServing'] as const).map(value
   value,
   label: NUTRITION_BASIS_LABEL[value],
 }));
+
+const NOVA_OPTIONS: { value: NovaGroupText; label: string }[] = [
+  { value: '', label: 'Not set' },
+  { value: '1', label: '1' },
+  { value: '2', label: '2' },
+  { value: '3', label: '3' },
+  { value: '4', label: '4' },
+];
 
 const WEIGHT_UNIT_OPTIONS: { value: ServingWeightUnit; label: string }[] = [
   { value: 'g', label: 'g' },
@@ -639,6 +648,22 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
               below, enter the servings per container, then divide.
             </Text>
             <NutrientFieldsCard amounts={form.amounts} bad={bad} onChange={setAmount} />
+
+            <Text style={styles.groupLabel}>PROCESSING</Text>
+            <View style={styles.card}>
+              <SegmentedControl
+                label="NOVA group"
+                options={NOVA_OPTIONS}
+                value={form.novaGroup}
+                onChange={novaGroup => setForm(f => ({ ...f, novaGroup }))}
+                surface="card"
+              />
+              <Text style={styles.hint}>
+                1 is unprocessed or minimally processed, 2 a culinary ingredient such as oil or
+                sugar, 3 processed, 4 ultra-processed. A barcode scan fills it in when the
+                database has one. Leave it unset if you don’t know.
+              </Text>
+            </View>
 
             {bad.length > 0 && (
               <Text style={styles.error}>

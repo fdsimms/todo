@@ -1408,6 +1408,29 @@ that narrow: the target is a constant rather than a typed number, the bar
 stops at full, and nothing (color, copy, a streak) changes when it fills. The
 Stats row draws the average day against the same figure.
 
+## Processing group (NOVA), and the share on Stats
+
+`FoodNutrition.novaGroup` (1 to 4) is a classification of the food, kept on its
+panel and carried onto a logged helping by `scalePanelToAmount` (unscaled, like
+`source`). The rules are in `src/utils/processingStats.ts`.
+
+- **A group is stated, never worked out.** The only automatic source is Open Food
+  Facts' own `nova_group` (`readOffNutrition`); the only other is a person
+  setting it on the panel sheet or over MCP. Nothing infers one from a name or an
+  ingredient list. A food nobody classified has no key and is **unclassified, not
+  group 1**, which is why every reader counts it apart.
+- **The share is of the classified calories, and coverage always travels with
+  it.** `processingMix` returns group 4's share of the calories of entries that
+  carry a group, and the classified share of all logged calories. A share over a
+  small coverage says little, so Stats and `list_food_log` print the two
+  together. An entry stating no calories is left out of both sides. No verdict:
+  it is a count against the person's own log, `produceServings.ts`'s posture.
+- **A snapshot, like every figure on an entry.** The group is read off the helping
+  as logged, so classifying a food later does not rewrite past entries. A recipe
+  or an estimated meal carries none.
+- **A product with a group but no label panel loses it**, because the group rides
+  on `FoodNutrition` and `readOffNutrition` returns null without figures.
+
 ## A panel that looks wrong, and who decides
 
 A panel can pass every check and still be a misprint: a label that says 16 g of

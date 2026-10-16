@@ -5,6 +5,7 @@ import type {
   FoodPortion,
   GroceryItem,
   ItemProduct,
+  NovaGroup,
   NutrientKey,
 } from '../types';
 import { NUTRIENT_KEYS } from '../types';
@@ -83,6 +84,11 @@ function readAmounts(value: unknown): Partial<Record<NutrientKey, number>> {
  * with no lines reads as one that never had a breakdown rather than as an
  * empty one.
  */
+/** A NOVA group when the stored value is one of 1 to 4, else absent (and absent adds no key). */
+function readNovaField(value: unknown): { novaGroup: NovaGroup } | Record<string, never> {
+  return value === 1 || value === 2 || value === 3 || value === 4 ? { novaGroup: value } : {};
+}
+
 function readBreakdownField(value: unknown): { breakdown: FoodBreakdownLine[] } | Record<string, never> {
   if (!Array.isArray(value)) return {};
   const lines: FoodBreakdownLine[] = [];
@@ -177,6 +183,7 @@ export function parseFoodNutrition(raw: string | null | undefined): FoodNutritio
       ...(typeof parsed.foodCategory === 'string' && parsed.foodCategory !== ''
         ? { foodCategory: parsed.foodCategory }
         : {}),
+      ...readNovaField(parsed.novaGroup),
       ...readBreakdownField(parsed.breakdown),
     };
   } catch {

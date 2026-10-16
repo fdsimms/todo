@@ -40,7 +40,7 @@ import { useTemplateStore } from '../store/useTemplateStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { useSharedLinkStore } from '../store/useSharedLinkStore';
 import { useUnattendedStore } from '../store/useUnattendedStore';
-import type { DeliverableKind, FocusSession, GroceryItem, MealSlot, MoodLevel, Recipe, Shop, SymptomSeverity, TemplateItem } from '../types';
+import type { DeliverableKind, FocusSession, GroceryItem, MealSlot, MoodLevel, NovaGroup, Recipe, Shop, SymptomSeverity, TemplateItem } from '../types';
 import { dbGetFocusSessionLog, dbInsertFocusSessionRecord, dbSetGtinLookup } from '../db/database';
 import { advanceFocusSession, buildFocusPlan, closeFocusSession } from './focusPlan';
 import { buildWeekDays } from './calendarGrid';
@@ -124,6 +124,14 @@ import { writeAgentNotes } from './agentNotes';
 // groups, per-store links, leftovers) reads as missing rather than unused. So
 // a change that adds a user-facing capability should add the one row here that
 // makes it visible, in the same PR.
+const DEMO_NOVA_GROUPS: Record<string, NovaGroup> = {
+  Milk: 1,
+  Spinach: 1,
+  Potatoes: 1,
+  Butter: 2,
+  'Greek yogurt': 3,
+};
+
 export function seedDemoData(): void {
   const {
     addTask,
@@ -2659,15 +2667,51 @@ function seedFoodLog(today: Date): void {
     if (!built) continue;
     const at = subDays(today, meal.daysAgo);
     at.setHours(meal.hour, 0, 0, 0);
+    // The processing group of a few catalog foods, so Stats has a share to show
+    // (`processingStats.ts`). Each is a food whose group is not in doubt; the
+    // rest stay unclassified, which is the ordinary state.
+    const nova = DEMO_NOVA_GROUPS[item.name];
     addEntry({
       label: item.name,
       quantity: meal.quantity,
       grams: built.grams,
-      nutrition: built.nutrition,
+      nutrition: nova ? { ...built.nutrition, novaGroup: nova } : built.nutrition,
       slot: meal.slot,
       itemId: item.id,
       at,
     });
+  }
+
+  // A packaged snack with the group a barcode source states, so the window has
+  // some ultra-processed calories beside the minimally processed ones. Built the
+  // way the chicken above is: a panel the entry keeps, scaled to the amount, so
+  // the helping carries the group and nothing is typed in as a figure.
+  {
+    const kept = {
+      basis: 'per100g' as const,
+      servingGrams: 28,
+      servingText: '1 bag (28 g)',
+      amounts: { calorieKcal: 570, fatG: 36, carbsG: 52, sodiumMg: 890 },
+      portions: [],
+      source: 'openFoodFacts' as const,
+      sourceId: '0000000000017',
+      recordedAt: subDays(today, 2).toISOString(),
+      novaGroup: 4 as const,
+    };
+    const built = scalePanelToAmount(kept, '28 g', null, undefined, 'Cheese puffs');
+    for (const daysAgo of built ? [2, 3, 9] : []) {
+      const at = subDays(today, daysAgo);
+      at.setHours(15, 30, 0, 0);
+      addEntry({
+        label: 'Cheese puffs',
+        quantity: '28 g',
+        grams: built!.grams,
+        nutrition: built!.nutrition,
+        sourcePanel: kept,
+        slot: 'snack',
+        at,
+      });
+    }
   }
 
   /**
