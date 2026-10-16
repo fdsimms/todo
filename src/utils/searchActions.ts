@@ -89,8 +89,6 @@ export interface SymptomAction {
   symptom: string;
   /** What a tap records: the severity the line stated, else Mild. */
   severity: SymptomSeverity;
-  /** The line stated a severity, so the row says it rather than the default. */
-  severityStated: boolean;
   /** When it happened, if the line said; null is now. */
   at: Date | null;
 }
@@ -286,7 +284,6 @@ function symptomActions(query: string, symptoms: readonly string[]): SymptomActi
     explicit: phrase.verb && exact,
     symptom: name,
     severity: phrase.severity ?? 1,
-    severityStated: phrase.severity !== null,
     at: phrase.at,
   }));
 }
@@ -453,7 +450,7 @@ function describeMood(action: MoodAction): ActionDescription {
 }
 
 function describeSymptom(action: SymptomAction, ctx: DescribeContext): ActionDescription {
-  const meta = [action.severityStated ? severityLabel(action.severity) : `${severityLabel(action.severity)} · no mood level`];
+  const meta = [severityLabel(action.severity)];
   if (action.at) meta.push(clockOrDate(action.at, ctx.now));
   return {
     title: `Log ${action.symptom}`,

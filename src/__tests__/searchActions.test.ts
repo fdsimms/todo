@@ -223,7 +223,7 @@ describe('searchActions: symptoms', () => {
     const sources: SearchActionSources = { mood: { symptoms: ['Lightheaded'] } };
     expect(searchActions('I got lightheaded', sources).actions[0]).toMatchObject({ symptom: 'Lightheaded', severity: 1 });
     expect(searchActions("I'm really lightheaded", sources).actions[0]).toMatchObject({ symptom: 'Lightheaded' });
-    expect(searchActions('severe lightheaded', sources).actions[0]).toMatchObject({ severity: 3, severityStated: true });
+    expect(searchActions('severe lightheaded', sources).actions[0]).toMatchObject({ severity: 3 });
     expect(searchActions('log lightheaded, moderate', sources).onSubmit).toMatchObject({ severity: 2, explicit: true });
   });
 
@@ -353,7 +353,7 @@ describe('describeSearchAction', () => {
   it('says what the mood log will open with', () => {
     const mood = { mood: { symptoms: ['Tired'] } };
     const tired = searchActions('feeling tired', mood).actions;
-    expect(describeSearchAction(tired[0], ctx())).toMatchObject({ title: 'Log Tired', meta: ['Mild · no mood level'] });
+    expect(describeSearchAction(tired[0], ctx())).toMatchObject({ title: 'Log Tired', meta: ['Mild'] });
     expect(describeSearchAction(tired[1], ctx()).meta).toEqual(['Opens with Tired checked']);
     expect(describeSearchAction(only<MoodAction>('feeling low', mood)!, ctx()).meta).toEqual(['Opens with Low picked']);
     expect(describeSearchAction(only<MoodAction>('mood', mood)!, ctx())).toMatchObject({ title: 'Log your mood', meta: ['Opens the mood log'] });
