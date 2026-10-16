@@ -360,6 +360,32 @@ export interface ChoiceResolution {
    * a caller only has to carry this; build it with `entryResolution`.
    */
   overrides?: readonly RecipeOverride[];
+  /**
+   * Count every optional line as though the meal picked it (`optionalCounts`).
+   * For the top of a recipe page's range only: a purchase or a meal's own
+   * figures must leave it off, or a garnish nobody chose is bought and counted.
+   */
+  withOptional?: boolean;
+}
+
+/**
+ * Whether an ingredient line counts toward a meal's figures and its shopping.
+ *
+ * An optional line (`RecipeIngredient.optional`, "lime wedges, for serving")
+ * counts only when the meal picked it: its id in `chosen`, the same list the
+ * either/or picks live in, which every path carrying a meal's picks already
+ * carries. A line in no either/or group names no option, so the choice readers
+ * ignore it there. Everything else counts. Cook mode and the recipe page still
+ * show an optional line either way; this decides what is bought and counted.
+ */
+export function optionalCounts(ingredient: RecipeIngredient, resolution?: ChoiceResolution): boolean {
+  if (!ingredient.optional) return true;
+  return !!resolution?.withOptional || (resolution?.chosen ?? []).includes(ingredient.id);
+}
+
+/** `chosen` with the optional line `id` picked or unpicked for this meal. */
+export function toggleOptionalPick(chosen: readonly string[], id: string): string[] {
+  return chosen.includes(id) ? chosen.filter(c => c !== id) : [...chosen, id];
 }
 
 /**

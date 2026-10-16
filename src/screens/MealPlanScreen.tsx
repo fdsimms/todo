@@ -112,6 +112,9 @@ import {
   recipeMap,
   type FlatPrepTask,
   entryResolution,
+  flattenRecipeIngredients,
+  optionalCounts,
+  toggleOptionalPick,
 } from '../utils/recipeComponents';
 import {
   dayKeyRange,
@@ -1735,6 +1738,12 @@ export function MealPlanScreen() {
   const selectedChoiceGroups = selectedRecipe
     ? recipeChoiceGroups(selectedRecipe, recipesById, selectedResolution)
     : [];
+  // Its optional lines across the dish, and which this meal picked.
+  const selectedOptionalLines = selected && selectedRecipe
+    ? flattenRecipeIngredients(selectedRecipe, recipesById, selectedResolution)
+      .filter(f => f.ingredient.optional)
+      .map(f => ({ id: f.ingredient.id, name: f.ingredient.name, picked: optionalCounts(f.ingredient, selectedResolution) }))
+    : [];
 
   // The week as the deciding lens reads it: what's on each day, which nights
   // have no dinner, and which of those have already gone past.
@@ -2579,6 +2588,10 @@ export function MealPlanScreen() {
             : undefined}
           onOverride={selected && selectedRecipe ? () => setOverridingId(selected.id) : undefined}
           blankFill={selected && selectedRecipe ? describeBlankFills(selectedRecipe, recipesById, selected.recipeOverrides) : null}
+          optionalLines={selectedOptionalLines}
+          onToggleOptional={id => {
+            if (selected) setRecipeChoices(selected.id, toggleOptionalPick(selected.recipeChoices, id));
+          }}
           onFillBlanks={selected && selectedRecipe && recipeBlanksIn(selectedRecipe, recipesById).length > 0
             ? () => setFillingId(selected.id)
             : undefined}

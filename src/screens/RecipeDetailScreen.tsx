@@ -111,6 +111,7 @@ import {
   componentPlacement,
   flattenRecipeIngredients,
   ingredientLayout,
+  optionalCounts,
   recipeAlternativeCaptions,
   describeOverrides,
   recipeChoiceGroups,
@@ -130,8 +131,9 @@ import { useWeighIn } from '../hooks/useWeighIn';
 import { plannedEntryForRecipe } from '../utils/foodLog';
 import {
   describeNutritionCoverage,
-  describeRecipeNutrition,
+  describeRecipeNutritionRange,
   readRecipeNutrition,
+  recipeNutrition,
 } from '../utils/recipeNutrition';
 import { formatOffsetLabel } from '../utils/templateUtils';
 import { splitAlternativeNames, splitGroceryLines } from '../utils/groceryParse';
@@ -445,14 +447,22 @@ export function RecipeDetailScreen() {
   // worse than silence — which was true until the sheet below existed. Now
   // the case with no total is exactly the case someone would want to act on,
   // so it says so rather than saying nothing.
+  // The same reading with every optional line counted, for the top of the
+  // range; only when the page has an optional line the view hasn't picked.
+  const withOptionalNutrition = useMemo(() => {
+    if (!recipe) return null;
+    const flat = flattenRecipeIngredients(recipe, recipesById, choiceResolution, standingSwaps);
+    if (!flat.some(f => !optionalCounts(f.ingredient, choiceResolution))) return null;
+    return recipeNutrition(recipe, groceryItems, itemProducts, recipesById, { ...choiceResolution, withOptional: true }, scale, standingSwaps);
+  }, [recipe, recipesById, choiceResolution, groceryItems, itemProducts, scale, standingSwaps]);
   const nutritionLine = useMemo(
     () => {
       if (!nutritionReading) return null;
-      const total = describeRecipeNutrition(nutritionReading.nutrition);
+      const total = describeRecipeNutritionRange(nutritionReading.nutrition, withOptionalNutrition);
       if (total) return hasOpenBlank ? `${total}, plus what you pick` : total;
       return describeNutritionCoverage(nutritionReading.gaps);
     },
-    [nutritionReading, hasOpenBlank]
+    [nutritionReading, withOptionalNutrition, hasOpenBlank]
   );
   // Shown when there is something to say or something to do. A dish whose
   // every line is unmatched has neither: the total can't be built and no gap

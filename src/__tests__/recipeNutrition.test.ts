@@ -4,6 +4,7 @@ import { choiceGroupKey } from '../utils/recipeComponents';
 import {
   describeNutritionCoverage,
   describeRecipeNutrition,
+  describeRecipeNutritionRange,
   describeWeekNutrition,
   excludedNutritionLines,
   lineContribution,
@@ -972,5 +973,40 @@ describe('recipesWithoutFigures', () => {
 
   it('says nothing before anything is typed', () => {
     expect(recipesWithoutFigures(recipes, new Set(), '  ')).toEqual([]);
+  });
+});
+
+describe('optional lines count only when a meal picks them', () => {
+  const RANGE = { startKey: '2026-08-09', endKey: '2026-08-15' };
+  const bread = ing('Bread', { quantity: '100 g', optional: true, purpose: 'serving' });
+  const soup = recipe('Soup', [ing('Chicken', { quantity: '200 g' }), bread], { servings: 2 });
+  const catalog = [
+    item({ name: 'Chicken', nutrition: panel() }),
+    item({ name: 'Bread', nutrition: panel({ amounts: { calorieKcal: 250, proteinG: 8 } }) }),
+  ];
+
+  it('leaves an unpicked optional line out of the figures and the line list', () => {
+    expect(recipeNutrition(soup, catalog)!.total.calorieKcal).toBe(200);
+    expect(recipeNutritionLines(soup, catalog).map(l => l.name)).toEqual(['Chicken']);
+  });
+
+  it('counts it once the meal picks it, or for the top of the range', () => {
+    expect(recipeNutrition(soup, catalog, [], undefined, { chosen: [bread.id] })!.total.calorieKcal).toBe(450);
+    expect(recipeNutrition(soup, catalog, [], undefined, { withOptional: true })!.total.calorieKcal).toBe(450);
+  });
+
+  it('leaves it out of a week unless that meal picked it', () => {
+    const byId = new Map([[soup.id, soup]]);
+    expect(weekNutrition([entry('2026-08-10', soup.id)], byId, catalog, RANGE)!.total.calorieKcal).toBe(200);
+    expect(weekNutrition([entry('2026-08-10', soup.id, { recipeChoices: [bread.id] })], byId, catalog, RANGE)!.total.calorieKcal).toBe(450);
+  });
+
+  it('describes the two as a range per serving, and as one figure when they agree', () => {
+    const low = recipeNutrition(soup, catalog)!;
+    const high = recipeNutrition(soup, catalog, [], undefined, { withOptional: true })!;
+    expect(describeRecipeNutritionRange(low, high)).toBe('≈ 100–225 cal, 10–14g protein per serving, the higher with every optional line');
+    expect(describeRecipeNutritionRange(low, low)).toBe(describeRecipeNutrition(low));
+    expect(describeRecipeNutritionRange(low, null)).toBe(describeRecipeNutrition(low));
+    expect(describeRecipeNutritionRange(null, high)).toBeNull();
   });
 });

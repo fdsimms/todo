@@ -2,7 +2,7 @@ import type { GroceryItem, ItemProduct, MealPlanEntry, Recipe } from '../types';
 import { comparableQuantity, describePriceAge, formatPrice } from './groceryPrice';
 import { measureLineAmount } from './ingredientGrams';
 import { parseQuantity } from './quantity';
-import { flattenRecipeIngredients, type ChoiceResolution } from './recipeComponents';
+import { flattenRecipeIngredients, optionalCounts, type ChoiceResolution } from './recipeComponents';
 import { collectPlannedIngredients } from './mealPlanGroceries';
 import { normalizeScale } from './recipeScale';
 import { NO_STANDING_SWAPS, type StandingSwapMap } from './standingSwaps';
@@ -188,6 +188,8 @@ export function estimateRecipeCost(
   const factor = normalizeScale(scale);
   const acc = { totalMinor: 0, priced: 0, total: 0, oldestPricedAt: null as string | null };
   for (const line of flat) {
+    // An optional line the meal didn't pick isn't bought for it.
+    if (!optionalCounts(line.ingredient, resolution)) continue;
     // Costed as written, then scaled: see the header for why not the scaled text.
     accumulate(acc, line.ingredient.nameKey, line.ingredient.quantity, factor, byKey);
   }
@@ -222,6 +224,8 @@ export function estimateWeekCost(
   const byKey = itemKeyIndex(items);
   const acc = { totalMinor: 0, priced: 0, total: 0, oldestPricedAt: null as string | null };
   for (const line of planned) {
+    // An optional line its meal didn't pick isn't bought for it.
+    if (line.optional) continue;
     // The line as the recipe wrote it and the entry's scale, rather than the
     // scaled shopping text: see the header.
     accumulate(acc, line.nameKey, line.unscaled?.quantity ?? line.quantity, line.unscaled?.factor ?? 1, byKey);

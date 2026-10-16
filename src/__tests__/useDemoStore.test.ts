@@ -3510,6 +3510,10 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(filled!.recipeOverrides.find(o => o.targetId === veg.id)?.fill?.map(l => [l.name, l.quantity]))
       .toEqual([['broccoli', '1 cup'], ['carrots', '1 cup']]);
     expect(meals.some(e => !e.cookedAt && e.recipeOverrides.length === 0)).toBe(true);
+    // An optional line, picked on the cooking that filled the blanks.
+    const lemon = bowl.ingredients.find(i => i.optional);
+    expect(lemon?.name).toBe('lemon');
+    expect(filled!.recipeChoices).toEqual([lemon!.id]);
 
     const quorn = useGroceryStore.getState().items.find(i => i.nameKey === 'quorn pieces');
     expect(quorn?.foodKinds).toEqual(['protein']);
@@ -3872,7 +3876,9 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // reaches.
     const { items, itemProducts } = useGroceryStore.getState();
     const soup = useRecipeStore.getState().recipes.find(r => r.name === 'Weeknight vegetable soup')!;
-    const bread = recipeNutritionLines(soup, items, itemProducts).find(l => l.name.toLowerCase() === 'bread')!;
+    // Optional lines included, as the food log's own read of a dish is (an
+    // amount typed there is what picks one).
+    const bread = recipeNutritionLines(soup, items, itemProducts, undefined, { withOptional: true }).find(l => l.name.toLowerCase() === 'bread')!;
     expect(bread.state).toBe('unmeasured');
     expect(bread.quantity).toBe('');
     expect(weighableLine(bread.quantity, bread.prep, bread.nutrition!, bread.item!.name)).toBeNull();

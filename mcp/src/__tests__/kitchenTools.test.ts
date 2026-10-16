@@ -20,6 +20,7 @@ function stub(over: Partial<Replica> = {}): Replica {
     mealChoices: () => [],
     mealReplacements: () => [],
     mealFills: () => [],
+    mealOptional: () => [],
     todayKey: () => '2026-10-04',
     shiftDayKey: (key: string, days: number) => {
       const d = new Date(`${key}T12:00:00`);

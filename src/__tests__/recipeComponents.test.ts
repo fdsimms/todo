@@ -30,6 +30,8 @@ import {
   entryResolution,
   parseRecipeOverrides,
   describeOverrides,
+  optionalCounts,
+  toggleOptionalPick,
 } from '../utils/recipeComponents';
 import type { Recipe, RecipeComponent, RecipeIngredient, RecipeOverride, RecipePrepTask } from '../types';
 
@@ -1277,5 +1279,27 @@ describe('describeOverrides', () => {
       'Homemade fish is replaced by 8 oz vegan fish fillets. Cook per the package first.',
       'salt is left out.',
     ]);
+  });
+});
+
+describe('optionalCounts / toggleOptionalPick', () => {
+  it('counts every ordinary line, and an optional one only when picked or asked for', () => {
+    const plain = ing('salt');
+    const garnish = { ...ing('lime wedges'), optional: true };
+    expect(optionalCounts(plain)).toBe(true);
+    expect(optionalCounts(garnish)).toBe(false);
+    expect(optionalCounts(garnish, { chosen: [garnish.id] })).toBe(true);
+    expect(optionalCounts(garnish, { withOptional: true })).toBe(true);
+  });
+
+  it('toggles one id in the meal’s picks and leaves the rest', () => {
+    expect(toggleOptionalPick(['a', 'b'], 'c')).toEqual(['a', 'b', 'c']);
+    expect(toggleOptionalPick(['a', 'b'], 'a')).toEqual(['b']);
+  });
+
+  it('keeps an optional line in the flatten, so cook mode and the shopping sheet still show it', () => {
+    const garnish = { ...ing('lime wedges'), optional: true };
+    const dish = recipe('tacos', 'Tacos', { ingredients: [ing('tortillas'), garnish] });
+    expect(flattenRecipeIngredients(dish, recipeMap([dish])).map(f => f.ingredient.name)).toEqual(['tortillas', 'lime wedges']);
   });
 });

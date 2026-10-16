@@ -4309,6 +4309,9 @@ function seedRecipes(): DemoRecipes {
   // since a blank is nothing like an ingredient line on the page.
   const bowl = newRecipe('Any Grain Bowl');
   addIngredientsFromText(bowl.id, ['1 tbsp olive oil', '1 lemon'].join('\n'));
+  // Optional, so a meal shops for it and counts it only when it says so.
+  const lemon = ingredientIdNamed(bowl.id, 'lemon');
+  if (lemon) updateIngredient(bowl.id, lemon, { purpose: 'serving', optional: true });
   addBlank(bowl.id, { label: 'Grain', kind: 'grain', max: 1, quantity: '1 cup' });
   addBlank(bowl.id, { label: 'Protein', kind: 'protein', max: 1, quantity: '1 portion' });
   addBlank(bowl.id, { label: 'Vegetables', kind: 'vegetable', max: null, quantity: '2 cups' });
@@ -5618,6 +5621,9 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
       (overrides, blank) => withBlankFill(overrides, blank.id, fillBlank(blank, picks[blank.label] ?? [])),
       [] as RecipeOverride[],
     ));
+    // ...with the optional lemon that time (RecipeIngredient.optional, picked per meal).
+    const lemonLine = bowlRecipe.ingredients.find(i => i.optional);
+    if (lemonLine) setRecipeChoices(bowlNight.id, [lemonLine.id]);
   }
   const stirFryNight = cooked(-1, 'dinner', {
     title: 'Weeknight chicken stir-fry',

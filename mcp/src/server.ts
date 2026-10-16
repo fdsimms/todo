@@ -1335,6 +1335,7 @@ function registerWriteTools(
       text: z.string().min(1),
       section: z.string().nullable().optional(),
       alternativeGroup: z.string().nullable().optional(),
+      optional: z.boolean().optional().describe('True for a line a cook may leave out ("crusty bread, for serving"): a planned meal shops for it and counts it only when the meal includes it (update_meal\'s optional). Omit to leave a kept line\'s answer alone; false makes it required again.'),
       excludeFromNutrition: z.boolean().optional().describe('True leaves this line out of the recipe\'s nutrition total, for flavoring taken out before eating (kombu, a bay leaf) or a garnish. Omit to leave a kept line\'s answer alone; false counts it again.'),
     })).optional(),
     steps: z.array(z.object({
@@ -3910,6 +3911,7 @@ function registerWriteTools(
         blank: z.string().min(1).describe('The blank\'s label, as list_meal_plan shows it.'),
         with: z.array(z.string()).describe('What fills it this time, by name. Prefer what list_meal_plan lists under inKitchen, most urgent first. [] empties it.'),
       })).optional().describe('What fills the recipe\'s blanks for this cooking. The blank\'s amount is shared evenly; shopping, nutrition and cook mode follow it. Blanks not named keep their fill.'),
+      optional: z.array(z.string()).optional().describe('The recipe\'s optional lines this meal includes ("crusty bread"), by name, replacing the set; list_meal_plan shows them. Only an included one is shopped for and counted. [] includes none.'),
       shopTask: z.boolean().nullable().optional(),
       thawTask: z.boolean().nullable().optional(),
       logMeal: z.boolean().nullable().optional(),

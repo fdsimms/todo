@@ -338,6 +338,24 @@ planner.
   the blank's limit; a pick-one blank otherwise starts on the first thing in the kitchen, and a
   pick-any blank starts empty, since "everything you have" is never the answer.
 
+### Optional lines (`RecipeIngredient.optional`, `optionalCounts`)
+
+An optional line ("crusty bread, for serving") is shopped for and counted only when a meal picks
+it. The pick is the line's id in `MealPlanEntry.recipeChoices`, the list the either/or picks
+already live in, chosen for the same reason fills ride the overrides: every path that carries a
+meal's picks carries this one too. A line in no either/or group names no option, so the choice
+readers pass over it there. `optionalCounts` is the one rule, read by the nutrition and cost walks
+and by the planned-shopping rows (a picked line loses its `optional` flag, so it starts checked and
+counts toward the shortfall task like any needed line).
+
+- **It is not a filter on the flatten.** Cook mode, the recipe page and the shopping sheets still
+  show an optional line; only what is bought and counted changes.
+- **The recipe page reads as a range** (`describeRecipeNutritionRange`), the low end with no
+  optional line and the top with all of them (`ChoiceResolution.withOptional`, which a purchase or
+  a meal's own figures must never pass).
+- **The food log's "Anything else?" reads with `withOptional`**, since an amount typed there is
+  what picks a serving suggestion, and a blank adds nothing.
+
 ### Food kinds (`foodKinds.ts`, `GroceryItem.foodKinds`)
 
 What kind of food a catalog item is: a guess from its name that the person can overrule on the item

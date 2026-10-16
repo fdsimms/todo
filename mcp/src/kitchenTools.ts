@@ -183,6 +183,8 @@ export interface SerializedMeal {
   replacements?: string[];
   /** Its recipe's blanks: what fills each this time, and what the kitchen holds that could (set with update_meal's fills). */
   blanks?: MealFill[];
+  /** Its recipe's optional lines and whether this meal includes each (set with update_meal's optional). */
+  optional?: { name: string; included: boolean }[];
   /** The per-meal answers to the meal task settings; absent when the setting decides. */
   shopTask?: boolean;
   thawTask?: boolean;
@@ -194,6 +196,7 @@ function serializeMeal(e: MealPlanEntry, recipes: Map<string, string>, replica?:
   const choices = replica ? replica.mealChoices(e) : [];
   const replacements = replica ? replica.mealReplacements(e) : [];
   const blanks = replica ? replica.mealFills(e) : [];
+  const optional = replica ? replica.mealOptional(e) : [];
   return {
     id: e.id,
     date: e.date,
@@ -208,6 +211,7 @@ function serializeMeal(e: MealPlanEntry, recipes: Map<string, string>, replica?:
     ...(choices.length > 0 ? { choices } : {}),
     ...(replacements.length > 0 ? { replacements } : {}),
     ...(blanks.length > 0 ? { blanks } : {}),
+    ...(optional.length > 0 ? { optional } : {}),
     ...(e.shopTask != null ? { shopTask: e.shopTask } : {}),
     ...(e.thawTask != null ? { thawTask: e.thawTask } : {}),
     ...(e.logMeal != null ? { logMeal: e.logMeal } : {}),

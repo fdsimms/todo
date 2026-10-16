@@ -142,6 +142,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     patchRecipe: () => { throw new Error('not stubbed'); },
     mealReplacements: () => [],
     mealFills: () => [],
+    mealOptional: () => [],
     deleteRecipe: () => { throw new Error('not stubbed'); },
     reopenTask: () => { throw new Error('not stubbed'); },
     updateFoodEntry: () => { throw new Error('not stubbed'); },

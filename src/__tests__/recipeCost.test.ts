@@ -477,3 +477,25 @@ describe('NO_STANDING_SWAPS', () => {
     expect(NO_STANDING_SWAPS.size).toBe(0);
   });
 });
+
+describe('optional lines are costed only when a meal picks them', () => {
+  const RANGE = { startKey: '2026-08-09', endKey: '2026-08-15' };
+  const bread = ing('Bread', { quantity: '1 loaf', optional: true });
+  const soup = recipe('Soup', [ing('Lentils', { quantity: '1 lb' }), bread]);
+  const priced = { lastPricedAt: NOW.toISOString() };
+  const catalog = [
+    item({ name: 'Lentils', lastPriceMinor: 300, lastPriceQuantity: '1 lb', ...priced }),
+    item({ name: 'Bread', lastPriceMinor: 500, lastPriceQuantity: '1 loaf', ...priced }),
+  ];
+
+  it('leaves an unpicked optional line out, and costs it once picked', () => {
+    expect(estimateRecipeCost(soup, catalog)?.totalMinor).toBe(300);
+    expect(estimateRecipeCost(soup, catalog, undefined, { chosen: [bread.id] })?.totalMinor).toBe(800);
+  });
+
+  it('does the same across a planned week', () => {
+    const byId = new Map([[soup.id, soup]]);
+    expect(estimateWeekCost([entry('2026-08-10', soup.id)], byId, catalog, RANGE, [])?.totalMinor).toBe(300);
+    expect(estimateWeekCost([entry('2026-08-10', soup.id, { recipeChoices: [bread.id] })], byId, catalog, RANGE, [])?.totalMinor).toBe(800);
+  });
+});

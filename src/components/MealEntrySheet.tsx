@@ -22,6 +22,7 @@ import { DayChipRow } from './DayChipRow';
 import { SegmentedControl } from './SegmentedControl';
 import { SafeBlurView } from './SafeBlurView';
 import { InlineAction } from './InlineAction';
+import { HelpText } from './HelpText';
 import { SheetActionRow } from './SheetActionRow';
 import { dayKeyOf } from '../utils/dateUtils';
 import { slotLabel } from '../utils/mealPlan';
@@ -128,6 +129,14 @@ interface Props {
    * peas"), or null when it filled none. See RecipeBlank.
    */
   blankFill?: string | null;
+  /**
+   * The recipe's optional lines ("crusty bread, for serving") and whether this
+   * meal picked each. Only a picked one is shopped for and counted
+   * (`optionalCounts`). Empty for a recipe with none, and the row is hidden.
+   */
+  optionalLines?: { id: string; name: string; picked: boolean }[];
+  /** Picks or unpicks one optional line for this meal. */
+  onToggleOptional?: (id: string) => void;
   /**
    * Opens the picker for the recipe's blanks. The caller dismisses this sheet
    * first and hosts the picker itself, as with `onOverride`. Present only for a
@@ -236,7 +245,7 @@ const TOP_INSET = 72;
 
 export function MealEntrySheet({
   visible, entry, title, weekDays, onMove, onMoveFurther, onCopyTo, onCopyFurther, copiedDays, onReplace, onChooseRecipe, onSaveAsRecipe, matchingRecipeName,
-  onRemove, onRename, choiceGroups = [], onChoose, overrideLines = [], onRemoveOverride, onOverride, blankFill = null, onFillBlanks,
+  onRemove, onRename, choiceGroups = [], onChoose, overrideLines = [], onRemoveOverride, onOverride, blankFill = null, onFillBlanks, optionalLines = [], onToggleOptional,
   onScale, baseServings, baseServingsMax, onSetCooked, onViewFoodLogEntry, onLogMeal, onOpenRecipe, onAddToList, onAddPrepTasks,
   onLogLeftovers,
   onFinishLeftover, onSetCookTask, hasCookTask = false, onClose,
@@ -447,6 +456,29 @@ export function MealEntrySheet({
               </View>
             </View>
           ))}
+
+          {/* The recipe's optional lines, picked per meal like an either/or. */}
+          {optionalLines.length > 0 && (
+            <View>
+              <Text style={styles.label}>Optional</Text>
+              <View style={styles.chips}>
+                {optionalLines.map(line => (
+                  <TouchableOpacity
+                    key={line.id}
+                    style={[styles.chip, line.picked && styles.chipOn]}
+                    onPress={() => { haptics.tap(); onToggleOptional?.(line.id); }}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: line.picked }}
+                    accessibilityLabel={`Optional: ${line.name}`}
+                  >
+                    <Text style={[styles.chipText, line.picked && styles.chipTextOn]}>{line.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <HelpText style={styles.optionalHint}>Only what’s picked is shopped for and counted.</HelpText>
+            </View>
+          )}
 
           {/* What fills the recipe's blanks this time. Changed from the picker,
               so it has no ✕ of its own. */}
@@ -910,6 +942,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   chipTextOn: {
     color: colors.onAccent,
+  },
+  optionalHint: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.xsm,
   },
   sep: {
     height: border.hairline,

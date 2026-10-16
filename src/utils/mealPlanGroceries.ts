@@ -14,6 +14,7 @@ import {
   reachableRecipeIds,
   type ChoiceResolution,
   entryResolution,
+  optionalCounts,
 } from './recipeComponents';
 import { NO_STANDING_SWAPS, standingSwapMap, type StandingSwapMap } from './standingSwaps';
 import {
@@ -172,7 +173,8 @@ export function collectPlannedIngredients(
     // The entry's own picks, so a week holding steak-with-mash on Tuesday and
     // steak-with-roast on Friday shops for one side each night rather than both
     // twice. An entry that never answered resolves to the defaults.
-    for (const flat of flattenRecipeIngredients(recipe, recipesById, entryResolution(entry, { onHand }), swaps)) {
+    const resolution = entryResolution(entry, { onHand });
+    for (const flat of flattenRecipeIngredients(recipe, recipesById, resolution, swaps)) {
       // A staple you'd already have (RecipeIngredient.excludeFromShoppingList,
       // water at a stated amount most often) never becomes a shopping-list
       // add — it stays on the recipe, this just skips it here.
@@ -189,7 +191,8 @@ export function collectPlannedIngredients(
         recipeId: flat.recipe.id,
         recipeTitle: flat.recipe.name,
         swappedFrom: flat.swappedFrom ?? null,
-        ...(flat.ingredient.optional ? { optional: true } : {}),
+        // A picked optional line is an ordinary line for this meal (optionalCounts).
+        ...(optionalCounts(flat.ingredient, resolution) ? {} : { optional: true }),
         ...(flat.ingredient.excludeFromNutrition ? { excludeFromNutrition: true } : {}),
         ...(scale !== 1 ? { unscaled: { quantity: flat.ingredient.quantity, factor: scale } } : {}),
       });
@@ -277,7 +280,7 @@ export function plannedIngredientsForRecipe(
       recipeTitle: flat.recipe.name,
       choiceGroup: groupKeyIfUndecided(flat.recipe.id, flat.ingredient.choiceGroup, undecided),
       swappedFrom: flat.swappedFrom ?? null,
-      ...(flat.ingredient.optional ? { optional: true } : {}),
+      ...(optionalCounts(flat.ingredient, resolution) ? {} : { optional: true }),
     }));
 }
 

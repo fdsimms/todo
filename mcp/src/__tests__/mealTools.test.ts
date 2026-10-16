@@ -182,6 +182,30 @@ describe('recipe blanks and update_meal fills', () => {
   });
 });
 
+describe('update_meal optional', () => {
+  it('lists a recipe’s optional lines, includes one by name, and shops for it only then', () => {
+    const r = saveRecipe(replica, { name: 'Soup', ingredients: [{ text: '1 cup lentils' }, { text: 'crusty bread, for serving', optional: true }] });
+    expect(r.ingredients.map(i => !!i.optional)).toEqual([false, true]);
+    const meal = planMeal(replica, { date: DAY, slot: 'dinner', recipeId: r.id });
+    const shop = () => replica.plannedIngredients({ from: DAY, to: DAY }, null).filter(l => !l.optional).map(l => l.nameKey);
+
+    expect(listMealPlan(replica, { from: DAY, days: 1 }).meals[0].optional).toEqual([{ name: 'crusty bread', included: false }]);
+    expect(shop()).toEqual(['lentils']);
+    const out = updateMeal(replica, meal.id, { optional: ['Crusty bread'] });
+    expect(out.optional).toEqual([{ name: 'crusty bread', included: true }]);
+    expect(shop()).toEqual(['lentils', 'crusty bread']);
+    expect(() => updateMeal(replica, meal.id, { optional: ['butter'] }))
+      .toThrow('"butter" is not an optional line of "Soup". It has: crusty bread.');
+    expect(updateMeal(replica, meal.id, { optional: [] }).optional).toEqual([{ name: 'crusty bread', included: false }]);
+
+    // A rewrite that says false makes it required again; one that is silent leaves it alone.
+    expect(updateRecipe(replica, r.id, { ingredients: [{ text: '1 cup lentils' }, { text: 'crusty bread, for serving' }] })
+      .ingredients.map(i => !!i.optional)).toEqual([false, true]);
+    expect(updateRecipe(replica, r.id, { ingredients: [{ text: '1 cup lentils' }, { text: 'crusty bread, for serving', optional: false }] })
+      .ingredients.map(i => !!i.optional)).toEqual([false, false]);
+  });
+});
+
 describe('a grocery item’s food type', () => {
   it('shows the guess, files it, and hands it back to the guess', () => {
     addToPantry(replica, ['tofurky roast']);
