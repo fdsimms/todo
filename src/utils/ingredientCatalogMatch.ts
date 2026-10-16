@@ -152,6 +152,25 @@ function isWordExtension(key: string, itemKey: string): boolean {
 }
 
 /**
+ * Whether a catalog row is a different food that merely ends in the line's
+ * words ("peanut butter" for the line "butter", "coconut milk" for "milk").
+ * Offering it would let accepting declare Butter covers peanut butter, a
+ * lasting claim. The test is the aisle lexicon: a compound filed in another
+ * aisle than the bare word is another food, while "greek yogurt" beside
+ * "yogurt" shares one and stays a variety. A line the lexicon doesn't know
+ * can't be told apart this way, so it is left alone.
+ */
+function isOtherFoodEndingInLine(key: string, itemKey: string): boolean {
+  if (!itemKey.includes(' ')) return false;
+  const itemAisle = AISLE_LEXICON[itemKey];
+  if (itemAisle === undefined) return false;
+  const spellings = [key, ...pluralKeyVariants(key)];
+  if (!spellings.some(variant => itemKey.endsWith(` ${variant}`))) return false;
+  const lineAisle = spellings.map(variant => AISLE_LEXICON[variant]).find(aisle => aisle !== undefined);
+  return lineAisle !== undefined && lineAisle !== itemAisle;
+}
+
+/**
  * The one catalog row within a single edit, or null when there is none — or
  * when there are several.
  *
@@ -252,7 +271,9 @@ function matchOne(
   // nothing saying the other exists. Same refusal `uniqueSimilarItem` makes one
   // tier down, for the same reason — and the tiers below still get their turn,
   // which is the point of refusing rather than returning NO_MATCH here.
-  const candidates = items.filter(item => !isWordExtension(key, item.nameKey));
+  const candidates = items.filter(
+    item => !isWordExtension(key, item.nameKey) && !isOtherFoodEndingInLine(key, item.nameKey)
+  );
 
   const ranked = rankGrocerySuggestions(name, candidates, now, 2);
   const decisive = ranked.length > 0 && (ranked.length === 1 || ranked[0].score > ranked[1].score);
