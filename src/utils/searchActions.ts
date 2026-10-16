@@ -455,6 +455,8 @@ export interface DescribeContext {
   waterUnit: WaterUnit;
   /** Water already logged today, in ml. */
   waterTodayMl: number;
+  /** Today's water target in ml, or undefined when none is set. */
+  waterTargetMl: number | undefined;
   now: Date;
 }
 
@@ -484,7 +486,10 @@ function describeDose(action: DoseAction, ctx: DescribeContext): ActionDescripti
 
 function describeWaterAction(action: WaterAction, ctx: DescribeContext): ActionDescription {
   const meta = [describeWater(action.ml, ctx.waterUnit)];
-  if (ctx.waterTodayMl > 0) meta.push(`${describeWater(ctx.waterTodayMl, ctx.waterUnit)} today so far`);
+  if (ctx.waterTodayMl > 0) {
+    const of = ctx.waterTargetMl !== undefined && ctx.waterTargetMl > 0 ? ` of ${describeWater(ctx.waterTargetMl, ctx.waterUnit)}` : '';
+    meta.push(`${describeWater(ctx.waterTodayMl, ctx.waterUnit)}${of} today so far`);
+  }
   return {
     title: action.glasses === 1 ? 'Log a glass of water' : `Log ${action.glasses} glasses of water`,
     meta,
