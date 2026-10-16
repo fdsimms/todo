@@ -1707,7 +1707,7 @@ export function GroceryItemSheet({
     {
       key: 'foodKinds',
       label: 'Food type',
-      keywords: ['grain', 'protein', 'vegetable', 'blank', 'fill from your kitchen', 'bowl'],
+      keywords: ['grain', 'protein', 'vegetable', 'blank', 'wild card', 'bowl'],
       node: (
         <View onLayout={(e: LayoutChangeEvent) => {
           fieldYRefs.current.foodKinds = e.nativeEvent.layout.y;
@@ -1719,7 +1719,7 @@ export function GroceryItemSheet({
             label="Food type"
             summary={foodKindSummary}
             emptySummary="None"
-            hint="Which blanks in a recipe this can fill, like a grain or a protein. Guessed from the name until you pick."
+            hint="Which wild cards in a recipe this can fill, like a grain or a protein. Guessed from the name until you pick."
             expanded={openField === 'foodKinds'}
             onToggle={() => toggleField('foodKinds')}
           >

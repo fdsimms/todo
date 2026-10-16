@@ -484,7 +484,7 @@ export function MealEntrySheet({
               so it has no ✕ of its own. */}
           {!!blankFill && (
             <View>
-              <Text style={styles.label}>Picked this time</Text>
+              <Text style={styles.label}>Wild cards</Text>
               <View style={styles.overrideRow}>
                 <Text style={styles.overrideText}>{blankFill}</Text>
               </View>
@@ -636,9 +636,9 @@ export function MealEntrySheet({
               <SheetActionRow
                 icon="basket-outline"
                 color={colors.accent}
-                label={blankFill ? 'Change what goes in' : 'Pick what goes in'}
+                label={blankFill ? 'Change wild cards' : 'Pick wild cards'}
                 onPress={() => { haptics.tap(); dismiss(onFillBlanks); }}
-                accessibilityLabel="Pick what fills this recipe’s blanks, for this meal"
+                accessibilityLabel="Pick this meal’s wild cards"
               />
             </>
           )}

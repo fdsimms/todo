@@ -2543,12 +2543,12 @@ export function RecipeDetailScreen() {
           <View style={[styles.addRow, styles.addRowWrap]}>
             {showBlankAction && (
               <InlineAction
-                label="Add a blank"
+                label="Add a wild card"
                 icon="add"
                 variant="neutral"
                 surface="page"
                 onPress={() => { haptics.tap(); setEditingBlank('new'); }}
-                accessibilityLabel="Add a blank, a kind of food you pick each time you plan the recipe"
+                accessibilityLabel="Add a wild card, a kind of food you pick each time you plan the recipe"
               />
             )}
             {recipe.ingredients.length > 0 && (
