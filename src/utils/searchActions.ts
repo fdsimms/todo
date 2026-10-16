@@ -1,6 +1,6 @@
 import { format } from 'date-fns/format';
 import { isSameDay } from 'date-fns/isSameDay';
-import type { GroceryItem, GroceryListEntry, MedicationLog, MoodLevel } from '../types';
+import type { GroceryItem, GroceryListEntry, MedicationLog, MoodLevel, SymptomSeverity } from '../types';
 import {
   formatDose,
   medicationKey,
@@ -11,6 +11,7 @@ import {
 import { limitStatus, prefsFor, type MedicationSettingsMap } from './medicationSettings';
 import { readDoseWords } from './quickDose';
 import { MOOD_LEVELS, symptomKey } from './moodLog';
+import { matchSymptoms, parseSymptomPhrase } from './symptomQuickLog';
 import { describeWater, WATER_STEP_FL_OZ, WATER_STEP_ML, waterToMl, type WaterUnit } from './waterLog';
 import { groceryNameKey, parseGroceryInput } from './groceryParse';
 import { catalogItemForKey } from './groceryPlural';
@@ -48,7 +49,7 @@ export const QUICK_ACTION_LIMIT = 3;
 const BARE_NAME_MIN_LENGTH = 3;
 
 /** The most glasses one row offers to log; past it the number is a typo. */
-const MAX_GLASSES = 10;
+export const MAX_GLASSES = 10;
 
 export interface DoseAction {
   kind: 'dose';
@@ -86,6 +87,10 @@ export interface SymptomAction {
   explicit: boolean;
   /** The symptom, spelled as the log already spells it. */
   symptom: string;
+  /** What a tap records: the severity the line stated, else Mild. */
+  severity: SymptomSeverity;
+  /** When it happened, if the line said; null is now. */
+  at: Date | null;
 }
 
 export interface GroceryAction {
@@ -195,6 +200,16 @@ export function glassMl(unit: WaterUnit): number {
 }
 
 /**
+ * The same row for a different number of glasses, which is what the row's
+ * stepper asks for. Clamped to what a typed query could have offered, and the
+ * ml is rebuilt from the glass size already on the action rather than a unit.
+ */
+export function withGlasses(action: WaterAction, glasses: number): WaterAction {
+  const n = Math.min(MAX_GLASSES, Math.max(1, Math.round(glasses)));
+  return { ...action, glasses: n, ml: (action.ml / action.glasses) * n };
+}
+
+/**
  * "water", "drank water", "2 glasses of water". A glass is one step of the
  * food log's own stepper (250 ml, or 8 fl oz), so the search field and the
  * stepper agree on what a glass is. Only a query that ends on "water", so
@@ -255,26 +270,32 @@ function knownSymptom(words: string, symptoms: readonly string[]): string | null
   return symptoms.find(s => symptomKey(s) === symptomKey(words)) ?? null;
 }
 
-const SYMPTOM_VERB_RE = /^(?:log|record)\s+(?:my\s+|a\s+|an\s+)?(.+)$/i;
-
 /**
- * The same known symptom, offered as a write: "log headache", or the words of
- * "feeling tired" when Tired is already in the log. One tap records an entry
- * with that symptom at Mild and no mood level, which the log allows ("my knee
- * hurts" is a complete entry). Mild is the floor the sheet starts a picked
- * symptom at, so a one-tap entry never overstates one, and the mood row beside
- * it is the way to set a severity.
+ * A known symptom, offered as a write: "lightheaded" (or the start of it),
+ * "log headache", "I got lightheaded at 3:40pm", "severe headache 20 min ago".
+ * One tap records an entry with that symptom and no mood level, which the log
+ * allows ("my knee hurts" is a complete entry). Severity is Mild unless the
+ * line states one, the floor the sheet starts a picked symptom at, so a
+ * one-tap entry never overstates one. Mood scores skip an entry with no mood
+ * rather than reading it as a middling day (`docs/arch/mood-log.md`).
  *
- * Only a symptom the log already has, matched exactly (`symptomKey`): a new
- * name belongs in the sheet, where the vocabulary is built on purpose.
+ * Only a symptom the log already has (`symptomKey`): a new name belongs in
+ * the sheet, where the vocabulary is built on purpose. Typed with no lead
+ * ("light") it takes `BARE_NAME_MIN_LENGTH` letters, like a dose; Return runs
+ * only a "log"/"record" line that names the symptom in full.
  */
-function symptomAction(query: string, symptoms: readonly string[]): SymptomAction | null {
-  const verb = SYMPTOM_VERB_RE.exec(query);
-  const feeling = verb ? null : FEELING_RE.exec(query);
-  const words = (verb ? verb[1] : feeling ? feeling[1].replace(SOFTENERS_RE, '') : '').trim();
-  const symptom = words ? knownSymptom(words, symptoms) : null;
-  if (!symptom) return null;
-  return { kind: 'symptom', key: `symptom:${symptomKey(symptom)}`, explicit: verb !== null, symptom };
+function symptomActions(query: string, symptoms: readonly string[]): SymptomAction[] {
+  const phrase = parseSymptomPhrase(query);
+  const led = phrase.verb || phrase.sentence;
+  if (!led && symptomKey(phrase.words).length < BARE_NAME_MIN_LENGTH) return [];
+  return matchSymptoms(phrase.words, symptoms).map(({ name, exact }): SymptomAction => ({
+    kind: 'symptom',
+    key: `symptom:${symptomKey(name)}`,
+    explicit: phrase.verb && exact,
+    symptom: name,
+    severity: phrase.severity ?? 1,
+    at: phrase.at,
+  }));
 }
 
 // ==== groceries ====
@@ -351,8 +372,7 @@ export function searchActions(
   }
   if (sources.mood) {
     // The write comes before the screen that opens, so the one-tap row leads.
-    const symptom = symptomAction(text, sources.mood.symptoms);
-    if (symptom) found.push(symptom);
+    found.push(...symptomActions(text, sources.mood.symptoms));
     const mood = moodAction(text, sources.mood.symptoms);
     if (mood) found.push(mood);
   }
@@ -439,10 +459,12 @@ function describeMood(action: MoodAction): ActionDescription {
   return { title: 'Log your mood', meta, warn: false, icon: 'happy-outline' };
 }
 
-function describeSymptom(action: SymptomAction): ActionDescription {
+function describeSymptom(action: SymptomAction, ctx: DescribeContext): ActionDescription {
+  // No line under the title: the severity is the pills under the row. A time
+  // the line stated goes in the title, so it isn't dropped without a word.
   return {
-    title: `Log ${action.symptom}`,
-    meta: ['Mild · no mood level'],
+    title: action.at ? `Log ${action.symptom} at ${clockOrDate(action.at, ctx.now)}` : `Log ${action.symptom}`,
+    meta: [],
     warn: false,
     icon: 'pulse-outline',
   };
@@ -466,7 +488,7 @@ export function describeSearchAction(action: SearchAction, ctx: DescribeContext)
     case 'dose': return describeDose(action, ctx);
     case 'water': return describeWaterAction(action, ctx);
     case 'mood': return describeMood(action);
-    case 'symptom': return describeSymptom(action);
+    case 'symptom': return describeSymptom(action, ctx);
     case 'grocery': return describeGrocery(action);
   }
 }

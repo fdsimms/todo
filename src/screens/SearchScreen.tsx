@@ -618,7 +618,7 @@ export function SearchScreen() {
   // Things the query can do rather than find ("take aleve", "buy milk"); see
   // searchActions.ts. A row that ran stays put with an Undo, cleared with the
   // query.
-  const { actions, onSubmit: submitAction, descriptions: actionDescriptions } = useSearchActions(debouncedQuery, true);
+  const { actions, onSubmit: submitAction, descriptions: actionDescriptions, describe: describeAction } = useSearchActions(debouncedQuery, true);
   const { receipts, run: runReceipt, undo: undoAction } = useSearchActionReceipts(debouncedQuery);
   const runAction = useCallback((action: SearchAction) => {
     if (action.kind === 'mood') {
@@ -775,6 +775,7 @@ export function SearchScreen() {
         <SearchActionRow
           action={item.action}
           description={actionDescriptions.get(item.action.key)!}
+          describe={describeAction}
           receipt={receipts.get(item.action.key) ?? null}
           layout="list"
           onRun={runAction}

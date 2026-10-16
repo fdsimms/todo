@@ -199,6 +199,18 @@ describe('useSavedMealsStore', () => {
       expect(new Set(written.map(e => e.id)).size).toBe(2);
     });
 
+    it('stamps each entry with the meal it came from and that meal\'s name at the time', () => {
+      const meal = useSavedMealsStore.getState().addFromEntries('Usual lunch', [
+        makeEntry({ label: 'Milk' }),
+        makeEntry({ label: 'Greek yogurt' }),
+      ]);
+      const written = useSavedMealsStore.getState().logMeal(meal as SavedMeal, 'lunch', new Date(2026, 3, 5, 12));
+      expect(written.map(e => e.savedMealId)).toEqual([(meal as SavedMeal).id, (meal as SavedMeal).id]);
+      expect(written.map(e => e.savedMealName)).toEqual(['Usual lunch', 'Usual lunch']);
+      // One moment for the whole meal, which is what groups its entries.
+      expect(new Set(written.map(e => e.atISO)).size).toBe(1);
+    });
+
     it('stamps each entry with the task logging it when asked to', () => {
       const meal = useSavedMealsStore.getState().addFromEntries('Metamucil', [makeEntry({ label: 'Metamucil' })]);
       const written = useSavedMealsStore.getState().logMeal(meal as SavedMeal, 'breakfast', new Date(2026, 3, 5, 8), { taskId: 't-1', undoable: false });

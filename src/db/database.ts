@@ -2183,6 +2183,10 @@ function runInitDatabase(): void {
     // The task whose completion wrote this entry, so un-completing it can take
     // the entry back. NULL on every row but those. See FoodLogEntry.taskId.
     'ALTER TABLE food_logs ADD COLUMN task_id TEXT',
+    // The saved meal an entry was logged as part of, and the name it had then.
+    // NULL on every existing entry. See FoodLogEntry.savedMealId.
+    'ALTER TABLE food_logs ADD COLUMN saved_meal_id TEXT',
+    'ALTER TABLE food_logs ADD COLUMN saved_meal_name TEXT',
     // Null on every existing task: none of them is a look-back. See Task.reviewOfTaskId.
     'ALTER TABLE tasks ADD COLUMN review_of_task_id TEXT',
     // Null on every existing entry: all of them were open when written. See
@@ -7619,6 +7623,8 @@ function rowToFoodLogEntry(row: Record<string, unknown>): FoodLogEntry | null {
     productId: (row.product_id as string) || null,
     mealPlanEntryId: (row.meal_plan_entry_id as string) || null,
     taskId: (row.task_id as string) || null,
+    savedMealId: (row.saved_meal_id as string) || null,
+    savedMealName: (row.saved_meal_name as string) || null,
     quantity: (row.quantity as string) ?? '',
     grams: typeof row.grams === 'number' && Number.isFinite(row.grams) ? row.grams : null,
     nutrition,
@@ -7687,8 +7693,8 @@ export function dbInsertFoodLogEntry(entry: FoodLogEntry): void {
   db.runSync(
     `INSERT INTO food_logs (id, day_key, at_iso, slot, label, recipe_id, item_id, product_id,
        meal_plan_entry_id, quantity, grams, nutrition, source_panel, health_sample_ids,
-       health_write_pending, sort_order, created_at, task_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       health_write_pending, sort_order, created_at, task_id, saved_meal_id, saved_meal_name)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       entry.id, entry.dayKey, entry.atISO, entry.slot, entry.label,
       entry.recipeId, entry.itemId, entry.productId, entry.mealPlanEntryId,
@@ -7696,6 +7702,7 @@ export function dbInsertFoodLogEntry(entry: FoodLogEntry): void {
       serializeFoodNutrition(entry.sourcePanel ?? null),
       JSON.stringify(entry.healthSampleIds), entry.healthWritePending ? 1 : 0,
       entry.sortOrder, entry.createdAt, entry.taskId ?? null,
+      entry.savedMealId ?? null, entry.savedMealName ?? null,
     ]
   );
 }
@@ -7745,11 +7752,34 @@ export function dbBulkDeleteFoodLogEntries(ids: string[]): void {
   });
 }
 
+// An entry that changes meal leaves the saved meal it was logged with (a
+// "Usual lunch" caption over a dinner row is the one wrong answer), so the
+// link is cleared in the same statement exactly when the slot differs. `IS`
+// because the slot is nullable. See FoodLogEntry.savedMealId.
+const CLEAR_SAVED_MEAL_ON_SLOT_CHANGE = `
+  saved_meal_id = CASE WHEN slot IS ? THEN saved_meal_id ELSE NULL END,
+  saved_meal_name = CASE WHEN slot IS ? THEN saved_meal_name ELSE NULL END`;
+
 export function dbBulkSetFoodLogSlot(ids: string[], slot: MealSlot | null): void {
   if (ids.length === 0) return;
   withTransaction(() => {
     for (const id of ids) {
-      db.runSync('UPDATE food_logs SET slot = ? WHERE id = ?', [slot, id]);
+      db.runSync(
+        `UPDATE food_logs SET ${CLEAR_SAVED_MEAL_ON_SLOT_CHANGE}, slot = ? WHERE id = ?`,
+        [slot, slot, slot, id],
+      );
+    }
+  });
+}
+
+/** Puts back the saved-meal links a slot change cleared, for its undo. */
+export function dbRestoreFoodLogSavedMeals(
+  links: { id: string; savedMealId: string | null; savedMealName: string | null }[]
+): void {
+  if (links.length === 0) return;
+  withTransaction(() => {
+    for (const l of links) {
+      db.runSync('UPDATE food_logs SET saved_meal_id = ?, saved_meal_name = ? WHERE id = ?', [l.savedMealId, l.savedMealName, l.id]);
     }
   });
 }
@@ -7762,7 +7792,10 @@ export function dbBulkUpdateFoodLogPlacement(
   if (updates.length === 0) return;
   withTransaction(() => {
     for (const u of updates) {
-      db.runSync('UPDATE food_logs SET slot = ?, sort_order = ? WHERE id = ?', [u.slot, u.sortOrder, u.id]);
+      db.runSync(
+        `UPDATE food_logs SET ${CLEAR_SAVED_MEAL_ON_SLOT_CHANGE}, slot = ?, sort_order = ? WHERE id = ?`,
+        [u.slot, u.slot, u.slot, u.sortOrder, u.id],
+      );
     }
   });
 }
