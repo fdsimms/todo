@@ -353,10 +353,16 @@ describe('describeSearchAction', () => {
   it('says what the mood log will open with', () => {
     const mood = { mood: { symptoms: ['Tired'] } };
     const tired = searchActions('feeling tired', mood).actions;
-    expect(describeSearchAction(tired[0], ctx())).toMatchObject({ title: 'Log Tired', meta: ['Mild'] });
+    expect(describeSearchAction(tired[0], ctx())).toMatchObject({ title: 'Log Tired', meta: [] });
     expect(describeSearchAction(tired[1], ctx()).meta).toEqual(['Opens with Tired checked']);
     expect(describeSearchAction(only<MoodAction>('feeling low', mood)!, ctx()).meta).toEqual(['Opens with Low picked']);
     expect(describeSearchAction(only<MoodAction>('mood', mood)!, ctx())).toMatchObject({ title: 'Log your mood', meta: ['Opens the mood log'] });
+  });
+
+  it('puts a stated time in the symptom row title, with no line under it', () => {
+    const row = only<SymptomAction>('lightheaded at 3:40pm', { mood: { symptoms: ['Lightheaded'] } })!;
+    expect(describeSearchAction(row, ctx())).toMatchObject({ meta: [] });
+    expect(describeSearchAction(row, ctx()).title).toMatch(/^Log Lightheaded at .*3:40 PM$/);
   });
 
   it('names the list, and says when the item is already on it', () => {

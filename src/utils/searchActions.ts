@@ -10,7 +10,7 @@ import {
 } from './medicationLog';
 import { limitStatus, prefsFor, type MedicationSettingsMap } from './medicationSettings';
 import { readDoseWords } from './quickDose';
-import { MOOD_LEVELS, severityLabel, symptomKey } from './moodLog';
+import { MOOD_LEVELS, symptomKey } from './moodLog';
 import { matchSymptoms, parseSymptomPhrase } from './symptomQuickLog';
 import { describeWater, WATER_STEP_FL_OZ, WATER_STEP_ML, waterToMl, type WaterUnit } from './waterLog';
 import { groceryNameKey, parseGroceryInput } from './groceryParse';
@@ -450,11 +450,11 @@ function describeMood(action: MoodAction): ActionDescription {
 }
 
 function describeSymptom(action: SymptomAction, ctx: DescribeContext): ActionDescription {
-  const meta = [severityLabel(action.severity)];
-  if (action.at) meta.push(clockOrDate(action.at, ctx.now));
+  // No line under the title: the severity is the pills under the row. A time
+  // the line stated goes in the title, so it isn't dropped without a word.
   return {
-    title: `Log ${action.symptom}`,
-    meta,
+    title: action.at ? `Log ${action.symptom} at ${clockOrDate(action.at, ctx.now)}` : `Log ${action.symptom}`,
+    meta: [],
     warn: false,
     icon: 'pulse-outline',
   };
