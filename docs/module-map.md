@@ -82,6 +82,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/categoryRename.ts` — renameInSeriesDefaults, renameInFollowUpDraft, renameInViewClauses, renameInTitleRules, renameInReminderCaptures
 - `src/utils/categorySchedule.ts` — DAY_LABELS, FULL_DAY_NAMES, formatScheduleTime, formatScheduleDays, formatCategorySchedule
 - `src/utils/chain.ts` — ChainCarrier, ChainCompletionCarrier, activeChainStep, nextChainStep, nextChainStepTitle, parseChainItems, ChainPreview, chainPreview, chainStepAdvancesInPlace, isChainFinish
+- `src/utils/chipUses.ts` — ChipUses, ChipUseKind, chipUseKey, bumpChipUses, rankByUse, parseChipUses
 - `src/utils/clockTime.ts` — hhmmToDate, logicalDayStart, taskDayStart, carryClockTime, overdueDayCount, hhmmMinutes, effectiveWindowEndTime, formatHHMM, clockTimeToken, dateToHHMM, +1 more
 - `src/utils/cloudKitTransport.ts` — CLOUDKIT_SOURCE, isCloudKitSyncAvailable, cloudKitUnavailableReason, cloudKitTransport
 - `src/utils/coinBurst.ts` — BurstPiece, BURST_GRAVITY, burstPieces, burstOffset, burstOpacity
