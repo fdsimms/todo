@@ -210,6 +210,42 @@ export function toggleWrap(text: string, selection: EditSelection, marker: '**' 
   };
 }
 
+/**
+ * What typing Enter does on a list line, as a plain text editor's list does.
+ *
+ * `next` is `prev` with exactly one newline typed into it; anything else (a
+ * paste, a deletion, a newline replacing a selection) returns null and is left
+ * alone. On a bullet or numbered line with words after the marker, the new line
+ * starts with the next marker (same indent, `-`/`*` kept, the number plus one).
+ * On an item with nothing after its marker, Enter ends the list instead: the
+ * marker is removed and the line is left blank. A caret in the middle of the
+ * item carries the words after it onto the new item, since they moved there.
+ */
+export function continueListOnEnter(prev: string, next: string): FormatEdit | null {
+  if (next.length !== prev.length + 1) return null;
+  let at = 0;
+  while (at < prev.length && prev[at] === next[at]) at++;
+  if (next[at] !== '\n' || next.slice(at + 1) !== prev.slice(at)) return null;
+
+  const lineStart = prev.lastIndexOf('\n', at - 1) + 1;
+  const before = prev.slice(lineStart, at);
+  const m = /^(\s*)(?:([-*])|(\d{1,3})([.)]))\s+(.*)$/.exec(before);
+  if (!m) return null;
+  const [, indent, bullet, num, delim, body] = m;
+
+  if (!body.trim()) {
+    // Enter on an empty item: the list ends here and the marker goes.
+    const rest = prev.slice(at);
+    const text = prev.slice(0, lineStart) + rest;
+    return { text, selection: { start: lineStart, end: lineStart } };
+  }
+  const marker = bullet ? `${bullet} ` : `${Number(num) + 1}${delim} `;
+  const insert = `\n${indent}${marker}`;
+  const text = prev.slice(0, at) + insert + prev.slice(at);
+  const caret = at + insert.length;
+  return { text, selection: { start: caret, end: caret } };
+}
+
 export type LineFormat = 'heading' | 'bullet' | 'numbered' | 'quote';
 
 const LINE_PREFIX = /^(#{1,2}\s+|\s*[-*]\s+|\s*\d{1,3}[.)]\s+|>\s?)/;
