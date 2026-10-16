@@ -70,6 +70,17 @@ export function waterTodayMl(now: Date = new Date()): number {
   return waterOnDay(getLogicalDayKey(now, useSettingsStore.getState().dayResetTime)).ml;
 }
 
+/**
+ * Today's water target in ml, or undefined when none is set. The same one the
+ * Food log shows (exercise boost included), so the two never disagree.
+ */
+export function waterTargetTodayMl(): number | undefined {
+  const settings = useSettingsStore.getState();
+  const today = useHealthStore.getState().today;
+  const exerciseMinutes = today?.dayKey === dayKeyOf(getCurrentDayStart()) ? today.exerciseMinutes ?? null : null;
+  return effectiveWaterTargetMl(settings.nutritionTargets.waterMl, exerciseMinutes, settings.waterExerciseBoost);
+}
+
 async function runDose(action: DoseAction): Promise<SearchActionReceipt | null> {
   // Through `recordDose` like every other door a dose comes in by, so the
   // limit is asked about and a low supply offers a refill.
@@ -88,13 +99,8 @@ function runWater(action: WaterAction): SearchActionReceipt {
   const dayKey = getLogicalDayKey(at, useSettingsStore.getState().dayResetTime);
   const total = waterOnDay(dayKey).ml + action.ml;
   setWaterOnDay(dayKey, total, at);
-  const settings = useSettingsStore.getState();
-  const unit = settings.waterUnit;
-  // The same target the Food log reads, exercise boost included, so the two
-  // never disagree about the goal. A day with no target set keeps "today".
-  const today = useHealthStore.getState().today;
-  const exerciseMinutes = today?.dayKey === dayKeyOf(getCurrentDayStart()) ? today.exerciseMinutes ?? null : null;
-  const target = effectiveWaterTargetMl(settings.nutritionTargets.waterMl, exerciseMinutes, settings.waterExerciseBoost);
+  const unit = useSettingsStore.getState().waterUnit;
+  const target = waterTargetTodayMl();
   return {
     title: `Logged ${describeWater(action.ml, unit)} of water`,
     meta: target !== undefined && target > 0
