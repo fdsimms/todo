@@ -699,6 +699,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['home', 'work', 'saved place', 'starting point', 'origin', 'where i am', 'location', 'commute', 'leave', 'apple maps'] },
   { id: 'leaveLiveActivity', iosOnly: true, requires: 'gen:travel', groupId: 'generated', label: 'Live Activity before leaving', section: 'Leave-by reminders',
     keywords: ['lock screen', 'dynamic island', 'countdown', 'leave', 'when to leave', 'event', 'commute', 'trip'] },
+  { id: 'leaveWindowMinutes', iosOnly: true, requires: 'gen:travel', groupId: 'generated', label: 'Start window', section: 'Leave-by reminders',
+    keywords: ['live activity', 'lock screen', 'dynamic island', 'countdown', 'how early', 'hours before', 'leave', 'when to leave'] },
   { id: 'travelLeadMinutes', requires: 'gen:travel', groupId: 'generated', label: 'Remind me', section: 'Leave-by reminders',
     keywords: ['travel time', 'commute', 'minutes before', 'lead time', 'leave', 'when to leave',
       'reminder', 'notification', 'trip'] },

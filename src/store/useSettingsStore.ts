@@ -146,7 +146,9 @@ import {
 } from '../utils/eventTasks';
 import {
   clampArriveEarlyMinutes,
+  clampLeaveWindowMinutes,
   clampTravelLeadMinutes,
+  LEAVE_WINDOW_MINUTES_DEFAULT,
   clampTravelWalkUnder,
   parseTravelLeadByCalendar,
   parseTravelEventPrefs,
@@ -713,6 +715,9 @@ interface SettingsStore {
   // see src/utils/leaveLiveActivity.ts. Rides on travelTasks: nothing starts
   // while that is off. iOS 17+ only, defaults on.
   leaveLiveActivity: boolean;
+  // How long before leaving that activity may start. Device-local, like the
+  // switch above. Clamped by clampLeaveWindowMinutes.
+  leaveWindowMinutes: number;
   // Same idea again, for the focus session in flight (useFocusStore.ts) — see
   // src/utils/focusLiveActivity.ts. iOS 17+ only, defaults on.
   focusLiveActivity: boolean;
@@ -2090,6 +2095,7 @@ interface SettingsStore {
   setTimerLiveActivity: (on: boolean) => void;
   setTripLiveActivity: (on: boolean) => void;
   setLeaveLiveActivity: (on: boolean) => void;
+  setLeaveWindowMinutes: (minutes: number) => void;
   setFocusLiveActivity: (on: boolean) => void;
   setFocusHideTimers: (on: boolean) => void;
   setFocusBreaksEnabled: (on: boolean) => void;
@@ -2408,6 +2414,7 @@ const DEFAULT_SETTINGS = {
   timerLiveActivity: true,
   tripLiveActivity: true,
   leaveLiveActivity: true,
+  leaveWindowMinutes: LEAVE_WINDOW_MINUTES_DEFAULT,
   focusLiveActivity: true,
   focusHideTimers: false,
   focusBreaksEnabled: true,
@@ -2852,6 +2859,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   timerLiveActivity: true,
   tripLiveActivity: true,
   leaveLiveActivity: true,
+  leaveWindowMinutes: LEAVE_WINDOW_MINUTES_DEFAULT,
   focusLiveActivity: true,
   focusHideTimers: false,
   focusBreaksEnabled: true,
@@ -3194,6 +3202,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const tripLiveActivity = dbGetSetting('tripLiveActivity') !== 'false';
     // And for the leave-by one.
     const leaveLiveActivity = dbGetSetting('leaveLiveActivity') !== 'false';
+    const storedLeaveWindow = parseInt(dbGetSetting('leaveWindowMinutes') ?? '', 10);
+    const leaveWindowMinutes = clampLeaveWindowMinutes(Number.isFinite(storedLeaveWindow) ? storedLeaveWindow : undefined);
     // And again for the focus session's.
     const focusLiveActivity = dbGetSetting('focusLiveActivity') !== 'false';
     const focusHideTimers = dbGetSetting('focusHideTimers') === 'true';
@@ -3808,6 +3818,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       lastTipShown,
       lastVisitedScreen,
       leaveLiveActivity,
+      leaveWindowMinutes,
       leftoverUseUpTaskCategory,
       leftoverUseUpTasks,
       limitsTodayCategory,
@@ -5228,6 +5239,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setLeaveLiveActivity(on: boolean) {
     dbSetSetting('leaveLiveActivity', on ? 'true' : 'false');
     set({ leaveLiveActivity: on });
+  },
+
+  setLeaveWindowMinutes(minutes: number) {
+    const clamped = clampLeaveWindowMinutes(minutes);
+    dbSetSetting('leaveWindowMinutes', String(clamped));
+    set({ leaveWindowMinutes: clamped });
   },
 
   setFocusLiveActivity(on: boolean) {

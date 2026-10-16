@@ -1755,6 +1755,24 @@ describe('timerLiveActivity', () => {
   });
 });
 
+describe('leaveWindowMinutes', () => {
+  it('defaults to 60 and clamps a stored value', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().leaveWindowMinutes).toBe(60);
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'leaveWindowMinutes' ? '9999' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().leaveWindowMinutes).toBe(240);
+  });
+
+  it('round-trips through setLeaveWindowMinutes', () => {
+    useSettingsStore.getState().setLeaveWindowMinutes(90);
+    expect(dbSetSetting).toHaveBeenCalledWith('leaveWindowMinutes', '90');
+    expect(useSettingsStore.getState().leaveWindowMinutes).toBe(90);
+  });
+});
+
 describe('leaveLiveActivity', () => {
   it('defaults to on, and only turns off for an explicit "false"', () => {
     useSettingsStore.getState().initialize();

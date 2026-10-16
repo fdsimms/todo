@@ -43,6 +43,30 @@ export const TRAVEL_LEAD_MINUTES_MAX = 180;
 export const TRAVEL_LEAD_MINUTES_STEP = 5;
 
 /**
+ * How long before leaving the "time to leave" Live Activity may start
+ * (`leaveWindowMinutes`). It can only start while the app is open, so a wider
+ * window makes it likelier to catch the app in front.
+ */
+export const LEAVE_WINDOW_MINUTES_DEFAULT = 60;
+export const LEAVE_WINDOW_MINUTES_MIN = 15;
+export const LEAVE_WINDOW_MINUTES_MAX = 240;
+export const LEAVE_WINDOW_MINUTES_STEP = 15;
+
+/** "45 min", "1 hr", "1 hr 30 min". */
+export function describeLeaveWindow(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h === 0) return `${m} min`;
+  return m === 0 ? `${h} hr` : `${h} hr ${m} min`;
+}
+
+export function clampLeaveWindowMinutes(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return LEAVE_WINDOW_MINUTES_DEFAULT;
+  const stepped = Math.round(value / LEAVE_WINDOW_MINUTES_STEP) * LEAVE_WINDOW_MINUTES_STEP;
+  return Math.min(LEAVE_WINDOW_MINUTES_MAX, Math.max(LEAVE_WINDOW_MINUTES_MIN, stepped));
+}
+
+/**
  * The `travelWalkUnderMinutes` setting: walk instead of using the Settings
  * mode when Apple Maps says the walk is this long or shorter. 0 is off, which
  * is also the default, so nothing is asked twice until someone opts in.
