@@ -972,6 +972,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['ingredients', 'shopping list', 'offer', 'buy again', 'cooked'] },
   { id: 'mealLogPrompt', groupId: 'kitchen', label: 'Ask what you ate', section: 'Meals on Today',
     keywords: ['food log', 'calories', 'nutrition', 'diary', 'eaten', 'leftovers', 'prompt'] },
+  { id: 'mealProduceCheck', groupId: 'kitchen', label: 'Flag meals without produce', section: 'Meals on Today',
+    keywords: ['vegetables', 'fruit', 'veg', 'side', 'meal plan', 'lunch', 'dinner', 'ingredients'] },
   { id: 'nutritionTargets', groupId: 'kitchen', label: 'Daily targets', section: 'Meals on Today',
     keywords: ['calories', 'protein', 'goal', 'nutrition', 'food log', 'macros', 'aim',
       'limit', 'stay under', 'saturated fat', 'sugar', 'added sugar', 'cholesterol', 'trans fat'] },

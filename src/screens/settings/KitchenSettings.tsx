@@ -53,6 +53,8 @@ export function KitchenSettings() {
   const [targetsOpen, setTargetsOpen] = useState(false);
   const setCookRecapEnabled = useSettingsStore(s => s.setCookRecapEnabled);
   const setMealLogPrompt = useSettingsStore(s => s.setMealLogPrompt);
+  const mealProduceCheck = useSettingsStore(s => s.mealProduceCheck);
+  const setMealProduceCheck = useSettingsStore(s => s.setMealProduceCheck);
   const restockOfferEnabled = useSettingsStore(s => s.restockOfferEnabled);
   const runningLowAddsToList = useSettingsStore(s => s.runningLowAddsToList);
   const setRunningLowAddsToList = useSettingsStore(s => s.setRunningLowAddsToList);
@@ -129,6 +131,16 @@ export function KitchenSettings() {
           toggle={mealLogPrompt}
           onPress={() => setMealLogPrompt(!mealLogPrompt)}
           accessibilityLabel="Ask what you ate"
+        />
+        <SettingsRow
+          entryId="mealProduceCheck"
+          icon="leaf-outline"
+          iconColor={mealProduceCheck ? colors.accent : undefined}
+          label="Flag meals without produce"
+          hint="On the meal plan, note lunches and dinners whose recipes list no vegetables or fruit, and name produce you have on hand to add."
+          toggle={mealProduceCheck}
+          onPress={() => setMealProduceCheck(!mealProduceCheck)}
+          accessibilityLabel="Flag meals without produce"
         />
         <SettingsRow
           entryId="cookRecapEnabled"

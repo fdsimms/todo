@@ -1416,6 +1416,10 @@ interface SettingsStore {
   // dismissable ask rather than a written record, so there is nothing here a
   // person could be shown that they didn't already just do.
   mealLogPrompt: boolean;
+  // Off by default: a line under a planned day on the meal plan naming lunches
+  // and dinners whose recipes list no vegetables or fruit, with produce on
+  // hand to add. See src/utils/mealProduceCheck.ts.
+  mealProduceCheck: boolean;
 
   /**
    * A daily figure to aim at, per nutrient — see src/utils/nutritionTargets.ts.
@@ -2184,6 +2188,7 @@ interface SettingsStore {
   setLastDeloadAppliedDayKey: (dayKey: string | null) => void;
   setMealShortfallTasks: (on: boolean) => void;
   setMealLogPrompt: (on: boolean) => void;
+  setMealProduceCheck: (on: boolean) => void;
   /** Sets one nutrient's target, or clears it with null. */
   setNutritionTarget: (key: NutrientKey, value: number | null) => void;
   /** Merges several nutrient targets at once, in a single write — the U.S. Daily Value action. */
@@ -2427,6 +2432,7 @@ const DEFAULT_SETTINGS = {
   groceryUseUpTaskCategory: null,
   mealShortfallTasks: false,
   mealLogPrompt: true,
+  mealProduceCheck: false,
   keepOpenAfterFoodLog: false,
   mealShortfallLeadDays: MEAL_SHORTFALL_LEAD_DAYS_DEFAULT,
   mealShortfallTaskCategory: null,
@@ -2872,6 +2878,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   groceryUseUpTaskCategory: null,
   mealShortfallTasks: false,
   mealLogPrompt: true,
+  mealProduceCheck: false,
   nutritionTargets: {},
   foodLogPinnedNutrients: [...DEFAULT_FOOD_LOG_PINNED_NUTRIENTS],
   nutritionLimits: [],
@@ -3393,6 +3400,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const mealShortfallTasks = dbGetSetting('mealShortfallTasks') === 'true';
     // `!== 'false'` because this one defaults on — see the interface note.
     const mealLogPrompt = dbGetSetting('mealLogPrompt') !== 'false';
+    const mealProduceCheck = dbGetSetting('mealProduceCheck') === 'true';
     const nutritionTargets = parseNutritionTargets(dbGetSetting('nutritionTargets'));
     const foodLogPinnedNutrients = parseFoodLogPinnedNutrients(dbGetSetting('foodLogPinnedNutrients'));
     const nutritionLimits = parseNutritionLimits(dbGetSetting('nutritionLimits'));
@@ -3824,6 +3832,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       mealPlanNudgeTaskCategory,
       mealPlanNudgeTime,
       mealPlanNudgeWeekday,
+      mealProduceCheck,
       mealShortfallLeadDays,
       mealShortfallTaskCategory,
       mealShortfallTasks,
@@ -4359,6 +4368,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setMealLogPrompt(on: boolean) {
     dbSetSetting('mealLogPrompt', on ? 'true' : 'false');
     set({ mealLogPrompt: on });
+  },
+
+  setMealProduceCheck(on: boolean) {
+    dbSetSetting('mealProduceCheck', on ? 'true' : 'false');
+    set({ mealProduceCheck: on });
   },
 
   // One key of the map, updated and persisted whole — the shape

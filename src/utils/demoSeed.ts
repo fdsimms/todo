@@ -1981,6 +1981,10 @@ export function seedDemoData(): void {
   useSettingsStore.getState().setJournalWordGoal(25);
   useSettingsStore.getState().setJournalCustomPrompts(['What am I avoiding this week?']);
 
+  // The meal plan's produce line is a setting rather than a row, so the demo
+  // turns it on for the planned meals already seeded.
+  useSettingsStore.getState().setMealProduceCheck(true);
+
   // The snack suggestion, seeded directly because `reconcileSnackNudge` refuses
   // in demo mode (a pass that judges the clock and the food log would delete
   // this row before 3 PM, or whenever the seeded log doesn't qualify). The
