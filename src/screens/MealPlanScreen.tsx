@@ -100,6 +100,7 @@ import {
 } from '../utils/recipeUtils';
 import { expiringItemHints, recentlyCookedTitles } from '../utils/mealIdeas';
 import { kitchenInventory, useUpEntries } from '../utils/kitchenInventory';
+import { describeProduceGaps, mealsWithoutProduce, producesOnHand } from '../utils/mealProduceCheck';
 import {
   applyChoice,
   describeChoices,
@@ -595,6 +596,31 @@ export function MealPlanScreen() {
     }
     return out;
   }, [days, coverageByDay, weekFoodLog, nutritionTargets, nutritionLimits, recipesById, groceryItems, itemProducts, standingSwaps]);
+  /**
+   * Under each upcoming day, the lunches and dinners whose recipes list no
+   * vegetables or fruit, and produce on hand to add (`mealProduceCheck.ts`).
+   * Empty with the setting off, which leaves every day header as it was. Past
+   * days are left alone: nothing can be added to a meal that has happened.
+   */
+  const mealProduceCheck = useSettingsStore(s => s.mealProduceCheck);
+  const produceLineByDay = useMemo(() => {
+    const out = new Map<string, string>();
+    if (!mealProduceCheck) return out;
+    const onHand = producesOnHand(kitchenInventory(groceryItems, [], new Date(), itemProducts));
+    for (const day of days) {
+      const key = dayKeyOf(day);
+      if (key < todayKey) continue;
+      const coverage = coverageByDay.get(key);
+      const logged = new Set<MealSlot>(
+        [...(coverage?.entries() ?? [])].filter(([, c]) => c.logged.length > 0).map(([slot]) => slot),
+      );
+      const gaps = mealsWithoutProduce(
+        entriesForDay(entries, key), logged, recipesById, groceryItems, itemProducts, standingSwaps,
+      );
+      if (gaps.length > 0) out.set(key, describeProduceGaps(gaps, onHand));
+    }
+    return out;
+  }, [mealProduceCheck, days, todayKey, entries, coverageByDay, recipesById, groceryItems, itemProducts, standingSwaps]);
   /**
    * The row "View in food log" opens: the entry linked to this meal outright,
    * or else the first thing logged in its slot that day. The second is the
@@ -1591,6 +1617,9 @@ export function MealPlanScreen() {
                     {limitLineByDay.get(key)!.text}
                   </Text>
                 )}
+                {!collapsed && produceLineByDay.has(key) && (
+                  <Text style={styles.limitLine}>{produceLineByDay.get(key)}</Text>
+                )}
                 {!collapsed && dayEntries.length > 0 && (
                   (
                     /*
@@ -1664,7 +1693,7 @@ export function MealPlanScreen() {
     // closed from the fridge card while this list stayed mounted is still live
     // to this closure, and the badge asks about a leftover that's already been
     // finished. Don't prune it as unused.
-  }, [entries, recipesById, styles, collapsedDays, colors, fabIntentChannel, selectionMode, selectedIds, toggleSelection, enterSelectionMode, leftovers, describeEntryChoices, todayKey, previousDaysInfo, previousDaysExpanded, openDayAddToList, mealDrag, busyEveningByDay, limitLineByDay]);
+  }, [entries, recipesById, styles, collapsedDays, colors, fabIntentChannel, selectionMode, selectedIds, toggleSelection, enterSelectionMode, leftovers, describeEntryChoices, todayKey, previousDaysInfo, previousDaysExpanded, openDayAddToList, mealDrag, busyEveningByDay, limitLineByDay, produceLineByDay]);
 
   // Cheap enough to compute on every render: whether there's anything an "Add
   // week to list" could possibly find, without running the full ingredient

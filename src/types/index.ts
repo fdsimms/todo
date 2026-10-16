@@ -2356,6 +2356,17 @@ export type GeneratedKind =
   // coming straight back is snackNudgeDeclinedDayKey, and a completed one blocks
   // a second through `blocksOnFinished`.
   | 'snackNudge'
+  // A produce suggestion once the evening has started and the food log is short
+  // of a servings goal, with a recipe idea from what the kitchen has — see
+  // src/utils/produceNudgeTasks.ts. snackNudge's position: day-keyed with no
+  // source row, produceNudgeDeclinedDayKey stops a deleted one coming straight
+  // back, and a completed one blocks a second through `blocksOnFinished`.
+  | 'produceNudge'
+  // A weekly "Restock vegetables and fruit" task when the pantry lists fewer
+  // than a set number — see src/utils/produceFloorTasks.ts. Keyed by the week's
+  // first day, no source row: produceFloorDeclinedWeekKey stops a deleted one
+  // coming straight back, and a completed one blocks a second that week.
+  | 'produceFloor'
   // A "don't do" task per Stay under limit, slipped automatically when the food
   // log goes past it — see src/utils/limitWarningTasks.ts. Keyed by the
   // nutrient; deleting one adds it to limitWarningDeclined.
@@ -5004,6 +5015,11 @@ export type FoodNutritionSource = 'fdc' | 'openFoodFacts' | 'manual' | 'estimate
  * pair through `nutritionFor` (`foodNutrition.ts`); nothing reads either field
  * raw.
  */
+/** A NOVA food processing group: 1 minimally processed, 2 culinary ingredient, 3 processed, 4 ultra-processed. */
+export type NovaGroup = 1 | 2 | 3 | 4;
+
+export const NOVA_GROUPS: readonly NovaGroup[] = [1, 2, 3, 4];
+
 export interface FoodNutrition {
   /**
    * What the figures in `amounts` are measured against.
@@ -5113,6 +5129,19 @@ export interface FoodNutrition {
    * Absent for every source that states no category, which is the ordinary case.
    */
   foodCategory?: string | null;
+  /**
+   * The food's NOVA processing group (1 unprocessed or minimally processed, 2
+   * culinary ingredient, 3 processed, 4 ultra-processed), when a source stated
+   * it or the person set it by hand. A classification of the food rather than a
+   * figure, so nothing scales it, and it is carried onto a logged helping like
+   * `source` is (`scalePanelToAmount`).
+   *
+   * **Never derived from a name or an ingredient list here.** Open Food Facts
+   * publishes a group per product and that is the only automatic source; a food
+   * nobody classified has no key, and a reader counts it as unclassified rather
+   * than as group 1. Absent is the ordinary case. See `processingStats.ts`.
+   */
+  novaGroup?: NovaGroup | null;
   /**
    * What an estimated meal's total was made of, one line per thing the
    * description named ("birch beer", "soft pretzel"), kept so the split the

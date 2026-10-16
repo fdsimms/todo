@@ -2807,6 +2807,14 @@ describe('demo seed — people', () => {
     expect(checked).toBeGreaterThan(0);
   });
 
+  it('seeds foods with a processing group, so Stats has a share to show', () => {
+    const entries = useFoodLogStore.getState().windowEntries;
+    const groups = new Set(entries.map(e => e.nutrition.novaGroup).filter(Boolean));
+    expect(groups.has(4)).toBe(true);
+    expect(groups.size).toBeGreaterThan(1);
+    expect(entries.some(e => !e.nutrition.novaGroup)).toBe(true);
+  });
+
   it('seeds a meal eaten out, so the estimated marker has something to render on', () => {
     // The marker shows on the row through describeFoodLogEntry and is counted
     // apart by sourceMix on Stats. Neither reader says anything on a seed where
@@ -4818,12 +4826,31 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(useSettingsStore.getState().goalTargetTaskCategory).toBe('Health');
   });
 
+  it('turns on the meal plan produce line', () => {
+    expect(useSettingsStore.getState().mealProduceCheck).toBe(true);
+  });
+
   it('seeds a snack suggestion under the Health category', () => {
     const task = useTaskStore.getState().tasks.find(t => t.generatedKind === 'snackNudge');
     expect(task).toBeDefined();
     expect(task!.category).toBe('Health');
     expect(useSettingsStore.getState().snackNudgeTaskCategory).toBe('Health');
     expect(task!.generatedSourceId).toBe(dayKeyOf(getCurrentDayStart()));
+  });
+
+  it('seeds a produce suggestion under the Health category', () => {
+    const task = useTaskStore.getState().tasks.find(t => t.generatedKind === 'produceNudge');
+    expect(task).toBeDefined();
+    expect(task!.category).toBe('Health');
+    expect(useSettingsStore.getState().produceNudgeTaskCategory).toBe('Health');
+    expect(task!.generatedSourceId).toBe(dayKeyOf(getCurrentDayStart()));
+  });
+
+  it('seeds a produce restock task under the Groceries category', () => {
+    const task = useTaskStore.getState().tasks.find(t => t.generatedKind === 'produceFloor');
+    expect(task).toBeDefined();
+    expect(task!.category).toBe('Groceries');
+    expect(useSettingsStore.getState().produceFloorTaskCategory).toBe('Groceries');
   });
 
   it('seeds a weigh-in request, and no weight behind it', () => {

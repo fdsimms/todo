@@ -57,6 +57,14 @@ describe('parseFoodNutrition', () => {
     expect('foodCategory' in without!).toBe(false);
   });
 
+  it('keeps a NOVA group through a round trip, drops anything that is not 1 to 4, and adds no key otherwise', () => {
+    expect(parseFoodNutrition(serializeFoodNutrition(nutrition({ novaGroup: 4 })))?.novaGroup).toBe(4);
+    const bad = parseFoodNutrition(JSON.stringify({ ...nutrition({}), novaGroup: 7 }));
+    expect(bad).not.toBeNull();
+    expect('novaGroup' in bad!).toBe(false);
+    expect('novaGroup' in parseFoodNutrition(serializeFoodNutrition(nutrition({})))!).toBe(false);
+  });
+
   it('keeps an estimate\'s breakdown through a round trip, and adds no key when there is none', () => {
     const lines = [
       { label: 'Birch beer', amounts: { calorieKcal: 250, sugarG: 60 } },

@@ -46,6 +46,7 @@ describe('the three maintenance groups', () => {
       'check meal slot tasks',
       'check pantry reviews',
       'check pantry checks',
+      'check produce floor',
       'check meal shortfall tasks',
       'check meal thaw tasks',
       'check meal log nudge tasks',

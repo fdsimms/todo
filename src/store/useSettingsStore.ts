@@ -42,6 +42,13 @@ import {
   clampSnackNudgeFromHour,
   clampSnackNudgeSharePercent,
 } from '../utils/snackNudgeTasks';
+import {
+  DEFAULT_PRODUCE_NUDGE_FROM_HOUR,
+  DEFAULT_PRODUCE_NUDGE_GOAL,
+  clampProduceNudgeFromHour,
+  clampProduceNudgeGoal,
+} from '../utils/produceNudgeTasks';
+import { DEFAULT_PRODUCE_FLOOR, clampProduceFloor } from '../utils/produceFloorTasks';
 import { DEFAULT_APP_FONT, isAppFont, pickRandomAppFont, type AppFont } from '../theme/fonts';
 import { parseGeneratorEstimates, type GeneratorEstimates } from '../utils/ruleEstimate';
 import type { SortOption, RecipeSortOption, ProjectSortOption, Priority, Effort, Difficulty, GeneratedKind, GeneratedTaskExtras, TaskFieldDefaults, MealSlot, TimeOfDay, TitleRule, WeatherRule, EventTaskRule, ScreenTimeRule, HealthRule, NutrientKey, ReminderCapture } from '../types';
@@ -1409,6 +1416,10 @@ interface SettingsStore {
   // dismissable ask rather than a written record, so there is nothing here a
   // person could be shown that they didn't already just do.
   mealLogPrompt: boolean;
+  // Off by default: a line under a planned day on the meal plan naming lunches
+  // and dinners whose recipes list no vegetables or fruit, with produce on
+  // hand to add. See src/utils/mealProduceCheck.ts.
+  mealProduceCheck: boolean;
 
   /**
    * A daily figure to aim at, per nutrient — see src/utils/nutritionTargets.ts.
@@ -1831,6 +1842,25 @@ interface SettingsStore {
   // DEFAULT_SNACK_NUDGE_FROM_HOUR and DEFAULT_SNACK_NUDGE_SHARE_PERCENT.
   snackNudgeFromHour: number;
   snackNudgeSharePercent: number;
+  // Opt-in, off by default: a produce suggestion once the evening has started
+  // and the food log is short of a servings goal. The hour and the goal are the
+  // person's to set. See src/utils/produceNudgeTasks.ts.
+  produceNudgeTasks: boolean;
+  // Opt-in, off by default: a weekly task to restock vegetables and fruit when
+  // the pantry lists fewer than `produceFloorCount`. See
+  // src/utils/produceFloorTasks.ts.
+  produceFloorTasks: boolean;
+  produceFloorTaskCategory: string | null;
+  // The week (its first day's key) a floor task was last deleted in, written by
+  // writeGeneratedOptOut's produceFloor case and held for that week only.
+  produceFloorDeclinedWeekKey: string | null;
+  produceFloorCount: number;
+  produceNudgeTaskCategory: string | null;
+  // The logical day a produce task was last deleted on, written by
+  // writeGeneratedOptOut's produceNudge case and held for that day only.
+  produceNudgeDeclinedDayKey: string | null;
+  produceNudgeFromHour: number;
+  produceNudgeGoal: number;
   // Off by default: "Book <saved event>" when its interval is nearly up. Giving
   // a saved event an interval turns it on. See src/utils/savedEventTasks.ts.
   bookEventTasks: boolean;
@@ -2158,6 +2188,7 @@ interface SettingsStore {
   setLastDeloadAppliedDayKey: (dayKey: string | null) => void;
   setMealShortfallTasks: (on: boolean) => void;
   setMealLogPrompt: (on: boolean) => void;
+  setMealProduceCheck: (on: boolean) => void;
   /** Sets one nutrient's target, or clears it with null. */
   setNutritionTarget: (key: NutrientKey, value: number | null) => void;
   /** Merges several nutrient targets at once, in a single write — the U.S. Daily Value action. */
@@ -2255,6 +2286,15 @@ interface SettingsStore {
   setSnackNudgeDeclinedDayKey: (dayKey: string | null) => void;
   setSnackNudgeFromHour: (hour: number) => void;
   setSnackNudgeSharePercent: (percent: number) => void;
+  setProduceNudgeTasks: (on: boolean) => void;
+  setProduceFloorTasks: (on: boolean) => void;
+  setProduceFloorTaskCategory: (category: string | null) => void;
+  setProduceFloorDeclinedWeekKey: (weekKey: string | null) => void;
+  setProduceFloorCount: (count: number) => void;
+  setProduceNudgeTaskCategory: (category: string | null) => void;
+  setProduceNudgeDeclinedDayKey: (dayKey: string | null) => void;
+  setProduceNudgeFromHour: (hour: number) => void;
+  setProduceNudgeGoal: (goal: number) => void;
   setDefaultProjectNudgeCadenceDays: (days: number) => void;
   setMealPlanNudgeEnabled: (on: boolean) => void;
   setMealPlanNudgeIgnoresVacation: (on: boolean) => void;
@@ -2392,6 +2432,7 @@ const DEFAULT_SETTINGS = {
   groceryUseUpTaskCategory: null,
   mealShortfallTasks: false,
   mealLogPrompt: true,
+  mealProduceCheck: false,
   keepOpenAfterFoodLog: false,
   mealShortfallLeadDays: MEAL_SHORTFALL_LEAD_DAYS_DEFAULT,
   mealShortfallTaskCategory: null,
@@ -2837,6 +2878,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   groceryUseUpTaskCategory: null,
   mealShortfallTasks: false,
   mealLogPrompt: true,
+  mealProduceCheck: false,
   nutritionTargets: {},
   foodLogPinnedNutrients: [...DEFAULT_FOOD_LOG_PINNED_NUTRIENTS],
   nutritionLimits: [],
@@ -2991,6 +3033,15 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   snackNudgeDeclinedDayKey: null,
   snackNudgeFromHour: DEFAULT_SNACK_NUDGE_FROM_HOUR,
   snackNudgeSharePercent: DEFAULT_SNACK_NUDGE_SHARE_PERCENT,
+  produceNudgeTasks: false,
+  produceFloorTasks: false,
+  produceFloorTaskCategory: null,
+  produceFloorDeclinedWeekKey: null,
+  produceFloorCount: DEFAULT_PRODUCE_FLOOR,
+  produceNudgeTaskCategory: null,
+  produceNudgeDeclinedDayKey: null,
+  produceNudgeFromHour: DEFAULT_PRODUCE_NUDGE_FROM_HOUR,
+  produceNudgeGoal: DEFAULT_PRODUCE_NUDGE_GOAL,
   weighInTaskCategory: null,
   weighInEveryDays: DEFAULT_WEIGH_IN_EVERY_DAYS,
   weighInLastDayKey: null,
@@ -3349,6 +3400,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const mealShortfallTasks = dbGetSetting('mealShortfallTasks') === 'true';
     // `!== 'false'` because this one defaults on — see the interface note.
     const mealLogPrompt = dbGetSetting('mealLogPrompt') !== 'false';
+    const mealProduceCheck = dbGetSetting('mealProduceCheck') === 'true';
     const nutritionTargets = parseNutritionTargets(dbGetSetting('nutritionTargets'));
     const foodLogPinnedNutrients = parseFoodLogPinnedNutrients(dbGetSetting('foodLogPinnedNutrients'));
     const nutritionLimits = parseNutritionLimits(dbGetSetting('nutritionLimits'));
@@ -3506,6 +3558,15 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const snackNudgeFromHour = clampSnackNudgeFromHour(storedSnackNudgeFromHour);
     const storedSnackNudgeSharePercent = parseInt(dbGetSetting('snackNudgeSharePercent') ?? '', 10);
     const snackNudgeSharePercent = clampSnackNudgeSharePercent(storedSnackNudgeSharePercent);
+    const produceNudgeTasks = dbGetSetting('produceNudgeTasks') === 'true';
+    const produceFloorTasks = dbGetSetting('produceFloorTasks') === 'true';
+    const produceFloorTaskCategory = dbGetSetting('produceFloorTaskCategory') || null;
+    const produceFloorDeclinedWeekKey = dbGetSetting('produceFloorDeclinedWeekKey') || null;
+    const produceFloorCount = clampProduceFloor(parseInt(dbGetSetting('produceFloorCount') ?? '', 10));
+    const produceNudgeTaskCategory = dbGetSetting('produceNudgeTaskCategory') || null;
+    const produceNudgeDeclinedDayKey = dbGetSetting('produceNudgeDeclinedDayKey') || null;
+    const produceNudgeFromHour = clampProduceNudgeFromHour(parseInt(dbGetSetting('produceNudgeFromHour') ?? '', 10));
+    const produceNudgeGoal = clampProduceNudgeGoal(parseInt(dbGetSetting('produceNudgeGoal') ?? '', 10));
     const weighInTaskCategory = dbGetSetting('weighInTaskCategory') || null;
     // Clamped on read as well as on write, for the reason the weekend lead
     // above is: a value can arrive from a peer on a different build, and the
@@ -3771,6 +3832,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       mealPlanNudgeTaskCategory,
       mealPlanNudgeTime,
       mealPlanNudgeWeekday,
+      mealProduceCheck,
       mealShortfallLeadDays,
       mealShortfallTaskCategory,
       mealShortfallTasks,
@@ -3809,6 +3871,15 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       placeSuggestionsEnabled,
       postponeCheckEnabled,
       postponeCheckThreshold,
+      produceFloorCount,
+      produceFloorDeclinedWeekKey,
+      produceFloorTaskCategory,
+      produceFloorTasks,
+      produceNudgeDeclinedDayKey,
+      produceNudgeFromHour,
+      produceNudgeGoal,
+      produceNudgeTaskCategory,
+      produceNudgeTasks,
       productLookupEnabled,
       projectReviewTaskCategory,
       projectReviewTasks,
@@ -4297,6 +4368,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setMealLogPrompt(on: boolean) {
     dbSetSetting('mealLogPrompt', on ? 'true' : 'false');
     set({ mealLogPrompt: on });
+  },
+
+  setMealProduceCheck(on: boolean) {
+    dbSetSetting('mealProduceCheck', on ? 'true' : 'false');
+    set({ mealProduceCheck: on });
   },
 
   // One key of the map, updated and persisted whole — the shape
@@ -4849,6 +4925,54 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const clamped = clampSnackNudgeSharePercent(percent);
     dbSetSetting('snackNudgeSharePercent', String(clamped));
     set({ snackNudgeSharePercent: clamped });
+  },
+
+  setProduceFloorTasks(on: boolean) {
+    dbSetSetting('produceFloorTasks', String(on));
+    set({ produceFloorTasks: on });
+  },
+
+  setProduceFloorTaskCategory(category: string | null) {
+    dbSetSetting('produceFloorTaskCategory', category ?? '');
+    set({ produceFloorTaskCategory: category });
+  },
+
+  setProduceFloorDeclinedWeekKey(weekKey: string | null) {
+    dbSetSetting('produceFloorDeclinedWeekKey', weekKey ?? '');
+    set({ produceFloorDeclinedWeekKey: weekKey });
+  },
+
+  setProduceFloorCount(count: number) {
+    const clamped = clampProduceFloor(count);
+    dbSetSetting('produceFloorCount', String(clamped));
+    set({ produceFloorCount: clamped });
+  },
+
+  setProduceNudgeTasks(on: boolean) {
+    dbSetSetting('produceNudgeTasks', String(on));
+    set({ produceNudgeTasks: on });
+  },
+
+  setProduceNudgeTaskCategory(category: string | null) {
+    dbSetSetting('produceNudgeTaskCategory', category ?? '');
+    set({ produceNudgeTaskCategory: category });
+  },
+
+  setProduceNudgeDeclinedDayKey(dayKey: string | null) {
+    dbSetSetting('produceNudgeDeclinedDayKey', dayKey ?? '');
+    set({ produceNudgeDeclinedDayKey: dayKey });
+  },
+
+  setProduceNudgeFromHour(hour: number) {
+    const clamped = clampProduceNudgeFromHour(hour);
+    dbSetSetting('produceNudgeFromHour', String(clamped));
+    set({ produceNudgeFromHour: clamped });
+  },
+
+  setProduceNudgeGoal(goal: number) {
+    const clamped = clampProduceNudgeGoal(goal);
+    dbSetSetting('produceNudgeGoal', String(clamped));
+    set({ produceNudgeGoal: clamped });
   },
 
   setAutoRemoveExpiredTasks(days: ExpiredTaskGraceDays) {

@@ -1887,7 +1887,10 @@ function reconcileUseUpTask(item: GroceryItem): void {
     wanted: wantsUseUpTask(item, groceryUseUpTasks)
       && !finishedUseUpFor(useTaskStore.getState().tasks, item),
     drift: existing => useUpTaskDrift(existing, item, groceryUseUpLeadDays),
-    draft: () => useUpTaskDraft(item, groceryUseUpLeadDays, groceryUseUpTaskCategory),
+    draft: () => useUpTaskDraft(
+      item, groceryUseUpLeadDays, groceryUseUpTaskCategory,
+      useRecipeStore.getState().recipes, useGroceryStore.getState().items,
+    ),
     useUpCap: useUpTaskCap,
   });
 }

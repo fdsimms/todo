@@ -1690,6 +1690,61 @@ in `src/utils/snackNudgeTasks.ts`; the pass is in `useTaskStore.ts`. It is
 - Ships off, pauses on vacation, files under its own category setting (default
   Health).
 
+## `produceNudge`: a vegetable and fruit suggestion when the food log runs low
+
+From 5 PM by default, if today's food log estimates fewer vegetable and fruit
+servings than the person's goal (4 by default), `reconcileProduceNudge` writes
+"Add vegetables or fruit (1.5 of 4 servings logged)". Rules are in
+`src/utils/produceNudgeTasks.ts`; the pass is in `useTaskStore.ts`. It is
+`snackNudge`'s shape over `produceServings.ts`, and it is called from
+`syncSnackNudgeTasks` so it rides every call site that re-judges the snack one.
+
+- **It inherits the produce estimate's limits.** Servings are derived from food
+  names and weights (80 g each), a food the lexicon does not name counts as
+  none, and an entry that could not be weighed is `unmeasured`. The notes say
+  how many, so a low figure reads as "could not tell". A day with no food entry
+  (an empty log, or only water) is nothing to judge, never zero.
+- **The goal is the person's, not the app's.** It is a count against a number
+  they typed (`produceNudgeGoal`, 1 to 10), separate from the Food log's fixed
+  5-a-day bar. Judged on the half serving the title shows, so "4 of 4" never
+  leaves a task standing. It says nothing about a day that went over.
+- **The recipe idea is a read, not a plan.** The notes name up to two recipes
+  from `produceIdeas`: recipes that use produce the pantry lists, ranked by how
+  much they use, then how much of it is frozen (the low-effort choice), then
+  fewer ingredients. It is `useUpRecipes`'s exact `nameKey` join, so it cannot
+  know that something missing from the pantry is absent. Leftovers and produce
+  past its use-by day are skipped. The notes are refreshed by the same pass
+  (drift), but pantry or recipe changes alone never create or remove the task.
+- **Completed or deleted blocks a second that day**, through `blocksOnFinished`
+  and `produceNudgeDeclinedDayKey`. Refuses in demo mode, like `snackNudge`.
+- Ships off, pauses on vacation, files under its own category setting (default
+  Health).
+
+## `produceFloor`: a weekly restock when the pantry lists little produce
+
+If the pantry lists fewer vegetables and fruit than `produceFloorCount` (4 by
+default), `checkProduceFloorTasks` writes "Restock vegetables and fruit (1 of 4
+on hand)" once a week, linked to the grocery list. Rules are in
+`src/utils/produceFloorTasks.ts`; the pass is in `useTaskStore.ts`, fired by the
+catch-up sweep. Its source id is the week's first day (the user's own
+`weekStartsOn`), no source row.
+
+- **The count is the pantry's own account.** It reads `kitchenInventory`, which
+  lists what a purchase, a "Got it" or a freezer date vouches for, so produce
+  nobody bought through the app is not counted. The title names the figure and
+  the notes say it is counted from the pantry, so it can be dismissed.
+- **Fresh, frozen and canned count, past use-by does not.** Items are counted by
+  catalog key (a bag and a box of one thing are one thing). Produce is
+  `produceKindOf`, so a name it does not know counts as none.
+- **It never writes to the grocery list.** The notes only name produce from the
+  catalog that is not on hand (frozen, canned and dried first, then most
+  bought). A list that fills itself is a different feature.
+- **At most one a week.** A completed or deleted one blocks a second that week
+  (`blocksOnFinished`, `produceFloorDeclinedWeekKey`); one from a past week is
+  dropped rather than deleted with an opt-out. Refuses in demo mode.
+- Ships off, pauses on vacation, needs the kitchen on, files under Groceries by
+  default.
+
 ## `limitWarning`: a "don't do" task per Stay under limit
 
 For each nutrient the person marked Stay under (`nutritionLimits`),

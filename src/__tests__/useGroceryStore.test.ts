@@ -381,6 +381,9 @@ function seed(
 }
 
 beforeEach(() => {
+  // Suites that seed partial recipe rows leave them in the store, and a use-up
+  // task's notes walk every recipe, so each test starts from none.
+  useRecipeStore.setState({ recipes: [] });
   jest.clearAllMocks();
   (dbGetAllGroceryItems as jest.Mock).mockReturnValue([]);
   (dbGetGroceryAisleOrder as jest.Mock).mockReturnValue(null);
@@ -6345,6 +6348,22 @@ describe('reconcileAllUseUpTasks (#2924)', () => {
 
 describe('use-up tasks', () => {
   const NAME = 'Spinach';
+
+  it('names recipes that call for the item in the task notes', () => {
+    mockUseUpTasks = true;
+    useRecipeStore.setState({
+      recipes: [{
+        id: 'r-saag', name: 'Saag', components: [],
+        ingredients: [{ id: 'i1', name: 'Spinach', nameKey: 'spinach', choiceGroup: null }],
+      }] as never,
+    });
+    const spinach = makeItem({ name: NAME });
+    seed([spinach]);
+
+    useGroceryStore.getState().setExpiresAt(spinach.id, '2026-08-17');
+
+    expect(useUpTaskFor(spinach.id)!.notes).toBe('Could make: Saag');
+  });
 
   it('setExpiresAt spawns the task, dated the lead time before the use-by day', () => {
     mockUseUpTasks = true;

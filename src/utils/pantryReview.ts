@@ -8,6 +8,8 @@ import {
   probablyHaveReason,
 } from './grocerySuggest';
 import { PANTRY_CHECK_GRACE_DAYS } from './pantryCheckTasks';
+import { daysUntilDay } from './freshness';
+import { liveExpiresAt } from './groceryShelfLife';
 
 /**
  * The pantry review deck — the whole cupboard, one card at a time.
@@ -94,6 +96,14 @@ export const MAX_PANTRY_REVIEW_CARDS = 20;
 export const PANTRY_REVIEW_QUIET_DAYS = 7;
 
 /**
+ * How many days past its use-by day a row on hand must be before it goes to the
+ * front of the deck. Food a day or two past its date is questionable and the
+ * kitchen already says so ("2 days past"); a week is where it is more likely
+ * forgotten than still good, and the row is still being counted as on hand.
+ */
+export const PANTRY_PAST_USE_BY_DAYS = 7;
+
+/**
  * How far through its purchase window a `guessed` row must be before it earns a
  * card. A purchase from this morning is the app's best evidence that you have
  * something, and asking about it is noise: the deck only cards a guess once
@@ -122,6 +132,12 @@ function answerStillStands(item: GroceryItem, now: Date): boolean {
  * How sure the app currently is about one row, worst first. The deck's sort
  * key, and the reason a card is in the deck at all.
  *
+ * - `pastUseBy` — still counted as on hand, with a use-by day more than
+ *   `PANTRY_PAST_USE_BY_DAYS` gone. The app is *sure* it has the thing, which is
+ *   the problem: nothing else in the deck would ever ask about it, because a
+ *   use-by day does not lapse the way a purchase guess does. Asked first, the
+ *   longest overdue first, and the answers are the same three: "Out of it"
+ *   clears the date, "Got it" says it is fine.
  * - `lapsed` — the purchase reading's window has run out, so the app has
  *   stopped having an opinion and nothing was written when it did. This is the
  *   one state change in the whole kitchen a person cannot see happen, and the
@@ -132,9 +148,9 @@ function answerStillStands(item: GroceryItem, now: Date): boolean {
  * - `asserted` — the user has said something about this row (Got it, frozen,
  *   opened, running low). Asked last, because the app has already been told.
  */
-export type PantryDoubt = 'lapsed' | 'guessed' | 'asserted';
+export type PantryDoubt = 'pastUseBy' | 'lapsed' | 'guessed' | 'asserted';
 
-const DOUBT_ORDER: readonly PantryDoubt[] = ['lapsed', 'guessed', 'asserted'];
+const DOUBT_ORDER: readonly PantryDoubt[] = ['pastUseBy', 'lapsed', 'guessed', 'asserted'];
 
 export interface PantryReviewCard {
   item: GroceryItem;
@@ -148,6 +164,8 @@ export interface PantryReviewCard {
   reason: string | null;
   /** Days since the purchase window closed, for a `lapsed` card only. */
   lapsedDays: number | null;
+  /** Days past the use-by day, for a `pastUseBy` card only. */
+  daysPastUseBy: number | null;
 }
 
 export interface PantryReviewDeck {
@@ -199,6 +217,15 @@ export function buildPantryReviewDeck(
     // does" — never to build the card itself.
     const reason = probablyHaveReason(item, now, []);
     if (reason) {
+      // Before the tier tests below: a long-expired row is carded whatever else
+      // the app believes about it. `liveExpiresAt` is null while frozen, so a
+      // frozen packet's old date never counts.
+      const useBy = liveExpiresAt(item);
+      const past = useBy ? -daysUntilDay(useBy, now) : 0;
+      if (past > PANTRY_PAST_USE_BY_DAYS) {
+        candidates.push({ item, doubt: 'pastUseBy', reason, lapsedDays: null, daysPastUseBy: past });
+        continue;
+      }
       // An explicit assertion outranks the purchase reading inside
       // `probablyHaveReason`, so the columns are what decide the tier here
       // rather than the prose it returned — the same "read the columns, not
@@ -211,6 +238,7 @@ export function buildPantryReviewDeck(
         doubt: asserted ? 'asserted' : 'guessed',
         reason,
         lapsedDays: null,
+        daysPastUseBy: null,
       });
       continue;
     }
@@ -221,7 +249,7 @@ export function buildPantryReviewDeck(
 
     const lapsedDays = pantryGuessLapsedDays(item, now);
     if (lapsedDays === null || lapsedDays > PANTRY_CHECK_GRACE_DAYS) continue;
-    candidates.push({ item, doubt: 'lapsed', reason: null, lapsedDays });
+    candidates.push({ item, doubt: 'lapsed', reason: null, lapsedDays, daysPastUseBy: null });
   }
 
   candidates.sort(comparePantryReviewCards);
@@ -256,6 +284,10 @@ function isAsserted(item: GroceryItem, now: Date): boolean {
 function comparePantryReviewCards(a: PantryReviewCard, b: PantryReviewCard): number {
   const tier = DOUBT_ORDER.indexOf(a.doubt) - DOUBT_ORDER.indexOf(b.doubt);
   if (tier !== 0) return tier;
+  if (a.doubt === 'pastUseBy') {
+    const overdue = (b.daysPastUseBy ?? 0) - (a.daysPastUseBy ?? 0);
+    if (overdue !== 0) return overdue;
+  }
   if (a.doubt === 'lapsed') {
     const lapse = (a.lapsedDays ?? 0) - (b.lapsedDays ?? 0);
     if (lapse !== 0) return lapse;
@@ -285,13 +317,16 @@ export function describeLastPurchase(item: Pick<GroceryItem, 'lastPurchasedAt'>)
 /**
  * The doubt pill, or null for a card that hasn't got one.
  *
- * Only a `lapsed` card carries one: it is the reason that card is at the front
+ * Only a `lapsed` or `pastUseBy` card carries one: it is the reason that card is at the front
  * of the deck, and the one fact about it the app has never had a way to show.
  * A `guessed` card's own reason line already says how sure the app is, and
  * captioning it twice is the noise `tripMarkerFor`'s silence-by-default rule
  * exists to avoid.
  */
 export function describePantryDoubt(card: PantryReviewCard): string | null {
+  if (card.doubt === 'pastUseBy' && card.daysPastUseBy !== null) {
+    return `${Math.round(card.daysPastUseBy)} days past its use-by date`;
+  }
   if (card.doubt !== 'lapsed' || card.lapsedDays === null) return null;
   // What lapsed is how long this usually lasts between purchases
   // (`pantryGuessLapsedDays`), not a use-by date: "Estimated use-by passed"

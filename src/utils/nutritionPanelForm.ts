@@ -1,4 +1,4 @@
-import type { FoodNutrition, NutrientKey } from '../types';
+import type { FoodNutrition, NovaGroup, NutrientKey } from '../types';
 import type { LabelColumn, LabelReading } from './labelOcr';
 import { NUTRIENT_KEYS } from '../types';
 import { unitFactor } from './unitConvert';
@@ -35,6 +35,23 @@ export interface PanelForm {
   /** What that serving weighs. Blank is ordinary; a product sold by volume has none. */
   servingGrams: string;
   amounts: Record<NutrientKey, string>;
+  /**
+   * The NOVA processing group as '1' to '4', or '' for none. Blank is ordinary
+   * and means unclassified, never group 1.
+   */
+  novaGroup: NovaGroupText;
+}
+
+export type NovaGroupText = '' | '1' | '2' | '3' | '4';
+
+/** The form's group as the stored number, or null for blank. */
+export function novaGroupFromText(text: NovaGroupText): NovaGroup | null {
+  return text === '' ? null : (Number(text) as NovaGroup);
+}
+
+/** The stored group as the form's text. */
+export function novaGroupToText(group: NovaGroup | null | undefined): NovaGroupText {
+  return group ? (String(group) as NovaGroupText) : '';
 }
 
 /** Which field a read failed on — the nutrient's own key, or the serving weight. */
@@ -44,7 +61,7 @@ export type PanelFieldKey = NutrientKey | 'servingGrams';
 export function emptyPanelForm(): PanelForm {
   const amounts = {} as Record<NutrientKey, string>;
   for (const key of NUTRIENT_KEYS) amounts[key] = '';
-  return { basis: 'per100g', servingText: '', servingGrams: '', amounts };
+  return { basis: 'per100g', servingText: '', servingGrams: '', amounts, novaGroup: '' };
 }
 
 /**
@@ -60,6 +77,7 @@ export function panelFormFrom(nutrition: FoodNutrition | null): PanelForm {
   form.basis = nutrition.basis;
   form.servingText = nutrition.servingText ?? '';
   form.servingGrams = nutrition.servingGrams === null ? '' : String(nutrition.servingGrams);
+  form.novaGroup = novaGroupToText(nutrition.novaGroup);
   for (const key of NUTRIENT_KEYS) {
     const amount = nutrition.amounts[key];
     if (amount !== undefined) form.amounts[key] = String(amount);
@@ -140,6 +158,7 @@ export function panelFormDirty(form: PanelForm, baseline: PanelForm): boolean {
   if (form.basis !== baseline.basis) return true;
   if (form.servingText.trim() !== baseline.servingText.trim()) return true;
   if (form.servingGrams.trim() !== baseline.servingGrams.trim()) return true;
+  if (form.novaGroup !== baseline.novaGroup) return true;
   return NUTRIENT_KEYS.some(k => form.amounts[k].trim() !== baseline.amounts[k].trim());
 }
 
@@ -190,6 +209,9 @@ export function buildPanelNutrition(
     sourceId: null,
     portions: previous?.portions ?? [],
     recordedAt: now.toISOString(),
+    // Kept as the form says, so clearing it clears it. Typing over a fetched
+    // panel does not drop a group the source stated: `panelFormFrom` seeded it.
+    ...(novaGroupFromText(form.novaGroup) ? { novaGroup: novaGroupFromText(form.novaGroup)! } : {}),
   };
 }
 
@@ -311,6 +333,8 @@ export function applyLabelReading(
     servingText: reading.servingText ?? form.servingText,
     servingGrams: reading.servingGrams === null ? form.servingGrams : String(reading.servingGrams),
     amounts,
+    // A printed panel states no processing group.
+    novaGroup: form.novaGroup,
   };
 }
 
@@ -346,6 +370,8 @@ export function applyFoodNutrition(form: PanelForm, nutrition: FoodNutrition): P
     servingText: nutrition.servingText ?? form.servingText,
     servingGrams: nutrition.servingGrams === null ? form.servingGrams : String(nutrition.servingGrams),
     amounts,
+    // A scan that states a group sets it; one that doesn't leaves what was typed.
+    novaGroup: nutrition.novaGroup ? novaGroupToText(nutrition.novaGroup) : form.novaGroup,
   };
 }
 

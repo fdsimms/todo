@@ -40,7 +40,7 @@ import { useTemplateStore } from '../store/useTemplateStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { useSharedLinkStore } from '../store/useSharedLinkStore';
 import { useUnattendedStore } from '../store/useUnattendedStore';
-import type { DeliverableKind, FocusSession, GroceryItem, MealSlot, MoodLevel, Recipe, Shop, SymptomSeverity, TemplateItem } from '../types';
+import type { DeliverableKind, FocusSession, GroceryItem, MealSlot, MoodLevel, NovaGroup, Recipe, Shop, SymptomSeverity, TemplateItem } from '../types';
 import { dbGetFocusSessionLog, dbInsertFocusSessionRecord, dbSetGtinLookup } from '../db/database';
 import { advanceFocusSession, buildFocusPlan, closeFocusSession } from './focusPlan';
 import { buildWeekDays } from './calendarGrid';
@@ -62,6 +62,8 @@ import {
   weighInNotes,
 } from './weightTasks';
 import { SNACK_NUDGE_NOTES, snackNudgeTitle } from './snackNudgeTasks';
+import { produceNudgeNotes, produceNudgeTitle } from './produceNudgeTasks';
+import { produceFloorNotes, produceFloorTitle } from './produceFloorTasks';
 import { GOAL_TARGET_LINK, goalTargetNotes, goalTargetSourceId, goalTargetTitle } from './goalTargetTasks';
 import { LIMIT_WARNING_LINK, LIMIT_WARNING_NOTES, limitWarningTitle } from './limitWarningTasks';
 import { helpingNutrition, scalePanelToAmount } from './foodLog';
@@ -124,6 +126,14 @@ import { writeAgentNotes } from './agentNotes';
 // groups, per-store links, leftovers) reads as missing rather than unused. So
 // a change that adds a user-facing capability should add the one row here that
 // makes it visible, in the same PR.
+const DEMO_NOVA_GROUPS: Record<string, NovaGroup> = {
+  Milk: 1,
+  Spinach: 1,
+  Potatoes: 1,
+  Butter: 2,
+  'Greek yogurt': 3,
+};
+
 export function seedDemoData(): void {
   const {
     addTask,
@@ -1979,6 +1989,10 @@ export function seedDemoData(): void {
   useSettingsStore.getState().setJournalWordGoal(25);
   useSettingsStore.getState().setJournalCustomPrompts(['What am I avoiding this week?']);
 
+  // The meal plan's produce line is a setting rather than a row, so the demo
+  // turns it on for the planned meals already seeded.
+  useSettingsStore.getState().setMealProduceCheck(true);
+
   // The snack suggestion, seeded directly because `reconcileSnackNudge` refuses
   // in demo mode (a pass that judges the clock and the food log would delete
   // this row before 3 PM, or whenever the seeded log doesn't qualify). The
@@ -1991,6 +2005,29 @@ export function seedDemoData(): void {
     dueDate: today.toISOString(),
     category: 'Health',
     ...generatedBy('snackNudge', dayKeyOf(today)),
+  });
+
+  // The produce suggestion, seeded directly for the snack one's reason:
+  // `reconcileProduceNudge` refuses in demo mode. Illustrative figures.
+  useSettingsStore.getState().setProduceNudgeTaskCategory('Health');
+  addTask({
+    title: produceNudgeTitle(1.5, 4),
+    notes: produceNudgeNotes({ servings: 1.5, unmeasured: 0 }, []),
+    dueDate: today.toISOString(),
+    category: 'Health',
+    ...generatedBy('produceNudge', dayKeyOf(today)),
+  });
+
+  // The weekly restock task, seeded directly for the same reason: the pass
+  // refuses in demo mode. Illustrative figures.
+  useSettingsStore.getState().setProduceFloorTaskCategory('Groceries');
+  addTask({
+    title: produceFloorTitle(2, 4),
+    notes: produceFloorNotes([]),
+    dueDate: today.toISOString(),
+    category: 'Groceries',
+    linkUrl: 'dundundun://groceries',
+    ...generatedBy('produceFloor', dayKeyOf(today)),
   });
 
   // The limit's "don't do" task, seeded directly for the snack suggestion's
@@ -2659,15 +2696,51 @@ function seedFoodLog(today: Date): void {
     if (!built) continue;
     const at = subDays(today, meal.daysAgo);
     at.setHours(meal.hour, 0, 0, 0);
+    // The processing group of a few catalog foods, so Stats has a share to show
+    // (`processingStats.ts`). Each is a food whose group is not in doubt; the
+    // rest stay unclassified, which is the ordinary state.
+    const nova = DEMO_NOVA_GROUPS[item.name];
     addEntry({
       label: item.name,
       quantity: meal.quantity,
       grams: built.grams,
-      nutrition: built.nutrition,
+      nutrition: nova ? { ...built.nutrition, novaGroup: nova } : built.nutrition,
       slot: meal.slot,
       itemId: item.id,
       at,
     });
+  }
+
+  // A packaged snack with the group a barcode source states, so the window has
+  // some ultra-processed calories beside the minimally processed ones. Built the
+  // way the chicken above is: a panel the entry keeps, scaled to the amount, so
+  // the helping carries the group and nothing is typed in as a figure.
+  {
+    const kept = {
+      basis: 'per100g' as const,
+      servingGrams: 28,
+      servingText: '1 bag (28 g)',
+      amounts: { calorieKcal: 570, fatG: 36, carbsG: 52, sodiumMg: 890 },
+      portions: [],
+      source: 'openFoodFacts' as const,
+      sourceId: '0000000000017',
+      recordedAt: subDays(today, 2).toISOString(),
+      novaGroup: 4 as const,
+    };
+    const built = scalePanelToAmount(kept, '28 g', null, undefined, 'Cheese puffs');
+    for (const daysAgo of built ? [2, 3, 9] : []) {
+      const at = subDays(today, daysAgo);
+      at.setHours(15, 30, 0, 0);
+      addEntry({
+        label: 'Cheese puffs',
+        quantity: '28 g',
+        grams: built!.grams,
+        nutrition: built!.nutrition,
+        sourcePanel: kept,
+        slot: 'snack',
+        at,
+      });
+    }
   }
 
   /**
