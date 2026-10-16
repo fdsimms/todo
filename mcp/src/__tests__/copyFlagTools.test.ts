@@ -4,7 +4,7 @@
  */
 import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
-import { listCopyFlags, resolveCopyFlag } from '../copyFlagTools';
+import { copyFlagFind, listCopyFlags, resolveCopyFlag } from '../copyFlagTools';
 
 let mockRaw: ShimDatabase;
 
@@ -40,6 +40,7 @@ describe('the copy flag tools', () => {
     expect(flags.map(f => f.id)).toEqual(['a']);
     expect(flags[0]).toMatchObject({ text: 'Colour theme', screen: 'Settings', note: 'British' });
     expect(note).toMatch(/resolve_copy_flag/);
+    expect(flags[0].find).toBe("npm run copy -- --grep 'Colour theme'");
   });
 
   it('lists resolved or all flags on request', () => {
@@ -55,5 +56,35 @@ describe('the copy flag tools', () => {
 
   it('refuses an id it does not have', () => {
     expect(() => resolveCopyFlag(replica, 'nope', 'x')).toThrow(/No copy flag/);
+  });
+
+  describe('the find command', () => {
+    it('searches the whole text when there is nothing to leave out', () => {
+      expect(copyFlagFind('Colour theme')).toBe("npm run copy -- --grep 'Colour theme'");
+    });
+
+    it('searches the longest stretch without a digit, since a number on screen is a gap in the source', () => {
+      expect(copyFlagFind('3 tasks left today, 2 overdue')).toBe("npm run copy -- --grep 'tasks left today,'");
+    });
+
+    it('falls back to the whole text when every stretch is too short to search for', () => {
+      expect(copyFlagFind('7 of 12')).toBe("npm run copy -- --grep '7 of 12'");
+    });
+
+    it('matches either kind of apostrophe, and leaves no quote to break the shell', () => {
+      const find = copyFlagFind('You can\u2019t undo this, it isn\'t saved');
+      expect(find).toBe("npm run copy -- --grep 'You can.t undo this, it isn.t saved'");
+      expect(find.slice(find.indexOf("'") + 1, -1)).not.toContain("'");
+    });
+
+    it('escapes what a regular expression would read as syntax', () => {
+      expect(copyFlagFind('Delete (all)? Really.')).toBe("npm run copy -- --grep 'Delete \\(all\\)\\? Really\\.'");
+    });
+
+    it('collapses whitespace the way the inventory does, and caps a long paragraph', () => {
+      expect(copyFlagFind('Two\n  lines')).toBe("npm run copy -- --grep 'Two lines'");
+      const long = copyFlagFind('word '.repeat(40));
+      expect(long.length).toBeLessThan("npm run copy -- --grep ''".length + 61);
+    });
   });
 });
