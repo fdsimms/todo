@@ -45,6 +45,7 @@ import {
   notesOfKind,
 } from '../utils/personNotes';
 import { telUrl, smsUrl } from '../utils/phone';
+import { personContactActions } from '../utils/peopleList';
 import { type ReachOutKind } from '../utils/reachOutIntent';
 import { tasksNaming } from '../utils/peopleRegistry';
 import {
@@ -164,6 +165,10 @@ export function PersonDetailScreen() {
   const allPeople = usePersonStore(useShallow(s => s.people));
   const notePendingReachOut = usePersonStore(s => s.notePendingReachOut);
   const updatePerson = usePersonStore(s => s.updatePerson);
+  const mapsApp = useSettingsStore(s => s.mapsApp);
+  const directionsLink = person
+    ? personContactActions(person, mapsApp).find(a => a.kind === 'directions')?.url ?? null
+    : null;
   const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
   const calendarPeopleHistory = useSettingsStore(s => s.calendarPeopleHistory);
   const pastEvents = useCalendarStore(useShallow(s => s.pastEvents));
@@ -422,7 +427,7 @@ export function PersonDetailScreen() {
         ref={scrollTop.ref}
         {...scrollTop.listProps} style={styles.scroll} contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(120, scrollTop.clearance) }]}>
         {/* The reach-them row. Only the ones they actually have. */}
-        {(person.phoneNumber || person.email || person.linkUrl) && (
+        {(person.phoneNumber || person.email || person.linkUrl || directionsLink) && (
           <View style={styles.actionRow}>
             {person.phoneNumber && (
               <>
@@ -436,6 +441,16 @@ export function PersonDetailScreen() {
             {person.linkUrl && (
               <ReachButton icon="link-outline" label="Open" onPress={() => open(person.linkUrl)} styles={styles} colors={colors} />
             )}
+            {directionsLink && (
+              <ReachButton icon="navigate-outline" label="Directions" onPress={() => open(directionsLink)} styles={styles} colors={colors} />
+            )}
+          </View>
+        )}
+
+        {person.address && person.address.trim().length > 0 && (
+          <View style={styles.summary}>
+            <Text style={styles.summaryLabel}>Address</Text>
+            <Text style={styles.summaryValue}>{person.address}</Text>
           </View>
         )}
 

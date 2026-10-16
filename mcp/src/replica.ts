@@ -575,6 +575,8 @@ export interface PersonFields {
   linkUrl?: string | null;
   /** Free text, like the app's own field; null clears it. */
   location?: string | null;
+  /** Their street address, free text, lines separated by newlines; null clears it. */
+  address?: string | null;
   /** The group they are listed under (a person group's id), or null for none. */
   groupId?: string | null;
   /** Filed away: kept, out of the list. */
@@ -2226,7 +2228,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const projectPause = require('../../src/utils/projectPause') as typeof import('../../src/utils/projectPause');
   const { generateId } = require('../../src/utils/id') as IdModule;
   const { reopenedTask } = require('../../src/utils/taskReopen') as typeof import('../../src/utils/taskReopen');
-  const { generatedSourceOf, liveGeneratedTask } = require('../../src/utils/generatedTasks') as typeof import('../../src/utils/generatedTasks');
+  const { generatedSourceOf, liveGeneratedTask, latestCompletedTaskIdFor } = require('../../src/utils/generatedTasks') as typeof import('../../src/utils/generatedTasks');
   const { completesMealSlot, mealSlotSourceId, parseMealSlotSource } = require('../../src/utils/mealSlotTasks') as typeof import('../../src/utils/mealSlotTasks');
   const mealPlanGroceries = require('../../src/utils/mealPlanGroceries') as typeof import('../../src/utils/mealPlanGroceries');
 
@@ -2753,6 +2755,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     if (f.email !== undefined) out.email = f.email?.trim() || null;
     if (f.linkUrl !== undefined) out.linkUrl = f.linkUrl?.trim() || null;
     if (f.location !== undefined) out.location = f.location?.trim() || null;
+    if (f.address !== undefined) out.address = f.address?.trim() || null;
     if (f.groupId !== undefined) {
       if (f.groupId !== null && !db.dbGetAllPersonGroups().some(g => g.id === f.groupId)) throw new Error(`No group with id ${f.groupId}. save_person_group makes one.`);
       out.groupId = f.groupId;
@@ -2962,6 +2965,13 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     });
   }
   const { useRewardStore } = require('../../src/store/useRewardStore') as typeof import('../../src/store/useRewardStore');
+  // Food recorded as thrown out used nothing up, so the coins its use-up task
+  // paid come back, as on the phone (`forfeitUseUpCoins` in generatedTaskSync).
+  // The prompt that asks never reaches this replica, so the answer arrives here.
+  const forfeitUseUpCoins = (kind: 'groceryUseUp' | 'leftoverUseUp', sourceId: string): void => {
+    const taskId = latestCompletedTaskIdFor(db.dbGetAllTasks(), kind, sourceId);
+    if (taskId) useRewardStore.getState().takeBackTask(taskId);
+  };
   const { registerTaskSource } = require('../../src/utils/blockerRegistry') as typeof import('../../src/utils/blockerRegistry');
   const { registerPersonSource } = require('../../src/utils/peopleRegistry') as typeof import('../../src/utils/peopleRegistry');
   const { registerPausedProjectSource } = require('../../src/utils/projectPause') as typeof import('../../src/utils/projectPause');
@@ -6690,9 +6700,11 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           if (item.onHandUntil !== grocerySuggest.OUT_OF_IT_UNTIL) {
             const thawed = pantryWrite.thawedPortionsOf(new Set([id]), db.dbGetAllItemProducts());
             save(pantryWrite.markedOutRow(item, change.outcome, nowIso), 'marked out of it');
+            if (change.outcome === 'spoiled') forfeitUseUpCoins('groceryUseUp', id);
             for (const p of thawed) db.dbDeleteItemProduct(p.id);
           } else if (change.outcome) {
             save(pantryWrite.disposalRow(item, change.outcome, nowIso), `recorded that it was ${change.outcome === 'spoiled' ? 'thrown out' : 'used up'}`);
+            if (change.outcome === 'spoiled') forfeitUseUpCoins('groceryUseUp', id);
           }
         } else if (change.status === 'have') {
           save(pantryWrite.onHandRow(item, grocerySuggest.defaultOnHandUntil(item, now)), 'marked as on hand');
@@ -6896,7 +6908,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         }
         if (change.frozen !== undefined) save(pantryWrite.leftoverFrozenRow(row, change.frozen, nowIso));
         if (change.finished === null) save(pantryWrite.leftoverReopenedRow(row));
-        else if (change.finished) save(pantryWrite.leftoverFinishedRow(row, change.finished, nowIso));
+        else if (change.finished) {
+          save(pantryWrite.leftoverFinishedRow(row, change.finished, nowIso));
+          if (change.finished === 'tossed') forfeitUseUpCoins('leftoverUseUp', id);
+        }
         if (change.keepDays !== undefined) save(pantryWrite.leftoverKeepDaysRow(row, Math.max(1, Math.round(change.keepDays))));
         // A finished or frozen container has no use-up task, and the phone
         // drops it in the same step (`dropLeftoverTask`); its catch-up pass

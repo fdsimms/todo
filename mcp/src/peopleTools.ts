@@ -114,6 +114,7 @@ export function getPerson(replica: Replica, id: string): PersonDetail | null {
     ...(p.faxNumber ? { fax: p.faxNumber } : {}),
     ...(p.email ? { email: p.email } : {}),
     ...(p.location ? { location: p.location } : {}),
+    ...(p.address ? { address: p.address } : {}),
     history: replica
       .personHistory(id)
       .slice(0, HISTORY_LIMIT)

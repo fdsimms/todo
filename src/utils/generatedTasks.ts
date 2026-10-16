@@ -1418,6 +1418,30 @@ export function generatedSourceOf(
 }
 
 /**
+ * The id of the task a person most recently completed for this generated
+ * source, or null when there isn't one.
+ *
+ * Read by the use-up prompt to find the completion whose coins it takes back
+ * when the answer is "threw it out": the task is the only thing that earned,
+ * and the prompt only knows the item or leftover it was about. A miss and a
+ * completion somebody else did earned nothing, so neither is a candidate.
+ */
+export function latestCompletedTaskIdFor(
+  tasks: readonly Pick<Task, 'id' | 'generatedKind' | 'generatedSourceId' | 'completed' | 'completedAt' | 'missedAt' | 'doneByOtherAt'>[],
+  kind: GeneratedKind,
+  sourceId: string
+): string | null {
+  let best: { id: string; at: string } | null = null;
+  for (const t of tasks) {
+    if (!t.completed || t.missedAt || t.doneByOtherAt) continue;
+    if (generatedSourceOf(t, kind) !== sourceId) continue;
+    const at = t.completedAt ?? '';
+    if (!best || at > best.at) best = { id: t.id, at };
+  }
+  return best ? best.id : null;
+}
+
+/**
  * The fields that mark a task as generated, for a draft.
  *
  * Spread into a draft rather than set field by field so a generator can't

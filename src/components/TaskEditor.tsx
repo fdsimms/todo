@@ -1778,6 +1778,10 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         setPriority(s.hit.priority);
         setPriorityTouched(true);
         break;
+      case 'difficulty':
+        strip(s.hit.cleanTitle);
+        setDifficulty(s.hit.difficulty);
+        break;
       case 'project':
         strip(s.hit.cleanTitle);
         setProject(s.hit.projectId);

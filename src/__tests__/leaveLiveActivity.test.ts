@@ -53,6 +53,14 @@ function travelTaskFor(event: BusyEvent, leaveInMinutes: number, overrides: Part
 }
 
 describe('buildLeaveRun', () => {
+  it('uses the window the person chose', () => {
+    const event = makeEvent();
+    const task = travelTaskFor(event, 120);
+    expect(buildLeaveRun([task], [event], NOW, { enabled: true })).toBeNull();
+    expect(buildLeaveRun([task], [event], NOW, { enabled: true, windowMinutes: 120 })).not.toBeNull();
+    expect(buildLeaveRun([task], [event], NOW, { enabled: true, windowMinutes: 60 })).toBeNull();
+  });
+
   it('returns nothing when disabled', () => {
     const event = makeEvent();
     expect(buildLeaveRun([travelTaskFor(event, 60)], [event], NOW, { enabled: false })).toBeNull();

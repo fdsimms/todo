@@ -1,5 +1,5 @@
 import {
-  activeSchedules, currentWindowEnd, describeDays, describeWindow, formatMinutes, isScheduleActive,
+  activeSchedules, currentWindowEnd, describeDays, describeWindow, formatMinutes, isAllDay, isScheduleActive,
   nativeScheduleWindows, nextScheduleBoundary, parseBlockSchedules, pauseActiveSchedules, scheduleProblem,
   serializeBlockSchedules,
   windowLengthMinutes, type BlockSchedule,
@@ -246,5 +246,48 @@ describe('text', () => {
     expect(formatMinutes(13 * 60 + 5, false)).toBe('1:05 PM');
     expect(formatMinutes(13 * 60 + 5, true)).toBe('13:05');
     expect(describeWindow(make(), false)).toBe('9:00 AM to 5:00 PM');
+  });
+});
+
+describe('an all-day window', () => {
+  const allDay = make({ days: [3], startMinutes: 0, endMinutes: 0 }); // Wednesdays
+
+  it('is the one pair of equal times that is allowed', () => {
+    expect(isAllDay(allDay)).toBe(true);
+    expect(isAllDay(make())).toBe(false);
+    expect(scheduleProblem(allDay)).toBeNull();
+    expect(scheduleProblem(make({ startMinutes: 0, endMinutes: 0, days: [] }))).toMatch(/day/);
+    expect(scheduleProblem(make({ startMinutes: 720, endMinutes: 720 }))).toMatch(/same/);
+  });
+
+  it('covers every minute of its days and none of the others', () => {
+    expect(isScheduleActive(allDay, WED(0))).toBe(true);
+    expect(isScheduleActive(allDay, WED(12, 30))).toBe(true);
+    expect(isScheduleActive(allDay, WED(23, 59))).toBe(true);
+    expect(isScheduleActive(allDay, THU(0))).toBe(false);
+    expect(isScheduleActive(allDay, new Date(2026, 7, 11, 23, 59))).toBe(false);
+  });
+
+  it('ends at the next midnight, which is where a tag pause lasts until', () => {
+    expect(currentWindowEnd(allDay, WED(10))).toEqual(THU(0));
+    const { schedules, paused } = pauseActiveSchedules([allDay], WED(10));
+    expect(paused).toBe(1);
+    expect(isScheduleActive(schedules[0], WED(23, 59))).toBe(false);
+    expect(isScheduleActive(schedules[0], new Date(2026, 7, 19, 0))).toBe(true);
+  });
+
+  it('survives being stored and read back', () => {
+    const [back] = parseBlockSchedules(serializeBlockSchedules([allDay]));
+    expect(back.startMinutes).toBe(0);
+    expect(back.endMinutes).toBe(0);
+  });
+
+  it('is described as all day', () => {
+    expect(describeWindow(allDay, false)).toBe('All day');
+  });
+
+  it('is handed to the native side as 0 to 0', () => {
+    const [w] = nativeScheduleWindows([allDay], id => id);
+    expect([w.startMinutes, w.endMinutes]).toEqual([0, 0]);
   });
 });

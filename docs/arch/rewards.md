@@ -29,6 +29,11 @@ default (`rewardsEnabled`), switched on from the Rewards screen (its own menu ro
   entry, undoing a slip removes that slip's entry, and an undone claim removes the spend. Unlike the
   penalty block (where `undoSlip` deliberately refunds nothing), none of this can be gamed, because
   each refund is the row the action itself wrote.
+- **Food thrown out takes its use-up coin back.** The tick on a "Use up X" task pays before anyone says
+  what happened to the food, so `forfeitUseUpCoins` (`generatedTaskSync.ts`) removes that completion's
+  entry wherever food is recorded as thrown out: `finishLeftover` (tossed), `markOutOfMany` and
+  `recordDisposal` (spoiled), and the MCP replica's equivalents. Undoing the throw-out writes the entry
+  back (`restoreEntries`). Undoing it from Activity after an agent did it does not.
 - **The balance can go below zero.** Losses are taken in full, and unticking a task whose coins
   were already spent still takes them back. Refusing the undo would overrule a correction, and
   flooring the balance would make a miss free once you were broke.

@@ -101,6 +101,7 @@ import {
 import { DEFAULT_MEAL_SLOTS_ENABLED } from '../utils/mealSlotTasks';
 import { parseRetentionDays, type RetentionDays } from '../utils/retention';
 import { addRecentSearch, parseRecentSearches } from '../utils/recentSearches';
+import { bumpChipUses, parseChipUses, type ChipUses } from '../utils/chipUses';
 import { addRecentScreen, parseRecentScreens, parseTabRoutes, setTabSlot, clearTabSlot, DEFAULT_TAB_ROUTES } from '../utils/navHubs';
 import { parseExpiredTaskGrace, serializeExpiredTaskGrace, type ExpiredTaskGraceDays } from '../utils/expiredTaskGrace';
 import { DEFAULT_APP_LOCK_GRACE_SECONDS, parseGraceSeconds } from '../utils/appLock';
@@ -146,7 +147,9 @@ import {
 } from '../utils/eventTasks';
 import {
   clampArriveEarlyMinutes,
+  clampLeaveWindowMinutes,
   clampTravelLeadMinutes,
+  LEAVE_WINDOW_MINUTES_DEFAULT,
   clampTravelWalkUnder,
   parseTravelLeadByCalendar,
   parseTravelEventPrefs,
@@ -713,6 +716,9 @@ interface SettingsStore {
   // see src/utils/leaveLiveActivity.ts. Rides on travelTasks: nothing starts
   // while that is off. iOS 17+ only, defaults on.
   leaveLiveActivity: boolean;
+  // How long before leaving that activity may start. Device-local, like the
+  // switch above. Clamped by clampLeaveWindowMinutes.
+  leaveWindowMinutes: number;
   // Same idea again, for the focus session in flight (useFocusStore.ts) — see
   // src/utils/focusLiveActivity.ts. iOS 17+ only, defaults on.
   focusLiveActivity: boolean;
@@ -1037,6 +1043,10 @@ interface SettingsStore {
   // while the field is empty. Device-local on purpose — see the note in
   // src/utils/recentSearches.ts for why this one isn't in SYNCED_SETTING_KEYS.
   recentSearches: string[];
+  // How often each category, tag and project was chosen from quick add, which
+  // orders its "#" and "+" keyboard chips. Device-local on purpose; see
+  // src/utils/chipUses.ts.
+  chipUses: ChipUses;
   // Whether a reminder landing inside a meeting gets pushed to the meeting's
   // end (#1491). A refinement of calendarReadEnabled, not a separate read —
   // it does nothing while that's off, and defaults on once it's turned on so
@@ -2090,6 +2100,7 @@ interface SettingsStore {
   setTimerLiveActivity: (on: boolean) => void;
   setTripLiveActivity: (on: boolean) => void;
   setLeaveLiveActivity: (on: boolean) => void;
+  setLeaveWindowMinutes: (minutes: number) => void;
   setFocusLiveActivity: (on: boolean) => void;
   setFocusHideTimers: (on: boolean) => void;
   setFocusBreaksEnabled: (on: boolean) => void;
@@ -2318,6 +2329,8 @@ interface SettingsStore {
   setGeneratedTaskExtras: (kind: GeneratedKind, extras: GeneratedTaskExtras | null) => void;
   pushRecentSearch: (query: string) => void;
   clearRecentSearches: () => void;
+  /** Counts one more use of each key (`chipUseKey`) after quick add creates a task. */
+  recordChipUses: (keys: readonly string[]) => void;
   setTitleRules: (rules: TitleRule[]) => void;
   setLastVisitedScreen: (screen: string | null) => void;
   pushRecentScreen: (screen: string) => void;
@@ -2408,6 +2421,7 @@ const DEFAULT_SETTINGS = {
   timerLiveActivity: true,
   tripLiveActivity: true,
   leaveLiveActivity: true,
+  leaveWindowMinutes: LEAVE_WINDOW_MINUTES_DEFAULT,
   focusLiveActivity: true,
   focusHideTimers: false,
   focusBreaksEnabled: true,
@@ -2852,6 +2866,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   timerLiveActivity: true,
   tripLiveActivity: true,
   leaveLiveActivity: true,
+  leaveWindowMinutes: LEAVE_WINDOW_MINUTES_DEFAULT,
   focusLiveActivity: true,
   focusHideTimers: false,
   focusBreaksEnabled: true,
@@ -3059,6 +3074,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   mealPlanNudgeGroupId: null,
   newTaskDefaults: DEFAULT_NEW_TASK_DEFAULTS,
   recentSearches: [],
+  chipUses: {},
   lastVisitedScreen: null,
   recentScreens: [],
   initialized: false,
@@ -3183,6 +3199,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const collapsedRecipeSections = parseCollapsedRecipeSections(dbGetSetting('collapsedRecipeSections'));
     const collapsedGroceryGroups = parseCollapsedGroceryGroups(dbGetSetting('collapsedGroceryGroups'));
     const recentSearches = parseRecentSearches(dbGetSetting('recentSearches'));
+    const chipUses = parseChipUses(dbGetSetting('chipUses'));
     const simpleTaskForm = dbGetSetting('simpleTaskForm') === 'true';
     const simpleMode = dbGetSetting('simpleMode') === 'true';
     const hideHelpText = dbGetSetting('hideHelpText') === 'true';
@@ -3194,6 +3211,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const tripLiveActivity = dbGetSetting('tripLiveActivity') !== 'false';
     // And for the leave-by one.
     const leaveLiveActivity = dbGetSetting('leaveLiveActivity') !== 'false';
+    const storedLeaveWindow = parseInt(dbGetSetting('leaveWindowMinutes') ?? '', 10);
+    const leaveWindowMinutes = clampLeaveWindowMinutes(Number.isFinite(storedLeaveWindow) ? storedLeaveWindow : undefined);
     // And again for the focus session's.
     const focusLiveActivity = dbGetSetting('focusLiveActivity') !== 'false';
     const focusHideTimers = dbGetSetting('focusHideTimers') === 'true';
@@ -3723,6 +3742,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       calendarReviewTaskCategory,
       calendarReviewTasks,
       calendarReviewTimeSegment,
+      chipUses,
       collapsedCategories,
       collapsedGroceryGroups,
       collapsedRecipeSections,
@@ -3808,6 +3828,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       lastTipShown,
       lastVisitedScreen,
       leaveLiveActivity,
+      leaveWindowMinutes,
       leftoverUseUpTaskCategory,
       leftoverUseUpTasks,
       limitsTodayCategory,
@@ -5230,6 +5251,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ leaveLiveActivity: on });
   },
 
+  setLeaveWindowMinutes(minutes: number) {
+    const clamped = clampLeaveWindowMinutes(minutes);
+    dbSetSetting('leaveWindowMinutes', String(clamped));
+    set({ leaveWindowMinutes: clamped });
+  },
+
   setFocusLiveActivity(on: boolean) {
     dbSetSetting('focusLiveActivity', on ? 'true' : 'false');
     set({ focusLiveActivity: on });
@@ -5690,6 +5717,13 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   clearRecentSearches() {
     dbSetSetting('recentSearches', JSON.stringify([]));
     set({ recentSearches: [] });
+  },
+
+  recordChipUses(keys: readonly string[]) {
+    if (keys.length === 0) return;
+    const next = bumpChipUses(get().chipUses, keys);
+    dbSetSetting('chipUses', JSON.stringify(next));
+    set({ chipUses: next });
   },
 
   setReminderMeetingNudgeEnabled(on: boolean) {
