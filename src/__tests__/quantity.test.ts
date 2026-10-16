@@ -322,3 +322,14 @@ describe('formatQuantityAmount', () => {
     expect(formatQuantityAmount(1.5, true)).toBe('1.5');
   });
 });
+
+describe('parseQuantity written-out forms', () => {
+  it('reads the fraction slash', () => {
+    expect(parseQuantity('1⁄2 cups').amount).toEqual(parseQuantity('1/2 cups').amount);
+    expect(parseQuantity('1 1⁄2 cups').unit).toBe('cup');
+  });
+
+  it('leaves the full stop of an abbreviated unit out of what follows', () => {
+    expect(parseQuantity('1 tbsp. + 1 tsp.').trailing.trim().startsWith('+')).toBe(true);
+  });
+});
