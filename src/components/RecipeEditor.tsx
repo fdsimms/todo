@@ -57,6 +57,11 @@ interface Props {
   onClose: () => void;
   /** Fired after a confirmed delete, so the detail screen can pop itself. */
   onDeleted: () => void;
+  /**
+   * A recipe just made from "New recipe": the name field opens empty and
+   * focused, and closing with no name and nothing added deletes it.
+   */
+  draft?: boolean;
 }
 
 // CountStepper steps by 1, so prep and cook time are each stepped in 5-minute
@@ -80,7 +85,7 @@ const ROW_CONTENT_INDENT = spacing.md + 18 + spacing.md;
  * serves, where it came from, and the notes. Same progressive-disclosure shape
  * as TemplateEditor — the rarely-changed rows sit under the name.
  */
-export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
+export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = false }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -224,7 +229,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
 
   useEffect(() => {
     if (!recipe) return;
-    setName(recipe.name);
+    setName(draft ? '' : recipe.name);
     setNotesDraft(recipe.notes);
     setUrl(recipe.sourceUrl ?? '');
     setAuthorDraft(recipe.author ?? '');
@@ -260,6 +265,13 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
 
   const saveAndClose = () => {
     if (!recipe) { onClose(); return; }
+    // A draft closed with no name and nothing on it was never a recipe. One
+    // that already has ingredients or steps keeps its placeholder name.
+    if (draft && !name.trim() && recipe.ingredients.length === 0 && recipe.steps.length === 0) {
+      deleteRecipe(recipe.id);
+      onDeleted();
+      return;
+    }
     // renameRecipe refuses an empty name or a collision, and says so by
     // returning false — surfacing it here rather than silently discarding the
     // edit, which is what a plain `if (trimmed)` would do.
@@ -389,6 +401,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
         value={name}
         onChangeText={setName}
         placeholder="Recipe name"
+        autoFocus={draft}
         placeholderTextColor={colors.textTertiary}
         multiline
         maxLength={RECIPE_NAME_MAX_LENGTH}

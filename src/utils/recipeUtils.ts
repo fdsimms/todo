@@ -966,6 +966,13 @@ export function describeAttribution(recipe: Recipe): string | null {
   return recipe.sourceName || null;
 }
 
+/**
+ * The name a blank recipe is stored under while its details sheet is open with
+ * the name field empty. Never shown: the sheet blanks it, and deletes the row
+ * if it is closed with no name and nothing added.
+ */
+export const DRAFT_RECIPE_NAME = 'New recipe';
+
 /** Trims and caps a name for storage. Empty means "not a name" — callers refuse it. */
 export function cleanRecipeName(raw: string): string {
   return raw.trim().replace(/\s+/g, ' ').slice(0, RECIPE_NAME_MAX_LENGTH).trim();
