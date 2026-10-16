@@ -1497,7 +1497,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                           <ActionRow
                             icon="nutrition-outline"
                             title="No nutrition yet"
-                            note="This item can't be logged until it has nutrition facts"
+                            note="This item can’t be logged until it has nutrition facts"
                             tone="muted"
                             accessibilityLabel={`${row.name.trim()} has no nutrition facts yet`}
                           />

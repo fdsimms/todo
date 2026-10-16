@@ -121,7 +121,7 @@ export function guardedSlipPrompt(
     const when = plan.waitDays === 1 ? 'until tomorrow' : `for ${plan.waitDays} more days`;
     return {
       title: 'Log a slip?',
-      message: `${reward.title} can't be claimed again ${when}, so this counts as a slip${plan.amount > 0 ? ` and costs ${formatCoins(plan.amount)}` : ' and costs no coins'}.`,
+      message: `${reward.title} can’t be claimed again ${when}, so this counts as a slip${plan.amount > 0 ? ` and costs ${formatCoins(plan.amount)}` : ' and costs no coins'}.`,
       confirm: 'Log it',
     };
   }

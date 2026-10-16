@@ -1591,7 +1591,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               entries. */}
           {medicationSuggestions.length > 0 && (
             <>
-              <Text style={styles.medicationCaption}>Or reuse one you&apos;ve logged before</Text>
+              <Text style={styles.medicationCaption}>Or reuse one you’ve logged before</Text>
               <PillGroup
                 noun="medication"
                 surface="card"

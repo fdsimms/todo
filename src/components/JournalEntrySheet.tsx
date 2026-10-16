@@ -522,7 +522,7 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
             </View>
             {openOn && (
               <Text style={styles.sealHint}>
-                You won't be able to read this until that day. A task will remind you to open it. You can also open it early from the Journal.
+                You won’t be able to read this until that day. A task will remind you to open it. You can also open it early from the Journal.
               </Text>
             )}
           </CollapsibleField>

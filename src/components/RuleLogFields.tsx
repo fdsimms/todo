@@ -115,7 +115,7 @@ export function RuleLogFields({ rule, onChange, menuName }: Props) {
             placeholderTextColor={colors.textTertiary}
             maxLength={RULE_MEDICATION_NAME_MAX_LENGTH}
             returnKeyType="done"
-            accessibilityLabel="What completing this rule's task records a dose of"
+            accessibilityLabel="What completing this rule’s task records a dose of"
           />
           {/* Picking one is what makes it the same medication as an earlier
               dose: medicationKey does no fuzzy matching, so retyping a name

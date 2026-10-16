@@ -232,7 +232,7 @@ export function SupplementPanelSheet({ visible, name, panel, onClose, onSave }: 
           >
             <Text style={styles.intro}>
               Copy the figures from the supplement facts on the label. Leave a field blank if
-              the label doesn't list it. Blank means unknown, which is not the same as zero.
+              the label doesn’t list it. Blank means unknown, which is not the same as zero.
             </Text>
 
             {canPhotograph && (
@@ -288,9 +288,9 @@ export function SupplementPanelSheet({ visible, name, panel, onClose, onSave }: 
             )}
             {bad.length > 0 && (
               <Text style={styles.error}>
-                {bad.length === 1 ? 'One field' : `${bad.length} fields`} couldn't be read as a
+                {bad.length === 1 ? 'One field' : `${bad.length} fields`} couldn’t be read as a
                 number. Fix or clear {bad.length === 1 ? 'it' : 'them'}, so nothing is stored
-                that the label didn't say.
+                that the label didn’t say.
               </Text>
             )}
             <Text style={styles.hint}>

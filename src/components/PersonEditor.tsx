@@ -611,7 +611,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
       </View>
       <View style={styles.fillRow}>
         <InlineAction
-          label="Fill from Contacts"
+          label="Fill from contacts"
           icon="person-circle-outline"
           variant="neutral"
           surface="page"

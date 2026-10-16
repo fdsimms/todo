@@ -515,7 +515,7 @@ export function RecipeNutritionSheet({ visible, reading, recipeId, recipeName, s
                     label="Save for later"
                     icon="time-outline"
                     onPress={saveForLater}
-                    accessibilityLabel="Save this recipe's estimate to make later"
+                    accessibilityLabel="Save this recipe’s estimate to make later"
                   />
                   <Text style={styles.gapReason}>
                     It is estimated when you open the app online. Reopen this sheet to see it.

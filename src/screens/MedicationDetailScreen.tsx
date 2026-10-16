@@ -648,11 +648,11 @@ export function MedicationDetailScreen() {
             </>
           ) : (
             <Text style={styles.fieldHint}>
-              No nutrients entered. Enter what one serving contains from the label, such as a multivitamin's vitamins and minerals.
+              No nutrients entered. Enter what one serving contains from the label, such as a multivitamin’s vitamins and minerals.
             </Text>
           )}
           <Text style={styles.fieldNote}>
-            Each dose you record adds these to the day's nutrient totals in the food log, and to Apple Health if you write nutrients there. Past doses keep what they added.
+            Each dose you record adds these to the day’s nutrient totals in the food log, and to Apple Health if you write nutrients there. Past doses keep what they added.
           </Text>
           <View style={styles.panelActions}>
             <InlineAction
