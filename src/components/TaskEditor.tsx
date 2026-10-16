@@ -136,7 +136,8 @@ import { editorSearchTerms, matchesEditorQuery } from '../utils/editorSearch';
 import { CountStepper } from './CountStepper';
 import { MAX_ROTATION_PER_WEEK, rotationItemsFrom, rotationPerWeek, rotationTargetTotal, withPerWeek } from '../utils/rotation';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
-import { TitleTokenAccessory } from './TitleTokenAccessory';
+import { TitleTokenAccessory, QUICK_ADD_TITLE_TOKENS } from './TitleTokenAccessory';
+import { tokenChipsFor, applyTokenChip, type TokenChip } from '../utils/titleTokenChips';
 import { TitleSuggestionBanner } from './TitleSuggestionBanner';
 import { FollowUpTaskSheet } from './FollowUpTaskSheet';
 import { CalendarChoiceSheet } from './CalendarChoiceSheet';
@@ -1671,6 +1672,28 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
     setTitle(titleCaret.insertToken(token));
   };
 
+  // Choices that finish a sigil typed at the end of the title, the same row
+  // quick add floats. Ranked by quick add's usage counts, which this sheet
+  // reads but doesn't add to: a pick here is an edit, not a filing decision.
+  const chipUses = useSettingsStore(useShallow(s => s.chipUses));
+  const titleChips = useMemo(
+    () => tokenChipsFor(title, {
+      categories: categories.map(c => c.name),
+      categoryEmoji: Object.fromEntries(categories.filter(c => c.emoji).map(c => [c.name, c.emoji!])),
+      tags: allTags,
+      projects: projects.map(p => p.title),
+      uses: chipUses,
+    }),
+    [title, categories, allTags, projects, chipUses]
+  );
+  const applyTitleChip = (chip: TokenChip) => {
+    if (!titleChips) return;
+    haptics.tap();
+    const next = applyTokenChip(title, titleChips, chip);
+    setTitle(next);
+    titleCaret.moveCaret(next);
+  };
+
   // Completes an in-progress (or already fully-typed) "@name" and links the
   // person — or every member of a chosen group — the same tap-to-add motion
   // every other field in this editor uses to change personIds; see
@@ -1937,10 +1960,20 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   // already ends title editing; this only adds the accept to it.
   const acceptTitleSuggestionOnReturn = () => {
     if (!mirroringMode) return;
+    acceptActiveTitleBanner();
+  };
+
+  // Accepts whichever banner is up, the schedule first since it sits above.
+  // The keyboard bar's checkmark and Return in iPhone Mirroring both call it.
+  const acceptActiveTitleBanner = () => {
     if (activeParsedSchedule) applyParsedSchedule();
     else if (activeCategoryTags) applyCategoryTagsBanner();
     else if (activeTitleSuggestion) applyTitleSuggestion();
   };
+  // A mention's banner is a row of people to pick from, so it has no single
+  // thing for the checkmark to accept.
+  const titleBannerAcceptable = titleVisible && !titleMentionSuggestion
+    && (!!activeParsedSchedule || !!activeCategoryTags || !!activeTitleSuggestion);
 
   // The banner's own ✕ — same as dismissParsedSchedule, just hides the
   // banner. Unlike the schedule phrase, a "#word" naming a real category/tag
@@ -3931,7 +3964,16 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             />
           </LazySheet>
           <NumberPadAccessory />
-          <TitleTokenAccessory onInsert={insertTitleToken} floating focused={titleFocused} />
+          <TitleTokenAccessory
+            onInsert={insertTitleToken}
+            floating
+            focused={titleFocused}
+            tokens={QUICK_ADD_TITLE_TOKENS}
+            chips={titleChips?.chips}
+            onChip={applyTitleChip}
+            onConfirm={acceptActiveTitleBanner}
+            confirmVisible={titleBannerAcceptable}
+          />
         </>
       }
     >

@@ -47,9 +47,9 @@ interface TitleTokenAccessoryProps {
   nativeID?: string;
   onInsert: (token: string) => void;
   /**
-   * Applies whatever quick-add tooltip is currently active — the same action
-   * tapping the tooltip itself performs. Omit for a title field with no such
-   * tooltip (the task editor's), which then never shows the confirm button.
+   * Applies whatever banner or tooltip is currently active — the same action
+   * tapping it performs. Omit for a title field with nothing to accept, which
+   * then never shows the confirm button.
    */
   onConfirm?: () => void;
   /** Whether there's a tooltip up for `onConfirm` to apply right now. */
