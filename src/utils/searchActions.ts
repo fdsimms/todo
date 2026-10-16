@@ -159,6 +159,45 @@ const DOSE_VERB_RE = /^(?:take|took|taking|log|record)\b\s*/i;
  * the last dose recorded for that medication is repeated, which is what the
  * Medications screen's quick button does too.
  */
+// A query changes on every keystroke and the logs almost never do, so what is
+// read off them is kept per logs array (the store replaces it on any write).
+// Rebuilding the vocabulary and sorting the whole log once per matching
+// medication, for each keystroke, is what made dose rows slow to appear.
+interface DoseIndex {
+  /** The most recent log of each medication, by `medicationKey`. */
+  latest: Map<string, MedicationLog>;
+  vocabulary?: { archived: readonly string[]; registered: readonly string[]; names: string[] };
+}
+const doseIndexes = new WeakMap<readonly MedicationLog[], DoseIndex>();
+
+function doseIndexFor(logs: readonly MedicationLog[]): DoseIndex {
+  let index = doseIndexes.get(logs);
+  if (!index) {
+    const latest = new Map<string, MedicationLog>();
+    for (const log of logs) {
+      const key = medicationKey(log.name);
+      const seen = latest.get(key);
+      if (!seen || log.takenAt.localeCompare(seen.takenAt) > 0) latest.set(key, log);
+    }
+    index = { latest };
+    doseIndexes.set(logs, index);
+  }
+  return index;
+}
+
+function cachedMedicationVocabulary(
+  logs: readonly MedicationLog[],
+  archived: readonly string[],
+  registered: readonly string[],
+): string[] {
+  const index = doseIndexFor(logs);
+  const held = index.vocabulary;
+  if (held && held.archived === archived && held.registered === registered) return held.names;
+  const names = medicationVocabulary(logs, archived, registered);
+  index.vocabulary = { archived, registered, names };
+  return names;
+}
+
 function doseActions(
   query: string,
   logs: readonly MedicationLog[],
@@ -172,7 +211,7 @@ function doseActions(
   if (!explicit && key.length < BARE_NAME_MIN_LENGTH) return [];
 
   const tiers: string[][] = [[], [], []];
-  for (const name of medicationVocabulary(logs, archived, registered)) {
+  for (const name of cachedMedicationVocabulary(logs, archived, registered)) {
     const nameKey = medicationKey(name);
     if (nameKey === key) tiers[0].push(name);
     else if (nameKey.startsWith(key)) tiers[1].push(name);
@@ -180,7 +219,11 @@ function doseActions(
   }
 
   return tiers.flat().map((name): DoseAction => {
-    const last = repeatDose(logs, name);
+    // `repeatDose`'s answer for a medication with no usual amount, read from the index.
+    const latest = doseIndexFor(logs).latest.get(medicationKey(name));
+    const last = latest
+      ? { name: latest.name.trim(), amount: latest.amount, unit: latest.unit, asNeeded: true as const }
+      : repeatDose(logs, name);
     return {
       kind: 'dose',
       key: `dose:${medicationKey(name)}`,
