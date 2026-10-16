@@ -30,6 +30,7 @@ import { SettingsRow } from './SettingsRow';
 import { SettingsSegments } from './SettingsSegments';
 import { type SegmentOption } from '../../components/SegmentedControl';
 import { makeSettingsStyles } from './settingsStyles';
+import { BUTTON_LABEL } from '../../copy/shared';
 
 /**
  * Recipe photos are the one thing in a backup that isn't a table row (see the
@@ -150,7 +151,7 @@ export function DataResetSettings() {
       }
       await shareBackupFile(uri);
     } catch (e) {
-      Alert.alert('Export failed', e instanceof Error ? e.message : 'Couldn’t write the backup. Try again.');
+      Alert.alert('Couldn’t export', e instanceof Error ? e.message : 'The backup couldn’t be written. Try again.');
     } finally {
       // The share sheet has already copied the file wherever it was going, so
       // the cache copy is done either way.
@@ -177,7 +178,7 @@ export function DataResetSettings() {
         'Replace everything with this backup?',
         `The backup holds ${summarizeBackup(backup)}. Everything currently in the app (tasks, projects, groceries, recipes, the meal plan, the food and mood logs, people and settings) is deleted and replaced with it. Meals already written to Apple Health and events added to your calendar stay. This can’t be undone, so export your current data first.`,
         [
-          { text: 'Cancel', style: 'cancel' },
+          { text: BUTTON_LABEL.cancel, style: 'cancel' },
           {
             text: 'Replace',
             style: 'destructive',
@@ -190,7 +191,7 @@ export function DataResetSettings() {
                 Alert.alert('Restored', `Your data now matches the backup: ${summarizeBackup(backup)}.${photoNote}`);
               } catch (e) {
                 Alert.alert(
-                  'Restore failed',
+                  'Couldn’t restore',
                   `${e instanceof Error ? e.message : 'Something went wrong.'} Nothing was changed, so your existing data is still there.`
                 );
               }
@@ -199,7 +200,7 @@ export function DataResetSettings() {
         ]
       );
     } catch (e) {
-      Alert.alert('Restore failed', e instanceof Error ? e.message : 'Couldn’t read the file.');
+      Alert.alert('Couldn’t restore', e instanceof Error ? e.message : 'The file couldn’t be read.');
     } finally {
       setBackupBusy(null);
     }
@@ -251,7 +252,7 @@ export function DataResetSettings() {
       'Turn on demo mode?',
       'Your tasks are hidden and replaced with a sample list. Nothing is changed or deleted. Turn demo mode off to bring them back.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         { text: 'Turn on', onPress: enterDemoMode },
       ]
     );

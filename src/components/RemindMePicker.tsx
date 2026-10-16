@@ -35,6 +35,7 @@ import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { SheetScrim } from './SheetScrim';
 import type { ReminderKind } from '../types';
 import { TextField } from './TextField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 type Mode = 'date' | 'before' | 'visible';
 
@@ -488,7 +489,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
               accessibilityRole="button"
               accessibilityState={{ disabled: !canConfirm }}
             >
-              <Text style={styles.doneBtnLabel}>Done</Text>
+              <Text style={styles.doneBtnLabel}>{BUTTON_LABEL.done}</Text>
             </TouchableOpacity>
 
             {onClear && (

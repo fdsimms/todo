@@ -1095,6 +1095,9 @@ right.
   default) is semibold, `role="cancel"` is regular — weight ranks them, the way iOS ranks nav-bar
   buttons, and **both are accent** (never a grey Cancel). `minWidth` reserves matching width on
   the light side so the title stays optically centered.
+- `BUTTON_LABEL` (`src/copy/shared.ts`) — the words Cancel, Delete, Done and Save, for a button
+  label, an alert button or an action row. A hand-typed one fails `noHandWrittenButtonLabel.test.ts`.
+  Add a word there once it is spelled out in several files and must read the same in all of them.
 - `SheetHeader` (`src/components/SheetHeader.tsx`) — the row that button sits in: Cancel/Back on
   the left, Save/Done on the right, the title centered between them, written once. The title
   **always** centers itself (`flex: 1`), so it stays centered when either label changes length.

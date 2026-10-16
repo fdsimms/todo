@@ -21,7 +21,7 @@ export function JournalWordGoalSheet({ visible, onClose }: Props) {
       onClose={onClose}
       name="JournalWordGoalSheet"
       heading="Word goal"
-      hint="Words you want each journal day to reach. The Journal shows each day's count against it and counts the days that reach it."
+      hint="Words you want each journal day to reach. The Journal shows each day’s count against it and counts the days that reach it."
       saved={saved}
       onSave={setJournalWordGoal}
       range={JOURNAL_WORD_GOAL_RANGE}

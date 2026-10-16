@@ -11,6 +11,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { EmptyState } from './EmptyState';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import type { Task } from '../types';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -80,7 +81,7 @@ export function MorningCheckInSheet({ visible, onClose, tasks }: Props) {
     <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={styles.root}>
         <View style={styles.header}>
-          <SheetHeaderButton label="Done" onPress={onClose} minWidth={56} />
+          <SheetHeaderButton label={BUTTON_LABEL.done} onPress={onClose} minWidth={56} />
         </View>
         <View style={styles.titleBlock}>
           <Text style={styles.title}>Morning check-in</Text>

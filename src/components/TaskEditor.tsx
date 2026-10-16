@@ -174,6 +174,7 @@ import { LazySheet } from './LazySheet';
 import { NewSavedMealSheet } from './NewSavedMealSheet';
 import { ProgressBar } from './ProgressBar';
 import { Toggle } from './Toggle';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /** The kind picker's segments. The hint under the track says what the pick does. */
 const TASK_KIND_SEGMENTS = TASK_KIND_META.map(meta => ({
@@ -2413,7 +2414,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             ? 'Apply this change to this date only, or to this and later dates?'
             : 'Apply this change to this task only, or to it and every future repeat?',
           [
-            { text: 'Cancel', style: 'cancel' },
+            { text: BUTTON_LABEL.cancel, style: 'cancel' },
             { text: isSeries ? 'This date' : 'This task', onPress: () => commitSave('occurrence') },
             { text: isSeries ? 'This and later dates' : 'This and future tasks', onPress: () => commitSave('series') },
           ],
@@ -2460,7 +2461,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         ? 'This clears the current streak count and history.'
         : `This ${increasing ? 'adds to' : 'reduces'} the streak as if the task ${increasing ? 'had been' : 'had not been'} completed on schedule. Use this only to fix a task you completed but forgot to check off.`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
           text: clamped === 0 ? 'Reset' : 'Confirm',
           style: clamped === 0 ? 'destructive' : 'default',
@@ -3117,7 +3118,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         'Delete recurring task',
         'This task repeats. Mark this one missed, or delete it and stop it repeating?',
         [
-          { text: 'Cancel', style: 'cancel' },
+          { text: BUTTON_LABEL.cancel, style: 'cancel' },
           {
             text: 'Mark missed',
             onPress: () => {
@@ -3146,7 +3147,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         'Delete meal task',
         'This came from your meal plan. Mark it missed to keep a record, or delete it?',
         [
-          { text: 'Cancel', style: 'cancel' },
+          { text: BUTTON_LABEL.cancel, style: 'cancel' },
           {
             text: 'Mark missed',
             onPress: () => {
@@ -3155,7 +3156,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             },
           },
           {
-            text: 'Delete',
+            text: BUTTON_LABEL.delete,
             style: 'destructive',
             onPress: () => {
               haptics.success();
@@ -3188,7 +3189,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         'Delete task on several dates',
         `This task has ${remaining} dates left. Delete this date only, or all of them?`,
         [
-          { text: 'Cancel', style: 'cancel' },
+          { text: BUTTON_LABEL.cancel, style: 'cancel' },
           {
             text: 'Just this date',
             onPress: () => {
@@ -3625,7 +3626,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         <SheetHeader
           bare
           title={task ? 'Edit task' : 'New task'}
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} />}
           right={
             <View style={styles.headerRight}>
               <TouchableOpacity
@@ -3643,7 +3644,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                 />
               </TouchableOpacity>
               <SheetHeaderButton
-                label={task ? 'Save' : 'Add'}
+                label={task ? BUTTON_LABEL.save : 'Add'}
                 onPress={save}
                 disabled={!title.trim()}
               />
@@ -5795,7 +5796,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                       text: g.id === gateGroupId ? `${g.name} (selected)` : g.name,
                       onPress: () => setGateGroupId(g.id),
                     })),
-                    { text: 'Cancel', style: 'cancel' as const },
+                    { text: BUTTON_LABEL.cancel, style: 'cancel' as const },
                   ]);
                 }}
               />
@@ -7729,7 +7730,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                     into two untallied entries. */}
                 {medicationSuggestions.length > 0 && (
                   <>
-                    <Text style={styles.medicationCaption}>Or reuse one you&apos;ve logged before</Text>
+                    <Text style={styles.medicationCaption}>Or reuse one you’ve logged before</Text>
                     <PillGroup
                       noun="medication"
                       surface="card"

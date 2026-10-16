@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, Platform } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useColors, useTheme } from '../../theme/ThemeContext';
 import { makeSettingsStyles } from './settingsStyles';
+import { BUTTON_LABEL } from '../../copy/shared';
 
 interface Props {
   value: Date;
@@ -38,9 +39,9 @@ export function InlineTimePicker({ value, onChange, onCancel, onConfirm }: Props
           style={styles.pickerBtn}
           onPress={onCancel}
           accessibilityRole="button"
-          accessibilityLabel="Cancel"
+          accessibilityLabel={BUTTON_LABEL.cancel}
         >
-          <Text style={[styles.pickerBtnText, { color: colors.textSecondary }]}>Cancel</Text>
+          <Text style={[styles.pickerBtnText, { color: colors.textSecondary }]}>{BUTTON_LABEL.cancel}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.pickerBtn, styles.pickerBtnPrimary]}

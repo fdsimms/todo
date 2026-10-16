@@ -43,6 +43,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTextScale } from '../hooks/useTextScale';
 import { ProgressBar } from './ProgressBar';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -369,7 +370,7 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
             <Text style={styles.overline}>Pantry</Text>
             <Text style={styles.title}>Still have it?</Text>
           </View>
-          <SheetHeaderButton label="Done" onPress={onClose} minWidth={64} />
+          <SheetHeaderButton label={BUTTON_LABEL.done} onPress={onClose} minWidth={64} />
         </View>
 
         {cards.length > 0 && (

@@ -84,6 +84,7 @@ import { capitalize } from '../utils/capitalize';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { InlineAction } from './InlineAction';
 import { TextField } from './TextField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -471,7 +472,7 @@ export function RecipeCreateSheet({
             void extract();
           },
         },
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
       ],
     );
   }, [input.usingLink, input.url, recipes, repeatLinkOk, extract, onClose, onCreated]);
@@ -1268,7 +1269,7 @@ export function RecipeCreateSheet({
           // The sparkle marks a sheet the model answers, and a keyless import
           // reads the page's own data instead.
           icon={keyless ? undefined : 'sparkles'}
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={72} />}
           right={
             <SheetHeaderButton
               label="Create"

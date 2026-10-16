@@ -58,6 +58,7 @@ import { confirmDiscard } from '../utils/confirmDiscard';
 import { GROCERY_NAME_MAX_LENGTH, SHOP_NAME_MAX_LENGTH, type GroceryItem, type ReceiptStyle } from '../types';
 import { TextField } from './TextField';
 import { ActionRow } from './ActionRow';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /**
  * One "Left alone" line the user opted to add as bought instead — either
@@ -1175,7 +1176,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
         <View style={styles.root}>
           <SheetHeader
             title={pantry ? 'Receipt into pantry' : 'Scan a receipt'}
-            left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />}
+            left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={64} />}
             right={
               receipt && receipt.lines.length > 0 ? (
                 <SheetHeaderButton

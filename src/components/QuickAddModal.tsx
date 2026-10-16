@@ -128,6 +128,7 @@ import { DIFFICULTY_PICKER_SEGMENTS, DIFFICULTY_SEGMENTS } from '../utils/reward
 import { ORDINAL_OPTIONS } from '../utils/recurrenceLabels';
 import { ordinal } from '../utils/ordinal';
 import { TextField } from './TextField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 const TITLE_TOKEN_ACCESSORY_ID = 'quickAddTitleTokenAccessory';
 
@@ -3537,9 +3538,9 @@ parsed
                 onPress={() => dismiss()}
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
-                accessibilityLabel="Cancel"
+                accessibilityLabel={BUTTON_LABEL.cancel}
               >
-                <Text style={styles.footerCancelText}>Cancel</Text>
+                <Text style={styles.footerCancelText}>{BUTTON_LABEL.cancel}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.footerAdd, (!title.trim() || blocked !== null) && styles.footerAddDisabled]}

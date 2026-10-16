@@ -44,6 +44,7 @@ import { MAX_RECIPE_PHOTOS } from '../utils/recipePhoto';
 import { haptics } from '../utils/haptics';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { GROCERY_NAME_MAX_LENGTH } from '../types';
+import { BUTTON_LABEL } from '../copy/shared';
 
 const CHECKBOX_SIZE = 22;
 
@@ -444,7 +445,7 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
         <SheetHeader
           title={mode === 'tidy' ? 'Sort into aisles' : 'From a recipe'}
           icon="sparkles"
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={72} />}
           right={
             <SheetHeaderButton
               label={

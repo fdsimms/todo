@@ -36,6 +36,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import { TextField } from './TextField';
 import { HelpText } from './HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /**
  * A dish's whole nutrition panel, and the ingredients it couldn't count.
@@ -393,7 +394,7 @@ export function RecipeNutritionSheet({ visible, reading, recipeId, recipeName, s
           bare
           title="Nutrition"
           size="lg"
-          left={<SheetHeaderButton label="Done" onPress={onClose} minWidth={40} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={onClose} minWidth={40} />}
           right={<View style={styles.headerSpacer} />}
         />
       }
@@ -516,7 +517,7 @@ export function RecipeNutritionSheet({ visible, reading, recipeId, recipeName, s
                     label="Save for later"
                     icon="time-outline"
                     onPress={saveForLater}
-                    accessibilityLabel="Save this recipe's estimate to make later"
+                    accessibilityLabel="Save this recipe’s estimate to make later"
                   />
                   <Text style={styles.gapReason}>
                     It is estimated when you open the app online. Reopen this sheet to see it.
@@ -529,7 +530,7 @@ export function RecipeNutritionSheet({ visible, reading, recipeId, recipeName, s
                     Waiting for a connection. It is estimated when you open the app online.
                   </Text>
                   <InlineAction
-                    label="Cancel"
+                    label={BUTTON_LABEL.cancel}
                     variant="neutral"
                     onPress={() => { haptics.tap(); usePendingRecipeEstimateStore.getState().discard(recipeId); }}
                     accessibilityLabel="Cancel the saved estimate"
@@ -665,9 +666,9 @@ export function RecipeNutritionSheet({ visible, reading, recipeId, recipeName, s
                       accessibilityLabel={`Weight of ${weighing.text} of ${line.name} in grams`}
                     />
                     <Text style={styles.weighUnit}>g</Text>
-                    <InlineAction label="Save" onPress={() => saveWeighing(line, weighing)} />
+                    <InlineAction label={BUTTON_LABEL.save} onPress={() => saveWeighing(line, weighing)} />
                     <InlineAction
-                      label="Cancel"
+                      label={BUTTON_LABEL.cancel}
                       variant="neutral"
                       onPress={() => { haptics.tap(); setWeighingId(null); }}
                     />

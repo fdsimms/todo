@@ -18,6 +18,7 @@ import {
   requestNotificationPermissions,
   scheduleMedicationOkAgain,
 } from './notifications';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /**
  * How long the refill offer waits after the dose that set it off. Most doses
@@ -95,7 +96,7 @@ export function confirmWithinLimit(
     + `The next dose is within it at ${format(status.nextOkAt, 'h:mm a')}.`;
   return new Promise(resolve => {
     Alert.alert(`${name.trim()}: too soon`, message, [
-      { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+      { text: BUTTON_LABEL.cancel, style: 'cancel', onPress: () => resolve(false) },
       { text: 'Record anyway', onPress: () => resolve(true) },
     ]);
   });

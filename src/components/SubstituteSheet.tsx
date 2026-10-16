@@ -38,6 +38,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { useFilterField } from '../hooks/useFilterField';
 import { TextField } from './TextField';
 import { HelpText } from './HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -450,7 +451,7 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
           title={`Instead of ${item.name}`}
           left={
             <SheetHeaderButton
-              label={reviewingId ? 'Back' : 'Cancel'}
+              label={reviewingId ? 'Back' : BUTTON_LABEL.cancel}
               role="cancel"
               onPress={reviewingId ? handleBack : handleCancel}
               minWidth={64}
@@ -458,7 +459,7 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
           }
           right={
             <SheetHeaderButton
-              label={editing ? 'Save' : 'Add'}
+              label={editing ? BUTTON_LABEL.save : 'Add'}
               onPress={handleConfirm}
               disabled={!picked}
               minWidth={64}

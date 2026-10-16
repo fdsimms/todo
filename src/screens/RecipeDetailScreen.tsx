@@ -141,6 +141,7 @@ import { useActionMenu } from '../hooks/useActionMenu';
 import type { ActionMenuAction } from '../components/ActionMenu';
 import { FadeInImage } from '../components/FadeInImage';
 import { HelpText } from '../components/HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 type RootStackParamList = {
   /**
@@ -342,9 +343,9 @@ export function RecipeDetailScreen() {
       'Group name',
       'Shown above the choices. Renames it for every ingredient in the group.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
-          text: 'Save',
+          text: BUTTON_LABEL.save,
           onPress: (value?: string) => {
             const clean = cleanChoiceGroup(value);
             if (!clean || clean === group.label) return;
@@ -353,7 +354,7 @@ export function RecipeDetailScreen() {
               return;
             }
             haptics.error();
-            Alert.alert('Name already used', 'Another group in this recipe already has that name.');
+            Alert.alert('That name is taken', 'Another group in this recipe already has that name.');
           },
         },
       ],
@@ -2537,7 +2538,7 @@ export function RecipeDetailScreen() {
             </TouchableOpacity>
           )}
           <InlineAction
-            label={editingStepId ? 'Save' : 'Add'}
+            label={editingStepId ? BUTTON_LABEL.save : 'Add'}
             icon={editingStepId ? 'checkmark' : 'add'}
             onPress={submitStepDraft}
             disabled={!stepDraft.trim()}
@@ -2782,7 +2783,7 @@ export function RecipeDetailScreen() {
             allowNone: false,
           }}
           actions={[
-            { key: 'delete', icon: 'trash', label: 'Delete', tone: 'destructive', onPress: handleBulkRemoveIngredients },
+            { key: 'delete', icon: 'trash', label: BUTTON_LABEL.delete, tone: 'destructive', onPress: handleBulkRemoveIngredients },
           ]}
           onSelectAll={() => selectAll(recipe.ingredients.map(i => i.id))}
           onDeselectAll={deselectAll}

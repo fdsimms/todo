@@ -51,6 +51,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { InlineAction } from './InlineAction';
 import type { FocusSession, FocusStep, Task } from '../types';
 import { useActionMenu } from '../hooks/useActionMenu';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /** How much time "+5 min" adds to a step that needs a little longer. */
 const EXTEND_MINUTES = 5;
@@ -616,7 +617,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
                 }
               >
                 <Ionicons name="checkmark-circle-outline" size={iconSize.md} color={colors.done} />
-                <Text style={styles.secondaryLabel}>{quotaTask ? 'Log one' : 'Done'}</Text>
+                <Text style={styles.secondaryLabel}>{quotaTask ? 'Log one' : BUTTON_LABEL.done}</Text>
               </TouchableOpacity>
             )}
 

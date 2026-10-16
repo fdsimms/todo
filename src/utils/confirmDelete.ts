@@ -1,5 +1,6 @@
 import { Alert } from 'react-native';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface ConfirmDeleteOptions {
   title: string;
@@ -20,13 +21,13 @@ interface ConfirmDeleteOptions {
  * delete-everything cascade) — those are a choice, not confirmation
  * friction, and stay as their own unconditional Alert.alert calls.
  */
-export function confirmDelete({ title, message, confirmLabel = 'Delete', onConfirm }: ConfirmDeleteOptions): void {
+export function confirmDelete({ title, message, confirmLabel = BUTTON_LABEL.delete, onConfirm }: ConfirmDeleteOptions): void {
   if (!useSettingsStore.getState().confirmBeforeDeleting) {
     onConfirm();
     return;
   }
   Alert.alert(title, message, [
-    { text: 'Cancel', style: 'cancel' },
+    { text: BUTTON_LABEL.cancel, style: 'cancel' },
     { text: confirmLabel, style: 'destructive', onPress: onConfirm },
   ]);
 }

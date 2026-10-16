@@ -15,6 +15,7 @@ import { savedMealCalories } from '../utils/foodLog';
 import { haptics } from '../utils/haptics';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import type { MealSlot, SavedMealItem } from '../types';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -82,8 +83,8 @@ export function NewSavedMealSheet({ visible, slot, at, onSave, onClose }: Props)
       <View style={styles.root}>
         <SheetHeader
           title="New saved meal"
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />}
-          right={<SheetHeaderButton label="Save" onPress={handleSave} disabled={!canSave} minWidth={64} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={64} />}
+          right={<SheetHeaderButton label={BUTTON_LABEL.save} onPress={handleSave} disabled={!canSave} minWidth={64} />}
         />
 
         <ScrollView

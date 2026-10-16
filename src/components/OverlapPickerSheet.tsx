@@ -14,6 +14,7 @@ import { InlineAction } from './InlineAction';
 import { EmptyNote } from './EmptyNote';
 import { haptics } from '../utils/haptics';
 import { confirmDiscard } from '../utils/confirmDiscard';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /** Order-independent, so the dirty check compares sets rather than tap order. */
 function serializeSelection(selected: ReadonlySet<string>): string {
@@ -180,7 +181,7 @@ export function OverlapPickerSheet({
           title="Cook these together"
           left={
             <SheetHeaderButton
-              label={planning ? 'Cancel' : 'Done'}
+              label={planning ? BUTTON_LABEL.cancel : BUTTON_LABEL.done}
               role="cancel"
               onPress={handleCancel}
               minWidth={72}

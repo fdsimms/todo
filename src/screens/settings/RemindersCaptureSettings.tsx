@@ -22,6 +22,7 @@ import { makeSettingsStyles } from './settingsStyles';
 import { ReminderCapturesSheet } from '../../components/ReminderCapturesSheet';
 import { activeReminderCaptures, captureListIds } from '../../utils/reminderCaptures';
 import { alertPermissionOff } from '../../utils/permissionAlert';
+import { BUTTON_LABEL } from '../../copy/shared';
 
 /**
  * Apple Reminders import — labelled in full throughout, because "reminders"
@@ -185,7 +186,7 @@ export function RemindersCaptureSettings() {
         : `Import ${count} reminder${count === 1 ? '' : 's'} from “${list.title}”?`,
       body,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
           text: 'Import',
           style: remindersImportDelete ? 'destructive' : 'default',
@@ -267,7 +268,7 @@ export function RemindersCaptureSettings() {
         : `Send ${count} reminder${count === 1 ? '' : 's'} from “${list.title}” to groceries?`,
       body,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
           text: 'Send',
           style: groceryImportDelete ? 'destructive' : 'default',
@@ -331,7 +332,7 @@ export function RemindersCaptureSettings() {
       `Sync “${title}” with your grocery list?`,
       `Anything on one list is added to the other. Checking off or removing an item completes or deletes its reminder, and the reverse.${deleteNote}`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         { text: 'Turn on', style: 'destructive', onPress: () => setGroceryImportTwoWay(true) },
       ]
     );

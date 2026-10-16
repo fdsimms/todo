@@ -16,6 +16,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetScrim } from './SheetScrim';
 import { Toggle } from './Toggle';
 import { HelpText } from './HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /**
  * The birthday picker — month, day and an optional year, as three native
@@ -126,9 +127,9 @@ export function BirthdayPicker({ visible, month, day, year, onConfirm, onClear, 
         <SheetScrim onPress={onCancel} />
         <Animated.View style={[styles.card, shadows.popover, { opacity: enterAnim, transform: [{ scale: cardScale }] }]}>
           <View style={styles.header}>
-            <SheetHeaderButton label="Cancel" role="cancel" onPress={onCancel} minWidth={28} />
+            <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={onCancel} minWidth={28} />
             <Text style={styles.headerTitle}>Birthday</Text>
-            <SheetHeaderButton label="Save" onPress={confirm} minWidth={28} />
+            <SheetHeaderButton label={BUTTON_LABEL.save} onPress={confirm} minWidth={28} />
           </View>
 
           <HelpText style={styles.hint}>The year is optional and isn’t used to calculate an age.</HelpText>
@@ -163,7 +164,7 @@ export function BirthdayPicker({ visible, month, day, year, onConfirm, onClear, 
 
           <View style={styles.sectionGap} />
           <TouchableOpacity style={styles.saveBtn} onPress={confirm} activeOpacity={interaction.activeOpacity}>
-            <Text style={styles.saveLabel}>Save</Text>
+            <Text style={styles.saveLabel}>{BUTTON_LABEL.save}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.clearBtn} onPress={onClear} activeOpacity={interaction.activeOpacity}>
             <Text style={styles.clearLabel}>Clear</Text>

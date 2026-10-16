@@ -42,6 +42,7 @@ import { usePlaceSuggestions } from '../hooks/usePlaceSuggestions';
 import { placeLocationText, placeRowTitle, placeSubtitle, type PlaceResult } from '../utils/places';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { Toggle } from './Toggle';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -211,9 +212,9 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
       `Delete ${person.name}?`,
       'Anything you wrote about them is deleted. Tasks that name them are kept without the name.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
-          text: 'Delete',
+          text: BUTTON_LABEL.delete,
           style: 'destructive',
           onPress: () => { removePersonRow(person.id); onClose(); },
         },
@@ -241,7 +242,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
         <SheetHeader
           bare
           title={isNew ? 'New person' : 'Edit person'}
-          left={<SheetHeaderButton label="Done" onPress={saveAndClose} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={saveAndClose} />}
           right={
             <TouchableOpacity onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete person">
               <Ionicons name="trash-outline" size={20} color={colors.red} />
@@ -611,7 +612,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
       </View>
       <View style={styles.fillRow}>
         <InlineAction
-          label="Fill from Contacts"
+          label="Fill from contacts"
           icon="person-circle-outline"
           variant="neutral"
           surface="page"

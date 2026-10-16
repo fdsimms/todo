@@ -21,6 +21,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import { TitleRuleSheet } from './TitleRuleSheet';
 import { Toggle } from './Toggle';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -160,7 +161,7 @@ export function TitleRulesSheet({ visible, onClose }: Props) {
         <SheetHeader
           title="Title rules"
           left={<View style={styles.headerSpacer} />}
-          right={<SheetHeaderButton label="Done" onPress={onClose} minWidth={56} />}
+          right={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={onClose} minWidth={56} />}
         />
 
         {titleRules.length === 0 ? (
@@ -222,7 +223,7 @@ export function TitleRulesSheet({ visible, onClose }: Props) {
                   )}
                   <InlineAction
                     icon="close"
-                    label={backlog.filed ? 'Done' : 'Not now'}
+                    label={backlog.filed ? BUTTON_LABEL.done : 'Not now'}
                     variant="neutral"
                     onPress={dismissBacklog}
                   />

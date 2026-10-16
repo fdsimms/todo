@@ -47,6 +47,7 @@ import { confirmDelete } from '../utils/confirmDelete';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import type { GroceryItem } from '../types';
 import { useFilterField } from '../hooks/useFilterField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 const CHECKBOX_SIZE = 22;
 
@@ -337,7 +338,7 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
       <View style={styles.root}>
         <SheetHeader
           title="Grocery catalog"
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={72} />}
           right={
             <SheetHeaderButton
               label={selected.size > 0 ? `Add ${selected.size}` : 'Add'}

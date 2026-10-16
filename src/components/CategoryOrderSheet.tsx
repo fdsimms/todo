@@ -21,6 +21,7 @@ import { InlineAction } from './InlineAction';
 import { EmptyState } from './EmptyState';
 import { SortableList } from './SortableList';
 import { haptics } from '../utils/haptics';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -113,7 +114,7 @@ export function CategoryOrderSheet({ visible, onClose }: Props) {
         <SheetHeader
           title="Category order"
           left={<View style={styles.headerSpacer} />}
-          right={<SheetHeaderButton label="Done" onPress={onClose} minWidth={64} />}
+          right={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={onClose} minWidth={64} />}
         />
 
         {order.length === 0 ? (

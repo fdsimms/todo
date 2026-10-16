@@ -24,6 +24,7 @@ import { buildCalendarGrid, weekdayHeaders } from '../utils/calendarGrid';
 import { dayKeyOf } from '../utils/dateUtils';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetScrim } from './SheetScrim';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -159,9 +160,9 @@ export function CalendarPicker({
         <Animated.View style={[styles.card, shadows.popover, { opacity: enterAnim, transform: [{ scale: cardScale }] }]}>
           {/* Header */}
           <View style={styles.header}>
-            <SheetHeaderButton label="Cancel" role="cancel" onPress={onCancel} minWidth={28} />
+            <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={onCancel} minWidth={28} />
             <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
-            <SheetHeaderButton label="Done" onPress={confirm} disabled={!canConfirm} style={styles.headerDoneText} minWidth={28} />
+            <SheetHeaderButton label={BUTTON_LABEL.done} onPress={confirm} disabled={!canConfirm} style={styles.headerDoneText} minWidth={28} />
           </View>
 
           {/* Calendar section */}

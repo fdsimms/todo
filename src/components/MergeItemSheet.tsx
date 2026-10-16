@@ -17,6 +17,7 @@ import { SheetHeader } from './SheetHeader';
 import type { GroceryItem } from '../types';
 import { useFilterField } from '../hooks/useFilterField';
 import { useSheetSubject } from '../hooks/useSheetSubject';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -150,7 +151,7 @@ export function MergeItemSheet({ visible, itemId, initialPickedId, onClose, onMe
       <View style={styles.root}>
         <SheetHeader
           title={`Merge ${item.name}`}
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleClose} minWidth={64} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleClose} minWidth={64} />}
           right={<View style={styles.headerSpacer} />}
         />
 

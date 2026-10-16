@@ -1,0 +1,4 @@
+{
+  "message": "Made messages more consistent: apostrophes match the rest of the app, a name that is already in use always says \"That name is taken\", a failed export or restore says \"Couldn’t export\" or \"Couldn’t restore\", sync problems say \"Couldn’t\" instead of \"Could not\", and the Groceries & meals menu row and Fill from contacts button are capitalized like everywhere else they appear.",
+  "date": "2026-10-16"
+}

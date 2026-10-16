@@ -37,6 +37,7 @@ import type { TimeOfDay } from '../types';
 import { TextField } from './TextField';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { Toggle } from './Toggle';
+import { BUTTON_LABEL } from '../copy/shared';
 
 const DEFAULT_DAYS = [1, 2, 3, 4, 5];
 const DEFAULT_START = '09:00';
@@ -182,7 +183,7 @@ export function CategoryEditor({ visible, category: liveCategory, onClose }: Pro
         ? `${pendingCount} ${noun} in “${category}” will be held back until ${defaultSegments.join(' or ')} each day. Shake your phone right after to undo.`
         : `${pendingCount} ${noun} in “${category}” will lose their time of day and show all day. Shake your phone right after to undo.`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
           text: 'Apply',
           onPress: () => {
@@ -273,7 +274,7 @@ export function CategoryEditor({ visible, category: liveCategory, onClose }: Pro
     <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={saveAndClose}>
       <View style={styles.root}>
         <View style={styles.header}>
-          <SheetHeaderButton label="Done" onPress={saveAndClose} />
+          <SheetHeaderButton label={BUTTON_LABEL.done} onPress={saveAndClose} />
           <Text style={styles.headerTitle}>Edit category</Text>
           <TouchableOpacity onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Delete category ${category}`}>
             <Ionicons name="trash-outline" size={20} color={colors.red} />

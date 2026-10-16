@@ -27,6 +27,7 @@ import { useFilterField } from '../hooks/useFilterField';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { usePullToSearch } from '../hooks/usePullToSearch';
+import { BUTTON_LABEL } from '../copy/shared';
 
 type RootStackParamList = {
   CookbookDetail: { cookbookId: string };
@@ -100,7 +101,7 @@ export function CookbookDetailScreen() {
     if (!prompt) { link(); return; }
     Keyboard.dismiss();
     Alert.alert(prompt.title, prompt.message, [
-      { text: 'Cancel', style: 'cancel' },
+      { text: BUTTON_LABEL.cancel, style: 'cancel' },
       { text: prompt.confirm, onPress: link },
     ]);
   };
@@ -250,7 +251,7 @@ export function CookbookDetailScreen() {
             size="lg"
             left={
               <SheetHeaderButton
-                label="Cancel"
+                label={BUTTON_LABEL.cancel}
                 role="cancel"
                 onPress={closeLinkPicker}
                 accessibilityLabel="Close"

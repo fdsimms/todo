@@ -17,6 +17,7 @@ import { editSavedPlace, addSavedPlace, findSavedPlace, type SavedPlace } from '
 import { editSavedEvent, type SavedEvent } from '../utils/savedEvents';
 import { ALERT_CHOICES, describeAlert } from '../utils/quickEventSave';
 import { HelpText } from './HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 type Pin = { latitude: number; longitude: number } | null;
 
@@ -154,14 +155,14 @@ export function SavedPlaceSheet({ visible, subject: liveSubject, places, onSave,
     let next: SavedPlace[];
     if (isNew) {
       if (findSavedPlace(places, name)) {
-        Alert.alert('Name already used', 'Another saved place has that name.');
+        Alert.alert('That name is taken', 'Another saved place has that name.');
         return;
       }
       next = addSavedPlace(places, input);
     } else {
       next = editSavedPlace(places, subject.id, input);
       if (!next.some(p => p.id === subject.id && p.name === name.trim())) {
-        Alert.alert('Name already used', 'Another saved place has that name.');
+        Alert.alert('That name is taken', 'Another saved place has that name.');
         return;
       }
     }
@@ -172,9 +173,9 @@ export function SavedPlaceSheet({ visible, subject: liveSubject, places, onSave,
   return (
     <CardSheet name="SavedPlaceSheet" visible={visible} controller={card} onRequestClose={() => finish()}>
       <View style={styles.header}>
-        <SheetHeaderButton label="Cancel" role="cancel" onPress={() => finish()} />
+        <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={() => finish()} />
         <Text style={styles.headerTitle}>{isNew ? 'New place' : 'Edit place'}</Text>
-        <SheetHeaderButton label="Save" onPress={save} />
+        <SheetHeaderButton label={BUTTON_LABEL.save} onPress={save} />
       </View>
       <View style={styles.body}>
         <Text style={styles.fieldLabel}>NAME</Text>
@@ -286,7 +287,7 @@ export function SavedEventSheet({ visible, subject: liveSubject, events, onSave,
       alertMinutes: alert === NO_ALERT ? null : alert,
     }, Date.now());
     if (!next) {
-      Alert.alert('Title already used', 'Another saved event has that title.');
+      Alert.alert('That title is taken', 'Another saved event has that title.');
       return;
     }
     haptics.success();
@@ -296,9 +297,9 @@ export function SavedEventSheet({ visible, subject: liveSubject, events, onSave,
   return (
     <CardSheet name="SavedEventSheet" visible={visible} controller={card} onRequestClose={() => finish()}>
       <View style={styles.header}>
-        <SheetHeaderButton label="Cancel" role="cancel" onPress={() => finish()} />
+        <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={() => finish()} />
         <Text style={styles.headerTitle}>{isNew ? 'New saved event' : 'Edit saved event'}</Text>
-        <SheetHeaderButton label="Save" onPress={save} />
+        <SheetHeaderButton label={BUTTON_LABEL.save} onPress={save} />
       </View>
       <View style={styles.body}>
         <Text style={styles.fieldLabel}>TITLE</Text>

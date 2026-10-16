@@ -20,6 +20,7 @@ import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
 import { HelpText } from './HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -120,7 +121,7 @@ export function IngredientCatalogMatchSheet({
           bare
           title="In your grocery catalog"
           size="lg"
-          left={<SheetHeaderButton label="Done" onPress={onClose} minWidth={40} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={onClose} minWidth={40} />}
           right={<View style={styles.headerSpacer} />}
         />
       }

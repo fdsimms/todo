@@ -234,6 +234,7 @@ import { ProgressBar } from '../components/ProgressBar';
 import { AnimatedNumber } from '../components/AnimatedNumber';
 import { useLingering } from '../hooks/useLingering';
 import { PillHighlightLayer, PillLabel, usePillHighlight } from '../components/SlidingPills';
+import { BUTTON_LABEL } from '../copy/shared';
 
 // The four lenses of the pill switcher. They're disjoint by construction —
 // isUnscheduledTask() excludes inbox tasks, and isTaskVisible() excludes both —
@@ -445,7 +446,7 @@ function AddTaskFabWithDropLabel({
 } & Omit<React.ComponentProps<typeof AddTaskFab>, 'dragLabel'>) {
   const label = useFabIntentSelector(channel, intent => {
     switch (intent?.kind) {
-      case 'cancel': return 'Cancel';
+      case 'cancel': return BUTTON_LABEL.cancel;
       case 'joinGroup': return `Add to ${intent.groupTitle.trim() || 'stack'}`;
       case 'pin': return 'New pinned task';
       case 'insert':
@@ -4173,7 +4174,7 @@ export function TodayScreen() {
                   'Unpin all tasks?',
                   'This removes every task from the Pinned Tasks block. The tasks aren’t changed.',
                   [
-                    { text: 'Cancel', style: 'cancel' },
+                    { text: BUTTON_LABEL.cancel, style: 'cancel' },
                     { text: 'Unpin all', style: 'destructive', onPress: clearAllPins },
                   ],
                 );
@@ -5280,7 +5281,7 @@ export function TodayScreen() {
                   'Update recurring task',
                   'This task repeats. Apply this category change to this task, or to this and future tasks?',
                   [
-                    { text: 'Cancel', style: 'cancel', onPress: () => setDraggableData([...draggableData]) },
+                    { text: BUTTON_LABEL.cancel, style: 'cancel', onPress: () => setDraggableData([...draggableData]) },
                     { text: 'This task', onPress: () => commitDrop('occurrence') },
                     { text: 'This and future tasks', onPress: () => commitDrop('series') },
                   ],

@@ -18,6 +18,7 @@ import { EmptyState } from './EmptyState';
 import type { TaskTemplate } from '../types';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -58,7 +59,7 @@ export function NestedTemplatePicker({ visible, currentTemplateId, onClose, onSe
       <View style={styles.root}>
         <SheetHeader
           title="Nest a template"
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={50} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={onClose} minWidth={50} />}
           right={<View style={styles.headerSpacer} />}
         />
 

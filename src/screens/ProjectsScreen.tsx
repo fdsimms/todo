@@ -72,6 +72,7 @@ import { useLogicalDayKey } from '../hooks/useLogicalDayKey';
 import { usePullToSearch } from '../hooks/usePullToSearch';
 import type { Project } from '../types';
 import { LazySheet } from '../components/LazySheet';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /**
  * How many projects a list holds before it grows a search bar. Below this the
@@ -88,7 +89,7 @@ function AddProjectFabWithDropLabel({
   channel: FabIntentChannel;
 } & Omit<React.ComponentProps<typeof Fab>, 'dragLabel'>) {
   const label = useFabIntentSelector(channel, intent => {
-    if (intent?.kind === 'cancel') return 'Cancel';
+    if (intent?.kind === 'cancel') return BUTTON_LABEL.cancel;
     if (intent?.kind !== 'insert') return null;
     return intent.category ? `New project in ${intent.category}` : 'New project here';
   });
@@ -285,7 +286,7 @@ export function ProjectsScreen() {
       `Delete ${ids.length} ${plural}?`,
       `${their} tasks can stay in your list without a project, or be deleted with ${them}. Shake your phone right after to undo.`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         { text: `Delete ${plural} only`, onPress: () => run(false) },
         { text: `Delete ${plural} and tasks`, style: 'destructive', onPress: () => run(true) },
       ],
@@ -707,7 +708,7 @@ export function ProjectsScreen() {
               label: projectFilter === 'archived' ? 'Restore' : 'Archive',
               onPress: handleBulkArchive,
             },
-            { key: 'delete', icon: 'trash', label: 'Delete', tone: 'destructive', onPress: handleBulkDelete },
+            { key: 'delete', icon: 'trash', label: BUTTON_LABEL.delete, tone: 'destructive', onPress: handleBulkDelete },
           ]}
           onSelectAll={() => selectAll(visibleProjects.map(p => p.id))}
           onDeselectAll={deselectAll}

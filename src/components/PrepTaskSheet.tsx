@@ -14,6 +14,7 @@ import { EditorSheet } from './EditorSheet';
 import { TextField } from './TextField';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { HelpText } from './HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -89,7 +90,7 @@ export function PrepTaskSheet({ visible, recipeId, prepTask: livePrepTask, onClo
         <SheetHeader
           bare
           title="Prep task"
-          left={<SheetHeaderButton label="Done" onPress={saveAndClose} minWidth={40} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={saveAndClose} minWidth={40} />}
           right={<View style={styles.headerSpacer} />}
         />
       }

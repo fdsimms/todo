@@ -19,6 +19,7 @@ import { TaskDoseAmount } from './TaskDoseAmount';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { TextField } from './TextField';
 import { HelpText } from './HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 const NAME_MAX_LENGTH = 60;
 
@@ -115,9 +116,9 @@ export function ChainStepMedicationSheet({
     >
       <View style={styles.card}>
         <View style={styles.headerRow}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={() => dismiss(onClose)} minWidth={56} />
+          <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={() => dismiss(onClose)} minWidth={56} />
           <Text style={styles.heading} numberOfLines={2}>{step?.title ?? 'Step'}</Text>
-          <SheetHeaderButton label="Done" onPress={save} minWidth={56} style={styles.headerRight} />
+          <SheetHeaderButton label={BUTTON_LABEL.done} onPress={save} minWidth={56} style={styles.headerRight} />
         </View>
 
         <Text style={styles.label}>Log a dose</Text>

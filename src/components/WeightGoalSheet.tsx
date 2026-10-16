@@ -56,6 +56,7 @@ import { InlineAction } from './InlineAction';
 import { TextField } from './TextField';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { HelpText } from './HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 // The feet stepper's bounds, derived from the same cm bounds the kg stepper
 // uses — so the two units can't drift into disagreeing about the range.
@@ -389,8 +390,8 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
         <SheetHeader
           bare
           title="Weight goal"
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={64} />}
-          right={<SheetHeaderButton label="Save" onPress={save} disabled={!canSave} minWidth={64} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={onClose} minWidth={64} />}
+          right={<SheetHeaderButton label={BUTTON_LABEL.save} onPress={save} disabled={!canSave} minWidth={64} />}
         />
       }
     >

@@ -27,6 +27,7 @@ import { confirmDelete } from '../utils/confirmDelete';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { TextField } from './TextField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -218,7 +219,7 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
           title="Project categories"
           size="lg"
           left={<View style={styles.headerSpacer} />}
-          right={<SheetHeaderButton label="Done" onPress={close} minWidth={64} />}
+          right={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={close} minWidth={64} />}
         />
 
         <ScrollView

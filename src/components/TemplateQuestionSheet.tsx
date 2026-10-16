@@ -25,6 +25,7 @@ import { InlineAction } from './InlineAction';
 import { TemplateQuestionItemsSheet } from './TemplateQuestionItemsSheet';
 import { TextField } from './TextField';
 import { HelpText } from './HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -176,8 +177,8 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
         <SheetHeader
           bare
           title={question ? 'Edit question' : 'New question'}
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={60} />}
-          right={<SheetHeaderButton label="Save" onPress={save} minWidth={60} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={onClose} minWidth={60} />}
+          right={<SheetHeaderButton label={BUTTON_LABEL.save} onPress={save} minWidth={60} />}
         />
       }
     >

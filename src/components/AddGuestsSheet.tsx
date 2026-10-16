@@ -11,6 +11,7 @@ import { haptics } from '../utils/haptics';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { TextField } from './TextField';
 import { HelpText } from './HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -65,7 +66,7 @@ export function AddGuestsSheet({ visible, onClose, onAdd }: Props) {
       <View style={styles.root}>
         <SheetHeader
           title="Track replies"
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={64} />}
           right={
             <SheetHeaderButton
               label={parsedNames.length > 1 ? `Add ${parsedNames.length}` : 'Add'}

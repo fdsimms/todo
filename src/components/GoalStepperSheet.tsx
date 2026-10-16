@@ -8,6 +8,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { HelpText } from './HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -67,9 +68,9 @@ export function GoalStepperSheet({ visible, onClose, name, heading, hint, saved,
     >
       <View style={styles.card}>
         <View style={styles.headerRow}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={() => dismiss()} minWidth={56} />
+          <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={() => dismiss()} minWidth={56} />
           <Text style={styles.heading}>{heading}</Text>
-          <SheetHeaderButton label="Done" onPress={save} minWidth={56} style={styles.headerRight} />
+          <SheetHeaderButton label={BUTTON_LABEL.done} onPress={save} minWidth={56} style={styles.headerRight} />
         </View>
         <View style={styles.body}>
           <HelpText style={styles.hint}>{hint}</HelpText>

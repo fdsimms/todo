@@ -124,6 +124,7 @@ import { ActionMenu, type ActionMenuAction, type ActionMenuChoice } from '../com
 import type { CardAnchor } from '../components/CardSheet';
 import { resetToMealPlan } from '../navigation/navigationRef';
 import { ProgressBar } from '../components/ProgressBar';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /**
  * A day of eating, read back.
@@ -571,7 +572,7 @@ export function FoodLogScreen() {
       `Forget ${label}?`,
       'This removes it from the day’s totals.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
           text: 'Forget',
           style: 'destructive',
@@ -598,9 +599,9 @@ export function FoodLogScreen() {
       'Rename entry',
       'What this was. The figures stay the same.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
-          text: 'Save',
+          text: BUTTON_LABEL.save,
           onPress: (text?: string) => {
             const trimmed = (text ?? '').trim();
             // A blank or a no-op closes rather than being refused: the old name
@@ -737,7 +738,7 @@ export function FoodLogScreen() {
       `Forget ${count} ${count === 1 ? 'entry' : 'entries'}?`,
       'This removes them from the day’s totals.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
           text: 'Forget',
           style: 'destructive',
@@ -773,9 +774,9 @@ export function FoodLogScreen() {
       'Save as meal',
       'Name this combination so you can log it again in one tap.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
-          text: 'Save',
+          text: BUTTON_LABEL.save,
           onPress: (text?: string) => {
             const name = (text ?? '').trim();
             if (!name) return;
@@ -1567,7 +1568,7 @@ export function FoodLogScreen() {
           actions={[
             { key: 'duplicate', icon: 'copy', label: 'Duplicate', onPress: handleBulkDuplicate },
             { key: 'saveMeal', icon: 'bookmark', label: 'Save as meal', onPress: handleBulkSaveMeal },
-            { key: 'delete', icon: 'trash', label: 'Delete', tone: 'destructive', onPress: handleBulkDelete },
+            { key: 'delete', icon: 'trash', label: BUTTON_LABEL.delete, tone: 'destructive', onPress: handleBulkDelete },
           ]}
           onSelectAll={() => selectAll(dayEntries.map(e => e.id))}
           onDeselectAll={deselectAll}
@@ -2055,7 +2056,7 @@ function LogFoodFabWithDropLabel({
 } & Omit<React.ComponentProps<typeof Fab>, 'dragLabel'>) {
   const label = useFabIntentSelector(channel, (intent: FabDropIntent | null) => {
     if (intent === null) return null;
-    if (intent.kind === 'cancel') return 'Cancel';
+    if (intent.kind === 'cancel') return BUTTON_LABEL.cancel;
     const target = intent.kind === 'insert' ? slotByKey.get(intent.anchorKey) : undefined;
     if (!target) return 'Log food';
     return target.slot ? `Log to ${MEAL_SLOT_LABELS[target.slot]}` : 'Log with no meal';

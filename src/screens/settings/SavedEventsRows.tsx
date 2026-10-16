@@ -25,6 +25,7 @@ import { useTaskStore } from '../../store/useTaskStore';
 import { ensureGeneratedTaskCategory } from '../../store/useCategoryStore';
 import { SettingsRow } from './SettingsRow';
 import { makeSettingsStyles } from './settingsStyles';
+import { BUTTON_LABEL } from '../../copy/shared';
 
 /** Where + lands from Off: a yearly checkup is the common case. */
 const BOOK_EVERY_START = 12;
@@ -71,7 +72,7 @@ export function SavedEventsRows() {
       `Remove ${event.title}?`,
       'It stops showing when you start a new event, on all your devices. Events already on your calendar stay.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         { text: 'Remove', style: 'destructive', onPress: () => {
           haptics.warning();
           commit(removeSavedEvent(events, event.title));

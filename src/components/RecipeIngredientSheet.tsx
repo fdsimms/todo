@@ -43,6 +43,7 @@ import { InlineAction } from './InlineAction';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { TextField } from './TextField';
 import { HelpText } from './HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -454,7 +455,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
         <SheetHeader
           bare
           title="Ingredient"
-          left={<SheetHeaderButton label="Done" onPress={saveAndClose} minWidth={40} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={saveAndClose} minWidth={40} />}
           right={<View style={styles.headerSpacer} />}
         />
       }

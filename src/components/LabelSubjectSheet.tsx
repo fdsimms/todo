@@ -7,6 +7,7 @@ import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, radius, spacing, type Colors } from '../theme';
 import { describeProduct } from '../utils/groceryProduct';
 import { haptics } from '../utils/haptics';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /**
  * What a label photo is about: the food, and the product of it the label is
@@ -88,7 +89,7 @@ export function LabelSubjectSheet({ visible, initialName, onNext, onClose }: Pro
     >
       <View style={styles.card}>
         <View style={styles.headerRow}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={() => dismiss(onClose)} minWidth={56} />
+          <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={() => dismiss(onClose)} minWidth={56} />
           <Text style={styles.heading}>About this label</Text>
           <SheetHeaderButton
             label="Next"

@@ -27,7 +27,7 @@ export function ScrollNudgeBanner({ seconds, onStart, onDismiss }: Props) {
 
   return (
     <View style={styles.container} accessibilityRole="alert">
-      <Text style={styles.text}>You've been scrolling for {describeScrollNudgeSpan(seconds)}. Start a focus session?</Text>
+      <Text style={styles.text}>You’ve been scrolling for {describeScrollNudgeSpan(seconds)}. Start a focus session?</Text>
       <View style={styles.actions}>
         <PressableScale
           style={styles.button}

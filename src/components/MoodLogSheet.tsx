@@ -41,6 +41,7 @@ import { WhenPicker } from './WhenPicker';
 import { TextField } from './TextField';
 import { InlineAction } from './InlineAction';
 import { HelpText } from './HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 const NOTE_MAX_LENGTH = 500;
 
@@ -299,9 +300,9 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
       'Rename tag',
       `Changes every entry that has “${name}”.`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
-          text: 'Save',
+          text: BUTTON_LABEL.save,
           onPress: (text?: string) => {
             const trimmed = (text ?? '').trim();
             if (!trimmed || trimmed === name) return;
@@ -399,9 +400,9 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
       'Delete this entry?',
       'It will be removed from your history and from every number on the Mood screen.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
-          text: 'Delete',
+          text: BUTTON_LABEL.delete,
           style: 'destructive',
           onPress: () => { haptics.warning(); removeLog(id); onClose(); },
         },
@@ -421,8 +422,8 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
         <SheetHeader
           bare
           title={editing ? 'Edit entry' : 'How are you doing?'}
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={64} />}
-          right={<SheetHeaderButton label="Save" onPress={save} disabled={!canSave} minWidth={64} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={onClose} minWidth={64} />}
+          right={<SheetHeaderButton label={BUTTON_LABEL.save} onPress={save} disabled={!canSave} minWidth={64} />}
         />
       }
     >

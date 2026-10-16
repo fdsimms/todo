@@ -32,6 +32,7 @@ import {
 import { canShare, discardBackupFile, sharePdfFile, writePdfFile } from '../utils/backupFile';
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import { HelpText } from './HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -125,7 +126,7 @@ export function MedicationSummarySheet({ visible, onClose }: Props) {
     let uri: string | null = null;
     try {
       if (!(await canShare())) {
-        Alert.alert('Sharing unavailable', 'This device cannot open a share sheet.');
+        Alert.alert('Can’t share from this device', 'This device cannot open a share sheet.');
         return;
       }
       const summary = build();
@@ -134,7 +135,7 @@ export function MedicationSummarySheet({ visible, onClose }: Props) {
       markSummaryShared(summary.preparedAt);
       onClose();
     } catch {
-      Alert.alert('Export failed', 'Couldn’t create the summary. Try again.');
+      Alert.alert('Couldn’t export', 'The summary couldn’t be created. Try again.');
     } finally {
       // Deleted once the share sheet closes, like the CSV: a health record
       // left in the app's own storage would be a second copy nobody asked for.
@@ -178,7 +179,7 @@ export function MedicationSummarySheet({ visible, onClose }: Props) {
         <SheetHeader
           bare
           title="Summary for a visit"
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={onClose} />}
           right={<View style={styles.headerSpacer} />}
         />
       }
