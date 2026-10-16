@@ -473,7 +473,7 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
 
   // Actions ("take aleve", "buy milk") lead the card and come out of its seven
   // slots, so offering one never makes the card longer than it always was.
-  const { actions, onSubmit: submitAction, descriptions: actionDescriptions } =
+  const { actions, onSubmit: submitAction, descriptions: actionDescriptions, describe: describeAction } =
     useSearchActions(debouncedQuery, visible, QUICK_ACTION_LIMIT);
   // What the rows ran while the card is open, so a row can say so and offer
   // Undo. Cleared with the query, like `heldIds`.
@@ -663,6 +663,7 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
                   key={action.key}
                   action={action}
                   description={actionDescriptions.get(action.key)!}
+                  describe={describeAction}
                   receipt={receipts.get(action.key) ?? null}
                   layout="card"
                   onRun={runAction}

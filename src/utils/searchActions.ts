@@ -49,7 +49,7 @@ export const QUICK_ACTION_LIMIT = 3;
 const BARE_NAME_MIN_LENGTH = 3;
 
 /** The most glasses one row offers to log; past it the number is a typo. */
-const MAX_GLASSES = 10;
+export const MAX_GLASSES = 10;
 
 export interface DoseAction {
   kind: 'dose';
@@ -197,6 +197,16 @@ const WATER_RE = /^(?:(drank|drink|had|log|add)\s+)?(?:(a|an|one|\d+)\s+(?:glass
 /** One glass: one step of the food log's own water stepper, in the unit you count in. */
 export function glassMl(unit: WaterUnit): number {
   return unit === 'flOz' ? waterToMl(WATER_STEP_FL_OZ, 'flOz') : WATER_STEP_ML;
+}
+
+/**
+ * The same row for a different number of glasses, which is what the row's
+ * stepper asks for. Clamped to what a typed query could have offered, and the
+ * ml is rebuilt from the glass size already on the action rather than a unit.
+ */
+export function withGlasses(action: WaterAction, glasses: number): WaterAction {
+  const n = Math.min(MAX_GLASSES, Math.max(1, Math.round(glasses)));
+  return { ...action, glasses: n, ml: (action.ml / action.glasses) * n };
 }
 
 /**
