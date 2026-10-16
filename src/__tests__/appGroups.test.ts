@@ -1,6 +1,6 @@
 import {
   DEFAULT_GROUP_ID, MAX_APP_GROUPS, MAX_SUPERGROUPS, allGroups, allowGroupIds, isAllowGroup, withGroupMode, assignmentsAfterRemoval,
-  cleanGroupName, expandGroupId, groupName, isSupergroup, memberGroups, plainGroups,
+  cleanGroupName, expandGroupId, groupName, isSupergroup, plainGroups, supergroupMode,
   parseAppGroups, parseGroupAssignments, parseGroupsMeta, resolveAssignments, resolveGroupId, withGroupAdded,
   supergroupMembers, withGroupRemoved, withGroupRenamed, withMembersSet,
 } from '../utils/appGroups';
@@ -105,7 +105,8 @@ describe('supergroups', () => {
       { id: 's2', name: 'Nested', members: ['s1', 'g1'] },
     ]);
     const parsed = parseAppGroups(raw);
-    expect(parsed[1].members).toEqual(['g1', 'default']);
+    // Listed order: Default first, then the custom groups.
+    expect(parsed[1].members).toEqual(['default', 'g1']);
     expect(parsed[2].members).toEqual(['g1']);
     const many = [
       ...Array.from({ length: MAX_APP_GROUPS }, (_, i) => ({ id: `g${i}`, name: `G${i}` })),
@@ -213,22 +214,43 @@ describe('allowlist groups', () => {
 
 describe('supergroups and allowlists', () => {
   const block = { id: 'g1', name: 'Social' };
+  const block2 = { id: 'g3', name: 'News' };
   const allow = { id: 'g2', name: 'Work', allowOnly: true };
+  const allow2 = { id: 'g4', name: 'Focus', allowOnly: true };
 
-  it('combines block-list groups only, in parsing, setting members and expanding', () => {
-    const raw = JSON.stringify([block, allow, { id: 's1', name: 'Mix', members: ['g1', 'g2'] }]);
+  it('can hold allowlists, and is then all allowlists, with the first listed group deciding the mode', () => {
+    const raw = JSON.stringify([block, allow, allow2, { id: 's1', name: 'Only', members: ['g2', 'g4'] }]);
     const parsed = parseAppGroups(raw);
-    expect(parsed[2].members).toEqual(['g1']);
-    expect(memberGroups(parsed).map(g => g.id)).toEqual(['default', 'g1']);
-    expect(withMembersSet(parsed, 's1', ['g1', 'g2']).find(g => g.id === 's1')?.members).toEqual(['g1']);
-    const added = withGroupAdded([block, allow], { id: 's9', name: 'Pair', members: ['g1', 'g2'] });
-    expect(added.ok && added.groups[2].members).toEqual(['g1']);
+    expect(parsed[3].members).toEqual(['g2', 'g4']);
+    expect(supergroupMode(parsed, 's1')).toBe('allow');
+    expect(expandGroupId(parsed, 's1')).toEqual(['g2', 'g4']);
   });
 
-  it('loses a member when that group becomes an allowlist, and has no mode of its own', () => {
-    const groups = [block, { id: 's1', name: 'Mix', members: ['g1', 'default'] }];
-    const made = withGroupMode(groups, 'g1', true);
-    expect(made.ok && made.groups.find(g => g.id === 's1')?.members).toEqual(['default']);
+  it('never mixes the two kinds: a mixed list keeps the kind of the first group listed', () => {
+    const groups = [block, allow, block2, allow2];
+    const mixed = JSON.stringify([...groups, { id: 's1', name: 'Mix', members: ['g2', 'g1', 'g3', 'g4'] }]);
+    // Listed order is default, g1, g2, g3, g4: g1 (block) comes first.
+    expect(parseAppGroups(mixed)[4].members).toEqual(['g1', 'g3']);
+    const added = withGroupAdded(groups, { id: 's9', name: 'Pair', members: ['g2', 'g4', 'g1'] });
+    expect(added.ok && added.groups[4].members).toEqual(['g1']);
+    const set = withMembersSet([...groups, { id: 's1', name: 'Mix', members: ['g1'] }], 's1', ['g2', 'g4']);
+    expect(set.find(g => g.id === 's1')?.members).toEqual(['g2', 'g4']);
+  });
+
+  it('has no mode while empty, and reads block for block groups', () => {
+    expect(supergroupMode([block, { id: 's1', name: 'Empty', members: [] }], 's1')).toBeNull();
+    expect(supergroupMode([block, { id: 's1', name: 'Mix', members: ['g1'] }], 's1')).toBe('block');
+  });
+
+  it('loses a member when that group changes mode either way, and has no mode of its own to set', () => {
+    const groups = [block, allow, { id: 's1', name: 'Blocks', members: ['g1', 'default'] }, { id: 's2', name: 'Allows', members: ['g2'] }];
+    const toAllow = withGroupMode(groups, 'g1', true);
+    expect(toAllow.ok && toAllow.groups.find(g => g.id === 's1')?.members).toEqual(['default']);
+    const toBlock = withGroupMode(groups, 'g2', false);
+    expect(toBlock.ok && toBlock.groups.find(g => g.id === 's2')?.members).toEqual([]);
+    // A mode that doesn't change leaves supergroups alone.
+    const same = withGroupMode(groups, 'g1', false);
+    expect(same.ok && same.groups.find(g => g.id === 's1')?.members).toEqual(['g1', 'default']);
     expect(withGroupMode(groups, 's1', true)).toEqual({ ok: false, reason: 'missing' });
   });
 });

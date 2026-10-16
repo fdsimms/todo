@@ -22,7 +22,9 @@
  * `expandGroupId` turns into those groups wherever a reason is resolved, which
  * is also why the native side never hears about one: everything written to it
  * has been expanded first. A supergroup holds plain groups only, never another
- * supergroup.
+ * supergroup, and they are all block groups or all allowlists: an allowlist blocks
+ * everything *except* its apps, so a union of the two kinds says neither thing.
+ * Its mode is its members' (`supergroupMode`).
  */
 
 /** The settings row holding the custom groups, as JSON. Device-local, like the tokens. */
@@ -75,14 +77,34 @@ export function plainGroups(custom: readonly AppGroup[], meta: GroupsMeta = DEFA
   return allGroups(custom, meta).filter(g => !isSupergroup(g));
 }
 
+/** Whether a group is an allowlist. A supergroup has no mode of its own: see `supergroupMode`. */
+function isAllowOnly(group: AppGroup | undefined): boolean {
+  return group?.allowOnly === true;
+}
+
 /**
- * The groups a supergroup can combine: plain groups that block their own apps.
- * **Never an allowlist.** An allowlist blocks everything *except* its apps, so
- * "Social or Games" over one would read as the opposite of what either group
- * says. A group made an allowlist leaves every supergroup (`withGroupMode`).
+ * The ids to keep from a candidate list of members, in listed order: plain
+ * groups only, all of the mode of the first one listed. A mixed list can't come
+ * from the picker (it disables the other kind), so this is the backstop for a
+ * stored or merged state that says otherwise.
  */
-export function memberGroups(custom: readonly AppGroup[], meta: GroupsMeta = DEFAULT_GROUPS_META): AppGroup[] {
-  return plainGroups(custom, meta).filter(g => g.allowOnly !== true);
+function homogeneousMembers(custom: readonly AppGroup[], wanted: ReadonlySet<string>, meta: GroupsMeta): string[] {
+  const picked = plainGroups(custom, meta).filter(g => wanted.has(g.id));
+  const mode = picked.length > 0 ? isAllowOnly(picked[0]) : false;
+  return picked.filter(g => isAllowOnly(g) === mode).map(g => g.id);
+}
+
+/**
+ * What a supergroup does: `allow` when its groups are allowlists, `block` when
+ * they block their own apps, null while it has no groups to say.
+ */
+export function supergroupMode(
+  custom: readonly AppGroup[],
+  id: string,
+  meta: GroupsMeta = DEFAULT_GROUPS_META,
+): 'allow' | 'block' | null {
+  const first = supergroupMembers(custom, id, meta)[0];
+  return first === undefined ? null : isAllowOnly(first) ? 'allow' : 'block';
 }
 
 /** The reasons that take a group directly. A schedule carries its own `groupId`. */
@@ -170,14 +192,11 @@ export function parseAppGroups(raw: string | null | undefined): AppGroup[] {
       groups.push(allowOnly === true ? { id, name: cleanGroupName(name), allowOnly: true } : { id, name: cleanGroupName(name) });
     }
   }
-  // A member that isn't a block-list group (removed, a supergroup, an allowlist, a repeat) is dropped, never kept as a dangling id.
-  const plainIds = new Set([DEFAULT_GROUP_ID, ...groups.filter(g => !isSupergroup(g) && g.allowOnly !== true).map(g => g.id)]);
-  return groups.map(g => (isSupergroup(g) ? { ...g, members: cleanMembers(g.members!, plainIds) } : g));
-}
-
-/** Member ids that name a plain group, once each, in the order given. */
-function cleanMembers(members: readonly string[], plainIds: ReadonlySet<string>): string[] {
-  return [...new Set(members)].filter(m => plainIds.has(m));
+  // A member that isn't a plain group (removed, a supergroup, a repeat) is dropped, never kept as a dangling id,
+  // and so is one of the other mode than the first.
+  return groups.map(g => (
+    isSupergroup(g) ? { ...g, members: homogeneousMembers(groups, new Set(g.members), DEFAULT_GROUPS_META) } : g
+  ));
 }
 
 /** Default first, then the custom groups in the order the person made them. */
@@ -205,9 +224,7 @@ export function withGroupAdded(
     return { ok: false, reason: 'duplicate' };
   }
   // In the order the groups are listed, not the order they were picked.
-  const members = isSupergroup(group)
-    ? memberGroups(custom, meta).map(g => g.id).filter(id => group.members!.includes(id))
-    : undefined;
+  const members = isSupergroup(group) ? homogeneousMembers(custom, new Set(group.members), meta) : undefined;
   return { ok: true, groups: [...custom, members ? { ...group, members } : group] };
 }
 
@@ -262,10 +279,12 @@ export function withGroupMode(
   // A supergroup holds no apps of its own, so it has no mode to set.
   if (!custom.some(g => g.id === id && !isSupergroup(g))) return { ok: false, reason: 'missing' };
   if (allowOnly && id === meta.fallbackId) return { ok: false, reason: 'fallback' };
+  const changes = isAllowOnly(custom.find(g => g.id === id)) !== allowOnly;
   return {
     ok: true,
     groups: custom.map(g => {
-      if (isSupergroup(g)) return allowOnly && g.members!.includes(id) ? { ...g, members: g.members!.filter(m => m !== id) } : g;
+      // A group that changes mode no longer matches the supergroups it was in.
+      if (isSupergroup(g)) return changes && g.members!.includes(id) ? { ...g, members: g.members!.filter(m => m !== id) } : g;
       if (g.id !== id) return g;
       const { allowOnly: _old, ...rest } = g;
       return allowOnly ? { ...rest, allowOnly: true } : rest;
@@ -287,8 +306,7 @@ export function withMembersSet(
   memberIds: readonly string[],
   meta: GroupsMeta = DEFAULT_GROUPS_META,
 ): AppGroup[] {
-  const wanted = new Set(memberIds);
-  const members = memberGroups(custom, meta).map(g => g.id).filter(m => wanted.has(m));
+  const members = homogeneousMembers(custom, new Set(memberIds), meta);
   return custom.map(g => (g.id === id && isSupergroup(g) ? { ...g, members } : g));
 }
 
@@ -296,8 +314,8 @@ export function withMembersSet(
 export function supergroupMembers(custom: readonly AppGroup[], id: string, meta: GroupsMeta = DEFAULT_GROUPS_META): AppGroup[] {
   const group = custom.find(g => g.id === id);
   if (!isSupergroup(group)) return [];
-  const members = new Set(group!.members);
-  return memberGroups(custom, meta).filter(g => members.has(g.id));
+  const members = new Set(homogeneousMembers(custom, new Set(group!.members), meta));
+  return plainGroups(custom, meta).filter(g => members.has(g.id));
 }
 
 /** The group a stored id means: itself when it exists, otherwise the fallback group. */

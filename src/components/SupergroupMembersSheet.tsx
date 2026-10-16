@@ -40,6 +40,16 @@ export function SupergroupMembersSheet({ visible, title, groups, initialIds, onC
     setSelected(s => (s.includes(id) ? s.filter(x => x !== id) : [...s, id]));
   };
 
+  // One supergroup is all allowlists or all block groups, so once a group is
+  // checked the other kind is unavailable until the checks are cleared.
+  const pickedMode = groups.find(g => g.id === selected[0])?.allowOnly === true ? 'allow' : selected.length > 0 ? 'block' : null;
+  const lockedReason = (g: AppGroup) => {
+    if (pickedMode === null || selected.includes(g.id)) return null;
+    const mode = g.allowOnly === true ? 'allow' : 'block';
+    if (mode === pickedMode) return null;
+    return pickedMode === 'allow' ? 'Can’t mix with groups that allow only their apps' : 'Can’t mix with groups that block their apps';
+  };
+
   const confirm = () => {
     if (selected.length === 0) return;
     card.close(() => { onClose(); onConfirm(selected); });
@@ -54,9 +64,11 @@ export function SupergroupMembersSheet({ visible, title, groups, initialIds, onC
           right={<SheetHeaderButton label="Done" onPress={confirm} disabled={selected.length === 0} />}
         />
         <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
-          <AppGroupChecklist groups={groups} selectedIds={selected} onToggle={toggle} />
+          <AppGroupChecklist groups={groups} selectedIds={selected} onToggle={toggle} lockedReason={lockedReason} />
           <Text style={styles.hint}>
-            {`${title} blocks every app in the groups checked here. Changing the checks changes everything ${title} is used for.`}
+            {pickedMode === 'allow'
+              ? `Only apps that every checked group allows stay open. ${title} follows whatever you check here, everywhere it is used.`
+              : `${title} blocks every app in the groups checked here. It follows whatever you check, everywhere it is used.`}
           </Text>
         </ScrollView>
       </View>

@@ -13,8 +13,8 @@ import { describeEnded, releasesThisMonth, timesWord } from '../../utils/shieldR
 import { useManualBlockStore } from '../../store/useManualBlockStore';
 import { MANUAL_BLOCK_PRESETS, describeDuration, manualBlockWanted } from '../../utils/manualBlock';
 import {
-  DEFAULT_GROUP_ID, allGroups, cleanGroupName, groupName, isAllowGroup, isSupergroup, memberGroups, resolveAssignments, resolveGroupId,
-  supergroupMembers, type GroupedReason,
+  DEFAULT_GROUP_ID, allGroups, cleanGroupName, groupName, isAllowGroup, isSupergroup, plainGroups, resolveAssignments, resolveGroupId,
+  supergroupMembers, supergroupMode, type GroupedReason,
 } from '../../utils/appGroups';
 import { currentWindowEnd, describeDays, describeWindow, formatMinutes, isScheduleActive, MAX_BLOCK_SCHEDULES, type BlockSchedule } from '../../utils/blockSchedule';
 import { selectionLabel } from '../../utils/shieldReasonText';
@@ -147,7 +147,10 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
   const supergroupHint = (group: { id: string; members?: string[] }) => {
     if (groupLocked(group.id)) return 'Blocking now. Its groups can’t change until it ends.';
     const names = supergroupMembers(customGroups, group.id, groupsMeta).map(g => g.name);
-    return names.length > 0 ? names.join(', ') : 'No groups';
+    if (names.length === 0) return 'No groups';
+    return supergroupMode(customGroups, group.id, groupsMeta) === 'allow'
+      ? `Blocks everything except apps in ${names.join(', ')}`
+      : names.join(', ');
   };
   const supergroupCount = (groupId: string) => {
     const n = supergroupMembers(customGroups, groupId, groupsMeta).length;
@@ -200,7 +203,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
 
   const handleNewSupergroup = () => {
     haptics.tap();
-    if (memberGroups(customGroups, groupsMeta).length < 2) {
+    if (plainGroups(customGroups, groupsMeta).length < 2) {
       Alert.alert('Make another group first', 'A supergroup combines groups you already made. Add at least two groups, then combine them.');
       return;
     }
@@ -304,10 +307,18 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
         onPress: () => {
           if (refuseWhileBlocked(groupEditLocked(groupId, reasons))) return;
           const next = !allowGroup(groupId);
-          if (!next) { useAppGroupStore.getState().setGroupMode(groupId, false); return; }
+          const leavesSupergroups = 'It is also removed from the supergroups that include it, since a supergroup is all groups that block their apps or all groups that allow only theirs.';
+          if (!next) {
+            if (!inSupergroup) { useAppGroupStore.getState().setGroupMode(groupId, false); return; }
+            Alert.alert('Block these apps?', leavesSupergroups, [
+              { text: 'Cancel', style: 'cancel' as const },
+              { text: 'Block these', onPress: () => useAppGroupStore.getState().setGroupMode(groupId, false) },
+            ]);
+            return;
+          }
           Alert.alert(
             'Allow only these apps?',
-            'Anything using this group will block every app except the ones you picked here, and those apps stay open. Pick the apps you want to keep, including dundundun. Categories can’t be allowed.',
+            `Anything using this group will block every app except the ones you picked here, and those apps stay open. Pick the apps you want to keep, including dundundun. Categories can’t be allowed.${inSupergroup ? ` ${leavesSupergroups}` : ''}`,
             [
               { text: 'Cancel', style: 'cancel' as const },
               {
@@ -994,7 +1005,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
       <SupergroupMembersSheet
         visible={memberSheet.open}
         title={memberSheet.id ? groupName(customGroups, memberSheet.id, groupsMeta) : cleanGroupName(memberSheet.name, 'New supergroup')}
-        groups={memberGroups(customGroups, groupsMeta)}
+        groups={plainGroups(customGroups, groupsMeta)}
         initialIds={memberSheet.id ? supergroupMembers(customGroups, memberSheet.id, groupsMeta).map(g => g.id) : []}
         onClose={() => setMemberSheet(prev => ({ ...prev, open: false }))}
         onConfirm={confirmMembers}

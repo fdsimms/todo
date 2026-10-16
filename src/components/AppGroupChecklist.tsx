@@ -11,6 +11,11 @@ interface Props {
   onToggle: (groupId: string) => void;
   /** Set where a card already surrounds it (a `SettingsSection`), so it draws rows only. */
   bare?: boolean;
+  /**
+   * A reason a row can't be picked right now, shown under its name in place of
+   * its usual detail. A row with one is dimmed and ignores presses.
+   */
+  lockedReason?: (group: AppGroup) => string | null;
 }
 
 /**
@@ -23,33 +28,46 @@ interface Props {
  * so a caller picking among plain groups only (a supergroup's own members)
  * simply has no such rows.
  */
-export function AppGroupChecklist({ groups, selectedIds, onToggle, bare }: Props) {
+export function AppGroupChecklist({ groups, selectedIds, onToggle, bare, lockedReason }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <View style={bare ? undefined : styles.card}>
       {groups.map((g, i) => {
         const on = selectedIds.includes(g.id);
-        const members = isSupergroup(g)
-          ? g.members!.map(id => groups.find(x => x.id === id)?.name).filter((n): n is string => n !== undefined).join(', ')
-          : '';
+        const memberRows = isSupergroup(g)
+          ? g.members!.map(id => groups.find(x => x.id === id)).filter((m): m is AppGroup => m !== undefined)
+          : [];
+        const members = memberRows.map(m => m.name).join(', ');
+        // A supergroup is all allowlists or all block groups, so its first member says which.
+        const allowSuper = memberRows.length > 0 && memberRows[0].allowOnly === true;
+        const locked = lockedReason?.(g) ?? null;
         return (
           <TouchableOpacity
             key={g.id}
-            style={[styles.row, i > 0 && styles.rowRuled]}
+            style={[styles.row, i > 0 && styles.rowRuled, locked !== null && styles.rowLocked]}
             activeOpacity={interaction.activeOpacity}
-            onPress={() => onToggle(g.id)}
+            onPress={() => { if (locked === null) onToggle(g.id); }}
+            disabled={locked !== null}
             accessibilityRole="checkbox"
-            accessibilityState={{ checked: on }}
+            accessibilityState={{ checked: on, disabled: locked !== null }}
             accessibilityLabel={g.name}
           >
             <View style={styles.rowText}>
               <Text style={styles.rowTitle} numberOfLines={1}>{g.name}</Text>
-              {isSupergroup(g) && (
-                <Text style={styles.rowSub} numberOfLines={1}>{members || 'No groups'}</Text>
-              )}
-              {g.allowOnly === true && (
-                <Text style={styles.rowDetail}>Blocks everything except its apps</Text>
+              {locked !== null ? (
+                <Text style={styles.rowDetail}>{locked}</Text>
+              ) : (
+                <>
+                  {isSupergroup(g) && (
+                    <Text style={styles.rowSub} numberOfLines={1}>
+                      {members ? (allowSuper ? `Blocks everything except apps in ${members}` : members) : 'No groups'}
+                    </Text>
+                  )}
+                  {g.allowOnly === true && (
+                    <Text style={styles.rowDetail}>Blocks everything except its apps</Text>
+                  )}
+                </>
               )}
             </View>
             {on && <Ionicons name="checkmark" size={iconSize.sm} color={colors.accent} />}
@@ -72,6 +90,7 @@ function makeStyles(colors: Colors) {
       paddingVertical: spacing.smd,
       minHeight: 44,
     },
+    rowLocked: { opacity: 0.5 },
     rowRuled: { borderTopWidth: 1, borderTopColor: colors.separator },
     rowText: { flex: 1 },
     rowTitle: { color: colors.text, fontSize: font.md },
