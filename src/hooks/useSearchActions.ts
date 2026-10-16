@@ -137,7 +137,17 @@ export function useSearchActionReceipts(resetKey: string) {
     });
   }, [receipts]);
 
+  // The receipt's own second write, which hands back the receipt that replaces it.
+  const followUp = useCallback((action: SearchAction) => {
+    const receipt = receipts.get(action.key);
+    if (!receipt?.followUp) return;
+    haptics.tap();
+    const next = receipt.followUp.run();
+    haptics.success();
+    setReceipts(prev => new Map(prev).set(action.key, next));
+  }, [receipts]);
+
   const clear = useCallback(() => setReceipts(new Map()), []);
 
-  return { receipts, run, undo, clear };
+  return { receipts, run, undo, followUp, clear };
 }

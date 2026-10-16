@@ -477,7 +477,7 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
     useSearchActions(debouncedQuery, visible, QUICK_ACTION_LIMIT);
   // What the rows ran while the card is open, so a row can say so and offer
   // Undo. Cleared with the query, like `heldIds`.
-  const { receipts, run: runReceipt, undo: undoAction, clear: clearReceipts } = useSearchActionReceipts(debouncedQuery);
+  const { receipts, run: runReceipt, undo: undoAction, followUp: followUpAction, clear: clearReceipts } = useSearchActionReceipts(debouncedQuery);
   const searchBudget = QUICK_SEARCH_LIMIT - actions.length;
 
   // Tasks, stacks and projects take the card's slots first; the non-task rows
@@ -668,6 +668,7 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
                   layout="card"
                   onRun={runAction}
                   onUndo={undoAction}
+                  onFollowUp={followUpAction}
                 />
               ))}
               {/* Stacks and projects lead, same order and reasoning as the

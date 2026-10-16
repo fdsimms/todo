@@ -39,11 +39,15 @@ const PANTRY_ANSWERS: { value: PantryAnswer; label: string }[] = [
  * No pill is marked unless the line stated one, and the title does nothing
  * until one is, so a severity is always a choice.
  *
+ * A receipt may carry a follow-up ("Add to grocery list" after a pantry
+ * answer): a pill on a line under the receipt, so the write that already
+ * happened isn't held back by a question about a second one.
+ *
  * A pantry row ("out of milk") is the same shape with Out of it / Running low
  * as the pills. The line always names one, so that pill is marked and the
  * title runs it; a tap on the other writes that instead.
  */
-export function SearchActionRow({ action, description, describe, receipt, layout, onRun, onUndo }: {
+export function SearchActionRow({ action, description, describe, receipt, layout, onRun, onUndo, onFollowUp }: {
   action: SearchAction;
   description: ActionDescription;
   /** Describes the action as stepped, for the water row's count. */
@@ -52,6 +56,7 @@ export function SearchActionRow({ action, description, describe, receipt, layout
   layout: 'card' | 'list';
   onRun: (action: SearchAction) => void;
   onUndo: (action: SearchAction) => void;
+  onFollowUp: (action: SearchAction) => void;
 }) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -74,8 +79,9 @@ export function SearchActionRow({ action, description, describe, receipt, layout
   );
 
   if (receipt) {
-    return (
-      <View style={[styles.row, list && styles.listRow]}>
+    const followUp = receipt.followUp;
+    const done = (
+      <View style={[styles.row, list && !followUp && styles.listRow, list && followUp && styles.listShellRow]}>
         {icon('checkmark-circle')}
         <View
           style={styles.content}
@@ -91,6 +97,20 @@ export function SearchActionRow({ action, description, describe, receipt, layout
           onPress={() => onUndo(action)}
           accessibilityLabel={`Undo: ${receipt.title}`}
         />
+      </View>
+    );
+    if (!followUp) return done;
+    return (
+      <View style={list ? styles.listShell : null}>
+        {done}
+        <View style={[styles.severityRow, list ? styles.listSeverityRow : styles.cardSeverityRow]}>
+          <InlineAction
+            label={followUp.label}
+            icon="add"
+            onPress={() => onFollowUp(action)}
+            accessibilityLabel={followUp.accessibilityLabel}
+          />
+        </View>
       </View>
     );
   }
