@@ -1,7 +1,7 @@
 /**
  * The recipe library's writes against a real database, through the recipe
  * store's own actions: a recipe's wider fields, moving it between cookbooks,
- * the cookbooks themselves and their indexes, the Up next shelf and a logged
+ * the cookbooks themselves, the Up next shelf and a logged
  * cook time.
  */
 import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
@@ -9,15 +9,11 @@ import { openReplica } from '../replica';
 import { saveRecipe, updateRecipe } from '../logTools';
 import {
   deleteCookbook,
-  deleteIndexEntry,
-  getCookbookIndex,
   listCookbooks,
   logCookTime,
   mergeCookbooks,
-  recipeFromIndexEntry,
   renameCookbook,
   reorderUpNext,
-  saveIndexEntry,
 } from '../recipeTools';
 
 let mockRaw: ShimDatabase;
@@ -38,7 +34,6 @@ beforeAll(() => {
 beforeEach(() => {
   mockRaw.runSync('DELETE FROM recipes');
   mockRaw.runSync('DELETE FROM cookbooks');
-  mockRaw.runSync('DELETE FROM cookbook_index_entries');
   replica.refresh();
 });
 
@@ -163,45 +158,23 @@ describe('cookbooks', () => {
     expect(() => renameCookbook(replica, book.id, 'Summer', null)).toThrow(/merge_cookbooks/);
   });
 
-  it('merges one book into another, with its index', () => {
+  it('merges one book into another', () => {
     saveRecipe(replica, { name: 'Dal', cookbook: 'Weeknights' });
     saveRecipe(replica, { name: 'Rice', cookbook: 'Weeknights (copy)' });
     const books = listCookbooks(replica).cookbooks;
     const keep = books.find(c => c.title === 'Weeknights')!;
     const lose = books.find(c => c.title === 'Weeknights (copy)')!;
-    saveIndexEntry(replica, { cookbookId: lose.id, title: 'Saag', page: '40', ingredients: ['spinach'] });
     expect(mergeCookbooks(replica, keep.id, lose.id)).toMatchObject({ kept: { id: keep.id }, merged: 'Weeknights (copy)', recipesMoved: 1 });
-    expect(listCookbooks(replica).cookbooks).toEqual([expect.objectContaining({ id: keep.id, recipes: 2, indexEntries: 1 })]);
+    expect(listCookbooks(replica).cookbooks).toEqual([expect.objectContaining({ id: keep.id, recipes: 2 })]);
   });
 
-  it('deletes a book, keeping its recipes unlinked and taking its index', () => {
+  it('deletes a book, keeping its recipes unlinked', () => {
     const r = saveRecipe(replica, { name: 'Dal', cookbook: 'Weeknights' });
     const book = listCookbooks(replica).cookbooks[0];
-    saveIndexEntry(replica, { cookbookId: book.id, title: 'Saag' });
-    expect(deleteCookbook(replica, book.id)).toMatchObject({ recipesUnlinked: 1, indexEntriesDeleted: 1 });
+    expect(deleteCookbook(replica, book.id)).toMatchObject({ recipesUnlinked: 1 });
     expect(listCookbooks(replica).cookbooks).toEqual([]);
     expect(stored(r.id)).toMatchObject({ cookbookId: null, source: 'Weeknights' });
     expect(() => deleteCookbook(replica, book.id)).toThrow(/No cookbook/);
-  });
-
-  it('adds, changes and deletes index lines, refusing a dish the index already lists', () => {
-    saveRecipe(replica, { name: 'Dal', cookbook: 'Weeknights' });
-    const book = listCookbooks(replica).cookbooks[0];
-    const { entry } = saveIndexEntry(replica, { cookbookId: book.id, title: 'Chana masala', page: '88', ingredients: ['chickpeas'] });
-    expect(() => saveIndexEntry(replica, { cookbookId: book.id, title: 'chana masala' })).toThrow(/already lists/);
-    saveIndexEntry(replica, { id: entry.id, title: 'Chana masala', ingredients: ['chickpeas', 'tomato'] });
-    expect(getCookbookIndex(replica, book.id).entries).toEqual([{ id: entry.id, title: 'Chana masala', page: '88', ingredients: ['chickpeas', 'tomato'] }]);
-    deleteIndexEntry(replica, entry.id);
-    expect(getCookbookIndex(replica, book.id).entries).toEqual([]);
-  });
-
-  it('makes a recipe from an index line once, then finds it', () => {
-    saveRecipe(replica, { name: 'Dal', cookbook: 'Weeknights' });
-    const book = listCookbooks(replica).cookbooks[0];
-    const { entry } = saveIndexEntry(replica, { cookbookId: book.id, title: 'Saag paneer', page: '40' });
-    const first = recipeFromIndexEntry(replica, entry.id);
-    expect(first).toMatchObject({ created: true, recipe: { name: 'Saag paneer', cookbook: 'Weeknights', page: '40' } });
-    expect(recipeFromIndexEntry(replica, entry.id)).toMatchObject({ created: false, recipe: { id: first.recipe!.id } });
   });
 });
 
