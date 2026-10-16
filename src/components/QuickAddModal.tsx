@@ -976,6 +976,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     ? describeTitleSuggestion(titleSuggestion, rainUnit, hhmm => formatHHMM(hhmm))
     : null;
   const priorityParsed = titleSuggestion?.kind === 'priority' ? titleSuggestion.hit : null;
+  const difficultyParsed = titleSuggestion?.kind === 'difficulty' ? titleSuggestion.hit : null;
   const projectParsed = titleSuggestion?.kind === 'project' ? titleSuggestion.hit : null;
   const chainParsed = titleSuggestion?.kind === 'chain' ? titleSuggestion.hit : null;
   const linkParsed = titleSuggestion?.kind === 'link' ? titleSuggestion.hit : null;
@@ -1016,6 +1017,11 @@ export const QuickAddModal = React.memo(function QuickAddModal({
         ? {
             matchStart: priorityParsed.matchStart,
             matchedText: title.slice(priorityParsed.matchStart, priorityParsed.matchEnd),
+          }
+      : difficultyParsed
+        ? {
+            matchStart: difficultyParsed.matchStart,
+            matchedText: title.slice(difficultyParsed.matchStart, difficultyParsed.matchEnd),
           }
       : projectParsed
         ? {
@@ -1350,6 +1356,17 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     setPriority(priorityParsed.priority);
   };
 
+  // Apply the detected "^word" difficulty token and strip it from the title.
+  const applyDifficulty = () => {
+    if (!difficultyParsed) return;
+    haptics.success();
+    animateLayout();
+    const nextTitle = withTrailingSpace(difficultyParsed.cleanTitle);
+    setTitle(nextTitle);
+    titleCaret.moveCaret(nextTitle);
+    setDifficulty(difficultyParsed.difficulty);
+  };
+
   // Apply the detected "->" chain: the first step becomes the task's own
   // title, the rest become chainItems. Typing "->" is someone describing a
   // chain in their own words, so accepting it switches the sheet into that
@@ -1573,6 +1590,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     else if (parsed) applyParse();
     else if (categoryTagsParsed) applyCategoryTags();
     else if (priorityParsed) applyPriority();
+    else if (difficultyParsed) applyDifficulty();
     else if (projectParsed) applyProject();
     else if (chainParsed) applyChain();
     else if (linkParsed) applyLink();

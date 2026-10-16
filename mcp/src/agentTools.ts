@@ -204,6 +204,11 @@ function readLine(replica: Replica, line: string): { row: QuickAddRow; draft: Pa
     text = pr.cleanTitle;
     draft.priority = pr.priority;
   }
+  const df = p.parseDifficultyInput(text);
+  if (df) {
+    text = df.cleanTitle;
+    draft.difficulty = df.difficulty;
+  }
   const live = replica.projects().filter(x => !x.archived && !x.completed).map(x => ({ id: x.id, title: x.title }));
   const pj = p.parseProjectInput(text, live);
   if (pj) {

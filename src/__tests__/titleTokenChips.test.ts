@@ -1,5 +1,5 @@
 import { tokenChipsFor, applyTokenChip, MAX_TOKEN_CHIPS, type TokenChipSources } from '../utils/titleTokenChips';
-import { parsePriorityInput, parseProjectInput, parseEstimateInput, parseCategoryAndTagsInput } from '../utils/parseTaskInput';
+import { parseDifficultyInput, parsePriorityInput, parseProjectInput, parseEstimateInput, parseCategoryAndTagsInput } from '../utils/parseTaskInput';
 
 const sources: TokenChipSources = {
   categories: ['Home', 'Work', 'Side Projects', 'Chores'],
@@ -18,6 +18,12 @@ describe('tokenChipsFor', () => {
 
   it('offers the priority words after "!"', () => {
     expect(labels('Renew passport !')).toEqual(['urgent', 'high', 'medium', 'low']);
+  });
+
+  it('offers the difficulty words after "^", which parseDifficultyInput reads back', () => {
+    expect(labels('Clear garage ^')).toEqual(['hard', 'normal', 'easy', 'trivial']);
+    expect(labels('x ^e')).toEqual(['easy']);
+    expect(parseDifficultyInput('x ^easy')?.difficulty).toBe('easy');
   });
 
   it('narrows by what is typed and drops a word that is already complete', () => {
