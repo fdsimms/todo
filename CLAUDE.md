@@ -168,6 +168,10 @@ the same "stop and ask" rules as above: ask before changing the server or filing
 
 ## User-facing copy
 
+**Before writing a new message, check how the app already says it:** `npm run copy -- --grep "couldn.t save"`
+lists every matching string with its file and line. A fourth wording of a failed save or a taken name
+is how the existing variants got there. Reuse the closest one, or fix the outlier.
+
 Say what a setting does in plain, literal terms — the way the rest of the app already talks
 (see any existing row label/subtitle for the tone to match). No jokey metaphors, no cutesy
 voice, no invented figures of speech ("how much rope", "offers you a way out", "speaks up").
@@ -274,6 +278,8 @@ npm run test:tz      # the suite in UTC+14, UTC-11 and Newfoundland (DST, half-h
 npx jest src/__tests__/dateUtils.test.ts  # one file, for iterating on a change
 npm run bench        # times the Today/Later/Expired selectors and search over 5,000 synthetic
                      # tasks (src/__bench__/); compare two checkouts, it is not part of npm test
+npm run copy         # every user-facing string with file:line, what is written out in many files, what
+                     # is spelled several ways; `-- --grep "taken"` finds one. Prints, writes nothing
 npm run docs         # regenerate all three generated docs, then commit them
 npm run verify       # the whole verification loop, below
 ```
