@@ -2177,6 +2177,7 @@ describe('demo seed — people', () => {
     expect(journalStats(entriesOfKind(entries, 'dream'), month).dayCount).toBeGreaterThanOrEqual(2);
     // One uses the light formatting, so demo mode shows it drawn.
     expect(entries.some(e => parseJournalMarkdown(e.text).some(b => b.type === 'bullet'))).toBe(true);
+    expect(entries.some(e => parseJournalMarkdown(e.text).some(b => b.spans.some(s => s.spoiler !== undefined)))).toBe(true);
     // And one day written in several snippets, which the screen draws as one page.
     const perDay = new Map<string, number>();
     entriesOfKind(entries, 'journal').forEach(e => perDay.set(e.dayKey, (perDay.get(e.dayKey) ?? 0) + 1));
