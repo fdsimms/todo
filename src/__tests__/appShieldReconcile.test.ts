@@ -65,6 +65,7 @@ jest.mock('../store/useAppGroupStore', () => ({
   resolvedAssignments: () => mockGroupState.assignments,
   resolveGroupNow: (id: string) => id,
   expandGroupNow: (id: string) => [id],
+  allowGroupsNow: () => [] as string[],
 }));
 const mockKeyState = { locked: false, keys: [] as unknown[] };
 jest.mock('../store/useNfcKeyStore', () => ({

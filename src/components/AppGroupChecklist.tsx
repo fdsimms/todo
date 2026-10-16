@@ -48,6 +48,9 @@ export function AppGroupChecklist({ groups, selectedIds, onToggle, bare }: Props
               {isSupergroup(g) && (
                 <Text style={styles.rowSub} numberOfLines={1}>{members || 'No groups'}</Text>
               )}
+              {g.allowOnly === true && (
+                <Text style={styles.rowDetail}>Blocks everything except its apps</Text>
+              )}
             </View>
             {on && <Ionicons name="checkmark" size={iconSize.sm} color={colors.accent} />}
           </TouchableOpacity>
@@ -73,5 +76,6 @@ function makeStyles(colors: Colors) {
     rowText: { flex: 1 },
     rowTitle: { color: colors.text, fontSize: font.md },
     rowSub: { marginTop: spacing.xxs, color: colors.textSecondary, fontSize: font.sm },
+    rowDetail: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xxs },
   });
 }

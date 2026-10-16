@@ -77,8 +77,10 @@ interface RewardStore {
   recordCleanDay: (taskId: string, dayKey: string, amount: number, label: string, at: string) => void;
   /** Reopening a day, or a slip that spoils it: drop what `recordCleanDay` wrote. */
   takeBackCleanDay: (taskId: string, dayKey: string) => void;
-  /** Unticking a task: drop whatever its completion or miss wrote. */
-  takeBackTask: (taskId: string) => void;
+  /** Unticking a task: drop whatever its completion or miss wrote. Returns the entries removed. */
+  takeBackTask: (taskId: string) => CoinEntry[];
+  /** Writes back entries `takeBackTask` returned, for the undo of an action that took them. */
+  restoreEntries: (entries: readonly CoinEntry[]) => void;
   /** Undoing a slip: drop the newest slip entry for the task. */
   takeBackSlip: (taskId: string) => void;
   /**
@@ -237,8 +239,15 @@ export const useRewardStore = create<RewardStore>((set, get) => {
     // still has to go when its completion is undone after it was switched off,
     // or switching back on would show coins for something that didn't happen.
     takeBackTask(taskId) {
-      remove([derivedId(spawnSeed.coinEarn(taskId)), derivedId(spawnSeed.coinMiss(taskId))]
-        .filter(id => get().entries.some(e => e.id === id)));
+      const ids = new Set([derivedId(spawnSeed.coinEarn(taskId)), derivedId(spawnSeed.coinMiss(taskId))]);
+      const taken = get().entries.filter(e => ids.has(e.id));
+      remove(taken.map(e => e.id));
+      return taken;
+    },
+
+    // Not gated, for the reason takeBackTask gives: it only puts back what was there.
+    restoreEntries(entries) {
+      entries.forEach(write);
     },
 
     takeBackSlip(taskId) {

@@ -3,10 +3,10 @@ import { dbGetSetting, dbSetSetting } from '../db/database';
 import { generateId } from '../utils/id';
 import {
   APP_GROUPS_SETTING, BASE_GROUP_NAME_SETTING, DEFAULT_GROUPS_META, DEFAULT_GROUP_ID, DEFAULT_GROUP_NAME,
-  FALLBACK_GROUP_SETTING, GROUP_ASSIGNMENTS_SETTING, assignmentsAfterRemoval, cleanGroupName,
+  FALLBACK_GROUP_SETTING, GROUP_ASSIGNMENTS_SETTING, allowGroupIds, assignmentsAfterRemoval, cleanGroupName,
   expandGroupId, parseAppGroups, parseGroupAssignments, parseGroupsMeta, resolveAssignments, resolveGroupId,
-  withGroupAdded, withGroupRemoved, withGroupRenamed, withMembersSet, type AddGroupResult, type AppGroup,
-  type GroupAssignments, type GroupedReason, type GroupsMeta,
+  withGroupAdded, withGroupMode, withGroupRemoved, withGroupRenamed, withMembersSet, type AddGroupResult, type AppGroup,
+  type GroupAssignments, type GroupedReason, type GroupModeResult, type GroupsMeta,
 } from '../utils/appGroups';
 import {
   BLOCK_SCHEDULES_SETTING, MAX_BLOCK_SCHEDULES, cleanScheduleName, parseBlockSchedules,
@@ -54,8 +54,10 @@ interface AppGroupStore {
   setSupergroupMembers: (id: string, memberIds: readonly string[]) => void;
   /** Rename a custom group, or the original (Default) one when `id` is its id. */
   renameGroup: (id: string, name: string) => AddGroupResult;
-  /** Make a group the one a deleted or missing group falls back to. */
+  /** Make a group the one a deleted or missing group falls back to. An allowlist group can't be. */
   setDefaultGroup: (id: string) => void;
+  /** Make a custom group block its apps (false) or block everything except them (true). */
+  setGroupMode: (id: string, allowOnly: boolean) => GroupModeResult;
   removeGroup: (id: string) => void;
   /** Point a reason at a group. */
   assignGroup: (reason: GroupedReason, groupId: string) => void;
@@ -137,7 +139,18 @@ export const useAppGroupStore = create<AppGroupStore>((set, get) => ({
     return renamed;
   },
 
+  setGroupMode(id, allowOnly) {
+    const result = withGroupMode(get().groups, id, allowOnly, get().meta);
+    if (!result.ok) return result;
+    persistGroups(result.groups);
+    set({ groups: result.groups });
+    return result;
+  },
+
   setDefaultGroup(id) {
+    // The fallback is what a deleted group resolves to, so it must block apps
+    // rather than everything else (`allowGroupIds`).
+    if (get().groups.some(g => g.id === id && g.allowOnly === true)) return;
     const fallbackId = get().groups.some(g => g.id === id) ? id : DEFAULT_GROUP_ID;
     dbSetSetting(FALLBACK_GROUP_SETTING, fallbackId);
     set({ meta: { ...get().meta, fallbackId } });
@@ -229,6 +242,12 @@ export const useAppGroupStore = create<AppGroupStore>((set, get) => ({
 export function resolvedAssignments(): GroupAssignments {
   const { groups, assignments, meta } = useAppGroupStore.getState();
   return resolveAssignments(groups, assignments, meta);
+}
+
+/** The groups that block everything except their own apps, as the shield will use them. */
+export function allowGroupsNow(): string[] {
+  const { groups, meta } = useAppGroupStore.getState();
+  return allowGroupIds(groups, meta);
 }
 
 /** A stored group id as the shield will use it, with a supergroup kept whole. */

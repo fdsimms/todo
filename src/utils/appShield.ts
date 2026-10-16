@@ -51,6 +51,12 @@ export interface AppShieldState {
    * predates it, and a test that doesn't care, needn't supply it.
    */
   denyAppRemoval?: boolean;
+  /**
+   * The (resolved) ids of the groups that block everything except their own
+   * apps. Optional so a caller that predates allowlists, and a test that doesn't
+   * care, needn't supply it.
+   */
+  allowGroupIds?: readonly string[];
   /** What earned the block — a task's title — for the shield screen to name. */
   penaltyReason: string | null;
   gateEnabled: boolean;
@@ -321,7 +327,14 @@ export function syncAppShield(state: AppShieldState): void {
   // Before the shield, which reads it. Over the live reasons rather than the
   // groups' contents, so it holds exactly as long as the block does.
   bridge.setShieldOptions(state.denyAppRemoval === true);
-  if (groupIds.length > 0) bridge.applyShield(groupIds);
+  // Written every time, so a group switched back to a block list stops being
+  // read as an allowlist. If the build can't take it, the allowlist groups are
+  // left out of the shield rather than applied as block lists, which would
+  // block exactly the apps they are meant to leave open.
+  const allowIds = state.allowGroupIds ?? [];
+  const allowWritten = bridge.setAllowGroups(allowIds);
+  const applied = allowWritten ? groupIds : groupIds.filter(id => !allowIds.includes(id));
+  if (applied.length > 0) bridge.applyShield(applied);
   else bridge.clearShield();
 
   // Nothing is armed for a gate that is already live — the shield is up, and a

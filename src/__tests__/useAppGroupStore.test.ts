@@ -151,3 +151,35 @@ describe('supergroups', () => {
     expect(expandGroupNow(id)).toEqual(['default', b]);
   });
 });
+
+describe('allowlist groups', () => {
+  const addGroup = (name: string) => {
+    useAppGroupStore.getState().addGroup(name);
+    return useAppGroupStore.getState().groups.find(g => g.name === name)!.id;
+  };
+
+  it('switches a group to allow only its apps, persisted and read back', () => {
+    const id = addGroup('Work');
+    expect(useAppGroupStore.getState().setGroupMode(id, true).ok).toBe(true);
+    expect(JSON.parse(mockSettings.appGroups)).toEqual([{ id, name: 'Work', allowOnly: true }]);
+    useAppGroupStore.getState().reload();
+    expect(useAppGroupStore.getState().groups[0].allowOnly).toBe(true);
+    useAppGroupStore.getState().setGroupMode(id, false);
+    expect(JSON.parse(mockSettings.appGroups)).toEqual([{ id, name: 'Work' }]);
+  });
+
+  it('refuses a group that is not there', () => {
+    expect(useAppGroupStore.getState().setGroupMode('nope', true)).toEqual({ ok: false, reason: 'missing' });
+  });
+
+  it('will not make the default group an allowlist, or an allowlist the default', () => {
+    const id = addGroup('Work');
+    useAppGroupStore.getState().setDefaultGroup(id);
+    expect(useAppGroupStore.getState().setGroupMode(id, true)).toEqual({ ok: false, reason: 'fallback' });
+
+    const other = addGroup('Focus');
+    useAppGroupStore.getState().setGroupMode(other, true);
+    useAppGroupStore.getState().setDefaultGroup(other);
+    expect(useAppGroupStore.getState().meta.fallbackId).toBe(id);
+  });
+});

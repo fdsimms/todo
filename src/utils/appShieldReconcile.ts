@@ -6,7 +6,7 @@ import { isTimedBlock, manualBlockWanted } from './manualBlock';
 import type { Task } from '../types';
 import { nextScheduleBoundary, resolvedGroups } from './blockSchedule';
 import { beginVisibleAtPass, getVisibleAt, isHiddenForVacation, isTaskVisible } from './visibilityUtils';
-import { expandGroupNow, resolvedAssignments, resolveGroupNow, useAppGroupStore } from '../store/useAppGroupStore';
+import { allowGroupsNow, expandGroupNow, resolvedAssignments, resolveGroupNow, useAppGroupStore } from '../store/useAppGroupStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { useNfcKeyStore } from '../store/useNfcKeyStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -119,6 +119,7 @@ function buildShieldState(now: Date): AppShieldState {
     penaltyUntil: settings.penaltyShieldUntil,
     penaltyEnabled: settings.penaltyShieldEnabled,
     denyAppRemoval: settings.blockAppRemoval,
+    allowGroupIds: allowGroupsNow(),
     penaltyReason: settings.penaltyShieldReason,
     gateEnabled: settings.gateShieldEnabled,
     // A removed group is Default, as for every other reason.

@@ -13,8 +13,8 @@ import { describeEnded, releasesThisMonth, timesWord } from '../../utils/shieldR
 import { useManualBlockStore } from '../../store/useManualBlockStore';
 import { MANUAL_BLOCK_PRESETS, describeDuration, manualBlockWanted } from '../../utils/manualBlock';
 import {
-  DEFAULT_GROUP_ID, allGroups, cleanGroupName, groupName, isSupergroup, plainGroups, resolveAssignments, resolveGroupId, supergroupMembers,
-  type GroupedReason,
+  DEFAULT_GROUP_ID, allGroups, cleanGroupName, groupName, isAllowGroup, isSupergroup, memberGroups, resolveAssignments, resolveGroupId,
+  supergroupMembers, type GroupedReason,
 } from '../../utils/appGroups';
 import { currentWindowEnd, describeDays, describeWindow, formatMinutes, isScheduleActive, MAX_BLOCK_SCHEDULES, type BlockSchedule } from '../../utils/blockSchedule';
 import { selectionLabel } from '../../utils/shieldReasonText';
@@ -110,9 +110,12 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
   const schedules = useAppGroupStore(s => s.schedules);
   const resolved = useMemo(() => resolveAssignments(customGroups, assignments, groupsMeta), [customGroups, assignments, groupsMeta]);
 
+  const allowGroup = (groupId: string) => isAllowGroup(customGroups, groupId, groupsMeta);
+  // An allowlist can only leave apps and websites open, never a category, so
+  // its count leaves categories out rather than promising what it can't do.
   const countLabel = (groupId: string) => {
     const c = counts[groupId];
-    return c ? selectionLabel(c.applications, c.categories, c.websites ?? 0) : 'None';
+    return c ? selectionLabel(c.applications, allowGroup(groupId) ? 0 : c.categories, c.websites ?? 0) : 'None';
   };
   // A supergroup picks no apps of its own, so it has apps when any group in it does.
   const totalOf = (groupId: string): number => {
@@ -120,7 +123,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
       return supergroupMembers(customGroups, groupId, groupsMeta).reduce((sum, m) => sum + totalOf(m.id), 0);
     }
     const c = counts[groupId];
-    return c ? c.applications + c.categories + (c.websites ?? 0) : 0;
+    return c ? c.applications + (allowGroup(groupId) ? 0 : c.categories) + (c.websites ?? 0) : 0;
   };
 
   const groupLocked = (groupId: string) => {
@@ -130,8 +133,12 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
       : groupEditLocked(groupId, reasons);
   };
   const groupHint = (groupId: string) => {
+    const allow = allowGroup(groupId);
     const parts = [
-      groupBlockHint(groupLocked(groupId), pending[groupId] === true),
+      allow ? 'Blocks everything except these apps.' : null,
+      allow && (counts[groupId]?.categories ?? 0) > 0 ? 'Categories can’t be allowed, so they’re ignored.' : null,
+      allow && totalOf(groupId) === 0 ? 'Choose at least one app, or this blocks nothing.' : null,
+      groupBlockHint(groupLocked(groupId), pending[groupId] === true, allow),
       groupsMeta.fallbackId === groupId ? 'Default group' : null,
     ].filter((p): p is string => p !== null);
     return parts.length > 0 ? parts.join(' ') : undefined;
@@ -159,7 +166,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
 
   const handleChooseApps = async (groupId: string) => {
     haptics.tap();
-    if (groupLocked(groupId) && !(await confirmLivePicker())) return;
+    if (groupLocked(groupId) && !(await confirmLivePicker(allowGroup(groupId)))) return;
     if (!(await ensureAuthorized('Choosing apps to block needs Screen Time access. Grant it in Settings, under Screen Time.'))) return;
     await onChooseApps(groupId);
   };
@@ -193,7 +200,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
 
   const handleNewSupergroup = () => {
     haptics.tap();
-    if (plainGroups(customGroups, groupsMeta).length < 2) {
+    if (memberGroups(customGroups, groupsMeta).length < 2) {
       Alert.alert('Make another group first', 'A supergroup combines groups you already made. Add at least two groups, then combine them.');
       return;
     }
@@ -289,7 +296,32 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
           },
         ], 'plain-text', name),
       },
-      ...(groupsMeta.fallbackId === groupId ? [] : [{
+      // The original group and the default group always block their apps: a
+      // deleted group falls back to the default, and that must never turn into
+      // a block on everything else (`allowGroupIds`).
+      ...(isOriginal || groupsMeta.fallbackId === groupId ? [] : [{
+        text: allowGroup(groupId) ? 'Block these apps' : 'Allow only these apps',
+        onPress: () => {
+          if (refuseWhileBlocked(groupEditLocked(groupId, reasons))) return;
+          const next = !allowGroup(groupId);
+          if (!next) { useAppGroupStore.getState().setGroupMode(groupId, false); return; }
+          Alert.alert(
+            'Allow only these apps?',
+            'Anything using this group will block every app except the ones you picked here, and those apps stay open. Pick the apps you want to keep, including dundundun. Categories can’t be allowed.',
+            [
+              { text: 'Cancel', style: 'cancel' as const },
+              {
+                text: 'Allow only these',
+                onPress: () => {
+                  useAppGroupStore.getState().setGroupMode(groupId, true);
+                  if (totalOf(groupId) === 0) void handleChooseApps(groupId);
+                },
+              },
+            ],
+          );
+        },
+      }]),
+      ...(groupsMeta.fallbackId === groupId || allowGroup(groupId) ? [] : [{
         text: 'Make default',
         onPress: () => {
           if (refuseWhileBlocked(defaultGroupLocked(groupsMeta.fallbackId, groupId, reasons))) return;
@@ -675,7 +707,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
 
       <SettingsSection
         label="App groups"
-        footer="Each group is its own list of apps. iOS doesn’t share which apps you picked, so only the count shows here. A supergroup blocks every app in the groups inside it. The default group is used when a group is deleted."
+        footer="Each group is its own list of apps. iOS doesn’t share which apps you picked, so only the count shows here. A supergroup blocks every app in the groups inside it. The default group is used when a group is deleted. A group can also allow only its apps, which blocks everything else."
       >
         <SettingsRow
           entryId="screenTimeApps"
@@ -702,7 +734,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
               />
             ) : (
               <SettingsRow
-                icon="apps-outline"
+                icon={allowGroup(group.id) ? 'shield-checkmark-outline' : 'apps-outline'}
                 iconColor={totalOf(group.id) > 0 ? colors.accent : undefined}
                 label={group.name}
                 hint={groupHint(group.id)}
@@ -962,7 +994,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
       <SupergroupMembersSheet
         visible={memberSheet.open}
         title={memberSheet.id ? groupName(customGroups, memberSheet.id, groupsMeta) : cleanGroupName(memberSheet.name, 'New supergroup')}
-        groups={plainGroups(customGroups, groupsMeta)}
+        groups={memberGroups(customGroups, groupsMeta)}
         initialIds={memberSheet.id ? supergroupMembers(customGroups, memberSheet.id, groupsMeta).map(g => g.id) : []}
         onClose={() => setMemberSheet(prev => ({ ...prev, open: false }))}
         onConfirm={confirmMembers}

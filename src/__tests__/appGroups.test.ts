@@ -1,5 +1,6 @@
 import {
-  DEFAULT_GROUP_ID, MAX_APP_GROUPS, MAX_SUPERGROUPS, allGroups, assignmentsAfterRemoval, cleanGroupName, expandGroupId, groupName, isSupergroup, plainGroups,
+  DEFAULT_GROUP_ID, MAX_APP_GROUPS, MAX_SUPERGROUPS, allGroups, allowGroupIds, isAllowGroup, withGroupMode, assignmentsAfterRemoval,
+  cleanGroupName, expandGroupId, groupName, isSupergroup, memberGroups, plainGroups,
   parseAppGroups, parseGroupAssignments, parseGroupsMeta, resolveAssignments, resolveGroupId, withGroupAdded,
   supergroupMembers, withGroupRemoved, withGroupRenamed, withMembersSet,
 } from '../utils/appGroups';
@@ -156,5 +157,78 @@ describe('supergroups', () => {
   it('is never the group a missing group falls back to', () => {
     expect(parseGroupsMeta(null, 's1', all).fallbackId).toBe('default');
     expect(groupName(all, 's1')).toBe('Distractions');
+  });
+});
+
+describe('allowlist groups', () => {
+  const custom = [
+    { id: 'a', name: 'A', allowOnly: true },
+    { id: 'b', name: 'B' },
+    { id: 'c', name: 'C', allowOnly: true },
+  ];
+
+  it('keeps allowOnly through parsing, and only when it is exactly true', () => {
+    const parsed = parseAppGroups(JSON.stringify([
+      { id: 'a', name: 'A', allowOnly: true },
+      { id: 'b', name: 'B', allowOnly: 'yes' },
+      { id: 'c', name: 'C' },
+    ]));
+    expect(parsed).toEqual([{ id: 'a', name: 'A', allowOnly: true }, { id: 'b', name: 'B' }, { id: 'c', name: 'C' }]);
+  });
+
+  it('lists the allowlist groups', () => {
+    expect(allowGroupIds(custom)).toEqual(['a', 'c']);
+    expect(isAllowGroup(custom, 'a')).toBe(true);
+    expect(isAllowGroup(custom, 'b')).toBe(false);
+  });
+
+  it('never treats the original group as one', () => {
+    expect(isAllowGroup(custom, 'default')).toBe(false);
+  });
+
+  it('never treats the fallback group as one, even if stored that way', () => {
+    const meta = { baseName: 'Default', fallbackId: 'a' };
+    expect(allowGroupIds(custom, meta)).toEqual(['c']);
+  });
+
+  it('reads a deleted group as the fallback, which blocks apps rather than everything else', () => {
+    expect(isAllowGroup(custom, 'gone')).toBe(false);
+  });
+
+  it('sets a mode without touching the other groups', () => {
+    const result = withGroupMode(custom, 'b', true);
+    expect(result).toEqual({
+      ok: true,
+      groups: [custom[0], { id: 'b', name: 'B', allowOnly: true }, custom[2]],
+    });
+    const back = withGroupMode(custom, 'a', false);
+    expect(back.ok && back.groups[0]).toEqual({ id: 'a', name: 'A' });
+  });
+
+  it('refuses the fallback group and a missing one', () => {
+    expect(withGroupMode(custom, 'b', true, { baseName: 'Default', fallbackId: 'b' })).toEqual({ ok: false, reason: 'fallback' });
+    expect(withGroupMode(custom, 'zzz', true)).toEqual({ ok: false, reason: 'missing' });
+  });
+});
+
+describe('supergroups and allowlists', () => {
+  const block = { id: 'g1', name: 'Social' };
+  const allow = { id: 'g2', name: 'Work', allowOnly: true };
+
+  it('combines block-list groups only, in parsing, setting members and expanding', () => {
+    const raw = JSON.stringify([block, allow, { id: 's1', name: 'Mix', members: ['g1', 'g2'] }]);
+    const parsed = parseAppGroups(raw);
+    expect(parsed[2].members).toEqual(['g1']);
+    expect(memberGroups(parsed).map(g => g.id)).toEqual(['default', 'g1']);
+    expect(withMembersSet(parsed, 's1', ['g1', 'g2']).find(g => g.id === 's1')?.members).toEqual(['g1']);
+    const added = withGroupAdded([block, allow], { id: 's9', name: 'Pair', members: ['g1', 'g2'] });
+    expect(added.ok && added.groups[2].members).toEqual(['g1']);
+  });
+
+  it('loses a member when that group becomes an allowlist, and has no mode of its own', () => {
+    const groups = [block, { id: 's1', name: 'Mix', members: ['g1', 'default'] }];
+    const made = withGroupMode(groups, 'g1', true);
+    expect(made.ok && made.groups.find(g => g.id === 's1')?.members).toEqual(['default']);
+    expect(withGroupMode(groups, 's1', true)).toEqual({ ok: false, reason: 'missing' });
   });
 });

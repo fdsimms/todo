@@ -57,6 +57,13 @@ enum ScreenTimeShared {
   /// and `applyGroups` reads it in both processes, so the extension keeps the
   /// setting when it raises or lifts a shield with the app closed.
   static let shieldOptionsFileName = "screentime_shield_options.json"
+  /// Which groups are allowlists ("block everything except these apps") rather
+  /// than block lists, and the main app's bundle id. App writes on every
+  /// reconcile; `applyGroups` reads it in both processes, so the extension
+  /// raises the same shield the app would when a schedule opens with the app
+  /// closed. A missing or unreadable file reads as "no allowlists", the shape
+  /// every group had before the mode existed.
+  static let allowGroupsFileName = "screentime_allow_groups.json"
 
   /// The `ManagedSettingsStore` both processes write the shield to.
   ///
@@ -93,6 +100,19 @@ enum ScreenTimeShared {
           let options = try? JSONDecoder().decode(ShieldOptionsShared.self, from: data)
     else { return ShieldOptionsShared(denyAppRemoval: false) }
     return options
+  }
+
+  static func readAllowGroups() -> AllowGroupsShared {
+    guard let data = readData(allowGroupsFileName),
+          let allow = try? JSONDecoder().decode(AllowGroupsShared.self, from: data)
+    else { return AllowGroupsShared(groupIds: [], appBundleId: nil) }
+    return allow
+  }
+
+  @discardableResult
+  static func writeAllowGroups(_ allow: AllowGroupsShared) -> Bool {
+    guard let data = try? JSONEncoder().encode(allow) else { return false }
+    return writeData(data, to: allowGroupsFileName)
   }
 
   @discardableResult
@@ -160,6 +180,18 @@ struct ScreenTimeRuleShared: Codable {
 /// person turned it on, which is also what a missing or unreadable file means.
 struct ShieldOptionsShared: Codable {
   var denyAppRemoval: Bool
+}
+
+/// The groups that block everything except their own apps. See
+/// `ShieldSettings.ActivityCategoryPolicy.all(except:)`, which is how
+/// `applyGroups` draws one, and `src/utils/appGroups.ts` for the rules.
+struct AllowGroupsShared: Codable {
+  let groupIds: [String]
+  /// The main app's bundle id. The extension's own `Bundle.main` is the
+  /// extension's, so the app writes it here: an allowlist always keeps this app
+  /// open, or the emergency button and the key-tag release would be shielded
+  /// along with everything else.
+  let appBundleId: String?
 }
 
 struct ShieldStateShared: Codable {
@@ -422,7 +454,9 @@ extension ScreenTimeShared {
 
   /// Whether a window covers `now`, before looking at a pause. A window that
   /// ends at or before its start runs overnight and belongs to the day it
-  /// starts on.
+  /// starts on. An all-day window is 00:00 to 00:00, which this already answers
+  /// correctly (it covers every minute of each of its days), so it has no case
+  /// of its own; `isAllDay` in `blockSchedule.ts` is the same pair.
   static func windowCovers(_ window: ScheduleWindowShared, now: Date, calendar: Calendar = .current) -> Bool {
     let parts = calendar.dateComponents([.weekday, .hour, .minute], from: now)
     let today = ((parts.weekday ?? 1) - 1 + 7) % 7
@@ -554,35 +588,71 @@ extension ScreenTimeShared {
     // A removal staged while a group was blocking becomes live here, the first
     // time the group is not part of what is being held.
     promotePendingSelections(holding: groupIds)
+    let allow = readAllowGroups()
     var applications = Set<ApplicationToken>()
     var categories = Set<ActivityCategoryToken>()
     var webDomains = Set<WebDomainToken>()
+    // One entry per live allowlist group. Each says "everything except these",
+    // so with several live the shield is everything outside *all* of them: what
+    // stays open is the apps every allowlist names (`intersection` below).
+    var allowedApplications: [Set<ApplicationToken>] = []
+    var allowedWebDomains: [Set<WebDomainToken>] = []
     for id in groupIds {
       guard let selection = readSelection(groupId: id) else { continue }
+      if allow.groupIds.contains(id) {
+        // Only apps and websites can be excepted: `all(except:)` takes tokens
+        // for those and has no way to leave a category open. An allowlist
+        // holding none is skipped rather than applied, because "everything
+        // except nothing" shields the whole phone, this app included.
+        if selection.applicationTokens.isEmpty && selection.webDomainTokens.isEmpty { continue }
+        allowedApplications.append(selection.applicationTokens)
+        allowedWebDomains.append(selection.webDomainTokens)
+        continue
+      }
       applications.formUnion(selection.applicationTokens)
       categories.formUnion(selection.categoryTokens)
       webDomains.formUnion(selection.webDomainTokens)
     }
     let store = ManagedSettingsStore(named: .init(shieldStoreName))
     store.shield.applications = applications.isEmpty ? nil : applications
-    store.shield.applicationCategories = categories.isEmpty
-      ? nil
-      : ShieldSettings.ActivityCategoryPolicy.specific(categories)
-    // Websites are their own shield settings: the picker stores a site (or a
-    // category's sites) in the selection, but nothing blocks it in Safari
-    // unless it is written here too. A category picked blocks its sites as
-    // well as its apps.
     store.shield.webDomains = webDomains.isEmpty ? nil : webDomains
-    store.shield.webDomainCategories = categories.isEmpty
-      ? nil
-      : ShieldSettings.ActivityCategoryPolicy.specific(categories)
+    if var open = allowedApplications.first {
+      for other in allowedApplications.dropFirst() { open.formIntersection(other) }
+      // This app is never shielded by an allowlist. Best effort: the token is
+      // nil if iOS doesn't know the bundle id, and then only the person's own
+      // pick keeps it open.
+      if let bundleId = allow.appBundleId, let token = Application(bundleIdentifier: bundleId).token {
+        open.insert(token)
+      }
+      // A block list that names an app wins over an allowlist that names it.
+      open.subtract(applications)
+      store.shield.applicationCategories = .all(except: open)
+      var openSites = allowedWebDomains.first ?? []
+      for other in allowedWebDomains.dropFirst() { openSites.formIntersection(other) }
+      openSites.subtract(webDomains)
+      store.shield.webDomainCategories = .all(except: openSites)
+    } else {
+      // nil rather than an empty set for an empty pick: an empty `applications`
+      // set is a shield over nothing, but an empty `applicationCategories` is
+      // read as ".all" by ManagedSettings and would lock the entire phone.
+      store.shield.applicationCategories = categories.isEmpty
+        ? nil
+        : ShieldSettings.ActivityCategoryPolicy.specific(categories)
+      // Websites are their own shield settings: the picker stores a site (or a
+      // category's sites) in the selection, but nothing blocks it in Safari
+      // unless it is written here too. A category picked blocks its sites as
+      // well as its apps.
+      store.shield.webDomainCategories = categories.isEmpty
+        ? nil
+        : ShieldSettings.ActivityCategoryPolicy.specific(categories)
+    }
     // Deleting apps is denied for as long as any reason is live and the person
     // turned this on, and cleared with the shield. Keyed on the reasons rather
     // than on what they cover: a block with nothing picked is still a block,
     // and deleting this app is the way round all of them. nil rather than
     // false, so a lifted block leaves the store holding no setting at all.
     store.application.denyAppRemoval = (!groupIds.isEmpty && readShieldOptions().denyAppRemoval) ? true : nil
-    return !applications.isEmpty || !categories.isEmpty || !webDomains.isEmpty
+    return !applications.isEmpty || !categories.isEmpty || !webDomains.isEmpty || !allowedApplications.isEmpty
   }
   #endif
   #endif

@@ -9,6 +9,7 @@ import {
   generatedBy,
   generatedSourceOf,
   generatedTaskCountOf,
+  latestCompletedTaskIdFor,
   generatorPausedForVacation,
   CALENDAR_READ_KINDS,
   describeGeneratedCounts,
@@ -214,6 +215,39 @@ describe('generatedSourceOf', () => {
 
   it('gives null for a task nobody generated', () => {
     expect(generatedSourceOf(task(), 'mealCook')).toBeNull();
+  });
+});
+
+describe('latestCompletedTaskIdFor', () => {
+  const done = (id: string, completedAt: string, extra: Record<string, unknown> = {}) => ({
+    id,
+    generatedKind: 'leftoverUseUp' as const,
+    generatedSourceId: 'l-1',
+    completed: true,
+    completedAt,
+    missedAt: null,
+    doneByOtherAt: null,
+    ...extra,
+  });
+
+  it('finds the newest completion for the source', () => {
+    const tasks = [done('a', '2026-10-15T09:00:00'), done('b', '2026-10-16T09:00:00')];
+    expect(latestCompletedTaskIdFor(tasks, 'leftoverUseUp', 'l-1')).toBe('b');
+  });
+
+  it('ignores an open task, a miss and a completion somebody else did', () => {
+    const tasks = [
+      done('open', '2026-10-16T09:00:00', { completed: false }),
+      done('miss', '2026-10-16T09:00:00', { missedAt: '2026-10-16T09:00:00' }),
+      done('other', '2026-10-16T09:00:00', { doneByOtherAt: '2026-10-16T09:00:00' }),
+    ];
+    expect(latestCompletedTaskIdFor(tasks, 'leftoverUseUp', 'l-1')).toBeNull();
+  });
+
+  it('is scoped to the kind and the source', () => {
+    const tasks = [done('a', '2026-10-16T09:00:00')];
+    expect(latestCompletedTaskIdFor(tasks, 'groceryUseUp', 'l-1')).toBeNull();
+    expect(latestCompletedTaskIdFor(tasks, 'leftoverUseUp', 'l-2')).toBeNull();
   });
 });
 

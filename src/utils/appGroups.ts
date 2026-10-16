@@ -54,9 +54,16 @@ export interface AppGroup {
   name: string;
   /**
    * The plain groups a supergroup combines (Default's id counts). Present, even
-   * when empty, exactly when this is a supergroup.
+   * when empty, exactly when this is a supergroup. Never an allowlist.
    */
   members?: string[];
+  /**
+   * An allowlist: while a reason holds this group, every app is blocked
+   * *except* the ones picked. Absent is the original mode, where the picked apps
+   * are the ones blocked. See `allowGroupIds` for what keeps this from going
+   * wrong.
+   */
+  allowOnly?: boolean;
 }
 
 export function isSupergroup(group: AppGroup | undefined): boolean {
@@ -66,6 +73,16 @@ export function isSupergroup(group: AppGroup | undefined): boolean {
 /** The groups that hold apps: Default and every custom group that isn't a supergroup. */
 export function plainGroups(custom: readonly AppGroup[], meta: GroupsMeta = DEFAULT_GROUPS_META): AppGroup[] {
   return allGroups(custom, meta).filter(g => !isSupergroup(g));
+}
+
+/**
+ * The groups a supergroup can combine: plain groups that block their own apps.
+ * **Never an allowlist.** An allowlist blocks everything *except* its apps, so
+ * "Social or Games" over one would read as the opposite of what either group
+ * says. A group made an allowlist leaves every supergroup (`withGroupMode`).
+ */
+export function memberGroups(custom: readonly AppGroup[], meta: GroupsMeta = DEFAULT_GROUPS_META): AppGroup[] {
+  return plainGroups(custom, meta).filter(g => g.allowOnly !== true);
 }
 
 /** The reasons that take a group directly. A schedule carries its own `groupId`. */
@@ -137,7 +154,7 @@ export function parseAppGroups(raw: string | null | undefined): AppGroup[] {
   let supers = 0;
   for (const item of parsed) {
     if (typeof item !== 'object' || item === null) continue;
-    const { id, name, members } = item as Partial<AppGroup>;
+    const { id, name, members, allowOnly } = item as Partial<AppGroup>;
     if (typeof id !== 'string' || typeof name !== 'string') continue;
     if (!ID_PATTERN.test(id) || seen.has(id)) continue;
     if (Array.isArray(members)) {
@@ -150,11 +167,11 @@ export function parseAppGroups(raw: string | null | undefined): AppGroup[] {
       if (plain >= MAX_APP_GROUPS) continue;
       plain += 1;
       seen.add(id);
-      groups.push({ id, name: cleanGroupName(name) });
+      groups.push(allowOnly === true ? { id, name: cleanGroupName(name), allowOnly: true } : { id, name: cleanGroupName(name) });
     }
   }
-  // A member that isn't a plain group (removed, a supergroup, a repeat) is dropped, never kept as a dangling id.
-  const plainIds = new Set([DEFAULT_GROUP_ID, ...groups.filter(g => !isSupergroup(g)).map(g => g.id)]);
+  // A member that isn't a block-list group (removed, a supergroup, an allowlist, a repeat) is dropped, never kept as a dangling id.
+  const plainIds = new Set([DEFAULT_GROUP_ID, ...groups.filter(g => !isSupergroup(g) && g.allowOnly !== true).map(g => g.id)]);
   return groups.map(g => (isSupergroup(g) ? { ...g, members: cleanMembers(g.members!, plainIds) } : g));
 }
 
@@ -189,7 +206,7 @@ export function withGroupAdded(
   }
   // In the order the groups are listed, not the order they were picked.
   const members = isSupergroup(group)
-    ? plainGroups(custom, meta).map(g => g.id).filter(id => group.members!.includes(id))
+    ? memberGroups(custom, meta).map(g => g.id).filter(id => group.members!.includes(id))
     : undefined;
   return { ok: true, groups: [...custom, members ? { ...group, members } : group] };
 }
@@ -207,6 +224,55 @@ export function withGroupRenamed(
   return { ok: true, groups: custom.map(g => (g.id === id ? { ...g, name } : g)) };
 }
 
+/**
+ * The ids of the groups that block everything except their own apps.
+ *
+ * **Never the original group, and never the one a missing group falls back to.**
+ * A reason pointing at a deleted group resolves to the fallback (see the header),
+ * and that must mean "block some apps", not "block everything else": a deleted
+ * group flipping a schedule into a lock on the whole phone is the failure this
+ * rule exists to prevent. `withGroupMode` refuses to make the fallback an
+ * allowlist and `useAppGroupStore.setDefaultGroup` refuses to make an allowlist
+ * the fallback; this is the backstop for a stored state that says otherwise.
+ */
+export function allowGroupIds(custom: readonly AppGroup[], meta: GroupsMeta = DEFAULT_GROUPS_META): string[] {
+  return custom.filter(g => g.allowOnly === true && g.id !== meta.fallbackId).map(g => g.id);
+}
+
+/** Whether a stored group id resolves to an allowlist. */
+export function isAllowGroup(
+  custom: readonly AppGroup[],
+  id: string | null | undefined,
+  meta: GroupsMeta = DEFAULT_GROUPS_META,
+): boolean {
+  return allowGroupIds(custom, meta).includes(resolveGroupId(custom, id, meta));
+}
+
+export type GroupModeResult =
+  | { ok: true; groups: AppGroup[] }
+  | { ok: false; reason: 'missing' | 'fallback' };
+
+/** Set a custom group to block its apps or to allow only them. The fallback group can't be an allowlist. */
+export function withGroupMode(
+  custom: readonly AppGroup[],
+  id: string,
+  allowOnly: boolean,
+  meta: GroupsMeta = DEFAULT_GROUPS_META,
+): GroupModeResult {
+  // A supergroup holds no apps of its own, so it has no mode to set.
+  if (!custom.some(g => g.id === id && !isSupergroup(g))) return { ok: false, reason: 'missing' };
+  if (allowOnly && id === meta.fallbackId) return { ok: false, reason: 'fallback' };
+  return {
+    ok: true,
+    groups: custom.map(g => {
+      if (isSupergroup(g)) return allowOnly && g.members!.includes(id) ? { ...g, members: g.members!.filter(m => m !== id) } : g;
+      if (g.id !== id) return g;
+      const { allowOnly: _old, ...rest } = g;
+      return allowOnly ? { ...rest, allowOnly: true } : rest;
+    }),
+  };
+}
+
 /** The group gone, and gone from every supergroup that held it. */
 export function withGroupRemoved(custom: readonly AppGroup[], id: string): AppGroup[] {
   return custom
@@ -222,7 +288,7 @@ export function withMembersSet(
   meta: GroupsMeta = DEFAULT_GROUPS_META,
 ): AppGroup[] {
   const wanted = new Set(memberIds);
-  const members = plainGroups(custom, meta).map(g => g.id).filter(m => wanted.has(m));
+  const members = memberGroups(custom, meta).map(g => g.id).filter(m => wanted.has(m));
   return custom.map(g => (g.id === id && isSupergroup(g) ? { ...g, members } : g));
 }
 
@@ -231,7 +297,7 @@ export function supergroupMembers(custom: readonly AppGroup[], id: string, meta:
   const group = custom.find(g => g.id === id);
   if (!isSupergroup(group)) return [];
   const members = new Set(group!.members);
-  return plainGroups(custom, meta).filter(g => members.has(g.id));
+  return memberGroups(custom, meta).filter(g => members.has(g.id));
 }
 
 /** The group a stored id means: itself when it exists, otherwise the fallback group. */

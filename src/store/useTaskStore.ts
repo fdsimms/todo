@@ -230,7 +230,7 @@ import { isRotationTask, rotationCoversNew, rotationPick, rotationPlanFor, rotat
 import { MIN_TARGET_COUNT, MAX_TARGET_COUNT, taskKindOf } from '../utils/taskKinds';
 import { nextStreakRecord } from '../utils/streakRecord';
 import { countsUnits } from '../utils/streakUnits';
-import { isNegativeTask, slipsToday, slipPatch, undoSlipPatch, cleanDayPatch, nextSlipIsFree, lastSlipWasFree, closeDayPatch, reopenDayPatch, windowCloseDayPatch, cleanDaysCredited, isClosedToday } from '../utils/negativeHabits';
+import { isNegativeTask, slipsToday, slipPatch, undoSlipPatch, cleanDayPatch, nextSlipIsFree, lastSlipWasFree, closeDayPatch, reopenDayPatch, windowCloseDayPatch, cleanDaysCredited, isClosedToday, oneDayEndPatch } from '../utils/negativeHabits';
 import { creditShieldUntil, extendShieldUntil, penaltyChargeFor, penaltyCreditFor, slipPenaltyUntil, uncreditShieldUntil } from '../utils/penaltyShield';
 // One name per line, deliberately, and not to be re-joined. See the note
 // on the settings load in useSettingsStore.ts: this is a list every new
@@ -4823,7 +4823,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // the row as it stood before that step plus the step's own patch.
     const toPay: { before: Task; patch: Partial<Task> }[] = [];
     const patched = get().tasks.flatMap(t => {
-      if (!isNegativeTask(t) || t.archived) return [];
+      if (!isNegativeTask(t) || t.archived || t.completed) return [];
       // Vacation protects the run rather than growing it, which is the call
       // every other streak here makes. Read through isWithheld so a category
       // paused for vacation, or a paused project, covers its habits too,
@@ -4836,12 +4836,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       const end = effectiveWindowEnd(t);
       const closing = windowCloseDayPatch(rolled, todayStart, end ? onLogicalDay(todayStart, end) : null, now, { paused });
       const due = negativeHabitDuePatch(t, todayStart, resetTime);
-      if (!streak && !closing && !due) return [];
+      // A "don't" task with no repeat covers one day and is finished once it
+      // has passed, after the clean-day credit above has been applied.
+      const ended = oneDayEndPatch(rolled, todayStart, getTaskDayStart(new Date(t.dueDate ?? t.createdAt), resetTime));
+      if (!streak && !closing && !due && !ended) return [];
       // Days nobody collected by hand are collected here, so every clean day
       // pays once whether or not the person got to it.
       if (streak) toPay.push({ before: t, patch: streak });
       if (closing) toPay.push({ before: rolled, patch: closing });
-      return [{ ...rolled, ...closing, ...due }];
+      return [{ ...rolled, ...closing, ...due, ...ended }];
     });
     if (patched.length === 0) return;
     dbTransaction(() => patched.forEach(dbUpdateTask));

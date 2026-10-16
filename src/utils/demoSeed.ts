@@ -2892,6 +2892,7 @@ function seedPeople(today: Date): void {
     kind: 'business',
     phoneNumber: '555 0199',
     faxNumber: '555 0198',
+    address: '214 Elm Street\nAustin, TX 78701',
     notes: 'Optometrist.',
   });
   const eyeExam = addTask({
