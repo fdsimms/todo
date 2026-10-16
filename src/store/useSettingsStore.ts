@@ -101,6 +101,7 @@ import {
 import { DEFAULT_MEAL_SLOTS_ENABLED } from '../utils/mealSlotTasks';
 import { parseRetentionDays, type RetentionDays } from '../utils/retention';
 import { addRecentSearch, parseRecentSearches } from '../utils/recentSearches';
+import { bumpChipUses, parseChipUses, type ChipUses } from '../utils/chipUses';
 import { addRecentScreen, parseRecentScreens, parseTabRoutes, setTabSlot, clearTabSlot, DEFAULT_TAB_ROUTES } from '../utils/navHubs';
 import { parseExpiredTaskGrace, serializeExpiredTaskGrace, type ExpiredTaskGraceDays } from '../utils/expiredTaskGrace';
 import { DEFAULT_APP_LOCK_GRACE_SECONDS, parseGraceSeconds } from '../utils/appLock';
@@ -1037,6 +1038,10 @@ interface SettingsStore {
   // while the field is empty. Device-local on purpose — see the note in
   // src/utils/recentSearches.ts for why this one isn't in SYNCED_SETTING_KEYS.
   recentSearches: string[];
+  // How often each category, tag and project was chosen from quick add, which
+  // orders its "#" and "+" keyboard chips. Device-local on purpose; see
+  // src/utils/chipUses.ts.
+  chipUses: ChipUses;
   // Whether a reminder landing inside a meeting gets pushed to the meeting's
   // end (#1491). A refinement of calendarReadEnabled, not a separate read —
   // it does nothing while that's off, and defaults on once it's turned on so
@@ -2318,6 +2323,8 @@ interface SettingsStore {
   setGeneratedTaskExtras: (kind: GeneratedKind, extras: GeneratedTaskExtras | null) => void;
   pushRecentSearch: (query: string) => void;
   clearRecentSearches: () => void;
+  /** Counts one more use of each key (`chipUseKey`) after quick add creates a task. */
+  recordChipUses: (keys: readonly string[]) => void;
   setTitleRules: (rules: TitleRule[]) => void;
   setLastVisitedScreen: (screen: string | null) => void;
   pushRecentScreen: (screen: string) => void;
@@ -3059,6 +3066,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   mealPlanNudgeGroupId: null,
   newTaskDefaults: DEFAULT_NEW_TASK_DEFAULTS,
   recentSearches: [],
+  chipUses: {},
   lastVisitedScreen: null,
   recentScreens: [],
   initialized: false,
@@ -3183,6 +3191,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const collapsedRecipeSections = parseCollapsedRecipeSections(dbGetSetting('collapsedRecipeSections'));
     const collapsedGroceryGroups = parseCollapsedGroceryGroups(dbGetSetting('collapsedGroceryGroups'));
     const recentSearches = parseRecentSearches(dbGetSetting('recentSearches'));
+    const chipUses = parseChipUses(dbGetSetting('chipUses'));
     const simpleTaskForm = dbGetSetting('simpleTaskForm') === 'true';
     const simpleMode = dbGetSetting('simpleMode') === 'true';
     const hideHelpText = dbGetSetting('hideHelpText') === 'true';
@@ -3723,6 +3732,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       calendarReviewTaskCategory,
       calendarReviewTasks,
       calendarReviewTimeSegment,
+      chipUses,
       collapsedCategories,
       collapsedGroceryGroups,
       collapsedRecipeSections,
@@ -5690,6 +5700,13 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   clearRecentSearches() {
     dbSetSetting('recentSearches', JSON.stringify([]));
     set({ recentSearches: [] });
+  },
+
+  recordChipUses(keys: readonly string[]) {
+    if (keys.length === 0) return;
+    const next = bumpChipUses(get().chipUses, keys);
+    dbSetSetting('chipUses', JSON.stringify(next));
+    set({ chipUses: next });
   },
 
   setReminderMeetingNudgeEnabled(on: boolean) {
