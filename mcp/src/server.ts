@@ -365,8 +365,12 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'list_grocery_items',
-    'The home grocery list, with whether each item is checked off there. Pass list to read a separate list (a trip\'s, say) instead. Pass onListOnly: false to search the whole catalog.',
-    { onListOnly: z.boolean().optional(), list: z.string().optional().describe('A separate list by name or id (see grocery_setup). The list at home when omitted.') },
+    'The home grocery list, with whether each item is checked off there. Pass list to read a separate list (a trip\'s, say) instead. Pass onListOnly: false for the whole catalog, or query to find items by name across the whole catalog ("egg" finds "Just Egg"; add onListOnly: true to search only what is on the list). Without query or onListOnly: false, an item that is not on the list is not shown, so an empty result is not proof the catalog lacks it.',
+    {
+      onListOnly: z.boolean().optional(),
+      query: z.string().optional().describe('Part of an item name. Searches the whole catalog unless onListOnly is true.'),
+      list: z.string().optional().describe('A separate list by name or id (see grocery_setup). The list at home when omitted.'),
+    },
     async ({ list, ...input }) => json(await withFresh(() => listGroceryItems(replica, { ...input, listId: resolveList(replica, list)?.id ?? null })))
   );
 

@@ -646,6 +646,18 @@ describe('listGroceryItems', () => {
     expect(listGroceryItems(replica, { onListOnly: false }).map(i => i.id)).toEqual(['g1', 'g2']);
   });
 
+  // An agent asked for "egg" and got the home list's ten unrelated rows back,
+  // because the filter it passed was ignored and the default is the list only.
+  it('finds a catalog item by name without being limited to the list', () => {
+    const replica = stubReplica({
+      groceryItems: () => [...items, { id: 'g5', name: 'Just Egg', onList: false, checked: false } as GroceryItem],
+      groceryListEntries: () => entries,
+    });
+    expect(listGroceryItems(replica, { query: 'egg' }).map(i => i.id)).toEqual(['g5']);
+    expect(listGroceryItems(replica, { query: ' MILK ' }).map(i => i.id)).toEqual(['g1']);
+    expect(listGroceryItems(replica, { query: 'egg', onListOnly: true })).toEqual([]);
+  });
+
   it('drops empty strings rather than reporting them', () => {
     const [, catalog] = listGroceryItems(
       stubReplica({ groceryItems: () => items, groceryListEntries: () => entries }),

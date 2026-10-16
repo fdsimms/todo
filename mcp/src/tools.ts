@@ -23,6 +23,7 @@ import type { AnswerEdit, MedicationSettingsView, Replica } from './replica';
 import type { ReviewAfter } from '../../src/utils/decisionReview';
 import { describeTemplateChanges, resolveRef, templateToPlan, templateVersion, templateWarnings, type TemplatePatch, type TemplatePlan } from './templatePlan';
 import { isRotationTask } from '../../src/utils/rotation';
+import { groceryNameKey } from '../../src/utils/groceryParse';
 import { roundToHalf } from '../../src/utils/produceServings';
 import { entryNovaGroup, processingMix } from '../../src/utils/processingStats';
 import * as negativeHabits from '../../src/utils/negativeHabits';
@@ -613,14 +614,26 @@ function serializeWithHome(replica: Replica, item: GroceryItem, listId: string |
   return serializeGroceryItem(item, homeEntries(replica, listId).get(item.id));
 }
 
-/** The home list, or with `onListOnly: false` the whole catalog. */
+/**
+ * The home list, or with `onListOnly: false` the whole catalog. A `query`
+ * searches the catalog by name (the app's own `groceryNameKey` substring match,
+ * so "egg" finds "Just Egg"), because a name asked for is nearly never meant to
+ * be limited to what is on the list; `onListOnly: true` narrows it back.
+ */
 export function listGroceryItems(
   replica: Replica,
-  input: { onListOnly?: boolean; /** A separate list's id; the list at home when omitted. */ listId?: string | null } = {}
+  input: {
+    onListOnly?: boolean;
+    query?: string;
+    /** A separate list's id; the list at home when omitted. */
+    listId?: string | null;
+  } = {}
 ): SerializedGroceryItem[] {
   const home = homeEntries(replica, input.listId ?? null);
-  const items = replica.groceryItems();
-  const wanted = input.onListOnly === false ? items : items.filter((i: GroceryItem) => home.has(i.id));
+  const key = input.query ? groceryNameKey(input.query) : '';
+  const wholeCatalog = input.onListOnly === false || (key !== '' && input.onListOnly !== true);
+  let wanted = wholeCatalog ? replica.groceryItems() : replica.groceryItems().filter((i: GroceryItem) => home.has(i.id));
+  if (key) wanted = wanted.filter((i: GroceryItem) => groceryNameKey(i.name).includes(key));
   return wanted.map(i => serializeGroceryItem(i, home.get(i.id)));
 }
 
