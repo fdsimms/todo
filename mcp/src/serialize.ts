@@ -23,6 +23,16 @@ import { PRIORITY_LABELS } from '../../src/types';
 import type { Task } from '../../src/types';
 import type { Replica } from './replica';
 import { decisionOutcomes } from '../../src/utils/decisionReview';
+import { isRotationTask } from '../../src/utils/rotation';
+import { proratedFrom } from '../../src/utils/quotaSchedule';
+
+/**
+ * A counted target ("8 a day", "3 a week"). A rotation is not one: its weekly
+ * count is the sum of its members, which get_task shows as `rotation`.
+ */
+export function hasCountedTarget(task: Task): boolean {
+  return task.targetCount != null && (task.targetCount >= 2 || proratedFrom(task) !== null) && !isRotationTask(task);
+}
 
 export interface SerializedTask {
   id: string;
@@ -74,6 +84,8 @@ export interface SerializedTask {
   /** On a look-back task: the answered decision it asks about. */
   lookBackOf?: string;
   recurring?: boolean;
+  /** A counted target, in brief (get_task has the rest). `alwaysVisible`: it stays on Today instead of hiding while its pace is met. */
+  target?: { count: number; per: 'day' | 'week'; done: number; alwaysVisible?: true };
   pinned?: boolean;
   /** On a repeating task: every occurrence it spawns starts pinned. */
   pinsEachOccurrence?: boolean;
@@ -189,6 +201,14 @@ export function serializeTask(replica: Replica, task: Task, names?: Map<string, 
     outcome: task.deliverableValue != null ? outcomeOf(replica, task.id) : undefined,
     lookBackOf: task.reviewOfTaskId ?? undefined,
     recurring: task.recurrenceType !== 'none' ? true : undefined,
+    target: hasCountedTarget(task)
+      ? {
+          count: task.targetCount!,
+          per: task.quotaPeriod === 'week' ? 'week' : 'day',
+          done: task.progressCount ?? 0,
+          ...(task.quotaAlwaysVisible ? { alwaysVisible: true as const } : {}),
+        }
+      : undefined,
     pinned: task.pinned ? true : undefined,
     pinsEachOccurrence: task.pinEachOccurrence ? true : undefined,
     blocked: replica.isBlocked(task) ? true : undefined,
