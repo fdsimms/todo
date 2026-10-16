@@ -130,6 +130,9 @@ export function ScreenTimeScreen() {
     const picked = await bridge.presentAppPicker(groupId, live);
     if (!picked) return;
     refreshSelection();
+    // The read-back above can say none right after a pick, so the picker's own
+    // counts win for the group it just saved.
+    if (picked.counts) setCounts(prev => ({ ...prev, [groupId]: picked.counts! }));
     refreshPending();
     // An add to a live group has to reach the shield now, not at the next reconcile.
     if (live) reconcileAppShield();
