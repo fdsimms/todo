@@ -5,7 +5,9 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useMoodStore } from '../store/useMoodStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { dbGetFoodLogEntries } from '../db/database';
-import { getLogicalDayKey } from './dateUtils';
+import { useHealthStore } from '../store/useHealthStore';
+import { dayKeyOf, getCurrentDayStart, getLogicalDayKey } from './dateUtils';
+import { effectiveWaterTargetMl } from './waterExerciseBoost';
 import { confirmWithinLimit, recordDose, unrecordDose } from './doseRecording';
 import { formatDose } from './medicationLog';
 import { severityLabel } from './moodLog';
@@ -86,10 +88,18 @@ function runWater(action: WaterAction): SearchActionReceipt {
   const dayKey = getLogicalDayKey(at, useSettingsStore.getState().dayResetTime);
   const total = waterOnDay(dayKey).ml + action.ml;
   setWaterOnDay(dayKey, total, at);
-  const unit = useSettingsStore.getState().waterUnit;
+  const settings = useSettingsStore.getState();
+  const unit = settings.waterUnit;
+  // The same target the Food log reads, exercise boost included, so the two
+  // never disagree about the goal. A day with no target set keeps "today".
+  const today = useHealthStore.getState().today;
+  const exerciseMinutes = today?.dayKey === dayKeyOf(getCurrentDayStart()) ? today.exerciseMinutes ?? null : null;
+  const target = effectiveWaterTargetMl(settings.nutritionTargets.waterMl, exerciseMinutes, settings.waterExerciseBoost);
   return {
     title: `Logged ${describeWater(action.ml, unit)} of water`,
-    meta: `${describeWater(total, unit)} today`,
+    meta: target !== undefined && target > 0
+      ? `${describeWater(total, unit)} of ${describeWater(target, unit)} today`
+      : `${describeWater(total, unit)} today`,
     // Re-read rather than restoring the old total: the day's row may have
     // been stepped from somewhere else since, and an undo takes back only
     // what this tap added.
