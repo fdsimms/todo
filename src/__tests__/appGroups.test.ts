@@ -1,5 +1,5 @@
 import {
-  DEFAULT_GROUP_ID, MAX_APP_GROUPS, allGroups, assignmentsAfterRemoval, cleanGroupName, groupName,
+  DEFAULT_GROUP_ID, MAX_APP_GROUPS, allGroups, allowGroupIds, isAllowGroup, withGroupMode, assignmentsAfterRemoval, cleanGroupName, groupName,
   parseAppGroups, parseGroupAssignments, resolveAssignments, resolveGroupId, withGroupAdded,
   withGroupRemoved, withGroupRenamed,
 } from '../utils/appGroups';
@@ -89,5 +89,56 @@ describe('assignments', () => {
   it('go back to Default when their group is deleted', () => {
     const a = parseGroupAssignments('{"focus":"g1","key":"g1","gate":"g2"}');
     expect(assignmentsAfterRemoval(a, 'g1')).toEqual({ focus: 'default', gate: 'g2', penalty: 'default', key: 'default' });
+  });
+});
+
+describe('allowlist groups', () => {
+  const custom = [
+    { id: 'a', name: 'A', allowOnly: true },
+    { id: 'b', name: 'B' },
+    { id: 'c', name: 'C', allowOnly: true },
+  ];
+
+  it('keeps allowOnly through parsing, and only when it is exactly true', () => {
+    const parsed = parseAppGroups(JSON.stringify([
+      { id: 'a', name: 'A', allowOnly: true },
+      { id: 'b', name: 'B', allowOnly: 'yes' },
+      { id: 'c', name: 'C' },
+    ]));
+    expect(parsed).toEqual([{ id: 'a', name: 'A', allowOnly: true }, { id: 'b', name: 'B' }, { id: 'c', name: 'C' }]);
+  });
+
+  it('lists the allowlist groups', () => {
+    expect(allowGroupIds(custom)).toEqual(['a', 'c']);
+    expect(isAllowGroup(custom, 'a')).toBe(true);
+    expect(isAllowGroup(custom, 'b')).toBe(false);
+  });
+
+  it('never treats the original group as one', () => {
+    expect(isAllowGroup(custom, 'default')).toBe(false);
+  });
+
+  it('never treats the fallback group as one, even if stored that way', () => {
+    const meta = { baseName: 'Default', fallbackId: 'a' };
+    expect(allowGroupIds(custom, meta)).toEqual(['c']);
+  });
+
+  it('reads a deleted group as the fallback, which blocks apps rather than everything else', () => {
+    expect(isAllowGroup(custom, 'gone')).toBe(false);
+  });
+
+  it('sets a mode without touching the other groups', () => {
+    const result = withGroupMode(custom, 'b', true);
+    expect(result).toEqual({
+      ok: true,
+      groups: [custom[0], { id: 'b', name: 'B', allowOnly: true }, custom[2]],
+    });
+    const back = withGroupMode(custom, 'a', false);
+    expect(back.ok && back.groups[0]).toEqual({ id: 'a', name: 'A' });
+  });
+
+  it('refuses the fallback group and a missing one', () => {
+    expect(withGroupMode(custom, 'b', true, { baseName: 'Default', fallbackId: 'b' })).toEqual({ ok: false, reason: 'fallback' });
+    expect(withGroupMode(custom, 'zzz', true)).toEqual({ ok: false, reason: 'missing' });
   });
 });

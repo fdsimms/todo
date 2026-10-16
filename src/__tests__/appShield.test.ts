@@ -11,6 +11,7 @@ const mockBridge = {
   applyShield: jest.fn(() => true),
   clearShield: jest.fn(() => true),
   setShieldOptions: jest.fn(() => true),
+  setAllowGroups: jest.fn(() => true),
   setShieldState: jest.fn(() => true),
   setBlockSchedules: jest.fn(() => true),
   schedulePenaltyExpiry: jest.fn(() => true),
@@ -153,6 +154,52 @@ describe('syncAppShield', () => {
     syncAppShield(state({ denyAppRemoval: true }));
     expect(mockBridge.setShieldOptions).toHaveBeenCalledWith(true);
     expect(mockBridge.clearShield).toHaveBeenCalledTimes(1);
+  });
+
+  describe('allowlist groups', () => {
+    const blocking = (over: Partial<AppShieldState> = {}) =>
+      state({
+        penaltyUntil: LATER,
+        penaltyEnabled: true,
+        groups: { focus: 'default', gate: 'default', penalty: 'only', key: 'default' },
+        allowGroupIds: ['only'],
+        ...over,
+      });
+
+    it('says which groups are allowlists before applying, so the shield reads it', () => {
+      syncAppShield(blocking());
+      expect(mockBridge.setAllowGroups).toHaveBeenLastCalledWith(['only']);
+      expect(mockBridge.setAllowGroups.mock.invocationCallOrder[0])
+        .toBeLessThan(mockBridge.applyShield.mock.invocationCallOrder[0]);
+      expect(mockBridge.applyShield).toHaveBeenCalledWith(['only']);
+    });
+
+    it('writes an empty list when there are none, so a group switched back stops being read as one', () => {
+      syncAppShield(state({ penaltyUntil: LATER, penaltyEnabled: true }));
+      expect(mockBridge.setAllowGroups).toHaveBeenLastCalledWith([]);
+    });
+
+    it('still writes it when nothing is blocking', () => {
+      syncAppShield(state({ allowGroupIds: ['only'] }));
+      expect(mockBridge.setAllowGroups).toHaveBeenCalledWith(['only']);
+      expect(mockBridge.clearShield).toHaveBeenCalledTimes(1);
+    });
+
+    it('leaves an allowlist out when the build cannot take it, rather than blocking the apps it should leave open', () => {
+      mockBridge.setAllowGroups.mockReturnValueOnce(false);
+      syncAppShield(blocking());
+      expect(mockBridge.applyShield).not.toHaveBeenCalled();
+    });
+
+    it('still applies the block lists beside an allowlist the build cannot take', () => {
+      mockBridge.setAllowGroups.mockReturnValueOnce(false);
+      syncAppShield(blocking({
+        session: session(),
+        focusEnabled: true,
+        groups: { focus: 'social', gate: 'default', penalty: 'only', key: 'default' },
+      }));
+      expect(mockBridge.applyShield).toHaveBeenCalledWith(['social']);
+    });
   });
 
   it('touches nothing when the gate is closed', () => {

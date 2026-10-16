@@ -58,6 +58,7 @@ interface TodoScreenTimeNativeModule {
   applyShield(groupIdsJson: string): boolean;
   clearShield(): boolean;
   setShieldOptions(denyAppRemoval: boolean): boolean;
+  setAllowGroups(groupIdsJson: string): boolean;
   setShieldState(
     otherReasonWantsShield: boolean,
     reason: string,
@@ -172,6 +173,18 @@ export function clearShield(): boolean {
  */
 export function setShieldOptions(denyAppRemoval: boolean): boolean {
   return degradeOnThrow(() => nativeModule!.setShieldOptions(denyAppRemoval), false);
+}
+
+/**
+ * Which groups are allowlists: while one is held, everything is blocked except
+ * its apps. Call it before `applyShield`, which reads it, and on every
+ * reconcile so a group switched back to a block list stops being read as one.
+ * False when the native build predates allowlists, which the caller must treat
+ * as "can't apply one": an older build would otherwise block exactly the apps
+ * the person meant to leave open.
+ */
+export function setAllowGroups(groupIds: readonly string[]): boolean {
+  return degradeOnThrow(() => nativeModule!.setAllowGroups(JSON.stringify(groupIds)), false);
 }
 
 /** Why the apps are blocked, as the two extensions will read it back. */
