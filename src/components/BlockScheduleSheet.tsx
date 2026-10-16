@@ -98,6 +98,11 @@ export function BlockScheduleSheet({ visible, onClose, scheduleId }: Props) {
   }, [visible, scheduleId]);
 
   const problem = scheduleProblem(draft);
+  // The message is drawn under the section it is about, not in one fixed spot.
+  const problemIn: 'apps' | 'days' | 'time' | null = problem === null ? null
+    : draft.groupIds.length === 0 ? 'apps'
+    : draft.days.length === 0 ? 'days'
+    : 'time';
   const dirty = draftKey(draft) !== baseline.current;
   const orderedDays = useMemo(
     () => Array.from({ length: 7 }, (_, i) => (i + weekStartsOn) % 7),
@@ -232,6 +237,7 @@ export function BlockScheduleSheet({ visible, onClose, scheduleId }: Props) {
               })}
             </View>
           </SettingsSection>
+          {problemIn === 'days' && <Text style={styles.problem}>{problem}</Text>}
 
           <SettingsSection label="Time">
             <SettingsRow
@@ -256,7 +262,7 @@ export function BlockScheduleSheet({ visible, onClose, scheduleId }: Props) {
               <InlineTimePicker value={pendingTime} onChange={setPendingTime} onCancel={() => setEditingTime(null)} onConfirm={confirmTime} />
             )}
           </SettingsSection>
-          {problem && <Text style={styles.problem}>{problem}</Text>}
+          {problemIn === 'time' && <Text style={styles.problem}>{problem}</Text>}
 
           <SettingsSection label="Apps to block">
             <AppGroupChecklist
@@ -266,6 +272,7 @@ export function BlockScheduleSheet({ visible, onClose, scheduleId }: Props) {
               bare
             />
           </SettingsSection>
+          {problemIn === 'apps' && <Text style={styles.problem}>{problem}</Text>}
 
           {scheduleId && (
             <SettingsSection>
