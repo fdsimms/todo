@@ -36,7 +36,6 @@ import type { RecipeInputMode } from '../components/RecipeSourcePicker';
 import { RecipeTagFilterSheet } from '../components/RecipeTagFilterSheet';
 import { OverlapPickerSheet } from '../components/OverlapPickerSheet';
 import { useOverlapPicker } from '../hooks/useOverlapPicker';
-import { CookWithSheet } from '../components/CookWithSheet';
 import { RecipeSortFilterSheet } from '../components/RecipeSortFilterSheet';
 import { FabMenu, FAB_SIZE, type FabDragHandlers, type FabMenuItem, useFabBottom } from '../components/Fab';
 import {
@@ -283,7 +282,6 @@ export function RecipesScreen() {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tagFilterVisible, setTagFilterVisible] = useState(false);
   const [sortFilterVisible, setSortFilterVisible] = useState(false);
-  const [cookWithVisible, setCookWithVisible] = useState(false);
   const [addVisible, setAddVisible] = useState(false);
   const [importVisible, setImportVisible] = useState(false);
   const [importMode, setImportMode] = useState<RecipeInputMode>('photo');
@@ -743,14 +741,6 @@ export function RecipesScreen() {
             ? `${visible.length} of ${recipes.length} recipes`
             : `${recipes.length} ${recipes.length === 1 ? 'recipe' : 'recipes'}`}
         actions={withScreenSettings([
-          // The ingredient finder, beside the shelf it searches: it reads the
-          // recipes here and the cookbooks' indexes, which show nowhere else
-          // (see CookbookIndexEntry).
-          {
-            icon: 'search-outline',
-            onPress: () => { haptics.tap(); setCookWithVisible(true); },
-            accessibilityLabel: 'Find recipes by ingredient',
-          },
           // A shelf for recipes rather than a fifth Kitchen-hub tab: it isn't
           // a working surface the way Groceries/Recipes/Meal plan/Pantry are.
           {
@@ -1090,14 +1080,6 @@ export function RecipesScreen() {
         />
       </LazySheet>
 
-      <LazySheet open={cookWithVisible}>
-        <CookWithSheet
-          visible={cookWithVisible}
-          onClose={() => setCookWithVisible(false)}
-          onOpenRecipe={id => { setCookWithVisible(false); navigation.navigate('RecipeDetail', { recipeId: id }); }}
-          onOpenCookbook={id => { setCookWithVisible(false); navigation.navigate('CookbookDetail', { cookbookId: id }); }}
-        />
-      </LazySheet>
       <LazySheet open={sortFilterVisible}>
         <RecipeSortFilterSheet
           visible={sortFilterVisible}

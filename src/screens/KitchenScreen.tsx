@@ -68,7 +68,6 @@ import { BarcodeScanSheet, type ScanProductDraft } from '../components/BarcodeSc
 import { featureHidden } from '../utils/simpleMode';
 import type { ScannedGtinLink } from '../utils/scanResolve';
 import { ReceiptImportSheet, type ReceiptAddDraft } from '../components/ReceiptImportSheet';
-import { CookWithSheet } from '../components/CookWithSheet';
 import { freshnessColor } from '../components/LeftoversCard';
 import { useNowTick } from '../hooks/useNowTick';
 import { haptics } from '../utils/haptics';
@@ -221,7 +220,6 @@ export function KitchenScreen() {
   const [scanOpen, setScanOpen] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
-  const [cookWithOpen, setCookWithOpen] = useState(false);
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
 
   // This screen never unmounts once visited (the drawer's tabs stay mounted
@@ -825,13 +823,6 @@ export function KitchenScreen() {
             onPress: () => setReviewOpen(true),
             accessibilityLabel: 'Go through the pantry one thing at a time',
           },
-          // The recipe finder, opened on "What I have": the pantry is the
-          // other half of that question, so this is where it's asked from.
-          {
-            icon: 'search-outline' as const,
-            onPress: () => { haptics.tap(); setCookWithOpen(true); },
-            accessibilityLabel: 'Find recipes that use what you have',
-          },
         ], screenSettings.action)}
       />
       <ScreenSettingsSheet {...screenSettings.sheet} />
@@ -962,15 +953,6 @@ export function KitchenScreen() {
         />
       </LazySheet>
 
-      <LazySheet open={cookWithOpen}>
-        <CookWithSheet
-          visible={cookWithOpen}
-          initialMode="have"
-          onClose={() => setCookWithOpen(false)}
-          onOpenRecipe={id => { setCookWithOpen(false); navigation.navigate('RecipeDetail', { recipeId: id }); }}
-          onOpenCookbook={id => { setCookWithOpen(false); navigation.navigate('CookbookDetail', { cookbookId: id }); }}
-        />
-      </LazySheet>
       <ReceiptImportSheet
         visible={receiptOpen}
         context="pantry"

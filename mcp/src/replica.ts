@@ -41,7 +41,6 @@ import type {
   CoinEntry,
   Cookbook,
   FoodKind,
-  CookbookIndexEntry,
   DeliverableKind,
   EventTaskRule,
   FoodLogEntry,
@@ -517,22 +516,12 @@ export interface MealUncooking {
   tasksReopened: string[];
 }
 
-/** One line of a cookbook's index: new with `cookbookId`, or an edit with `id`. */
-export interface IndexEntryInput {
-  id?: string;
-  cookbookId?: string;
-  title: string;
-  page?: string | null;
-  ingredients?: string[];
-}
-
 /** A cookbook on the shelf, with how much of it the app holds. */
 export interface CookbookSummary {
   id: string;
   title: string;
   author: string | null;
   recipes: number;
-  indexEntries: number;
 }
 
 export interface FoodInput {
@@ -1291,29 +1280,22 @@ export interface Replica {
    * Not undoable from here.
    */
   deleteRecipe(id: string): { recipe: Recipe; plannedMeals: number };
-  /** Every cookbook, with how many recipes and index lines it holds. */
+  /** Every cookbook, with how many recipes it holds. */
   cookbookSummaries(): CookbookSummary[];
-  /** One cookbook's index lines. */
-  cookbookIndex(cookbookId: string): CookbookIndexEntry[];
   /**
    * Rename a cookbook, or change its author, through the store's
    * `renameCookbook`: every recipe in it takes the new title and author.
    * Refused when another book already has that title and author.
    */
   renameCookbook(id: string, title: string, author?: string | null): Cookbook;
-  /** Two copies of one book made one, through `mergeCookbooks`: the loser's recipes and index move to the survivor. */
+  /** Two copies of one book made one, through `mergeCookbooks`: the loser's recipes move to the survivor. */
   mergeCookbooks(survivorId: string, loserId: string): { survivor: Cookbook; merged: Cookbook; recipesMoved: number };
   /**
    * Delete a cookbook through the store's `deleteCookbook`: its recipes are
    * unlinked rather than deleted, keeping the title and author mirrored onto
-   * them, and its index lines go with it.
+   * them.
    */
-  deleteCookbook(id: string): { cookbook: Cookbook; recipesUnlinked: number; indexEntries: number };
-  /** Add or change a cookbook index line. Refused when that book's index already lists the dish. */
-  saveIndexEntry(input: IndexEntryInput): CookbookIndexEntry;
-  deleteIndexEntry(id: string): CookbookIndexEntry;
-  /** The recipe for an index line: the one already in that book under that name, or a new one with the book and page. */
-  recipeFromIndexEntry(id: string): { recipe: Recipe; created: boolean };
+  deleteCookbook(id: string): { cookbook: Cookbook; recipesUnlinked: number };
   /** Put the Up next shelf in this order. Recipes left out follow, in their order. */
   reorderUpNext(ids: string[]): Recipe[];
   /** A cook time timed on the person's own clock, logged as the cook timer's stop logs one. */
@@ -4520,19 +4502,12 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
 
     cookbookSummaries(): CookbookSummary[] {
       const recipes = db.dbGetAllRecipes();
-      const entries = db.dbGetAllCookbookIndexEntries();
       return db.dbGetAllCookbooks().map(c => ({
         id: c.id,
         title: c.title,
         author: c.author,
         recipes: recipes.filter(r => r.cookbookId === c.id).length,
-        indexEntries: entries.filter(e => e.cookbookId === c.id).length,
       }));
-    },
-
-    cookbookIndex(cookbookId: string): CookbookIndexEntry[] {
-      if (!db.dbGetAllCookbooks().some(c => c.id === cookbookId)) throw new Error(`No cookbook with id ${cookbookId}.`);
-      return db.dbGetAllCookbookIndexEntries().filter(e => e.cookbookId === cookbookId);
     },
 
     renameCookbook(id: string, title: string, author?: string | null): Cookbook {
@@ -4562,65 +4537,15 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return { survivor: store.getState().cookbooks.find(c => c.id === survivorId)!, merged: loser, recipesMoved };
     },
 
-    deleteCookbook(id: string): { cookbook: Cookbook; recipesUnlinked: number; indexEntries: number } {
+    deleteCookbook(id: string): { cookbook: Cookbook; recipesUnlinked: number } {
       const store = recipeStore();
       const cookbook = store.getState().cookbooks.find(c => c.id === id);
       if (!cookbook) throw new Error(`No cookbook with id ${id}.`);
       const recipesUnlinked = store.getState().recipes.filter(r => r.cookbookId === id).length;
-      const indexEntries = store.getState().indexEntries.filter(e => e.cookbookId === id).length;
-      // `dbDeleteCookbook` unlinks the recipes and takes the index with the book.
+      // `dbDeleteCookbook` unlinks the recipes.
       store.getState().deleteCookbook(id);
       refresh();
-      return { cookbook, recipesUnlinked, indexEntries };
-    },
-
-    saveIndexEntry(input: IndexEntryInput): CookbookIndexEntry {
-      /* eslint-disable @typescript-eslint/no-require-imports */
-      const cookbookIndex = require('../../src/utils/cookbookIndex') as typeof import('../../src/utils/cookbookIndex');
-      /* eslint-enable @typescript-eslint/no-require-imports */
-      const store = recipeStore();
-      const fields = { title: input.title, page: input.page ?? null, ingredients: input.ingredients ?? [] };
-      if (!cookbookIndex.cleanIndexEntryFields(fields)) throw new Error('An index line needs a dish name.');
-      if (input.id) {
-        const entry = store.getState().indexEntries.find(e => e.id === input.id);
-        if (!entry) throw new Error(`No index line with id ${input.id}.`);
-        const merged = {
-          title: input.title,
-          page: input.page !== undefined ? input.page : entry.page,
-          ingredients: input.ingredients ?? entry.ingredients,
-        };
-        if (!store.getState().updateIndexEntry(input.id, merged)) {
-          throw new Error(`That cookbook's index already lists "${input.title.trim()}".`);
-        }
-        refresh();
-        return store.getState().indexEntries.find(e => e.id === input.id)!;
-      }
-      if (!input.cookbookId) throw new Error('Name the cookbook (cookbookId) a new index line belongs to.');
-      if (!store.getState().cookbooks.some(c => c.id === input.cookbookId)) throw new Error(`No cookbook with id ${input.cookbookId}.`);
-      const entry = store.getState().addIndexEntry(input.cookbookId, fields);
-      if (!entry) throw new Error(`That cookbook's index already lists "${input.title.trim()}".`);
-      refresh();
-      return entry;
-    },
-
-    deleteIndexEntry(id: string): CookbookIndexEntry {
-      const store = recipeStore();
-      const entry = store.getState().indexEntries.find(e => e.id === id);
-      if (!entry) throw new Error(`No index line with id ${id}.`);
-      store.getState().deleteIndexEntry(id);
-      refresh();
-      return entry;
-    },
-
-    recipeFromIndexEntry(id: string): { recipe: Recipe; created: boolean } {
-      const store = recipeStore();
-      const entry = store.getState().indexEntries.find(e => e.id === id);
-      if (!entry) throw new Error(`No index line with id ${id}.`);
-      const before = new Set(store.getState().recipes.map(r => r.id));
-      const recipe = store.getState().recipeFromIndexEntry(id);
-      if (!recipe) throw new Error(`Could not make a recipe from "${entry.title}".`);
-      refresh();
-      return { recipe, created: !before.has(recipe.id) };
+      return { cookbook, recipesUnlinked };
     },
 
     reorderUpNext(ids: string[]): Recipe[] {

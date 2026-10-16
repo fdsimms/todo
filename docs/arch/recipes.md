@@ -462,64 +462,6 @@ import sheets rather than hand-copied into each, since they are the same sheet t
   book. A chip fills both fields from the existing book. A book is withheld only when the typed pair
   already resolves to it; a same-title book with another author is the one to offer.
 
-## A cookbook's index, and Cook with… (`cookbookIndex.ts`, `CookbookIndexEntry`)
-
-A book's index is its dishes by name, page and the ingredients it lists them under ("Lentils:
-braised, with shallots, 142"). The app keeps it so "what can I make with lentils?" can be answered
-from the books on the shelf as well as from the recipes typed up. Cook with… (`CookWithSheet`)
-asks that question, and `findWithIngredients` answers it.
-
-- **An index line is not a recipe, and that is the whole design.** It was first planned as a
-  recipe with its ingredients left empty, and rejected before shipping: every surface that lists
-  the box (the plan-a-meal and component pickers, "From a recipe" on Groceries, the Backfill
-  queues, the recipe count, the cookbook link picker) would have shown 150 dishes nobody can shop
-  for, plan from or fill servings in for, and each would have needed its own filter to keep them
-  out. A table of its own (`cookbook_index_entries`) keeps them out by construction, since none of
-  those surfaces read it. **Two places do: Cook with… and the book's own page**, where lines are
-  added and corrected. A new reader of the index should be a third on purpose, never a list that
-  happens to include it.
-- **The ingredients are the index's words, not recipe lines.** They are the dish's main things
-  and never its whole list, and every reader of `Recipe.ingredients` (coverage, shopping, cost,
-  nutrition, shortfall tasks) assumes a whole list. That is also why `recipeFromIndexEntry`, which
-  makes a real recipe to cook a line from, writes the name, book and page and **no lines**. The
-  words are stored as printed rather than as grocery keys, so a catalog rename never rewrites
-  them; the key is worked out at read time.
-- **Matching is whole words, tolerant of a plural** (`mentionsIngredient`, through
-  `pluralKeyVariants`). Not a substring, which `rankRecipes` uses, because every result here
-  claims to *use* the thing and "egg" turning up aubergine dishes would be plainly wrong. It does
-  let "cream" find "ice cream", which `useUpRecipes` refuses: that one suggests cooking something
-  unasked, and this answers a search somebody typed. A line is matched on its title as well as its
-  ingredients, since a title-only index says what a dish uses in its name and nowhere else. A
-  typed-up recipe is matched on its flattened lines with every option counted, and not its name.
-- **"What I have" asks the pantry, and matches by key rather than by word** (`pantryIngredients`,
-  `findWithPantry`). The asking set is every row `probablyHaveReason` vouches for, the app's one
-  answer to "do I have this" (see "The kitchen" in `docs/arch/groceries.md`), less staples, which
-  are in nearly every dish and would put whatever uses the most salt on top. A recipe line or an
-  index ingredient counts when it names the same catalog item, singular or plural, and a variety
-  answers for its generic (white onion for onion), the join `useUpRecipes` makes. Whole-word
-  matching suits a word somebody typed; applied to the whole pantry it would let butter claim
-  peanut butter. An index line's title isn't read here for the same reason. Results rank by how
-  many things you have that a dish uses and **never by how much of the dish you have**:
-  `probablyHaveReason` returning null means the app doesn't know, not that you're out, the
-  refusal `useUpRecipes` already makes. The Pantry screen opens the sheet in this mode.
-- **A line whose recipe is typed up drops out of the results.** The recipe (same book, same name,
-  `recipeInBook`) is the better answer and shows under yours when it matches. One made from the
-  line but still empty keeps the line in the results, and opening it opens that recipe.
-- **Do not add a photo scan of a cookbook's index (it has been built and removed twice).** A
-  table-of-contents scanner (`CookbookChecklistSheet`, removed in 743168a) and then an index
-  scanner (`CookbookIndexScanSheet` + `extractCookbookIndex`, removed alongside this note) both
-  shipped and both were pulled for the same reason: an index is dense small print in two or three
-  columns with sub-entries nested under a heading by indentation alone, photos arrive sideways,
-  soft or cut off, and the result was never reliable enough to be worth reviewing. Vision's text
-  can't be used instead (row-grouping splices the columns and drops the indentation), and a
-  stronger model, a bigger photo and a gentler prompt were all tried (ce6cf74) without fixing it.
-  Index lines are typed in one at a time through `CookbookIndexEntrySheet`. Check with the user
-  before starting a third attempt.
-- **The index goes with its book; recipes don't.** `dbDeleteCookbook` unlinks recipes and keeps
-  them (a recipe naming a book that's gone is still a recipe) but deletes the book's index lines,
-  since "page 142" of nothing names nothing. A merge moves the loser's lines to the survivor
-  *before* that delete, folding a dish both books listed into the survivor's line.
-
 ## More than one photo for a page turn (`recipePhoto.ts`, `extractRecipe`)
 
 A cookbook recipe routinely runs onto a second page mid-ingredient-list or mid-method, so a single

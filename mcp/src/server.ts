@@ -84,7 +84,7 @@ import { claimReward, createReward, deleteReward, getRewards, markMissed, setBou
 import { addProjectSteps, createProject, deleteProject, getProject, nextInProject, saveProjectAsTemplate, saveProjectCategory, startFreshProject, updateProject, type CreateProjectInput, type ProjectPlanStepInput } from './projectTools';
 import { addChoiceToList, addIngredientsToList, clearGroceryList, createGroceryList, deleteGroceryItem, deleteGroceryList, finishGroceryTrip, getGroceryItem, grocerySetup, importReceipt, markUnavailable, matchReceipt, listBrands, mergeGroceryItems, renameBrand, renameBrands, renameGroceryList, resolveList, saveAisle, saveGroceryBox, saveStore, setNutritionPanel, setNutritionPanels, setShoppingTrip, settleChoice, swapForSubstitute, updateGroceryItem, updateStore } from './groceryTools';
 import { PANTRY_FILTERS, addToPantry, answerPantryReview, getPantryItem, listPantry, logLeftover, pantryReview, deleteLeftover, splitLeftover, updateLeftover, updatePantryBox, updatePantryItem, useUpRecipes } from './pantryTools';
-import { deleteCookbook, deleteIndexEntry, getCookbookIndex, listCookbooks, logCookTime, mergeCookbooks, recipeFromIndexEntry, renameCookbook, saveIndexEntry } from './recipeTools';
+import { deleteCookbook, listCookbooks, logCookTime, mergeCookbooks, renameCookbook } from './recipeTools';
 import { DEFAULT_PLAN_DAYS, MAX_PLAN_DAYS, MEAL_SLOTS as KITCHEN_MEAL_SLOTS, copyMeals, getRecipe, listMealPlan, listRecipes, planMeal, removeMeal, saveMealAsRecipe, setMealCooked, updateMeal } from './kitchenTools';
 import { DEFAULT_BIRTHDAY_DAYS, MAX_BIRTHDAY_DAYS, addPersonHistory, addPersonNote, createPerson, deletePerson, deletePersonNote, savePersonGroup, updatePerson, updatePersonNote, getPerson, listPeople, upcomingBirthdays } from './peopleTools';
 import { appLinks, appSiteAssociation, appUrlForOpenPath, openPage } from './appLinks';
@@ -466,22 +466,9 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'list_cookbooks',
-    'The person\'s cookbooks, with how many saved recipes and index lines each holds.',
+    'The person\'s cookbooks, with how many saved recipes each holds.',
     {},
     async () => json(await withFresh(() => listCookbooks(replica)))
-  );
-
-  server.tool(
-    'get_cookbook_index',
-    'One cookbook\'s index: the dishes in it, each with its page and main ingredients. An index line is a pointer to a page, not a saved recipe; recipe_from_index_entry makes one from it.',
-    { cookbookId: z.string().min(1) },
-    async ({ cookbookId }) => {
-      try {
-        return json(await withFresh(() => getCookbookIndex(replica, cookbookId)));
-      } catch (e) {
-        return json({ error: e instanceof Error ? e.message : 'Could not read that index.' });
-      }
-    }
   );
 
   server.tool(
@@ -1461,7 +1448,7 @@ function registerWriteTools(
 
   server.tool(
     'merge_cookbooks',
-    'Two entries that are the same book, made one: every recipe and index line in mergeId moves to keepId (a dish both indexes list is kept once), and mergeId is gone. Not undoable from here.',
+    'Two entries that are the same book, made one: every recipe in mergeId moves to keepId, and mergeId is gone. Not undoable from here.',
     { keepId: z.string().min(1), mergeId: z.string().min(1) },
     async ({ keepId, mergeId }) => {
       try {
@@ -1474,58 +1461,13 @@ function registerWriteTools(
 
   server.tool(
     'delete_cookbook',
-    'Delete a cookbook. Its recipes stay, no longer in a book but still naming it as their source, and its index goes with it. Not undoable from here; merge_cookbooks is the way to fold a duplicate into the real one.',
+    'Delete a cookbook. Its recipes stay, no longer in a book but still naming it as their source. Not undoable from here; merge_cookbooks is the way to fold a duplicate into the real one.',
     { id: z.string().min(1) },
     async ({ id }) => {
       try {
         return json(await withWrite(() => deleteCookbook(replica, id)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not delete that cookbook.' });
-      }
-    }
-  );
-
-  server.tool(
-    'save_index_entry',
-    'Add a dish to a cookbook\'s index (give cookbookId), or change one (give id). Its ingredients are the dish\'s main things, the ones the person would look it up by, which is what Cook with... searches. Refused when that index already lists the dish.',
-    {
-      id: z.string().min(1).optional(),
-      cookbookId: z.string().min(1).optional(),
-      title: z.string().min(1),
-      page: z.string().nullable().optional(),
-      ingredients: z.array(z.string()).optional(),
-    },
-    async input => {
-      try {
-        return json(await withWrite(() => saveIndexEntry(replica, input)));
-      } catch (e) {
-        return json({ error: e instanceof Error ? e.message : 'Could not save that index line.' });
-      }
-    }
-  );
-
-  server.tool(
-    'delete_index_entry',
-    'Take a dish out of a cookbook\'s index. A recipe saved from it is not touched.',
-    { id: z.string().min(1) },
-    async ({ id }) => {
-      try {
-        return json(await withWrite(() => deleteIndexEntry(replica, id)));
-      } catch (e) {
-        return json({ error: e instanceof Error ? e.message : 'Could not delete that index line.' });
-      }
-    }
-  );
-
-  server.tool(
-    'recipe_from_index_entry',
-    'The saved recipe for a cookbook index line: the one already in that book under that name, or a new one with the book and page and nothing else, ready to plan or fill in with update_recipe.',
-    { id: z.string().min(1) },
-    async ({ id }) => {
-      try {
-        return json(await withWrite(() => recipeFromIndexEntry(replica, id)));
-      } catch (e) {
-        return json({ error: e instanceof Error ? e.message : 'Could not make that recipe.' });
       }
     }
   );

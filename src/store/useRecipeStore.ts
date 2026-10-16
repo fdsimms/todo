@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { ComponentPlacement, Cookbook, CookbookIndexEntry, Recipe, RecipeBlank, RecipeIngredient, RecipeMealType, RecipePrepTask, RecipeSourceType, RecipeStep, RecipeVote } from '../types';
+import type { ComponentPlacement, Cookbook, Recipe, RecipeBlank, RecipeIngredient, RecipeMealType, RecipePrepTask, RecipeSourceType, RecipeStep, RecipeVote } from '../types';
 import { GROCERY_NAME_MAX_LENGTH, GROCERY_QUANTITY_MAX_LENGTH, RECIPE_PAGE_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH, RECIPE_STEP_NOTE_MAX_LENGTH, STEP_ONLY_WHEN_MAX, TITLE_MAX_LENGTH } from '../types';
 import {
   dbGetAllRecipes,
@@ -11,10 +11,6 @@ import {
   dbInsertCookbook,
   dbUpdateCookbook,
   dbDeleteCookbook,
-  dbGetAllCookbookIndexEntries,
-  dbInsertCookbookIndexEntry,
-  dbUpdateCookbookIndexEntry,
-  dbDeleteCookbookIndexEntry,
 } from '../db/database';
 import { generateId } from '../utils/id';
 import { MAX_STEP_TIMER_SECONDS, MIN_STEP_TIMER_SECONDS } from '../utils/stepTimers';
@@ -44,10 +40,6 @@ import { componentPlacement, makeComponent, reanchorComponents, recipeMap, would
 import { sectionsOf } from '../utils/recipeSections';
 import { makeBlank, normalizeBlank } from '../utils/recipeBlanks';
 import { pageAfterCookbookLink } from '../utils/cookbookRecipes';
-import {
-  cleanIndexEntryFields, cleanIndexIngredients, indexEntryInBook,
-  type IndexEntryFields,
-} from '../utils/cookbookIndex';
 
 /**
  * The recipe library.
@@ -168,29 +160,6 @@ interface RecipeStore {
    * what it exists to fix.
    */
   mergeCookbooks: (survivorId: string, loserId: string) => boolean;
-  /**
-   * The lines of every cookbook's index — see `CookbookIndexEntry`. Held here
-   * beside `cookbooks` for the reason those are, and deliberately not part of
-   * `recipes`: nothing that lists recipes reads this.
-   */
-  indexEntries: CookbookIndexEntry[];
-  /**
-   * Adds a line to a book's index. Null when the title is empty, the book
-   * isn't on the shelf, or that book's index already has a dish of that name
-   * (`indexEntryInBook`) — the caller says why.
-   */
-  addIndexEntry: (cookbookId: string, fields: IndexEntryFields) => CookbookIndexEntry | null;
-  /** False on the same refusals as `addIndexEntry`, or an id that's gone. */
-  updateIndexEntry: (id: string, fields: IndexEntryFields) => boolean;
-  deleteIndexEntry: (id: string) => void;
-  /**
-   * The recipe to cook an index line from: the one already in that book under
-   * that name, or a new one made with the book and page and nothing else.
-   * The index's ingredients are deliberately not written onto it as lines:
-   * they're the dish's main things, not its list, and every reader of recipe
-   * lines assumes a whole list. The entry stays as it was.
-   */
-  recipeFromIndexEntry: (id: string) => Recipe | null;
   /**
    * `servingsMax` is the top of a range ("serves 4-6") and is optional — omit
    * it (or pass null) for a plain count. A max at or below `servings` isn't a
@@ -586,14 +555,12 @@ interface RecipeStore {
 export const useRecipeStore = create<RecipeStore>((set, get) => ({
   recipes: [],
   cookbooks: [],
-  indexEntries: [],
   initialized: false,
 
   initialize() {
     set({
       recipes: dbGetAllRecipes(),
       cookbooks: dbGetAllCookbooks(),
-      indexEntries: dbGetAllCookbookIndexEntries(),
       initialized: true,
     });
   },
@@ -797,8 +764,6 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     set(s => ({
       cookbooks: s.cookbooks.filter(c => c.id !== id),
       recipes: s.recipes.map(r => (r.cookbookId === id ? { ...r, cookbookId: null } : r)),
-      // dbDeleteCookbook took these with the book; see its note.
-      indexEntries: s.indexEntries.filter(e => e.cookbookId !== id),
     }));
   },
 
@@ -812,80 +777,9 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     for (const recipe of get().recipes) {
       if (recipe.cookbookId === loserId) save(set, { ...recipe, ...mirrorOf(survivor) });
     }
-    // Before the delete, which takes a book's index with it. The two books'
-    // indexes are one book's now, so a dish both listed would be listed twice;
-    // the survivor's line is kept and the other's ingredients folded into it.
-    const moved: CookbookIndexEntry[] = [];
-    for (const entry of get().indexEntries) {
-      if (entry.cookbookId !== loserId) continue;
-      const twin = indexEntryInBook(get().indexEntries, entry.title, survivorId);
-      if (twin) {
-        const merged: CookbookIndexEntry = {
-          ...twin,
-          page: twin.page ?? entry.page,
-          ingredients: cleanIndexIngredients([...twin.ingredients, ...entry.ingredients]),
-        };
-        dbUpdateCookbookIndexEntry(merged);
-        dbDeleteCookbookIndexEntry(entry.id);
-        set(s => ({ indexEntries: s.indexEntries.filter(e => e.id !== entry.id).map(e => (e.id === twin.id ? merged : e)) }));
-      } else {
-        const repointed = { ...entry, cookbookId: survivorId };
-        dbUpdateCookbookIndexEntry(repointed);
-        moved.push(repointed);
-      }
-    }
-    if (moved.length > 0) {
-      const byId = new Map(moved.map(e => [e.id, e]));
-      set(s => ({ indexEntries: s.indexEntries.map(e => byId.get(e.id) ?? e) }));
-    }
     dbDeleteCookbook(loserId);
     set(s => ({ cookbooks: s.cookbooks.filter(c => c.id !== loserId) }));
     return true;
-  },
-
-  addIndexEntry(cookbookId, fields) {
-    if (!get().cookbooks.some(c => c.id === cookbookId)) return null;
-    const clean = cleanIndexEntryFields(fields);
-    if (!clean) return null;
-    if (indexEntryInBook(get().indexEntries, clean.title, cookbookId)) return null;
-    const entry: CookbookIndexEntry = {
-      id: generateId(),
-      cookbookId,
-      ...clean,
-      createdAt: new Date().toISOString(),
-    };
-    dbInsertCookbookIndexEntry(entry);
-    set(s => ({ indexEntries: [...s.indexEntries, entry] }));
-    return entry;
-  },
-
-  updateIndexEntry(id, fields) {
-    const entry = get().indexEntries.find(e => e.id === id);
-    if (!entry) return false;
-    const clean = cleanIndexEntryFields(fields);
-    if (!clean) return false;
-    const others = get().indexEntries.filter(e => e.id !== id);
-    if (indexEntryInBook(others, clean.title, entry.cookbookId)) return false;
-    const updated: CookbookIndexEntry = { ...entry, ...clean };
-    dbUpdateCookbookIndexEntry(updated);
-    set(s => ({ indexEntries: s.indexEntries.map(e => (e.id === id ? updated : e)) }));
-    return true;
-  },
-
-  deleteIndexEntry(id) {
-    dbDeleteCookbookIndexEntry(id);
-    set(s => ({ indexEntries: s.indexEntries.filter(e => e.id !== id) }));
-  },
-
-  recipeFromIndexEntry(id) {
-    const entry = get().indexEntries.find(e => e.id === id);
-    if (!entry) return null;
-    const existing = recipeInBook(get().recipes, entry.title, entry.cookbookId);
-    if (existing) return existing;
-    const recipe = get().addRecipe(entry.title, entry.cookbookId);
-    if (!recipe) return null;
-    if (entry.page) get().setSourcePage(recipe.id, entry.page);
-    return get().recipeById(recipe.id) ?? recipe;
   },
 
   setSourcePage(id, sourcePage) {
