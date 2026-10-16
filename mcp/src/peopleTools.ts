@@ -199,6 +199,11 @@ export function reorderPeople(replica: Replica, ids: string[]): { order: { id: s
 export function savePersonGroup(replica: Replica, input: { name: string; newName?: string; delete?: boolean; catchUpSeparately?: boolean }) {
   if (input.delete && (input.newName !== undefined || input.catchUpSeparately !== undefined)) throw new Error('A delete takes nothing else.');
   const result = replica.savePersonGroup(input.name, { newName: input.newName, delete: input.delete, catchUpSeparately: input.catchUpSeparately });
+  // A group that did not reach the database reads as saved and then fails
+  // update_person's groupId check with "No group with id", so say so here.
+  if (result.group && !replica.personGroups().some(g => g.id === result.group!.id)) {
+    throw new Error(`The group "${result.group.name}" was not saved. Try again, or create it in the app.`);
+  }
   return {
     group: result.group ? { id: result.group.id, name: result.group.name, catchUpSeparately: result.group.catchUpSeparately } : null,
     members: result.members,
