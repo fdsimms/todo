@@ -73,6 +73,7 @@ export function blankPerson(name: string, sortOrder: number): Person {
     backfillDismissedFields: [],
     groupId: null,
     location: null,
+    address: null,
   };
 }
 
@@ -92,7 +93,7 @@ export type PersonPatch = Partial<Pick<Person,
   // `updateProject`, and there is nothing about it worth a setter of its own.
   | 'backfillDismissedFields'
   | 'groupId'
-  | 'location'
+  | 'location' | 'address'
 >>;
 
 interface PersonStore extends UndoHistoryState, UndoHistoryActions {

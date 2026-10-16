@@ -575,6 +575,8 @@ export interface PersonFields {
   linkUrl?: string | null;
   /** Free text, like the app's own field; null clears it. */
   location?: string | null;
+  /** Their street address, free text, lines separated by newlines; null clears it. */
+  address?: string | null;
   /** The group they are listed under (a person group's id), or null for none. */
   groupId?: string | null;
   /** Filed away: kept, out of the list. */
@@ -2753,6 +2755,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     if (f.email !== undefined) out.email = f.email?.trim() || null;
     if (f.linkUrl !== undefined) out.linkUrl = f.linkUrl?.trim() || null;
     if (f.location !== undefined) out.location = f.location?.trim() || null;
+    if (f.address !== undefined) out.address = f.address?.trim() || null;
     if (f.groupId !== undefined) {
       if (f.groupId !== null && !db.dbGetAllPersonGroups().some(g => g.id === f.groupId)) throw new Error(`No group with id ${f.groupId}. save_person_group makes one.`);
       out.groupId = f.groupId;

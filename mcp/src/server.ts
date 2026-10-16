@@ -3927,6 +3927,7 @@ function registerWriteTools(
     email: z.string().nullable().optional(),
     linkUrl: z.string().nullable().optional(),
     location: z.string().nullable().optional().describe('Where they live, as free text ("Austin, TX"). The app uses it to find people when planning a trip. null clears it.'),
+    address: z.string().nullable().optional().describe('Their street address as free text, lines separated by newlines ("123 Main St\\nAustin, TX 78701"). Separate from location, which is just the town used for trip planning. null clears it.'),
     groupId: z.string().nullable().optional().describe('The group they are listed under (save_person_group makes one), or null for none.'),
     archived: z.boolean().optional().describe('Take them off the list but keep everything about them. false brings them back.'),
     pinned: z.boolean().optional().describe('true holds them at the top of the People list, above the people and business sections. false unpins.'),
