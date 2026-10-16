@@ -12,6 +12,7 @@ import type { TemplateItemCondition, TemplateQuestion } from '../types';
 import { EmptyState } from './EmptyState';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
+import { HelpText } from './HelpText';
 
 interface Props {
   visible: boolean;
@@ -67,11 +68,11 @@ export function TemplateQuestionItemsSheet({ visible, templateId, question, onCl
           </View>
         ) : (
           <ScrollView contentContainerStyle={styles.list}>
-            <Text style={styles.caption}>
+            <HelpText style={styles.caption}>
               A checked answer checks that item by default when the template asks. Every item
               stays on the list either way, so it can still be checked or unchecked when the
               template is applied.
-            </Text>
+            </HelpText>
             <View style={styles.card}>
               {leafItems.map((item, i) => {
                 const existing = item.conditions.find(c => c.questionId === question.id);

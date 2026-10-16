@@ -39,6 +39,7 @@ import { featureShown } from '../utils/simpleMode';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { GROCERY_NAME_MAX_LENGTH, SHOP_NAME_MAX_LENGTH } from '../types';
 import { TextField } from './TextField';
+import { HelpText } from './HelpText';
 
 /** Matches the shopping list's own checkbox, so the shape reads as familiar. */
 const CHECK_SIZE = 22;
@@ -662,9 +663,9 @@ export function FinishShoppingSheet({
           {!away && (
           <>
           <Text style={styles.label}>WHERE DID YOU SHOP?</Text>
-          <Text style={styles.hint}>
+          <HelpText style={styles.hint}>
             Optional. Name the store to see later which store has which items.
-          </Text>
+          </HelpText>
 
           {/* The store list has no ceiling — it's entirely user-built — so the
               grid caps itself and grows a find-or-add field once it outgrows a
@@ -738,13 +739,13 @@ export function FinishShoppingSheet({
           {!!selectedShop && askable.length > 0 && (
             <>
               <Text style={styles.label}>ANYTHING THEY DIDN’T HAVE?</Text>
-              <Text style={styles.hint}>
+              <HelpText style={styles.hint}>
                 Optional. Check off what {selectedShop.name} didn’t stock. Everything here stays on your
                 list either way.
                 {withheldCount > 0
                   ? ` ${withheldCount} more ${withheldCount === 1 ? 'is' : 'are'} in aisles ${selectedShop.name} doesn’t sell, so ${withheldCount === 1 ? "it isn’t" : "they aren’t"} listed.`
                   : ''}
-              </Text>
+              </HelpText>
 
               <View style={styles.card}>
                 {askable.map((row, i) => {

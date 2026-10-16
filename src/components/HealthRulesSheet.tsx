@@ -29,6 +29,7 @@ import { InlineAction } from './InlineAction';
 import { ChoiceMenuChip, type ChoiceGroup } from './ChoiceMenuChip';
 import { SegmentedControl } from './SegmentedControl';
 import { RuleListSheet, RuleSheetNoticeCard, RuleFieldLabel } from './RuleListSheet';
+import { HelpText } from './HelpText';
 
 interface Props {
   visible: boolean;
@@ -210,10 +211,10 @@ export function HealthRulesSheet({ visible, onClose }: Props) {
                 label="Checked from"
                 describeValue={n => formatCheckpointHour(n ?? HEALTH_METRIC_EARLIEST_HOUR[rule.metric])}
               />
-              <Text style={styles.hint}>
+              <HelpText style={styles.hint}>
                 This rule won’t add its task
                 before this hour.
-              </Text>
+              </HelpText>
             </>
           )}
         </View>

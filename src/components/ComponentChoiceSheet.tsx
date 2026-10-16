@@ -18,6 +18,7 @@ import { TextField } from './TextField';
 import { InlineAction } from './InlineAction';
 import { PillGroup } from './PillGroup';
 import { useSheetSubject } from '../hooks/useSheetSubject';
+import { HelpText } from './HelpText';
 
 interface Props {
   visible: boolean;
@@ -154,11 +155,11 @@ export function ComponentChoiceSheet({ visible, recipe, component: liveComponent
           returnKeyType="done"
           accessibilityLabel={`Amount of ${name} this recipe uses`}
         />
-        <Text style={styles.hint}>
+        <HelpText style={styles.hint}>
           How much of {name.toLowerCase()} goes into this recipe, like “1 tbsp”, “2 fillets” or
           “1/4” for a quarter of what it makes. Nutrition counts only this much. Leave it empty to
           count everything it makes.
-        </Text>
+        </HelpText>
       </View>
 
       <View style={styles.sectionCard}>
@@ -214,11 +215,11 @@ export function ComponentChoiceSheet({ visible, recipe, component: liveComponent
               ]}
             />
             {!clean ? (
-              <Text style={styles.hint}>
+              <HelpText style={styles.hint}>
                 Name the group these alternatives share, like “Side” or “Sauce”. Every option
                 under it (an ingredient, another component, or both) is one way of filling the
                 same slot.
-              </Text>
+              </HelpText>
             ) : recipe.ingredients.some(i => i.choiceGroup === clean) ? (
               <Text style={styles.hint}>
                 “{clean}” already names an ingredient on this recipe. Sharing it makes this
@@ -233,10 +234,10 @@ export function ComponentChoiceSheet({ visible, recipe, component: liveComponent
             )}
           </>
         ) : (
-          <Text style={styles.hint}>
+          <HelpText style={styles.hint}>
             Every component is included unless it’s one of a choice. Two components in the
             same group mean a meal cooks one of them, picked when it’s planned.
-          </Text>
+          </HelpText>
         )}
       </View>
 

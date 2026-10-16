@@ -18,6 +18,7 @@ import { PillGroup } from './PillGroup';
 import { TaskDoseAmount } from './TaskDoseAmount';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { TextField } from './TextField';
+import { HelpText } from './HelpText';
 
 const NAME_MAX_LENGTH = 60;
 
@@ -172,9 +173,9 @@ export function ChainStepMedicationSheet({
               />
               {/* The one place a taper can be discovered from: nothing else
                   says a chain of doses can step down a day at a time. */}
-              <Text style={[styles.hint, styles.taperHint]}>
+              <HelpText style={[styles.hint, styles.taperHint]}>
                 For a taper, give each step its own dose, set Next step to On the next repeat, and end the repeat after the last step.
-              </Text>
+              </HelpText>
             </>
           )}
         </View>

@@ -40,6 +40,7 @@ import { EditorRow } from './EditorRow';
 import { WhenPicker } from './WhenPicker';
 import { TextField } from './TextField';
 import { InlineAction } from './InlineAction';
+import { HelpText } from './HelpText';
 
 const NOTE_MAX_LENGTH = 500;
 
@@ -456,9 +457,9 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
 
       <View style={styles.card}>
         <Text style={styles.groupLabel}>SYMPTOMS</Text>
-        <Text style={styles.hint}>
+        <HelpText style={styles.hint}>
           Whatever you want to keep track of. Add your own names for them.
-        </Text>
+        </HelpText>
         <PillGroup
           noun="symptom"
           surface="card"
@@ -490,9 +491,9 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
 
       <View style={styles.card}>
         <Text style={styles.groupLabel}>CONTEXT</Text>
-        <Text style={styles.hint}>
+        <HelpText style={styles.hint}>
           Anything else going on today that might explain how you feel.
-        </Text>
+        </HelpText>
         <PillGroup
           noun="tag"
           surface="card"
