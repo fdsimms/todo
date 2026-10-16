@@ -1401,7 +1401,8 @@ const TaskItemRow = React.memo(function TaskItem({
   // sections a notice can actually reach are its notes and its own inline
   // block: no notice kind is timed, recurring, chained or in a series. A
   // notice kind that grew any of those would need this to become a count.
-  const panelSectionAbove = showSubtaskSection || task.notes.length > 0 || !!task.followUpTaskSourceTitle || followUpTaskRule(task) !== null;
+  const hasFollowUpRows = !!task.followUpTaskSourceTitle || followUpTaskRule(task) !== null;
+  const panelSectionAbove = showSubtaskSection || task.notes.length > 0 || hasFollowUpRows;
   // What's left in a notice's panel once task management is gone: its notes,
   // any subtasks it already had, and the kind's own inline block. With none of
   // those the panel is empty, so the row doesn't expand at all rather than
@@ -4168,17 +4169,13 @@ const TaskItemRow = React.memo(function TaskItem({
               </View>
             )}
 
-            {task.notes.length > 0 && (
-              <Text style={styles.expandNotes}>{task.notes}</Text>
-            )}
-
             {/* Read-only on purpose: these are options, not subtasks, and
                 ticking one here would be the bypass the whole feature exists
                 to close. Shared with the Logbook's week sheet. */}
             {isRotation && (
               <View style={[
-                styles.expandSection,
-                (task.notes.length > 0 || !!task.followUpTaskSourceTitle || followUpRule !== null) && styles.sectionDivider,
+                styles.sectionEnd,
+                hasFollowUpRows && styles.sectionDivider,
               ]}>
                 <RotationChecklist task={task} />
               </View>
@@ -4192,9 +4189,12 @@ const TaskItemRow = React.memo(function TaskItem({
                 showSubtaskSection). */}
             {showSubtaskSection && (
             <View style={[
-              styles.expandSection,
               styles.subtaskSection,
-              (task.notes.length > 0 || !!task.followUpTaskSourceTitle || followUpRule !== null) && styles.sectionDivider,
+              // First thing in the panel: reach up over its top padding so
+              // the rail starts at the task's own row instead of floating
+              // below it. Anything above it (a follow-up line, a rotation
+              // checklist) takes the divider instead.
+              hasFollowUpRows || isRotation ? styles.sectionDivider : styles.subtaskSectionFirst,
             ]}>
               {subtasks.length > 0 && (
                 <SortableList
@@ -4342,12 +4342,24 @@ const TaskItemRow = React.memo(function TaskItem({
             </View>
             )}
 
+            {/* Under the subtasks, not above them: with the notes between,
+                the rail drawn from the task's row down to its subtasks
+                started at a paragraph rather than at the task. */}
+            {task.notes.length > 0 && (
+              <View style={[
+                styles.sectionEnd,
+                (showSubtaskSection || isRotation || hasFollowUpRows) && styles.sectionDivider,
+              ]}>
+                <Text style={styles.expandNotes}>{task.notes}</Text>
+              </View>
+            )}
+
             {/* The one-line facts about the task (repeat, series, chain,
                 countdown, time spent) read as one block under one divider.
                 Each row used to draw its own, which stacked four hairlines on
                 a recurring timed task and made the panel look ruled. */}
             {hasFactRows && (
-            <View style={panelSectionAbove ? styles.sectionDivider : undefined}>
+            <View style={[styles.factRows, panelSectionAbove && styles.sectionDivider]}>
               {task.recurrenceType !== 'none' && (
                 <View style={styles.recurrenceRow}>
                   <Ionicons name="repeat" size={12} color={colors.textSecondary} />
@@ -4637,12 +4649,10 @@ const TaskItemRow = React.memo(function TaskItem({
                 (see `notice`). Nothing a notice kind has reaches the left half
                 anyway: none of them is timed, a quota, recurring or chained. */}
             {onEdit && !notice && (
-              <View style={[
-                styles.editSection,
-                // No divider: the buttons read as controls without a rule
-                // over them, and a gap is enough to set them off the content.
-                panelSectionAbove && styles.editSectionSpaced,
-              ]}>
+              // No divider: the buttons read as controls without a rule
+              // over them, and the section above's own bottom gap sets them
+              // off the content.
+              <View style={styles.editSection}>
                 <View style={styles.editSectionLeft}>
                   {showActions && timed && (
                     <View style={styles.timerRunningGroup}>
@@ -4670,7 +4680,6 @@ const TaskItemRow = React.memo(function TaskItem({
                         <TouchableOpacity
                           onPress={handleResetTimer}
                           hitSlop={8}
-                          style={styles.timerDeleteBtn}
                           activeOpacity={interaction.activeOpacity}
                           accessibilityRole="button"
                           accessibilityLabel={`Reset timer for ${task.title}`}
@@ -4698,7 +4707,6 @@ const TaskItemRow = React.memo(function TaskItem({
                       <TouchableOpacity
                         onPress={handleDiscardTimer}
                         hitSlop={8}
-                        style={styles.timerDeleteBtn}
                         activeOpacity={interaction.activeOpacity}
                         accessibilityRole="button"
                         accessibilityLabel={`Discard timer for ${task.title}`}
@@ -5687,10 +5695,7 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => StyleSheet.create({
   timerRunningGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-  },
-  timerDeleteBtn: {
-    padding: 4,
+    gap: spacing.xsm,
   },
   timerPill: {
     flexDirection: 'row',
@@ -5704,14 +5709,14 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => StyleSheet.create({
   timerPillReady: {
     backgroundColor: colors.greenFill,
   },
+  // The bar belongs to its line, so it sits closer than the rows do to each other.
   countdownRow: {
-    gap: 5,
-    paddingVertical: spacing.xs,
+    gap: spacing.xs,
   },
   countdownHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: spacing.xsm,
   },
   timerPillText: {
     color: colors.onAccent,
@@ -5732,12 +5737,14 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => StyleSheet.create({
     left: 0,
     right: 0,
   },
+  // Sections own the 8pt below them (sectionEnd), a divider owns the 8 under
+  // its rule, and the action row owns the bottom edge, so the air on either
+  // side of a divider is always the same and nothing stacks two paddings.
   expandedPanel: {
     backgroundColor: trayRaised ? colors.bgTertiary : colors.bgSecondary,
     borderBottomLeftRadius: radius.md,
     borderBottomRightRadius: radius.md,
     paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
     paddingTop: spacing.xs,
   },
   // paddingLeft matches subtaskSection's own (see its comment): expandedPanel's
@@ -5748,26 +5755,36 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => StyleSheet.create({
     color: colors.textSecondary,
     fontSize: font.sm,
     lineHeight: lineHeight.sm,
-    paddingVertical: spacing.xs,
     paddingLeft: spacing.xl,
   },
   expandSection: {
     gap: spacing.xsm,
-    paddingVertical: spacing.xs,
+  },
+  sectionEnd: {
+    paddingBottom: spacing.sm,
+  },
+  // One block of fact rows: every row the same distance from the next.
+  factRows: {
+    gap: spacing.sm,
+    paddingBottom: spacing.sm,
   },
   // Indents the subtask list so its checkbox lines up under the task's own
   // title rather than under the task's checkbox — expandedPanel's own
   // paddingHorizontal (spacing.md) plus this equals circleWrapper's
   // marginLeft + width + the row's gap to `content` (spacing.md + 24 +
   // spacing.sm = 48), which is where the title starts.
+  // The rows pad themselves by spacing.xsm each, so the last one's bottom
+  // padding plus this is the section's 8pt.
   subtaskSection: {
-    gap: 0,
-    paddingTop: 0,
+    paddingBottom: spacing.xxs,
+  },
+  subtaskSectionFirst: {
+    marginTop: -spacing.xs,
   },
   sectionDivider: {
     borderTopWidth: border.hairline,
     borderTopColor: colors.separator,
-    marginTop: spacing.xxs,
+    paddingTop: spacing.sm,
   },
   // The row sits at the section's left edge and pads itself in, so the rail it
   // draws (SubtaskRail) lives inside its own box rather than hanging outside it.
@@ -5775,7 +5792,7 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    paddingVertical: 7,
+    paddingVertical: spacing.xsm,
     paddingLeft: spacing.xl,
   },
   subtaskAddAction: {
@@ -5842,8 +5859,7 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => StyleSheet.create({
   recurrenceRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    paddingVertical: spacing.xs,
+    gap: spacing.xsm,
   },
   expandMeta: {
     color: colors.textSecondary,
@@ -5851,7 +5867,7 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => StyleSheet.create({
   },
   followUpTaskSourceRow: {
     alignItems: 'flex-start',
-    paddingVertical: spacing.xs,
+    paddingBottom: spacing.sm,
     paddingLeft: spacing.xl,
   },
   // The icon has to sit at the text's cap-height, not centered against
@@ -6034,15 +6050,11 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'center',
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.xs,
-    gap: spacing.xs,
+    paddingBottom: spacing.sm,
+    gap: spacing.xsm,
   },
-  editSectionSpaced: {
-    marginTop: spacing.xs,
-  },
-  editSectionLeft: { flexDirection: 'row', gap: spacing.xs },
-  editSectionRight: { flexDirection: 'row', gap: spacing.xs, flexGrow: 1, justifyContent: 'flex-end', alignItems: 'center' },
+  editSectionLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.xsm },
+  editSectionRight: { flexDirection: 'row', gap: spacing.xsm, flexGrow: 1, justifyContent: 'flex-end', alignItems: 'center' },
   editBtn: {
     flexDirection: 'row',
     alignItems: 'center',
