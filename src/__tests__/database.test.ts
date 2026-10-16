@@ -11,6 +11,8 @@ import {
   ensureDatabaseReady,
   dbGetSetting,
   dbGetAllSettings,
+  dbStorageStats,
+  dbOptimizeStorage,
   dbSetSetting,
   dbGetAllTasks,
   dbGetAllJournalEntries,
@@ -6196,5 +6198,31 @@ describe('logMealSlotByTime', () => {
     expect(dbGetAllTasks().find(t => t.id === 'bytime')!.logMealSlotByTime).toBe(false);
     dbInsertTask(makeTask({ id: 'plain2' }));
     expect(dbGetAllTasks().find(t => t.id === 'plain2')!.logMealSlotByTime).toBe(false);
+  });
+});
+
+describe('storage stats and compacting', () => {
+  it('reports a size and counts the pages a delete leaves free', () => {
+    for (let i = 0; i < 400; i++) dbInsertTask(makeTask({ id: `bulk${i}`, notes: 'x'.repeat(2000) }));
+    const full = dbStorageStats();
+    expect(full.databaseBytes).toBeGreaterThan(0);
+    dbBulkDeleteTasks(Array.from({ length: 400 }, (_, i) => `bulk${i}`));
+    const after = dbStorageStats();
+    expect(after.databaseBytes).toBe(full.databaseBytes);
+    expect(after.freeBytes).toBeGreaterThan(0);
+  });
+
+  it('gives the freed pages back on optimize, and keeps the rows that remain', () => {
+    dbInsertTask(makeTask({ id: 'keeper' }));
+    for (let i = 0; i < 400; i++) dbInsertTask(makeTask({ id: `bulk${i}`, notes: 'x'.repeat(2000) }));
+    dbBulkDeleteTasks(Array.from({ length: 400 }, (_, i) => `bulk${i}`));
+    const { before, after } = dbOptimizeStorage();
+    expect(after).toBeLessThan(before);
+    expect(dbStorageStats().freeBytes).toBe(0);
+    expect(dbGetAllTasks().map(t => t.id)).toEqual(['keeper']);
+  });
+
+  it('refuses inside a transaction', () => {
+    expect(() => dbTransaction(() => { dbOptimizeStorage(); })).toThrow();
   });
 });

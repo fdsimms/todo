@@ -28,6 +28,7 @@ import { useColors } from '../../theme/ThemeContext';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
 import { SettingsSegments } from './SettingsSegments';
+import { StorageSettings } from './StorageSettings';
 import { type SegmentOption } from '../../components/SegmentedControl';
 import { makeSettingsStyles } from './settingsStyles';
 import { BUTTON_LABEL } from '../../copy/shared';
@@ -337,6 +338,8 @@ export function DataResetSettings() {
           accessibilityLabelFor={o => `Keep completed tasks for ${o.label}`}
         />
       </SettingsSection>
+
+      <StorageSettings />
 
       <SettingsSection
         label="Demo"
