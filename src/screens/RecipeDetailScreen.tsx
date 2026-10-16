@@ -594,8 +594,6 @@ export function RecipeDetailScreen() {
   // the drag is silently dead — see the note on SortableList.onDragStateChange.
   const [dragging, setDragging] = useState(false);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
-  const scrollTop = useListScrollToTop(keyboardScroll);
-
   // Bulk-selecting ingredients — same plain useRowSelection every non-task list
   // in the app reuses (Templates, Grocery), plus the ingredient-specific "Move
   // to Aisle" / delete actions below. Entered by swiping a row, same entry
@@ -615,6 +613,8 @@ export function RecipeDetailScreen() {
     painting,
     paintProps,
   } = useRowSelection();
+  // The footer is unmounted while selecting, so it contributes nothing then.
+  const scrollTop = useListScrollToTop(keyboardScroll, { footerHeight: selectionMode ? 0 : footerHeight });
 
   // Both timers, wired up — the clock, the derivation and the store calls all
   // live in the hook now, because cook mode (#1695) keeps the cook timer on
@@ -3039,10 +3039,7 @@ export function RecipeDetailScreen() {
           answering. Cook mode mounts its own for its copy of the row; both
           being mounted at once is fine (see NumberPadAccessory). */}
       <NumberPadAccessory />
-      <ScrollToTopButton
-        {...scrollTop.buttonProps}
-        bottom={selectionMode ? scrollTop.buttonProps.bottom : footerHeight + spacing.md}
-      />
+      <ScrollToTopButton {...scrollTop.buttonProps} />
       {actionMenu.element}
     </View>
   );
