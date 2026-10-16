@@ -39,10 +39,16 @@ import {
 import { GROCERY_NAME_MAX_LENGTH, GROCERY_QUANTITY_MAX_LENGTH, type MealPlanEntry, type Recipe, type RecipeBlank, type RecipeOverride } from '../types';
 import { BUTTON_LABEL } from '../copy/shared';
 
+/**
+ * What the picker needs to know about the cooking it fills: a planned meal, or
+ * cook mode's own (which has no entry, so it stands one in).
+ */
+export type BlankPickerSubject = Pick<MealPlanEntry, 'id' | 'recipeId' | 'date' | 'recipeOverrides'>;
+
 interface Props {
   visible: boolean;
-  /** The planned meal being filled. Read live; the sheet holds the last one while it slides away. */
-  entry: MealPlanEntry | null;
+  /** The meal being filled. Read live; the sheet holds the last one while it slides away. */
+  entry: BlankPickerSubject | null;
   recipe: Recipe | null;
   recipesById: ReadonlyMap<string, Recipe>;
   /** The meal's whole new list of overrides, with each blank's fill in it. */

@@ -315,6 +315,12 @@ planner.
   in the dish's figures. A blank names no food, so until a meal fills it it contributes nothing to
   shopping, cost, nutrition or cook mode. The recipe page's nutrition total says so ("…, plus what
   you pick") rather than presenting the base as the dish.
+- **The recipe page shows them in the Ingredients card**, after the recipe's own lines under a
+  "From your kitchen" heading, not as a section further down. In a section of their own, a grain
+  bowl whose only fixed line is olive oil read as a recipe for olive oil until you scrolled. They
+  come after the lines because that's where a meal's fills land everywhere else (the flatten), and
+  the heading keeps them from reading as part of the last ingredient section. They are not in the
+  drag, since they aren't lines.
 - **The fill lives on the meal, as an override aimed at the blank** (`RecipeOverride.fill`, with
   `replacement: null`). The pick is a fact about one cooking, the split `recipeChoices` makes. Riding
   `recipeOverrides` rather than a new entry field was deliberate: about a dozen paths carry a meal's

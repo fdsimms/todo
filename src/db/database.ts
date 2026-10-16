@@ -5159,6 +5159,101 @@ export function dbPruneErrorLog(cutoffIso: string, keep: number): void {
   );
 }
 
+/**
+ * How big the open database is, and how much of that is free pages.
+ *
+ * Per-table sizes come from the `dbstat` virtual table, which a SQLite build
+ * may leave out; without it `tables` is empty and the totals still hold.
+ * Indexes are folded into the table they belong to, so the figure answers
+ * "how much does this feature cost" rather than "how big is one B-tree".
+ */
+export function dbStorageStats(): {
+  databaseBytes: number;
+  freeBytes: number;
+  /** Whether freed pages are handed back by `dbReclaimFreePages` (auto_vacuum = INCREMENTAL). */
+  autoReclaim: boolean;
+  tables: { name: string; bytes: number }[];
+} {
+  const pageSize = db.getFirstSync<{ page_size: number }>('PRAGMA page_size')?.page_size ?? 4096;
+  const pageCount = db.getFirstSync<{ page_count: number }>('PRAGMA page_count')?.page_count ?? 0;
+  const freePages = db.getFirstSync<{ freelist_count: number }>('PRAGMA freelist_count')?.freelist_count ?? 0;
+  const autoReclaim = db.getFirstSync<{ auto_vacuum: number }>('PRAGMA auto_vacuum')?.auto_vacuum === AUTO_VACUUM_INCREMENTAL;
+
+  const tables: { name: string; bytes: number }[] = [];
+  try {
+    const owner = new Map<string, string>();
+    for (const r of db.getAllSync<{ name: string; tbl_name: string }>('SELECT name, tbl_name FROM sqlite_master')) {
+      owner.set(r.name, r.tbl_name);
+    }
+    const sizes = new Map<string, number>();
+    for (const r of db.getAllSync<{ name: string; bytes: number }>(
+      'SELECT name, SUM(pgsize) AS bytes FROM dbstat WHERE aggregate = TRUE GROUP BY name'
+    )) {
+      const table = owner.get(r.name) ?? r.name;
+      sizes.set(table, (sizes.get(table) ?? 0) + r.bytes);
+    }
+    for (const [name, bytes] of sizes) {
+      if (!name.startsWith('sqlite_')) tables.push({ name, bytes });
+    }
+    tables.sort((a, b) => b.bytes - a.bytes);
+  } catch (_) {
+    // No dbstat in this build: the totals are still right.
+  }
+
+  return { databaseBytes: pageSize * pageCount, freeBytes: pageSize * freePages, autoReclaim, tables };
+}
+
+/** `PRAGMA auto_vacuum` value for "freed pages wait on the list until asked for". */
+const AUTO_VACUUM_INCREMENTAL = 2;
+
+/** About 40 MB of 4 KB pages: enough to keep up with any purge, short enough to be a blink. */
+export const RECLAIM_PAGES_PER_RUN = 10_000;
+
+/**
+ * Hands free pages back to the device, a bounded slice at a time, and returns
+ * how many bytes the file shrank by. A no-op until `dbOptimizeStorage` has
+ * switched the file to incremental auto_vacuum, since without it the free list
+ * can't be released short of a full VACUUM; and a no-op on the demo database,
+ * which is thrown away anyway.
+ *
+ * Unlike VACUUM this rewrites nothing but the pages it releases, so it is safe
+ * as a launch pass after the purges have run. It writes no rows, so the sync
+ * stamp triggers don't fire.
+ */
+export function dbReclaimFreePages(maxPages = RECLAIM_PAGES_PER_RUN): number {
+  if (db !== realDb || transactionDepth > 0) return 0;
+  const before = dbStorageStats();
+  if (!before.autoReclaim || before.freeBytes === 0) return 0;
+  db.execSync(`PRAGMA incremental_vacuum(${Math.max(1, Math.floor(maxPages))})`);
+  db.execSync('PRAGMA wal_checkpoint(TRUNCATE)');
+  return Math.max(0, before.databaseBytes - dbStorageStats().databaseBytes);
+}
+
+/**
+ * Rewrites the database file so deleted rows stop taking up space (VACUUM),
+ * and folds the write-ahead log back into it. Returns the file size before and
+ * after. Deleting never shrinks a SQLite file by itself, so every purge in the
+ * app (completed tasks, the meal plan, the logs) frees pages inside the file
+ * and leaves its size where it was.
+ *
+ * VACUUM cannot run inside a transaction and holds the database for as long
+ * as it takes, so this is only for a person tapping a button, never a launch
+ * pass. It writes no rows, so the sync stamp triggers don't fire and nothing
+ * here reads as an edit to a peer.
+ */
+export function dbOptimizeStorage(): { before: number; after: number } {
+  if (transactionDepth > 0) throw new Error('Can’t compact the database inside a transaction.');
+  const before = dbStorageStats().databaseBytes;
+  db.execSync('PRAGMA wal_checkpoint(TRUNCATE)');
+  // auto_vacuum on an existing file only takes effect through a VACUUM, so this
+  // is the one place it can be switched on: from here on, `dbReclaimFreePages`
+  // can hand back what later deletes free, with no further rewrite.
+  db.execSync('PRAGMA auto_vacuum = INCREMENTAL');
+  db.execSync('VACUUM');
+  db.execSync('PRAGMA wal_checkpoint(TRUNCATE)');
+  return { before, after: dbStorageStats().databaseBytes };
+}
+
 // ─── Groceries ──────────────────────────────────────────────────────────────
 
 function rowToGroceryItem(row: Record<string, unknown>): GroceryItem {

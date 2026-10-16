@@ -343,6 +343,30 @@ export type RecipeImageResult =
   | { status: 'denied'; source: RecipePhotoSource; canAskAgain: boolean }
   | { status: 'failed'; message: string };
 
+/** Bytes the saved recipe photos take, for the Storage readout. 0 when there are none. */
+export function recipeImagesBytes(): number {
+  try {
+    const { Directory, Paths } = fileSystem();
+    const dir = new Directory(Paths.document, RECIPE_IMAGE_DIR);
+    if (!dir.exists) return 0;
+    let total = 0;
+    for (const entry of dir.list()) total += (entry as { size?: number | null }).size ?? 0;
+    return total;
+  } catch {
+    return 0;
+  }
+}
+
+/** Free space left on the device, or null where the platform can't say. */
+export function availableDiskBytes(): number | null {
+  try {
+    const n = fileSystem().Paths.availableDiskSpace;
+    return typeof n === 'number' && n > 0 ? n : null;
+  } catch {
+    return null;
+  }
+}
+
 /** The document-directory folder recipe images live in, created on first use. */
 function recipeImageDirectory(): import('expo-file-system').Directory {
   const { Directory, Paths } = fileSystem();

@@ -484,7 +484,8 @@ function readLeadingAmount(text: string): LeadingAmount | null {
  * container's tail is two words and a counted one's is three.
  */
 export function parseQuantity(raw: string): Quantity {
-  const text = raw.trim();
+  // U+2044 is the slash some recipe pages print in "1⁄2".
+  const text = raw.trim().replace(/\u2044/g, '/');
   const none: Quantity = {
     raw: text,
     amount: null,
@@ -572,11 +573,14 @@ export function parseQuantity(raw: string): Quantity {
 
   const word = LEADING_WORD.exec(rest);
   if (!word) return { ...base, trailing: rest };
+  // "1 tbsp. + 1 tsp.": the full stop of an abbreviated unit belongs to the
+  // unit, or it hides the second measure from the readers of `trailing`.
+  const afterWord = rest.slice(word[0].length);
   return {
     ...base,
     unit: unitKey(word[0]),
     unitWritten: word[0],
-    trailing: rest.slice(word[0].length),
+    trailing: afterWord.replace(/^\.(?!\d)/, ''),
   };
 }
 

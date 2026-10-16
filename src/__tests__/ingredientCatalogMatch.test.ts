@@ -178,6 +178,27 @@ describe('matchIngredientToCatalog', () => {
     expect(matchIngredientToCatalog('garlic powder', items, NOW).suggestedName).not.toBe('Garlic');
   });
 
+  it('does not offer a compound food as the catalog row for its last word', () => {
+    const pairs: Array<[string, string]> = [
+      ['butter', 'Peanut butter'], ['milk', 'Coconut milk'], ['cream', 'Ice cream'],
+      ['pepper', 'Bell pepper'], ['soda', 'Baking soda'],
+    ];
+    for (const [line, name] of pairs) {
+      const match = matchIngredientToCatalog(line, [makeItem({ name })], NOW);
+      expect(match.kind).toBe('unknown');
+    }
+  });
+
+  it('still offers a compound filed in the same aisle as the bare word', () => {
+    const match = matchIngredientToCatalog('yogurt', [makeItem({ name: 'Greek yogurt' })], NOW);
+    expect(match.suggestedName).toBe('Greek yogurt');
+  });
+
+  it('still offers a variety whose name is not a food of its own', () => {
+    const match = matchIngredientToCatalog('onion', [makeItem({ name: 'White onion' })], NOW);
+    expect(match.suggestedName).toBe('White onion');
+  });
+
   it('will not let a prefix match cross a word boundary', () => {
     // "egg" must not claim "eggplant" — the space is the whole safety of it.
     const items = [makeItem({ name: 'Egg' })];

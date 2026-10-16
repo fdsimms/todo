@@ -95,7 +95,7 @@ Where each component can appear.
 - `src/components/BeatMark.tsx` — on TodayScreen
 - `src/components/BirthdayPicker.tsx` — on BackfillScreen, PeopleScreen, PersonDetailScreen
 - `src/components/BlankEditorSheet.tsx` — on RecipeDetailScreen
-- `src/components/BlankPickerSheet.tsx` — on MealPlanScreen
+- `src/components/BlankPickerSheet.tsx` — on MealPlanScreen, RecipeDetailScreen
 - `src/components/BlockScheduleSheet.tsx` — on ScreenTimeScreen
 - `src/components/BulkActionBar.tsx` — on CategoryDetailScreen, ProjectDetailScreen, SavedViewDetailScreen, StackDetailScreen, TagsScreen, TodayScreen
 - `src/components/CalendarChoiceSheet.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, MedicationDetailScreen, MedicationScreen, MetersScreen, PersonDetailScreen, ProjectDetailScreen, RemindersScreen, SavedViewDetailScreen, SearchScreen, StackDetailScreen, +4 more
@@ -441,6 +441,7 @@ Where each component can appear.
 - `src/screens/settings/SettingsRow.tsx` — on AutomationsScreen, ScreenTimeScreen, SettingsGroupScreen
 - `src/screens/settings/SettingsSection.tsx` — on AutomationsScreen, ScreenTimeScreen, SettingsGroupScreen
 - `src/screens/settings/SettingsSegments.tsx` — on AutomationsScreen, SettingsGroupScreen
+- `src/screens/settings/StorageSettings.tsx` — on SettingsGroupScreen
 - `src/screens/settings/SyncSettings.tsx` — on SettingsGroupScreen
 - `src/screens/settings/TasksProjectsSettings.tsx` — on SettingsGroupScreen
 - `src/screens/settings/VacationTripsSettings.tsx` — on SettingsGroupScreen

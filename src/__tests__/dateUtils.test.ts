@@ -1994,3 +1994,36 @@ describe('getCurrentDayStartMs', () => {
     expect(getCurrentDayStart().getTime()).toBe(getCurrentDayStartMs());
   });
 });
+
+describe('getNextOccurrence stores a day at local noon', () => {
+  const format_ = (d: Date) => format(d, 'yyyy-MM-dd');
+  const at = (over: Partial<Task>, reset?: string) =>
+    getNextOccurrence({ ...baseTask, dueDate: new Date(2026, 9, 15, 12).toISOString(), ...over }, reset)!;
+
+  it('hands back noon, not the reset hour, so it reads as the same day a zone west', () => {
+    for (const reset of ['00:00', '04:00']) {
+      const daily = at({ recurrenceType: 'daily', recurrenceInterval: 1 }, reset);
+      expect(daily.date.getHours()).toBe(12);
+      expect(format_(daily.date)).toBe('2026-10-16');
+      const weekly = at({ recurrenceType: 'weekly', recurrenceInterval: 1 }, reset);
+      expect(weekly.date.getHours()).toBe(12);
+      expect(format_(weekly.date)).toBe('2026-10-22');
+    }
+  });
+
+  it('puts a holiday-moved grid day at noon too', () => {
+    settings.holidaySet = 'us';
+    const next = at({ recurrenceType: 'daily', recurrenceInterval: 1, dueDate: new Date(2026, 10, 25, 12).toISOString(), recurrenceHolidays: 'move' });
+    expect(next.date.getHours()).toBe(12);
+  });
+
+  it('keeps an hourly repeat at its instant', () => {
+    const hourly = at({ recurrenceType: 'hours', recurrenceInterval: 3, recurrenceFromCompletion: true });
+    expect(hourly.date.getHours()).not.toBe(12);
+  });
+
+  it('falls back to the day start when the reset hour is after noon', () => {
+    const daily = at({ recurrenceType: 'daily', recurrenceInterval: 1 }, '15:00');
+    expect(daily.date.getHours()).toBe(15);
+  });
+});

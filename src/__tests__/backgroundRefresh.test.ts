@@ -112,6 +112,7 @@ const mockSyncState = {
   syncNow: async () => { mockCalls.push('syncNow'); return null; },
 };
 
+jest.mock('../db/database', () => ({ dbReclaimFreePages: jest.fn() }));
 jest.mock('../utils/perfReport', () => ({ savePerfRun: jest.fn() }));
 jest.mock('../store/useTaskStore', () => ({
   useTaskStore: { getState: () => mockTaskState },
@@ -248,10 +249,10 @@ describe('runBackgroundRefresh', () => {
 
   it('never deletes anything', () => {
     runBackgroundRefresh();
-    // The expiry sweep and the four purges are launch-only on purpose: nobody
+    // The expiry sweep, the four purges and the storage reclaim are launch-only on purpose: nobody
     // benefits from a row being deleted earlier, and a purge deliberately
     // bypasses the undo stack. See maintenancePasses.ts.
-    expect([...expiryPasses(), ...retentionPasses()]).toHaveLength(5);
+    expect([...expiryPasses(), ...retentionPasses()]).toHaveLength(6);
     expect(mockCalls).not.toContain('sweepExpiredTasks');
     expect(mockCalls).not.toContain('purgeOldCompletedTasks');
     expect(mockCalls).not.toContain('purgeOldMealPlanEntries');
