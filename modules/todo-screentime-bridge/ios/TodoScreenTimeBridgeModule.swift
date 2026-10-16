@@ -270,7 +270,25 @@ public class TodoScreenTimeBridgeModule: Module {
       TodoScreenTimeExceptionCatcher.runCatchingExceptions {
         let ids = ((try? JSONDecoder().decode([String].self, from: Data(groupIdsJson.utf8))) ?? [])
           .filter { ScreenTimeShared.isValidGroupID($0) }
-        written = ScreenTimeShared.writeAllowGroups(AllowGroupsShared(groupIds: ids, appBundleId: Bundle.main.bundleIdentifier))
+        // Keeps the sets last written: `setAllowSets` follows on every reconcile and
+        // replaces them, so a monitor wake in between reads a recent answer.
+        let sets = ScreenTimeShared.readAllowGroups().sets
+        written = ScreenTimeShared.writeAllowGroups(AllowGroupsShared(groupIds: ids, appBundleId: Bundle.main.bundleIdentifier, sets: sets))
+      }
+      return written
+    }
+
+    /// Which allowlist groups act as one, as a JSON array of arrays of group ids
+    /// (a supergroup of allowlists). Called right after `setAllowGroups`. An
+    /// older build lacks it, and every allowlist is then its own set.
+    Function("setAllowSets") { (setsJson: String) -> Bool in
+      var written = false
+      TodoScreenTimeExceptionCatcher.runCatchingExceptions {
+        let sets = ((try? JSONDecoder().decode([[String]].self, from: Data(setsJson.utf8))) ?? [])
+          .map { $0.filter { ScreenTimeShared.isValidGroupID($0) } }
+          .filter { !$0.isEmpty }
+        let current = ScreenTimeShared.readAllowGroups()
+        written = ScreenTimeShared.writeAllowGroups(AllowGroupsShared(groupIds: current.groupIds, appBundleId: current.appBundleId, sets: sets))
       }
       return written
     }

@@ -11568,6 +11568,30 @@ describe('bulkSetCategory', () => {
     expect(isTaskNew(moved)).toBe(false);
   });
 
+  it('keeps the old category for the repeats after a repeating task when scoped to this task only', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'r', category: 'Errands', recurrenceType: 'daily' })],
+    });
+
+    useTaskStore.getState().bulkSetCategory(['r'], 'Home', { scope: 'occurrence' });
+
+    const moved = useTaskStore.getState().tasks[0];
+    expect(moved.category).toBe('Home');
+    expect(moved.seriesDefaults?.category).toBe('Errands');
+  });
+
+  it('carries the new category onto the repeats when scoped to this and future tasks', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'r', category: 'Errands', recurrenceType: 'daily' })],
+    });
+
+    useTaskStore.getState().bulkSetCategory(['r'], 'Home', { scope: 'series' });
+
+    const moved = useTaskStore.getState().tasks[0];
+    expect(moved.category).toBe('Home');
+    expect(moved.seriesDefaults ?? null).toBeNull();
+  });
+
   it('leaves a task that was already new alone', () => {
     mockRoutinesCategory();
     useTaskStore.setState({

@@ -4,8 +4,8 @@ import { generateId } from '../utils/id';
 import {
   APP_GROUPS_SETTING, BASE_GROUP_NAME_SETTING, DEFAULT_GROUPS_META, DEFAULT_GROUP_ID, DEFAULT_GROUP_NAME,
   FALLBACK_GROUP_SETTING, GROUP_ASSIGNMENTS_SETTING, allowGroupIds, assignmentsAfterRemoval, cleanGroupName,
-  parseAppGroups, parseGroupAssignments, parseGroupsMeta, resolveAssignments, resolveGroupId,
-  withGroupAdded, withGroupMode, withGroupRemoved, withGroupRenamed, type AddGroupResult, type AppGroup,
+  expandGroupId, parseAppGroups, parseGroupAssignments, parseGroupsMeta, resolveAssignments, resolveGroupId,
+  withGroupAdded, withGroupMode, withGroupRemoved, withGroupRenamed, withMembersSet, type AddGroupResult, type AppGroup,
   type GroupAssignments, type GroupedReason, type GroupModeResult, type GroupsMeta,
 } from '../utils/appGroups';
 import {
@@ -48,6 +48,10 @@ interface AppGroupStore {
   /** Re-read from the current database, after a demo-mode swap. */
   reload: () => void;
   addGroup: (name: string) => AddGroupResult & { group?: AppGroup };
+  /** Add a supergroup combining the plain groups named. */
+  addSupergroup: (name: string, memberIds: readonly string[]) => AddGroupResult & { group?: AppGroup };
+  /** Replace which plain groups a supergroup combines. */
+  setSupergroupMembers: (id: string, memberIds: readonly string[]) => void;
   /** Rename a custom group, or the original (Default) one when `id` is its id. */
   renameGroup: (id: string, name: string) => AddGroupResult;
   /** Make a group the one a deleted or missing group falls back to. An allowlist group can't be. */
@@ -100,6 +104,21 @@ export const useAppGroupStore = create<AppGroupStore>((set, get) => ({
     persistGroups(added.groups);
     set({ groups: added.groups });
     return { ...added, group };
+  },
+
+  addSupergroup(name, memberIds) {
+    const group: AppGroup = { id: generateId(), name: cleanGroupName(name, 'New supergroup'), members: [...memberIds] };
+    const added = withGroupAdded(get().groups, group, get().meta);
+    if (!added.ok) return added;
+    persistGroups(added.groups);
+    set({ groups: added.groups });
+    return { ...added, group: added.groups.find(g => g.id === group.id) };
+  },
+
+  setSupergroupMembers(id, memberIds) {
+    const groups = withMembersSet(get().groups, id, memberIds, get().meta);
+    persistGroups(groups);
+    set({ groups });
   },
 
   renameGroup(id, name) {
@@ -231,8 +250,14 @@ export function allowGroupsNow(): string[] {
   return allowGroupIds(groups, meta);
 }
 
-/** A stored group id as the shield will use it. */
+/** A stored group id as the shield will use it, with a supergroup kept whole. */
 export function resolveGroupNow(groupId: string): string {
   const { groups, meta } = useAppGroupStore.getState();
   return resolveGroupId(groups, groupId, meta);
+}
+
+/** The plain groups a stored group id blocks: one for a group, its members for a supergroup. */
+export function expandGroupNow(groupId: string): string[] {
+  const { groups, meta } = useAppGroupStore.getState();
+  return expandGroupId(groups, groupId, meta);
 }

@@ -322,7 +322,7 @@ export function SavedViewDetailScreen() {
             completableCount={completableCount}
             onDelete={handleBulkDelete}
             onSetWhen={(date, segs) => confirmBulkSetWhen(Array.from(selectedIds), date, segs, exitSelection)}
-            onSetCategory={cat => { bulkSetCategoryOffering(Array.from(selectedIds), cat); exitSelection(); }}
+            onSetCategory={cat => bulkSetCategoryOffering(Array.from(selectedIds), cat, exitSelection)}
             onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
             onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
             onSetDifficulty={rewardsEnabled ? d => { bulkSetDifficulty(Array.from(selectedIds), d); exitSelection(); } : undefined}

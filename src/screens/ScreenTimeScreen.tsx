@@ -12,7 +12,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useShieldReasons } from '../hooks/useShieldReasons';
 import { usePullToSearch } from '../hooks/usePullToSearch';
 import { screenTimeBridge } from '../utils/screenTimeBridge';
-import { allGroups, DEFAULT_GROUP_ID } from '../utils/appGroups';
+import { allGroups, DEFAULT_GROUP_ID, groupName } from '../utils/appGroups';
 import { groupEditLocked } from '../utils/blockEditLock';
 import { reconcileAppShield } from '../utils/appShieldReconcile';
 import { useAppGroupStore } from '../store/useAppGroupStore';
@@ -103,6 +103,7 @@ export function ScreenTimeScreen() {
   // picked and only SwiftUI can render them (see modules/todo-screentime-bridge).
   // One count per group, since each group has its own selection.
   const customGroups = useAppGroupStore(s => s.groups);
+  const groupsMeta = useAppGroupStore(s => s.meta);
   const [counts, setCounts] = useState<Record<string, GroupCount>>({});
   const refreshSelection = useCallback(() => {
     const bridge = screenTimeBridge();
@@ -174,7 +175,9 @@ export function ScreenTimeScreen() {
     const when = new Date(iso);
     return Number.isNaN(when.getTime()) ? null : format(when, clockTimeToken(use24HourTime));
   }, [use24HourTime]);
-  const lines = reasons.flatMap(r => shieldReasonLines(r, formatTime));
+  // Only named once there is more than one group to tell apart.
+  const groupLabel = customGroups.length > 0 ? (id: string) => groupName(customGroups, id, groupsMeta) : undefined;
+  const lines = reasons.flatMap(r => shieldReasonLines(r, formatTime, groupLabel));
 
   // The way out when something is blocking: a key tag. Scanning in the app
   // reads a hardware-id tag; a link tag is read by iOS itself (hold it to the top
