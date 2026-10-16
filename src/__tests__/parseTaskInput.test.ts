@@ -1,4 +1,4 @@
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, contactForMention, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseWeatherWaitInput, parseMeterInput, parseRainSkipInput, parseTaskInputAheadOfRainSkip, parseSunWindowInput, parseProjectInput, parseWaitingOnInput, parseSubtasksInput, parseAvoidInput, parseAvoidEnd, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseDifficultyInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, getEditorMentionSuggestions, applyMentionOverrides, parseFromCompletionSuffix, scheduleClockInstant, type ParsedSchedule } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, contactForMention, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseWeatherWaitInput, parseMeterInput, parseRainSkipInput, parseTaskInputAheadOfRainSkip, parseSunWindowInput, parseProjectInput, parseWaitingOnInput, parseSubtasksInput, parseAvoidInput, parseAvoidEnd, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseDifficultyInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, getEditorMentionSuggestions, applyMentionOverrides, parseFromCompletionSuffix, scheduleClockInstant, scheduleHint, type ParsedSchedule } from '../utils/parseTaskInput';
 
 // Tuesday, June 10 2025, 10:00 AM — same anchor as parseNaturalDate.test.ts
 const NOW = new Date(2025, 5, 10, 10, 0, 0);
@@ -713,6 +713,15 @@ describe('parseTaskInput — recurrence', () => {
 
   it('does not imply a repeat from a bare "for N times" with no frequency word', () => {
     expect(parseTaskInput('call mom for 5 times', NOW)).toBeNull();
+  });
+});
+
+describe('scheduleHint', () => {
+  it('says "after done" only for a repeating rule counted from completion', () => {
+    expect(scheduleHint({ recurrenceType: 'weekly', recurrenceFromCompletion: true })).toBe('after done');
+    expect(scheduleHint({ recurrenceType: 'weekly', recurrenceFromCompletion: false })).toBeNull();
+    expect(scheduleHint({ recurrenceType: 'weekly' })).toBeNull();
+    expect(scheduleHint({ recurrenceType: 'none', recurrenceFromCompletion: true })).toBeNull();
   });
 });
 

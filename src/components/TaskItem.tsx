@@ -145,7 +145,7 @@ import { bountyCoinsFor, formatCoins, isBountyLive } from '../utils/rewards';
 import { resolvePerson, peopleOn, groupMentionTokens, contactDetailsFor, peoplePageLinkFor } from '../utils/peopleRegistry';
 import { mergeRanges } from '../utils/ranges';
 import { displayNameOf, usePersonStore } from '../store/usePersonStore';
-import { matchPersonMentions, parseTaskInput, parseCategoryAndTagsInput, describeSchedule, type ParsedCategoryAndTags } from '../utils/parseTaskInput';
+import { matchPersonMentions, parseTaskInput, parseCategoryAndTagsInput, describeSchedule, scheduleHint, type ParsedCategoryAndTags } from '../utils/parseTaskInput';
 import { confirmLineSuggestion, linePendingFields, NO_LINE_PENDING } from '../utils/listLineParse';
 import { categoryLabel } from '../utils/categoryLabel';
 import { TitleSuggestionBanner } from './TitleSuggestionBanner';
@@ -3286,6 +3286,7 @@ const TaskItemRow = React.memo(function TaskItem({
                 ? filedOfferLabel(activeTitleOffer.parsed, useCategoryStore.getState().categories)
                 : describeSchedule(activeTitleOffer.parsed.schedule, getLogicalNow(useSettingsStore.getState().dayResetTime))
             }
+            hint={activeTitleOffer.kind === 'filed' ? null : scheduleHint(activeTitleOffer.parsed.schedule)}
             style={{ marginTop: spacing.xsm }}
             onApply={applyTitleOffer}
             onDismiss={dismissTitleOffer}
