@@ -87,8 +87,8 @@ export interface SymptomAction {
   explicit: boolean;
   /** The symptom, spelled as the log already spells it. */
   symptom: string;
-  /** What a tap records: the severity the line stated, else Mild. */
-  severity: SymptomSeverity;
+  /** The severity the line stated, or null when it didn't: a pill has to be tapped. */
+  severity: SymptomSeverity | null;
   /** When it happened, if the line said; null is now. */
   at: Date | null;
 }
@@ -274,10 +274,10 @@ function knownSymptom(words: string, symptoms: readonly string[]): string | null
  * A known symptom, offered as a write: "lightheaded" (or the start of it),
  * "log headache", "I got lightheaded at 3:40pm", "severe headache 20 min ago".
  * One tap records an entry with that symptom and no mood level, which the log
- * allows ("my knee hurts" is a complete entry). Severity is Mild unless the
- * line states one, the floor the sheet starts a picked symptom at, so a
- * one-tap entry never overstates one. Mood scores skip an entry with no mood
- * rather than reading it as a middling day (`docs/arch/mood-log.md`).
+ * allows ("my knee hurts" is a complete entry). Severity is never assumed:
+ * the row isn't runnable until the line states one or a severity pill is
+ * tapped, so an entry never records a severity nobody chose. Mood scores
+ * skip an entry with no mood rather than reading it as a middling day (`docs/arch/mood-log.md`).
  *
  * Only a symptom the log already has (`symptomKey`): a new name belongs in
  * the sheet, where the vocabulary is built on purpose. Typed with no lead
@@ -293,7 +293,7 @@ function symptomActions(query: string, symptoms: readonly string[]): SymptomActi
     key: `symptom:${symptomKey(name)}`,
     explicit: phrase.verb && exact,
     symptom: name,
-    severity: phrase.severity ?? 1,
+    severity: phrase.severity,
     at: phrase.at,
   }));
 }
@@ -350,6 +350,7 @@ function groceryAction(
 
 /** Whether a row can be run at all: one saying milk is already on the list can't. */
 export function isRunnable(action: SearchAction): boolean {
+  if (action.kind === 'symptom') return action.severity !== null;
   return action.kind !== 'grocery' || action.onList === null;
 }
 

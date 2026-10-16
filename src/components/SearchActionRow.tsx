@@ -30,8 +30,9 @@ import type { SearchActionReceipt } from '../utils/searchActionRun';
  * the row is described and run as that many glasses through `describe`.
  *
  * A symptom row carries its severity pills on a line of their own under the
- * title, so the name keeps the whole row: tapping a pill logs at that severity
- * and tapping the title logs at the one marked (Mild unless the line said).
+ * title, so the name keeps the whole row: tapping a pill logs at that severity.
+ * No pill is marked unless the line stated one, and the title does nothing
+ * until one is, so a severity is always a choice.
  */
 export function SearchActionRow({ action, description, describe, receipt, layout, onRun, onUndo }: {
   action: SearchAction;
@@ -107,13 +108,6 @@ export function SearchActionRow({ action, description, describe, receipt, layout
   );
 
   const label = [description.title, ...description.meta].join(', ');
-  if (!isRunnable(action)) {
-    return (
-      <View style={[styles.row, list && styles.listRow]} accessible accessibilityLabel={label}>
-        {body}
-      </View>
-    );
-  }
   const button = (rowStyle: StyleProp<ViewStyle>) => (
     <TouchableOpacity
       style={rowStyle}
@@ -126,6 +120,37 @@ export function SearchActionRow({ action, description, describe, receipt, layout
       {body}
     </TouchableOpacity>
   );
+  if (action.kind === 'symptom') {
+    return (
+      <View style={list ? styles.listShell : null}>
+        {isRunnable(action) ? (
+          button([styles.row, list && styles.listShellRow])
+        ) : (
+          <View style={[styles.row, list && styles.listShellRow]} accessible accessibilityLabel={label}>
+            {body}
+          </View>
+        )}
+        <View style={[styles.severityRow, list ? styles.listSeverityRow : styles.cardSeverityRow]}>
+          {SYMPTOM_SEVERITIES.map(({ value, label: severity }) => (
+            <InlineAction
+              key={value}
+              label={severity}
+              variant={value === action.severity ? 'accent' : 'neutral'}
+              onPress={() => onRun({ ...action, severity: value })}
+              accessibilityLabel={`Log ${action.symptom} as ${severity.toLowerCase()}`}
+            />
+          ))}
+        </View>
+      </View>
+    );
+  }
+  if (!isRunnable(action)) {
+    return (
+      <View style={[styles.row, list && styles.listRow]} accessible accessibilityLabel={label}>
+        {body}
+      </View>
+    );
+  }
   if (action.kind === 'water') {
     const step = (delta: number) => {
       haptics.tap();
@@ -158,23 +183,7 @@ export function SearchActionRow({ action, description, describe, receipt, layout
       </View>
     );
   }
-  if (action.kind !== 'symptom') return button([styles.row, list && styles.listRow]);
-  return (
-    <View style={list ? styles.listShell : null}>
-      {button([styles.row, list && styles.listShellRow])}
-      <View style={[styles.severityRow, list ? styles.listSeverityRow : styles.cardSeverityRow]}>
-        {SYMPTOM_SEVERITIES.map(({ value, label: severity }) => (
-          <InlineAction
-            key={value}
-            label={severity}
-            variant={value === action.severity ? 'accent' : 'neutral'}
-            onPress={() => onRun({ ...action, severity: value })}
-            accessibilityLabel={`Log ${action.symptom} as ${severity.toLowerCase()}`}
-          />
-        ))}
-      </View>
-    </View>
-  );
+  return button([styles.row, list && styles.listRow]);
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({

@@ -218,18 +218,19 @@ describe('searchActions: symptoms', () => {
     expect(onSubmit?.kind).toBe('mood');
   });
 
-  it('runs on Return after "log" or "record", spelled the way the log has it', () => {
+  it('runs on Return after "log" or "record" only once a severity is stated, spelled the way the log has it', () => {
     const { actions, onSubmit } = searchActions('log my headache', mood);
     expect(actions).toHaveLength(1);
-    expect(onSubmit).toMatchObject({ kind: 'symptom', symptom: 'Headache', explicit: true });
-    expect(searchActions('record TIRED', mood).onSubmit).toMatchObject({ symptom: 'Tired' });
+    expect(onSubmit).toBeNull();
+    expect(actions[0]).toMatchObject({ kind: 'symptom', symptom: 'Headache', explicit: true, severity: null });
+    expect(searchActions('record TIRED moderate', mood).onSubmit).toMatchObject({ symptom: 'Tired', severity: 2 });
   });
 
   it('offers the write as you start typing a symptom, without a verb', () => {
     const sources: SearchActionSources = { mood: { symptoms: ['Lightheaded', 'Headache'] } };
     const row = searchActions('light', sources);
     expect(row.actions).toHaveLength(1);
-    expect(row.actions[0]).toMatchObject({ kind: 'symptom', symptom: 'Lightheaded', severity: 1, at: null, explicit: false });
+    expect(row.actions[0]).toMatchObject({ kind: 'symptom', symptom: 'Lightheaded', severity: null, at: null, explicit: false });
     // Two letters is too short to mean it, and Return never runs a bare name.
     expect(searchActions('li', sources).actions).toEqual([]);
     expect(row.onSubmit).toBeNull();
@@ -237,7 +238,7 @@ describe('searchActions: symptoms', () => {
 
   it('reads "I got ..." sentences and a stated severity', () => {
     const sources: SearchActionSources = { mood: { symptoms: ['Lightheaded'] } };
-    expect(searchActions('I got lightheaded', sources).actions[0]).toMatchObject({ symptom: 'Lightheaded', severity: 1 });
+    expect(searchActions('I got lightheaded', sources).actions[0]).toMatchObject({ symptom: 'Lightheaded', severity: null });
     expect(searchActions("I'm really lightheaded", sources).actions[0]).toMatchObject({ symptom: 'Lightheaded' });
     expect(searchActions('severe lightheaded', sources).actions[0]).toMatchObject({ severity: 3 });
     expect(searchActions('log lightheaded, moderate', sources).onSubmit).toMatchObject({ severity: 2, explicit: true });
