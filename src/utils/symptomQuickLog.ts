@@ -14,7 +14,7 @@ import { symptomKey } from './moodLog';
 export interface SymptomPhrase {
   /** The words left once the lead, the severity and the time are taken off. */
   words: string;
-  /** Stated severity, or null for "not said" (the row then logs Mild). */
+  /** Stated severity, or null for "not said" (the row then waits for a severity to be tapped). */
   severity: SymptomSeverity | null;
   /** The moment stated, in the past, or null for now. */
   at: Date | null;

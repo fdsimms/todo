@@ -115,6 +115,8 @@ function runGrocery(action: GroceryAction): SearchActionReceipt | null {
 }
 
 function runSymptom(action: SymptomAction): SearchActionReceipt | null {
+  // A row with no severity chosen isn't runnable (`isRunnable`); this is the backstop for Return.
+  if (action.severity === null) return null;
   // Through `addLog` like the sheet's Save, so the day key is stamped under
   // `dayResetTime`. No mood level: this entry says only that the symptom happened.
   const log = useMoodStore.getState().addLog(null, [{ name: action.symptom, severity: action.severity }], null, action.at ?? undefined);

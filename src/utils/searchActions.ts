@@ -87,8 +87,8 @@ export interface SymptomAction {
   explicit: boolean;
   /** The symptom, spelled as the log already spells it. */
   symptom: string;
-  /** What a tap records: the severity the line stated, else Mild. */
-  severity: SymptomSeverity;
+  /** The severity the line stated, or null when it didn't: a pill has to be tapped. */
+  severity: SymptomSeverity | null;
   /** When it happened, if the line said; null is now. */
   at: Date | null;
 }
@@ -159,6 +159,45 @@ const DOSE_VERB_RE = /^(?:take|took|taking|log|record)\b\s*/i;
  * the last dose recorded for that medication is repeated, which is what the
  * Medications screen's quick button does too.
  */
+// A query changes on every keystroke and the logs almost never do, so what is
+// read off them is kept per logs array (the store replaces it on any write).
+// Rebuilding the vocabulary and sorting the whole log once per matching
+// medication, for each keystroke, is what made dose rows slow to appear.
+interface DoseIndex {
+  /** The most recent log of each medication, by `medicationKey`. */
+  latest: Map<string, MedicationLog>;
+  vocabulary?: { archived: readonly string[]; registered: readonly string[]; names: string[] };
+}
+const doseIndexes = new WeakMap<readonly MedicationLog[], DoseIndex>();
+
+function doseIndexFor(logs: readonly MedicationLog[]): DoseIndex {
+  let index = doseIndexes.get(logs);
+  if (!index) {
+    const latest = new Map<string, MedicationLog>();
+    for (const log of logs) {
+      const key = medicationKey(log.name);
+      const seen = latest.get(key);
+      if (!seen || log.takenAt.localeCompare(seen.takenAt) > 0) latest.set(key, log);
+    }
+    index = { latest };
+    doseIndexes.set(logs, index);
+  }
+  return index;
+}
+
+function cachedMedicationVocabulary(
+  logs: readonly MedicationLog[],
+  archived: readonly string[],
+  registered: readonly string[],
+): string[] {
+  const index = doseIndexFor(logs);
+  const held = index.vocabulary;
+  if (held && held.archived === archived && held.registered === registered) return held.names;
+  const names = medicationVocabulary(logs, archived, registered);
+  index.vocabulary = { archived, registered, names };
+  return names;
+}
+
 function doseActions(
   query: string,
   logs: readonly MedicationLog[],
@@ -172,7 +211,7 @@ function doseActions(
   if (!explicit && key.length < BARE_NAME_MIN_LENGTH) return [];
 
   const tiers: string[][] = [[], [], []];
-  for (const name of medicationVocabulary(logs, archived, registered)) {
+  for (const name of cachedMedicationVocabulary(logs, archived, registered)) {
     const nameKey = medicationKey(name);
     if (nameKey === key) tiers[0].push(name);
     else if (nameKey.startsWith(key)) tiers[1].push(name);
@@ -180,7 +219,11 @@ function doseActions(
   }
 
   return tiers.flat().map((name): DoseAction => {
-    const last = repeatDose(logs, name);
+    // `repeatDose`'s answer for a medication with no usual amount, read from the index.
+    const latest = doseIndexFor(logs).latest.get(medicationKey(name));
+    const last = latest
+      ? { name: latest.name.trim(), amount: latest.amount, unit: latest.unit, asNeeded: true as const }
+      : repeatDose(logs, name);
     return {
       kind: 'dose',
       key: `dose:${medicationKey(name)}`,
@@ -274,10 +317,10 @@ function knownSymptom(words: string, symptoms: readonly string[]): string | null
  * A known symptom, offered as a write: "lightheaded" (or the start of it),
  * "log headache", "I got lightheaded at 3:40pm", "severe headache 20 min ago".
  * One tap records an entry with that symptom and no mood level, which the log
- * allows ("my knee hurts" is a complete entry). Severity is Mild unless the
- * line states one, the floor the sheet starts a picked symptom at, so a
- * one-tap entry never overstates one. Mood scores skip an entry with no mood
- * rather than reading it as a middling day (`docs/arch/mood-log.md`).
+ * allows ("my knee hurts" is a complete entry). Severity is never assumed:
+ * the row isn't runnable until the line states one or a severity pill is
+ * tapped, so an entry never records a severity nobody chose. Mood scores
+ * skip an entry with no mood rather than reading it as a middling day (`docs/arch/mood-log.md`).
  *
  * Only a symptom the log already has (`symptomKey`): a new name belongs in
  * the sheet, where the vocabulary is built on purpose. Typed with no lead
@@ -293,7 +336,7 @@ function symptomActions(query: string, symptoms: readonly string[]): SymptomActi
     key: `symptom:${symptomKey(name)}`,
     explicit: phrase.verb && exact,
     symptom: name,
-    severity: phrase.severity ?? 1,
+    severity: phrase.severity,
     at: phrase.at,
   }));
 }
@@ -350,6 +393,7 @@ function groceryAction(
 
 /** Whether a row can be run at all: one saying milk is already on the list can't. */
 export function isRunnable(action: SearchAction): boolean {
+  if (action.kind === 'symptom') return action.severity !== null;
   return action.kind !== 'grocery' || action.onList === null;
 }
 

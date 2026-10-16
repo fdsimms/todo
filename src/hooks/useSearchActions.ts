@@ -7,6 +7,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useNavMenuOptions } from './useNavMenuOptions';
 import { menuDestinations } from '../utils/navHubs';
 import { symptomVocabulary } from '../utils/moodLog';
+import type { MoodLog } from '../types';
 import { listNameFor } from '../utils/groceryLists';
 import {
   describeSearchAction,
@@ -23,6 +24,19 @@ export interface SearchActionsView extends SearchActionsOutcome {
   descriptions: ReadonlyMap<string, ActionDescription>;
   /** Describe an action other than the ones offered, e.g. a water row stepped to 3 glasses. */
   describe: (action: SearchAction) => ActionDescription;
+}
+
+// The vocabulary reads every symptom of every entry ever logged, and a query
+// changes it on each keystroke while the logs rarely change, so it is kept per
+// logs array (the store replaces the array on any write).
+const vocabularyCache = new WeakMap<readonly MoodLog[], string[]>();
+function cachedSymptomVocabulary(logs: readonly MoodLog[]): string[] {
+  let names = vocabularyCache.get(logs);
+  if (!names) {
+    names = symptomVocabulary(logs);
+    vocabularyCache.set(logs, names);
+  }
+  return names;
 }
 
 const NONE: SearchActionsView = {
@@ -61,7 +75,7 @@ export function useSearchActions(query: string, active: boolean, limit?: number)
     const sources: SearchActionSources = {
       medications: routes.has('Medications') ? { logs: medication.logs, archived: medication.archived, registered: medication.registered } : null,
       water: routes.has('FoodLog') ? { unit: settings.waterUnit } : null,
-      mood: routes.has('Mood') ? { symptoms: symptomVocabulary(useMoodStore.getState().logs) } : null,
+      mood: routes.has('Mood') ? { symptoms: cachedSymptomVocabulary(useMoodStore.getState().logs) } : null,
       // The list the grocery screen last had open: the one a person reaching
       // for "add milk" is shopping into, named explicitly so the add and its
       // undo both act on it.
