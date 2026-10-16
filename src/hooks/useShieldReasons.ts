@@ -81,7 +81,7 @@ export function useShieldReasons(): ShieldReasonEntry[] {
       penaltyEnabled,
       penaltyReason,
       gateEnabled,
-      manual: manualBlock ? { ...manualBlock, groupIds: resolvedGroups(manualBlock.groupIds, expandGroupNow).groupIds } : null,
+      manual: manualBlock ? { ...manualBlock, groupIds: resolvedGroups(manualBlock.groupIds, resolveGroupNow).groupIds } : null,
       keyLocked: locked && canLock(keys),
       gateTitles: gateRows.map(g => g.title),
       gateGroupIds: gateRows.map(g => (g.own ? resolveGroupNow(g.own) : settingGroup)),

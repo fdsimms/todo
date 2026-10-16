@@ -122,7 +122,7 @@ function buildShieldState(now: Date): AppShieldState {
     penaltyReason: settings.penaltyShieldReason,
     gateEnabled: settings.gateShieldEnabled,
     // A removed group is Default, as for every other reason.
-    manual: manualBlock ? { ...manualBlock, groupIds: resolvedGroups(manualBlock.groupIds, expandGroupNow).groupIds } : null,
+    manual: manualBlock ? { ...manualBlock, groupIds: resolvedGroups(manualBlock.groupIds, resolveGroupNow).groupIds } : null,
     keyLocked: keyLockedNow(),
     groups: resolvedAssignments(),
     schedules,

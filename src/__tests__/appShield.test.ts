@@ -622,8 +622,8 @@ describe('app groups and schedules', () => {
     it('lists one gate reason per group, each naming only its own tasks', () => {
       const reasons = shieldReasons(state({ ...gated, gateGroupIds: ['social', 'games', 'social'] }));
       expect(reasons).toEqual([
-        { reason: 'gate', titles: ['Walk', 'Stretch'], groupIds: ['social'] },
-        { reason: 'gate', titles: ['Read'], groupIds: ['games'] },
+        { reason: 'gate', titles: ['Walk', 'Stretch'], groupIds: ['social'], namedGroupIds: ['social'] },
+        { reason: 'gate', titles: ['Read'], groupIds: ['games'], namedGroupIds: ['games'] },
       ]);
     });
 
@@ -657,7 +657,7 @@ describe('a block the person started by hand', () => {
   it('names its group and its end, and reads right after a focus session', () => {
     const reasons = shieldReasons(state({ session: session(), focusEnabled: true, manual, penaltyUntil: LATER, penaltyEnabled: true }));
     expect(reasons.map(r => r.reason)).toEqual(['focus', 'manual', 'penalty']);
-    expect(reasons[1]).toEqual({ reason: 'manual', until: LATER, groupIds: ['games'] });
+    expect(reasons[1]).toEqual({ reason: 'manual', until: LATER, groupIds: ['games'], namedGroupIds: ['games'] });
   });
 
   it('applies its own group and arms its own window, not the penalty\'s', () => {
@@ -720,7 +720,7 @@ describe('a block the person started by hand', () => {
 
     it('is named as having no end', () => {
       const [reason] = shieldReasons(state({ manual: open }));
-      expect(reason).toEqual({ reason: 'manual', until: null, groupIds: ['games'] });
+      expect(reason).toEqual({ reason: 'manual', until: null, groupIds: ['games'], namedGroupIds: ['games'] });
     });
   });
 });
@@ -769,5 +769,14 @@ describe('a supergroup', () => {
     }));
     expect(written().pendingGateGroupIds).toEqual(['social', 'games']);
     expect(mockBridge.setBlockSchedules).toHaveBeenCalledWith([expect.objectContaining({ groupId: 'social', groupIds: ['social', 'games'] })]);
+  });
+
+  it('keeps the name it was given beside the groups it expands to, for the status card', () => {
+    const reasons = shieldReasons(state({
+      session: session(), focusEnabled: true, groups: groups({ focus: 'mix' }),
+      manual: { untilIso: LATER, groupIds: ['mix', 'music'] }, resolveGroup,
+    }));
+    expect(reasons[0]).toMatchObject({ reason: 'focus', groupIds: ['social', 'games'], namedGroupIds: ['mix'] });
+    expect(reasons[1]).toMatchObject({ reason: 'manual', groupIds: ['social', 'games', 'music'], namedGroupIds: ['mix', 'music'] });
   });
 });

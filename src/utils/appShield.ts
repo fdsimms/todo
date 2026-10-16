@@ -125,8 +125,15 @@ export interface ShieldReasonEntry {
   cause?: string | null;
   /** The schedule's name. Set for `schedule` only; its window end is `until`. */
   name?: string;
-  /** The app groups this reason blocks: one for most reasons, several for a schedule or a manual block. */
+  /** The app groups this reason blocks: one for most reasons, several for a schedule or a manual block. Supergroups already expanded. */
   groupIds: string[];
+  /**
+   * The groups as the person named them, before a supergroup is expanded, so
+   * the status card can say "Distractions" rather than the groups inside it.
+   * Ids as stored: a missing group reads as the fallback when it is named
+   * (`groupName`), the same rule the shield applies.
+   */
+  namedGroupIds?: string[];
 }
 
 /**
@@ -145,11 +152,14 @@ export interface ShieldReasonEntry {
 export function shieldReasons(state: AppShieldState): ShieldReasonEntry[] {
   const reasons: ShieldReasonEntry[] = [];
   const held = (ids: readonly string[]) => resolvedGroups(ids, state.resolveGroup).groupIds;
-  if (shieldWanted(state.session, state.focusEnabled)) reasons.push({ reason: 'focus', groupIds: held([state.groups.focus]) });
+  const named = (ids: readonly string[]) => [...new Set(ids)];
+  if (shieldWanted(state.session, state.focusEnabled)) reasons.push({ reason: 'focus', groupIds: held([state.groups.focus]), namedGroupIds: named([state.groups.focus]) });
   // The person's own timed block reads right after the session: it is the
   // other thing they chose, and it names nothing but the clock.
   if (state.manual && manualBlockWanted(state.manual, state.now)) {
-    reasons.push({ reason: 'manual', until: state.manual.untilIso, groupIds: held(state.manual.groupIds) });
+    reasons.push({
+      reason: 'manual', until: state.manual.untilIso, groupIds: held(state.manual.groupIds), namedGroupIds: named(state.manual.groupIds),
+    });
   }
   if (gateShieldWanted(state.gateTitles.length, state.gateEnabled)) {
     // One entry per group, so a gate for Social and a gate for Games are two
@@ -160,11 +170,12 @@ export function shieldReasons(state: AppShieldState): ShieldReasonEntry[] {
       const groupId = state.gateGroupIds?.[i] ?? state.groups.gate;
       byGroup.set(groupId, [...(byGroup.get(groupId) ?? []), title]);
     });
-    for (const [groupId, titles] of byGroup) reasons.push({ reason: 'gate', titles, groupIds: held([groupId]) });
+    for (const [groupId, titles] of byGroup) reasons.push({ reason: 'gate', titles, groupIds: held([groupId]), namedGroupIds: named([groupId]) });
   }
   if (penaltyShieldWanted(state.penaltyUntil, state.penaltyEnabled, state.now)) {
     reasons.push({
       reason: 'penalty', until: state.penaltyUntil, cause: state.penaltyReason, groupIds: held([state.groups.penalty]),
+      namedGroupIds: named([state.groups.penalty]),
     });
   }
   // A schedule is a window that opens and closes on the clock, so it reads
@@ -176,9 +187,10 @@ export function shieldReasons(state: AppShieldState): ShieldReasonEntry[] {
       name: schedule.name,
       until: currentWindowEnd(schedule, state.now)?.toISOString() ?? null,
       groupIds: resolvedGroups(schedule.groupIds, state.resolveGroup).groupIds,
+      namedGroupIds: named(schedule.groupIds),
     });
   }
-  if (state.keyLocked) reasons.push({ reason: 'key', groupIds: held([state.groups.key]) });
+  if (state.keyLocked) reasons.push({ reason: 'key', groupIds: held([state.groups.key]), namedGroupIds: named([state.groups.key]) });
   return reasons;
 }
 
