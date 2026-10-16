@@ -991,8 +991,15 @@ const TaskItemRow = React.memo(function TaskItem({
   // is what makes their gaps close together. A plain boolean, so a row only
   // re-renders when its *own* completion is the one being called in.
   const collapseSignal = useTaskStore(s => s.completionCollapseIds.includes(task.id));
+  const heldForCompletion = useTaskStore(s => s.completionHoldIds.includes(task.id));
+  // A pinned task has two live rows, and only the one that was tapped plays the
+  // tick and waits (awaitingCollapse). Its twin never did, so it sat there for
+  // the rest of the hold and left a beat after the first, staggering the two
+  // exits. Either row of a pinned task takes the signal while held, so both
+  // collapse in the same frame whichever one was tapped.
+  const collapseAsTwin = heldForCompletion && task.pinned;
   useEffect(() => {
-    if (!collapseSignal || !awaitingCollapse) return;
+    if (!collapseSignal || !(awaitingCollapse || collapseAsTwin) || collapseStartedRef.current) return;
     setAwaitingCollapse(false);
     collapseStartedRef.current = true;
     collapseFadeOnly.value = reduceMotion ? 1 : 0;
@@ -1000,7 +1007,7 @@ const TaskItemRow = React.memo(function TaskItem({
       duration: animation.duration.normal,
       easing: Easing.inOut(Easing.cubic),
     });
-  }, [collapseSignal, awaitingCollapse]);
+  }, [collapseSignal, awaitingCollapse, collapseAsTwin]);
 
   // The completion can be taken back while the row is still here — shake-to-undo
   // reaches it for the whole hold, and a Logbook/bulk uncomplete can land inside
@@ -1012,7 +1019,6 @@ const TaskItemRow = React.memo(function TaskItem({
   // for a *held* completion too (withHeldCompletions masks it), and on the
   // transition rather than the bare value, so the effect can't fire on the frame
   // between setAwaitingCollapse and the hold this row is about to join.
-  const heldForCompletion = useTaskStore(s => s.completionHoldIds.includes(task.id));
   const wasHeldRef = useRef(false);
   useEffect(() => {
     const leftHold = wasHeldRef.current && !heldForCompletion;
