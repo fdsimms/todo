@@ -12,6 +12,7 @@ const mockBridge = {
   clearShield: jest.fn(() => true),
   setShieldOptions: jest.fn(() => true),
   setAllowGroups: jest.fn(() => true),
+  setAllowSets: jest.fn(() => true),
   setShieldState: jest.fn(() => true),
   setBlockSchedules: jest.fn(() => true),
   schedulePenaltyExpiry: jest.fn(() => true),
@@ -28,7 +29,7 @@ jest.mock('../utils/screenTimeBridge', () => ({
 }));
 
 import type { FocusSession, FocusStep } from '../types';
-import { appShieldWanted, shieldReasons, syncAppShield, type AppShieldState } from '../utils/appShield';
+import { appShieldWanted, shieldReasons, syncAppShield, shieldAllowSets, type AppShieldState } from '../utils/appShield';
 
 const NOW = new Date('2026-08-22T09:00:00.000Z');
 const LATER = new Date('2026-08-22T10:00:00.000Z').toISOString();
@@ -825,5 +826,43 @@ describe('a supergroup', () => {
     }));
     expect(reasons[0]).toMatchObject({ reason: 'focus', groupIds: ['social', 'games'], namedGroupIds: ['mix'] });
     expect(reasons[1]).toMatchObject({ reason: 'manual', groupIds: ['social', 'games', 'music'], namedGroupIds: ['mix', 'music'] });
+  });
+});
+
+describe('allowlist supergroups', () => {
+  // `either` is a supergroup of the allowlists work and focus; `mix` of block groups social and games.
+  const resolveGroup = (id: string) => (id === 'either' ? ['work', 'focus'] : id === 'mix' ? ['social', 'games'] : id);
+  const groups = (over: Partial<AppShieldState['groups']>) => ({ focus: 'default', gate: 'default', penalty: 'default', key: 'default', ...over });
+  const schedule = (groupIds: string[]) => ({
+    id: 's', name: 'Work', groupIds, days: [0, 1, 2, 3, 4, 5, 6], startMinutes: 0, endMinutes: 1439, enabled: true, pausedUntil: null,
+  });
+  const allow = ['work', 'focus', 'music'];
+
+  it('is one set for a supergroup of allowlists, so either group leaves its apps open', () => {
+    expect(shieldAllowSets(state({ keyLocked: true, groups: groups({ key: 'either' }), resolveGroup }), allow)).toEqual([['work', 'focus']]);
+  });
+
+  it('is a set per allowlist named on its own, a set per reason, and each set once', () => {
+    const sets = shieldAllowSets(state({
+      keyLocked: true, groups: groups({ key: 'either' }),
+      schedules: [schedule(['work', 'music']), schedule(['either'])], resolveGroup,
+    }), allow);
+    // Reasons read in shield order (schedules before the key lock), each set once.
+    expect(sets).toEqual([['work'], ['music'], ['work', 'focus']]);
+  });
+
+  it('makes no set for block groups, or for a supergroup of them', () => {
+    expect(shieldAllowSets(state({ keyLocked: true, groups: groups({ key: 'mix' }), resolveGroup }), allow)).toEqual([]);
+  });
+
+  it('writes the sets after the groups, only when the groups were written', () => {
+    syncAppShield(state({ keyLocked: true, groups: groups({ key: 'either' }), resolveGroup, allowGroupIds: allow }));
+    expect(mockBridge.setAllowSets).toHaveBeenLastCalledWith([['work', 'focus']]);
+    expect(mockBridge.setAllowSets.mock.invocationCallOrder[0]).toBeGreaterThan(mockBridge.setAllowGroups.mock.invocationCallOrder[0]);
+    expect(mockBridge.applyShield).toHaveBeenCalledWith(['work', 'focus']);
+    mockBridge.setAllowSets.mockClear();
+    mockBridge.setAllowGroups.mockReturnValueOnce(false);
+    syncAppShield(state({ keyLocked: true, groups: groups({ key: 'either' }), resolveGroup, allowGroupIds: allow }));
+    expect(mockBridge.setAllowSets).not.toHaveBeenCalled();
   });
 });

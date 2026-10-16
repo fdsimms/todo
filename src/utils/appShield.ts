@@ -205,6 +205,30 @@ export function shieldGroupIds(state: AppShieldState): string[] {
   return uniqueGroupIds(shieldReasons(state).flatMap(r => r.groupIds));
 }
 
+/**
+ * The allowlists that act as one, for the native side to union. A group named
+ * directly is a set of its own; a supergroup of allowlists is one set of its
+ * members, so "Work or Focus" keeps open the apps in either. Each set is then
+ * intersected with the others as separate allowlists always were, so two
+ * reasons naming different allowlists still leave open only what both name.
+ * Block groups, and a supergroup of them, make no set.
+ */
+export function shieldAllowSets(state: AppShieldState, allowIds: readonly string[]): string[][] {
+  const allow = new Set(allowIds);
+  const seen = new Set<string>();
+  const sets: string[][] = [];
+  for (const reason of shieldReasons(state)) {
+    for (const named of reason.namedGroupIds ?? []) {
+      const ids = resolvedGroups([named], state.resolveGroup).groupIds.filter(id => allow.has(id));
+      const key = [...ids].sort().join(',');
+      if (ids.length === 0 || seen.has(key)) continue;
+      seen.add(key);
+      sets.push(ids);
+    }
+  }
+  return sets;
+}
+
 /** Whether anything wants the apps blocked right now. */
 export function appShieldWanted(state: AppShieldState): boolean {
   return (
@@ -333,6 +357,8 @@ export function syncAppShield(state: AppShieldState): void {
   // block exactly the apps they are meant to leave open.
   const allowIds = state.allowGroupIds ?? [];
   const allowWritten = bridge.setAllowGroups(allowIds);
+  // Right after, and best effort: a build without it leaves each allowlist its own set.
+  if (allowWritten) bridge.setAllowSets(shieldAllowSets(state, allowIds));
   const applied = allowWritten ? groupIds : groupIds.filter(id => !allowIds.includes(id));
   if (applied.length > 0) bridge.applyShield(applied);
   else bridge.clearShield();

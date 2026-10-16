@@ -67,7 +67,7 @@ export function SupergroupMembersSheet({ visible, title, groups, initialIds, onC
           <AppGroupChecklist groups={groups} selectedIds={selected} onToggle={toggle} lockedReason={lockedReason} />
           <Text style={styles.hint}>
             {pickedMode === 'allow'
-              ? `Only apps that every checked group allows stay open. ${title} follows whatever you check here, everywhere it is used.`
+              ? `Apps that any checked group allows stay open, and everything else is blocked. ${title} follows whatever you check here, everywhere it is used.`
               : `${title} blocks every app in the groups checked here. It follows whatever you check, everywhere it is used.`}
           </Text>
         </ScrollView>

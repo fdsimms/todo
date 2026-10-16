@@ -60,6 +60,7 @@ interface TodoScreenTimeNativeModule {
   clearShield(): boolean;
   setShieldOptions(denyAppRemoval: boolean): boolean;
   setAllowGroups(groupIdsJson: string): boolean;
+  setAllowSets(setsJson: string): boolean;
   setShieldState(
     otherReasonWantsShield: boolean,
     reason: string,
@@ -195,6 +196,17 @@ export function setShieldOptions(denyAppRemoval: boolean): boolean {
  */
 export function setAllowGroups(groupIds: readonly string[]): boolean {
   return degradeOnThrow(() => nativeModule!.setAllowGroups(JSON.stringify(groupIds)), false);
+}
+
+/**
+ * Which allowlist groups act as one: each inner list is unioned into a single
+ * "everything except these", and the lists are then intersected as separate
+ * allowlists are. This is what makes a supergroup of allowlists mean "either".
+ * Call it right after `setAllowGroups`. False on a build that predates it, which
+ * leaves every allowlist its own set (the earlier, stricter behavior).
+ */
+export function setAllowSets(sets: readonly (readonly string[])[]): boolean {
+  return degradeOnThrow(() => nativeModule!.setAllowSets(JSON.stringify(sets)), false);
 }
 
 /** Why the apps are blocked, as the two extensions will read it back. */
