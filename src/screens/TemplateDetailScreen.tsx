@@ -52,6 +52,7 @@ import { formatHHMM } from '../utils/dateUtils';
 import { anchorLabel, formatOffsetLabel, getDirectBrokenRefItemIds, findMissingRefs, describeMissingRefs, describePlaceholderTokens, placeItemAtDrop } from '../utils/templateUtils';
 import { describeConditionAnswers, liveConditions } from '../utils/templateQuestions';
 import type { TaskTemplate, TemplateItem } from '../types';
+import { BUTTON_LABEL } from '../copy/shared';
 
 type RootStackParamList = {
   TemplateDetail: { templateId: string };
@@ -77,7 +78,7 @@ function AddItemFabWithDropLabel({
   channel: FabIntentChannel;
 } & Omit<React.ComponentProps<typeof Fab>, 'dragLabel'>) {
   const label = useFabIntentSelector(channel, intent => {
-    if (intent?.kind === 'cancel') return 'Cancel';
+    if (intent?.kind === 'cancel') return BUTTON_LABEL.cancel;
     return intent?.kind === 'insert' ? 'New item here' : null;
   });
   return <Fab {...props} dragLabel={label} />;

@@ -32,6 +32,7 @@ import { SheetScrim } from './SheetScrim';
 import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { useSheetMotion } from '../hooks/useSheetMotion';
 import { TextField } from './TextField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -724,7 +725,7 @@ export function MealEntrySheet({
           }}
           activeOpacity={interaction.activeOpacity}
         >
-          <Text style={styles.cancelLabel}>Done</Text>
+          <Text style={styles.cancelLabel}>{BUTTON_LABEL.done}</Text>
         </TouchableOpacity>
       </Animated.View>
     </SheetModal>

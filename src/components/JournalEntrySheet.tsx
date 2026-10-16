@@ -63,6 +63,8 @@ import { SegmentedControl } from './SegmentedControl';
 import { JournalText } from './JournalText';
 import { JOURNAL_FORMAT_BAR_HEIGHT, JournalFormatBar, type FormatAction } from './JournalFormatBar';
 import { useTitleSelection } from '../hooks/useTitleSelection';
+import { HelpText } from './HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 const TEXT_MAX_LENGTH = 5000;
 
@@ -310,9 +312,9 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
     if (!editing) return;
     const id = editing.id;
     Alert.alert(`Delete this ${copy.one}?`, undefined, [
-      { text: 'Cancel', style: 'cancel' },
+      { text: BUTTON_LABEL.cancel, style: 'cancel' },
       {
-        text: 'Delete',
+        text: BUTTON_LABEL.delete,
         style: 'destructive',
         onPress: () => { haptics.warning(); removeEntry(id); dropSealedNoteReminder(id); onClose(); },
       },
@@ -337,8 +339,8 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
         <SheetHeader
           bare
           title={title}
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />}
-          right={<SheetHeaderButton label="Save" onPress={save} disabled={!canSave} minWidth={64} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={64} />}
+          right={<SheetHeaderButton label={BUTTON_LABEL.save} onPress={save} disabled={!canSave} minWidth={64} />}
         />
       }
     >
@@ -373,7 +375,7 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
       )}
 
       <View style={styles.card}>
-        {copy.hint && <Text style={styles.hint}>{copy.hint}</Text>}
+        {copy.hint && <HelpText style={styles.hint}>{copy.hint}</HelpText>}
         <TextField
           style={styles.input}
           value={text}
@@ -522,7 +524,7 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
             </View>
             {openOn && (
               <Text style={styles.sealHint}>
-                You won't be able to read this until that day. A task will remind you to open it. You can also open it early from the Journal.
+                You won’t be able to read this until that day. A task will remind you to open it. You can also open it early from the Journal.
               </Text>
             )}
           </CollapsibleField>

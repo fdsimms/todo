@@ -12,6 +12,7 @@ import { standingSwaps, type StandingSwap } from '../utils/standingSwaps';
 import { EmptyState } from './EmptyState';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -54,7 +55,7 @@ export function StandingSwapsSheet({ visible, onClose }: Props) {
         <SheetHeader
           title="Standing swaps"
           left={<View style={styles.headerSpacer} />}
-          right={<SheetHeaderButton label="Done" onPress={onClose} minWidth={56} />}
+          right={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={onClose} minWidth={56} />}
         />
 
         {swaps.length === 0 ? (

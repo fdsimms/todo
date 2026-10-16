@@ -1689,6 +1689,14 @@ export interface Person {
    * that ranks them — the trip planner reads it as a plain substring match.
    */
   location: string | null;
+  /**
+   * Their street address, as typed over as many lines as they need. Free text
+   * like `location`, and a different question: `location` is the town, read by
+   * the trip planner as a plain substring match, while this is the full
+   * address to read off the card (mailing a gift, finding the door). It is
+   * never geocoded, never sorted or grouped by, and nothing matches against it.
+   */
+  address: string | null;
 }
 
 /**
@@ -3438,7 +3446,9 @@ export interface Task {
    *   free of special cases, the same trade quota tasks make by going *through*
    *   completion rather than around it.
    * - **It stays visible all day** (see isVisibleApartFromVacation), because
-   *   the row is the reminder. A positive task earns its place by being undone;
+   *   the row is the reminder. A repeating one is there every day; one with no
+   *   repeat covers a single day and is finished once it passes
+   *   (`oneDayEndPatch`). A positive task earns its place by being undone;
    *   an avoid-task that vanished once you were doing well would be missing at
    *   exactly the moment it is useful.
    * - **Its streak counts clean days, not completions.** Nothing advances it on

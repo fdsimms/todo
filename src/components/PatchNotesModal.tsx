@@ -24,6 +24,7 @@ import { patchNotes } from '../utils/patchNotes';
 import { useSettingsStore, type PatchNoteQaStatus } from '../store/useSettingsStore';
 import { haptics } from '../utils/haptics';
 import { useSheetMotion } from '../hooks/useSheetMotion';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -215,7 +216,7 @@ export function PatchNotesModal({ visible, onDismiss }: Props) {
           </View>
 
           <TouchableOpacity style={styles.doneCard} onPress={dismiss} activeOpacity={interaction.activeOpacity}>
-            <Text style={styles.doneLabel}>Done</Text>
+            <Text style={styles.doneLabel}>{BUTTON_LABEL.done}</Text>
           </TouchableOpacity>
         </Animated.View>
       </View>

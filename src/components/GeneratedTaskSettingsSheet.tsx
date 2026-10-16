@@ -31,6 +31,7 @@ import {
 } from '../utils/generatedTaskSettings';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import type { GeneratedKind, GeneratedTaskExtras, TaskFieldDefaults, TimeOfDay } from '../types';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -161,8 +162,8 @@ export function GeneratedTaskSettingsSheet({ visible, kind, spec, generatorLabel
       <View style={[styles.root, { paddingTop: spacing.md }]}>
         <SheetHeader
           title={spec.noun}
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} />}
-          right={<SheetHeaderButton label="Save" onPress={handleSave} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} />}
+          right={<SheetHeaderButton label={BUTTON_LABEL.save} onPress={handleSave} />}
         />
         <Text style={styles.headerSubtitle} numberOfLines={1}>{generatorLabel}</Text>
         <ScrollView

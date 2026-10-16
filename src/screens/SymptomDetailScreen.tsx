@@ -30,6 +30,7 @@ import { MoodLogSheet } from '../components/MoodLogSheet';
 import { ContrastBars } from '../components/ContrastBars';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
+import { HelpText } from '../components/HelpText';
 
 type RootStackParamList = {
   SymptomDetail: {
@@ -229,9 +230,9 @@ export function SymptomDetailScreen() {
               </View>
             ))}
           </View>
-          <Text style={styles.caption}>
+          <HelpText style={styles.caption}>
             How bad it got each day. No bar means you didn’t log it.
-          </Text>
+          </HelpText>
         </View>
 
         <Text style={styles.sectionTitle}>HOW BAD IT GETS</Text>
@@ -250,9 +251,9 @@ export function SymptomDetailScreen() {
               </Text>
             </View>
           ))}
-          <Text style={styles.caption}>
+          <HelpText style={styles.caption}>
             Counted at the worst it reached each day.
-          </Text>
+          </HelpText>
         </View>
 
         {contrast && (

@@ -19,7 +19,7 @@ const person = (id: string, name: string, groupId: string | null = null): Person
   birthdayMonth: null, birthdayDay: null, birthYear: null, birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false, pinned: false,
   phoneNumber: null, email: null, linkUrl: null,
   cadenceDays: 0, nudgeOptIn: false, cadenceSetAt: null, reachOutDeclinedAt: null, reachOutOfferDeclinedAt: null, askAbout: '',
-  backfillDismissedFields: [], groupId, location: null, faxNumber: null,
+  backfillDismissedFields: [], groupId, location: null, faxNumber: null, address: null,
 });
 
 const group = (id: string, name: string): PersonGroup => ({

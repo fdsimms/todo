@@ -19,6 +19,7 @@ import { useFilterField } from '../hooks/useFilterField';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { usePullToSearch } from '../hooks/usePullToSearch';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /**
  * Everything the app can do, in one list.
@@ -103,7 +104,7 @@ export function TipsScreen() {
       'Show all tips again',
       'Every tip becomes unread and shows again on its screen, one a day.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         { text: 'Show again', onPress: () => resetTips() },
       ]
     );

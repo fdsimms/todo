@@ -19,6 +19,12 @@ import type { GroupedReason } from './appGroups';
  * `groupEditLocked` therefore no longer refuses the picker; it tells the picker
  * to run in that add-now, remove-later mode.
  *
+ * **An allowlist group is the reverse, so its apps take no live edit at all.**
+ * Adding an app to "block everything except these" loosens the block and
+ * removing one tightens it, so either could end part of it unrecorded. The
+ * native picker stages the whole choice until the group isn't held, and the
+ * group's mode can't be switched while it is live (`groupEditLocked`).
+ *
  * A key tag never edits anything: it ends blocks, and the lock follows what is
  * live, so there is no separate "tag may edit" state.
  *
@@ -85,8 +91,13 @@ export function scheduleEditLocked(schedule: BlockSchedule, now: Date): boolean 
  * The line under a group that is blocking, or null when there is nothing to
  * say. `pending` is a removal already staged for it.
  */
-export function groupBlockHint(live: boolean, pending: boolean): string | null {
+export function groupBlockHint(live: boolean, pending: boolean, allowOnly = false): string | null {
   if (!live) return null;
+  if (allowOnly) {
+    return pending
+      ? 'Blocking now. Your changes to the allowed apps apply when it ends.'
+      : 'Blocking now. Changes to the allowed apps wait until it ends.';
+  }
   return pending
     ? 'Blocking now. Apps you removed stay blocked until it ends.'
     : 'Blocking now. You can add apps, but removing one waits until it ends.';
@@ -96,6 +107,9 @@ export const BLOCK_PICKER_NOTE_TITLE = 'Blocking right now';
 
 export const BLOCK_PICKER_NOTE_MESSAGE =
   'Apps you add are blocked right away. Apps you remove stay blocked until this block ends, then the change applies.';
+
+export const ALLOW_PICKER_NOTE_MESSAGE =
+  'This group blocks everything except the apps you picked. Any change to them waits until this block ends, then applies.';
 
 export const BLOCK_EDIT_LOCKED_TITLE = 'Blocked right now';
 

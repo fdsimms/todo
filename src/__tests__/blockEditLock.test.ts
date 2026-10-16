@@ -97,4 +97,11 @@ describe('the hint under a blocking group', () => {
     expect(groupBlockHint(true, false)).toContain('add apps');
     expect(groupBlockHint(true, true)).toContain('removed stay blocked');
   });
+
+  it('says an allowlist takes no change until the block ends, adds included', () => {
+    expect(groupBlockHint(false, false, true)).toBeNull();
+    expect(groupBlockHint(true, false, true)).toContain('wait until it ends');
+    expect(groupBlockHint(true, false, true)).not.toContain('add apps');
+    expect(groupBlockHint(true, true, true)).toContain('apply when it ends');
+  });
 });

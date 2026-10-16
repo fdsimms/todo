@@ -2889,6 +2889,7 @@ function seedPeople(today: Date): void {
     kind: 'business',
     phoneNumber: '555 0199',
     faxNumber: '555 0198',
+    address: '214 Elm Street\nAustin, TX 78701',
     notes: 'Optometrist.',
   });
   const eyeExam = addTask({
@@ -3247,6 +3248,8 @@ function seedJournal(today: Date): void {
   addEntry('journal', 'Cold walk after dinner. Trying to write something down every night this month.', lastYear);
   // Formatted, so the light Markdown the journal draws has something to show.
   addEntry('journal', '# Slow Saturday\nSlept in, then a **long** walk by the river.\n- Call Mom\n- Start the next book', at(4, 18));
+  // A spoiler, hidden until it is tapped.
+  addEntry('journal', 'Finished the book last night. The ending was ||the dog was the narrator all along|| and I did not see it coming.', at(2, 21));
   addEntry('journal', 'Good meeting this morning. Want to remember to thank Sam for covering on Friday.', at(1, 9), null, {
     tags: ['work'],
     personIds: gideon ? [gideon.id] : [],

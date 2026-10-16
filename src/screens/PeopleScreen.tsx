@@ -50,6 +50,7 @@ import {
   personContactActions,
   type PersonContactKind,
 } from '../utils/peopleList';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /**
  * The people list.
@@ -77,7 +78,7 @@ function AddPersonFabWithDropLabel({
   channel: FabIntentChannel;
 } & Omit<React.ComponentProps<typeof Fab>, 'dragLabel'>) {
   const label = useFabIntentSelector(channel, intent => {
-    if (intent?.kind === 'cancel') return 'Cancel';
+    if (intent?.kind === 'cancel') return BUTTON_LABEL.cancel;
     return intent?.kind === 'insert' ? 'New person here' : null;
   });
   return <Fab {...props} dragLabel={label} />;
@@ -167,7 +168,7 @@ export function PeopleScreen() {
   // somebody up, and no single past-tense sentence fits it.
   const reachPerson = useCallback((personId: string, kind: PersonContactKind, url: string) => {
     haptics.tap();
-    if (kind !== 'link') notePendingReachOut(personId, kind);
+    if (kind === 'call' || kind === 'text' || kind === 'email') notePendingReachOut(personId, kind);
     // No canOpenURL check, the same call PersonDetailScreen makes.
     Linking.openURL(url).catch(() => {});
   }, [notePendingReachOut]);
@@ -194,9 +195,9 @@ export function PeopleScreen() {
       `Delete ${count} ${plural}?`,
       'Anything you wrote about them is deleted. Tasks that name them are kept, and stop showing their name.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
-          text: 'Delete',
+          text: BUTTON_LABEL.delete,
           style: 'destructive',
           onPress: () => {
             animateLayout();
@@ -485,6 +486,7 @@ export function PeopleScreen() {
             birthdayMonth: draft.birthdayMonth,
             birthdayDay: draft.birthdayDay,
             birthYear: draft.birthYear,
+            address: draft.address,
           });
         }}
         onClose={() => setContactPickerVisible(false)}
@@ -554,9 +556,10 @@ const PersonRow = React.memo(function PersonRow({
   const toggleSelect = () => onToggleSelect(person.id);
   // Only the ones this person has details for, and none while selecting, when
   // the row's job is being picked rather than reached.
+  const mapsApp = useSettingsStore(s => s.mapsApp);
   const contactActions = useMemo(
-    () => (selectionMode ? [] : personContactActions(person)),
-    [person, selectionMode],
+    () => (selectionMode ? [] : personContactActions(person, mapsApp)),
+    [person, selectionMode, mapsApp],
   );
   const spokenMeta = birthdayLabel ? `Birthday ${birthdayLabel}` : null;
   // Shared by the swipe and the iPhone Mirroring button.

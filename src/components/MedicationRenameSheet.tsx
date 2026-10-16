@@ -12,6 +12,7 @@ import { haptics } from '../utils/haptics';
 import { DOSE_UNITS, medicationKey } from '../utils/medicationLog';
 import { splitStrength } from '../utils/medicationRename';
 import { renameMedicationEverywhere } from '../utils/medicationRenameApply';
+import { BUTTON_LABEL } from '../copy/shared';
 
 const NAME_MAX_LENGTH = 60;
 
@@ -95,7 +96,7 @@ export function MedicationRenameSheet({ visible, name, onClose, onRenamed }: Pro
       `The ${own.length} ${own.length === 1 ? 'dose' : 'doses'} of ${name} will be recorded as ${target.name.trim()}, `
         + `which already has ${targetDoses}. Its limit and supply stay as they are.`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         { text: 'Combine', onPress: run },
       ],
     );
@@ -113,8 +114,8 @@ export function MedicationRenameSheet({ visible, name, onClose, onRenamed }: Pro
         <SheetHeader
           bare
           title="Rename medication"
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} />}
-          right={<SheetHeaderButton label="Save" onPress={handleSave} disabled={!canSave} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={onClose} />}
+          right={<SheetHeaderButton label={BUTTON_LABEL.save} onPress={handleSave} disabled={!canSave} />}
         />
       }
     >

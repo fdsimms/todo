@@ -1,6 +1,6 @@
 /**
  * What to offer on the keyboard bar once a sigil is typed at the end of a
- * quick-add title: "!" offers the four priority words, "#" the categories and
+ * quick-add title: "!" offers the four priority words, "^" the four difficulties, "#" the categories and
  * tags, "+" the live projects and "~" a few common estimates. Tapping one
  * finishes the token, so the word never has to be typed.
  *
@@ -19,7 +19,9 @@
  * Pure and store-free, like the parsers it mirrors; the caller passes the names.
  */
 
-export type TokenChipKind = 'priority' | 'category' | 'project' | 'estimate';
+import { chipUseKey, rankByUse, type ChipUses } from './chipUses';
+
+export type TokenChipKind = 'priority' | 'difficulty' | 'category' | 'project' | 'estimate';
 
 export interface TokenChip {
   /** What the button shows. */
@@ -45,16 +47,23 @@ export interface TokenChipSources {
   categoryEmoji?: Readonly<Record<string, string>>;
   /** Live projects only, and none at all when the sheet is already inside one. */
   projects: readonly string[];
+  /**
+   * How often each category, tag and project was chosen from quick add (see
+   * `chipUses.ts`). Reorders the `#` and `+` rows, most used first, with ties
+   * left in the order the names arrived in. Omitted, nothing is reordered.
+   */
+  uses?: ChipUses;
 }
 
 /** Past this many a row is a list to scroll rather than a shortcut. */
 export const MAX_TOKEN_CHIPS = 10;
 
-const TRAILING_TOKEN = /(?<![\w+])([#!+~])([\w-]*)$/;
+const TRAILING_TOKEN = /(?<![\w+])([#!^+~])([\w-]*)$/;
 
 // Most urgent first: it is the one a person reaching for "!" is most likely
 // to want, and the order the row reads in.
 const PRIORITY_CHIPS = ['urgent', 'high', 'medium', 'low'];
+const DIFFICULTY_CHIPS = ['hard', 'normal', 'easy', 'trivial'];
 const ESTIMATE_CHIPS = ['5m', '15m', '30m', '1h'];
 
 /** One word after a sigil, as every token pattern in `parseTaskInput` reads it. */
@@ -62,6 +71,11 @@ const TYPABLE_WORD = /^[a-z][\w-]*$/i;
 
 function slug(title: string): string {
   return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+}
+
+/** The typable names, most used first. Done before narrowing, so the cap keeps the favorites. */
+function ranked(named: { name: string; key: string }[], uses: ChipUses = {}): string[] {
+  return rankByUse(named.filter(n => TYPABLE_WORD.test(n.name)), uses, n => n.key).map(n => n.name);
 }
 
 /** Chips whose value starts with what is typed so far, minus one already complete. */
@@ -91,6 +105,10 @@ export function tokenChipsFor(title: string, sources: TokenChipSources): TokenCh
       kind = 'priority';
       values = PRIORITY_CHIPS;
       break;
+    case '^':
+      kind = 'difficulty';
+      values = DIFFICULTY_CHIPS;
+      break;
     case '~':
       kind = 'estimate';
       values = ESTIMATE_CHIPS;
@@ -99,11 +117,17 @@ export function tokenChipsFor(title: string, sources: TokenChipSources): TokenCh
       kind = 'category';
       // Categories first, in the user's own order, then tags; a name with a
       // space can't be written as one token, so it is not offered.
-      values = [...sources.categories, ...sources.tags].filter(n => TYPABLE_WORD.test(n));
+      values = ranked([
+        ...sources.categories.map(name => ({ name, key: chipUseKey('category', name) })),
+        ...sources.tags.map(name => ({ name, key: chipUseKey('tag', name) })),
+      ], sources.uses);
       break;
     default:
       kind = 'project';
-      values = sources.projects.map(slug).filter(n => TYPABLE_WORD.test(n));
+      values = ranked(
+        sources.projects.map(title => ({ name: slug(title), key: chipUseKey('project', title) })),
+        sources.uses,
+      );
       break;
   }
 

@@ -48,6 +48,8 @@ import { describeSupplementPanel } from '../utils/supplementDose';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { useLingering } from '../hooks/useLingering';
+import { HelpText } from '../components/HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 type RootStackParamList = {
   MedicationDetail: {
@@ -198,7 +200,7 @@ export function MedicationDetailScreen() {
         style: 'destructive' as const,
         onPress: () => setUsualDoses(medName, storedUsuals.filter((_, i) => i !== index)),
       },
-      { text: 'Cancel', style: 'cancel' as const },
+      { text: BUTTON_LABEL.cancel, style: 'cancel' as const },
     ]);
   };
 
@@ -273,7 +275,7 @@ export function MedicationDetailScreen() {
       'Refilled',
       'How many did you get? They are added to what is left.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
           text: 'Add',
           onPress: (value?: string) => {
@@ -297,7 +299,7 @@ export function MedicationDetailScreen() {
       `Archive ${name}?`,
       'It moves out of What you take and the suggestions. Its doses stay in your log and export, and recording another dose brings it back.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         { text: 'Archive', onPress: () => archiveMedication(name) },
       ],
     );
@@ -311,7 +313,7 @@ export function MedicationDetailScreen() {
       `Remove ${name}?`,
       'It comes off your list, along with any limit or supply you set for it.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         { text: 'Remove', style: 'destructive', onPress: () => { removeMedication(name); navigation.goBack(); } },
       ],
     );
@@ -394,9 +396,9 @@ export function MedicationDetailScreen() {
               </View>
             ))}
           </View>
-          <Text style={styles.caption}>
+          <HelpText style={styles.caption}>
             Doses recorded each day. A day with no bar had no doses recorded.
-          </Text>
+          </HelpText>
         </View>
 
         {timeOfDay.length > 0 && (
@@ -648,11 +650,11 @@ export function MedicationDetailScreen() {
             </>
           ) : (
             <Text style={styles.fieldHint}>
-              No nutrients entered. Enter what one serving contains from the label, such as a multivitamin's vitamins and minerals.
+              No nutrients entered. Enter what one serving contains from the label, such as a multivitamin’s vitamins and minerals.
             </Text>
           )}
           <Text style={styles.fieldNote}>
-            Each dose you record adds these to the day's nutrient totals in the food log, and to Apple Health if you write nutrients there. Past doses keep what they added.
+            Each dose you record adds these to the day’s nutrient totals in the food log, and to Apple Health if you write nutrients there. Past doses keep what they added.
           </Text>
           <View style={styles.panelActions}>
             <InlineAction

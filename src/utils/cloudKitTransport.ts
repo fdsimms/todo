@@ -55,7 +55,7 @@ export async function cloudKitUnavailableReason(): Promise<string | null> {
     case 'temporarilyUnavailable':
       return 'iCloud is temporarily unavailable. Sync will resume on its own.';
     default:
-      return 'Could not reach iCloud.';
+      return 'Couldn’t reach iCloud.';
   }
 }
 

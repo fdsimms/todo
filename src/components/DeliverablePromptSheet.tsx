@@ -41,6 +41,7 @@ import { useSheetMount } from '../hooks/useSheetMount';
 import { TextField } from './TextField';
 import { SegmentedControl } from './SegmentedControl';
 import { REVIEW_AFTER_OPTIONS, type ReviewAfter } from '../utils/decisionReview';
+import { BUTTON_LABEL } from '../copy/shared';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -235,10 +236,10 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
     >
       <View style={styles.card}>
         <View style={styles.headerRow}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={() => dismiss(onCancel)} minWidth={56} />
+          <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={() => dismiss(onCancel)} minWidth={56} />
           <Text style={styles.heading} numberOfLines={2}>{displayTitleFor(task)}</Text>
           <SheetHeaderButton
-            label="Save"
+            label={BUTTON_LABEL.save}
             onPress={() => confirm(normalized)}
             disabled={normalized === null}
             minWidth={56}

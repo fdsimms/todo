@@ -45,6 +45,7 @@ import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { AISLE_NAME_MAX_LENGTH, SHOP_NAME_MAX_LENGTH, type GroceryGroupBy, type Shop } from '../types';
 import { TextField } from './TextField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -356,7 +357,7 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
         <SheetHeader
           title="List settings"
           left={<View style={styles.headerSpacer} />}
-          right={<SheetHeaderButton label="Done" onPress={handleDone} minWidth={64} />}
+          right={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={handleDone} minWidth={64} />}
         />
 
         {/* `surface="page"` because this sheet's root is `colors.bg`, the same

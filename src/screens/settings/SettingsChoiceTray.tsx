@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../../theme/ThemeContext';
 import { spacing, font, fontWeight, iconSize, interaction, type Colors } from '../../theme';
+import { HelpText } from '../../components/HelpText';
 
 interface Option {
   id: string;
@@ -56,7 +57,7 @@ export function SettingsChoiceTray<T extends Option>({
 
   return (
     <View style={styles.tray}>
-      <Text style={styles.caption}>{caption}</Text>
+      <HelpText style={styles.caption}>{caption}</HelpText>
       {options.length === 0 && !!emptyText && <Text style={styles.empty}>{emptyText}</Text>}
       {options.map(option => {
         const selected = multiple ? selectedIds!.includes(option.id) : option.id === selectedId;

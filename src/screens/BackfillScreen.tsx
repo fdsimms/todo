@@ -30,6 +30,8 @@ import { CategoryPickerList } from '../components/CategoryPicker';
 import { CountStepper } from '../components/CountStepper';
 import { PillGroup } from '../components/PillGroup';
 import { InlineAction } from '../components/InlineAction';
+import { LazySheet } from '../components/LazySheet';
+import { SavedDefaultsSheet } from '../components/SavedDefaultsSheet';
 import { SubstituteSheet } from '../components/SubstituteSheet';
 import { NutritionPanelSheet } from '../components/NutritionPanelSheet';
 import { NutritionSearchSheet, navigateToFoodSearchSettings } from '../components/NutritionSearchSheet';
@@ -108,6 +110,7 @@ import {
   type Difficulty, type Effort, type HolidayRule, type FoodNutrition, type GroceryItem, type ItemProduct, type ProductRating, type Person, type Recipe, type ReminderKind, type Task, type TaskFieldDefaults,
 } from '../types';
 import { TextField } from '../components/TextField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 const FIELD_ICONS: Record<BackfillFieldId, keyof typeof Ionicons.glyphMap> = {
   estimate: 'time-outline',
@@ -362,6 +365,11 @@ interface SessionEntry {
   title: string;
   valueText: string;
   undo: () => void;
+  /**
+   * A default kept for new tasks rather than an item answered: listed in the
+   * review with its own Undo, but not counted among the items set.
+   */
+  isDefault?: boolean;
 }
 
 export function BackfillScreen() {
@@ -442,6 +450,7 @@ export function BackfillScreen() {
   // shown once it empties — reset alongside history/skippedIds every time a
   // field is (re)chosen. See SessionEntry's doc comment.
   const [sessionLog, setSessionLog] = useState<SessionEntry[]>([]);
+  const [defaultsOpen, setDefaultsOpen] = useState(false);
   const [customOpen, setCustomOpen] = useState(false);
   const [customText, setCustomText] = useState('');
   const [customUnit, setCustomUnit] = useState<'min' | 'hr'>('min');
@@ -912,7 +921,7 @@ export function BackfillScreen() {
       `Redo ${label.toLowerCase()} from scratch?`,
       `Goes through every ${noun} again, including ones that already have this set. Each ${noun} keeps its current value until you change it.`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         { text: 'Start over', onPress: startOver },
       ]
     );
@@ -1150,15 +1159,29 @@ export function BackfillScreen() {
     const name = scopeLabelFor(scope) ?? 'this group';
     Alert.alert(
       `Set ${setting} for new tasks in “${name}”?`,
-      'New tasks added there will start with this answer, so they won’t show up in Backfill. You can change it later in the project editor or Settings.',
+      'New tasks added there will start with this answer, so they won’t show up in Backfill. You can undo it right after, or clear it later from “Defaults you’ve set” at the top of Backfill.',
       [
         { text: 'Not now', style: 'cancel' },
         {
           text: 'Use for new tasks',
           onPress: () => {
             const next: TaskFieldDefaults = { ...NO_TASK_FIELD_DEFAULTS, ...(current ?? {}), ...answer };
-            if (kind) useSettingsStore.getState().setGeneratedTaskDefaults(kind, next);
-            else if (projectId) updateProject(projectId, { taskDefaults: next });
+            const write = (value: TaskFieldDefaults | null) => {
+              if (kind) useSettingsStore.getState().setGeneratedTaskDefaults(kind, value);
+              else if (projectId) updateProject(projectId, { taskDefaults: value });
+            };
+            write(next);
+            // One line in the session review and the undo bar, both putting back
+            // what was there before. The id can't collide with a task's, and it
+            // is keyed by group and field so a second answer for the same field
+            // replaces the first line rather than stacking under it.
+            commit(`Saved as default for “${name}”`, {
+              itemId: `default:${scope.key}:${Object.keys(answer).join(',')}`,
+              title: `Default for “${name}”`,
+              valueText: `${setting}, for new tasks`,
+              isDefault: true,
+              undo: () => write(current ?? null),
+            });
           },
         },
       ],
@@ -1309,7 +1332,7 @@ export function BackfillScreen() {
       `Apply ${count} ${count === 1 ? 'suggestion' : 'suggestions'}?`,
       `Sets the suggested ${label} on ${count} ${count === 1 ? 'task' : 'tasks'}. Each one gets its own Undo when the queue finishes, and a shake undoes the whole batch.`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         { text: 'Apply all', onPress: applyAllSuggestions },
       ]
     );
@@ -1842,7 +1865,7 @@ export function BackfillScreen() {
         `Merge into “${clash.name}”?`,
         `You already have an item called “${clash.name}”. Merging keeps that one and adds this item’s history, boxes and stores to it.`,
         [
-          { text: 'Cancel', style: 'cancel' },
+          { text: BUTTON_LABEL.cancel, style: 'cancel' },
           {
             text: 'Merge',
             style: 'destructive',
@@ -2004,7 +2027,18 @@ export function BackfillScreen() {
   if (!active) {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
-        <ScreenHeader title="Backfill" subtitle="Choose a field to fill in, one item at a time" />
+        <ScreenHeader
+          title="Backfill"
+          subtitle="Choose a field to fill in, one item at a time"
+          actions={[{
+            icon: 'options-outline',
+            onPress: () => setDefaultsOpen(true),
+            accessibilityLabel: 'Defaults you’ve set',
+          }]}
+        />
+        <LazySheet open={defaultsOpen}>
+          <SavedDefaultsSheet visible={defaultsOpen} onClose={() => setDefaultsOpen(false)} />
+        </LazySheet>
         <View style={styles.entitySwitch}>
           <SegmentedControl
             label="What to fill in"
@@ -2824,7 +2858,7 @@ export function BackfillScreen() {
                   accessibilityLabel={`Save something to ask ${displayNameOf(currentPerson)} about`}
                 >
                   <Ionicons name="chatbubble-ellipses" size={iconSize.md} color={colors.onAccent} />
-                  <Text style={styles.toggleButtonText}>Save</Text>
+                  <Text style={styles.toggleButtonText}>{BUTTON_LABEL.save}</Text>
                 </PressableScale>
               </View>
             )}
@@ -2851,7 +2885,7 @@ export function BackfillScreen() {
                   accessibilityLabel={`Save where ${displayNameOf(currentPerson)} lives`}
                 >
                   <Ionicons name="airplane" size={iconSize.md} color={colors.onAccent} />
-                  <Text style={styles.toggleButtonText}>Save</Text>
+                  <Text style={styles.toggleButtonText}>{BUTTON_LABEL.save}</Text>
                 </PressableScale>
               </View>
             )}
@@ -3398,7 +3432,7 @@ export function BackfillScreen() {
                   accessibilityLabel={nameChanged ? `Rename ${currentItem.name}` : `Save brand and product for ${currentItem.name}`}
                 >
                   <Ionicons name={nameChanged ? 'pricetag' : 'checkmark'} size={iconSize.md} color={colors.onAccent} />
-                  <Text style={styles.toggleButtonText}>{nameChanged ? 'Rename' : 'Save'}</Text>
+                  <Text style={styles.toggleButtonText}>{nameChanged ? 'Rename' : BUTTON_LABEL.save}</Text>
                 </PressableScale>
               </View>
             </View>
@@ -3423,7 +3457,7 @@ export function BackfillScreen() {
                 accessibilityLabel={`Save brand and product for ${currentItem.name}`}
               >
                 <Ionicons name="checkmark" size={iconSize.md} color={colors.onAccent} />
-                <Text style={styles.toggleButtonText}>Save</Text>
+                <Text style={styles.toggleButtonText}>{BUTTON_LABEL.save}</Text>
               </PressableScale>
             </View>
           )}
@@ -3611,13 +3645,14 @@ function SessionReview({
   itemWord: string;
   itemWordPlural: string;
 }) {
+  const setCount = entries.filter(e => !e.isDefault).length;
   return (
     <View style={styles.reviewWrap}>
       <View style={styles.reviewSummary}>
         <Ionicons name="checkmark-circle" size={iconSize.lg} color={colors.accent} />
         <Text style={styles.reviewSummaryTitle}>All caught up</Text>
         <Text style={styles.reviewSummarySubtitle}>
-          {entries.length} {entries.length === 1 ? itemWord : itemWordPlural} set this session
+          {setCount} {setCount === 1 ? itemWord : itemWordPlural} set this session
         </Text>
       </View>
       <FlatList

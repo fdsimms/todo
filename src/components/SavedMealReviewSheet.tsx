@@ -30,6 +30,7 @@ import {
 } from '../utils/savedMealReview';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import type { FoodNutrition, MealSlot, SavedMeal, SavedMealItem } from '../types';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -206,7 +207,7 @@ export function SavedMealReviewSheet({ visible, meal, slot, at, onLog, onSaveCha
       <View style={styles.root}>
         <SheetHeader
           title={meal.name}
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={64} />}
           right={<SheetHeaderButton label="Log" onPress={handleLog} disabled={kept.length === 0} minWidth={64} />}
         />
 

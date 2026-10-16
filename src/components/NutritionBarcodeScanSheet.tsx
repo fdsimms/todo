@@ -14,6 +14,7 @@ import { haptics } from '../utils/haptics';
 import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /**
  * One barcode, scanned once, handed back as whatever nutrition its database
@@ -166,7 +167,7 @@ export function NutritionBarcodeScanSheet({ visible, onClose, onFound }: Props) 
       <View style={styles.root}>
         <SheetHeader
           title="Scan a barcode"
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={64} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={onClose} minWidth={64} />}
           right={<View style={styles.headerSpacer} />}
         />
 

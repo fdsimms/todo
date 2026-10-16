@@ -19,6 +19,8 @@ import { EditorSheet } from './EditorSheet';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
+import { HelpText } from './HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -119,7 +121,7 @@ export function IngredientCatalogMatchSheet({
           bare
           title="In your grocery catalog"
           size="lg"
-          left={<SheetHeaderButton label="Done" onPress={onClose} minWidth={40} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={onClose} minWidth={40} />}
           right={<View style={styles.headerSpacer} />}
         />
       }
@@ -169,10 +171,10 @@ export function IngredientCatalogMatchSheet({
               </View>
             </View>
           ))}
-          <Text style={styles.hint}>
+          <HelpText style={styles.hint}>
             Linking renames the line to match the grocery catalog item. Your shopping list
             isn’t changed.
-          </Text>
+          </HelpText>
         </View>
       )}
 

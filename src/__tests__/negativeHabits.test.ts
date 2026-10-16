@@ -15,6 +15,7 @@ import {
   isClosedToday,
   windowCloseDayPatch,
   negativeHoldFor,
+  oneDayEndPatch,
   type NegativeHabitFields,
 } from '../utils/negativeHabits';
 
@@ -343,5 +344,28 @@ describe('cleanDaysCredited', () => {
     const before = habit({ streakCount: 3, streakDate: iso(7) });
     expect(cleanDaysCredited(before, cleanDayPatch(before, day(10), { paused: true }))).toEqual([]);
     expect(cleanDaysCredited(before, null)).toEqual([]);
+  });
+});
+
+describe('oneDayEndPatch', () => {
+  const oneOff = (over: Record<string, unknown> = {}) => ({
+    polarity: 'negative' as const,
+    recurrenceType: 'none' as const,
+    completed: false,
+    ...over,
+  });
+
+  it('finishes a non-repeating habit once the day it covers has passed', () => {
+    expect(oneDayEndPatch(oneOff(), day(10), day(9))).toEqual({ completed: true, completedAt: iso(10) });
+  });
+
+  it('is still running on the day it covers', () => {
+    expect(oneDayEndPatch(oneOff(), day(9), day(9))).toBeNull();
+  });
+
+  it('leaves repeating, finished and ordinary tasks alone', () => {
+    expect(oneDayEndPatch(oneOff({ recurrenceType: 'daily' }), day(20), day(9))).toBeNull();
+    expect(oneDayEndPatch(oneOff({ completed: true }), day(20), day(9))).toBeNull();
+    expect(oneDayEndPatch(oneOff({ polarity: 'positive' }), day(20), day(9))).toBeNull();
   });
 });

@@ -16,12 +16,13 @@ import { font, fontWeight, radius, spacing, type Colors } from '../theme';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
-import { allGroups, groupName, resolveGroupId } from '../utils/appGroups';
+import { allGroups, groupName, isAllowGroup, resolveGroupId } from '../utils/appGroups';
 import { BLOCK_EDIT_LOCKED_MESSAGE, BLOCK_EDIT_LOCKED_TITLE, scheduleEditLocked } from '../utils/blockEditLock';
 import {
-  WEEKDAYS, formatMinutes, scheduleProblem, type BlockSchedule,
+  WEEKDAYS, formatMinutes, isAllDay, scheduleProblem, type BlockSchedule,
 } from '../utils/blockSchedule';
 import { confirmDiscard } from '../utils/confirmDiscard';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -37,6 +38,12 @@ interface Draft {
   name: string;
   groupIds: string[];
   days: number[];
+  /**
+   * Blocks each day from midnight to midnight. The times stay in the draft
+   * while it is on, so switching it off brings back what was there; it is
+   * stored as 00:00 to 00:00 (`isAllDay`).
+   */
+  allDay: boolean;
   startMinutes: number;
   endMinutes: number;
 }
@@ -45,11 +52,12 @@ const NEW_DRAFT: Draft = {
   name: '',
   groupIds: ['default'],
   days: [...WEEKDAYS],
+  allDay: false,
   startMinutes: 9 * 60,
   endMinutes: 17 * 60,
 };
 
-const draftKey = (d: Draft) => JSON.stringify([d.name.trim(), [...d.groupIds].sort(), [...d.days].sort(), d.startMinutes, d.endMinutes]);
+const draftKey = (d: Draft) => JSON.stringify([d.name.trim(), [...d.groupIds].sort(), [...d.days].sort(), d.allDay, d.allDay ? 0 : d.startMinutes, d.allDay ? 0 : d.endMinutes]);
 
 function minutesToDate(minutes: number): Date {
   const d = new Date();
@@ -87,8 +95,9 @@ export function BlockScheduleSheet({ visible, onClose, scheduleId }: Props) {
         name: existing.name,
         groupIds: [...new Set(existing.groupIds.map(id => resolveGroupId(customGroups, id, groupsMeta)))],
         days: [...existing.days],
-        startMinutes: existing.startMinutes,
-        endMinutes: existing.endMinutes,
+        allDay: isAllDay(existing),
+        startMinutes: isAllDay(existing) ? NEW_DRAFT.startMinutes : existing.startMinutes,
+        endMinutes: isAllDay(existing) ? NEW_DRAFT.endMinutes : existing.endMinutes,
       }
       : NEW_DRAFT;
     setDraft(seed);
@@ -97,7 +106,9 @@ export function BlockScheduleSheet({ visible, onClose, scheduleId }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, scheduleId]);
 
-  const problem = scheduleProblem(draft);
+  // What is stored: an all-day draft is midnight to midnight whatever times it still holds.
+  const stored = draft.allDay ? { ...draft, startMinutes: 0, endMinutes: 0 } : draft;
+  const problem = scheduleProblem(stored);
   // The message is drawn under the section it is about, not in one fixed spot.
   const problemIn: 'apps' | 'days' | 'time' | null = problem === null ? null
     : draft.groupIds.length === 0 ? 'apps'
@@ -126,8 +137,9 @@ export function BlockScheduleSheet({ visible, onClose, scheduleId }: Props) {
   const handleSave = () => {
     if (problem) return;
     if (refuseWhileBlocked()) return;
+    const { allDay: _allDay, ...times } = stored;
     const fields: Omit<BlockSchedule, 'id' | 'pausedUntil'> = {
-      ...draft,
+      ...times,
       name: draft.name,
       enabled: existing?.enabled ?? true,
     };
@@ -186,15 +198,15 @@ export function BlockScheduleSheet({ visible, onClose, scheduleId }: Props) {
     });
   };
 
-  const overnight = draft.endMinutes <= draft.startMinutes && draft.startMinutes !== draft.endMinutes;
+  const overnight = !draft.allDay && draft.endMinutes <= draft.startMinutes && draft.startMinutes !== draft.endMinutes;
 
   return (
     <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <SheetHeader
           title={scheduleId ? 'Edit schedule' : 'New schedule'}
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />}
-          right={<SheetHeaderButton label="Save" onPress={handleSave} disabled={problem !== null} minWidth={64} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={64} />}
+          right={<SheetHeaderButton label={BUTTON_LABEL.save} onPress={handleSave} disabled={problem !== null} minWidth={64} />}
         />
         <ScrollView
           ref={keyboardScroll.ref}
@@ -239,7 +251,16 @@ export function BlockScheduleSheet({ visible, onClose, scheduleId }: Props) {
           </SettingsSection>
           {problemIn === 'days' && <Text style={styles.problem}>{problem}</Text>}
 
-          <SettingsSection label="Time">
+          <SettingsSection label="Time" footer={draft.allDay ? 'Blocks from midnight to midnight on each day you picked.' : undefined}>
+            <SettingsRow
+              icon="sunny-outline"
+              label="All day"
+              toggle={draft.allDay}
+              onPress={() => { setEditingTime(null); setDraft(d => ({ ...d, allDay: !d.allDay })); }}
+            />
+            {!draft.allDay && (
+              <>
+            <View style={settingsStyles.sep} />
             <SettingsRow
               icon="play-outline"
               label="Starts"
@@ -261,10 +282,12 @@ export function BlockScheduleSheet({ visible, onClose, scheduleId }: Props) {
             {editingTime === 'end' && (
               <InlineTimePicker value={pendingTime} onChange={setPendingTime} onCancel={() => setEditingTime(null)} onConfirm={confirmTime} />
             )}
+              </>
+            )}
           </SettingsSection>
           {problemIn === 'time' && <Text style={styles.problem}>{problem}</Text>}
 
-          <SettingsSection label="Apps to block">
+          <SettingsSection label="Apps to block" footer={draft.groupIds.some(id => isAllowGroup(customGroups, id, groupsMeta)) ? "A group that blocks everything except its apps leaves only those apps open while this runs." : undefined}>
             <AppGroupChecklist
               groups={allGroups(customGroups, groupsMeta)}
               selectedIds={draft.groupIds}

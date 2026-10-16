@@ -19,6 +19,7 @@ import { AI_MODEL_OPTIONS, aiFeaturesFor } from '../../utils/aiFeatures';
 import { describeOnDeviceAvailability } from '../../services/onDeviceModel';
 import { useOnDeviceAvailability } from '../../hooks/useOnDeviceAi';
 import { TextField } from '../../components/TextField';
+import { BUTTON_LABEL } from '../../copy/shared';
 
 interface Props {
   /** The host screen's scroll view, so focusing the key field can reveal it. */
@@ -101,7 +102,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
       'Forget saved barcodes?',
       'Every barcode gets looked up again the next time you scan it. Your list and pantry aren’t changed.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
           text: 'Forget',
           style: 'destructive',

@@ -12,6 +12,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useFilterField } from '../hooks/useFilterField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -58,7 +59,7 @@ export function TripPlannerSheet({ visible, people, onPickPerson, onClose }: Pro
       <View style={[styles.root, { paddingTop: insets.top }]}>
         <View style={styles.header}>
           <Text style={styles.title}>Plan a trip</Text>
-          <SheetHeaderButton label="Done" role="confirm" onPress={handleClose} />
+          <SheetHeaderButton label={BUTTON_LABEL.done} role="confirm" onPress={handleClose} />
         </View>
 
         <View style={styles.searchRow}>

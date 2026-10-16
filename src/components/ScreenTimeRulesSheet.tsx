@@ -14,7 +14,7 @@ import {
   SCREEN_TIME_THRESHOLD_MIN,
 } from '../utils/screenTimeRules';
 import { screenTimeBridge } from '../utils/screenTimeBridge';
-import { allGroups, groupName, resolveGroupId } from '../utils/appGroups';
+import { allGroups, groupName, isAllowGroup, resolveGroupId } from '../utils/appGroups';
 import { useAppGroupStore } from '../store/useAppGroupStore';
 import { useShieldReasons } from '../hooks/useShieldReasons';
 import { groupEditLocked } from '../utils/blockEditLock';
@@ -89,7 +89,7 @@ export function ScreenTimeRulesSheet({ visible, onClose }: Props) {
     haptics.tap();
     // A live group takes adds now and removals when its block ends.
     const live = groupEditLocked(groupId, reasons);
-    if (live && !(await confirmLivePicker())) return;
+    if (live && !(await confirmLivePicker(isAllowGroup(customGroups, groupId, groupsMeta)))) return;
     const bridge = screenTimeBridge();
     if (!bridge) return;
     const picked = await bridge.presentAppPicker(groupId, live);

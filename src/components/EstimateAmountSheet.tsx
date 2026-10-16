@@ -25,6 +25,7 @@ import { CountStepper } from './CountStepper';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { TextField } from './TextField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -112,7 +113,7 @@ export function amountRefusal(unit: AmountUnit, wholeGrams: number | null): stri
  * there is no unsaved-changes guard to need. The number pad opens for the
  * stepper's digits and the typed amount alike.
  */
-export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel = 'Save', allowUnchanged = false }: Props) {
+export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel = BUTTON_LABEL.save, allowUnchanged = false }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -188,7 +189,7 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel
     >
       <View style={styles.card}>
         <View style={styles.headerRow}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={() => dismiss(onClose)} minWidth={56} />
+          <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={() => dismiss(onClose)} minWidth={56} />
           <Text style={styles.heading} numberOfLines={2}>{entry?.label ?? ''}</Text>
           <SheetHeaderButton
             label={saveLabel}

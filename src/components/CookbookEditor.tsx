@@ -19,6 +19,7 @@ import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { RECIPE_SOURCE_MAX_LENGTH, type Cookbook } from '../types';
 import { TextField } from './TextField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -150,7 +151,7 @@ export function CookbookEditor({ visible, cookbookId: liveCookbookId, onClose }:
       )}
     >
       <View style={styles.header}>
-        <SheetHeaderButton label="Done" onPress={saveAndClose} />
+        <SheetHeaderButton label={BUTTON_LABEL.done} onPress={saveAndClose} />
         <Text style={styles.headerTitle}>Edit cookbook</Text>
         <TouchableOpacity
           onPress={handleDelete}

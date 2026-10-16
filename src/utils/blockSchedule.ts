@@ -15,6 +15,14 @@
  * day it starts on: a Friday 22:00 to 06:00 window is still on at 02:00
  * Saturday, and Saturday is not one of its days.
  *
+ * **All day is a window from midnight to midnight (00:00 to 00:00), not a flag.**
+ * Equal times are otherwise refused, and 00:00 to 00:00 is the one pair that
+ * means something: it is the overnight rule at its limit, a window that starts
+ * at the day's first minute and ends at the next day's. So the covering rules
+ * here and in Swift need no case of their own, and nothing can disagree about
+ * whether a schedule is all day (`isAllDay`). Only the arming differs
+ * (`setBlockSchedules`), since iOS wants the interval to end at 23:59:59.
+ *
  * **Ending a block pauses one window, not the schedule.** `pausedUntil` is the
  * end of the window instance that was lifted (by a key tag or the emergency
  * button, `releaseBlocks.ts`), so the next one starts on time without anything
@@ -86,10 +94,16 @@ export function isOvernight(s: Pick<BlockSchedule, 'startMinutes' | 'endMinutes'
   return s.endMinutes <= s.startMinutes;
 }
 
+/** Whether a window covers each of its days from midnight to midnight. */
+export function isAllDay(s: Pick<BlockSchedule, 'startMinutes' | 'endMinutes'>): boolean {
+  return s.startMinutes === 0 && s.endMinutes === 0;
+}
+
 /** Why a schedule can't be saved as it stands, or null when it can. */
 export function scheduleProblem(s: Pick<BlockSchedule, 'days' | 'startMinutes' | 'endMinutes'> & { groupIds?: readonly string[] }): string | null {
   if (s.groupIds !== undefined && s.groupIds.length === 0) return 'Pick at least one group of apps.';
   if (s.days.length === 0) return 'Pick at least one day.';
+  if (isAllDay(s)) return null;
   if (s.startMinutes === s.endMinutes) return 'The start and end times can’t be the same.';
   if (windowLengthMinutes(s.startMinutes, s.endMinutes) < MIN_WINDOW_MINUTES) {
     return 'A block has to last at least 15 minutes.';
@@ -295,6 +309,7 @@ export function formatMinutes(minutes: number, use24Hour: boolean): string {
 }
 
 export function describeWindow(s: Pick<BlockSchedule, 'startMinutes' | 'endMinutes'>, use24Hour: boolean): string {
+  if (isAllDay(s)) return 'All day';
   return `${formatMinutes(s.startMinutes, use24Hour)} to ${formatMinutes(s.endMinutes, use24Hour)}`;
 }
 

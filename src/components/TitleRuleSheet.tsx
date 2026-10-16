@@ -28,6 +28,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorSheet } from './EditorSheet';
 import { TextField } from './TextField';
 import { Toggle } from './Toggle';
+import { BUTTON_LABEL } from '../copy/shared';
 
 type FieldKey = 'category' | 'project' | 'tags' | 'priority' | 'effort' | 'link';
 
@@ -173,8 +174,8 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
         <SheetHeader
           bare
           title={rule ? 'Edit rule' : 'New rule'}
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={64} />}
-          right={<SheetHeaderButton label="Done" onPress={save} disabled={!!blocked} minWidth={64} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={onClose} minWidth={64} />}
+          right={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={save} disabled={!!blocked} minWidth={64} />}
         />
       }
     >

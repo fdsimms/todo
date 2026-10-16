@@ -30,6 +30,7 @@ import {
 import type { WeekStart } from '../store/useSettingsStore';
 import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { useSheetMotion } from '../hooks/useSheetMotion';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /** Kept clear above the sheet so its title never slides under the status bar. */
 const TOP_INSET = 72;
@@ -137,7 +138,7 @@ export function FridgeHistorySheet({ visible, leftovers, weekStartsOn, onOpen, o
               <Text style={styles.heading}>Fridge history</Text>
               {!!summary && <Text style={styles.summary}>{summary}</Text>}
             </View>
-            <SheetHeaderButton label="Done" onPress={() => dismiss()} accessibilityLabel="Done" />
+            <SheetHeaderButton label={BUTTON_LABEL.done} onPress={() => dismiss()} accessibilityLabel={BUTTON_LABEL.done} />
           </View>
 
           {history.length === 0 ? (

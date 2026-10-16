@@ -47,6 +47,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import { EditorSheet } from './EditorSheet';
 import { TextField } from './TextField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -262,7 +263,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
         `${others === 1 ? '1 other recipe is' : `${others} other recipes are`} from “${book!.title}”. `
         + 'Renaming updates the book for all of them.',
         [
-          { text: 'Cancel', style: 'cancel' },
+          { text: BUTTON_LABEL.cancel, style: 'cancel' },
           { text: 'Just this recipe', onPress: () => commit('refile') },
           { text: 'Rename everywhere', onPress: () => commit('rename') },
         ],
@@ -346,7 +347,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
         <SheetHeader
           bare
           title="Recipe details"
-          left={<SheetHeaderButton label="Done" onPress={saveAndClose} minWidth={40} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={saveAndClose} minWidth={40} />}
           right={
             <TouchableOpacity
               onPress={handleDelete}
@@ -487,7 +488,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
           value={leftoverKeepOpen
             ? undefined
             : (leftoverKeepDays === null ? undefined : describeKeepDays(leftoverKeepDays))}
-          hint={`How long this keeps once it's made. Its leftovers use this many days instead of the usual ${LEFTOVER_KEEP_DAYS_DEFAULT}.`}
+          hint={`How long this keeps once it’s made. Its leftovers use this many days instead of the usual ${LEFTOVER_KEEP_DAYS_DEFAULT}.`}
           expanded={leftoverKeepOpen}
           onPress={() => { animateLayout(); setLeftoverKeepOpen(v => !v); }}
           onClear={leftoverKeepDays !== null

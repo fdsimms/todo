@@ -450,7 +450,7 @@ export async function runSync(
       pushed: false,
       applied,
       unreadable,
-      reason: messageOf(e, 'Could not send changes.'),
+      reason: messageOf(e, 'Couldn’t send changes.'),
       imagesSent,
       imagesReceived,
     };
@@ -466,7 +466,7 @@ export async function runSync(
     }
     if (imagesSent > 0) pushed = true;
   } catch (e) {
-    imageProblem = messageOf(e, 'Could not send recipe photos.');
+    imageProblem = messageOf(e, 'Couldn’t send recipe photos.');
   }
 
   try {
@@ -511,7 +511,7 @@ export async function runSync(
       try {
         imagesReceived += await downloadFromImageStore(transport, transport.imageStore, local);
       } catch (e) {
-        imageProblem ??= messageOf(e, 'Could not receive recipe photos.');
+        imageProblem ??= messageOf(e, 'Couldn’t receive recipe photos.');
       }
     }
   } catch (e) {
@@ -520,7 +520,7 @@ export async function runSync(
       pushed,
       applied,
       unreadable,
-      reason: messageOf(e, 'Could not receive changes.'),
+      reason: messageOf(e, 'Couldn’t receive changes.'),
       imagesSent,
       imagesReceived,
       ...(imageProblem ? { imageProblem } : {}),

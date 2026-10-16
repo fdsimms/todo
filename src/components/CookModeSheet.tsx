@@ -65,6 +65,7 @@ import { formatScale, isUnscaled, scaleQuantity } from '../utils/recipeScale';
 import { convertScaledQuantity, showContainerCount } from '../utils/unitConvert';
 import { ingredientWeightText, weightLookups as buildWeightLookups } from '../utils/lineWeight';
 import { TextField } from './TextField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -1032,7 +1033,7 @@ export function CookModeSheet({
                 accessibilityRole="button"
                 accessibilityLabel={atLast ? 'Finish the last step' : 'Next step'}
               >
-                <Text style={styles.controlPrimaryText}>{atLast ? 'Done' : 'Next'}</Text>
+                <Text style={styles.controlPrimaryText}>{atLast ? BUTTON_LABEL.done : 'Next'}</Text>
                 <Ionicons
                   name={atLast ? 'checkmark' : 'chevron-forward'}
                   size={iconSize.sm}

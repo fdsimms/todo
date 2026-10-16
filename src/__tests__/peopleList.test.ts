@@ -1,3 +1,5 @@
+jest.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
+
 import { peopleSections, personContactActions, sortPeopleAlphabetically } from '../utils/peopleList';
 import type { Person } from '../types';
 
@@ -19,7 +21,7 @@ function person(overrides: Partial<Person> = {}): Person {
     birthdayGiftTaskOptOut: false,
     pinned: false,
     phoneNumber: null,
-    faxNumber: null,
+    faxNumber: null, address: null,
     email: null,
     linkUrl: null,
     cadenceDays: 0,
@@ -109,6 +111,13 @@ describe('personContactActions', () => {
       ['email', 'mailto:a@b.co'],
       ['link', 'https://example.com'],
     ]);
+  });
+
+  it('offers directions last, on one line, for an address', () => {
+    const actions = personContactActions(person({ email: 'a@b.co', address: '214 Elm St\nAustin, TX 78701' }));
+    expect(actions.map(a => a.kind)).toEqual(['email', 'directions']);
+    expect(actions[1].url).toBe('https://maps.apple.com/?daddr=214%20Elm%20St%2C%20Austin%2C%20TX%2078701');
+    expect(personContactActions(person({ address: '  \n ' }))).toEqual([]);
   });
 
   it('skips a number that cannot be dialed and blank fields', () => {

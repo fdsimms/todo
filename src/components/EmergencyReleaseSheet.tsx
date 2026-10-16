@@ -13,6 +13,7 @@ import {
   MAX_RELEASE_REASON_LENGTH, releaseReasonProblem, releasesThisMonth, timesWord,
 } from '../utils/shieldRelease';
 import { useShieldReleaseStore } from '../store/useShieldReleaseStore';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -64,7 +65,7 @@ export function EmergencyReleaseSheet({ visible, reasons, formatTime, onClose }:
     >
       <View style={styles.card}>
         <View style={styles.headerRow}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={() => dismiss()} minWidth={56} />
+          <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={() => dismiss()} minWidth={56} />
           <Text style={styles.heading}>End all blocks</Text>
           <View style={styles.headerSpacer} />
         </View>

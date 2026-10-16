@@ -16,6 +16,7 @@ import { haptics } from '../utils/haptics';
 import { dayKeyOf, getCurrentDayStart, getLogicalToday } from '../utils/dateUtils';
 import { buildCalendarGrid, weekdayHeaders } from '../utils/calendarGrid';
 import { JOURNAL_KIND_COPY, daysWrittenInMonth } from '../utils/journal';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -57,7 +58,7 @@ export function JournalMonthSheet({ visible, kind, onPickDay, onClose }: Props) 
         <SheetHeader
           title={copy.title}
           left={<View style={styles.headerSpacer} />}
-          right={<SheetHeaderButton label="Done" onPress={onClose} minWidth={56} />}
+          right={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={onClose} minWidth={56} />}
         />
         <View style={styles.monthRow}>
           <TouchableOpacity

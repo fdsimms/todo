@@ -32,6 +32,7 @@ import {
 import { usePersonStore } from '../store/usePersonStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useFilterField } from '../hooks/useFilterField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /** How long the field sits still before a search runs. */
 const SEARCH_DEBOUNCE_MS = 250;
@@ -196,7 +197,7 @@ export function ContactPickerSheet({ visible, onPick, onClose, fillingPersonId }
         <SheetHeader
           bare
           title={fillingPersonId ? 'Fill from contacts' : 'From contacts'}
-          left={<SheetHeaderButton label="Done" onPress={onClose} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={onClose} />}
           right={<View style={styles.headerSpacer} />}
         />
       }

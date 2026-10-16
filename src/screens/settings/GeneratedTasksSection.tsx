@@ -82,6 +82,11 @@ import {
 } from '../../utils/birthdayTasks';
 import { describeWeekendNudgeLead, describeWeekendNudgePlanThreshold } from '../../utils/weekendTasks';
 import {
+  LEAVE_WINDOW_MINUTES_DEFAULT,
+  LEAVE_WINDOW_MINUTES_MAX,
+  LEAVE_WINDOW_MINUTES_MIN,
+  LEAVE_WINDOW_MINUTES_STEP,
+  describeLeaveWindow,
   TRAVEL_LEAD_MINUTES_DEFAULT,
   TRAVEL_LEAD_MINUTES_MAX,
   TRAVEL_LEAD_MINUTES_MIN,
@@ -127,6 +132,7 @@ import { makeSettingsStyles } from './settingsStyles';
 import { useSettingsFocus } from './SettingsFocus';
 import { navigateToSettingsEntry } from '../../navigation/openSettings';
 import { alertPermissionOff } from '../../utils/permissionAlert';
+import { BUTTON_LABEL } from '../../copy/shared';
 
 // Map of this file (one component holding most of it; `grep -n '// ===='` is
 // the table of contents):
@@ -363,7 +369,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
         `Turn on “${blocker.setting}” first`,
         `This needs “${blocker.setting}”, which is off in Settings.`,
         [
-          { text: 'Cancel', style: 'cancel' },
+          { text: BUTTON_LABEL.cancel, style: 'cancel' },
           { text: 'Open Settings', onPress: () => navigateToSettingsEntry(navigation, blocker.entryId) },
         ],
       );
@@ -1250,11 +1256,37 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
                 iconColor={s.leaveLiveActivity ? colors.accent : undefined}
                 label="Live Activity before leaving"
                 hint={s.leaveLiveActivity
-                  ? 'Counts down to when to leave on the Lock Screen and Dynamic Island. Starts when you open the app within 4 hours of leaving, and ends when you finish the task. Requires iOS 17.'
+                  ? 'Counts down to when to leave on the Lock Screen and Dynamic Island. Starts when you open the app within the start window below, and ends when you finish the task. Requires iOS 17.'
                   : 'The countdown stays in the app only'}
                 toggle={s.leaveLiveActivity}
                 onPress={() => s.setLeaveLiveActivity(!s.leaveLiveActivity)}
+                tight={s.leaveLiveActivity}
               />
+              {s.leaveLiveActivity && (
+                <>
+                  <View style={styles.sep} />
+                  <SettingsRow
+                    entryId="leaveWindowMinutes"
+                    icon="hourglass-outline"
+                    label="Start window"
+                    hint="The Live Activity can start this long before you need to leave. It only starts while the app is open."
+                    value={`${describeLeaveWindow(s.leaveWindowMinutes)} before leaving`}
+                    tight
+                  />
+                  <View style={styles.cadenceRow}>
+                    <CountStepper
+                      value={s.leaveWindowMinutes}
+                      onChange={next => s.setLeaveWindowMinutes(next ?? LEAVE_WINDOW_MINUTES_DEFAULT)}
+                      min={LEAVE_WINDOW_MINUTES_MIN}
+                      max={LEAVE_WINDOW_MINUTES_MAX}
+                      step={LEAVE_WINDOW_MINUTES_STEP}
+                      format={describeLeaveWindow}
+                      label="Start window"
+                      describeValue={n => `${describeLeaveWindow(n ?? LEAVE_WINDOW_MINUTES_DEFAULT)} before leaving`}
+                    />
+                  </View>
+                </>
+              )}
             </>
           )}
           <View style={styles.sep} />

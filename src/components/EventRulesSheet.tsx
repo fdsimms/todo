@@ -25,6 +25,7 @@ import { CountStepper } from './CountStepper';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { RuleListSheet } from './RuleListSheet';
 import { TextField } from './TextField';
+import { HelpText } from './HelpText';
 
 type RuleTiming = 'before' | 'after';
 type FollowUpMode = 'always' | 'unlessBooked';
@@ -140,10 +141,10 @@ export function EventRulesSheet({ visible, onClose }: Props) {
             matches={rule.matches}
             onChange={matches => update({ matches })}
           />
-          <Text style={styles.hint}>
+          <HelpText style={styles.hint}>
             {`At least ${EVENT_MATCH_MIN_LENGTH} letters each. Matches whole words, so “Gym” matches `
             + '“Gym class” but not “Gymnastics”. Any one keyword is enough.'}
-          </Text>
+          </HelpText>
           <Text style={[styles.editorLabel, styles.editorLabelSpaced]}>Add the task</Text>
           <SegmentedControl<RuleTiming>
             options={TIMING_OPTIONS}
@@ -158,9 +159,9 @@ export function EventRulesSheet({ visible, onClose }: Props) {
           />
           {rule.afterEvent ? (
             <>
-              <Text style={styles.hint}>
+              <HelpText style={styles.hint}>
                 The task appears after the event ends.
-              </Text>
+              </HelpText>
               <Text style={[styles.editorLabel, styles.editorLabelSpaced]}>If another event matches</Text>
               <SegmentedControl<FollowUpMode>
                 options={FOLLOW_UP_OPTIONS}
@@ -169,10 +170,10 @@ export function EventRulesSheet({ visible, onClose }: Props) {
                 label="If another matching event is coming up"
                 surface="card"
               />
-              <Text style={styles.hint}>
+              <HelpText style={styles.hint}>
                 {'“Only if none is booked” skips the task while another matching event is on your '
                 + 'calendar in the next 6 months.'}
-              </Text>
+              </HelpText>
             </>
           ) : (
             <>

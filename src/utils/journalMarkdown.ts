@@ -7,7 +7,7 @@
  * how that text is drawn when read back. It is deliberately a slice rather
  * than a Markdown implementation: headings (`#`, `##`), bullets (`-`, `*`),
  * numbered items (`1.`), quotes (`>`), `**bold**` and `*italics*` (or
- * `_italics_`). Anything else is left as the characters typed, which is the
+ * `_italics_`), and `||spoilers||` that are hidden until tapped. Anything else is left as the characters typed, which is the
  * right failure: a stray asterisk shows as an asterisk, never as text that
  * vanished into a style.
  */
@@ -16,6 +16,11 @@ export interface InlineSpan {
   text: string;
   bold?: boolean;
   italic?: boolean;
+  /**
+   * Set on every span of one `||spoiler||`, to the same number within a line,
+   * so `**bold**` inside one still reveals and hides along with the rest.
+   */
+  spoiler?: number;
 }
 
 export type JournalBlock =
@@ -26,12 +31,14 @@ export type JournalBlock =
   | { type: 'numbered'; number: number; spans: InlineSpan[] };
 
 /**
- * `**bold**`, `*italic*` and `_italic_` within one line. A marker with no
- * closing partner on the line is ordinary text, and so is one wrapped round
- * nothing but spaces.
+ * `**bold**`, `*italic*`, `_italic_` and `||spoiler||` within one line. A
+ * marker with no closing partner on the line is ordinary text, and so is one
+ * wrapped round nothing but spaces. A spoiler's words are read for the other
+ * markers too, and each of its spans carries the same `spoiler` number.
  */
 export function parseInline(line: string): InlineSpan[] {
   const spans: InlineSpan[] = [];
+  let spoilers = 0;
   let plain = '';
   const flush = () => {
     if (plain) spans.push({ text: plain });
@@ -39,7 +46,9 @@ export function parseInline(line: string): InlineSpan[] {
   };
   let i = 0;
   while (i < line.length) {
-    const marker = line.startsWith('**', i) ? '**' : line[i] === '*' || line[i] === '_' ? line[i] : null;
+    const marker = line.startsWith('||', i) ? '||'
+      : line.startsWith('**', i) ? '**'
+      : line[i] === '*' || line[i] === '_' ? line[i] : null;
     if (marker) {
       const close = line.indexOf(marker, i + marker.length);
       const inner = close === -1 ? '' : line.slice(i + marker.length, close);
@@ -47,7 +56,12 @@ export function parseInline(line: string): InlineSpan[] {
       const midWord = marker === '_' && i > 0 && /\w/.test(line[i - 1]);
       if (close !== -1 && inner.trim() && inner === inner.trim() && !midWord) {
         flush();
-        spans.push(marker === '**' ? { text: inner, bold: true } : { text: inner, italic: true });
+        if (marker === '||') {
+          const group = ++spoilers;
+          for (const span of parseInline(inner)) spans.push({ ...span, spoiler: group });
+        } else {
+          spans.push(marker === '**' ? { text: inner, bold: true } : { text: inner, italic: true });
+        }
         i = close + marker.length;
         continue;
       }
@@ -96,12 +110,26 @@ export function parseJournalMarkdown(text: string): JournalBlock[] {
 /**
  * The text with its markers taken out, for anywhere drawing styles is wrong:
  * a screen reader's label, and a clipped preview (`numberOfLines`) where a
- * half-shown list would read worse than a line of prose.
+ * half-shown list would read worse than a line of prose. A spoiler reads as
+ * `SPOILER_PLAIN_TEXT`: these are the places that show an entry without the
+ * tap that reveals it, so its words must not appear in them.
  */
+export const SPOILER_PLAIN_TEXT = '[hidden]';
+
 export function journalPlainText(text: string): string {
   return parseJournalMarkdown(text)
     .map(block => {
-      const words = block.spans.map(s => s.text).join('');
+      let words = '';
+      let lastSpoiler: number | undefined;
+      for (const span of block.spans) {
+        // One label for a whole spoiler, however many styled spans it holds.
+        if (span.spoiler !== undefined) {
+          if (span.spoiler !== lastSpoiler) words += SPOILER_PLAIN_TEXT;
+        } else {
+          words += span.text;
+        }
+        lastSpoiler = span.spoiler;
+      }
       if (block.type === 'bullet') return `• ${words}`;
       if (block.type === 'numbered') return `${block.number}. ${words}`;
       return words;
@@ -141,13 +169,13 @@ function clamp(selection: EditSelection, length: number): EditSelection {
  * `parseInline` refuses emphasis wrapped round a space (a double-tap on a word
  * often takes the space after it too).
  */
-export function toggleWrap(text: string, selection: EditSelection, marker: '**' | '*'): FormatEdit {
+export function toggleWrap(text: string, selection: EditSelection, marker: '**' | '*' | '||'): FormatEdit {
   const { start, end } = clamp(selection, text.length);
   const n = marker.length;
   // The other marker shares this one's character, so "*" must not read the
   // inner star of a "**" as its own.
   const isMarker = (at: number) =>
-    text.slice(at, at + n) === marker && (marker === '**' || (text[at - 1] !== '*' && text[at + 1] !== '*'));
+    text.slice(at, at + n) === marker && (marker !== '*' || (text[at - 1] !== '*' && text[at + 1] !== '*'));
 
   if (start === end) {
     // An empty pair is matched as a whole: for "*" it reads like a bold marker.

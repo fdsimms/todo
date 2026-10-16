@@ -42,6 +42,7 @@ import { usePlaceSuggestions } from '../hooks/usePlaceSuggestions';
 import { placeLocationText, placeRowTitle, placeSubtitle, type PlaceResult } from '../utils/places';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { Toggle } from './Toggle';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -107,6 +108,9 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
   const [birthdayGiftTaskOptOut, setBirthdayGiftTaskOptOut] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [faxNumber, setFaxNumber] = useState('');
+  const [address, setAddress] = useState('');
+  // Content height of the address field, measured the way the notes field's is.
+  const [addressHeight, setAddressHeight] = useState(0);
   // The notes field's own content height. The native multiline field was
   // clipping long notes to a few lines, so the height is set from what the text
   // measures instead of left to auto-grow.
@@ -150,6 +154,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
     setBirthdayGiftTaskOptOut(person.birthdayGiftTaskOptOut);
     setPhoneNumber(formatPhoneInput(person.phoneNumber ?? ''));
     setFaxNumber(formatPhoneInput(person.faxNumber ?? ''));
+    setAddress(person.address ?? '');
     setEmail(person.email ?? '');
     setLinkUrl(person.linkUrl ?? '');
     setCadenceDays(person.cadenceDays);
@@ -184,6 +189,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
       birthdayGiftTaskOptOut,
       phoneNumber: phoneNumber.trim() || null,
       faxNumber: faxNumber.trim() || null,
+      address: address.trim() || null,
       email: email.trim() || null,
       linkUrl: linkUrl.trim() || null,
       cadenceDays: kind === 'individual' ? cadenceDays : 0,
@@ -206,9 +212,9 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
       `Delete ${person.name}?`,
       'Anything you wrote about them is deleted. Tasks that name them are kept without the name.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
-          text: 'Delete',
+          text: BUTTON_LABEL.delete,
           style: 'destructive',
           onPress: () => { removePersonRow(person.id); onClose(); },
         },
@@ -236,7 +242,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
         <SheetHeader
           bare
           title={isNew ? 'New person' : 'Edit person'}
-          left={<SheetHeaderButton label="Done" onPress={saveAndClose} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={saveAndClose} />}
           right={
             <TouchableOpacity onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete person">
               <Ionicons name="trash-outline" size={20} color={colors.red} />
@@ -275,11 +281,12 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
             // saved by Done and can be undone by editing it back.
             onPick={draft => {
               const patch = fillFromContactPatch(
-                { phoneNumber: phoneNumber.trim() || null, email: email.trim() || null, birthdayMonth, birthdayDay, birthYear },
+                { phoneNumber: phoneNumber.trim() || null, email: email.trim() || null, birthdayMonth, birthdayDay, birthYear, address: address.trim() || null },
                 draft
               );
               if (patch.phoneNumber) setPhoneNumber(formatPhoneInput(patch.phoneNumber));
               if (patch.email) setEmail(patch.email);
+              if (patch.address) setAddress(patch.address);
               if (patch.birthdayMonth != null && patch.birthdayDay != null) {
                 setBirthdayMonth(patch.birthdayMonth);
                 setBirthdayDay(patch.birthdayDay);
@@ -527,7 +534,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
         </View>
       )}
       <Text style={styles.sectionFooter}>
-        Where they live. Used to find them when you’re planning a trip somewhere.
+        The town or city they live in. Used to find them when you’re planning a trip somewhere. Their full address is under Contact.
       </Text>
 
       <Text style={styles.groupLabel}>CONTACT</Text>
@@ -585,15 +592,32 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
             autoCapitalize="none"
           />
         </View>
+        <View style={styles.sep} />
+        <View style={[styles.fieldRow, styles.fieldRowTop]}>
+          <Text style={styles.fieldLabel}>Address</Text>
+          <TextField
+            // An empty field is the minimum height, as in the notes field.
+            style={[styles.fieldInput, { height: address ? Math.max(24, addressHeight) : 24 }]}
+            value={address}
+            onChangeText={setAddress}
+            onContentSizeChange={e => setAddressHeight(Math.ceil(e.nativeEvent.contentSize.height))}
+            placeholder="e.g. 214 Elm St, Austin, TX"
+            placeholderTextColor={colors.textTertiary}
+            autoCapitalize="words"
+            multiline
+            scrollEnabled={false}
+            textAlignVertical="top"
+          />
+        </View>
       </View>
       <View style={styles.fillRow}>
         <InlineAction
-          label="Fill from Contacts"
+          label="Fill from contacts"
           icon="person-circle-outline"
           variant="neutral"
           surface="page"
           onPress={() => setShowContactPicker(true)}
-          accessibilityLabel="Fill phone, email and birthday from Contacts"
+          accessibilityLabel="Fill phone, email, address and birthday from Contacts"
         />
       </View>
       <Text style={styles.sectionFooter}>
@@ -675,6 +699,8 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,
     paddingHorizontal: spacing.md, paddingVertical: spacing.smd,
   },
+  // A row whose field can run to several lines: the label stays level with the first.
+  fieldRowTop: { alignItems: 'flex-start' },
   fieldLabel: { color: colors.text, fontSize: font.md, width: Math.round(92 * textScaleFactor) },
   fieldLabelWide: { color: colors.text, fontSize: font.md, width: Math.round(84 * textScaleFactor) },
   // The unit pills stay one group: at a narrow width the whole set drops to a

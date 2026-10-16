@@ -15,6 +15,7 @@ import { cleanIndexIngredients, splitIngredientText } from '../utils/cookbookInd
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { RECIPE_NAME_MAX_LENGTH, RECIPE_PAGE_MAX_LENGTH } from '../types';
 import { TextField } from './TextField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -118,8 +119,8 @@ export function CookbookIndexEntrySheet({ visible, cookbookId, entryId, onClose 
       <View style={[styles.root, { paddingTop: spacing.md }]}>
         <SheetHeader
           title={entryId ? 'Edit index entry' : 'Add to index'}
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} />}
-          right={<SheetHeaderButton label="Save" onPress={handleSave} disabled={!title.trim()} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} />}
+          right={<SheetHeaderButton label={BUTTON_LABEL.save} onPress={handleSave} disabled={!title.trim()} />}
         />
         <ScrollView
           ref={keyboardScroll.ref}

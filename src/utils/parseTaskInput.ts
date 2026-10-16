@@ -10,7 +10,7 @@ import { setHours } from 'date-fns/setHours';
 import { startOfDay } from 'date-fns/startOfDay';
 import { startOfMonth } from 'date-fns/startOfMonth';
 import type { Day } from 'date-fns';
-import type { Priority, QuotaPeriod, RecurrenceType, TimeOfDay, WeatherCondition } from '../types';
+import type { Difficulty, Priority, QuotaPeriod, RecurrenceType, TimeOfDay, WeatherCondition } from '../types';
 import { clockBesideDayPart, dayPartBesideClock, extractDayPart, extractTime, MONTHS, monthDay, NUMBER_WORD_ALT, NUMBER_WORDS, parseCount, parseDatePart, WEEKDAYS, type ClockTime } from './parseNaturalDate';
 import { logicalDayStart, onLogicalDay, taskDayStart } from './clockTime';
 import { looksLikePhoneNumber } from './phone';
@@ -2106,6 +2106,50 @@ export function parsePriorityInput(input: string): ParsedPriority | null {
   return { priority: hits[0].value, cleanTitle, matchStart, matchEnd };
 }
 
+export interface ParsedDifficulty {
+  difficulty: Difficulty;
+  /** Input minus the matched "^word" token, whitespace collapsed and trimmed. */
+  cleanTitle: string;
+  matchStart: number;
+  matchEnd: number;
+}
+
+// "^" immediately followed by a word, not itself preceded by a word character:
+// "!word"'s shape for the other rating a task carries. "$" was the first
+// candidate and is wrong, because a price in a title ("buy a shirt $20") is a
+// sigil nobody meant; "^" appears in no ordinary title.
+const DIFFICULTY_TOKEN_PATTERN = /(?<!\w)\^([a-z]+)/i;
+
+// Two characters, as for priority: trivial/easy/normal/hard are already
+// distinct by their first two letters ("tr", "ea", "no", "ha").
+const MIN_DIFFICULTY_PREFIX_LENGTH = 2;
+
+const DIFFICULTY_WORDS: Difficulty[] = ['trivial', 'easy', 'normal', 'hard'];
+
+/**
+ * Finds a "^word" token in a quick-add title and resolves it to a difficulty:
+ * "^hard", "^ha" and "^trivial". Same rules as `parsePriorityInput`: the first
+ * token only, an unambiguous prefix, and anything else left as literal text.
+ */
+export function parseDifficultyInput(input: string): ParsedDifficulty | null {
+  const match = input.match(DIFFICULTY_TOKEN_PATTERN);
+  if (!match || match.index === undefined) return null;
+
+  const token = match[1].toLowerCase();
+  if (token.length < MIN_DIFFICULTY_PREFIX_LENGTH) return null;
+
+  const hits = DIFFICULTY_WORDS.filter(w => w.startsWith(token));
+  if (hits.length !== 1) return null;
+
+  const matchStart = match.index;
+  const matchEnd = matchStart + match[0].length;
+  const cleanTitle = (input.slice(0, matchStart) + input.slice(matchEnd))
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return { difficulty: hits[0], cleanTitle, matchStart, matchEnd };
+}
+
 /** One resolved "@name" token: where it sits in the title, and who it names. */
 export interface PersonMention {
   start: number;
@@ -2782,6 +2826,16 @@ export function describeSchedule(s: ParsedSchedule, now: Date = new Date()): str
   if (s.windowStart) label += ` · After ${formatHhmm(s.windowStart)}`;
   else if (s.timeSegments.length > 0) label += ` · ${s.timeSegments[0]}`;
   return label;
+}
+
+/**
+ * The short qualifier a suggestion pill shows beside `describeSchedule`'s
+ * label, or null when the label says everything. "Weekly" alone reads as a
+ * fixed schedule, so a rule counted from the completion says so here instead
+ * of in a longer label, which would push the pill past the sheet's width.
+ */
+export function scheduleHint(s: Pick<ParsedSchedule, 'recurrenceType' | 'recurrenceFromCompletion'>): string | null {
+  return s.recurrenceType !== 'none' && s.recurrenceFromCompletion ? 'after done' : null;
 }
 
 /**

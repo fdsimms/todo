@@ -81,6 +81,7 @@ import { useSheetMotion } from '../hooks/useSheetMotion';
 import { useKeyboardLift } from '../hooks/useKeyboardLift';
 import { TextField } from './TextField';
 import { useSheetSubject } from '../hooks/useSheetSubject';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -724,7 +725,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
         </View>
 
         <TouchableOpacity style={styles.cancelCard} onPress={() => dismiss()} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
-          <Text style={styles.cancelLabel}>Cancel</Text>
+          <Text style={styles.cancelLabel}>{BUTTON_LABEL.cancel}</Text>
         </TouchableOpacity>
       </Animated.View>
 

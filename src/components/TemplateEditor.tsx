@@ -35,6 +35,7 @@ import { TemplateQuestionSheet } from './TemplateQuestionSheet';
 import { TextField } from './TextField';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { Toggle } from './Toggle';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -164,7 +165,7 @@ export function TemplateEditor({ visible, template: liveTemplate, onClose }: Pro
         <SheetHeader
           bare
           title="Edit template"
-          left={<SheetHeaderButton label="Done" onPress={saveAndClose} minWidth={40} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={saveAndClose} minWidth={40} />}
           right={
             <TouchableOpacity
               onPress={handleDelete}

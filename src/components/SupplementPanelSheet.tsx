@@ -32,6 +32,8 @@ import {
 } from '../services/aiSuggestions';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useActionMenu } from '../hooks/useActionMenu';
+import { HelpText } from './HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /**
  * What one serving of a supplement contains, typed in from its label.
@@ -198,7 +200,7 @@ export function SupplementPanelSheet({ visible, name, panel, onClose, onSave }: 
       `Remove the nutrients for ${name}?`,
       'Doses you record from now on will not add anything to the day. Doses already recorded keep what they added.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
           text: 'Remove',
           style: 'destructive',
@@ -218,8 +220,8 @@ export function SupplementPanelSheet({ visible, name, panel, onClose, onSave }: 
       <View style={styles.root}>
         <SheetHeader
           title={name}
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />}
-          right={<SheetHeaderButton label="Save" onPress={handleSave} minWidth={64} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={64} />}
+          right={<SheetHeaderButton label={BUTTON_LABEL.save} onPress={handleSave} minWidth={64} />}
         />
         <View style={styles.flex}>
           <ScrollView
@@ -232,7 +234,7 @@ export function SupplementPanelSheet({ visible, name, panel, onClose, onSave }: 
           >
             <Text style={styles.intro}>
               Copy the figures from the supplement facts on the label. Leave a field blank if
-              the label doesn't list it. Blank means unknown, which is not the same as zero.
+              the label doesn’t list it. Blank means unknown, which is not the same as zero.
             </Text>
 
             {canPhotograph && (
@@ -272,10 +274,10 @@ export function SupplementPanelSheet({ visible, name, panel, onClose, onSave }: 
                 onChange={unit => { setForm(f => ({ ...f, servingUnit: unit })); }}
                 surface="card"
               />
-              <Text style={styles.hint}>
+              <HelpText style={styles.hint}>
                 Use the serving size the label states, such as 2 tablets. A dose recorded in
                 this unit adds that many servings. Any other dose adds one serving.
-              </Text>
+              </HelpText>
             </View>
 
             <Text style={styles.groupLabel}>NUTRIENTS</Text>
@@ -288,14 +290,14 @@ export function SupplementPanelSheet({ visible, name, panel, onClose, onSave }: 
             )}
             {bad.length > 0 && (
               <Text style={styles.error}>
-                {bad.length === 1 ? 'One field' : `${bad.length} fields`} couldn't be read as a
+                {bad.length === 1 ? 'One field' : `${bad.length} fields`} couldn’t be read as a
                 number. Fix or clear {bad.length === 1 ? 'it' : 'them'}, so nothing is stored
-                that the label didn't say.
+                that the label didn’t say.
               </Text>
             )}
-            <Text style={styles.hint}>
+            <HelpText style={styles.hint}>
               Applies to doses you record from now on. Past doses keep what they added.
-            </Text>
+            </HelpText>
             {!!panel && (
               <View style={styles.removeRow}>
                 <InlineAction label="Remove nutrients" icon="trash-outline" variant="neutral" onPress={handleRemove} />

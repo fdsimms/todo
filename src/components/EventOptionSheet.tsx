@@ -7,6 +7,7 @@ import { haptics } from '../utils/haptics';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { CardSheet, useCardSheet } from './CardSheet';
+import { BUTTON_LABEL } from '../copy/shared';
 
 export interface EventOption {
   key: string;
@@ -45,7 +46,7 @@ export function EventOptionSheet({ visible, title, options, selectedKey, emptyTe
       <View style={styles.root}>
         <SheetHeader
           title={title}
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={dismiss} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={dismiss} />}
           right={<View style={styles.headerSpacer} />}
         />
         <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>

@@ -20,6 +20,7 @@ import { EmptyState } from './EmptyState';
 import { suggestTemplateItems, describeAIError, type TemplateItemSuggestion } from '../services/aiSuggestions';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -158,7 +159,7 @@ export function TemplateSuggestionsSheet({ visible, templateId, templateName, ex
         <SheetHeader
           title="Suggested tasks"
           icon="sparkles"
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} />}
           right={
             <SheetHeaderButton
               label={acceptedCount > 0 ? `Add ${acceptedCount}` : 'Add'}

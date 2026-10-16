@@ -17,6 +17,7 @@ import {
   setFlaggedTexts,
   subscribeFlagMode,
 } from '../utils/copyFlagMode';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /**
  * TEMPORARY dev tooling (see `CopyFlag`), mounted once at the app's root.
@@ -108,9 +109,9 @@ export function FlagCopyHost() {
       >
         <View style={styles.card}>
           <View style={styles.headerRow}>
-            <SheetHeaderButton label="Cancel" role="cancel" onPress={() => dismiss()} minWidth={56} />
+            <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={() => dismiss()} minWidth={56} />
             <Text style={styles.heading}>{existing ? 'Flagged copy' : 'Flag copy'}</Text>
-            <SheetHeaderButton label="Save" onPress={save} minWidth={56} style={styles.headerRight} />
+            <SheetHeaderButton label={BUTTON_LABEL.save} onPress={save} minWidth={56} style={styles.headerRight} />
           </View>
           <View style={styles.body}>
             <Text style={styles.label}>Text</Text>

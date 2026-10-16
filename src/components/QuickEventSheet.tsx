@@ -121,6 +121,7 @@ import { haptics } from '../utils/haptics';
 import { isDemoModeActive } from '../utils/demoState';
 import { TITLE_MAX_LENGTH } from '../types';
 import { TextField } from './TextField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 const EVENT_TOKEN_ACCESSORY_ID = 'quickEventTitleTokenAccessory';
 /** Long enough that a word being typed is one request, not one per letter. */
@@ -714,7 +715,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
       `Remove “${event.title}” from saved?`,
       'It is removed on all your devices. Typing the title on this phone still fills in what it had last time.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
           text: 'Remove',
           style: 'destructive',
@@ -773,9 +774,9 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
       'Save place',
       'Give it a name you can type instead of the address, like “home” or “gym”.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
-          text: 'Save',
+          text: BUTTON_LABEL.save,
           onPress: (name?: string) => {
             const trimmed = (name ?? '').trim();
             if (!trimmed) return;
@@ -1018,9 +1019,9 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
         ? 'Only this occurrence is deleted. The rest of the series stays on your calendar.'
         : 'It is removed from your calendar.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
-          text: 'Delete',
+          text: BUTTON_LABEL.delete,
           style: 'destructive',
           onPress: async () => {
             const deleted = await deleteEvent(editing.eventId, {

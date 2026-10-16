@@ -60,6 +60,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import type { Task } from '../types';
 import { useSheetMotion } from '../hooks/useSheetMotion';
 import { Toggle } from './Toggle';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -828,7 +829,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
         </View>
 
         <TouchableOpacity style={styles.cancelCard} onPress={dismiss} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
-          <Text style={styles.cancelLabel}>Cancel</Text>
+          <Text style={styles.cancelLabel}>{BUTTON_LABEL.cancel}</Text>
         </TouchableOpacity>
       </Animated.View>
     </SheetModal>

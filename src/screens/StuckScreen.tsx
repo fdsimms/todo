@@ -40,6 +40,7 @@ import type { Person, Task } from '../types';
 import { resetToPeople } from '../navigation/navigationRef';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
+import { BUTTON_LABEL } from '../copy/shared';
 
 const CHECKBOX_SIZE = 22;
 
@@ -324,7 +325,7 @@ export function StuckScreen() {
             'Archive this task?',
             `“${displayTitleFor(task)}” moves to Archived. Nothing is deleted. You can restore it from there.`,
             [
-              { text: 'Cancel', style: 'cancel' },
+              { text: BUTTON_LABEL.cancel, style: 'cancel' },
               {
                 // Not destructive styling, for the reason the picker's copy of
                 // this gives: archiving keeps the task.

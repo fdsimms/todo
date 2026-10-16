@@ -8,6 +8,8 @@ import { CountStepper } from './CountStepper';
 import { InlineAction } from './InlineAction';
 import { formatHHMM } from '../utils/dateUtils';
 import { SUN_OFFSET_LIMIT, SUN_OFFSET_STEP, type SunAnchor, type SunEvent } from '../utils/sunTimes';
+import { HelpText } from './HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 type Side = 'before' | 'at' | 'after';
 
@@ -66,9 +68,9 @@ export function SunBoundPanel({
       <View style={styles.body}>
         {!hasLocation ? (
           <>
-            <Text style={styles.note}>
+            <HelpText style={styles.note}>
               Sunrise and sunset are worked out on this phone from a location you save once. It isn’t sent anywhere.
-            </Text>
+            </HelpText>
             <InlineAction
               icon="locate-outline"
               label={locationStatus === 'asking' ? 'Finding your location' : 'Use my current location'}
@@ -119,9 +121,9 @@ export function SunBoundPanel({
           style={[settingsStyles.pickerBtn, settingsStyles.pickerBtnPrimary]}
           onPress={onDone}
           accessibilityRole="button"
-          accessibilityLabel="Done"
+          accessibilityLabel={BUTTON_LABEL.done}
         >
-          <Text style={[settingsStyles.pickerBtnText, { color: colors.onAccent }]}>Done</Text>
+          <Text style={[settingsStyles.pickerBtnText, { color: colors.onAccent }]}>{BUTTON_LABEL.done}</Text>
         </TouchableOpacity>
       </View>
     </>

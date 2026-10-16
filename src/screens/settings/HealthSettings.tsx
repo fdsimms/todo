@@ -674,7 +674,7 @@ export function HealthSettings() {
 
     <SettingsSection
       label="Journal"
-      footer="The Journal shows each day's word count against this and counts the days that reach it."
+      footer="The Journal shows each day’s word count against this and counts the days that reach it."
     >
       <SettingsRow
         entryId="journalWordGoal"

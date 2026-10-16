@@ -12,7 +12,7 @@ import { describeEnded, releasesThisMonth, timesWord } from '../../utils/shieldR
 import { useManualBlockStore } from '../../store/useManualBlockStore';
 import { MANUAL_BLOCK_PRESETS, describeDuration, manualBlockWanted } from '../../utils/manualBlock';
 import {
-  DEFAULT_GROUP_ID, allGroups, groupName, resolveAssignments, resolveGroupId, type GroupedReason,
+  DEFAULT_GROUP_ID, allGroups, groupName, isAllowGroup, resolveAssignments, resolveGroupId, type GroupedReason,
 } from '../../utils/appGroups';
 import { currentWindowEnd, describeDays, describeWindow, formatMinutes, isScheduleActive, MAX_BLOCK_SCHEDULES, type BlockSchedule } from '../../utils/blockSchedule';
 import { selectionLabel } from '../../utils/shieldReasonText';
@@ -39,6 +39,7 @@ import { navigateToSettingsEntry } from '../../navigation/openSettings';
 import * as Clipboard from 'expo-clipboard';
 import { format } from 'date-fns/format';
 import { clockTimeToken } from '../../utils/clockTime';
+import { BUTTON_LABEL } from '../../copy/shared';
 
 interface Props {
   /** Why the apps are blocked right now, so each switch can say what it is doing. */
@@ -108,19 +109,26 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
   const schedules = useAppGroupStore(s => s.schedules);
   const resolved = useMemo(() => resolveAssignments(customGroups, assignments, groupsMeta), [customGroups, assignments, groupsMeta]);
 
+  const allowGroup = (groupId: string) => isAllowGroup(customGroups, groupId, groupsMeta);
+  // An allowlist can only leave apps and websites open, never a category, so
+  // its count leaves categories out rather than promising what it can't do.
   const countLabel = (groupId: string) => {
     const c = counts[groupId];
-    return c ? selectionLabel(c.applications, c.categories, c.websites ?? 0) : 'None';
+    return c ? selectionLabel(c.applications, allowGroup(groupId) ? 0 : c.categories, c.websites ?? 0) : 'None';
   };
   const totalOf = (groupId: string) => {
     const c = counts[groupId];
-    return c ? c.applications + c.categories + (c.websites ?? 0) : 0;
+    return c ? c.applications + (allowGroup(groupId) ? 0 : c.categories) + (c.websites ?? 0) : 0;
   };
 
   const groupLocked = (groupId: string) => groupEditLocked(groupId, reasons);
   const groupHint = (groupId: string) => {
+    const allow = allowGroup(groupId);
     const parts = [
-      groupBlockHint(groupLocked(groupId), pending[groupId] === true),
+      allow ? 'Blocks everything except these apps.' : null,
+      allow && (counts[groupId]?.categories ?? 0) > 0 ? 'Categories can’t be allowed, so they’re ignored.' : null,
+      allow && totalOf(groupId) === 0 ? 'Choose at least one app, or this blocks nothing.' : null,
+      groupBlockHint(groupLocked(groupId), pending[groupId] === true, allow),
       groupsMeta.fallbackId === groupId ? 'Default group' : null,
     ].filter((p): p is string => p !== null);
     return parts.length > 0 ? parts.join(' ') : undefined;
@@ -138,14 +146,14 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
 
   const handleChooseApps = async (groupId: string) => {
     haptics.tap();
-    if (groupLocked(groupId) && !(await confirmLivePicker())) return;
+    if (groupLocked(groupId) && !(await confirmLivePicker(allowGroup(groupId)))) return;
     if (!(await ensureAuthorized('Choosing apps to block needs Screen Time access. Grant it in Settings, under Screen Time.'))) return;
     await onChooseApps(groupId);
   };
 
   const groupNameFailed = (reason: 'full' | 'duplicate' | 'invalid') => {
     Alert.alert(
-      reason === 'full' ? 'Too many groups' : 'Name already used',
+      reason === 'full' ? 'Too many groups' : 'That name is taken',
       reason === 'full' ? 'Delete a group before adding another.' : 'Pick a name no other group has.',
     );
   };
@@ -153,7 +161,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
   const handleNewGroup = () => {
     haptics.tap();
     Alert.prompt('Name this group', 'For example, Social or Games.', [
-      { text: 'Cancel', style: 'cancel' },
+      { text: BUTTON_LABEL.cancel, style: 'cancel' },
       {
         text: 'Add',
         onPress: (text?: string) => {
@@ -179,9 +187,9 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
       {
         text: 'Rename',
         onPress: () => Alert.prompt('Rename group', undefined, [
-          { text: 'Cancel', style: 'cancel' },
+          { text: BUTTON_LABEL.cancel, style: 'cancel' },
           {
-            text: 'Save',
+            text: BUTTON_LABEL.save,
             onPress: (text?: string) => {
               const renamed = useAppGroupStore.getState().renameGroup(groupId, text ?? '');
               if (!renamed.ok) groupNameFailed(renamed.reason);
@@ -189,7 +197,32 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
           },
         ], 'plain-text', name),
       },
-      ...(groupsMeta.fallbackId === groupId ? [] : [{
+      // The original group and the default group always block their apps: a
+      // deleted group falls back to the default, and that must never turn into
+      // a block on everything else (`allowGroupIds`).
+      ...(isOriginal || groupsMeta.fallbackId === groupId ? [] : [{
+        text: allowGroup(groupId) ? 'Block these apps' : 'Allow only these apps',
+        onPress: () => {
+          if (refuseWhileBlocked(groupEditLocked(groupId, reasons))) return;
+          const next = !allowGroup(groupId);
+          if (!next) { useAppGroupStore.getState().setGroupMode(groupId, false); return; }
+          Alert.alert(
+            'Allow only these apps?',
+            'Anything using this group will block every app except the ones you picked here, and those apps stay open. Pick the apps you want to keep, including dundundun. Categories can’t be allowed.',
+            [
+              { text: BUTTON_LABEL.cancel, style: 'cancel' as const },
+              {
+                text: 'Allow only these',
+                onPress: () => {
+                  useAppGroupStore.getState().setGroupMode(groupId, true);
+                  if (totalOf(groupId) === 0) void handleChooseApps(groupId);
+                },
+              },
+            ],
+          );
+        },
+      }]),
+      ...(groupsMeta.fallbackId === groupId || allowGroup(groupId) ? [] : [{
         text: 'Make default',
         onPress: () => {
           if (refuseWhileBlocked(defaultGroupLocked(groupsMeta.fallbackId, groupId, reasons))) return;
@@ -197,7 +230,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
         },
       }]),
       ...(isOriginal ? [] : [{
-        text: 'Delete',
+        text: BUTTON_LABEL.delete,
         style: 'destructive' as const,
         onPress: () => refuseWhileBlocked(groupEditLocked(groupId, reasons)) || Alert.alert(
           `Delete ${name}?`,
@@ -205,9 +238,9 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
             ? `Anything using this group will block the ${groupsMeta.fallbackId === groupId ? groupsMeta.baseName : fallbackName} group instead.`
             : 'The apps you picked for this group are forgotten.',
           [
-            { text: 'Cancel', style: 'cancel' as const },
+            { text: BUTTON_LABEL.cancel, style: 'cancel' as const },
             {
-              text: 'Delete',
+              text: BUTTON_LABEL.delete,
               style: 'destructive' as const,
               onPress: () => {
                 useAppGroupStore.getState().removeGroup(groupId);
@@ -217,7 +250,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
           ],
         ),
       }]),
-      { text: 'Cancel', style: 'cancel' as const },
+      { text: BUTTON_LABEL.cancel, style: 'cancel' as const },
     ]);
   };
 
@@ -230,7 +263,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
         text: g.id === resolved[reason] ? `${g.name} (selected)` : g.name,
         onPress: () => useAppGroupStore.getState().assignGroup(reason, g.id),
       })),
-      { text: 'Cancel', style: 'cancel' as const },
+      { text: BUTTON_LABEL.cancel, style: 'cancel' as const },
     ]);
   };
 
@@ -321,7 +354,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
   const nameThen = (title: string, fallback: string, then: (name: string) => void) => {
     // iOS only, like the rest of this screen, so the prompt needs no Android branch.
     Alert.prompt(title, 'Choose a name so you can tell your tags apart.', [
-      { text: 'Cancel', style: 'cancel' },
+      { text: BUTTON_LABEL.cancel, style: 'cancel' },
       { text: 'Add', onPress: (text?: string) => then(text ?? '') },
     ], 'plain-text', fallback);
   };
@@ -392,7 +425,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
     const buttons = [
       ...(nfcSupported ? [{ text: 'Scan a tag', onPress: () => { void handleScanTag(); } }] : []),
       { text: 'Write a link to a tag', onPress: handleAddLink },
-      { text: 'Cancel', style: 'cancel' as const },
+      { text: BUTTON_LABEL.cancel, style: 'cancel' as const },
     ];
     Alert.alert(
       'Add a key tag',
@@ -412,7 +445,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
           ? 'This is your only key tag, so removing it also unlocks your apps.'
           : 'This tag will no longer lock or unlock your apps.',
         [
-          { text: 'Cancel', style: 'cancel' },
+          { text: BUTTON_LABEL.cancel, style: 'cancel' },
           { text: 'Remove', style: 'destructive', onPress: () => useNfcKeyStore.getState().removeKey(key.id) },
         ],
       );
@@ -421,7 +454,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
       ...(key.kind === 'link' ? [{ text: 'Share link', onPress: () => { void shareKeyLink(key); } }] : []),
       ...(key.kind === 'link' ? [{ text: 'Copy key code for Shortcuts', onPress: () => { void copyKeyCode(key); } }] : []),
       { text: 'Remove', style: 'destructive' as const, onPress: remove },
-      { text: 'Cancel', style: 'cancel' as const },
+      { text: BUTTON_LABEL.cancel, style: 'cancel' as const },
     ]);
   };
 
@@ -471,7 +504,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
       minutes === null ? 'Block apps until you end it?' : `Block apps for ${describeDuration(minutes)}?`,
       `${minutes === null ? 'They stay blocked until you end it.' : `They stay blocked until ${endsAt ?? 'then'}.`} Ending it${minutes === null ? '' : ' earlier'} takes a key tag or the emergency button, and is saved in the record.`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
           text: 'Start block',
           onPress: () => {
@@ -499,7 +532,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
       'Ending a block takes a key tag or the emergency button, and is saved in the record.',
       [
         ...MANUAL_BLOCK_PRESETS.map(m => ({ text: m === null ? 'Until I end it' : describeDuration(m), onPress: () => chooseManualGroup(m) })),
-        { text: 'Cancel', style: 'cancel' as const },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' as const },
       ],
     );
   };
@@ -568,7 +601,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
 
       <SettingsSection
         label="App groups"
-        footer="Each group is its own list of apps. iOS doesn’t share which apps you picked, so only the count shows here. The default group is used when a group is deleted."
+        footer="Each group is its own list of apps. iOS doesn’t share which apps you picked, so only the count shows here. The default group is used when a group is deleted. A group can also allow only its apps, which blocks everything else."
       >
         <SettingsRow
           entryId="screenTimeApps"
@@ -584,7 +617,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
           <React.Fragment key={group.id}>
             <View style={styles.sep} />
             <SettingsRow
-              icon="apps-outline"
+              icon={allowGroup(group.id) ? 'shield-checkmark-outline' : 'apps-outline'}
               iconColor={totalOf(group.id) > 0 ? colors.accent : undefined}
               label={group.name}
               hint={groupHint(group.id)}

@@ -195,6 +195,16 @@ option of a pair has to be filed as an alternative for itself. If a label only m
 you've read the type, it's the wrong label — name the state the user is choosing between
 ("Always needed" / "One of a choice") and let the control carry the mechanism.
 
+**A line that explains a control uses `HelpText`, not `Text`.** Settings › Hide help text is meant to
+remove every static explanation under a field, and a hint rendered with a plain `Text` ignores it.
+`HelpText` (`src/components/HelpText.tsx`) renders nothing while the setting is on, so use it for
+the one-liner under a field, option or section ("Used only to calculate the figure below"). It is
+not for text that is the content: a count, a preview, a warning, an error, an empty state, or a
+consequence the person has to see before confirming. `SettingsRow`, `EditorRow` and
+`CollapsibleField` already check the setting themselves, so their `hint` props need nothing extra.
+No test enforces this (whether a line is help text is a judgment call), so check it on sight when
+adding a hint.
+
 **An alert says what happened, then what to do.** The title names what failed or what is
 being asked ("Couldn't save to Health", "Discard changes?"), never a command ("Name this
 project") or the symptom as the system saw it ("Health didn't accept the weight"). The body gives
@@ -1085,6 +1095,9 @@ right.
   default) is semibold, `role="cancel"` is regular — weight ranks them, the way iOS ranks nav-bar
   buttons, and **both are accent** (never a grey Cancel). `minWidth` reserves matching width on
   the light side so the title stays optically centered.
+- `BUTTON_LABEL` (`src/copy/shared.ts`) — the words Cancel, Delete, Done and Save, for a button
+  label, an alert button or an action row. A hand-typed one fails `noHandWrittenButtonLabel.test.ts`.
+  Add a word there once it is spelled out in several files and must read the same in all of them.
 - `SheetHeader` (`src/components/SheetHeader.tsx`) — the row that button sits in: Cancel/Back on
   the left, Save/Done on the right, the title centered between them, written once. The title
   **always** centers itself (`flex: 1`), so it stays centered when either label changes length.
