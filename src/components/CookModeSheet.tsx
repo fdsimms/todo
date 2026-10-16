@@ -590,7 +590,7 @@ export function CookModeSheet({
                         onPress={() => { haptics.tap(); setFillingBlanks(true); }}
                         accessibilityRole="button"
                         accessibilityLabel={[blank.label, describeBlankRule(blank.max), detail].filter(Boolean).join(', ')}
-                        accessibilityHint="Double tap to choose what fills the blanks"
+                        accessibilityHint="Double tap to pick the wild cards"
                       >
                         <View style={styles.miseRowText}>
                           <Text style={styles.miseName}>{blank.label}</Text>
