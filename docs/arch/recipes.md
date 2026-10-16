@@ -941,6 +941,14 @@ to figures `recipeNutrition.ts` already produced.
   has nothing to divide by. The weight rides `PendingMealLog.grams` as the figure the prompt
   **opens on**, never one it writes: a container picked at by somebody else held less than it was
   logged with, and the whole posture of that prompt is to offer.
+- **A pot's weight is taken off before the figure is stored, and never stored itself.** Cookware
+  (`src/utils/cookware.ts`, `useCookwareStore`, picked through `CookwareWeighIn`) keeps each pot's
+  empty weight so a dish can be weighed with the pot on. The four weight fields (cook recap, recipe
+  editor, recipe page, leftover container) subtract through `useWeighIn().convert` and write the
+  food alone, so `cookedWeightG` and `Leftover.weightG` mean what they always did and nothing
+  remembers which pot a dish was weighed in. A reading at or under the pot is refused with the
+  reason, never clamped. With cookware saved, leaving the field no longer commits a typed number
+  (a reading typed before its pot is picked would save as the dish); Done, submit and closing do.
 - **Servings do not go away.** A dish nobody has weighed is logged in servings exactly as before,
   and a weighed dish that also states servings offers both, weight first (`LogMealPrompt`,
   `FoodLogEntrySheet`). What changed for the servings path is that it now records grams too when

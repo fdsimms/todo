@@ -997,6 +997,9 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // Keyworded for what someone would actually type when a recipe surprised
   // them — "why does this say oat milk" is a search for the swap, not for the
   // word "substitute".
+  { id: 'cookware', groupId: 'kitchen', label: 'Cookware weights', section: 'Cookware',
+    keywords: ['pot', 'pan', 'lid', 'tub', 'container', 'tare', 'scale', 'empty weight', 'cooked weight',
+      'dutch oven', 'leftovers'] },
   { id: 'standingSwaps', groupId: 'kitchen', label: 'Standing swaps', section: 'Substitutes',
     keywords: ['substitute', 'instead of', 'always use', 'replace', 'oat milk', 'dairy',
       'allergy', 'recipe', 'grocery', 'automatic'],

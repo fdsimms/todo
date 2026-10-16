@@ -14,6 +14,7 @@ import type {
   CoinEntry,
   Reward,
   Milestone,
+  Cookware,
   CopyFlag,
   MeterReading,
   JournalEntry,
@@ -701,6 +702,16 @@ function runInitDatabase(): void {
       status TEXT NOT NULL DEFAULT 'waiting',
       estimate TEXT,
       error TEXT,
+      created_at TEXT NOT NULL
+    );
+
+    -- Empty weights of pots, pans and tubs. Names are deliberately not unique:
+    -- two devices adding "Dutch oven" offline must both survive a merge.
+    CREATE TABLE IF NOT EXISTS cookware (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      weight_g REAL NOT NULL,
+      sort_order REAL NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL
     );
 
@@ -2571,6 +2582,7 @@ export const BACKUP_TABLES = [
   'categories',
   'project_categories',
   'template_categories',
+  'cookware',
   'projects',
   // After categories and projects: a view's clauses name categories by name
   // and projects by id. They are ids inside JSON rather than foreign keys and
@@ -7184,6 +7196,40 @@ export function dbUpdateMilestone(milestone: Milestone): void {
 
 export function dbDeleteMilestone(id: string): void {
   db.runSync('DELETE FROM milestones WHERE id = ?', [id]);
+}
+
+function rowToCookware(row: Record<string, unknown>): Cookware {
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    weightG: row.weight_g as number,
+    sortOrder: row.sort_order as number,
+    createdAt: row.created_at as string,
+  };
+}
+
+export function dbGetAllCookware(): Cookware[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    'SELECT * FROM cookware ORDER BY sort_order ASC, created_at ASC'
+  );
+  return rows.map(rowToCookware);
+}
+
+export function dbInsertCookware(item: Cookware): void {
+  db.runSync(
+    'INSERT INTO cookware (id, name, weight_g, sort_order, created_at) VALUES (?, ?, ?, ?, ?)',
+    [item.id, item.name, item.weightG, item.sortOrder, item.createdAt]
+  );
+}
+
+export function dbUpdateCookware(item: Cookware): void {
+  db.runSync('UPDATE cookware SET name=?, weight_g=?, sort_order=? WHERE id=?', [
+    item.name, item.weightG, item.sortOrder, item.id,
+  ]);
+}
+
+export function dbDeleteCookware(id: string): void {
+  db.runSync('DELETE FROM cookware WHERE id = ?', [id]);
 }
 
 function rowToCopyFlag(row: Record<string, unknown>): CopyFlag {

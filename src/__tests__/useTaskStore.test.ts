@@ -116,6 +116,7 @@ jest.mock('../db/database', () => ({
   dbDeleteMoodLog: jest.fn(),
   // Milestones ride the same fan-out immediately after the mood log.
   dbGetAllMilestones: jest.fn().mockReturnValue([]),
+  dbGetAllCookware: jest.fn().mockReturnValue([]),
   dbGetAllCopyFlags: jest.fn().mockReturnValue([]),
   dbGetAllMeterReadings: jest.fn().mockReturnValue([]),
   dbInsertMeterReading: jest.fn(),

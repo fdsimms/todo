@@ -49,6 +49,8 @@ import {
 import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { useSheetMotion } from '../hooks/useSheetMotion';
 import { TextField } from './TextField';
+import { CookwareWeighIn } from './CookwareWeighIn';
+import { useWeighIn } from '../hooks/useWeighIn';
 import { BUTTON_LABEL } from '../copy/shared';
 
 /** Kept clear above the sheet so its first row never slides under the status bar. */
@@ -289,9 +291,13 @@ export function LeftoverSheet({
     setWeightText(leftover?.weightG === null || leftover?.weightG === undefined
       ? ''
       : String(leftover.weightG));
+    weighIn.clear();
   }, [visible, leftover?.id]);
 
   const dismiss = (after?: () => void) => {
+    // With cookware to pick, leaving the field no longer saves a typed weight
+    // (see the field's onBlur), so leaving the sheet does.
+    if (weighIn.hasCookware && weighed?.ok) commitWeight();
     Keyboard.dismiss();
     sheet.hide(() => {
       // No re-arming setValue here — see useSheetMotion.
@@ -336,10 +342,13 @@ export function LeftoverSheet({
 
   const cleanTitle = cleanLeftoverTitle(title);
 
-  const parsedWeight = Number(weightText.trim().replace(',', '.'));
-  const typedWeight = weightText.trim() && Number.isFinite(parsedWeight) && parsedWeight > 0
-    ? parsedWeight
-    : null;
+  // What the container's contents weigh: the typed number as it is, or, with
+  // a pot or tub picked, the scale's reading less that cookware. A reading
+  // lighter than the cookware comes to nothing here and says why under the
+  // pots (CookwareWeighIn).
+  const weighIn = useWeighIn();
+  const weighed = weightText.trim() ? weighIn.convert(weightText) : null;
+  const typedWeight = weighed?.ok ? weighed.grams : null;
 
   // What "Log it" is about to write: the ticked parts, or the one thing that's
   // been typed, each multiplied out by where it's going. Empty means the button
@@ -647,7 +656,9 @@ export function LeftoverSheet({
                   style={styles.weightInput}
                   value={weightText}
                   onChangeText={setWeightText}
-                  onBlur={commitWeight}
+                  // A reading typed before its pot is picked would be saved as
+                  // the contents; with cookware to pick, submit or closing saves it.
+                  onBlur={weighIn.hasCookware ? undefined : commitWeight}
                   onSubmitEditing={commitWeight}
                   keyboardType="decimal-pad"
                   inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
@@ -655,10 +666,15 @@ export function LeftoverSheet({
                   placeholderTextColor={colors.textTertiary}
                   maxLength={6}
                   returnKeyType="done"
-                  accessibilityLabel="What this container weighs, in grams"
+                  accessibilityLabel={weighIn.picked.length > 0 ? 'Weight on the scale in grams' : 'What this container weighs, in grams'}
                 />
                 <Text style={styles.hintInline}>g</Text>
               </View>
+            </View>
+          )}
+          {showWeight && !actionsOnly && (
+            <View style={styles.weighInWrap}>
+              <CookwareWeighIn weighIn={weighIn} scaleText={weightText} />
             </View>
           )}
 
@@ -938,6 +954,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingTop: spacing.md,
     marginBottom: spacing.md,
   },
+  weighInWrap: { paddingHorizontal: spacing.md, marginBottom: spacing.md },
   keepText: { flex: 1, gap: spacing.xxs },
   weightField: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   weightInput: {

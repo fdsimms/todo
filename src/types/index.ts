@@ -1095,7 +1095,9 @@ export type UnattendedSubject =
   // A switch in Settings an agent flipped (vacation mode). Record only: the switch is one tap.
   | 'setting'
   // A meter reading (`MeterReading`) an agent logged or deleted. Record only.
-  | 'meter';
+  | 'meter'
+  // A pot, pan, lid or tub (`Cookware`) an agent added, changed or deleted. Record only.
+  | 'cookware';
 
 /**
  * What an agent's edit or move changed: the fields it touched, as they were
@@ -2003,6 +2005,23 @@ export interface CopyFlag {
   status: 'open' | 'resolved';
   /** What it was changed to, or why it was left. Set when resolved. */
   resolution: string;
+  createdAt: string;
+}
+
+/**
+ * A pot, pan, lid or tub and what it weighs empty, so a weight typed with the
+ * food still in it can be turned into the food's own weight. See
+ * `src/utils/cookware.ts`.
+ *
+ * Only a convenience for entering a number: nothing stores which pot a dish was
+ * weighed in, and `Recipe.cookedWeightG` stays the food alone.
+ */
+export interface Cookware {
+  id: string;
+  name: string;
+  /** What it weighs empty, in grams. Always above zero. */
+  weightG: number;
+  sortOrder: number;
   createdAt: string;
 }
 
