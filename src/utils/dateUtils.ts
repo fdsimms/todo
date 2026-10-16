@@ -599,7 +599,27 @@ export function getNextOccurrence(
   if (task.recurrenceCount !== null && task.recurrenceCount <= 1) {
     return null;
   }
-  return { date: next, gridDate };
+  // Stored at local noon of its day, like every other date a person or the app
+  // writes (WhenPicker, quick add, Reminders import). Handed back at the reset
+  // hour, a successor read as the day before on a device one zone west:
+  // `2026-10-16T04:00Z` is midnight in New York and 23:00 the day before in
+  // Chicago. 'hours' keeps its instant, which is a moment and not a day.
+  if (task.recurrenceType === 'hours') return { date: next, gridDate };
+  return {
+    date: atNoonOfDay(next, dayResetTime),
+    gridDate: gridDate ? atNoonOfDay(gridDate, dayResetTime) : null,
+  };
+}
+
+/**
+ * Local noon of the logical day `date` falls on. A reset hour at or after noon
+ * has no noon inside its own day, so that day's start stands in.
+ */
+function atNoonOfDay(date: Date, dayResetTime?: string): Date {
+  const dayStart = getTaskDayStart(date, dayResetTime);
+  const noon = new Date(dayStart);
+  noon.setHours(12, 0, 0, 0);
+  return noon >= dayStart ? noon : dayStart;
 }
 
 /**

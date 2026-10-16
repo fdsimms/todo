@@ -2231,8 +2231,8 @@ describe('completeTask', () => {
 
     const next = useTaskStore.getState().tasks.find(t => t.id !== 'recurring');
     expect(next?.deadlineOffsetDays).toBe(1);
-    expect(new Date(next!.dueDate!).toISOString()).toBe(new Date(2025, 5, 19, 0, 0, 0).toISOString()); // next Thursday
-    expect(new Date(next!.deadline!).toISOString()).toBe(new Date(2025, 5, 18, 0, 0, 0).toISOString()); // next Wednesday
+    expect(new Date(next!.dueDate!).toISOString()).toBe(new Date(2025, 5, 19, 12, 0, 0).toISOString()); // next Thursday
+    expect(new Date(next!.deadline!).toISOString()).toBe(new Date(2025, 5, 18, 12, 0, 0).toISOString()); // next Wednesday
   });
 
   it('recomputes a deadline set *after* the due date against the next occurrence', () => {
@@ -2254,8 +2254,8 @@ describe('completeTask', () => {
 
     const next = useTaskStore.getState().tasks.find(t => t.id !== 'recurring');
     expect(next?.deadlineOffsetDays).toBe(-10);
-    expect(new Date(next!.dueDate!).toISOString()).toBe(new Date(2026, 1, 1, 0, 0, 0).toISOString()); // Feb 1
-    expect(new Date(next!.deadline!).toISOString()).toBe(new Date(2026, 1, 11, 0, 0, 0).toISOString()); // Feb 11
+    expect(new Date(next!.dueDate!).toISOString()).toBe(new Date(2026, 1, 1, 12, 0, 0).toISOString()); // Feb 1
+    expect(new Date(next!.deadline!).toISOString()).toBe(new Date(2026, 1, 11, 12, 0, 0).toISOString()); // Feb 11
   });
 
   it('recomputes a "last day of the month" deadline against the next occurrence\'s dueDate', () => {
@@ -2277,7 +2277,7 @@ describe('completeTask', () => {
 
     const next = useTaskStore.getState().tasks.find(t => t.id !== 'recurring');
     expect(next?.deadlineMonthDay).toBe(-1);
-    expect(new Date(next!.dueDate!).toISOString()).toBe(new Date(2026, 1, 20, 0, 0, 0).toISOString()); // Feb 20
+    expect(new Date(next!.dueDate!).toISOString()).toBe(new Date(2026, 1, 20, 12, 0, 0).toISOString()); // Feb 20
     expect(new Date(next!.deadline!).toISOString()).toBe(new Date(2026, 1, 28, 0, 0, 0).toISOString()); // last day of Feb (2026 not leap)
   });
 
@@ -2298,7 +2298,7 @@ describe('completeTask', () => {
 
     const next = useTaskStore.getState().tasks.find(t => t.id !== 'recurring');
     expect(next?.reminderOffsetDays).toBe(1);
-    expect(new Date(next!.dueDate!).toISOString()).toBe(new Date(2025, 5, 19, 0, 0, 0).toISOString()); // next Thursday
+    expect(new Date(next!.dueDate!).toISOString()).toBe(new Date(2025, 5, 19, 12, 0, 0).toISOString()); // next Thursday
     const reminder = new Date(next!.reminderTime!);
     expect(reminder.toISOString()).toBe(new Date(2025, 5, 18, 20, 0, 0).toISOString()); // next Wednesday, 8pm
   });
@@ -9044,7 +9044,7 @@ describe('skipNextRecurrence', () => {
     useTaskStore.setState({ tasks: [task] });
     useTaskStore.getState().skipNextRecurrence('t1');
     const updated = useTaskStore.getState().tasks[0];
-    expect(new Date(updated.dueDate!).toISOString()).toBe(new Date(2025, 5, 19, 0, 0, 0).toISOString());
+    expect(new Date(updated.dueDate!).toISOString()).toBe(new Date(2025, 5, 19, 12, 0, 0).toISOString());
     expect(new Date(updated.reminderTime!).toISOString()).toBe(new Date(2025, 5, 18, 20, 0, 0).toISOString());
   });
 
@@ -19485,7 +19485,7 @@ describe('negative habits', () => {
         jest.setSystemTime(new Date(2026, 0, 10, 9, 0, 0));
         seed(daily({ dueDate: new Date(2026, 0, 8, 9, 0, 0).toISOString() }));
         useTaskStore.getState().rolloverNegativeStreaks();
-        expect(new Date(get().dueDate!)).toEqual(new Date(2026, 0, 10, 0, 0, 0));
+        expect(new Date(get().dueDate!)).toEqual(new Date(2026, 0, 10, 12, 0, 0));
       });
 
       it('leaves a date that is already today alone', () => {
@@ -19504,7 +19504,7 @@ describe('negative habits', () => {
         expect(get().dueDate).toBe(due);
         jest.setSystemTime(new Date(2026, 0, 11, 9, 0, 0));
         useTaskStore.getState().rolloverNegativeStreaks();
-        expect(new Date(get().dueDate!)).toEqual(new Date(2026, 0, 11, 0, 0, 0));
+        expect(new Date(get().dueDate!)).toEqual(new Date(2026, 0, 11, 12, 0, 0));
       });
 
       it('moves a from-completion habit onto today rather than tomorrow', () => {
