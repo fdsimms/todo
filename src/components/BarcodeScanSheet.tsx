@@ -73,6 +73,7 @@ import {
 import type { ReceiptMatchConfidence } from '../utils/receiptMatch';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { TextField } from './TextField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /** Matches the shopping list's own checkbox, same as the receipt sheet's. */
 const CHECK_SIZE = 22;
@@ -1111,7 +1112,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
       <View style={styles.root}>
         <SheetHeader
           title={CONTEXT_COPY[context].title}
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={64} />}
           right={
             <SheetHeaderButton
               label={applying ? 'Working\u2026' : CONTEXT_COPY[context].confirmLabel}

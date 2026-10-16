@@ -29,6 +29,7 @@ import { CountStepper } from './CountStepper';
 import { capitalize } from '../utils/capitalize';
 import { TextField } from './TextField';
 import { Toggle } from './Toggle';
+import { BUTTON_LABEL } from '../copy/shared';
 
 // Ten hours, well past any real estimate. CountStepper needs a bound to
 // disable its + key at; the hand-rolled version it replaced had none.
@@ -192,7 +193,7 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
       scrollContentStyle={styles.scrollContent}
       header={
         <>
-          <SheetHeaderButton label="Done" onPress={saveAndClose} minWidth={56} />
+          <SheetHeaderButton label={BUTTON_LABEL.done} onPress={saveAndClose} minWidth={56} />
           <View style={styles.headerTitleWrap}>
             <Text style={styles.headerTitle}>Follow-up task</Text>
             {!!taskTitle.trim() && (

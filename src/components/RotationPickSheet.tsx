@@ -15,6 +15,7 @@ import { openInAppUrl } from '../utils/deepLinks';
 import { plannedRotationItem, rotationLastDoneLabel, rotationMembers } from '../utils/rotation';
 import { spacing, radius, font, fontWeight, iconSize, interaction, sheetBottomInset, type Colors } from '../theme';
 import type { Task } from '../types';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -199,7 +200,7 @@ export function RotationPickSheet({ visible, task, onPick, onCancel, onPlan }: P
       <Animated.View onLayout={sheet.onCardLayout} style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
         <View style={styles.card}>
           <View style={styles.headerRow}>
-            <SheetHeaderButton label="Cancel" role="cancel" onPress={() => dismiss(onCancel)} minWidth={56} />
+            <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={() => dismiss(onCancel)} minWidth={56} />
             <Text style={styles.heading} numberOfLines={2}>{displayTitleFor(task)}</Text>
             <View style={styles.headerRight} />
           </View>

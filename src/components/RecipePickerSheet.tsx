@@ -35,6 +35,7 @@ import { SheetScrim } from './SheetScrim';
 import { MEAL_SLOTS, RECIPE_NAME_MAX_LENGTH, type Leftover, type MealPlanEntry, type MealSlot } from '../types';
 import { useSheetMotion } from '../hooks/useSheetMotion';
 import { useFilterField } from '../hooks/useFilterField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 export interface MealPick {
   /**
@@ -516,7 +517,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
             has — closing no longer un-plans a pick, so calling that Cancel
             past the first one would be a promise the tap doesn't keep. */}
         <TouchableOpacity style={styles.cancelCard} onPress={dismiss} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
-          <Text style={styles.cancelLabel}>{planned.length > 0 ? 'Done' : 'Cancel'}</Text>
+          <Text style={styles.cancelLabel}>{planned.length > 0 ? BUTTON_LABEL.done : BUTTON_LABEL.cancel}</Text>
         </TouchableOpacity>
       </Animated.View>
     </SheetModal>

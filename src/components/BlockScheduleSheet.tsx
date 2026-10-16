@@ -22,6 +22,7 @@ import {
   WEEKDAYS, formatMinutes, isAllDay, scheduleProblem, type BlockSchedule,
 } from '../utils/blockSchedule';
 import { confirmDiscard } from '../utils/confirmDiscard';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -204,8 +205,8 @@ export function BlockScheduleSheet({ visible, onClose, scheduleId }: Props) {
       <View style={styles.root}>
         <SheetHeader
           title={scheduleId ? 'Edit schedule' : 'New schedule'}
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />}
-          right={<SheetHeaderButton label="Save" onPress={handleSave} disabled={problem !== null} minWidth={64} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={64} />}
+          right={<SheetHeaderButton label={BUTTON_LABEL.save} onPress={handleSave} disabled={problem !== null} minWidth={64} />}
         />
         <ScrollView
           ref={keyboardScroll.ref}

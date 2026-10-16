@@ -19,6 +19,7 @@ import { EmptyState } from './EmptyState';
 import { suggestProjectTasks, describeAIError, type ProjectTaskSuggestion } from '../services/aiSuggestions';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -138,7 +139,7 @@ export function ProjectTaskSuggestionsSheet({
         <SheetHeader
           title="Suggested tasks"
           icon="sparkles"
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} />}
           right={
             <SheetHeaderButton
               label={acceptedCount > 0 ? `Add ${acceptedCount}` : 'Add'}

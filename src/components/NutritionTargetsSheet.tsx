@@ -51,6 +51,7 @@ import { CountStepper } from './CountStepper';
 import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SegmentedControl } from './SegmentedControl';
+import { BUTTON_LABEL } from '../copy/shared';
 
 const MICRO_KEYS = [...VITAMIN_KEYS, ...MINERAL_KEYS];
 
@@ -487,7 +488,7 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
         <View style={styles.header}>
           <View style={styles.headerSpacer} />
           <Text style={styles.headerTitle}>Nutrition</Text>
-          <SheetHeaderButton label="Done" onPress={onClose} minWidth={64} />
+          <SheetHeaderButton label={BUTTON_LABEL.done} onPress={onClose} minWidth={64} />
         </View>
 
         <ScrollView

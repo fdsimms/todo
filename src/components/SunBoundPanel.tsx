@@ -9,6 +9,7 @@ import { InlineAction } from './InlineAction';
 import { formatHHMM } from '../utils/dateUtils';
 import { SUN_OFFSET_LIMIT, SUN_OFFSET_STEP, type SunAnchor, type SunEvent } from '../utils/sunTimes';
 import { HelpText } from './HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 type Side = 'before' | 'at' | 'after';
 
@@ -120,9 +121,9 @@ export function SunBoundPanel({
           style={[settingsStyles.pickerBtn, settingsStyles.pickerBtnPrimary]}
           onPress={onDone}
           accessibilityRole="button"
-          accessibilityLabel="Done"
+          accessibilityLabel={BUTTON_LABEL.done}
         >
-          <Text style={[settingsStyles.pickerBtnText, { color: colors.onAccent }]}>Done</Text>
+          <Text style={[settingsStyles.pickerBtnText, { color: colors.onAccent }]}>{BUTTON_LABEL.done}</Text>
         </TouchableOpacity>
       </View>
     </>

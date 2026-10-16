@@ -52,6 +52,7 @@ import { MAX_RECIPE_PHOTOS } from '../utils/recipePhoto';
 import { haptics } from '../utils/haptics';
 import { capitalize } from '../utils/capitalize';
 import { confirmDiscard } from '../utils/confirmDiscard';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -897,7 +898,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
         <SheetHeader
           title="From a recipe"
           icon="sparkles"
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={72} />}
           right={
             <SheetHeaderButton
               label="Add"

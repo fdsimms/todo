@@ -50,6 +50,7 @@ import {
   personContactActions,
   type PersonContactKind,
 } from '../utils/peopleList';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /**
  * The people list.
@@ -77,7 +78,7 @@ function AddPersonFabWithDropLabel({
   channel: FabIntentChannel;
 } & Omit<React.ComponentProps<typeof Fab>, 'dragLabel'>) {
   const label = useFabIntentSelector(channel, intent => {
-    if (intent?.kind === 'cancel') return 'Cancel';
+    if (intent?.kind === 'cancel') return BUTTON_LABEL.cancel;
     return intent?.kind === 'insert' ? 'New person here' : null;
   });
   return <Fab {...props} dragLabel={label} />;
@@ -194,9 +195,9 @@ export function PeopleScreen() {
       `Delete ${count} ${plural}?`,
       'Anything you wrote about them is deleted. Tasks that name them are kept, and stop showing their name.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
-          text: 'Delete',
+          text: BUTTON_LABEL.delete,
           style: 'destructive',
           onPress: () => {
             animateLayout();

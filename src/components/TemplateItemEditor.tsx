@@ -90,6 +90,7 @@ import { formatPhoneInput } from '../utils/phone';
 import { capitalize } from '../utils/capitalize';
 import { TextField } from './TextField';
 import { Toggle } from './Toggle';
+import { BUTTON_LABEL } from '../copy/shared';
 
 // Ceilings for the two steppers whose hand-rolled versions had none. Both sit
 // well past any real value; CountStepper needs a bound to disable its + key
@@ -834,7 +835,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       scrollEnabled={!draggingRow}
       header={
         <>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} />
+          <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={onClose} />
           <View style={styles.headerTitleWrap}>
             <Text style={styles.headerTitle}>{item ? 'Edit item' : 'New item'}</Text>
             {!!templateName && (
@@ -842,7 +843,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             )}
           </View>
           <SheetHeaderButton
-            label={item ? 'Save' : 'Add'}
+            label={item ? BUTTON_LABEL.save : 'Add'}
             onPress={handleSave}
             disabled={!title.trim()}
           />

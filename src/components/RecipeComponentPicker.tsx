@@ -22,6 +22,7 @@ import { EmptyState } from './EmptyState';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { useFilterField } from '../hooks/useFilterField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -97,7 +98,7 @@ export function RecipeComponentPicker({ visible, recipe, onClose, onSelect }: Pr
       <View style={styles.root}>
         <SheetHeader
           title="Add a component"
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={60} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={60} />}
           // Balances Cancel so the title stays optically centered.
           right={<View style={styles.headerSpacer} />}
         />

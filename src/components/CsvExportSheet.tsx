@@ -13,6 +13,7 @@ import {
 } from '../utils/backupFile';
 import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
 import { HelpText } from './HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /** How far back an export reaches. Days, so the cutoff is one subtraction. */
 type ExportRange = 30 | 90 | 365 | null;
@@ -116,7 +117,7 @@ export function CsvExportSheet<T>({
         <SheetHeader
           size="lg"
           title="Export"
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={dismiss} minWidth={64} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={dismiss} minWidth={64} />}
           right={<View style={styles.headerSpacer} />}
         />
 

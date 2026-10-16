@@ -9,6 +9,7 @@ import { formatPriceInput, parsePriceInput, priceToInput } from '../utils/grocer
 import { haptics } from '../utils/haptics';
 import { TextField } from './TextField';
 import { HelpText } from './HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -118,11 +119,11 @@ export function TripBudgetPrompt({ visible, budgetMinor, currencySymbol, onSave,
           </View>
 
           <View style={styles.actions}>
-            <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={72} />
+            <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={onClose} minWidth={72} />
             {budgetMinor !== null && (
               <SheetHeaderButton label="Clear" role="cancel" onPress={clear} minWidth={72} />
             )}
-            <SheetHeaderButton label="Save" onPress={save} minWidth={72} />
+            <SheetHeaderButton label={BUTTON_LABEL.save} onPress={save} minWidth={72} />
           </View>
         </View>
       </KeyboardAvoidingView>

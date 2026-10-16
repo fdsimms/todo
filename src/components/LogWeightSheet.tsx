@@ -23,6 +23,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { WhenPicker } from './WhenPicker';
 import { TextField } from './TextField';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /**
  * Recording a weight, which writes a body-mass sample to Apple Health.
@@ -172,8 +173,8 @@ export function LogWeightSheet({ visible, onClose }: Props) {
         <SheetHeader
           bare
           title="Record a weight"
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={close} minWidth={64} />}
-          right={<SheetHeaderButton label="Save" onPress={save} disabled={!canSave} minWidth={64} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={close} minWidth={64} />}
+          right={<SheetHeaderButton label={BUTTON_LABEL.save} onPress={save} disabled={!canSave} minWidth={64} />}
         />
       }
       footer={

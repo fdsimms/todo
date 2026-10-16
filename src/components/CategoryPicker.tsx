@@ -40,6 +40,7 @@ import {
 } from '../utils/categoryPicker';
 import { useSheetMotion } from '../hooks/useSheetMotion';
 import { useFilterField } from '../hooks/useFilterField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface ListProps {
   /**
@@ -405,7 +406,7 @@ export function PickerSheet({ visible, onClose, title, children }: {
         </View>
 
         <TouchableOpacity style={styles.cancelCard} onPress={() => dismiss()} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
-          <Text style={styles.cancelLabel}>Cancel</Text>
+          <Text style={styles.cancelLabel}>{BUTTON_LABEL.cancel}</Text>
         </TouchableOpacity>
       </Animated.View>
     </SheetModal>

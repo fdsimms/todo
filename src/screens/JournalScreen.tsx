@@ -59,6 +59,7 @@ import { JournalMonthSheet } from '../components/JournalMonthSheet';
 import { journalPlainText } from '../utils/journalMarkdown';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /**
  * The labels and people on an entry, under its words. A tag is a button that
@@ -206,7 +207,7 @@ function JournalLogContent({ kind }: { kind: JournalKind }) {
       'Open a note early?',
       `The next one was written on ${format(new Date(`${next.dayKey}T00:00:00`), 'MMMM d, yyyy')} to open on ${format(new Date(`${next.openOn}T00:00:00`), 'MMMM d, yyyy')}.`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
           text: 'Open it now',
           onPress: () => {
@@ -245,7 +246,7 @@ function JournalLogContent({ kind }: { kind: JournalKind }) {
     haptics.tap();
     const chosen = await new Promise<JournalExportFormat | null>(resolve => {
       Alert.alert(shareTitle, journalExportSummary(entries, kind), [
-        { text: 'Cancel', style: 'cancel', onPress: () => resolve(null) },
+        { text: BUTTON_LABEL.cancel, style: 'cancel', onPress: () => resolve(null) },
         { text: 'Share as Markdown', onPress: () => resolve('markdown') },
         { text: 'Share as CSV', onPress: () => resolve('csv') },
       ], { onDismiss: () => resolve(null) });

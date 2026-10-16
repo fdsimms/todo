@@ -8,6 +8,7 @@ import { useColors } from '../theme/ThemeContext';
 import { font, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import type { AppGroup } from '../utils/appGroups';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -49,7 +50,7 @@ export function ManualBlockGroupsSheet({ visible, groups, initialIds, onClose, o
       <View style={styles.root}>
         <SheetHeader
           title="Which apps?"
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={dismiss} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={dismiss} />}
           right={<SheetHeaderButton label="Next" onPress={confirm} disabled={selected.length === 0} />}
         />
         <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>

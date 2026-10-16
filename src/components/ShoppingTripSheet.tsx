@@ -31,6 +31,7 @@ import {
 import { confirmDiscard } from '../utils/confirmDiscard';
 import type { Shop } from '../types';
 import { HelpText } from './HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -322,7 +323,7 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
           <SheetHeader
             title={correctingShop.name}
             left={<SheetHeaderButton label="Back" role="cancel" onPress={cancelCorrection} minWidth={72} />}
-            right={<SheetHeaderButton label="Save" onPress={saveCorrection} minWidth={72} />}
+            right={<SheetHeaderButton label={BUTTON_LABEL.save} onPress={saveCorrection} minWidth={72} />}
           />
 
           <ScrollView contentContainerStyle={styles.body}>
@@ -375,7 +376,7 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
       <View style={styles.root}>
         <SheetHeader
           title={startNow ? 'Start shopping' : 'Shopping trip'}
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={72} />}
           right={
             <SheetHeaderButton
               label={startNow ? 'Start' : addLabel}

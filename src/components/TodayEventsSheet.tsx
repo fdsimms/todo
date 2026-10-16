@@ -56,6 +56,7 @@ import {
   type MovedEvent,
 } from '../utils/eventTaskLinks';
 import type { TaskTemplate } from '../types';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /** `null` is the "no reminder" segment — distinct from 0, which is a real offset (at start time). */
 type OffsetChoice = number | null;
@@ -273,7 +274,7 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
       'Replace away dates?',
       `${project.title} already has away dates. Use this event’s dates instead?`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         { text: 'Replace', onPress: apply },
       ],
     );
@@ -345,7 +346,7 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
         <SheetHeader
           title={title ?? 'Today’s events'}
           left={<View style={styles.headerSpacer} />}
-          right={<SheetHeaderButton label="Done" onPress={onClose} minWidth={64} />}
+          right={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={onClose} minWidth={64} />}
         />
 
         <ScrollView

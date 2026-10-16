@@ -70,6 +70,7 @@ import { InlineAction } from './InlineAction';
 import { PressableScale } from './PressableScale';
 import { SegmentedControl } from './SegmentedControl';
 import { TextField } from './TextField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /**
  * "Cheeseburger and fries at Five Guys", read into figures to confirm.
@@ -1515,7 +1516,7 @@ function PendingRecallCard({ styles, label, meta, amount, preview, error, onCanc
       {!!preview && <Text style={styles.confirmPreview}>{preview}</Text>}
       {!!error && <Text style={styles.error} accessibilityLiveRegion="polite">{error}</Text>}
       <View style={styles.confirmActions}>
-        <InlineAction label="Cancel" onPress={onCancel} variant="neutral" accessibilityLabel={`Cancel logging ${label}`} />
+        <InlineAction label={BUTTON_LABEL.cancel} onPress={onCancel} variant="neutral" accessibilityLabel={`Cancel logging ${label}`} />
         <InlineAction label="Log" onPress={onConfirm} variant="accent" accessibilityLabel={`Log ${label}`} />
       </View>
     </View>

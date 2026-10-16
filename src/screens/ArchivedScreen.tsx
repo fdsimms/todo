@@ -29,6 +29,7 @@ import { useFilterField } from '../hooks/useFilterField';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { usePullToSearch } from '../hooks/usePullToSearch';
+import { BUTTON_LABEL } from '../copy/shared';
 
 // A quiet, out-of-the-way home for recurring tasks paused indefinitely (see
 // archiveTask/unarchiveTask in useTaskStore) — reached only via the side
@@ -145,9 +146,9 @@ export function ArchivedScreen() {
       `Delete ${ids.length} ${plural}?`,
       `This deletes ${ids.length === 1 ? 'it' : 'them'} along with the history. Shake your phone right after to undo.`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
-          text: 'Delete',
+          text: BUTTON_LABEL.delete,
           style: 'destructive',
           onPress: () => {
             animateLayout();

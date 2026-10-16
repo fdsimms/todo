@@ -16,6 +16,7 @@ import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { CardSheet, useCardSheet } from './CardSheet';
 import { HelpText } from './HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -97,7 +98,7 @@ export function CalendarChoiceSheet({ visible, title, selectedId, onSelect, onCl
       <View style={styles.root}>
         <SheetHeader
           title={title}
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={dismiss} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={dismiss} />}
           right={<View style={styles.headerSpacer} />}
         />
         <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>

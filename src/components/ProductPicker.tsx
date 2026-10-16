@@ -8,6 +8,7 @@ import { describeProduct, productsForItem } from '../utils/groceryProduct';
 import { haptics } from '../utils/haptics';
 import { TextField } from './TextField';
 import { InlineAction } from './InlineAction';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /**
  * "Which box of it?" — one item's products, to pick one of or none.
@@ -158,7 +159,7 @@ export function ProductPicker({ itemId, products, value, onPick, label, allowNon
               }}
               accessibilityLabel="Save this brand or flavor"
             />
-            <InlineAction label="Cancel" variant="neutral" onPress={() => setAdding(false)} />
+            <InlineAction label={BUTTON_LABEL.cancel} variant="neutral" onPress={() => setAdding(false)} />
           </View>
         </View>
       )}

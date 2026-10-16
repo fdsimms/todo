@@ -49,6 +49,7 @@ import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { useLingering } from '../hooks/useLingering';
 import { HelpText } from '../components/HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 type RootStackParamList = {
   MedicationDetail: {
@@ -199,7 +200,7 @@ export function MedicationDetailScreen() {
         style: 'destructive' as const,
         onPress: () => setUsualDoses(medName, storedUsuals.filter((_, i) => i !== index)),
       },
-      { text: 'Cancel', style: 'cancel' as const },
+      { text: BUTTON_LABEL.cancel, style: 'cancel' as const },
     ]);
   };
 
@@ -274,7 +275,7 @@ export function MedicationDetailScreen() {
       'Refilled',
       'How many did you get? They are added to what is left.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
           text: 'Add',
           onPress: (value?: string) => {
@@ -298,7 +299,7 @@ export function MedicationDetailScreen() {
       `Archive ${name}?`,
       'It moves out of What you take and the suggestions. Its doses stay in your log and export, and recording another dose brings it back.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         { text: 'Archive', onPress: () => archiveMedication(name) },
       ],
     );
@@ -312,7 +313,7 @@ export function MedicationDetailScreen() {
       `Remove ${name}?`,
       'It comes off your list, along with any limit or supply you set for it.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         { text: 'Remove', style: 'destructive', onPress: () => { removeMedication(name); navigation.goBack(); } },
       ],
     );

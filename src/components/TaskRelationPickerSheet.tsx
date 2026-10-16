@@ -33,6 +33,7 @@ import { categoryLabel } from '../utils/categoryLabel';
 import type { Task } from '../types';
 import { useSheetMotion } from '../hooks/useSheetMotion';
 import { useFilterField } from '../hooks/useFilterField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /**
  * Which end of the relationship is being filled in: the task being edited is
@@ -340,7 +341,7 @@ export function TaskRelationPickerSheet({ visible, onClose, relation, taskId, co
         </View>
 
         <TouchableOpacity style={styles.cancelCard} onPress={() => dismiss()} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
-          <Text style={styles.cancelLabel}>Cancel</Text>
+          <Text style={styles.cancelLabel}>{BUTTON_LABEL.cancel}</Text>
         </TouchableOpacity>
       </Animated.View>
     </SheetModal>

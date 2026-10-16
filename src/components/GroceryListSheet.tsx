@@ -34,6 +34,7 @@ import { useSheetMotion } from '../hooks/useSheetMotion';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { listPickerRows } from '../utils/groceryLists';
 import { TextField } from './TextField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /** Kept clear above the lifted sheet so its title never slides under the status bar. */
 const TOP_INSET = 72;
@@ -299,7 +300,7 @@ export function GroceryListSheet({ visible, onClose }: Props) {
         </View>
 
         <TouchableOpacity style={styles.cancelCard} onPress={() => dismiss()} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
-          <Text style={styles.cancelLabel}>Cancel</Text>
+          <Text style={styles.cancelLabel}>{BUTTON_LABEL.cancel}</Text>
         </TouchableOpacity>
       </Animated.View>
     </SheetModal>

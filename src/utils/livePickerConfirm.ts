@@ -1,5 +1,6 @@
 import { Alert } from 'react-native';
 import { ALLOW_PICKER_NOTE_MESSAGE, BLOCK_PICKER_NOTE_MESSAGE, BLOCK_PICKER_NOTE_TITLE } from './blockEditLock';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /**
  * Says what the app picker will and won't do for a group that is blocking, and
@@ -14,7 +15,7 @@ export function confirmLivePicker(allowOnly = false): Promise<boolean> {
       BLOCK_PICKER_NOTE_TITLE,
       allowOnly ? ALLOW_PICKER_NOTE_MESSAGE : BLOCK_PICKER_NOTE_MESSAGE,
       [
-        { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+        { text: BUTTON_LABEL.cancel, style: 'cancel', onPress: () => resolve(false) },
         { text: 'Choose apps', onPress: () => resolve(true) },
       ],
       { onDismiss: () => resolve(false) },

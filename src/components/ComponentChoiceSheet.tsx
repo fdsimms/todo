@@ -19,6 +19,7 @@ import { InlineAction } from './InlineAction';
 import { PillGroup } from './PillGroup';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { HelpText } from './HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -136,7 +137,7 @@ export function ComponentChoiceSheet({ visible, recipe, component: liveComponent
           bare
           title={name}
           numberOfLines={1}
-          left={<SheetHeaderButton label="Done" onPress={saveAndClose} minWidth={40} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={saveAndClose} minWidth={40} />}
           right={<View style={styles.headerSpacer} />}
         />
       }

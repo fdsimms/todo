@@ -40,6 +40,7 @@ import { confirmDiscard } from '../utils/confirmDiscard';
 import { GROCERY_NAME_MAX_LENGTH, SHOP_NAME_MAX_LENGTH } from '../types';
 import { TextField } from './TextField';
 import { HelpText } from './HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /** Matches the shopping list's own checkbox, so the shape reads as familiar. */
 const CHECK_SIZE = 22;
@@ -620,7 +621,7 @@ export function FinishShoppingSheet({
       <View style={styles.root}>
         <SheetHeader
           title="Finish shopping"
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={64} />}
           right={<SheetHeaderButton label="Finish" onPress={handleFinish} minWidth={64} />}
         />
 

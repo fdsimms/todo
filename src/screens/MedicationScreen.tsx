@@ -64,6 +64,7 @@ import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { usePullToSearch } from '../hooks/usePullToSearch';
 import { useActionMenu } from '../hooks/useActionMenu';
 import { useLingering } from '../hooks/useLingering';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /** How many recent doses the list shows at first, and how many more each tap adds. */
 const RECENT_PAGE = 25;
@@ -181,7 +182,7 @@ export function MedicationScreen() {
     if (logs.length === 0 || sharing) return;
     const confirmed = await new Promise<boolean>(resolve => {
       Alert.alert('Share your medication log', medicationExportSummary(logs), [
-        { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+        { text: BUTTON_LABEL.cancel, style: 'cancel', onPress: () => resolve(false) },
         { text: 'Share', onPress: () => resolve(true) },
       ]);
     });

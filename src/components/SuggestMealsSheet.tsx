@@ -43,6 +43,7 @@ import { haptics } from '../utils/haptics';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { TextField } from './TextField';
 import { useActionMenu } from '../hooks/useActionMenu';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /**
  * A row Save can commit, in the order the days are handed out. The two the
@@ -912,15 +913,15 @@ export function SuggestMealsSheet({
       <View style={styles.root}>
         <SheetHeader
           title="Suggest meals"
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} disabled={saving} minWidth={72} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} disabled={saving} minWidth={72} />}
           right={
             <SheetHeaderButton
-              label={saving ? 'Saving…' : selected.size > 0 ? `Save (${selected.size})` : 'Save'}
+              label={saving ? 'Saving…' : selected.size > 0 ? `Save (${selected.size})` : BUTTON_LABEL.save}
               role="confirm"
               onPress={handleSave}
               disabled={saving}
               minWidth={72}
-              accessibilityLabel={selected.size > 0 ? `Save ${selected.size} selected meals` : 'Save'}
+              accessibilityLabel={selected.size > 0 ? `Save ${selected.size} selected meals` : BUTTON_LABEL.save}
             />
           }
         />

@@ -22,6 +22,7 @@ import { PillGroup, type PillGroupOption } from './PillGroup';
 import { RuleListSheet } from './RuleListSheet';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { HelpText } from './HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /**
  * The extra Reminders lists the app drains, each filed somewhere of its own.
@@ -164,7 +165,7 @@ export function ReminderCapturesSheet({ visible, onClose, reminderLists, reserve
         : `Import ${count} reminder${count === 1 ? '' : 's'} from “${list.title}”?`,
       body,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
           text: 'Import',
           style: capture.deleteAfterImport ? 'destructive' : 'default',

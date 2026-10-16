@@ -52,6 +52,7 @@ import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { TextField } from './TextField';
 import { useActionMenu } from '../hooks/useActionMenu';
 import { HelpText } from './HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /**
  * Typing in a label panel by hand, for the food no database has.
@@ -489,8 +490,8 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
       <View style={styles.root}>
         <SheetHeader
           title={foodName}
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />}
-          right={<SheetHeaderButton label="Save" onPress={handleSave} minWidth={64} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={64} />}
+          right={<SheetHeaderButton label={BUTTON_LABEL.save} onPress={handleSave} minWidth={64} />}
         />
 
         <View style={styles.flex}>

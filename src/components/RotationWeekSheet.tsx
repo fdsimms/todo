@@ -11,6 +11,7 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { displayTitleFor } from '../utils/visibilityUtils';
 import { spacing, radius, font, fontWeight, sheetBottomInset, type Colors } from '../theme';
 import type { Task } from '../types';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -82,7 +83,7 @@ export function RotationWeekSheet({ visible, task, onClose }: Props) {
           <View style={styles.headerRow}>
             <View style={styles.headerSide} />
             <Text style={styles.heading} numberOfLines={2}>{displayTitleFor(task)}</Text>
-            <SheetHeaderButton label="Done" onPress={dismiss} minWidth={56} style={styles.headerRight} />
+            <SheetHeaderButton label={BUTTON_LABEL.done} onPress={dismiss} minWidth={56} style={styles.headerRight} />
           </View>
           {/* Said in words as well as ticks, because a week finished short is
               a real and unremarkable outcome — a partial rotation closes out

@@ -3,6 +3,7 @@ import { format } from 'date-fns/format';
 import type { Task, TimeOfDay } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
 import { pullForwardChoice } from './taskMoves';
+import { BUTTON_LABEL } from '../copy/shared';
 
 const day = (date: Date) => format(date, 'EEE, MMM d');
 
@@ -43,7 +44,7 @@ export function confirmScheduleMove(
       [
         { text: `Next on ${day(choice.keepNext)}`, onPress: () => proceed(false) },
         { text: `Next on ${day(choice.restartNext)}`, onPress: () => proceed(true) },
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
       ],
     );
     return;
@@ -54,7 +55,7 @@ export function confirmScheduleMove(
     [
       { text: 'Keep schedules', onPress: () => proceed(false) },
       { text: `Count from ${day(date)}`, onPress: () => proceed(true) },
-      { text: 'Cancel', style: 'cancel' },
+      { text: BUTTON_LABEL.cancel, style: 'cancel' },
     ],
   );
 }
@@ -94,7 +95,7 @@ export function confirmSegmentScope(
     [
       { text: isSeries ? 'This date' : 'This task', onPress: () => proceed('occurrence') },
       { text: isSeries ? 'This and later dates' : 'This and future tasks', onPress: () => proceed('series') },
-      { text: 'Cancel', style: 'cancel' },
+      { text: BUTTON_LABEL.cancel, style: 'cancel' },
     ],
   );
 }

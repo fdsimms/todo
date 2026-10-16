@@ -43,6 +43,7 @@ import {
   type SavedViewClauseKind,
 } from '../types';
 import { TextField } from './TextField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -250,10 +251,10 @@ export function SavedViewEditorSheet({ visible, view, onClose, onCreated, onDele
       <View style={styles.root}>
         <SheetHeader
           title={view ? 'Edit view' : 'New view'}
-          left={<SheetHeaderButton role="cancel" label="Cancel" onPress={handleCancel} />}
+          left={<SheetHeaderButton role="cancel" label={BUTTON_LABEL.cancel} onPress={handleCancel} />}
           right={
             <SheetHeaderButton
-              label="Save"
+              label={BUTTON_LABEL.save}
               onPress={handleSave}
               disabled={name.trim().length === 0}
             />

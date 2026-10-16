@@ -35,6 +35,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { TextField } from './TextField';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { HelpText } from './HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -253,7 +254,7 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
       `Forget ${describeProduct(editing) ?? 'this one'}?`,
       'This also forgets its rating and how often you bought it. To avoid buying it again, mark it “Never again” instead.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
           text: 'Forget',
           style: 'destructive',
@@ -277,8 +278,8 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
       <View style={styles.root}>
         <SheetHeader
           title={editing ? 'Edit product' : `Which ${item.name}?`}
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />}
-          right={<SheetHeaderButton label="Save" onPress={handleSave} disabled={!canSave} minWidth={64} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={64} />}
+          right={<SheetHeaderButton label={BUTTON_LABEL.save} onPress={handleSave} disabled={!canSave} minWidth={64} />}
         />
 
         <ScrollView

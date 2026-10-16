@@ -51,6 +51,7 @@ import { haptics } from '../utils/haptics';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import type { Task, TaskGroup } from '../types';
 import { useFilterField } from '../hooks/useFilterField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 // Keeps the field's own value/onChangeText bound to the raw, fast-updating
 // `query` state below — only the quickSearch recompute waits on this delay.
@@ -127,7 +128,7 @@ function QuickSearchRow({ result, onSelect, onTicked, styles, colors }: {
   // sits on (formatTaskDate reads the defer/due rule, so the label can't name a
   // different day from the one the task actually surfaces on).
   const dateLabel = task.completed
-    ? task.completedAt ? `Done ${format(new Date(task.completedAt), 'MMM d')}` : 'Done'
+    ? task.completedAt ? `Done ${format(new Date(task.completedAt), 'MMM d')}` : BUTTON_LABEL.done
     : formatTaskDate(task);
   // An "every N hours" task's dateLabel above is just "Today" — the date it's
   // on, not the clock time it actually comes back at, which is the fact this

@@ -33,6 +33,7 @@ import {
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useActionMenu } from '../hooks/useActionMenu';
 import { HelpText } from './HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /**
  * What one serving of a supplement contains, typed in from its label.
@@ -199,7 +200,7 @@ export function SupplementPanelSheet({ visible, name, panel, onClose, onSave }: 
       `Remove the nutrients for ${name}?`,
       'Doses you record from now on will not add anything to the day. Doses already recorded keep what they added.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
           text: 'Remove',
           style: 'destructive',
@@ -219,8 +220,8 @@ export function SupplementPanelSheet({ visible, name, panel, onClose, onSave }: 
       <View style={styles.root}>
         <SheetHeader
           title={name}
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />}
-          right={<SheetHeaderButton label="Save" onPress={handleSave} minWidth={64} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={64} />}
+          right={<SheetHeaderButton label={BUTTON_LABEL.save} onPress={handleSave} minWidth={64} />}
         />
         <View style={styles.flex}>
           <ScrollView

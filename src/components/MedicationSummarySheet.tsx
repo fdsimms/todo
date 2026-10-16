@@ -32,6 +32,7 @@ import {
 import { canShare, discardBackupFile, sharePdfFile, writePdfFile } from '../utils/backupFile';
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import { HelpText } from './HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -178,7 +179,7 @@ export function MedicationSummarySheet({ visible, onClose }: Props) {
         <SheetHeader
           bare
           title="Summary for a visit"
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={onClose} />}
           right={<View style={styles.headerSpacer} />}
         />
       }

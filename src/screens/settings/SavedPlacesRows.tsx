@@ -16,6 +16,7 @@ import {
 } from '../../utils/savedPlaces';
 import { SettingsRow } from './SettingsRow';
 import { makeSettingsStyles } from './settingsStyles';
+import { BUTTON_LABEL } from '../../copy/shared';
 
 /**
  * The named places a new event's location can be typed as ("home"), in
@@ -47,7 +48,7 @@ export function SavedPlacesRows() {
       `Remove ${place.name}?`,
       'Events already saved keep their location. Typing the name will no longer fill in the address.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         { text: 'Remove', style: 'destructive', onPress: () => { haptics.warning(); commit(removeSavedPlace(places, place.id)); } },
       ],
     );

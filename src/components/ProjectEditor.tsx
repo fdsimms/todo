@@ -73,6 +73,7 @@ import { usePlaceSuggestions } from '../hooks/usePlaceSuggestions';
 import { placeSubtitle, type PlaceResult } from '../utils/places';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { Toggle } from './Toggle';
+import { BUTTON_LABEL } from '../copy/shared';
 
 const NUDGE_MODE_OPTIONS: SegmentOption<NudgeMode>[] = NUDGE_MODES.map(mode => ({
   value: mode,
@@ -323,7 +324,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
       `Apply to ${targets.length} ${targets.length === 1 ? 'task' : 'tasks'}?`,
       'Fills in only what’s still unset on each task. Shake to undo.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
           text: 'Apply',
           onPress: () => {
@@ -619,8 +620,8 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
         <SheetHeader
           bare
           title={isNew ? 'New project' : 'Edit project'}
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} />}
-          right={<SheetHeaderButton label="Done" onPress={() => saveAndClose()} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} />}
+          right={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={() => saveAndClose()} />}
         />
       }
       footer={

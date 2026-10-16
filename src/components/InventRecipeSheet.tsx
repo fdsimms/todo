@@ -28,6 +28,7 @@ import { haptics } from '../utils/haptics';
 import { recipeInBook, recipeNameKey } from '../utils/recipeUtils';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { TextField } from './TextField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -283,7 +284,7 @@ export function InventRecipeSheet({ visible, onClose, onCreated }: Props) {
         <SheetHeader
           title="Suggest recipes"
           icon="sparkles"
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={72} />}
           right={<View style={styles.headerSpacer} />}
         />
 

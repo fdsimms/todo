@@ -21,6 +21,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import { haptics } from '../utils/haptics';
 import { confirmDiscard } from '../utils/confirmDiscard';
+import { BUTTON_LABEL } from '../copy/shared';
 
 const CHECKBOX_SIZE = 22;
 
@@ -93,7 +94,7 @@ export function PrepTasksReviewSheet({ visible, recipe, recipesById, resolution,
       <View style={styles.root}>
         <SheetHeader
           title="Prep tasks"
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={72} />}
           right={
             <SheetHeaderButton
               label={addCount > 0 ? `Add ${addCount}` : 'Add'}

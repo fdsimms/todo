@@ -4,6 +4,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useRowSelection } from './useRowSelection';
 import { bulkDeletePrompt } from '../utils/bulkDelete';
 import { confirmDelete } from '../utils/confirmDelete';
+import { BUTTON_LABEL } from '../copy/shared';
 
 // Bulk selection for a task list: the shared row-selection machinery
 // (useRowSelection) plus the one thing that's specific to tasks — a delete
@@ -46,7 +47,7 @@ export function useTaskSelection(allTasks: Task[]) {
       `Delete ${count} ${plural}?`,
       `${message} Shake your phone right after to undo.`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
           text: 'Mark missed',
           onPress: () => {

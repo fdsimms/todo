@@ -13,6 +13,7 @@ import { EmptyState } from './EmptyState';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import { HelpText } from './HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -55,7 +56,7 @@ export function TemplateQuestionItemsSheet({ visible, templateId, question, onCl
         <SheetHeader
           title={questionLabel(question)}
           left={<View style={styles.headerSpacer} />}
-          right={<SheetHeaderButton label="Done" onPress={onClose} minWidth={56} />}
+          right={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={onClose} minWidth={56} />}
         />
 
         {leafItems.length === 0 ? (

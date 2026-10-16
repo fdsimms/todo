@@ -14,6 +14,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { GENERATED_KIND_SPECS } from '../utils/generatedTasks';
 import { savedDefaultRows, type SavedDefaultRow } from '../utils/savedDefaults';
 import type { GeneratedKind } from '../types';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -91,7 +92,7 @@ export function SavedDefaultsSheet({ visible, onClose }: Props) {
         <SheetHeader
           title="Defaults you've set"
           left={<View style={styles.headerSpacer} />}
-          right={<SheetHeaderButton label="Done" onPress={onClose} minWidth={56} />}
+          right={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={onClose} minWidth={56} />}
         />
         {empty ? (
           <View style={styles.emptyWrap}>

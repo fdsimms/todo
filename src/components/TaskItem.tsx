@@ -169,6 +169,7 @@ import { SpotlightScrim, useSpotlightLinger } from './SpotlightOverlay';
 import { ProgressBar } from './ProgressBar';
 import { TextField } from './TextField';
 import { useActionMenu } from '../hooks/useActionMenu';
+import { BUTTON_LABEL } from '../copy/shared';
 
 const CHECKBOX_SIZE = 20;
 const SUBTASK_CHECKBOX_SIZE = 16;
@@ -1502,7 +1503,7 @@ const TaskItemRow = React.memo(function TaskItem({
       'Discard timer?',
       `The elapsed time for “${task.title}” won’t be saved.`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
           text: 'Discard',
           style: 'destructive',
@@ -2335,7 +2336,7 @@ const TaskItemRow = React.memo(function TaskItem({
           'Log early?',
           `“${displayTitleFor(task)}” isn’t due for another ${formatDuration(minutesEarly)}.`,
           [
-            { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+            { text: BUTTON_LABEL.cancel, style: 'cancel', onPress: () => resolve(false) },
             { text: 'Log now', onPress: () => resolve(true) },
           ],
           { cancelable: true, onDismiss: () => resolve(false) },
@@ -2650,7 +2651,7 @@ const TaskItemRow = React.memo(function TaskItem({
       'Take one off?',
       `Reduce “${displayTitleFor(task)}” from ${task.progressCount} to ${task.progressCount - 1}?`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
           text: 'Take one off',
           style: 'destructive',
@@ -4577,7 +4578,7 @@ const TaskItemRow = React.memo(function TaskItem({
                           styles.timedEditAction,
                           timedDraft == null && styles.timedEditActionDisabled,
                         ]}>
-                          Save
+                          {BUTTON_LABEL.save}
                         </Text>
                       </TouchableOpacity>
                       <TouchableOpacity
@@ -4587,7 +4588,7 @@ const TaskItemRow = React.memo(function TaskItem({
                         accessibilityRole="button"
                         accessibilityLabel={`Cancel editing time spent on ${task.title}`}
                       >
-                        <Text style={styles.timedEditCancel}>Cancel</Text>
+                        <Text style={styles.timedEditCancel}>{BUTTON_LABEL.cancel}</Text>
                       </TouchableOpacity>
                       {/* StepMinutes above asks for this bar by nativeID, and a
                           row is the one place that ask had nothing answering it
