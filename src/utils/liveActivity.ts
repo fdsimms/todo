@@ -7,7 +7,6 @@ import { useStepTimerStore } from '../store/useStepTimerStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { widgetBridge } from './widgetBridge';
 import { isTimedTask, timerRemaining } from './timer';
-import { hasCookTimer, cookTimerRemaining, hasPrepTimer, prepTimerRemaining } from './recipeTimer';
 import { isStepTimerRunning, stepTimerRemaining } from './stepTimers';
 import { displayTitleFor } from './visibilityUtils';
 
@@ -122,9 +121,6 @@ export function buildTimerRuns(
   for (const recipe of recipes) {
     if (recipe.timerStartedAt !== null) {
       const startedAtMs = new Date(recipe.timerStartedAt).getTime();
-      const targetEndMs = hasCookTimer(recipe)
-        ? Math.max(startedAtMs, startedAtMs + cookTimerRemaining(recipe, startedAtMs) * 1000)
-        : null;
       runs.push({
         key: `cook:${recipe.id}`,
         kind: 'cook',
@@ -133,14 +129,12 @@ export function buildTimerRuns(
         subtitle: 'Cooking',
         symbolName: 'flame.fill',
         startedAtMs,
-        targetEndMs,
+        // A recipe's timer is a stopwatch: it records a time, it doesn't ring.
+        targetEndMs: null,
       });
     }
     if (recipe.prepTimerStartedAt !== null) {
       const startedAtMs = new Date(recipe.prepTimerStartedAt).getTime();
-      const targetEndMs = hasPrepTimer(recipe)
-        ? Math.max(startedAtMs, startedAtMs + prepTimerRemaining(recipe, startedAtMs) * 1000)
-        : null;
       runs.push({
         key: `prep:${recipe.id}`,
         kind: 'prep',
@@ -149,7 +143,7 @@ export function buildTimerRuns(
         subtitle: 'Prep',
         symbolName: 'fork.knife',
         startedAtMs,
-        targetEndMs,
+        targetEndMs: null,
       });
     }
   }

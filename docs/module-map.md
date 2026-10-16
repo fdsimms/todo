@@ -376,7 +376,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/recipeSources.ts` — foldRecipeSources, incomingSourcesOf, currentSourcesOf, RecipeLedger, recipeLedgerFor, sourcesAfterMerge
 - `src/utils/recipeSourcesCodec.ts` — parseRecipeSources, serializeRecipeSources
 - `src/utils/recipeTags.ts` — cleanRecipeTag, normalizeRecipeTags, parseRecipeTags, allRecipeTags, recipeTagCounts, filterRecipesByTags, formatTagList, toggleRecipeTag
-- `src/utils/recipeTimer.ts` — CookTimerState, PrepTimerState, hasCookTimer, isCookTimerRunning, cookTimerElapsed, cookTimerRemaining, cookTimerProgress, isCookTimerReady, hasPrepTimer, isPrepTimerRunning, +8 more
+- `src/utils/recipeTimer.ts` — CookTimerState, PrepTimerState, isCookTimerRunning, cookTimerElapsed, isPrepTimerRunning, prepTimerElapsed, hasRunningRecipeTimer, RecipeTimerReading, recipeTimerClock, recipeTimerResetPrompt
 - `src/utils/recipeUrl.ts` — normalizeRecipeUrl, recipeImportedFrom, decodeEntities, htmlToText, metaContent, PageRecipe, parseIsoDuration, parseRecipeJsonLd, focusRecipeText, recipeToPlainText, +2 more
 - `src/utils/recipeUtils.ts` — parseRecipeIngredients, normalizeIngredient, makeIngredient, ingredientDedupeKey, duplicateIngredientIn, blockedIngredientNote, alreadyInRecipeNote, blockedReviewRows, ingredientsFromText, mergeIngredients, +62 more
 - `src/utils/recordTasks.ts` — isAnsweredByRecord, recordLogUrl, RecordContext, isRecordAnswered

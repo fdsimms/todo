@@ -1338,6 +1338,14 @@ through a locked phone, and outlives the sheet.
   it gets a full-width line of its own under the controls, since squeezed beside three 44pt
   buttons it came out as "Simmer the r…". It is stored rather than derived for the reason
   `stepLabel` is: the row reads without the recipe and survives an edit to the step.
+- **The recipe's own prep and cook timers are stopwatches, never countdowns.** They exist to record
+  how long a cook or a prep took (the figure the logged-time average is built from), so they count
+  up from 0:00 whatever `estimatedMinutes`/`prepMinutes` says. They used to count down from it,
+  which put "Cook for 20m" and a play button on every recipe with a stated time, including cook
+  mode's ingredient screen, before anything had started. The estimate is still shown in the
+  expanded summary and compared against a logged time (`offerLongerEstimate`), but nothing in
+  `recipeTimer.ts` reads it. Anything that should ring is a step, and steps have their own timers
+  (above). The Live Activity is a stopwatch for the same reason (`targetEndMs: null`).
 - **The recipe's own prep and cook rows got the same sizes**, since they share the card and the
   cook mode footer with the step rows. `RecipeTimerRow`'s controls are 44pt with no `hitSlop`, its
   clock is `font.lg` with the state after it (`recipeTimerClock`), and Reset asks first while there
@@ -1346,7 +1354,7 @@ through a locked phone, and outlives the sheet.
   from the primary button rather than beyond it, because a recipe timer has an idle state the step
   row lacks: keeping the primary at the trailing edge in every state is what makes Start become
   Pause under the same finger, where the step row's order would move it a slot in the moment a
-  cook began. And an idle row says what starting it would do ("Cook for 45m") at `font.md`, a step
+  cook began. And an idle row says what starting it would do ("Time this cook") at `font.md`, a step
   under the clock, since most recipes are never timed and two idle rows at clock size would shout
   on every one of them.
 - **A rung timer sinks to the bottom of the stack rather than jumping to the top.** It's the one row

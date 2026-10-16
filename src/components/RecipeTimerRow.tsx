@@ -3,25 +3,19 @@ import { Alert, Platform, View, Text, TouchableOpacity, StyleSheet } from 'react
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
-import { formatDuration } from '../utils/effort';
 import { recipeTimerClock, recipeTimerResetPrompt } from '../utils/recipeTimer';
 import { animateLayout } from '../utils/layoutAnimation';
 import { haptics } from '../utils/haptics';
-import { ProgressBar } from './ProgressBar';
 import { NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { TextField } from './TextField';
 
 interface Props {
-  /** "Prep" or "Cook" — drives the idle/counting-down copy ("Prep for 15m", "Time this cook"). */
+  /** "Prep" or "Cook" — drives the idle copy ("Time this cook", "Time prep"). */
   verb: 'Prep' | 'Cook';
-  targetMinutes: number | null;
   running: boolean;
   paused: boolean;
   inProgress: boolean;
-  ready: boolean;
   elapsedSeconds: number;
-  remainingSeconds: number;
-  progress: number;
   /** describePrepTime/describeCookTime's output — "Est. 15m · took 18m last time". Empty renders nothing. */
   summary: string;
   onToggle: () => void;
@@ -32,10 +26,14 @@ interface Props {
 }
 
 /**
- * One timer — start/pause, log, reset, and a countdown or stopwatch header,
- * depending on whether a target duration is set. Shared by RecipeDetailScreen's
- * prep and cook timers: they're two independent instances of exactly this UI,
- * targeting Recipe.prepMinutes/prepTimer* vs. estimatedMinutes/timer*.
+ * One timer — start/pause, log, reset, and a stopwatch header. Shared by
+ * RecipeDetailScreen's prep and cook timers: they're two independent instances
+ * of exactly this UI, over Recipe.prepTimer* vs. timer*.
+ *
+ * **It counts up and never rings, whatever the recipe's estimate.** This timer
+ * is for recording how long a cook took; an alarm is a step's timer. The
+ * estimate shows in the expanded summary and is compared against the logged
+ * time (`offerLongerEstimate`), and that is all it does here.
  *
  * **One row, not a card** (#1612). Each of these used to be a full card with a
  * header, an action row, a permanently-visible "or log a time" field and a
@@ -55,7 +53,7 @@ interface Props {
  * carried over): these sit in the same card and the same cook mode footer as
  * the step timers, reached for the same way. Every control is 44pt with no
  * `hitSlop` reaching into a neighbour's; the countdown is `font.lg` with its
- * state after it ("12:30 left", `recipeTimerClock`); Pause and Resume are
+ * state after it ("12:30 elapsed", `recipeTimerClock`); Pause and Resume are
  * glyphs, as there. Reset is the one that loses something, a time about to be
  * logged, so it sits furthest from the primary button behind a wider gap and
  * asks first (`recipeTimerResetPrompt`). The primary stays at the trailing
@@ -64,12 +62,11 @@ interface Props {
  * from under the tap that started it.
  */
 export function RecipeTimerRow({
-  verb, targetMinutes, running, paused, inProgress, ready,
-  elapsedSeconds, remainingSeconds, progress, summary, onToggle, onLog, onReset, onLogManual,
+  verb, running, paused, inProgress,
+  elapsedSeconds, summary, onToggle, onLog, onReset, onLogManual,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const hasTarget = targetMinutes !== null;
   const idleText = verb === 'Cook' ? 'Time this cook' : 'Time prep';
   const [manualMinutes, setManualMinutes] = useState('');
   const [expanded, setExpanded] = useState(false);
@@ -84,11 +81,8 @@ export function RecipeTimerRow({
 
   // The number big, the state small after it, once there's a clock to show;
   // before that, what starting it would do.
-  const reading = recipeTimerClock({ hasTarget, running, paused, ready, elapsedSeconds, remainingSeconds });
-  const idleLabel = hasTarget ? `${verb} for ${formatDuration(targetMinutes!)}` : idleText;
-  const spoken = !reading
-    ? idleLabel
-    : ready ? `Time’s up, ${reading.clock} over` : `${reading.clock} ${reading.state}`;
+  const reading = recipeTimerClock({ running, paused, elapsedSeconds });
+  const spoken = reading ? `${reading.clock} ${reading.state}` : idleText;
   const noun = verb.toLowerCase();
 
   // Asks while there's time on it to lose, which is always once it's shown.
@@ -114,17 +108,17 @@ export function RecipeTimerRow({
           accessibilityHint="Double tap for the time it usually takes, and to log one by hand"
         >
           <Ionicons
-            name={ready ? 'alarm' : 'timer-outline'}
+            name="timer-outline"
             size={18}
-            color={ready ? colors.orangeText : colors.accent}
+            color={colors.accent}
           />
           {reading ? (
             <Text style={styles.labels} numberOfLines={1}>
-              <Text style={[styles.clock, ready && styles.clockReady]}>{reading.clock}</Text>
-              <Text style={[styles.clockState, ready && styles.clockStateReady]}> {reading.state}</Text>
+              <Text style={styles.clock}>{reading.clock}</Text>
+              <Text style={styles.clockState}> {reading.state}</Text>
             </Text>
           ) : (
-            <Text style={[styles.labels, styles.idleLabel]} numberOfLines={1}>{idleLabel}</Text>
+            <Text style={[styles.labels, styles.idleLabel]} numberOfLines={1}>{idleText}</Text>
           )}
           <Ionicons
             name={expanded ? 'chevron-up' : 'chevron-down'}
@@ -170,9 +164,6 @@ export function RecipeTimerRow({
           <Ionicons name={running ? 'pause' : 'play'} size={iconSize.sm} color={running ? colors.onFill : colors.onAccent} />
         </TouchableOpacity>
       </View>
-      {/* Only while something is actually counting: an untouched bar at 0% on
-          every recipe is the chrome this row exists to cut. */}
-      {hasTarget && inProgress && <ProgressBar progress={progress} height={4} accessibilityLabel="Timer" />}
       {expanded && (
         <View style={styles.details}>
           {!!summary && <Text style={styles.timerSummary}>{summary}</Text>}
@@ -243,18 +234,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.semibold,
     fontVariant: ['tabular-nums'],
   },
-  clockReady: {
-    color: colors.orangeText,
-  },
   clockState: {
     color: colors.textSecondary,
     fontSize: font.sm,
     fontWeight: fontWeight.medium,
   },
-  clockStateReady: {
-    color: colors.orangeText,
-  },
-  // "Cook for 45m", "Time prep": a line of words rather than a clock, so a
+  // "Time this cook", "Time prep": a line of words rather than a clock, so a
   // step under the clock's size. Most recipes are never timed, and two idle
   // rows at clock size would shout on every one of them.
   idleLabel: {
