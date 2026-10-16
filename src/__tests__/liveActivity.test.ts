@@ -357,9 +357,8 @@ describe('buildTimerRuns', () => {
       subtitle: 'Cooking',
       symbolName: 'flame.fill',
       startedAtMs: NOW - 60_000,
-      // Remaining is computed against the start of *this* run (nothing banked
-      // yet from it), so the full 40 minutes are still ahead from that instant.
-      targetEndMs: NOW - 60_000 + 40 * 60 * 1000,
+      // The recipe's 40 minute estimate is not a target: a cook timer counts up.
+      targetEndMs: null,
     });
   });
 
@@ -385,10 +384,13 @@ describe('buildTimerRuns', () => {
     expect(buildTimerRuns([], recipes, [], { enabled: true })).toEqual([]);
   });
 
-  it('gives a cook/prep timer with no target duration a stopwatch run', () => {
-    const recipes = [makeRecipe({ estimatedMinutes: null, timerStartedAt: startedAgo(10) })];
-    const [run] = buildTimerRuns([], recipes, [], { enabled: true });
-    expect(run.targetEndMs).toBeNull();
+  it('gives a cook and a prep timer a stopwatch run, whatever the recipe estimates', () => {
+    const recipes = [makeRecipe({
+      estimatedMinutes: 40, timerStartedAt: startedAgo(10),
+      prepMinutes: 10, prepTimerStartedAt: startedAgo(5),
+    })];
+    const runs = buildTimerRuns([], recipes, [], { enabled: true });
+    expect(runs.map(r => r.targetEndMs)).toEqual([null, null]);
   });
 
   it('truncates a long title', () => {

@@ -2,20 +2,21 @@ import type { Recipe } from '../types';
 import { formatStopwatch } from './effort';
 
 /**
- * Countdown math for a recipe's cook and prep timers — the same banked-segment
- * design as src/utils/timer.ts for timed tasks, with Recipe.estimatedMinutes/
- * Recipe.prepMinutes as the target duration instead of Task.timedMinutes. See
- * that file's header for why nothing but each pair's two raw fields
- * (`*TimerStartedAt`, `*TimerElapsedSeconds`) is ever stored: how much time
- * has elapsed or remains is always *derived* against the current clock, so a
- * phone backgrounded or killed mid-cook comes back with the right answer for
- * free.
+ * Stopwatch math for a recipe's cook and prep timers — the same banked-segment
+ * design as src/utils/timer.ts for timed tasks. See that file's header for why
+ * nothing but each pair's two raw fields (`*TimerStartedAt`,
+ * `*TimerElapsedSeconds`) is ever stored: how much time has elapsed is always
+ * *derived* against the current clock, so a phone backgrounded or killed
+ * mid-cook comes back with the right answer for free.
  *
- * Recipe has no separate "timed vs. estimated" split the way Task does
- * (estimatedMinutes for workload, timedMinutes as an opt-in countdown
- * target) — a recipe's duration and the length to time it for are the same
- * number, so `estimatedMinutes`/`prepMinutes` each double as their own
- * timer's target here.
+ * **These count up and never down.** A recipe's timer exists to record how long
+ * the cook or the prep actually took (the figure `applyMeasuredCookTime`
+ * averages), not to ring: it used to count down from `estimatedMinutes`/
+ * `prepMinutes`, which put a "Cook for 20m" countdown on every recipe that had
+ * a stated time, before anything had started. Anything that needs an alarm is
+ * a step, and steps have their own timers (`stepTimers.ts`). The estimate is
+ * still shown beside the timer (`describeCookTime`) and compared against the
+ * logged time afterwards, but nothing here reads it.
  *
  * Cook and prep are two independent timers (mise en place while something
  * else already simmers), each with its own raw field pair, but identical
@@ -24,21 +25,16 @@ import { formatStopwatch } from './effort';
  * reads "cookTimerElapsed(recipe)" rather than a generic "timerElapsed(recipe,
  * 'cook')" that leaves which fields it touches to be looked up.
  */
-export type CookTimerState = Pick<Recipe, 'estimatedMinutes' | 'timerElapsedSeconds' | 'timerStartedAt'>;
-export type PrepTimerState = Pick<Recipe, 'prepMinutes' | 'prepTimerElapsedSeconds' | 'prepTimerStartedAt'>;
+export type CookTimerState = Pick<Recipe, 'timerElapsedSeconds' | 'timerStartedAt'>;
+export type PrepTimerState = Pick<Recipe, 'prepTimerElapsedSeconds' | 'prepTimerStartedAt'>;
 
 function bankedElapsedSeconds(startedAt: string | null, bankedSeconds: number, now: number): number {
   const banked = Math.max(0, bankedSeconds ?? 0);
   if (startedAt === null) return banked;
   const started = new Date(startedAt).getTime();
   // A clock that moved backwards (timezone change, manual set) would otherwise
-  // hand back a negative segment and rewind the countdown.
+  // hand back a negative segment and rewind the clock.
   return banked + Math.max(0, (now - started) / 1000);
-}
-
-/** Does this recipe have a cook duration to count down against? A non-positive value is treated as none. */
-export function hasCookTimer(recipe: CookTimerState): boolean {
-  return recipe.estimatedMinutes != null && recipe.estimatedMinutes > 0;
 }
 
 /** Is a cook run segment in flight right now? */
@@ -51,33 +47,6 @@ export function cookTimerElapsed(recipe: CookTimerState, now: number = Date.now(
   return bankedElapsedSeconds(recipe.timerStartedAt, recipe.timerElapsedSeconds, now);
 }
 
-/**
- * Seconds left on the cook countdown. Goes negative once time is up — callers
- * that display it should clamp (`formatStopwatch` already does), but
- * `isCookTimerReady` needs the sign. Always 0 for a recipe with no duration.
- */
-export function cookTimerRemaining(recipe: CookTimerState, now: number = Date.now()): number {
-  if (!hasCookTimer(recipe)) return 0;
-  return (recipe.estimatedMinutes as number) * 60 - cookTimerElapsed(recipe, now);
-}
-
-/** How far through the cook countdown, 0–1. 0 for a recipe with no duration. */
-export function cookTimerProgress(recipe: CookTimerState, now: number = Date.now()): number {
-  if (!hasCookTimer(recipe)) return 0;
-  const total = (recipe.estimatedMinutes as number) * 60;
-  return Math.min(1, Math.max(0, cookTimerElapsed(recipe, now) / total));
-}
-
-/** Has the cook countdown run out? Never blocks anything — it's purely what the UI shows. */
-export function isCookTimerReady(recipe: CookTimerState, now: number = Date.now()): boolean {
-  return hasCookTimer(recipe) && cookTimerRemaining(recipe, now) <= 0;
-}
-
-/** Does this recipe have a prep duration to count down against? A non-positive value is treated as none. */
-export function hasPrepTimer(recipe: PrepTimerState): boolean {
-  return recipe.prepMinutes != null && recipe.prepMinutes > 0;
-}
-
 /** Is a prep run segment in flight right now? */
 export function isPrepTimerRunning(recipe: PrepTimerState): boolean {
   return recipe.prepTimerStartedAt !== null;
@@ -88,31 +57,12 @@ export function prepTimerElapsed(recipe: PrepTimerState, now: number = Date.now(
   return bankedElapsedSeconds(recipe.prepTimerStartedAt, recipe.prepTimerElapsedSeconds, now);
 }
 
-/** Seconds left on the prep countdown. Always 0 for a recipe with no prep duration. */
-export function prepTimerRemaining(recipe: PrepTimerState, now: number = Date.now()): number {
-  if (!hasPrepTimer(recipe)) return 0;
-  return (recipe.prepMinutes as number) * 60 - prepTimerElapsed(recipe, now);
-}
-
-/** How far through the prep countdown, 0–1. 0 for a recipe with no prep duration. */
-export function prepTimerProgress(recipe: PrepTimerState, now: number = Date.now()): number {
-  if (!hasPrepTimer(recipe)) return 0;
-  const total = (recipe.prepMinutes as number) * 60;
-  return Math.min(1, Math.max(0, prepTimerElapsed(recipe, now) / total));
-}
-
-/** Has the prep countdown run out? Never blocks anything — it's purely what the UI shows. */
-export function isPrepTimerReady(recipe: PrepTimerState, now: number = Date.now()): boolean {
-  return hasPrepTimer(recipe) && prepTimerRemaining(recipe, now) <= 0;
-}
-
 /**
  * Is a cook or prep segment currently in flight for this recipe? Drives the
  * "a timer is running" ambient indicator (the tab bar dot) that stays visible
- * once you've navigated away from the recipe itself — a cook/prep timer has
- * no OS notification when it wraps up (it may never wrap up at all: with no
- * estimatedMinutes/prepMinutes it's a plain stopwatch), so this is the only
- * thing standing between starting one and forgetting it's still going.
+ * once you've navigated away from the recipe itself — a cook/prep timer is a
+ * stopwatch and never rings, so this is the only thing standing between
+ * starting one and forgetting it's still going.
  */
 export function hasRunningRecipeTimer(recipe: CookTimerState & PrepTimerState): boolean {
   return isCookTimerRunning(recipe) || isPrepTimerRunning(recipe);
@@ -122,31 +72,19 @@ export function hasRunningRecipeTimer(recipe: CookTimerState & PrepTimerState): 
 
 /** The live half of a recipe timer that `RecipeTimerRow` draws: `useRecipeTimer`'s binding, narrowed. */
 export interface RecipeTimerReading {
-  /** A target duration is set, so the clock counts down rather than up. */
-  hasTarget: boolean;
   running: boolean;
   paused: boolean;
-  ready: boolean;
   elapsedSeconds: number;
-  remainingSeconds: number;
 }
 
 /**
- * The countdown as the row draws it: the number big, the state small after it
- * ("12:30 left", "12:30 paused", "0:45 over", "3:12 elapsed"), the split
- * `StepTimerRow` made in #2920 and this row now shares. Null for a timer that
- * hasn't started, which the row labels in words instead ("Cook for 45m").
- *
- * A timer past its target reads "over" whether or not it's paused, as a step
- * timer's does: the orange says it's rung, and the primary button's glyph says
- * whether it's still counting.
+ * The stopwatch as the row draws it: the number big, the state small after it
+ * ("3:12 elapsed", "3:12 paused"), the split `StepTimerRow` made in #2920 and
+ * this row shares. Null for a timer that hasn't started, which the row labels
+ * in words instead ("Time this cook").
  */
 export function recipeTimerClock(t: RecipeTimerReading): { clock: string; state: string } | null {
   if (!t.running && !t.paused) return null;
-  if (t.hasTarget) {
-    if (t.ready) return { clock: formatStopwatch(-t.remainingSeconds), state: 'over' };
-    return { clock: formatStopwatch(Math.max(0, t.remainingSeconds)), state: t.running ? 'left' : 'paused' };
-  }
   return { clock: formatStopwatch(t.elapsedSeconds), state: t.running ? 'elapsed' : 'paused' };
 }
 

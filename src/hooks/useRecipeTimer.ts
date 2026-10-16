@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert } from 'react-native';
 import type { Recipe } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -7,17 +7,9 @@ import { formatDuration } from '../utils/effort';
 import { describeCookTime, describePrepTime } from '../utils/recipeUtils';
 import {
   cookTimerElapsed,
-  cookTimerProgress,
-  cookTimerRemaining,
-  hasCookTimer,
-  isCookTimerReady,
   isCookTimerRunning,
-  hasPrepTimer,
-  isPrepTimerReady,
   isPrepTimerRunning,
   prepTimerElapsed,
-  prepTimerProgress,
-  prepTimerRemaining,
 } from '../utils/recipeTimer';
 
 /**
@@ -48,14 +40,10 @@ function offerLongerEstimate(
 
 /** Everything RecipeTimerRow draws and calls, for one of a recipe's two timers. */
 export interface RecipeTimerBinding {
-  targetMinutes: number | null;
   running: boolean;
   paused: boolean;
   inProgress: boolean;
-  ready: boolean;
   elapsedSeconds: number;
-  remainingSeconds: number;
-  progress: number;
   summary: string;
   onToggle: () => void;
   onLog: () => void;
@@ -64,8 +52,9 @@ export interface RecipeTimerBinding {
 }
 
 /**
- * One recipe timer, wired up: the once-a-second clock, everything derived
- * against it, and the four store calls with their haptics.
+ * One recipe timer, wired up: the once-a-second clock, the elapsed time derived
+ * against it, and the four store calls with their haptics. It is a stopwatch:
+ * the recipe's estimate is never a target here (see `recipeTimer.ts`).
  *
  * **There is one cook timer and one prep timer per recipe, and this is how any
  * surface reaches them.** Cook mode (#1695) keeps the cook timer on screen
@@ -76,23 +65,16 @@ export interface RecipeTimerBinding {
  * screens read `Recipe.timerStartedAt`/`timerElapsedSeconds` through the same
  * derivation and write through the same actions.
  *
- * Nothing is counted down in state — the elapsed/remaining/progress numbers are
- * recomputed from the two stored fields against `nowTick` on every tick, which
- * is what makes a phone backgrounded or killed mid-cook come back with the
- * right answer (see src/utils/recipeTimer.ts). The tick itself only runs while
- * this timer is actually running.
+ * Nothing is counted in state — the elapsed number is recomputed from the two
+ * stored fields against `nowTick` on every tick, which is what makes a phone
+ * backgrounded or killed mid-cook come back with the right answer (see
+ * src/utils/recipeTimer.ts). The tick itself only runs while this timer is
+ * actually running.
  *
  * `recipe` is allowed to be undefined so a screen can call this above its own
- * "the row is gone" guard; the binding then reads as a stopped timer with no
- * target and its handlers do nothing.
+ * "the row is gone" guard; the binding then reads as a stopped timer and its
+ * handlers do nothing.
  */
-/**
- * Runs whose finish has already buzzed, by recipe, timer and the moment that
- * run started. Module-level because the recipe screen and Cook mode can both
- * be watching the same timer, and the finish is one event, not one per screen.
- */
-const announcedRuns = new Set<string>();
-
 export function useRecipeTimer(recipe: Recipe | undefined, verb: 'Cook' | 'Prep'): RecipeTimerBinding {
   const isCook = verb === 'Cook';
   const startCookTimer = useRecipeStore(s => s.startCookTimer);
@@ -119,35 +101,12 @@ export function useRecipeTimer(recipe: Recipe | undefined, verb: 'Cook' | 'Prep'
     return () => clearInterval(interval);
   }, [running, startedAt]);
 
-  // A buzz when the countdown reaches its target while it's on screen. Only a
-  // finish watched happening: the ref starts at whatever the timer was on
-  // mount, so opening a recipe whose timer ran out an hour ago stays quiet.
-  const readyNow = !!recipe && (isCook
-    ? hasCookTimer(recipe) && isCookTimerReady(recipe, nowTick)
-    : hasPrepTimer(recipe) && isPrepTimerReady(recipe, nowTick));
-  const wasReady = useRef(readyNow);
-  useEffect(() => {
-    const before = wasReady.current;
-    wasReady.current = readyNow;
-    if (!readyNow || before || !running || !recipe) return;
-    const run = `${recipe.id}:${verb}:${startedAt ?? ''}`;
-    if (announcedRuns.has(run)) return;
-    announcedRuns.add(run);
-    haptics.timerDone();
-    // Keyed on the flip alone: the rest is read at the moment it happens.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [readyNow]);
-
   if (!recipe) {
     return {
-      targetMinutes: null,
       running: false,
       paused: false,
       inProgress: false,
-      ready: false,
       elapsedSeconds: 0,
-      remainingSeconds: 0,
-      progress: 0,
       summary: '',
       onToggle: () => {},
       onLog: () => {},
@@ -157,27 +116,15 @@ export function useRecipeTimer(recipe: Recipe | undefined, verb: 'Cook' | 'Prep'
   }
 
   const banked = isCook ? recipe.timerElapsedSeconds : recipe.prepTimerElapsedSeconds;
-  // Remaining, progress and ready are all against a target, so a timer with
-  // none is a plain stopwatch and reports the flat values the row draws for one.
-  const hasTarget = isCook ? hasCookTimer(recipe) : hasPrepTimer(recipe);
-
   return {
-    targetMinutes: isCook ? recipe.estimatedMinutes : recipe.prepMinutes,
     running,
     paused: !running && banked > 0,
     inProgress: running || banked > 0,
-    ready: hasTarget && (isCook ? isCookTimerReady(recipe, nowTick) : isPrepTimerReady(recipe, nowTick)),
     elapsedSeconds: isCook ? cookTimerElapsed(recipe, nowTick) : prepTimerElapsed(recipe, nowTick),
-    remainingSeconds: hasTarget
-      ? (isCook ? cookTimerRemaining(recipe, nowTick) : prepTimerRemaining(recipe, nowTick))
-      : 0,
-    progress: hasTarget
-      ? (isCook ? cookTimerProgress(recipe, nowTick) : prepTimerProgress(recipe, nowTick))
-      : 0,
     summary: isCook ? describeCookTime(recipe) : describePrepTime(recipe),
     onToggle: () => {
       // Pausing is a tap, not success: nothing has finished. Not awaited, so
-      // the timer moves on the same frame as the buzz.
+      // the timer moves on the same frame as the haptic.
       if (running) {
         haptics.tap();
         (isCook ? pauseCookTimer : pausePrepTimer)(recipe.id);
