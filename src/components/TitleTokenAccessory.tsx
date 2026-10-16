@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { InputAccessoryView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AppState, InputAccessoryView, Keyboard, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PressableScale } from './PressableScale';
@@ -144,9 +144,20 @@ export function TitleTokenAccessory({ nativeID, onInsert, onConfirm, confirmVisi
     };
     check();
     const subscription = Clipboard.addClipboardListener(check);
+    // The listener above rides `UIPasteboard.changedNotification`, which iOS
+    // doesn't deliver for a copy made in another app while this one was in
+    // the background, so a link copied in Safari left the button greyed out
+    // for as long as this bar stayed mounted. Re-reading when the app comes
+    // back and whenever the keyboard rises covers the cases the event misses.
+    const appState = AppState.addEventListener('change', state => {
+      if (state === 'active') check();
+    });
+    const keyboardShow = Keyboard.addListener('keyboardWillShow', check);
     return () => {
       cancelled = true;
       subscription.remove();
+      appState.remove();
+      keyboardShow.remove();
     };
   }, []);
 

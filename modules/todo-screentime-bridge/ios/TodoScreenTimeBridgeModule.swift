@@ -119,8 +119,9 @@ public class TodoScreenTimeBridgeModule: Module {
     /// of it. The picker is seeded with the staged choice when there is one, so
     /// a removal made earlier is still shown as removed.
     ///
-    /// Returns true when the user confirmed a choice, false when they
-    /// cancelled or the picker could not be shown. The apps themselves are
+    /// Returns the saved counts (applications, categories, websites) when the
+    /// user confirmed a choice, false when they cancelled or the picker could
+    /// not be shown. The apps themselves are
     /// never named to JS: `ApplicationToken` is opaque and only renderable by
     /// SwiftUI, which is the whole reason this presents a native sheet rather
     /// than handing a list back for React to draw.
@@ -141,11 +142,32 @@ public class TodoScreenTimeBridgeModule: Module {
         let view = ScreenTimePickerView(
           initialSelection: initial,
           onDone: { selection in
-            if live {
+            // The counts come from the selection in hand, not a read-back of the
+            // file just written: decoding a fresh selection can report no tokens
+            // until a later read, which left the group saying "None" after the
+            // first pick.
+            var saved = selection
+            if ScreenTimeShared.readAllowGroups().groupIds.contains(groupId),
+               ScreenTimeShared.heldGroupIds(now: Date()).contains(groupId) {
+              // An allowlist that is blocking right now. Adding an app to it
+              // loosens the block and removing one tightens it, and neither may
+              // end a block unrecorded, so the whole choice waits for the block
+              // to end (`promotePendingSelections`). The live selection is
+              // untouched (and is what the counts report), and the picker
+              // reopens on what was staged.
+              let held = ScreenTimeShared.readSelection(groupId: groupId) ?? current
+              saved = held
+              if ScreenTimeShared.selection(selection, covers: held) && ScreenTimeShared.selection(held, covers: selection) {
+                ScreenTimeShared.removePending(groupId: groupId)
+              } else {
+                ScreenTimeShared.writePendingSelection(selection, groupId: groupId)
+              }
+            } else if live {
               // Read again: a pass may have promoted a staged choice while the
               // picker was open, and the live selection is what must be kept.
               let held = ScreenTimeShared.readSelection(groupId: groupId) ?? current
-              ScreenTimeShared.writeSelection(ScreenTimeShared.selection(selection, adding: held), groupId: groupId)
+              saved = ScreenTimeShared.selection(selection, adding: held)
+              ScreenTimeShared.writeSelection(saved, groupId: groupId)
               if ScreenTimeShared.selection(selection, covers: held) {
                 ScreenTimeShared.removePending(groupId: groupId)
               } else {
@@ -155,7 +177,12 @@ public class TodoScreenTimeBridgeModule: Module {
               ScreenTimeShared.writeSelection(selection, groupId: groupId)
               ScreenTimeShared.removePending(groupId: groupId)
             }
-            host?.dismiss(animated: true) { promise.resolve(true) }
+            let counts: [String: Int] = [
+              "applications": saved.applicationTokens.count,
+              "categories": saved.categoryTokens.count,
+              "websites": saved.webDomainTokens.count,
+            ]
+            host?.dismiss(animated: true) { promise.resolve(counts) }
           },
           onCancel: {
             host?.dismiss(animated: true) { promise.resolve(false) }
@@ -234,6 +261,20 @@ public class TodoScreenTimeBridgeModule: Module {
       return false
     }
 
+    /// Which groups are allowlists, as a JSON array of group ids, and this
+    /// app's bundle id. Written ahead of `applyShield` on every reconcile for the
+    /// same reason `setShieldOptions` is: `applyGroups` reads it, in both
+    /// processes.
+    Function("setAllowGroups") { (groupIdsJson: String) -> Bool in
+      var written = false
+      TodoScreenTimeExceptionCatcher.runCatchingExceptions {
+        let ids = ((try? JSONDecoder().decode([String].self, from: Data(groupIdsJson.utf8))) ?? [])
+          .filter { ScreenTimeShared.isValidGroupID($0) }
+        written = ScreenTimeShared.writeAllowGroups(AllowGroupsShared(groupIds: ids, appBundleId: Bundle.main.bundleIdentifier))
+      }
+      return written
+    }
+
     /// Whether deleting apps is denied while a shield is up. Written ahead of
     /// `applyShield` on every reconcile, because `applyGroups` reads it, and
     /// `applyGroups` is also what the monitor extension runs with the app closed.
@@ -288,6 +329,11 @@ public class TodoScreenTimeBridgeModule: Module {
     /// schedule's own rule. A wake on a day the schedule doesn't cover changes
     /// nothing.
     ///
+    /// An all-day window is 00:00 to 00:00, which is armed as the single daily
+    /// activity 00:00 to 23:59:59. Armed as an overnight pair it would leave a
+    /// zero-length second half that iOS refuses. `windowCovers` needs no case
+    /// for it: midnight to midnight is the overnight rule at its limit.
+    ///
     /// Replaces what was armed, stopping the activities of schedules that were
     /// switched off or deleted. A segment under about a quarter of an hour is
     /// refused by iOS (`intervalTooShort`) and swallowed here; the foreground
@@ -316,7 +362,9 @@ public class TodoScreenTimeBridgeModule: Module {
           for window in windows {
             let start = (window.startMinutes / 60, window.startMinutes % 60, 0)
             let end = (window.endMinutes / 60, window.endMinutes % 60, 0)
-            if window.endMinutes > window.startMinutes {
+            if window.startMinutes == 0 && window.endMinutes == 0 {
+              segment(window.id, "", (0, 0, 0), (23, 59, 59))
+            } else if window.endMinutes > window.startMinutes {
               segment(window.id, "", start, end)
             } else {
               segment(window.id, ".a", start, (23, 59, 59))

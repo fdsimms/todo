@@ -1,13 +1,15 @@
-import type { Task, TaskDraft } from '../types';
+import type { CoinEntry, Task, TaskDraft } from '../types';
 import {
   generatedTaskCountOf,
   generatorPausedForVacation,
   hasAnyGeneratedTask,
+  latestCompletedTaskIdFor,
   liveGeneratedTask,
   liveUseUpTaskCount,
   type GeneratedKind,
 } from '../utils/generatedTasks';
 import { derivedId, spawnSeed } from '../utils/syncIds';
+import { useRewardStore } from './useRewardStore';
 import { useSettingsStore } from './useSettingsStore';
 import { useTaskStore } from './useTaskStore';
 import { useUnattendedStore } from './useUnattendedStore';
@@ -219,4 +221,23 @@ export function reconcileGeneratedTask(options: ReconcileGeneratedOptions): void
 export function dropGeneratedTask(kind: GeneratedKind, sourceId: string | null): void {
   const existing = liveGeneratedTask(useTaskStore.getState().tasks, kind, sourceId);
   if (existing) deleteGeneratedTaskQuietly(existing.id, { skipOptOut: true });
+}
+
+/**
+ * Food that went in the bin used nothing up, so the coins its "Use up" task
+ * paid at the tick come back. The tick pays first (`completeTask` can't know
+ * the answer yet), so this runs wherever food is recorded as thrown out: the
+ * use-up prompt, the Kitchen screen, the disposal banner. Same `takeBackTask`
+ * an unticked completion uses, which removes only that task's entry and is a
+ * no-op when no such completion exists. Returns what it removed so an undo can
+ * put it back.
+ */
+export function forfeitUseUpCoins(kind: GeneratedKind, sourceId: string): CoinEntry[] {
+  const taskId = latestCompletedTaskIdFor(useTaskStore.getState().tasks, kind, sourceId);
+  return taskId ? useRewardStore.getState().takeBackTask(taskId) : [];
+}
+
+/** The undo of `forfeitUseUpCoins`: writes back what it returned. */
+export function restoreUseUpCoins(entries: readonly CoinEntry[]): void {
+  if (entries.length > 0) useRewardStore.getState().restoreEntries(entries);
 }

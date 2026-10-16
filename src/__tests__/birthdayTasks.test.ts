@@ -50,7 +50,7 @@ const person = (overrides: Partial<Person> = {}): Person => ({
   askAbout: '',
   backfillDismissedFields: [],
   groupId: null,
-  location: null, faxNumber: null,
+  location: null, faxNumber: null, address: null,
   ...overrides,
 });
 

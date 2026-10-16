@@ -32,7 +32,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/alarmChain.ts` — ALARM_RING_INTERVAL_MINUTES, ALARM_MAX_RINGS, alarmChainTimes, taskAlarmUuid, alarmChainIds, stepTimerAlarmUuid
 - `src/utils/allClear.ts` — completedOnDay, describeAllClear, shouldPlayBeat
 - `src/utils/appGate.ts` — isGateTask, gateGroupFor, outstandingGates, gateShieldWanted, GATE_WINDOW_MINUTES, GATE_ARM_HORIZON_MS, GateWindow, gateWindowFor, PendingGate, nextPendingGate, +1 more
-- `src/utils/appGroups.ts` — APP_GROUPS_SETTING, GROUP_ASSIGNMENTS_SETTING, BASE_GROUP_NAME_SETTING, FALLBACK_GROUP_SETTING, DEFAULT_GROUP_ID, DEFAULT_GROUP_NAME, MAX_APP_GROUPS, MAX_GROUP_NAME_LENGTH, AppGroup, GroupedReason, +20 more
+- `src/utils/appGroups.ts` — APP_GROUPS_SETTING, GROUP_ASSIGNMENTS_SETTING, BASE_GROUP_NAME_SETTING, FALLBACK_GROUP_SETTING, DEFAULT_GROUP_ID, DEFAULT_GROUP_NAME, MAX_APP_GROUPS, MAX_GROUP_NAME_LENGTH, AppGroup, GroupedReason, +24 more
 - `src/utils/appLock.ts` — APP_LOCK_GRACE_OPTIONS, DEFAULT_APP_LOCK_GRACE_SECONDS, graceLabel, parseGraceSeconds, shouldLockOnResume, biometryLabel
 - `src/utils/appLockAuth.ts` — AppLockCapability, AppLockSupport, getAppLockSupport, UnlockResult, authenticateForAppLock
 - `src/utils/appShield.ts` — AppShieldState, ShieldReasonKind, ShieldReasonEntry, shieldReasons, shieldGroupIds, appShieldWanted, syncAppShield
@@ -49,8 +49,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/beatMark.ts` — BeatMarkGeometry, beatMarkGeometry, BEAT_STEP_MS
 - `src/utils/beatSound.ts` — playBeatSound
 - `src/utils/birthdayTasks.ts` — DEFAULT_BIRTHDAY_LEAD_DAYS, DEFAULT_BIRTHDAY_GIFT_LEAD_DAYS, MAX_BIRTHDAY_LEAD_DAYS, clampBirthdayLeadDays, clampBirthdayGiftLeadDays, parseBirthdayLeadDays, parseBirthdayGiftLeadDays, birthdaySourceId, parseBirthdaySource, parseBirthdayGiftSource, +15 more
-- `src/utils/blockEditLock.ts` — liveGroupIds, groupEditLocked, reasonGroupLocked, reasonSwitchLocked, appRemovalSwitchLocked, defaultGroupLocked, scheduleEditLocked, groupBlockHint, BLOCK_PICKER_NOTE_TITLE, BLOCK_PICKER_NOTE_MESSAGE, +2 more
-- `src/utils/blockSchedule.ts` — BLOCK_SCHEDULES_SETTING, MAX_BLOCK_SCHEDULES, MIN_WINDOW_MINUTES, MAX_SCHEDULE_NAME_LENGTH, readGroupIds, BlockSchedule, ALL_DAYS, WEEKDAYS, cleanScheduleName, windowLengthMinutes, +16 more
+- `src/utils/blockEditLock.ts` — liveGroupIds, groupEditLocked, reasonGroupLocked, reasonSwitchLocked, appRemovalSwitchLocked, defaultGroupLocked, scheduleEditLocked, groupBlockHint, BLOCK_PICKER_NOTE_TITLE, BLOCK_PICKER_NOTE_MESSAGE, +3 more
+- `src/utils/blockSchedule.ts` — BLOCK_SCHEDULES_SETTING, MAX_BLOCK_SCHEDULES, MIN_WINDOW_MINUTES, MAX_SCHEDULE_NAME_LENGTH, readGroupIds, BlockSchedule, ALL_DAYS, WEEKDAYS, cleanScheduleName, windowLengthMinutes, +17 more
 - `src/utils/blockTimer.ts` — BLOCK_SINCE_SETTING, BlockStamp, parseBlockStamp, reasonsEndBy, nextBlockStamp, blockedForMs, formatBlockedFor, spokenBlockedFor
 - `src/utils/blockerRegistry.ts` — registerTaskSource, resolveBlocker, waitingCountFor
 - `src/utils/blockerStatus.ts` — BlockerWait, describeBlockerWait
@@ -82,6 +82,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/categoryRename.ts` — renameInSeriesDefaults, renameInFollowUpDraft, renameInViewClauses, renameInTitleRules, renameInReminderCaptures
 - `src/utils/categorySchedule.ts` — DAY_LABELS, FULL_DAY_NAMES, formatScheduleTime, formatScheduleDays, formatCategorySchedule
 - `src/utils/chain.ts` — ChainCarrier, ChainCompletionCarrier, activeChainStep, nextChainStep, nextChainStepTitle, parseChainItems, ChainPreview, chainPreview, chainStepAdvancesInPlace, isChainFinish
+- `src/utils/chipUses.ts` — ChipUses, ChipUseKind, chipUseKey, bumpChipUses, rankByUse, parseChipUses
 - `src/utils/clockTime.ts` — hhmmToDate, logicalDayStart, taskDayStart, carryClockTime, overdueDayCount, hhmmMinutes, effectiveWindowEndTime, formatHHMM, clockTimeToken, dateToHHMM, +1 more
 - `src/utils/cloudKitTransport.ts` — CLOUDKIT_SOURCE, isCloudKitSyncAvailable, cloudKitUnavailableReason, cloudKitTransport
 - `src/utils/coinBurst.ts` — BurstPiece, BURST_GRAVITY, burstPieces, burstOffset, burstOpacity
@@ -91,7 +92,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/confirmDeleteGenerated.ts` — confirmDeleteGenerated
 - `src/utils/confirmDiscard.ts` — confirmDiscard
 - `src/utils/contactsAccess.ts` — ContactsPermission, getContactsPermission, ContactsAccessScope, getContactsAccessScope, requestContactsPermission, toCandidate, searchContacts, fetchLimitedContacts
-- `src/utils/contactsImport.ts` — MIN_CONTACT_QUERY_LENGTH, MAX_CONTACT_RESULTS, ContactCandidate, ContactPersonDraft, contactBirthday, normalizePhone, alreadyAdded, canSearchContacts, rankContacts, browsableContacts, +4 more
+- `src/utils/contactsImport.ts` — MIN_CONTACT_QUERY_LENGTH, MAX_CONTACT_RESULTS, ContactCandidate, ContactPersonDraft, contactAddress, contactBirthday, normalizePhone, alreadyAdded, canSearchContacts, rankContacts, +5 more
 - `src/utils/contextCards.ts` — CardPosition, isCardRow, contextCardPositions, contextSectionSummaries
 - `src/utils/cookMode.ts` — CookStep, stepsFromNotes, cookNotesPanel, cookSteps, clampStepIndex, describeStepPosition
 - `src/utils/cookQuestions.ts` — COOK_QUESTION_MAX_LENGTH, COOK_ANSWER_MAX_LINES, COOK_ANSWER_MAX_CHARS, CookContextIngredient, CookQuestionContext, cookQuestionContext, suggestedCookQuestions, clampCookAnswer
@@ -160,7 +161,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/fuzzySearch.ts` — SearchResult, fuzzySearch, ranksAsActive, ProjectSearchResult, searchProjects, GroupSearchResult, searchGroups
 - `src/utils/generatedCategoryPrompt.ts` — offerGeneratedCategoryWriteBack, bulkSetCategoryOffering
 - `src/utils/generatedTaskSettings.ts` — NO_GENERATED_TASK_EXTRAS, hasGeneratedTaskExtras, parseGeneratedTaskExtrasValue, parseGeneratedTaskExtras, generatedExtrasFill, OwnedTaskField, TaskSettingsContext, LockableField, TaskSettingsSpec, appearsPhrase, +5 more
-- `src/utils/generatedTasks.ts` — GENERATED_KINDS, GeneratedEnabledKey, GeneratedKindSpec, GENERATED_KIND_SPECS, GENERATED_KIND_LIST, listedGeneratedKinds, generatedTaskCounts, matchesAutomationQuery, describeGeneratedCounts, GeneratedEnabledFlags, +16 more
+- `src/utils/generatedTasks.ts` — GENERATED_KINDS, GeneratedEnabledKey, GeneratedKindSpec, GENERATED_KIND_SPECS, GENERATED_KIND_LIST, listedGeneratedKinds, generatedTaskCounts, matchesAutomationQuery, describeGeneratedCounts, GeneratedEnabledFlags, +17 more
 - `src/utils/goalTargetTasks.ts` — GoalReading, GOAL_TARGET_LINK, GOAL_TARGET_NOTES, goalReadings, goalTargetSourceId, goalTargetKeyOf, goalTargetDayOf, goalTargetTitle, goalTargetNotes
 - `src/utils/groceryAdd.ts` — nextSortOrder, ensureProductFor, newItemRow, GroceryAddOverride, GroceryAddContext, GroceryAddPlan, planGroceryAdd, reAddNotice
 - `src/utils/groceryAisles.ts` — DEFAULT_AISLES, OTHER_AISLE, isNonFoodAisle, AISLE_LEXICON, aisleForName, rememberAisles, remapRememberedAisle, forgetRememberedAisle, renameRememberedAisle, normalizeAisleOrder, +2 more
@@ -262,7 +263,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/morningCheckIn.ts` — isMorningCheckInCandidate, morningCheckInTasks
 - `src/utils/naturalKeyFold.ts` — NaturalKey, NATURAL_KEYS, foldRows, Reference, REFERENCES, SettingReference, SETTING_REFERENCES, foldWinner
 - `src/utils/navHubs.ts` — NavContentCounts, NavHubId, NavDestination, NavHub, NavMenuRow, NAV_HUBS, NAV_MENU_ROWS, hubForRoute, visibleHubMembers, NavMenuOptions, +25 more
-- `src/utils/negativeHabits.ts` — NegativeHabitFields, isNegativeTask, slipsToday, slipAllowanceOf, nextSlipIsFree, lastSlipWasFree, isCleanToday, isFailedToday, slipPatch, undoSlipPatch, +8 more
+- `src/utils/negativeHabits.ts` — NegativeHabitFields, isNegativeTask, slipsToday, slipAllowanceOf, nextSlipIsFree, lastSlipWasFree, isCleanToday, isFailedToday, slipPatch, undoSlipPatch, +9 more
 - `src/utils/negativeHold.ts` — negativeHoldNow, negativeHoldOffered
 - `src/utils/nfcBridge.ts` — NfcBridge, nfcBridge, isNfcSupported, NfcScanResult, parseScanAnswer, scanKeyTag
 - `src/utils/nfcKey.ts` — NFC_KEYS_SETTING, NFC_KEY_LOCK_SETTING, NfcKeyKind, NfcKey, MAX_NFC_KEYS, MAX_KEY_NAME_LENGTH, normalizeTagUid, newLinkToken, normalizeLinkToken, keyLinkUrl, +10 more
@@ -289,7 +290,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/pantryStanding.ts` — PantryStanding, pantryStanding
 - `src/utils/pantryWrite.ts` — onHandRow, markedOutRow, disposalRow, thawedPortionsOf, frozenRow, openedRow, reviewedRow, runningLowRow, productOnHandRow, productsOutPlan, +16 more
 - `src/utils/parseNaturalDate.ts` — WEEKDAYS, MONTHS, ClockTime, strip, extractTime, extractDayPart, clockBesideDayPart, dayPartBesideClock, DatePart, NUMBER_WORDS, +5 more
-- `src/utils/parseTaskInput.ts` — withTrailingSpace, ParsedSchedule, ParsedTaskInput, segmentForHour, dueAt, parseFromCompletionSuffix, parseTaskInput, ParsedLink, parseLinkInput, ParsedPhone, +54 more
+- `src/utils/parseTaskInput.ts` — withTrailingSpace, ParsedSchedule, ParsedTaskInput, segmentForHour, dueAt, parseFromCompletionSuffix, parseTaskInput, ParsedLink, parseLinkInput, ParsedPhone, +56 more
 - `src/utils/patchNotes.ts` — PatchNote
 - `src/utils/penaltyShield.ts` — penaltyCutoffAt, PenaltyCharge, penaltyChargeFor, slipPenaltyUntil, extendShieldUntil, penaltyCreditFor, uncreditShieldUntil, creditShieldUntil, penaltyShieldWanted
 - `src/utils/pendingHealthFoodWrites.ts` — runPendingHealthFoodWrites
@@ -394,6 +395,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/ruleCategory.ts` — parseRuleCategory, ruleCategoryFor, renameInRuleCategories, withRuleCategory
 - `src/utils/ruleEstimate.ts` — GeneratorEstimate, GeneratorEstimates, holdsKindEstimate, parseRuleEstimate, ruleEstimateDraft, withRuleEstimate, parseGeneratorEstimates, withGeneratorEstimate
 - `src/utils/ruleLog.ts` — RULE_MEDICATION_NAME_MAX_LENGTH, parseRuleLog, ruleLogDraft, ruleLogOfTask, taskLogChanged, withRuleLog, renamedRuleLogs, describeRuleLog
+- `src/utils/savedDefaults.ts` — SavedDefaultRow, savedDefaultRows
 - `src/utils/savedEventTasks.ts` — BOOK_LEAD_DAYS, bookSourceId, bookEventSourceOf, bookDueDay, wantsBookTask, bookTaskTitle, bookTaskNotes
 - `src/utils/savedEvents.ts` — SAVED_EVENTS_KEY, BOOK_EVERY_MONTHS_MAX, SavedEvent, SavedEventFields, parseSavedEvents, readSavedEvents, writeSavedEvents, findSavedEvent, sortedSavedEvents, saveEventAs, +10 more
 - `src/utils/savedMealReview.ts` — ReviewLine, reviewLinesFor, ItemAmountEdit, itemAmountEdit, ESTIMATE_CHOICES, ItemChange, itemAtAmount, itemAtEstimateFactor, replaceLine, appendLine, +6 more
@@ -500,7 +502,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/todayProjectBands.ts` — TodayProjectBand, TodayProjectBands, buildTodayProjectBands
 - `src/utils/tooltipAim.ts` — TOOLTIP_CARET_W, aimTooltip
 - `src/utils/transitAlerts.ts` — TransitEffect, TransitAlert, TransitSnapshot, TRANSIT_LINES, parseTransitLines, effectOfAlertType, parseSubwayAlerts, alertOverlaps, LIVE_ALERT_MAX_AGE_MS, PLANNED_ALERT_MAX_AGE_MS, +5 more
-- `src/utils/travelTasks.ts` — TRAVEL_LEAD_MINUTES_DEFAULT, TRAVEL_LEAD_MINUTES_MIN, TRAVEL_LEAD_MINUTES_MAX, TRAVEL_LEAD_MINUTES_STEP, TRAVEL_WALK_UNDER_MAX, TRAVEL_WALK_UNDER_STEP, TRAVEL_WALK_UNDER_SUGGESTED, TravelMode, TRAVEL_MODES, TravelEventPref, +46 more
+- `src/utils/travelTasks.ts` — TRAVEL_LEAD_MINUTES_DEFAULT, TRAVEL_LEAD_MINUTES_MIN, TRAVEL_LEAD_MINUTES_MAX, TRAVEL_LEAD_MINUTES_STEP, LEAVE_WINDOW_MINUTES_DEFAULT, LEAVE_WINDOW_MINUTES_MIN, LEAVE_WINDOW_MINUTES_MAX, LEAVE_WINDOW_MINUTES_STEP, describeLeaveWindow, clampLeaveWindowMinutes, +52 more
 - `src/utils/tripEvents.ts` — spansDays, tripSpanOf, awayFieldsFromEvent, projectForTripEvent
 - `src/utils/tripForecast.ts` — TripForecast, summarizeTripForecast, describeTripForecast, describeForecastGap
 - `src/utils/tripLiveActivity.ts` — TripRun, buildTripRun, useTripLiveActivitySync
@@ -538,9 +540,9 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 ## `src/store`
 
 - `src/store/generatedCategoryWriteBack.ts` — GeneratedCategoryOffer, generatedCategoryOffer, writeCategoryToSource
-- `src/store/generatedTaskSync.ts` — deleteGeneratedTaskQuietly, ReconcileGeneratedOptions, reconcileGeneratedTask, dropGeneratedTask
+- `src/store/generatedTaskSync.ts` — deleteGeneratedTaskQuietly, ReconcileGeneratedOptions, reconcileGeneratedTask, dropGeneratedTask, forfeitUseUpCoins, restoreUseUpCoins
 - `src/store/generatorSwitch.ts` — setGeneratorEnabled
-- `src/store/useAppGroupStore.ts` — NewSchedule, ScheduleResult, useAppGroupStore, resolvedAssignments, resolveGroupNow
+- `src/store/useAppGroupStore.ts` — NewSchedule, ScheduleResult, useAppGroupStore, resolvedAssignments, allowGroupsNow, resolveGroupNow
 - `src/store/useAppLockStore.ts` — useAppLockStore, isAppLocked
 - `src/store/useBlockTimerStore.ts` — useBlockTimerStore
 - `src/store/useCalendarStore.ts` — CALENDAR_WINDOW_DAYS, CALENDAR_CHANGE_COALESCE_MS, TRIP_WINDOW_DAYS, sameBusyEvents, vacationReturnCalendarIds, useCalendarStore, useCalendarSync

@@ -846,7 +846,8 @@ export function isVisibleApartFromVacation(task: Task): boolean {
 
   // A negative habit is a standing commitment, not a piece of work waiting for
   // its moment, so none of the gates below apply to it: it sits on Today all
-  // day, every day, in its clean state. That is the feature rather than an
+  // day, in its clean state, on every day it covers (one day without a repeat,
+  // see oneDayEndPatch). That is the feature rather than an
   // exemption from it — the row *is* the reminder, and one that disappeared
   // while you were doing well would be missing at exactly the moment it earns
   // its place. Archiving is how you stop tracking one, and vacation mode (the

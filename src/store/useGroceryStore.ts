@@ -128,7 +128,7 @@ import { wantsShelfLifePrompt, type DisposalOutcome } from '../utils/itemDisposa
 import { expiresAtForOpening, expiresAtForPurchase, liveExpiresAt } from '../utils/groceryShelfLife';
 import { finishedUseUpFor, useUpTaskDraft, useUpTaskDrift, wantsUseUpTask } from '../utils/groceryExpiry';
 import { useUpSweepOrder } from '../utils/useUpSweep';
-import { dropGeneratedTask, reconcileGeneratedTask } from './generatedTaskSync';
+import { dropGeneratedTask, forfeitUseUpCoins, reconcileGeneratedTask, restoreUseUpCoins } from './generatedTaskSync';
 import {
   aisleForName,
   normalizeAisleOrder,
@@ -3217,6 +3217,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // resurfaces on its own schedule, reading as a fresh nag for something
     // already resolved here.
     for (const u of updates) dropUseUpTask(u.id);
+    const forfeited = outcome === 'spoiled' ? updates.flatMap(u => forfeitUseUpCoins('groceryUseUp', u.id)) : [];
 
     // One row, and nobody has said how it went: that's the question worth
     // asking, and the only shape it can be asked in. A batch gets no offer —
@@ -3230,6 +3231,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       destructive: true,
       redo: () => get().markOutOfMany(ids, outcome),
       undo: () => {
+        restoreUseUpCoins(forfeited);
         for (const b of before) dbUpdateGroceryItem(b);
         for (const p of thawedPortions) dbSetItemProduct(p);
         const originalById = new Map(before.map(b => [b.id, b]));
@@ -3260,6 +3262,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     }
     const updated = disposalRow(item, outcome, new Date().toISOString());
     dbUpdateGroceryItem(updated);
+    if (outcome === 'spoiled') forfeitUseUpCoins('groceryUseUp', itemId);
     // The prompt is judged on the row as it stands *after* the answer, which is
     // what makes it a reaction rather than a banner that could go stale. An
     // answer that isn't the second waste just closes the question.

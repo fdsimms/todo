@@ -2236,7 +2236,7 @@ function registerWriteTools(
 
   server.tool(
     'quick_add',
-    `Add up to ${MAX_QUICK_ADD} tasks from lines of text, each read with the app's own quick-add grammar: "Pay rent tomorrow 5pm #home !high ~30m +Moving". Dates and repeats ("every other Monday"), #category or #tag, !priority, +project and an estimate are read out of the title, and a repeat can end in "unless it rains" to skip a day it rained; anything that matches nothing stays in the title and the row says so. Start a line with "remind me" to set a reminder at its time. Bullets and numbering are ignored, so a pasted list works. Without apply: true it only shows how each line reads.`,
+    `Add up to ${MAX_QUICK_ADD} tasks from lines of text, each read with the app's own quick-add grammar: "Pay rent tomorrow 5pm #home !high ^easy ~30m +Moving". Dates and repeats ("every other Monday"), #category or #tag, !priority, ^difficulty (trivial, easy, normal, hard), +project and an estimate are read out of the title, and a repeat can end in "unless it rains" to skip a day it rained; anything that matches nothing stays in the title and the row says so. Start a line with "remind me" to set a reminder at its time. Bullets and numbering are ignored, so a pasted list works. Without apply: true it only shows how each line reads.`,
     {
       lines: z.array(z.string()).min(1),
       apply: z.boolean().optional(),
@@ -3927,6 +3927,7 @@ function registerWriteTools(
     email: z.string().nullable().optional(),
     linkUrl: z.string().nullable().optional(),
     location: z.string().nullable().optional().describe('Where they live, as free text ("Austin, TX"). The app uses it to find people when planning a trip. null clears it.'),
+    address: z.string().nullable().optional().describe('Their street address as free text, lines separated by newlines ("123 Main St\\nAustin, TX 78701"). Separate from location, which is just the town used for trip planning. null clears it.'),
     groupId: z.string().nullable().optional().describe('The group they are listed under (save_person_group makes one), or null for none.'),
     archived: z.boolean().optional().describe('Take them off the list but keep everything about them. false brings them back.'),
     pinned: z.boolean().optional().describe('true holds them at the top of the People list, above the people and business sections. false unpins.'),

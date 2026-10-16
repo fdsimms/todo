@@ -79,6 +79,7 @@ import { CountStepper } from './CountStepper';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { TitleTokenAccessory, QUICK_ADD_TITLE_TOKENS } from './TitleTokenAccessory';
 import { tokenChipsFor, applyTokenChip, type TokenChip } from '../utils/titleTokenChips';
+import { chipUseKey } from '../utils/chipUses';
 import { HighlightedText } from './HighlightedText';
 import { suggestTitles } from '../utils/titleSuggestions';
 import { findArchivedMatch } from '../utils/archiveMatch';
@@ -293,6 +294,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
   const newTaskDefaults = useSettingsStore(s => s.newTaskDefaults);
   const setNewTaskDefaults = useSettingsStore(s => s.setNewTaskDefaults);
+  const chipUses = useSettingsStore(useShallow(s => s.chipUses));
   // Titles filed since the sheet opened, while "Add another" is on — the
   // sheet's own record of a burst, since nothing behind it is announcing them
   // (see createTask). Cleared with the rest of the draft when it reopens.
@@ -974,6 +976,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     ? describeTitleSuggestion(titleSuggestion, rainUnit, hhmm => formatHHMM(hhmm))
     : null;
   const priorityParsed = titleSuggestion?.kind === 'priority' ? titleSuggestion.hit : null;
+  const difficultyParsed = titleSuggestion?.kind === 'difficulty' ? titleSuggestion.hit : null;
   const projectParsed = titleSuggestion?.kind === 'project' ? titleSuggestion.hit : null;
   const chainParsed = titleSuggestion?.kind === 'chain' ? titleSuggestion.hit : null;
   const linkParsed = titleSuggestion?.kind === 'link' ? titleSuggestion.hit : null;
@@ -1014,6 +1017,11 @@ export const QuickAddModal = React.memo(function QuickAddModal({
         ? {
             matchStart: priorityParsed.matchStart,
             matchedText: title.slice(priorityParsed.matchStart, priorityParsed.matchEnd),
+          }
+      : difficultyParsed
+        ? {
+            matchStart: difficultyParsed.matchStart,
+            matchedText: title.slice(difficultyParsed.matchStart, difficultyParsed.matchEnd),
           }
       : projectParsed
         ? {
@@ -1184,8 +1192,9 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       categoryEmoji: Object.fromEntries(categories.filter(c => c.emoji).map(c => [c.name, c.emoji!])),
       tags: allTags,
       projects: intoProjectId ? [] : liveProjects.map(p => p.title),
+      uses: chipUses,
     }),
-    [title, categories, allTags, intoProjectId, liveProjects]
+    [title, categories, allTags, intoProjectId, liveProjects, chipUses]
   );
   const applyTitleChip = (chip: TokenChip) => {
     if (!titleChips) return;
@@ -1345,6 +1354,17 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     setTitle(nextTitle);
     titleCaret.moveCaret(nextTitle);
     setPriority(priorityParsed.priority);
+  };
+
+  // Apply the detected "^word" difficulty token and strip it from the title.
+  const applyDifficulty = () => {
+    if (!difficultyParsed) return;
+    haptics.success();
+    animateLayout();
+    const nextTitle = withTrailingSpace(difficultyParsed.cleanTitle);
+    setTitle(nextTitle);
+    titleCaret.moveCaret(nextTitle);
+    setDifficulty(difficultyParsed.difficulty);
   };
 
   // Apply the detected "->" chain: the first step becomes the task's own
@@ -1570,6 +1590,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     else if (parsed) applyParse();
     else if (categoryTagsParsed) applyCategoryTags();
     else if (priorityParsed) applyPriority();
+    else if (difficultyParsed) applyDifficulty();
     else if (projectParsed) applyProject();
     else if (chainParsed) applyChain();
     else if (linkParsed) applyLink();
@@ -1820,6 +1841,15 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     // and visibly — re-running them here would put back a category the ✕ on
     // the rule caption just took off.
     }, undefined, { skipTitleRules: true });
+    // Counted from what the task was actually filed under, so the "#" and "+"
+    // chips float the choices this sheet is used for (chipUses.ts). A project
+    // the sheet was opened inside isn't a choice made here.
+    const usedProject = intoProjectId ? null : liveProjects.find(p => p.id === projectId);
+    useSettingsStore.getState().recordChipUses([
+      ...(task.category ? [chipUseKey('category', task.category)] : []),
+      ...task.tags.map(t => chipUseKey('tag', t)),
+      ...(usedProject ? [chipUseKey('project', usedProject.title)] : []),
+    ]);
     // A typed set of dates becomes a series around the row just made, through
     // the editor's own entry point, so it's the same N rows sharing a seriesId
     // any other set is (and the repeat, if one was also set, is stripped the

@@ -41,6 +41,13 @@ export const MAX_GROUP_NAME_LENGTH = 24;
 export interface AppGroup {
   id: string;
   name: string;
+  /**
+   * An allowlist: while a reason holds this group, every app is blocked
+   * *except* the ones picked. Absent is the original mode, where the picked apps
+   * are the ones blocked. See `allowGroupIds` for what keeps this from going
+   * wrong.
+   */
+  allowOnly?: boolean;
 }
 
 /** The reasons that take a group directly. A schedule carries its own `groupId`. */
@@ -110,11 +117,11 @@ export function parseAppGroups(raw: string | null | undefined): AppGroup[] {
   const groups: AppGroup[] = [];
   for (const item of parsed) {
     if (typeof item !== 'object' || item === null) continue;
-    const { id, name } = item as Partial<AppGroup>;
+    const { id, name, allowOnly } = item as Partial<AppGroup>;
     if (typeof id !== 'string' || typeof name !== 'string') continue;
     if (!ID_PATTERN.test(id) || seen.has(id)) continue;
     seen.add(id);
-    groups.push({ id, name: cleanGroupName(name) });
+    groups.push(allowOnly === true ? { id, name: cleanGroupName(name), allowOnly: true } : { id, name: cleanGroupName(name) });
   }
   return groups.slice(0, MAX_APP_GROUPS);
 }
@@ -154,6 +161,53 @@ export function withGroupRenamed(
     return { ok: false, reason: 'duplicate' };
   }
   return { ok: true, groups: custom.map(g => (g.id === id ? { ...g, name } : g)) };
+}
+
+/**
+ * The ids of the groups that block everything except their own apps.
+ *
+ * **Never the original group, and never the one a missing group falls back to.**
+ * A reason pointing at a deleted group resolves to the fallback (see the header),
+ * and that must mean "block some apps", not "block everything else": a deleted
+ * group flipping a schedule into a lock on the whole phone is the failure this
+ * rule exists to prevent. `withGroupMode` refuses to make the fallback an
+ * allowlist and `useAppGroupStore.setDefaultGroup` refuses to make an allowlist
+ * the fallback; this is the backstop for a stored state that says otherwise.
+ */
+export function allowGroupIds(custom: readonly AppGroup[], meta: GroupsMeta = DEFAULT_GROUPS_META): string[] {
+  return custom.filter(g => g.allowOnly === true && g.id !== meta.fallbackId).map(g => g.id);
+}
+
+/** Whether a stored group id resolves to an allowlist. */
+export function isAllowGroup(
+  custom: readonly AppGroup[],
+  id: string | null | undefined,
+  meta: GroupsMeta = DEFAULT_GROUPS_META,
+): boolean {
+  return allowGroupIds(custom, meta).includes(resolveGroupId(custom, id, meta));
+}
+
+export type GroupModeResult =
+  | { ok: true; groups: AppGroup[] }
+  | { ok: false; reason: 'missing' | 'fallback' };
+
+/** Set a custom group to block its apps or to allow only them. The fallback group can't be an allowlist. */
+export function withGroupMode(
+  custom: readonly AppGroup[],
+  id: string,
+  allowOnly: boolean,
+  meta: GroupsMeta = DEFAULT_GROUPS_META,
+): GroupModeResult {
+  if (!custom.some(g => g.id === id)) return { ok: false, reason: 'missing' };
+  if (allowOnly && id === meta.fallbackId) return { ok: false, reason: 'fallback' };
+  return {
+    ok: true,
+    groups: custom.map(g => {
+      if (g.id !== id) return g;
+      const { allowOnly: _old, ...rest } = g;
+      return allowOnly ? { ...rest, allowOnly: true } : rest;
+    }),
+  };
 }
 
 export function withGroupRemoved(custom: readonly AppGroup[], id: string): AppGroup[] {

@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import type { ExistingContact } from 'expo-contacts/legacy';
 import { isDemoModeActive } from './demoState';
 import {
+  contactAddress,
   contactBirthday,
   MAX_CONTACT_RESULTS,
   canSearchContacts,
@@ -112,6 +113,7 @@ export function toCandidate(contact: ExistingContact): ContactCandidate | null {
     name,
     phoneNumber: phone,
     email,
+    address: contactAddress(contact.addresses),
     ...contactBirthday(contact.birthday),
   };
 }
@@ -143,7 +145,7 @@ export async function searchContacts(query: string): Promise<ContactCandidate[]>
     const result = await contacts().getContactsAsync({
       // Narrowed in the query, not after it — see the note at the top.
       name: query.trim(),
-      fields: [Fields.Name, Fields.PhoneNumbers, Fields.Emails, Fields.Birthday],
+      fields: [Fields.Name, Fields.PhoneNumbers, Fields.Emails, Fields.Birthday, Fields.Addresses],
       // A ceiling on what is fetched as well as on what is shown, so a query
       // like "a" that slipped past the length floor still can't pull a book
       // into memory.
@@ -185,7 +187,7 @@ export async function fetchLimitedContacts(): Promise<ContactCandidate[]> {
     if (!permission.granted || permission.accessPrivileges !== 'limited') return [];
     const { Fields } = contacts();
     const result = await contacts().getContactsAsync({
-      fields: [Fields.Name, Fields.PhoneNumbers, Fields.Emails, Fields.Birthday],
+      fields: [Fields.Name, Fields.PhoneNumbers, Fields.Emails, Fields.Birthday, Fields.Addresses],
       pageSize: MAX_LIMITED_CONTACTS,
       pageOffset: 0,
     });
