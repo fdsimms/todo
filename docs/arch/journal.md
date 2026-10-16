@@ -117,6 +117,22 @@ reader's label, a clipped preview like Looking back) `journalPlainText` strips
 the markers. A formatting toolbar or styles shown while typing was the other
 option and was left out: it needs a native editor and a stored document format.
 
+## Spoilers
+
+`||words||` (Discord's marker) is the one inline style that hides rather than styles. `JournalText`
+draws it as a block the same colour as its words until tapped, and a second tap hides it again. What
+is open is component state, so leaving the screen hides everything. The text is stored as typed like
+the rest, so search, sync, export and Claude's journal tools all see the words.
+
+- **Anywhere an entry is shown without the tap, the words are replaced** (`journalPlainText` returns
+  `[hidden]`): the screen reader's row label, `journalSnippet` previews and the Looking back card. A
+  spoiler that leaked into a preview would be no spoiler. The edit sheet's field shows the markers
+  and the words, as it does for every other style.
+- **Its words are read for bold and italics too**, and every span of one spoiler shares a `spoiler`
+  number so they open together.
+- **Not a lock.** Search, the word count and exports include the words, and the MCP server returns them (its instructions tell Claude not to quote one back unprompted).
+  It stops a glance at the screen, not a reader.
+
 ## The formatting bar
 
 `JournalFormatBar` floats above the keyboard while the field has focus (a

@@ -29,6 +29,7 @@ import { formatDeadlineDate } from '../utils/dateUtils';
 import { findArchivedMatch } from '../utils/archiveMatch';
 import { TITLE_MAX_LENGTH, type Project } from '../types';
 import { TextField } from './TextField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /** The in-progress project the quick-add hands off to the full editor. */
 export interface ProjectDraft {
@@ -216,7 +217,7 @@ export function QuickAddProjectModal({
         [
           // The match is fuzzy, so a wrong guess has to be escapable without
           // either answer: Cancel leaves the typed name in the field.
-          { text: 'Cancel', style: 'cancel' },
+          { text: BUTTON_LABEL.cancel, style: 'cancel' },
           { text: 'Create new', onPress: () => create(finalTitle) },
           // Last year's party again: restoring brought back last year's
           // ticks and dates, which is the one thing not wanted.

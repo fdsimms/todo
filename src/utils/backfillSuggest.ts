@@ -1,6 +1,6 @@
-import type { Task, Effort } from '../types';
-import { EFFORT_MINUTES } from './effort';
-import { ESTIMATE_EFFORTS, type BackfillFieldId } from './fieldBackfill';
+import type { Task } from '../types';
+import { ESTIMATE_PRESET_MINUTES, chosenEstimateMinutes, nearestPresetMinutes } from './effort';
+import type { BackfillFieldId } from './fieldBackfill';
 
 /**
  * The part of "suggest a value for the field the Backfill screen is asking
@@ -17,10 +17,10 @@ import { ESTIMATE_EFFORTS, type BackfillFieldId } from './fieldBackfill';
  *   Closed by construction — the prompt names the list, and `readSuggestions`
  *   drops anything outside it, so the worst case is a category you'd have
  *   picked second rather than one you've never heard of.
- * - **`estimate`** picks one of the effort buckets the card already shows
- *   (`ESTIMATE_EFFORTS`). The model answers in the buckets' own canonical
- *   minutes, so a suggestion is literally one of the pills on screen,
- *   highlighted, rather than a number arriving from somewhere else.
+ * - **`estimate`** picks one of the durations the card already shows
+ *   (`ESTIMATE_PRESET_MINUTES`). The model answers in those exact minutes, so a
+ *   suggestion is literally one of the pills on screen, highlighted, rather
+ *   than a number arriving from somewhere else.
  *
  * Everything else is left out on purpose, and for three different reasons
  * worth keeping apart:
@@ -91,7 +91,7 @@ export interface SuggestionExample {
 
 export type BackfillSuggestion =
   | { field: 'category'; taskId: string; category: string }
-  | { field: 'estimate'; taskId: string; effort: Effort };
+  | { field: 'estimate'; taskId: string; minutes: number };
 
 /**
  * How a task is named in the request. Always `displayTitleFor` in the app; a
@@ -144,21 +144,20 @@ export function suggestionExamples(
       if (!t.category) continue;
       out.push({ title, value: t.category });
     } else {
-      // The bucket's canonical minutes rather than whatever exact figure the
-      // task carries, so the examples speak in the same six values the answer
-      // is constrained to. A task sized at 45 minutes is an example of "30",
-      // which is the bucket its own pill shows.
-      const minutes = EFFORT_MINUTES[t.effort];
-      if (t.effort === 0 || minutes == null) continue;
-      out.push({ title, value: `${minutes} minutes` });
+      // The nearest pill's minutes rather than whatever exact figure the task
+      // carries, so the examples speak in the same values the answer is
+      // constrained to. A task sized at 40 minutes is an example of "30".
+      const minutes = chosenEstimateMinutes(t);
+      if (minutes == null) continue;
+      out.push({ title, value: `${nearestPresetMinutes(minutes)} minutes` });
     }
   }
   return out;
 }
 
-/** The canonical minutes the `estimate` answer is constrained to, in bucket order. */
+/** The minutes the `estimate` answer is constrained to, in pill order. */
 export function suggestibleEstimateMinutes(): number[] {
-  return ESTIMATE_EFFORTS.map(e => EFFORT_MINUTES[e]).filter((m): m is number => m != null);
+  return [...ESTIMATE_PRESET_MINUTES];
 }
 
 /** What the model is asked to return, before any of it is believed. */
@@ -181,7 +180,7 @@ interface RawSuggestion {
  * - **A category has to be one of the user's own**, matched case-insensitively
  *   and returned in the app's own spelling. An invented one would write a
  *   category that exists on exactly one task and appears in no picker.
- * - **A duration has to be one of the buckets**, so the suggestion is a pill
+ * - **A duration has to be one of the presets**, so the suggestion is a pill
  *   already on the card. Anything else is dropped rather than snapped to the
  *   nearest, since a value the model didn't mean isn't better than no
  *   suggestion for that one task.
@@ -213,9 +212,8 @@ export function readSuggestions(
       out.set(task.id, { field: 'category', taskId: task.id, category: name });
     } else {
       if (typeof entry.minutes !== 'number') continue;
-      const effort = ESTIMATE_EFFORTS.find(e => EFFORT_MINUTES[e] === entry.minutes);
-      if (effort == null) continue;
-      out.set(task.id, { field: 'estimate', taskId: task.id, effort });
+      if (!ESTIMATE_PRESET_MINUTES.includes(entry.minutes)) continue;
+      out.set(task.id, { field: 'estimate', taskId: task.id, minutes: entry.minutes });
     }
   }
   return out;

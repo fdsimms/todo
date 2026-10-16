@@ -11,7 +11,8 @@ import {
 import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { SortOption, Priority, Effort } from '../types';
-import { PRIORITY_LABELS, PRIORITY_COLORS, EFFORT_LABELS, EFFORT_HINTS } from '../types';
+import { PRIORITY_LABELS, PRIORITY_COLORS } from '../types';
+import { effortRangeLabel } from '../utils/effort';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, animation, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -209,10 +210,7 @@ export function SortFilterSheet({
                     }}
                   >
                     <Text style={[styles.chipText, active && styles.chipTextActive]}>
-                      {EFFORT_LABELS[e]}
-                    </Text>
-                    <Text style={[styles.chipHint, active && styles.chipHintActive]}>
-                      {EFFORT_HINTS[e]}
+                      {effortRangeLabel(e)}
                     </Text>
                   </TouchableOpacity>
                 );

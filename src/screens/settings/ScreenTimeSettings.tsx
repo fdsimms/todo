@@ -41,6 +41,7 @@ import { navigateToSettingsEntry } from '../../navigation/openSettings';
 import * as Clipboard from 'expo-clipboard';
 import { format } from 'date-fns/format';
 import { clockTimeToken } from '../../utils/clockTime';
+import { BUTTON_LABEL } from '../../copy/shared';
 
 interface Props {
   /** Why the apps are blocked right now, so each switch can say what it is doing. */
@@ -176,7 +177,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
 
   const groupNameFailed = (reason: 'full' | 'duplicate' | 'invalid') => {
     Alert.alert(
-      reason === 'full' ? 'Too many groups' : 'Name already used',
+      reason === 'full' ? 'Too many groups' : 'That name is taken',
       reason === 'full' ? 'Delete a group before adding another.' : 'Pick a name no other group has.',
     );
   };
@@ -184,7 +185,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
   const handleNewGroup = () => {
     haptics.tap();
     Alert.prompt('Name this group', 'For example, Social or Games.', [
-      { text: 'Cancel', style: 'cancel' },
+      { text: BUTTON_LABEL.cancel, style: 'cancel' },
       {
         text: 'Add',
         onPress: (text?: string) => {
@@ -289,9 +290,9 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
       {
         text: 'Rename',
         onPress: () => Alert.prompt('Rename group', undefined, [
-          { text: 'Cancel', style: 'cancel' },
+          { text: BUTTON_LABEL.cancel, style: 'cancel' },
           {
-            text: 'Save',
+            text: BUTTON_LABEL.save,
             onPress: (text?: string) => {
               const renamed = useAppGroupStore.getState().renameGroup(groupId, text ?? '');
               if (!renamed.ok) groupNameFailed(renamed.reason);
@@ -320,7 +321,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
             'Allow only these apps?',
             `Anything using this group will block every app except the ones you picked here, and those apps stay open. Pick the apps you want to keep, including dundundun. Categories can’t be allowed.${inSupergroup ? ` ${leavesSupergroups}` : ''}`,
             [
-              { text: 'Cancel', style: 'cancel' as const },
+              { text: BUTTON_LABEL.cancel, style: 'cancel' as const },
               {
                 text: 'Allow only these',
                 onPress: () => {
@@ -340,7 +341,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
         },
       }]),
       ...(isOriginal ? [] : [{
-        text: 'Delete',
+        text: BUTTON_LABEL.delete,
         style: 'destructive' as const,
         onPress: () => refuseWhileBlocked(groupEditLocked(groupId, reasons)) || Alert.alert(
           `Delete ${name}?`,
@@ -350,9 +351,9 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
               ? 'The apps you picked for this group are forgotten, and it is removed from the supergroups that include it.'
               : 'The apps you picked for this group are forgotten.',
           [
-            { text: 'Cancel', style: 'cancel' as const },
+            { text: BUTTON_LABEL.cancel, style: 'cancel' as const },
             {
-              text: 'Delete',
+              text: BUTTON_LABEL.delete,
               style: 'destructive' as const,
               onPress: () => {
                 useAppGroupStore.getState().removeGroup(groupId);
@@ -362,7 +363,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
           ],
         ),
       }]),
-      { text: 'Cancel', style: 'cancel' as const },
+      { text: BUTTON_LABEL.cancel, style: 'cancel' as const },
     ]);
   };
 
@@ -375,7 +376,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
         text: g.id === resolved[reason] ? `${g.name} (selected)` : g.name,
         onPress: () => useAppGroupStore.getState().assignGroup(reason, g.id),
       })),
-      { text: 'Cancel', style: 'cancel' as const },
+      { text: BUTTON_LABEL.cancel, style: 'cancel' as const },
     ]);
   };
 
@@ -471,7 +472,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
   const nameThen = (title: string, fallback: string, then: (name: string) => void) => {
     // iOS only, like the rest of this screen, so the prompt needs no Android branch.
     Alert.prompt(title, 'Choose a name so you can tell your tags apart.', [
-      { text: 'Cancel', style: 'cancel' },
+      { text: BUTTON_LABEL.cancel, style: 'cancel' },
       { text: 'Add', onPress: (text?: string) => then(text ?? '') },
     ], 'plain-text', fallback);
   };
@@ -542,7 +543,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
     const buttons = [
       ...(nfcSupported ? [{ text: 'Scan a tag', onPress: () => { void handleScanTag(); } }] : []),
       { text: 'Write a link to a tag', onPress: handleAddLink },
-      { text: 'Cancel', style: 'cancel' as const },
+      { text: BUTTON_LABEL.cancel, style: 'cancel' as const },
     ];
     Alert.alert(
       'Add a key tag',
@@ -562,7 +563,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
           ? 'This is your only key tag, so removing it also unlocks your apps.'
           : 'This tag will no longer lock or unlock your apps.',
         [
-          { text: 'Cancel', style: 'cancel' },
+          { text: BUTTON_LABEL.cancel, style: 'cancel' },
           { text: 'Remove', style: 'destructive', onPress: () => useNfcKeyStore.getState().removeKey(key.id) },
         ],
       );
@@ -571,7 +572,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
       ...(key.kind === 'link' ? [{ text: 'Share link', onPress: () => { void shareKeyLink(key); } }] : []),
       ...(key.kind === 'link' ? [{ text: 'Copy key code for Shortcuts', onPress: () => { void copyKeyCode(key); } }] : []),
       { text: 'Remove', style: 'destructive' as const, onPress: remove },
-      { text: 'Cancel', style: 'cancel' as const },
+      { text: BUTTON_LABEL.cancel, style: 'cancel' as const },
     ]);
   };
 
@@ -621,7 +622,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
       minutes === null ? 'Block apps until you end it?' : `Block apps for ${describeDuration(minutes)}?`,
       `${minutes === null ? 'They stay blocked until you end it.' : `They stay blocked until ${endsAt ?? 'then'}.`} Ending it${minutes === null ? '' : ' earlier'} takes a key tag or the emergency button, and is saved in the record.`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
           text: 'Start block',
           onPress: () => {
@@ -649,7 +650,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
       'Ending a block takes a key tag or the emergency button, and is saved in the record.',
       [
         ...MANUAL_BLOCK_PRESETS.map(m => ({ text: m === null ? 'Until I end it' : describeDuration(m), onPress: () => chooseManualGroup(m) })),
-        { text: 'Cancel', style: 'cancel' as const },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' as const },
       ],
     );
   };

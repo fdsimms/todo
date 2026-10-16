@@ -63,6 +63,13 @@ export interface UndoableAction {
    * comment for the full rule; this flag is the only thing it reads.
    */
   destructive?: boolean;
+  /**
+   * Raises the UndoBar without the warning haptic `destructive` carries: for a
+   * routine action that wrote something into a log the person didn't type
+   * (a task's tick recording a dose or a meal), where the bar is how they see
+   * it happened and take it back.
+   */
+  announce?: boolean;
 }
 
 /** The two stacks, as every store that has a history holds them. */
@@ -145,7 +152,7 @@ export function redoIsCurrent(
  */
 export function offersOnUndoBar(action: UndoableAction | null, everyAction: boolean): boolean {
   if (!action) return false;
-  return everyAction || action.destructive === true;
+  return everyAction || action.destructive === true || action.announce === true;
 }
 
 /**
@@ -276,7 +283,7 @@ export function undoHistoryActions<S extends UndoHistoryState>(
       }
       const registered = topOf(get().undoStack);
       const restored = registered && registered !== previousTop
-        ? { ...registered, label: entry.label, destructive: entry.destructive, redo: entry.redo }
+        ? { ...registered, label: entry.label, destructive: entry.destructive, announce: entry.announce, redo: entry.redo }
         : entry;
       commit(pushEntry(before, restored, Date.now()), popEntry(get().redoStack));
     },

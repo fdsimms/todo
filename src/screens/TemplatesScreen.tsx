@@ -55,6 +55,7 @@ import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { templateHasBrokenRefs, templateHasMissingRefs } from '../utils/templateUtils';
 import type { TaskTemplate } from '../types';
+import { BUTTON_LABEL } from '../copy/shared';
 
 // The add button, naming what a release right now would do.
 function AddTemplateFabWithDropLabel({
@@ -64,7 +65,7 @@ function AddTemplateFabWithDropLabel({
   channel: FabIntentChannel;
 } & Omit<React.ComponentProps<typeof Fab>, 'dragLabel'>) {
   const label = useFabIntentSelector(channel, intent => {
-    if (intent?.kind === 'cancel') return 'Cancel';
+    if (intent?.kind === 'cancel') return BUTTON_LABEL.cancel;
     if (intent?.kind !== 'insert') return null;
     return intent.category ? `New template in ${intent.category}` : 'New template here';
   });
@@ -390,7 +391,7 @@ export function TemplatesScreen() {
             onCreate: name => addTemplateCategory(name),
           }}
           actions={[
-            { key: 'delete', icon: 'trash', label: 'Delete', tone: 'destructive', onPress: handleBulkDelete },
+            { key: 'delete', icon: 'trash', label: BUTTON_LABEL.delete, tone: 'destructive', onPress: handleBulkDelete },
           ]}
           onSelectAll={() => selectAll(templates.map(t => t.id))}
           onDeselectAll={deselectAll}

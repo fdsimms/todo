@@ -14,6 +14,7 @@ import { EmptyState } from './EmptyState';
 import { haptics } from '../utils/haptics';
 import type { Recipe } from '../types';
 import { useFilterField } from '../hooks/useFilterField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -85,7 +86,7 @@ export function RecipeSourceSheet({ visible, allowAIImport, onPickSaved, onImpor
       <View style={styles.root}>
         <SheetHeader
           title="From a recipe"
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleClose} minWidth={72} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleClose} minWidth={72} />}
           right={<View style={{ minWidth: 72 }} />}
         />
 

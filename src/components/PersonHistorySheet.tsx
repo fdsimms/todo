@@ -12,6 +12,7 @@ import { spacing, radius, font, fontWeight, interaction, type Colors } from '../
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { TextField } from './TextField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /** The fields of a `HistoryEntry` this sheet actually needs. */
 export interface EditableHistoryEntry {
@@ -99,8 +100,8 @@ export function PersonHistorySheet({ visible, personName, entry, onSave, onDelet
           bare
           title={entry ? 'Edit entry' : 'Add to history'}
           numberOfLines={1}
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={56} />}
-          right={<SheetHeaderButton label="Save" onPress={save} disabled={!trimmed} minWidth={56} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={onClose} minWidth={56} />}
+          right={<SheetHeaderButton label={BUTTON_LABEL.save} onPress={save} disabled={!trimmed} minWidth={56} />}
         />
       }
       footer={

@@ -57,9 +57,12 @@ import { calendarWindow } from '../utils/focusWindow';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useTaskGroupStore } from '../store/useTaskGroupStore';
+import { runSelection, stackPlacements, toggleRun } from '../utils/focusStacks';
 import type { Task } from '../types';
 import { useSheetMotion } from '../hooks/useSheetMotion';
 import { Toggle } from './Toggle';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -334,6 +337,13 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
     [slotIds, byId]
   );
 
+  // Stacks are drawn from the order the rows are in right now, never stored:
+  // see `stackPlacements`.
+  const groups = useTaskGroupStore(s => s.groups);
+  const groupNames = useMemo(() => new Map(groups.map(g => [g.id, g.title])), [groups]);
+  const placements = useMemo(() => stackPlacements(slots, groupNames), [slots, groupNames]);
+  const slotIndex = useMemo(() => new Map(slots.map((t, i) => [t.id, i])), [slots]);
+
   /**
    * These run in order, so dragging a row is a real edit to the plan rather
    * than cosmetic — it changes which task each stretch is, same as swapping
@@ -382,6 +392,11 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
       else next.add(task.id);
       return next;
     });
+  };
+
+  const toggleStack = (runIds: readonly string[]) => {
+    haptics.tap();
+    setSelectedIds(prev => toggleRun(runIds, prev));
   };
 
   /** The queue in run order: the slot order, minus whatever was unticked. */
@@ -434,7 +449,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
     dismiss();
   };
 
-  const renderRow = (task: Task, drag: () => void, isActive: boolean) => {
+  const renderRow = (task: Task, drag: () => void, isActive: boolean, stackCaption: string | null = null) => {
     const checked = selectedIds.has(task.id);
     const reason = ctx ? focusReason(task, companyFor(task.id), ctx) : null;
     // A daily target is logged a unit at a time rather than ticked off once, so
@@ -478,16 +493,19 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
                 gloss. The reason shrinks; the minutes don't, and neither does a
                 target's count, which is a fact of the same kind. */}
             <View style={styles.rowSubLine}>
+              {stackCaption !== null && (
+                <Text style={[styles.rowSub, styles.rowStack]} numberOfLines={1}>{stackCaption}</Text>
+              )}
               {count !== null && (
-                <Text style={styles.rowSub} numberOfLines={1}>{count}</Text>
+                <Text style={styles.rowSub} numberOfLines={1}>{stackCaption !== null ? ` · ${count}` : count}</Text>
               )}
               {reason !== null && (
                 <Text style={[styles.rowSub, styles.rowReason]} numberOfLines={1}>
-                  {count !== null ? ` · ${reason}` : reason}
+                  {count !== null || stackCaption !== null ? ` · ${reason}` : reason}
                 </Text>
               )}
               <Text style={styles.rowSub} numberOfLines={1}>
-                {count !== null || reason !== null ? ` · ${time}` : time}
+                {count !== null || reason !== null || stackCaption !== null ? ` · ${time}` : time}
               </Text>
             </View>
           </View>
@@ -515,6 +533,71 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
         >
           <Ionicons name="reorder-three" size={iconSize.md} color={colors.textTertiary} />
         </TouchableOpacity>
+      </View>
+    );
+  };
+
+  /**
+   * One slot of the list: a plain row, a row captioned with its stack, or a
+   * member of a tray. The tray is drawn row by row (the list is flat, and a
+   * drag reorders its rows), so the first member carries the header and the
+   * first and last round off the enclosure. The floating drag card is always
+   * the bare row.
+   */
+  const renderSlot = (task: Task, drag: () => void, isActive: boolean) => {
+    const placement = placements.get(task.id);
+    const at = slotIndex.get(task.id) ?? 0;
+    const prev = at > 0 ? placements.get(slots[at - 1].id) : undefined;
+
+    if (isActive) return renderRow(task, drag, true, placement?.kind === 'caption' ? placement.name : null);
+
+    if (!placement || placement.kind === 'caption') {
+      return (
+        <>
+          {at > 0 && prev?.kind !== 'tray' && <View style={styles.sep} />}
+          {renderRow(task, drag, false, placement?.kind === 'caption' ? placement.name : null)}
+        </>
+      );
+    }
+
+    const { runIds, first, last, name } = placement;
+    const state = runSelection(runIds, selectedIds);
+    const members = runIds.map(id => byId.get(id)).filter((t): t is Task => t !== undefined);
+    const counted = members.filter(t => selectedIds.has(t.id));
+    const minutes = counted.reduce((sum, t) => sum + plannedTaskMinutes(t, planOptions).minutes, 0);
+    const tally = state === 'all'
+      ? `${members.length} tasks · ${formatDuration(minutes)}`
+      : `${counted.length} of ${members.length} · ${formatDuration(minutes)}`;
+
+    return (
+      <View style={[styles.tray, first && styles.trayFirst, last && styles.trayLast]}>
+        {first && (
+          <TouchableOpacity
+            style={styles.trayHeader}
+            onPress={() => toggleStack(runIds)}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: state === 'all' ? true : state === 'some' ? 'mixed' : false }}
+            accessibilityLabel={`${name}, ${tally}`}
+          >
+            <View style={styles.trayTile}>
+              <Ionicons name="layers" size={iconSize.sm} color={colors.accentText} />
+            </View>
+            <View style={styles.trayText}>
+              <Text style={styles.trayName} numberOfLines={1}>{name}</Text>
+              <Text style={styles.trayTally} numberOfLines={1}>{tally}</Text>
+            </View>
+            <Ionicons
+              name={state === 'all' ? 'checkmark-circle' : state === 'some' ? 'remove-circle-outline' : 'ellipse-outline'}
+              size={22}
+              color={state === 'none' ? colors.textTertiary : colors.accent}
+            />
+          </TouchableOpacity>
+        )}
+        <View style={[styles.trayRow, first && styles.trayRowFirst, last && styles.trayRowLast]}>
+          {!first && <View style={styles.sep} />}
+          {renderRow(task, drag, false)}
+        </View>
       </View>
     );
   };
@@ -779,12 +862,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
               data={slots}
               onReorder={reorderSlots}
               onDragStateChange={setReordering}
-              renderItem={(task, i, drag, isActive) => (
-                <>
-                  {i > 0 && <View style={styles.sep} />}
-                  {renderRow(task, drag, isActive)}
-                </>
-              )}
+              renderItem={(task, _i, drag, isActive) => renderSlot(task, drag, isActive)}
             />
           </ScrollView>
 
@@ -828,7 +906,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
         </View>
 
         <TouchableOpacity style={styles.cancelCard} onPress={dismiss} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
-          <Text style={styles.cancelLabel}>Cancel</Text>
+          <Text style={styles.cancelLabel}>{BUTTON_LABEL.cancel}</Text>
         </TouchableOpacity>
       </Animated.View>
     </SheetModal>
@@ -972,6 +1050,50 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   rowSubLine: { flexDirection: 'row', alignItems: 'center' },
   rowSub: { color: colors.textTertiary, fontSize: font.xs },
   rowReason: { flexShrink: 1 },
+  rowStack: { flexShrink: 1, color: colors.textSecondary, fontWeight: fontWeight.semibold },
+  // A run of one stack's rows sits in a sunken region, the way a stack does on
+  // Today (`TaskGroupTray`): enclosure, not a card-like header, is what ties
+  // the header to its rows.
+  tray: {
+    backgroundColor: colors.bgSunken,
+    marginHorizontal: spacing.sm,
+    paddingHorizontal: spacing.sm,
+  },
+  trayFirst: {
+    marginTop: spacing.xsm,
+    paddingTop: spacing.sm,
+    borderTopLeftRadius: radius.md,
+    borderTopRightRadius: radius.md,
+  },
+  trayLast: {
+    marginBottom: spacing.xsm,
+    paddingBottom: spacing.sm,
+    borderBottomLeftRadius: radius.md,
+    borderBottomRightRadius: radius.md,
+  },
+  trayHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.smd,
+    paddingLeft: spacing.xs,
+    paddingRight: spacing.xsm,
+    paddingBottom: spacing.sm,
+    minHeight: 44,
+  },
+  trayTile: {
+    width: 26,
+    height: 26,
+    borderRadius: radius.sm,
+    backgroundColor: colors.accentSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  trayText: { flex: 1 },
+  trayName: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
+  trayTally: { color: colors.textTertiary, fontSize: font.xs },
+  trayRow: { backgroundColor: colors.bgSecondary, overflow: 'hidden' },
+  trayRowFirst: { borderTopLeftRadius: radius.sm, borderTopRightRadius: radius.sm },
+  trayRowLast: { borderBottomLeftRadius: radius.sm, borderBottomRightRadius: radius.sm },
   swapBtn: {
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.smd,

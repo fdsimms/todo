@@ -34,6 +34,8 @@ import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { TextField } from './TextField';
 import { useSheetSubject } from '../hooks/useSheetSubject';
+import { HelpText } from './HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -252,7 +254,7 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
       `Forget ${describeProduct(editing) ?? 'this one'}?`,
       'This also forgets its rating and how often you bought it. To avoid buying it again, mark it “Never again” instead.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
           text: 'Forget',
           style: 'destructive',
@@ -276,8 +278,8 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
       <View style={styles.root}>
         <SheetHeader
           title={editing ? 'Edit product' : `Which ${item.name}?`}
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />}
-          right={<SheetHeaderButton label="Save" onPress={handleSave} disabled={!canSave} minWidth={64} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={64} />}
+          right={<SheetHeaderButton label={BUTTON_LABEL.save} onPress={handleSave} disabled={!canSave} minWidth={64} />}
         />
 
         <ScrollView
@@ -315,10 +317,10 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
             accessibilityLabel="Variant"
           />
           <Chips values={variantChips} onPick={v => { setVariant(v); setClash(false); }} noun="variant" styles={styles} />
-          <Text style={styles.hint}>
+          <HelpText style={styles.hint}>
             Either field is enough. The list shows them under the
             item’s name.
-          </Text>
+          </HelpText>
 
           {clash && (
             <Text style={styles.error}>
@@ -347,15 +349,15 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
             label="Rating"
             surface="page"
           />
-          <Text style={styles.hint}>
+          <HelpText style={styles.hint}>
             Shown beside this one wherever you pick between them, so you don’t
             buy something twice to find out you didn’t like it.
-          </Text>
+          </HelpText>
 
           <Text style={[styles.label, styles.labelSpaced]}>NOTE</Text>
-          <Text style={styles.hint}>
+          <HelpText style={styles.hint}>
             Why you rated it this way, or anything else worth remembering.
-          </Text>
+          </HelpText>
           <TextField
             style={[styles.input, styles.noteInput]}
             value={note}
@@ -376,10 +378,10 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
           {editing && item && (
             <>
               <Text style={[styles.label, styles.labelSpaced]}>PANTRY</Text>
-              <Text style={styles.hint}>
+              <HelpText style={styles.hint}>
                 Tracked separately for this one, so another {item.name.toLowerCase()} can
                 be in a different state.
-              </Text>
+              </HelpText>
               <PillGroup options={pantryOptions} noun="state" />
             </>
           )}

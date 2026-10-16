@@ -30,9 +30,8 @@ import {
   DEFAULT_SAVED_VIEW_ICON,
 } from '../utils/savedViews';
 import { confirmDiscard } from '../utils/confirmDiscard';
+import { effortRangeLabel } from '../utils/effort';
 import {
-  EFFORT_HINTS,
-  EFFORT_LABELS,
   PRIORITY_COLORS,
   PRIORITY_LABELS,
   TITLE_MAX_LENGTH,
@@ -43,6 +42,7 @@ import {
   type SavedViewClauseKind,
 } from '../types';
 import { TextField } from './TextField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -250,10 +250,10 @@ export function SavedViewEditorSheet({ visible, view, onClose, onCreated, onDele
       <View style={styles.root}>
         <SheetHeader
           title={view ? 'Edit view' : 'New view'}
-          left={<SheetHeaderButton role="cancel" label="Cancel" onPress={handleCancel} />}
+          left={<SheetHeaderButton role="cancel" label={BUTTON_LABEL.cancel} onPress={handleCancel} />}
           right={
             <SheetHeaderButton
-              label="Save"
+              label={BUTTON_LABEL.save}
               onPress={handleSave}
               disabled={name.trim().length === 0}
             />
@@ -351,8 +351,7 @@ export function SavedViewEditorSheet({ visible, view, onClose, onCreated, onDele
                   effortClause?.values ?? [],
                   ([1, 2, 3, 4, 5, 6] as Effort[]).map(e => ({
                     value: e,
-                    label: EFFORT_LABELS[e],
-                    suffix: EFFORT_HINTS[e],
+                    label: effortRangeLabel(e),
                   })),
                 )}
                 noun="effort"

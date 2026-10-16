@@ -46,7 +46,7 @@ import { CategoryPickerSheet } from './CategoryPicker';
 import { ProjectPickerSheet } from './ProjectPickerSheet';
 import { useShallow } from 'zustand/react/shallow';
 import type { Priority, Effort, Difficulty, TimeOfDay, RecurrenceType, Task, ChainItem, QuotaPeriod, Polarity, WeatherCondition, TaskFieldDefaults } from '../types';
-import { PRIORITY_COLORS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
+import { PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
 import { generateId } from '../utils/id';
 import {
   bakedFields,
@@ -83,7 +83,7 @@ import { chipUseKey } from '../utils/chipUses';
 import { HighlightedText } from './HighlightedText';
 import { suggestTitles } from '../utils/titleSuggestions';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInputAheadOfRainSkip, scheduleClockInstant, describeSchedule, stripRemindPrefix, parseCategoryAndTagsInput, matchPersonMentions, contactForMention, findAmbiguousMention, getMentionSuggestions, applyMentionOverrides, withTrailingSpace, type ParsedCategoryAndTags, type ParsedTaskInput, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
+import { parseTaskInputAheadOfRainSkip, scheduleClockInstant, describeSchedule, scheduleHint, stripRemindPrefix, parseCategoryAndTagsInput, matchPersonMentions, contactForMention, findAmbiguousMention, getMentionSuggestions, applyMentionOverrides, withTrailingSpace, type ParsedCategoryAndTags, type ParsedTaskInput, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
 import { formatMeterAmount, knownMeterNames, latestReading, meterFieldsFromInput } from '../utils/meters';
 import { canSkipForRain, formatRain, rainUnitFor } from '../utils/rainSkip';
 import { useMeterReadingStore } from '../store/useMeterReadingStore';
@@ -117,7 +117,7 @@ import { getLogicalToday, getLogicalTomorrow, getLogicalNow, getCurrentDayStart,
 import { sunLocationOn } from '../utils/visibilityUtils';
 import { describeSunAnchor, parseSunAnchor, sunAnchorHHMM } from '../utils/sunTimes';
 import { blockerFields } from '../utils/blocking';
-import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
+import { minutesToEffort, formatDuration, effortTimeLabel, ESTIMATE_PRESET_MINUTES, estimatePatchForMinutes, chosenEstimateMinutes } from '../utils/effort';
 import { TaskEditor, type TaskDraft } from './TaskEditor';
 import { RECURRENCE_LABELS, onlyNewestWeekday } from './RecurrencePicker';
 import { SegmentedControl } from './SegmentedControl';
@@ -128,6 +128,7 @@ import { DIFFICULTY_PICKER_SEGMENTS, DIFFICULTY_SEGMENTS } from '../utils/reward
 import { ORDINAL_OPTIONS } from '../utils/recurrenceLabels';
 import { ordinal } from '../utils/ordinal';
 import { TextField } from './TextField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 const TITLE_TOKEN_ACCESSORY_ID = 'quickAddTitleTokenAccessory';
 
@@ -206,6 +207,8 @@ interface ToolChipDescriptor {
   dotColor?: string;
   /** Long free text (a URL, an address) that has to give way rather than wrap. */
   truncate?: boolean;
+  /** A value that is meant to be read whole ("Weekly · after done"), so the chip may outgrow the usual half-row cap. */
+  wide?: boolean;
   /** Set only by chips that don't just toggle `panel`. */
   onPress?: () => void;
 }
@@ -1477,7 +1480,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     titleCaret.moveCaret(nextTitle);
     setEstimatedMinutes(estimateParsed.minutes);
     setEffort(minutesToEffort(estimateParsed.minutes));
-    setCustomEffortText(EFFORT_MINUTES.includes(estimateParsed.minutes) ? '' : String(estimateParsed.minutes));
+    setCustomEffortText(ESTIMATE_PRESET_MINUTES.includes(estimateParsed.minutes) ? '' : String(estimateParsed.minutes));
   };
 
   // Holds the task for that kind of day. Nothing else on the sheet changes:
@@ -2154,18 +2157,19 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   };
 
 
-  const customEffortActive = estimatedMinutes != null && estimatedMinutes !== effortToMinutes(effort);
+  const customEffortActive = estimatedMinutes != null && !ESTIMATE_PRESET_MINUTES.includes(estimatedMinutes);
 
-  const applyEffortPreset = (e: Effort) => {
+  const applyEstimatePreset = (minutes: number) => {
     haptics.tap();
     setCustomEffortText('');
     // Tapping the active preset clears the estimate.
-    if (!customEffortActive && effort === e) {
+    if (!customEffortActive && chosenEstimateMinutes({ estimatedMinutes, effort }) === minutes) {
       setEffort(0);
       setEstimatedMinutes(null);
     } else {
-      setEffort(e);
-      setEstimatedMinutes(EFFORT_MINUTES[e]);
+      const patch = estimatePatchForMinutes(minutes);
+      setEffort(patch.effort);
+      setEstimatedMinutes(patch.estimatedMinutes);
     }
   };
 
@@ -2264,7 +2268,13 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     },
     {
       key: 'repeat', icon: 'repeat', panel: 'repeat',
-      value: recurrenceType !== 'none' ? RECURRENCE_LABELS[recurrenceType] : null,
+      // The suggestion pill says "after done" for a rule counted from
+      // completion; the chip it turns into says the same, or "Weekly" reads as
+      // a fixed schedule once applied.
+      value: recurrenceType !== 'none'
+        ? [RECURRENCE_LABELS[recurrenceType], scheduleHint({ recurrenceType, recurrenceFromCompletion })].filter(Boolean).join(' · ')
+        : null,
+      wide: scheduleHint({ recurrenceType, recurrenceFromCompletion }) !== null,
     },
     {
       key: 'segment', panel: 'segment',
@@ -2314,7 +2324,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     {
       key: 'effort', icon: 'barbell', panel: 'effort',
       value: effort > 0
-        ? (estimatedMinutes != null ? formatDuration(estimatedMinutes) : EFFORT_LABELS[effort])
+        ? (estimatedMinutes != null ? formatDuration(estimatedMinutes) : effortTimeLabel(effort, ''))
         : null,
     },
     // Only while the coin rules that read it run, and not on an avoid-habit,
@@ -2633,6 +2643,7 @@ parsed
                             ? categoryTagsLabel(categoryTagsParsed, categories)
                             : (titleSuggestionDescription?.label ?? '')
                     }
+                    hint={parsed ? scheduleHint(parsed.schedule) : null}
                     onApply={applyActiveParse}
                     onDismiss={dismissActiveParse}
                     dismissLabel="Not that"
@@ -2959,6 +2970,7 @@ parsed
                   styles.toolChip,
                   chip.panel !== undefined && activePanel === chip.panel && styles.toolChipActive,
                   chip.value !== null && styles.toolChipSet,
+                  chip.wide && styles.toolChipWide,
                 ]}
                 onPress={chip.onPress}
                 activeOpacity={interaction.activeOpacity}
@@ -3216,19 +3228,18 @@ parsed
           {activePanel === 'effort' && (
             <View style={styles.panel}>
               <View style={styles.presetRow}>
-                {([1, 2, 3, 4, 5, 6] as Effort[]).map(e => {
-                  const active = !customEffortActive && effort === e;
+                {ESTIMATE_PRESET_MINUTES.map(mins => {
+                  const active = !customEffortActive && chosenEstimateMinutes({ estimatedMinutes, effort }) === mins;
                   return (
                     <TouchableOpacity
-                      key={e}
+                      key={mins}
                       style={[styles.presetChip, active && styles.presetChipActive]}
-                      onPress={() => applyEffortPreset(e)}
+                      onPress={() => applyEstimatePreset(mins)}
                       activeOpacity={interaction.activeOpacity}
                     >
                       <Text style={[styles.presetChipText, active && styles.presetChipTextActive]}>
-                        {EFFORT_LABELS[e]}
+                        {formatDuration(mins)}
                       </Text>
-                      <Text style={styles.presetChipHint}>{formatDuration(EFFORT_MINUTES[e]!)}</Text>
                     </TouchableOpacity>
                   );
                 })}
@@ -3527,9 +3538,9 @@ parsed
                 onPress={() => dismiss()}
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
-                accessibilityLabel="Cancel"
+                accessibilityLabel={BUTTON_LABEL.cancel}
               >
-                <Text style={styles.footerCancelText}>Cancel</Text>
+                <Text style={styles.footerCancelText}>{BUTTON_LABEL.cancel}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.footerAdd, (!title.trim() || blocked !== null) && styles.footerAddDisabled]}
@@ -3897,6 +3908,10 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number, textScaleFactor = 1)
   toolChipSet: {
     backgroundColor: colors.accentSubtle,
   },
+  // Still shrinks (flexShrink above) when the value alone is wider than the row.
+  toolChipWide: {
+    maxWidth: '100%',
+  },
   toolChipText: {
     color: colors.textSecondary,
     fontSize: font.sm,
@@ -4057,11 +4072,6 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number, textScaleFactor = 1)
   presetChipTextActive: {
     color: colors.onAccent,
     fontWeight: fontWeight.semibold,
-  },
-  presetChipHint: {
-    color: colors.textSecondary,
-    fontSize: font.xs,
-    marginTop: 1,
   },
   effortCustomRow: {
     flexDirection: 'row',

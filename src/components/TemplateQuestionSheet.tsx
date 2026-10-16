@@ -24,6 +24,8 @@ import { SegmentedControl } from './SegmentedControl';
 import { InlineAction } from './InlineAction';
 import { TemplateQuestionItemsSheet } from './TemplateQuestionItemsSheet';
 import { TextField } from './TextField';
+import { HelpText } from './HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -175,8 +177,8 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
         <SheetHeader
           bare
           title={question ? 'Edit question' : 'New question'}
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={60} />}
-          right={<SheetHeaderButton label="Save" onPress={save} minWidth={60} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={onClose} minWidth={60} />}
+          right={<SheetHeaderButton label={BUTTON_LABEL.save} onPress={save} minWidth={60} />}
         />
       }
     >
@@ -198,13 +200,13 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
           onChange={next => { animateLayout(); setKind(next); }}
           label="Answer type"
         />
-        <Text style={styles.note}>{KIND_NOTES[kind]}</Text>
+        <HelpText style={styles.note}>{KIND_NOTES[kind]}</HelpText>
       </View>
 
       {kind === 'choice' && (
         <View style={styles.sectionCard}>
           <Text style={styles.fieldLabel}>ANSWERS</Text>
-          <Text style={styles.note}>The first answer is the default.</Text>
+          <HelpText style={styles.note}>The first answer is the default.</HelpText>
           {options.map((option, index) => (
             <View key={index} style={styles.optionRow}>
               <TextField
@@ -241,9 +243,9 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
           <View style={styles.switchRow}>
             <View style={styles.switchText}>
               <Text style={styles.switchLabel}>Allow more than one answer</Text>
-              <Text style={styles.note}>
+              <HelpText style={styles.note}>
                 A run can pick several answers. An item is checked if it is set for any of them.
-              </Text>
+              </HelpText>
             </View>
             <Switch
               value={multiple}
@@ -255,10 +257,10 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
           <View style={styles.switchRow}>
             <View style={styles.switchText}>
               <Text style={styles.switchLabel}>Show the destination forecast</Text>
-              <Text style={styles.note}>
+              <HelpText style={styles.note}>
                 Shows the forecast for the trip’s dates under this question.
                 Needs a destination and dates, and Destination forecast turned on in Settings.
-              </Text>
+              </HelpText>
             </View>
             <Switch
               value={showForecast}
@@ -277,9 +279,9 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
       {kind === 'choice' && question && (
         <View style={styles.sectionCard}>
           <Text style={styles.fieldLabel}>ITEMS</Text>
-          <Text style={styles.note}>
+          <HelpText style={styles.note}>
             Choose which items are checked by default for each answer.
-          </Text>
+          </HelpText>
           <InlineAction
             icon="checkbox-outline"
             label="Set items for each answer"
@@ -298,7 +300,7 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
             onChange={next => { animateLayout(); setFromDates(next); }}
             label="Where the number starts"
           />
-          <Text style={styles.note}>{SOURCE_NOTES[fromDates]}</Text>
+          <HelpText style={styles.note}>{SOURCE_NOTES[fromDates]}</HelpText>
         </View>
       )}
 
@@ -315,7 +317,7 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
             maxLength={TITLE_MAX_LENGTH}
             returnKeyType="done"
           />
-          <Text style={styles.note}>What the field starts at. Leave empty to start blank.</Text>
+          <HelpText style={styles.note}>What the field starts at. Leave empty to start blank.</HelpText>
         </View>
       )}
 
@@ -339,10 +341,10 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
             />
             <Text style={styles.brace}>{'}'}</Text>
           </View>
-          <Text style={styles.note}>
+          <HelpText style={styles.note}>
             The answer fills this blank in item titles. Leave it empty for a
             question that only decides which items are included.
-          </Text>
+          </HelpText>
         </View>
       )}
 

@@ -21,6 +21,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { TextField } from './TextField';
 import type { RuleTaskLog } from '../types';
 import { Toggle } from './Toggle';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /** Same constraint EmptyState puts on its own icon. */
 type IoniconName = keyof typeof Ionicons.glyphMap;
@@ -221,7 +222,7 @@ export function RuleListSheet<T extends EditableRule>({
         <SheetHeader
           title={title}
           left={<View style={styles.headerSpacer} />}
-          right={<SheetHeaderButton label="Done" onPress={close} minWidth={56} />}
+          right={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={close} minWidth={56} />}
         />
 
         <ScrollView

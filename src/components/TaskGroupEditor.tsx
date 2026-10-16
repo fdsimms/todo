@@ -49,6 +49,7 @@ import { useFilterField } from '../hooks/useFilterField';
 import { useScrollFieldIntoView } from '../hooks/useKeyboardInsetScroll';
 import { TextField } from './TextField';
 import { Toggle } from './Toggle';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /** Editor sections that collapse to a one-line summary of their current value. */
 type FieldKey = 'category' | 'tags' | 'project';
@@ -94,7 +95,7 @@ function AddTaskFabWithDropLabel({
 } & Omit<React.ComponentProps<typeof FabMenu>, 'dragLabel'>) {
   const label = useFabIntentSelector(channel, intent => {
     switch (intent?.kind) {
-      case 'cancel': return 'Cancel';
+      case 'cancel': return BUTTON_LABEL.cancel;
       case 'insert': return 'New task here';
       default: return null;
     }
@@ -454,11 +455,11 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
         : `Its tasks can stay in your list un${sectionWord}ed, or be deleted with it.`,
       members.length === 0
         ? [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Delete', style: 'destructive', onPress: deleteThenClose(false) },
+            { text: BUTTON_LABEL.cancel, style: 'cancel' },
+            { text: BUTTON_LABEL.delete, style: 'destructive', onPress: deleteThenClose(false) },
           ]
         : [
-            { text: 'Cancel', style: 'cancel' },
+            { text: BUTTON_LABEL.cancel, style: 'cancel' },
             { text: `Delete ${sectionWord} only`, onPress: deleteThenClose(false) },
             {
               text: `Delete ${sectionWord} and tasks`,
@@ -537,7 +538,7 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
         <SheetHeader
           bare
           title={isNew ? `New ${sectionWord}` : `Edit ${sectionWord}`}
-          left={<SheetHeaderButton label="Done" onPress={saveAndClose} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={saveAndClose} />}
           right={
             <View style={styles.headerRight}>
               <TouchableOpacity

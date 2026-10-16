@@ -191,6 +191,28 @@ there. With no window set (the sheet's default), that means every eligible
 pinned task starts ticked — the literal request this shortcut exists to
 answer.
 
+## Stacks in a session
+
+A stack is never a unit of the plan: `FocusStep` points at one task, and the
+plan stays a flat, stored list of them. A stack is only *shown* (`src/utils/focusStacks.ts`):
+
+- **The setup sheet draws a run of adjacent members in a tray** (`stackPlacements`),
+  with a header that ticks or skips the whole run (`toggleRun`: a full run goes
+  out, anything else fills). A member with no neighbour from its stack gets the
+  stack's name in its subline instead. Runs are derived from the row order on
+  every render and never stored, so dragging a row out splits a run into two
+  headed trays and dragging one beside its stack joins it.
+- **The tray is drawn row by row**, because `SortableList` is flat and a drag
+  reorders its rows: the first member carries the header, and the floating drag
+  card is always the bare row. Mid-drag the rows keep the pre-drag run (they are
+  displaced by transform), and the grouping redraws on drop. It has a header
+  with no collapse: `SortableList` rows can't fold without touching its layout.
+- **The running session shows a chip** ("Morning supplements · 2 of 4" and a bar)
+  from `stackProgress`. It counts the stack's tasks this session holds: what is
+  left in the plan, plus what has passed (`completedTaskIds`, `stepLog`, and
+  steps behind the cursor, which `pruneFocusPlan` keeps). A member left out of
+  the queue is not counted, so the chip never waits on a task that isn't coming.
+
 ## Off Today
 
 `FocusBar` is the strip on Today. Every other screen gets `FocusFloatingBar`,

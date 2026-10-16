@@ -550,7 +550,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'list_copy_flags',
-    'Lines of on-screen copy the person long-pressed in the app to mark as needing a manual pass, each with the exact text, the screen it was on and their note. Open flags by default. This is how copy fixes are requested: find the text in the source, rewrite it, then call resolve_copy_flag. Temporary dev tooling.',
+    'Lines of on-screen copy the person long-pressed in the app to mark as needing a manual pass, each with the exact text, the screen it was on, their note and a find command to run in the source checkout (it lists the matching strings with file and line). Open flags by default. This is how copy fixes are requested: run the find command, rewrite the copy, then call resolve_copy_flag. Temporary dev tooling.',
     { status: z.enum(['open', 'resolved', 'all']).optional().describe('Default open.') },
     async input => json(await withFresh(() => listCopyFlags(replica, input)))
   );
@@ -3424,7 +3424,7 @@ function registerWriteTools(
       taskDefaults: z.object({
         priority: z.number().int().min(0).max(4).nullable().optional().describe('0 means no priority on purpose, so the backfill screen stops asking. Null means ask.'),
         difficulty: z.enum(['easy', 'normal', 'hard']).nullable().optional(),
-        effort: z.number().int().min(0).max(6).nullable().optional().describe('The time estimate bucket, 1 (XXS) to 6 (XL). 0 means no estimate on purpose, so the backfill screen stops asking. Null means ask.'),
+        effort: z.number().int().min(0).max(6).nullable().optional().describe('The time estimate bucket, 1 (5 minutes or less) to 6 (over 5.5 hours). 0 means no estimate on purpose, so the backfill screen stops asking. Null means ask.'),
         showStreak: z.boolean().nullable().optional().describe('true shows the streak chip on every repeating task, false leaves it off on purpose so the backfill screen stops asking. Null means ask.'),
         vacationPause: z.boolean().nullable().optional().describe('true pauses every repeating task during vacation mode, false leaves it off on purpose so the backfill screen stops asking. Null means ask.'),
         excludeFromSuggestions: z.boolean().nullable().optional().describe('true keeps every task out of suggested pins and focus sessions, false leaves it in on purpose so the backfill screen stops asking. Null means ask.'),

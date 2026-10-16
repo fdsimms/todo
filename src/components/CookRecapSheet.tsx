@@ -35,6 +35,7 @@ import { SheetScrim } from './SheetScrim';
 import { haptics } from '../utils/haptics';
 import { useMeasuredTextWidth } from '../hooks/useMeasuredTextWidth';
 import { TextField } from './TextField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 const CHECKBOX_SIZE = 22;
 
@@ -396,7 +397,7 @@ export function CookRecapSheet({
             left={<SheetHeaderButton label="Skip" role="cancel" onPress={dismiss} minWidth={80} />}
             right={
               <SheetHeaderButton
-                label={ticked.size > 0 ? `Mark ${ticked.size}` : 'Done'}
+                label={ticked.size > 0 ? `Mark ${ticked.size}` : BUTTON_LABEL.done}
                 onPress={handleDone}
                 minWidth={80}
               />

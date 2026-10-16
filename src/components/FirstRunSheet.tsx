@@ -15,6 +15,7 @@ import { alertPermissionOff } from '../utils/permissionAlert';
 import {
   FIRST_RUN_DEFAULTS, firstRunSettings, shouldOfferFirstRun, type FirstRunAnswers,
 } from '../utils/firstRun';
+import { BUTTON_LABEL } from '../copy/shared';
 
 const YES_NO: SegmentOption<boolean>[] = [
   { value: true, label: 'Yes' },
@@ -102,9 +103,9 @@ export function FirstRunSheet({ visible, onClose, rerun = false }: Props) {
     >
       <View style={styles.card}>
         <View style={styles.headerRow}>
-          <SheetHeaderButton label={rerun ? 'Cancel' : 'Skip'} role="cancel" onPress={skip} minWidth={56} />
+          <SheetHeaderButton label={rerun ? BUTTON_LABEL.cancel : 'Skip'} role="cancel" onPress={skip} minWidth={56} />
           <Text style={styles.heading}>Quick setup</Text>
-          <SheetHeaderButton label="Done" onPress={finish} minWidth={56} style={styles.headerRight} />
+          <SheetHeaderButton label={BUTTON_LABEL.done} onPress={finish} minWidth={56} style={styles.headerRight} />
         </View>
         <View style={styles.body}>
           <Text style={styles.hint}>

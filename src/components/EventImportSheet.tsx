@@ -30,6 +30,7 @@ import { confirmDiscard } from '../utils/confirmDiscard';
 import { TextField } from './TextField';
 import { ClipboardPhotoOffer } from './ClipboardPhotoOffer';
 import { useClipboardImage } from '../hooks/useClipboardImage';
+import { BUTTON_LABEL } from '../copy/shared';
 
 type InputMode = 'paste' | 'photo';
 
@@ -406,7 +407,7 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
         <SheetHeader
           title="Import event"
           icon="sparkles"
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={64} />}
           right={<View style={styles.headerSpacer} />}
         />
         <ScrollView

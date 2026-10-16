@@ -48,7 +48,7 @@ import { subDays } from 'date-fns/subDays';
 import { subMinutes } from 'date-fns/subMinutes';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { Task, Priority, Effort, FollowUpTaskDraft, RecurrenceType, HolidayRule, ChainItem, RotationItem, DeliverableKind, TimeOfDay, ReminderKind, Polarity, Difficulty, QuotaPeriod, WeatherCondition, NutrientKey, MealSlot, AnswerGate } from '../types';
-import { PRIORITY_LABELS, EFFORT_LABELS, TITLE_MAX_LENGTH, HEALTH_WRITABLE_NUTRIENTS, MINERAL_KEYS, VITAMIN_KEYS, MEAL_SLOTS, MEAL_SLOT_LABELS } from '../types';
+import { PRIORITY_LABELS, TITLE_MAX_LENGTH, HEALTH_WRITABLE_NUTRIENTS, MINERAL_KEYS, VITAMIN_KEYS, MEAL_SLOTS, MEAL_SLOT_LABELS } from '../types';
 import { NUTRIENT_LABEL, mlToFlOz, flOzToMl } from '../utils/foodNutrition';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, border, interaction, animation, checkboxRadius, iconSize, type Colors, textScale } from '../theme';
@@ -102,11 +102,11 @@ import { isStreakAtRecord, nextStreakRecord, streakHint } from '../utils/streakR
 import { formatDeadlineDate, formatDeadlineLabel, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, describeDeadlineOffset, describeReminderOffset, describeReminderTracksVisibility, getTaskDayStart, getCurrentDayStart, getLogicalNow, getLogicalToday, seriesMonthDaysFrom, getNextDueDate, dayKeyOf, dayKeyToDate } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInputAheadOfRainSkip, scheduleClockInstant, stripRemindPrefix, describeSchedule, detectContactIntent, matchPersonMentions, getEditorMentionSuggestions, withTrailingSpace, parseCategoryAndTagsInput, type MentionSuggestionCandidate, type ParsedCategoryAndTags } from '../utils/parseTaskInput';
+import { parseTaskInputAheadOfRainSkip, scheduleClockInstant, stripRemindPrefix, describeSchedule, scheduleHint, detectContactIntent, matchPersonMentions, getEditorMentionSuggestions, withTrailingSpace, parseCategoryAndTagsInput, type MentionSuggestionCandidate, type ParsedCategoryAndTags } from '../utils/parseTaskInput';
 import { groupMentionTokens } from '../utils/peopleRegistry';
 import { mergeRanges } from '../utils/ranges';
 import { HighlightedText } from './HighlightedText';
-import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration, estimatedMinutesFor, effortTimeLabel } from '../utils/effort';
+import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration, estimatedMinutesFor, effortTimeLabel, ESTIMATE_PRESET_MINUTES, estimatePatchForMinutes, chosenEstimateMinutes } from '../utils/effort';
 import { previewCategoryDefault, previewSeededFields } from '../utils/taskFieldDefaults';
 import { apportionedMinutes, timerSegments } from '../utils/timerSegments';
 import { CollapsibleField } from './CollapsibleField';
@@ -174,6 +174,7 @@ import { LazySheet } from './LazySheet';
 import { NewSavedMealSheet } from './NewSavedMealSheet';
 import { ProgressBar } from './ProgressBar';
 import { Toggle } from './Toggle';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /** The kind picker's segments. The hint under the track says what the pick does. */
 const TASK_KIND_SEGMENTS = TASK_KIND_META.map(meta => ({
@@ -2413,7 +2414,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             ? 'Apply this change to this date only, or to this and later dates?'
             : 'Apply this change to this task only, or to it and every future repeat?',
           [
-            { text: 'Cancel', style: 'cancel' },
+            { text: BUTTON_LABEL.cancel, style: 'cancel' },
             { text: isSeries ? 'This date' : 'This task', onPress: () => commitSave('occurrence') },
             { text: isSeries ? 'This and later dates' : 'This and future tasks', onPress: () => commitSave('series') },
           ],
@@ -2460,7 +2461,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         ? 'This clears the current streak count and history.'
         : `This ${increasing ? 'adds to' : 'reduces'} the streak as if the task ${increasing ? 'had been' : 'had not been'} completed on schedule. Use this only to fix a task you completed but forgot to check off.`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
           text: clamped === 0 ? 'Reset' : 'Confirm',
           style: clamped === 0 ? 'destructive' : 'default',
@@ -3117,7 +3118,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         'Delete recurring task',
         'This task repeats. Mark this one missed, or delete it and stop it repeating?',
         [
-          { text: 'Cancel', style: 'cancel' },
+          { text: BUTTON_LABEL.cancel, style: 'cancel' },
           {
             text: 'Mark missed',
             onPress: () => {
@@ -3146,7 +3147,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         'Delete meal task',
         'This came from your meal plan. Mark it missed to keep a record, or delete it?',
         [
-          { text: 'Cancel', style: 'cancel' },
+          { text: BUTTON_LABEL.cancel, style: 'cancel' },
           {
             text: 'Mark missed',
             onPress: () => {
@@ -3155,7 +3156,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             },
           },
           {
-            text: 'Delete',
+            text: BUTTON_LABEL.delete,
             style: 'destructive',
             onPress: () => {
               haptics.success();
@@ -3188,7 +3189,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         'Delete task on several dates',
         `This task has ${remaining} dates left. Delete this date only, or all of them?`,
         [
-          { text: 'Cancel', style: 'cancel' },
+          { text: BUTTON_LABEL.cancel, style: 'cancel' },
           {
             text: 'Just this date',
             onPress: () => {
@@ -3230,7 +3231,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
 
 
   // Whether the current estimate is a precise value that isn't one of the presets.
-  const customEffortActive = estimatedMinutes != null && estimatedMinutes !== effortToMinutes(effort);
+  const customEffortActive = estimatedMinutes != null && !ESTIMATE_PRESET_MINUTES.includes(estimatedMinutes);
   // A countdown no preset names, so it came from the typed field.
   const customDurationActive = timedMinutes != null && !(DURATION_PRESETS as readonly number[]).includes(timedMinutes);
 
@@ -3238,6 +3239,14 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
     setEffortTouched(true);
     setEffort(e);
     setEstimatedMinutes(EFFORT_MINUTES[e]);
+    setCustomEffortOpen(false);
+  };
+
+  const applyEstimatePreset = (minutes: number) => {
+    const patch = estimatePatchForMinutes(minutes);
+    setEffortTouched(true);
+    setEffort(patch.effort);
+    setEstimatedMinutes(patch.estimatedMinutes);
     setCustomEffortOpen(false);
   };
 
@@ -3369,7 +3378,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const defaultPriorityLabel = defaultsPreview && !priorityTouched && defaultsPreview.priority > 0
     ? `Default: ${PRIORITY_LABELS[defaultsPreview.priority]}` : undefined;
   const defaultEffortLabel = defaultsPreview && !effortTouched && defaultsPreview.effort > 0
-    ? `Default: ${effortTimeLabel(defaultsPreview.effort, EFFORT_LABELS[defaultsPreview.effort])}` : undefined;
+    ? `Default: ${effortTimeLabel(defaultsPreview.effort, '')}` : undefined;
   // What each toggle shows: the default on a new task nobody has touched, else
   // what was set. Read by the rows and by their taps, so a tap flips what is on
   // screen rather than the untouched state underneath it.
@@ -3625,7 +3634,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         <SheetHeader
           bare
           title={task ? 'Edit task' : 'New task'}
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} />}
           right={
             <View style={styles.headerRight}>
               <TouchableOpacity
@@ -3643,7 +3652,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                 />
               </TouchableOpacity>
               <SheetHeaderButton
-                label={task ? 'Save' : 'Add'}
+                label={task ? BUTTON_LABEL.save : 'Add'}
                 onPress={save}
                 disabled={!title.trim()}
               />
@@ -4007,6 +4016,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                 : activeParsedSchedule.schedule.deadline ? 'flag-outline' : 'calendar-outline'
             }
             label={`${describeSchedule(activeParsedSchedule.schedule, getLogicalNow(dayResetTime))}${activeParsedSchedule.schedule.explicitClockTime && stripRemindPrefix(activeParsedSchedule.cleanTitle) !== null ? ' · Reminder' : ''}`}
+            hint={scheduleHint(activeParsedSchedule.schedule)}
             onApply={applyParsedSchedule}
             onDismiss={dismissParsedSchedule}
             dismissLabel="Not a date"
@@ -5794,7 +5804,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                       text: g.id === gateGroupId ? `${g.name} (selected)` : g.name,
                       onPress: () => setGateGroupId(g.id),
                     })),
-                    { text: 'Cancel', style: 'cancel' as const },
+                    { text: BUTTON_LABEL.cancel, style: 'cancel' as const },
                   ]);
                 }}
               />
@@ -6709,21 +6719,21 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             onToggle={() => toggleField('effort')}
           >
             <View style={styles.pillRow}>
-              {([0, 1, 2, 3, 4, 5, 6] as Effort[]).map(e => {
-                const active = !customEffortActive && effort === e;
-                const presetMins = EFFORT_MINUTES[e];
+              <TouchableOpacity
+                style={[styles.pill, !customEffortActive && effort === 0 && styles.pillActiveNeutral]}
+                onPress={() => { haptics.tap(); applyEffortPreset(0); closeField('effort'); }}
+              >
+                <Text style={[styles.pillText, !customEffortActive && effort === 0 && styles.pillTextActive]}>—</Text>
+              </TouchableOpacity>
+              {ESTIMATE_PRESET_MINUTES.map(mins => {
+                const active = !customEffortActive && chosenEstimateMinutes({ estimatedMinutes, effort }) === mins;
                 return (
                   <TouchableOpacity
-                    key={e}
+                    key={mins}
                     style={[styles.pill, active && styles.pillActiveNeutral]}
-                    onPress={() => { haptics.tap(); applyEffortPreset(e); closeField('effort'); }}
+                    onPress={() => { haptics.tap(); applyEstimatePreset(mins); closeField('effort'); }}
                   >
-                    <Text style={[styles.pillText, active && styles.pillTextActive]}>
-                      {e === 0 ? '—' : EFFORT_LABELS[e]}
-                    </Text>
-                    {presetMins != null ? (
-                      <Text style={styles.pillHint}>{formatDuration(presetMins)}</Text>
-                    ) : null}
+                    <Text style={[styles.pillText, active && styles.pillTextActive]}>{formatDuration(mins)}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -6739,7 +6749,6 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                 ) : (
                   <Text style={styles.pillText}>Custom</Text>
                 )}
-                <Text style={styles.pillHint}>exact</Text>
               </TouchableOpacity>
             </View>
             {customEffortOpen && (
@@ -7728,7 +7737,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                     into two untallied entries. */}
                 {medicationSuggestions.length > 0 && (
                   <>
-                    <Text style={styles.medicationCaption}>Or reuse one you&apos;ve logged before</Text>
+                    <Text style={styles.medicationCaption}>Or reuse one you’ve logged before</Text>
                     <PillGroup
                       noun="medication"
                       surface="card"

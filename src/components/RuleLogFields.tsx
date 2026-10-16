@@ -14,6 +14,7 @@ import { PillGroup } from './PillGroup';
 import { SegmentedControl } from './SegmentedControl';
 import { TaskDoseAmount } from './TaskDoseAmount';
 import { TextField } from './TextField';
+import { HelpText } from './HelpText';
 
 interface Props {
   rule: RuleTaskLog;
@@ -115,7 +116,7 @@ export function RuleLogFields({ rule, onChange, menuName }: Props) {
             placeholderTextColor={colors.textTertiary}
             maxLength={RULE_MEDICATION_NAME_MAX_LENGTH}
             returnKeyType="done"
-            accessibilityLabel="What completing this rule's task records a dose of"
+            accessibilityLabel="What completing this rule’s task records a dose of"
           />
           {/* Picking one is what makes it the same medication as an earlier
               dose: medicationKey does no fuzzy matching, so retyping a name
@@ -151,9 +152,9 @@ export function RuleLogFields({ rule, onChange, menuName }: Props) {
             />
           )}
           {name.trim().length === 0 && (
-            <Text style={styles.hint}>
+            <HelpText style={styles.hint}>
               Completing the task adds a dose to your medication log. Unchecking it removes the dose.
-            </Text>
+            </HelpText>
           )}
         </View>
       )}
@@ -206,9 +207,9 @@ export function RuleLogFields({ rule, onChange, menuName }: Props) {
               ]}
             />
           )}
-          <Text style={styles.hint}>
+          <HelpText style={styles.hint}>
             Completing the task adds a food log entry. Unchecking it removes what it logged.
-          </Text>
+          </HelpText>
         </View>
       )}
     </View>

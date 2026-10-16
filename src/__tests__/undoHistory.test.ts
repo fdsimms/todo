@@ -139,6 +139,10 @@ describe('offersOnUndoBar', () => {
     expect(offersOnUndoBar(plain, false)).toBe(false);
   });
 
+  it('offers an announced entry, such as a tick that logged a dose', () => {
+    expect(offersOnUndoBar({ ...act('Logged Sertraline', 3), announce: true }, false)).toBe(true);
+  });
+
   it('offers every entry when there is no shake to fall back on', () => {
     expect(offersOnUndoBar(plain, true)).toBe(true);
     expect(offersOnUndoBar(destructive, true)).toBe(true);

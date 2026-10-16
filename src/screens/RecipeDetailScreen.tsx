@@ -140,6 +140,8 @@ import { ScrollToTopButton, SCROLL_TO_TOP_SIZE } from '../components/ScrollToTop
 import { useActionMenu } from '../hooks/useActionMenu';
 import type { ActionMenuAction } from '../components/ActionMenu';
 import { FadeInImage } from '../components/FadeInImage';
+import { HelpText } from '../components/HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 type RootStackParamList = {
   /**
@@ -341,9 +343,9 @@ export function RecipeDetailScreen() {
       'Group name',
       'Shown above the choices. Renames it for every ingredient in the group.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
-          text: 'Save',
+          text: BUTTON_LABEL.save,
           onPress: (value?: string) => {
             const clean = cleanChoiceGroup(value);
             if (!clean || clean === group.label) return;
@@ -352,7 +354,7 @@ export function RecipeDetailScreen() {
               return;
             }
             haptics.error();
-            Alert.alert('Name already used', 'Another group in this recipe already has that name.');
+            Alert.alert('That name is taken', 'Another group in this recipe already has that name.');
           },
         },
       ],
@@ -2291,10 +2293,10 @@ export function RecipeDetailScreen() {
         )}
 
         {mergedIngredientRows.length === 0 && components.length === 0 ? (
-          <Text style={styles.hint}>
+          <HelpText style={styles.hint}>
             Type one ingredient at a time, or paste a whole list. “2 lb chicken thighs”
             saves the quantity separately from the name.
-          </Text>
+          </HelpText>
         ) : (
           <View style={styles.card}>
             {mergedIngredientRows.length > 0 && (
@@ -2455,11 +2457,11 @@ export function RecipeDetailScreen() {
         <Text style={styles.sectionLabel}>Steps</Text>
 
         {mergedStepRows.length === 0 ? (
-          <Text style={styles.hint}>
+          <HelpText style={styles.hint}>
             Write the method as steps, and it stays legible when the recipe is
             scaled or shown in a different unit. The notes field still works
             if you’d rather leave it as one block.
-          </Text>
+          </HelpText>
         ) : (
           <View style={styles.card}>
             <SortableList
@@ -2536,7 +2538,7 @@ export function RecipeDetailScreen() {
             </TouchableOpacity>
           )}
           <InlineAction
-            label={editingStepId ? 'Save' : 'Add'}
+            label={editingStepId ? BUTTON_LABEL.save : 'Add'}
             icon={editingStepId ? 'checkmark' : 'add'}
             onPress={submitStepDraft}
             disabled={!stepDraft.trim()}
@@ -2650,12 +2652,12 @@ export function RecipeDetailScreen() {
         <Text style={styles.sectionLabel}>Components</Text>
 
         {components.length === 0 ? (
-          <Text style={styles.hint}>
+          <HelpText style={styles.hint}>
             Use another recipe as part of this one, like mashed potatoes with both
             the steak and the salmon. Its ingredients and prep tasks come along, and editing
             it updates every meal that uses it. Long press a component to make it an
             either/or alternative.
-          </Text>
+          </HelpText>
         ) : (
           <View style={styles.card}>
             {components.map(resolved => renderComponent(resolved))}
@@ -2675,11 +2677,11 @@ export function RecipeDetailScreen() {
         <Text style={styles.sectionLabel}>Prep tasks</Text>
 
         {recipe.prepTasks.length === 0 ? (
-          <Text style={styles.hint}>
+          <HelpText style={styles.hint}>
             Add a prep task for anything that needs doing ahead of the meal, like “Marinate the
             chicken” a day before. It becomes a task once this recipe is
             planned for a date.
-          </Text>
+          </HelpText>
         ) : (
           <View style={styles.card}>
             {recipe.prepTasks.map(renderPrepTask)}
@@ -2781,7 +2783,7 @@ export function RecipeDetailScreen() {
             allowNone: false,
           }}
           actions={[
-            { key: 'delete', icon: 'trash', label: 'Delete', tone: 'destructive', onPress: handleBulkRemoveIngredients },
+            { key: 'delete', icon: 'trash', label: BUTTON_LABEL.delete, tone: 'destructive', onPress: handleBulkRemoveIngredients },
           ]}
           onSelectAll={() => selectAll(recipe.ingredients.map(i => i.id))}
           onDeselectAll={deselectAll}

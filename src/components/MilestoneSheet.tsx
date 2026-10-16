@@ -14,6 +14,8 @@ import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { getLogicalToday } from '../utils/dateUtils';
 import { TextField } from './TextField';
+import { HelpText } from './HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 const LABEL_MAX_LENGTH = 80;
 
@@ -84,8 +86,8 @@ export function MilestoneSheet({ visible, milestone, onClose }: Props) {
   const handleDelete = () => {
     if (!milestone) { onClose(); return; }
     Alert.alert('Delete this milestone?', undefined, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => { removeMilestone(milestone.id); onClose(); } },
+      { text: BUTTON_LABEL.cancel, style: 'cancel' },
+      { text: BUTTON_LABEL.delete, style: 'destructive', onPress: () => { removeMilestone(milestone.id); onClose(); } },
     ]);
   };
 
@@ -105,7 +107,7 @@ export function MilestoneSheet({ visible, milestone, onClose }: Props) {
         <SheetHeader
           bare
           title={milestone ? 'Edit milestone' : 'New milestone'}
-          left={<SheetHeaderButton label="Done" onPress={saveAndClose} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={saveAndClose} />}
           right={milestone ? (
             <TouchableOpacity onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete milestone">
               <Ionicons name="trash-outline" size={20} color={colors.red} />
@@ -145,9 +147,9 @@ export function MilestoneSheet({ visible, milestone, onClose }: Props) {
         value={format(date, 'EEE, MMM d, yyyy')}
         onPress={() => { haptics.tap(); setShowDatePicker(true); }}
       />
-      <Text style={styles.hint}>
+      <HelpText style={styles.hint}>
         Used to split your mood record into before and after this day.
-      </Text>
+      </HelpText>
     </EditorSheet>
   );
 }

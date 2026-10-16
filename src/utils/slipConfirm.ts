@@ -3,6 +3,7 @@ import type { Task } from '../types';
 import { formatDuration } from './effort';
 import { nextSlipIsFree } from './negativeHabits';
 import { guardedSlipPrompt, type GuardedSlip } from './rewardGuard';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /** A guarded habit's slip, as `useRewardStore.slipGuardFor` reads it. */
 export interface SlipGuard {
@@ -51,7 +52,7 @@ export function confirmSlip(
       prompt.title,
       [prompt.message, blocks].filter(Boolean).join(' '),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         { text: prompt.confirm, style: guard.plan.kind === 'charge' ? 'destructive' : 'default', onPress: onConfirm },
       ],
     );
@@ -66,7 +67,7 @@ export function confirmSlip(
     'Log a slip?',
     penalty,
     [
-      { text: 'Cancel', style: 'cancel' },
+      { text: BUTTON_LABEL.cancel, style: 'cancel' },
       { text: 'Log it', style: 'destructive', onPress: onConfirm },
     ],
   );

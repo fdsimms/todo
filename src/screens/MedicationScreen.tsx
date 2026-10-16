@@ -64,6 +64,7 @@ import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { usePullToSearch } from '../hooks/usePullToSearch';
 import { useActionMenu } from '../hooks/useActionMenu';
 import { useLingering } from '../hooks/useLingering';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /** How many recent doses the list shows at first, and how many more each tap adds. */
 const RECENT_PAGE = 25;
@@ -181,7 +182,7 @@ export function MedicationScreen() {
     if (logs.length === 0 || sharing) return;
     const confirmed = await new Promise<boolean>(resolve => {
       Alert.alert('Share your medication log', medicationExportSummary(logs), [
-        { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+        { text: BUTTON_LABEL.cancel, style: 'cancel', onPress: () => resolve(false) },
         { text: 'Share', onPress: () => resolve(true) },
       ]);
     });
@@ -191,13 +192,13 @@ export function MedicationScreen() {
     let uri: string | null = null;
     try {
       if (!(await canShare())) {
-        Alert.alert('Sharing unavailable', 'This device cannot open a share sheet.');
+        Alert.alert('Can’t share from this device', 'This device cannot open a share sheet.');
         return;
       }
       uri = writeExportFile(medicationExportCsv(logs), medicationExportFileName(new Date()));
       await shareCsvFile(uri, 'Share your medication log');
     } catch {
-      Alert.alert('Export failed', 'Couldn’t write the file. Try again.');
+      Alert.alert('Couldn’t export', 'The file couldn’t be written. Try again.');
     } finally {
       // Deleted the moment the share sheet closes, exactly as the mood export
       // and the backup do: a health record accumulating in the app's own

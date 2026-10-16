@@ -15,6 +15,7 @@ import { haptics } from '../utils/haptics';
 import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
 import { JOURNAL_KIND_COPY, entriesOnDay, openEntries } from '../utils/journal';
 import { journalPlainText } from '../utils/journalMarkdown';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -52,7 +53,7 @@ export function JournalDaySheet({ visible, kind, dayKey, onEdit, onAnother, onCl
         <SheetHeader
           title={title}
           left={<View style={styles.headerSpacer} />}
-          right={<SheetHeaderButton label="Done" onPress={onClose} minWidth={56} />}
+          right={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={onClose} minWidth={56} />}
         />
         <ScrollView contentContainerStyle={styles.content}>
           {entries.length === 0 ? (

@@ -1,5 +1,6 @@
 import type { Effort, Priority, Task, TitleRule, TitleRuleMatch } from '../types';
-import { EFFORT_LABELS, PRIORITY_LABELS } from '../types';
+import { PRIORITY_LABELS } from '../types';
+import { effortTimeLabel } from './effort';
 import { generateId } from './id';
 
 /**
@@ -270,7 +271,7 @@ export function describeTitleRuleTargets(
   if (target.category && categoryName) parts.push(categoryName);
   if (target.projectId && projectName) parts.push(projectName);
   if (target.priority > 0) parts.push(PRIORITY_LABELS[target.priority]);
-  if (target.effort > 0) parts.push(EFFORT_LABELS[target.effort]);
+  if (target.effort > 0) parts.push(effortTimeLabel(target.effort, ''));
   if (target.linkUrl && linkLabel) parts.push(linkLabel);
   if (target.tags.length > 0) {
     parts.push(target.tags.length === 1 ? `#${target.tags[0]}` : `${target.tags.length} tags`);

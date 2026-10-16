@@ -29,6 +29,7 @@ import { dayKeyOf, getLogicalToday } from '../utils/dateUtils';
 import { slotLabel, upcomingDays } from '../utils/mealPlan';
 import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { useSheetMotion } from '../hooks/useSheetMotion';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /** Kept clear above the sheet so its title never slides under the status bar. */
 const TOP_INSET = 72;
@@ -224,7 +225,7 @@ export function PlanMealSheet({ visible, title, defaultSlot, onPlan, onPlanned, 
         >
           <View style={styles.headerRow}>
             <Text style={styles.heading} numberOfLines={2}>{title ?? ''}</Text>
-            <SheetHeaderButton label="Done" onPress={close} accessibilityLabel="Done planning" />
+            <SheetHeaderButton label={BUTTON_LABEL.done} onPress={close} accessibilityLabel="Done planning" />
           </View>
 
           <Text style={styles.label}>When</Text>

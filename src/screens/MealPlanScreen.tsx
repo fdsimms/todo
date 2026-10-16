@@ -156,6 +156,7 @@ import { hiddenEventKey } from '../utils/hiddenEvents';
 import { busyEveningOn, describeBusyEvening } from '../utils/busyEvenings';
 import { isDemoModeActive } from '../utils/demoState';
 import { LazySheet } from '../components/LazySheet';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /**
  * Tints a day section while a drag is aimed at it — the same "arm on the way
@@ -2399,7 +2400,7 @@ export function MealPlanScreen() {
               label: allSelectedCooked ? 'Uncook' : 'Cooked',
               onPress: handleBulkMarkCooked,
             },
-            { key: 'delete', icon: 'trash', label: 'Delete', tone: 'destructive', onPress: handleBulkDelete },
+            { key: 'delete', icon: 'trash', label: BUTTON_LABEL.delete, tone: 'destructive', onPress: handleBulkDelete },
           ]}
           onSelectAll={() => selectAll(entries.map(e => e.id))}
           onDeselectAll={deselectAll}

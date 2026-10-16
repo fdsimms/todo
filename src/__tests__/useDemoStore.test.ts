@@ -2178,6 +2178,7 @@ describe('demo seed — people', () => {
     expect(journalStats(entriesOfKind(entries, 'dream'), month).dayCount).toBeGreaterThanOrEqual(2);
     // One uses the light formatting, so demo mode shows it drawn.
     expect(entries.some(e => parseJournalMarkdown(e.text).some(b => b.type === 'bullet'))).toBe(true);
+    expect(entries.some(e => parseJournalMarkdown(e.text).some(b => b.spans.some(s => s.spoiler !== undefined)))).toBe(true);
     // And one day written in several snippets, which the screen draws as one page.
     const perDay = new Map<string, number>();
     entriesOfKind(entries, 'journal').forEach(e => perDay.set(e.dayKey, (perDay.get(e.dayKey) ?? 0) + 1));
@@ -2809,6 +2810,10 @@ describe('demo seed — people', () => {
   });
 
   it('seeds foods with a processing group, so Stats has a share to show', () => {
+    // Loads its own window: `windowEntries` is empty until a test does, and CI
+    // runs the suite randomized, so an earlier test can't be relied on to have.
+    const window = cookingWindow(getLogicalToday(), 30);
+    useFoodLogStore.getState().loadWindow(window.startKey, window.endKey);
     const entries = useFoodLogStore.getState().windowEntries;
     const groups = new Set(entries.map(e => e.nutrition.novaGroup).filter(Boolean));
     expect(groups.has(4)).toBe(true);

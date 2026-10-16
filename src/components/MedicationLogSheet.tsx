@@ -24,6 +24,8 @@ import { TaskEditor } from './TaskEditor';
 import { TaskRelationPickerSheet } from './TaskRelationPickerSheet';
 import { useTaskStore } from '../store/useTaskStore';
 import { displayTitleFor } from '../utils/visibilityUtils';
+import { HelpText } from './HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 const NAME_MAX_LENGTH = 60;
 const NOTE_MAX_LENGTH = 200;
@@ -227,8 +229,8 @@ export function MedicationLogSheet({ visible, log, initialName, onClose, onDelet
   const handleDelete = () => {
     if (!log) { onClose(); return; }
     Alert.alert('Delete this dose?', undefined, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => { unrecordDose(log); onDeleted?.(log); onClose(); } },
+      { text: BUTTON_LABEL.cancel, style: 'cancel' },
+      { text: BUTTON_LABEL.delete, style: 'destructive', onPress: () => { unrecordDose(log); onDeleted?.(log); onClose(); } },
     ]);
   };
 
@@ -244,13 +246,13 @@ export function MedicationLogSheet({ visible, log, initialName, onClose, onDelet
         <SheetHeader
           bare
           title={log ? 'Edit dose' : 'Record a dose'}
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={onClose} />}
           right={log ? (
             <TouchableOpacity onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete dose">
               <Ionicons name="trash-outline" size={20} color={colors.red} />
             </TouchableOpacity>
           ) : (
-            <SheetHeaderButton label="Save" onPress={() => { void handleSave(); }} disabled={!canSave} />
+            <SheetHeaderButton label={BUTTON_LABEL.save} onPress={() => { void handleSave(); }} disabled={!canSave} />
           )}
         />
       }
@@ -302,9 +304,9 @@ export function MedicationLogSheet({ visible, log, initialName, onClose, onDelet
 
       <View style={styles.card}>
         <Text style={styles.groupLabel}>HOW MUCH</Text>
-        <Text style={styles.hint}>
+        <HelpText style={styles.hint}>
           Optional. Leave it blank to record only that you took it.
-        </Text>
+        </HelpText>
         {usualDoses.length > 0 && (
           <PillGroup
             noun="amount"

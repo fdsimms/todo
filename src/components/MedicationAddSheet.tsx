@@ -8,6 +8,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { medicationKey } from '../utils/medicationLog';
+import { BUTTON_LABEL } from '../copy/shared';
 
 const NAME_MAX_LENGTH = 60;
 
@@ -65,7 +66,7 @@ export function MedicationAddSheet({ visible, onClose, onAdded }: Props) {
     >
       <View style={styles.card}>
         <View style={styles.headerRow}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={() => dismiss(onClose)} minWidth={56} />
+          <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={() => dismiss(onClose)} minWidth={56} />
           <Text style={styles.heading} numberOfLines={1}>Add medication</Text>
           <SheetHeaderButton label="Add" onPress={save} disabled={!canSave} minWidth={56} style={styles.headerRight} />
         </View>

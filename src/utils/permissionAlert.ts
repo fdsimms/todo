@@ -1,4 +1,5 @@
 import { Alert, Linking } from 'react-native';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /**
  * The alert shown right after the system prompt was answered "Don't Allow".
@@ -9,7 +10,7 @@ import { Alert, Linking } from 'react-native';
  */
 export function alertPermissionOff(title: string, message: string): void {
   Alert.alert(title, message, [
-    { text: 'Cancel', style: 'cancel' },
+    { text: BUTTON_LABEL.cancel, style: 'cancel' },
     { text: 'Open Settings', onPress: () => { void Linking.openSettings(); } },
   ]);
 }

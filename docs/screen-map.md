@@ -36,7 +36,7 @@ components below.
 - `src/screens/KitchenScreen.tsx` — ActiveTripBanner, BarcodeScanSheet, CookWithSheet, EmptyState, GroceryItemSheet, HubPills, InlineAction, ItemDisposalOffer, LazySheet, LeftoverSheet, PantryReviewSheet, PressableScale, +6 more
 - `src/screens/LogbookScreen.tsx` — CardSheet, DeliverablePromptSheet, EmptyState, HighlightedText, HubPills, LogbookEntryMenu, LogbookFilterSheet, PaintSelection, RotationWeekSheet, ScreenHeader, ScreenSettingsSheet, ScrollToTopButton, +6 more
 - `src/screens/MealPlanScreen.tsx` — ActiveTripBanner, AddMealsToListSheet, FabDropZones, FridgeHistorySheet, HubPills, InlineAction, LazySheet, LeftoverSheet, LeftoversCard, ListBulkBar, MealEntrySheet, MealOverrideSheet, +14 more
-- `src/screens/MedicationDetailScreen.tsx` — CountStepper, DetailHeader, DoseAmountField, EmptyState, InlineAction, MedicationLogSheet, MedicationRenameSheet, ScrollToTopButton, SegmentedControl, SheetUndoBar, SupplementPanelSheet
+- `src/screens/MedicationDetailScreen.tsx` — CountStepper, DetailHeader, DoseAmountField, EmptyState, HelpText, InlineAction, MedicationLogSheet, MedicationRenameSheet, ScrollToTopButton, SegmentedControl, SheetUndoBar, SupplementPanelSheet
 - `src/screens/MedicationScreen.tsx` — DeliverablePromptQueue, EmptyState, HubPills, InlineAction, MedicationAddSheet, MedicationLogSheet, MedicationSummarySheet, PressableScale, ScreenHeader, ScrollToTopButton, SheetUndoBar, SwipeActionButtons, +1 more
 - `src/screens/MetersScreen.tsx` — EmptyState, HubPills, InlineAction, MeterReadingSheet, ScreenHeader, TaskEditor
 - `src/screens/MoodDayScreen.tsx` — DetailHeader, EmptyState, JournalEntrySheet, JournalText, MoodLogSheet
@@ -46,10 +46,10 @@ components below.
 - `src/screens/PersonDetailScreen.tsx` — DetailHeader, EmptyState, InlineAction, JournalDaySheet, PersonEditor, PersonHistorySheet, PersonNoteSheet, PinIcon, QuickEventSheet, ScrollToTopButton, TaskEditor
 - `src/screens/ProjectDetailScreen.tsx` — AddGuestsSheet, ApplyTemplateSheet, BulkActionBar, CardSheet, DeliverablePromptQueue, DeliverablePromptSheet, DetailHeader, EmptyState, Fab, FabDropZones, GroupDropTarget, InlineAction, +30 more
 - `src/screens/ProjectsScreen.tsx` — CardSheet, EmptyState, Fab, FabDropZones, LazySheet, ListBulkBar, PaintSelection, ProgressBar, ProjectCategoriesSheet, ProjectEditor, ProjectsOptionsMenu, QuickAddProjectModal, +7 more
-- `src/screens/RecipeDetailScreen.tsx` — ComponentChoiceSheet, CookModeSheet, CountStepper, DetailHeader, EmptyState, FadeInImage, IngredientCatalogMatchSheet, InlineAction, ListBulkBar, NumberPadAccessory, OverlapPickerSheet, PaintSelection, +21 more
+- `src/screens/RecipeDetailScreen.tsx` — ComponentChoiceSheet, CookModeSheet, CountStepper, DetailHeader, EmptyState, FadeInImage, HelpText, IngredientCatalogMatchSheet, InlineAction, ListBulkBar, NumberPadAccessory, OverlapPickerSheet, +22 more
 - `src/screens/RecipesScreen.tsx` — ActiveTripBanner, CookWithSheet, EmptyState, Fab, FabDropZones, FadeInImage, HubPills, InventRecipeSheet, LazySheet, ListBulkBar, OverlapPickerSheet, PaintSelection, +15 more
 - `src/screens/RemindersScreen.tsx` — EmptyState, ScreenHeader, ScreenSettingsSheet, ScrollToTopButton, TaskEditor
-- `src/screens/RewardsScreen.tsx` — AnimatedNumber, CardSheet, CoinBurst, CoinIcon, CountStepper, EmptyNote, EmptyState, HabitPickerSheet, InlineAction, ProgressBar, ProjectPickerSheet, ScreenHeader, +4 more
+- `src/screens/RewardsScreen.tsx` — AnimatedNumber, CardSheet, CoinBurst, CoinIcon, CountStepper, EmptyNote, EmptyState, HabitPickerSheet, HelpText, InlineAction, ProgressBar, ProjectPickerSheet, +5 more
 - `src/screens/SavedViewDetailScreen.tsx` — BulkActionBar, DeliverablePromptQueue, DetailHeader, EmptyState, PaintSelection, SavedViewEditorSheet, ScrollToTopButton, SpotlightOverlay, TaskEditor, TaskItem
 - `src/screens/SavedViewsScreen.tsx` — DetailHeader, EmptyState, ReorderableList, SavedViewEditorSheet
 - `src/screens/ScreenTimeScreen.tsx` — ScreenHeader, ScreenTimeSettings, SettingsFocus
@@ -61,7 +61,7 @@ components below.
 - `src/screens/StacksScreen.tsx` — CategoryPicker, EmptyState, Fab, HubPills, InlineNameField, ListBulkBar, PaintSelection, ScreenHeader, ScrollToTopButton, SelectionDot, SwipeActionButtons, SwipeableRow, +1 more
 - `src/screens/StatsScreen.tsx` — AnimatedBarFill, EmptyState, HubPills, NutrientDayChart, PillGroup, PressableScale, ProgressBar, ScreenHeader, ScreenSettingsSheet, ScrollToTopButton, SegmentedControl
 - `src/screens/StuckScreen.tsx` — DeliverablePromptSheet, EmptyState, PostponeCheckBanner, ScreenHeader, ScreenSettingsSheet, ScrollToTopButton, TaskBreakdownSheet, TaskEditor, TaskGroupTray
-- `src/screens/SymptomDetailScreen.tsx` — ContrastBars, DetailHeader, EmptyState, MoodEntryRow, MoodLogSheet, ScrollToTopButton
+- `src/screens/SymptomDetailScreen.tsx` — ContrastBars, DetailHeader, EmptyState, HelpText, MoodEntryRow, MoodLogSheet, ScrollToTopButton
 - `src/screens/TagsScreen.tsx` — BulkActionBar, DeliverablePromptQueue, DetailHeader, EmptyState, Fab, HubPills, PaintSelection, QuickAddNameSheet, ScreenHeader, ScrollToTopButton, SheetModal, SpotlightOverlay, +2 more
 - `src/screens/TemplateDetailScreen.tsx` — ApplyTemplateSheet, DetailHeader, EmptyState, Fab, FabDropZones, NestedTemplatePicker, PaintSelection, ReorderableList, SelectionDot, SwipeActionButtons, SwipeableRow, TemplateAppliedToast, +5 more
 - `src/screens/TemplatesScreen.tsx` — ApplyTemplateSheet, EmptyState, Fab, FabDropZones, HubPills, ListBulkBar, PaintSelection, QuickAddNameSheet, ReorderableList, ScreenHeader, ScreenSettingsSheet, SelectionDot, +4 more
@@ -188,6 +188,7 @@ Where each component can appear.
 - `src/components/HabitPickerSheet.tsx` — on RewardsScreen
 - `src/components/HealthRulesSheet.tsx` — on AutomationsScreen
 - `src/components/HealthWriteRefusedNotice.tsx` — on app shell
+- `src/components/HelpText.tsx` — on ArchivedScreen, AutomationsScreen, BackfillScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, GroceryScreen, JournalScreen, KitchenScreen, MealPlanScreen, MedicationDetailScreen, MedicationScreen, +25 more
 - `src/components/HighlightedText.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, MetersScreen, PersonDetailScreen, ProjectDetailScreen, RemindersScreen, SavedViewDetailScreen, SearchScreen, +6 more
 - `src/components/HubPills.tsx` — on ArchivedScreen, CategoriesScreen, FoodLogScreen, GroceryScreen, JournalScreen, KitchenScreen, LogbookScreen, MealPlanScreen, MedicationScreen, MetersScreen, MoodScreen, PeopleScreen, +8 more
 - `src/components/ImportApplyRow.tsx` — on RecipeDetailScreen, RecipesScreen

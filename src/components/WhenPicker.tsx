@@ -48,6 +48,7 @@ import { PostponeCheckBanner, type PostponeCheckAction } from './PostponeCheckBa
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetScrim } from './SheetScrim';
 import { TextField } from './TextField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 // Placeholder fields the snooze engine doesn't consider — only the ones it
 // actually reads (title/notes/tags/category/priority/effort) get overridden
@@ -559,7 +560,7 @@ export function WhenPicker({
           'Archive this task?',
           `“${postponeTask.title}” moves to Archived. Nothing is deleted. You can restore it from there.`,
           [
-            { text: 'Cancel', style: 'cancel' },
+            { text: BUTTON_LABEL.cancel, style: 'cancel' },
             {
               text: 'Archive',
               // Not destructive styling: archiving keeps the task, and dressing
@@ -622,9 +623,9 @@ export function WhenPicker({
         <Animated.View style={[styles.card, shadows.popover, { opacity: enterAnim, transform: [{ scale: cardScale }] }]}>
           {/* Header */}
           <View style={styles.header}>
-            <SheetHeaderButton label="Cancel" role="cancel" onPress={cancel} minWidth={28} />
+            <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={cancel} minWidth={28} />
             <Text style={styles.headerTitle}>{title}</Text>
-            <SheetHeaderButton label="Save" onPress={handleSave} style={styles.headerSaveText} />
+            <SheetHeaderButton label={BUTTON_LABEL.save} onPress={handleSave} style={styles.headerSaveText} />
           </View>
 
           {/* Natural language input */}

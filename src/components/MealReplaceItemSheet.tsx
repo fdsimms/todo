@@ -26,6 +26,7 @@ import { recipeMap } from '../utils/recipeComponents';
 import { RECIPE_NAME_MAX_LENGTH } from '../types';
 import { useSheetMotion } from '../hooks/useSheetMotion';
 import { useFilterField } from '../hooks/useFilterField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 export interface MealReplacement {
   recipeId: string | null;
@@ -248,7 +249,7 @@ export function MealReplaceItemSheet({ visible, count, title, hint, onReplace, o
         </View>
 
         <TouchableOpacity style={styles.cancelCard} onPress={() => dismiss()} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
-          <Text style={styles.cancelLabel}>Cancel</Text>
+          <Text style={styles.cancelLabel}>{BUTTON_LABEL.cancel}</Text>
         </TouchableOpacity>
       </Animated.View>
     </SheetModal>

@@ -48,7 +48,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { displayTitleFor, activeChainStepTitle } from '../utils/visibilityUtils';
 import { activeMealSlotStepId } from '../utils/mealSlotTasks';
 import { describeTaskRecurrence } from '../utils/recurrenceLabels';
-import { formatDuration, EFFORT_MINUTES, minutesToEffort } from '../utils/effort';
+import { formatDuration, ESTIMATE_PRESET_MINUTES, estimatePatchForMinutes } from '../utils/effort';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { GENERATED_KIND_SPECS } from '../utils/generatedTasks';
 import {
@@ -58,8 +58,8 @@ import {
 import { DIFFICULTY_SEGMENTS } from '../utils/rewards';
 import { hasAnyHolidays } from '../utils/holidays';
 import {
-  BACKFILL_FIELDS, backfillCandidates, backfillFieldCounts, backfillSeriesPeers, estimatePatchFor, dismissBackfillField,
-  isFieldMissing, ESTIMATE_EFFORTS, backfillFieldsFor, type BackfillFieldId,
+  BACKFILL_FIELDS, backfillCandidates, backfillFieldCounts, backfillSeriesPeers, dismissBackfillField,
+  isFieldMissing, backfillFieldsFor, type BackfillFieldId,
 } from '../utils/fieldBackfill';
 import {
   isSuggestibleBackfillField, suggestionTasks, suggestionExamples, type BackfillSuggestion,
@@ -106,10 +106,11 @@ import { groceryNameKey } from '../utils/groceryParse';
 import { describeProduct, preferredProductOf, productsForItem, RATING_LABELS } from '../utils/groceryProduct';
 import { describeFoodPanel } from '../utils/foodNutrition';
 import {
-  EFFORT_LABELS, GROCERY_NAME_MAX_LENGTH, GROCERY_BRAND_MAX_LENGTH, GROCERY_VARIANT_MAX_LENGTH,
-  type Difficulty, type Effort, type HolidayRule, type FoodNutrition, type GroceryItem, type ItemProduct, type ProductRating, type Person, type Recipe, type ReminderKind, type Task, type TaskFieldDefaults,
+  GROCERY_NAME_MAX_LENGTH, GROCERY_BRAND_MAX_LENGTH, GROCERY_VARIANT_MAX_LENGTH,
+  type Difficulty, type HolidayRule, type FoodNutrition, type GroceryItem, type ItemProduct, type ProductRating, type Person, type Recipe, type ReminderKind, type Task, type TaskFieldDefaults,
 } from '../types';
 import { TextField } from '../components/TextField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 const FIELD_ICONS: Record<BackfillFieldId, keyof typeof Ionicons.glyphMap> = {
   estimate: 'time-outline',
@@ -920,7 +921,7 @@ export function BackfillScreen() {
       `Redo ${label.toLowerCase()} from scratch?`,
       `Goes through every ${noun} again, including ones that already have this set. Each ${noun} keeps its current value until you change it.`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         { text: 'Start over', onPress: startOver },
       ]
     );
@@ -1191,19 +1192,19 @@ export function BackfillScreen() {
   // ordinary pills and a suggested value write through exactly the same call —
   // a suggestion accepted has to be indistinguishable from the same value
   // tapped, in the row it writes and in the session-review line it leaves.
-  const applyEstimate = (e: Effort) =>
-    apply(estimatePatchFor(e), EFFORT_MINUTES[e] != null ? formatDuration(EFFORT_MINUTES[e]!) : EFFORT_LABELS[e]);
+  const applyEstimate = (minutes: number) =>
+    apply(estimatePatchForMinutes(minutes), formatDuration(minutes));
   const applyTaskCategory = (name: string | null) =>
     apply({ category: name }, name ? categoryLabel(name, getCategoryByName) : 'No category');
 
   const describeSuggestion = (s: BackfillSuggestion): string =>
     s.field === 'category'
       ? categoryLabel(s.category, getCategoryByName)
-      : (EFFORT_MINUTES[s.effort] != null ? formatDuration(EFFORT_MINUTES[s.effort]!) : EFFORT_LABELS[s.effort]);
+      : formatDuration(s.minutes);
 
   const applySuggestion = (suggestion: BackfillSuggestion) => {
     if (suggestion.field === 'category') applyTaskCategory(suggestion.category);
-    else applyEstimate(suggestion.effort);
+    else applyEstimate(suggestion.minutes);
   };
 
   /**
@@ -1287,17 +1288,13 @@ export function BackfillScreen() {
         rowSnapshots = writeWithPeers(task, () => ({ category: suggestion.category }));
         valueText = categoryLabel(suggestion.category, getCategoryByName);
       } else {
-        const patch = estimatePatchFor(suggestion.effort);
+        const patch = estimatePatchForMinutes(suggestion.minutes);
         rowSnapshots = writeWithPeers(task, () => patch);
         // Same carry-forward the single-task apply does — see apply()'s note
         // on mealSlotStepEstimates.
-        if (patch.estimatedMinutes != null) {
-          const stepId = activeMealSlotStepId(task);
-          if (stepId) useSettingsStore.getState().setMealSlotStepEstimate(stepId, patch.estimatedMinutes);
-        }
-        valueText = patch.estimatedMinutes != null
-          ? formatDuration(patch.estimatedMinutes)
-          : EFFORT_LABELS[suggestion.effort];
+        const stepId = activeMealSlotStepId(task);
+        if (stepId) useSettingsStore.getState().setMealSlotStepEstimate(stepId, patch.estimatedMinutes);
+        valueText = formatDuration(patch.estimatedMinutes);
       }
       snapshots.push(...rowSnapshots);
       logSession({
@@ -1331,7 +1328,7 @@ export function BackfillScreen() {
       `Apply ${count} ${count === 1 ? 'suggestion' : 'suggestions'}?`,
       `Sets the suggested ${label} on ${count} ${count === 1 ? 'task' : 'tasks'}. Each one gets its own Undo when the queue finishes, and a shake undoes the whole batch.`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         { text: 'Apply all', onPress: applyAllSuggestions },
       ]
     );
@@ -1864,7 +1861,7 @@ export function BackfillScreen() {
         `Merge into “${clash.name}”?`,
         `You already have an item called “${clash.name}”. Merging keeps that one and adds this item’s history, boxes and stores to it.`,
         [
-          { text: 'Cancel', style: 'cancel' },
+          { text: BUTTON_LABEL.cancel, style: 'cancel' },
           {
             text: 'Merge',
             style: 'destructive',
@@ -2005,7 +2002,7 @@ export function BackfillScreen() {
     const n = parseFloat(customText);
     if (!Number.isFinite(n) || n <= 0) return;
     const minutes = Math.round(customUnit === 'hr' ? n * 60 : n);
-    apply({ effort: minutesToEffort(minutes), estimatedMinutes: minutes }, formatDuration(minutes));
+    apply(estimatePatchForMinutes(minutes), formatDuration(minutes));
   };
 
   const applyReminder = (date: Date, kind: ReminderKind, offsetDays: number | null, anchor: 'wallClock' | 'fixed', tracksVisibility: boolean) => {
@@ -2857,7 +2854,7 @@ export function BackfillScreen() {
                   accessibilityLabel={`Save something to ask ${displayNameOf(currentPerson)} about`}
                 >
                   <Ionicons name="chatbubble-ellipses" size={iconSize.md} color={colors.onAccent} />
-                  <Text style={styles.toggleButtonText}>Save</Text>
+                  <Text style={styles.toggleButtonText}>{BUTTON_LABEL.save}</Text>
                 </PressableScale>
               </View>
             )}
@@ -2884,7 +2881,7 @@ export function BackfillScreen() {
                   accessibilityLabel={`Save where ${displayNameOf(currentPerson)} lives`}
                 >
                   <Ionicons name="airplane" size={iconSize.md} color={colors.onAccent} />
-                  <Text style={styles.toggleButtonText}>Save</Text>
+                  <Text style={styles.toggleButtonText}>{BUTTON_LABEL.save}</Text>
                 </PressableScale>
               </View>
             )}
@@ -3431,7 +3428,7 @@ export function BackfillScreen() {
                   accessibilityLabel={nameChanged ? `Rename ${currentItem.name}` : `Save brand and product for ${currentItem.name}`}
                 >
                   <Ionicons name={nameChanged ? 'pricetag' : 'checkmark'} size={iconSize.md} color={colors.onAccent} />
-                  <Text style={styles.toggleButtonText}>{nameChanged ? 'Rename' : 'Save'}</Text>
+                  <Text style={styles.toggleButtonText}>{nameChanged ? 'Rename' : BUTTON_LABEL.save}</Text>
                 </PressableScale>
               </View>
             </View>
@@ -3456,7 +3453,7 @@ export function BackfillScreen() {
                 accessibilityLabel={`Save brand and product for ${currentItem.name}`}
               >
                 <Ionicons name="checkmark" size={iconSize.md} color={colors.onAccent} />
-                <Text style={styles.toggleButtonText}>Save</Text>
+                <Text style={styles.toggleButtonText}>{BUTTON_LABEL.save}</Text>
               </PressableScale>
             </View>
           )}
@@ -3796,7 +3793,7 @@ interface FieldControlProps {
   task: Task;
   colors: Colors;
   styles: ReturnType<typeof makeStyles>;
-  onEstimate: (effort: Effort) => void;
+  onEstimate: (minutes: number) => void;
   onPriority: (priority: (typeof PRIORITY_SEGMENTS)[number]['value']) => void;
   onCategory: (name: string | null) => void;
   onStreak: () => void;
@@ -3822,19 +3819,17 @@ function FieldControl({
     return (
       <View>
         <View style={styles.pillRow}>
-          {ESTIMATE_EFFORTS.map(e => {
-            const mins = EFFORT_MINUTES[e];
-            const isCurrent = mins != null && task.estimatedMinutes === mins;
+          {ESTIMATE_PRESET_MINUTES.map(mins => {
+            const isCurrent = task.estimatedMinutes === mins;
             return (
               <PressableScale
-                key={e}
+                key={mins}
                 style={[styles.pill, isCurrent && styles.pillActive]}
-                onPress={() => onEstimate(e)}
+                onPress={() => onEstimate(mins)}
                 accessibilityRole="button"
-                accessibilityLabel={`${EFFORT_LABELS[e]}${mins != null ? `, about ${formatDuration(mins)}` : ''}`}
+                accessibilityLabel={formatDuration(mins)}
               >
-                <Text style={styles.pillText}>{EFFORT_LABELS[e]}</Text>
-                {mins != null && <Text style={styles.pillHint}>{formatDuration(mins)}</Text>}
+                <Text style={styles.pillText}>{formatDuration(mins)}</Text>
               </PressableScale>
             );
           })}
@@ -3845,7 +3840,6 @@ function FieldControl({
             accessibilityLabel="Enter an exact time estimate"
           >
             <Text style={styles.pillText}>Custom</Text>
-            <Text style={styles.pillHint}>exact</Text>
           </PressableScale>
         </View>
         {customOpen && (

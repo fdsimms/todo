@@ -19732,6 +19732,16 @@ describe('a task that records a dose', () => {
     expect(useMedicationStore.getState().logs).toHaveLength(0);
   });
 
+  it('announces the dose on the undo bar, and an ordinary tick stays quiet', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 't1', medicationName: 'Sertraline' }), makeTask({ id: 't2' })],
+    });
+    useTaskStore.getState().completeTask('t1');
+    expect(useTaskStore.getState().lastAction).toMatchObject({ label: 'Logged Sertraline', announce: true });
+    useTaskStore.getState().completeTask('t2');
+    expect(useTaskStore.getState().lastAction?.announce).toBe(false);
+  });
+
   it('records nothing when the day closed the task rather than the person', () => {
     // A missed sweep completes the row without anybody having taken anything.
     useTaskStore.setState({

@@ -20,6 +20,7 @@ on:
       - 'src/utils/**'
       - 'src/store/**'
       - 'src/services/**'
+      - 'src/copy/**'
       - 'src/types/**'
       - 'package.json'
       - 'package-lock.json'

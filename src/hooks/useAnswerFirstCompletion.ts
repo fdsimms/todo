@@ -3,6 +3,7 @@ import { Alert } from 'react-native';
 import type { Task } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
 import { tasksAskingOnCompletion, unansweredCompletionCopy } from '../utils/bulkCompletion';
+import { BUTTON_LABEL } from '../copy/shared';
 
 const NOTHING_QUEUED: readonly string[] = [];
 
@@ -68,7 +69,7 @@ export function useAnswerFirstCompletion(onOpenTask?: (task: Task) => void) {
         },
       },
       { text: 'Complete without answering', onPress: () => complete([]) },
-      { text: 'Cancel', style: 'cancel' },
+      { text: BUTTON_LABEL.cancel, style: 'cancel' },
     ]);
   }, []);
 

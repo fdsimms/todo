@@ -14,6 +14,7 @@ import { spacing, radius, font, fontWeight, interaction, type Colors } from '../
 import { haptics } from '../utils/haptics';
 import { TextField } from './TextField';
 import { Toggle } from './Toggle';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -75,9 +76,9 @@ export function PersonGroupEditor({ visible, person, onClose }: Props) {
       `Delete ${currentGroup.name}?`,
       'Nobody in it is deleted. They stop sharing one reminder and one tag.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
-          text: 'Delete',
+          text: BUTTON_LABEL.delete,
           style: 'destructive',
           onPress: () => { removeGroupRow(currentGroup.id); onClose(); },
         },
@@ -114,7 +115,7 @@ export function PersonGroupEditor({ visible, person, onClose }: Props) {
           <SheetHeader
             bare
             title="Group"
-            left={<SheetHeaderButton label="Done" onPress={saveAndClose} />}
+            left={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={saveAndClose} />}
             right={
               <TouchableOpacity onPress={handleDeleteGroup} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete group">
                 <Ionicons name="trash-outline" size={20} color={colors.red} />
@@ -191,7 +192,7 @@ export function PersonGroupEditor({ visible, person, onClose }: Props) {
         <SheetHeader
           bare
           title="Group"
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={onClose} />}
           right={<View style={{ minWidth: 44 }} />}
         />
       }

@@ -23,6 +23,7 @@ import { TextField } from './TextField';
 import { InlineAction } from './InlineAction';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { TITLE_MAX_LENGTH } from '../types';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -203,7 +204,7 @@ export function TaskBreakdownSheet({ visible, taskId, onClose }: Props) {
         <SheetHeader
           title="Break it up"
           icon="sparkles"
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} />}
           right={
             <SheetHeaderButton
               label={acceptedCount > 0 ? `Add ${acceptedCount}` : 'Add'}

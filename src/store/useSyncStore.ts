@@ -282,7 +282,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     try {
       reason = await cloudKitUnavailableReason();
     } catch {
-      set({ problem: 'Could not check your iCloud account.' });
+      set({ problem: 'Couldn’t check your iCloud account.' });
       return;
     }
     if (reason) {

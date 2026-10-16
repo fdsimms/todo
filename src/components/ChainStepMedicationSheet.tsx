@@ -18,6 +18,8 @@ import { PillGroup } from './PillGroup';
 import { TaskDoseAmount } from './TaskDoseAmount';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { TextField } from './TextField';
+import { HelpText } from './HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 const NAME_MAX_LENGTH = 60;
 
@@ -114,9 +116,9 @@ export function ChainStepMedicationSheet({
     >
       <View style={styles.card}>
         <View style={styles.headerRow}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={() => dismiss(onClose)} minWidth={56} />
+          <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={() => dismiss(onClose)} minWidth={56} />
           <Text style={styles.heading} numberOfLines={2}>{step?.title ?? 'Step'}</Text>
-          <SheetHeaderButton label="Done" onPress={save} minWidth={56} style={styles.headerRight} />
+          <SheetHeaderButton label={BUTTON_LABEL.done} onPress={save} minWidth={56} style={styles.headerRight} />
         </View>
 
         <Text style={styles.label}>Log a dose</Text>
@@ -172,9 +174,9 @@ export function ChainStepMedicationSheet({
               />
               {/* The one place a taper can be discovered from: nothing else
                   says a chain of doses can step down a day at a time. */}
-              <Text style={[styles.hint, styles.taperHint]}>
+              <HelpText style={[styles.hint, styles.taperHint]}>
                 For a taper, give each step its own dose, set Next step to On the next repeat, and end the repeat after the last step.
-              </Text>
+              </HelpText>
             </>
           )}
         </View>

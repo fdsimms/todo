@@ -40,6 +40,7 @@ import { reuseUnchangedLists } from '../utils/stableLists';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
+import { BUTTON_LABEL } from '../copy/shared';
 
 // One shared empty roster for a stack with no members, so its memoized row
 // isn't handed a fresh `[]` on every render.
@@ -180,7 +181,7 @@ export function StacksScreen() {
       `This deletes ${ids.length} ${ids.length === 1 ? 'stack' : 'stacks'}. Shake your phone right after to undo.`,
       anyMembers
         ? [
-            { text: 'Cancel', style: 'cancel' },
+            { text: BUTTON_LABEL.cancel, style: 'cancel' },
             { text: `Delete ${stackWord} only`, onPress: deleteThenClose(false) },
             {
               text: `Delete ${stackWord} and all ${possessive} tasks`,
@@ -189,8 +190,8 @@ export function StacksScreen() {
             },
           ]
         : [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Delete', style: 'destructive', onPress: deleteThenClose(false) },
+            { text: BUTTON_LABEL.cancel, style: 'cancel' },
+            { text: BUTTON_LABEL.delete, style: 'destructive', onPress: deleteThenClose(false) },
           ],
     );
   };
@@ -281,7 +282,7 @@ export function StacksScreen() {
           totalCount={groups.length}
           actions={[
             { key: 'move', icon: 'folder', label: 'Move', tone: 'purple', onPress: () => setCategoryPickerVisible(true) },
-            { key: 'delete', icon: 'trash', label: 'Delete', tone: 'destructive', onPress: handleBulkDelete },
+            { key: 'delete', icon: 'trash', label: BUTTON_LABEL.delete, tone: 'destructive', onPress: handleBulkDelete },
           ]}
           onSelectAll={() => selectAll(groups.map(g => g.id))}
           onDeselectAll={deselectAll}

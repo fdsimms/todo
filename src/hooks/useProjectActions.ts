@@ -8,6 +8,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { templateFromProject } from '../utils/projectTemplate';
 import { haptics } from '../utils/haptics';
 import type { Project } from '../types';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Options {
   /** The name as it reads on screen right now (the editor's title may be mid-edit). */
@@ -48,7 +49,7 @@ export function useProjectActions(project: Project | null, options: Options = {}
       `Delete “${displayTitle()}”?`,
       'Keep its tasks without a project, or delete them with it.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         { text: 'Delete project only', onPress: () => { deleteProject(project.id, { cascade: false }); onDeleted?.(); } },
         {
           text: 'Delete project and tasks',
@@ -81,7 +82,7 @@ export function useProjectActions(project: Project | null, options: Options = {}
       `Complete “${displayTitle()}”?`,
       `It still has ${remaining.length} open ${remaining.length === 1 ? 'task' : 'tasks'}.`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         { text: 'Leave remaining tasks', onPress: () => finish(false) },
         { text: 'Archive remaining tasks', onPress: () => finish(true) },
       ],
@@ -138,7 +139,7 @@ export function useProjectActions(project: Project | null, options: Options = {}
       'Start a fresh copy?',
       'Makes a new project with the same tasks and sections, all open and undated. The original isn’t changed.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
           text: 'Start fresh',
           onPress: () => {

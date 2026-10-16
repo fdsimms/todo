@@ -117,6 +117,7 @@ import { useFilterField } from '../hooks/useFilterField';
 import { useLogicalDayKey } from '../hooks/useLogicalDayKey';
 import { usePullToSearch } from '../hooks/usePullToSearch';
 import { TextField } from '../components/TextField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 type RootStackParamList = {
   ProjectDetail: { projectId: string; returnTo?: string };
@@ -163,7 +164,7 @@ function AddProjectTaskFabWithDropLabel({
 } & Omit<React.ComponentProps<typeof FabMenu>, 'dragLabel'>) {
   const label = useFabIntentSelector(channel, intent => {
     switch (intent?.kind) {
-      case 'cancel': return 'Cancel';
+      case 'cancel': return BUTTON_LABEL.cancel;
       case 'joinGroup': return `Add to ${intent.groupTitle.trim() || 'section'}`;
       case 'insert': return 'New task here';
       default: return null;
@@ -2207,7 +2208,7 @@ function ProjectDetailContent() {
               // so there is nothing for Cancel to take back.
               left={
                 <SheetHeaderButton
-                  label="Done"
+                  label={BUTTON_LABEL.done}
                   onPress={() => { Keyboard.dismiss(); setShowExistingPicker(false); }}
                   accessibilityLabel="Done adding tasks"
                 />
