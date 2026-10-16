@@ -10,8 +10,10 @@ import {
   type GroceryAction,
   type MoodAction,
   type SearchActionSources,
+  type SymptomAction,
   type WaterAction,
 } from '../utils/searchActions';
+import { resolveClockTime } from '../utils/symptomQuickLog';
 import type { MedicationSettingsMap } from '../utils/medicationSettings';
 
 let seq = 0;
@@ -207,6 +209,50 @@ describe('searchActions: symptoms', () => {
     expect(searchActions('record TIRED', mood).onSubmit).toMatchObject({ symptom: 'Tired' });
   });
 
+  it('offers the write as you start typing a symptom, without a verb', () => {
+    const sources: SearchActionSources = { mood: { symptoms: ['Lightheaded', 'Headache'] } };
+    const row = searchActions('light', sources);
+    expect(row.actions).toHaveLength(1);
+    expect(row.actions[0]).toMatchObject({ kind: 'symptom', symptom: 'Lightheaded', severity: 1, at: null, explicit: false });
+    // Two letters is too short to mean it, and Return never runs a bare name.
+    expect(searchActions('li', sources).actions).toEqual([]);
+    expect(row.onSubmit).toBeNull();
+  });
+
+  it('reads "I got ..." sentences and a stated severity', () => {
+    const sources: SearchActionSources = { mood: { symptoms: ['Lightheaded'] } };
+    expect(searchActions('I got lightheaded', sources).actions[0]).toMatchObject({ symptom: 'Lightheaded', severity: 1 });
+    expect(searchActions("I'm really lightheaded", sources).actions[0]).toMatchObject({ symptom: 'Lightheaded' });
+    expect(searchActions('severe lightheaded', sources).actions[0]).toMatchObject({ severity: 3 });
+    expect(searchActions('log lightheaded, moderate', sources).onSubmit).toMatchObject({ severity: 2, explicit: true });
+  });
+
+  it('reads a time stated as a clock or as minutes ago, never in the future', () => {
+    const sources: SearchActionSources = { mood: { symptoms: ['Lightheaded'] } };
+    const at = (q: string) => (searchActions(q, sources).actions[0] as SymptomAction).at;
+    const now = Date.now();
+    expect(at('lightheaded 20 min ago')!.getTime()).toBeGreaterThan(now - 20 * 60_000 - 5_000);
+    expect(at('lightheaded 20 min ago')!.getTime()).toBeLessThan(now - 20 * 60_000 + 5_000);
+    const clock = at('I got lightheaded at 3:40pm')!;
+    expect([clock.getHours(), clock.getMinutes()]).toEqual([15, 40]);
+    expect(clock.getTime()).toBeLessThanOrEqual(now);
+    expect(at('lightheaded 9 am')!.getHours()).toBe(9);
+    expect(at('lightheaded')).toBeNull();
+  });
+
+  it('resolves a clock time without am/pm to the latest one that has happened', () => {
+    const now = new Date(2026, 9, 16, 16, 0);
+    expect(resolveClockTime(3, 40, null, now)).toEqual(new Date(2026, 9, 16, 15, 40));
+    expect(resolveClockTime(5, 0, null, now)).toEqual(new Date(2026, 9, 16, 5, 0));
+    expect(resolveClockTime(9, 0, 'pm', now)).toEqual(new Date(2026, 9, 15, 21, 0));
+    expect(resolveClockTime(13, 0, 'pm', now)).toBeNull();
+  });
+
+  it('does not take a bare trailing number for a time', () => {
+    const sources: SearchActionSources = { mood: { symptoms: ['Vitamin 3 rash'] } };
+    expect(searchActions('vitamin 3', sources).actions[0]).toMatchObject({ symptom: 'Vitamin 3 rash', at: null });
+  });
+
   it('never offers a write for a name the log has not seen or a mood label', () => {
     expect(searchActions('log nausea', mood).actions).toEqual([]);
     expect(searchActions('feeling nauseous', mood).actions.map(a => a.kind)).toEqual(['mood']);
@@ -307,10 +353,16 @@ describe('describeSearchAction', () => {
   it('says what the mood log will open with', () => {
     const mood = { mood: { symptoms: ['Tired'] } };
     const tired = searchActions('feeling tired', mood).actions;
-    expect(describeSearchAction(tired[0], ctx())).toMatchObject({ title: 'Log Tired', meta: ['Mild · no mood level'] });
+    expect(describeSearchAction(tired[0], ctx())).toMatchObject({ title: 'Log Tired', meta: [] });
     expect(describeSearchAction(tired[1], ctx()).meta).toEqual(['Opens with Tired checked']);
     expect(describeSearchAction(only<MoodAction>('feeling low', mood)!, ctx()).meta).toEqual(['Opens with Low picked']);
     expect(describeSearchAction(only<MoodAction>('mood', mood)!, ctx())).toMatchObject({ title: 'Log your mood', meta: ['Opens the mood log'] });
+  });
+
+  it('puts a stated time in the symptom row title, with no line under it', () => {
+    const row = only<SymptomAction>('lightheaded at 3:40pm', { mood: { symptoms: ['Lightheaded'] } })!;
+    expect(describeSearchAction(row, ctx())).toMatchObject({ meta: [] });
+    expect(describeSearchAction(row, ctx()).title).toMatch(/^Log Lightheaded at .*3:40 PM$/);
   });
 
   it('names the list, and says when the item is already on it', () => {

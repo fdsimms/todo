@@ -117,11 +117,11 @@ function runGrocery(action: GroceryAction): SearchActionReceipt | null {
 function runSymptom(action: SymptomAction): SearchActionReceipt | null {
   // Through `addLog` like the sheet's Save, so the day key is stamped under
   // `dayResetTime`. No mood level: this entry says only that the symptom happened.
-  const log = useMoodStore.getState().addLog(null, [{ name: action.symptom, severity: 1 }]);
+  const log = useMoodStore.getState().addLog(null, [{ name: action.symptom, severity: action.severity }], null, action.at ?? undefined);
   if (!log) return null;
   return {
     title: `Logged ${action.symptom}`,
-    meta: `${severityLabel(1)} · ${format(new Date(log.loggedAt), 'h:mm a')}`,
+    meta: `${severityLabel(action.severity)} · ${format(new Date(log.loggedAt), 'h:mm a')}`,
     undo: () => useMoodStore.getState().removeLog(log.id),
   };
 }
