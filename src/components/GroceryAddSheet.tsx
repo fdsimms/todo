@@ -13,6 +13,8 @@ import { SheetScrim } from './SheetScrim';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, animation, type Colors } from '../theme';
 import type { GroceryItem } from '../types';
+import { HelpText } from './HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -144,7 +146,7 @@ export function GroceryAddSheet({ visible, onClose, seedAisle, onAdded }: Props)
                 ? `Added ${addedCount} ${addedCount === 1 ? 'item' : 'items'}${seedAisle ? ` to ${seedAisle}` : ''}`
                 : seedAisle ? `Add to ${seedAisle}` : 'Add to the list'}
             </Text>
-            <SheetHeaderButton label="Done" onPress={confirm} />
+            <SheetHeaderButton label={BUTTON_LABEL.done} onPress={confirm} />
           </View>
 
           {/* Paste-to-bulk-add (GroceryAddField.handleChange) has no control of
@@ -154,7 +156,7 @@ export function GroceryAddSheet({ visible, onClose, seedAisle, onAdded }: Props)
               the burst is under way, the same as the title above it swapping to
               a count, since by then it's been seen. */}
           {addedCount === 0 && (
-            <Text style={styles.hint}>Paste a list to add several items at once.</Text>
+            <HelpText style={styles.hint}>Paste a list to add several items at once.</HelpText>
           )}
 
           <GroceryAddField

@@ -614,6 +614,19 @@ export function recallAmount(
 }
 
 /**
+ * A recalled amount as a row can say it, so the plus beside a row names what
+ * it will log. A food's amount is already text ("250g", "1.5 cup"); a dish's
+ * is a bare number whose unit is `dishMeasure`, and "1" on its own says nothing.
+ */
+export function describeRecalledAmount(recalled: RecalledAmount): string {
+  if (recalled.dishMeasure === 'weight') return `${recalled.amount} g`;
+  if (recalled.dishMeasure === 'servings') {
+    return Number(recalled.amount) === 1 ? '1 serving' : `${recalled.amount} servings`;
+  }
+  return recalled.amount;
+}
+
+/**
  * What some number of helpings of a cooked dish works out to.
  *
  * **Takes the dish's per-serving figures, not the dish**, so this module needs

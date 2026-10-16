@@ -9,6 +9,7 @@ import {
   subscribeAccessories,
   unregisterAccessory,
 } from '../utils/accessoryStack';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /**
  * Every number-pad TextInput in the app points its `inputAccessoryViewID` at
@@ -59,7 +60,7 @@ export function NumberPadAccessory() {
   return (
     <InputAccessoryView nativeID={NUMBER_PAD_ACCESSORY_ID} backgroundColor={colors.bgSecondary}>
       <View style={styles.bar}>
-        <SheetHeaderButton label="Done" onPress={() => Keyboard.dismiss()} />
+        <SheetHeaderButton label={BUTTON_LABEL.done} onPress={() => Keyboard.dismiss()} />
       </View>
     </InputAccessoryView>
   );

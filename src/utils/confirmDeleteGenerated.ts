@@ -4,6 +4,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { stoppableGenerator } from './generatedTasks';
 import { confirmDelete } from './confirmDelete';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /**
  * Delete one task, offering to turn off the generator that wrote it.
@@ -35,7 +36,7 @@ export function confirmDeleteGenerated(task: Task, onDeleted?: () => void): void
     'Delete task?',
     `“${task.title}” was added automatically by “${spec.label}”. Delete this one, or delete it and turn that off? You can turn it back on in Settings.`,
     [
-      { text: 'Cancel', style: 'cancel' },
+      { text: BUTTON_LABEL.cancel, style: 'cancel' },
       { text: 'Delete this one', onPress: () => run(false) },
       { text: 'Delete and turn off', style: 'destructive', onPress: () => run(true) },
     ],

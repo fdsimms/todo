@@ -7,6 +7,7 @@ import { spacing, font, radius, border, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useBulkBarEntrance } from '../hooks/useBulkBarEntrance';
 import { TextField } from './TextField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   selectedCount: number;
@@ -57,7 +58,7 @@ export function TemplateItemBulkBar({ selectedCount, onDelete, onGroup, onCancel
             </PressableScale>
             <PressableScale style={styles.actionBtn} onPress={() => { haptics.impactMedium(); onDelete(); }}>
               <Ionicons name="trash" size={24} color={colors.red} />
-              <Text style={[styles.actionLabel, { color: colors.redText }]}>Delete</Text>
+              <Text style={[styles.actionLabel, { color: colors.redText }]}>{BUTTON_LABEL.delete}</Text>
             </PressableScale>
           </View>
         </>

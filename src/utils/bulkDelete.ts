@@ -1,5 +1,6 @@
 import type { Task } from '../types';
 import { isLiveRecurring, isMissableMealPlanTask } from './visibilityUtils';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /**
  * Which tasks in a selection a bulk delete should offer to mark missed
@@ -77,7 +78,7 @@ export function bulkDeletePrompt(ids: readonly string[], tasks: readonly Task[])
       message: one
         ? 'This came from your meal plan. Mark it missed to keep a record, or delete it?'
         : 'These came from your meal plan. Mark them missed to keep a record, or delete them?',
-      deleteLabel: wholeSelectionMissable ? 'Delete' : 'Delete anyway',
+      deleteLabel: wholeSelectionMissable ? BUTTON_LABEL.delete : 'Delete anyway',
     };
   }
   return {

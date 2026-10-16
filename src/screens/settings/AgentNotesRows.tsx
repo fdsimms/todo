@@ -16,6 +16,7 @@ import {
 } from '../../utils/agentNotes';
 import { SettingsRow } from './SettingsRow';
 import { makeSettingsStyles } from './settingsStyles';
+import { BUTTON_LABEL } from '../../copy/shared';
 
 /**
  * What Claude is asked to keep in mind, in Settings › Data & reset › Sync,
@@ -46,7 +47,7 @@ export function AgentNotesRows() {
       'Add a note for Claude',
       'Something for Claude to keep in mind when it works with your list.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
           text: 'Add',
           onPress: (text?: string) => {
@@ -70,9 +71,9 @@ export function AgentNotesRows() {
       'Edit note',
       undefined,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
-          text: 'Save',
+          text: BUTTON_LABEL.save,
           onPress: (text?: string) => {
             if ((text ?? '').trim() === note.text) return;
             haptics.success();
@@ -90,7 +91,7 @@ export function AgentNotesRows() {
       'Remove this note?',
       'Claude will no longer be reminded of it.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         { text: 'Remove', style: 'destructive', onPress: () => { haptics.warning(); commit(removeAgentNote(notes, note.id)); } },
       ],
     );

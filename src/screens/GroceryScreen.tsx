@@ -100,6 +100,7 @@ import type { GroceryItem, ItemProduct, Recipe, Shop } from '../types';
 import { describeProduct, preferredProductOf } from '../utils/groceryProduct';
 import { entryFor, itemsOnList, listNameFor, isAwayList, HOME_LIST_NAME } from '../utils/groceryLists';
 import { LazySheet } from '../components/LazySheet';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /** The collapse and scroll key of one store's section in the store lens. */
 const storeSectionKey = (shopId: string | null) => `store:${shopId ?? 'none'}`;
@@ -171,7 +172,7 @@ function AddGroceryFabWithDropLabel({
   channel: FabIntentChannel;
 } & Omit<React.ComponentProps<typeof FabMenu>, 'dragLabel'>) {
   const label = useFabIntentSelector(channel, intent => {
-    if (intent?.kind === 'cancel') return 'Cancel';
+    if (intent?.kind === 'cancel') return BUTTON_LABEL.cancel;
     if (intent?.kind !== 'insert') return null;
     return intent.category ? `New item in ${intent.category}` : 'New item here';
   });

@@ -87,6 +87,8 @@ import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { ProgressBar } from '../components/ProgressBar';
 import { AnimatedNumber } from '../components/AnimatedNumber';
+import { HelpText } from '../components/HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /**
  * Coins and rewards — the screen for `src/utils/rewards.ts`.
@@ -428,9 +430,9 @@ export function RewardsScreen() {
         ? 'Coins already spent on it aren’t refunded. The task stays in your project.'
         : 'Coins already spent on it aren’t refunded.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
-          text: 'Delete',
+          text: BUTTON_LABEL.delete,
           style: 'destructive',
           onPress: () => {
             closeDraft();
@@ -488,12 +490,12 @@ export function RewardsScreen() {
       {/* Add/Save and Cancel sit at the top: the form runs several screens
           long, and at the bottom they were behind the keyboard or off screen. */}
       <View style={styles.draftHeader}>
-        <SheetHeaderButton label="Cancel" role="cancel" onPress={closeDraft} minWidth={56} />
+        <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={closeDraft} minWidth={56} />
         <Text style={styles.draftHeaderTitle} numberOfLines={1}>
           {draft?.mode === 'edit' ? 'Edit reward' : 'New reward'}
         </Text>
         <SheetHeaderButton
-          label={draft?.mode === 'edit' ? 'Save' : 'Add'}
+          label={draft?.mode === 'edit' ? BUTTON_LABEL.save : 'Add'}
           onPress={saveDraft}
           disabled={!canSave}
           minWidth={56}
@@ -672,7 +674,7 @@ export function RewardsScreen() {
           <View style={styles.switchRow}>
             <View style={styles.switchText}>
               <Text style={styles.switchLabel}>One time only</Text>
-              <Text style={styles.hint}>Checked off in your project once claimed.</Text>
+              <HelpText style={styles.hint}>Checked off in your project once claimed.</HelpText>
             </View>
             <Switch
               value={draftOneTime}
@@ -727,9 +729,9 @@ export function RewardsScreen() {
             return (
               <>
                 <Text style={styles.fieldLabel}>Linked habit</Text>
-                <Text style={styles.hint}>
+                <HelpText style={styles.hint}>
                   An Avoid this habit for having this without claiming it. A slip on the habit claims this reward, or takes your coins up to its price if you can’t afford it.
-                </Text>
+                </HelpText>
                 {habit && <Text style={styles.guardName}>{displayTitleFor(habit)}</Text>}
                 <View style={[styles.rewardActions, styles.guardActions]}>
                   <InlineAction
@@ -756,7 +758,7 @@ export function RewardsScreen() {
         return (
           <View style={[styles.rewardActions, styles.draftActions]}>
             <InlineAction
-              label="Delete"
+              label={BUTTON_LABEL.delete}
               icon="trash-outline"
               variant="neutral"
               onPress={() => remove(editing, title)}

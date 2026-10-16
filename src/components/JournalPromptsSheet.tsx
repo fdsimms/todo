@@ -14,6 +14,8 @@ import {
   JOURNAL_CUSTOM_PROMPT_MAX_LENGTH,
   cleanJournalPrompts,
 } from '../utils/journal';
+import { HelpText } from './HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -58,12 +60,12 @@ export function JournalPromptsSheet({ visible, onClose }: Props) {
         <View style={styles.headerRow}>
           <View style={styles.headerSide} />
           <Text style={styles.heading}>Your prompts</Text>
-          <SheetHeaderButton label="Done" onPress={dismiss} minWidth={56} style={styles.headerRight} />
+          <SheetHeaderButton label={BUTTON_LABEL.done} onPress={dismiss} minWidth={56} style={styles.headerRight} />
         </View>
         <View style={styles.body}>
-          <Text style={styles.hint}>
+          <HelpText style={styles.hint}>
             Questions you want offered over a blank journal page. They show before the built-in ones, and only when you tap Suggest a prompt.
-          </Text>
+          </HelpText>
           {prompts.length > 0 && (
             <ScrollView style={styles.list} keyboardShouldPersistTaps="handled">
               {prompts.map((prompt, index) => (

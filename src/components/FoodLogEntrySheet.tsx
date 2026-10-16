@@ -56,6 +56,7 @@ import {
   matchMealPlanEntry,
   parseFoodAmount,
   recallAmount,
+  describeRecalledAmount,
   recipeHelpingNutrition,
   savedMealCalories,
   savedMealsMatching,
@@ -102,6 +103,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { useFilterField } from '../hooks/useFilterField';
 import { TextField } from './TextField';
 import { OTHER_UNIT_KEY, UnitMenuChip } from './UnitMenuChip';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /**
  * Writing down something eaten.
@@ -1169,7 +1171,7 @@ export function FoodLogEntrySheet({
       `${item.name} already has figures`,
       `Keep the ones already on ${item.name}, or replace them with these? Either way this entry is filed as ${item.name}.`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         { text: 'Keep its own', onPress: () => link(null) },
         {
           text: 'Replace',
@@ -1199,7 +1201,7 @@ export function FoodLogEntrySheet({
       'Add as a new item',
       'Name for this item in your grocery catalog. It isn’t added to your shopping list.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
           text: 'Add',
           onPress: (text?: string) => {
@@ -1557,11 +1559,13 @@ export function FoodLogEntrySheet({
   // ==== render. Everything below is JSX ====
   const renderRow = ({ item }: { item: Candidate }) => {
     const recalled = editing ? null : recallFor(item);
+    // The plus logs the amount last time's helping had, so the row says it.
+    const meta = [recalled ? describeRecalledAmount(recalled) : '', item.detail].filter(Boolean).join(' · ');
     const body = (
       <>
         <View style={styles.rowText}>
           <Text style={styles.rowTitle}>{item.label}</Text>
-          {!!item.detail && <Text style={styles.rowMeta}>{item.detail}</Text>}
+          {!!meta && <Text style={styles.rowMeta}>{meta}</Text>}
         </View>
         {!recalled && <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />}
       </>
@@ -1597,7 +1601,7 @@ export function FoodLogEntrySheet({
           activeOpacity={interaction.activeOpacity}
           onPress={() => quickLog(item)}
           accessibilityRole="button"
-          accessibilityLabel={`Log ${item.label} again, ${recalled.amount}`}
+          accessibilityLabel={`Log ${item.label} again, ${describeRecalledAmount(recalled)}`}
         >
           <Ionicons name="add-circle-outline" size={iconSize.md} color={colors.accent} />
         </TouchableOpacity>
@@ -1820,13 +1824,13 @@ export function FoodLogEntrySheet({
           <View style={styles.headerRow}>
             {picked && !editing
               ? <SheetHeaderButton label="Back" role="cancel" onPress={changeFood} minWidth={64} />
-              : <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />}
+              : <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={64} />}
             {!picked && (
               <Text style={styles.headerTitle} numberOfLines={1}>
                 {editing ? 'What was it?' : 'What did you eat?'}
               </Text>
             )}
-            <SheetHeaderButton label={editing ? 'Save' : 'Add'} onPress={handleSave} disabled={!built} minWidth={64} />
+            <SheetHeaderButton label={editing ? BUTTON_LABEL.save : 'Add'} onPress={handleSave} disabled={!built} minWidth={64} />
           </View>
           {/* Full width of the header rather than squeezed between the two
               buttons, so a long scanned product name gets far more room
@@ -2010,7 +2014,7 @@ export function FoodLogEntrySheet({
                   />
                   <Text style={styles.weighUnit}>g</Text>
                   <InlineAction
-                    label="Save"
+                    label={BUTTON_LABEL.save}
                     onPress={handleSaveWeighedPortion}
                     disabled={!weighable || !weighGrams.trim()}
                     haptic
@@ -2068,7 +2072,7 @@ export function FoodLogEntrySheet({
                     onPress={() => { haptics.tap(); fileAsNewItem(); }}
                   />
                   <InlineAction
-                    label={catalogPickOpen ? 'Cancel' : 'Link to an existing item'}
+                    label={catalogPickOpen ? BUTTON_LABEL.cancel : 'Link to an existing item'}
                     icon="albums-outline"
                     variant="neutral"
                     onPress={() => { haptics.tap(); setCatalogPickOpen(o => !o); }}

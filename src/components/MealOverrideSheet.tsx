@@ -18,6 +18,8 @@ import {
   withOverride,
 } from '../utils/mealOverrides';
 import { confirmDiscard } from '../utils/confirmDiscard';
+import { HelpText } from './HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -119,9 +121,9 @@ export function MealOverrideSheet({ visible, entry: liveEntry, recipe: liveRecip
       onRequestClose={handleCancel}
     >
       <View style={styles.header}>
-        <SheetHeaderButton label="Cancel" role="cancel" onPress={() => handleCancel(card.close)} />
+        <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={() => handleCancel(card.close)} />
         <Text style={styles.headerTitle}>Change for this meal</Text>
-        <SheetHeaderButton label="Save" onPress={save} disabled={!built} />
+        <SheetHeaderButton label={BUTTON_LABEL.save} onPress={save} disabled={!built} />
       </View>
 
       <View style={styles.body}>
@@ -185,10 +187,10 @@ export function MealOverrideSheet({ visible, entry: liveEntry, recipe: liveRecip
           </>
         )}
 
-        <Text style={styles.hint}>
+        <HelpText style={styles.hint}>
           This applies to this meal only. The recipe is not changed, and it is not copied when
           the meal or week is.
-        </Text>
+        </HelpText>
       </View>
     </CardSheet>
   );

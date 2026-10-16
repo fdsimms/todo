@@ -11,6 +11,7 @@ import { EmptyState } from './EmptyState';
 import { InlineAction } from './InlineAction';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -62,7 +63,7 @@ export function SavedMealsSheet({ visible, meals, onLog, onDelete, onReview, ove
       `Forget “${meal.name}”?`,
       'Only the shortcut to log it again is removed. Anything already logged stays.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
           text: 'Forget',
           style: 'destructive',
@@ -78,7 +79,7 @@ export function SavedMealsSheet({ visible, meals, onLog, onDelete, onReview, ove
         <SheetHeader
           title="Saved meals"
           left={<View style={styles.headerSpacer} />}
-          right={<SheetHeaderButton label="Done" onPress={onClose} minWidth={56} />}
+          right={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={onClose} minWidth={56} />}
         />
 
         {meals.length === 0 ? (

@@ -21,6 +21,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import type { FoodNutrition } from '../types';
 import { useFilterField } from '../hooks/useFilterField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /**
  * Finding what a catalog food is made of, in a food database, by name.
@@ -168,7 +169,7 @@ export function NutritionSearchSheet({ visible, itemName, onClose, onPick, onOpe
       <View style={styles.root}>
         <SheetHeader
           title="Find nutrition"
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={close} minWidth={64} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={close} minWidth={64} />}
           right={<View style={styles.headerSpacer} />}
         />
 

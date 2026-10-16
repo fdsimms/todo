@@ -28,6 +28,7 @@ import {
   plannedEntryForRecipe,
   portionExamples,
   recallAmount,
+  describeRecalledAmount,
   recipeHelpingNutrition,
   remeasureEntry,
   resolveFoodLogDrop,
@@ -1319,6 +1320,21 @@ describe('composeFoodAmount / parseFoodAmount', () => {
   it('refuses an amount shaped nothing like what these sheets write', () => {
     expect(parseFoodAmount('a splash', options)).toBeNull();
     expect(parseFoodAmount('1 lemon', options)).toBeNull();
+  });
+});
+
+describe('describeRecalledAmount', () => {
+  const recalled = (amount: string, dishMeasure: 'weight' | 'servings' | null) =>
+    ({ amount, unitKey: null, number: '', dishMeasure });
+
+  it('names the unit of a dish amount, which is stored as a bare number', () => {
+    expect(describeRecalledAmount(recalled('250', 'weight'))).toBe('250 g');
+    expect(describeRecalledAmount(recalled('1', 'servings'))).toBe('1 serving');
+    expect(describeRecalledAmount(recalled('1.5', 'servings'))).toBe('1.5 servings');
+  });
+
+  it("leaves a food's amount as its own text", () => {
+    expect(describeRecalledAmount(recalled('1.5 cup', null))).toBe('1.5 cup');
   });
 });
 

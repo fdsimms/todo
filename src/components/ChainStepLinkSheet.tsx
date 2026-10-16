@@ -15,6 +15,7 @@ import { haptics } from '../utils/haptics';
 import { KNOWN_LINK_APPS, linkAppsFor } from '../constants/linkApps';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { TextField } from './TextField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /**
  * The minimum a list item has to carry to have a link button, satisfied by
@@ -110,7 +111,7 @@ export function ChainStepLinkSheet({
             minWidth={56}
           />
           <Text style={styles.heading} numberOfLines={2}>{step?.title ?? 'Step'}</Text>
-          <SheetHeaderButton label="Done" onPress={save} minWidth={56} style={styles.headerRight} />
+          <SheetHeaderButton label={BUTTON_LABEL.done} onPress={save} minWidth={56} style={styles.headerRight} />
         </View>
 
         <Text style={styles.label}>Link</Text>

@@ -49,6 +49,7 @@ import {
 } from '../utils/unattendedLedger';
 import type { ActivityFilter } from '../utils/unattendedLedger';
 import type { UnattendedEntry } from '../types';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /**
  * What the app did while nobody was looking.
@@ -140,7 +141,7 @@ export function UnattendedLogScreen() {
       `Undo ${count} changes?`,
       'Puts back everything Claude changed in this request, except anything you changed since.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
           text: 'Undo all',
           onPress: () => {
@@ -170,7 +171,7 @@ export function UnattendedLogScreen() {
     if (plan.kind === 'none') return;
     const copy = undoCopy(entry, plan);
     Alert.alert(copy.title, copy.message, [
-      { text: 'Cancel', style: 'cancel' },
+      { text: BUTTON_LABEL.cancel, style: 'cancel' },
       {
         text: agentUndoLabel(plan) ?? 'Undo',
         style: copy.destructive ? 'destructive' : 'default',

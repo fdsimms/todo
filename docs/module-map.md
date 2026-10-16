@@ -150,7 +150,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/focusSuggest.ts` — MAX_SUGGESTED_FOCUS, FOCUS_BUDGET_MINUTES, FocusContext, buildFocusContext, fitsWindow, scoreFocusTask, nextFocusSuggestion, suggestFocusTasks, focusQueueFromPinned, focusReason
 - `src/utils/focusWindow.ts` — FOCUS_CALENDAR_HORIZON_MINUTES, CalendarWindow, calendarWindow, FOCUS_MEETING_LEAD_MINUTES, FOCUS_MEETING_HORIZON_MINUTES, FocusMeetingHeadsUp, focusMeetingHeadsUp
 - `src/utils/followUpTask.ts` — MIN_FOLLOW_UP_TASK_EVERY_N, MAX_FOLLOW_UP_TASK_EVERY_N, canHoldFollowUpTask, FollowUpTaskRule, followUpTaskRule, FollowUpTaskEndRule, repeatHasEnd, followUpTaskEndRule, advanceFollowUpTaskTally, FollowUpTaskSuppression, +8 more
-- `src/utils/foodLog.ts` — FoodLogTotals, FoodLogSection, isBeverageName, scalePanelToAmount, portionExamples, amountHint, amountExample, FoodUnitOption, VOLUME_UNIT_OPTIONS, foodUnitOptionsFor, +46 more
+- `src/utils/foodLog.ts` — FoodLogTotals, FoodLogSection, isBeverageName, scalePanelToAmount, portionExamples, amountHint, amountExample, FoodUnitOption, VOLUME_UNIT_OPTIONS, foodUnitOptionsFor, +47 more
 - `src/utils/foodLogEntry.ts` — buildFoodLogEntry
 - `src/utils/foodLogExport.ts` — FOOD_LOG_EXPORT_COLUMNS, foodLogExportCsv, foodLogExportFileName, foodLogExportSummary
 - `src/utils/foodLogRecents.ts` — FoodRecency, creditedKeys, foodLogRecency, foodLastAmounts, rankByRecency, USUAL_FOR_SLOT_LIMIT, usualForSlot, RECENT_HELPING_LIMIT, RECENT_HELPING_DAYS, RECENT_HELPING_MIN_LOGS, +3 more
@@ -203,7 +203,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/journalDraft.ts` — JOURNAL_DRAFT_DELAY_MS, journalDraftKey, readJournalDraft, writeJournalDraft, clearJournalDraft
 - `src/utils/journalExport.ts` — JOURNAL_EXPORT_COLUMNS, PersonNamer, journalExportCsv, journalExportMarkdown, JournalExportFormat, journalExportFileName, journalExportSummary
 - `src/utils/journalHistory.ts` — JournalHistoryKind, JOURNAL_HISTORY_OPTIONS, canOfferJournalHistory, journalHistoryTitle, journalHistoryAt
-- `src/utils/journalMarkdown.ts` — InlineSpan, JournalBlock, parseInline, parseJournalMarkdown, journalPlainText, EditSelection, FormatEdit, toggleWrap, LineFormat, toggleLinePrefix
+- `src/utils/journalMarkdown.ts` — InlineSpan, JournalBlock, parseInline, parseJournalMarkdown, SPOILER_PLAIN_TEXT, journalPlainText, EditSelection, FormatEdit, toggleWrap, LineFormat, +1 more
 - `src/utils/journalTasks.ts` — JOURNAL_LOG_TITLE, JOURNAL_SNIPPET_TITLE, DREAM_LOG_TITLE, journalLogTitle, JOURNAL_TASK_KIND, journalLogUrl, journalTaskSourceId, journalTaskDayKey
 - `src/utils/keyScanAlert.ts` — alertKeyScanResult
 - `src/utils/keyScanQueue.ts` — QueuedKeyScan, QUEUED_KEY_CODE_MAX_LENGTH, parseQueuedKeyScans, keyCodeToken
@@ -290,7 +290,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/pantryStanding.ts` — PantryStanding, pantryStanding
 - `src/utils/pantryWrite.ts` — onHandRow, markedOutRow, disposalRow, thawedPortionsOf, frozenRow, openedRow, reviewedRow, runningLowRow, productOnHandRow, productsOutPlan, +16 more
 - `src/utils/parseNaturalDate.ts` — WEEKDAYS, MONTHS, ClockTime, strip, extractTime, extractDayPart, clockBesideDayPart, dayPartBesideClock, DatePart, NUMBER_WORDS, +5 more
-- `src/utils/parseTaskInput.ts` — withTrailingSpace, ParsedSchedule, ParsedTaskInput, segmentForHour, dueAt, parseFromCompletionSuffix, parseTaskInput, ParsedLink, parseLinkInput, ParsedPhone, +56 more
+- `src/utils/parseTaskInput.ts` — withTrailingSpace, ParsedSchedule, ParsedTaskInput, segmentForHour, dueAt, parseFromCompletionSuffix, parseTaskInput, ParsedLink, parseLinkInput, ParsedPhone, +57 more
 - `src/utils/patchNotes.ts` — PatchNote
 - `src/utils/penaltyShield.ts` — penaltyCutoffAt, PenaltyCharge, penaltyChargeFor, slipPenaltyUntil, extendShieldUntil, penaltyCreditFor, uncreditShieldUntil, creditShieldUntil, penaltyShieldWanted
 - `src/utils/pendingHealthFoodWrites.ts` — runPendingHealthFoodWrites

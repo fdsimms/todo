@@ -20,6 +20,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useRecipeStore } from '../store/useRecipeStore';
 import type { Cookbook } from '../types';
 import { useSheetMotion } from '../hooks/useSheetMotion';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -140,7 +141,7 @@ export function CookbookMergeSheet({ visible, survivorId, onClose, onSelect }: P
         </View>
 
         <TouchableOpacity style={styles.cancelCard} onPress={() => dismiss()} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
-          <Text style={styles.cancelLabel}>Cancel</Text>
+          <Text style={styles.cancelLabel}>{BUTTON_LABEL.cancel}</Text>
         </TouchableOpacity>
       </Animated.View>
     </SheetModal>

@@ -19,6 +19,7 @@ import {
   SHAKE_UPDATE_INTERVAL_MS,
 } from './shakeDetect';
 import { freshest, redoIsCurrent, topOf } from './undoHistory';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /**
  * Global "shake to undo" gesture. Prompts to confirm undoLastAction()
@@ -109,7 +110,7 @@ export function useShakeToUndo(enabled: boolean): void {
         // last, where it has always been, so the muscle memory of shake-then-
         // rightmost keeps doing the same thing.
         const buttons: AlertButton[] = [
-          { text: 'Cancel', style: 'cancel', onPress: () => { confirmOpenRef.current = false; } },
+          { text: BUTTON_LABEL.cancel, style: 'cancel', onPress: () => { confirmOpenRef.current = false; } },
         ];
         if (canRedo && redoStore) {
           buttons.push({

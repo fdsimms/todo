@@ -114,6 +114,7 @@ import {
   isPortionBox,
 } from '../types';
 import { TextField } from './TextField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /** "10000.00" — the widest thing GROCERY_PRICE_MINOR_MAX allows. */
 const PRICE_INPUT_MAX_LENGTH = 8;
@@ -732,7 +733,7 @@ export function GroceryItemSheet({
       `${shopName} and ${item.name}`,
       `${count} ${count === 1 ? 'purchase' : 'purchases'} recorded here. Forgetting them can’t be undone, and the item and its overall count stay.`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {
           // The common case by far, and it keeps everything: the shop did sell
           // it to you, and has stopped.
@@ -1772,7 +1773,7 @@ export function GroceryItemSheet({
               />
             </TouchableOpacity>
           }
-          right={<SheetHeaderButton label="Done" onPress={handleDone} minWidth={64} />}
+          right={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={handleDone} minWidth={64} />}
         />
 
         {/* Scoped to the row on screen: the pantry list mounts the same

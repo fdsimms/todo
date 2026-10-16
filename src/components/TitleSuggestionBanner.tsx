@@ -9,6 +9,12 @@ interface Props {
   icon: keyof typeof Ionicons.glyphMap;
   /** What tapping would set, e.g. "Tomorrow" or "#home". */
   label: string;
+  /**
+   * A short qualifier the label leaves out ("after done"). It replaces the
+   * generic "Tap to set", which is the first thing to go when space is tight;
+   * a qualifier is information and always stays.
+   */
+  hint?: string | null;
   onApply: () => void;
   onDismiss: () => void;
   dismissLabel: string;
@@ -16,6 +22,8 @@ interface Props {
   style?: StyleProp<ViewStyle>;
   onLayout?: (e: LayoutChangeEvent) => void;
 }
+
+const GENERIC_HINT_MAX_LABEL = 22;
 
 /**
  * The pill that offers a phrase found in a title: tap the body to apply it,
@@ -25,16 +33,27 @@ interface Props {
  * One pill for every place a title is read for a phrase: the task editor,
  * quick add and the open row's inline rename.
  */
-export function TitleSuggestionBanner({ icon, label, onApply, onDismiss, dismissLabel, style, onLayout }: Props) {
+export function TitleSuggestionBanner({ icon, label, hint, onApply, onDismiss, dismissLabel, style, onLayout }: Props) {
   const { colors } = useTheme();
   const styles = makeStyles(colors);
+  // The generic prompt only fits a short label; past this the label gets the
+  // room, and the pill's press state and ✕ carry the affordance.
+  const shownHint = hint ?? (label.length <= GENERIC_HINT_MAX_LABEL ? 'Tap to set' : null);
   return (
     <View style={[styles.pill, style]} onLayout={onLayout}>
-      <PressableScale style={styles.button} onPress={onApply} accessibilityLabel={`${label}. Tap to set`}>
+      <PressableScale
+        style={styles.button}
+        onPress={onApply}
+        accessibilityLabel={`${label}${hint ? `, ${hint}` : ''}. Tap to set`}
+      >
         <Ionicons name={icon} size={14} color={colors.onAccent} />
         <Text style={styles.text} numberOfLines={1}>{label}</Text>
-        <View style={styles.dot} />
-        <Text style={styles.hint}>Tap to set</Text>
+        {shownHint ? (
+          <>
+            <View style={styles.dot} />
+            <Text style={styles.hint} numberOfLines={1}>{shownHint}</Text>
+          </>
+        ) : null}
       </PressableScale>
       <View style={styles.divider} />
       <PressableScale style={styles.dismiss} onPress={onDismiss} accessibilityLabel={dismissLabel}>
@@ -100,5 +119,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.xs,
     fontWeight: '500',
     opacity: 0.75,
+    flexShrink: 0,
   },
 });

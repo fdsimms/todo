@@ -37,6 +37,7 @@ import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { TextField } from './TextField';
 import { OTHER_UNIT_KEY, UnitMenuChip } from './UnitMenuChip';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /** "1.5" not "1.5000000000000002", and "2" not "2.0". */
 function formatServings(n: number): string {
@@ -273,7 +274,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
       <View style={styles.root}>
         <SheetHeader
           title="How much?"
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={64} />}
           right={
             <SheetHeaderButton
               label="Log"
@@ -488,7 +489,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                       />
                       <Text style={styles.weighUnit}>g</Text>
                       <InlineAction
-                        label="Save"
+                        label={BUTTON_LABEL.save}
                         onPress={() => weighable && handleSaveWeighedPortion(food, weighable)}
                         disabled={!weighable || !(weighGrams[food.key] ?? '').trim()}
                         haptic

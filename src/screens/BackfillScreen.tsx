@@ -110,6 +110,7 @@ import {
   type Difficulty, type HolidayRule, type FoodNutrition, type GroceryItem, type ItemProduct, type ProductRating, type Person, type Recipe, type ReminderKind, type Task, type TaskFieldDefaults,
 } from '../types';
 import { TextField } from '../components/TextField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 const FIELD_ICONS: Record<BackfillFieldId, keyof typeof Ionicons.glyphMap> = {
   estimate: 'time-outline',
@@ -920,7 +921,7 @@ export function BackfillScreen() {
       `Redo ${label.toLowerCase()} from scratch?`,
       `Goes through every ${noun} again, including ones that already have this set. Each ${noun} keeps its current value until you change it.`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         { text: 'Start over', onPress: startOver },
       ]
     );
@@ -1327,7 +1328,7 @@ export function BackfillScreen() {
       `Apply ${count} ${count === 1 ? 'suggestion' : 'suggestions'}?`,
       `Sets the suggested ${label} on ${count} ${count === 1 ? 'task' : 'tasks'}. Each one gets its own Undo when the queue finishes, and a shake undoes the whole batch.`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
         { text: 'Apply all', onPress: applyAllSuggestions },
       ]
     );
@@ -1860,7 +1861,7 @@ export function BackfillScreen() {
         `Merge into “${clash.name}”?`,
         `You already have an item called “${clash.name}”. Merging keeps that one and adds this item’s history, boxes and stores to it.`,
         [
-          { text: 'Cancel', style: 'cancel' },
+          { text: BUTTON_LABEL.cancel, style: 'cancel' },
           {
             text: 'Merge',
             style: 'destructive',
@@ -2853,7 +2854,7 @@ export function BackfillScreen() {
                   accessibilityLabel={`Save something to ask ${displayNameOf(currentPerson)} about`}
                 >
                   <Ionicons name="chatbubble-ellipses" size={iconSize.md} color={colors.onAccent} />
-                  <Text style={styles.toggleButtonText}>Save</Text>
+                  <Text style={styles.toggleButtonText}>{BUTTON_LABEL.save}</Text>
                 </PressableScale>
               </View>
             )}
@@ -2880,7 +2881,7 @@ export function BackfillScreen() {
                   accessibilityLabel={`Save where ${displayNameOf(currentPerson)} lives`}
                 >
                   <Ionicons name="airplane" size={iconSize.md} color={colors.onAccent} />
-                  <Text style={styles.toggleButtonText}>Save</Text>
+                  <Text style={styles.toggleButtonText}>{BUTTON_LABEL.save}</Text>
                 </PressableScale>
               </View>
             )}
@@ -3427,7 +3428,7 @@ export function BackfillScreen() {
                   accessibilityLabel={nameChanged ? `Rename ${currentItem.name}` : `Save brand and product for ${currentItem.name}`}
                 >
                   <Ionicons name={nameChanged ? 'pricetag' : 'checkmark'} size={iconSize.md} color={colors.onAccent} />
-                  <Text style={styles.toggleButtonText}>{nameChanged ? 'Rename' : 'Save'}</Text>
+                  <Text style={styles.toggleButtonText}>{nameChanged ? 'Rename' : BUTTON_LABEL.save}</Text>
                 </PressableScale>
               </View>
             </View>
@@ -3452,7 +3453,7 @@ export function BackfillScreen() {
                 accessibilityLabel={`Save brand and product for ${currentItem.name}`}
               >
                 <Ionicons name="checkmark" size={iconSize.md} color={colors.onAccent} />
-                <Text style={styles.toggleButtonText}>Save</Text>
+                <Text style={styles.toggleButtonText}>{BUTTON_LABEL.save}</Text>
               </PressableScale>
             </View>
           )}

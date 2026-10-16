@@ -90,6 +90,7 @@ import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { usePullToSearch } from '../hooks/usePullToSearch';
 import { LazySheet } from '../components/LazySheet';
 import { FadeInImage } from '../components/FadeInImage';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /**
  * The recipe box.
@@ -150,7 +151,7 @@ function describeActiveFilters(tagFiltering: boolean, activeTags: string[], love
 /** What the drag label should read for a given drop target — see the button's drag handlers below. */
 function recipeDropLabel(intent: FabDropIntent | null): string | null {
   if (intent === null) return null;
-  if (intent.kind === 'cancel') return 'Cancel';
+  if (intent.kind === 'cancel') return BUTTON_LABEL.cancel;
   if (intent.kind === 'insert') return intent.category ? `New recipe in ${intent.category}` : 'New recipe';
   return 'New recipe';
 }
@@ -1023,7 +1024,7 @@ export function RecipesScreen() {
               label: allSelectedLoved ? 'Unlove' : 'Love',
               onPress: handleBulkLove,
             },
-            { key: 'delete', icon: 'trash', label: 'Delete', tone: 'destructive', onPress: handleBulkDelete },
+            { key: 'delete', icon: 'trash', label: BUTTON_LABEL.delete, tone: 'destructive', onPress: handleBulkDelete },
           ]}
           onSelectAll={() => selectAll(visible.map(r => r.id))}
           onDeselectAll={deselectAll}

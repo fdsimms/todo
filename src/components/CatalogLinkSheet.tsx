@@ -9,6 +9,7 @@ import { productsForItem } from '../utils/groceryProduct';
 import { CatalogLinkPicker } from './CatalogLinkPicker';
 import { ProductPicker } from './ProductPicker';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /**
  * "Which item is this, and which box of it?" — for a caller with no room to ask
@@ -77,7 +78,7 @@ export function CatalogLinkSheet({
       <View style={styles.root}>
         <View style={styles.header}>
           <SheetHeaderButton
-            label={chosen ? 'Back' : 'Cancel'}
+            label={chosen ? 'Back' : BUTTON_LABEL.cancel}
             role="cancel"
             onPress={() => (chosen ? setChosen(null) : onClose())}
             minWidth={64}

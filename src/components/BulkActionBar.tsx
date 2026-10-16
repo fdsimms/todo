@@ -21,6 +21,7 @@ import { tagColor } from '../utils/tagColor';
 import { CategoryPickerSheet } from './CategoryPicker';
 import { TextField } from './TextField';
 import { GlassLayer, glassSupported } from './GlassLayer';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   selectedCount: number;
@@ -245,7 +246,7 @@ export function BulkActionBar({
                 onPress={() => { haptics.impactMedium(); onDelete(); }}
               >
                 <Ionicons name="trash" size={24} color={colors.red} />
-                <Text style={[styles.actionLabel, { color: colors.redText }]}>Delete</Text>
+                <Text style={[styles.actionLabel, { color: colors.redText }]}>{BUTTON_LABEL.delete}</Text>
               </PressableScale>
               <PressableScale
                 style={[styles.actionBtn, none && styles.actionBtnDisabled]}

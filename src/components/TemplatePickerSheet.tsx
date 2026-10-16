@@ -23,6 +23,7 @@ import { groupTemplatesByCategory } from '../utils/templateGrouping';
 import type { TaskTemplate } from '../types';
 import { navigateToTab } from '../navigation/navigationRef';
 import { useSheetMotion } from '../hooks/useSheetMotion';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -171,7 +172,7 @@ export function TemplatePickerSheet({ visible, onClose, onSelect }: Props) {
         </View>
 
         <TouchableOpacity style={styles.cancelCard} onPress={() => dismiss()} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
-          <Text style={styles.cancelLabel}>Cancel</Text>
+          <Text style={styles.cancelLabel}>{BUTTON_LABEL.cancel}</Text>
         </TouchableOpacity>
       </Animated.View>
     </SheetModal>

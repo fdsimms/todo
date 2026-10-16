@@ -6,6 +6,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { BUTTON_LABEL } from '../copy/shared';
 
 export interface ActivitySourceOption {
   key: string;
@@ -73,7 +74,7 @@ export function ActivitySourceSheet({ visible, onClose, options, selected, onSel
         <View style={styles.headerRow}>
           <View style={styles.headerSide} />
           <Text style={styles.heading}>Source</Text>
-          <SheetHeaderButton label="Done" onPress={() => dismiss()} minWidth={56} style={styles.headerRight} />
+          <SheetHeaderButton label={BUTTON_LABEL.done} onPress={() => dismiss()} minWidth={56} style={styles.headerRight} />
         </View>
         <ScrollView style={{ maxHeight: height * 0.6 }} contentContainerStyle={styles.list}>
           {row(null, 'All sources')}

@@ -49,6 +49,7 @@ import {
 import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { useSheetMotion } from '../hooks/useSheetMotion';
 import { TextField } from './TextField';
+import { BUTTON_LABEL } from '../copy/shared';
 
 /** Kept clear above the sheet so its first row never slides under the status bar. */
 const TOP_INSET = 72;
@@ -752,7 +753,7 @@ export function LeftoverSheet({
                 icon="close-circle-outline"
                 color={colors.redText}
                 destructive
-                label="Delete"
+                label={BUTTON_LABEL.delete}
                 onPress={handleDeleteLeftover}
                 accessibilityLabel="Delete this leftover"
               />
@@ -772,7 +773,7 @@ export function LeftoverSheet({
           }}
           activeOpacity={interaction.activeOpacity}
         >
-          <Text style={styles.cancelLabel}>{editing ? 'Done' : 'Cancel'}</Text>
+          <Text style={styles.cancelLabel}>{editing ? BUTTON_LABEL.done : BUTTON_LABEL.cancel}</Text>
         </TouchableOpacity>
       </Animated.View>
     </SheetModal>

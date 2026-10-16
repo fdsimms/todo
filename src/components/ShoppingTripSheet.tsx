@@ -30,6 +30,8 @@ import {
 } from '../utils/shoppingTrip';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import type { Shop } from '../types';
+import { HelpText } from './HelpText';
+import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
@@ -321,7 +323,7 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
           <SheetHeader
             title={correctingShop.name}
             left={<SheetHeaderButton label="Back" role="cancel" onPress={cancelCorrection} minWidth={72} />}
-            right={<SheetHeaderButton label="Save" onPress={saveCorrection} minWidth={72} />}
+            right={<SheetHeaderButton label={BUTTON_LABEL.save} onPress={saveCorrection} minWidth={72} />}
           />
 
           <ScrollView contentContainerStyle={styles.body}>
@@ -374,7 +376,7 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
       <View style={styles.root}>
         <SheetHeader
           title={startNow ? 'Start shopping' : 'Shopping trip'}
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={72} />}
           right={
             <SheetHeaderButton
               label={startNow ? 'Start' : addLabel}
@@ -552,10 +554,10 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
           {startable && !startNow && (
             <>
               <Text style={styles.label}>SHOPPING NOW?</Text>
-              <Text style={styles.hint}>
+              <HelpText style={styles.hint}>
                 Sets the store you’re at. Your list flags items you don’t usually
                 buy there.
-              </Text>
+              </HelpText>
               <InlineAction
                 label={`Start shopping at ${startable.name}`}
                 icon="storefront-outline"

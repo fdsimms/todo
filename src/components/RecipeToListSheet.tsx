@@ -46,6 +46,7 @@ import { haptics } from '../utils/haptics';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { SheetUndoBar } from './SheetUndoBar';
 import { useLingering } from '../hooks/useLingering';
+import { BUTTON_LABEL } from '../copy/shared';
 
 // How long the in-sheet "marked in pantry" undo stays up. Same value UndoBar
 // uses for the same reason: long enough to read the label and reach for the
@@ -485,7 +486,7 @@ export function RecipeToListSheet({
       <View style={styles.root}>
         <SheetHeader
           title={recipe?.name ?? 'Add to list'}
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={72} />}
           right={
             <SheetHeaderButton
               label={addCount > 0 ? `Add ${addCount}` : 'Add'}

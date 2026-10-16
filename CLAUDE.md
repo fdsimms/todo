@@ -168,6 +168,10 @@ the same "stop and ask" rules as above: ask before changing the server or filing
 
 ## User-facing copy
 
+**Before writing a new message, check how the app already says it:** `npm run copy -- --grep "couldn.t save"`
+lists every matching string with its file and line. A fourth wording of a failed save or a taken name
+is how the existing variants got there. Reuse the closest one, or fix the outlier.
+
 Say what a setting does in plain, literal terms — the way the rest of the app already talks
 (see any existing row label/subtitle for the tone to match). No jokey metaphors, no cutesy
 voice, no invented figures of speech ("how much rope", "offers you a way out", "speaks up").
@@ -190,6 +194,16 @@ for" over a text box holding a *grouping key* was unanswerable without knowing t
 option of a pair has to be filed as an alternative for itself. If a label only makes sense once
 you've read the type, it's the wrong label — name the state the user is choosing between
 ("Always needed" / "One of a choice") and let the control carry the mechanism.
+
+**A line that explains a control uses `HelpText`, not `Text`.** Settings › Hide help text is meant to
+remove every static explanation under a field, and a hint rendered with a plain `Text` ignores it.
+`HelpText` (`src/components/HelpText.tsx`) renders nothing while the setting is on, so use it for
+the one-liner under a field, option or section ("Used only to calculate the figure below"). It is
+not for text that is the content: a count, a preview, a warning, an error, an empty state, or a
+consequence the person has to see before confirming. `SettingsRow`, `EditorRow` and
+`CollapsibleField` already check the setting themselves, so their `hint` props need nothing extra.
+No test enforces this (whether a line is help text is a judgment call), so check it on sight when
+adding a hint.
 
 **An alert says what happened, then what to do.** The title names what failed or what is
 being asked ("Couldn't save to Health", "Discard changes?"), never a command ("Name this
@@ -264,6 +278,8 @@ npm run test:tz      # the suite in UTC+14, UTC-11 and Newfoundland (DST, half-h
 npx jest src/__tests__/dateUtils.test.ts  # one file, for iterating on a change
 npm run bench        # times the Today/Later/Expired selectors and search over 5,000 synthetic
                      # tasks (src/__bench__/); compare two checkouts, it is not part of npm test
+npm run copy         # every user-facing string with file:line, what is written out in many files, what
+                     # is spelled several ways; `-- --grep "taken"` finds one. Prints, writes nothing
 npm run docs         # regenerate all three generated docs, then commit them
 npm run verify       # the whole verification loop, below
 ```
@@ -1079,6 +1095,9 @@ right.
   default) is semibold, `role="cancel"` is regular — weight ranks them, the way iOS ranks nav-bar
   buttons, and **both are accent** (never a grey Cancel). `minWidth` reserves matching width on
   the light side so the title stays optically centered.
+- `BUTTON_LABEL` (`src/copy/shared.ts`) — the words Cancel, Delete, Done and Save, for a button
+  label, an alert button or an action row. A hand-typed one fails `noHandWrittenButtonLabel.test.ts`.
+  Add a word there once it is spelled out in several files and must read the same in all of them.
 - `SheetHeader` (`src/components/SheetHeader.tsx`) — the row that button sits in: Cancel/Back on
   the left, Save/Done on the right, the title centered between them, written once. The title
   **always** centers itself (`flex: 1`), so it stays centered when either label changes length.

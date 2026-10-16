@@ -132,6 +132,7 @@ import { makeSettingsStyles } from './settingsStyles';
 import { useSettingsFocus } from './SettingsFocus';
 import { navigateToSettingsEntry } from '../../navigation/openSettings';
 import { alertPermissionOff } from '../../utils/permissionAlert';
+import { BUTTON_LABEL } from '../../copy/shared';
 
 // Map of this file (one component holding most of it; `grep -n '// ===='` is
 // the table of contents):
@@ -368,7 +369,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
         `Turn on “${blocker.setting}” first`,
         `This needs “${blocker.setting}”, which is off in Settings.`,
         [
-          { text: 'Cancel', style: 'cancel' },
+          { text: BUTTON_LABEL.cancel, style: 'cancel' },
           { text: 'Open Settings', onPress: () => navigateToSettingsEntry(navigation, blocker.entryId) },
         ],
       );
