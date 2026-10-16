@@ -55,6 +55,7 @@ import { CountStepper } from './CountStepper';
 import { InlineAction } from './InlineAction';
 import { TextField } from './TextField';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
+import { HelpText } from './HelpText';
 
 // The feet stepper's bounds, derived from the same cm bounds the kg stepper
 // uses — so the two units can't drift into disagreeing about the range.
@@ -480,10 +481,10 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
 
           <Text style={styles.sectionTitle}>FOR THE CALORIE ESTIMATE</Text>
           <View style={styles.card}>
-            <Text style={styles.help}>
+            <HelpText style={styles.help}>
               Used only to calculate the figure below. They are never sent anywhere or
               written to Apple Health.
-            </Text>
+            </HelpText>
 
             <View style={styles.field}>
               <Text style={styles.fieldLabel}>Height</Text>
@@ -554,10 +555,10 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                 onChange={next => setSex(next)}
                 label="Sex"
               />
-              <Text style={styles.help}>
+              <HelpText style={styles.help}>
                 Picks which of the calorie equation’s two forms to
                 use. It isn’t used for anything else.
-              </Text>
+              </HelpText>
             </View>
 
             <View style={styles.field}>
@@ -673,11 +674,11 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
             <>
               <Text style={styles.sectionTitle}>MACROS</Text>
               <View style={styles.card}>
-                <Text style={styles.help}>
+                <HelpText style={styles.help}>
                   Optional. These are common ways to divide a day’s calories,
                   and none is recommended. Pick one to
                   see the amounts, or choose Custom to set your own split.
-                </Text>
+                </HelpText>
 
                 <SegmentedControl
                   options={[
@@ -718,7 +719,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                         label="Carbs share of calories"
                       />
                     </View>
-                    <Text style={styles.help}>Fat is whatever is left, so the three add up to 100%.</Text>
+                    <HelpText style={styles.help}>Fat is whatever is left, so the three add up to 100%.</HelpText>
                   </>
                 )}
 
@@ -743,9 +744,9 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                       label="Use these as my targets"
                       onPress={applyMacroTargets}
                     />
-                    <Text style={styles.help}>
+                    <HelpText style={styles.help}>
                       Also sets calories, so the four numbers agree.
-                    </Text>
+                    </HelpText>
                   </>
                 )}
               </View>

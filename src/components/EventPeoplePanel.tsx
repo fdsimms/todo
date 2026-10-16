@@ -7,6 +7,7 @@ import { displayNameOf } from '../store/usePersonStore';
 import { eventPeopleChoices } from '../utils/eventPeople';
 import { SearchField } from './SearchField';
 import type { Person } from '../types';
+import { HelpText } from './HelpText';
 
 interface Props {
   /** Everybody on the People list who isn't archived, in the user's own order. */
@@ -55,7 +56,7 @@ export function EventPeoplePanel({ people, title, linkedIds, onToggle }: Props) 
 
   return (
     <View>
-      <Text style={styles.hint}>Who this is with. Only this app sees it; nobody is invited.</Text>
+      <HelpText style={styles.hint}>Who this is with. Only this app sees it; nobody is invited.</HelpText>
       {linked.length > 0 && <View style={styles.pillRow}>{linked.map(p => chip(p, true))}</View>}
       <SearchField field={filter} placeholder="Find a person" surface="sunken" style={styles.field} />
       {!searching && shown.length > 0 && <Text style={styles.label}>Suggested</Text>}

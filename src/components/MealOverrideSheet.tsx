@@ -18,6 +18,7 @@ import {
   withOverride,
 } from '../utils/mealOverrides';
 import { confirmDiscard } from '../utils/confirmDiscard';
+import { HelpText } from './HelpText';
 
 interface Props {
   visible: boolean;
@@ -185,10 +186,10 @@ export function MealOverrideSheet({ visible, entry: liveEntry, recipe: liveRecip
           </>
         )}
 
-        <Text style={styles.hint}>
+        <HelpText style={styles.hint}>
           This applies to this meal only. The recipe is not changed, and it is not copied when
           the meal or week is.
-        </Text>
+        </HelpText>
       </View>
     </CardSheet>
   );

@@ -140,6 +140,7 @@ import { ScrollToTopButton, SCROLL_TO_TOP_SIZE } from '../components/ScrollToTop
 import { useActionMenu } from '../hooks/useActionMenu';
 import type { ActionMenuAction } from '../components/ActionMenu';
 import { FadeInImage } from '../components/FadeInImage';
+import { HelpText } from '../components/HelpText';
 
 type RootStackParamList = {
   /**
@@ -2291,10 +2292,10 @@ export function RecipeDetailScreen() {
         )}
 
         {mergedIngredientRows.length === 0 && components.length === 0 ? (
-          <Text style={styles.hint}>
+          <HelpText style={styles.hint}>
             Type one ingredient at a time, or paste a whole list. “2 lb chicken thighs”
             saves the quantity separately from the name.
-          </Text>
+          </HelpText>
         ) : (
           <View style={styles.card}>
             {mergedIngredientRows.length > 0 && (
@@ -2455,11 +2456,11 @@ export function RecipeDetailScreen() {
         <Text style={styles.sectionLabel}>Steps</Text>
 
         {mergedStepRows.length === 0 ? (
-          <Text style={styles.hint}>
+          <HelpText style={styles.hint}>
             Write the method as steps, and it stays legible when the recipe is
             scaled or shown in a different unit. The notes field still works
             if you’d rather leave it as one block.
-          </Text>
+          </HelpText>
         ) : (
           <View style={styles.card}>
             <SortableList
@@ -2650,12 +2651,12 @@ export function RecipeDetailScreen() {
         <Text style={styles.sectionLabel}>Components</Text>
 
         {components.length === 0 ? (
-          <Text style={styles.hint}>
+          <HelpText style={styles.hint}>
             Use another recipe as part of this one, like mashed potatoes with both
             the steak and the salmon. Its ingredients and prep tasks come along, and editing
             it updates every meal that uses it. Long press a component to make it an
             either/or alternative.
-          </Text>
+          </HelpText>
         ) : (
           <View style={styles.card}>
             {components.map(resolved => renderComponent(resolved))}
@@ -2675,11 +2676,11 @@ export function RecipeDetailScreen() {
         <Text style={styles.sectionLabel}>Prep tasks</Text>
 
         {recipe.prepTasks.length === 0 ? (
-          <Text style={styles.hint}>
+          <HelpText style={styles.hint}>
             Add a prep task for anything that needs doing ahead of the meal, like “Marinate the
             chicken” a day before. It becomes a task once this recipe is
             planned for a date.
-          </Text>
+          </HelpText>
         ) : (
           <View style={styles.card}>
             {recipe.prepTasks.map(renderPrepTask)}

@@ -31,6 +31,7 @@ import {
 } from '../utils/medicationSummary';
 import { canShare, discardBackupFile, sharePdfFile, writePdfFile } from '../utils/backupFile';
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
+import { HelpText } from './HelpText';
 
 interface Props {
   visible: boolean;
@@ -291,7 +292,7 @@ export function MedicationSummarySheet({ visible, onClose }: Props) {
         autoCapitalize="words"
         accessibilityLabel="Name on the summary"
       />
-      <Text style={styles.hint}>Optional. Used for this summary only and not saved.</Text>
+      <HelpText style={styles.hint}>Optional. Used for this summary only and not saved.</HelpText>
 
       <PressableScale
         style={[styles.primary, (chosen.length === 0 || sharing) && styles.disabled]}

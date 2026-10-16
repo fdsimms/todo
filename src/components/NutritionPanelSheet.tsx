@@ -51,6 +51,7 @@ import { SheetHeader } from './SheetHeader';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { TextField } from './TextField';
 import { useActionMenu } from '../hooks/useActionMenu';
+import { HelpText } from './HelpText';
 
 /**
  * Typing in a label panel by hand, for the food no database has.
@@ -593,10 +594,10 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
                     />
                   </View>
                 </View>
-                <Text style={styles.hint}>
+                <HelpText style={styles.hint}>
                   The weight used for calculations. Leave it blank for a product sold by
                   volume. A label in ounces is converted to grams.
-                </Text>
+                </HelpText>
               </View>
 
               <SegmentedControl
@@ -606,11 +607,11 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
                 onChange={basis => setForm(f => ({ ...f, basis }))}
                 surface="card"
               />
-              <Text style={styles.hint}>
+              <HelpText style={styles.hint}>
                 Most labels outside the US print per 100g. Pick “per serving” only if the
                 panel’s own column says so. If you typed the figures under the wrong one,
                 recalculate them here using the serving weight.
-              </Text>
+              </HelpText>
               {!!basisConvertTarget && (
                 <InlineAction
                   label={basisConvertTarget === 'perServing' ? 'Recalculate for one serving' : 'Recalculate per 100g'}
@@ -643,10 +644,10 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
                 onPress={handleDivideServings}
               />
             </View>
-            <Text style={styles.hint}>
+            <HelpText style={styles.hint}>
               If the label only gives whole-package totals, type them into the figures
               below, enter the servings per container, then divide.
-            </Text>
+            </HelpText>
             <NutrientFieldsCard amounts={form.amounts} bad={bad} onChange={setAmount} />
 
             <Text style={styles.groupLabel}>PROCESSING</Text>
@@ -658,11 +659,11 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
                 onChange={novaGroup => setForm(f => ({ ...f, novaGroup }))}
                 surface="card"
               />
-              <Text style={styles.hint}>
+              <HelpText style={styles.hint}>
                 1 is unprocessed or minimally processed, 2 a culinary ingredient such as oil or
                 sugar, 3 processed, 4 ultra-processed. A barcode scan fills it in when the
                 database has one. Leave it unset if you don’t know.
-              </Text>
+              </HelpText>
             </View>
 
             {bad.length > 0 && (

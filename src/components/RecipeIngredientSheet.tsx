@@ -42,6 +42,7 @@ import { CatalogLinkPicker } from './CatalogLinkPicker';
 import { InlineAction } from './InlineAction';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { TextField } from './TextField';
+import { HelpText } from './HelpText';
 
 interface Props {
   visible: boolean;
@@ -612,10 +613,10 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
           maxLength={RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH}
           accessibilityLabel="Quantity"
         />
-        <Text style={styles.hint}>
+        <HelpText style={styles.hint}>
           The amount this recipe needs. What you normally buy is set on
           the item itself.
-        </Text>
+        </HelpText>
 
         <View style={styles.separator} />
 
@@ -629,7 +630,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
           maxLength={PREP_MAX_LENGTH}
           accessibilityLabel="Prep instructions"
         />
-        <Text style={styles.hint}>What to do to it. Shown on the recipe only.</Text>
+        <HelpText style={styles.hint}>What to do to it. Shown on the recipe only.</HelpText>
 
         <View style={styles.separator} />
 
@@ -643,9 +644,9 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
           maxLength={PREP_MAX_LENGTH}
           accessibilityLabel="Purpose"
         />
-        <Text style={styles.hint}>
+        <HelpText style={styles.hint}>
           Why it’s on the list, when the same ingredient does two jobs: “flour, for gideong”.
-        </Text>
+        </HelpText>
 
         <View style={styles.separator} />
 
@@ -664,11 +665,11 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
           />
           <View style={styles.toggleBody}>
             <Text style={styles.toggleLabel}>Optional</Text>
-            <Text style={styles.hint}>
+            <HelpText style={styles.hint}>
               For a garnish or serving suggestion. Starts unchecked when this
               recipe’s ingredients go on your list, and you can still check it
               off by hand.
-            </Text>
+            </HelpText>
           </View>
         </TouchableOpacity>
 
@@ -689,10 +690,10 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
           />
           <View style={styles.toggleBody}>
             <Text style={styles.toggleLabel}>Don’t count toward nutrition</Text>
-            <Text style={styles.hint}>
+            <HelpText style={styles.hint}>
               Leaves this line out of the recipe’s nutrition total. For flavoring you take
               out before eating, like kombu or a bay leaf, or an amount too small to matter.
-            </Text>
+            </HelpText>
           </View>
         </TouchableOpacity>
 
@@ -713,10 +714,10 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
           />
           <View style={styles.toggleBody}>
             <Text style={styles.toggleLabel}>Don’t add to shopping list</Text>
-            <Text style={styles.hint}>
+            <HelpText style={styles.hint}>
               A staple you already have, like water. Stays on the
               recipe, but isn’t added to your shopping list.
-            </Text>
+            </HelpText>
           </View>
         </TouchableOpacity>
       </View>
@@ -745,10 +746,10 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
           </TouchableOpacity>
         ) : (
           <>
-            <Text style={styles.hint}>
+            <HelpText style={styles.hint}>
               Not in your grocery catalog yet. Add it to give it a brand, a store, a price
               or substitutes. This doesn’t put it on your shopping list.
-            </Text>
+            </HelpText>
             <InlineAction
               label="Add to catalog"
               icon="basket-outline"
@@ -1009,10 +1010,10 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
             })),
           ]}
         />
-        <Text style={styles.hint}>
+        <HelpText style={styles.hint}>
           Puts this under a heading on the recipe, like “For the cake”. It
           doesn’t affect your shopping list.
-        </Text>
+        </HelpText>
       </View>
 
       <View style={styles.sectionCard}>
@@ -1042,11 +1043,11 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
             })),
           ]}
         />
-        <Text style={styles.hint}>
+        <HelpText style={styles.hint}>
           Used when this goes on your grocery list,
           unless the item already has an aisle in
           your grocery catalog.
-        </Text>
+        </HelpText>
       </View>
 
       <GroceryItemSheet

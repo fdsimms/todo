@@ -63,6 +63,7 @@ import { SegmentedControl } from './SegmentedControl';
 import { JournalText } from './JournalText';
 import { JOURNAL_FORMAT_BAR_HEIGHT, JournalFormatBar, type FormatAction } from './JournalFormatBar';
 import { useTitleSelection } from '../hooks/useTitleSelection';
+import { HelpText } from './HelpText';
 
 const TEXT_MAX_LENGTH = 5000;
 
@@ -373,7 +374,7 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
       )}
 
       <View style={styles.card}>
-        {copy.hint && <Text style={styles.hint}>{copy.hint}</Text>}
+        {copy.hint && <HelpText style={styles.hint}>{copy.hint}</HelpText>}
         <TextField
           style={styles.input}
           value={text}

@@ -35,6 +35,7 @@ import { RecipeIngredientSheet } from './RecipeIngredientSheet';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import { TextField } from './TextField';
+import { HelpText } from './HelpText';
 
 /**
  * A dish's whole nutrition panel, and the ingredients it couldn't count.
@@ -598,9 +599,9 @@ export function RecipeNutritionSheet({ visible, reading, recipeId, recipeName, s
                         </View>
                       ))}
                       {isUsuallyRemovedBeforeEating(line.name) && (
-                        <Text style={styles.hint}>
+                        <HelpText style={styles.hint}>
                           This is usually taken out before eating, so it may not belong in the total.
-                        </Text>
+                        </HelpText>
                       )}
                       <View style={styles.countedDetailActions}>
                         {isUsuallyRemovedBeforeEating(line.name) && (
@@ -717,10 +718,10 @@ export function RecipeNutritionSheet({ visible, reading, recipeId, recipeName, s
                 )}
               </View>
             ))}
-            <Text style={styles.hint}>
+            <HelpText style={styles.hint}>
               Figures are saved to the food in your grocery catalog and apply
               to every recipe that uses it.
-            </Text>
+            </HelpText>
           </View>
         </>
       )}

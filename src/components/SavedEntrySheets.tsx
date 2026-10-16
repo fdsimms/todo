@@ -16,6 +16,7 @@ import { placeLocationText, placeRowTitle, placeSubtitle, type PlaceResult } fro
 import { editSavedPlace, addSavedPlace, findSavedPlace, type SavedPlace } from '../utils/savedPlaces';
 import { editSavedEvent, type SavedEvent } from '../utils/savedEvents';
 import { ALERT_CHOICES, describeAlert } from '../utils/quickEventSave';
+import { HelpText } from './HelpText';
 
 type Pin = { latitude: number; longitude: number } | null;
 
@@ -196,7 +197,7 @@ export function SavedPlaceSheet({ visible, subject: liveSubject, places, onSave,
           placeholder="Search or type an address"
           accessibilityLabel="Place address"
         />
-        <Text style={styles.hint}>Typing the name in a new event’s location fills in this address.</Text>
+        <HelpText style={styles.hint}>Typing the name in a new event’s location fills in this address.</HelpText>
         <View style={styles.switchRow}>
           <View style={styles.switchText}>
             <Text style={styles.switchLabel}>Suggest in mood log</Text>

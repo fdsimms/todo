@@ -5,6 +5,7 @@ import { useColors } from '../theme/ThemeContext';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { HelpText } from './HelpText';
 
 interface Props {
   group: ChoiceGroup;
@@ -73,7 +74,7 @@ export function RecipeChoiceChips({
         })}
         {extraChip}
       </View>
-      {!!hint && <Text style={styles.hint}>{hint}</Text>}
+      {!!hint && <HelpText style={styles.hint}>{hint}</HelpText>}
     </View>
   );
 }
