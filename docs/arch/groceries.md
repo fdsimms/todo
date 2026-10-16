@@ -1417,6 +1417,12 @@ useful part starts.
   and plural are one row" above) and so is not a second opinion here. No fuzzy matching beyond
   that: a wrong suggestion costs more than a missing one, and the app already refuses this class of
   guess for a shelf life (`shelfLifeDaysFor`) for the same reason.
+- **A recipe's blank takes what it could be filled with** (`RecipeBlank`; `blankFits` in
+  `blankPicker.ts`, the same rule the picker offers by). That is not the fuzzy matching refused
+  above: a blank names a kind of food on purpose, and an item's kind is the person's filing or a
+  guess they can correct. It takes no more than the blank's own limit, most urgent first, so "a
+  grain, pick one" uses up one grain however many are going off, while "any vegetables" can clear
+  the whole drawer and ranks accordingly.
 - **Groceries only.** A leftover's `matchKey` comes from its own free-typed title rather than from
   the catalog, so it would match only by accident — and you reheat last night's chilli, you don't
   cook with it. Planning a container onto a night is `LeftoversCard`'s job.

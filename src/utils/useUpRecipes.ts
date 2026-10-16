@@ -3,6 +3,8 @@ import type { GroceryItem, Recipe } from '../types';
 import { freshnessRank } from './freshness';
 import { resolvePluralKey } from './groceryPlural';
 import { flattenRecipeIngredients, recipeMap } from './recipeComponents';
+import { recipeBlanksIn } from './recipeBlanks';
+import { blankFits, kitchenEntryItemId } from './blankPicker';
 
 /**
  * "You could make X with what's about to go off."
@@ -35,6 +37,14 @@ import { flattenRecipeIngredients, recipeMap } from './recipeComponents';
  * already resolves the component tree, and `recipesUsingIngredient` names
  * reading raw `ingredients` as the one place that would quietly disagree; this
  * was that place.
+ *
+ * **A blank takes what it could be filled with** (`RecipeBlank`, `blankFits`):
+ * a grain bowl's "any vegetables" uses up the dying spinach, and the mushrooms
+ * too. That is not the fuzzy matching refused above: a blank names a kind of
+ * food on purpose, and an item's kind is the person's filing or a guess they
+ * can correct, the same rule the picker offers it by. It takes no more than
+ * the blank's own limit, most urgent first, so "a grain, pick one" uses up one
+ * grain however many are going off.
  *
  * **Groceries only.** A `KitchenEntry` can be a container of leftover chilli,
  * and a leftover's `matchKey` comes from its own free-typed title rather than
@@ -136,6 +146,9 @@ export function useUpRecipes(
   }
 
   const byId = recipeMap(recipes);
+  const itemsById = new Map(items.map(i => [i.id, i]));
+  // Each dying thing once, most urgent first, for a blank to take from in order.
+  const dyingEntries = [...new Map([...dying.values()].map(e => [e.id, e])).values()].sort(compareByUrgency);
   // An either/or line resolves to whichever option is going off, rather than
   // to its first-listed one: "jalapeño or serrano" with the serranos going
   // soft is exactly the recipe to suggest, and read as written it never was.
@@ -160,6 +173,18 @@ export function useUpRecipes(
         : resolvePluralKey(ingredient.nameKey, dying.keys());
       const entry = key ? dying.get(key) : undefined;
       if (entry) uses.set(entry.id, entry);
+    }
+    // What each blank would take of what's left, up to its limit.
+    for (const { blank } of recipeBlanksIn(recipe, byId)) {
+      const takes = dyingEntries
+        .filter(entry => !uses.has(entry.id))
+        .filter(entry => {
+          const itemId = kitchenEntryItemId(entry);
+          const item = itemId ? itemsById.get(itemId) : undefined;
+          return !!item && blankFits(blank, item);
+        })
+        .slice(0, blank.max ?? Infinity);
+      for (const entry of takes) uses.set(entry.id, entry);
     }
     if (uses.size === 0) continue;
     out.push({ recipe, uses: [...uses.values()].sort(compareByUrgency) });
