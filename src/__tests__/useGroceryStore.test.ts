@@ -52,6 +52,8 @@ import { groceryNameKey } from '../utils/groceryParse';
 import { entryFor } from '../utils/groceryLists';
 import { DEFAULT_AISLES, OTHER_AISLE } from '../utils/groceryAisles';
 import { OUT_OF_IT_UNTIL, probablyHaveReason } from '../utils/grocerySuggest';
+import { runPantry } from '../utils/searchPantryRun';
+import type { PantryAction } from '../utils/searchActions';
 import { expiryDaysFromNow, expiryKeyFor, openShelfLifeDaysFor } from '../utils/groceryShelfLife';
 import { FROZEN_REASON, PORTION_PRODUCT_KEY } from '../types';
 import type { GroceryItem, GroceryList, GroceryListEntry, ItemProduct, ItemShopLink, ItemSubLink, Shop, StoreAlias, Task } from '../types';
@@ -9117,5 +9119,72 @@ describe('asking how a product was', () => {
     expect(useGroceryStore.getState().ratingOffer).toEqual({ itemId: item.id, productId: ranch.id });
     useGroceryStore.getState().offerProductRating('missing');
     expect(useGroceryStore.getState().ratingOffer).toEqual({ itemId: item.id, productId: ranch.id });
+  });
+});
+
+// ─── a pantry answer typed into search ("out of milk") ──────────────────────
+
+describe('runPantry (search)', () => {
+  afterEach(() => { mockRunningLowAddsToList = true; });
+
+  const pantryAction = (item: GroceryItem, answer: 'out' | 'low'): PantryAction => ({
+    kind: 'pantry', key: `pantry:${item.id}`, explicit: true, itemId: item.id, name: item.name, answer,
+  });
+
+  it('marks the item out and offers the list instead of adding it', () => {
+    const milk = makeItem({ name: 'Milk', onHandUntil: null });
+    seed([milk]);
+
+    const receipt = runPantry(pantryAction(milk, 'out'));
+
+    expect(useGroceryStore.getState().items[0].onHandUntil).toBe(OUT_OF_IT_UNTIL);
+    expect(useGroceryStore.getState().items[0].onList).toBe(false);
+    expect(receipt?.followUp?.label).toBe('Add to grocery list');
+  });
+
+  it('puts it on the list from the follow-up, and one undo takes back both writes', () => {
+    const milk = makeItem({ name: 'Milk', onHandUntil: null });
+    seed([milk]);
+    const receipt = runPantry(pantryAction(milk, 'out'));
+
+    const after = receipt!.followUp!.run();
+
+    expect(useGroceryStore.getState().items[0].onList).toBe(true);
+    expect(after.followUp).toBeUndefined();
+    after.undo();
+    expect(useGroceryStore.getState().items[0].onList).toBe(false);
+    expect(useGroceryStore.getState().items[0].onHandUntil).toBeNull();
+  });
+
+  it('offers nothing further once running low has already put it on the list', () => {
+    mockRunningLowAddsToList = true;
+    const rice = makeItem({ name: 'Rice', onHandUntil: null });
+    seed([rice]);
+
+    const receipt = runPantry(pantryAction(rice, 'low'));
+
+    expect(useGroceryStore.getState().items[0].onList).toBe(true);
+    expect(receipt?.followUp).toBeUndefined();
+    expect(receipt?.meta).toBe('Added to your grocery list');
+  });
+
+  it('offers the list for running low when the setting leaves it off', () => {
+    mockRunningLowAddsToList = false;
+    const rice = makeItem({ name: 'Rice', onHandUntil: null });
+    seed([rice]);
+
+    const receipt = runPantry(pantryAction(rice, 'low'));
+
+    expect(useGroceryStore.getState().items[0].onList).toBe(false);
+    expect(receipt?.followUp).toBeDefined();
+  });
+
+  it('offers nothing when the item is already on the list', () => {
+    const milk = makeItem({ name: 'Milk', onList: true, onHandUntil: null });
+    seed([milk]);
+
+    const receipt = runPantry(pantryAction(milk, 'out'));
+
+    expect(receipt?.followUp).toBeUndefined();
   });
 });

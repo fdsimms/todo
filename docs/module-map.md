@@ -417,9 +417,10 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/scrollNudge.ts` — SCROLL_NUDGE_DEFAULT_SECONDS, SCROLL_NUDGE_MIN_SECONDS, SCROLL_NUDGE_MAX_SECONDS, SCROLL_NUDGE_STEP_SECONDS, SCROLL_IDLE_GAP_MS, SCROLL_NUDGE_DEFAULT_COOLDOWN_MINUTES, SCROLL_NUDGE_MIN_COOLDOWN_MINUTES, SCROLL_NUDGE_MAX_COOLDOWN_MINUTES, SCROLL_NUDGE_COOLDOWN_STEP_MINUTES, SCROLL_NUDGE_DEFAULT_DAILY_CAP, +17 more
 - `src/utils/sealedNoteTasks.ts` — addSealedNoteReminder, dropSealedNoteReminder
 - `src/utils/searchActionRun.ts` — SearchActionReceipt, waterTodayMl, waterTargetTodayMl, openMoodLogFor, runSearchAction
-- `src/utils/searchActions.ts` — QUICK_ACTION_LIMIT, MAX_GLASSES, DoseAction, WaterAction, MoodAction, SymptomAction, GroceryAction, SearchAction, SearchActionSources, SearchActionsOutcome, +7 more
+- `src/utils/searchActions.ts` — QUICK_ACTION_LIMIT, MAX_GLASSES, DoseAction, WaterAction, MoodAction, SymptomAction, GroceryAction, PantryAnswer, PantryAction, SearchAction, +9 more
 - `src/utils/searchCollapse.ts` — SearchOccurrence, CollapsedOccurrence, occurrenceFamilyKey, collapseOccurrences, formatOccurrenceCount
 - `src/utils/searchElsewhere.ts` — ElsewhereKind, ElsewhereResult, ElsewhereSources, ElsewhereSections, QUICK_ELSEWHERE_LIMIT, nameTier, termRanges, searchPeople, searchElsewhere, ElsewhereDescription, +5 more
+- `src/utils/searchPantryRun.ts` — runPantry
 - `src/utils/sectionListLayout.ts` — CellLayout, sectionListCellLayout
 - `src/utils/sectionRegistry.ts` — registerSectionSource, sectionsNow, isChecklistRow
 - `src/utils/secureApiKey.ts` — API_KEY_SECURE_KEY, API_KEY_LEGACY_SETTING, loadAnthropicApiKey, saveAnthropicApiKey, FDC_KEY_SECURE_KEY, GO_UPC_KEY_SECURE_KEY, SYNC_TOKEN_SECURE_KEY, loadSecureKey, saveSecureKey

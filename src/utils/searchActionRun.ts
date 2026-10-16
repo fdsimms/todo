@@ -14,6 +14,7 @@ import { severityLabel } from './moodLog';
 import { describeWater, waterEntryOf, waterHelping, waterTotalMl } from './waterLog';
 import { resetToMood } from '../navigation/navigationRef';
 import type { DoseAction, GroceryAction, MoodAction, SearchAction, SymptomAction, WaterAction } from './searchActions';
+import { runPantry } from './searchPantryRun';
 
 /**
  * Running a search action (see `searchActions.ts`): the write, through the
@@ -28,6 +29,12 @@ export interface SearchActionReceipt {
   title: string;
   meta: string;
   undo: () => void;
+  /**
+   * A second, optional write the receipt offers beside Undo ("Add to grocery
+   * list" after a pantry answer). Running it returns the receipt that replaces
+   * this one, whose Undo takes back both.
+   */
+  followUp?: { label: string; accessibilityLabel: string; run: () => SearchActionReceipt };
 }
 
 /** The store's water for one logical day, in ml. */
@@ -160,6 +167,7 @@ export async function runSearchAction(action: SearchAction): Promise<SearchActio
     case 'water': return runWater(action);
     case 'symptom': return runSymptom(action);
     case 'grocery': return runGrocery(action);
+    case 'pantry': return runPantry(action);
     case 'mood': return null;
   }
 }

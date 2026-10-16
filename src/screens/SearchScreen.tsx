@@ -619,7 +619,7 @@ export function SearchScreen() {
   // searchActions.ts. A row that ran stays put with an Undo, cleared with the
   // query.
   const { actions, onSubmit: submitAction, descriptions: actionDescriptions, describe: describeAction } = useSearchActions(debouncedQuery, true);
-  const { receipts, run: runReceipt, undo: undoAction } = useSearchActionReceipts(debouncedQuery);
+  const { receipts, run: runReceipt, undo: undoAction, followUp: followUpAction } = useSearchActionReceipts(debouncedQuery);
   const runAction = useCallback((action: SearchAction) => {
     if (action.kind === 'mood') {
       haptics.tap();
@@ -780,6 +780,7 @@ export function SearchScreen() {
           layout="list"
           onRun={runAction}
           onUndo={undoAction}
+          onFollowUp={followUpAction}
         />
       );
     }
