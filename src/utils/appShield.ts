@@ -6,7 +6,7 @@ import { isTimedBlock, manualBlockWanted, type ManualBlock } from './manualBlock
 import { penaltyShieldWanted } from './penaltyShield';
 import { screenTimeBridge } from './screenTimeBridge';
 import { uniqueGroupIds, type GroupAssignments } from './appGroups';
-import { activeSchedules, currentWindowEnd, nativeScheduleWindows, resolvedGroups, type BlockSchedule } from './blockSchedule';
+import { activeSchedules, currentWindowEnd, nativeScheduleWindows, resolvedGroups, type BlockSchedule, type GroupResolver } from './blockSchedule';
 
 /**
  * The one place that decides whether the system shield is on, and the only
@@ -107,8 +107,13 @@ export interface AppShieldState {
   groups: GroupAssignments;
   /** Every schedule; which are open right now is decided here against `now`. */
   schedules: readonly BlockSchedule[];
-  /** Resolves a schedule's stored group id (a removed group becomes Default). */
-  resolveGroup: (groupId: string) => string;
+  /**
+   * Resolves a stored group id to the plain groups it blocks: a removed group
+   * becomes Default and a supergroup becomes its members. Every group id this
+   * module hands to the shield or to native code has been through it, so a
+   * supergroup never reaches iOS.
+   */
+  resolveGroup: GroupResolver;
   now: Date;
 }
 
@@ -126,8 +131,15 @@ export interface ShieldReasonEntry {
   cause?: string | null;
   /** The schedule's name. Set for `schedule` only; its window end is `until`. */
   name?: string;
-  /** The app groups this reason blocks: one for most reasons, several for a schedule or a manual block. */
+  /** The app groups this reason blocks: one for most reasons, several for a schedule or a manual block. Supergroups already expanded. */
   groupIds: string[];
+  /**
+   * The groups as the person named them, before a supergroup is expanded, so
+   * the status card can say "Distractions" rather than the groups inside it.
+   * Ids as stored: a missing group reads as the fallback when it is named
+   * (`groupName`), the same rule the shield applies.
+   */
+  namedGroupIds?: string[];
 }
 
 /**
@@ -145,11 +157,15 @@ export interface ShieldReasonEntry {
  */
 export function shieldReasons(state: AppShieldState): ShieldReasonEntry[] {
   const reasons: ShieldReasonEntry[] = [];
-  if (shieldWanted(state.session, state.focusEnabled)) reasons.push({ reason: 'focus', groupIds: [state.groups.focus] });
+  const held = (ids: readonly string[]) => resolvedGroups(ids, state.resolveGroup).groupIds;
+  const named = (ids: readonly string[]) => [...new Set(ids)];
+  if (shieldWanted(state.session, state.focusEnabled)) reasons.push({ reason: 'focus', groupIds: held([state.groups.focus]), namedGroupIds: named([state.groups.focus]) });
   // The person's own timed block reads right after the session: it is the
   // other thing they chose, and it names nothing but the clock.
   if (state.manual && manualBlockWanted(state.manual, state.now)) {
-    reasons.push({ reason: 'manual', until: state.manual.untilIso, groupIds: state.manual.groupIds });
+    reasons.push({
+      reason: 'manual', until: state.manual.untilIso, groupIds: held(state.manual.groupIds), namedGroupIds: named(state.manual.groupIds),
+    });
   }
   if (gateShieldWanted(state.gateTitles.length, state.gateEnabled)) {
     // One entry per group, so a gate for Social and a gate for Games are two
@@ -160,11 +176,12 @@ export function shieldReasons(state: AppShieldState): ShieldReasonEntry[] {
       const groupId = state.gateGroupIds?.[i] ?? state.groups.gate;
       byGroup.set(groupId, [...(byGroup.get(groupId) ?? []), title]);
     });
-    for (const [groupId, titles] of byGroup) reasons.push({ reason: 'gate', titles, groupIds: [groupId] });
+    for (const [groupId, titles] of byGroup) reasons.push({ reason: 'gate', titles, groupIds: held([groupId]), namedGroupIds: named([groupId]) });
   }
   if (penaltyShieldWanted(state.penaltyUntil, state.penaltyEnabled, state.now)) {
     reasons.push({
-      reason: 'penalty', until: state.penaltyUntil, cause: state.penaltyReason, groupIds: [state.groups.penalty],
+      reason: 'penalty', until: state.penaltyUntil, cause: state.penaltyReason, groupIds: held([state.groups.penalty]),
+      namedGroupIds: named([state.groups.penalty]),
     });
   }
   // A schedule is a window that opens and closes on the clock, so it reads
@@ -176,15 +193,40 @@ export function shieldReasons(state: AppShieldState): ShieldReasonEntry[] {
       name: schedule.name,
       until: currentWindowEnd(schedule, state.now)?.toISOString() ?? null,
       groupIds: resolvedGroups(schedule.groupIds, state.resolveGroup).groupIds,
+      namedGroupIds: named(schedule.groupIds),
     });
   }
-  if (state.keyLocked) reasons.push({ reason: 'key', groupIds: [state.groups.key] });
+  if (state.keyLocked) reasons.push({ reason: 'key', groupIds: held([state.groups.key]), namedGroupIds: named([state.groups.key]) });
   return reasons;
 }
 
 /** The groups of apps to block right now: the union across every live reason. */
 export function shieldGroupIds(state: AppShieldState): string[] {
   return uniqueGroupIds(shieldReasons(state).flatMap(r => r.groupIds));
+}
+
+/**
+ * The allowlists that act as one, for the native side to union. A group named
+ * directly is a set of its own; a supergroup of allowlists is one set of its
+ * members, so "Work or Focus" keeps open the apps in either. Each set is then
+ * intersected with the others as separate allowlists always were, so two
+ * reasons naming different allowlists still leave open only what both name.
+ * Block groups, and a supergroup of them, make no set.
+ */
+export function shieldAllowSets(state: AppShieldState, allowIds: readonly string[]): string[][] {
+  const allow = new Set(allowIds);
+  const seen = new Set<string>();
+  const sets: string[][] = [];
+  for (const reason of shieldReasons(state)) {
+    for (const named of reason.namedGroupIds ?? []) {
+      const ids = resolvedGroups([named], state.resolveGroup).groupIds.filter(id => allow.has(id));
+      const key = [...ids].sort().join(',');
+      if (ids.length === 0 || seen.has(key)) continue;
+      seen.add(key);
+      sets.push(ids);
+    }
+  }
+  return sets;
 }
 
 /** Whether anything wants the apps blocked right now. */
@@ -267,6 +309,8 @@ export function syncAppShield(state: AppShieldState): void {
   // - the pending gate's group and moment, so a schedule closing after a gate
   //   window has started doesn't lift the gate the extension raised.
   const lead = reasons[0];
+  const penaltyGroups = penaltyWants ? resolvedGroups([state.groups.penalty], state.resolveGroup).groupIds : [];
+  const manualGroups = manualTimed ? resolvedGroups(state.manual?.groupIds ?? [], state.resolveGroup).groupIds : [];
   bridge.setShieldState({
     otherReasonWantsShield: focusWants || gateWants || keyWants || scheduleWants || manualOpen,
     reason: lead?.reason ?? 'none',
@@ -289,13 +333,14 @@ export function syncAppShield(state: AppShieldState): void {
       otherGroupIds: uniqueGroupIds(reasons
         .filter(r => r.reason === 'focus' || r.reason === 'gate' || r.reason === 'key' || (r.reason === 'manual' && manualOpen))
         .flatMap(r => r.groupIds)),
-      penaltyGroupId: penaltyWants ? state.groups.penalty : null,
+      penaltyGroupId: penaltyGroups[0] ?? null,
+      penaltyGroupIds: penaltyGroups,
       penaltyEndIso: penaltyWants ? state.penaltyUntil : null,
-      manualGroupId: manualTimed ? state.manual?.groupIds[0] ?? null : null,
-      manualGroupIds: manualTimed ? state.manual?.groupIds ?? [] : [],
+      manualGroupId: manualGroups[0] ?? null,
+      manualGroupIds: manualGroups,
       manualEndIso: manualTimed ? state.manual?.untilIso ?? null : null,
       pendingGateGroupIds: gateWindow
-        ? uniqueGroupIds(state.pendingGate?.groupIds ?? [state.groups.gate])
+        ? resolvedGroups(state.pendingGate?.groupIds ?? [state.groups.gate], state.resolveGroup).groupIds
         : [],
       pendingGateLiveAtIso: gateWindow ? gateWindow.startIso : null,
     },
@@ -312,6 +357,8 @@ export function syncAppShield(state: AppShieldState): void {
   // block exactly the apps they are meant to leave open.
   const allowIds = state.allowGroupIds ?? [];
   const allowWritten = bridge.setAllowGroups(allowIds);
+  // Right after, and best effort: a build without it leaves each allowlist its own set.
+  if (allowWritten) bridge.setAllowSets(shieldAllowSets(state, allowIds));
   const applied = allowWritten ? groupIds : groupIds.filter(id => !allowIds.includes(id));
   if (applied.length > 0) bridge.applyShield(applied);
   else bridge.clearShield();

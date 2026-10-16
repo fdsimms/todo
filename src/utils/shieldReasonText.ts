@@ -15,8 +15,24 @@ import type { ShieldReasonEntry } from './appShield';
 /** The most gate tasks named before the rest collapse into a count. */
 export const MAX_NAMED_GATES = 3;
 
-/** The lines for one reason, in the order they should be read. */
-export function shieldReasonLines(entry: ShieldReasonEntry, formatTime: (iso: string) => string | null): string[] {
+/**
+ * The lines for one reason, in the order they should be read. With `groupLabel`
+ * a last line names the groups it blocks, as the person named them: a
+ * supergroup reads as itself, not as the groups inside it. A caller leaves it
+ * out when there is only the one group, where the line would say nothing.
+ */
+export function shieldReasonLines(
+  entry: ShieldReasonEntry,
+  formatTime: (iso: string) => string | null,
+  groupLabel?: (groupId: string) => string,
+): string[] {
+  const lines = reasonLines(entry, formatTime);
+  if (!groupLabel || !entry.namedGroupIds?.length) return lines;
+  const names = [...new Set(entry.namedGroupIds.map(groupLabel))];
+  return [...lines, `Blocking ${names.join(', ')}.`];
+}
+
+function reasonLines(entry: ShieldReasonEntry, formatTime: (iso: string) => string | null): string[] {
   switch (entry.reason) {
     case 'focus':
       return ['A focus session is running.'];

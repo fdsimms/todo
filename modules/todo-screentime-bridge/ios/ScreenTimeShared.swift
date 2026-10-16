@@ -105,7 +105,7 @@ enum ScreenTimeShared {
   static func readAllowGroups() -> AllowGroupsShared {
     guard let data = readData(allowGroupsFileName),
           let allow = try? JSONDecoder().decode(AllowGroupsShared.self, from: data)
-    else { return AllowGroupsShared(groupIds: [], appBundleId: nil) }
+    else { return AllowGroupsShared(groupIds: [], appBundleId: nil, sets: nil) }
     return allow
   }
 
@@ -192,6 +192,12 @@ struct AllowGroupsShared: Codable {
   /// open, or the emergency button and the key-tag release would be shielded
   /// along with everything else.
   let appBundleId: String?
+  /// Allowlists that act as one: the groups in an inner array are unioned into a
+  /// single "everything except these" (a supergroup of allowlists is "either"),
+  /// and the arrays are then intersected as separate allowlists always were.
+  /// Optional so a file written before supergroups still decodes, and then every
+  /// allowlist group is its own set (`applyGroups`).
+  var sets: [[String]]? = nil
 }
 
 struct ShieldStateShared: Codable {
@@ -244,6 +250,10 @@ struct ShieldStateShared: Codable {
 struct ShieldGroupsShared: Codable {
   let otherGroupIds: [String]
   let penaltyGroupId: String?
+  /// Every group the penalty holds, `penaltyGroupId` being the first. Optional so
+  /// a state file written before a penalty could name several still decodes, and
+  /// then falls back to that one group (`penaltyHeldGroupIds`).
+  let penaltyGroupIds: [String]?
   let penaltyEndIso: String?
   /// The block the person started by hand. Optional so a state file written by
   /// an older build still decodes, with this half simply absent.
@@ -255,6 +265,13 @@ struct ShieldGroupsShared: Codable {
   let manualEndIso: String?
   let pendingGateGroupIds: [String]?
   let pendingGateLiveAtIso: String?
+
+  /// The groups the penalty holds: the list when there is one, else the single
+  /// group an older state file named.
+  var penaltyHeldGroupIds: [String] {
+    if let ids = penaltyGroupIds, !ids.isEmpty { return ids }
+    return penaltyGroupId.map { [$0] } ?? []
+  }
 
   /// The groups the manual block holds: the list when there is one, else the
   /// single group an older state file named.
@@ -494,9 +511,8 @@ extension ScreenTimeShared {
     }
     var ids = state.groups?.otherGroupIds ?? (state.otherReasonWantsShield ? [defaultGroupID] : [])
     if !penaltyEnded,
-       let group = state.groups?.penaltyGroupId,
        let end = parseIso(state.groups?.penaltyEndIso), end > now {
-      ids.append(group)
+      ids.append(contentsOf: state.groups?.penaltyHeldGroupIds ?? [])
     }
     if !manualEnded,
        let end = parseIso(state.groups?.manualEndIso), end > now {
@@ -582,23 +598,44 @@ extension ScreenTimeShared {
     var applications = Set<ApplicationToken>()
     var categories = Set<ActivityCategoryToken>()
     var webDomains = Set<WebDomainToken>()
-    // One entry per live allowlist group. Each says "everything except these",
-    // so with several live the shield is everything outside *all* of them: what
-    // stays open is the apps every allowlist names (`intersection` below).
+    // One entry per live allowlist. Each says "everything except these", so
+    // with several live the shield is everything outside *all* of them: what
+    // stays open is the apps every allowlist names (`intersection` below). An
+    // allowlist is one group, or the groups of one supergroup unioned (`sets`).
     var allowedApplications: [Set<ApplicationToken>] = []
     var allowedWebDomains: [Set<WebDomainToken>] = []
-    for id in groupIds {
-      guard let selection = readSelection(groupId: id) else { continue }
-      if allow.groupIds.contains(id) {
-        // Only apps and websites can be excepted: `all(except:)` takes tokens
-        // for those and has no way to leave a category open. An allowlist
-        // holding none is skipped rather than applied, because "everything
-        // except nothing" shields the whole phone, this app included.
-        if selection.applicationTokens.isEmpty && selection.webDomainTokens.isEmpty { continue }
-        allowedApplications.append(selection.applicationTokens)
-        allowedWebDomains.append(selection.webDomainTokens)
-        continue
+    var allowUnits: [[String]] = []
+    var covered = Set<String>()
+    for set in allow.sets ?? [] {
+      // Only the groups still held: a set that lost members because their
+      // reasons ended holds less open, which is the stricter way to be wrong.
+      let live = set.filter { groupIds.contains($0) && allow.groupIds.contains($0) }
+      if live.isEmpty { continue }
+      allowUnits.append(live)
+      covered.formUnion(live)
+    }
+    for id in groupIds where allow.groupIds.contains(id) && !covered.contains(id) {
+      allowUnits.append([id])
+      covered.insert(id)
+    }
+    for unit in allowUnits {
+      var apps = Set<ApplicationToken>()
+      var sites = Set<WebDomainToken>()
+      for id in unit {
+        guard let selection = readSelection(groupId: id) else { continue }
+        apps.formUnion(selection.applicationTokens)
+        sites.formUnion(selection.webDomainTokens)
       }
+      // Only apps and websites can be excepted: `all(except:)` takes tokens
+      // for those and has no way to leave a category open. An allowlist
+      // holding none is skipped rather than applied, because "everything
+      // except nothing" shields the whole phone, this app included.
+      if apps.isEmpty && sites.isEmpty { continue }
+      allowedApplications.append(apps)
+      allowedWebDomains.append(sites)
+    }
+    for id in groupIds where !allow.groupIds.contains(id) {
+      guard let selection = readSelection(groupId: id) else { continue }
       applications.formUnion(selection.applicationTokens)
       categories.formUnion(selection.categoryTokens)
       webDomains.formUnion(selection.webDomainTokens)

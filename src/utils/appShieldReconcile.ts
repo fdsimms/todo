@@ -6,7 +6,7 @@ import { isTimedBlock, manualBlockWanted } from './manualBlock';
 import type { Task } from '../types';
 import { nextScheduleBoundary, resolvedGroups } from './blockSchedule';
 import { beginVisibleAtPass, getVisibleAt, isHiddenForVacation, isTaskVisible } from './visibilityUtils';
-import { allowGroupsNow, resolvedAssignments, resolveGroupNow, useAppGroupStore } from '../store/useAppGroupStore';
+import { allowGroupsNow, expandGroupNow, resolvedAssignments, resolveGroupNow, useAppGroupStore } from '../store/useAppGroupStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { useNfcKeyStore } from '../store/useNfcKeyStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -127,7 +127,7 @@ function buildShieldState(now: Date): AppShieldState {
     keyLocked: keyLockedNow(),
     groups: resolvedAssignments(),
     schedules,
-    resolveGroup: resolveGroupNow,
+    resolveGroup: expandGroupNow,
     gateTitles: gates.map(t => t.title),
     gateGroupIds: gates.map(groupOf),
     pendingGate: pending

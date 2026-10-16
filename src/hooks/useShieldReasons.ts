@@ -4,7 +4,7 @@ import { shieldReasons, type AppShieldState, type ShieldReasonEntry } from '../u
 import { canLock } from '../utils/nfcKey';
 import { isTaskVisible } from '../utils/visibilityUtils';
 import { nextScheduleBoundary, resolvedGroups } from '../utils/blockSchedule';
-import { resolvedAssignments, resolveGroupNow, useAppGroupStore } from '../store/useAppGroupStore';
+import { expandGroupNow, resolvedAssignments, resolveGroupNow, useAppGroupStore } from '../store/useAppGroupStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { useNfcKeyStore } from '../store/useNfcKeyStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -88,7 +88,7 @@ export function useShieldReasons(): ShieldReasonEntry[] {
       pendingGate: null,
       groups: resolvedAssignments(),
       schedules,
-      resolveGroup: resolveGroupNow,
+      resolveGroup: expandGroupNow,
       now,
     };
     return shieldReasons(state);

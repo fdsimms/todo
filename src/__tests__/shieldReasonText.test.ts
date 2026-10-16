@@ -2,6 +2,22 @@ import { MAX_NAMED_GATES, selectionLabel, shieldHeadline, shieldHeadlineNote, sh
 
 const time = (iso: string) => (iso === 'bad' ? null : '10:30 AM');
 
+describe('shieldReasonLines group line', () => {
+  const label = (id: string) => ({ mix: 'Distractions', social: 'Social' }[id] ?? id);
+
+  it('ends with the groups as the person named them, each once', () => {
+    expect(shieldReasonLines({ groupIds: ['social', 'news'], namedGroupIds: ['mix'], reason: 'focus' }, time, label))
+      .toEqual(['A focus session is running.', 'Blocking Distractions.']);
+    expect(shieldReasonLines({ groupIds: [], namedGroupIds: ['social', 'mix', 'social'], reason: 'key' }, time, label).at(-1))
+      .toBe('Blocking Social, Distractions.');
+  });
+
+  it('adds nothing without a label or without named groups', () => {
+    expect(shieldReasonLines({ groupIds: ['x'], namedGroupIds: ['mix'], reason: 'focus' }, time)).toEqual(['A focus session is running.']);
+    expect(shieldReasonLines({ groupIds: ['x'], reason: 'focus' }, time, label)).toEqual(['A focus session is running.']);
+  });
+});
+
 describe('shieldReasonLines', () => {
   it('says a focus session and a key lock plainly', () => {
     expect(shieldReasonLines({ groupIds: ['default'], reason: 'focus' }, time)).toEqual(['A focus session is running.']);
