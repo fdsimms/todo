@@ -989,33 +989,13 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
 
     mergeCookbooks(survivorId, loserId) {
       const result = replica.mergeCookbooks(survivorId, loserId);
-      log({ action: 'edited', subject: 'recipe', title: result.survivor.title, taskId: null, count: result.recipesMoved, note: `Merge the cookbook "${result.merged.title}" into "${result.survivor.title}": its recipes and index move over, and "${result.merged.title}" is gone. It cannot be undone from here.` });
+      log({ action: 'edited', subject: 'recipe', title: result.survivor.title, taskId: null, count: result.recipesMoved, note: `Merge the cookbook "${result.merged.title}" into "${result.survivor.title}": its recipes move over, and "${result.merged.title}" is gone. It cannot be undone from here.` });
       return result;
     },
 
     deleteCookbook(id) {
       const result = replica.deleteCookbook(id);
-      log({ action: 'cleared', subject: 'recipe', title: result.cookbook.title, taskId: null, note: `Delete the cookbook "${result.cookbook.title}": its ${result.recipesUnlinked} recipes stay, no longer in a book, and its index of ${result.indexEntries} dishes goes. It cannot be restored from here.` });
-      return result;
-    },
-
-    saveIndexEntry(input) {
-      const entry = replica.saveIndexEntry(input);
-      const book = replica.cookbookSummaries().find(c => c.id === entry.cookbookId)?.title ?? 'a cookbook';
-      log({ action: input.id ? 'edited' : 'created', subject: 'recipe', title: entry.title, taskId: null, note: `${input.id ? 'Change' : 'Add'} "${entry.title}" in the index of ${book}` });
-      return entry;
-    },
-
-    deleteIndexEntry(id) {
-      const entry = replica.deleteIndexEntry(id);
-      const book = replica.cookbookSummaries().find(c => c.id === entry.cookbookId)?.title ?? 'a cookbook';
-      log({ action: 'cleared', subject: 'recipe', title: entry.title, taskId: null, note: `Take "${entry.title}" out of the index of ${book}` });
-      return entry;
-    },
-
-    recipeFromIndexEntry(id) {
-      const result = replica.recipeFromIndexEntry(id);
-      if (result.created) log({ action: 'created', subject: 'recipe', title: result.recipe.name, taskId: null });
+      log({ action: 'cleared', subject: 'recipe', title: result.cookbook.title, taskId: null, note: `Delete the cookbook "${result.cookbook.title}": its ${result.recipesUnlinked} recipes stay, no longer in a book. It cannot be restored from here.` });
       return result;
     },
 

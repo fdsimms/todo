@@ -1371,10 +1371,7 @@ first write, and the writes are one transaction. `delete_recipe` leaves planned 
 
 Cookbooks are `list_cookbooks`, `rename_cookbook`, `merge_cookbooks` (the store's own, which
 re-mirror every recipe in the book) and `delete_cookbook` (which unlinks its recipes, keeping the
-source mirrored onto them, and takes its index), and an index is `get_cookbook_index`, `save_index_entry`,
-`delete_index_entry` and `recipe_from_index_entry`, the store's index actions with their refusals
-(a dish an index already lists). An index line is still not a recipe (`docs/arch/recipes.md`), which
-is why making one from it is its own tool. `reorder` with kind `up_next` orders the shelf and `log_cook_time`
+source mirrored onto them). `reorder` with kind `up_next` orders the shelf and `log_cook_time`
 records a cook timed on the person's own clock, the timer's `applyMeasuredCookTime`.
 
 ### Calendar events: a request the phone answers

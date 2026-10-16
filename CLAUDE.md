@@ -518,7 +518,6 @@ file: the two maps are indexes, not write-ups.
 | "if there's no butter, use margarine" | `src/utils/itemSubs.ts` — see `docs/arch/groceries.md` |
 | "white onion is still onion" | `src/utils/itemVarieties.ts` — see `docs/arch/groceries.md` |
 | "always use oat milk for milk" | `src/utils/standingSwaps.ts` — see `docs/arch/groceries.md` |
-| a cookbook's index, and finding what to cook by ingredient ("Cook with…") | `src/utils/cookbookIndex.ts` + `CookbookIndexEntry` + `src/components/CookWithSheet.tsx` — see `docs/arch/recipes.md`. An index line is deliberately **not a recipe**: its own table, read only by Cook with… and the book's page. **Never add a photo scan of an index (or of a cookbook's contents):** it was built and removed twice (small multi-column print, indentation-only structure, sideways or soft photos), so ask the user before a third attempt; see `docs/arch/recipes.md` |
 | one recipe used inside another | `src/utils/recipeComponents.ts` — see `docs/arch/recipes.md` |
 | a recipe filled from what's in the kitchen (a grain bowl), and what kind of food an item is | `src/utils/recipeBlanks.ts` (the blank and its fill, which rides `RecipeOverride.fill`) + `src/utils/blankPicker.ts` (what the kitchen offers) + `src/utils/foodKinds.ts` — see `docs/arch/recipes.md` |
 | "serrano or jalapeño", decided at the shelf | `ChoiceResolution.undecided` in `src/utils/recipeComponents.ts` — see `docs/arch/groceries.md` |

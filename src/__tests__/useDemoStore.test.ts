@@ -43,7 +43,6 @@ import { cartBudgetStanding, describeCartTotal, estimateCartTotal } from '../uti
 import { OTHER_AISLE } from '../utils/groceryAisles';
 import { shopWalkOrder } from '../utils/groceryShops';
 import { useGroceryStore } from '../store/useGroceryStore';
-import { findWithPantry, pantryIngredients } from '../utils/cookbookIndex';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { isNutrientOnlyEntry } from '../utils/nutrientLog';
 import { supplementDoseIdOf } from '../utils/supplementDose';
@@ -4164,20 +4163,6 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const shortbreads = recipes.filter(r => r.nameKey === 'brown sugar shortbread');
     expect(shortbreads).toHaveLength(2);
     expect(new Set(shortbreads.map(r => r.cookbookId)).size).toBe(2);
-    // A book's index, kept out of the recipe box: its dishes are lines of the
-    // index and not recipes, so none of them is in \`recipes\`.
-    const indexEntries = useRecipeStore.getState().indexEntries;
-    expect(indexEntries.length).toBeGreaterThan(0);
-    expect(new Set(indexEntries.map(e => e.cookbookId)).size).toBeGreaterThan(1);
-    const recipeNames = new Set(recipes.map(r => r.name));
-    expect(indexEntries.some(e => recipeNames.has(e.title))).toBe(false);
-    // Cook with… on "What I have" has something to say about the demo pantry:
-    // the seeded catalog's on-hand rows are used by at least one recipe.
-    const grocery = useGroceryStore.getState();
-    const have = pantryIngredients(grocery.items, new Date(), grocery.itemProducts);
-    expect(have.length).toBeGreaterThan(0);
-    const cookable = findWithPantry(have, recipes, indexEntries, useRecipeStore.getState().cookbooks);
-    expect(cookable.recipes.length + cookable.entries.length).toBeGreaterThan(0);
     // What a link import leaves behind, all on one recipe: the address, the
     // site, the byline, and the method read off the page's own markup.
     expect(recipes.some(r =>

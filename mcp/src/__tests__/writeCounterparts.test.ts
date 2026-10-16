@@ -60,7 +60,6 @@ const COUNTERPARTS: Record<string, string[]> = {
   create_grocery_list: ['rename_grocery_list', 'delete_grocery_list'],
   save_rule: ['delete_rule'],
   save_recipe: ['update_recipe', 'delete_recipe'],
-  save_index_entry: ['delete_index_entry'],
   add_person_history: ['reopen_task', 'archive_task'],
 };
 

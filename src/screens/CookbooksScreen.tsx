@@ -9,7 +9,6 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
 import { CookbookEditor } from '../components/CookbookEditor';
-import { CookWithSheet } from '../components/CookWithSheet';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -41,7 +40,6 @@ export function CookbooksScreen() {
   const recipes = useRecipeStore(useShallow(s => s.recipes));
 
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [cookWithVisible, setCookWithVisible] = useState(false);
 
   const recipeCountOf = (id: string) => recipes.filter(r => r.cookbookId === id).length;
 
@@ -100,12 +98,6 @@ export function CookbooksScreen() {
         subtitle={sorted.length > 0
           ? `${sorted.length} ${sorted.length === 1 ? 'book' : 'books'}`
           : undefined}
-        // The finder searches these books' indexes and the recipe box.
-        actions={[{
-          icon: 'search-outline',
-          onPress: () => { haptics.tap(); setCookWithVisible(true); },
-          accessibilityLabel: 'Find recipes by ingredient',
-        }]}
       />
       {sorted.length === 0 ? (
         <EmptyState
@@ -131,12 +123,6 @@ export function CookbooksScreen() {
         visible={editingId !== null}
         cookbookId={editingId}
         onClose={() => setEditingId(null)}
-      />
-      <CookWithSheet
-        visible={cookWithVisible}
-        onClose={() => setCookWithVisible(false)}
-        onOpenRecipe={id => { setCookWithVisible(false); navigation.navigate('RecipeDetail', { recipeId: id }); }}
-        onOpenCookbook={id => { setCookWithVisible(false); navigation.navigate('CookbookDetail', { cookbookId: id }); }}
       />
       <ScrollToTopButton {...scrollTop.buttonProps} />
       {pullSearch.sheet}
