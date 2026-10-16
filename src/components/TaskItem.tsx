@@ -51,6 +51,7 @@ import { useTrayRaised } from './TaskGroupTray';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, checkboxRadius, type Colors, textScale } from '../theme';
 import { weatherWaitChipText } from '../utils/weatherWait';
+import { splitWeatherTitle } from '../utils/weatherTasks';
 import { meterChipText } from '../utils/meters';
 import { useMeterReadingStore } from '../store/useMeterReadingStore';
 import { buildCompletion, completionSettings } from '../utils/taskCompletion';
@@ -1882,9 +1883,14 @@ const TaskItemRow = React.memo(function TaskItem({
   // Its own title on a negative task rather than the step's: a chain step can
   // never be advanced past, so displayTitleFor would otherwise replace the row's
   // title with step one for ever.
-  const displayTitle = inPlaceNextStep
+  const fullDisplayTitle = inPlaceNextStep
     ? inPlaceNextStep.item.title
     : (isNegative ? null : activeChainStepTitle(task)) ?? task.title;
+  // A weather task's "(rain 2pm to 3pm)" is a footnote to the rule's own
+  // words, so it sits on its own line under the title rather than in it.
+  const weatherSplit = task.generatedKind === 'weather' ? splitWeatherTitle(fullDisplayTitle) : null;
+  const displayTitle = weatherSplit ? weatherSplit.head : fullDisplayTitle;
+  const weatherNote = weatherSplit?.note ?? null;
   // Computed once and reused by the expandable step list (#1237) and the row's
   // step-forward/back controls (#786) — same reasoning as chainStepIndex above.
   const chainStepPreview = chainStep ? chainPreview(task) : null;
@@ -3272,6 +3278,9 @@ const TaskItemRow = React.memo(function TaskItem({
               </Animated.View>
             )}
           </View>
+        )}
+        {weatherNote !== null && !nutrientRow && !isEditingTitle && (
+          <Text style={[styles.scheduledLabel, styles.weatherNote]} numberOfLines={1}>{weatherNote}</Text>
         )}
         {activeTitleOffer && (
           <TitleSuggestionBanner
@@ -5594,6 +5603,9 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => StyleSheet.create({
   blockingLabel: {
     color: colors.textSecondary,
     fontSize: font.xs,
+  },
+  weatherNote: {
+    marginTop: spacing.xxs,
   },
   quotaLabel: {
     color: colors.accent,

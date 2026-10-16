@@ -10,6 +10,7 @@ import {
   weatherWindowFor,
   describeWeatherWindow,
   weatherTaskTitle,
+  splitWeatherTitle,
 } from '../utils/weatherTasks';
 
 /** A day of clear 70° hours, with `codes` overriding the ones named. */
@@ -265,5 +266,25 @@ describe('weatherTaskTitle', () => {
   // rather than trailing an empty pair of brackets.
   it('is the rule title alone when there is no window', () => {
     expect(weatherTaskTitle('Put on sunscreen', null)).toBe('Put on sunscreen');
+  });
+});
+
+describe('splitWeatherTitle', () => {
+  it('takes the trailing window off as a note', () => {
+    expect(splitWeatherTitle('Wear rain-appropriate gear (rain 2pm to 3pm)')).toEqual({
+      head: 'Wear rain-appropriate gear',
+      note: 'rain 2pm to 3pm',
+    });
+  });
+
+  it('leaves a title with no window alone', () => {
+    expect(splitWeatherTitle('Put on sunscreen')).toEqual({ head: 'Put on sunscreen', note: null });
+  });
+
+  it('round-trips weatherTaskTitle', () => {
+    expect(splitWeatherTitle(weatherTaskTitle('Bring an umbrella', 'rain from 2pm tomorrow'))).toEqual({
+      head: 'Bring an umbrella',
+      note: 'rain from 2pm tomorrow',
+    });
   });
 });
