@@ -797,3 +797,23 @@ export function describeNutritionCoverage(gaps: NutritionGaps): string | null {
 export function describeWeekNutrition(nutrition: RecipeNutrition | null): string | null {
   return nutrition ? describeNutrition(nutrition, 'items') : null;
 }
+
+/**
+ * The recipes a search matches by name that the food log cannot offer, because
+ * their figures came back unknown (below `MIN_LINE_COVERAGE`) or they name no
+ * serving count. The log's list silently drops such a recipe, so a person who
+ * typed its name saw "No matching food" for a dish they could see in Recipes.
+ * Matches the way the list does (`groceryNameKey`, substring), and returns
+ * nothing for an empty query, where there is no name to have matched.
+ */
+export function recipesWithoutFigures(
+  recipes: readonly Pick<Recipe, 'id' | 'name'>[],
+  loggableIds: ReadonlySet<string>,
+  query: string,
+): string[] {
+  const key = groceryNameKey(query);
+  if (!key) return [];
+  return recipes
+    .filter(r => !loggableIds.has(r.id) && groceryNameKey(r.name).includes(key))
+    .map(r => r.name);
+}

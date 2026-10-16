@@ -63,7 +63,7 @@ import {
   scalePanelToAmount,
 } from '../utils/foodLog';
 import { cookedDishGrams, mealHelping, servingGrams, weighedHelping } from '../utils/mealLog';
-import { perServing, recipeNutrition, recipeNutritionLines, type NutritionLine } from '../utils/recipeNutrition';
+import { perServing, recipeNutrition, recipeNutritionLines, recipesWithoutFigures, type NutritionLine } from '../utils/recipeNutrition';
 import { standingSwapMap } from '../utils/standingSwaps';
 import { describeProduct } from '../utils/groceryProduct';
 import { isNonFoodAisle } from '../utils/groceryAisles';
@@ -893,6 +893,14 @@ export function FoodLogEntrySheet({
     if (!key) return ranked.filter(c => !shown.has(c.key)).slice(0, 40);
     return ranked.filter(c => groceryNameKey(c.label).includes(key)).slice(0, 40);
   }, [candidates, query, recency, usual]);
+
+  // A recipe the search matches by name but the list dropped for want of
+  // figures, so the empty state can say that instead of "No matching food".
+  const unfiguredRecipes = useMemo(() => {
+    const loggable = new Set<string>();
+    for (const c of candidates) if (c.recipeId) loggable.add(c.recipeId);
+    return recipesWithoutFigures(recipes, loggable, query);
+  }, [candidates, recipes, query]);
 
   // Earlier helpings of foods with no row (an estimate, a database food nobody
   // filed), offered above the list to log again as they were, since the list
@@ -2287,11 +2295,15 @@ export function FoodLogEntrySheet({
                   // Said about the catalog when logged-before rows are showing
                   // above, so it doesn't claim there is nothing to log while
                   // offering something to log.
-                  title={candidates.length === 0
+                  title={unfiguredRecipes.length > 0
+                    ? (unfiguredRecipes.length === 1 ? `${unfiguredRecipes[0]} has no figures yet` : `${unfiguredRecipes.length} matching recipes have no figures yet`)
+                    : candidates.length === 0
                     ? (helpings.length > 0 ? 'Nothing in your catalog has figures yet' : 'Nothing has figures yet')
                     : (helpings.length > 0 ? 'Nothing in your catalog matches' : 'No matching food')}
                   subtitle={
-                    (candidates.length === 0
+                    (unfiguredRecipes.length > 0
+                      ? 'Too few of its ingredients have nutrition to work out a total. Add nutrition to more of them, or describe it with Estimate.'
+                      : candidates.length === 0
                       ? 'A food can be logged once it has nutrition.'
                       : 'Only foods and recipes with nutrition can be logged.')
                     + (hasFdcKey

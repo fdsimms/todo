@@ -12,6 +12,7 @@ import {
   readRecipeNutrition,
   recipeNutrition,
   recipeNutritionLines,
+  recipesWithoutFigures,
   weekNutrition,
 } from '../utils/recipeNutrition';
 
@@ -949,5 +950,26 @@ describe('a used recipe is counted at the share the parent eats', () => {
   it('leaves a recipe with no parts as it was', () => {
     const solo = recipe('Solo', [ing('Salt', { quantity: '12 g' })]);
     expect(recipeNutrition(solo, [salt()])!.total.sodiumMg).toBeCloseTo(120, 5);
+  });
+});
+
+describe('recipesWithoutFigures', () => {
+  const recipes = [
+    { id: 'a', name: 'JUST Egg Omelette' },
+    { id: 'b', name: 'JUST Egg Omurice' },
+    { id: 'c', name: 'Overnight Waffles' },
+  ];
+
+  it('names the recipes the search matches that cannot be logged', () => {
+    expect(recipesWithoutFigures(recipes, new Set(['b']), 'Just egg')).toEqual(['JUST Egg Omelette']);
+  });
+
+  it('ignores recipes that can be logged, and ones the search does not match', () => {
+    expect(recipesWithoutFigures(recipes, new Set(['a', 'b']), 'just egg')).toEqual([]);
+    expect(recipesWithoutFigures(recipes, new Set(), 'pancake')).toEqual([]);
+  });
+
+  it('says nothing before anything is typed', () => {
+    expect(recipesWithoutFigures(recipes, new Set(), '  ')).toEqual([]);
   });
 });
