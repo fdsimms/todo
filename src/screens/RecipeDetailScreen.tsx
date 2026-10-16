@@ -3010,6 +3010,7 @@ export function RecipeDetailScreen() {
         choices={choices}
         overrides={overrides}
         onChoicesChange={setChoices}
+        onOverridesChange={setOverrides}
         onClose={() => setCookModeVisible(false)}
         onLogCooked={() => cookRecipeNow(recipe)}
         onLogFood={nutritionReading?.nutrition ? handleLogToFoodLog : undefined}
