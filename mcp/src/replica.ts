@@ -1229,6 +1229,11 @@ export interface Replica {
    * console would otherwise keep to itself.
    */
   errorLog(): ErrorLogRow[];
+  /**
+   * How big this replica's own database is, by table. The phone's file size
+   * never syncs, so this is the nearest an agent can get (`storageTools.ts`).
+   */
+  storage(): { databaseBytes: number; freeBytes: number; autoReclaim: boolean; tables: { name: string; bytes: number }[] };
   /** The person's saved views, in their own order. */
   savedViews(): SavedView[];
   /**
@@ -4192,6 +4197,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     },
     focusHistory: () => db.dbGetFocusSessionLog(),
     errorLog: () => db.dbGetErrorLog(),
+    storage: () => db.dbStorageStats(),
     savedViews: () => db.dbGetAllSavedViews(),
     savedViewTasks(clauses: readonly SavedViewClause[]): Task[] {
       // eslint-disable-next-line @typescript-eslint/no-require-imports

@@ -53,6 +53,7 @@ export const READ_TOOLS: Record<string, string> = {
   match_receipt: 'Match a receipt to the catalog',
   focus_history: 'Focus session history',
   list_errors: 'Recorded errors',
+  storage_report: 'Storage report',
   list_milestones: 'Milestones',
   list_cookware: 'Cookware weights',
   list_copy_flags: 'Copy flags',

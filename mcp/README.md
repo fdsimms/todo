@@ -88,6 +88,7 @@ only the fallback until the first sync.
 | `mood_insights` | The Mood screen's findings, held to its minimum-days rules, with those rules stated. |
 | `focus_history` | Finished focus sessions over a range, as the Stats screen reads them: minutes worked and rested, how stretches ran against their plan (once there are enough), breaks taken, and each session's steps. History only: a session in progress stays on the phone. |
 | `list_errors` | Unexpected failures the phone recorded, newest first: where each was caught, the error name, a trimmed message and the top of its stack. For working out why a feature failed. Read-only. |
+| `storage_report` | How much task data is stored: open and completed task counts (with the oldest completion), the completed-task retention window, and the largest areas of this server's copy by size. The phone's own file size doesn't sync, so it points to Settings › Data & reset › Storage for the exact figure. Read-only. |
 | `list_copy_flags` | Lines of on-screen copy the person flagged in the app as needing a manual pass (temporary dev tooling), with the text, screen, their note and a `find` command (`npm run copy -- --grep …`) to run in the source checkout, which lists the matching strings with file and line. |
 | `list_cookware` | The pots, pans, lids and tubs the person has weighed empty, each with its empty weight in grams. |
 | `list_milestones` | The days something changed that the person marked on the mood log, each with its date. Empty unless health logs reach the server. |

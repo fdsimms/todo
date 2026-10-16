@@ -5167,10 +5167,17 @@ export function dbPruneErrorLog(cutoffIso: string, keep: number): void {
  * Indexes are folded into the table they belong to, so the figure answers
  * "how much does this feature cost" rather than "how big is one B-tree".
  */
-export function dbStorageStats(): { databaseBytes: number; freeBytes: number; tables: { name: string; bytes: number }[] } {
+export function dbStorageStats(): {
+  databaseBytes: number;
+  freeBytes: number;
+  /** Whether freed pages are handed back by `dbReclaimFreePages` (auto_vacuum = INCREMENTAL). */
+  autoReclaim: boolean;
+  tables: { name: string; bytes: number }[];
+} {
   const pageSize = db.getFirstSync<{ page_size: number }>('PRAGMA page_size')?.page_size ?? 4096;
   const pageCount = db.getFirstSync<{ page_count: number }>('PRAGMA page_count')?.page_count ?? 0;
   const freePages = db.getFirstSync<{ freelist_count: number }>('PRAGMA freelist_count')?.freelist_count ?? 0;
+  const autoReclaim = db.getFirstSync<{ auto_vacuum: number }>('PRAGMA auto_vacuum')?.auto_vacuum === AUTO_VACUUM_INCREMENTAL;
 
   const tables: { name: string; bytes: number }[] = [];
   try {
@@ -5193,7 +5200,33 @@ export function dbStorageStats(): { databaseBytes: number; freeBytes: number; ta
     // No dbstat in this build: the totals are still right.
   }
 
-  return { databaseBytes: pageSize * pageCount, freeBytes: pageSize * freePages, tables };
+  return { databaseBytes: pageSize * pageCount, freeBytes: pageSize * freePages, autoReclaim, tables };
+}
+
+/** `PRAGMA auto_vacuum` value for "freed pages wait on the list until asked for". */
+const AUTO_VACUUM_INCREMENTAL = 2;
+
+/** About 40 MB of 4 KB pages: enough to keep up with any purge, short enough to be a blink. */
+export const RECLAIM_PAGES_PER_RUN = 10_000;
+
+/**
+ * Hands free pages back to the device, a bounded slice at a time, and returns
+ * how many bytes the file shrank by. A no-op until `dbOptimizeStorage` has
+ * switched the file to incremental auto_vacuum, since without it the free list
+ * can't be released short of a full VACUUM; and a no-op on the demo database,
+ * which is thrown away anyway.
+ *
+ * Unlike VACUUM this rewrites nothing but the pages it releases, so it is safe
+ * as a launch pass after the purges have run. It writes no rows, so the sync
+ * stamp triggers don't fire.
+ */
+export function dbReclaimFreePages(maxPages = RECLAIM_PAGES_PER_RUN): number {
+  if (db !== realDb || transactionDepth > 0) return 0;
+  const before = dbStorageStats();
+  if (!before.autoReclaim || before.freeBytes === 0) return 0;
+  db.execSync(`PRAGMA incremental_vacuum(${Math.max(1, Math.floor(maxPages))})`);
+  db.execSync('PRAGMA wal_checkpoint(TRUNCATE)');
+  return Math.max(0, before.databaseBytes - dbStorageStats().databaseBytes);
 }
 
 /**
@@ -5212,6 +5245,10 @@ export function dbOptimizeStorage(): { before: number; after: number } {
   if (transactionDepth > 0) throw new Error('Can’t compact the database inside a transaction.');
   const before = dbStorageStats().databaseBytes;
   db.execSync('PRAGMA wal_checkpoint(TRUNCATE)');
+  // auto_vacuum on an existing file only takes effect through a VACUUM, so this
+  // is the one place it can be switched on: from here on, `dbReclaimFreePages`
+  // can hand back what later deletes free, with no further rewrite.
+  db.execSync('PRAGMA auto_vacuum = INCREMENTAL');
   db.execSync('VACUUM');
   db.execSync('PRAGMA wal_checkpoint(TRUNCATE)');
   return { before, after: dbStorageStats().databaseBytes };

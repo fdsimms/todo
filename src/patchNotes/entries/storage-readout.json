@@ -1,1 +1,1 @@
-{ "message": "Settings › Data & reset has a new Storage section. It shows how much space your data and recipe photos take, and a Compact the database button that gives back space left by deleted data.", "date": "2026-10-16" }
+{ "message": "Settings › Data & reset has a new Storage section. It shows how much space your data and recipe photos take, and a Compact the database button that gives back space left by deleted data. After you compact once, space freed by deleted data is given back each time the app opens.", "date": "2026-10-16" }

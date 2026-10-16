@@ -70,14 +70,18 @@ export function StorageSettings() {
   let compactHint: string;
   if (demoActive) compactHint = unavailable;
   else if (!stats) compactHint = 'Calculating';
-  else if (!worthOptimizing(stats)) compactHint = 'Nothing to give back right now';
+  else if (!worthOptimizing(stats)) {
+    compactHint = stats.autoReclaim
+      ? 'Nothing to give back. Space is reclaimed automatically'
+      : 'Nothing to give back right now';
+  }
   else if (blocked) compactHint = blocked;
   else compactHint = `Gives back ${formatBytes(stats.freeBytes)} of space left by deleted data`;
 
   return (
     <SettingsSection
       label="Storage"
-      footer="Deleting data frees space inside the database file but doesn’t make the file smaller. Compacting rewrites it, takes a few seconds and needs free space on your phone about the size of your data. Nothing is deleted."
+      footer="Deleting data frees space inside the database file but doesn’t make the file smaller. Compacting rewrites it, takes a few seconds and needs free space on your phone about the size of your data. Nothing is deleted. After you compact once, space freed by deleted data is given back each time the app opens."
     >
       <SettingsRow
         entryId="storageUsage"

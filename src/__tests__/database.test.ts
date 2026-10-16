@@ -13,6 +13,7 @@ import {
   dbGetAllSettings,
   dbStorageStats,
   dbOptimizeStorage,
+  dbReclaimFreePages,
   dbSetSetting,
   dbGetAllTasks,
   dbGetAllJournalEntries,
@@ -6224,5 +6225,37 @@ describe('storage stats and compacting', () => {
 
   it('refuses inside a transaction', () => {
     expect(() => dbTransaction(() => { dbOptimizeStorage(); })).toThrow();
+  });
+});
+
+// The file stays switched on from the first compact for the rest of the run (one in-memory
+// database serves every test), so the "not compacted yet" case isn't reachable from here.
+describe('reclaiming freed pages at launch', () => {
+  const fill = () => {
+    for (let i = 0; i < 400; i++) dbInsertTask(makeTask({ id: `bulk${i}`, notes: 'x'.repeat(2000) }));
+  };
+  const drain = () => dbBulkDeleteTasks(Array.from({ length: 400 }, (_, i) => `bulk${i}`));
+
+  it('hands deleted space back after a compact has switched it on', () => {
+    dbOptimizeStorage();
+    expect(dbStorageStats().autoReclaim).toBe(true);
+    fill();
+    drain();
+    const before = dbStorageStats();
+    expect(before.freeBytes).toBeGreaterThan(0);
+    const reclaimed = dbReclaimFreePages();
+    expect(reclaimed).toBeGreaterThan(0);
+    expect(dbStorageStats().databaseBytes).toBe(before.databaseBytes - reclaimed);
+    expect(dbStorageStats().freeBytes).toBe(0);
+  });
+
+  it('takes at most the pages it was given per run', () => {
+    dbOptimizeStorage();
+    fill();
+    drain();
+    const before = dbStorageStats();
+    const reclaimed = dbReclaimFreePages(2);
+    expect(reclaimed).toBeGreaterThan(0);
+    expect(reclaimed).toBeLessThan(before.freeBytes);
   });
 });

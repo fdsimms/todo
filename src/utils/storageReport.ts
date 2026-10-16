@@ -20,6 +20,8 @@ export interface StorageStats {
   databaseBytes: number;
   /** Pages on the free list: space inside the file that holds no data. */
   freeBytes: number;
+  /** Whether free pages are given back at launch, which compacting turns on. */
+  autoReclaim: boolean;
   /** Largest first. Empty where the SQLite build can't report per-table sizes. */
   tables: StorageTable[];
   /** Recipe photos, which are files beside the database rather than rows in it. */
