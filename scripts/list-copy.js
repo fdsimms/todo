@@ -328,152 +328,174 @@ const where = (list, max = 3) => {
 const kinds = list => [...new Set(list.map(e => e.kind.replace(/:.*/, '')))].join('/');
 const pad = (n, w) => String(n).padStart(w, ' ');
 
-// ==== modes ==================================================================
+// Output goes through a function that returns, not process.exit(): exiting
+// right after a large write to a pipe cuts the output off at the pipe's
+// buffer, which `npm run copy -- --all | head` or `--json | node` would hit.
+function run() {
+  // ==== modes ==================================================================
 
-if (has('json')) {
-  process.stdout.write(JSON.stringify(shown, null, 1) + '\n');
-  process.exit(0);
-}
-
-const grep = opt('grep', null);
-if (grep !== null) {
-  let re;
-  try {
-    re = new RegExp(grep, 'i');
-  } catch (e) {
-    console.error(`--grep: ${e.message}`);
-    process.exit(2);
+  if (has('json')) {
+    process.stdout.write(JSON.stringify(shown, null, 1) + '\n');
+    return;
   }
-  const hits = shown.filter(e => re.test(e.text)).sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
-  for (const e of hits) console.log(`${e.file}:${e.line}  [${e.kind}]  ${e.text}`);
-  console.log(`\n${hits.length} match${hits.length === 1 ? '' : 'es'} in ${fileCount(hits)} file${fileCount(hits) === 1 ? '' : 's'}.`);
-  process.exit(0);
-}
 
-if (has('all')) {
-  const groups = [...groupBy(shown, e => e.text)].sort((a, b) => a[0].toLowerCase().localeCompare(b[0].toLowerCase()));
-  for (const [text, list] of groups) console.log(`${text}\n    ${kinds(list)} · ${list.length}× · ${where(list, 4)}`);
-  console.log(`\n${shown.length} strings, ${groups.length} distinct.`);
-  process.exit(0);
-}
-
-// ==== the report =============================================================
-
-const out = [];
-const section = title => out.push('', title, '='.repeat(title.length));
-
-const distinct = new Set(forReport.map(e => e.text)).size;
-out.push(`Copy inventory: ${forReport.length} strings, ${distinct} distinct, across ${fileCount(forReport)} of ${files.length} files.`);
-
-const unread = shown.length - forReport.length;
-section('By kind');
-const byKind = groupBy(forReport, e => e.kind.replace(/:.*/, ''));
-for (const [k, list] of [...byKind].sort((a, b) => b[1].length - a[1].length)) {
-  out.push(`${pad(list.length, 6)}  ${k.padEnd(8)} ${new Set(list.map(e => e.text)).size} distinct`);
-}
-if (unread) out.push(`${pad(unread, 6)}  not counted: model prompts and long passages (long), error messages (error); see --kind long,error`);
-const byArea = groupBy(forReport, e => e.file.split('/').slice(0, 2).join('/'));
-out.push('');
-for (const [k, list] of [...byArea].sort((a, b) => b[1].length - a[1].length).slice(0, 8)) {
-  out.push(`${pad(list.length, 6)}  ${k}`);
-}
-
-section(`Written out in ${MIN_FILES}+ files`);
-out.push('One word or sentence copied by hand into many files. These are the candidates for a shared constant.');
-out.push('');
-const exact = groupBy(forReport, e => e.text);
-// A lowercase string ("of", "more") is the middle of a sentence, not a label.
-const repeated = [...exact]
-  .filter(([text, list]) => fileCount(list) >= MIN_FILES && /^[^a-z]/.test(text))
-  .sort((a, b) => fileCount(b[1]) - fileCount(a[1]));
-for (const [text, list] of repeated.slice(0, TOP)) out.push(`${pad(fileCount(list), 4)} files  ${JSON.stringify(text)}  (${kinds(list)})`);
-if (repeated.length > TOP) out.push(`  … ${repeated.length - TOP} more (--top ${repeated.length})`);
-
-section('Written more than one way');
-out.push('The same words spelled differently: title case against sentence case, a straight or curly apostrophe, a trailing period.');
-out.push('');
-// A mid-sentence fragment ("done") and a section header typed in capitals
-// ("NAME") differ from the label only by role, so they are not drift. What is
-// left is spelling: title case against sentence case, an apostrophe, a period.
-const isLabelCase = text => text !== text.toLowerCase() && text !== text.toUpperCase();
-const looseGroups = [...groupBy(forReport, e => loose(e.text))]
-  .map(([key, list]) => {
-    const variants = groupBy(list.filter(e => isLabelCase(e.text)), e => e.text);
-    return [key, [...variants.values()].flat(), variants];
-  })
-  .filter(([, , variants]) => variants.size > 1)
-  .sort((a, b) => b[1].length - a[1].length);
-for (const [, , variants] of looseGroups.slice(0, TOP)) {
-  const rows = [...variants].sort((a, b) => b[1].length - a[1].length);
-  out.push(rows.map(([text, list]) => `${JSON.stringify(text)} ×${list.length}`).join('   vs   '));
-  out.push(`      e.g. ${where(rows.flatMap(r => r[1]), 3)}`);
-}
-if (looseGroups.length > TOP) out.push(`  … ${looseGroups.length - TOP} more (--top ${looseGroups.length})`);
-if (looseGroups.length === 0) out.push('None.');
-
-// Families: different words for one idea. Each is a rule of thumb for "these
-// are all the same kind of message", bucketed by how they open, so a title
-// that starts "Couldn't" sits apart from one that starts "Failed to". Add one
-// here when a pass over --grep turns up another idea said several ways.
-const FAMILIES = [
-  {
-    label: 'A save or load that failed',
-    test: /^(couldn['’]t|could not|can['’]t|cannot|unable to|failed to|didn['’]t|did not)\b|\b(failed|unavailable)$/i,
-    bucket: s => (/\b(failed|unavailable)$/i.test(s) ? '… failed / unavailable' : s.split(/\s+/).slice(0, 2).join(' ')),
-    kinds: ['alert:title', 'alert:message', 'literal', 'prop', 'field'],
-  },
-  {
-    label: 'A name that is already used',
-    test: /\b(is taken|already (used|exists|in use|taken))\b/i,
-    bucket: s => s,
-    kinds: ['alert', 'literal', 'prop', 'field'],
-  },
-  {
-    label: 'A button that ends or declines something',
-    test: /^(cancel|close|dismiss|discard|delete|remove|clear|not now|later|skip|no thanks|nevermind|never mind|keep editing|keep|stay|got it|ok|okay|done)$/i,
-    bucket: s => s,
-    kinds: ['alert:button', 'prop:label', 'prop:title', 'prop:actionLabel', 'prop:text', 'field', 'text'],
-  },
-  {
-    label: 'Sending the person to Settings',
-    test: /\b(open settings|go to settings|settings app)\b/i,
-    bucket: s => s,
-    kinds: ['alert', 'literal', 'prop', 'field', 'text'],
-  },
-  {
-    label: 'An empty list (short lines opening "No" or "Nothing")',
-    test: /^(no|nothing)\b.{0,40}$/i,
-    // The shape, not the noun: "No tasks yet" and "No recipes yet" are one
-    // wording, and "Nothing here yet" is another.
-    bucket: s => {
-      const words = s.split(/\s+/);
-      const last = words[words.length - 1].toLowerCase().replace(/[.…]+$/, '');
-      return `${words[0]} … ${['yet', 'here', 'found', 'left', 'selected', 'today', 'matches'].includes(last) ? last : ''}`.trim();
-    },
-    kinds: ['prop', 'field', 'text'],
-  },
-];
-
-for (const fam of FAMILIES) {
-  const pool = forReport.filter(e => fam.kinds.some(k => e.kind.startsWith(k)) && fam.test.test(e.text));
-  section(fam.label);
-  if (pool.length === 0) {
-    out.push('None found.');
-    continue;
+  const grep = opt('grep', null);
+  if (grep !== null) {
+    let re;
+    try {
+      re = new RegExp(grep, 'i');
+    } catch (e) {
+      console.error(`--grep: ${e.message}`);
+      process.exitCode = 2;
+      return;
+    }
+    const hits = shown.filter(e => re.test(e.text)).sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
+    for (const e of hits) console.log(`${e.file}:${e.line}  [${e.kind}]  ${e.text}`);
+    console.log(`\n${hits.length} match${hits.length === 1 ? '' : 'es'} in ${fileCount(hits)} file${fileCount(hits) === 1 ? '' : 's'}.`);
+    return;
   }
-  const buckets = [...groupBy(pool, e => loose(fam.bucket(clean(e.text))))].sort((a, b) => b[1].length - a[1].length);
-  out.push(`${pool.length} strings in ${buckets.length} wordings.`);
+
+  if (has('all')) {
+    const groups = [...groupBy(shown, e => e.text)].sort((a, b) => a[0].toLowerCase().localeCompare(b[0].toLowerCase()));
+    for (const [text, list] of groups) console.log(`${text}\n    ${kinds(list)} · ${list.length}× · ${where(list, 4)}`);
+    console.log(`\n${shown.length} strings, ${groups.length} distinct.`);
+    return;
+  }
+
+  // ==== the report =============================================================
+
+  const out = [];
+  const section = title => out.push('', title, '='.repeat(title.length));
+
+  const distinct = new Set(forReport.map(e => e.text)).size;
+  out.push(`Copy inventory: ${forReport.length} strings, ${distinct} distinct, across ${fileCount(forReport)} of ${files.length} files.`);
+
+  const unread = shown.length - forReport.length;
+  section('By kind');
+  const byKind = groupBy(forReport, e => e.kind.replace(/:.*/, ''));
+  for (const [k, list] of [...byKind].sort((a, b) => b[1].length - a[1].length)) {
+    out.push(`${pad(list.length, 6)}  ${k.padEnd(8)} ${new Set(list.map(e => e.text)).size} distinct`);
+  }
+  if (unread) out.push(`${pad(unread, 6)}  not counted: model prompts and long passages (long), error messages (error); see --kind long,error`);
+  const byArea = groupBy(forReport, e => e.file.split('/').slice(0, 2).join('/'));
   out.push('');
-  for (const [bucket, list] of buckets.slice(0, TOP)) {
-    const sample = [...new Set(list.map(e => e.text))].slice(0, 2).map(s => JSON.stringify(s)).join(', ');
-    out.push(`${pad(list.length, 4)}×  ${bucket.padEnd(28)} ${sample}`);
+  for (const [k, list] of [...byArea].sort((a, b) => b[1].length - a[1].length).slice(0, 8)) {
+    out.push(`${pad(list.length, 6)}  ${k}`);
   }
-  if (buckets.length > TOP) out.push(`  … ${buckets.length - TOP} more wordings (--top ${buckets.length})`);
+
+  section(`Written out in ${MIN_FILES}+ files`);
+  out.push('One word or sentence copied by hand into many files. These are the candidates for a shared constant.');
+  out.push('');
+  const exact = groupBy(forReport, e => e.text);
+  // A lowercase string ("of", "more") is the middle of a sentence, not a label.
+  const repeated = [...exact]
+    .filter(([text, list]) => fileCount(list) >= MIN_FILES && /^[^a-z]/.test(text))
+    .sort((a, b) => fileCount(b[1]) - fileCount(a[1]));
+  for (const [text, list] of repeated.slice(0, TOP)) out.push(`${pad(fileCount(list), 4)} files  ${JSON.stringify(text)}  (${kinds(list)})`);
+  if (repeated.length > TOP) out.push(`  … ${repeated.length - TOP} more (--top ${repeated.length})`);
+
+  section('Written more than one way');
+  out.push('The same words spelled differently: title case against sentence case, a straight or curly apostrophe, a trailing period.');
+  out.push('');
+  // A mid-sentence fragment ("done") and a section header typed in capitals
+  // ("NAME") differ from the label only by role, so they are not drift. What is
+  // left is spelling: title case against sentence case, an apostrophe, a period.
+  const isLabelCase = text => text !== text.toLowerCase() && text !== text.toUpperCase();
+  const looseGroups = [...groupBy(forReport, e => loose(e.text))]
+    .map(([key, list]) => {
+      const variants = groupBy(list.filter(e => isLabelCase(e.text)), e => e.text);
+      return [key, [...variants.values()].flat(), variants];
+    })
+    .filter(([, , variants]) => variants.size > 1)
+    .sort((a, b) => b[1].length - a[1].length);
+  for (const [, , variants] of looseGroups.slice(0, TOP)) {
+    const rows = [...variants].sort((a, b) => b[1].length - a[1].length);
+    out.push(rows.map(([text, list]) => `${JSON.stringify(text)} ×${list.length}`).join('   vs   '));
+    out.push(`      e.g. ${where(rows.flatMap(r => r[1]), 3)}`);
+  }
+  if (looseGroups.length > TOP) out.push(`  … ${looseGroups.length - TOP} more (--top ${looseGroups.length})`);
+  if (looseGroups.length === 0) out.push('None.');
+
+  // The app writes its apostrophes curly (’). A straight one in a sentence is
+  // an outlier that no spelling group catches, because nothing else is spelled
+  // the same way. Brand names in the demo seed and the text sent to the model
+  // are not the app's own voice, so they are left out.
+  const NOT_OWN_VOICE = /^src\/(utils\/demoSeed|services\/aiSuggestions)\.ts$/;
+  const straight = forReport.filter(e => /[A-Za-z]'[a-z]/.test(e.text) && !NOT_OWN_VOICE.test(e.file));
+  const curly = forReport.filter(e => /[A-Za-z]\u2019[a-z]/.test(e.text)).length;
+  section('Straight apostrophes');
+  out.push(`The app writes \u2019 (${curly} strings). These use ' instead.`);
+  out.push('');
+  if (straight.length === 0) out.push('None.');
+  for (const e of straight.slice(0, TOP)) out.push(`${e.file.replace(/^src\//, '')}:${e.line}  ${JSON.stringify(e.text.slice(0, 80))}`);
+  if (straight.length > TOP) out.push(`  \u2026 ${straight.length - TOP} more (--top ${straight.length})`);
+
+  // Families: different words for one idea. Each is a rule of thumb for "these
+  // are all the same kind of message", bucketed by how they open, so a title
+  // that starts "Couldn't" sits apart from one that starts "Failed to". Add one
+  // here when a pass over --grep turns up another idea said several ways.
+  const FAMILIES = [
+    {
+      label: 'A save or load that failed',
+      test: /^(couldn['’]t|could not|can['’]t|cannot|unable to|failed to|didn['’]t|did not)\b|\b(failed|unavailable)$/i,
+      bucket: s => (/\b(failed|unavailable)$/i.test(s) ? '… failed / unavailable' : s.split(/\s+/).slice(0, 2).join(' ')),
+      kinds: ['alert:title', 'alert:message', 'literal', 'prop', 'field'],
+    },
+    {
+      label: 'A name that is already used',
+      test: /\b(is taken|already (used|exists|in use|taken))\b/i,
+      bucket: s => s,
+      kinds: ['alert', 'literal', 'prop', 'field'],
+    },
+    {
+      label: 'A button that ends or declines something',
+      test: /^(cancel|close|dismiss|discard|delete|remove|clear|not now|later|skip|no thanks|nevermind|never mind|keep editing|keep|stay|got it|ok|okay|done)$/i,
+      bucket: s => s,
+      kinds: ['alert:button', 'prop:label', 'prop:title', 'prop:actionLabel', 'prop:text', 'field', 'text'],
+    },
+    {
+      label: 'Sending the person to Settings',
+      test: /\b(open settings|go to settings|settings app)\b/i,
+      bucket: s => s,
+      kinds: ['alert', 'literal', 'prop', 'field', 'text'],
+    },
+    {
+      label: 'An empty list (short lines opening "No" or "Nothing")',
+      test: /^(no|nothing)\b.{0,40}$/i,
+      // The shape, not the noun: "No tasks yet" and "No recipes yet" are one
+      // wording, and "Nothing here yet" is another.
+      bucket: s => {
+        const words = s.split(/\s+/);
+        const last = words[words.length - 1].toLowerCase().replace(/[.…]+$/, '');
+        return `${words[0]} … ${['yet', 'here', 'found', 'left', 'selected', 'today', 'matches'].includes(last) ? last : ''}`.trim();
+      },
+      kinds: ['prop', 'field', 'text'],
+    },
+  ];
+
+  for (const fam of FAMILIES) {
+    const pool = forReport.filter(e => fam.kinds.some(k => e.kind.startsWith(k)) && fam.test.test(e.text));
+    section(fam.label);
+    if (pool.length === 0) {
+      out.push('None found.');
+      continue;
+    }
+    const buckets = [...groupBy(pool, e => loose(fam.bucket(clean(e.text))))].sort((a, b) => b[1].length - a[1].length);
+    out.push(`${pool.length} strings in ${buckets.length} wordings.`);
+    out.push('');
+    for (const [bucket, list] of buckets.slice(0, TOP)) {
+      const sample = [...new Set(list.map(e => e.text))].slice(0, 2).map(s => JSON.stringify(s)).join(', ');
+      out.push(`${pad(list.length, 4)}×  ${bucket.padEnd(28)} ${sample}`);
+    }
+    if (buckets.length > TOP) out.push(`  … ${buckets.length - TOP} more wordings (--top ${buckets.length})`);
+  }
+
+  out.push('', 'Find one: npm run copy -- --grep "<regex>"   See all: npm run copy -- --all');
+  if (unparsed.length) {
+    out.push('', `Could not parse ${unparsed.length} file${unparsed.length === 1 ? '' : 's'} (their copy is missing above):`);
+    for (const u of unparsed.slice(0, 10)) out.push(`  ${u}`);
+  }
+  console.log(out.join('\n'));
 }
 
-out.push('', 'Find one: npm run copy -- --grep "<regex>"   See all: npm run copy -- --all');
-if (unparsed.length) {
-  out.push('', `Could not parse ${unparsed.length} file${unparsed.length === 1 ? '' : 's'} (their copy is missing above):`);
-  for (const u of unparsed.slice(0, 10)) out.push(`  ${u}`);
-}
-console.log(out.join('\n'));
+run();
