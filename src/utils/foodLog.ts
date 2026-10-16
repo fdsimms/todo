@@ -214,6 +214,8 @@ export function scalePanelToAmount(
       // already scaled.
       portions: [],
       recordedAt: now.toISOString(),
+      // A classification of the food, not a figure, so it rides along unscaled.
+      ...(panel.novaGroup ? { novaGroup: panel.novaGroup } : {}),
     },
   };
 }
@@ -295,6 +297,8 @@ function scaleToNutrient(
       sourceId: panel.sourceId,
       portions: [],
       recordedAt: now.toISOString(),
+      // A classification of the food, not a figure, so it rides along unscaled.
+      ...(panel.novaGroup ? { novaGroup: panel.novaGroup } : {}),
     },
   };
 }

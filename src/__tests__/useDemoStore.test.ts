@@ -2807,6 +2807,14 @@ describe('demo seed — people', () => {
     expect(checked).toBeGreaterThan(0);
   });
 
+  it('seeds foods with a processing group, so Stats has a share to show', () => {
+    const entries = useFoodLogStore.getState().windowEntries;
+    const groups = new Set(entries.map(e => e.nutrition.novaGroup).filter(Boolean));
+    expect(groups.has(4)).toBe(true);
+    expect(groups.size).toBeGreaterThan(1);
+    expect(entries.some(e => !e.nutrition.novaGroup)).toBe(true);
+  });
+
   it('seeds a meal eaten out, so the estimated marker has something to render on', () => {
     // The marker shows on the row through describeFoodLogEntry and is counted
     // apart by sourceMix on Stats. Neither reader says anything on a seed where

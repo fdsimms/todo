@@ -24,6 +24,7 @@ import type { ReviewAfter } from '../../src/utils/decisionReview';
 import { describeTemplateChanges, resolveRef, templateToPlan, templateVersion, templateWarnings, type TemplatePatch, type TemplatePlan } from './templatePlan';
 import { isRotationTask } from '../../src/utils/rotation';
 import { roundToHalf } from '../../src/utils/produceServings';
+import { entryNovaGroup, processingMix } from '../../src/utils/processingStats';
 import * as negativeHabits from '../../src/utils/negativeHabits';
 import { checkTemplateLibrary, type LibraryCheck } from './templateLibrary';
 import { proratedFrom } from '../../src/utils/quotaSchedule';
@@ -683,6 +684,12 @@ export interface SerializedFoodEntry {
    */
   amounts?: Record<string, number>;
   /**
+   * The food's NOVA processing group (1 unprocessed, 2 culinary ingredient, 3
+   * processed, 4 ultra-processed), only when a barcode source stated it or the
+   * person set it. Absent means unclassified, not group 1.
+   */
+  nova?: number;
+  /**
    * True when the entry was written to Apple Health. Only the phone can change
    * or delete one: refresh_dish_entry, update_food_entry and delete_food_entry
    * refuse it. Absent otherwise.
@@ -715,6 +722,22 @@ export interface FoodLogResult {
    * none.
    */
   produce: { dayKey: string; vegetable: number; fruit: number; unmeasured: number }[];
+  /**
+   * How much of the range's logged calories came from each NOVA group, over only
+   * the entries that carry a group, and how much of the log that covers. Absent
+   * when no entry with calories carries one. `ultraProcessedShare` is group 4's
+   * share of the classified calories, and `coverage` is the classified share of
+   * all logged calories: always report the two together, since a share over a
+   * small coverage says little. A group comes from a barcode source or the
+   * person, never from a food's name, so an unclassified entry is not group 1.
+   */
+  processing?: {
+    kcalByGroup: Record<string, number>;
+    entries: number;
+    entriesClassified: number;
+    ultraProcessedShare: number;
+    coverage: number;
+  };
   /** The daily targets the person set, by nutrient. Nothing here is a recommendation. */
   targets: Record<string, number>;
   /** The targeted nutrients the person marked Stay under: a ceiling, not a goal. */
@@ -733,6 +756,9 @@ export function listFoodLog(replica: Replica, input: LogRangeInput = {}): FoodLo
     unmeasured: day.unmeasured,
   }));
 
+  // Guarded like the entries' amounts below: a stubbed row may carry no panel.
+  const mix = processingMix(entries.filter((e: FoodLogEntry) => e.nutrition), { startKey: range.from, endKey: range.to, todayKey: range.to });
+
   return {
     range,
     entries: entries.map((e: FoodLogEntry) => ({
@@ -747,6 +773,7 @@ export function listFoodLog(replica: Replica, input: LogRangeInput = {}): FoodLo
       amounts: e.nutrition?.amounts && Object.keys(e.nutrition.amounts).length > 0 ? (e.nutrition.amounts as Record<string, number>) : undefined,
       inAppleHealth: e.healthSampleIds?.length > 0 ? true : undefined,
       breakdown: e.nutrition?.breakdown?.length ? e.nutrition.breakdown : undefined,
+      nova: (e.nutrition ? entryNovaGroup(e) : null) ?? undefined,
     })),
     totals: {
       total: totals.total as Record<string, number>,
@@ -754,6 +781,17 @@ export function listFoodLog(replica: Replica, input: LogRangeInput = {}): FoodLo
       entries: totals.entries,
     },
     produce,
+    ...(mix
+      ? {
+        processing: {
+          kcalByGroup: Object.fromEntries(Object.entries(mix.kcalByGroup).map(([g, kcal]) => [g, Math.round(kcal)])),
+          entries: mix.entries,
+          entriesClassified: mix.entriesClassified,
+          ultraProcessedShare: Math.round(mix.ultraProcessedShare * 100) / 100,
+          coverage: Math.round(mix.coverage * 100) / 100,
+        },
+      }
+      : {}),
     // The figures the person set to read a day's totals against; absent for a nutrient with none.
     targets: replica.nutritionTargets(),
     // Which of those are limits to stay under rather than figures to reach.

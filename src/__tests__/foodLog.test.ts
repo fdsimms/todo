@@ -193,6 +193,15 @@ describe('scalePanelToAmount by calories', () => {
   });
 });
 
+describe('scalePanelToAmount and the NOVA group', () => {
+  it('carries the group onto the helping, unscaled, and adds none when the panel has none', () => {
+    expect(scalePanelToAmount({ ...panel(), novaGroup: 4 }, '1 cup', null, NOW)?.nutrition.novaGroup).toBe(4);
+    expect(scalePanelToAmount({ ...panel(), novaGroup: 4 }, '100 cal', null, NOW)?.nutrition.novaGroup).toBe(4);
+    const plain = scalePanelToAmount(panel(), '1 cup', null, NOW);
+    expect('novaGroup' in plain!.nutrition).toBe(false);
+  });
+});
+
 describe('scalePanelToAmount', () => {
   it('scales a per-100g panel through the food\'s own portion table', () => {
     // A cup of milk is 244g, so the figures are 2.44 times the per-100g ones.
