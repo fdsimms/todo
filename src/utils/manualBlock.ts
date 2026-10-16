@@ -121,3 +121,20 @@ export function describeDuration(minutes: number | null): string {
   const mins = m === 0 ? '' : `${m} ${m === 1 ? 'minute' : 'minutes'}`;
   return [hours, mins].filter(Boolean).join(' ');
 }
+
+/** "Default", "Default and Work", "Default, Work and Games". */
+function joinNames(names: readonly string[]): string {
+  if (names.length <= 1) return names.join('');
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
+
+/**
+ * The one line the start sheet shows in place of a confirm alert: which groups,
+ * and until when. `endsAt` is the formatted clock time, null for an open-ended
+ * block or one whose time couldn't be read.
+ */
+export function describeManualBlock(minutes: number | null, groupNames: readonly string[], endsAt: string | null): string {
+  const what = groupNames.length > 0 ? `Blocks ${joinNames(groupNames)}` : 'Blocks apps';
+  if (minutes === null) return `${what} until you end it.`;
+  return endsAt ? `${what} until ${endsAt}.` : `${what} for ${describeDuration(minutes)}.`;
+}

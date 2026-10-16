@@ -5,13 +5,13 @@ import { useSettingsStore } from '../../store/useSettingsStore';
 import { useNfcKeyStore } from '../../store/useNfcKeyStore';
 import { useAppGroupStore } from '../../store/useAppGroupStore';
 import { BlockScheduleSheet } from '../../components/BlockScheduleSheet';
-import { ManualBlockGroupsSheet } from '../../components/ManualBlockGroupsSheet';
+import { ManualBlockSheet } from '../../components/ManualBlockSheet';
 import { SupergroupMembersSheet } from '../../components/SupergroupMembersSheet';
 import { EmergencyReleaseSheet } from '../../components/EmergencyReleaseSheet';
 import { useShieldReleaseStore } from '../../store/useShieldReleaseStore';
 import { describeEnded, releasesThisMonth, timesWord } from '../../utils/shieldRelease';
 import { useManualBlockStore } from '../../store/useManualBlockStore';
-import { MANUAL_BLOCK_PRESETS, describeDuration, manualBlockWanted } from '../../utils/manualBlock';
+import { manualBlockWanted } from '../../utils/manualBlock';
 import {
   DEFAULT_GROUP_ID, allGroups, cleanGroupName, groupName, isAllowGroup, isSupergroup, plainGroups, resolveAssignments, resolveGroupId,
   supergroupMembers, supergroupMode, type GroupedReason,
@@ -609,50 +609,21 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
   const manualBlock = useManualBlockStore(s => s.block);
   const manualLive = manualBlockWanted(manualBlock, new Date());
 
-  const confirmManual = async (minutes: number | null, groupIds: string[]) => {
+  const startManual = async (minutes: number | null, groupIds: string[]) => {
     // The same first-use step as the key lock: a block with no apps chosen
     // blocks nothing, and a button that visibly does nothing reads as broken.
     // Asked only when none of the chosen groups holds any apps, so a group left
     // empty beside a filled one is the person's own choice.
     if (groupIds.every(id => totalOf(id) === 0)) await onChooseApps(groupIds[0]);
-    const endsAt = minutes === null
-      ? null
-      : formatReasonTime(new Date(Date.now() + minutes * 60_000).toISOString());
-    Alert.alert(
-      minutes === null ? 'Block apps until you end it?' : `Block apps for ${describeDuration(minutes)}?`,
-      `${minutes === null ? 'They stay blocked until you end it.' : `They stay blocked until ${endsAt ?? 'then'}.`} Ending it${minutes === null ? '' : ' earlier'} takes a key tag or the emergency button, and is saved in the record.`,
-      [
-        { text: BUTTON_LABEL.cancel, style: 'cancel' },
-        {
-          text: 'Start block',
-          onPress: () => {
-            if (useManualBlockStore.getState().start(minutes, groupIds)) haptics.success();
-          },
-        },
-      ],
-    );
+    if (useManualBlockStore.getState().start(minutes, groupIds)) haptics.success();
   };
 
-  // The duration the person chose, waiting on which groups to hold. Null while
-  // the groups sheet is closed (a `null` duration is "until I end it").
-  const [manualPick, setManualPick] = useState<{ minutes: number | null } | null>(null);
-
-  const chooseManualGroup = (minutes: number | null) => {
-    if (customGroups.length === 0) { void confirmManual(minutes, [groupsMeta.fallbackId]); return; }
-    setManualPick({ minutes });
-  };
+  const [manualSheetOpen, setManualSheetOpen] = useState(false);
 
   const handleBlockNow = async () => {
     haptics.tap();
     if (!(await ensureAuthorized('Blocking apps needs Screen Time access. Grant it in Settings, under Screen Time.'))) return;
-    Alert.alert(
-      'Block apps for how long?',
-      'Ending a block takes a key tag or the emergency button, and is saved in the record.',
-      [
-        ...MANUAL_BLOCK_PRESETS.map(m => ({ text: m === null ? 'Until I end it' : describeDuration(m), onPress: () => chooseManualGroup(m) })),
-        { text: BUTTON_LABEL.cancel, style: 'cancel' as const },
-      ],
-    );
+    setManualSheetOpen(true);
   };
 
   // ==== ending blocks early ====
@@ -996,12 +967,13 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
         formatTime={formatReasonTime}
         onClose={() => setEmergencyOpen(false)}
       />
-      <ManualBlockGroupsSheet
-        visible={manualPick !== null}
+      <ManualBlockSheet
+        visible={manualSheetOpen}
         groups={allGroups(customGroups, groupsMeta)}
         initialIds={[groupsMeta.fallbackId]}
-        onClose={() => setManualPick(null)}
-        onConfirm={ids => { if (manualPick) void confirmManual(manualPick.minutes, ids); }}
+        formatEnd={formatReasonTime}
+        onClose={() => setManualSheetOpen(false)}
+        onConfirm={(minutes, ids) => { void startManual(minutes, ids); }}
       />
       <SupergroupMembersSheet
         visible={memberSheet.open}

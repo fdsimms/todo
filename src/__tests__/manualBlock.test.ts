@@ -1,5 +1,5 @@
 import {
-  MAX_MANUAL_MINUTES, MIN_MANUAL_MINUTES, describeDuration, endsSooner, isTimedBlock, manualBlockWanted, manualMinutesProblem,
+  MAX_MANUAL_MINUTES, MIN_MANUAL_MINUTES, describeDuration, describeManualBlock, endsSooner, isTimedBlock, manualBlockWanted, manualMinutesProblem,
   newManualBlock, parseManualBlock, serializeManualBlock,
 } from '../utils/manualBlock';
 
@@ -108,5 +108,21 @@ describe('an open-ended block', () => {
 
   it('is worded as until you end it', () => {
     expect(describeDuration(null)).toBe('until you end it');
+  });
+});
+
+describe('describeManualBlock', () => {
+  it('names the groups and the end time', () => {
+    expect(describeManualBlock(60, ['Default'], '3:42 PM')).toBe('Blocks Default until 3:42 PM.');
+    expect(describeManualBlock(60, ['Default', 'Work'], '3:42 PM')).toBe('Blocks Default and Work until 3:42 PM.');
+    expect(describeManualBlock(60, ['A', 'B', 'C'], '3:42 PM')).toBe('Blocks A, B and C until 3:42 PM.');
+  });
+
+  it('says so for an open-ended block', () => {
+    expect(describeManualBlock(null, ['Default'], null)).toBe('Blocks Default until you end it.');
+  });
+
+  it('falls back to the length when the end time cannot be read', () => {
+    expect(describeManualBlock(90, ['Default'], null)).toBe('Blocks Default for 1 hour 30 minutes.');
   });
 });
