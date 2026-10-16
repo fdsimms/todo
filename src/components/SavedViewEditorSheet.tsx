@@ -31,6 +31,7 @@ import {
 } from '../utils/savedViews';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { effortRangeLabel } from '../utils/effort';
+import { TASK_TYPE_FILTERS, taskTypeFilterLabel } from '../utils/taskTypeFilter';
 import {
   PRIORITY_COLORS,
   PRIORITY_LABELS,
@@ -147,7 +148,7 @@ export function SavedViewEditorSheet({ visible, view, onClose, onCreated, onDele
 
   /** Toggling one value of a multi-select clause, dropping the clause at zero. */
   const toggleValue = <T extends string | number>(
-    kind: 'category' | 'tag' | 'project' | 'priority' | 'effort',
+    kind: 'category' | 'tag' | 'project' | 'priority' | 'effort' | 'taskType',
     current: readonly T[],
     value: T,
   ) => {
@@ -162,7 +163,7 @@ export function SavedViewEditorSheet({ visible, view, onClose, onCreated, onDele
   };
 
   const pillOptions = <T extends string | number>(
-    kind: 'category' | 'tag' | 'project' | 'priority' | 'effort',
+    kind: 'category' | 'tag' | 'project' | 'priority' | 'effort' | 'taskType',
     current: readonly T[],
     entries: { value: T; label: string; suffix?: string }[],
   ): PillGroupOption[] => entries.map(entry => ({
@@ -178,6 +179,7 @@ export function SavedViewEditorSheet({ visible, view, onClose, onCreated, onDele
   const projectClause = clauseOfKind(clauses, 'project');
   const priorityClause = clauseOfKind(clauses, 'priority');
   const effortClause = clauseOfKind(clauses, 'effort');
+  const taskTypeClause = clauseOfKind(clauses, 'taskType');
   const minutesClause = clauseOfKind(clauses, 'maxMinutes');
 
   const projectNames = useMemo(
@@ -356,6 +358,16 @@ export function SavedViewEditorSheet({ visible, view, onClose, onCreated, onDele
                 )}
                 noun="effort"
                 pluralNoun="effort sizes"
+              />
+            ))}
+            {field('taskType', 'Tasks of any one of these kinds.', (
+              <PillGroup
+                options={pillOptions(
+                  'taskType',
+                  taskTypeClause?.values ?? [],
+                  TASK_TYPE_FILTERS.map(t => ({ value: t as string, label: taskTypeFilterLabel(t) })),
+                )}
+                noun="type"
               />
             ))}
             {field('maxMinutes', 'Tasks estimated at this long or less. Tasks with no estimate or effort size are left out.', (

@@ -1,4 +1,5 @@
 import { NO_MOOD_CONTEXT_SOURCES, parseMoodContextSources, type MoodContextSources } from '../utils/moodContextSources';
+import { parseTaskTypeFilters, type TaskTypeFilter } from '../utils/taskTypeFilter';
 import { create } from 'zustand';
 import { dbGetAllSettings, dbGetDeviceId, dbGetSetting, dbSetSetting } from '../db/database';
 import type { ThemeMode } from '../theme';
@@ -356,6 +357,10 @@ interface SettingsStore {
   sortOption: SortOption;
   filterPriorities: Priority[];
   filterEfforts: Effort[];
+  // Narrows Today, Later, Unscheduled and Inbox to these kinds of task (and
+  // repeating ones). Persisted for the reasons filterPriorities is: the sheet
+  // badge and the empty state say a filter is on.
+  filterTypes: TaskTypeFilter[];
   // Whether Today/Later/Unscheduled/Inbox are narrowed to tasks with a
   // reminder set — the "easy way to see all tasks with alarms" ask (#1739),
   // answered as a fourth SortFilterSheet filter rather than a new screen: the
@@ -2035,6 +2040,7 @@ interface SettingsStore {
   setSortOption: (sort: SortOption) => void;
   setFilterPriorities: (priorities: Priority[]) => void;
   setFilterEfforts: (efforts: Effort[]) => void;
+  setFilterTypes: (types: TaskTypeFilter[]) => void;
   setRecipeSortOption: (sort: RecipeSortOption) => void;
   setProjectSortOption: (sort: ProjectSortOption) => void;
   setRecipeLovedOnly: (lovedOnly: boolean) => void;
@@ -2801,6 +2807,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   sortOption: 'default',
   filterPriorities: [],
   filterEfforts: [],
+  filterTypes: [],
   recipeSortOption: 'default',
   recipeLovedOnly: false,
   projectSortOption: 'manual',
@@ -3135,6 +3142,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       storedSort && SORT_OPTIONS.includes(storedSort) ? storedSort : 'default';
     const filterPriorities = parseFilterArray<Priority>(dbGetSetting('filterPriorities'), 4);
     const filterEfforts = parseFilterArray<Effort>(dbGetSetting('filterEfforts'), 6);
+    const filterTypes = parseTaskTypeFilters(dbGetSetting('filterTypes'));
     const storedProjectSort = dbGetSetting('projectSortOption') as ProjectSortOption | null;
     const projectSortOption: ProjectSortOption =
       storedProjectSort && PROJECT_SORT_VALUES.includes(storedProjectSort) ? storedProjectSort : 'manual';
@@ -3771,6 +3779,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       fabHand,
       filterEfforts,
       filterPriorities,
+      filterTypes,
       firstRunDone,
       focusBreaksEnabled,
       focusDefaultWorkMinutes,
@@ -4178,6 +4187,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setFilterEfforts(efforts: Effort[]) {
     dbSetSetting('filterEfforts', JSON.stringify(efforts));
     set({ filterEfforts: efforts });
+  },
+
+  setFilterTypes(types: TaskTypeFilter[]) {
+    dbSetSetting('filterTypes', JSON.stringify(types));
+    set({ filterTypes: types });
   },
 
 

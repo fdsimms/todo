@@ -2065,6 +2065,18 @@ describe('persisted filters', () => {
     expect(useSettingsStore.getState().filterPriorities).toEqual([1]);
   });
 
+  it('round-trips the type filter and drops chips it does not know', () => {
+    expect(dbGetSetting).toBeDefined();
+    useSettingsStore.getState().setFilterTypes(['timed', 'repeating']);
+    expect(dbSetSetting).toHaveBeenCalledWith('filterTypes', '["timed","repeating"]');
+    storing({ filterTypes: '["chain","nonsense",3]' });
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().filterTypes).toEqual(['chain']);
+    storing({ filterTypes: 'not json' });
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().filterTypes).toEqual([]);
+  });
+
   it('falls back to no filter for unparseable or non-array JSON', () => {
     storing({ filterPriorities: 'not json', filterEfforts: '{"a":1}' });
     useSettingsStore.getState().initialize();

@@ -13,6 +13,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import type { SortOption, Priority, Effort } from '../types';
 import { PRIORITY_LABELS, PRIORITY_COLORS } from '../types';
 import { effortRangeLabel } from '../utils/effort';
+import { TASK_TYPE_FILTERS, taskTypeFilterLabel, type TaskTypeFilter } from '../utils/taskTypeFilter';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, animation, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -31,6 +32,8 @@ interface Props {
   onPrioritiesChange: (p: Priority[]) => void;
   efforts: Effort[];
   onEffortsChange: (e: Effort[]) => void;
+  types: TaskTypeFilter[];
+  onTypesChange: (t: TaskTypeFilter[]) => void;
   /**
    * Keeps the filters currently set as a named view. Optional: the sheet is
    * mounted in more than one place, and only Today has somewhere to keep them.
@@ -55,7 +58,7 @@ function toggle<T>(arr: T[], item: T): T[] {
 
 export function SortFilterSheet({
   visible, onClose, sort, onSortChange, priorities, onPrioritiesChange, efforts, onEffortsChange,
-  onSaveAsView, onOpenSavedViews,
+  types, onTypesChange, onSaveAsView, onOpenSavedViews,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -98,12 +101,13 @@ export function SortFilterSheet({
     })
   ).current;
 
-  const activeCount = (sort !== 'default' ? 1 : 0) + priorities.length + efforts.length;
+  const activeCount = (sort !== 'default' ? 1 : 0) + priorities.length + efforts.length + types.length;
 
   const reset = () => {
     onSortChange('default');
     onPrioritiesChange([]);
     onEffortsChange([]);
+    onTypesChange([]);
   };
 
   return (
@@ -211,6 +215,31 @@ export function SortFilterSheet({
                   >
                     <Text style={[styles.chipText, active && styles.chipTextActive]}>
                       {effortRangeLabel(e)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Type filter: unlike the two above, this one narrows Later,
+                Unscheduled and Inbox as well as Today. */}
+            <Text style={[styles.groupLabel, { marginTop: spacing.lg }]}>Filter by type</Text>
+            <View style={styles.chips}>
+              {TASK_TYPE_FILTERS.map(t => {
+                const active = types.includes(t);
+                return (
+                  <TouchableOpacity
+                    key={t}
+                    style={[styles.chip, active && styles.chipActive]}
+                    onPress={() => {
+                      haptics.tap();
+                      onTypesChange(toggle(types, t));
+                    }}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                  >
+                    <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                      {taskTypeFilterLabel(t)}
                     </Text>
                   </TouchableOpacity>
                 );

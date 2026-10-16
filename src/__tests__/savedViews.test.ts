@@ -321,6 +321,20 @@ describe('clauseOfKind', () => {
   });
 });
 
+describe('taskType clause', () => {
+  it('matches a task type clause on any chip, repeating included', () => {
+    const clause: SavedViewClause = { kind: 'taskType', values: ['timed', 'repeating'] };
+    expect(matchesClause(makeTask({ timedMinutes: 15, recurrenceType: 'none' }), clause, ctx())).toBe(true);
+    expect(matchesClause(makeTask({ recurrenceType: 'weekly' }), clause, ctx())).toBe(true);
+    expect(matchesClause(makeTask({ recurrenceType: 'none' }), clause, ctx())).toBe(false);
+  });
+
+  it('treats a type clause holding only keys this build does not know as inert', () => {
+    const clause: SavedViewClause = { kind: 'taskType', values: ['hovering'] };
+    expect(matchesClause(makeTask({ recurrenceType: 'none' }), clause, ctx())).toBe(true);
+  });
+});
+
 describe('savedViewClauseLabel', () => {
   it('names every kind the editor can draw', () => {
     for (const kind of SAVED_VIEW_CLAUSE_KINDS) {
@@ -331,21 +345,22 @@ describe('savedViewClauseLabel', () => {
 
 describe('clausesFromFilters', () => {
   it('carries the filter sheet\'s own state across, so nothing is rebuilt by hand', () => {
-    expect(clausesFromFilters({ priorities: [3, 4], efforts: [1] })).toEqual([
+    expect(clausesFromFilters({ priorities: [3, 4], efforts: [1], types: ['timed', 'repeating'] })).toEqual([
       { kind: 'priority', values: [3, 4] },
       { kind: 'effort', values: [1] },
+      { kind: 'taskType', values: ['timed', 'repeating'] },
     ]);
   });
 
   // A filter nobody set is not a predicate, same rule matchesClause applies to
   // an empty value list.
   it('contributes nothing for a filter that is not set', () => {
-    expect(clausesFromFilters({ priorities: [], efforts: [] })).toEqual([]);
+    expect(clausesFromFilters({ priorities: [], efforts: [], types: [] })).toEqual([]);
   });
 
   it('copies the arrays rather than aliasing the store\'s', () => {
     const priorities: Priority[] = [4];
-    const [clause] = clausesFromFilters({ priorities, efforts: [] });
+    const [clause] = clausesFromFilters({ priorities, efforts: [], types: [] });
     expect(clause).toEqual({ kind: 'priority', values: [4] });
     expect((clause as { values: Priority[] }).values).not.toBe(priorities);
   });
