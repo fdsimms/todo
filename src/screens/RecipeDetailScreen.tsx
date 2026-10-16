@@ -564,6 +564,10 @@ export function RecipeDetailScreen() {
     if (cookModeAvailable && !featureHidden('cookMode', simpleMode)) setCookModeVisible(true);
   }, [openCookModeStamp, handledCookModeStamp, cookModeAvailable, simpleMode]);
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
+  // The footer is in the layout rather than floating, so the scroll-to-top
+  // button (placed for a Fab) has to clear it by its measured height, which
+  // moves with text size and the safe-area inset.
+  const [footerHeight, setFooterHeight] = useState(0);
   const [componentPickerVisible, setComponentPickerVisible] = useState(false);
   // The blank being edited, 'new' for one being added, null while the sheet is closed.
   const [editingBlank, setEditingBlank] = useState<string | null>(null);
@@ -592,8 +596,6 @@ export function RecipeDetailScreen() {
   // the drag is silently dead — see the note on SortableList.onDragStateChange.
   const [dragging, setDragging] = useState(false);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
-  const scrollTop = useListScrollToTop(keyboardScroll);
-
   // Bulk-selecting ingredients — same plain useRowSelection every non-task list
   // in the app reuses (Templates, Grocery), plus the ingredient-specific "Move
   // to Aisle" / delete actions below. Entered by swiping a row, same entry
@@ -613,6 +615,8 @@ export function RecipeDetailScreen() {
     painting,
     paintProps,
   } = useRowSelection();
+  // The footer is unmounted while selecting, so it contributes nothing then.
+  const scrollTop = useListScrollToTop(keyboardScroll, { footerHeight: selectionMode ? 0 : footerHeight });
 
   // Both timers, wired up — the clock, the derivation and the store calls all
   // live in the hook now, because cook mode (#1695) keeps the cook timer on
@@ -2830,7 +2834,10 @@ export function RecipeDetailScreen() {
       {/* Hidden while selecting: the bulk bar floats where it does, and adding
           to the list isn't something you're doing mid-selection anyway. */}
       {!selectionMode && (
-        <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.md }]}>
+        <View
+          style={[styles.footer, { paddingBottom: insets.bottom + spacing.md }]}
+          onLayout={e => setFooterHeight(e.nativeEvent.layout.height)}
+        >
           {/* Planning and shopping are peers here — the two things you do
               having decided to cook something — so they share the footer rather
               than one of them going up into an already-crowded header. Plan is

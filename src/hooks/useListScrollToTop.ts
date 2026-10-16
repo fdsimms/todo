@@ -35,12 +35,17 @@ export function useListScrollToTop<T = any>(
     ref: MutableRefObject<T | null>;
     noteScroll?: (e: NativeSyntheticEvent<NativeScrollEvent>) => void;
   },
+  options?: { footerHeight?: number },
 ) {
   const ownRef = useRef<T | null>(null);
   const ref = keyboardScroll?.ref ?? ownRef;
   const noteScroll = keyboardScroll?.noteScroll;
   const { visible, onScroll } = useScrollToTopVisibility();
-  const bottom = useFabBottom();
+  const fabBottom = useFabBottom();
+  // A bar in the layout (not floating) sits where the Fab's offset assumes
+  // nothing is, so the button clears it by its measured height instead.
+  const footerHeight = options?.footerHeight ?? 0;
+  const bottom = footerHeight > 0 ? footerHeight + spacing.md : fabBottom;
 
   const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     onScroll(e);
@@ -55,7 +60,9 @@ export function useListScrollToTop<T = any>(
     else list.getScrollResponder?.()?.scrollTo?.({ y: 0, animated: true });
   }, []);
 
-  const clearance = bottom + SCROLL_TO_TOP_SIZE + spacing.md;
+  // With a footer the list already ends above it, so only the button's own
+  // height and gap are left to clear.
+  const clearance = (footerHeight > 0 ? 0 : bottom) + SCROLL_TO_TOP_SIZE + spacing.md;
 
   return {
     ref,
