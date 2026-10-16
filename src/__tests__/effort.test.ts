@@ -2,7 +2,7 @@ import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatClockDuration,
   formatDuration, formatStopwatch, applyMeasuredTime, measuredTimeAppliesTo, measuredTimeDiffersEnough,
   measuredTimeWorthSuggesting, sumEstimatedMinutes, estimatedMinutesFor,
   draftHasEstimate, ESTIMATE_PRESET_MINUTES, estimatePatchForMinutes, nearestPresetMinutes,
-  chosenEstimateMinutes } from '../utils/effort';
+  chosenEstimateMinutes, effortRangeLabel } from '../utils/effort';
 import type { ChainItem, Effort } from '../types';
 
 const step = (title: string, estimatedMinutes: number | null = null): ChainItem =>
@@ -31,7 +31,7 @@ describe('minutesToEffort', () => {
   });
 
   it('buckets values by threshold', () => {
-    expect(minutesToEffort(1)).toBe(1);    // ≤5 → XXS
+    expect(minutesToEffort(1)).toBe(1);    // ≤5
     expect(minutesToEffort(5)).toBe(1);
     expect(minutesToEffort(6)).toBe(2);    // ≤20 → XS
     expect(minutesToEffort(20)).toBe(2);
@@ -372,5 +372,24 @@ describe('estimate presets', () => {
     expect(chosenEstimateMinutes({ estimatedMinutes: 5, effort: 1 })).toBe(5);
     expect(chosenEstimateMinutes({ estimatedMinutes: null, effort: 4 })).toBe(90);
     expect(chosenEstimateMinutes({ estimatedMinutes: null, effort: 0 })).toBeNull();
+  });
+});
+
+describe('effortRangeLabel', () => {
+  it('describes each bucket by the time it covers', () => {
+    expect([1, 2, 3, 4, 5, 6].map(e => effortRangeLabel(e as Effort))).toEqual([
+      '5m or less', '5 to 20m', '20 to 45m', '45m to 2.5h', '2.5 to 5.5h', 'Over 5.5h',
+    ]);
+  });
+
+  it('agrees with where minutesToEffort draws the lines', () => {
+    expect(minutesToEffort(5)).toBe(1);
+    expect(minutesToEffort(20)).toBe(2);
+    expect(minutesToEffort(330)).toBe(5);
+    expect(minutesToEffort(331)).toBe(6);
+  });
+
+  it('has a name for the unset bucket', () => {
+    expect(effortRangeLabel(0)).toBe('None');
   });
 });

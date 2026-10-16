@@ -46,7 +46,7 @@ import { CategoryPickerSheet } from './CategoryPicker';
 import { ProjectPickerSheet } from './ProjectPickerSheet';
 import { useShallow } from 'zustand/react/shallow';
 import type { Priority, Effort, Difficulty, TimeOfDay, RecurrenceType, Task, ChainItem, QuotaPeriod, Polarity, WeatherCondition, TaskFieldDefaults } from '../types';
-import { PRIORITY_COLORS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
+import { PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
 import { generateId } from '../utils/id';
 import {
   bakedFields,
@@ -116,7 +116,7 @@ import { getLogicalToday, getLogicalTomorrow, getLogicalNow, getCurrentDayStart,
 import { sunLocationOn } from '../utils/visibilityUtils';
 import { describeSunAnchor, parseSunAnchor, sunAnchorHHMM } from '../utils/sunTimes';
 import { blockerFields } from '../utils/blocking';
-import { minutesToEffort, formatDuration, ESTIMATE_PRESET_MINUTES, estimatePatchForMinutes, chosenEstimateMinutes } from '../utils/effort';
+import { minutesToEffort, formatDuration, effortTimeLabel, ESTIMATE_PRESET_MINUTES, estimatePatchForMinutes, chosenEstimateMinutes } from '../utils/effort';
 import { TaskEditor, type TaskDraft } from './TaskEditor';
 import { RECURRENCE_LABELS, onlyNewestWeekday } from './RecurrencePicker';
 import { SegmentedControl } from './SegmentedControl';
@@ -2285,7 +2285,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     {
       key: 'effort', icon: 'barbell', panel: 'effort',
       value: effort > 0
-        ? (estimatedMinutes != null ? formatDuration(estimatedMinutes) : EFFORT_LABELS[effort])
+        ? (estimatedMinutes != null ? formatDuration(estimatedMinutes) : effortTimeLabel(effort, ''))
         : null,
     },
     // Only while the coin rules that read it run, and not on an avoid-habit,

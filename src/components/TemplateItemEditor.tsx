@@ -20,14 +20,14 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { PinIcon } from './PinIcon';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import type { HolidayRule, Priority, Effort, TimeOfDay, TemplateAnchor, TemplateItem, TemplateItemCondition, TemplateItemVariant, TemplateAnswerGate, RecurrenceType, ChainItem, RotationItem, DeliverableKind, Polarity, Difficulty, MealSlot, WeatherCondition, QuotaPeriod } from '../types';
-import { PRIORITY_LABELS, EFFORT_LABELS, EFFORT_HINTS, TITLE_MAX_LENGTH, MEAL_SLOTS, MEAL_SLOT_LABELS } from '../types';
+import { PRIORITY_LABELS, TITLE_MAX_LENGTH, MEAL_SLOTS, MEAL_SLOT_LABELS } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
 import { slotForHour } from '../utils/mealLog';
 import { haptics } from '../utils/haptics';
 import { CoinIcon } from './CoinIcon';
 import { medicationVocabulary, medicationKey } from '../utils/medicationLog';
-import { formatDuration } from '../utils/effort';
+import { formatDuration, effortTimeLabel, ESTIMATE_PRESET_MINUTES, estimatePatchForMinutes, chosenEstimateMinutes } from '../utils/effort';
 import { animateLayout } from '../utils/layoutAnimation';
 import { tagColor } from '../utils/tagColor';
 import { useTaskStore } from '../store/useTaskStore';
@@ -2730,30 +2730,39 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
 
         <CollapsibleField
           label="Effort"
-          summary={estimatedMinutes !== null ? `${estimatedMinutes} min` : effort > 0 ? EFFORT_LABELS[effort] : undefined}
+          summary={estimatedMinutes !== null ? formatDuration(estimatedMinutes) : effort > 0 ? effortTimeLabel(effort, '') : undefined}
           emptySummary="Not set"
           hint="Roughly how long this takes, so a day’s list can be sized realistically."
           expanded={fieldOpen('effort')}
           onToggle={() => toggleField('effort')}
         >
           <View style={styles.pillRow}>
-            {([0, 1, 2, 3, 4, 5, 6] as Effort[]).map(e => (
-              <TouchableOpacity
-                key={e}
-                style={[styles.pill, effort === e && styles.pillActiveNeutral]}
-                onPress={() => { haptics.tap(); setEffort(e); }}
-              >
-                <Text style={[styles.pillText, effort === e && styles.pillTextActive]}>
-                  {e === 0 ? '—' : EFFORT_LABELS[e]}
-                </Text>
-                {EFFORT_HINTS[e] ? (
-                  <Text style={styles.pillHint}>{EFFORT_HINTS[e]}</Text>
-                ) : null}
-              </TouchableOpacity>
-            ))}
+            <TouchableOpacity
+              style={[styles.pill, effort === 0 && estimatedMinutes === null && styles.pillActiveNeutral]}
+              onPress={() => { haptics.tap(); setEffort(0); setEstimatedMinutes(null); }}
+            >
+              <Text style={[styles.pillText, effort === 0 && estimatedMinutes === null && styles.pillTextActive]}>—</Text>
+            </TouchableOpacity>
+            {ESTIMATE_PRESET_MINUTES.map(mins => {
+              const active = chosenEstimateMinutes({ estimatedMinutes, effort }) === mins;
+              return (
+                <TouchableOpacity
+                  key={mins}
+                  style={[styles.pill, active && styles.pillActiveNeutral]}
+                  onPress={() => {
+                    haptics.tap();
+                    const patch = estimatePatchForMinutes(mins);
+                    setEffort(patch.effort);
+                    setEstimatedMinutes(patch.estimatedMinutes);
+                  }}
+                >
+                  <Text style={[styles.pillText, active && styles.pillTextActive]}>{formatDuration(mins)}</Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
           <View style={styles.intervalRow}>
-            {estimatedMinutes !== null ? (
+            {estimatedMinutes !== null && !ESTIMATE_PRESET_MINUTES.includes(estimatedMinutes) ? (
               <>
                 <CountStepper
                   value={estimatedMinutes}

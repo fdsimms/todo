@@ -48,7 +48,7 @@ import { subDays } from 'date-fns/subDays';
 import { subMinutes } from 'date-fns/subMinutes';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { Task, Priority, Effort, FollowUpTaskDraft, RecurrenceType, HolidayRule, ChainItem, RotationItem, DeliverableKind, TimeOfDay, ReminderKind, Polarity, Difficulty, QuotaPeriod, WeatherCondition, NutrientKey, MealSlot, AnswerGate } from '../types';
-import { PRIORITY_LABELS, EFFORT_LABELS, TITLE_MAX_LENGTH, HEALTH_WRITABLE_NUTRIENTS, MINERAL_KEYS, VITAMIN_KEYS, MEAL_SLOTS, MEAL_SLOT_LABELS } from '../types';
+import { PRIORITY_LABELS, TITLE_MAX_LENGTH, HEALTH_WRITABLE_NUTRIENTS, MINERAL_KEYS, VITAMIN_KEYS, MEAL_SLOTS, MEAL_SLOT_LABELS } from '../types';
 import { NUTRIENT_LABEL, mlToFlOz, flOzToMl } from '../utils/foodNutrition';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, border, interaction, animation, checkboxRadius, iconSize, type Colors, textScale } from '../theme';
@@ -3373,7 +3373,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const defaultPriorityLabel = defaultsPreview && !priorityTouched && defaultsPreview.priority > 0
     ? `Default: ${PRIORITY_LABELS[defaultsPreview.priority]}` : undefined;
   const defaultEffortLabel = defaultsPreview && !effortTouched && defaultsPreview.effort > 0
-    ? `Default: ${effortTimeLabel(defaultsPreview.effort, EFFORT_LABELS[defaultsPreview.effort])}` : undefined;
+    ? `Default: ${effortTimeLabel(defaultsPreview.effort, '')}` : undefined;
   // What each toggle shows: the default on a new task nobody has touched, else
   // what was set. Read by the rows and by their taps, so a tap flips what is on
   // screen rather than the untouched state underneath it.

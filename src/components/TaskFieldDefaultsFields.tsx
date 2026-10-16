@@ -3,7 +3,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, spacing, type Colors } from '../theme';
-import { EFFORT_LABELS, type Difficulty, type Effort, type Priority, type TaskFieldDefaults } from '../types';
+import { type Difficulty, type Effort, type Priority, type TaskFieldDefaults } from '../types';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { DIFFICULTY_SEGMENTS } from '../utils/rewards';
 import { effortTimeLabel } from '../utils/effort';
@@ -47,7 +47,7 @@ const ESTIMATE_OPTIONS: SegmentOption<Effort | null>[] = [
     value: e as Effort | null,
     // The time, not the size letter: the letter is only a name for these
     // minutes, and a picker that shows just "XS" makes you remember what it is.
-    label: effortTimeLabel(e, EFFORT_LABELS[e]),
+    label: effortTimeLabel(e, ''),
   })),
 ];
 

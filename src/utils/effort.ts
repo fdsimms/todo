@@ -94,12 +94,29 @@ export function effortToMinutes(e: Effort): number | null {
  */
 export function minutesToEffort(min: number | null): Effort {
   if (min == null || min <= 0) return 0;
-  if (min <= 5) return 1;    // XXS ~1
-  if (min <= 20) return 2;   // XS ~15
-  if (min <= 45) return 3;   // S ~30
-  if (min <= 150) return 4;  // M ~90
-  if (min <= 330) return 5;  // L ~240
-  return 6;                  // XL ~480+
+  const i = EFFORT_MAX_MINUTES.findIndex(max => min <= max);
+  return (i === -1 ? 6 : i + 1) as Effort;
+}
+
+/** The longest estimate each bucket 1 to 5 takes in; anything past the last is bucket 6. */
+const EFFORT_MAX_MINUTES: readonly number[] = [5, 20, 45, 150, 330];
+
+/**
+ * What a bucket covers, in time, for the places that filter by bucket rather
+ * than pick a time ("5m or less", "5 to 20m", "Over 5.5h"). The buckets have no
+ * names of their own: the old size letters meant nothing until you looked up
+ * which duration they stood for.
+ */
+export function effortRangeLabel(e: Effort): string {
+  if (e <= 0) return 'None';
+  const hi = EFFORT_MAX_MINUTES[e - 1];
+  if (e === 1) return `${formatDuration(hi)} or less`;
+  const lo = EFFORT_MAX_MINUTES[e - 2];
+  if (hi === undefined) return `Over ${formatDuration(lo)}`;
+  const from = formatDuration(lo);
+  const to = formatDuration(hi);
+  // "5 to 20m" rather than "5m to 20m" when both ends share a unit.
+  return from.slice(-1) === to.slice(-1) ? `${from.slice(0, -1)} to ${to}` : `${from} to ${to}`;
 }
 
 /**

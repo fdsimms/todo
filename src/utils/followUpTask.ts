@@ -1,6 +1,7 @@
 import type { Difficulty, Effort, FollowUpTaskDraft, Priority, Task, TimeOfDay } from '../types';
 import { ordinal } from './ordinal';
-import { EFFORT_LABELS, PRIORITY_LABELS } from '../types';
+import { PRIORITY_LABELS } from '../types';
+import { effortTimeLabel } from './effort';
 import { capitalize } from './capitalize';
 
 /**
@@ -323,7 +324,7 @@ export function describeFollowUpTaskDraft(
   if (draft.projectId && projectName) parts.push(projectName);
   if (draft.priority > 0) parts.push(PRIORITY_LABELS[draft.priority]);
   if (draft.estimatedMinutes !== null) parts.push(`${draft.estimatedMinutes} min`);
-  else if (draft.effort > 0) parts.push(EFFORT_LABELS[draft.effort]);
+  else if (draft.effort > 0) parts.push(effortTimeLabel(draft.effort, ''));
   if (draft.difficulty) parts.push(DIFFICULTY_LABELS[draft.difficulty]);
   if (draft.tags.length > 0) parts.push(draft.tags.length === 1 ? '1 tag' : `${draft.tags.length} tags`);
   if (draft.subtasks.length > 0) {

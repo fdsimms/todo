@@ -266,7 +266,7 @@ describe('describeFollowUpTaskDraft', () => {
 
   it('prefers a custom estimate over the effort band it overrides', () => {
     expect(describeFollowUpTaskDraft({ ...empty, effort: 2, estimatedMinutes: 5 }, null, null)).toBe('5 min');
-    expect(describeFollowUpTaskDraft({ ...empty, effort: 2 }, null, null)).toBe('XS');
+    expect(describeFollowUpTaskDraft({ ...empty, effort: 2 }, null, null)).toBe('15m');
   });
 
   it('counts tags and subtasks rather than listing them', () => {
