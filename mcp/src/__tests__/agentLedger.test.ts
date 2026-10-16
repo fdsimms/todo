@@ -190,6 +190,17 @@ describe('the preview lines a write produces', () => {
       .toEqual([`Correct the food log entry "Burrito" from ${burrito.dayKey}: quantity from "1" to "2"; amounts changed`]);
   });
 
+  it('a new recipe counts its blanks, and says nothing of them when it has none', () => {
+    mockRaw.runSync('DELETE FROM recipes');
+    replica.refresh();
+    expect(lines(r => r.createRecipe({
+      name: 'Bowl', ingredients: [{ text: '1 tbsp olive oil' }], steps: [{ text: 'Pile it up.' }],
+      blanks: [{ kind: 'grain', pick: 'one' }, { kind: 'vegetable' }],
+    }))).toEqual(['Create the recipe "Bowl" (1 ingredient, 2 blanks, 1 step)']);
+    expect(lines(r => r.createRecipe({ name: 'Toast', ingredients: [{ text: '1 slice bread' }] })))
+      .toEqual(['Create the recipe "Toast" (1 ingredient, 0 steps)']);
+  });
+
   it('describePatch shows short values against the old ones, and only names long text', () => {
     expect(describePatch({ name: 'B', ingredients: [1, 2, 3], notes: 'x'.repeat(60), emoji: null }, { name: 'A', ingredients: [1] }))
       .toBe('name from "A" to "B"; ingredients from 1 to 3; notes changed; emoji cleared');

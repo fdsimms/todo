@@ -1328,7 +1328,11 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
 
     createRecipe(input) {
       const recipe = replica.createRecipe(input);
-      log({ action: 'created', subject: 'recipe', title: recipe.name, taskId: null, note: `Create the recipe "${recipe.name}" (${plural(recipe.ingredients.length, 'ingredient')}, ${plural(recipe.steps.length, 'step')})` });
+      // Blanks named only when there are some, so the line for an ordinary
+      // recipe reads as it always has; leaving them out of a preview hid
+      // the half of a "no-recipe recipe" the person is approving.
+      const blanks = recipe.blanks?.length ? `, ${plural(recipe.blanks.length, 'blank')}` : '';
+      log({ action: 'created', subject: 'recipe', title: recipe.name, taskId: null, note: `Create the recipe "${recipe.name}" (${plural(recipe.ingredients.length, 'ingredient')}${blanks}, ${plural(recipe.steps.length, 'step')})` });
       return recipe;
     },
 
