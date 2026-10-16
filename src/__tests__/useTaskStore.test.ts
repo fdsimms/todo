@@ -11502,6 +11502,51 @@ describe('bulkSetPriority', () => {
   });
 });
 
+describe('bulk field changes on a repeating task', () => {
+  const repeating = (over = {}) => makeTask({ id: 'r', recurrenceType: 'daily', priority: 1, difficulty: 'easy', tags: ['work'], ...over });
+
+  it('keeps the old priority for the repeats after it when scoped to this task only', () => {
+    useTaskStore.setState({ tasks: [repeating()] });
+    useTaskStore.getState().bulkSetPriority(['r'], 3, { scope: 'occurrence' });
+    const t = useTaskStore.getState().tasks[0];
+    expect(t.priority).toBe(3);
+    expect(t.seriesDefaults?.priority).toBe(1);
+  });
+
+  it('carries the new priority onto the repeats when scoped to this and future tasks', () => {
+    useTaskStore.setState({ tasks: [repeating()] });
+    useTaskStore.getState().bulkSetPriority(['r'], 3, { scope: 'series' });
+    const t = useTaskStore.getState().tasks[0];
+    expect(t.priority).toBe(3);
+    expect(t.seriesDefaults ?? null).toBeNull();
+  });
+
+  it('keeps the old difficulty for the repeats after it when scoped to this task only', () => {
+    useTaskStore.setState({ tasks: [repeating()] });
+    useTaskStore.getState().bulkSetDifficulty(['r'], 'hard', { scope: 'occurrence' });
+    const t = useTaskStore.getState().tasks[0];
+    expect(t.difficulty).toBe('hard');
+    expect(t.seriesDefaults?.difficulty).toBe('easy');
+  });
+
+  it('adds tags to this task only, keeping the old set for the repeats after it', () => {
+    useTaskStore.setState({ tasks: [repeating()] });
+    useTaskStore.getState().bulkAddTags(['r'], ['urgent'], { scope: 'occurrence' });
+    const t = useTaskStore.getState().tasks[0];
+    expect(t.tags).toEqual(['work', 'urgent']);
+    expect(t.seriesDefaults?.tags).toEqual(['work']);
+  });
+
+  it('still writes plain tasks in the same selection straight through', () => {
+    useTaskStore.setState({ tasks: [repeating(), makeTask({ id: 'p', priority: 0 })] });
+    useTaskStore.getState().bulkSetPriority(['r', 'p'], 2, { scope: 'occurrence' });
+    const { tasks } = useTaskStore.getState();
+    expect(tasks.find(t => t.id === 'p')?.priority).toBe(2);
+    expect(tasks.find(t => t.id === 'p')?.seriesDefaults ?? null).toBeNull();
+    expect(dbBulkSetPriority).toHaveBeenCalledWith(['p'], 2);
+  });
+});
+
 describe('bulkSetDifficulty', () => {
   it('rates only the selected tasks, and null clears a rating', () => {
     useTaskStore.setState({

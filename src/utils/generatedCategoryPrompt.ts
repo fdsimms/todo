@@ -1,6 +1,5 @@
 import { Alert } from 'react-native';
-import type { Task } from '../types';
-import { BUTTON_LABEL } from '../copy/shared';
+import { confirmBulkScope } from './bulkScopePrompt';
 import { useTaskStore } from '../store/useTaskStore';
 import {
   generatedCategoryOffer,
@@ -41,39 +40,6 @@ export function offerGeneratedCategoryWriteBack(moves: { id: string; category: s
 }
 
 /**
- * Ask whether a bulk category move applies to a repeating task's future repeats,
- * and go straight through when there's nothing to ask. Only a repeating task or
- * a dated series whose category actually changes counts. Cancel calls nothing.
- * The drag and the task editor ask the same question in the same words.
- */
-export function confirmBulkCategoryScope(
-  tasks: Task[],
-  category: string | null,
-  proceed: (scope: 'occurrence' | 'series') => void,
-): void {
-  const asked = tasks.filter(t => (t.recurrenceType !== 'none' || !!t.seriesId) && (t.category ?? null) !== category);
-  if (asked.length === 0) {
-    proceed('series');
-    return;
-  }
-  const one = asked.length === 1;
-  const isSeries = one && !!asked[0].seriesId && asked[0].recurrenceType === 'none';
-  Alert.alert(
-    isSeries ? 'Update task on several dates' : 'Update recurring task',
-    one
-      ? isSeries
-        ? 'This task falls on more than one date. Apply the new category to this date only, or to this and later dates?'
-        : 'This task repeats. Apply the new category to this task only, or to it and all future repeats?'
-      : `${asked.length} of these repeat. Apply the new category to just these tasks, or to them and every future repeat?`,
-    [
-      { text: isSeries ? 'This date' : 'This task', onPress: () => proceed('occurrence') },
-      { text: isSeries ? 'This and later dates' : 'This and future tasks', onPress: () => proceed('series') },
-      { text: BUTTON_LABEL.cancel, style: 'cancel' },
-    ],
-  );
-}
-
-/**
  * The bulk bar's Move: ask about future repeats, set the category, then offer it
  * to any generator that wrote one of the rows. `onDone` runs after the move and
  * not on Cancel, so the selection survives a cancelled prompt.
@@ -81,7 +47,7 @@ export function confirmBulkCategoryScope(
 export function bulkSetCategoryOffering(ids: string[], category: string | null, onDone?: () => void): void {
   const store = useTaskStore.getState();
   const selected = store.tasks.filter(t => ids.includes(t.id));
-  confirmBulkCategoryScope(selected, category, scope => {
+  confirmBulkScope(selected.filter(t => (t.category ?? null) !== category), 'the new category', scope => {
     const changed = ids.filter(id => (useTaskStore.getState().tasks.find(t => t.id === id)?.category ?? null) !== category);
     useTaskStore.getState().bulkSetCategory(ids, category, { scope });
     offerGeneratedCategoryWriteBack(changed.map(id => ({ id, category })));

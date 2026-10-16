@@ -71,6 +71,15 @@ export const CONTENT_FIELDS: (keyof Task)[] = [
   // a fresh occurrence a stale count that completeTask had just reset to 0.
 ];
 
+/**
+ * Whether a task has rows after it that an edit's scope could reach: a repeating
+ * task (its successors) or one date of a dated series. Anything else has nothing
+ * to ask about, so the bulk bar's field changes skip the scope question for it.
+ */
+export function hasLaterRows(task: Pick<Task, 'recurrenceType' | 'seriesId'>): boolean {
+  return task.recurrenceType !== 'none' || !!task.seriesId;
+}
+
 // The fields whose arrival in an `updates` patch means the user is writing the
 // schedule itself, rather than the app moving the row around. Only these
 // re-derive recurrenceAnchorDay (see updateTask).

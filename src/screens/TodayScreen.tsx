@@ -97,6 +97,7 @@ import { useElevatedCellRenderer } from '../hooks/useElevatedCellRenderer';
 import { useMealPlanNudgeProgress } from '../hooks/useMealPlanNudgeProgress';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { offerGeneratedCategoryWriteBack, bulkSetCategoryOffering } from '../utils/generatedCategoryPrompt';
+import { bulkAddTagsAsking, bulkSetPriorityAsking, bulkSetDifficultyAsking } from '../utils/bulkScopePrompt';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useSettingsStore, type MealsOnToday } from '../store/useSettingsStore';
@@ -809,15 +810,12 @@ export function TodayScreen() {
   const categories = useCategoryStore(useShallow(s => s.categories));
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
   const bulkMarkMissed = useTaskStore(s => s.bulkMarkMissed);
-  const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
-  const bulkSetDifficulty = useTaskStore(s => s.bulkSetDifficulty);
   const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
   const coinEntries = useRewardStore(s => s.entries);
   const coinTotal = useMemo(() => coinBalance(coinEntries), [coinEntries]);
   const rewardGoalId = useSettingsStore(s => s.rewardGoalId);
   const allRewards = useRewardStore(s => s.rewards);
   const bulkTogglePin = useTaskStore(s => s.bulkTogglePin);
-  const bulkAddTags = useTaskStore(s => s.bulkAddTags);
   const markTasksSeen = useTaskStore(s => s.markTasksSeen);
   const markTaskSeen = useTaskStore(s => s.markTaskSeen);
   const taskGroups = useTaskGroupStore(useShallow(s => s.groups));
@@ -5858,9 +5856,9 @@ export function TodayScreen() {
             onDelete={handleBulkDelete}
             onSetWhen={(date, segs) => confirmBulkSetWhen(Array.from(selectedIds), date, segs, exitSelection)}
             onSetCategory={category => bulkSetCategoryOffering(Array.from(selectedIds), category, exitSelection)}
-            onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
-            onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
-            onSetDifficulty={rewardsEnabled ? d => { bulkSetDifficulty(Array.from(selectedIds), d); exitSelection(); } : undefined}
+            onAddTags={tags => bulkAddTagsAsking(Array.from(selectedIds), tags, exitSelection)}
+            onSetPriority={p => bulkSetPriorityAsking(Array.from(selectedIds), p, exitSelection)}
+            onSetDifficulty={rewardsEnabled ? d => bulkSetDifficultyAsking(Array.from(selectedIds), d, exitSelection) : undefined}
             onMarkMissed={() => { bulkMarkMissed(Array.from(selectedIds)); exitSelection(); }}
             // Grouping works from the Inbox too: the tasks stay here (being in
             // a stack isn't one of the things isInboxTask() counts as filed),
