@@ -2402,6 +2402,7 @@ export function BackfillScreen() {
 
             <FieldControl
               field={active.id}
+              task={currentTask}
               colors={colors}
               styles={styles}
               onEstimate={applyEstimate}
@@ -3757,6 +3758,8 @@ function TaskContextRow({
 
 interface FieldControlProps {
   field: BackfillFieldId;
+  /** The card's task, so a revisited card (Previous, or a redo) shows what it already holds. */
+  task: Task;
   colors: Colors;
   styles: ReturnType<typeof makeStyles>;
   onEstimate: (effort: Effort) => void;
@@ -3778,7 +3781,7 @@ interface FieldControlProps {
 }
 
 function FieldControl({
-  field, colors, styles, onEstimate, onPriority, onDifficulty, onCategory, onStreak, onVacation, onHolidays, onReminder, onSuggestions,
+  field, task, colors, styles, onEstimate, onPriority, onDifficulty, onCategory, onStreak, onVacation, onHolidays, onReminder, onSuggestions,
   customOpen, customText, customUnit, onOpenCustom, onCustomTextChange, onCustomUnitChange, onCustomSubmit,
 }: FieldControlProps) {
   if (field === 'estimate') {
@@ -3787,10 +3790,11 @@ function FieldControl({
         <View style={styles.pillRow}>
           {ESTIMATE_EFFORTS.map(e => {
             const mins = EFFORT_MINUTES[e];
+            const isCurrent = mins != null && task.estimatedMinutes === mins;
             return (
               <PressableScale
                 key={e}
-                style={styles.pill}
+                style={[styles.pill, isCurrent && styles.pillActive]}
                 onPress={() => onEstimate(e)}
                 accessibilityRole="button"
                 accessibilityLabel={`${EFFORT_LABELS[e]}${mins != null ? `, about ${formatDuration(mins)}` : ''}`}
@@ -3848,7 +3852,7 @@ function FieldControl({
     return (
       <SegmentedControl
         label="Priority"
-        value={0}
+        value={task.priority}
         onChange={onPriority}
         columns={2}
         options={PRIORITY_OPTIONS}
@@ -3863,7 +3867,7 @@ function FieldControl({
     return (
       <SegmentedControl<Difficulty | null>
         label="Difficulty"
-        value={null}
+        value={task.difficulty ?? null}
         onChange={d => { if (d) onDifficulty(d); }}
         options={DIFFICULTY_SEGMENTS}
         surface="page"
@@ -3874,7 +3878,7 @@ function FieldControl({
   if (field === 'category') {
     return (
       <View style={[styles.categoryCard, { backgroundColor: colors.bgSecondary }]}>
-        <CategoryPickerList value={null} onSelect={onCategory} showNone={false} maxHeight={360} />
+        <CategoryPickerList value={task.category} onSelect={onCategory} showNone={false} maxHeight={360} />
       </View>
     );
   }
@@ -3913,7 +3917,7 @@ function FieldControl({
     return (
       <SegmentedControl<HolidayRule | null>
         label="On a holiday"
-        value={null}
+        value={task.recurrenceHolidays ?? null}
         onChange={rule => { if (rule) onHolidays(rule); }}
         options={HOLIDAY_SEGMENTS}
         surface="page"
