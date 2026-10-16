@@ -3,7 +3,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { OfferBanner } from './OfferBanner';
 import { useColors } from '../theme/ThemeContext';
-import { describeProduct } from '../utils/groceryProduct';
+import { describeProductOfItem } from '../utils/groceryProduct';
 
 interface Props {
   /**
@@ -34,6 +34,7 @@ export function ProductRatingOffer({ itemId }: Props) {
   const offer = useGroceryStore(s => s.ratingOffer);
   const disposalOpen = useGroceryStore(s => s.disposalOffer !== null);
   const products = useGroceryStore(useShallow(s => s.itemProducts));
+  const items = useGroceryStore(useShallow(s => s.items));
   const rate = useGroceryStore(s => s.rateOfferedProduct);
   const dismiss = useGroceryStore(s => s.dismissRatingOffer);
   const colors = useColors();
@@ -45,7 +46,10 @@ export function ProductRatingOffer({ itemId }: Props) {
   const product = products.find(p => p.id === offer.productId);
   if (!product) return null;
 
-  const name = describeProduct(product);
+  // The item's name is what makes "Planters" a thing you ate; a deleted item
+  // just falls back to the product's own words.
+  const item = items.find(i => i.id === offer.itemId);
+  const name = describeProductOfItem(product, item?.name);
   if (!name) return null;
   const lead = `How was the ${name}?`;
   return (

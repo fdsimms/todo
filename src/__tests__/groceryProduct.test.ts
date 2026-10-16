@@ -1,6 +1,7 @@
 import {
   canonicalBrand,
   describeProduct,
+  describeProductOfItem,
   describeProductPurchases,
   lacksPreferredProduct,
   parseUnavailableProductIds,
@@ -35,6 +36,38 @@ function product(overrides: Partial<ItemProduct> & { id: string }): ItemProduct 
   };
 }
 
+
+describe('describeProductOfItem', () => {
+  // The case that prompted it: a brand-only product asked "How was the
+  // PLANTERS?", which names a company rather than something eaten.
+  it('puts the item name after a brand on its own', () => {
+    expect(describeProductOfItem({ brand: 'PLANTERS', variant: null }, 'Peanuts')).toBe(
+      'PLANTERS Peanuts'
+    );
+  });
+
+  it('puts the item name after a brand and variant', () => {
+    expect(
+      describeProductOfItem({ brand: 'Good Culture', variant: 'low fat' }, 'Yogurt')
+    ).toBe('Good Culture low fat Yogurt');
+  });
+
+  it('does not say the name twice when the product already holds it', () => {
+    expect(
+      describeProductOfItem({ brand: 'Skippy', variant: 'peanut butter' }, 'Peanut butter')
+    ).toBe('Skippy peanut butter');
+  });
+
+  it('falls back to the product alone with no usable item name', () => {
+    expect(describeProductOfItem({ brand: 'Oatly', variant: null }, undefined)).toBe('Oatly');
+    expect(describeProductOfItem({ brand: 'Oatly', variant: null }, '  ')).toBe('Oatly');
+  });
+
+  it('is null when the product names nothing, whatever the item is called', () => {
+    expect(describeProductOfItem({ brand: null, variant: null }, 'Peanuts')).toBeNull();
+    expect(describeProductOfItem(null, 'Peanuts')).toBeNull();
+  });
+});
 
 describe('describeProduct', () => {
   // One caption, not two: the row can already be four captions tall, and these

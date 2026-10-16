@@ -293,7 +293,18 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // The quieter half of a pair, the call InlineAction's `variant="neutral"`
   // makes. Only for an untinted pair — a caller answering a two-way question
   // passes its own tints instead, see the prop.
-  secondaryButton: { backgroundColor: colors.bgSecondary },
+  //
+  // Outlined, because in the dark themes `bgSecondary` is nearly the page
+  // colour behind the card and a bare fill reads as a hole in it rather than
+  // a button beside two saturated ones. The border is taken back out of the
+  // padding so the pill is the same size as the filled ones around it.
+  secondaryButton: {
+    backgroundColor: colors.bgSecondary,
+    borderWidth: 1,
+    borderColor: colors.controlBorder,
+    paddingHorizontal: spacing.md - 1,
+    paddingVertical: spacing.sm - 1,
+  },
   secondaryButtonText: { color: colors.text },
   dismiss: { padding: spacing.xs },
 });

@@ -105,6 +105,28 @@ export function describeProduct(
 }
 
 /**
+ * `describeProduct` with the item's own name behind it, for a sentence that
+ * has to say what the thing *is*: "Planters peanuts", not "Planters". A brand
+ * alone reads as the company rather than something you ate, which is the
+ * common shape of a product (the brand is the whole record).
+ *
+ * The name is appended verbatim, the way `ItemDisposalOffer` puts it in a
+ * sentence, and left off when the product's own words already hold it
+ * ("Skippy peanut butter" on an item named "Peanut butter"), so the name is
+ * never said twice. Null in, null out, like `describeProduct`.
+ */
+export function describeProductOfItem(
+  product: Pick<ItemProduct, 'brand' | 'variant'> | null | undefined,
+  itemName: string | null | undefined
+): string | null {
+  const described = describeProduct(product);
+  const name = itemName?.trim();
+  if (!described || !name) return described;
+  if (described.toLowerCase().includes(name.toLowerCase())) return described;
+  return `${described} ${name}`;
+}
+
+/**
  * What the app already knows about a catalog row, in one line — the answer to
  * "is this the same thing as the item on my list?" asked from the recipe side.
  *
