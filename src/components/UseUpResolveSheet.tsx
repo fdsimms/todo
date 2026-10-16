@@ -3,23 +3,8 @@ import { Alert } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
-import { useRewardStore } from '../store/useRewardStore';
-import { useTaskStore } from '../store/useTaskStore';
-import { latestCompletedTaskIdFor } from '../utils/generatedTasks';
 import { OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
-import type { GeneratedKind } from '../types';
 import { LeftoverSheet } from './LeftoverSheet';
-
-/**
- * Food that went in the bin used nothing up, so the coins the tick paid come
- * back. The tick pays first (completeTask can't know the answer yet), and this
- * is the one moment the answer is given, so it is taken back here. Same
- * `takeBackTask` an unticked completion uses: it removes only that task's entry.
- */
-function forfeitUseUpCoins(kind: GeneratedKind, sourceId: string) {
-  const taskId = latestCompletedTaskIdFor(useTaskStore.getState().tasks, kind, sourceId);
-  if (taskId) useRewardStore.getState().takeBackTask(taskId);
-}
 
 /**
  * What completing a "Use up X" task actually resolves.
@@ -94,11 +79,7 @@ export function UseUpResolveSheet() {
         { text: 'Not now', style: 'cancel', onPress: () => setPendingUseUpItem(null) },
         {
           text: 'Went bad',
-          onPress: () => {
-            markOutOfMany([item.id], 'spoiled');
-            forfeitUseUpCoins('groceryUseUp', item.id);
-            setPendingUseUpItem(null);
-          },
+          onPress: () => { markOutOfMany([item.id], 'spoiled'); setPendingUseUpItem(null); },
         },
         ...(canFreeze
           ? [{
@@ -148,11 +129,7 @@ export function UseUpResolveSheet() {
       onSetStoredAt={storedAt => pendingLeftover && setLeftoverStoredAt(pendingLeftover.id, storedAt)}
       onSetKeepDays={days => pendingLeftover && setLeftoverKeepDays(pendingLeftover.id, days)}
       onSetWeight={grams => pendingLeftover && setLeftoverWeight(pendingLeftover.id, grams)}
-      onFinish={outcome => {
-        if (!pendingLeftover) return;
-        finishLeftover(pendingLeftover.id, outcome);
-        if (outcome === 'tossed') forfeitUseUpCoins('leftoverUseUp', pendingLeftover.id);
-      }}
+      onFinish={outcome => pendingLeftover && finishLeftover(pendingLeftover.id, outcome)}
       onSetFrozen={frozen => pendingLeftover && setLeftoverFrozen(pendingLeftover.id, frozen)}
       onSplit={() => pendingLeftover && splitLeftover(pendingLeftover.id)}
       onReopen={() => pendingLeftover && reopenLeftover(pendingLeftover.id)}

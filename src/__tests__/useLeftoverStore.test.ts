@@ -69,6 +69,11 @@ jest.mock('../store/useSettingsStore', () => ({
   },
 }));
 
+const mockTakeBackTask = jest.fn();
+jest.mock('../store/useRewardStore', () => ({
+  useRewardStore: { getState: () => ({ takeBackTask: mockTakeBackTask }) },
+}));
+
 // Same shape as useGroceryStore.test.ts's mockTaskState: reconcileLeftoverTask
 // reaches useTaskStore directly, so it needs a task list to read and write.
 const mockTaskState = {
@@ -518,6 +523,28 @@ describe('finishLeftover', () => {
     expect(stored.finishedAt).not.toBeNull();
     expect(stored.outcome).toBe('eaten');
     expect(dbUpdateLeftover).toHaveBeenCalledTimes(1);
+  });
+
+  it('takes back the coins a completed use-up task paid when it is thrown out', () => {
+    mockTakeBackTask.mockClear();
+    mockTaskState.tasks.push({
+      id: 't-done', completed: true, completedAt: localIso('2026-08-11T09:00'), missedAt: null,
+      generatedKind: 'leftoverUseUp', generatedSourceId: 'lo-a',
+    } as Task);
+    seed([makeLeftover({ id: 'lo-a' })]);
+    useLeftoverStore.getState().finishLeftover('lo-a', 'tossed');
+    expect(mockTakeBackTask).toHaveBeenCalledWith('t-done');
+  });
+
+  it('keeps those coins when it was eaten', () => {
+    mockTakeBackTask.mockClear();
+    mockTaskState.tasks.push({
+      id: 't-done', completed: true, completedAt: localIso('2026-08-11T09:00'), missedAt: null,
+      generatedKind: 'leftoverUseUp', generatedSourceId: 'lo-a',
+    } as Task);
+    seed([makeLeftover({ id: 'lo-a' })]);
+    useLeftoverStore.getState().finishLeftover('lo-a', 'eaten');
+    expect(mockTakeBackTask).not.toHaveBeenCalled();
   });
 
   it('records a bin as a bin', () => {

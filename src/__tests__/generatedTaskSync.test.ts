@@ -40,6 +40,8 @@ const mockTaskState = {
 // down during it (see GeneratedKindSpec.pausedOnVacation). Mocked rather than
 // imported for the reason useTaskStore is: the real store pulls in expo-sqlite.
 const mockSettingsState = { vacationMode: false };
+jest.mock('../store/useRewardStore', () => ({ useRewardStore: { getState: () => ({ takeBackTask: jest.fn() }) } }));
+
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: { getState: () => mockSettingsState },
 }));
