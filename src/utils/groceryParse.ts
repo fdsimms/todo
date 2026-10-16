@@ -187,9 +187,91 @@ const PACK_SIZE = /^(\d+(?:\.\d+)?)\s*([a-z]+)\s+(.+)$/i;
 // "6-pack beer", "12-ct eggs": a count hyphenated onto its unit.
 const HYPHENATED_COUNT = /^(\d+)-(pack|pk|ct|count)\b\s*/i;
 
+// A number as a recipe writes it: a glyph fraction ("1½", "½"), a mixed number,
+// a bare fraction or a decimal, in the order LEADING_QTY tries them.
+const AMOUNT = `(?:\\d*\\s*[${UNICODE_FRACTION_CHARS}]|\\d+\\s+\\d+\\/\\d+|\\d+\\/\\d+|\\d+(?:\\.\\d+)?)`;
+// "2 to 3 cloves garlic", "1-2 tbsp oil", "1–2 tablespoons honey", "4-6 chicken
+// thighs": a range keeps both ends in the quantity. The second end has to be
+// followed by a space, so "3-4pm" and "1-2-3" are not read as one.
+const RANGE_QTY = new RegExp(`^(${AMOUNT})\\s*(to\\s+|[-\\u2013\\u2014]\\s*)(${AMOUNT})(?:(\\s*)([a-z]+)\\.?)?\\s+(.+)$`, 'i');
+// "1/4 cup plus 2 tablespoons sugar", "1 lb 8 oz pork shoulder": two measures
+// of one thing. "plus" and "+" join any two units; "and" and no joiner at all
+// only join two measures (volume or weight), so "1 can and 1 jar" stays two
+// things written on one line.
+const TWO_PART_QTY = new RegExp(
+  `^(${AMOUNT})\\s*([a-z]+)\\.?\\s*(plus\\s+|\\+\\s*|and\\s+)?(${AMOUNT})\\s*([a-z]+)\\.?\\s+(.+)$`,
+  'i',
+);
+const MEASURE_UNITS = new Set([
+  'lb', 'lbs', 'pound', 'pounds', 'oz', 'ounce', 'ounces', 'kg', 'g', 'gram', 'grams',
+  'ml', 'l', 'liter', 'liters', 'litre', 'litres', 'cup', 'cups',
+  'tbsp', 'tsp', 'tablespoon', 'tablespoons', 'teaspoon', 'teaspoons',
+  'pt', 'pint', 'pints', 'qt', 'quart', 'quarts', 'gal', 'gallon', 'gallons',
+]);
+// "1 can (14 oz) coconut milk": the size after the container, written in
+// parentheses. Restated as CONTAINER_QTY would have it ("1 14 oz can").
+const CONTAINER_THEN_SIZE = /^(\d+)\s+([a-z]+)\s+\((\d+(?:\.\d+)?)\s*-?\s*([a-z]+)\.?\)\s+(.+)$/i;
+
+function measureQuantity(input: string): { name: string; quantity: string } | null {
+  const sizeAfter = CONTAINER_THEN_SIZE.exec(input);
+  if (sizeAfter) {
+    const [, count, containerRaw, size, sizeUnitRaw, rest] = sizeAfter;
+    const sizeUnit = sizeUnitRaw.toLowerCase();
+    const container = containerRaw.toLowerCase();
+    if (isSizedContainer(sizeUnit, container) && rest.trim()) {
+      const sized = extractLeadingSize(rest.trim(), `${count} ${size} ${sizeUnit} ${container}`);
+      return { name: clampName(sized.name), quantity: clampQuantity(sized.quantity) };
+    }
+  }
+
+  const twoPart = TWO_PART_QTY.exec(input);
+  if (twoPart) {
+    const [, first, unit1Raw, joiner, second, unit2Raw, rest] = twoPart;
+    const unit1 = unit1Raw.toLowerCase();
+    const unit2 = unit2Raw.toLowerCase();
+    const bothMeasures = MEASURE_UNITS.has(unit1) && MEASURE_UNITS.has(unit2);
+    const strongJoiner = !!joiner && !/^and/i.test(joiner);
+    const known = UNIT_SET.has(unit1) && UNIT_SET.has(unit2) && unit1 !== 'x' && unit2 !== 'x';
+    if (known && (bothMeasures || strongJoiner) && rest.trim()) {
+      const joined = joiner ? `${joiner.trim().toLowerCase()} ` : '';
+      const quantity =
+        `${first} ${UNIT_ABBREVIATIONS[unit1] ?? unit1} ${joined}${second} ${UNIT_ABBREVIATIONS[unit2] ?? unit2}`;
+      return { name: clampName(rest), quantity: clampQuantity(quantity) };
+    }
+  }
+
+  const range = RANGE_QTY.exec(input);
+  if (range) {
+    const [, low, separator, high, gap, maybeUnit, rest] = range;
+    const joiner = /^to/i.test(separator) ? ' to ' : '-';
+    const span = `${low}${joiner}${high}`;
+    const unit = maybeUnit?.toLowerCase();
+    // "3-4pm": a word glued to the number that isn't a unit is not a name.
+    if (maybeUnit && !gap && !UNIT_SET.has(unit as string)) return null;
+    if (unit && UNIT_SET.has(unit)) {
+      const stripped = rest.replace(/^of\s+/i, '');
+      const sized = extractLeadingSize((stripped.trim() ? stripped : rest).trim(), `${span} ${UNIT_ABBREVIATIONS[unit] ?? unit}`);
+      return { name: clampName(sized.name), quantity: clampQuantity(sized.quantity) };
+    }
+    // No unit, or a word that isn't one ("2-3 large eggs", "4-6 chicken
+    // thighs"): that word starts the name.
+    const sized = extractLeadingSize((maybeUnit ? `${maybeUnit} ${rest}` : rest).trim(), span);
+    return { name: clampName(sized.name), quantity: clampQuantity(sized.quantity) };
+  }
+  return null;
+}
+
 export function parseGroceryInput(raw: string): { name: string; quantity: string | null } {
-  const input = raw.trim().replace(/\s+/g, ' ').replace(HYPHENATED_COUNT, '$1 $2 ');
+  const input = raw
+    .trim()
+    // The fraction slash (U+2044) is what some recipe pages print in "1⁄2".
+    .replace(/⁄/g, '/')
+    .replace(/\s+/g, ' ')
+    .replace(HYPHENATED_COUNT, '$1 $2 ');
   if (!input) return { name: '', quantity: null };
+
+  const measure = measureQuantity(input);
+  if (measure) return measure;
 
   const leadingX = LEADING_X.exec(input);
   if (leadingX && leadingX[2].trim()) {

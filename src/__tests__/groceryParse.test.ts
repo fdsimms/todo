@@ -841,3 +841,44 @@ describe('splitAlternativeNames', () => {
     expect(splitAlternativeNames('butter or olive oil')).toEqual(['butter', 'olive oil']);
   });
 });
+
+describe('parseGroceryInput measures', () => {
+  it('keeps both ends of a range in the quantity', () => {
+    expect(parseGroceryInput('2 to 3 cloves garlic')).toEqual({ name: 'garlic', quantity: '2 to 3 cloves' });
+    expect(parseGroceryInput('1-2 tbsp olive oil')).toEqual({ name: 'olive oil', quantity: '1-2 tbsp' });
+    expect(parseGroceryInput('1–2 tablespoons honey')).toEqual({ name: 'honey', quantity: '1-2 tbsp' });
+    expect(parseGroceryInput('10-12 oz spinach')).toEqual({ name: 'spinach', quantity: '10-12 oz' });
+    expect(parseGroceryInput('4-6 chicken thighs')).toEqual({ name: 'chicken thighs', quantity: '4-6' });
+    expect(parseGroceryInput('1 1/2 to 2 cups flour')).toEqual({ name: 'flour', quantity: '1 1/2 to 2 cups' });
+  });
+
+  it('leaves a hyphenated name that is not a range alone', () => {
+    expect(parseGroceryInput('3-4pm snack')).toEqual({ name: '3-4pm snack', quantity: null });
+    expect(parseGroceryInput('1-2-3 sauce').quantity).toBeNull();
+  });
+
+  it('keeps a two-part measure whole', () => {
+    expect(parseGroceryInput('1/4 cup plus 2 tablespoons sugar')).toEqual({
+      name: 'sugar',
+      quantity: '1/4 cup plus 2 tbsp',
+    });
+    expect(parseGroceryInput('1 Tbsp. plus 1 tsp. kosher salt')).toEqual({
+      name: 'kosher salt',
+      quantity: '1 tbsp plus 1 tsp',
+    });
+    expect(parseGroceryInput('1 lb 8 oz pork shoulder')).toEqual({ name: 'pork shoulder', quantity: '1 lb 8 oz' });
+    // Two things written on one line are not one measure.
+    expect(parseGroceryInput('1 can and 1 jar beans').quantity).toBe('1 can');
+  });
+
+  it('reads a container size written after the container', () => {
+    expect(parseGroceryInput('1 can (14 oz) coconut milk')).toEqual({
+      name: 'coconut milk',
+      quantity: '1 14 oz can',
+    });
+  });
+
+  it('reads the fraction slash', () => {
+    expect(parseGroceryInput('1⁄2 cup sugar')).toEqual({ name: 'sugar', quantity: '1/2 cup' });
+  });
+});
