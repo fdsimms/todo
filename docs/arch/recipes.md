@@ -316,7 +316,7 @@ planner.
   shopping, cost, nutrition or cook mode. The recipe page's nutrition total says so ("…, plus what
   you pick") rather than presenting the base as the dish.
 - **The recipe page shows them in the Ingredients card**, after the recipe's own lines under a
-  "Pick each time" heading, not as a section further down. In a section of their own, a grain
+  "Wild cards" heading, not as a section further down. In a section of their own, a grain
   bowl whose only fixed line is olive oil read as a recipe for olive oil until you scrolled. They
   come after the lines because that's where a meal's fills land everywhere else (the flatten), and
   the heading keeps them from reading as part of the last ingredient section. They are not in the

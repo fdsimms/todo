@@ -2399,7 +2399,7 @@ export function RecipeDetailScreen() {
             {blanks.length > 0 && (
               <View style={mergedIngredientRows.length > 0 ? styles.ingredientSectionHeaderWrap : styles.blankHeaderFirst}>
                 {mergedIngredientRows.length > 0 && <View style={styles.ingredientSectionDivider} />}
-                <Text style={styles.ingredientSectionHeader}>Pick each time</Text>
+                <Text style={styles.ingredientSectionHeader}>Wild cards</Text>
                 {blanks.map(renderBlank)}
               </View>
             )}
