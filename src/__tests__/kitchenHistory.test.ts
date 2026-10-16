@@ -78,6 +78,7 @@ function recipe(id: string, name: string): Recipe {
     emptySections: [],
     emptyStepSections: [],
     components: [],
+    blanks: [],
     prepTasks: [],
     steps: [],
     sortOrder: 0,

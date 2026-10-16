@@ -207,6 +207,20 @@ export const ADOPTION_CHECKS: readonly AdoptionCheck[] = [
     },
   },
   {
+    id: 'recipe_blanks',
+    title: 'Recipes filled from your kitchen',
+    benefit: 'A recipe can have blanks, like a grain or any vegetables, instead of a long list of optional lines. Each time you plan it you pick what fills them from what is in your kitchen, and only those are shopped for and counted.',
+    kitchen: true,
+    advanced: true,
+    since: '2026-10-16',
+    evidence: ({ replica }) => {
+      const loose = replica.recipes().filter(r => (r.blanks ?? []).length === 0 && r.ingredients.filter(i => i.optional).length >= 4);
+      return loose.length > 0
+        ? `${loose.map(r => r.name).slice(0, 3).join(', ')} ${loose.length === 1 ? 'has' : 'have'} four or more optional lines and no blanks.`
+        : null;
+    },
+  },
+  {
     id: 'birthdays',
     title: 'Birthdays',
     benefit: 'A birthday on a person adds a reminder on the day, and optionally a task to get a gift ahead of it.',

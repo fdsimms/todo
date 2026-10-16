@@ -83,11 +83,11 @@ function stem(word: string): string {
   return word;
 }
 
-function stems(words: string): Set<string> {
+export function stems(words: string): Set<string> {
   return new Set(words.split(/\s+/).filter(Boolean).map(stem));
 }
 
-function tokensOf(name: string): string[] {
+export function tokensOf(name: string): string[] {
   return name.toLowerCase().replace(/[^a-z]+/g, ' ').split(' ').filter(Boolean).map(stem);
 }
 
@@ -112,12 +112,12 @@ const SEASONING = stems(
 
 const DRIED_MARKERS = stems('dried dehydrated raisin prune sultana medjool');
 
-const LEGUMES = stems('lentil chickpea garbanzo edamame');
+export const LEGUMES = stems('lentil chickpea garbanzo edamame');
 
 /** A bean that is a vegetable, or is not food at all, rather than a pulse. */
-const NON_PULSE_BEAN = stems('green string runner french snap jelly coffee vanilla cocoa');
+export const NON_PULSE_BEAN = stems('green string runner french snap jelly coffee vanilla cocoa');
 
-const VEGETABLES = stems(
+export const VEGETABLES = stems(
   'broccoli carrot spinach kale lettuce cabbage cauliflower zucchini courgette cucumber tomato '
   + 'celery asparagus mushroom eggplant aubergine beet beetroot radish turnip squash pumpkin '
   + 'corn pea parsnip leek fennel artichoke arugula rocket chard bok choy sprout kohlrabi okra '
@@ -125,7 +125,7 @@ const VEGETABLES = stems(
   + 'veg veggie vegetable jalapeno poblano serrano',
 );
 
-const FRUITS = stems(
+export const FRUITS = stems(
   'apple banana orange grape strawberry blueberry raspberry blackberry berry pear peach plum '
   + 'nectarine apricot cherry mango pineapple melon watermelon cantaloupe kiwi grapefruit '
   + 'tangerine clementine mandarin pomegranate fig papaya guava avocado cranberry persimmon '

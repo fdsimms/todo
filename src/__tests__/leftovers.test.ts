@@ -94,6 +94,7 @@ function makeRecipe(id: string, name: string, overrides: Partial<Recipe> = {}): 
     emptySections: [],
     emptyStepSections: [],
     components: [],
+    blanks: [],
     prepTasks: [],
     steps: [],
     sortOrder: 1,

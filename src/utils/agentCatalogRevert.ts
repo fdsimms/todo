@@ -15,7 +15,7 @@ import type { DeletedItemSnapshot } from './groceryItemWrite';
 /** The item fields a reversible catalog edit can change. */
 export const CATALOG_REVERT_FIELDS = [
   'aisle', 'quantity', 'quantityFromRecipe', 'note', 'lastPriceMinor', 'lastPricedAt', 'lastPriceQuantity',
-  'varietyOfKey', 'preferredProductId', 'productStrict',
+  'varietyOfKey', 'preferredProductId', 'productStrict', 'foodKinds',
 ] as const;
 
 export interface CatalogItemSnapshot {

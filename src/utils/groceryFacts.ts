@@ -135,6 +135,8 @@ const FACT_READERS: ReadonlyArray<(item: GroceryItem) => string> = [
   i => (i.preferredProductId ? `box:${i.preferredProductId}` : ''),
   i => (i.productStrict ? 'strict' : ''),
   i => (i.varietyOfKey ? `varietyOf:${i.varietyOfKey}` : ''),
+  // A food-type filing ("tofurky is a protein"), never the name's guess.
+  i => (i.foodKinds ? `kinds:${i.foodKinds.join(',')}` : ''),
 
   // Typed onto the row. A quantity only counts when the user set it — the
   // recipe-owned kind is `addFromPlan`'s bookkeeping, not a preference (see

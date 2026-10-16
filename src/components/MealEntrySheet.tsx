@@ -22,6 +22,7 @@ import { DayChipRow } from './DayChipRow';
 import { SegmentedControl } from './SegmentedControl';
 import { SafeBlurView } from './SafeBlurView';
 import { InlineAction } from './InlineAction';
+import { HelpText } from './HelpText';
 import { SheetActionRow } from './SheetActionRow';
 import { dayKeyOf } from '../utils/dateUtils';
 import { slotLabel } from '../utils/mealPlan';
@@ -124,6 +125,25 @@ interface Props {
    */
   onOverride?: () => void;
   /**
+   * What this meal filled its recipe's blanks with ("rice, tofurky, frozen
+   * peas"), or null when it filled none. See RecipeBlank.
+   */
+  blankFill?: string | null;
+  /**
+   * The recipe's optional lines ("crusty bread, for serving") and whether this
+   * meal picked each. Only a picked one is shopped for and counted
+   * (`optionalCounts`). Empty for a recipe with none, and the row is hidden.
+   */
+  optionalLines?: { id: string; name: string; picked: boolean }[];
+  /** Picks or unpicks one optional line for this meal. */
+  onToggleOptional?: (id: string) => void;
+  /**
+   * Opens the picker for the recipe's blanks. The caller dismisses this sheet
+   * first and hosts the picker itself, as with `onOverride`. Present only for a
+   * meal whose recipe has a blank.
+   */
+  onFillBlanks?: () => void;
+  /**
    * Records how much of the recipe this meal makes — see
    * MealPlanEntry.recipeScale. Absent for a meal with no recipe behind it,
    * which is what hides the control entirely.
@@ -225,7 +245,7 @@ const TOP_INSET = 72;
 
 export function MealEntrySheet({
   visible, entry, title, weekDays, onMove, onMoveFurther, onCopyTo, onCopyFurther, copiedDays, onReplace, onChooseRecipe, onSaveAsRecipe, matchingRecipeName,
-  onRemove, onRename, choiceGroups = [], onChoose, overrideLines = [], onRemoveOverride, onOverride,
+  onRemove, onRename, choiceGroups = [], onChoose, overrideLines = [], onRemoveOverride, onOverride, blankFill = null, onFillBlanks, optionalLines = [], onToggleOptional,
   onScale, baseServings, baseServingsMax, onSetCooked, onViewFoodLogEntry, onLogMeal, onOpenRecipe, onAddToList, onAddPrepTasks,
   onLogLeftovers,
   onFinishLeftover, onSetCookTask, hasCookTask = false, onClose,
@@ -437,6 +457,40 @@ export function MealEntrySheet({
             </View>
           ))}
 
+          {/* The recipe's optional lines, picked per meal like an either/or. */}
+          {optionalLines.length > 0 && (
+            <View>
+              <Text style={styles.label}>Optional</Text>
+              <View style={styles.chips}>
+                {optionalLines.map(line => (
+                  <TouchableOpacity
+                    key={line.id}
+                    style={[styles.chip, line.picked && styles.chipOn]}
+                    onPress={() => { haptics.tap(); onToggleOptional?.(line.id); }}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: line.picked }}
+                    accessibilityLabel={`Optional: ${line.name}`}
+                  >
+                    <Text style={[styles.chipText, line.picked && styles.chipTextOn]}>{line.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <HelpText style={styles.optionalHint}>Only what’s picked is shopped for and counted.</HelpText>
+            </View>
+          )}
+
+          {/* What fills the recipe's blanks this time. Changed from the picker,
+              so it has no ✕ of its own. */}
+          {!!blankFill && (
+            <View>
+              <Text style={styles.label}>From your kitchen</Text>
+              <View style={styles.overrideRow}>
+                <Text style={styles.overrideText}>{blankFill}</Text>
+              </View>
+            </View>
+          )}
+
           {/* What this one cooking uses instead of the recipe's own lines. Plain
               sentences with a way to take each back off; adding one is the
               action row below, beside Replace meal. */}
@@ -576,6 +630,19 @@ export function MealEntrySheet({
             answer and the batch size; the replace keeps both (see
             bulkReplaceItem).
           */}
+          {!!onFillBlanks && (
+            <>
+              <View style={styles.sep} />
+              <SheetActionRow
+                icon="basket-outline"
+                color={colors.accent}
+                label={blankFill ? 'Change what fills it' : 'Fill from your kitchen'}
+                onPress={() => { haptics.tap(); dismiss(onFillBlanks); }}
+                accessibilityLabel="Pick what fills this recipe’s blanks, for this meal"
+              />
+            </>
+          )}
+
           {!!onOverride && (
             <>
               <View style={styles.sep} />
@@ -875,6 +942,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   chipTextOn: {
     color: colors.onAccent,
+  },
+  optionalHint: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.xsm,
   },
   sep: {
     height: border.hairline,

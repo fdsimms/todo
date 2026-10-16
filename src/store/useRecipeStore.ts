@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { ComponentPlacement, Cookbook, CookbookIndexEntry, Recipe, RecipeIngredient, RecipeMealType, RecipePrepTask, RecipeSourceType, RecipeStep, RecipeVote } from '../types';
+import type { ComponentPlacement, Cookbook, CookbookIndexEntry, Recipe, RecipeBlank, RecipeIngredient, RecipeMealType, RecipePrepTask, RecipeSourceType, RecipeStep, RecipeVote } from '../types';
 import { GROCERY_NAME_MAX_LENGTH, GROCERY_QUANTITY_MAX_LENGTH, RECIPE_PAGE_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH, RECIPE_STEP_NOTE_MAX_LENGTH, STEP_ONLY_WHEN_MAX, TITLE_MAX_LENGTH } from '../types';
 import {
   dbGetAllRecipes,
@@ -42,6 +42,7 @@ import { clampCookedWeight } from '../utils/mealLog';
 import { normalizeRecipeTags } from '../utils/recipeTags';
 import { componentPlacement, makeComponent, reanchorComponents, recipeMap, wouldCreateRecipeCycle } from '../utils/recipeComponents';
 import { sectionsOf } from '../utils/recipeSections';
+import { makeBlank, normalizeBlank } from '../utils/recipeBlanks';
 import { pageAfterCookbookLink } from '../utils/cookbookRecipes';
 import {
   cleanIndexEntryFields, cleanIndexIngredients, indexEntryInBook,
@@ -492,6 +493,16 @@ interface RecipeStore {
    */
   makeComponentDefault: (recipeId: string, componentId: string) => void;
 
+  /**
+   * Adds a blank filled from the kitchen at each cooking ("2 cups vegetables,
+   * pick any"). Returns it, or null when the fields say nothing. See RecipeBlank.
+   */
+  addBlank: (recipeId: string, fields: Parameters<typeof makeBlank>[0]) => RecipeBlank | null;
+  /** Edits a blank in place, repaired the way a stored one is; a patch leaving it with no label and no kind is refused. */
+  updateBlank: (recipeId: string, blankId: string, patch: Partial<Omit<RecipeBlank, 'id'>>) => void;
+  /** Takes a blank off. A meal that filled it keeps the fill, which then fills nothing (resolve-or-shrug). */
+  removeBlank: (recipeId: string, blankId: string) => void;
+
   /** Null when the title is empty. Defaults to a day before the meal, no reminder. */
   addPrepTask: (recipeId: string, title: string) => RecipePrepTask | null;
   updatePrepTask: (recipeId: string, prepTaskId: string, patch: Partial<RecipePrepTask>) => void;
@@ -618,6 +629,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       ingredients: [],
       emptySections: [],
       components: [],
+      blanks: [],
       prepTasks: [],
       steps: [],
       emptyStepSections: [],
@@ -1404,6 +1416,30 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
         return clean ? { ...rest, amountUsed: clean } : rest;
       }),
     });
+  },
+
+  addBlank(recipeId, fields) {
+    const recipe = get().recipes.find(r => r.id === recipeId);
+    if (!recipe) return null;
+    const blank = makeBlank(fields);
+    if (!blank) return null;
+    save(set, { ...recipe, blanks: [...(recipe.blanks ?? []), blank] });
+    return blank;
+  },
+
+  updateBlank(recipeId, blankId, patch) {
+    const recipe = get().recipes.find(r => r.id === recipeId);
+    const current = recipe?.blanks?.find(b => b.id === blankId);
+    if (!recipe || !current) return;
+    const next = normalizeBlank({ ...current, ...patch, id: blankId });
+    if (!next || JSON.stringify(next) === JSON.stringify(current)) return;
+    save(set, { ...recipe, blanks: recipe.blanks.map(b => (b.id === blankId ? next : b)) });
+  },
+
+  removeBlank(recipeId, blankId) {
+    const recipe = get().recipes.find(r => r.id === recipeId);
+    if (!recipe?.blanks?.some(b => b.id === blankId)) return;
+    save(set, { ...recipe, blanks: recipe.blanks.filter(b => b.id !== blankId) });
   },
 
   makeComponentDefault(recipeId, componentId) {

@@ -512,6 +512,9 @@ export const ITEM_MERGE_RULES: Readonly<Record<keyof GroceryItem, ItemMergeRule>
   choiceGroup: 'caller',
   varietyOfKey: 'caller',
   otherNames: 'names',
+  // A filing is the person's answer about the thing itself, so either row's
+  // answer outlives the merge; the survivor's wins when both filed one.
+  foodKinds: 'fillGap',
   purchaseCount: 'sum',
   lastAddedAt: 'later',
   lastPurchasedAt: 'later',
@@ -566,6 +569,8 @@ function pantrySourceOf(into: GroceryItem, from: GroceryItem): GroceryItem {
 }
 
 function isGap(value: unknown, key: keyof GroceryItem): boolean {
+  // Absent is "never filed"; an empty list is a filing ("offer this nowhere").
+  if (key === 'foodKinds') return value === undefined;
   if (value === null || value === '') return true;
   return key === 'aisle' && value === 'Other';
 }

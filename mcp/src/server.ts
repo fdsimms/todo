@@ -1335,6 +1335,7 @@ function registerWriteTools(
       text: z.string().min(1),
       section: z.string().nullable().optional(),
       alternativeGroup: z.string().nullable().optional(),
+      optional: z.boolean().optional().describe('True for a line a cook may leave out ("crusty bread, for serving"): a planned meal shops for it and counts it only when the meal includes it (update_meal\'s optional). Omit to leave a kept line\'s answer alone; false makes it required again.'),
       excludeFromNutrition: z.boolean().optional().describe('True leaves this line out of the recipe\'s nutrition total, for flavoring taken out before eating (kombu, a bay leaf) or a garnish. Omit to leave a kept line\'s answer alone; false counts it again.'),
     })).optional(),
     steps: z.array(z.object({
@@ -1364,6 +1365,13 @@ function registerWriteTools(
       choiceGroup: z.string().nullable().optional(),
       amountUsed: z.string().max(24).nullable().optional().describe('How much of that recipe\'s batch goes into this one: "1 tbsp", "2 fillets", or "1/4" for a quarter of the batch. Nutrition counts only this much; without it the whole batch counts. Omit to leave an existing amount alone, null to clear it.'),
     })).optional().describe('Other saved recipes used inside this one (the crust, the sauce), replacing the list. Ones sharing a choiceGroup are alternatives: one is cooked.'),
+    blanks: z.array(z.object({
+      label: z.string().optional().describe('The heading it reads under ("Vegetables", "Something crunchy"). Defaults to the kind\'s own name.'),
+      kind: z.enum(['vegetable', 'fruit', 'legume', 'grain', 'protein', 'dairy', 'nuts', 'sauce', 'herb']).nullable().optional().describe('The kind of food that fills it from the kitchen. Null (or left out) for a blank filled only from suggestions, which then needs a label.'),
+      pick: z.union([z.enum(['one', 'any']), z.number().int().min(1).max(6)]).optional().describe('How many things may fill it: "one", "any" (the default), or up to a number.'),
+      amount: z.string().max(60).optional().describe('The whole amount the picks share ("2 cups"); split evenly across what is picked.'),
+      suggestions: z.array(z.string()).optional().describe('Names offered every time whether or not they are in the kitchen ("feta", "goat cheese").'),
+    })).optional().describe('For a dish made from what is around (a grain bowl, a frittata): blanks filled from the kitchen each time it is cooked, replacing the list. A blank contributes nothing to shopping or nutrition until a meal fills it (update_meal\'s fills). Use one instead of a long list of optional lines.'),
     prepTasks: z.array(z.object({
       title: z.string().min(1),
       offsetDays: z.number().int().optional().describe('Days before the meal, -7 to 1 (default -1, the day before).'),
@@ -2974,6 +2982,7 @@ function registerWriteTools(
       priceMinor: z.number().int().positive().nullable().optional().describe('The last price in minor units (cents), or null to clear. Paired with the current quantity.'),
       priceStore: z.string().optional().describe('With priceMinor: the store it was seen at, which also updates that store\'s link if it has one.'),
       kindOf: z.string().nullable().optional().describe('The generic this item is a kind of ("white onion" is a kind of "onion"), or null.'),
+      foodType: z.array(z.enum(['vegetable', 'fruit', 'legume', 'grain', 'protein', 'dairy', 'nuts', 'sauce', 'herb'])).nullable().optional().describe('What kind of food it is, which decides which of a recipe\'s blanks it can fill ("tofurky" is protein). Replaces the list; [] means it fills none; null goes back to the app\'s guess from the name. get_grocery_item shows the guess with foodTypeGuessed.'),
       alsoCalled: z.array(z.string()).optional().describe('Replaces the item\'s other names ("kombu" on dashima): the same thing under another word, unlike kindOf. A recipe line using one resolves to this item. [] clears them. A name another item already uses is refused and said so in the result.'),
       preferredBoxId: z.string().nullable().optional().describe('The id of a variant (a `boxes` id from get_grocery_item), or null for none.'),
       onlyPreferredBrand: z.boolean().optional(),
@@ -3898,6 +3907,11 @@ function registerWriteTools(
         with: z.string().nullable().describe('What this meal uses instead, as an ingredient is printed ("8 oz vegan fish fillets"), or null to leave it out.'),
         note: z.string().nullable().optional().describe('The one thing worth saying about the swap, shown beside it.'),
       })).optional(),
+      fills: z.array(z.object({
+        blank: z.string().min(1).describe('The blank\'s label, as list_meal_plan shows it.'),
+        with: z.array(z.string()).describe('What fills it this time, by name. Prefer what list_meal_plan lists under inKitchen, most urgent first. [] empties it.'),
+      })).optional().describe('What fills the recipe\'s blanks for this cooking. The blank\'s amount is shared evenly; shopping, nutrition and cook mode follow it. Blanks not named keep their fill.'),
+      optional: z.array(z.string()).optional().describe('The recipe\'s optional lines this meal includes ("crusty bread"), by name, replacing the set; list_meal_plan shows them. Only an included one is shopped for and counted. [] includes none.'),
       shopTask: z.boolean().nullable().optional(),
       thawTask: z.boolean().nullable().optional(),
       logMeal: z.boolean().nullable().optional(),

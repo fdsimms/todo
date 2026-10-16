@@ -49,6 +49,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/beatMark.ts` — BeatMarkGeometry, beatMarkGeometry, BEAT_STEP_MS
 - `src/utils/beatSound.ts` — playBeatSound
 - `src/utils/birthdayTasks.ts` — DEFAULT_BIRTHDAY_LEAD_DAYS, DEFAULT_BIRTHDAY_GIFT_LEAD_DAYS, MAX_BIRTHDAY_LEAD_DAYS, clampBirthdayLeadDays, clampBirthdayGiftLeadDays, parseBirthdayLeadDays, parseBirthdayGiftLeadDays, birthdaySourceId, parseBirthdaySource, parseBirthdayGiftSource, +15 more
+- `src/utils/blankPicker.ts` — BlankCandidate, BlankChoices, USUAL_CANDIDATE_LIMIT, blankChoices, needsUsing, defaultBlankPicks, togglePick, lastBlankFill
 - `src/utils/blockEditLock.ts` — liveGroupIds, groupEditLocked, supergroupEditLocked, reasonGroupLocked, reasonSwitchLocked, appRemovalSwitchLocked, defaultGroupLocked, scheduleEditLocked, groupBlockHint, BLOCK_PICKER_NOTE_TITLE, +4 more
 - `src/utils/blockSchedule.ts` — BLOCK_SCHEDULES_SETTING, MAX_BLOCK_SCHEDULES, MIN_WINDOW_MINUTES, MAX_SCHEDULE_NAME_LENGTH, readGroupIds, BlockSchedule, ALL_DAYS, WEEKDAYS, cleanScheduleName, windowLengthMinutes, +18 more
 - `src/utils/blockTimer.ts` — BLOCK_SINCE_SETTING, BlockStamp, parseBlockStamp, reasonsEndBy, nextBlockStamp, blockedForMs, formatBlockedFor, spokenBlockedFor
@@ -153,6 +154,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/focusSuggest.ts` — MAX_SUGGESTED_FOCUS, FOCUS_BUDGET_MINUTES, FocusContext, buildFocusContext, fitsWindow, scoreFocusTask, nextFocusSuggestion, suggestFocusTasks, focusQueueFromPinned, focusReason
 - `src/utils/focusWindow.ts` — FOCUS_CALENDAR_HORIZON_MINUTES, CalendarWindow, calendarWindow, FOCUS_MEETING_LEAD_MINUTES, FOCUS_MEETING_HORIZON_MINUTES, FocusMeetingHeadsUp, focusMeetingHeadsUp
 - `src/utils/followUpTask.ts` — MIN_FOLLOW_UP_TASK_EVERY_N, MAX_FOLLOW_UP_TASK_EVERY_N, canHoldFollowUpTask, FollowUpTaskRule, followUpTaskRule, FollowUpTaskEndRule, repeatHasEnd, followUpTaskEndRule, advanceFollowUpTaskTally, FollowUpTaskSuppression, +8 more
+- `src/utils/foodKinds.ts` — FOOD_KINDS, FOOD_KIND_LABELS, guessFoodKinds, foodKindsOf, isFoodKind, parseFoodKinds, normalizeFoodKinds, serializeFoodKinds, describeFoodKinds
 - `src/utils/foodLog.ts` — FoodLogTotals, FoodLogSection, isBeverageName, scalePanelToAmount, portionExamples, amountHint, amountExample, FoodUnitOption, VOLUME_UNIT_OPTIONS, foodUnitOptionsFor, +49 more
 - `src/utils/foodLogEntry.ts` — buildFoodLogEntry
 - `src/utils/foodLogExport.ts` — FOOD_LOG_EXPORT_COLUMNS, foodLogExportCsv, foodLogExportFileName, foodLogExportSummary
@@ -320,7 +322,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/processingStats.ts` — ProcessingMix, entryNovaGroup, processingMix, formatShare, describeProcessingCoverage
 - `src/utils/produceFloorTasks.ts` — DEFAULT_PRODUCE_FLOOR, PRODUCE_FLOOR_MIN, PRODUCE_FLOOR_MAX, clampProduceFloor, stockedProduce, produceFloorApplies, produceFloorTitle, PRODUCE_FLOOR_SUGGESTIONS_SHOWN, restockSuggestions, produceFloorNotes
 - `src/utils/produceNudgeTasks.ts` — DEFAULT_PRODUCE_NUDGE_FROM_HOUR, PRODUCE_NUDGE_FROM_HOUR_MIN, PRODUCE_NUDGE_FROM_HOUR_MAX, DEFAULT_PRODUCE_NUDGE_GOAL, PRODUCE_NUDGE_GOAL_MIN, PRODUCE_NUDGE_GOAL_MAX, clampProduceNudgeFromHour, clampProduceNudgeGoal, describeProduceNudgeHour, ProduceReading, +8 more
-- `src/utils/produceServings.ts` — PORTION_GRAMS, DRIED_PORTION_GRAMS, LEGUME_DAILY_CAP, ProduceKind, ProduceGrams, emptyProduceGrams, ProduceServings, DayProduce, produceKindOf, addProduceGrams, +10 more
+- `src/utils/produceServings.ts` — PORTION_GRAMS, DRIED_PORTION_GRAMS, LEGUME_DAILY_CAP, ProduceKind, ProduceGrams, emptyProduceGrams, ProduceServings, DayProduce, stems, tokensOf, +16 more
 - `src/utils/productCategory.ts` — CATEGORY_AISLES, aisleForProductCategory
 - `src/utils/projectBackfill.ts` — ProjectBackfillFieldId, ProjectBackfillFieldDef, PROJECT_BACKFILL_FIELDS, isProjectFieldMissing, isProjectBackfillDismissed, projectBackfillCandidates, projectBackfillFieldCounts, dismissProjectBackfillField
 - `src/utils/projectDateShortcuts.ts` — ProjectDateAnchor, ProjectDateShortcut, projectDateAnchor, projectDateShortcuts
@@ -355,13 +357,14 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/receiptOffline.ts` — isNonItemRow, findPrintedDate, findPrintedTotal, guessStoreName, extractReceiptOffline
 - `src/utils/recentSearches.ts` — RECENT_SEARCH_LIMIT, addRecentSearch, parseRecentSearches
 - `src/utils/recipeBackfill.ts` — RecipeBackfillFieldId, RecipeBackfillFieldDef, RECIPE_BACKFILL_FIELDS, isRecipeFieldMissing, isRecipeBackfillDismissed, recipeBackfillCandidates, recipeBackfillFieldCounts, dismissRecipeBackfillField
-- `src/utils/recipeComponents.ts` — parseRecipeComponents, normalizeComponent, componentPlacement, LayoutItem, ingredientLayout, reanchorComponents, parseRecipeChoices, parseRecipeOverrides, makeComponent, ChoiceResolution, +31 more
+- `src/utils/recipeBlanks.ts` — RECIPE_BLANK_LABEL_MAX_LENGTH, RECIPE_BLANK_OPTIONS_MAX, RECIPE_BLANK_MAX_PICKS, normalizeBlank, parseRecipeBlanks, makeBlank, describeBlankRule, describeBlank, shareOfBlank, blankFillLine, +6 more
+- `src/utils/recipeComponents.ts` — parseRecipeComponents, normalizeComponent, componentPlacement, LayoutItem, ingredientLayout, reanchorComponents, parseRecipeChoices, parseRecipeOverrides, makeComponent, ChoiceResolution, +33 more
 - `src/utils/recipeCost.ts` — CostEstimate, estimateRecipeCost, estimateWeekCost, describeRecipeCost, describeWeekCost
 - `src/utils/recipeEstimateQueue.ts` — PendingRecipeEstimateStatus, PendingRecipeEstimate, liveFor, awaitingRecipeEstimate
 - `src/utils/recipeImageSync.ts` — recipeImageNames, readRecipeImageForSync, hasRecipeImageForSync, writeRecipeImageFromSync, recipeIdsIn, unreferencedImageNames, applyWithRecipeImages
 - `src/utils/recipeImportComponents.ts` — ReferenceCandidate, referencePageNumber, importableReferences, coveredIngredients, ComponentImportState, seededComponentKeys, nextComponentPhotos, coveringComponentKeys, ComponentCommit, componentCommitFor
 - `src/utils/recipeImportPreview.ts` — ImportPreviewLine, methodRowMeta, prepTasksRowMeta, methodPreviewLines, prepTaskPreviewLines, previewToggleLabel
-- `src/utils/recipeNutrition.ts` — RecipeNutrition, NutritionLineState, recipeNutrition, componentShares, RecipeNutritionReading, readRecipeNutrition, NutritionLine, recipeNutritionLines, ExcludedNutritionLine, excludedNutritionLines, +9 more
+- `src/utils/recipeNutrition.ts` — RecipeNutrition, NutritionLineState, recipeNutrition, componentShares, RecipeNutritionReading, readRecipeNutrition, NutritionLine, recipeNutritionLines, ExcludedNutritionLine, excludedNutritionLines, +10 more
 - `src/utils/recipeNutritionEstimate.ts` — RecipeEstimateConfidence, RecipeNutritionEstimate, RawRecipeNutritionEstimate, readRecipeNutritionEstimate, describeRecipeNutritionEstimate
 - `src/utils/recipeOverlap.ts` — SharedIngredient, OverlapSeed, OverlapMatch, overlapSeedFromPlanned, overlapSeedFromRecipes, rankOverlapRecipes, describeOverlap
 - `src/utils/recipePageOffline.ts` — OfflineRecipeItem, servingsFromYield, recipeFromPageOffline

@@ -936,7 +936,9 @@ export function FoodLogEntrySheet({
     if (!recipe) return [];
     // The same map and swaps the dish's own rollup below measures with, so the
     // lines asked about here are lines of the dish being logged.
-    return recipeNutritionLines(recipe, items, itemProducts, recipesById, undefined, 1, swaps).filter(line => {
+    // Optional lines included (a serving suggestion is the commonest of these):
+    // an amount typed here is what picks one, and a blank adds nothing.
+    return recipeNutritionLines(recipe, items, itemProducts, recipesById, { withOptional: true }, 1, swaps).filter(line => {
       if (line.state !== 'unmeasured' || !line.nutrition || !line.item) return false;
       return weighableLine(line.quantity, line.prep, line.nutrition, line.item.name) === null;
     });

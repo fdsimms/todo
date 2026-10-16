@@ -13,7 +13,7 @@ import { panelMultiplier } from './ingredientGrams';
 import { resolvePluralKey } from './groceryPlural';
 import { itemKeyIndex } from './itemAliases';
 import { collectPlannedIngredients } from './mealPlanGroceries';
-import { flattenRecipeIngredients, type ChoiceResolution } from './recipeComponents';
+import { flattenRecipeIngredients, optionalCounts, type ChoiceResolution } from './recipeComponents';
 import { normalizeScale, scaleQuantity } from './recipeScale';
 import { NO_STANDING_SWAPS, type StandingSwapMap } from './standingSwaps';
 import { onHandNameKeys } from './grocerySuggest';
@@ -525,6 +525,8 @@ export function recipeNutritionLines(
     // Excluded outright, same as a staple: not a line that failed to count,
     // not a line at all.
     if (line.ingredient.excludeFromNutrition) continue;
+    // An optional line the meal didn't pick is not part of what was eaten.
+    if (!optionalCounts(line.ingredient, resolution)) continue;
     const quantity = scaleQuantity(line.ingredient.quantity, factor).text;
     // Measured as written, then scaled: see the header for why not `quantity`.
     const resolved = resolveLine(
@@ -627,7 +629,8 @@ export function weekNutrition(
   const productFor = preferredProductLookup(products);
   const resolved: LineResolution[] = [];
   for (const line of planned) {
-    if (line.excludeFromNutrition) continue;
+    // `optional` on a planned row is an optional line its meal didn't pick.
+    if (line.excludeFromNutrition || line.optional) continue;
     // Measured as written, then scaled, like a single recipe's lines: the
     // planned row's own `quantity` is the scaled shopping text (see the header).
     const one = resolveLine(
@@ -730,6 +733,46 @@ function describeNutrition(nutrition: RecipeNutrition, noun: string): string | n
 
 export function describeRecipeNutrition(nutrition: RecipeNutrition | null): string | null {
   return nutrition ? describeNutrition(nutrition, 'ingredients') : null;
+}
+
+/** How each summarised nutrient is written as a range, low to high. */
+const SUMMARY_RANGE_LABEL: Record<string, (low: number, high: number) => string> = {
+  calorieKcal: (low, high) => `${Math.round(low)}–${Math.round(high)} cal`,
+  proteinG: (low, high) => `${Math.round(low)}–${Math.round(high)}g protein`,
+};
+
+/**
+ * A recipe's figures as a range when its optional lines would change them:
+ * "≈ 320–610 cal, 12–20g protein per serving, the higher with every optional
+ * line". `withOptional` is the reading with every optional line counted
+ * (`ChoiceResolution.withOptional`). The low end is what a meal that picks
+ * none of them comes to, which is what `nutrition` is; a nutrient the two
+ * agree on reads as one number, and when they agree on all of them, or the
+ * top can't be counted, this is `describeRecipeNutrition`.
+ */
+export function describeRecipeNutritionRange(
+  nutrition: RecipeNutrition | null,
+  withOptional: RecipeNutrition | null,
+): string | null {
+  if (!nutrition || !withOptional) return describeRecipeNutrition(nutrition);
+  const low = perServing(nutrition) ?? nutrition.total;
+  const high = perServing(withOptional) ?? withOptional.total;
+  const differs = SUMMARY_KEYS.some(key =>
+    low[key] !== undefined && high[key] !== undefined && Math.round(low[key] as number) !== Math.round(high[key] as number));
+  if (!differs) return describeRecipeNutrition(nutrition);
+  const parts = SUMMARY_KEYS
+    .filter(key => low[key] !== undefined)
+    .map(key => {
+      const lo = low[key] as number;
+      const hi = high[key];
+      return hi === undefined || Math.round(hi) === Math.round(lo)
+        ? SUMMARY_LABEL[key](lo)
+        : SUMMARY_RANGE_LABEL[key](Math.min(lo, hi), Math.max(lo, hi));
+    });
+  const basis = perServing(nutrition) ? ' per serving' : '';
+  const coverage =
+    nutrition.covered === nutrition.lines ? '' : `, from ${nutrition.covered} of ${nutrition.lines} ingredients`;
+  return `≈ ${parts.join(', ')}${basis}${coverage}, the higher with every optional line`;
 }
 
 /** A dish's lines sorted into what can be done about them. */

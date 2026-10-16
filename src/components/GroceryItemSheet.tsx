@@ -67,6 +67,7 @@ import { describeSubstituteLink, describeSubstitutes, substitutesFor } from '../
 import { describeForgetLoss } from '../utils/groceryFacts';
 import { genericNameSuggestions } from '../utils/itemVarieties';
 import { groceryNameKey } from '../utils/groceryParse';
+import { describeFoodKinds, FOOD_KINDS, FOOD_KIND_LABELS, foodKindsOf } from '../utils/foodKinds';
 import { renameClash } from '../utils/groceryItemWrite';
 import { entryFor } from '../utils/groceryLists';
 import { SubstituteSheet } from './SubstituteSheet';
@@ -137,7 +138,7 @@ function withFrozenPortion(summary: string | undefined, portionFrozen: boolean):
 }
 
 /** The collapsible fields in the "More" card, in the order they render. */
-export type CollapsibleFieldKey = 'products' | 'aisle' | 'stores' | 'pantry' | 'useBy' | 'substitutes' | 'otherNames' | 'varietyOf' | 'usedIn' | 'nutrition';
+export type CollapsibleFieldKey = 'products' | 'aisle' | 'stores' | 'pantry' | 'useBy' | 'substitutes' | 'otherNames' | 'varietyOf' | 'foodKinds' | 'usedIn' | 'nutrition';
 
 interface Props {
   visible: boolean;
@@ -241,6 +242,7 @@ export function GroceryItemSheet({
   const setExpiresAt = useGroceryStore(s => s.setExpiresAt);
   const setShelfLifeDays = useGroceryStore(s => s.setShelfLifeDays);
   const setVarietyOfKey = useGroceryStore(s => s.setVarietyOfKey);
+  const setFoodKinds = useGroceryStore(s => s.setFoodKinds);
   const setOtherNames = useGroceryStore(s => s.setOtherNames);
   const setUseUpTask = useGroceryStore(s => s.setUseUpTask);
   const setItemPrice = useGroceryStore(s => s.setItemPrice);
@@ -818,6 +820,36 @@ export function GroceryItemSheet({
         closeField();
       },
     })),
+  ];
+  // Which of a recipe's blanks this can fill — see GroceryItem.foodKinds. A
+  // tap files the whole list as the person's own, so a guess they half agree
+  // with becomes an answer; "Go by the name" hands it back to the guess.
+  const currentFoodKinds = foodKindsOf(item);
+  const foodKindLabel = describeFoodKinds(currentFoodKinds);
+  const foodKindSummary = foodKindLabel && item.foodKinds === undefined ? `${foodKindLabel} (guessed)` : foodKindLabel ?? undefined;
+  const foodKindOptions: PillGroupOption[] = [
+    {
+      key: '__by-name__',
+      label: 'Go by the name',
+      selected: item.foodKinds === undefined,
+      pinned: true,
+      onPress: () => {
+        haptics.tap();
+        setFoodKinds(item.id, null);
+      },
+    },
+    ...FOOD_KINDS.map(kind => {
+      const on = currentFoodKinds.includes(kind);
+      return {
+        key: kind,
+        label: FOOD_KIND_LABELS[kind],
+        selected: on,
+        onPress: () => {
+          haptics.tap();
+          setFoodKinds(item.id, on ? currentFoodKinds.filter(k => k !== kind) : [...currentFoodKinds, kind]);
+        },
+      };
+    }),
   ];
   const handleCreateVariety = (name: string) => {
     const key = groceryNameKey(name);
@@ -1673,6 +1705,30 @@ export function GroceryItemSheet({
       ),
     },
     {
+      key: 'foodKinds',
+      label: 'Food type',
+      keywords: ['grain', 'protein', 'vegetable', 'blank', 'fill from your kitchen', 'bowl'],
+      node: (
+        <View onLayout={(e: LayoutChangeEvent) => {
+          fieldYRefs.current.foodKinds = e.nativeEvent.layout.y;
+          maybeScrollToInitialField();
+        }}>
+          {/* Which of a recipe's blanks this can fill (RecipeBlank). A guess
+              from the name until a pill is tapped; see GroceryItem.foodKinds. */}
+          <CollapsibleField
+            label="Food type"
+            summary={foodKindSummary}
+            emptySummary="None"
+            hint="Which blanks in a recipe this can fill, like a grain or a protein. Guessed from the name until you pick."
+            expanded={openField === 'foodKinds'}
+            onToggle={() => toggleField('foodKinds')}
+          >
+            <PillGroup options={foodKindOptions} noun="food type" limit={FOOD_KINDS.length + 1} />
+          </CollapsibleField>
+        </View>
+      ),
+    },
+    {
       key: 'usedIn',
       label: 'Used in',
       keywords: ['recipes', 'recipe', 'meal'],
@@ -1732,6 +1788,7 @@ export function GroceryItemSheet({
     useBy: !!item.expiresAt || frozen,
     substitutes: substitutes.length > 0,
     varietyOf: !!item.varietyOfKey,
+    foodKinds: item.foodKinds !== undefined,
   };
   const shownRows = simpleMode
     ? collapsibleRows.filter(r => groceryRowShown(r.key, true, !!simpleRowSet[r.key]))

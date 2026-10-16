@@ -34,11 +34,12 @@ function fakeReplica(opts: {
   milestones?: unknown[];
   medications?: unknown[];
   rewards?: boolean;
+  recipeRows?: unknown[];
 } = {}): Replica {
   return {
     tasks: () => opts.tasks ?? [],
     settings: () => ({ simpleMode: !!opts.simpleMode, kitchenEnabled: opts.kitchenEnabled ?? true, completedRetentionDays: null, rewardsEnabled: opts.rewards ?? false }),
-    recipes: () => Array.from({ length: opts.recipes ?? 0 }),
+    recipes: () => opts.recipeRows ?? Array.from({ length: opts.recipes ?? 0 }, () => ({ name: 'Recipe', blanks: [], ingredients: [] })),
     mealPlan: () => Array.from({ length: opts.planned ?? 0 }),
     todayKey: () => '2026-10-05',
     shiftDayKey: (k: string) => k,
@@ -170,6 +171,16 @@ describe('since: features that are new to the person', () => {
     expect(ids(false, [pushed])).not.toContain('bounty');
     expect(ids(true, [task({ postponeCount: 1 })])).not.toContain('bounty');
     expect(ids(true, [pushed, task({ bountyPushes: 0 })])).not.toContain('bounty');
+  });
+
+  it('suggests blanks for a recipe with four or more optional lines and none of its own', () => {
+    const line = (optional: boolean) => ({ name: 'x', optional });
+    const ids = (recipeRows: unknown[]) =>
+      unusedFeatures(fakeReplica({ recipeRows }), { since: '2026-10-01', limit: 20 }).suggestions.map(s => s.id);
+    const loose = { name: 'Fridge frittata', blanks: [], ingredients: [line(true), line(true), line(true), line(true), line(false)] };
+    expect(ids([loose])).toContain('recipe_blanks');
+    expect(ids([{ ...loose, blanks: [{ id: 'b' }] }])).not.toContain('recipe_blanks');
+    expect(ids([{ ...loose, ingredients: loose.ingredients.slice(1) }])).not.toContain('recipe_blanks');
   });
 
   it('suggests a destination only for a trip that has away dates and none', () => {

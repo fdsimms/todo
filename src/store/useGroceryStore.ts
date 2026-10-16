@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { FoodNutrition, GroceryGroupBy, GroceryItem, GroceryRecipeSource, GroceryList, GroceryListEntry, ItemProduct, ItemShopLink, ItemSubLink, PriceObservation, ProductRating, ReceiptStyle, Shop, StoreAlias } from '../types';
+import type { FoodKind, FoodNutrition, GroceryGroupBy, GroceryItem, GroceryRecipeSource, GroceryList, GroceryListEntry, ItemProduct, ItemShopLink, ItemSubLink, PriceObservation, ProductRating, ReceiptStyle, Shop, StoreAlias } from '../types';
 import { isPortionBox } from '../types';
 import { incomingSourcesOf, sourcesAfterMerge } from '../utils/recipeSources';
 import {
@@ -124,6 +124,7 @@ import {
 } from '../utils/pantryWrite';
 import { ensureProductFor, newItemRow, nextSortOrder, planGroceryAdd } from '../utils/groceryAdd';
 import type { PantryReviewAnswer } from '../utils/pantryReview';
+import { normalizeFoodKinds } from '../utils/foodKinds';
 import { wantsShelfLifePrompt, type DisposalOutcome } from '../utils/itemDisposal';
 import { expiresAtForOpening, expiresAtForPurchase, liveExpiresAt } from '../utils/groceryShelfLife';
 import { finishedUseUpFor, useUpTaskDraft, useUpTaskDrift, wantsUseUpTask } from '../utils/groceryExpiry';
@@ -1256,6 +1257,13 @@ interface GroceryStore extends UndoHistoryActions {
    * key (a thing is not a variety of itself) and an empty result.
    */
   setVarietyOfKey: (id: string, key: string | null) => void;
+
+  /**
+   * Files what kind of food the item is, for a recipe's blanks. Null goes
+   * back to the name's guess; an empty list means "offer it nowhere". See
+   * GroceryItem.foodKinds.
+   */
+  setFoodKinds: (id: string, kinds: readonly FoodKind[] | null) => void;
 
   /**
    * Replaces the item's other names ("kombu" on dashima). Returns the names it
@@ -3790,6 +3798,17 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const next = normalized === item.nameKey ? null : normalized;
     if (item.varietyOfKey === next) return;
     const updated = { ...item, varietyOfKey: next };
+    dbUpdateGroceryItem(updated);
+    set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
+  },
+
+  setFoodKinds(id, kinds) {
+    const item = get().items.find(i => i.id === id);
+    if (!item) return;
+    const next = kinds === null ? undefined : normalizeFoodKinds(kinds);
+    if (JSON.stringify(item.foodKinds) === JSON.stringify(next)) return;
+    const { foodKinds: _previous, ...rest } = item;
+    const updated: GroceryItem = next === undefined ? rest : { ...rest, foodKinds: next };
     dbUpdateGroceryItem(updated);
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
   },

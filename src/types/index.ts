@@ -5428,6 +5428,16 @@ export interface GroceryRecipeSource {
   quantity: string | null;
 }
 
+/**
+ * What a food is, for filling a recipe's blank ("a grain", "any vegetables").
+ * A closed set rather than free text, for the reason `RecipeMealType` is one:
+ * a blank names one of these and a catalog item answers to it, so both sides
+ * have to agree on the spelling. The labels and the name guess live in
+ * `src/utils/foodKinds.ts`.
+ */
+export type FoodKind =
+  'vegetable' | 'fruit' | 'legume' | 'grain' | 'protein' | 'dairy' | 'nuts' | 'sauce' | 'herb';
+
 export interface GroceryItem {
   id: string;
   // What the user last typed — the label. "Whole milk" and "milk" reading
@@ -5681,6 +5691,15 @@ export interface GroceryItem {
    * most items never have one.
    */
   otherNames?: string[];
+  /**
+   * What kind of food this is, as the person filed it ("tofurky is a
+   * protein"). **Absent means "go by the name"** (`guessFoodKinds`), which is
+   * every item nobody has filed; an empty list is an answer ("not something a
+   * blank should offer") and is kept, so a wrong guess can be turned off.
+   * Read only through `foodKindsOf`, which applies that rule. Optional for the
+   * reason `otherNames` is: most items are never filed by hand.
+   */
+  foodKinds?: FoodKind[];
   // Always on hand — salt, pepper, water, the things nobody actually shops
   // for. Set by hand on GroceryItemSheet, and unlike onHandUntil it never
   // expires: a staple isn't a guess about recent purchases, it's a standing
@@ -7000,6 +7019,45 @@ export interface RecipeIngredient {
   excludeFromShoppingList?: boolean;
 }
 
+/**
+ * A blank in a recipe, filled from the kitchen each time it's cooked: "2 cups
+ * vegetables, pick any", "a grain, pick one". What makes a "no-recipe recipe"
+ * (a grain bowl, a fridge frittata) a recipe at all.
+ *
+ * **Its own list, deliberately not a `RecipeIngredient`**, for the reason
+ * `RecipeComponent` is one: `nameKey` is THE bridge to the grocery catalog, and
+ * a line called "vegetables" would mint a catalog row called that, shop for it
+ * and count it in the dish's figures. A blank names no food. It contributes
+ * nothing to shopping, cost, nutrition or cook mode until a meal fills it.
+ *
+ * **What fills it lives on the meal, not here**: a `RecipeOverride` aimed at
+ * this blank's id, whose `fill` holds the picked lines. The same split
+ * `MealPlanEntry.recipeChoices` makes (the recipe is the document, the entry is
+ * one cooking of it), and riding the override means every path that already
+ * carries a meal's overrides (the shopping sheet, cook mode, the food log, the
+ * cook recap) carries the fill too, with nothing new to thread.
+ *
+ * Resolve-or-shrug like every other cross-row pointer: a fill aimed at a blank
+ * the recipe no longer has fills nothing.
+ */
+export interface RecipeBlank {
+  id: string;
+  /** The heading it reads under: "Vegetables", "Something crunchy". */
+  label: string;
+  /**
+   * The kind of food that fills it from the kitchen (`foodKinds.ts`). Null is
+   * a blank filled only from `options`, the frittata's "feta, goat cheese or
+   * cheddar".
+   */
+  kind: FoodKind | null;
+  /** How many things may fill it: 1 is "pick one", null is "pick any". A hint the picker shows, never enforced at save. */
+  max: number | null;
+  /** The whole amount the picks share ("2 cups"), '' when the recipe doesn't say. Split evenly across picks (`blankFill.ts`). */
+  quantity: string;
+  /** Names the recipe suggests whether or not they are in the kitchen, in the order written. */
+  options: string[];
+}
+
 // One recipe used as a part of another — "mashed potatoes" inside both "Steak
 // with mash" and "Salmon with mash".
 //
@@ -7334,6 +7392,9 @@ export interface Recipe {
   // every recipe that isn't composed, which is most of them; the ingredient
   // list is still where a plain recipe lives.
   components: RecipeComponent[];
+  // Placeholders filled from the kitchen at each cooking — see RecipeBlank.
+  // Empty for every recipe that isn't a "no-recipe recipe", which is most of them.
+  blanks: RecipeBlank[];
   // "Defrost the chicken", "start the sauce at 5" — real Tasks once "Add prep
   // tasks" on a planned meal walks this list, not a meal-specific reminder
   // path. src/utils/notifications.ts is Task-typed end to end
@@ -7673,6 +7734,12 @@ export interface RecipeOverride {
   replacement: RecipeIngredient | null;
   /** Shown beside the replaced line, for the one thing worth saying about the swap. */
   note?: string;
+  /**
+   * Set only when `targetId` names a `RecipeBlank`: the lines that fill it this
+   * time, in the order picked. `replacement` is null on such a row. Absent on
+   * every override that replaces a line.
+   */
+  fill?: RecipeIngredient[];
 }
 
 /**

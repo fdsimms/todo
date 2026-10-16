@@ -70,6 +70,7 @@ function recipe(name: string, ingredients: RecipeIngredient[]): Recipe {
     emptySections: [],
     emptyStepSections: [],
     components: [],
+    blanks: [],
     prepTasks: [],
     steps: [],
     sortOrder: seq,
@@ -225,6 +226,14 @@ describe('collectPlannedIngredients', () => {
 
     expect('optional' in result[0]).toBe(false);
     expect(result[1].optional).toBe(true);
+  });
+
+  it('shops for an optional line the meal picked as an ordinary line', () => {
+    const mint = ing('Mint sprigs', { purpose: 'garnish', optional: true });
+    const tea = recipe('Iced tea', [ing('Tea bags'), mint]);
+    const recipesById = new Map([[tea.id, tea]]);
+    const result = collectPlannedIngredients([entry('2026-08-11', tea.id, { recipeChoices: [mint.id] })], recipesById, RANGE);
+    expect('optional' in result[1]).toBe(false);
   });
 
   it('carries excludeFromNutrition through, and writes the key only when it is set', () => {
@@ -417,6 +426,12 @@ describe('plannedIngredientsForRecipe', () => {
     const result = plannedIngredientsForRecipe(tea);
     expect('optional' in result[0]).toBe(false);
     expect(result[1].optional).toBe(true);
+  });
+
+  it('drops the optional flag for a line the resolution picked', () => {
+    const mint = ing('Mint sprigs', { purpose: 'garnish', optional: true });
+    const tea = recipe('Iced tea', [ing('Tea bags'), mint]);
+    expect('optional' in plannedIngredientsForRecipe(tea, undefined, { chosen: [mint.id] })[1]).toBe(false);
   });
 
   it('scales every quantity by the factor it is given', () => {

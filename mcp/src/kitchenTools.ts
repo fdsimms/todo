@@ -3,7 +3,7 @@
  * plan. Same contract as tools.ts.
  */
 import type { MealPlanEntry, MealSlot, Recipe } from '../../src/types';
-import type { MealChoice, MealPatch, Replica } from './replica';
+import type { MealChoice, MealFill, MealPatch, Replica } from './replica';
 
 export const MEAL_SLOTS: readonly MealSlot[] = ['breakfast', 'lunch', 'dinner', 'snack'];
 export const RECIPE_LIMIT = 50;
@@ -77,6 +77,8 @@ export interface RecipeDetail extends SerializedRecipe {
   uses?: string[];
   /** The same, by recipe id; ones sharing a choiceGroup are alternatives (cook one). */
   components?: { recipeId: string; name: string; choiceGroup?: string; amountUsed?: string }[];
+  /** Blanks filled from the kitchen at each cooking; see save_recipe's blanks. */
+  blanks?: { label: string; kind?: string; pick: 'one' | 'any' | number; amount?: string; suggestions?: string[] }[];
   /** Tasks written ahead of a planned meal of it, days before the meal (negative) or on the day (0). */
   prepTasks?: { title: string; offsetDays: number; reminderOffsetMinutes?: number }[];
   cookbookId?: string;
@@ -138,6 +140,17 @@ export function getRecipe(replica: Replica, id: string): RecipeDetail | null {
     ...(r.components.length > 0
       ? { components: r.components.map(c => ({ recipeId: c.recipeId, name: names.get(c.recipeId) ?? c.name, ...(c.choiceGroup ? { choiceGroup: c.choiceGroup } : {}), ...(c.amountUsed ? { amountUsed: c.amountUsed } : {}) })) }
       : {}),
+    ...((r.blanks ?? []).length > 0
+      ? {
+        blanks: r.blanks.map(b => ({
+          label: b.label,
+          ...(b.kind ? { kind: b.kind } : {}),
+          pick: b.max === 1 ? 'one' : b.max === null ? 'any' : b.max,
+          ...(b.quantity ? { amount: b.quantity } : {}),
+          ...(b.options.length > 0 ? { suggestions: b.options } : {}),
+        })),
+      }
+      : {}),
     ...(r.prepTasks.length > 0
       ? { prepTasks: r.prepTasks.map(p => ({ title: p.title, offsetDays: p.offsetDays, ...(p.reminderOffsetMinutes != null ? { reminderOffsetMinutes: p.reminderOffsetMinutes } : {}) })) }
       : {}),
@@ -168,6 +181,10 @@ export interface SerializedMeal {
   choices?: MealChoice[];
   /** What this meal uses instead of its recipe's own lines, one plain sentence each (set with update_meal's replacements). */
   replacements?: string[];
+  /** Its recipe's blanks: what fills each this time, and what the kitchen holds that could (set with update_meal's fills). */
+  blanks?: MealFill[];
+  /** Its recipe's optional lines and whether this meal includes each (set with update_meal's optional). */
+  optional?: { name: string; included: boolean }[];
   /** The per-meal answers to the meal task settings; absent when the setting decides. */
   shopTask?: boolean;
   thawTask?: boolean;
@@ -178,6 +195,8 @@ export interface SerializedMeal {
 function serializeMeal(e: MealPlanEntry, recipes: Map<string, string>, replica?: Replica): SerializedMeal {
   const choices = replica ? replica.mealChoices(e) : [];
   const replacements = replica ? replica.mealReplacements(e) : [];
+  const blanks = replica ? replica.mealFills(e) : [];
+  const optional = replica ? replica.mealOptional(e) : [];
   return {
     id: e.id,
     date: e.date,
@@ -191,6 +210,8 @@ function serializeMeal(e: MealPlanEntry, recipes: Map<string, string>, replica?:
     ...(e.recipeId && e.recipeScale !== 1 ? { scale: e.recipeScale } : {}),
     ...(choices.length > 0 ? { choices } : {}),
     ...(replacements.length > 0 ? { replacements } : {}),
+    ...(blanks.length > 0 ? { blanks } : {}),
+    ...(optional.length > 0 ? { optional } : {}),
     ...(e.shopTask != null ? { shopTask: e.shopTask } : {}),
     ...(e.thawTask != null ? { thawTask: e.thawTask } : {}),
     ...(e.logMeal != null ? { logMeal: e.logMeal } : {}),

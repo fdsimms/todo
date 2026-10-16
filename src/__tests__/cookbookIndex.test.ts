@@ -49,6 +49,7 @@ function recipe(name: string, lines: string[] = [], overrides: Partial<Recipe> =
     ingredients: lines.map(line => makeIngredient(line)!),
     emptySections: [],
     components: [],
+    blanks: [],
     prepTasks: [],
     steps: [],
     emptyStepSections: [],

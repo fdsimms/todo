@@ -243,31 +243,43 @@ export function parseRecipeOverrides(raw: unknown): RecipeOverride[] {
     const targetId = typeof r.targetId === 'string' ? r.targetId.trim() : '';
     if (!targetId || out.some(o => o.targetId === targetId)) continue;
     const note = typeof r.note === 'string' ? r.note.trim() : '';
+    // A blank's fill (RecipeOverride.fill): the lines picked into it, each
+    // repaired like a replacement. One whose lines all fail fills nothing, so
+    // it is dropped rather than kept as an empty fill.
+    if (Array.isArray(r.fill)) {
+      const fill = r.fill.map(overrideLine).filter((l): l is RecipeIngredient => l !== null);
+      if (fill.length > 0) out.push({ targetId, replacement: null, fill });
+      continue;
+    }
     if (r.replacement === null) {
       out.push({ targetId, replacement: null, ...(note ? { note } : {}) });
       continue;
     }
-    const rep = r.replacement as Partial<RecipeIngredient> | undefined;
-    const name = rep && typeof rep.name === 'string' ? rep.name.trim() : '';
-    if (!rep || !name) continue;
-    out.push({
-      targetId,
-      replacement: {
-        ...(rep as RecipeIngredient),
-        id: typeof rep.id === 'string' && rep.id ? rep.id : generateId(),
-        name,
-        nameKey: typeof rep.nameKey === 'string' && rep.nameKey ? rep.nameKey : name.toLowerCase(),
-        quantity: typeof rep.quantity === 'string' ? rep.quantity : '',
-        aisle: typeof rep.aisle === 'string' ? rep.aisle : null,
-        prep: typeof rep.prep === 'string' ? rep.prep : null,
-        purpose: typeof rep.purpose === 'string' ? rep.purpose : null,
-        section: typeof rep.section === 'string' ? rep.section : null,
-        choiceGroup: null,
-      },
-      ...(note ? { note } : {}),
-    });
+    const replacement = overrideLine(r.replacement);
+    if (!replacement) continue;
+    out.push({ targetId, replacement, ...(note ? { note } : {}) });
   }
   return out;
+}
+
+/** One stored replacement or fill line, repaired; null for one with no name, which would only shop for a blank. */
+function overrideLine(raw: unknown): RecipeIngredient | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const rep = raw as Partial<RecipeIngredient>;
+  const name = typeof rep.name === 'string' ? rep.name.trim() : '';
+  if (!name) return null;
+  return {
+    ...(rep as RecipeIngredient),
+    id: typeof rep.id === 'string' && rep.id ? rep.id : generateId(),
+    name,
+    nameKey: typeof rep.nameKey === 'string' && rep.nameKey ? rep.nameKey : name.toLowerCase(),
+    quantity: typeof rep.quantity === 'string' ? rep.quantity : '',
+    aisle: typeof rep.aisle === 'string' ? rep.aisle : null,
+    prep: typeof rep.prep === 'string' ? rep.prep : null,
+    purpose: typeof rep.purpose === 'string' ? rep.purpose : null,
+    section: typeof rep.section === 'string' ? rep.section : null,
+    choiceGroup: null,
+  };
 }
 
 /** A new link to `target`, with its name captured for the day the target stops resolving. */
@@ -348,6 +360,32 @@ export interface ChoiceResolution {
    * a caller only has to carry this; build it with `entryResolution`.
    */
   overrides?: readonly RecipeOverride[];
+  /**
+   * Count every optional line as though the meal picked it (`optionalCounts`).
+   * For the top of a recipe page's range only: a purchase or a meal's own
+   * figures must leave it off, or a garnish nobody chose is bought and counted.
+   */
+  withOptional?: boolean;
+}
+
+/**
+ * Whether an ingredient line counts toward a meal's figures and its shopping.
+ *
+ * An optional line (`RecipeIngredient.optional`, "lime wedges, for serving")
+ * counts only when the meal picked it: its id in `chosen`, the same list the
+ * either/or picks live in, which every path carrying a meal's picks already
+ * carries. A line in no either/or group names no option, so the choice readers
+ * ignore it there. Everything else counts. Cook mode and the recipe page still
+ * show an optional line either way; this decides what is bought and counted.
+ */
+export function optionalCounts(ingredient: RecipeIngredient, resolution?: ChoiceResolution): boolean {
+  if (!ingredient.optional) return true;
+  return !!resolution?.withOptional || (resolution?.chosen ?? []).includes(ingredient.id);
+}
+
+/** `chosen` with the optional line `id` picked or unpicked for this meal. */
+export function toggleOptionalPick(chosen: readonly string[], id: string): string[] {
+  return chosen.includes(id) ? chosen.filter(c => c !== id) : [...chosen, id];
 }
 
 /**
@@ -770,6 +808,15 @@ export function flattenRecipeIngredients(
       if (!target) continue;
       visited.add(component.recipeId);
       emit(target, depth + 1, component);
+    }
+    // What this cooking filled the node's blanks with, after its own lines. A
+    // blank names no food, so one the meal left empty contributes nothing, and
+    // a standing swap is not applied for the reason it isn't to a replacement:
+    // the person picked these.
+    for (const blank of node.blanks ?? []) {
+      for (const ingredient of overrides.get(blank.id)?.fill ?? []) {
+        out.push({ ingredient, recipe: node, depth, swappedFrom: null, linkSection });
+      }
     }
   };
   emit(recipe, 0, null);

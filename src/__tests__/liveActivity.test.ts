@@ -180,6 +180,7 @@ function makeRecipe(overrides: Partial<Recipe> = {}): Recipe {
     emptySections: [],
     emptyStepSections: [],
     components: [],
+    blanks: [],
     prepTasks: [],
     steps: [],
     sortOrder: recipeSeq,

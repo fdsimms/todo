@@ -41,6 +41,8 @@ import { OverlapPickerSheet } from '../components/OverlapPickerSheet';
 import { WhenPicker } from '../components/WhenPicker';
 import { MealReplaceItemSheet, type MealReplacement } from '../components/MealReplaceItemSheet';
 import { MealOverrideSheet } from '../components/MealOverrideSheet';
+import { BlankPickerSheet } from '../components/BlankPickerSheet';
+import { describeBlankFills, recipeBlanksIn } from '../utils/recipeBlanks';
 import { withoutOverride } from '../utils/mealOverrides';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { useRowSelection } from '../hooks/useRowSelection';
@@ -110,6 +112,9 @@ import {
   recipeMap,
   type FlatPrepTask,
   entryResolution,
+  flattenRecipeIngredients,
+  optionalCounts,
+  toggleOptionalPick,
 } from '../utils/recipeComponents';
 import {
   dayKeyRange,
@@ -754,6 +759,8 @@ export function MealPlanScreen() {
   // The one meal getting a one-off replacement from its own sheet, held by id
   // for movingFurtherId's reason: MealEntrySheet has closed by the time the card is up.
   const [overridingId, setOverridingId] = useState<string | null>(null);
+  // The meal whose recipe's blanks are being filled (RecipeBlank), null while closed.
+  const [fillingId, setFillingId] = useState<string | null>(null);
 
   const toggleDayCollapse = (key: string) => {
     haptics.tap();
@@ -1731,6 +1738,12 @@ export function MealPlanScreen() {
   const selectedChoiceGroups = selectedRecipe
     ? recipeChoiceGroups(selectedRecipe, recipesById, selectedResolution)
     : [];
+  // Its optional lines across the dish, and which this meal picked.
+  const selectedOptionalLines = selected && selectedRecipe
+    ? flattenRecipeIngredients(selectedRecipe, recipesById, selectedResolution)
+      .filter(f => f.ingredient.optional)
+      .map(f => ({ id: f.ingredient.id, name: f.ingredient.name, picked: optionalCounts(f.ingredient, selectedResolution) }))
+    : [];
 
   // The week as the deciding lens reads it: what's on each day, which nights
   // have no dinner, and which of those have already gone past.
@@ -2472,6 +2485,20 @@ export function MealPlanScreen() {
         />
       </LazySheet>
 
+      <LazySheet open={fillingId !== null}>
+        <BlankPickerSheet
+          visible={fillingId !== null}
+          entry={fillingId ? entries.find(e => e.id === fillingId) ?? null : null}
+          recipe={(() => {
+            const e = fillingId ? entries.find(x => x.id === fillingId) : undefined;
+            return e?.recipeId ? recipesById.get(e.recipeId) ?? null : null;
+          })()}
+          recipesById={recipesById}
+          onSave={next => { if (fillingId) setRecipeOverrides(fillingId, next); }}
+          onClose={() => setFillingId(null)}
+        />
+      </LazySheet>
+
       <LazySheet open={planningDay !== null}>
         <RecipePickerSheet
           visible={planningDay !== null}
@@ -2560,6 +2587,14 @@ export function MealPlanScreen() {
             ? targetId => setRecipeOverrides(selected.id, withoutOverride(selected.recipeOverrides, targetId))
             : undefined}
           onOverride={selected && selectedRecipe ? () => setOverridingId(selected.id) : undefined}
+          blankFill={selected && selectedRecipe ? describeBlankFills(selectedRecipe, recipesById, selected.recipeOverrides) : null}
+          optionalLines={selectedOptionalLines}
+          onToggleOptional={id => {
+            if (selected) setRecipeChoices(selected.id, toggleOptionalPick(selected.recipeChoices, id));
+          }}
+          onFillBlanks={selected && selectedRecipe && recipeBlanksIn(selectedRecipe, recipesById).length > 0
+            ? () => setFillingId(selected.id)
+            : undefined}
           onChoose={(group, componentId) => {
             if (!selected) return;
             setRecipeChoices(

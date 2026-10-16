@@ -2438,7 +2438,8 @@ describe('demo seed — people', () => {
     // MealPlanEntry.recipeOverrides is invisible until something uses it: the
     // Sunday roast buys a bag of frozen potatoes instead of making the dish.
     const entries = useMealPlanStore.getState().entries;
-    const replaced = entries.find(e => e.recipeOverrides.length > 0);
+    // A replacement, not a blank's fill, which rides on the same list.
+    const replaced = entries.find(e => e.recipeOverrides.some(o => o.replacement));
     expect(replaced).toBeTruthy();
     expect(replaced!.recipeOverrides[0].replacement?.name).toBe('frozen roast potatoes');
     const recipes = useRecipeStore.getState().recipes;
@@ -3497,6 +3498,27 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(salmon?.components.find(c => c.amountUsed)?.amountUsed).toBe('1/2');
   });
 
+  it('seeds a recipe with blanks, a cooking that filled them and one still to fill, and a hand-filed food type', () => {
+    const bowl = useRecipeStore.getState().recipes.find(r => r.blanks.length > 0)!;
+    expect(bowl.blanks.map(b => [b.label, b.kind, b.max])).toEqual([
+      ['Grain', 'grain', 1], ['Protein', 'protein', 1], ['Vegetables', 'vegetable', null], ['Sauce', 'sauce', 2], ['Crunch', 'nuts', null],
+    ]);
+    const meals = useMealPlanStore.getState().entries.filter(e => e.recipeId === bowl.id);
+    const filled = meals.find(e => e.recipeOverrides.some(o => o.fill));
+    expect(filled?.cookedAt).toBeTruthy();
+    const veg = bowl.blanks.find(b => b.label === 'Vegetables')!;
+    expect(filled!.recipeOverrides.find(o => o.targetId === veg.id)?.fill?.map(l => [l.name, l.quantity]))
+      .toEqual([['broccoli', '1 cup'], ['carrots', '1 cup']]);
+    expect(meals.some(e => !e.cookedAt && e.recipeOverrides.length === 0)).toBe(true);
+    // An optional line, picked on the cooking that filled the blanks.
+    const lemon = bowl.ingredients.find(i => i.optional);
+    expect(lemon?.name).toBe('lemon');
+    expect(filled!.recipeChoices).toEqual([lemon!.id]);
+
+    const quorn = useGroceryStore.getState().items.find(i => i.nameKey === 'quorn pieces');
+    expect(quorn?.foodKinds).toEqual(['protein']);
+  });
+
   it('seeds a variety declaration, covering the generic name end to end', () => {
     // The one vertical relation in the catalog, invisible until something
     // declares one — and on hand, so a line naming plain "onion" actually
@@ -3854,7 +3876,9 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // reaches.
     const { items, itemProducts } = useGroceryStore.getState();
     const soup = useRecipeStore.getState().recipes.find(r => r.name === 'Weeknight vegetable soup')!;
-    const bread = recipeNutritionLines(soup, items, itemProducts).find(l => l.name.toLowerCase() === 'bread')!;
+    // Optional lines included, as the food log's own read of a dish is (an
+    // amount typed there is what picks one).
+    const bread = recipeNutritionLines(soup, items, itemProducts, undefined, { withOptional: true }).find(l => l.name.toLowerCase() === 'bread')!;
     expect(bread.state).toBe('unmeasured');
     expect(bread.quantity).toBe('');
     expect(weighableLine(bread.quantity, bread.prep, bread.nutrition!, bread.item!.name)).toBeNull();

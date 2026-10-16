@@ -40,6 +40,7 @@ import type {
   ChainItem,
   CoinEntry,
   Cookbook,
+  FoodKind,
   CookbookIndexEntry,
   DeliverableKind,
   EventTaskRule,
@@ -352,7 +353,7 @@ export interface RecipeInput {
   name: string;
   /** A cookbook by title, created when there is none by that name. */
   cookbook?: string | null;
-  ingredients?: { text: string; section?: string | null; alternativeGroup?: string | null; excludeFromNutrition?: boolean }[];
+  ingredients?: { text: string; section?: string | null; alternativeGroup?: string | null; excludeFromNutrition?: boolean; optional?: boolean }[];
   /**
    * The method. On an edit the whole list is replaced, but a step whose text
    * is unchanged keeps its identity (and so its timer, its note and the cook
@@ -399,6 +400,12 @@ export interface RecipeInput {
   components?: { recipeId: string; choiceGroup?: string | null; amountUsed?: string | null }[];
   /** Tasks written ahead of a planned meal of it ("soak the beans"), replacing the list. */
   prepTasks?: { title: string; offsetDays?: number; reminderOffsetMinutes?: number | null }[];
+  /**
+   * Blanks filled from the kitchen at each cooking ("a grain, pick one"),
+   * replacing the list. A blank with the same label as one already there keeps
+   * its id, so meals that filled it stay filled. See RecipeBlank.
+   */
+  blanks?: { label?: string; kind?: FoodKind | null; pick?: 'one' | 'any' | number; amount?: string; suggestions?: string[] }[];
 }
 
 /** `cookbook` on an edit moves the recipe: a title (created when new), or null to take it out of its book. */
@@ -456,10 +463,38 @@ export interface MealPatch {
    * recipe itself is never edited.
    */
   replacements?: { replace: string; in?: string; with: string | null; note?: string | null }[];
+  /**
+   * What fills the recipe's blanks this time, by the blank's label. `with` is
+   * the names picked; the blank's amount is shared evenly across them. `[]`
+   * empties a blank. Blanks not named are left as they are.
+   */
+  fills?: { blank: string; with: string[] }[];
+  /**
+   * The recipe's optional lines this meal includes, by name, replacing the
+   * set. Only an included one is shopped for and counted; [] includes none.
+   */
+  optional?: string[];
   /** Whether it gets a "Shop for X" task, a thaw task, or the offer to log it; null hands it back to the setting. */
   shopTask?: boolean | null;
   thawTask?: boolean | null;
   logMeal?: boolean | null;
+}
+
+/** One of a planned meal's blanks, as `mealFills` reports it. */
+export interface MealFill {
+  blank: string;
+  kind?: string;
+  /** "Pick one", "Pick up to 2", "Pick any". */
+  pick: string;
+  amount?: string;
+  /** What fills it this time, with each one's share of the amount. Empty when nothing does yet. */
+  filledWith: string[];
+  /** What the pantry vouches for of its kind, most urgent first. Only what the app has a reason to believe. */
+  inKitchen: string[];
+  /** In the pantry but past its use-by: ask before using. */
+  pastUseBy?: string[];
+  /** The recipe's own suggestions and what is usually bought of the kind: picking one means buying it. */
+  usuallyBought?: string[];
 }
 
 export interface MealChoice {
@@ -726,6 +761,8 @@ export interface GroceryItemChange {
   varietyOf?: string | null;
   /** Replaces the item's other names. */
   otherNames?: string[];
+  /** What kind of food it is, for a recipe's blanks; null goes back to the name's guess, [] is "none". */
+  foodKinds?: FoodKind[] | null;
   preferredBoxId?: string | null;
   strict?: boolean;
   /** Stores this item can be bought at (store ids). */
@@ -2051,6 +2088,10 @@ export interface Replica {
   mealChoices(entry: MealPlanEntry): MealChoice[];
   /** What a planned meal uses instead of its recipe's own lines, one plain sentence each. */
   mealReplacements(entry: MealPlanEntry): string[];
+  /** A planned meal's blanks, what fills each this time, and what the kitchen holds that could. */
+  mealFills(entry: MealPlanEntry): MealFill[];
+  /** A planned meal's optional lines, and whether it includes each. */
+  mealOptional(entry: MealPlanEntry): { name: string; included: boolean }[];
 
   /** The names of saved places by id, for showing which places a task's reminders are limited to. Ids that no longer exist are left out. */
   savedPlaceNames(ids: readonly string[]): string[];
@@ -2338,6 +2379,11 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     return require('../../src/utils/mealLog') as typeof import('../../src/utils/mealLog'); // eslint-disable-line @typescript-eslint/no-require-imports
   }
 
+  /** A recipe's blanks and what fills them, loaded when a meal's fills are read or written. */
+  function recipeBlanks() {
+    return require('../../src/utils/recipeBlanks') as typeof import('../../src/utils/recipeBlanks'); // eslint-disable-line @typescript-eslint/no-require-imports
+  }
+
   /** The recipe tree's choice rules, loaded when a meal's choices are read or answered. */
   function components() {
     return require('../../src/utils/recipeComponents') as typeof import('../../src/utils/recipeComponents'); // eslint-disable-line @typescript-eslint/no-require-imports
@@ -2493,12 +2539,25 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     if (f.leftoverKeepDays !== undefined) store().setLeftoverKeepDays(id, f.leftoverKeepDays);
     if (f.cookedWeightG !== undefined) store().setCookedWeight(id, f.cookedWeightG);
     if (f.ingredients !== undefined) {
+      // `optional` is written only when true (RecipeIngredient.optional), so a
+      // false takes the key off rather than storing it.
+      const withOptional = <T extends { optional?: boolean }>(row: T, given: boolean | undefined): T => {
+        if (given === undefined) return row;
+        const { optional: _was, ...rest } = row;
+        return (given ? { ...rest, optional: true } : rest) as T;
+      };
       const made = f.ingredients
         .map(line => {
           const m = recipeUtils.makeIngredient(line.text, line.section?.trim() || null);
-          // `excludeFromNutrition` rides along only when the call named it, so a
-          // rewrite that did not mention it leaves a kept line's answer alone.
-          return m ? { ...m, choiceGroup: recipeUtils.cleanChoiceGroup(line.alternativeGroup), ...(line.excludeFromNutrition !== undefined ? { excludeFromNutrition: line.excludeFromNutrition } : {}) } : null;
+          // `excludeFromNutrition` and `optional` ride along only when the call
+          // named them, so a rewrite that did not mention one leaves a kept
+          // line's answer alone.
+          return m
+            ? {
+              row: withOptional({ ...m, choiceGroup: recipeUtils.cleanChoiceGroup(line.alternativeGroup), ...(line.excludeFromNutrition !== undefined ? { excludeFromNutrition: line.excludeFromNutrition } : {}) }, line.optional),
+              optional: line.optional,
+            }
+            : null;
         })
         .filter((x): x is NonNullable<typeof x> => x !== null);
       // A line that is still wanted keeps its row (id and everything the text
@@ -2508,12 +2567,12 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       // every line a new one silently dropped them all. Matched on the same key
       // the add paths dedupe on, so an edited quantity still counts as the line.
       const unclaimed = [...current().ingredients];
-      const kept = made.map(line => {
+      const kept = made.map(({ row: line, optional }) => {
         const key = recipeUtils.ingredientDedupeKey(line);
         const at = unclaimed.findIndex(old => recipeUtils.ingredientDedupeKey(old) === key);
         if (at < 0) return line;
         const [old] = unclaimed.splice(at, 1);
-        return { ...old, quantity: line.quantity, choiceGroup: line.choiceGroup, ...(line.excludeFromNutrition !== undefined ? { excludeFromNutrition: line.excludeFromNutrition } : {}) };
+        return withOptional({ ...old, quantity: line.quantity, choiceGroup: line.choiceGroup, ...(line.excludeFromNutrition !== undefined ? { excludeFromNutrition: line.excludeFromNutrition } : {}) }, optional);
       });
       store().bulkRemoveIngredients(id, current().ingredients.map(i => i.id));
       if (kept.length > 0) store().addStructuredIngredients(id, kept);
@@ -2594,6 +2653,31 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           reminderOffsetMinutes: p.reminderOffsetMinutes ?? null,
         });
       }
+    }
+    if (f.blanks !== undefined) {
+      const kept = new Set<string>();
+      for (const b of f.blanks) {
+        const fields = {
+          label: b.label ?? '',
+          kind: b.kind ?? null,
+          max: b.pick === undefined || b.pick === 'any' ? null : b.pick === 'one' ? 1 : b.pick,
+          quantity: b.amount ?? '',
+          options: b.suggestions ?? [],
+        };
+        const label = (b.label ?? '').trim().toLowerCase();
+        const existing = current().blanks.find(x => !kept.has(x.id) && (
+          (label && x.label.toLowerCase() === label) || (!label && fields.kind && x.kind === fields.kind)
+        ));
+        if (existing) {
+          store().updateBlank(id, existing.id, { ...fields, label: fields.label || existing.label });
+          kept.add(existing.id);
+          continue;
+        }
+        const made = store().addBlank(id, fields);
+        if (!made) throw new Error('A blank needs a kind of food, or a label and suggestions.');
+        kept.add(made.id);
+      }
+      for (const b of current().blanks) if (!kept.has(b.id)) store().removeBlank(id, b.id);
     }
     for (const [stepId, names] of givenOnlyWith) {
       store().setStepOnlyWhen(id, stepId, names && names.length > 0 ? optionIdsFor(current(), names) : null);
@@ -6446,6 +6530,15 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           if (r?.row) save(r.row, r.row.otherNames?.length ? `also called ${r.row.otherNames.map(n => `"${n}"`).join(', ')}` : 'other names cleared');
           for (const x of r?.refused ?? []) changed.push(`left out "${x.name}": ${x.reason}`);
         }
+        if (change.foodKinds !== undefined) {
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          const kinds = require('../../src/utils/foodKinds') as typeof import('../../src/utils/foodKinds');
+          const { foodKinds: _was, ...rest } = item;
+          const next: GroceryItem = change.foodKinds === null ? rest : { ...rest, foodKinds: kinds.normalizeFoodKinds(change.foodKinds) };
+          if (JSON.stringify(item.foodKinds ?? null) !== JSON.stringify(next.foodKinds ?? null)) {
+            save(next, next.foodKinds ? `filed as ${kinds.describeFoodKinds(next.foodKinds) ?? 'no food type'}` : 'food type goes by the name');
+          }
+        }
         if (change.preferredBoxId !== undefined) {
           const next = itemWrite.preferredProductRow(item, db.dbGetAllItemProducts(), change.preferredBoxId);
           if (next) save(next, 'preferred brand changed');
@@ -7931,6 +8024,48 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           const note = r.note?.trim();
           overrides.push({ targetId, replacement, ...(note ? { note } : {}) });
         }
+        // A blank's fill rides on the same list (RecipeOverride.fill) and is
+        // set with `fills`, so rewriting the replacements leaves it alone.
+        next = { ...next, recipeOverrides: [...next.recipeOverrides.filter(o => o.fill), ...overrides] };
+      }
+
+      if (patch.optional !== undefined) {
+        if (!next.recipeId) throw new Error('Only a meal with a recipe has optional lines.');
+        const recipes = db.dbGetAllRecipes();
+        const recipe = recipes.find(r => r.id === next.recipeId);
+        if (!recipe) throw new Error('That meal\'s recipe is gone, so it has no optional lines.');
+        const optional = components()
+          .flattenRecipeIngredients(recipe, new Map(recipes.map(r => [r.id, r])), components().entryResolution(next))
+          .filter(f => f.ingredient.optional)
+          .map(f => f.ingredient);
+        const ids = new Set(optional.map(o => o.id));
+        const wanted = patch.optional.map(name => {
+          const hit = optional.find(o => o.name.trim().toLowerCase() === name.trim().toLowerCase());
+          if (!hit) {
+            throw new Error(optional.length > 0
+              ? `"${name}" is not an optional line of "${recipe.name}". It has: ${optional.map(o => o.name).join(', ')}.`
+              : `"${recipe.name}" has no optional lines.`);
+          }
+          return hit.id;
+        });
+        next = { ...next, recipeChoices: [...next.recipeChoices.filter(id => !ids.has(id)), ...wanted] };
+      }
+
+      if (patch.fills !== undefined) {
+        if (!next.recipeId) throw new Error('Only a meal with a recipe has blanks to fill.');
+        const recipes = db.dbGetAllRecipes();
+        const recipe = recipes.find(r => r.id === next.recipeId);
+        if (!recipe) throw new Error('That meal\'s recipe is gone, so it has no blanks.');
+        const blankUtils = recipeBlanks();
+        const blanks = blankUtils.recipeBlanksIn(recipe, new Map(recipes.map(r => [r.id, r])));
+        if (blanks.length === 0) throw new Error(`"${recipe.name}" has no blanks to fill.`);
+        let overrides = next.recipeOverrides;
+        for (const f of patch.fills) {
+          const key = f.blank.trim().toLowerCase();
+          const hit = blanks.find(b => b.blank.label.toLowerCase() === key);
+          if (!hit) throw new Error(`"${f.blank}" is not a blank of "${recipe.name}". It has: ${blanks.map(b => b.blank.label).join(', ')}.`);
+          overrides = blankUtils.withBlankFill(overrides, hit.blank.id, blankUtils.fillBlank(hit.blank, f.with));
+        }
         next = { ...next, recipeOverrides: overrides };
       }
 
@@ -8052,6 +8187,48 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const recipe = recipes.find(r => r.id === entry.recipeId);
       if (!recipe) return [];
       return components().describeOverrides(recipe, new Map(recipes.map(r => [r.id, r])), entry.recipeOverrides);
+    },
+
+    mealOptional(entry: MealPlanEntry): { name: string; included: boolean }[] {
+      if (!entry.recipeId) return [];
+      const recipes = db.dbGetAllRecipes();
+      const recipe = recipes.find(r => r.id === entry.recipeId);
+      if (!recipe) return [];
+      const resolution = components().entryResolution(entry);
+      return components()
+        .flattenRecipeIngredients(recipe, new Map(recipes.map(r => [r.id, r])), resolution)
+        .filter(f => f.ingredient.optional)
+        .map(f => ({ name: f.ingredient.name, included: components().optionalCounts(f.ingredient, resolution) }));
+    },
+
+    mealFills(entry: MealPlanEntry): MealFill[] {
+      if (!entry.recipeId) return [];
+      const recipes = db.dbGetAllRecipes();
+      const recipe = recipes.find(r => r.id === entry.recipeId);
+      if (!recipe) return [];
+      const blankUtils = recipeBlanks();
+      const blanks = blankUtils.recipeBlanksIn(recipe, new Map(recipes.map(r => [r.id, r])));
+      if (blanks.length === 0) return [];
+      const items = db.dbGetAllGroceryItems();
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { kitchenInventory } = require('../../src/utils/kitchenInventory') as typeof import('../../src/utils/kitchenInventory');
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { blankChoices } = require('../../src/utils/blankPicker') as typeof import('../../src/utils/blankPicker');
+      const kitchen = kitchenInventory(items, [], new Date(), db.dbGetAllItemProducts());
+      return blanks.map(({ blank }) => {
+        const filled = blankUtils.blankFillOf(entry.recipeOverrides, blank.id);
+        const choices = blankChoices(blank, items, kitchen);
+        return {
+          blank: blank.label,
+          ...(blank.kind ? { kind: blank.kind } : {}),
+          pick: blankUtils.describeBlankRule(blank.max),
+          ...(blank.quantity ? { amount: blank.quantity } : {}),
+          filledWith: filled.map(l => (l.quantity ? `${l.quantity} ${l.name}` : l.name)),
+          inKitchen: choices.kitchen.map(c => c.name),
+          ...(choices.stale.length > 0 ? { pastUseBy: choices.stale.map(c => c.name) } : {}),
+          ...(choices.others.length > 0 ? { usuallyBought: choices.others.map(c => c.name) } : {}),
+        };
+      });
     },
 
     createPerson(fields: PersonFields): Person {
