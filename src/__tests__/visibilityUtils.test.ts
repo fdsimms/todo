@@ -1527,7 +1527,7 @@ describe('isTaskNew when a hold comes off', () => {
       cadenceDays: 0, nudgeOptIn: false, cadenceSetAt: null, reachOutDeclinedAt: null, reachOutOfferDeclinedAt: null, askAbout: '',
       backfillDismissedFields: [],
       groupId: null,
-      location: null, faxNumber: null,
+      location: null, faxNumber: null, address: null,
     };
     const chasing: Task = {
       ...baseTask, id: 'chase', title: 'Photos from the trip',
@@ -2239,7 +2239,7 @@ describe('blocking', () => {
       cadenceDays: 0, nudgeOptIn: false, cadenceSetAt: null, reachOutDeclinedAt: null, reachOutOfferDeclinedAt: null, askAbout: '',
       backfillDismissedFields: [],
       groupId: null,
-      location: null, faxNumber: null,
+      location: null, faxNumber: null, address: null,
     };
     const chasing = {
       ...baseTask,

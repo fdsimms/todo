@@ -87,3 +87,36 @@ describe('applyTokenChip', () => {
     expect(parseProjectInput(pick('a +', 'kitchen-reno'), projects)?.title).toBe('Kitchen Reno');
   });
 });
+
+describe('tokenChipsFor with usage counts', () => {
+  const labelsOf = (title: string, uses: Record<string, number>) =>
+    tokenChipsFor(title, { ...sources, uses })?.chips.map(c => c.label);
+
+  it('puts the most used first and keeps ties in their own order', () => {
+    expect(labelsOf('x #', { 'category:chores': 5, 'category:work': 2 }))
+      .toEqual(['Chores', 'Work', 'Home', 'urgent-ish', 'quick']);
+  });
+
+  it('can rank a tag above a category, and counts them apart', () => {
+    expect(labelsOf('x #', { 'tag:quick': 3 })?.[0]).toBe('quick');
+    // A category named like a tag does not borrow the tag's count.
+    expect(labelsOf('x #', { 'tag:home': 9 })).toEqual(['Home', 'Work', 'Chores', 'urgent-ish', 'quick']);
+  });
+
+  it('ranks projects by their title, and narrows after ranking', () => {
+    expect(labelsOf('x +', { 'project:taxes': 4 })).toEqual(['taxes', 'kitchen-reno']);
+    expect(labelsOf('x #c', { 'category:chores': 1 })).toEqual(['Chores']);
+  });
+
+  it('keeps a favorite on the row when more names exist than the row holds', () => {
+    const many = Array.from({ length: MAX_TOKEN_CHIPS + 5 }, (_, i) => `cat${i}`);
+    const last = many[many.length - 1];
+    const out = tokenChipsFor('x #', { categories: many, tags: [], projects: [], uses: { [`category:${last}`]: 2 } });
+    expect(out?.chips).toHaveLength(MAX_TOKEN_CHIPS);
+    expect(out?.chips[0].value).toBe(last);
+  });
+
+  it('reads as before with no counts', () => {
+    expect(tokenChipsFor('x #', { ...sources, uses: {} })).toEqual(tokenChipsFor('x #', sources));
+  });
+});

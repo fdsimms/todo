@@ -1689,6 +1689,14 @@ export interface Person {
    * that ranks them — the trip planner reads it as a plain substring match.
    */
   location: string | null;
+  /**
+   * Their street address, as typed over as many lines as they need. Free text
+   * like `location`, and a different question: `location` is the town, read by
+   * the trip planner as a plain substring match, while this is the full
+   * address to read off the card (mailing a gift, finding the door). It is
+   * never geocoded, never sorted or grouped by, and nothing matches against it.
+   */
+  address: string | null;
 }
 
 /**

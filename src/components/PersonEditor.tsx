@@ -107,6 +107,9 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
   const [birthdayGiftTaskOptOut, setBirthdayGiftTaskOptOut] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [faxNumber, setFaxNumber] = useState('');
+  const [address, setAddress] = useState('');
+  // Content height of the address field, measured the way the notes field's is.
+  const [addressHeight, setAddressHeight] = useState(0);
   // The notes field's own content height. The native multiline field was
   // clipping long notes to a few lines, so the height is set from what the text
   // measures instead of left to auto-grow.
@@ -150,6 +153,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
     setBirthdayGiftTaskOptOut(person.birthdayGiftTaskOptOut);
     setPhoneNumber(formatPhoneInput(person.phoneNumber ?? ''));
     setFaxNumber(formatPhoneInput(person.faxNumber ?? ''));
+    setAddress(person.address ?? '');
     setEmail(person.email ?? '');
     setLinkUrl(person.linkUrl ?? '');
     setCadenceDays(person.cadenceDays);
@@ -184,6 +188,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
       birthdayGiftTaskOptOut,
       phoneNumber: phoneNumber.trim() || null,
       faxNumber: faxNumber.trim() || null,
+      address: address.trim() || null,
       email: email.trim() || null,
       linkUrl: linkUrl.trim() || null,
       cadenceDays: kind === 'individual' ? cadenceDays : 0,
@@ -527,7 +532,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
         </View>
       )}
       <Text style={styles.sectionFooter}>
-        Where they live. Used to find them when you’re planning a trip somewhere.
+        The town or city they live in. Used to find them when you’re planning a trip somewhere. Their full address is under Contact.
       </Text>
 
       <Text style={styles.groupLabel}>CONTACT</Text>
@@ -583,6 +588,23 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
             placeholder="e.g. a chat app or a profile"
             placeholderTextColor={colors.textTertiary}
             autoCapitalize="none"
+          />
+        </View>
+        <View style={styles.sep} />
+        <View style={[styles.fieldRow, styles.fieldRowTop]}>
+          <Text style={styles.fieldLabel}>Address</Text>
+          <TextField
+            // An empty field is the minimum height, as in the notes field.
+            style={[styles.fieldInput, { height: address ? Math.max(24, addressHeight) : 24 }]}
+            value={address}
+            onChangeText={setAddress}
+            onContentSizeChange={e => setAddressHeight(Math.ceil(e.nativeEvent.contentSize.height))}
+            placeholder="e.g. 214 Elm St, Austin, TX"
+            placeholderTextColor={colors.textTertiary}
+            autoCapitalize="words"
+            multiline
+            scrollEnabled={false}
+            textAlignVertical="top"
           />
         </View>
       </View>
@@ -675,6 +697,8 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,
     paddingHorizontal: spacing.md, paddingVertical: spacing.smd,
   },
+  // A row whose field can run to several lines: the label stays level with the first.
+  fieldRowTop: { alignItems: 'flex-start' },
   fieldLabel: { color: colors.text, fontSize: font.md, width: Math.round(92 * textScaleFactor) },
   fieldLabelWide: { color: colors.text, fontSize: font.md, width: Math.round(84 * textScaleFactor) },
   // The unit pills stay one group: at a narrow width the whole set drops to a

@@ -92,8 +92,9 @@ export function ScreenTimeRulesSheet({ visible, onClose }: Props) {
     if (live && !(await confirmLivePicker(isAllowGroup(customGroups, groupId, groupsMeta)))) return;
     const bridge = screenTimeBridge();
     if (!bridge) return;
-    if (await bridge.presentAppPicker(groupId, live)) {
-      setCounts(prev => ({ ...prev, [groupId]: bridge.screenTimeSelectionCount(groupId) }));
+    const picked = await bridge.presentAppPicker(groupId, live);
+    if (picked) {
+      setCounts(prev => ({ ...prev, [groupId]: picked.counts ?? bridge.screenTimeSelectionCount(groupId) }));
       if (live) reconcileAppShield();
     }
   };

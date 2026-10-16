@@ -5,7 +5,9 @@ import type { BusyEvent } from './calendarBusy';
 import { isDemoModeActive } from './demoState';
 import { liveGeneratedTasksOfKind } from './generatedTasks';
 import {
+  clampLeaveWindowMinutes,
   estimateFor,
+  LEAVE_WINDOW_MINUTES_DEFAULT,
   TRAVEL_ESTIMATE_STALE_MS,
   TRAVEL_ORIGIN_CURRENT,
   travelModeFor,
@@ -41,7 +43,7 @@ import { travelOriginOfEvent, useTravelTimeStore } from '../store/useTravelTimeS
  *
  * **It can only start while the app is open.** ActivityKit refuses a start
  * from the background, and nothing here is pushed, so the activity appears the
- * next time the app is in front inside `LEAVE_WINDOW_MS` of leaving, not at
+ * next time the app is in front inside the window of leaving (`leaveWindowMinutes`, an hour by default), not at
  * the moment the window opens. That is why the window is an hour wide rather
  * than minutes: a window as narrow as the reminder's would almost never catch
  * the app open. `staleAtMs` is the leave-by time, so the card flips to "Time
@@ -58,8 +60,8 @@ import { travelOriginOfEvent, useTravelTimeStore } from '../store/useTravelTimeS
  * itself.
  */
 
-/** How long before leaving the activity may start. */
-export const LEAVE_WINDOW_MS = 60 * 60 * 1000;
+/** The default for how long before leaving the activity may start; the person's own is `leaveWindowMinutes`. */
+export const LEAVE_WINDOW_MS = LEAVE_WINDOW_MINUTES_DEFAULT * 60 * 1000;
 
 /** A phone-origin trip this short or shorter reads as "already there". */
 export const ALREADY_THERE_MINUTES = 2;
@@ -110,17 +112,18 @@ export function isAlreadyThere(event: BusyEvent, check: AlreadyThereCheck | unde
 /**
  * Pure. The activity's payload, or null when there is nothing to show: the
  * earliest live travel task whose event is still ahead and whose leave-by time
- * is within `LEAVE_WINDOW_MS` (or already passed), unless the phone is
+ * is within the window (`opts.windowMinutes`, default `LEAVE_WINDOW_MS`) or already passed, unless the phone is
  * already at the place.
  */
 export function buildLeaveRun(
   tasks: readonly Task[],
   events: readonly BusyEvent[],
   now: Date,
-  opts: { enabled: boolean; check?: AlreadyThereCheck },
+  opts: { enabled: boolean; check?: AlreadyThereCheck; windowMinutes?: number },
 ): LeaveRun | null {
   if (!opts.enabled) return null;
   const nowMs = now.getTime();
+  const windowMs = opts.windowMinutes === undefined ? LEAVE_WINDOW_MS : clampLeaveWindowMinutes(opts.windowMinutes) * 60 * 1000;
 
   const candidates: { taskId: string; event: BusyEvent; leaveAtMs: number; startMs: number }[] = [];
   for (const task of liveGeneratedTasksOfKind(tasks, 'travel')) {
@@ -131,7 +134,7 @@ export function buildLeaveRun(
     if (startMs === null || !Number.isFinite(leaveAtMs)) continue;
     // The event has started: leaving is over, whatever the task still says.
     if (startMs <= nowMs) continue;
-    if (leaveAtMs - nowMs > LEAVE_WINDOW_MS) continue;
+    if (leaveAtMs - nowMs > windowMs) continue;
     const event = events.find(e => travelSourceId(e) === sourceId);
     if (!event) continue;
     candidates.push({ taskId: task.id, event, leaveAtMs, startMs });
@@ -177,7 +180,7 @@ function currentRun(): LeaveRun | null {
     useTaskStore.getState().tasks,
     useCalendarStore.getState().events,
     new Date(),
-    { enabled, check },
+    { enabled, check, windowMinutes: settings.leaveWindowMinutes },
   );
 }
 
@@ -205,6 +208,7 @@ export function useLeaveLiveActivitySync(): void {
     const unsubSettings = useSettingsStore.subscribe((state, prev) => {
       if (
         state.leaveLiveActivity !== prev.leaveLiveActivity ||
+        state.leaveWindowMinutes !== prev.leaveWindowMinutes ||
         state.travelTasks !== prev.travelTasks ||
         state.calendarReadEnabled !== prev.calendarReadEnabled ||
         state.travelEstimates !== prev.travelEstimates

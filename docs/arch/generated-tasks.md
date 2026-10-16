@@ -1355,7 +1355,7 @@ argued out before it was built; read them before reopening one.
   offset and the per-calendar lead, so reading events again would be a second copy of those rules.
   It ends when the task is finished, deleted or travel tasks go off, with no switch of its own for
   any of them. **It can only start while the app is open** (ActivityKit refuses a start from the
-  background and nothing is pushed), so the window is 1 hour before leaving rather than the
+  background and nothing is pushed), so the window is 1 hour before leaving by default (`leaveWindowMinutes`, 15 minutes to 4 hours, device-local) rather than the
   reminder's minutes, and a card started late shows "Time to leave" at once. Its stale date is the
   leave-by time, which flips the card with nothing pushed; it does not end at the event's start
   until the next sync. **"Not already at" is best effort and only where the app can tell**: with

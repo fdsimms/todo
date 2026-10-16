@@ -51,7 +51,8 @@ interface TodoScreenTimeNativeModule {
   isAvailable(): boolean;
   authorizationStatus(): ScreenTimeAuthorization;
   requestAuthorization(): Promise<ScreenTimeAuthorization>;
-  presentAppPicker(groupId: string, live: boolean): Promise<boolean>;
+  /** The saved counts on a confirmed choice, true from a native build older than the counts, false on cancel. */
+  presentAppPicker(groupId: string, live: boolean): Promise<ScreenTimeSelectionCount | boolean>;
   selectionCount(groupId: string): ScreenTimeSelectionCount;
   pendingSelectionCount(groupId: string): ScreenTimeSelectionCount & { pending: number };
   clearSelection(groupId: string): boolean;
@@ -122,7 +123,11 @@ export function requestScreenTimeAuthorization(): Promise<ScreenTimeAuthorizatio
 }
 
 /**
- * Resolves true when the user confirmed a choice, false on cancel. Each group
+ * Resolves with the counts the person just saved when they confirmed a choice,
+ * null on cancel. The counts come from the picker's own selection: reading the
+ * file back straight away can report none, so a caller shows these rather than
+ * calling `screenTimeSelectionCount` (`counts` is null from an older native
+ * build, which answers only yes or no). Each group
  * of apps has its own selection, keyed by the group's id; `'default'` is the
  * original single selection.
  *
@@ -131,8 +136,13 @@ export function requestScreenTimeAuthorization(): Promise<ScreenTimeAuthorizatio
  * `screenTimePendingCount`), because removing one would lift part of a block
  * that nobody ended. The caller still has to re-apply the shield after an add.
  */
-export function presentAppPicker(groupId: string, live = false): Promise<boolean> {
-  return degradeOnReject(() => nativeModule!.presentAppPicker(groupId, live), false);
+export async function presentAppPicker(
+  groupId: string,
+  live = false,
+): Promise<{ counts: ScreenTimeSelectionCount | null } | null> {
+  const result = await degradeOnReject(() => nativeModule!.presentAppPicker(groupId, live), false);
+  if (!result) return null;
+  return { counts: typeof result === 'object' ? result : null };
 }
 
 /**

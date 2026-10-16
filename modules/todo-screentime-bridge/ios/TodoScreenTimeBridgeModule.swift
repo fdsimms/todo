@@ -119,8 +119,9 @@ public class TodoScreenTimeBridgeModule: Module {
     /// of it. The picker is seeded with the staged choice when there is one, so
     /// a removal made earlier is still shown as removed.
     ///
-    /// Returns true when the user confirmed a choice, false when they
-    /// cancelled or the picker could not be shown. The apps themselves are
+    /// Returns the saved counts (applications, categories, websites) when the
+    /// user confirmed a choice, false when they cancelled or the picker could
+    /// not be shown. The apps themselves are
     /// never named to JS: `ApplicationToken` is opaque and only renderable by
     /// SwiftUI, which is the whole reason this presents a native sheet rather
     /// than handing a list back for React to draw.
@@ -141,14 +142,21 @@ public class TodoScreenTimeBridgeModule: Module {
         let view = ScreenTimePickerView(
           initialSelection: initial,
           onDone: { selection in
+            // The counts come from the selection in hand, not a read-back of the
+            // file just written: decoding a fresh selection can report no tokens
+            // until a later read, which left the group saying "None" after the
+            // first pick.
+            var saved = selection
             if ScreenTimeShared.readAllowGroups().groupIds.contains(groupId),
                ScreenTimeShared.heldGroupIds(now: Date()).contains(groupId) {
               // An allowlist that is blocking right now. Adding an app to it
               // loosens the block and removing one tightens it, and neither may
               // end a block unrecorded, so the whole choice waits for the block
               // to end (`promotePendingSelections`). The live selection is
-              // untouched, and the picker reopens on what was staged.
+              // untouched (and is what the counts report), and the picker
+              // reopens on what was staged.
               let held = ScreenTimeShared.readSelection(groupId: groupId) ?? current
+              saved = held
               if ScreenTimeShared.selection(selection, covers: held) && ScreenTimeShared.selection(held, covers: selection) {
                 ScreenTimeShared.removePending(groupId: groupId)
               } else {
@@ -158,7 +166,8 @@ public class TodoScreenTimeBridgeModule: Module {
               // Read again: a pass may have promoted a staged choice while the
               // picker was open, and the live selection is what must be kept.
               let held = ScreenTimeShared.readSelection(groupId: groupId) ?? current
-              ScreenTimeShared.writeSelection(ScreenTimeShared.selection(selection, adding: held), groupId: groupId)
+              saved = ScreenTimeShared.selection(selection, adding: held)
+              ScreenTimeShared.writeSelection(saved, groupId: groupId)
               if ScreenTimeShared.selection(selection, covers: held) {
                 ScreenTimeShared.removePending(groupId: groupId)
               } else {
@@ -168,7 +177,12 @@ public class TodoScreenTimeBridgeModule: Module {
               ScreenTimeShared.writeSelection(selection, groupId: groupId)
               ScreenTimeShared.removePending(groupId: groupId)
             }
-            host?.dismiss(animated: true) { promise.resolve(true) }
+            let counts: [String: Int] = [
+              "applications": saved.applicationTokens.count,
+              "categories": saved.categoryTokens.count,
+              "websites": saved.webDomainTokens.count,
+            ]
+            host?.dismiss(animated: true) { promise.resolve(counts) }
           },
           onCancel: {
             host?.dismiss(animated: true) { promise.resolve(false) }
