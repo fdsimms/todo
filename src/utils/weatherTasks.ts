@@ -253,3 +253,14 @@ export function describeWeatherWindow(
 export function weatherTaskTitle(ruleTitle: string, phrase: string | null): string {
   return phrase ? `${ruleTitle} (${phrase})` : ruleTitle;
 }
+
+/**
+ * The inverse of `weatherTaskTitle`, for a row that draws the window on its
+ * own line under the title. The stored title keeps the parenthetical (the
+ * day-ahead drift check compares whole titles), so the split happens at
+ * display time and only ever takes a trailing "(...)" off the end.
+ */
+export function splitWeatherTitle(title: string): { head: string; note: string | null } {
+  const match = /^(.*\S)\s+\(([^()]+)\)$/.exec(title);
+  return match ? { head: match[1], note: match[2] } : { head: title, note: null };
+}
