@@ -207,10 +207,15 @@ describe('suggestionExamples', () => {
     expect(examples).toEqual([{ title: 'Pay rent', value: 'Money' }]);
   });
 
-  it('speaks in the buckets own minutes rather than an exact figure', () => {
-    // effort 3 is the 30-minute bucket; the task carrying 45 is an example of 30.
-    const examples = suggestionExamples([task({ title: 'Tidy up', effort: 3, estimatedMinutes: 45 })], 'estimate', displayTitleFor);
+  it('speaks in the nearest pill minutes rather than an exact figure', () => {
+    // 40 minutes is closest to the 30-minute pill.
+    const examples = suggestionExamples([task({ title: 'Tidy up', effort: 3, estimatedMinutes: 40 })], 'estimate', displayTitleFor);
     expect(examples).toEqual([{ title: 'Tidy up', value: '30 minutes' }]);
+  });
+
+  it('falls back to the bucket minutes for a task with no exact estimate', () => {
+    const examples = suggestionExamples([task({ title: 'Big job', effort: 5, estimatedMinutes: null })], 'estimate', displayTitleFor);
+    expect(examples).toEqual([{ title: 'Big job', value: '240 minutes' }]);
   });
 
   // Without this a from-scratch run hands the model a task as the example for
@@ -238,8 +243,8 @@ describe('suggestionExamples', () => {
 });
 
 describe('suggestibleEstimateMinutes', () => {
-  it('is the buckets the card already offers, in order', () => {
-    expect(suggestibleEstimateMinutes()).toEqual([1, 15, 30, 90, 240, 480]);
+  it('is the durations the card already offers, in order', () => {
+    expect(suggestibleEstimateMinutes()).toEqual([5, 15, 30, 60, 120, 240, 480]);
   });
 });
 
@@ -282,16 +287,16 @@ describe('readSuggestions', () => {
     expect(out.size).toBe(1);
   });
 
-  it('maps a bucket duration back to its effort', () => {
-    const out = readSuggestions([{ index: 1, minutes: 30 }, { index: 2, minutes: 240 }], 'estimate', sent);
-    expect(out.get('a')).toEqual({ field: 'estimate', taskId: 'a', effort: 3 });
-    expect(out.get('b')).toEqual({ field: 'estimate', taskId: 'b', effort: 5 });
+  it('keeps a preset duration as the minutes', () => {
+    const out = readSuggestions([{ index: 1, minutes: 5 }, { index: 2, minutes: 60 }], 'estimate', sent);
+    expect(out.get('a')).toEqual({ field: 'estimate', taskId: 'a', minutes: 5 });
+    expect(out.get('b')).toEqual({ field: 'estimate', taskId: 'b', minutes: 60 });
   });
 
-  // Dropped rather than snapped to the nearest bucket: a value the model did
+  // Dropped rather than snapped to the nearest pill: a value the model did
   // not mean is not better than no suggestion for that one task.
-  it('drops a duration that is not one of the buckets', () => {
-    for (const minutes of [45, 0, -30, 7]) {
+  it('drops a duration that is not one of the presets', () => {
+    for (const minutes of [45, 0, -30, 7, 90]) {
       expect(readSuggestions([{ index: 1, minutes }], 'estimate', sent).size).toBe(0);
     }
   });

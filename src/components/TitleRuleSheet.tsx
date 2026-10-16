@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Effort, Priority, TitleRule, TitleRuleMatch } from '../types';
-import { EFFORT_LABELS, PRIORITY_LABELS } from '../types';
+import { PRIORITY_LABELS } from '../types';
 import { effortTimeLabel } from '../utils/effort';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
@@ -38,7 +38,7 @@ const MATCH_OPTIONS: SegmentOption<TitleRuleMatch>[] = [
 ];
 
 const EFFORT_OPTIONS: SegmentOption<Effort>[] =
-  EFFORT_LABELS.map((label, value) => ({ value: value as Effort, label: value === 0 ? 'None' : effortTimeLabel(value as Effort, label) }));
+  ([0, 1, 2, 3, 4, 5, 6] as Effort[]).map(value => ({ value, label: value === 0 ? 'None' : effortTimeLabel(value, '') }));
 
 interface Props {
   visible: boolean;
@@ -371,7 +371,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
 
         <CollapsibleField
           label="Effort"
-          summary={draft.effort > 0 ? effortTimeLabel(draft.effort, EFFORT_LABELS[draft.effort]) : undefined}
+          summary={draft.effort > 0 ? effortTimeLabel(draft.effort, '') : undefined}
           emptySummary="Not set"
           hint="How long matching tasks take, used to size the day’s list."
           expanded={fieldOpen('effort')}

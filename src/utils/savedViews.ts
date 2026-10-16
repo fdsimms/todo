@@ -1,7 +1,7 @@
 import type { Effort, Priority, SavedViewClause, SavedViewClauseKind, Task } from '../types';
-import { EFFORT_LABELS, PRIORITY_LABELS } from '../types';
+import { PRIORITY_LABELS } from '../types';
 import { overdueDayCount } from './clockTime';
-import { estimatedMinutesFor } from './effort';
+import { estimatedMinutesFor, effortRangeLabel } from './effort';
 
 /**
  * Matching a saved view against a task (#2679) — the rules half of the lens
@@ -208,7 +208,7 @@ export function describeSavedViewClause(
       return joined === null ? null : `${joined} priority`;
     }
     case 'effort': {
-      const joined = joinValues(clause.values.map(e => EFFORT_LABELS[e]));
+      const joined = joinValues(clause.values.map(e => effortRangeLabel(e)));
       return joined === null ? null : `${joined} effort`;
     }
     case 'maxMinutes':

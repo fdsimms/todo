@@ -3424,7 +3424,7 @@ function registerWriteTools(
       taskDefaults: z.object({
         priority: z.number().int().min(0).max(4).nullable().optional().describe('0 means no priority on purpose, so the backfill screen stops asking. Null means ask.'),
         difficulty: z.enum(['easy', 'normal', 'hard']).nullable().optional(),
-        effort: z.number().int().min(0).max(6).nullable().optional().describe('The time estimate bucket, 1 (XXS) to 6 (XL). 0 means no estimate on purpose, so the backfill screen stops asking. Null means ask.'),
+        effort: z.number().int().min(0).max(6).nullable().optional().describe('The time estimate bucket, 1 (5 minutes or less) to 6 (over 5.5 hours). 0 means no estimate on purpose, so the backfill screen stops asking. Null means ask.'),
         showStreak: z.boolean().nullable().optional().describe('true shows the streak chip on every repeating task, false leaves it off on purpose so the backfill screen stops asking. Null means ask.'),
         vacationPause: z.boolean().nullable().optional().describe('true pauses every repeating task during vacation mode, false leaves it off on purpose so the backfill screen stops asking. Null means ask.'),
         excludeFromSuggestions: z.boolean().nullable().optional().describe('true keeps every task out of suggested pins and focus sessions, false leaves it in on purpose so the backfill screen stops asking. Null means ask.'),

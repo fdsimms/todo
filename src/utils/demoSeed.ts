@@ -271,7 +271,7 @@ export function seedDemoData(): void {
     logCompletionToCalendar: true,
   });
 
-  // Nothing here says Work, #admin or XXS — the seeded title rule above does,
+  // Nothing here says Work, #admin or a time — the seeded title rule above does,
   // the same way it would if this were typed into quick add.
   addTask({
     title: 'Expense the client lunch',
