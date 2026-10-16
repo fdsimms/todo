@@ -16,6 +16,7 @@ import { useAnswerFirstCompletion } from '../hooks/useAnswerFirstCompletion';
 import { DeliverablePromptQueue } from '../components/DeliverablePromptQueue';
 import { useTaskStore } from '../store/useTaskStore';
 import { bulkSetCategoryOffering } from '../utils/generatedCategoryPrompt';
+import { bulkAddTagsAsking, bulkSetPriorityAsking, bulkSetDifficultyAsking } from '../utils/bulkScopePrompt';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useStableCallback } from '../hooks/useStableCallback';
@@ -63,10 +64,7 @@ export function CategoryDetailScreen() {
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
   const bulkMarkMissed = useTaskStore(s => s.bulkMarkMissed);
-  const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
-  const bulkSetDifficulty = useTaskStore(s => s.bulkSetDifficulty);
   const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
-  const bulkAddTags = useTaskStore(s => s.bulkAddTags);
   const categories = useCategoryStore(useShallow(s => s.categories));
   const pinCategory = useTaskStore(s => s.pinCategory);
   const colors = useColors();
@@ -336,9 +334,9 @@ export function CategoryDetailScreen() {
             onDelete={handleBulkDelete}
             onSetWhen={(date, segs) => confirmBulkSetWhen(Array.from(selectedIds), date, segs, exitSelection)}
             onSetCategory={cat => bulkSetCategoryOffering(Array.from(selectedIds), cat, exitSelection)}
-            onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
-            onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
-            onSetDifficulty={rewardsEnabled ? d => { bulkSetDifficulty(Array.from(selectedIds), d); exitSelection(); } : undefined}
+            onAddTags={tags => bulkAddTagsAsking(Array.from(selectedIds), tags, exitSelection)}
+            onSetPriority={p => bulkSetPriorityAsking(Array.from(selectedIds), p, exitSelection)}
+            onSetDifficulty={rewardsEnabled ? d => bulkSetDifficultyAsking(Array.from(selectedIds), d, exitSelection) : undefined}
             onMarkMissed={() => { bulkMarkMissed(Array.from(selectedIds)); exitSelection(); }}
             onSelectAll={() => selectAll(categoryTasks.map(t => t.id))}
             onDeselectAll={deselectAll}

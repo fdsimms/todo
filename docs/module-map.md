@@ -58,6 +58,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/brands.ts` — BrandSummary, brandSummaries, planBrandRename
 - `src/utils/bulkCompletion.ts` — tasksAskingOnCompletion, unansweredCompletionCopy, stackCompletionScope
 - `src/utils/bulkDelete.ts` — BulkDeletePrompt, bulkDeletePrompt
+- `src/utils/bulkScopePrompt.ts` — confirmBulkScope, bulkSetPriorityAsking, bulkSetDifficultyAsking, bulkAddTagsAsking
 - `src/utils/busyEvenings.ts` — BUSY_EVENING_MIN_MINUTES, BusyEvening, busyEveningOn, describeBusyEvening
 - `src/utils/calendarBusy.ts` — BusyEvent, hasVideoCallLink, BusyInterval, isLiveEvent, occupiesTime, allDayRangeMs, busyIntervalsIn, busyMinutesIn, freeGapsIn, freeMinutesIn, +4 more
 - `src/utils/calendarDrag.ts` — CellRect, cellAt, isMoveDrop
@@ -160,7 +161,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/foodSearchMatch.ts` — FoodCandidate, FoodMatchTier, RankedFood, rankFoodCandidates, unambiguousFood
 - `src/utils/freshness.ts` — daysUntilDay, freshnessFor, FRESHNESS_ORDER, freshnessRank, isUseUpSoon, describeUseBy, liveUseBy, describeOpenedOn, describeFrozenSince
 - `src/utils/fuzzySearch.ts` — SearchResult, fuzzySearch, ranksAsActive, ProjectSearchResult, searchProjects, GroupSearchResult, searchGroups
-- `src/utils/generatedCategoryPrompt.ts` — offerGeneratedCategoryWriteBack, confirmBulkCategoryScope, bulkSetCategoryOffering
+- `src/utils/generatedCategoryPrompt.ts` — offerGeneratedCategoryWriteBack, bulkSetCategoryOffering
 - `src/utils/generatedTaskSettings.ts` — NO_GENERATED_TASK_EXTRAS, hasGeneratedTaskExtras, parseGeneratedTaskExtrasValue, parseGeneratedTaskExtras, generatedExtrasFill, OwnedTaskField, TaskSettingsContext, LockableField, TaskSettingsSpec, appearsPhrase, +5 more
 - `src/utils/generatedTasks.ts` — GENERATED_KINDS, GeneratedEnabledKey, GeneratedKindSpec, GENERATED_KIND_SPECS, GENERATED_KIND_LIST, listedGeneratedKinds, generatedTaskCounts, matchesAutomationQuery, describeGeneratedCounts, GeneratedEnabledFlags, +17 more
 - `src/utils/goalTargetTasks.ts` — GoalReading, GOAL_TARGET_LINK, GOAL_TARGET_NOTES, goalReadings, goalTargetSourceId, goalTargetKeyOf, goalTargetDayOf, goalTargetTitle, goalTargetNotes
@@ -480,7 +481,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/taskMoves.ts` — DeloadBlocker, SOFT_DELOAD_BLOCKERS, isDateAnchored, deloadBlockerFor, wouldMissDeadline, dailyRepeatBlocker, deloadUpdates, scheduleMoveUpdates, PullForwardChoice, pullForwardChoice
 - `src/utils/taskReopen.ts` — reopenedTask
 - `src/utils/taskSkip.ts` — reminderOnto, deadlineOnto, skipPatch
-- `src/utils/taskUpdate.ts` — CONTENT_FIELDS, SCHEDULE_FIELDS, QUOTA_SPAN_FIELDS, ROTATION_TARGET_FIELDS, derivedTargetCount, nextPinnedOrder, captureField, TaskUpdateContext, mergeTaskUpdate, seriesFanOutRows
+- `src/utils/taskUpdate.ts` — CONTENT_FIELDS, hasLaterRows, SCHEDULE_FIELDS, QUOTA_SPAN_FIELDS, ROTATION_TARGET_FIELDS, derivedTargetCount, nextPinnedOrder, captureField, TaskUpdateContext, mergeTaskUpdate, +1 more
 - `src/utils/templateApply.ts` — TemplateRunOptions, RunDraft, TemplateRunSink, applyTemplateRun
 - `src/utils/templateGrouping.ts` — TemplateListItem, groupTemplatesByCategory, TemplateDropResolution, resolveTemplateDrop
 - `src/utils/templateQuestions.ts` — questionsForTree, answerFromDates, defaultAnswer, resolveAnswers, placeholderValuesFor, toggleAnswer, displayOptions, liveConditions, numberInRange, applyItemVariant, +15 more

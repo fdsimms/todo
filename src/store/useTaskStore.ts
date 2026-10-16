@@ -198,6 +198,7 @@ import { totalMinutes } from '../utils/recipeUtils';
 import { normalizeTargetUnit } from '../utils/quotaUnit';
 import {
   CONTENT_FIELDS,
+  hasLaterRows,
   QUOTA_SPAN_FIELDS,
   captureField,
   ROTATION_TARGET_FIELDS,
@@ -2298,15 +2299,15 @@ interface TaskStore extends UndoHistoryActions {
   /** `skipGeneratedOptOut` has the same meaning as `deleteTask`'s — see its doc comment. */
   bulkDeleteTasks: (ids: string[], opts?: { skipGeneratedOptOut?: boolean; registerUndo?: boolean }) => void;
   clearLogbook: () => void;
-  bulkSetPriority: (ids: string[], priority: Priority) => void;
+  /** `scope` on these four bulk actions is the answer to confirmBulkScope; it only matters to repeating tasks and dated series. */
+  bulkSetPriority: (ids: string[], priority: Priority, options?: { scope?: 'occurrence' | 'series' }) => void;
   /** The bulk bar's Difficulty. Null clears the rating back to unrated. */
-  bulkSetDifficulty: (ids: string[], difficulty: Difficulty | null) => void;
+  bulkSetDifficulty: (ids: string[], difficulty: Difficulty | null, options?: { scope?: 'occurrence' | 'series' }) => void;
   bulkTogglePin: (ids: string[]) => void;
   bulkDefer: (ids: string[], until: Date) => void;
   bulkSetWhen: (ids: string[], date: Date | null, timeSegments: TimeOfDay[], options?: { restartSchedules?: boolean; scope?: 'occurrence' | 'series' }) => void;
-  /** `scope` is the answer to confirmBulkCategoryScope; it only matters to repeating tasks and dated series. */
   bulkSetCategory: (ids: string[], category: string | null, options?: { scope?: 'occurrence' | 'series' }) => void;
-  bulkAddTags: (ids: string[], tags: string[]) => void;
+  bulkAddTags: (ids: string[], tags: string[], options?: { scope?: 'occurrence' | 'series' }) => void;
   addTag: (tag: string) => void;
   deleteTag: (tag: string) => void;
   allCategories: () => string[];
@@ -2935,6 +2936,26 @@ function recordTaskAnswered(task: Task): boolean {
     journalEntries: useJournalStore.getState().entries,
     weighInAnsweredOn: useHealthStore.getState().weighInAnsweredOn,
   });
+}
+
+/**
+ * The bulk bar's field changes (category, priority, difficulty, tags) write raw
+ * for rows with nothing after them. A repeating task or a dated series goes
+ * through updateTask instead, which owns the scope rules: 'occurrence' leaves
+ * the repeats after it on the old value, 'series' (the default) also fans out
+ * to a series' later dates. Writes those rows and returns the ids still left
+ * for the raw write.
+ */
+function writeScopedRows(
+  ids: string[],
+  patch: (task: Task) => Partial<Task>,
+  scope: 'occurrence' | 'series' | undefined,
+): string[] {
+  const store = useTaskStore.getState();
+  const scoped = store.tasks.filter(t => ids.includes(t.id) && hasLaterRows(t));
+  const options = scope === 'occurrence' ? { scope: 'occurrence' as const } : undefined;
+  scoped.forEach(t => store.updateTask(t.id, patch(t), options));
+  return ids.filter(id => !scoped.some(t => t.id === id));
 }
 
 export const useTaskStore = create<TaskStore>((set, get) => ({
@@ -10048,13 +10069,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     }
   },
 
-  bulkSetPriority(ids, priority) {
+  bulkSetPriority(ids, priority, options) {
+    if (ids.length === 0) return;
+    ids = writeScopedRows(ids, () => ({ priority }), options?.scope);
     if (ids.length === 0) return;
     dbBulkSetPriority(ids, priority);
     set(s => ({ tasks: patchTasks(s.tasks, ids, { priority }) }));
   },
 
-  bulkSetDifficulty(ids, difficulty) {
+  bulkSetDifficulty(ids, difficulty, options) {
+    if (ids.length === 0) return;
+    ids = writeScopedRows(ids, () => ({ difficulty }), options?.scope);
     if (ids.length === 0) return;
     dbBulkSetDifficulty(ids, difficulty);
     set(s => ({ tasks: patchTasks(s.tasks, ids, { difficulty }) }));
@@ -10209,19 +10234,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   bulkSetCategory(ids, category, options) {
     if (ids.length === 0) return;
-    // A repeating task or a dated series goes through updateTask, which owns
-    // the scope rules ('occurrence' leaves the repeats after it on the old
-    // category, 'series' also fans out to a series' later dates). The raw
-    // write below has neither, so it is only for rows with nothing after them.
-    const scopedIds = get().tasks
-      .filter(t => ids.includes(t.id) && (t.recurrenceType !== 'none' || !!t.seriesId))
-      .map(t => t.id);
-    if (scopedIds.length > 0) {
-      const scope = options?.scope === 'occurrence' ? { scope: 'occurrence' as const } : undefined;
-      scopedIds.forEach(id => get().updateTask(id, { category }, scope));
-      ids = ids.filter(id => !scopedIds.includes(id));
-      if (ids.length === 0) return;
-    }
+    ids = writeScopedRows(ids, () => ({ category }), options?.scope);
+    if (ids.length === 0) return;
     // Same rule as updateTask's transitionedIntoNew, which this path doesn't
     // go through: the move itself must not turn a task "new". See the comment
     // there for why a suppressed category leaves a stale seenAt behind.
@@ -10234,8 +10248,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().markTasksSeen(staleNew);
   },
 
-  bulkAddTags(ids, tags) {
+  bulkAddTags(ids, tags, options) {
     if (ids.length === 0 || tags.length === 0) return;
+    ids = writeScopedRows(ids, t => ({ tags: Array.from(new Set([...t.tags, ...tags])) }), options?.scope);
+    if (ids.length === 0) return;
     dbBulkAddTags(ids, tags);
     set(s => ({
       tasks: patchTasks(s.tasks, ids, t => ({ tags: Array.from(new Set([...t.tags, ...tags])) })),
