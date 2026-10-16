@@ -1,6 +1,9 @@
+// No red or pink: those are the app's error and overdue colours, so a tag that
+// hashed to one read as a problem ("no recipe" looked like a failure). Keep the
+// length at 10 so every other tag keeps the colour it already had.
 const TAG_PALETTE = [
-  '#0A84FF', '#30D158', '#FF9F0A', '#FF453A', '#BF5AF2',
-  '#5E5CE6', '#FF375F', '#64D2FF', '#FFD60A', '#AC8E68',
+  '#0A84FF', '#30D158', '#FF9F0A', '#00C7BE', '#BF5AF2',
+  '#5E5CE6', '#8E8E93', '#64D2FF', '#FFD60A', '#AC8E68',
 ];
 
 const cache = new Map<string, string>();
