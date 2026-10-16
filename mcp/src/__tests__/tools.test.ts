@@ -383,6 +383,18 @@ describe('listTasks', () => {
     expect(listTasks(withTasks(tasks), { view: 'all' }).tasks.map(t => t.id)).toEqual(['today-1']);
   });
 
+  it('narrows to counted targets by period and says whether each stays visible', () => {
+    const tasks = [
+      task({ id: 'today-1', title: 'Run', targetCount: 3, quotaPeriod: 'week', quotaAlwaysVisible: true }),
+      task({ id: 'today-2', title: 'Water', targetCount: 8, quotaPeriod: 'day' }),
+      task({ id: 'today-3', title: 'Plain' }),
+    ];
+    const week = listTasks(withTasks(tasks), { view: 'all', target: 'week' }).tasks;
+    expect(week.map(t => t.id)).toEqual(['today-1']);
+    expect(week[0].target).toEqual({ count: 3, per: 'week', done: 0, alwaysVisible: true });
+    expect(listTasks(withTasks(tasks), { view: 'all', target: 'any' }).tasks.map(t => t.id)).toEqual(['today-1', 'today-2']);
+  });
+
   it('hides completed tasks unless asked', () => {
     const tasks = [task({ id: 'today-1', title: 'Open' }), task({ id: 'today-2', title: 'Done', completed: true })];
     expect(listTasks(withTasks(tasks), { view: 'all' }).tasks).toHaveLength(1);

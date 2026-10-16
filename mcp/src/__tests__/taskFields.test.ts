@@ -199,6 +199,12 @@ describe('target', () => {
     expect(errorsOf({ target: { count: 3, per: 'week' }, repeat: { every: 'day' } })).toMatch(/repeats weekly/);
   });
 
+  it('sets and clears keeping a target on Today, and leaves it alone when omitted', () => {
+    expect(ok({ target: { count: 3, per: 'week', alwaysVisible: true } }).quotaAlwaysVisible).toBe(true);
+    expect(ok({ target: { per: 'week', alwaysVisible: false } }, existing({ targetCount: 3, quotaPeriod: 'week', recurrenceType: 'weekly', quotaAlwaysVisible: true })).quotaAlwaysVisible).toBe(false);
+    expect(ok({ target: { count: 3, per: 'week' } }).quotaAlwaysVisible).toBeUndefined();
+  });
+
   it('takes a ramp-up and starts its run of hits at zero', () => {
     expect(ok({ target: { count: 10, per: 'day', rampUp: { add: 2, every: 3, upTo: 30 } } })).toMatchObject({
       targetCount: 10, quotaRampStep: 2, quotaRampEvery: 3, quotaRampGoal: 30, quotaRampHits: 0,

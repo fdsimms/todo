@@ -45,7 +45,7 @@ import {
   type TaskFieldsInput,
   type TimedInput,
 } from './taskFields';
-import { serializeTasks, type SerializedTask } from './serialize';
+import { hasCountedTarget, serializeTasks, type SerializedTask } from './serialize';
 import { localDateInput } from './timeZone';
 // Pure over the rows it is handed (types only), so safe to import for its
 // value where awayDates, which reaches the settings store, is not.
@@ -68,6 +68,8 @@ export interface ListTasksInput {
   category?: string;
   tag?: string;
   projectId?: string;
+  /** Only tasks with a counted target: 'day' or 'week' for that period, 'any' for both. A rotation is not one. */
+  target?: 'any' | 'day' | 'week';
   /** Off by default: a completed task is history, and history is a long list. */
   includeCompleted?: boolean;
   limit?: number;
@@ -101,6 +103,11 @@ export function listTasks(replica: Replica, input: ListTasksInput = {}): ListTas
     .filter(t => (input.category ? t.category === input.category : true))
     .filter(t => (input.tag ? t.tags.includes(input.tag) : true))
     .filter(t => (input.projectId ? t.projectId === input.projectId : true))
+    .filter(t => {
+      if (!input.target) return true;
+      if (!hasCountedTarget(t)) return false;
+      return input.target === 'any' || (t.quotaPeriod === 'week' ? 'week' : 'day') === input.target;
+    })
     .filter(t => matchesView(replica, t, view));
 
   return {
@@ -175,7 +182,7 @@ export interface GetTaskResult {
    * food log's water goal divided by what one unit logs, worked out by the app
    * each day: update_task refuses to set it.
    */
-  target?: { count: number; per: 'day' | 'week'; done: number; unit?: string; allowOvershoot?: boolean; coinsPerTap?: true; everyMinutes?: number; remind?: true; onlyAtPlaces?: string[]; followsWaterTarget?: true; rampUp?: { add: number; every: number; upTo?: number; hitsSoFar: number } };
+  target?: { count: number; per: 'day' | 'week'; done: number; unit?: string; allowOvershoot?: boolean; coinsPerTap?: true; alwaysVisible?: true; everyMinutes?: number; remind?: true; onlyAtPlaces?: string[]; followsWaterTarget?: true; rampUp?: { add: number; every: number; upTo?: number; hitsSoFar: number } };
   /** A countdown the task runs once started, in minutes. */
   timed?: TimedInput;
   /** The members of a rotation, and which this week's picks have covered. */
@@ -366,9 +373,9 @@ export function getTask(replica: Replica, id: string): GetTaskResult | null {
         }
       : undefined,
     repeat: describeRepeat(task) ?? undefined,
-    target: task.targetCount != null && (task.targetCount >= 2 || proratedFrom(task) !== null) && !isRotationTask(task)
+    target: hasCountedTarget(task)
       ? {
-          count: task.targetCount,
+          count: task.targetCount!,
           per: task.quotaPeriod === 'week' ? 'week' : 'day',
           // A first week scaled to the days that were left in it; next week's
           // occurrence goes back to this.
@@ -377,6 +384,7 @@ export function getTask(replica: Replica, id: string): GetTaskResult | null {
           ...(task.targetUnit ? { unit: task.targetUnit } : {}),
           ...(task.allowOvershoot ? { allowOvershoot: true } : {}),
           ...(task.coinsPerTap ? { coinsPerTap: true as const } : {}),
+          ...(task.quotaAlwaysVisible ? { alwaysVisible: true as const } : {}),
           // A cadence's count is worked out from the window, so the cadence is the
           // setting and the count only its result: say which one the person set.
           ...(task.quotaIntervalMinutes != null ? { everyMinutes: task.quotaIntervalMinutes } : {}),

@@ -99,7 +99,7 @@ const FIELD_NAMES: Record<string, string> = {
   deliverableValue: 'answer', deliverableWhy: 'reason for the answer', deliverableRevisitIf: 'revisit if',
   weatherWait: 'waits for weather', linkUrl: 'link', phoneNumber: 'phone number', emailAddress: 'email', location: 'location',
   personIds: 'people', deadlineTime: 'deadline time', vacationPause: 'hidden on vacation', pinEachOccurrence: 'pin each occurrence',
-  slipAllowance: 'slips allowed', targetUnit: 'target unit', allowOvershoot: 'allow going over the target', coinsPerTap: 'coins on every tap', quotaPeriod: 'target period',
+  slipAllowance: 'slips allowed', targetUnit: 'target unit', allowOvershoot: 'allow going over the target', coinsPerTap: 'coins on every tap', quotaAlwaysVisible: 'always visible', quotaPeriod: 'target period',
   recurrenceEndDate: 'repeat ends on', recurrenceCount: 'repeat count', recurrenceMonthDay: 'repeat day of month',
   recurrenceWeekOrdinal: 'repeat week of month', recurrenceFromCompletion: 'repeat from completion', groupId: 'stack',
   answerGate: 'only if answered', followUpOn: 'follow-up date', medicationName: 'medication', completedAt: 'completed on',
