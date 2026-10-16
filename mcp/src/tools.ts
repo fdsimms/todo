@@ -783,6 +783,7 @@ export function listFoodLog(replica: Replica, input: LogRangeInput = {}): FoodLo
       quantity: e.quantity || undefined,
       grams: e.grams ?? undefined,
       recipeId: e.recipeId ?? undefined,
+      savedMeal: e.savedMealName ?? undefined,
       amounts: e.nutrition?.amounts && Object.keys(e.nutrition.amounts).length > 0 ? (e.nutrition.amounts as Record<string, number>) : undefined,
       inAppleHealth: e.healthSampleIds?.length > 0 ? true : undefined,
       breakdown: e.nutrition?.breakdown?.length ? e.nutrition.breakdown : undefined,

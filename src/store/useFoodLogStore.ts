@@ -4,6 +4,7 @@ import { NUTRIENT_KEYS } from '../types';
 import {
   dbBulkDeleteFoodLogEntries,
   dbBulkSetFoodLogSlot,
+  dbRestoreFoodLogSavedMeals,
   dbBulkUpdateFoodLogPlacement,
   dbCountFoodLogEntries,
   dbDeleteFoodLogEntry,
@@ -96,6 +97,9 @@ export interface FoodLogDraft {
   mealPlanEntryId?: string | null;
   /** The task whose completion is writing this entry. See `FoodLogEntry.taskId`. */
   taskId?: string | null;
+  /** The saved meal this entry is being logged as part of. See `FoodLogEntry.savedMealId`. */
+  savedMealId?: string | null;
+  savedMealName?: string | null;
   /**
    * The panel the helping was measured against, for a food no catalog row
    * holds. See `FoodLogEntry.sourcePanel`; null or absent for anything linked.
@@ -511,6 +515,39 @@ function restoreEntries(rows: FoodLogEntry[], get: () => FoodLogStore, set: Food
     useTaskStore.getState().syncLimitWarningTasks();
     useTaskStore.getState().syncGoalTargetTasks();
   }
+}
+
+/**
+ * `entry` in a new meal slot. One that actually changes meal leaves its saved
+ * meal (`dbBulkSetFoodLogSlot` does the same in SQL), so a tray never carries
+ * its name into a different meal's section.
+ */
+function inSlot(entry: FoodLogEntry, slot: MealSlot | null, sortOrder?: number): FoodLogEntry {
+  const next = sortOrder === undefined ? entry : { ...entry, sortOrder };
+  if (entry.slot === slot) return next;
+  return { ...next, slot, savedMealId: null, savedMealName: null };
+}
+
+/** The saved-meal links of the entries a slot change is about to clear. */
+function linksClearedBySlot(entries: readonly FoodLogEntry[], slotOf: (e: FoodLogEntry) => MealSlot | null) {
+  return entries
+    .filter(e => e.savedMealId && slotOf(e) !== e.slot)
+    .map(e => ({ id: e.id, savedMealId: e.savedMealId ?? null, savedMealName: e.savedMealName ?? null }));
+}
+
+/** Puts cleared links back in the database and in every loaded window. */
+function restoreSavedMealLinks(
+  links: { id: string; savedMealId: string | null; savedMealName: string | null }[],
+  set: FoodLogSet,
+): void {
+  if (links.length === 0) return;
+  dbRestoreFoodLogSavedMeals(links);
+  const byId = new Map(links.map(l => [l.id, l]));
+  const put = (e: FoodLogEntry) => {
+    const l = byId.get(e.id);
+    return l ? { ...e, savedMealId: l.savedMealId, savedMealName: l.savedMealName } : e;
+  };
+  set(s => ({ entries: s.entries.map(put), windowEntries: s.windowEntries.map(put), insightEntries: s.insightEntries.map(put) }));
 }
 
 /** The fields `patch` names, as `entry` holds them now: what undoes the patch. */
@@ -986,14 +1023,15 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     if (ids.length === 0) return;
     const idSet = new Set(ids);
     const priorSlots = get().entries.filter(e => idSet.has(e.id)).map(e => ({ id: e.id, slot: e.slot }));
+    const cleared = linksClearedBySlot(get().entries.filter(e => idSet.has(e.id)), () => slot);
     dbBulkSetFoodLogSlot(ids, slot);
     set(s => ({
-      entries: s.entries.map(e => (idSet.has(e.id) ? { ...e, slot } : e)),
-      windowEntries: s.windowEntries.map(e => (idSet.has(e.id) ? { ...e, slot } : e)),
+      entries: s.entries.map(e => (idSet.has(e.id) ? inSlot(e, slot) : e)),
+      windowEntries: s.windowEntries.map(e => (idSet.has(e.id) ? inSlot(e, slot) : e)),
       // The insight window too. A slot change is not cosmetic to it: the
       // thin-day rule counts *distinct meals*, so moving two entries into one
       // slot can drop a day out of every mood pairing.
-      insightEntries: s.insightEntries.map(e => (idSet.has(e.id) ? { ...e, slot } : e)),
+      insightEntries: s.insightEntries.map(e => (idSet.has(e.id) ? inSlot(e, slot) : e)),
     }));
     if (priorSlots.length > 0) {
       get().setLastAction({
@@ -1002,6 +1040,7 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
           const bySlot = new Map<MealSlot | null, string[]>();
           for (const p of priorSlots) bySlot.set(p.slot, [...(bySlot.get(p.slot) ?? []), p.id]);
           for (const [prior, group] of bySlot) get().moveEntries(group, prior);
+          restoreSavedMealLinks(cleared, set);
         },
         redo: () => get().moveEntries(ids, slot),
       });
@@ -1014,26 +1053,25 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     const prior: FoodLogPlacement[] = get().entries
       .filter(e => wanted.has(e.id))
       .map(e => ({ id: e.id, slot: e.slot, sortOrder: e.sortOrder }));
-    dbBulkUpdateFoodLogPlacement(updates);
     const byId = new Map(updates.map(u => [u.id, u]));
+    const cleared = linksClearedBySlot(get().entries.filter(e => wanted.has(e.id)), e => byId.get(e.id)?.slot ?? e.slot);
+    dbBulkUpdateFoodLogPlacement(updates);
+    const place = (e: FoodLogEntry) => {
+      const u = byId.get(e.id);
+      return u ? inSlot(e, u.slot, u.sortOrder) : e;
+    };
     set(s => ({
-      entries: s.entries.map(e => {
-        const u = byId.get(e.id);
-        return u ? { ...e, slot: u.slot, sortOrder: u.sortOrder } : e;
-      }),
-      windowEntries: s.windowEntries.map(e => {
-        const u = byId.get(e.id);
-        return u ? { ...e, slot: u.slot, sortOrder: u.sortOrder } : e;
-      }),
-      insightEntries: s.insightEntries.map(e => {
-        const u = byId.get(e.id);
-        return u ? { ...e, slot: u.slot, sortOrder: u.sortOrder } : e;
-      }),
+      entries: s.entries.map(place),
+      windowEntries: s.windowEntries.map(place),
+      insightEntries: s.insightEntries.map(place),
     }));
     if (prior.length > 0) {
       get().setLastAction({
         label: 'Reordered meals',
-        undo: () => get().reorderEntries(prior),
+        undo: () => {
+          get().reorderEntries(prior);
+          restoreSavedMealLinks(cleared, set);
+        },
         redo: () => get().reorderEntries(updates),
       });
     }

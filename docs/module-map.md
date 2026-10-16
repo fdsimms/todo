@@ -153,7 +153,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/focusSuggest.ts` — MAX_SUGGESTED_FOCUS, FOCUS_BUDGET_MINUTES, FocusContext, buildFocusContext, fitsWindow, scoreFocusTask, nextFocusSuggestion, suggestFocusTasks, focusQueueFromPinned, focusReason
 - `src/utils/focusWindow.ts` — FOCUS_CALENDAR_HORIZON_MINUTES, CalendarWindow, calendarWindow, FOCUS_MEETING_LEAD_MINUTES, FOCUS_MEETING_HORIZON_MINUTES, FocusMeetingHeadsUp, focusMeetingHeadsUp
 - `src/utils/followUpTask.ts` — MIN_FOLLOW_UP_TASK_EVERY_N, MAX_FOLLOW_UP_TASK_EVERY_N, canHoldFollowUpTask, FollowUpTaskRule, followUpTaskRule, FollowUpTaskEndRule, repeatHasEnd, followUpTaskEndRule, advanceFollowUpTaskTally, FollowUpTaskSuppression, +8 more
-- `src/utils/foodLog.ts` — FoodLogTotals, FoodLogSection, isBeverageName, scalePanelToAmount, portionExamples, amountHint, amountExample, FoodUnitOption, VOLUME_UNIT_OPTIONS, foodUnitOptionsFor, +47 more
+- `src/utils/foodLog.ts` — FoodLogTotals, FoodLogSection, isBeverageName, scalePanelToAmount, portionExamples, amountHint, amountExample, FoodUnitOption, VOLUME_UNIT_OPTIONS, foodUnitOptionsFor, +49 more
 - `src/utils/foodLogEntry.ts` — buildFoodLogEntry
 - `src/utils/foodLogExport.ts` — FOOD_LOG_EXPORT_COLUMNS, foodLogExportCsv, foodLogExportFileName, foodLogExportSummary
 - `src/utils/foodLogRecents.ts` — FoodRecency, creditedKeys, foodLogRecency, foodLastAmounts, rankByRecency, USUAL_FOR_SLOT_LIMIT, usualForSlot, RECENT_HELPING_LIMIT, RECENT_HELPING_DAYS, RECENT_HELPING_MIN_LOGS, +3 more
@@ -461,6 +461,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/supplementDoseSync.ts` — installSupplementDoseEffects
 - `src/utils/supply.ts` — MAX_SUPPLY_COUNT, DEFAULT_SUPPLY_REORDER_AT, MAX_SUPPLY_REORDER_TASKS, clampSupplyCount, clampSupplyReorderAt, clampSupplyLeadDays, clampSupplyRefillCount, SupplySource, isSupplyTask, canHoldSupply, +20 more
 - `src/utils/swipeArm.ts` — SwipeArmSides, swipeArmDistance, nextSwipeArm
+- `src/utils/symptomQuickLog.ts` — SymptomPhrase, resolveClockTime, parseSymptomPhrase, matchSymptoms
 - `src/utils/syncEngine.ts` — SyncTransport, SyncImageStore, SyncWithholding, withholdChanges, pushCursorKey, PullResult, SyncLocal, IMAGE_PAYLOAD_BUDGET_CHARS, imagesSentKey, imagesKnownKey, +9 more
 - `src/utils/syncIds.ts` — derivedId, isDerivedId, spawnSeed
 - `src/utils/syncLocal.ts` — databaseSyncLocal
@@ -678,7 +679,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 
 ## `src/db`
 
-- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, ensureDatabaseReady, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, +270 more
+- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, ensureDatabaseReady, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, +271 more
 - `src/db/syncTracking.ts` — SyncTable, KEY_SEPARATOR, SYNC_TRACKED_TABLES, SYNC_DEVICE_LOCAL_COLUMNS, isDeviceLocalColumn, withoutDeviceLocalColumns, SYNC_EXCLUDED_TABLES, SYNCED_SETTING_KEYS, isSyncedSettingKey, HEALTH_SYNC_TABLES, +16 more
 
 ## `src/services`

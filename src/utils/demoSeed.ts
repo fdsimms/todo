@@ -2781,6 +2781,8 @@ function seedFoodLog(today: Date): void {
       // reasoning as the Log breakfast task: completing it would write an
       // entry rather than demonstrate the setting.
       if (usual) {
+        // Logged once, yesterday, so the food log shows the meal's tray.
+        useSavedMealsStore.getState().logMeal(usual, 'breakfast', new Date(addDays(today, -1).getTime() + 8 * 3_600_000), { undoable: false });
         useTaskStore.getState().addTask({
           title: 'Have my usual breakfast',
           notes: 'Completing this logs your saved meal to the food log. Unchecking it removes the entry.',

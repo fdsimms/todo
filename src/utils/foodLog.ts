@@ -829,6 +829,53 @@ export type FoodLogListItem =
   | { type: 'header'; slot: MealSlot | null }
   | { type: 'entry'; entry: FoodLogEntry };
 
+/** Where an entry sits in a saved meal's tray, and what the tray is called. */
+export interface SavedMealRun {
+  position: 'first' | 'middle' | 'last';
+  name: string;
+  /** How many entries this tray holds right now, not how many the meal had. */
+  count: number;
+}
+
+/**
+ * The trays a day's list draws for saved meals, keyed by entry id.
+ *
+ * A tray is a run of **neighbouring** entries that were logged by one saved
+ * meal at one moment, so the same meal logged twice in a day is two trays and
+ * a row dragged out of the middle ends one run and starts another. It is read
+ * off the list as it stands rather than off the entries alone for that reason:
+ * what is adjacent is what the person sees. A run of one is no tray (a meal
+ * with two foods deleted down to one reads as a plain row), and an entry with
+ * no saved meal never joins one. The name is the snapshot on the first entry,
+ * never a lookup, since the meal may have been renamed or deleted since.
+ */
+export function savedMealRuns(items: readonly FoodLogListItem[]): Map<string, SavedMealRun> {
+  const out = new Map<string, SavedMealRun>();
+  let run: FoodLogEntry[] = [];
+  let runKey: string | null = null;
+  const flush = () => {
+    if (run.length >= 2) {
+      const name = run[0].savedMealName ?? 'Saved meal';
+      run.forEach((e, i) => out.set(e.id, {
+        position: i === 0 ? 'first' : i === run.length - 1 ? 'last' : 'middle',
+        name,
+        count: run.length,
+      }));
+    }
+    run = [];
+    runKey = null;
+  };
+  for (const item of items) {
+    if (item.type === 'header') { flush(); continue; }
+    const e = item.entry;
+    const key = e.savedMealId ? `${e.savedMealId}|${e.atISO}` : null;
+    if (key === null || key !== runKey) flush();
+    if (key !== null) { run.push(e); runKey = key; }
+  }
+  flush();
+  return out;
+}
+
 /**
  * What a drop hands back: each entry's new slot (the nearest header above it
  * after the drop) and its new position in the day's one running order.

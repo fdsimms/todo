@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { InlineAction } from './InlineAction';
 import { useColors } from '../theme/ThemeContext';
@@ -11,6 +11,7 @@ import {
   isRunnable, MAX_GLASSES, withGlasses,
   type ActionDescription, type SearchAction,
 } from '../utils/searchActions';
+import { SYMPTOM_SEVERITIES } from '../utils/moodLog';
 import type { SearchActionReceipt } from '../utils/searchActionRun';
 
 /**
@@ -27,6 +28,10 @@ import type { SearchActionReceipt } from '../utils/searchActionRun';
  * A water row carries a `− N +` stepper beside it, so several glasses are one
  * tap. The count is the row's own state (a query's rows are short-lived), and
  * the row is described and run as that many glasses through `describe`.
+ *
+ * A symptom row carries its severity pills on a line of their own under the
+ * title, so the name keeps the whole row: tapping a pill logs at that severity
+ * and tapping the title logs at the one marked (Mild unless the line said).
  */
 export function SearchActionRow({ action, description, describe, receipt, layout, onRun, onUndo }: {
   action: SearchAction;
@@ -102,7 +107,6 @@ export function SearchActionRow({ action, description, describe, receipt, layout
   );
 
   const label = [description.title, ...description.meta].join(', ');
-  const stepperFor = action.kind === 'water' && isRunnable(action);
   if (!isRunnable(action)) {
     return (
       <View style={[styles.row, list && styles.listRow]} accessible accessibilityLabel={label}>
@@ -110,9 +114,9 @@ export function SearchActionRow({ action, description, describe, receipt, layout
       </View>
     );
   }
-  const press = (
+  const button = (rowStyle: StyleProp<ViewStyle>) => (
     <TouchableOpacity
-      style={[stepperFor ? styles.rowMain : styles.row, !stepperFor && list && styles.listRow]}
+      style={rowStyle}
       onPress={() => onRun(stepped)}
       activeOpacity={interaction.activeOpacity}
       accessibilityRole="button"
@@ -122,35 +126,52 @@ export function SearchActionRow({ action, description, describe, receipt, layout
       {body}
     </TouchableOpacity>
   );
-  if (!stepperFor) return press;
-
-  const step = (delta: number) => {
-    haptics.tap();
-    setGlasses(g => Math.min(MAX_GLASSES, Math.max(1, g + delta)));
-  };
-  // The button and the stepper are siblings rather than nested, so a screen
-  // reader reads the row as one button and the stepper as its own controls.
+  if (action.kind === 'water') {
+    const step = (delta: number) => {
+      haptics.tap();
+      setGlasses(g => Math.min(MAX_GLASSES, Math.max(1, g + delta)));
+    };
+    // The button and the stepper are siblings rather than nested, so a screen
+    // reader reads the row as one button and the stepper as its own controls.
+    return (
+      <View style={[styles.row, list && styles.listRow]}>
+        {button(styles.rowMain)}
+        <View style={styles.stepper}>
+          <PressableScale
+            onPress={() => step(-1)}
+            disabled={glasses <= 1}
+            style={styles.stepButton}
+            accessibilityLabel="Fewer glasses"
+          >
+            <Ionicons name="remove" size={iconSize.sm} color={colors.text} style={glasses <= 1 ? styles.stepOff : undefined} />
+          </PressableScale>
+          <Text style={styles.stepValue} accessibilityLabel={`${glasses} ${glasses === 1 ? 'glass' : 'glasses'}`}>{glasses}</Text>
+          <PressableScale
+            onPress={() => step(1)}
+            disabled={glasses >= MAX_GLASSES}
+            style={styles.stepButton}
+            accessibilityLabel="More glasses"
+          >
+            <Ionicons name="add" size={iconSize.sm} color={colors.text} style={glasses >= MAX_GLASSES ? styles.stepOff : undefined} />
+          </PressableScale>
+        </View>
+      </View>
+    );
+  }
+  if (action.kind !== 'symptom') return button([styles.row, list && styles.listRow]);
   return (
-    <View style={[styles.row, list && styles.listRow]}>
-      {press}
-      <View style={styles.stepper}>
-        <PressableScale
-          onPress={() => step(-1)}
-          disabled={glasses <= 1}
-          style={styles.stepButton}
-          accessibilityLabel="Fewer glasses"
-        >
-          <Ionicons name="remove" size={iconSize.sm} color={colors.text} style={glasses <= 1 ? styles.stepOff : undefined} />
-        </PressableScale>
-        <Text style={styles.stepValue} accessibilityLabel={`${glasses} ${glasses === 1 ? 'glass' : 'glasses'}`}>{glasses}</Text>
-        <PressableScale
-          onPress={() => step(1)}
-          disabled={glasses >= MAX_GLASSES}
-          style={styles.stepButton}
-          accessibilityLabel="More glasses"
-        >
-          <Ionicons name="add" size={iconSize.sm} color={colors.text} style={glasses >= MAX_GLASSES ? styles.stepOff : undefined} />
-        </PressableScale>
+    <View style={list ? styles.listShell : null}>
+      {button([styles.row, list && styles.listShellRow])}
+      <View style={[styles.severityRow, list ? styles.listSeverityRow : styles.cardSeverityRow]}>
+        {SYMPTOM_SEVERITIES.map(({ value, label: severity }) => (
+          <InlineAction
+            key={value}
+            label={severity}
+            variant={value === action.severity ? 'accent' : 'neutral'}
+            onPress={() => onRun({ ...action, severity: value })}
+            accessibilityLabel={`Log ${action.symptom} as ${severity.toLowerCase()}`}
+          />
+        ))}
       </View>
     </View>
   );
@@ -188,6 +209,20 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingLeft: spacing.md,
     paddingRight: spacing.md,
   },
+  // A symptom row is the same card with its pills inside, so the card's
+  // background and margins move to a shell and the touchable keeps the padding.
+  listShell: {
+    backgroundColor: colors.bgSecondary,
+    marginHorizontal: spacing.md,
+    marginVertical: spacing.xxs,
+    borderRadius: radius.md,
+    paddingBottom: spacing.smd,
+  },
+  listShellRow: { paddingVertical: spacing.smd, paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
+  severityRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xsm },
+  // Under the title: past the row's side padding, the icon slot and the gap.
+  cardSeverityRow: { paddingLeft: spacing.xs + 20 + spacing.sm, paddingBottom: spacing.sm },
+  listSeverityRow: { paddingLeft: spacing.md + TASK_CHECKBOX_SIZE + spacing.sm, paddingRight: spacing.md },
   // The slot a task row's checkbox sits in, so the icon lines up with them.
   cardIconSlot: { width: 20, alignItems: 'center' },
   listIconSlot: { width: TASK_CHECKBOX_SIZE, alignItems: 'center' },
