@@ -2785,6 +2785,16 @@ export function describeSchedule(s: ParsedSchedule, now: Date = new Date()): str
 }
 
 /**
+ * The short qualifier a suggestion pill shows beside `describeSchedule`'s
+ * label, or null when the label says everything. "Weekly" alone reads as a
+ * fixed schedule, so a rule counted from the completion says so here instead
+ * of in a longer label, which would push the pill past the sheet's width.
+ */
+export function scheduleHint(s: Pick<ParsedSchedule, 'recurrenceType' | 'recurrenceFromCompletion'>): string | null {
+  return s.recurrenceType !== 'none' && s.recurrenceFromCompletion ? 'after done' : null;
+}
+
+/**
  * The instant a parsed clock time names on the schedule's day, or null when
  * the line had none.
  *

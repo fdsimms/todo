@@ -102,7 +102,7 @@ import { isStreakAtRecord, nextStreakRecord, streakHint } from '../utils/streakR
 import { formatDeadlineDate, formatDeadlineLabel, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, describeDeadlineOffset, describeReminderOffset, describeReminderTracksVisibility, getTaskDayStart, getCurrentDayStart, getLogicalNow, getLogicalToday, seriesMonthDaysFrom, getNextDueDate, dayKeyOf, dayKeyToDate } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInputAheadOfRainSkip, scheduleClockInstant, stripRemindPrefix, describeSchedule, detectContactIntent, matchPersonMentions, getEditorMentionSuggestions, withTrailingSpace, parseCategoryAndTagsInput, type MentionSuggestionCandidate, type ParsedCategoryAndTags } from '../utils/parseTaskInput';
+import { parseTaskInputAheadOfRainSkip, scheduleClockInstant, stripRemindPrefix, describeSchedule, scheduleHint, detectContactIntent, matchPersonMentions, getEditorMentionSuggestions, withTrailingSpace, parseCategoryAndTagsInput, type MentionSuggestionCandidate, type ParsedCategoryAndTags } from '../utils/parseTaskInput';
 import { groupMentionTokens } from '../utils/peopleRegistry';
 import { mergeRanges } from '../utils/ranges';
 import { HighlightedText } from './HighlightedText';
@@ -4003,6 +4003,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                 : activeParsedSchedule.schedule.deadline ? 'flag-outline' : 'calendar-outline'
             }
             label={`${describeSchedule(activeParsedSchedule.schedule, getLogicalNow(dayResetTime))}${activeParsedSchedule.schedule.explicitClockTime && stripRemindPrefix(activeParsedSchedule.cleanTitle) !== null ? ' · Reminder' : ''}`}
+            hint={scheduleHint(activeParsedSchedule.schedule)}
             onApply={applyParsedSchedule}
             onDismiss={dismissParsedSchedule}
             dismissLabel="Not a date"
