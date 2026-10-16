@@ -19140,7 +19140,7 @@ describe('negative habits', () => {
   });
 
   const avoid = (over: Partial<Task> = {}) =>
-    makeTask({ id: 'smoke', title: "Don't smoke", polarity: 'negative', ...over });
+    makeTask({ id: 'smoke', title: "Don't smoke", polarity: 'negative', recurrenceType: 'daily', ...over });
 
   const seed = (...tasks: Task[]) => useTaskStore.setState({ tasks });
   const get = (id = 'smoke') => useTaskStore.getState().tasks.find(t => t.id === id)!;
@@ -19354,6 +19354,22 @@ describe('negative habits', () => {
   });
 
   describe('rolloverNegativeStreaks', () => {
+    it('finishes a non-repeating one once the day it was made on has passed, and keeps a repeating one', () => {
+      const made = new Date(2026, 0, 9, 15).toISOString();
+      seed(
+        avoid({ id: 'once', recurrenceType: 'none', createdAt: made, streakCount: 0, streakDate: made }),
+        avoid({ id: 'daily', createdAt: made, streakCount: 0, streakDate: made }),
+      );
+      useTaskStore.getState().rolloverNegativeStreaks();
+      expect(get('once').completed).toBe(true);
+      expect(get('once').completedAt).toBe(new Date(2026, 0, 10).toISOString());
+      expect(get('daily').completed).toBe(false);
+      // Finished rows are not credited again.
+      const finished = get('once');
+      useTaskStore.getState().rolloverNegativeStreaks();
+      expect(get('once')).toEqual(finished);
+    });
+
     it('credits the clean days that have gone by', () => {
       seed(avoid({ streakCount: 1, streakDate: new Date(2026, 0, 5).toISOString() }));
       useTaskStore.getState().rolloverNegativeStreaks();
@@ -19428,12 +19444,13 @@ describe('negative habits', () => {
         expect(new Date(get().dueDate!)).toEqual(new Date(2026, 0, 10, 0, 0, 0));
       });
 
-      it('leaves a one-off habit alone', () => {
+      it('finishes a one-off habit on the date it named instead of moving it', () => {
         jest.setSystemTime(new Date(2026, 0, 10, 9, 0, 0));
         const due = new Date(2026, 0, 2, 9, 0, 0).toISOString();
-        seed(avoid({ dueDate: due }));
+        seed(avoid({ recurrenceType: 'none', dueDate: due }));
         useTaskStore.getState().rolloverNegativeStreaks();
         expect(get().dueDate).toBe(due);
+        expect(get().completed).toBe(true);
       });
     });
   });
