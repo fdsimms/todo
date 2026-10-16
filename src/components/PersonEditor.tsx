@@ -280,11 +280,12 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
             // saved by Done and can be undone by editing it back.
             onPick={draft => {
               const patch = fillFromContactPatch(
-                { phoneNumber: phoneNumber.trim() || null, email: email.trim() || null, birthdayMonth, birthdayDay, birthYear },
+                { phoneNumber: phoneNumber.trim() || null, email: email.trim() || null, birthdayMonth, birthdayDay, birthYear, address: address.trim() || null },
                 draft
               );
               if (patch.phoneNumber) setPhoneNumber(formatPhoneInput(patch.phoneNumber));
               if (patch.email) setEmail(patch.email);
+              if (patch.address) setAddress(patch.address);
               if (patch.birthdayMonth != null && patch.birthdayDay != null) {
                 setBirthdayMonth(patch.birthdayMonth);
                 setBirthdayDay(patch.birthdayDay);
@@ -615,7 +616,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
           variant="neutral"
           surface="page"
           onPress={() => setShowContactPicker(true)}
-          accessibilityLabel="Fill phone, email and birthday from Contacts"
+          accessibilityLabel="Fill phone, email, address and birthday from Contacts"
         />
       </View>
       <Text style={styles.sectionFooter}>

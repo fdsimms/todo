@@ -144,7 +144,7 @@ describe('searchContacts', () => {
       email: 'd@example.com',
       birthdayMonth: 3,
       birthdayDay: 14,
-      birthYear: 1992,
+      birthYear: 1992, address: null,
     }]);
   });
 
@@ -234,7 +234,7 @@ describe('fetchLimitedContacts', () => {
       email: null,
       birthdayMonth: null,
       birthdayDay: null,
-      birthYear: null,
+      birthYear: null, address: null,
     }]);
   });
 
@@ -257,6 +257,14 @@ describe('toCandidate', () => {
     } as Partial<ExistingContact>))!;
     expect(c.phoneNumber).toBe('555 0148');
     expect(c.email).toBe('d@example.com');
+  });
+
+  it('reads the first postal address as lines', () => {
+    const c = toCandidate(contact({
+      addresses: [{ street: '214 Elm St', city: 'Austin', region: 'TX', postalCode: '78701' }],
+    } as Partial<ExistingContact>))!;
+    expect(c.address).toBe('214 Elm St\nAustin, TX 78701');
+    expect(toCandidate(contact())!.address).toBeNull();
   });
 
   it('is null for a contact with no name, or no id', () => {

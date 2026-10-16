@@ -167,7 +167,7 @@ export function PeopleScreen() {
   // somebody up, and no single past-tense sentence fits it.
   const reachPerson = useCallback((personId: string, kind: PersonContactKind, url: string) => {
     haptics.tap();
-    if (kind !== 'link') notePendingReachOut(personId, kind);
+    if (kind === 'call' || kind === 'text' || kind === 'email') notePendingReachOut(personId, kind);
     // No canOpenURL check, the same call PersonDetailScreen makes.
     Linking.openURL(url).catch(() => {});
   }, [notePendingReachOut]);
@@ -485,6 +485,7 @@ export function PeopleScreen() {
             birthdayMonth: draft.birthdayMonth,
             birthdayDay: draft.birthdayDay,
             birthYear: draft.birthYear,
+            address: draft.address,
           });
         }}
         onClose={() => setContactPickerVisible(false)}
@@ -554,9 +555,10 @@ const PersonRow = React.memo(function PersonRow({
   const toggleSelect = () => onToggleSelect(person.id);
   // Only the ones this person has details for, and none while selecting, when
   // the row's job is being picked rather than reached.
+  const mapsApp = useSettingsStore(s => s.mapsApp);
   const contactActions = useMemo(
-    () => (selectionMode ? [] : personContactActions(person)),
-    [person, selectionMode],
+    () => (selectionMode ? [] : personContactActions(person, mapsApp)),
+    [person, selectionMode, mapsApp],
   );
   const spokenMeta = birthdayLabel ? `Birthday ${birthdayLabel}` : null;
   // Shared by the swipe and the iPhone Mirroring button.
