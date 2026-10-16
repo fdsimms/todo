@@ -2304,7 +2304,8 @@ interface TaskStore extends UndoHistoryActions {
   bulkTogglePin: (ids: string[]) => void;
   bulkDefer: (ids: string[], until: Date) => void;
   bulkSetWhen: (ids: string[], date: Date | null, timeSegments: TimeOfDay[], options?: { restartSchedules?: boolean; scope?: 'occurrence' | 'series' }) => void;
-  bulkSetCategory: (ids: string[], category: string | null) => void;
+  /** `scope` is the answer to confirmBulkCategoryScope; it only matters to repeating tasks and dated series. */
+  bulkSetCategory: (ids: string[], category: string | null, options?: { scope?: 'occurrence' | 'series' }) => void;
   bulkAddTags: (ids: string[], tags: string[]) => void;
   addTag: (tag: string) => void;
   deleteTag: (tag: string) => void;
@@ -10206,8 +10207,21 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     }
   },
 
-  bulkSetCategory(ids, category) {
+  bulkSetCategory(ids, category, options) {
     if (ids.length === 0) return;
+    // A repeating task or a dated series goes through updateTask, which owns
+    // the scope rules ('occurrence' leaves the repeats after it on the old
+    // category, 'series' also fans out to a series' later dates). The raw
+    // write below has neither, so it is only for rows with nothing after them.
+    const scopedIds = get().tasks
+      .filter(t => ids.includes(t.id) && (t.recurrenceType !== 'none' || !!t.seriesId))
+      .map(t => t.id);
+    if (scopedIds.length > 0) {
+      const scope = options?.scope === 'occurrence' ? { scope: 'occurrence' as const } : undefined;
+      scopedIds.forEach(id => get().updateTask(id, { category }, scope));
+      ids = ids.filter(id => !scopedIds.includes(id));
+      if (ids.length === 0) return;
+    }
     // Same rule as updateTask's transitionedIntoNew, which this path doesn't
     // go through: the move itself must not turn a task "new". See the comment
     // there for why a suppressed category leaves a stale seenAt behind.
