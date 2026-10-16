@@ -372,7 +372,7 @@ export function LogMealPrompt() {
                 {!shown.asked && (
                   <View style={styles.quietGroup}>
                     <TouchableOpacity
-                      style={[styles.quietLink, styles.quietLinkTight]}
+                      style={styles.quietLink}
                       activeOpacity={interaction.activeOpacity}
                       onPress={handleStopAsking}
                       accessibilityRole="button"
@@ -381,7 +381,7 @@ export function LogMealPrompt() {
                     >
                       <Text style={styles.quietLinkText}>Stop asking after meals</Text>
                     </TouchableOpacity>
-                    <Text style={[styles.hint, styles.hintCentered]}>
+                    <Text style={[styles.hint, styles.hintCentered, styles.hintDim]}>
                       Turn it back on in Settings, under Groceries & meals.
                     </Text>
                   </View>
@@ -436,6 +436,7 @@ function makeStyles(colors: Colors) {
     weightUnit: { color: colors.textSecondary, fontSize: font.sm },
     hint: { color: colors.textSecondary, fontSize: font.xs, lineHeight: 16 },
     hintCentered: { textAlign: 'center' },
+    hintDim: { color: colors.textTertiary },
     actions: { marginTop: spacing.md, gap: spacing.sm },
     buttonRow: { flexDirection: 'row', gap: spacing.sm },
     button: {
@@ -451,10 +452,17 @@ function makeStyles(colors: Colors) {
     buttonNeutral: { backgroundColor: colors.bgTertiary },
     buttonNeutralText: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium },
     buttonDisabled: { opacity: 0.4 },
-    quietLinks: { alignItems: 'center', marginTop: spacing.xs },
-    quietGroup: { alignItems: 'center' },
-    quietLinkTight: { paddingBottom: spacing.xxs },
-    quietLink: { paddingVertical: spacing.sm, paddingHorizontal: spacing.md },
-    quietLinkText: { color: colors.textSecondary, fontSize: font.sm },
+    quietLinks: { marginTop: spacing.xs, gap: spacing.sm },
+    quietGroup: { gap: spacing.xsm },
+    quietLink: {
+      minHeight: 40,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: radius.md,
+      borderWidth: border.sm,
+      borderColor: colors.controlBorder,
+      paddingHorizontal: spacing.md,
+    },
+    quietLinkText: { color: colors.text, fontSize: font.sm },
   });
 }
