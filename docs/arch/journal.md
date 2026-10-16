@@ -130,7 +130,7 @@ the rest, so search, sync, export and Claude's journal tools all see the words.
   and the words, as it does for every other style.
 - **Its words are read for bold and italics too**, and every span of one spoiler shares a `spoiler`
   number so they open together.
-- **Not a lock.** Search, the word count and exports include the words, and the MCP server returns them.
+- **Not a lock.** Search, the word count and exports include the words, and the MCP server returns them (its instructions tell Claude not to quote one back unprompted).
   It stops a glance at the screen, not a reader.
 
 ## The formatting bar
