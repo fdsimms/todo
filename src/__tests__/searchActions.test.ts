@@ -356,7 +356,7 @@ describe('searchActions: pantry', () => {
   });
 
   it('is described by the answer the line named', () => {
-    const ctx: DescribeContext = { medicationLogs: [], medicationSettings: {}, waterUnit: 'ml', waterTodayMl: 0, now: new Date('2026-10-05T12:00') };
+    const ctx: DescribeContext = { medicationLogs: [], medicationSettings: {}, waterUnit: 'ml', waterTodayMl: 0, waterTargetMl: undefined, now: new Date('2026-10-05T12:00') };
     expect(describeSearchAction(pantry('out of milk')!, ctx)).toMatchObject({ title: 'Mark Milk as out', meta: [] });
     expect(describeSearchAction(pantry('low on milk')!, ctx)).toMatchObject({ title: 'Mark Milk as running low' });
   });
