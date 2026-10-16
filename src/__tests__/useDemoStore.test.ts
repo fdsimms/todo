@@ -2808,6 +2808,10 @@ describe('demo seed — people', () => {
   });
 
   it('seeds foods with a processing group, so Stats has a share to show', () => {
+    // Loads its own window: `windowEntries` is empty until a test does, and CI
+    // runs the suite randomized, so an earlier test can't be relied on to have.
+    const window = cookingWindow(getLogicalToday(), 30);
+    useFoodLogStore.getState().loadWindow(window.startKey, window.endKey);
     const entries = useFoodLogStore.getState().windowEntries;
     const groups = new Set(entries.map(e => e.nutrition.novaGroup).filter(Boolean));
     expect(groups.has(4)).toBe(true);
