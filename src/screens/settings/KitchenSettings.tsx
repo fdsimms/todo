@@ -15,6 +15,8 @@ import { MAX_HOUSEHOLD_SERVINGS } from '../../utils/recipeScale';
 import { NutritionTargetsSheet } from '../../components/NutritionTargetsSheet';
 import { targetedNutrients } from '../../utils/nutritionTargets';
 import { StandingSwapsSheet } from '../../components/StandingSwapsSheet';
+import { CookwareSheet } from '../../components/CookwareSheet';
+import { useCookwareStore } from '../../store/useCookwareStore';
 import { standingSwaps } from '../../utils/standingSwaps';
 import { makeSettingsStyles } from './settingsStyles';
 import { haptics } from '../../utils/haptics';
@@ -83,6 +85,8 @@ export function KitchenSettings() {
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
   const [standingSwapsVisible, setStandingSwapsVisible] = useState(false);
+  const cookwareCount = useCookwareStore(s => s.cookware.length);
+  const [cookwareVisible, setCookwareVisible] = useState(false);
 
   return (
     <>
@@ -341,6 +345,24 @@ export function KitchenSettings() {
       </SettingsSection>
       )}
 
+      {!simpleMode && (
+      <SettingsSection
+        label="Cookware"
+        footer="Pots, pans, lids and tubs and what each weighs empty. Weigh a dish with its pot and the app takes the pot's weight off."
+      >
+        <SettingsRow
+          entryId="cookware"
+          icon="restaurant-outline"
+          label="Cookware weights"
+          hint={cookwareCount > 0 ? 'Empty weights saved for weighing a dish with its pot' : 'None saved yet'}
+          value={cookwareCount > 0 ? String(cookwareCount) : undefined}
+          chevron
+          onPress={() => { haptics.tap(); setCookwareVisible(true); }}
+        />
+      </SettingsSection>
+      )}
+
+      <CookwareSheet visible={cookwareVisible} onClose={() => setCookwareVisible(false)} />
       <StandingSwapsSheet
         visible={standingSwapsVisible}
         onClose={() => setStandingSwapsVisible(false)}

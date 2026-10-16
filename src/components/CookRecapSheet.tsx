@@ -26,6 +26,8 @@ import { convertQuantity, showContainerCount } from '../utils/unitConvert';
 import type { ClassifiedIngredient } from '../utils/mealPlanGroceries';
 import { RECIPE_VOTE_LABELS, type RecipeVote } from '../types';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
+import { CookwareWeighIn } from './CookwareWeighIn';
+import { useWeighIn } from '../hooks/useWeighIn';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
@@ -263,6 +265,7 @@ export function CookRecapSheet({
   const [ticked, setTicked] = useState<Set<string>>(new Set());
   const [weightText, setWeightText] = useState('');
   const weightTextWidth = useMeasuredTextWidth();
+  const weighIn = useWeighIn();
   // Which restock rows are queued to add. Starts empty like `ticked` above:
   // the app only knows it has no record of the item, not that it ran out.
   const [restockTicked, setRestockTicked] = useState<Set<string>>(new Set());
@@ -273,6 +276,7 @@ export function CookRecapSheet({
     if (visible) {
       setTicked(new Set());
       setWeightText('');
+      weighIn.clear();
       setRestockTicked(new Set());
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -337,11 +341,24 @@ export function CookRecapSheet({
    */
   const commitWeight = () => {
     if (!cookedWeight) return;
-    const grams = Number(weightText.trim().replace(',', '.'));
-    if (!Number.isFinite(grams) || grams <= 0) return;
-    cookedWeight.onSet(grams);
+    // The food's weight once any picked pot is taken off. A reading lighter
+    // than the pot is left in the field with its reason showing (see
+    // CookwareWeighIn) rather than saved as a tiny dish.
+    const net = weightText.trim() ? weighIn.convert(weightText) : null;
+    if (!net || !net.ok) return;
+    cookedWeight.onSet(net.grams);
     setWeightText('');
+    weighIn.clear();
     haptics.success();
+  };
+
+  // The scrim and the swipe-down used to save a typed weight only because
+  // leaving the field committed it. With cookware saved the blur no longer
+  // does (see the field's onBlur), so these two commit it themselves; Skip is
+  // the explicit way to throw it away.
+  const closeKeepingWeight = () => {
+    commitWeight();
+    dismiss();
   };
 
   const handleDone = () => {
@@ -375,13 +392,13 @@ export function CookRecapSheet({
   const showBuy = restockRows.length > 0;
 
   return (
-    <SheetModal visible={visible} animationType="none" transparent onRequestClose={dismiss}>
+    <SheetModal visible={visible} animationType="none" transparent onRequestClose={closeKeepingWeight}>
       <NumberPadAccessory />
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]} pointerEvents="none">
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
       </Animated.View>
-      <SheetScrim onPress={dismiss} />
+      <SheetScrim onPress={closeKeepingWeight} />
 
       <View style={[styles.centeredContainer, { paddingBottom: spacing.xl + keyboard.height }]} pointerEvents="box-none">
         <Animated.View
@@ -452,6 +469,9 @@ export function CookRecapSheet({
                   </Text>
                 )}
                 <View style={styles.card}>
+                  <View style={styles.weighInWrap}>
+                    <CookwareWeighIn weighIn={weighIn} scaleText={weightText} />
+                  </View>
                   <View style={styles.weightRow}>
                     <Ionicons name="scale-outline" size={18} color={colors.textSecondary} />
                     {/* Invisible twin of the input below, measured so the input
@@ -468,13 +488,15 @@ export function CookRecapSheet({
                       style={[styles.weightInput, { width: weightTextWidth.width || undefined }]}
                       value={weightText}
                       onChangeText={setWeightText}
-                      onBlur={commitWeight}
+                      // A reading typed before its pot is picked would be saved
+                      // as the dish; with cookware to pick, Done saves it instead.
+                      onBlur={weighIn.hasCookware ? undefined : commitWeight}
                       keyboardType="decimal-pad"
                       inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
                       placeholder="e.g. 1450"
                       placeholderTextColor={colors.textTertiary}
                       maxLength={6}
-                      accessibilityLabel="Weight of the finished dish in grams"
+                      accessibilityLabel={weighIn.picked.length > 0 ? 'Weight on the scale in grams' : 'Weight of the finished dish in grams'}
                     />
                     <Text style={styles.weightUnit}>g</Text>
                   </View>
@@ -721,6 +743,7 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
   },
   choiceLabel: { flexGrow: 1, flexShrink: 0, color: colors.text, fontSize: font.md },
   // The same row geometry as choiceRow above, with a field where its label is.
+  weighInWrap: { paddingHorizontal: spacing.md, paddingTop: spacing.smd, paddingBottom: spacing.xs },
   weightRow: {
     flexDirection: 'row',
     alignItems: 'center',

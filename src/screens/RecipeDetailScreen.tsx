@@ -123,6 +123,8 @@ import { applyStandingSwap, describeStandingSwap, standingSwapMap } from '../uti
 import { annotateSteps, stepIngredientLines, type StepSegment } from '../utils/stepIngredients';
 import { describeRecipeCost, estimateRecipeCost } from '../utils/recipeCost';
 import { describeCookedWeight } from '../utils/mealLog';
+import { CookwareWeighIn } from '../components/CookwareWeighIn';
+import { useWeighIn } from '../hooks/useWeighIn';
 import { plannedEntryForRecipe } from '../utils/foodLog';
 import {
   describeNutritionCoverage,
@@ -550,6 +552,7 @@ export function RecipeDetailScreen() {
   // (recipe.cookedWeightG), never the scaled weightLine text below.
   const [cookedWeightOpen, setCookedWeightOpen] = useState(false);
   const [cookedWeightDraft, setCookedWeightDraft] = useState('');
+  const weighIn = useWeighIn();
   const cookedWeightWidth = useMeasuredTextWidth();
   // The banner a multi-line paste leaves behind, or null once dismissed or
   // acted on. Session-only and deliberately not persisted: it reports on one
@@ -890,11 +893,22 @@ export function RecipeDetailScreen() {
     haptics.tap();
     animateLayout();
     setCookedWeightDraft(recipe.cookedWeightG === null ? '' : String(recipe.cookedWeightG));
+    weighIn.clear();
     setCookedWeightOpen(true);
   };
 
   const commitCookedWeight = () => {
     const trimmed = cookedWeightDraft.trim();
+    if (weighIn.picked.length > 0) {
+      // What the scale read, pot and all. A reading lighter than the pot is
+      // left in the field with its reason showing rather than saved.
+      const net = trimmed ? weighIn.convert(trimmed) : null;
+      if (!net || !net.ok) return;
+      setCookedWeight(recipe.id, net.grams);
+      setCookedWeightDraft(String(net.grams));
+      weighIn.clear();
+      return;
+    }
     setCookedWeight(recipe.id, trimmed ? Number(trimmed.replace(',', '.')) : null);
   };
 
@@ -902,6 +916,7 @@ export function RecipeDetailScreen() {
     commitCookedWeight();
     animateLayout();
     setCookedWeightOpen(false);
+    weighIn.clear();
   };
 
   const addToList = () => {
@@ -2213,6 +2228,11 @@ export function RecipeDetailScreen() {
           </TouchableOpacity>
         )}
         {cookedWeightOpen && (
+          <View style={styles.weighInWrap}>
+            <CookwareWeighIn weighIn={weighIn} scaleText={cookedWeightDraft} surface="page" />
+          </View>
+        )}
+        {cookedWeightOpen && (
           <View style={styles.weightEditRow}>
             {/* Invisible twin of the input below, measured so the input can be
                 sized to hug what's typed rather than stretching the row and
@@ -2227,7 +2247,9 @@ export function RecipeDetailScreen() {
               style={[styles.weightEditInput, { width: cookedWeightWidth.width || undefined }]}
               value={cookedWeightDraft}
               onChangeText={setCookedWeightDraft}
-              onBlur={commitCookedWeight}
+              // A reading typed before its pot is picked would be saved as the
+              // dish; with cookware to pick, leaving the row saves it instead.
+              onBlur={weighIn.hasCookware ? undefined : commitCookedWeight}
               onSubmitEditing={closeCookedWeight}
               keyboardType="decimal-pad"
               inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
@@ -2236,7 +2258,7 @@ export function RecipeDetailScreen() {
               maxLength={6}
               returnKeyType="done"
               autoFocus
-              accessibilityLabel="Cooked weight in grams"
+              accessibilityLabel={weighIn.picked.length > 0 ? 'Weight on the scale in grams' : 'Cooked weight in grams'}
             />
             <Text style={styles.weightEditUnit}>g</Text>
           </View>
@@ -3417,6 +3439,7 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   },
   // The cooked-weight row's own inline field, open only while cookedWeightOpen
   // is true — same shape CookRecapSheet's weight row uses.
+  weighInWrap: { paddingHorizontal: spacing.xs, paddingVertical: spacing.sm },
   weightEditRow: {
     flexDirection: 'row',
     alignItems: 'center',

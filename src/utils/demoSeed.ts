@@ -18,6 +18,7 @@ import { useSavedMealsStore } from '../store/useSavedMealsStore';
 import { usePendingEstimateStore } from '../store/usePendingEstimateStore';
 import { useMoodStore } from '../store/useMoodStore';
 import { useMilestoneStore } from '../store/useMilestoneStore';
+import { useCookwareStore } from '../store/useCookwareStore';
 import { useMeterReadingStore } from '../store/useMeterReadingStore';
 import { useJournalStore } from '../store/useJournalStore';
 import { useMedicationStore } from '../store/useMedicationStore';
@@ -2321,6 +2322,7 @@ export function seedDemoData(): void {
   // the pass would show the feature only to somebody who had already found it.
   seedMoodTasks(today);
   seedMilestone(today);
+  seedCookware();
   seedMeterTask(today);
   seedJournal(today);
   seedAsNeededDoses(today);
@@ -3217,6 +3219,19 @@ function seedMeterTask(today: Date): void {
     meterName: 'Car', meterUnit: 'miles', meterEvery: 5000, meterDueAt: 40500, meterLimitMonths: 6,
   });
   applyMeterHolds();
+}
+
+/**
+ * A few pots with their empty weights, so the weight field on a recipe offers
+ * "Dutch oven" rather than only a link to add one. Through `addCookware` like
+ * everything else here.
+ */
+function seedCookware(): void {
+  const { addCookware } = useCookwareStore.getState();
+  addCookware('Dutch oven', 4310);
+  addCookware('Dutch oven lid', 1150);
+  addCookware('Sauté pan', 1820);
+  addCookware('Glass tub', 310);
 }
 
 function seedMilestone(today: Date): void {

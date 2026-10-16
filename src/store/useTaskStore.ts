@@ -154,6 +154,7 @@ import { usePendingRecipeEstimateStore } from './usePendingRecipeEstimateStore';
 import { useMoodStore } from './useMoodStore';
 import { useJournalStore } from './useJournalStore';
 import { useMilestoneStore } from './useMilestoneStore';
+import { useCookwareStore } from './useCookwareStore';
 import { useCopyFlagStore } from './useCopyFlagStore';
 import { useMeterReadingStore } from './useMeterReadingStore';
 import { useMedicationStore } from './useMedicationStore';
@@ -3056,6 +3057,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // milestones are read against it, so a device swap that left them out of
     // step would date a before/after split against the wrong person's phone.
     useMilestoneStore.getState().initialize();
+    // Pot weights are read while typing a dish's weight, so they swap with the
+    // database the recipes came from.
+    useCookwareStore.getState().initialize();
     // Temporary dev tooling (see CopyFlag): on the fan-out so a demo session
     // doesn't show real flags, and so a flag the MCP resolved shows up after a pull.
     useCopyFlagStore.getState().initialize();

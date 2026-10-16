@@ -95,6 +95,7 @@ import { useMealPlanStore } from '../store/useMealPlanStore';
 import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { useMoodStore } from '../store/useMoodStore';
 import { useMilestoneStore } from '../store/useMilestoneStore';
+import { useCookwareStore } from '../store/useCookwareStore';
 import { useJournalStore } from '../store/useJournalStore';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { frequencyTrend, medicationFor, milestoneOffers } from '../utils/medicationLog';
@@ -2388,6 +2389,12 @@ describe('demo seed — people', () => {
     const logs = useMedicationStore.getState().logs;
     const trend = frequencyTrend(logs, 'ibuprofen', dayKeyOf(new Date()), 14);
     expect(trend).not.toBeNull();
+  });
+
+  it('seeds cookware with empty weights so weighing a dish with its pot has something to pick', () => {
+    const cookware = useCookwareStore.getState().cookware;
+    expect(cookware.length).toBeGreaterThan(0);
+    expect(cookware.every(c => c.weightG > 0)).toBe(true);
   });
 
   it('seeds a milestone with enough days on each side for the before/after card to draw', () => {

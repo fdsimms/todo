@@ -47,6 +47,8 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import { EditorSheet } from './EditorSheet';
 import { TextField } from './TextField';
+import { CookwareWeighIn } from './CookwareWeighIn';
+import { useWeighIn } from '../hooks/useWeighIn';
 import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
@@ -126,6 +128,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
   const [servingsOpen, setServingsOpen] = useState(false);
   const [yieldOpen, setYieldOpen] = useState(false);
   const [cookedWeightOpen, setCookedWeightOpen] = useState(false);
+  const weighIn = useWeighIn();
   const [leftoverKeepOpen, setLeftoverKeepOpen] = useState(false);
   const [estimatedMinutes, setEstimatedMinutesDraft] = useState<number | null>(null);
   const [prepMinutes, setPrepMinutesDraft] = useState<number | null>(null);
@@ -189,6 +192,17 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
    * puts the text back in a box that looks exactly like it did before the
    * return key was pressed, which reads as nothing having happened.
    */
+  // With a pot picked the draft is what the scale read, so turn it into the
+  // food's weight before it is shown or saved. A reading lighter than the pot
+  // stays in the field with the reason showing under the pots.
+  const settleCookedWeight = () => {
+    if (weighIn.picked.length === 0) return;
+    const net = cookedWeight.trim() ? weighIn.convert(cookedWeight) : null;
+    if (!net || !net.ok) return;
+    setCookedWeightDraft(String(net.grams));
+    weighIn.clear();
+  };
+
   const confirmField = (setOpen: (open: boolean) => void) => {
     Keyboard.dismiss();
     animateLayout();
@@ -232,6 +246,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
     setServingsOpen(false);
     setYieldOpen(false);
     setCookedWeightOpen(false);
+    weighIn.clear();
     setLeftoverKeepOpen(false);
     setEstimatedMinutesDraft(recipe.estimatedMinutes);
     setPrepMinutesDraft(recipe.prepMinutes);
@@ -297,7 +312,14 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
     setRecipeYield(recipe.id, recipeYield);
     // Cleared by an empty field, which is how a weight is taken back off a
     // recipe; the store clamps whatever survives parsing.
-    setCookedWeight(recipe.id, cookedWeight.trim() ? Number(cookedWeight.trim().replace(',', '.')) : null);
+    const weighed = weighIn.picked.length > 0 && cookedWeight.trim() ? weighIn.convert(cookedWeight) : null;
+    setCookedWeight(
+      recipe.id,
+      weighIn.picked.length > 0
+        // A refused reading keeps what the recipe already had.
+        ? (weighed?.ok ? weighed.grams : recipe.cookedWeightG)
+        : cookedWeight.trim() ? Number(cookedWeight.trim().replace(',', '.')) : null,
+    );
     setLeftoverKeepDays(recipe.id, leftoverKeepDays);
     setEstimatedMinutes(recipe.id, estimatedMinutes);
     setPrepMinutes(recipe.id, prepMinutes);
@@ -462,24 +484,27 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
             : (cookedWeight.trim() ? `${cookedWeight.trim()} g` : undefined)}
           hint="What the whole finished dish weighs, as written. You can then log a plate by weight instead of servings."
           expanded={cookedWeightOpen}
-          onPress={() => { animateLayout(); setCookedWeightOpen(v => !v); }}
+          onPress={() => { if (cookedWeightOpen) settleCookedWeight(); animateLayout(); setCookedWeightOpen(v => !v); }}
           onClear={cookedWeight.trim()
             ? () => { setCookedWeightDraft(''); setCookedWeightOpen(false); }
             : undefined}
         />
         {cookedWeightOpen && (
+          <CookwareWeighIn weighIn={weighIn} scaleText={cookedWeight} surface="page" />
+        )}
+        {cookedWeightOpen && (
           <TextField
             style={styles.urlInput}
             value={cookedWeight}
             onChangeText={setCookedWeightDraft}
-            onSubmitEditing={() => confirmField(setCookedWeightOpen)}
+            onSubmitEditing={() => { settleCookedWeight(); confirmField(setCookedWeightOpen); }}
             keyboardType="decimal-pad"
             inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
             placeholder="e.g. 1450 (grams)"
             placeholderTextColor={colors.textTertiary}
             maxLength={6}
             returnKeyType="done"
-            accessibilityLabel="Cooked weight in grams"
+            accessibilityLabel={weighIn.picked.length > 0 ? 'Weight on the scale in grams' : 'Cooked weight in grams'}
           />
         )}
         <EditorRow
