@@ -28,6 +28,7 @@ import {
   joinNames,
   type ShopCoverage,
 } from '../utils/shoppingTrip';
+import { confirmDiscard } from '../utils/confirmDiscard';
 import type { Shop } from '../types';
 
 interface Props {
@@ -271,14 +272,7 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
   const cancelCorrection = () => {
     const dirty = JSON.stringify([...ticked].sort()) !== JSON.stringify([...correctionBaseline].sort());
     if (!dirty) { setCorrecting(null); return; }
-    Alert.alert(
-      'Discard changes?',
-      'You have unsaved changes. Are you sure you want to discard them?',
-      [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: () => setCorrecting(null) },
-      ],
-    );
+    confirmDiscard(() => setCorrecting(null));
   };
 
   // The one store a correction could be about. With several picked there's no
@@ -311,14 +305,7 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
     const dirty = JSON.stringify([...selected].sort())
       !== JSON.stringify([...selectedBaselineRef.current].sort());
     if (!dirty) { onClose(); return; }
-    Alert.alert(
-      'Discard changes?',
-      'You have unsaved changes. Are you sure you want to discard them?',
-      [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: onClose },
-      ],
-    );
+    confirmDiscard(onClose);
   };
 
   if (correctingShop) {

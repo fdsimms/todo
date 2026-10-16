@@ -6,7 +6,6 @@
 //   makeStyles              styles, at the bottom
 import React, { useRef, useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
   Keyboard,
   View,
   Text,
@@ -69,6 +68,7 @@ import {
   personIdsToAnswer,
   personIdsForAnswers,
 } from '../utils/templateQuestions';
+import { confirmDiscard } from '../utils/confirmDiscard';
 import { WhenPicker } from './WhenPicker';
 import { EditorRow } from './EditorRow';
 import { PillGroup } from './PillGroup';
@@ -318,14 +318,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
     const go = () => dismiss(() => navigation.navigate('TemplateDetail', { templateId: template.id }));
     if (!answeredAnything) { go(); return; }
     // Leaving drops the run name, answers and blanks typed so far.
-    Alert.alert(
-      'Discard changes?',
-      'You have unsaved changes. Are you sure you want to discard them?',
-      [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: go },
-      ],
-    );
+    confirmDiscard(go);
   };
 
   // Slide the sheet away before showing the calendar — rendering both at once

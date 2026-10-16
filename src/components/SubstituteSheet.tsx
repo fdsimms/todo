@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Keyboard,
   ScrollView,
@@ -31,6 +30,7 @@ import type { SuggestedSubstitute } from '../utils/substituteSuggestions';
 import { suggestSubstitutes, describeAIError } from '../services/aiSuggestions';
 import { GROCERY_NAME_MAX_LENGTH } from '../types';
 import { haptics } from '../utils/haptics';
+import { confirmDiscard } from '../utils/confirmDiscard';
 import { EmptyState } from './EmptyState';
 import { InlineAction } from './InlineAction';
 import { SheetHeader } from './SheetHeader';
@@ -384,14 +384,7 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
   };
   const handleCancel = () => {
     if (!isDirty()) { Keyboard.dismiss(); onClose(); return; }
-    Alert.alert(
-      'Discard changes?',
-      'You have unsaved changes. Are you sure you want to discard them?',
-      [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: () => { Keyboard.dismiss(); onClose(); } },
-      ],
-    );
+    confirmDiscard(() => { Keyboard.dismiss(); onClose(); });
   };
 
   // Back out of a substitute opened from the list above, rather than out of
@@ -408,14 +401,7 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
       setPickedId(null);
     };
     if (!isDirty()) { back(); return; }
-    Alert.alert(
-      'Discard changes?',
-      'You have unsaved changes. Are you sure you want to discard them?',
-      [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: back },
-      ],
-    );
+    confirmDiscard(back);
   };
 
   // "Use instead", on a substitute already recorded: the answer to the

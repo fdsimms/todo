@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SheetModal } from './SheetModal';
 import { SheetHeader } from './SheetHeader';
@@ -13,6 +13,7 @@ import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, iconSize, radius, spacing, type Colors } from '../theme';
 import { savedMealCalories } from '../utils/foodLog';
 import { haptics } from '../utils/haptics';
+import { confirmDiscard } from '../utils/confirmDiscard';
 import type { MealSlot, SavedMealItem } from '../types';
 
 interface Props {
@@ -67,14 +68,7 @@ export function NewSavedMealSheet({ visible, slot, at, onSave, onClose }: Props)
 
   const handleCancel = () => {
     if (!trimmed && items.length === 0) { onClose(); return; }
-    Alert.alert(
-      'Discard changes?',
-      'You have unsaved changes. Are you sure you want to discard them?',
-      [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: onClose },
-      ],
-    );
+    confirmDiscard(onClose);
   };
 
   return (

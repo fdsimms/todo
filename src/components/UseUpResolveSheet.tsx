@@ -135,6 +135,7 @@ export function UseUpResolveSheet() {
       onReopen={() => pendingLeftover && reopenLeftover(pendingLeftover.id)}
       onDelete={() => pendingLeftover && deleteLeftover(pendingLeftover.id)}
       onClose={() => setPendingUseUpLeftover(null)}
+      actionsOnly
     />
   );
 }

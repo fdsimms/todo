@@ -43,6 +43,7 @@ import { InlineAction } from './InlineAction';
 import { EmptyState } from './EmptyState';
 import { SubstituteSheet } from './SubstituteSheet';
 import { haptics } from '../utils/haptics';
+import { confirmDiscard } from '../utils/confirmDiscard';
 import { SheetUndoBar } from './SheetUndoBar';
 import { useLingering } from '../hooks/useLingering';
 
@@ -441,14 +442,7 @@ export function RecipeToListSheet({
       || scale !== openedScaleRef.current
       || JSON.stringify([...ticked].sort()) !== tickedBaselineRef.current;
     if (!dirty) { onClose(); return; }
-    Alert.alert(
-      'Discard changes?',
-      'You have unsaved changes. Are you sure you want to discard them?',
-      [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: onClose },
-      ],
-    );
+    confirmDiscard(onClose);
   };
 
   const handleAdd = () => {

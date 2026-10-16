@@ -94,6 +94,7 @@ import { EstimatePanel, type EstimateLogAction } from './EstimatePanel';
 import type { PendingEstimate } from '../utils/estimateQueue';
 import { useFoodDatabaseSearch } from '../hooks/useFoodDatabaseSearch';
 import type { RankedFood } from '../utils/foodSearchMatch';
+import { confirmDiscard } from '../utils/confirmDiscard';
 import { EstimateAmountSheet } from './EstimateAmountSheet';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
@@ -1464,14 +1465,7 @@ export function FoodLogEntrySheet({
         ? amount.trim() !== pickedAmountRef.current.trim() || answeredExtra
         : !!amount.trim() || estimateOpen || isDescriptionDraft(query);
     if (!dirty) { Keyboard.dismiss(); onClosed(); return; }
-    Alert.alert(
-      'Discard changes?',
-      'You have unsaved changes. Are you sure you want to discard them?',
-      [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: () => { Keyboard.dismiss(); onClosed(); } },
-      ],
-    );
+    confirmDiscard(() => { Keyboard.dismiss(); onClosed(); });
   };
 
   const handleCancel = () => requestClose(onClose);

@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   Keyboard,
   View,
   Text,
@@ -72,6 +71,7 @@ import {
   type GroceryItem,
 } from '../types';
 import type { ReceiptMatchConfidence } from '../utils/receiptMatch';
+import { confirmDiscard } from '../utils/confirmDiscard';
 import { TextField } from './TextField';
 
 /** Matches the shopping list's own checkbox, same as the receipt sheet's. */
@@ -1103,14 +1103,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
   const handleCancel = () => {
     const dirty = rows.length > 0 || manual.trim() !== '';
     if (!dirty) { Keyboard.dismiss(); onClose(); return; }
-    Alert.alert(
-      'Discard changes?',
-      'You have unsaved changes. Are you sure you want to discard them?',
-      [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: () => { Keyboard.dismiss(); onClose(); } },
-      ],
-    );
+    confirmDiscard(() => { Keyboard.dismiss(); onClose(); });
   };
 
   return (

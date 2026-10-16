@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Alert } from 'react-native';
+import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
@@ -29,6 +29,7 @@ import {
   hasGeneratedTaskExtras,
   type TaskSettingsSpec,
 } from '../utils/generatedTaskSettings';
+import { confirmDiscard } from '../utils/confirmDiscard';
 import type { GeneratedKind, GeneratedTaskExtras, TaskFieldDefaults, TimeOfDay } from '../types';
 
 interface Props {
@@ -111,14 +112,7 @@ export function GeneratedTaskSettingsSheet({ visible, kind, spec, generatorLabel
 
   const handleCancel = () => {
     if (!dirty) { onClose(); return; }
-    Alert.alert(
-      'Discard changes?',
-      'You have unsaved changes. Are you sure you want to discard them?',
-      [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: onClose },
-      ],
-    );
+    confirmDiscard(onClose);
   };
 
   const handleSave = () => {

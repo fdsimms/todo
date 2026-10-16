@@ -20,6 +20,7 @@ import { flattenRecipePrepTasks, type ChoiceResolution, type FlatPrepTask } from
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import { haptics } from '../utils/haptics';
+import { confirmDiscard } from '../utils/confirmDiscard';
 
 const CHECKBOX_SIZE = 22;
 
@@ -84,14 +85,7 @@ export function PrepTasksReviewSheet({ visible, recipe, recipesById, resolution,
   // there is to lose — a swipe-down would otherwise drop it with no dialog.
   const handleCancel = () => {
     if (ticked.size === prepTasks.length) { onClose(); return; }
-    Alert.alert(
-      'Discard changes?',
-      'You have unsaved changes. Are you sure you want to discard them?',
-      [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: onClose },
-      ],
-    );
+    confirmDiscard(onClose);
   };
 
   return (

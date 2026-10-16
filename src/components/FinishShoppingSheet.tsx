@@ -36,6 +36,7 @@ import {
 import { resolveShoppingSubstitutes, substitutesFor } from '../utils/itemSubs';
 import { describeShopAisles, isOutOfRange } from '../utils/groceryShops';
 import { featureShown } from '../utils/simpleMode';
+import { confirmDiscard } from '../utils/confirmDiscard';
 import { GROCERY_NAME_MAX_LENGTH, SHOP_NAME_MAX_LENGTH } from '../types';
 import { TextField } from './TextField';
 
@@ -460,14 +461,7 @@ export function FinishShoppingSheet({
       )
       || !sameMembers(frozen, frozenSeedRef.current);
     if (!dirty) { Keyboard.dismiss(); onClose(); return; }
-    Alert.alert(
-      'Discard changes?',
-      'You have unsaved changes. Are you sure you want to discard them?',
-      [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: () => { Keyboard.dismiss(); onClose(); } },
-      ],
-    );
+    confirmDiscard(() => { Keyboard.dismiss(); onClose(); });
   };
 
   const handleFinish = () => {

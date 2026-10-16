@@ -26,6 +26,7 @@ import { canReadTextOnDevice } from '../utils/receiptOcr';
 import { readLabelPhoto } from '../utils/labelOcr';
 import { pickRecipePhoto } from '../utils/recipePhoto';
 import { afterMenuDismissed } from '../utils/sheetModal';
+import { confirmDiscard } from '../utils/confirmDiscard';
 import {
   describeAIError, nutritionLabelPhotoAiAvailable, readLabelPhotoWithAi,
 } from '../services/aiSuggestions';
@@ -209,14 +210,7 @@ export function SupplementPanelSheet({ visible, name, panel, onClose, onSave }: 
 
   const handleCancel = () => {
     if (!supplementFormDirty(form, baseline.current)) { Keyboard.dismiss(); onClose(); return; }
-    Alert.alert(
-      'Discard changes?',
-      'You have unsaved changes. Are you sure you want to discard them?',
-      [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: () => { Keyboard.dismiss(); onClose(); } },
-      ],
-    );
+    confirmDiscard(() => { Keyboard.dismiss(); onClose(); });
   };
 
   return (
