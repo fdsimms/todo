@@ -150,7 +150,7 @@ export function DataResetSettings() {
       }
       await shareBackupFile(uri);
     } catch (e) {
-      Alert.alert('Export failed', e instanceof Error ? e.message : 'Couldn’t write the backup. Try again.');
+      Alert.alert('Couldn’t export', e instanceof Error ? e.message : 'The backup couldn’t be written. Try again.');
     } finally {
       // The share sheet has already copied the file wherever it was going, so
       // the cache copy is done either way.
@@ -190,7 +190,7 @@ export function DataResetSettings() {
                 Alert.alert('Restored', `Your data now matches the backup: ${summarizeBackup(backup)}.${photoNote}`);
               } catch (e) {
                 Alert.alert(
-                  'Restore failed',
+                  'Couldn’t restore',
                   `${e instanceof Error ? e.message : 'Something went wrong.'} Nothing was changed, so your existing data is still there.`
                 );
               }
@@ -199,7 +199,7 @@ export function DataResetSettings() {
         ]
       );
     } catch (e) {
-      Alert.alert('Restore failed', e instanceof Error ? e.message : 'Couldn’t read the file.');
+      Alert.alert('Couldn’t restore', e instanceof Error ? e.message : 'The file couldn’t be read.');
     } finally {
       setBackupBusy(null);
     }

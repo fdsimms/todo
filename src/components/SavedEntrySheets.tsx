@@ -154,14 +154,14 @@ export function SavedPlaceSheet({ visible, subject: liveSubject, places, onSave,
     let next: SavedPlace[];
     if (isNew) {
       if (findSavedPlace(places, name)) {
-        Alert.alert('Name already used', 'Another saved place has that name.');
+        Alert.alert('That name is taken', 'Another saved place has that name.');
         return;
       }
       next = addSavedPlace(places, input);
     } else {
       next = editSavedPlace(places, subject.id, input);
       if (!next.some(p => p.id === subject.id && p.name === name.trim())) {
-        Alert.alert('Name already used', 'Another saved place has that name.');
+        Alert.alert('That name is taken', 'Another saved place has that name.');
         return;
       }
     }
@@ -286,7 +286,7 @@ export function SavedEventSheet({ visible, subject: liveSubject, events, onSave,
       alertMinutes: alert === NO_ALERT ? null : alert,
     }, Date.now());
     if (!next) {
-      Alert.alert('Title already used', 'Another saved event has that title.');
+      Alert.alert('That title is taken', 'Another saved event has that title.');
       return;
     }
     haptics.success();

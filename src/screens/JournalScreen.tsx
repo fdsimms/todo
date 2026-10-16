@@ -256,7 +256,7 @@ function JournalLogContent({ kind }: { kind: JournalKind }) {
     let uri: string | null = null;
     try {
       if (!(await canShare())) {
-        Alert.alert('Sharing unavailable', 'This device cannot open a share sheet.');
+        Alert.alert('Can’t share from this device', 'This device cannot open a share sheet.');
         return;
       }
       const body = chosen === 'markdown'
@@ -265,7 +265,7 @@ function JournalLogContent({ kind }: { kind: JournalKind }) {
       uri = writeExportFile(body, journalExportFileName(kind, new Date(), chosen));
       await (chosen === 'markdown' ? shareMarkdownFile(uri, shareTitle) : shareCsvFile(uri, shareTitle));
     } catch {
-      Alert.alert('Export failed', 'Couldn’t write the file. Try again.');
+      Alert.alert('Couldn’t export', 'The file couldn’t be written. Try again.');
     } finally {
       if (uri) discardBackupFile(uri);
       setSharing(false);

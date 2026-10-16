@@ -152,7 +152,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
 
   const groupNameFailed = (reason: 'full' | 'duplicate' | 'invalid') => {
     Alert.alert(
-      reason === 'full' ? 'Too many groups' : 'Name already used',
+      reason === 'full' ? 'Too many groups' : 'That name is taken',
       reason === 'full' ? 'Delete a group before adding another.' : 'Pick a name no other group has.',
     );
   };

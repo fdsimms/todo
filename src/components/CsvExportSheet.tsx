@@ -97,13 +97,13 @@ export function CsvExportSheet<T>({
     let uri: string | null = null;
     try {
       if (!(await canShare())) {
-        Alert.alert('Sharing unavailable', 'This device cannot open a share sheet.');
+        Alert.alert('Can’t share from this device', 'This device cannot open a share sheet.');
         return;
       }
       uri = writeExportFile(toCsv(selected), fileName(new Date()));
       await shareCsvFile(uri, dialogTitle);
     } catch {
-      Alert.alert('Export failed', 'The file could not be written. Try again.');
+      Alert.alert('Couldn’t export', 'The file couldn’t be written. Try again.');
     } finally {
       if (uri) discardBackupFile(uri);
       setSharing(false);

@@ -353,7 +353,7 @@ export function RecipeDetailScreen() {
               return;
             }
             haptics.error();
-            Alert.alert('Name already used', 'Another group in this recipe already has that name.');
+            Alert.alert('That name is taken', 'Another group in this recipe already has that name.');
           },
         },
       ],

@@ -240,7 +240,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
   // addList refuses a blank or a name already taken, home's included.
   const handleCreateAwayList = (name: string) => {
     const created = addGroceryList(name);
-    if (!created) return 'That name is already taken.';
+    if (!created) return 'That name is taken.';
     setAwayListId(created.id);
     setAwayListOpen(false);
   };
