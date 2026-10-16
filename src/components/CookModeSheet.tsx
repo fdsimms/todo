@@ -58,6 +58,7 @@ import {
   applyChoice, choiceGroupKey, flattenRecipeIngredients, recipeChoiceGroups, type ChoiceGroup,
 } from '../utils/recipeComponents';
 import { ingredientHeadings } from '../utils/recipeSections';
+import { blankFillOf, describeBlankRule, recipeBlanksIn } from '../utils/recipeBlanks';
 import { annotateSteps, stepIngredientLines } from '../utils/stepIngredients';
 import { describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
 import { onHandNameKeys } from '../utils/grocerySuggest';
@@ -248,7 +249,14 @@ export function CookModeSheet({
   // Whether there's anything to gather before the method starts. A recipe
   // with a method but no ingredient lines (rare, but the two are independent
   // fields) has nothing for a mise en place screen to show.
-  const hasIngredients = ingredients.length > 0;
+  // Blanks this cooking hasn't filled (RecipeBlank): a grain bowl's whole
+  // ingredient list can be blanks, and a filled one is already in `ingredients`
+  // as the lines picked for it, so only the open ones need a row of their own.
+  const openBlanks = useMemo(
+    () => recipeBlanksIn(recipe, recipesById).filter(({ blank }) => blankFillOf(overrides, blank.id).length === 0),
+    [recipe, recipesById, overrides],
+  );
+  const hasIngredients = ingredients.length > 0 || openBlanks.length > 0;
 
   // -1 is the mise en place screen, ahead of step 0 — screen state like the
   // step position itself, reset the same way on close.
@@ -564,7 +572,7 @@ export function CookModeSheet({
                 // so "For the sauce" vanished from the one list meant for
                 // gathering things by section.
                 const heading = headings[position];
-                const last = position === ingredients.length - 1;
+                const last = position === ingredients.length - 1 && openBlanks.length === 0;
                 return (
                   <View key={`${flat.recipe.id}:${flat.ingredient.id}`}>
                     {!!heading.parentSection && <Text style={styles.miseHeading}>{heading.parentSection}</Text>}
@@ -598,6 +606,25 @@ export function CookModeSheet({
                           )}
                         </View>
                       )}
+                    </View>
+                  </View>
+                );
+              })}
+              {openBlanks.map(({ blank }, position) => {
+                const detail = [blank.quantity, blank.options.join(', ')].filter(Boolean).join(' · ');
+                return (
+                  <View
+                    key={blank.id}
+                    style={[styles.miseRow, position === openBlanks.length - 1 && styles.miseRowLast]}
+                    accessible
+                    accessibilityLabel={[blank.label, describeBlankRule(blank.max), detail].filter(Boolean).join(', ')}
+                  >
+                    <View style={styles.miseRowText}>
+                      <Text style={styles.miseName}>{blank.label}</Text>
+                      {!!detail && <Text style={styles.misePrep}>{detail}</Text>}
+                    </View>
+                    <View style={styles.miseQtyPill}>
+                      <Text style={styles.miseQtyText} numberOfLines={1}>{describeBlankRule(blank.max)}</Text>
                     </View>
                   </View>
                 );
