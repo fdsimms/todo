@@ -17,7 +17,7 @@ import {
   type SearchActionSources,
   type SearchActionsOutcome,
 } from '../utils/searchActions';
-import { runSearchAction, waterTodayMl, type SearchActionReceipt } from '../utils/searchActionRun';
+import { runSearchAction, waterTargetTodayMl, waterTodayMl, type SearchActionReceipt } from '../utils/searchActionRun';
 
 export interface SearchActionsView extends SearchActionsOutcome {
   /** What each row says, by action key. */
@@ -96,6 +96,7 @@ export function useSearchActions(query: string, active: boolean, limit?: number)
       medicationSettings: medication.settings,
       waterUnit: settings.waterUnit,
       waterTodayMl: outcome.actions.some(a => a.kind === 'water') ? waterTodayMl(now) : 0,
+      waterTargetMl: waterTargetTodayMl(),
       now,
     };
     return {

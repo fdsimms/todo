@@ -5,7 +5,9 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useMoodStore } from '../store/useMoodStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { dbGetFoodLogEntries } from '../db/database';
-import { getLogicalDayKey } from './dateUtils';
+import { useHealthStore } from '../store/useHealthStore';
+import { dayKeyOf, getCurrentDayStart, getLogicalDayKey } from './dateUtils';
+import { effectiveWaterTargetMl } from './waterExerciseBoost';
 import { confirmWithinLimit, recordDose, unrecordDose } from './doseRecording';
 import { formatDose } from './medicationLog';
 import { severityLabel } from './moodLog';
@@ -75,6 +77,17 @@ export function waterTodayMl(now: Date = new Date()): number {
   return waterOnDay(getLogicalDayKey(now, useSettingsStore.getState().dayResetTime)).ml;
 }
 
+/**
+ * Today's water target in ml, or undefined when none is set. The same one the
+ * Food log shows (exercise boost included), so the two never disagree.
+ */
+export function waterTargetTodayMl(): number | undefined {
+  const settings = useSettingsStore.getState();
+  const today = useHealthStore.getState().today;
+  const exerciseMinutes = today?.dayKey === dayKeyOf(getCurrentDayStart()) ? today.exerciseMinutes ?? null : null;
+  return effectiveWaterTargetMl(settings.nutritionTargets.waterMl, exerciseMinutes, settings.waterExerciseBoost);
+}
+
 async function runDose(action: DoseAction): Promise<SearchActionReceipt | null> {
   // Through `recordDose` like every other door a dose comes in by, so the
   // limit is asked about and a low supply offers a refill.
@@ -94,9 +107,12 @@ function runWater(action: WaterAction): SearchActionReceipt {
   const total = waterOnDay(dayKey).ml + action.ml;
   setWaterOnDay(dayKey, total, at);
   const unit = useSettingsStore.getState().waterUnit;
+  const target = waterTargetTodayMl();
   return {
     title: `Logged ${describeWater(action.ml, unit)} of water`,
-    meta: `${describeWater(total, unit)} today`,
+    meta: target !== undefined && target > 0
+      ? `${describeWater(total, unit)} of ${describeWater(target, unit)} today`
+      : `${describeWater(total, unit)} today`,
     // Re-read rather than restoring the old total: the day's row may have
     // been stepped from somewhere else since, and an undo takes back only
     // what this tap added.

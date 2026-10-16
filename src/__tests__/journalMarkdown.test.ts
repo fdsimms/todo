@@ -1,4 +1,4 @@
-import { journalPlainText, parseInline, parseJournalMarkdown, toggleLinePrefix, toggleWrap } from '../utils/journalMarkdown';
+import { continueListOnEnter, journalPlainText, parseInline, parseJournalMarkdown, toggleLinePrefix, toggleWrap } from '../utils/journalMarkdown';
 
 describe('parseInline', () => {
   it('reads bold and both italic markers', () => {
@@ -167,5 +167,32 @@ describe('toggleLinePrefix', () => {
   it('only removes the format when every touched line has it', () => {
     const text = '- a\nb';
     expect(toggleLinePrefix(text, sel(0, text.length), 'bullet').text).toBe('- a\n- b');
+  });
+});
+
+describe('continueListOnEnter', () => {
+  it('starts the next bullet, keeping the marker and indent', () => {
+    expect(continueListOnEnter('- walk', '- walk\n')).toEqual({ text: '- walk\n- ', selection: { start: 9, end: 9 } });
+    expect(continueListOnEnter('  * walk', '  * walk\n')?.text).toBe('  * walk\n  * ');
+  });
+
+  it('numbers the next item', () => {
+    expect(continueListOnEnter('2. walk', '2. walk\n')?.text).toBe('2. walk\n3. ');
+    expect(continueListOnEnter('9) walk', '9) walk\n')?.text).toBe('9) walk\n10) ');
+  });
+
+  it('carries the words after a mid-item caret onto the new item', () => {
+    expect(continueListOnEnter('- ab cd', '- ab\n cd')).toEqual({ text: '- ab\n-  cd', selection: { start: 7, end: 7 } });
+  });
+
+  it('ends the list on an empty item', () => {
+    expect(continueListOnEnter('- a\n- ', '- a\n- \n')).toEqual({ text: '- a\n', selection: { start: 4, end: 4 } });
+  });
+
+  it('leaves everything else alone', () => {
+    expect(continueListOnEnter('hello', 'hello\n')).toBeNull();
+    expect(continueListOnEnter('- a', '- ab')).toBeNull();
+    expect(continueListOnEnter('- a', '- a\n\n')).toBeNull();
+    expect(continueListOnEnter('# head', '# head\n')).toBeNull();
   });
 });

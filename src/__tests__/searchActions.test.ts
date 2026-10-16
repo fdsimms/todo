@@ -369,6 +369,7 @@ describe('describeSearchAction', () => {
     medicationSettings: {},
     waterUnit: 'ml',
     waterTodayMl: 0,
+    waterTargetMl: undefined,
     now,
     ...overrides,
   });
@@ -408,6 +409,7 @@ describe('describeSearchAction', () => {
     const water = only<WaterAction>('2 glasses of water', { water: { unit: 'ml' } })!;
     expect(describeSearchAction(water, ctx())).toMatchObject({ title: 'Log 2 glasses of water', meta: ['500 ml'] });
     expect(describeSearchAction(water, ctx({ waterTodayMl: 1250 })).meta).toEqual(['500 ml', '1.25 L today so far']);
+    expect(describeSearchAction(water, ctx({ waterTodayMl: 1250, waterTargetMl: 2000 })).meta).toEqual(['500 ml', '1.25 L of 2 L today so far']);
     const oz = only<WaterAction>('water', { water: { unit: 'flOz' } })!;
     expect(describeSearchAction(oz, ctx({ waterUnit: 'flOz' }))).toMatchObject({ title: 'Log a glass of water', meta: ['8 fl oz'] });
   });

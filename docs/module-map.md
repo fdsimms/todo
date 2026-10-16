@@ -207,7 +207,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/journalDraft.ts` — JOURNAL_DRAFT_DELAY_MS, journalDraftKey, readJournalDraft, writeJournalDraft, clearJournalDraft
 - `src/utils/journalExport.ts` — JOURNAL_EXPORT_COLUMNS, PersonNamer, journalExportCsv, journalExportMarkdown, JournalExportFormat, journalExportFileName, journalExportSummary
 - `src/utils/journalHistory.ts` — JournalHistoryKind, JOURNAL_HISTORY_OPTIONS, canOfferJournalHistory, journalHistoryTitle, journalHistoryAt
-- `src/utils/journalMarkdown.ts` — InlineSpan, JournalBlock, parseInline, parseJournalMarkdown, SPOILER_PLAIN_TEXT, journalPlainText, EditSelection, FormatEdit, toggleWrap, LineFormat, +1 more
+- `src/utils/journalMarkdown.ts` — InlineSpan, JournalBlock, parseInline, parseJournalMarkdown, SPOILER_PLAIN_TEXT, journalPlainText, EditSelection, FormatEdit, toggleWrap, continueListOnEnter, +2 more
 - `src/utils/journalTasks.ts` — JOURNAL_LOG_TITLE, JOURNAL_SNIPPET_TITLE, DREAM_LOG_TITLE, journalLogTitle, JOURNAL_TASK_KIND, journalLogUrl, journalTaskSourceId, journalTaskDayKey
 - `src/utils/keyScanAlert.ts` — alertKeyScanResult
 - `src/utils/keyScanQueue.ts` — QueuedKeyScan, QUEUED_KEY_CODE_MAX_LENGTH, parseQueuedKeyScans, keyCodeToken
@@ -418,6 +418,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/sealedNoteTasks.ts` — addSealedNoteReminder, dropSealedNoteReminder
 - `src/utils/searchActionRun.ts` — SearchActionReceipt, waterTodayMl, openMoodLogFor, runSearchAction
 - `src/utils/searchActions.ts` — QUICK_ACTION_LIMIT, MAX_GLASSES, DoseAction, WaterAction, MoodAction, SymptomAction, GroceryAction, PantryAnswer, PantryAction, SearchAction, +9 more
+- `src/utils/searchActionRun.ts` — SearchActionReceipt, waterTodayMl, waterTargetTodayMl, openMoodLogFor, runSearchAction
+- `src/utils/searchActions.ts` — QUICK_ACTION_LIMIT, MAX_GLASSES, DoseAction, WaterAction, MoodAction, SymptomAction, GroceryAction, SearchAction, SearchActionSources, SearchActionsOutcome, +7 more
 - `src/utils/searchCollapse.ts` — SearchOccurrence, CollapsedOccurrence, occurrenceFamilyKey, collapseOccurrences, formatOccurrenceCount
 - `src/utils/searchElsewhere.ts` — ElsewhereKind, ElsewhereResult, ElsewhereSources, ElsewhereSections, QUICK_ELSEWHERE_LIMIT, nameTier, termRanges, searchPeople, searchElsewhere, ElsewhereDescription, +5 more
 - `src/utils/searchPantryRun.ts` — runPantry
