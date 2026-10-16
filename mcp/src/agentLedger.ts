@@ -1427,6 +1427,29 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return milestone;
     },
 
+    addCookware(name, weightG) {
+      const item = replica.addCookware(name, weightG);
+      log({ action: 'created', subject: 'cookware', title: item.name, taskId: null, recordId: item.id, note: `Add the cookware "${item.name}" at ${item.weightG} g empty` });
+      return item;
+    },
+
+    updateCookware(id, patch) {
+      const before = replica.cookware().find(c => c.id === id);
+      const item = replica.updateCookware(id, patch);
+      const changes = [
+        ...(before && before.name !== item.name ? [`name from "${before.name}" to "${item.name}"`] : []),
+        ...(before && before.weightG !== item.weightG ? [`empty weight from ${before.weightG} g to ${item.weightG} g`] : []),
+      ];
+      log({ action: 'edited', subject: 'cookware', title: item.name, taskId: null, recordId: item.id, note: changes.length ? `Change the cookware "${before!.name}": ${changes.join('; ')}` : `Leave the cookware "${item.name}" as it is` });
+      return item;
+    },
+
+    deleteCookware(id) {
+      const item = replica.deleteCookware(id);
+      log({ action: 'cleared', subject: 'cookware', title: item.name, taskId: null, recordId: item.id, note: `Delete the cookware "${item.name}" (${item.weightG} g empty). It cannot be restored from here.` });
+      return item;
+    },
+
     logMeterReading(name, value, readAt) {
       const reading = replica.logMeterReading(name, value, readAt);
       log({ action: 'created', subject: 'meter', title: reading.meterName, taskId: null, recordId: reading.id, note: `Log ${reading.value} on ${reading.meterName} for ${replica.logicalDayKeyOf(reading.readAt)}` });

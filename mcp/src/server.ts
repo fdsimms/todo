@@ -106,6 +106,7 @@ import { ESTIMATE_KEY_LIST, NUTRIENT_KEY_LIST, atFrom, deleteSavedMeal, duplicat
 import { listErrors, MAX_ERRORS } from './errorTools';
 import { DEFAULT_PATTERN_DAYS, focusHistory, habitPatterns, moodInsights } from './patternTools';
 import { addMilestone, deleteMilestone, listMilestones, updateMilestone } from './milestoneTools';
+import { addCookware, deleteCookware, listCookware, updateCookware } from './cookwareTools';
 import { listCopyFlags, resolveCopyFlag } from './copyFlagTools';
 import { deleteMeterReading, listMeterReadings, logMeterReading } from './meterTools';
 import { deleteJournalEntry, listJournalEntries, logJournalEntry, searchJournalEntries, updateJournalEntry } from './journalTools';
@@ -1964,6 +1965,59 @@ function registerWriteTools(
         return json(await withWrite(() => deleteMilestone(replica, id)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not delete the milestone.' });
+      }
+    }
+  );
+
+  server.tool(
+    'list_cookware',
+    'The pots, pans, lids and tubs the person has weighed empty, each with its empty weight in grams. Use it when they tell you what a dish weighed with its pot on: subtract the saved pot (and lid) yourself, because a recipe\'s cookedWeightG is the food alone.',
+    {},
+    async () => json(await withFresh(() => listCookware(replica)))
+  );
+
+  server.tool(
+    'add_cookware',
+    'Save a pot, pan, lid or tub with what it weighs empty, in grams. Only a weight they gave you; never estimate one. A pot and its lid are two entries.',
+    {
+      name: z.string().min(1).max(40).describe('What it is called, e.g. "Dutch oven".'),
+      weightG: z.number().positive().max(50000).describe('Its empty weight in grams.'),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => addCookware(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not add the cookware.' });
+      }
+    }
+  );
+
+  server.tool(
+    'update_cookware',
+    'Rename a piece of cookware or change its empty weight, by its id from list_cookware. Only what you name changes. Recipes already weighed keep their weight.',
+    {
+      id: z.string().min(1),
+      name: z.string().min(1).max(40).optional(),
+      weightG: z.number().positive().max(50000).optional(),
+    },
+    async ({ id, ...patch }) => {
+      try {
+        return json(await withWrite(() => updateCookware(replica, id, patch)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the cookware.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_cookware',
+    'Delete a piece of cookware by its id from list_cookware. Recipes already weighed keep their weight, and it cannot be restored from here.',
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => deleteCookware(replica, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete the cookware.' });
       }
     }
   );

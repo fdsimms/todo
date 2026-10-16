@@ -48,6 +48,7 @@ import type {
   GeneratedKind,
   HealthRule,
   Milestone,
+  Cookware,
   CopyFlag,
   MeterReading,
   JournalEntry,
@@ -1158,6 +1159,15 @@ export interface Replica {
   addMilestone(label: string, date: Date): Milestone;
   updateMilestone(id: string, patch: { label?: string; date?: Date }): Milestone;
   deleteMilestone(id: string): Milestone;
+  /** Every saved pot, pan, lid and tub in the person's order. See src/utils/cookware.ts. */
+  cookware(): Cookware[];
+  /**
+   * Cookware through `useCookwareStore`'s own actions: a blank name or a
+   * weight that is not above zero is refused as the sheet refuses it.
+   */
+  addCookware(name: string, weightG: number): Cookware;
+  updateCookware(id: string, patch: { name?: string; weightG?: number }): Cookware;
+  deleteCookware(id: string): Cookware;
   /** Every meter reading, oldest first. See src/utils/meters.ts. */
   meterReadings(): MeterReading[];
   /**
@@ -4019,6 +4029,39 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (!milestone) throw new Error(`No milestone with id ${id}. list_milestones names them.`);
       store.removeMilestone(id);
       return milestone;
+    },
+    cookware: () => db.dbGetAllCookware(),
+    // Hydrated per write, like the milestone store above, so a dry run's
+    // rollback cannot leave it holding a pot the database no longer has.
+    addCookware(name: string, weightG: number): Cookware {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { useCookwareStore } = require('../../src/store/useCookwareStore') as typeof import('../../src/store/useCookwareStore');
+      const store = useCookwareStore.getState();
+      store.initialize();
+      const item = store.addCookware(name, weightG);
+      if (!item) throw new Error('Cookware needs a name and an empty weight above zero, in grams.');
+      return item;
+    },
+    updateCookware(id: string, patch: { name?: string; weightG?: number }): Cookware {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { useCookwareStore } = require('../../src/store/useCookwareStore') as typeof import('../../src/store/useCookwareStore');
+      const store = useCookwareStore.getState();
+      store.initialize();
+      if (!store.cookware.some(c => c.id === id)) throw new Error(`No cookware with id ${id}. list_cookware names them.`);
+      if (patch.name !== undefined && !patch.name.trim()) throw new Error('Cookware needs a name.');
+      if (patch.weightG !== undefined && !(patch.weightG > 0)) throw new Error('weightG must be above zero, in grams.');
+      store.updateCookware(id, patch);
+      return useCookwareStore.getState().cookware.find(c => c.id === id)!;
+    },
+    deleteCookware(id: string): Cookware {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { useCookwareStore } = require('../../src/store/useCookwareStore') as typeof import('../../src/store/useCookwareStore');
+      const store = useCookwareStore.getState();
+      store.initialize();
+      const item = store.cookware.find(c => c.id === id);
+      if (!item) throw new Error(`No cookware with id ${id}. list_cookware names them.`);
+      store.removeCookware(id);
+      return item;
     },
     meterReadings: () => db.dbGetAllMeterReadings(),
     logMeterReading(name: string, value: number, readAt: Date): MeterReading {

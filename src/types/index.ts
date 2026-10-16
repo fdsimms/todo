@@ -1095,7 +1095,9 @@ export type UnattendedSubject =
   // A switch in Settings an agent flipped (vacation mode). Record only: the switch is one tap.
   | 'setting'
   // A meter reading (`MeterReading`) an agent logged or deleted. Record only.
-  | 'meter';
+  | 'meter'
+  // A pot, pan, lid or tub (`Cookware`) an agent added, changed or deleted. Record only.
+  | 'cookware';
 
 /**
  * What an agent's edit or move changed: the fields it touched, as they were

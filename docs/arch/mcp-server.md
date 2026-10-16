@@ -1495,6 +1495,12 @@ Four areas had no MCP read or write, and the shape of each answer follows from w
   ("Milestone"), never by its label, for the reason a mood entry is: "Started sertraline" is health
   content, and the Activity list is about the app. Each milestone is its own split and the tools
   never pair a start with a later stop; the contrast itself is `mood_insights`' to report.
+- **Cookware goes through `useCookwareStore`'s own actions** (`cookwareTools.ts`), so a blank name
+  or a weight at or below zero is refused as the sheet refuses it. It is a convenience for typing a
+  dish's weight and nothing points at it: `cookedWeightG` and a leftover's weight are the food
+  alone, so an agent told a weight with the pot on subtracts the saved pot itself and never writes
+  the gross figure. Names are not unique (two devices can each add "Dutch oven" offline), and the
+  Activity entry is a record only, titled by the item's name.
 - **Saved views are read through the app's own matcher** (`filterTasksForView`, with the app's
   held-back rule and logical day), so a view's count here is the count the Saved Views screen shows.
   `create_saved_view` runs its clauses through `parseSavedViewClauses`, the tolerant parser the app
