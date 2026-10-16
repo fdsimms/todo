@@ -68,7 +68,7 @@ import { resetToGroceries } from '../navigation/navigationRef';
 import {
   countLikelyInPantryByRecipe,
   describeCookHistory,
-  describeRecipe,
+  describeRecipeRow,
   flattenRecipeMealTypeSections,
   groupRecipesByMealType,
   rankRecipes,
@@ -100,8 +100,8 @@ import { BUTTON_LABEL } from '../copy/shared';
  * will keep in the dozens. Loved recipes float to the top and the search field
  * ranks by name and by ingredient. Recipe.mealType (breakfast/lunch/dinner/
  * snack/dessert — see RecipeMealType in src/types) is the one closed-set tag
- * that earned a plain column instead: it's shown in each row's subtitle via
- * describeRecipe(), and the header's "Group" toggle switches the list between
+ * that earned a plain column instead: the header's "Group" toggle (and the
+ * Meal type row in a recipe's editor) switches the list between
  * that flat loved-first order and RECIPE_MEAL_TYPE_LABELS sections
  * (groupRecipesByMealType, src/utils/recipeUtils.ts). Grouping only applies to
  * the unfiltered box: a search is already a specific question, and section
@@ -554,7 +554,7 @@ export function RecipesScreen() {
   // same prop it had.
   const rowDescriptions = useMemo(() => {
     const map = new Map<string, string>();
-    for (const recipe of recipes) map.set(recipe.id, describeRecipe(recipe, pantryCounts.get(recipe.id), { sharedName: sharedNames.has(recipe.nameKey), recipesById: libraryById }));
+    for (const recipe of recipes) map.set(recipe.id, describeRecipeRow(recipe, pantryCounts.get(recipe.id), { sharedName: sharedNames.has(recipe.nameKey), recipesById: libraryById }));
     return map;
   }, [recipes, pantryCounts, sharedNames, libraryById]);
 
@@ -677,7 +677,7 @@ export function RecipesScreen() {
       recipe={recipe}
       // The fallback covers the one commit a just-deleted recipe can still
       // sit in `draggableData` before its effect catches up with the store.
-      description={rowDescriptions.get(recipe.id) ?? describeRecipe(recipe, pantryCounts.get(recipe.id), { sharedName: sharedNames.has(recipe.nameKey), recipesById: libraryById })}
+      description={rowDescriptions.get(recipe.id) ?? describeRecipeRow(recipe, pantryCounts.get(recipe.id), { sharedName: sharedNames.has(recipe.nameKey), recipesById: libraryById })}
       colors={colors}
       styles={styles}
       drag={drag}

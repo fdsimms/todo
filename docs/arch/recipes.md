@@ -114,7 +114,9 @@ meal that uses it. The graph walk — flatten, cycle check, reverse lookup — l
   row `classifyPlanned` merged across several.
 - **`describeRecipe` counts the recipe's own ingredients, plus a "· 1 component" clause.** The
   count has to agree with the list rendered directly beneath it on the detail screen; the clause
-  is what stops "3 ingredients" reading as the whole shop.
+  is what stops "3 ingredients" reading as the whole shop. The Recipes list row uses
+  `describeRecipeRow` instead, a shorter line that leads with "6/13 likely in pantry" (the
+  components-inclusive total, so never "7/5") and drops meal type, servings and yield.
 - **Deleting a component recipe leaves the links dangling**, resolve-or-shrug like every other
   cross-row pointer here (`MealPlanEntry.recipeId`, `TemplateItem.refTemplateId`). Unfiling them
   would edit recipes the user didn't ask to touch, and a restored backup couldn't put them back.
