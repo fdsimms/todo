@@ -205,6 +205,8 @@ interface ToolChipDescriptor {
   dotColor?: string;
   /** Long free text (a URL, an address) that has to give way rather than wrap. */
   truncate?: boolean;
+  /** A value that is meant to be read whole ("Weekly · after done"), so the chip may outgrow the usual half-row cap. */
+  wide?: boolean;
   /** Set only by chips that don't just toggle `panel`. */
   onPress?: () => void;
 }
@@ -2234,7 +2236,13 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     },
     {
       key: 'repeat', icon: 'repeat', panel: 'repeat',
-      value: recurrenceType !== 'none' ? RECURRENCE_LABELS[recurrenceType] : null,
+      // The suggestion pill says "after done" for a rule counted from
+      // completion; the chip it turns into says the same, or "Weekly" reads as
+      // a fixed schedule once applied.
+      value: recurrenceType !== 'none'
+        ? [RECURRENCE_LABELS[recurrenceType], scheduleHint({ recurrenceType, recurrenceFromCompletion })].filter(Boolean).join(' · ')
+        : null,
+      wide: scheduleHint({ recurrenceType, recurrenceFromCompletion }) !== null,
     },
     {
       key: 'segment', panel: 'segment',
@@ -2930,6 +2938,7 @@ parsed
                   styles.toolChip,
                   chip.panel !== undefined && activePanel === chip.panel && styles.toolChipActive,
                   chip.value !== null && styles.toolChipSet,
+                  chip.wide && styles.toolChipWide,
                 ]}
                 onPress={chip.onPress}
                 activeOpacity={interaction.activeOpacity}
@@ -3867,6 +3876,10 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number, textScaleFactor = 1)
   },
   toolChipSet: {
     backgroundColor: colors.accentSubtle,
+  },
+  // Still shrinks (flexShrink above) when the value alone is wider than the row.
+  toolChipWide: {
+    maxWidth: '100%',
   },
   toolChipText: {
     color: colors.textSecondary,
