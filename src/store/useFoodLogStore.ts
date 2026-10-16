@@ -96,6 +96,9 @@ export interface FoodLogDraft {
   mealPlanEntryId?: string | null;
   /** The task whose completion is writing this entry. See `FoodLogEntry.taskId`. */
   taskId?: string | null;
+  /** The saved meal this entry is being logged as part of. See `FoodLogEntry.savedMealId`. */
+  savedMealId?: string | null;
+  savedMealName?: string | null;
   /**
    * The panel the helping was measured against, for a food no catalog row
    * holds. See `FoodLogEntry.sourcePanel`; null or absent for anything linked.

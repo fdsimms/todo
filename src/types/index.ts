@@ -5343,6 +5343,18 @@ export interface FoodLogEntry {
    */
   healthWritePending?: boolean;
   /**
+   * The saved meal this entry was logged as part of, and its name as it was
+   * called at the time. Provenance only, the way `taskId` is: free to dangle
+   * (deleting or renaming the meal leaves what was eaten untouched, which is
+   * why the name is a snapshot rather than a lookup), and never read for a
+   * total. The food log draws the entries that share one (and one logged
+   * moment) as a single tray under the meal's name (`savedMealRuns`).
+   * Absent on everything logged any other way, and on every entry that
+   * predates the column.
+   */
+  savedMealId?: string | null;
+  savedMealName?: string | null;
+  /**
    * Hand-set position within the day, in the same running-number-space `Task.sortOrder`
    * uses across a whole category list rather than one per section — a drag that
    * re-slots an entry needs one number space it can carry across the boundary.

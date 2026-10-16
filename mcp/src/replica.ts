@@ -4793,6 +4793,8 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       db.dbTransaction(() => {
         for (const item of meal.items) {
           const entry = buildFood({
+            savedMealId: meal.id,
+            savedMealName: meal.name,
             label: item.label,
             quantity: item.quantity,
             grams: item.grams,

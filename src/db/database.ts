@@ -2180,6 +2180,10 @@ function runInitDatabase(): void {
     // The task whose completion wrote this entry, so un-completing it can take
     // the entry back. NULL on every row but those. See FoodLogEntry.taskId.
     'ALTER TABLE food_logs ADD COLUMN task_id TEXT',
+    // The saved meal an entry was logged as part of, and the name it had then.
+    // NULL on every existing entry. See FoodLogEntry.savedMealId.
+    'ALTER TABLE food_logs ADD COLUMN saved_meal_id TEXT',
+    'ALTER TABLE food_logs ADD COLUMN saved_meal_name TEXT',
     // Null on every existing task: none of them is a look-back. See Task.reviewOfTaskId.
     'ALTER TABLE tasks ADD COLUMN review_of_task_id TEXT',
     // Null on every existing entry: all of them were open when written. See
@@ -7598,6 +7602,8 @@ function rowToFoodLogEntry(row: Record<string, unknown>): FoodLogEntry | null {
     productId: (row.product_id as string) || null,
     mealPlanEntryId: (row.meal_plan_entry_id as string) || null,
     taskId: (row.task_id as string) || null,
+    savedMealId: (row.saved_meal_id as string) || null,
+    savedMealName: (row.saved_meal_name as string) || null,
     quantity: (row.quantity as string) ?? '',
     grams: typeof row.grams === 'number' && Number.isFinite(row.grams) ? row.grams : null,
     nutrition,
@@ -7666,8 +7672,8 @@ export function dbInsertFoodLogEntry(entry: FoodLogEntry): void {
   db.runSync(
     `INSERT INTO food_logs (id, day_key, at_iso, slot, label, recipe_id, item_id, product_id,
        meal_plan_entry_id, quantity, grams, nutrition, source_panel, health_sample_ids,
-       health_write_pending, sort_order, created_at, task_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       health_write_pending, sort_order, created_at, task_id, saved_meal_id, saved_meal_name)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       entry.id, entry.dayKey, entry.atISO, entry.slot, entry.label,
       entry.recipeId, entry.itemId, entry.productId, entry.mealPlanEntryId,
@@ -7675,6 +7681,7 @@ export function dbInsertFoodLogEntry(entry: FoodLogEntry): void {
       serializeFoodNutrition(entry.sourcePanel ?? null),
       JSON.stringify(entry.healthSampleIds), entry.healthWritePending ? 1 : 0,
       entry.sortOrder, entry.createdAt, entry.taskId ?? null,
+      entry.savedMealId ?? null, entry.savedMealName ?? null,
     ]
   );
 }

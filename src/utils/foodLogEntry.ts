@@ -50,6 +50,8 @@ export function buildFoodLogEntry(
     // Only present when a task's completion wrote it, so an ordinary entry's
     // shape (and every test that compares one) is unchanged.
     ...(draft.taskId ? { taskId: draft.taskId } : {}),
+    // Likewise only present for an entry a saved meal wrote.
+    ...(draft.savedMealId ? { savedMealId: draft.savedMealId, savedMealName: draft.savedMealName ?? null } : {}),
     quantity: draft.quantity.trim(),
     grams: draft.grams,
     nutrition: draft.nutrition,

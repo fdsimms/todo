@@ -17,6 +17,7 @@ import {
   foodLogEntryEdit,
   foodLogSections,
   foodLogTotals,
+  savedMealRuns,
   foodUnitOptionsFor,
   isNutrientUnitOption,
   isBeverageName,
@@ -1540,5 +1541,44 @@ describe('remeasureDishEntry', () => {
     expect(remeasureDishEntry(dishEntry({ recipeId: undefined }), figures(800)).ok).toBe(false);
     expect(remeasureDishEntry(dishEntry({ quantity: '1 serving, plus a baguette' }), figures(800)).ok).toBe(false);
     expect(remeasureDishEntry(dishEntry(), null).ok).toBe(false);
+  });
+});
+
+describe('savedMealRuns', () => {
+  const at = '2026-04-05T12:00:00.000Z';
+  const part = (id: string, o: Partial<FoodLogEntry> = {}) => ({
+    type: 'entry' as const,
+    entry: entry({ id, savedMealId: 'm1', savedMealName: 'Usual lunch', atISO: at, slot: 'lunch', ...o }),
+  });
+  const header = { type: 'header' as const, slot: 'lunch' as const };
+
+  it('trays neighbouring entries from one meal at one moment, named by the snapshot', () => {
+    const runs = savedMealRuns([header, part('a'), part('b'), part('c')]);
+    expect(runs.get('a')).toEqual({ position: 'first', name: 'Usual lunch', count: 3 });
+    expect(runs.get('b')?.position).toBe('middle');
+    expect(runs.get('c')?.position).toBe('last');
+  });
+
+  it('leaves a run of one, and entries with no saved meal, as plain rows', () => {
+    const plain = { type: 'entry' as const, entry: entry({ id: 'p' }) };
+    expect(savedMealRuns([header, part('a'), plain]).size).toBe(0);
+    expect(savedMealRuns([header, plain, plain]).size).toBe(0);
+  });
+
+  it('makes two trays of the same meal logged at two moments, and splits a run an entry was dragged out of', () => {
+    const later = '2026-04-05T18:00:00.000Z';
+    const two = savedMealRuns([header, part('a'), part('b'), part('c', { atISO: later }), part('d', { atISO: later })]);
+    expect(two.get('b')?.position).toBe('last');
+    expect(two.get('c')?.position).toBe('first');
+    const plain = { type: 'entry' as const, entry: entry({ id: 'p' }) };
+    const split = savedMealRuns([header, part('a'), plain, part('b'), part('c')]);
+    expect(split.has('a')).toBe(false);
+    expect(split.get('b')?.count).toBe(2);
+  });
+
+  it('never carries a tray across a meal header', () => {
+    const dinner = { type: 'header' as const, slot: 'dinner' as const };
+    const runs = savedMealRuns([header, part('a'), dinner, part('b')]);
+    expect(runs.size).toBe(0);
   });
 });
