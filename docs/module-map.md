@@ -538,7 +538,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 ## `src/store`
 
 - `src/store/generatedCategoryWriteBack.ts` — GeneratedCategoryOffer, generatedCategoryOffer, writeCategoryToSource
-- `src/store/generatedTaskSync.ts` — deleteGeneratedTaskQuietly, ReconcileGeneratedOptions, reconcileGeneratedTask, dropGeneratedTask, forfeitUseUpCoins
+- `src/store/generatedTaskSync.ts` — deleteGeneratedTaskQuietly, ReconcileGeneratedOptions, reconcileGeneratedTask, dropGeneratedTask, forfeitUseUpCoins, restoreUseUpCoins
 - `src/store/generatorSwitch.ts` — setGeneratorEnabled
 - `src/store/useAppGroupStore.ts` — NewSchedule, ScheduleResult, useAppGroupStore, resolvedAssignments, resolveGroupNow
 - `src/store/useAppLockStore.ts` — useAppLockStore, isAppLocked

@@ -1,1 +1,1 @@
-{ "message": "Throwing out food from a Use up task you already checked off now takes back the coins that check-off paid, wherever you mark it thrown out.", "date": "2026-10-16" }
+{ "message": "Throwing out food from a Use up task you already checked off now takes back the coins that check-off paid, including when Claude records it, and undoing the throw-out gives them back.", "date": "2026-10-16" }

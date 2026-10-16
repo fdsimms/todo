@@ -137,9 +137,10 @@ jest.mock('../db/database', () => ({
 // drags expo-notifications into a node environment. The other side of the link
 // — deleting a use-up task recording the item's opt-out — is covered against
 // the real stores in useTaskStore.test.ts.
-const mockTakeBackTask = jest.fn();
+const mockTakeBackTask = jest.fn().mockReturnValue([]);
+const mockRestoreEntries = jest.fn();
 jest.mock('../store/useRewardStore', () => ({
-  useRewardStore: { getState: () => ({ takeBackTask: mockTakeBackTask }) },
+  useRewardStore: { getState: () => ({ takeBackTask: mockTakeBackTask, restoreEntries: mockRestoreEntries }) },
 }));
 
 const mockTaskState = {
@@ -4654,6 +4655,23 @@ describe('markOutOfMany', () => {
     seed([spinach]);
     useGroceryStore.getState().markOutOfMany([spinach.id], 'spoiled');
     expect(mockTakeBackTask).toHaveBeenCalledWith('t-done');
+  });
+
+  it('gives a use-up task\'s coins back when marking it out as bad is undone', () => {
+    const spinach = makeItem({ name: 'Spinach' });
+    seed([spinach]);
+    mockTaskState.tasks.push({
+      id: 't-done', completed: true, completedAt: '2026-08-11T09:00:00.000Z', missedAt: null,
+      generatedKind: 'groceryUseUp', generatedSourceId: spinach.id,
+    } as Task);
+    const entry = { id: 'e1', kind: 'earn', amount: 3 };
+    mockTakeBackTask.mockReturnValueOnce([entry]);
+    mockRestoreEntries.mockClear();
+
+    useGroceryStore.getState().markOutOfMany([spinach.id], 'spoiled');
+    useGroceryStore.getState().lastAction!.undo();
+
+    expect(mockRestoreEntries).toHaveBeenCalledWith([entry]);
   });
 
   it('undoes the mark without undoing a tick made since', () => {

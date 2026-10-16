@@ -247,6 +247,25 @@ describe('the pantry tools', () => {
       return 'l1';
     };
 
+    it('takes back the coins a completed use-up task paid when the container is thrown out', () => {
+      const id = insertLeftover();
+      mockRaw.runSync("INSERT OR REPLACE INTO settings (key, value) VALUES ('rewardsEnabled', 'true')");
+      mockRaw.runSync('DELETE FROM coin_entries');
+      replica.refresh();
+      const task = replica.createTask({ title: 'Use up Chili', estimatedMinutes: 30 });
+      mockRaw.runSync("UPDATE tasks SET generated_kind = 'leftoverUseUp', generated_source_id = ? WHERE id = ?", [id, task.id]);
+      replica.refresh();
+      replica.completeTask(task.id, {});
+      const coins = () => mockRaw.getAllSync<{ task_id: string }>("SELECT task_id FROM coin_entries WHERE kind = 'earn'");
+      expect(coins()).toHaveLength(1);
+
+      updateLeftover(replica, id, { finished: 'eaten' });
+      expect(coins()).toHaveLength(1);
+      updateLeftover(replica, id, { finished: null });
+      updateLeftover(replica, id, { finished: 'tossed' });
+      expect(coins()).toEqual([]);
+    });
+
     it('freezes, thaws with a fresh fridge clock, finishes and reopens', () => {
       const id = insertLeftover();
       expect(listPantry(replica).entries.find(e => e.leftoverId === id)?.section).toBe('In the fridge');

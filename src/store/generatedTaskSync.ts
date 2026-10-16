@@ -1,4 +1,4 @@
-import type { Task, TaskDraft } from '../types';
+import type { CoinEntry, Task, TaskDraft } from '../types';
 import {
   generatedTaskCountOf,
   generatorPausedForVacation,
@@ -229,9 +229,15 @@ export function dropGeneratedTask(kind: GeneratedKind, sourceId: string | null):
  * the answer yet), so this runs wherever food is recorded as thrown out: the
  * use-up prompt, the Kitchen screen, the disposal banner. Same `takeBackTask`
  * an unticked completion uses, which removes only that task's entry and is a
- * no-op when no such completion exists.
+ * no-op when no such completion exists. Returns what it removed so an undo can
+ * put it back.
  */
-export function forfeitUseUpCoins(kind: GeneratedKind, sourceId: string): void {
+export function forfeitUseUpCoins(kind: GeneratedKind, sourceId: string): CoinEntry[] {
   const taskId = latestCompletedTaskIdFor(useTaskStore.getState().tasks, kind, sourceId);
-  if (taskId) useRewardStore.getState().takeBackTask(taskId);
+  return taskId ? useRewardStore.getState().takeBackTask(taskId) : [];
+}
+
+/** The undo of `forfeitUseUpCoins`: writes back what it returned. */
+export function restoreUseUpCoins(entries: readonly CoinEntry[]): void {
+  if (entries.length > 0) useRewardStore.getState().restoreEntries(entries);
 }

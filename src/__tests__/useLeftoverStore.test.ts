@@ -69,9 +69,10 @@ jest.mock('../store/useSettingsStore', () => ({
   },
 }));
 
-const mockTakeBackTask = jest.fn();
+const mockTakeBackTask = jest.fn().mockReturnValue([]);
+const mockRestoreEntries = jest.fn();
 jest.mock('../store/useRewardStore', () => ({
-  useRewardStore: { getState: () => ({ takeBackTask: mockTakeBackTask }) },
+  useRewardStore: { getState: () => ({ takeBackTask: mockTakeBackTask, restoreEntries: mockRestoreEntries }) },
 }));
 
 // Same shape as useGroceryStore.test.ts's mockTaskState: reconcileLeftoverTask
@@ -534,6 +535,20 @@ describe('finishLeftover', () => {
     seed([makeLeftover({ id: 'lo-a' })]);
     useLeftoverStore.getState().finishLeftover('lo-a', 'tossed');
     expect(mockTakeBackTask).toHaveBeenCalledWith('t-done');
+  });
+
+  it('gives the coins back when the throw-out is undone', () => {
+    const entry = { id: 'e1', kind: 'earn', amount: 3 };
+    mockTakeBackTask.mockReturnValueOnce([entry]);
+    mockRestoreEntries.mockClear();
+    mockTaskState.tasks.push({
+      id: 't-done', completed: true, completedAt: localIso('2026-08-11T09:00'), missedAt: null,
+      generatedKind: 'leftoverUseUp', generatedSourceId: 'lo-a',
+    } as Task);
+    seed([makeLeftover({ id: 'lo-a' })]);
+    useLeftoverStore.getState().finishLeftover('lo-a', 'tossed');
+    useLeftoverStore.getState().lastAction!.undo();
+    expect(mockRestoreEntries).toHaveBeenCalledWith([entry]);
   });
 
   it('keeps those coins when it was eaten', () => {

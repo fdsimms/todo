@@ -22,7 +22,7 @@ import { plannedMealRowFor, useUpTaskDraft, useUpTaskDrift, wantsUseUpTask } fro
 import { liveGeneratedTask } from '../utils/generatedTasks';
 import { mealSlotSourceId } from '../utils/mealSlotTasks';
 import { clampCookedWeight } from '../utils/mealLog';
-import { dropGeneratedTask, forfeitUseUpCoins, reconcileGeneratedTask } from './generatedTaskSync';
+import { dropGeneratedTask, forfeitUseUpCoins, reconcileGeneratedTask, restoreUseUpCoins } from './generatedTaskSync';
 import { useTaskStore } from './useTaskStore';
 import { useSettingsStore } from './useSettingsStore';
 import { useFoodLogStore } from './useFoodLogStore';
@@ -374,7 +374,7 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
     // directly rather than through reconcile, same call dropUseUpTask makes:
     // this is a row that won't be live any more, not a correction to one.
     dropLeftoverTask(id);
-    if (outcome === 'tossed') forfeitUseUpCoins('leftoverUseUp', id);
+    const forfeited = outcome === 'tossed' ? forfeitUseUpCoins('leftoverUseUp', id) : [];
     // Eating it is the second free logging moment, and unlike the meal task's
     // it is the *only* one for a container: the five UI paths that finish a
     // leftover all come through here, so this is where the offer belongs
@@ -445,7 +445,7 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
     get().setLastAction({
       label: outcome === 'tossed' ? `Threw out “${leftover.title}”` : `Finished “${leftover.title}”`,
       redo: () => get().finishLeftover(id, outcome),
-      undo: () => get().reopenLeftover(id),
+      undo: () => { get().reopenLeftover(id); restoreUseUpCoins(forfeited); },
     });
   },
 
