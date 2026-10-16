@@ -29,7 +29,6 @@ import { ActiveTripBanner } from '../components/ActiveTripBanner';
 import { SharedLinkBanner } from '../components/SharedLinkBanner';
 import { useSharedLinkStore } from '../store/useSharedLinkStore';
 import { EmptyState } from '../components/EmptyState';
-import { QuickAddNameSheet } from '../components/QuickAddNameSheet';
 import { RecipeCreateSheet } from '../components/RecipeCreateSheet';
 import { InventRecipeSheet } from '../components/InventRecipeSheet';
 import type { RecipeInputMode } from '../components/RecipeSourcePicker';
@@ -68,10 +67,10 @@ import {
   countLikelyInPantryByRecipe,
   describeCookHistory,
   describeRecipeRow,
+  DRAFT_RECIPE_NAME,
   flattenRecipeMealTypeSections,
   groupRecipesByMealType,
   rankRecipes,
-  recipeInBook,
   recipeListItemKey,
   recipeSectionKey,
   resolveRecipeMealTypeDrop,
@@ -282,7 +281,6 @@ export function RecipesScreen() {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tagFilterVisible, setTagFilterVisible] = useState(false);
   const [sortFilterVisible, setSortFilterVisible] = useState(false);
-  const [addVisible, setAddVisible] = useState(false);
   const [importVisible, setImportVisible] = useState(false);
   const [importMode, setImportMode] = useState<RecipeInputMode>('photo');
   const [inventVisible, setInventVisible] = useState(false);
@@ -310,6 +308,28 @@ export function RecipesScreen() {
     painting,
     paintProps,
   } = useRowSelection();
+
+  // The mealType a drop landed on, read once the recipe comes back from the
+  // name sheet. Left at null for a plain drop or the Untagged section — a
+  // freshly created recipe already has mealType: null, so there's nothing to
+  // write in either case.
+  const pendingMealTypeRef = useRef<RecipeMealType | null>(null);
+
+  // "New recipe" goes straight to the details sheet with the name empty and
+  // focused, rather than asking for a name first. The row has to exist for that
+  // sheet to edit it, so it is made under a placeholder name that the sheet
+  // never shows (`draft`), and the sheet deletes it again if it is closed with
+  // no name and nothing added (RecipeEditor.saveAndClose).
+  const startBlankRecipe = useCallback(() => {
+    const mealType = pendingMealTypeRef.current;
+    pendingMealTypeRef.current = null;
+    let recipe = addRecipe(DRAFT_RECIPE_NAME);
+    for (let n = 2; !recipe && n < 100; n++) recipe = addRecipe(`${DRAFT_RECIPE_NAME} ${n}`);
+    if (!recipe) return;
+    if (mealType !== null) setMealType(recipe.id, mealType);
+    haptics.success();
+    navigation.navigate('RecipeDetail', { recipeId: recipe.id, openDetails: Date.now(), draft: true });
+  }, [addRecipe, setMealType, navigation]);
 
   // Bottom-up: "New recipe" ends up closest to the button, so the plain add is
   // still the one under your thumb. The three import items sit in the same
@@ -354,8 +374,8 @@ export function RecipesScreen() {
     else if (key === 'link') { setImportMode('link'); setImportVisible(true); }
     else if (key === 'import') { setImportMode('photo'); setImportVisible(true); }
     else if (key === 'invent') { setInventVisible(true); }
-    else setAddVisible(true);
-  }, []);
+    else startBlankRecipe();
+  }, [startBlankRecipe]);
 
   // A page saved from another app's share sheet. Only the front of the queue is
   // offered at a time — see SharedLinkBanner.
@@ -504,11 +524,6 @@ export function RecipesScreen() {
   const [fabDragging, setFabDragging] = useState(false);
   const scrollControl = useRef<DragScroller | null>(null);
   const fabIntentChannel = useFabIntentChannel();
-  // The mealType a drop landed on, read once the recipe comes back from the
-  // name sheet. Left at null for a plain drop or the Untagged section — a
-  // freshly created recipe already has mealType: null, so there's nothing to
-  // write in either case.
-  const pendingMealTypeRef = useRef<RecipeMealType | null>(null);
 
   const fabDrag: FabDragHandlers = {
     onStart: () => {
@@ -526,7 +541,7 @@ export function RecipesScreen() {
       pendingMealTypeRef.current = intent.kind === 'insert'
         ? (dropTargetsByKey.get(intent.anchorKey)?.mealType ?? null)
         : null;
-      setAddVisible(true);
+      startBlankRecipe();
     },
     onCancel: () => {
       setFabDragging(false);
@@ -623,26 +638,6 @@ export function RecipesScreen() {
   }, [navigation]);
 
   const { overlap, openOverlap, closeOverlap, handOffOverlap } = useOverlapPicker();
-
-  const createRecipe = (name: string) => {
-    setAddVisible(false);
-    const mealType = pendingMealTypeRef.current;
-    pendingMealTypeRef.current = null;
-    const recipe = addRecipe(name);
-    if (recipe) {
-      if (mealType !== null) setMealType(recipe.id, mealType);
-      haptics.success();
-      // Into the details sheet, since that's where everything but the
-      // ingredients and steps is set (#1754).
-      navigation.navigate('RecipeDetail', { recipeId: recipe.id, openDetails: Date.now() });
-      return;
-    }
-    // The only way addRecipe refuses a non-empty name is one already filed
-    // under no book, which is where this one was going. Opening the recipe
-    // they already have beats an error — it's where they were trying to get.
-    const existing = recipeInBook(recipes, name, null);
-    if (existing) openRecipe(existing);
-  };
 
   // The row's handlers. Stable, and each takes the recipe (or its id) it acts
   // on, so one function serves every row and `RecipeRow`'s memo holds through
@@ -796,7 +791,7 @@ export function RecipesScreen() {
           title="No recipes yet"
           subtitle="Save recipes with their ingredients, then add a whole recipe to the grocery list in one tap"
           actionLabel="New recipe"
-          onAction={() => setAddVisible(true)}
+          onAction={startBlankRecipe}
           bottomOffset={tabBarHeight}
         />
       ) : (
@@ -1023,16 +1018,6 @@ export function RecipesScreen() {
           onHeightChange={setBulkBarHeight}
         />
       )}
-
-      <LazySheet open={addVisible}>
-        <QuickAddNameSheet
-          visible={addVisible}
-          placeholder="New recipe…"
-          noun="recipe"
-          onSubmit={createRecipe}
-          onClose={() => { setAddVisible(false); pendingMealTypeRef.current = null; }}
-        />
-      </LazySheet>
 
       <LazySheet open={importVisible}>
         <RecipeCreateSheet

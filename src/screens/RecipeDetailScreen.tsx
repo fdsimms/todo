@@ -158,7 +158,7 @@ type RootStackParamList = {
    * written back to the entry. `overrides` does the same for the meal's one-off
    * replacements (MealPlanEntry.recipeOverrides).
    */
-  RecipeDetail: { recipeId: string; choices?: string[]; overrides?: RecipeOverride[]; scale?: number; openCookMode?: number; openDetails?: number; returnTo?: string };
+  RecipeDetail: { recipeId: string; choices?: string[]; overrides?: RecipeOverride[]; scale?: number; openCookMode?: number; openDetails?: number; draft?: boolean; returnTo?: string };
 };
 
 /** One row of the merged list the ingredients SortableList drags over — see mergedIngredientRows. */
@@ -522,12 +522,16 @@ export function RecipeDetailScreen() {
    * render. Imported and invented recipes don't pass it: they arrive filled in.
    */
   const openDetailsStamp = route.params.openDetails;
+  // True only for the first open of a recipe made from "New recipe" (see
+  // RecipeEditor's `draft`); the next open edits it like any other.
+  const [editingDraft, setEditingDraft] = useState(false);
   const [handledDetailsStamp, setHandledDetailsStamp] = useState<number | undefined>(undefined);
   useEffect(() => {
     if (openDetailsStamp === undefined || openDetailsStamp === handledDetailsStamp) return;
     setHandledDetailsStamp(openDetailsStamp);
+    setEditingDraft(route.params.draft === true);
     setEditorVisible(true);
-  }, [openDetailsStamp, handledDetailsStamp]);
+  }, [openDetailsStamp, handledDetailsStamp, route.params.draft]);
   const [editingIngredient, setEditingIngredient] = useState<RecipeIngredient | null>(null);
   const [editingPrepTask, setEditingPrepTask] = useState<RecipePrepTask | null>(null);
   const [addToListVisible, setAddToListVisible] = useState(false);
@@ -2894,8 +2898,9 @@ export function RecipeDetailScreen() {
       <RecipeEditor
         visible={editorVisible}
         recipe={recipe}
-        onClose={() => setEditorVisible(false)}
-        onDeleted={() => { setEditorVisible(false); navigation.goBack(); }}
+        draft={editingDraft}
+        onClose={() => { setEditorVisible(false); setEditingDraft(false); }}
+        onDeleted={() => { setEditorVisible(false); setEditingDraft(false); navigation.goBack(); }}
       />
 
       <RecipeIngredientSheet
