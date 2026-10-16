@@ -1,5 +1,5 @@
 import {
-  appRemovalSwitchLocked, defaultGroupLocked, groupBlockHint, groupEditLocked, liveGroupIds, reasonGroupLocked, reasonSwitchLocked, scheduleEditLocked,
+  appRemovalSwitchLocked, defaultGroupLocked, groupBlockHint, groupEditLocked, liveGroupIds, reasonGroupLocked, reasonSwitchLocked, scheduleEditLocked, supergroupEditLocked,
 } from '../utils/blockEditLock';
 import type { ShieldReasonEntry } from '../utils/appShield';
 import type { BlockSchedule } from '../utils/blockSchedule';
@@ -96,5 +96,16 @@ describe('the hint under a blocking group', () => {
   it('says adds apply now and removals wait, and that a staged removal is still waiting', () => {
     expect(groupBlockHint(true, false)).toContain('add apps');
     expect(groupBlockHint(true, true)).toContain('removed stay blocked');
+  });
+});
+
+describe('a supergroup', () => {
+  // Live reasons carry the expanded groups, so a supergroup is locked when any group in it is live.
+  it('is locked while any of its groups is blocking, and free otherwise', () => {
+    const live = [reason('schedule', 'social')];
+    expect(supergroupEditLocked(['social', 'games'], live)).toBe(true);
+    expect(supergroupEditLocked(['games', 'default'], live)).toBe(false);
+    expect(supergroupEditLocked(['social'], [])).toBe(false);
+    expect(supergroupEditLocked([], live)).toBe(false);
   });
 });

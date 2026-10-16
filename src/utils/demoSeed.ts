@@ -402,6 +402,9 @@ export function seedDemoData(): void {
   // aren't empty and show a schedule holding two groups. The group holds no apps
   // (tokens only exist on a real device); the rows say so.
   const social = useAppGroupStore.getState().addGroup('Social');
+  // A supergroup over both, so the App groups list shows one and a reason can
+  // block several groups under a single name.
+  if (social.group) useAppGroupStore.getState().addSupergroup('Distractions', ['default', social.group.id]);
   useAppGroupStore.getState().addSchedule({
     name: 'Wind down',
     groupIds: social.group ? ['default', social.group.id] : ['default'],

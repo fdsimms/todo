@@ -14,7 +14,7 @@ import {
   SCREEN_TIME_THRESHOLD_MIN,
 } from '../utils/screenTimeRules';
 import { screenTimeBridge } from '../utils/screenTimeBridge';
-import { allGroups, groupName, resolveGroupId } from '../utils/appGroups';
+import { groupName, plainGroups, resolveGroupId } from '../utils/appGroups';
 import { useAppGroupStore } from '../store/useAppGroupStore';
 import { useShieldReasons } from '../hooks/useShieldReasons';
 import { groupEditLocked } from '../utils/blockEditLock';
@@ -54,7 +54,8 @@ export function ScreenTimeRulesSheet({ visible, onClose }: Props) {
   const [authorization, setAuthorization] = useState<ScreenTimeAuthorization | null>(null);
   const customGroups = useAppGroupStore(s => s.groups);
   const groupsMeta = useAppGroupStore(s => s.meta);
-  const groups = useMemo(() => allGroups(customGroups, groupsMeta), [customGroups, groupsMeta]);
+  // Plain groups only: a rule watches one group's apps, and a supergroup holds none of its own.
+  const groups = useMemo(() => plainGroups(customGroups, groupsMeta), [customGroups, groupsMeta]);
   const [counts, setCounts] = useState<Record<string, ScreenTimeSelectionCount>>({});
 
   const refreshNativeState = useCallback(() => {
@@ -65,7 +66,7 @@ export function ScreenTimeRulesSheet({ visible, onClose }: Props) {
     }
     setAuthorization(bridge.screenTimeAuthorizationStatus());
     const next: Record<string, ScreenTimeSelectionCount> = {};
-    for (const group of allGroups(customGroups, groupsMeta)) {
+    for (const group of plainGroups(customGroups, groupsMeta)) {
       next[group.id] = bridge.screenTimeSelectionCount(group.id);
     }
     setCounts(next);

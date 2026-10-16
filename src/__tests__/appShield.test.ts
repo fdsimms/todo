@@ -585,6 +585,7 @@ describe('app groups and schedules', () => {
     expect(written[0].groups).toEqual({
       otherGroupIds: ['social'],
       penaltyGroupId: 'games',
+      penaltyGroupIds: ['games'],
       penaltyEndIso: LATER,
       manualGroupId: null,
       manualGroupIds: [],
@@ -721,5 +722,52 @@ describe('a block the person started by hand', () => {
       const [reason] = shieldReasons(state({ manual: open }));
       expect(reason).toEqual({ reason: 'manual', until: null, groupIds: ['games'] });
     });
+  });
+});
+
+describe('a supergroup', () => {
+  // `mix` is a supergroup over social and games; everything else is a plain group.
+  const resolveGroup = (id: string) => (id === 'mix' ? ['social', 'games'] : id);
+  const groups = (over: Partial<AppShieldState['groups']>) => ({ focus: 'default', gate: 'default', penalty: 'default', key: 'default', ...over });
+  const written = () => (mockBridge.setShieldState.mock.calls[0] as unknown as [{ groups: Record<string, unknown> }])[0].groups;
+
+  it('blocks every group inside it for each kind of reason, and never the supergroup itself', () => {
+    syncAppShield(state({ keyLocked: true, groups: groups({ key: 'mix' }), resolveGroup }));
+    expect(mockBridge.applyShield).toHaveBeenCalledWith(['social', 'games']);
+    expect(written().otherGroupIds).toEqual(['social', 'games']);
+  });
+
+  it('expands a focus session, a gate and a schedule the same way, held once where they overlap', () => {
+    const reasons = shieldReasons(state({
+      session: session(), focusEnabled: true, groups: groups({ focus: 'mix' }),
+      gateEnabled: true, gateTitles: ['Walk'], gateGroupIds: ['mix'],
+      schedules: [{ id: 's', name: 'Work', groupIds: ['mix', 'music'], days: [0, 1, 2, 3, 4, 5, 6], startMinutes: 0, endMinutes: 1439, enabled: true, pausedUntil: null }],
+      resolveGroup,
+    }));
+    expect(reasons.map(r => r.groupIds)).toEqual([['social', 'games'], ['social', 'games'], ['social', 'games', 'music']]);
+    syncAppShield(state({ session: session(), focusEnabled: true, groups: groups({ focus: 'mix' }), keyLocked: true, resolveGroup }));
+    expect(mockBridge.applyShield).toHaveBeenCalledWith(['social', 'games', 'default']);
+  });
+
+  it('hands the extension a penalty or a manual block\'s expanded groups, with the first beside the list', () => {
+    syncAppShield(state({
+      penaltyUntil: LATER, penaltyEnabled: true, groups: groups({ penalty: 'mix' }),
+      manual: { untilIso: LATER, groupIds: ['mix', 'music'] }, resolveGroup,
+    }));
+    expect(written()).toMatchObject({
+      penaltyGroupId: 'social', penaltyGroupIds: ['social', 'games'],
+      manualGroupId: 'social', manualGroupIds: ['social', 'games', 'music'],
+    });
+  });
+
+  it('expands a pending gate\'s group and the schedules written to the native side', () => {
+    const liveAt = new Date(NOW.getTime() + 60 * 60 * 1000);
+    syncAppShield(state({
+      gateEnabled: true, pendingGate: { liveAt, titles: ['Later'], groupIds: ['mix'] },
+      schedules: [{ id: 's', name: 'Work', groupIds: ['mix'], days: [1], startMinutes: 540, endMinutes: 600, enabled: true, pausedUntil: null }],
+      resolveGroup,
+    }));
+    expect(written().pendingGateGroupIds).toEqual(['social', 'games']);
+    expect(mockBridge.setBlockSchedules).toHaveBeenCalledWith([expect.objectContaining({ groupId: 'social', groupIds: ['social', 'games'] })]);
   });
 });

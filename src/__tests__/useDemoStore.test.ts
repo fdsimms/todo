@@ -841,7 +841,8 @@ describe('demo mode', () => {
     // And a key tag to lock the same apps with, enrolled but not locking.
     expect(useNfcKeyStore.getState().keys.map(k => k.name)).toEqual(['Desk tag']);
     expect(useNfcKeyStore.getState().locked).toBe(false);
-    expect(useAppGroupStore.getState().groups.map(g => g.name)).toEqual(['Social']);
+    expect(useAppGroupStore.getState().groups.map(g => g.name)).toEqual(['Social', 'Distractions']);
+    expect(useAppGroupStore.getState().groups[1].members).toHaveLength(2);
     expect(useAppGroupStore.getState().schedules.map(s => s.name)).toEqual(['Wind down']);
     // The schedule holds two groups, so the multi-group picker has something to show.
     expect(useAppGroupStore.getState().schedules[0].groupIds).toHaveLength(2);

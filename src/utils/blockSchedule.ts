@@ -250,18 +250,24 @@ export interface NativeScheduleWindow {
   pausedUntilIso: string | null;
 }
 
+/**
+ * A resolver from a stored group id to the plain group(s) it blocks: one id for
+ * a group, several for a supergroup (`expandGroupId`).
+ */
+export type GroupResolver = (groupId: string) => string | readonly string[];
+
 /** A group list resolved through `resolveGroup`, de-duplicated, with the legacy first-group field beside it. */
 export function resolvedGroups(
   groupIds: readonly string[],
-  resolveGroup: (groupId: string) => string,
+  resolveGroup: GroupResolver,
 ): { groupId: string; groupIds: string[] } {
-  const resolved = [...new Set(groupIds.map(resolveGroup))];
+  const resolved = [...new Set(groupIds.flatMap(id => resolveGroup(id)))];
   return { groupId: resolved[0], groupIds: resolved };
 }
 
 export function nativeScheduleWindows(
   schedules: readonly BlockSchedule[],
-  resolveGroup: (groupId: string) => string,
+  resolveGroup: GroupResolver,
 ): NativeScheduleWindow[] {
   return schedules.filter(s => s.enabled && !scheduleProblem(s)).map(s => ({
     id: s.id,

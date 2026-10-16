@@ -32,7 +32,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/alarmChain.ts` — ALARM_RING_INTERVAL_MINUTES, ALARM_MAX_RINGS, alarmChainTimes, taskAlarmUuid, alarmChainIds, stepTimerAlarmUuid
 - `src/utils/allClear.ts` — completedOnDay, describeAllClear, shouldPlayBeat
 - `src/utils/appGate.ts` — isGateTask, gateGroupFor, outstandingGates, gateShieldWanted, GATE_WINDOW_MINUTES, GATE_ARM_HORIZON_MS, GateWindow, gateWindowFor, PendingGate, nextPendingGate, +1 more
-- `src/utils/appGroups.ts` — APP_GROUPS_SETTING, GROUP_ASSIGNMENTS_SETTING, BASE_GROUP_NAME_SETTING, FALLBACK_GROUP_SETTING, DEFAULT_GROUP_ID, DEFAULT_GROUP_NAME, MAX_APP_GROUPS, MAX_GROUP_NAME_LENGTH, AppGroup, GroupedReason, +20 more
+- `src/utils/appGroups.ts` — APP_GROUPS_SETTING, GROUP_ASSIGNMENTS_SETTING, BASE_GROUP_NAME_SETTING, FALLBACK_GROUP_SETTING, DEFAULT_GROUP_ID, DEFAULT_GROUP_NAME, MAX_APP_GROUPS, MAX_SUPERGROUPS, MAX_GROUP_NAME_LENGTH, AppGroup, +26 more
 - `src/utils/appLock.ts` — APP_LOCK_GRACE_OPTIONS, DEFAULT_APP_LOCK_GRACE_SECONDS, graceLabel, parseGraceSeconds, shouldLockOnResume, biometryLabel
 - `src/utils/appLockAuth.ts` — AppLockCapability, AppLockSupport, getAppLockSupport, UnlockResult, authenticateForAppLock
 - `src/utils/appShield.ts` — AppShieldState, ShieldReasonKind, ShieldReasonEntry, shieldReasons, shieldGroupIds, appShieldWanted, syncAppShield
@@ -49,8 +49,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/beatMark.ts` — BeatMarkGeometry, beatMarkGeometry, BEAT_STEP_MS
 - `src/utils/beatSound.ts` — playBeatSound
 - `src/utils/birthdayTasks.ts` — DEFAULT_BIRTHDAY_LEAD_DAYS, DEFAULT_BIRTHDAY_GIFT_LEAD_DAYS, MAX_BIRTHDAY_LEAD_DAYS, clampBirthdayLeadDays, clampBirthdayGiftLeadDays, parseBirthdayLeadDays, parseBirthdayGiftLeadDays, birthdaySourceId, parseBirthdaySource, parseBirthdayGiftSource, +15 more
-- `src/utils/blockEditLock.ts` — liveGroupIds, groupEditLocked, reasonGroupLocked, reasonSwitchLocked, appRemovalSwitchLocked, defaultGroupLocked, scheduleEditLocked, groupBlockHint, BLOCK_PICKER_NOTE_TITLE, BLOCK_PICKER_NOTE_MESSAGE, +2 more
-- `src/utils/blockSchedule.ts` — BLOCK_SCHEDULES_SETTING, MAX_BLOCK_SCHEDULES, MIN_WINDOW_MINUTES, MAX_SCHEDULE_NAME_LENGTH, readGroupIds, BlockSchedule, ALL_DAYS, WEEKDAYS, cleanScheduleName, windowLengthMinutes, +16 more
+- `src/utils/blockEditLock.ts` — liveGroupIds, groupEditLocked, supergroupEditLocked, reasonGroupLocked, reasonSwitchLocked, appRemovalSwitchLocked, defaultGroupLocked, scheduleEditLocked, groupBlockHint, BLOCK_PICKER_NOTE_TITLE, +3 more
+- `src/utils/blockSchedule.ts` — BLOCK_SCHEDULES_SETTING, MAX_BLOCK_SCHEDULES, MIN_WINDOW_MINUTES, MAX_SCHEDULE_NAME_LENGTH, readGroupIds, BlockSchedule, ALL_DAYS, WEEKDAYS, cleanScheduleName, windowLengthMinutes, +17 more
 - `src/utils/blockTimer.ts` — BLOCK_SINCE_SETTING, BlockStamp, parseBlockStamp, reasonsEndBy, nextBlockStamp, blockedForMs, formatBlockedFor, spokenBlockedFor
 - `src/utils/blockerRegistry.ts` — registerTaskSource, resolveBlocker, waitingCountFor
 - `src/utils/blockerStatus.ts` — BlockerWait, describeBlockerWait
@@ -540,7 +540,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/generatedCategoryWriteBack.ts` — GeneratedCategoryOffer, generatedCategoryOffer, writeCategoryToSource
 - `src/store/generatedTaskSync.ts` — deleteGeneratedTaskQuietly, ReconcileGeneratedOptions, reconcileGeneratedTask, dropGeneratedTask
 - `src/store/generatorSwitch.ts` — setGeneratorEnabled
-- `src/store/useAppGroupStore.ts` — NewSchedule, ScheduleResult, useAppGroupStore, resolvedAssignments, resolveGroupNow
+- `src/store/useAppGroupStore.ts` — NewSchedule, ScheduleResult, useAppGroupStore, resolvedAssignments, resolveGroupNow, expandGroupNow
 - `src/store/useAppLockStore.ts` — useAppLockStore, isAppLocked
 - `src/store/useBlockTimerStore.ts` — useBlockTimerStore
 - `src/store/useCalendarStore.ts` — CALENDAR_WINDOW_DAYS, CALENDAR_CHANGE_COALESCE_MS, TRIP_WINDOW_DAYS, sameBusyEvents, vacationReturnCalendarIds, useCalendarStore, useCalendarSync

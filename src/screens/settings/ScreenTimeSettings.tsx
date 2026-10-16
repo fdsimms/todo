@@ -6,19 +6,21 @@ import { useNfcKeyStore } from '../../store/useNfcKeyStore';
 import { useAppGroupStore } from '../../store/useAppGroupStore';
 import { BlockScheduleSheet } from '../../components/BlockScheduleSheet';
 import { ManualBlockGroupsSheet } from '../../components/ManualBlockGroupsSheet';
+import { SupergroupMembersSheet } from '../../components/SupergroupMembersSheet';
 import { EmergencyReleaseSheet } from '../../components/EmergencyReleaseSheet';
 import { useShieldReleaseStore } from '../../store/useShieldReleaseStore';
 import { describeEnded, releasesThisMonth, timesWord } from '../../utils/shieldRelease';
 import { useManualBlockStore } from '../../store/useManualBlockStore';
 import { MANUAL_BLOCK_PRESETS, describeDuration, manualBlockWanted } from '../../utils/manualBlock';
 import {
-  DEFAULT_GROUP_ID, allGroups, groupName, resolveAssignments, resolveGroupId, type GroupedReason,
+  DEFAULT_GROUP_ID, allGroups, cleanGroupName, groupName, isSupergroup, plainGroups, resolveAssignments, resolveGroupId, supergroupMembers,
+  type GroupedReason,
 } from '../../utils/appGroups';
 import { currentWindowEnd, describeDays, describeWindow, formatMinutes, isScheduleActive, MAX_BLOCK_SCHEDULES, type BlockSchedule } from '../../utils/blockSchedule';
 import { selectionLabel } from '../../utils/shieldReasonText';
 import {
   BLOCK_EDIT_LOCKED_MESSAGE, BLOCK_EDIT_LOCKED_TITLE, appRemovalSwitchLocked, defaultGroupLocked, groupBlockHint, groupEditLocked, reasonGroupLocked,
-  reasonSwitchLocked, scheduleEditLocked,
+  reasonSwitchLocked, scheduleEditLocked, supergroupEditLocked,
 } from '../../utils/blockEditLock';
 import { confirmLivePicker } from '../../utils/livePickerConfirm';
 import { useColors } from '../../theme/ThemeContext';
@@ -112,18 +114,37 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
     const c = counts[groupId];
     return c ? selectionLabel(c.applications, c.categories, c.websites ?? 0) : 'None';
   };
-  const totalOf = (groupId: string) => {
+  // A supergroup picks no apps of its own, so it has apps when any group in it does.
+  const totalOf = (groupId: string): number => {
+    if (isSupergroup(customGroups.find(g => g.id === groupId))) {
+      return supergroupMembers(customGroups, groupId, groupsMeta).reduce((sum, m) => sum + totalOf(m.id), 0);
+    }
     const c = counts[groupId];
     return c ? c.applications + c.categories + (c.websites ?? 0) : 0;
   };
 
-  const groupLocked = (groupId: string) => groupEditLocked(groupId, reasons);
+  const groupLocked = (groupId: string) => {
+    const group = customGroups.find(g => g.id === groupId);
+    return isSupergroup(group)
+      ? supergroupEditLocked(group!.members!, reasons)
+      : groupEditLocked(groupId, reasons);
+  };
   const groupHint = (groupId: string) => {
     const parts = [
       groupBlockHint(groupLocked(groupId), pending[groupId] === true),
       groupsMeta.fallbackId === groupId ? 'Default group' : null,
     ].filter((p): p is string => p !== null);
     return parts.length > 0 ? parts.join(' ') : undefined;
+  };
+  /** The line under a supergroup: what is blocking it now, else the groups it combines. */
+  const supergroupHint = (group: { id: string; members?: string[] }) => {
+    if (groupLocked(group.id)) return 'Blocking now. Its groups can’t change until it ends.';
+    const names = supergroupMembers(customGroups, group.id, groupsMeta).map(g => g.name);
+    return names.length > 0 ? names.join(', ') : 'No groups';
+  };
+  const supergroupCount = (groupId: string) => {
+    const n = supergroupMembers(customGroups, groupId, groupsMeta).length;
+    return n === 0 ? 'No groups' : n === 1 ? '1 group' : `${n} groups`;
   };
 
   // A live block's group, reason and schedule can't be edited: that would end it
@@ -166,6 +187,84 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
     ], 'plain-text');
   };
 
+  // The sheet that picks a supergroup's groups, for a new one (`id` null, named
+  // already) or an existing one.
+  const [memberSheet, setMemberSheet] = useState<{ open: boolean; id: string | null; name: string }>({ open: false, id: null, name: '' });
+
+  const handleNewSupergroup = () => {
+    haptics.tap();
+    if (plainGroups(customGroups, groupsMeta).length < 2) {
+      Alert.alert('Make another group first', 'A supergroup combines groups you already made. Add at least two groups, then combine them.');
+      return;
+    }
+    Alert.prompt('Name this supergroup', 'For example, Distractions or Work apps.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Next',
+        onPress: (text?: string) => setMemberSheet({ open: true, id: null, name: text ?? '' }),
+      },
+    ], 'plain-text');
+  };
+
+  const confirmMembers = (ids: string[]) => {
+    const store = useAppGroupStore.getState();
+    if (memberSheet.id) {
+      store.setSupergroupMembers(memberSheet.id, ids);
+      haptics.success();
+      return;
+    }
+    const added = store.addSupergroup(memberSheet.name, ids);
+    if (!added.ok) { groupNameFailed(added.reason); return; }
+    haptics.success();
+  };
+
+  const handleSupergroupRow = (groupId: string, name: string) => {
+    haptics.tap();
+    const used = [
+      ...(['focus', 'gate', 'penalty', 'key'] as const).filter(r => resolved[r] === groupId),
+      ...schedules.filter(sc => sc.groupIds.some(id => resolveGroupId(customGroups, id, groupsMeta) === groupId)).map(() => 'schedule' as const),
+    ];
+    const fallbackName = groupName(customGroups, groupsMeta.fallbackId, groupsMeta);
+    Alert.alert(name, undefined, [
+      {
+        text: 'Choose groups',
+        onPress: () => { if (!refuseWhileBlocked(groupLocked(groupId))) setMemberSheet({ open: true, id: groupId, name }); },
+      },
+      {
+        text: 'Rename',
+        onPress: () => Alert.prompt('Rename supergroup', undefined, [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Save',
+            onPress: (text?: string) => {
+              const renamed = useAppGroupStore.getState().renameGroup(groupId, text ?? '');
+              if (!renamed.ok) groupNameFailed(renamed.reason);
+            },
+          },
+        ], 'plain-text', name),
+      },
+      {
+        text: 'Delete',
+        style: 'destructive' as const,
+        onPress: () => refuseWhileBlocked(groupLocked(groupId)) || Alert.alert(
+          `Delete ${name}?`,
+          used.length > 0
+            ? `Anything using this supergroup will block the ${fallbackName} group instead. The groups inside it are kept.`
+            : 'The groups inside it are kept.',
+          [
+            { text: 'Cancel', style: 'cancel' as const },
+            {
+              text: 'Delete',
+              style: 'destructive' as const,
+              onPress: () => useAppGroupStore.getState().removeGroup(groupId),
+            },
+          ],
+        ),
+      },
+      { text: 'Cancel', style: 'cancel' as const },
+    ]);
+  };
+
   const handleGroupRow = (groupId: string, name: string) => {
     haptics.tap();
     const isOriginal = groupId === DEFAULT_GROUP_ID;
@@ -174,6 +273,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
       ...schedules.filter(sc => sc.groupIds.some(id => resolveGroupId(customGroups, id, groupsMeta) === groupId)).map(() => 'schedule' as const),
     ];
     const fallbackName = groupName(customGroups, groupsMeta.fallbackId, groupsMeta);
+    const inSupergroup = customGroups.some(g => isSupergroup(g) && g.members!.includes(groupId));
     Alert.alert(name, undefined, [
       { text: 'Choose apps', onPress: () => { void handleChooseApps(groupId); } },
       {
@@ -203,7 +303,9 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
           `Delete ${name}?`,
           used.length > 0
             ? `Anything using this group will block the ${groupsMeta.fallbackId === groupId ? groupsMeta.baseName : fallbackName} group instead.`
-            : 'The apps you picked for this group are forgotten.',
+            : inSupergroup
+              ? 'The apps you picked for this group are forgotten, and it is removed from the supergroups that include it.'
+              : 'The apps you picked for this group are forgotten.',
           [
             { text: 'Cancel', style: 'cancel' as const },
             {
@@ -291,7 +393,12 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
     }
     if (!(await ensureAuthorized(message))) return;
     setEnabled(true);
-    if (totalOf(resolved[reason]) === 0) await onChooseApps(resolved[reason]);
+    if (totalOf(resolved[reason]) === 0) {
+      // A supergroup has no picker of its own: send the person to its groups.
+      const target = customGroups.find(g => g.id === resolved[reason]);
+      if (isSupergroup(target)) setMemberSheet({ open: true, id: target!.id, name: target!.name });
+      else await onChooseApps(resolved[reason]);
+    }
   };
 
   // ==== reasons ====
@@ -568,7 +675,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
 
       <SettingsSection
         label="App groups"
-        footer="Each group is its own list of apps. iOS doesn’t share which apps you picked, so only the count shows here. The default group is used when a group is deleted."
+        footer="Each group is its own list of apps. iOS doesn’t share which apps you picked, so only the count shows here. A supergroup blocks every app in the groups inside it. The default group is used when a group is deleted."
       >
         <SettingsRow
           entryId="screenTimeApps"
@@ -583,15 +690,27 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
         {customGroups.map(group => (
           <React.Fragment key={group.id}>
             <View style={styles.sep} />
-            <SettingsRow
-              icon="apps-outline"
-              iconColor={totalOf(group.id) > 0 ? colors.accent : undefined}
-              label={group.name}
-              hint={groupHint(group.id)}
-              alwaysShowHint={groupLocked(group.id)}
-              value={countLabel(group.id)}
-              onPress={() => handleGroupRow(group.id, group.name)}
-            />
+            {isSupergroup(group) ? (
+              <SettingsRow
+                icon="layers-outline"
+                iconColor={totalOf(group.id) > 0 ? colors.accent : undefined}
+                label={group.name}
+                hint={supergroupHint(group)}
+                alwaysShowHint
+                value={supergroupCount(group.id)}
+                onPress={() => handleSupergroupRow(group.id, group.name)}
+              />
+            ) : (
+              <SettingsRow
+                icon="apps-outline"
+                iconColor={totalOf(group.id) > 0 ? colors.accent : undefined}
+                label={group.name}
+                hint={groupHint(group.id)}
+                alwaysShowHint={groupLocked(group.id)}
+                value={countLabel(group.id)}
+                onPress={() => handleGroupRow(group.id, group.name)}
+              />
+            )}
           </React.Fragment>
         ))}
         <View style={styles.sep} />
@@ -601,6 +720,14 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
           label="New group"
           hint="Make another list of apps, for example Social or Games."
           onPress={handleNewGroup}
+        />
+        <View style={styles.sep} />
+        <SettingsRow
+          icon="add-circle-outline"
+          iconColor={colors.accent}
+          label="New supergroup"
+          hint="Combine groups you already made into one, for example Social and News."
+          onPress={handleNewSupergroup}
         />
       </SettingsSection>
 
@@ -831,6 +958,14 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
         initialIds={[groupsMeta.fallbackId]}
         onClose={() => setManualPick(null)}
         onConfirm={ids => { if (manualPick) void confirmManual(manualPick.minutes, ids); }}
+      />
+      <SupergroupMembersSheet
+        visible={memberSheet.open}
+        title={memberSheet.id ? groupName(customGroups, memberSheet.id, groupsMeta) : cleanGroupName(memberSheet.name, 'New supergroup')}
+        groups={plainGroups(customGroups, groupsMeta)}
+        initialIds={memberSheet.id ? supergroupMembers(customGroups, memberSheet.id, groupsMeta).map(g => g.id) : []}
+        onClose={() => setMemberSheet(prev => ({ ...prev, open: false }))}
+        onConfirm={confirmMembers}
       />
       <BlockScheduleSheet
         visible={scheduleSheet.open}

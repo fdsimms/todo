@@ -212,6 +212,10 @@ struct ShieldStateShared: Codable {
 struct ShieldGroupsShared: Codable {
   let otherGroupIds: [String]
   let penaltyGroupId: String?
+  /// Every group the penalty holds, `penaltyGroupId` being the first. Optional so
+  /// a state file written before a penalty could name several still decodes, and
+  /// then falls back to that one group (`penaltyHeldGroupIds`).
+  let penaltyGroupIds: [String]?
   let penaltyEndIso: String?
   /// The block the person started by hand. Optional so a state file written by
   /// an older build still decodes, with this half simply absent.
@@ -223,6 +227,13 @@ struct ShieldGroupsShared: Codable {
   let manualEndIso: String?
   let pendingGateGroupIds: [String]?
   let pendingGateLiveAtIso: String?
+
+  /// The groups the penalty holds: the list when there is one, else the single
+  /// group an older state file named.
+  var penaltyHeldGroupIds: [String] {
+    if let ids = penaltyGroupIds, !ids.isEmpty { return ids }
+    return penaltyGroupId.map { [$0] } ?? []
+  }
 
   /// The groups the manual block holds: the list when there is one, else the
   /// single group an older state file named.
@@ -460,9 +471,8 @@ extension ScreenTimeShared {
     }
     var ids = state.groups?.otherGroupIds ?? (state.otherReasonWantsShield ? [defaultGroupID] : [])
     if !penaltyEnded,
-       let group = state.groups?.penaltyGroupId,
        let end = parseIso(state.groups?.penaltyEndIso), end > now {
-      ids.append(group)
+      ids.append(contentsOf: state.groups?.penaltyHeldGroupIds ?? [])
     }
     if !manualEnded,
        let end = parseIso(state.groups?.manualEndIso), end > now {

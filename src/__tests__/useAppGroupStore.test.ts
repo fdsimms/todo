@@ -4,7 +4,7 @@ jest.mock('../db/database', () => ({
   dbSetSetting: jest.fn((key: string, value: string) => { mockSettings[key] = value; }),
 }));
 
-import { useAppGroupStore, resolvedAssignments, resolveGroupNow } from '../store/useAppGroupStore';
+import { useAppGroupStore, expandGroupNow, resolvedAssignments, resolveGroupNow } from '../store/useAppGroupStore';
 
 const draft = {
   name: 'Work', groupIds: ['default'], days: [1, 2, 3, 4, 5], startMinutes: 540, endMinutes: 1020,
@@ -105,5 +105,49 @@ describe('the original group', () => {
     useAppGroupStore.getState().removeGroup(id);
     expect(useAppGroupStore.getState().meta.fallbackId).toBe('default');
     expect(resolveGroupNow('gone')).toBe('default');
+  });
+});
+
+describe('supergroups', () => {
+  const addPlain = (name: string) => useAppGroupStore.getState().addGroup(name).group!.id;
+
+  it('combines groups, persists the members and expands to them', () => {
+    const a = addPlain('Social');
+    const b = addPlain('News');
+    const added = useAppGroupStore.getState().addSupergroup('Distractions', [b, a]);
+    expect(added.ok).toBe(true);
+    const id = added.group!.id;
+    // Members are kept in listed order, not the order they were picked.
+    expect(useAppGroupStore.getState().groups.find(g => g.id === id)?.members).toEqual([a, b]);
+    expect(JSON.parse(mockSettings.appGroups).find((g: { id: string }) => g.id === id).members).toEqual([a, b]);
+    expect(expandGroupNow(id)).toEqual([a, b]);
+    expect(resolveGroupNow(id)).toBe(id);
+  });
+
+  it('can be what a reason blocks, and a deleted one hands the reason back to Default', () => {
+    const a = addPlain('Social');
+    const id = useAppGroupStore.getState().addSupergroup('Distractions', [a]).group!.id;
+    useAppGroupStore.getState().assignGroup('focus', id);
+    expect(resolvedAssignments().focus).toBe(id);
+    useAppGroupStore.getState().removeGroup(id);
+    expect(resolvedAssignments().focus).toBe('default');
+    expect(useAppGroupStore.getState().groups.map(g => g.id)).toEqual([a]);
+  });
+
+  it('loses a member when that group is deleted, and keeps blocking something when none are left', () => {
+    const a = addPlain('Social');
+    const id = useAppGroupStore.getState().addSupergroup('Distractions', [a]).group!.id;
+    useAppGroupStore.getState().removeGroup(a);
+    expect(useAppGroupStore.getState().groups.find(g => g.id === id)?.members).toEqual([]);
+    expect(expandGroupNow(id)).toEqual(['default']);
+  });
+
+  it('replaces its members and reads back after a reload', () => {
+    const a = addPlain('Social');
+    const b = addPlain('News');
+    const id = useAppGroupStore.getState().addSupergroup('Distractions', [a]).group!.id;
+    useAppGroupStore.getState().setSupergroupMembers(id, [b, 'default']);
+    useAppGroupStore.getState().reload();
+    expect(expandGroupNow(id)).toEqual(['default', b]);
   });
 });

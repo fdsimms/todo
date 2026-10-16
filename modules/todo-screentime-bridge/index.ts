@@ -224,6 +224,8 @@ export interface ShieldGroupsState {
   /** Groups held by a focus session, a gate and a key lock. */
   otherGroupIds: string[];
   penaltyGroupId: string | null;
+  /** Every group the penalty holds (a supergroup expands to several); `penaltyGroupId` is the first, for a native build that predates the list. */
+  penaltyGroupIds: string[];
   penaltyEndIso: string | null;
   /** The block the person started by hand: its group and when it ends. Null when none is running. */
   manualGroupId: string | null;

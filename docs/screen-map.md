@@ -359,6 +359,7 @@ Where each component can appear.
 - `src/components/SuggestMealsSheet.tsx` — on MealPlanScreen
 - `src/components/SuggestedPinsSheet.tsx` — on TodayScreen
 - `src/components/SunBoundPanel.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, MedicationDetailScreen, MedicationScreen, MetersScreen, PersonDetailScreen, ProjectDetailScreen, RemindersScreen, SavedViewDetailScreen, SearchScreen, StackDetailScreen, +5 more
+- `src/components/SupergroupMembersSheet.tsx` — on ScreenTimeScreen
 - `src/components/SupplementPanelSheet.tsx` — on MedicationDetailScreen
 - `src/components/SwipeActionButtons.tsx` — on CalendarScreen, CategoryDetailScreen, FoodLogScreen, GroceryScreen, LogbookScreen, MealPlanScreen, MedicationScreen, PeopleScreen, ProjectDetailScreen, ProjectsScreen, RecipeDetailScreen, RecipesScreen, +7 more
 - `src/components/SwipeDismiss.tsx` — on GroceryScreen, MealPlanScreen, MedicationDetailScreen, MedicationScreen, ProjectDetailScreen, RecipeDetailScreen, TemplateDetailScreen, TemplatesScreen, TodayScreen, app shell

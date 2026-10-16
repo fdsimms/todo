@@ -37,6 +37,18 @@ export function groupEditLocked(groupId: string, reasons: readonly ShieldReasonE
 }
 
 /**
+ * Whether a supergroup's members, or the supergroup itself, can't change: any of
+ * its groups is blocking. Live reasons carry the expanded groups, so which one
+ * *named* the supergroup is no longer known, and refusing on any member is the
+ * safe side: dropping a member would lift part of a block, and adding one is
+ * the same edit. A supergroup none of whose groups is blocking stays editable.
+ */
+export function supergroupEditLocked(memberIds: readonly string[], reasons: readonly ShieldReasonEntry[]): boolean {
+  const live = liveGroupIds(reasons);
+  return memberIds.some(id => live.has(id));
+}
+
+/**
  * Whether changing which group a reason blocks would move a live block. The
  * reason's own entry is what matters, not the group it names: pointing a live
  * reason at an empty group is the same escape as emptying its group.

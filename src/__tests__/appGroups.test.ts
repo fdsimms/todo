@@ -1,7 +1,7 @@
 import {
-  DEFAULT_GROUP_ID, MAX_APP_GROUPS, allGroups, assignmentsAfterRemoval, cleanGroupName, groupName,
-  parseAppGroups, parseGroupAssignments, resolveAssignments, resolveGroupId, withGroupAdded,
-  withGroupRemoved, withGroupRenamed,
+  DEFAULT_GROUP_ID, MAX_APP_GROUPS, MAX_SUPERGROUPS, allGroups, assignmentsAfterRemoval, cleanGroupName, expandGroupId, groupName, isSupergroup, plainGroups,
+  parseAppGroups, parseGroupAssignments, parseGroupsMeta, resolveAssignments, resolveGroupId, withGroupAdded,
+  supergroupMembers, withGroupRemoved, withGroupRenamed, withMembersSet,
 } from '../utils/appGroups';
 
 const social = { id: 'g1', name: 'Social' };
@@ -89,5 +89,72 @@ describe('assignments', () => {
   it('go back to Default when their group is deleted', () => {
     const a = parseGroupAssignments('{"focus":"g1","key":"g1","gate":"g2"}');
     expect(assignmentsAfterRemoval(a, 'g1')).toEqual({ focus: 'default', gate: 'g2', penalty: 'default', key: 'default' });
+  });
+});
+
+describe('supergroups', () => {
+  const games = { id: 'g2', name: 'Games' };
+  const mix = { id: 's1', name: 'Distractions', members: ['g1', 'default'] };
+  const all = [social, games, mix];
+
+  it('parses members, dropping any that are not plain groups and keeping the cap apart from plain groups', () => {
+    const raw = JSON.stringify([
+      social,
+      { id: 's1', name: 'Mix', members: ['g1', 'g1', 'gone', 's2', 'default'] },
+      { id: 's2', name: 'Nested', members: ['s1', 'g1'] },
+    ]);
+    const parsed = parseAppGroups(raw);
+    expect(parsed[1].members).toEqual(['g1', 'default']);
+    expect(parsed[2].members).toEqual(['g1']);
+    const many = [
+      ...Array.from({ length: MAX_APP_GROUPS }, (_, i) => ({ id: `g${i}`, name: `G${i}` })),
+      ...Array.from({ length: MAX_SUPERGROUPS + 2 }, (_, i) => ({ id: `s${i}`, name: `S${i}`, members: ['g0'] })),
+    ];
+    const capped = parseAppGroups(JSON.stringify(many));
+    expect(capped.filter(isSupergroup)).toHaveLength(MAX_SUPERGROUPS);
+    expect(capped.filter(g => !isSupergroup(g))).toHaveLength(MAX_APP_GROUPS);
+  });
+
+  it('expands to its members, in listed order, and a plain group to itself', () => {
+    expect(expandGroupId(all, 's1')).toEqual(['default', 'g1']);
+    expect(expandGroupId(all, 'g2')).toEqual(['g2']);
+    expect(expandGroupId(all, 'default')).toEqual(['default']);
+  });
+
+  it('falls back when the id is missing or the supergroup has no members left', () => {
+    expect(expandGroupId(all, 'nope')).toEqual(['default']);
+    const empty = [social, { id: 's1', name: 'Empty', members: [] }];
+    expect(expandGroupId(empty, 's1')).toEqual(['default']);
+    expect(expandGroupId(empty, 's1', { baseName: 'Default', fallbackId: 'g1' })).toEqual(['g1']);
+  });
+
+  it('is removed from, not left dangling in, a supergroup when a member group is deleted', () => {
+    const after = withGroupRemoved(all, 'g1');
+    expect(after.find(g => g.id === 's1')?.members).toEqual(['default']);
+    expect(expandGroupId(after, 's1')).toEqual(['default']);
+  });
+
+  it('sets members in listed order and ignores unknown or supergroup ids', () => {
+    const next = withMembersSet(all, 's1', ['g2', 's1', 'zzz', 'g1']);
+    expect(next.find(g => g.id === 's1')?.members).toEqual(['g1', 'g2']);
+    expect(withMembersSet(all, 'g1', ['g2'])).toEqual(all);
+  });
+
+  it('lists only plain groups as pickable apps groups, and its members by name', () => {
+    expect(plainGroups(all).map(g => g.id)).toEqual(['default', 'g1', 'g2']);
+    expect(supergroupMembers(all, 's1').map(g => g.name)).toEqual(['Default', 'Social']);
+    expect(supergroupMembers(all, 'g1')).toEqual([]);
+  });
+
+  it('counts against its own cap and shares the name rule', () => {
+    expect(withGroupAdded([social], { id: 's9', name: 'social', members: ['g1'] })).toEqual({ ok: false, reason: 'duplicate' });
+    const fullSupers = Array.from({ length: MAX_SUPERGROUPS }, (_, i) => ({ id: `s${i}`, name: `S${i}`, members: [] as string[] }));
+    expect(withGroupAdded(fullSupers, { id: 'sx', name: 'More', members: [] })).toEqual({ ok: false, reason: 'full' });
+    expect(withGroupAdded(fullSupers, { id: 'gx', name: 'Plain' }).ok).toBe(true);
+  });
+
+  it('is never the group a missing group falls back to', () => {
+    expect(parseGroupsMeta(null, 's1', all).fallbackId).toBe('default');
+    expect(groupName(all, 's1')).toBe('Distractions');
   });
 });
